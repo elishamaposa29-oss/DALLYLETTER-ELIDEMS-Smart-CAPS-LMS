@@ -16,7 +16,12 @@ const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 // ---------------------------------------------------------------------------
 
 let _baseUrl: string | null = null;
-let _authTokenGetter: AuthTokenGetter | null = null;
+let _authTokenGetter: AuthTokenGetter | null = () => {
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem("dallyletter_token");
+  }
+  return null;
+};
 
 /**
  * Set a base URL that is prepended to every relative request URL

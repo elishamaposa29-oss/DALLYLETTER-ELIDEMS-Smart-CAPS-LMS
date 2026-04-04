@@ -3,20 +3,37 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: DallyLetter Elidems - CAPS Education Platform API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication operations
+  - name: users
+    description: User management
+  - name: lessons
+    description: Lesson management
+  - name: classes
+    description: Live class management
+  - name: chat
+    description: Chat and messaging
+  - name: studyGroups
+    description: Study groups
+  - name: payments
+    description: Payment tracking
+  - name: notifications
+    description: Notifications
+  - name: dashboard
+    description: Dashboard analytics
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +41,687 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # AUTH ROUTES
+  /auth/register:
+    post:
+      operationId: registerUser
+      tags: [auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterUserBody"
+      responses:
+        "201":
+          description: User registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Bad request
+
+  /auth/login:
+    post:
+      operationId: loginUser
+      tags: [auth]
+      summary: Login user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginUserBody"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Unauthorized
+
+  /auth/logout:
+    post:
+      operationId: logoutUser
+      tags: [auth]
+      summary: Logout user
+      responses:
+        "200":
+          description: Logged out
+
+  /auth/me:
+    get:
+      operationId: getCurrentUser
+      tags: [auth]
+      summary: Get current authenticated user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Not authenticated
+
+  # USERS ROUTES
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List all users (owner only)
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+
+  /users/{id}:
+    get:
+      operationId: getUser
+      tags: [users]
+      summary: Get user by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "404":
+          description: Not found
+
+    patch:
+      operationId: updateUser
+      tags: [users]
+      summary: Update user (owner only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserBody"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+    delete:
+      operationId: deleteUser
+      tags: [users]
+      summary: Delete user (owner only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /users/{id}/block:
+    patch:
+      operationId: blockUser
+      tags: [users]
+      summary: Block or unblock a user (owner only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BlockUserBody"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /users/{id}/promote:
+    patch:
+      operationId: promoteUser
+      tags: [users]
+      summary: Promote/demote user role or assign prefect (owner only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromoteUserBody"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  # LESSONS ROUTES
+  /lessons:
+    get:
+      operationId: listLessons
+      tags: [lessons]
+      summary: List all lessons
+      responses:
+        "200":
+          description: List of lessons
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Lesson"
+
+    post:
+      operationId: createLesson
+      tags: [lessons]
+      summary: Create a lesson (teacher/owner only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLessonBody"
+      responses:
+        "201":
+          description: Lesson created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lesson"
+
+  /lessons/{id}:
+    get:
+      operationId: getLesson
+      tags: [lessons]
+      summary: Get lesson by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Lesson
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lesson"
+        "404":
+          description: Not found
+
+    patch:
+      operationId: updateLesson
+      tags: [lessons]
+      summary: Update lesson (teacher/owner only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateLessonBody"
+      responses:
+        "200":
+          description: Updated lesson
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lesson"
+
+    delete:
+      operationId: deleteLesson
+      tags: [lessons]
+      summary: Delete lesson (teacher/owner only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # LIVE CLASSES
+  /classes:
+    get:
+      operationId: listClasses
+      tags: [classes]
+      summary: List all live classes
+      responses:
+        "200":
+          description: List of classes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LiveClass"
+
+    post:
+      operationId: createClass
+      tags: [classes]
+      summary: Create a live class (teacher/owner only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateClassBody"
+      responses:
+        "201":
+          description: Class created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveClass"
+
+  /classes/{id}:
+    get:
+      operationId: getClass
+      tags: [classes]
+      summary: Get live class by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Live class
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveClass"
+        "404":
+          description: Not found
+
+    patch:
+      operationId: updateClass
+      tags: [classes]
+      summary: Update live class
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateClassBody"
+      responses:
+        "200":
+          description: Updated class
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveClass"
+
+    delete:
+      operationId: deleteClass
+      tags: [classes]
+      summary: Delete live class
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # CHAT ROUTES
+  /messages:
+    get:
+      operationId: listMessages
+      tags: [chat]
+      summary: List messages (optionally by group or recipient)
+      parameters:
+        - name: groupId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: recipientId
+          in: query
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+
+    post:
+      operationId: sendMessage
+      tags: [chat]
+      summary: Send a message
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageBody"
+      responses:
+        "201":
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+
+  # STUDY GROUPS
+  /study-groups:
+    get:
+      operationId: listStudyGroups
+      tags: [studyGroups]
+      summary: List all study groups
+      responses:
+        "200":
+          description: List of study groups
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StudyGroup"
+
+    post:
+      operationId: createStudyGroup
+      tags: [studyGroups]
+      summary: Create a study group
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStudyGroupBody"
+      responses:
+        "201":
+          description: Study group created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudyGroup"
+
+  /study-groups/{id}:
+    get:
+      operationId: getStudyGroup
+      tags: [studyGroups]
+      summary: Get study group by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Study group
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudyGroup"
+
+  /study-groups/{id}/join:
+    post:
+      operationId: joinStudyGroup
+      tags: [studyGroups]
+      summary: Join a study group
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Joined group
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudyGroup"
+
+  # PAYMENTS
+  /payments:
+    get:
+      operationId: listPayments
+      tags: [payments]
+      summary: List all payments (owner can see all, student sees own)
+      responses:
+        "200":
+          description: List of payments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Payment"
+
+    post:
+      operationId: recordPayment
+      tags: [payments]
+      summary: Record a payment (owner/teacher)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecordPaymentBody"
+      responses:
+        "201":
+          description: Payment recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
+
+  /payments/{id}:
+    get:
+      operationId: getPayment
+      tags: [payments]
+      summary: Get payment by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Payment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
+
+  # NOTIFICATIONS
+  /notifications:
+    get:
+      operationId: listNotifications
+      tags: [notifications]
+      summary: List notifications for current user
+      responses:
+        "200":
+          description: List of notifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Notification"
+
+    post:
+      operationId: createNotification
+      tags: [notifications]
+      summary: Create a notification (owner/teacher)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateNotificationBody"
+      responses:
+        "201":
+          description: Notification created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notification"
+
+  /notifications/{id}/read:
+    patch:
+      operationId: markNotificationRead
+      tags: [notifications]
+      summary: Mark notification as read
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Notification marked read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notification"
+
+  # RAISE HAND
+  /raise-hand:
+    post:
+      operationId: raiseHand
+      tags: [chat]
+      summary: Raise hand in a class
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RaiseHandBody"
+      responses:
+        "201":
+          description: Hand raised
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HandRaise"
+
+    get:
+      operationId: listHandRaises
+      tags: [chat]
+      summary: List hand raises for a class
+      parameters:
+        - name: classId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Hand raises
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HandRaise"
+
+  # DASHBOARD ANALYTICS (wow endpoints)
+  /dashboard/stats:
+    get:
+      operationId: getDashboardStats
+      tags: [dashboard]
+      summary: Get dashboard statistics
+      responses:
+        "200":
+          description: Dashboard stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+
+  /dashboard/activity:
+    get:
+      operationId: getRecentActivity
+      tags: [dashboard]
+      summary: Get recent activity feed
+      responses:
+        "200":
+          description: Recent activity
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
+
+  /dashboard/payment-summary:
+    get:
+      operationId: getPaymentSummary
+      tags: [dashboard]
+      summary: Get payment summary breakdown
+      responses:
+        "200":
+          description: Payment summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentSummary"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +732,585 @@ components:
       required:
         - status
 
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum: [student, teacher, owner]
+        isPrefect:
+          type: boolean
+        isBlocked:
+          type: boolean
+        phone:
+          type: ["string", "null"]
+        grade:
+          type: ["string", "null"]
+        subject:
+          type: ["string", "null"]
+        avatarUrl:
+          type: ["string", "null"]
+        lastPaymentDate:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - email
+        - name
+        - role
+        - isPrefect
+        - isBlocked
+        - createdAt
+
+    AuthResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        token:
+          type: string
+      required:
+        - user
+        - token
+
+    RegisterUserBody:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum: [student, teacher]
+        grade:
+          type: ["string", "null"]
+        subject:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+      required:
+        - email
+        - password
+        - name
+        - role
+
+    LoginUserBody:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+      required:
+        - email
+        - password
+
+    UpdateUserBody:
+      type: object
+      properties:
+        name:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        grade:
+          type: ["string", "null"]
+        subject:
+          type: ["string", "null"]
+        avatarUrl:
+          type: ["string", "null"]
+
+    BlockUserBody:
+      type: object
+      properties:
+        isBlocked:
+          type: boolean
+      required:
+        - isBlocked
+
+    PromoteUserBody:
+      type: object
+      properties:
+        role:
+          type: ["string", "null"]
+          enum: [student, teacher, owner, null]
+        isPrefect:
+          type: ["boolean", "null"]
+
+    Lesson:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        subject:
+          type: string
+        grade:
+          type: ["string", "null"]
+        type:
+          type: string
+          enum: [video, image, audio, notes, mixed]
+        mediaUrl:
+          type: ["string", "null"]
+        content:
+          type: ["string", "null"]
+        teacherId:
+          type: integer
+        teacherName:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - title
+        - subject
+        - type
+        - teacherId
+        - teacherName
+        - createdAt
+
+    CreateLessonBody:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        subject:
+          type: string
+        grade:
+          type: ["string", "null"]
+        type:
+          type: string
+          enum: [video, image, audio, notes, mixed]
+        mediaUrl:
+          type: ["string", "null"]
+        content:
+          type: ["string", "null"]
+      required:
+        - title
+        - subject
+        - type
+
+    UpdateLessonBody:
+      type: object
+      properties:
+        title:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        subject:
+          type: ["string", "null"]
+        grade:
+          type: ["string", "null"]
+        type:
+          type: ["string", "null"]
+          enum: [video, image, audio, notes, mixed, null]
+        mediaUrl:
+          type: ["string", "null"]
+        content:
+          type: ["string", "null"]
+
+    LiveClass:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        subject:
+          type: string
+        grade:
+          type: ["string", "null"]
+        meetLink:
+          type: string
+        scheduledAt:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [upcoming, live, completed, cancelled]
+        teacherId:
+          type: integer
+        teacherName:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - title
+        - subject
+        - meetLink
+        - status
+        - teacherId
+        - teacherName
+        - createdAt
+
+    CreateClassBody:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        subject:
+          type: string
+        grade:
+          type: ["string", "null"]
+        meetLink:
+          type: string
+        scheduledAt:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [upcoming, live, completed, cancelled]
+      required:
+        - title
+        - subject
+        - meetLink
+        - status
+
+    UpdateClassBody:
+      type: object
+      properties:
+        title:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        subject:
+          type: ["string", "null"]
+        grade:
+          type: ["string", "null"]
+        meetLink:
+          type: ["string", "null"]
+        scheduledAt:
+          type: ["string", "null"]
+        status:
+          type: ["string", "null"]
+          enum: [upcoming, live, completed, cancelled, null]
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: integer
+        senderId:
+          type: integer
+        senderName:
+          type: string
+        senderRole:
+          type: string
+        content:
+          type: string
+        type:
+          type: string
+          enum: [text, voice]
+        mediaUrl:
+          type: ["string", "null"]
+        groupId:
+          type: ["integer", "null"]
+        recipientId:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - senderId
+        - senderName
+        - senderRole
+        - content
+        - type
+        - createdAt
+
+    SendMessageBody:
+      type: object
+      properties:
+        content:
+          type: string
+        type:
+          type: string
+          enum: [text, voice]
+        mediaUrl:
+          type: ["string", "null"]
+        groupId:
+          type: ["integer", "null"]
+        recipientId:
+          type: ["integer", "null"]
+      required:
+        - content
+        - type
+
+    StudyGroup:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        subject:
+          type: string
+        creatorId:
+          type: integer
+        creatorName:
+          type: string
+        memberCount:
+          type: integer
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - subject
+        - creatorId
+        - creatorName
+        - memberCount
+        - members
+        - createdAt
+
+    CreateStudyGroupBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        subject:
+          type: string
+      required:
+        - name
+        - subject
+
+    Payment:
+      type: object
+      properties:
+        id:
+          type: integer
+        studentId:
+          type: integer
+        studentName:
+          type: string
+        amount:
+          type: number
+        month:
+          type: string
+        year:
+          type: integer
+        status:
+          type: string
+          enum: [paid, pending, overdue]
+        notes:
+          type: ["string", "null"]
+        recordedBy:
+          type: integer
+        createdAt:
+          type: string
+      required:
+        - id
+        - studentId
+        - studentName
+        - amount
+        - month
+        - year
+        - status
+        - recordedBy
+        - createdAt
+
+    RecordPaymentBody:
+      type: object
+      properties:
+        studentId:
+          type: integer
+        amount:
+          type: number
+        month:
+          type: string
+        year:
+          type: integer
+        status:
+          type: string
+          enum: [paid, pending, overdue]
+        notes:
+          type: ["string", "null"]
+      required:
+        - studentId
+        - amount
+        - month
+        - year
+        - status
+
+    Notification:
+      type: object
+      properties:
+        id:
+          type: integer
+        recipientId:
+          type: ["integer", "null"]
+        title:
+          type: string
+        message:
+          type: string
+        type:
+          type: string
+          enum: [payment_overdue, new_lesson, class_starting, system, general]
+        isRead:
+          type: boolean
+        createdAt:
+          type: string
+      required:
+        - id
+        - title
+        - message
+        - type
+        - isRead
+        - createdAt
+
+    CreateNotificationBody:
+      type: object
+      properties:
+        recipientId:
+          type: ["integer", "null"]
+        title:
+          type: string
+        message:
+          type: string
+        type:
+          type: string
+          enum: [payment_overdue, new_lesson, class_starting, system, general]
+      required:
+        - title
+        - message
+        - type
+
+    HandRaise:
+      type: object
+      properties:
+        id:
+          type: integer
+        studentId:
+          type: integer
+        studentName:
+          type: string
+        classId:
+          type: integer
+        question:
+          type: ["string", "null"]
+        isResolved:
+          type: boolean
+        createdAt:
+          type: string
+      required:
+        - id
+        - studentId
+        - studentName
+        - classId
+        - isResolved
+        - createdAt
+
+    RaiseHandBody:
+      type: object
+      properties:
+        classId:
+          type: integer
+        question:
+          type: ["string", "null"]
+      required:
+        - classId
+
+    DashboardStats:
+      type: object
+      properties:
+        totalStudents:
+          type: integer
+        totalTeachers:
+          type: integer
+        totalLessons:
+          type: integer
+        totalClasses:
+          type: integer
+        activeStudyGroups:
+          type: integer
+        paidThisMonth:
+          type: integer
+        overduePayments:
+          type: integer
+        pendingPayments:
+          type: integer
+        recentMessages:
+          type: integer
+        totalRevenue:
+          type: number
+      required:
+        - totalStudents
+        - totalTeachers
+        - totalLessons
+        - totalClasses
+        - activeStudyGroups
+        - paidThisMonth
+        - overduePayments
+        - pendingPayments
+        - recentMessages
+        - totalRevenue
+
+    ActivityItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [lesson_added, class_scheduled, payment_recorded, user_joined, message_sent, hand_raised]
+        description:
+          type: string
+        actorName:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - type
+        - description
+        - actorName
+        - createdAt
+
+    PaymentSummary:
+      type: object
+      properties:
+        totalRevenue:
+          type: number
+        paidCount:
+          type: integer
+        overdueCount:
+          type: integer
+        pendingCount:
+          type: integer
+        overdueStudents:
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
+      required:
+        - totalRevenue
+        - paidCount
+        - overdueCount
+        - pendingCount
+        - overdueStudents
