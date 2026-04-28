@@ -25,7 +25,7 @@ export default function AdminChat() {
   
   const { data: messages, isLoading: messagesLoading } = useListMessages(
     { groupId: selectedGroupId, recipientId: selectedUserId },
-    { query: { enabled: !!selectedGroupId || !!selectedUserId, refetchInterval: 5000 } }
+    { query: { enabled: !!selectedGroupId || !!selectedUserId, refetchInterval: 5000 } as any }
   );
 
   const sendMessageMutation = useSendMessage();

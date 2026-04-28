@@ -86,7 +86,7 @@ export default function AdminHome() {
     { icon: "users" as const, label: "Total Students", value: stats?.totalStudents, color: "#3b82f6" },
     { icon: "briefcase" as const, label: "Teachers", value: stats?.totalTeachers, color: "#8b5cf6" },
     { icon: "book" as const, label: "Lessons", value: stats?.totalLessons, color: "#10b981" },
-    { icon: "video" as const, label: "Active Classes", value: stats?.activeClasses, color: "#f59e0b" },
+    { icon: "video" as const, label: "Active Classes", value: stats?.totalClasses, color: "#f59e0b" },
   ];
 
   return (

@@ -85,7 +85,7 @@ export default function TeacherProfile() {
             <Text style={s.statLabel}>Lessons</Text>
           </View>
           <View style={s.statCard}>
-            <Text style={s.statNum}>{stats?.activeClasses ?? "—"}</Text>
+            <Text style={s.statNum}>{stats?.totalClasses ?? "—"}</Text>
             <Text style={s.statLabel}>Classes</Text>
           </View>
         </View>

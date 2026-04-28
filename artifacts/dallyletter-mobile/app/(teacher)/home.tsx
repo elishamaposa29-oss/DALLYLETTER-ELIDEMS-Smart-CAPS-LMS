@@ -72,8 +72,8 @@ export default function TeacherHome() {
   const statsData = [
     { icon: "users" as const, label: "Students", value: stats?.totalStudents },
     { icon: "book" as const, label: "Lessons", value: stats?.totalLessons },
-    { icon: "video" as const, label: "Live Classes", value: stats?.activeClasses },
-    { icon: "message-circle" as const, label: "Messages", value: stats?.totalMessages },
+    { icon: "video" as const, label: "Live Classes", value: stats?.totalClasses },
+    { icon: "message-circle" as const, label: "Messages", value: stats?.recentMessages },
   ];
 
   return (

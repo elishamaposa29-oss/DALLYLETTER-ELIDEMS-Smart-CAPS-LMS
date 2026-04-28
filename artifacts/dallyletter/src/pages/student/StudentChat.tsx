@@ -20,7 +20,7 @@ export default function Chat() {
   const { data: groups, isLoading: groupsLoading } = useListStudyGroups();
   const { data: messages, isLoading: messagesLoading } = useListMessages(
     { groupId: selectedGroupId },
-    { query: { enabled: !!selectedGroupId } }
+    { query: { enabled: !!selectedGroupId } as any }
   );
 
   const sendMessageMutation = useSendMessage();

@@ -18,7 +18,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 
-const statusColor: Record<string, string> = { scheduled: "#3b82f6", live: "#22c55e", ended: "#9ca3af" };
+const statusColor: Record<string, string> = { upcoming: "#3b82f6", live: "#22c55e", completed: "#9ca3af", cancelled: "#ef4444" };
 
 export default function TeacherClasses() {
   const colors = useColors();
@@ -50,7 +50,7 @@ export default function TeacherClasses() {
       return;
     }
     createMutation.mutate({
-      data: { title: title.trim(), meetLink: meetLink.trim(), subject: subject || undefined, description: description || undefined, status: "scheduled" },
+      data: { title: title.trim(), meetLink: meetLink.trim(), subject: subject.trim() || "General", description: description || undefined, status: "upcoming" },
     });
   };
 

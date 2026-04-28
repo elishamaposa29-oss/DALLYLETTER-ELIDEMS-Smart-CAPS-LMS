@@ -299,7 +299,7 @@ export default function TeacherClasses() {
 }
 
 function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean }) {
-  const { data: hands } = useListHandRaises({ classId }, { query: { enabled: isLive, refetchInterval: 10000 } });
+  const { data: hands } = useListHandRaises({ classId }, { query: { enabled: isLive, refetchInterval: 10000 } as any });
   
   if (!isLive || !hands || hands.length === 0) return null;
 

@@ -26,6 +26,7 @@ export default function AdminPayments() {
   const [studentId, setStudentId] = useState("");
   const [amount, setAmount] = useState("");
   const [month, setMonth] = useState("");
+  const [year, setYear] = useState(String(new Date().getFullYear()));
   const [notes, setNotes] = useState("");
 
   const recordMutation = useRecordPayment({
@@ -34,7 +35,7 @@ export default function AdminPayments() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         refetch();
         setShowModal(false);
-        setStudentId(""); setAmount(""); setMonth(""); setNotes("");
+        setStudentId(""); setAmount(""); setMonth(""); setYear(String(new Date().getFullYear())); setNotes("");
       },
       onError: () => Alert.alert("Error", "Could not record payment."),
     },
@@ -46,12 +47,12 @@ export default function AdminPayments() {
   const overdue = payments?.filter((p: any) => p.status === "overdue").length ?? 0;
 
   const handleRecord = () => {
-    if (!studentId || !amount || !month) {
-      Alert.alert("Missing fields", "Student ID, amount, and month are required.");
+    if (!studentId || !amount || !month || !year) {
+      Alert.alert("Missing fields", "Student, amount, month, and year are required.");
       return;
     }
     recordMutation.mutate({
-      data: { studentId: parseInt(studentId), amount: parseFloat(amount), month, status: "paid", notes: notes || undefined },
+      data: { studentId: parseInt(studentId), amount: parseFloat(amount), month, year: parseInt(year), status: "paid", notes: notes || undefined },
     });
   };
 
@@ -192,7 +193,9 @@ export default function AdminPayments() {
               <Text style={s.label}>Amount (R) *</Text>
               <TextInput style={s.input} placeholder="e.g. 500" placeholderTextColor={colors.mutedForeground} value={amount} onChangeText={setAmount} keyboardType="numeric" />
               <Text style={s.label}>Month *</Text>
-              <TextInput style={s.input} placeholder="e.g. January 2025" placeholderTextColor={colors.mutedForeground} value={month} onChangeText={setMonth} />
+              <TextInput style={s.input} placeholder="e.g. January" placeholderTextColor={colors.mutedForeground} value={month} onChangeText={setMonth} />
+              <Text style={s.label}>Year *</Text>
+              <TextInput style={s.input} placeholder="e.g. 2025" placeholderTextColor={colors.mutedForeground} value={year} onChangeText={setYear} keyboardType="numeric" />
               <Text style={s.label}>Notes</Text>
               <TextInput style={s.input} placeholder="Optional notes" placeholderTextColor={colors.mutedForeground} value={notes} onChangeText={setNotes} />
               <TouchableOpacity style={s.submitBtn} onPress={handleRecord} disabled={recordMutation.isPending}>

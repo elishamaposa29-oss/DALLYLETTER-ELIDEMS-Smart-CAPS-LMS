@@ -12,7 +12,7 @@ export default function StudentNotifications() {
   const queryClient = useQueryClient();
 
   const handleMarkAsRead = (id: number) => {
-    markReadMutation.mutate({ data: { notificationId: id } }, {
+    markReadMutation.mutate({ id }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() });
       }

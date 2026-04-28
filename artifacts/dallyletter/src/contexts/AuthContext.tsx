@@ -17,10 +17,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [, setLocation] = useLocation();
 
   const { data: user, isLoading, refetch } = useGetCurrentUser({
-    query: {
-      enabled: !!token,
-      retry: false,
-    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    query: { enabled: !!token, retry: false } as any,
   });
 
   useEffect(() => {

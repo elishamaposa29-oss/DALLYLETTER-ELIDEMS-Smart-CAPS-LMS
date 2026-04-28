@@ -17,7 +17,7 @@ export default function StudentStudyGroups() {
   const { user } = useAuth();
 
   const handleJoinGroup = (groupId: number) => {
-    joinGroupMutation.mutate({ data: { groupId } }, {
+    joinGroupMutation.mutate({ id: groupId }, {
       onSuccess: () => {
         toast({
           title: "Success",

@@ -64,7 +64,7 @@ export default function AdminProfile() {
     { label: "Students", value: stats?.totalStudents },
     { label: "Teachers", value: stats?.totalTeachers },
     { label: "Lessons", value: stats?.totalLessons },
-    { label: "Classes", value: stats?.activeClasses },
+    { label: "Classes", value: stats?.totalClasses },
   ];
 
   return (

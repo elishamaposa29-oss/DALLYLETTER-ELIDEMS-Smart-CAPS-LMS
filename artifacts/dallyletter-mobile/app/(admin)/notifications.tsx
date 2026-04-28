@@ -17,7 +17,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 
-const notifTypes = ["general", "payment", "class", "lesson", "system"] as const;
+const notifTypes = ["general", "payment_overdue", "class_starting", "new_lesson", "system"] as const;
 
 export default function AdminNotifications() {
   const colors = useColors();
@@ -54,10 +54,10 @@ export default function AdminNotifications() {
   };
 
   const typeIcon: Record<string, any> = {
-    general: "bell", payment: "credit-card", class: "video", lesson: "book", system: "settings",
+    general: "bell", payment_overdue: "credit-card", class_starting: "video", new_lesson: "book", system: "settings",
   };
   const typeColor: Record<string, string> = {
-    general: "#3b82f6", payment: "#22c55e", class: "#8b5cf6", lesson: "#f59e0b", system: "#6b7280",
+    general: "#3b82f6", payment_overdue: "#22c55e", class_starting: "#8b5cf6", new_lesson: "#f59e0b", system: "#6b7280",
   };
 
   const s = StyleSheet.create({
