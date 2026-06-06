@@ -3,6 +3,8 @@
   "short_name": "DallyLetter",
   "description": "CAPS Education Platform for Students, Teachers and Admin",
   "start_url": "/",
+  "scope": "/",
+  "id": "/",
   "display": "standalone",
   "orientation": "portrait",
   "theme_color": "#0a1628",
