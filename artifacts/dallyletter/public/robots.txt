@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://dallyletter-elidems-smart-caps-learning-platfor--elishamaposa29.replit.app/sitemap.xml

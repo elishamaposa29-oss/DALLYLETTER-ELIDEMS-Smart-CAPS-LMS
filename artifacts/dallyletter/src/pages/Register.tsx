@@ -7,9 +7,8 @@ import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2 } from "lucide-react";
+import { Loader2, GraduationCap, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { RegisterUserBodyRole } from "@workspace/api-client-react";
 
@@ -22,20 +21,19 @@ const registerSchema = z.object({
   subject: z.string().optional(),
 }).superRefine((data, ctx) => {
   if (data.role === "student" && !data.grade) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Grade is required for students",
-      path: ["grade"],
-    });
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Grade is required for students", path: ["grade"] });
   }
   if (data.role === "teacher" && !data.subject) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Subject is required for teachers",
-      path: ["subject"],
-    });
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Subject is required for teachers", path: ["subject"] });
   }
 });
+
+const perks = [
+  "Full access to CAPS-aligned lesson materials",
+  "Live class sessions via Google Meet",
+  "Study groups with fellow learners",
+  "Payment tracking & fee notifications",
+];
 
 export default function Register() {
   const { login } = useAuth();
@@ -45,14 +43,7 @@ export default function Register() {
 
   const form = useForm<z.infer<typeof registerSchema>>({
     resolver: zodResolver(registerSchema),
-    defaultValues: {
-      name: "",
-      email: "",
-      password: "",
-      role: RegisterUserBodyRole.student,
-      grade: "",
-      subject: "",
-    },
+    defaultValues: { name: "", email: "", password: "", role: RegisterUserBodyRole.student, grade: "", subject: "" },
   });
 
   const role = form.watch("role");
@@ -68,160 +59,212 @@ export default function Register() {
         toast({
           variant: "destructive",
           title: "Registration Failed",
-          description: error.message || "An error occurred during registration",
+          description: error.message || "An error occurred. Please try again.",
         });
       }
     });
   }
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-2 bg-background">
-      <div className="hidden lg:flex flex-col justify-center px-12 bg-primary text-primary-foreground relative overflow-hidden">
-        <div className="relative z-10 space-y-6 max-w-lg">
-          <h1 className="text-5xl font-serif font-bold leading-tight">
-            Join the Dallyletter community.
-          </h1>
-          <p className="text-xl text-primary-foreground/80">
-            Sign up today to access premium CAPS curriculum resources, live classes, and peer study groups.
-          </p>
+    <div className="min-h-screen flex bg-slate-50">
+      {/* Left — Branding Panel */}
+      <div className="hidden lg:flex w-[45%] flex-col bg-[#0a1628] relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] rounded-full bg-blue-600/10 blur-3xl -translate-y-1/3 translate-x-1/3" />
+        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] rounded-full bg-amber-500/10 blur-3xl translate-y-1/3 -translate-x-1/3" />
+        <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: "linear-gradient(rgba(255,255,255,0.4) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.4) 1px,transparent 1px)", backgroundSize: "48px 48px" }} />
+
+        <div className="relative z-10 flex flex-col h-full px-12 py-12">
+          {/* Logo */}
+          <div className="flex items-center gap-3 mb-auto">
+            <div className="bg-gradient-to-br from-amber-400 to-amber-600 p-2.5 rounded-2xl shadow-lg shadow-amber-500/20">
+              <GraduationCap className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <span className="text-white font-bold text-xl leading-none block">DallyLetter</span>
+              <span className="text-amber-400/80 text-[10px] uppercase tracking-[0.2em] font-semibold">Elidems</span>
+            </div>
+          </div>
+
+          <div className="space-y-6 mb-10">
+            <h1 className="text-4xl font-bold text-white leading-tight">
+              Join the{" "}
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-amber-500">
+                Elidems
+              </span>{" "}
+              community.
+            </h1>
+            <p className="text-white/55 leading-relaxed">
+              Create your free account and get instant access to all learning resources on the platform.
+            </p>
+          </div>
+
+          <div className="space-y-3.5 mb-12">
+            {perks.map((perk) => (
+              <div key={perk} className="flex items-start gap-3">
+                <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0 mt-0.5" />
+                <p className="text-sm text-white/60">{perk}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="border-t border-white/10 pt-6">
+            <p className="text-xs text-white/30 uppercase tracking-widest">
+              © {new Date().getFullYear()} DallyLetter Elidems
+            </p>
+          </div>
         </div>
-        <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] rounded-full bg-secondary/20 blur-3xl mix-blend-multiply" />
-        <div className="absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] rounded-full bg-accent/20 blur-3xl mix-blend-multiply" />
       </div>
-      
-      <div className="flex items-center justify-center p-8">
-        <Card className="w-full max-w-md border-0 shadow-none sm:border sm:shadow-lg bg-transparent sm:bg-card">
-          <CardHeader className="space-y-2 text-center lg:text-left">
-            <CardTitle className="text-3xl font-bold tracking-tight text-foreground font-serif">Create an account</CardTitle>
-            <CardDescription className="text-base">
-              Enter your details to get started
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Full Name</FormLabel>
-                      <FormControl>
-                        <Input placeholder="John Doe" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <FormField
-                  control={form.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Email</FormLabel>
-                      <FormControl>
-                        <Input placeholder="you@example.com" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
 
-                <FormField
-                  control={form.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Password</FormLabel>
-                      <FormControl>
-                        <Input type="password" placeholder="••••••••" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+      {/* Right — Form Panel */}
+      <div className="flex-1 flex flex-col">
+        {/* Mobile logo */}
+        <div className="lg:hidden flex items-center gap-2.5 px-6 py-5 border-b bg-white">
+          <div className="bg-gradient-to-br from-amber-400 to-amber-600 p-2 rounded-xl shadow-md">
+            <GraduationCap className="h-5 w-5 text-white" />
+          </div>
+          <div>
+            <span className="font-bold text-[#0a1628] text-lg leading-none block">DallyLetter</span>
+            <span className="text-amber-500 text-[10px] uppercase tracking-widest font-semibold">Elidems</span>
+          </div>
+        </div>
 
-                <FormField
-                  control={form.control}
-                  name="role"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>I am a</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select a role" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value={RegisterUserBodyRole.student}>Student</SelectItem>
-                          <SelectItem value={RegisterUserBodyRole.teacher}>Teacher</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+        <div className="flex-1 flex items-center justify-center p-6 py-8">
+          <div className="w-full max-w-md">
+            <div className="mb-7">
+              <h2 className="text-3xl font-bold text-gray-900 tracking-tight">Create your account</h2>
+              <p className="text-gray-500 mt-1.5">It only takes a minute to get started</p>
+            </div>
 
-                {role === "student" && (
+            <div className="bg-white rounded-2xl shadow-xl shadow-gray-200/60 border border-gray-100 p-8">
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                   <FormField
                     control={form.control}
-                    name="grade"
+                    name="name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Grade</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select your grade" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="Grade 8">Grade 8</SelectItem>
-                            <SelectItem value="Grade 9">Grade 9</SelectItem>
-                            <SelectItem value="Grade 10">Grade 10</SelectItem>
-                            <SelectItem value="Grade 11">Grade 11</SelectItem>
-                            <SelectItem value="Grade 12">Grade 12</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                )}
-
-                {role === "teacher" && (
-                  <FormField
-                    control={form.control}
-                    name="subject"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Subject Specialization</FormLabel>
+                        <FormLabel className="text-gray-700 font-medium">Full Name</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g. Mathematics, Physics" {...field} />
+                          <Input placeholder="e.g. Tafadzwa Moyo" className="h-11 border-gray-200 bg-gray-50 focus:bg-white transition-colors" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                )}
 
-                <Button type="submit" className="w-full text-base font-medium h-12 mt-2" disabled={registerMutation.isPending}>
-                  {registerMutation.isPending ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null}
-                  Create Account
-                </Button>
-              </form>
-            </Form>
-            
-            <div className="mt-8 text-center text-sm text-muted-foreground">
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-gray-700 font-medium">Email address</FormLabel>
+                        <FormControl>
+                          <Input placeholder="you@example.com" className="h-11 border-gray-200 bg-gray-50 focus:bg-white transition-colors" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="password"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-gray-700 font-medium">Password</FormLabel>
+                        <FormControl>
+                          <Input type="password" placeholder="Min. 6 characters" className="h-11 border-gray-200 bg-gray-50 focus:bg-white transition-colors" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <FormField
+                      control={form.control}
+                      name="role"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-gray-700 font-medium">I am a</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger className="h-11 border-gray-200 bg-gray-50">
+                                <SelectValue placeholder="Select role" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value={RegisterUserBodyRole.student}>Student</SelectItem>
+                              <SelectItem value={RegisterUserBodyRole.teacher}>Teacher</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    {role === "student" && (
+                      <FormField
+                        control={form.control}
+                        name="grade"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-gray-700 font-medium">Grade</FormLabel>
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                              <FormControl>
+                                <SelectTrigger className="h-11 border-gray-200 bg-gray-50">
+                                  <SelectValue placeholder="Grade" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {["Grade 8","Grade 9","Grade 10","Grade 11","Grade 12"].map(g => (
+                                  <SelectItem key={g} value={g}>{g}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+
+                    {role === "teacher" && (
+                      <FormField
+                        control={form.control}
+                        name="subject"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-gray-700 font-medium">Subject</FormLabel>
+                            <FormControl>
+                              <Input placeholder="e.g. Maths" className="h-11 border-gray-200 bg-gray-50" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+                  </div>
+
+                  <Button
+                    type="submit"
+                    className="w-full h-12 text-base font-semibold bg-[#0a1628] hover:bg-[#0d1e38] text-white rounded-xl shadow-lg shadow-[#0a1628]/20 mt-1"
+                    disabled={registerMutation.isPending}
+                  >
+                    {registerMutation.isPending ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null}
+                    Create Account
+                  </Button>
+                </form>
+              </Form>
+            </div>
+
+            <p className="text-center text-sm text-gray-500 mt-6">
               Already have an account?{" "}
-              <Link href="/login" className="font-medium text-primary hover:underline hover:text-primary/80 transition-colors">
+              <Link href="/login" className="font-semibold text-[#0a1628] hover:underline">
                 Sign in
               </Link>
-            </div>
-          </CardContent>
-        </Card>
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );
