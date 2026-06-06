@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { InstallBanner } from "@/components/InstallBanner";
 import NotFound from "@/pages/not-found";
 
 import Login from "@/pages/Login";
@@ -162,6 +163,7 @@ function App() {
           <TooltipProvider>
             <Router />
             <Toaster />
+            <InstallBanner />
           </TooltipProvider>
         </AuthProvider>
       </WouterRouter>
