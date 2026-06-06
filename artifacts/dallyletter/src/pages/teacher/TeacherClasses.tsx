@@ -23,7 +23,7 @@ const createClassSchema = z.object({
   description: z.string().optional(),
   subject: z.string().min(2, "Subject is required"),
   grade: z.string().optional(),
-  meetLink: z.string().url("Must be a valid URL"),
+  meetLink: z.string().min(1, "Please paste your Google Meet or video link"),
   scheduledAt: z.string().optional(),
   status: z.enum([CreateClassBodyStatus.upcoming, CreateClassBodyStatus.live, CreateClassBodyStatus.completed, CreateClassBodyStatus.cancelled]),
 });

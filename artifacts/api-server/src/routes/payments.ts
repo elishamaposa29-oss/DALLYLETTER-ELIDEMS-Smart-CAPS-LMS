@@ -88,6 +88,43 @@ router.post("/payments", requireAuth, requireTeacherOrOwner, async (req, res): P
   });
 });
 
+// POST /payments/notify-admin — Student self-reports a payment, notifies all owners
+router.post("/payments/notify-admin", requireAuth, async (req, res): Promise<void> => {
+  const currentUser = req.currentUser!;
+
+  if (currentUser.role !== "student") {
+    res.status(403).json({ error: "Only students can report payments" });
+    return;
+  }
+
+  const { amount } = req.body;
+
+  // Find all owner accounts
+  const owners = await db.select().from(usersTable).where(eq(usersTable.role, "owner"));
+
+  const amountStr = amount ? `$${Number(amount).toFixed(2)}` : "an amount";
+
+  // Send notification to each owner
+  for (const owner of owners) {
+    await db.insert(notificationsTable).values({
+      recipientId: owner.id,
+      title: "💳 Payment Reported by Learner",
+      message: `${currentUser.name} has reported paying ${amountStr} via PayPal. Please verify the payment and update their records accordingly.`,
+      type: "payment_overdue",
+      isRead: false,
+    });
+  }
+
+  // Log activity
+  await db.insert(activityLogTable).values({
+    type: "payment_recorded",
+    description: `${currentUser.name} self-reported a PayPal payment of ${amountStr}. Awaiting admin verification.`,
+    actorName: currentUser.name,
+  });
+
+  res.json({ success: true });
+});
+
 // GET /payments/:id — Get payment by ID
 router.get("/payments/:id", requireAuth, async (req, res): Promise<void> => {
   const params = GetPaymentParams.safeParse(req.params);

@@ -1,11 +1,12 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useListLessons } from "@workspace/api-client-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useState } from "react";
-import { Loader2, Search, FileText, Image as ImageIcon, Video, Headphones, BookOpen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { useState } from "react";
+import { Loader2, Search, FileText, Image as ImageIcon, Video, Headphones, BookOpen, ExternalLink, GraduationCap } from "lucide-react";
 
 export default function StudentLessons() {
   const { data: lessons, isLoading } = useListLessons();
@@ -13,7 +14,7 @@ export default function StudentLessons() {
   const [subjectFilter, setSubjectFilter] = useState("all");
 
   const filteredLessons = lessons?.filter(lesson => {
-    const matchesSearch = lesson.title.toLowerCase().includes(search.toLowerCase()) || 
+    const matchesSearch = lesson.title.toLowerCase().includes(search.toLowerCase()) ||
                           (lesson.description?.toLowerCase().includes(search.toLowerCase()));
     const matchesSubject = subjectFilter === "all" || lesson.subject === subjectFilter;
     return matchesSearch && matchesSubject;
@@ -31,28 +32,49 @@ export default function StudentLessons() {
     }
   };
 
+  const getTypeColor = (type: string) => {
+    switch (type) {
+      case "video": return "bg-blue-500/10 text-blue-600 border-blue-200";
+      case "image": return "bg-purple-500/10 text-purple-600 border-purple-200";
+      case "audio": return "bg-orange-500/10 text-orange-600 border-orange-200";
+      case "notes": return "bg-green-500/10 text-green-600 border-green-200";
+      default: return "bg-primary/10 text-primary border-primary/20";
+    }
+  };
+
+  const handleOpen = (url: string) => {
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
+
+        {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Lessons</h1>
-            <p className="text-muted-foreground">Browse course materials and study notes.</p>
+            <p className="text-muted-foreground">Browse your course materials and study notes.</p>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 px-3 py-1.5 rounded-full border">
+            <GraduationCap className="h-4 w-4" />
+            <span>{lessons?.length || 0} lessons available</span>
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-4">
+        {/* Filters */}
+        <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search lessons..."
-              className="pl-8"
+              placeholder="Search lessons by title or description..."
+              className="pl-9 h-11"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
           <Select value={subjectFilter} onValueChange={setSubjectFilter}>
-            <SelectTrigger className="w-full sm:w-[180px]">
+            <SelectTrigger className="w-full sm:w-[200px] h-11">
               <SelectValue placeholder="All Subjects" />
             </SelectTrigger>
             <SelectContent>
@@ -64,37 +86,77 @@ export default function StudentLessons() {
           </Select>
         </div>
 
+        {/* Lessons Grid */}
         {isLoading ? (
-          <div className="flex justify-center p-8">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <div className="flex justify-center p-16">
+            <div className="text-center space-y-3">
+              <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto" />
+              <p className="text-sm text-muted-foreground">Loading lessons...</p>
+            </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {filteredLessons?.length === 0 ? (
-              <div className="col-span-full text-center p-8 border rounded-lg bg-card">
-                <p className="text-muted-foreground">No lessons found.</p>
+              <div className="col-span-full text-center py-16 border-2 border-dashed rounded-xl bg-muted/20">
+                <BookOpen className="h-12 w-12 mx-auto mb-4 text-muted-foreground/40" />
+                <p className="text-lg font-medium text-muted-foreground">No lessons found</p>
+                <p className="text-sm text-muted-foreground/70 mt-1">Try a different search or subject filter</p>
               </div>
             ) : (
               filteredLessons?.map((lesson) => (
-                <Card key={lesson.id} className="flex flex-col h-full hover:border-primary/50 transition-colors cursor-pointer group">
-                  <CardHeader className="pb-3">
-                    <div className="flex justify-between items-start gap-2">
-                      <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20">
+                <Card
+                  key={lesson.id}
+                  className={`flex flex-col h-full transition-all duration-200 border hover:shadow-lg hover:-translate-y-0.5 ${lesson.mediaUrl ? "hover:border-primary/60 cursor-pointer" : "hover:border-border/80"}`}
+                  onClick={() => lesson.mediaUrl && handleOpen(lesson.mediaUrl)}
+                >
+                  <CardHeader className="pb-3 space-y-3">
+                    {/* Top row: subject + type */}
+                    <div className="flex items-center justify-between gap-2">
+                      <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 font-medium">
                         {lesson.subject}
                       </Badge>
-                      <div className="text-muted-foreground bg-muted p-1.5 rounded-md group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                      <span className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border font-medium ${getTypeColor(lesson.type)}`}>
                         {getTypeIcon(lesson.type)}
-                      </div>
+                        {lesson.type}
+                      </span>
                     </div>
-                    <CardTitle className="text-lg mt-2 line-clamp-2">{lesson.title}</CardTitle>
-                    <CardDescription>By {lesson.teacherName}</CardDescription>
+
+                    {/* Title */}
+                    <div>
+                      {lesson.mediaUrl ? (
+                        <h3 className="font-bold text-lg leading-tight text-primary hover:underline flex items-start gap-1.5 group line-clamp-2">
+                          {lesson.title}
+                          <ExternalLink className="h-3.5 w-3.5 shrink-0 mt-1 opacity-60 group-hover:opacity-100" />
+                        </h3>
+                      ) : (
+                        <h3 className="font-bold text-lg leading-tight text-foreground line-clamp-2">
+                          {lesson.title}
+                        </h3>
+                      )}
+                      <p className="text-xs text-muted-foreground mt-1">by {lesson.teacherName}</p>
+                    </div>
                   </CardHeader>
-                  <CardContent className="mt-auto">
-                    <p className="text-sm text-muted-foreground line-clamp-3 mb-4">
+
+                  <CardContent className="flex-1 flex flex-col justify-between gap-4">
+                    <p className="text-sm text-muted-foreground line-clamp-3">
                       {lesson.description || "No description provided."}
                     </p>
-                    <div className="text-xs text-muted-foreground">
-                      {new Date(lesson.createdAt).toLocaleDateString()}
+
+                    <div className="flex items-center justify-between pt-3 border-t">
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(lesson.createdAt).toLocaleDateString("en-ZA", { day: "numeric", month: "short", year: "numeric" })}
+                      </span>
+                      {lesson.mediaUrl && (
+                        <Button
+                          size="sm"
+                          variant="default"
+                          className="gap-1.5 h-8 text-xs"
+                          onClick={(e) => { e.stopPropagation(); handleOpen(lesson.mediaUrl!); }}
+                        >
+                          Open Lesson
+                          <ExternalLink className="h-3 w-3" />
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

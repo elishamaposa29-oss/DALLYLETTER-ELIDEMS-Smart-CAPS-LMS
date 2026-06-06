@@ -201,10 +201,11 @@ export default function TeacherLessons() {
                     name="mediaUrl"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Media URL (Optional)</FormLabel>
+                        <FormLabel>Lesson Link URL (Optional)</FormLabel>
                         <FormControl>
-                          <Input placeholder="https://..." {...field} />
+                          <Input placeholder="https://... (learners click the title to open this)" {...field} />
                         </FormControl>
+                        <p className="text-xs text-muted-foreground">When set, learners can click the lesson title to open this link directly.</p>
                         <FormMessage />
                       </FormItem>
                     )}
