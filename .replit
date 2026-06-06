@@ -31,4 +31,4 @@ channel = "stable-25_05"
 [userenv]
 
 [userenv.shared]
-VITE_PAYPAL_ME_URL = ""
+VITE_PAYPAL_ME_URL = "https://www.paypal.com/cgi-bin/webscr?cmd=_xclick&business=maposadallyletter%40gmail.com&item_name=DallyLetter+School+Fees&currency_code=USD"
