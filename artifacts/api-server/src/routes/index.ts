@@ -11,6 +11,7 @@ import paymentsRouter from "./payments";
 import notificationsRouter from "./notifications";
 import handRaisesRouter from "./handRaises";
 import dashboardRouter from "./dashboard";
+import settingsRouter from "./settings";
 
 const router: IRouter = Router();
 
@@ -46,5 +47,8 @@ router.use(handRaisesRouter);
 
 // Dashboard analytics
 router.use(dashboardRouter);
+
+// Platform settings
+router.use(settingsRouter);
 
 export default router;

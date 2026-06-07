@@ -14,6 +14,7 @@ import {
   Shield,
   Menu,
   GraduationCap,
+  Settings,
 } from "lucide-react";
 import { useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -77,6 +78,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Payments", href: "/admin/payments", icon: CreditCard },
       { label: "Chat", href: "/admin/chat", icon: MessageSquare },
       { label: "Notifications", href: "/admin/notifications", icon: Bell },
+      { label: "Settings", href: "/admin/settings", icon: Settings },
     ];
   }
 

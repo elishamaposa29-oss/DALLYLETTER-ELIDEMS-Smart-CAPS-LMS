@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useState } from "react";
-import { Loader2, Video, Hand, Calendar, Clock } from "lucide-react";
+import { Loader2, Video, Hand, HandMetal, Calendar, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -19,27 +19,53 @@ export default function StudentClasses() {
   const [question, setQuestion] = useState("");
   const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  // Track which classId the student has a raised hand for and the handRaise id
+  const [raisedHands, setRaisedHands] = useState<Record<number, number>>({}); // classId -> handRaiseId
+  const [loweringHand, setLoweringHand] = useState<number | null>(null);
 
   const handleRaiseHand = () => {
     if (!selectedClassId) return;
-    
     raiseHandMutation.mutate({ data: { classId: selectedClassId, question } }, {
-      onSuccess: () => {
-        toast({
-          title: "Hand raised",
-          description: "Your teacher has been notified.",
-        });
+      onSuccess: (data) => {
+        toast({ title: "Hand raised", description: "Your teacher has been notified." });
         setIsDialogOpen(false);
         setQuestion("");
+        // Store the handRaise id so we can lower it
+        setRaisedHands(prev => ({ ...prev, [selectedClassId]: (data as { id: number }).id }));
+        queryClient.invalidateQueries();
       },
       onError: (error) => {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: error.message || "Failed to raise hand",
-        });
+        toast({ variant: "destructive", title: "Error", description: error.message || "Failed to raise hand" });
       }
     });
+  };
+
+  const handleLowerHand = async (classId: number) => {
+    const handRaiseId = raisedHands[classId];
+    if (!handRaiseId) return;
+    setLoweringHand(classId);
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const res = await fetch(`/api/raise-hand/${handRaiseId}/resolve`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        toast({ title: "Hand lowered" });
+        setRaisedHands(prev => {
+          const next = { ...prev };
+          delete next[classId];
+          return next;
+        });
+        queryClient.invalidateQueries();
+      } else {
+        throw new Error("Failed");
+      }
+    } catch {
+      toast({ variant: "destructive", title: "Error", description: "Could not lower hand." });
+    } finally {
+      setLoweringHand(null);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -90,10 +116,7 @@ export default function StudentClasses() {
                     </div>
                   </CardHeader>
                   <CardContent className="flex-1">
-                    <p className="text-sm text-muted-foreground mb-4">
-                      {c.description || "No description provided."}
-                    </p>
-                    
+                    <p className="text-sm text-muted-foreground mb-4">{c.description || "No description provided."}</p>
                     {c.scheduledAt && (
                       <div className="flex items-center gap-4 text-sm text-foreground mb-2">
                         <div className="flex items-center gap-1.5">
@@ -107,9 +130,9 @@ export default function StudentClasses() {
                       </div>
                     )}
                   </CardContent>
-                  <CardFooter className="gap-3 pt-4 border-t">
-                    <Button 
-                      className="flex-1 gap-2" 
+                  <CardFooter className="gap-2 pt-4 border-t flex-wrap">
+                    <Button
+                      className="flex-1 gap-2"
                       variant={c.status === "live" ? "default" : "secondary"}
                       disabled={c.status !== "live" && c.status !== "upcoming"}
                       onClick={() => window.open(c.meetLink, "_blank")}
@@ -117,42 +140,61 @@ export default function StudentClasses() {
                       <Video className="h-4 w-4" />
                       {c.status === "live" ? "Join Now" : "Meeting Link"}
                     </Button>
-                    
+
                     {c.status === "live" && (
-                      <Dialog open={isDialogOpen && selectedClassId === c.id} onOpenChange={(open) => {
-                        setIsDialogOpen(open);
-                        if (open) setSelectedClassId(c.id);
-                      }}>
-                        <DialogTrigger asChild>
-                          <Button variant="outline" className="gap-2">
-                            <Hand className="h-4 w-4" />
-                            Raise Hand
+                      <>
+                        {raisedHands[c.id] ? (
+                          /* Lower Hand button */
+                          <Button
+                            variant="outline"
+                            className="gap-2 border-amber-400 text-amber-600 hover:bg-amber-50"
+                            onClick={() => handleLowerHand(c.id)}
+                            disabled={loweringHand === c.id}
+                          >
+                            {loweringHand === c.id
+                              ? <Loader2 className="h-4 w-4 animate-spin" />
+                              : <HandMetal className="h-4 w-4" />
+                            }
+                            Lower Hand
                           </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>Raise Hand</DialogTitle>
-                            <DialogDescription>
-                              Have a question? Enter it below so the teacher knows what you need help with.
-                            </DialogDescription>
-                          </DialogHeader>
-                          <div className="py-4">
-                            <Textarea 
-                              placeholder="Type your question here (optional)..." 
-                              value={question}
-                              onChange={(e) => setQuestion(e.target.value)}
-                              rows={4}
-                            />
-                          </div>
-                          <DialogFooter>
-                            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-                            <Button onClick={handleRaiseHand} disabled={raiseHandMutation.isPending}>
-                              {raiseHandMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                              Submit
-                            </Button>
-                          </DialogFooter>
-                        </DialogContent>
-                      </Dialog>
+                        ) : (
+                          /* Raise Hand dialog */
+                          <Dialog open={isDialogOpen && selectedClassId === c.id} onOpenChange={(open) => {
+                            setIsDialogOpen(open);
+                            if (open) setSelectedClassId(c.id);
+                          }}>
+                            <DialogTrigger asChild>
+                              <Button variant="outline" className="gap-2">
+                                <Hand className="h-4 w-4" />
+                                Raise Hand
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>Raise Hand</DialogTitle>
+                                <DialogDescription>
+                                  Have a question? Enter it below so the teacher knows what you need help with.
+                                </DialogDescription>
+                              </DialogHeader>
+                              <div className="py-4">
+                                <Textarea
+                                  placeholder="Type your question here (optional)..."
+                                  value={question}
+                                  onChange={(e) => setQuestion(e.target.value)}
+                                  rows={4}
+                                />
+                              </div>
+                              <DialogFooter>
+                                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
+                                <Button onClick={handleRaiseHand} disabled={raiseHandMutation.isPending}>
+                                  {raiseHandMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                  Submit
+                                </Button>
+                              </DialogFooter>
+                            </DialogContent>
+                          </Dialog>
+                        )}
+                      </>
                     )}
                   </CardFooter>
                 </Card>

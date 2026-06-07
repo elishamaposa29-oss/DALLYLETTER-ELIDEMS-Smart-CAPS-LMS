@@ -1,4 +1,3 @@
-// Export all database models
 export * from "./users";
 export * from "./lessons";
 export * from "./classes";
@@ -8,3 +7,4 @@ export * from "./payments";
 export * from "./notifications";
 export * from "./handRaises";
 export * from "./activityLog";
+export * from "./platformSettings";

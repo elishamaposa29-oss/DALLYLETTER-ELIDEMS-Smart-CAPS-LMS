@@ -1,8 +1,8 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { useListUsers, useUpdateUser, useBlockUser, usePromoteUser, useDeleteUser } from "@workspace/api-client-react";
+import { useListUsers, useBlockUser, usePromoteUser, useDeleteUser } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Users, Search, Shield, Ban, Trash2, Edit } from "lucide-react";
+import { Loader2, Users, Search, Shield, Ban, Trash2, PauseCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,7 @@ export default function AdminUsers() {
 
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
+  const [suspending, setSuspending] = useState<number | null>(null);
 
   const filteredUsers = users?.filter(user => {
     const matchesSearch = user.name.toLowerCase().includes(search.toLowerCase()) || user.email.toLowerCase().includes(search.toLowerCase());
@@ -31,10 +32,29 @@ export default function AdminUsers() {
   const handleToggleBlock = (id: number, isBlocked: boolean) => {
     blockUserMutation.mutate({ id, data: { isBlocked: !isBlocked } }, {
       onSuccess: () => {
-        toast({ title: !isBlocked ? "User Blocked" : "User Unblocked" });
+        toast({ title: !isBlocked ? "User Blocked — they cannot log in." : "User Unblocked" });
         queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
       }
     });
+  };
+
+  const handleToggleSuspend = async (id: number, isSuspended: boolean) => {
+    setSuspending(id);
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const res = await fetch(`/api/users/${id}/suspend`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ isSuspended: !isSuspended }),
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: !isSuspended ? "User Suspended — limited access." : "Suspension lifted" });
+      queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
+    } catch {
+      toast({ variant: "destructive", title: "Error", description: "Could not update suspension status." });
+    } finally {
+      setSuspending(null);
+    }
   };
 
   const handleTogglePrefect = (id: number, isPrefect: boolean) => {
@@ -57,6 +77,12 @@ export default function AdminUsers() {
     }
   };
 
+  const getStatusBadge = (user: { isBlocked: boolean; isSuspended?: boolean }) => {
+    if (user.isBlocked) return <Badge variant="destructive" className="bg-destructive/20 text-destructive border-destructive/30">Blocked</Badge>;
+    if (user.isSuspended) return <Badge className="bg-amber-500/20 text-amber-700 border border-amber-400/40 dark:text-amber-400">Suspended</Badge>;
+    return <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">Active</Badge>;
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -68,12 +94,7 @@ export default function AdminUsers() {
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by name or email..."
-              className="pl-8"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+            <Input placeholder="Search by name or email..." className="pl-8" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
           <Select value={roleFilter} onValueChange={setRoleFilter}>
             <SelectTrigger className="w-[180px]">
@@ -88,12 +109,26 @@ export default function AdminUsers() {
           </Select>
         </div>
 
+        {/* Legend */}
+        <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1.5"><Shield className="h-3.5 w-3.5 text-amber-500" /> Prefect</div>
+          <div className="flex items-center gap-1.5"><PauseCircle className="h-3.5 w-3.5 text-amber-600" /> Suspend (can log in, limited)</div>
+          <div className="flex items-center gap-1.5"><Ban className="h-3.5 w-3.5 text-destructive" /> Block (cannot log in at all)</div>
+        </div>
+
         {isLoading ? (
           <div className="flex justify-center p-8">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         ) : (
           <Card>
+            <CardHeader className="border-b bg-muted/30 py-3 px-4">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Users className="h-4 w-4 text-primary" />
+                {filteredUsers?.length || 0} user{filteredUsers?.length !== 1 ? "s" : ""}
+              </CardTitle>
+              <CardDescription className="text-xs">Block = no login access. Suspend = login but limited access.</CardDescription>
+            </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left">
@@ -137,40 +172,51 @@ export default function AdminUsers() {
                           {user.subject && <div>Subj: {user.subject}</div>}
                         </td>
                         <td className="px-4 py-3">
-                          {user.isBlocked ? (
-                            <Badge variant="destructive" className="bg-destructive/20 text-destructive border-destructive/30">Blocked</Badge>
-                          ) : (
-                            <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">Active</Badge>
-                          )}
+                          {getStatusBadge(user as { isBlocked: boolean; isSuspended?: boolean })}
                         </td>
                         <td className="px-4 py-3 text-right">
                           {user.role !== 'owner' && (
-                            <div className="flex justify-end gap-2">
+                            <div className="flex justify-end gap-1">
                               {user.role === 'student' && (
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm" 
-                                  className="h-8 w-8 p-0" 
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
                                   title={user.isPrefect ? "Remove Prefect" : "Make Prefect"}
                                   onClick={() => handleTogglePrefect(user.id, user.isPrefect)}
                                 >
                                   <Shield className={`h-4 w-4 ${user.isPrefect ? "text-amber-500" : "text-muted-foreground"}`} />
                                 </Button>
                               )}
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="h-8 w-8 p-0" 
-                                title={user.isBlocked ? "Unblock" : "Block"}
+                              {/* Suspend button */}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0"
+                                title={(user as { isSuspended?: boolean }).isSuspended ? "Lift Suspension" : "Suspend (limited access)"}
+                                onClick={() => handleToggleSuspend(user.id, !!(user as { isSuspended?: boolean }).isSuspended)}
+                                disabled={suspending === user.id}
+                              >
+                                {suspending === user.id
+                                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                                  : <PauseCircle className={`h-4 w-4 ${(user as { isSuspended?: boolean }).isSuspended ? "text-amber-500" : "text-muted-foreground"}`} />
+                                }
+                              </Button>
+                              {/* Block button */}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0"
+                                title={user.isBlocked ? "Unblock (restore login)" : "Block (remove login access)"}
                                 onClick={() => handleToggleBlock(user.id, user.isBlocked)}
                               >
                                 <Ban className={`h-4 w-4 ${user.isBlocked ? "text-destructive" : "text-muted-foreground"}`} />
                               </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10" 
-                                title="Delete"
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10"
+                                title="Delete user permanently"
                                 onClick={() => handleDelete(user.id)}
                               >
                                 <Trash2 className="h-4 w-4" />

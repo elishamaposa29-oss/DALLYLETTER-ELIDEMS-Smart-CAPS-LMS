@@ -32,6 +32,7 @@ import AdminClasses from "@/pages/admin/AdminClasses";
 import AdminPayments from "@/pages/admin/AdminPayments";
 import AdminChat from "@/pages/admin/AdminChat";
 import AdminNotifications from "@/pages/admin/AdminNotifications";
+import AdminSettings from "@/pages/admin/AdminSettings";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -142,6 +143,11 @@ function Router() {
       <Route path="/admin/notifications">
         <ProtectedRoute allowedRoles={["owner"]}>
           <AdminNotifications />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/admin/settings">
+        <ProtectedRoute allowedRoles={["owner"]}>
+          <AdminSettings />
         </ProtectedRoute>
       </Route>
       <Route path="/admin">

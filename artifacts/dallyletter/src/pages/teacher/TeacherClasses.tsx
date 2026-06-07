@@ -299,21 +299,57 @@ export default function TeacherClasses() {
 }
 
 function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean }) {
-  const { data: hands } = useListHandRaises({ classId }, { query: { enabled: isLive, refetchInterval: 10000 } as any });
-  
-  if (!isLive || !hands || hands.length === 0) return null;
+  const { data: hands, refetch } = useListHandRaises({ classId }, { query: { enabled: isLive, refetchInterval: 8000 } as any });
+  const { toast } = useToast();
+  const [loweringId, setLoweringId] = useState<number | null>(null);
+
+  if (!isLive || !hands) return null;
+  const unresolved = hands.filter(h => !h.isResolved);
+  if (unresolved.length === 0) return null;
+
+  const handleLowerHand = async (handId: number, studentName: string) => {
+    setLoweringId(handId);
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const res = await fetch(`/api/raise-hand/${handId}/resolve`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        toast({ title: `Hand lowered for ${studentName}` });
+        refetch();
+      } else throw new Error("Failed");
+    } catch {
+      toast({ variant: "destructive", title: "Error", description: "Could not lower the hand." });
+    } finally {
+      setLoweringId(null);
+    }
+  };
 
   return (
     <div className="mt-4 border-t pt-4">
       <h4 className="text-sm font-semibold flex items-center gap-1.5 mb-3 text-destructive">
         <Hand className="h-4 w-4 animate-bounce" />
-        Raised Hands ({hands.length})
+        Raised Hands ({unresolved.length})
       </h4>
       <div className="space-y-2">
-        {hands.map(hand => (
-          <div key={hand.id} className="bg-destructive/5 border border-destructive/20 rounded p-2 text-sm">
-            <p className="font-medium">{hand.studentName}</p>
-            {hand.question && <p className="text-muted-foreground mt-0.5">{hand.question}</p>}
+        {unresolved.map(hand => (
+          <div key={hand.id} className="bg-destructive/5 border border-destructive/20 rounded p-2 text-sm flex items-start gap-2">
+            <div className="flex-1">
+              <p className="font-medium">{hand.studentName}</p>
+              {hand.question && <p className="text-muted-foreground mt-0.5">{hand.question}</p>}
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 shrink-0"
+              onClick={() => handleLowerHand(hand.id, hand.studentName)}
+              disabled={loweringId === hand.id}
+              title="Lower this hand (mark as resolved)"
+            >
+              {loweringId === hand.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
+              <span className="ml-1">Lower</span>
+            </Button>
           </div>
         ))}
       </div>

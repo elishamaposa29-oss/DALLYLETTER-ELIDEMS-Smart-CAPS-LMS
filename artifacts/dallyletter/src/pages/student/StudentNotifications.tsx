@@ -1,8 +1,9 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useListNotifications, useMarkNotificationRead } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, Bell, AlertTriangle, BookOpen, Video, Info, CheckCircle } from "lucide-react";
+import { Loader2, Bell, AlertTriangle, BookOpen, Video, Info, CheckCircle, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { useQueryClient } from "@tanstack/react-query";
 import { getListNotificationsQueryKey } from "@workspace/api-client-react";
 
@@ -28,6 +29,9 @@ export default function StudentNotifications() {
       default: return <Bell className="h-5 w-5 text-muted-foreground" />;
     }
   };
+
+  // Determine if notification is "admin/broadcast" type — broadcasts have recipientId = null
+  const isAdminNotice = (n: { recipientId?: number | null }) => n.recipientId === null || n.recipientId === undefined;
 
   const unreadCount = notifications?.filter(n => !n.isRead).length || 0;
 
@@ -59,45 +63,71 @@ export default function StudentNotifications() {
                 <p className="text-muted-foreground mt-1">You don't have any notifications.</p>
               </div>
             ) : (
-              notifications?.map((notification) => (
-                <Card key={notification.id} className={`transition-colors ${!notification.isRead ? 'bg-primary/5 border-primary/20' : 'bg-card'}`}>
-                  <CardContent className="p-4 sm:p-6 flex gap-4">
-                    <div className="shrink-0 mt-1">
-                      <div className={`p-2 rounded-full ${!notification.isRead ? 'bg-background shadow-sm' : 'bg-muted'}`}>
-                        {getIcon(notification.type)}
-                      </div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-1">
-                        <h3 className={`text-base font-semibold ${!notification.isRead ? 'text-foreground' : 'text-foreground/80'}`}>
-                          {notification.title}
-                        </h3>
-                        <span className="text-xs text-muted-foreground whitespace-nowrap">
-                          {new Date(notification.createdAt).toLocaleDateString()} at {new Date(notification.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-                      <p className={`text-sm ${!notification.isRead ? 'text-foreground/90' : 'text-muted-foreground'}`}>
-                        {notification.message}
-                      </p>
-                      
-                      {!notification.isRead && (
-                        <div className="mt-3">
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="h-8 px-2 text-xs text-primary hover:text-primary hover:bg-primary/10"
-                            onClick={() => handleMarkAsRead(notification.id)}
-                            disabled={markReadMutation.isPending}
-                          >
-                            <CheckCircle className="h-3.5 w-3.5 mr-1" />
-                            Mark as read
-                          </Button>
+              notifications?.map((notification) => {
+                const admin = isAdminNotice(notification);
+                return (
+                  <Card
+                    key={notification.id}
+                    className={`transition-colors ${
+                      admin
+                        ? !notification.isRead
+                          ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-300 dark:border-amber-700 border-l-4 border-l-amber-400'
+                          : 'bg-amber-50/50 dark:bg-amber-950/10 border-amber-200 dark:border-amber-800/50 border-l-4 border-l-amber-300'
+                        : !notification.isRead
+                          ? 'bg-primary/5 border-primary/20'
+                          : 'bg-card'
+                    }`}
+                  >
+                    <CardContent className="p-4 sm:p-6 flex gap-4">
+                      <div className="shrink-0 mt-1">
+                        <div className={`p-2 rounded-full relative ${!notification.isRead ? 'bg-background shadow-sm' : 'bg-muted'}`}>
+                          {getIcon(notification.type)}
+                          {/* Admin badge overlay */}
+                          {admin && (
+                            <div className="absolute -top-1 -right-1 bg-amber-500 rounded-full p-0.5">
+                              <Shield className="h-2.5 w-2.5 text-white" />
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className={`text-base font-semibold ${!notification.isRead ? 'text-foreground' : 'text-foreground/80'}`}>
+                              {notification.title}
+                            </h3>
+                            {admin && (
+                              <Badge className="text-[10px] py-0 px-1.5 bg-amber-100 text-amber-700 border border-amber-300 dark:bg-amber-900/40 dark:text-amber-400 dark:border-amber-700">
+                                Admin Notice
+                              </Badge>
+                            )}
+                          </div>
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">
+                            {new Date(notification.createdAt).toLocaleDateString()} at {new Date(notification.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <p className={`text-sm ${!notification.isRead ? 'text-foreground/90' : 'text-muted-foreground'}`}>
+                          {notification.message}
+                        </p>
+                        {!notification.isRead && (
+                          <div className="mt-3">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className={`h-8 px-2 text-xs ${admin ? 'text-amber-600 hover:text-amber-700 hover:bg-amber-100' : 'text-primary hover:text-primary hover:bg-primary/10'}`}
+                              onClick={() => handleMarkAsRead(notification.id)}
+                              disabled={markReadMutation.isPending}
+                            >
+                              <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                              Mark as read
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })
             )}
           </div>
         )}
