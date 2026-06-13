@@ -1,0 +1,431 @@
+DALLYLETTER ELIDEMS – ELIDEMS AI UPGRADE SPECIFICATION
+
+CRITICAL INSTRUCTION
+
+Upgrade the existing Dallyletter Elidems application without removing, replacing, modifying, or breaking any existing features, modules, databases, permissions, workflows, dashboards, reports, payment systems, user roles, settings, or integrations.
+
+This is an enhancement project only.
+
+All existing functionality must continue working exactly as before.
+
+Before creating any new feature:
+
+1. Analyze the current architecture.
+2. Reuse existing systems where possible.
+3. Preserve backward compatibility.
+4. Avoid database conflicts.
+5. Avoid duplicate functionality.
+6. Add proper error handling.
+7. Maintain security and performance.
+
+---
+
+FEATURE 1: ELIDEMS AI AGENT
+
+Create a powerful AI Agent called:
+
+ELIDEMS AI
+
+The AI must function as an intelligent administrative assistant capable of understanding natural language commands from authorized users.
+
+Authorized users:
+
+- Owner
+- Manager
+- Admin
+
+Examples:
+
+- Block all users with overdue payments.
+- Generate monthly reports.
+- Suspend inactive accounts.
+- Send reminders to learners.
+- Approve teacher requests.
+- Unlock learner accounts.
+- Review flagged content.
+- Monitor attendance.
+- Generate analytics.
+
+The AI must be capable of:
+
+- Reading system data.
+- Understanding commands.
+- Performing authorized actions.
+- Triggering existing buttons and workflows.
+- Using available APIs.
+- Creating summaries.
+- Producing reports.
+- Providing recommendations.
+
+The AI must NEVER bypass role permissions.
+
+All actions must be logged.
+
+All actions must be reversible by Manager or Admin.
+
+---
+
+FEATURE 2: AI-POWERED POLLS
+
+Create AI-generated educational polls.
+
+Process:
+
+1. Teacher or Admin enters a topic.
+2. ELIDEMS AI generates:
+   - Questions
+   - Multiple-choice answers
+   - Correct answer
+   - Difficulty level
+3. Learners answer questions.
+4. AI automatically marks answers.
+5. AI provides:
+   - Score
+   - Feedback
+   - Correct answers
+   - Performance insights
+
+Features:
+
+- Timed quizzes
+- Practice mode
+- Exam mode
+- Leaderboards
+- Analytics
+
+---
+
+FEATURE 3: TEACHER-CREATED POLLS
+
+Allow teachers to manually create polls.
+
+Teacher workflow:
+
+1. Enter question.
+2. Add answer choices.
+3. Select correct answer.
+4. Publish.
+
+Learner workflow:
+
+1. View question.
+2. Select answer.
+3. Submit.
+
+System workflow:
+
+1. Automatically mark answer.
+2. Show correct answer.
+3. Record score.
+4. Update analytics.
+
+---
+
+FEATURE 4: ELIDEMS AI MONITORING SYSTEM
+
+ELIDEMS AI should monitor activities occurring inside Dallyletter Elidems.
+
+Monitor:
+
+- Logins
+- Lessons
+- Assignments
+- Messages
+- Polls
+- Classes
+- Payments
+- Events
+- User activity
+
+Generate:
+
+- Security alerts
+- Abuse alerts
+- Attendance alerts
+- Payment alerts
+- Performance reports
+
+The monitoring must remain legal, secure, transparent, and permission-based.
+
+No unauthorized device access.
+
+No hidden spying.
+
+Users must grant permissions where required.
+
+---
+
+FEATURE 5: OVERLAY LEARNING MODE
+
+Implement Android Accessibility Service and Overlay permissions where legally allowed.
+
+Purpose:
+
+When learners open approved external educational content from Dallyletter Elidems, the app may display learning guidance overlays.
+
+Supported examples:
+
+- YouTube
+- Browser
+- Educational websites
+- Approved educational platforms
+
+Features:
+
+- Floating learning reminders
+- Return-to-class notifications
+- Progress tracking
+- Session timing
+
+Permissions must be requested clearly from users.
+
+Users must be informed why permissions are needed.
+
+---
+
+FEATURE 6: EXTERNAL CONTENT CONTROL
+
+When educational links redirect to external platforms:
+
+Examples:
+
+- Videos
+- Images
+- Lessons
+- Documents
+
+System behavior:
+
+Healthy Payment Users
+
+After viewing 3 content items:
+
+- Show reminder:
+  "Please return to Dallyletter Elidems to continue learning."
+
+Access continues normally.
+
+Unhealthy or Overdue Users
+
+After viewing 3 content items:
+
+- Politely redirect learner back to Dallyletter Elidems.
+
+Rules should be configurable by Admin.
+
+Use payment-health percentages and subscription status.
+
+---
+
+FEATURE 7: BREAK-ELIDEMS EVENT SYSTEM
+
+Create a daily event feature called:
+
+BREAK-ELIDEMS
+
+Purpose:
+
+Provide a global community learning and engagement session.
+
+---
+
+Participant Selection
+
+Every day automatically select:
+
+- 1 Manager
+- 1 Admin
+- 2 Volunteer Teachers
+- 1 Volunteer Prefect
+
+Teachers and prefects must have:
+
+- Volunteered
+- Submitted event details
+- Healthy payment status
+
+Selection rotates daily.
+
+---
+
+Event Types
+
+Participants may host:
+
+- Video calls
+- Educational talks
+- Announcements
+- Motivation sessions
+- News updates
+- Community discussions
+- Live learning sessions
+
+---
+
+Access Rules
+
+Only users with healthy payment status may:
+
+- Join
+- Host
+- Access event content
+
+Teachers must also have active subscriptions for required premium features.
+
+---
+
+Event Schedule
+
+Admin defines:
+
+- Start time
+- End time
+
+Example:
+
+10:00 AM – 12:00 PM
+
+During event:
+
+- Eligible users see BREAK-ELIDEMS button.
+- Ineligible users cannot join.
+
+After event ends:
+
+- Event buttons disappear.
+- Access closes automatically.
+- Active sessions terminate gracefully.
+- Platform returns to normal state.
+
+---
+
+FEATURE 8: TEMPORARY BENEFITS DURING BREAK-ELIDEMS
+
+Admin can configure temporary feature access during BREAK-ELIDEMS.
+
+Examples:
+
+- Limited AI access
+- Limited lessons
+- Limited resources
+
+Rules:
+
+- Based on payment health score.
+- Temporary access expires automatically.
+- Original restrictions are restored after event ends.
+
+---
+
+FEATURE 9: CONTENT SAFETY SYSTEM
+
+ELIDEMS AI must actively detect:
+
+- Cyberbullying
+- Harassment
+- Threats
+- Hate speech
+- Explicit content
+- Personal information sharing
+- Spam
+- Fraud attempts
+
+Use AI moderation and rule-based detection.
+
+---
+
+FEATURE 10: AUTOMATED SAFETY ACTIONS
+
+When threats are detected:
+
+ELIDEMS AI may:
+
+1. Flag content.
+2. Warn user.
+3. Restrict actions.
+4. Suspend account.
+5. Block account.
+6. Create incident reports.
+
+All actions must be logged.
+
+Notifications sent to:
+
+- User
+- Admin
+- Manager
+
+---
+
+FEATURE 11: ADMIN OVERRIDE SYSTEM
+
+Manager and Admin must always have authority to:
+
+- Undo actions
+- Restore accounts
+- Remove restrictions
+- Unlock users
+- Approve appeals
+- Override AI decisions
+
+Every override must be recorded in audit logs.
+
+---
+
+FEATURE 12: TECHNICAL REQUIREMENTS
+
+Recommended Architecture:
+
+Frontend:
+
+- Flutter or React Native
+
+Backend:
+
+- Node.js
+- Express
+- TypeScript
+
+Database:
+
+- PostgreSQL
+
+Real-Time:
+
+- WebSockets
+
+AI Layer:
+
+- OpenAI API
+- Google Gemini API
+- Modular provider architecture
+
+Authentication:
+
+- JWT
+- Role-based permissions
+
+Security:
+
+- Encryption
+- Audit logs
+- Rate limiting
+- Permission checks
+
+Monitoring:
+
+- Event tracking
+- Usage analytics
+- AI action logs
+
+---
+
+FINAL REQUIREMENT
+
+The upgrade must be production-ready, scalable, secure, mobile-friendly, responsive, and maintainable.
+
+Most importantly:
+
+DO NOT BREAK ANY EXISTING DALLYLETTER ELIDEMS FEATURES.
+
+All existing modules must continue working exactly as before while the new ELIDEMS AI ecosystem is added on top.
