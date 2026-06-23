@@ -12,43 +12,30 @@ import notificationsRouter from "./notifications";
 import handRaisesRouter from "./handRaises";
 import dashboardRouter from "./dashboard";
 import settingsRouter from "./settings";
+import pollsRouter from "./polls";
+import aiRouter from "./ai";
+import breakElidemRouter from "./breakElidems";
+import safetyRouter from "./safety";
+import auditLogsRouter from "./auditLogs";
 
 const router: IRouter = Router();
 
-// Health check
 router.use(healthRouter);
-
-// Auth routes
 router.use(authRouter);
-
-// User management
 router.use(usersRouter);
-
-// Lessons
 router.use(lessonsRouter);
-
-// Live classes
 router.use(classesRouter);
-
-// Chat & messaging
 router.use(messagesRouter);
-
-// Study groups
 router.use(studyGroupsRouter);
-
-// Payment tracking
 router.use(paymentsRouter);
-
-// Notifications
 router.use(notificationsRouter);
-
-// Hand raises
 router.use(handRaisesRouter);
-
-// Dashboard analytics
 router.use(dashboardRouter);
-
-// Platform settings
 router.use(settingsRouter);
+router.use(pollsRouter);
+router.use(aiRouter);
+router.use(breakElidemRouter);
+router.use(safetyRouter);
+router.use(auditLogsRouter);
 
 export default router;

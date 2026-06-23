@@ -15,6 +15,10 @@ import {
   Menu,
   GraduationCap,
   Settings,
+  Sparkles,
+  ClipboardList,
+  Star,
+  ScrollText,
 } from "lucide-react";
 import { useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -23,6 +27,8 @@ interface NavItem {
   label: string;
   href: string;
   icon: React.ElementType;
+  badge?: string;
+  section?: string;
 }
 
 const roleColors: Record<string, string> = {
@@ -53,64 +59,91 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   if (user.role === "student") {
     navItems = [
-      { label: "Dashboard", href: "/", icon: Home },
+      { label: "Dashboard", href: "/", icon: Home, section: "General" },
       { label: "Lessons", href: "/student/lessons", icon: BookOpen },
       { label: "Live Classes", href: "/student/classes", icon: Video },
       { label: "Study Groups", href: "/student/study-groups", icon: Users },
+      { label: "Polls & Quizzes", href: "/student/polls", icon: ClipboardList },
+      { label: "BREAK-ELIDEMS", href: "/student/break-elidems", icon: Star },
       { label: "Chat", href: "/student/chat", icon: MessageSquare },
       { label: "Payments", href: "/student/payments", icon: CreditCard },
       { label: "Notifications", href: "/student/notifications", icon: Bell },
     ];
   } else if (user.role === "teacher") {
     navItems = [
-      { label: "Dashboard", href: "/teacher", icon: Home },
+      { label: "Dashboard", href: "/teacher", icon: Home, section: "General" },
       { label: "My Lessons", href: "/teacher/lessons", icon: BookOpen },
       { label: "My Classes", href: "/teacher/classes", icon: Video },
+      { label: "Polls & Quizzes", href: "/teacher/polls", icon: ClipboardList },
       { label: "Chat", href: "/teacher/chat", icon: MessageSquare },
       { label: "Student Payments", href: "/teacher/payments", icon: CreditCard },
     ];
   } else if (user.role === "owner") {
     navItems = [
-      { label: "Overview", href: "/admin", icon: Home },
+      { label: "Overview", href: "/admin", icon: Home, section: "General" },
       { label: "Users", href: "/admin/users", icon: Users },
       { label: "All Lessons", href: "/admin/lessons", icon: BookOpen },
       { label: "All Classes", href: "/admin/classes", icon: Video },
       { label: "Payments", href: "/admin/payments", icon: CreditCard },
       { label: "Chat", href: "/admin/chat", icon: MessageSquare },
       { label: "Notifications", href: "/admin/notifications", icon: Bell },
-      { label: "Settings", href: "/admin/settings", icon: Settings },
+      { label: "ELIDEMS AI", href: "/admin/ai", icon: Sparkles, section: "AI & Automation" },
+      { label: "Polls & Quizzes", href: "/admin/polls", icon: ClipboardList },
+      { label: "BREAK-ELIDEMS", href: "/admin/break-elidems", icon: Star },
+      { label: "Content Safety", href: "/admin/safety", icon: Shield },
+      { label: "Audit Logs", href: "/admin/audit-logs", icon: ScrollText },
+      { label: "Settings", href: "/admin/settings", icon: Settings, section: "System" },
+      { label: "AI Settings", href: "/admin/ai/settings", icon: Sparkles },
     ];
   }
 
   const homeHref = user.role === "student" ? "/" : user.role === "teacher" ? "/teacher" : "/admin";
 
-  const NavLinks = ({ onNav }: { onNav?: () => void }) => (
-    <div className="space-y-0.5">
-      {navItems.map((item) => {
-        const Icon = item.icon;
-        const isActive =
-          location === item.href ||
-          (item.href !== "/" && item.href !== "/teacher" && item.href !== "/admin" && location.startsWith(item.href));
-        return (
-          <Link key={item.href} href={item.href} onClick={onNav}>
-            <div
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 group ${
-                isActive
-                  ? "bg-white/15 text-white shadow-sm"
-                  : "text-white/60 hover:text-white hover:bg-white/10"
-              }`}
-            >
-              <Icon className={`h-4.5 w-4.5 shrink-0 ${isActive ? "text-white" : "text-white/50 group-hover:text-white/80"}`} />
-              <span>{item.label}</span>
-              {isActive && (
-                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white/80" />
-              )}
+  const NavLinks = ({ onNav }: { onNav?: () => void }) => {
+    let lastSection: string | undefined;
+    return (
+      <div className="space-y-0.5">
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          const isActive =
+            location === item.href ||
+            (item.href !== "/" && item.href !== "/teacher" && item.href !== "/admin" && location.startsWith(item.href));
+
+          const sectionHeader = item.section && item.section !== lastSection ? (
+            <p key={`section-${item.section}`} className="text-[10px] font-semibold uppercase tracking-widest text-white/30 px-3 pt-4 pb-1.5 first:pt-0">
+              {item.section}
+            </p>
+          ) : null;
+          lastSection = item.section ?? lastSection;
+
+          return (
+            <div key={item.href}>
+              {sectionHeader}
+              <Link href={item.href} onClick={onNav}>
+                <div
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 group ${
+                    isActive
+                      ? "bg-white/15 text-white shadow-sm"
+                      : "text-white/60 hover:text-white hover:bg-white/10"
+                  } ${item.href === "/admin/ai" || item.href === "/student/break-elidems" || item.href === "/admin/break-elidems" ? "relative" : ""}`}
+                >
+                  <Icon
+                    className={`h-4 w-4 shrink-0 ${
+                      isActive ? "text-white" : "text-white/50 group-hover:text-white/80"
+                    } ${item.href === "/admin/ai" ? "text-purple-400" : item.href.includes("break-elidems") ? "text-amber-400" : ""}`}
+                  />
+                  <span>{item.label}</span>
+                  {isActive && (
+                    <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white/80" />
+                  )}
+                </div>
+              </Link>
             </div>
-          </Link>
-        );
-      })}
-    </div>
-  );
+          );
+        })}
+      </div>
+    );
+  };
 
   const SidebarContent = ({ onNav }: { onNav?: () => void }) => (
     <div className="flex flex-col h-full bg-gradient-to-b from-[#0a1628] via-[#0d1e38] to-[#0a1628]">
@@ -156,11 +189,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Divider label */}
-      <div className="px-5 mb-2">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-white/30">Navigation</p>
       </div>
 
       {/* Nav */}

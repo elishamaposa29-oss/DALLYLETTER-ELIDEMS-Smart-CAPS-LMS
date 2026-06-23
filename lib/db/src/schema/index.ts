@@ -8,3 +8,8 @@ export * from "./notifications";
 export * from "./handRaises";
 export * from "./activityLog";
 export * from "./platformSettings";
+export * from "./polls";
+export * from "./breakElidems";
+export * from "./aiActions";
+export * from "./contentFlags";
+export * from "./auditLogs";
