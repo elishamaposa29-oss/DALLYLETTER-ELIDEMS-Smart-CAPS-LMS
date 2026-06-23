@@ -156,7 +156,7 @@ overrides:
   "@expo/ngrok-bin>@expo/ngrok-bin-win32-x64": "-"
   # drizzle-kit uses esbuild internally on an older version that's vulnerable, this overrides it
   "@esbuild-kit/esm-loader": "npm:tsx@^4.21.0"
-  esbuild: "0.27.3"
+  esbuild: "^0.28.1"
   # Security vulnerability fixes
   "picomatch@2": "^2.3.2"
   "picomatch@4": "^4.0.4"
@@ -171,3 +171,10 @@ overrides:
   "uuid": "^11.1.1"
   "qs": "^6.15.2"
   "postcss": "^8.5.10"
+  "undici": "^6.27.0"
+  "shell-quote": "^1.8.4"
+  "markdown-it": "^14.2.0"
+  "js-yaml@4": "^4.2.0"
+  "js-yaml@3": "npm:js-yaml@^4.2.0"
+  "tar": "^7.5.16"
+  "@babel/core": "^7.29.7"
