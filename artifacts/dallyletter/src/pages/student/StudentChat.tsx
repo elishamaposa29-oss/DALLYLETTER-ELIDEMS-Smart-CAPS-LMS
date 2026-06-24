@@ -1,7 +1,7 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useListMessages, useSendMessage, useListStudyGroups } from "@workspace/api-client-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, Send, Mic, Users, MessageSquare } from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { Loader2, Send, Users, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState, useRef, useEffect } from "react";
@@ -9,6 +9,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { getListMessagesQueryKey } from "@workspace/api-client-react";
 import { SendMessageBodyType } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { VoiceRecorder } from "@/components/VoiceRecorder";
 
 export default function Chat() {
   const { user } = useAuth();
@@ -20,7 +21,7 @@ export default function Chat() {
   const { data: groups, isLoading: groupsLoading } = useListStudyGroups();
   const { data: messages, isLoading: messagesLoading } = useListMessages(
     { groupId: selectedGroupId },
-    { query: { enabled: !!selectedGroupId } as any }
+    { query: { enabled: !!selectedGroupId, refetchInterval: 5000 } as any }
   );
 
   const sendMessageMutation = useSendMessage();
@@ -29,7 +30,6 @@ export default function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Set default group when groups load
   useEffect(() => {
     if (groups && groups.length > 0 && !selectedGroupId) {
       setSelectedGroupId(groups[0].id);
@@ -39,16 +39,22 @@ export default function Chat() {
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim() || !selectedGroupId) return;
-
     sendMessageMutation.mutate({
-      data: {
-        content: message,
-        type: SendMessageBodyType.text,
-        groupId: selectedGroupId
-      }
+      data: { content: message, type: SendMessageBodyType.text, groupId: selectedGroupId }
     }, {
       onSuccess: () => {
         setMessage("");
+        queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId }) });
+      }
+    });
+  };
+
+  const handleSendVoice = (dataUrl: string) => {
+    if (!selectedGroupId) return;
+    sendMessageMutation.mutate({
+      data: { content: "🎤 Voice message", type: SendMessageBodyType.voice, groupId: selectedGroupId, mediaUrl: dataUrl }
+    }, {
+      onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId }) });
       }
     });
@@ -67,15 +73,18 @@ export default function Chat() {
             {groupsLoading ? (
               <div className="flex justify-center p-4"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
             ) : groups?.length === 0 ? (
-              <div className="text-center p-4 text-sm text-muted-foreground">No study groups joined.</div>
+              <div className="flex flex-col items-center justify-center h-full gap-3 text-center p-6">
+                <Users className="h-10 w-10 text-muted-foreground/30" />
+                <p className="text-sm text-muted-foreground">No study groups joined.<br />Join a group to start chatting.</p>
+              </div>
             ) : (
               groups?.map(group => (
                 <button
                   key={group.id}
                   onClick={() => setSelectedGroupId(group.id)}
                   className={`w-full text-left px-3 py-3 rounded-lg transition-colors flex items-center justify-between ${
-                    selectedGroupId === group.id 
-                      ? "bg-primary text-primary-foreground" 
+                    selectedGroupId === group.id
+                      ? "bg-primary text-primary-foreground"
                       : "hover:bg-muted"
                   }`}
                 >
@@ -92,19 +101,26 @@ export default function Chat() {
         {/* Chat Area */}
         <Card className="flex-1 flex flex-col overflow-hidden bg-card border-shadow-sm">
           {!selectedGroupId ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
-              <MessageSquare className="h-12 w-12 mb-4 text-muted-foreground/30" />
-              <p>Select a study group to start chatting</p>
+            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-3">
+              <MessageSquare className="h-14 w-14 text-muted-foreground/20" />
+              <div className="text-center">
+                <p className="font-medium">Select a study group</p>
+                <p className="text-sm">Choose a group from the sidebar to start chatting</p>
+              </div>
             </div>
           ) : (
             <>
               {/* Chat Header */}
               <div className="p-4 border-b bg-muted/30 font-semibold flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="md:hidden">
-                    {/* Mobile group selector could go here */}
+                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                    <Users className="h-4 w-4 text-primary" />
                   </div>
                   {groups?.find(g => g.id === selectedGroupId)?.name}
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-1 rounded-full">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Live
                 </div>
               </div>
 
@@ -113,8 +129,9 @@ export default function Chat() {
                 {messagesLoading ? (
                   <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
                 ) : messages?.length === 0 ? (
-                  <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
-                    No messages yet. Be the first to say hello!
+                  <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-3">
+                    <MessageSquare className="h-12 w-12 opacity-20" />
+                    <p className="text-sm">No messages yet. Be the first to say hello!</p>
                   </div>
                 ) : (
                   messages?.map(msg => {
@@ -128,11 +145,10 @@ export default function Chat() {
                             </div>
                           )}
                           <div className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
-                            {!isMe && <span className="text-xs text-muted-foreground mb-1 ml-1">{msg.senderName} • {msg.senderRole}</span>}
-                            
-                            <div className={`px-4 py-2.5 rounded-2xl ${
-                              isMe 
-                                ? "bg-primary text-primary-foreground rounded-tr-sm" 
+                            {!isMe && <span className="text-xs text-muted-foreground mb-1 ml-1">{msg.senderName} · {msg.senderRole}</span>}
+                            <div className={`px-4 py-2.5 rounded-2xl max-w-full ${
+                              isMe
+                                ? "bg-primary text-primary-foreground rounded-tr-sm"
                                 : "bg-card border shadow-sm rounded-tl-sm"
                             }`}>
                               {msg.type === "voice" && msg.mediaUrl ? (
@@ -142,7 +158,7 @@ export default function Chat() {
                               )}
                             </div>
                             <span className="text-[10px] text-muted-foreground mt-1 opacity-70">
-                              {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                             </span>
                           </div>
                         </div>
@@ -156,11 +172,9 @@ export default function Chat() {
               {/* Input Area */}
               <div className="p-4 border-t bg-card">
                 <form onSubmit={handleSendMessage} className="flex gap-2 items-center">
-                  <Button type="button" variant="outline" size="icon" className="shrink-0 text-muted-foreground" title="Voice note not implemented yet">
-                    <Mic className="h-5 w-5" />
-                  </Button>
-                  <Input 
-                    placeholder="Type a message..." 
+                  <VoiceRecorder onSend={handleSendVoice} isSending={sendMessageMutation.isPending} />
+                  <Input
+                    placeholder="Type a message..."
                     className="flex-1 bg-muted/50 border-transparent focus-visible:bg-background"
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
