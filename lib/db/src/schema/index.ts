@@ -13,3 +13,8 @@ export * from "./breakElidems";
 export * from "./aiActions";
 export * from "./contentFlags";
 export * from "./auditLogs";
+export * from "./assignments";
+export * from "./attendance";
+export * from "./ownerAlerts";
+export * from "./staffPayments";
+export * from "./achievements";

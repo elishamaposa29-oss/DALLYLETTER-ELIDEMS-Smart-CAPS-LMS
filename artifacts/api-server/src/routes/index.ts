@@ -17,6 +17,12 @@ import aiRouter from "./ai";
 import breakElidemRouter from "./breakElidems";
 import safetyRouter from "./safety";
 import auditLogsRouter from "./auditLogs";
+import assignmentsRouter from "./assignments";
+import attendanceRouter from "./attendance";
+import ownerAlertsRouter from "./ownerAlerts";
+import staffPaymentsRouter from "./staffPayments";
+import achievementsRouter from "./achievements";
+import managerRouter from "./manager";
 
 const router: IRouter = Router();
 
@@ -37,5 +43,11 @@ router.use(aiRouter);
 router.use(breakElidemRouter);
 router.use(safetyRouter);
 router.use(auditLogsRouter);
+router.use("/assignments", assignmentsRouter);
+router.use("/attendance", attendanceRouter);
+router.use(ownerAlertsRouter);
+router.use(staffPaymentsRouter);
+router.use("/achievements", achievementsRouter);
+router.use("/manager", managerRouter);
 
 export default router;

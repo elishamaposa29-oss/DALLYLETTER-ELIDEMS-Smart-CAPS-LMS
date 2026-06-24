@@ -2,7 +2,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { useListUsers, useBlockUser, usePromoteUser, useDeleteUser } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Users, Search, Shield, Ban, Trash2, PauseCircle } from "lucide-react";
+import { Loader2, Users, Search, Shield, Ban, Trash2, PauseCircle, Briefcase } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
@@ -63,6 +63,20 @@ export default function AdminUsers() {
         toast({ title: !isPrefect ? "Promoted to Prefect" : "Prefect status removed" });
         queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
       }
+    });
+  };
+
+  const handleToggleManager = (id: number, isManager: boolean) => {
+    if (!confirm(isManager ? "Remove Manager status from this user?" : "Promote this user to Manager? They will gain access to the Manager Dashboard.")) return;
+    const tok = localStorage.getItem("dallyletter_token");
+    void fetch(`/api/users/${id}/promote-manager`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
+      body: JSON.stringify({ isManager: !isManager }),
+    }).then(res => {
+      if (!res.ok) { toast({ variant: "destructive", title: "Error", description: "Could not update manager status." }); return; }
+      toast({ title: !isManager ? "✅ Promoted to Manager" : "Manager status removed" });
+      void queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
     });
   };
 
@@ -186,6 +200,17 @@ export default function AdminUsers() {
                                   onClick={() => handleTogglePrefect(user.id, user.isPrefect)}
                                 >
                                   <Shield className={`h-4 w-4 ${user.isPrefect ? "text-amber-500" : "text-muted-foreground"}`} />
+                                </Button>
+                              )}
+                              {user.role === 'teacher' && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  title={(user as any).isManager ? "Remove Manager status" : "Promote to Manager"}
+                                  onClick={() => handleToggleManager(user.id, !!(user as any).isManager)}
+                                >
+                                  <Briefcase className={`h-4 w-4 ${(user as any).isManager ? "text-purple-500" : "text-muted-foreground"}`} />
                                 </Button>
                               )}
                               {/* Suspend button */}

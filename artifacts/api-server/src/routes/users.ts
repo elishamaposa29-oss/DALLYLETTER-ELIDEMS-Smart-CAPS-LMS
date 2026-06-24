@@ -16,13 +16,19 @@ const safeUserFields = {
   name: usersTable.name,
   role: usersTable.role,
   isPrefect: usersTable.isPrefect,
+  isManager: usersTable.isManager,
   isBlocked: usersTable.isBlocked,
   isSuspended: usersTable.isSuspended,
   phone: usersTable.phone,
   grade: usersTable.grade,
   subject: usersTable.subject,
   avatarUrl: usersTable.avatarUrl,
+  bio: usersTable.bio,
   lastPaymentDate: usersTable.lastPaymentDate,
+  performanceScore: usersTable.performanceScore,
+  badgeCount: usersTable.badgeCount,
+  streakDays: usersTable.streakDays,
+  lastActiveDate: usersTable.lastActiveDate,
   createdAt: usersTable.createdAt,
 };
 
@@ -123,6 +129,31 @@ router.patch("/users/:id/promote", requireAuth, requireOwner, async (req, res): 
   if (body.data.isPrefect != null) updates.isPrefect = body.data.isPrefect;
 
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, params.data.id)).returning(safeUserFields);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  res.json({ ...user, createdAt: user.createdAt.toISOString() });
+});
+
+// PATCH /users/:id/promote-manager — Grant or revoke Manager status (owner only)
+router.patch("/users/:id/promote-manager", requireAuth, requireOwner, async (req, res): Promise<void> => {
+  const id = parseInt(String(req.params.id));
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const { isManager } = req.body as { isManager: boolean };
+  if (typeof isManager !== "boolean") { res.status(400).json({ error: "isManager must be boolean" }); return; }
+  const [user] = await db.update(usersTable).set({ isManager }).where(eq(usersTable.id, id)).returning(safeUserFields);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  res.json({ ...user, createdAt: user.createdAt.toISOString() });
+});
+
+// PATCH /users/:id/payment-info — Update own payment info
+router.patch("/users/:id/payment-info", requireAuth, async (req, res): Promise<void> => {
+  const id = parseInt(String(req.params.id));
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const currentUser = req.currentUser!;
+  if (currentUser.role !== "owner" && currentUser.id !== id) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+  const { paymentInfo } = req.body as { paymentInfo: string };
+  const [user] = await db.update(usersTable).set({ paymentInfo: JSON.stringify(paymentInfo) }).where(eq(usersTable.id, id)).returning(safeUserFields);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   res.json({ ...user, createdAt: user.createdAt.toISOString() });
 });
