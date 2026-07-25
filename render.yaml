@@ -1,10 +1,35 @@
 services:
   - type: web
-    name: dallyletter-api
+    name: dallyletter-api-staging
     env: node
     plan: starter
+    branch: staging
+    autoDeploy: false
+    rootDir: artifacts/api-server
     buildCommand: pnpm install --frozen-lockfile && pnpm build
-    startCommand: pnpm start:api
+    startCommand: pnpm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://dallyletter-web.onrender.com,https://your-frontend-domain.com
+  - type: web
+    name: dallyletter-api-production
+    env: node
+    plan: starter
+    branch: production
+    autoDeploy: false
+    rootDir: artifacts/api-server
+    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm start
+    healthCheckPath: /healthz
     envVars:
       - key: NODE_ENV
         value: production

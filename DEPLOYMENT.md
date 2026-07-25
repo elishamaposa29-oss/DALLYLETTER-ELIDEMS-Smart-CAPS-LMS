@@ -1,5 +1,26 @@
 # Deployment guide
 
+## Final deployment architecture
+
+This repository remains a single monorepo with multiple deployable services:
+
+- Frontend: Vercel deploys only the web app in artifacts/dallyletter
+- Backend API: Render deploys only the API in artifacts/api-server
+- Database: managed PostgreSQL remains independent from the frontend deployment
+- Mobile: Expo builds remain independent for EAS or future store publication
+
+This avoids unnecessary repository splitting while keeping each service deployable independently.
+
+## Safe release workflow
+
+This repository now uses a protected release path:
+
+- main: active development and integration
+- staging: quality assurance and pre-release verification
+- production: live platform branch
+
+Use the release guide in RELEASE-WORKFLOW.md for the full process.
+
 ## Recommended production setup
 
 - Frontend: Vercel or Netlify for the React app
@@ -26,6 +47,7 @@ Use the provided Render configuration in render.yaml:
 - Render should use the generated settings automatically.
 
 Required environment variables:
+
 - DATABASE_URL
 - JWT_SECRET
 - CORS_ORIGINS
@@ -34,6 +56,7 @@ Required environment variables:
 ## 3. Deploy the web app
 
 For Vercel/Netlify:
+
 - Set the project root to the repository root.
 - Build command: pnpm build
 - Output directory: artifacts/dallyletter/dist/public

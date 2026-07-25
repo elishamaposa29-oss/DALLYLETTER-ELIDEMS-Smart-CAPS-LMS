@@ -2,11 +2,12 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
   pull_request:
+    branches: [main, staging, production]
 
 jobs:
-  build:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -26,5 +27,5 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm build
+      - name: Verify release safety
+        run: pnpm run ci:verify

@@ -10,7 +10,9 @@
     "db:push": "pnpm --filter @workspace/db run push",
     "db:push:force": "pnpm --filter @workspace/db run push-force",
     "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
+    "lint:release": "pnpm exec prettier --check .github/workflows/*.yml render.yaml DEPLOYMENT.md INSTALL.md README.md RELEASE-WORKFLOW.md package.json",
+    "ci:verify": "pnpm run typecheck && pnpm build && pnpm run lint:release"
   },
   "private": true,
   "devDependencies": {
