@@ -1,45 +1,37 @@
-# DALLYLETTER-ELIDEMS-Smart-CAPS-LMS
+# DALLYLETTER ELIDEMS
 
-## Project Overview
-DALLYLETTER-ELIDEMS-Smart-CAPS-LMS is a Learning Management System designed to facilitate the management of courses, students, and educators. The platform aims to streamline the education process by providing an interactive and easy-to-use interface.
+## Project overview
+This repository contains a multi-part education platform with:
+- a React/Vite web app in artifacts/dallyletter
+- an Express API in artifacts/api-server
+- a React Native/Expo app in artifacts/dallyletter-mobile
+- shared libraries in lib/
 
-## Features
-- **User Management**: Allows educators to manage student accounts and permissions.
-- **Course Management**: Educators can create, update, and delete courses.
-- **Interactive Lessons**: Provides features for interactive learning through quizzes and multimedia.
-- **Progress Tracking**: Monitors student progress and performance through analytics.
+## Current stack
+- Frontend: React + Vite + TypeScript
+- Backend: Express + TypeScript
+- Database: PostgreSQL via Drizzle ORM
+- Auth: token-based session handling with role-based access
 
-## Tech Stack
-- **Frontend**: React.js
-- **Backend**: Node.js with Express
-- **Database**: MongoDB
-- **Authentication**: JSON Web Tokens (JWT)
-
-## Installation Instructions
-1. Clone the repository:  
-   `git clone https://github.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS.git`
-2. Navigate to the project directory:  
-   `cd DALLYLETTER-ELIDEMS-Smart-CAPS-LMS`
-3. Install the dependencies:  
-   `npm install`
-4. Set up environment variables by creating a `.env` file in the root directory:
+## Local setup
+1. Install dependencies:
+   ```bash
+   pnpm install
+   cp .env.example .env
    ```
-   PORT=4000
-   MONGODB_URI=your_mongodb_connection_string
-   JWT_SECRET=your_jwt_secret
+2. Start PostgreSQL and set DATABASE_URL in .env.
+3. Start the app:
+   ```bash
+   pnpm dev
    ```
-5. Start the application:  
-   `npm start`
+4. Open the web app at http://localhost:3000 and the API at http://localhost:4000.
 
-## Demo Accounts
-- **Admin Account**:  
-   - Username: admin@example.com  
-   - Password: admin123
-- **Student Account**:  
-   - Username: student@example.com  
-   - Password: student123
+## Production build
+```bash
+pnpm build
+```
 
-## How to Run Locally
-1. Ensure you have Node.js and MongoDB installed on your machine.
-2. Follow the installation instructions above.
-3. After starting the application, navigate to `http://localhost:4000` in your web browser to access the application.
+## Notes
+- The project has been updated to remove most Replit-specific startup requirements.
+- The API and web app are now runnable outside Replit with local environment variables.
+- The mobile Expo package can also build locally and does not require Replit-only deployment variables.

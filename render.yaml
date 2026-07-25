@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: dallyletter-api
+    env: node
+    plan: starter
+    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm start:api
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://dallyletter-web.onrender.com,https://your-frontend-domain.com

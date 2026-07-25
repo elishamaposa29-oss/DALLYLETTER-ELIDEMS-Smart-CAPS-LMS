@@ -1,5 +1,6 @@
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { setBaseUrl } from "@workspace/api-client-react";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
@@ -56,6 +57,13 @@ import ManagerHome from "@/pages/manager/ManagerHome";
 import ManagerTeachers from "@/pages/manager/ManagerTeachers";
 import ManagerStudents from "@/pages/manager/ManagerStudents";
 import ManagerReports from "@/pages/manager/ManagerReports";
+import ManagerPrefects from "@/pages/manager/ManagerPrefects";
+
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim() || (typeof window !== "undefined" ? window.location.origin : "");
+
+if (apiBaseUrl) {
+  setBaseUrl(apiBaseUrl);
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -97,6 +105,7 @@ function Router() {
       <Route path="/manager/teachers"><ProtectedRoute allowedRoles={["teacher", "owner"]}><ManagerTeachers /></ProtectedRoute></Route>
       <Route path="/manager/students"><ProtectedRoute allowedRoles={["teacher", "owner"]}><ManagerStudents /></ProtectedRoute></Route>
       <Route path="/manager/reports"><ProtectedRoute allowedRoles={["teacher", "owner"]}><ManagerReports /></ProtectedRoute></Route>
+      <Route path="/manager/prefects"><ProtectedRoute allowedRoles={["teacher", "owner"]}><ManagerPrefects /></ProtectedRoute></Route>
       <Route path="/manager"><ProtectedRoute allowedRoles={["teacher", "owner"]}><ManagerHome /></ProtectedRoute></Route>
 
       {/* Admin Routes */}

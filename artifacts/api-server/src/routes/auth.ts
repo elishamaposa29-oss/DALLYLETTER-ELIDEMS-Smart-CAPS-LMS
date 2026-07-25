@@ -7,18 +7,41 @@ import crypto from "crypto";
 
 const router: IRouter = Router();
 
+function getAuthSecret(): string {
+  const fallbackSecret = process.env.NODE_ENV === "production" ? undefined : "dallyletter-local-secret";
+  const secret = process.env.JWT_SECRET ?? process.env.AUTH_SECRET ?? fallbackSecret;
+
+  if (!secret) {
+    throw new Error("JWT_SECRET must be set in production");
+  }
+
+  return secret;
+}
+
 function hashPassword(password: string): string {
   return crypto.createHash("sha256").update(password + "dallyletter_salt_2024").digest("hex");
 }
 
 function generateToken(userId: number): string {
   const payload = JSON.stringify({ userId, ts: Date.now() });
-  return Buffer.from(payload).toString("base64");
+  const encodedPayload = Buffer.from(payload).toString("base64url");
+  const signature = crypto.createHmac("sha256", getAuthSecret()).update(encodedPayload).digest("hex");
+  return `${encodedPayload}.${signature}`;
 }
 
 function parseToken(token: string): { userId: number } | null {
   try {
-    const payload = JSON.parse(Buffer.from(token, "base64").toString("utf8"));
+    const [encodedPayload, signature] = token.split(".");
+    if (!encodedPayload || !signature) {
+      return null;
+    }
+
+    const expectedSignature = crypto.createHmac("sha256", getAuthSecret()).update(encodedPayload).digest("hex");
+    if (expectedSignature !== signature) {
+      return null;
+    }
+
+    const payload = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8"));
     return { userId: payload.userId };
   } catch {
     return null;
