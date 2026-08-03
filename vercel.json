@@ -1,14 +1,9 @@
 {
   "$schema": "https://openapi.vercel.com/v1/schema.json",
+  "framework": "vite",
   "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm --dir artifacts/api-server build",
-  "outputDirectory": "artifacts/api-server/dist",
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "https://your-api-domain.com/api/$1"
-    }
-  ],
+  "buildCommand": "pnpm --dir artifacts/dallyletter build",
+  "outputDirectory": "artifacts/dallyletter/dist/public",
   "headers": [
     {
       "source": "/(.*)",
