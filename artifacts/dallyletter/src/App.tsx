@@ -59,7 +59,12 @@ import ManagerStudents from "@/pages/manager/ManagerStudents";
 import ManagerReports from "@/pages/manager/ManagerReports";
 import ManagerPrefects from "@/pages/manager/ManagerPrefects";
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim() || (typeof window !== "undefined" ? window.location.origin : "");
+const fallbackApiBaseUrl =
+  typeof window !== "undefined" && window.location.hostname === "localhost"
+    ? "http://localhost:4000"
+    : "https://dallyletter-elidems-smart-caps-lms-4.onrender.com";
+
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim() || import.meta.env.API_BASE_URL?.trim() || fallbackApiBaseUrl;
 
 if (apiBaseUrl) {
   setBaseUrl(apiBaseUrl);
