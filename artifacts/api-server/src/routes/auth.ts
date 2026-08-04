@@ -3,7 +3,6 @@ import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { RegisterUserBody, LoginUserBody } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth-middleware";
-import { logger } from "../lib/logger";
 import crypto from "crypto";
 
 const router: IRouter = Router();
@@ -139,6 +138,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     const { passwordHash: _, ...safeUser } = user;
     res.status(201).json({ user: safeUser, token });
   } catch (error) {
+    const { logger } = await import("../lib/logger");
     logger.error(
       {
         timestamp: new Date().toISOString(),
