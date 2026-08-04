@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { RegisterUserBody, LoginUserBody } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth-middleware";
+import { logger } from "../lib/logger";
 import crypto from "crypto";
 
 const router: IRouter = Router();
@@ -50,6 +51,73 @@ function parseToken(token: string): { userId: number } | null {
 
 export { parseToken };
 
+function serializeErrorDetails(value: unknown, seen = new Set<unknown>()): Record<string, unknown> | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value !== "object") return { value };
+  if (seen.has(value)) return { message: "[Circular]" };
+
+  seen.add(value);
+  const record = value as Record<string, unknown>;
+  const result: Record<string, unknown> = {
+    message: typeof record.message === "string" ? record.message : undefined,
+    code: record.code,
+    detail: record.detail,
+    hint: record.hint,
+    constraint: record.constraint,
+    table: record.table,
+    column: record.column,
+    schema: record.schema,
+    stack: typeof record.stack === "string" ? record.stack : undefined,
+  };
+
+  if (record.cause) {
+    result.cause = serializeErrorDetails(record.cause, seen);
+  }
+  if (record.driverError) {
+    result.driverError = serializeErrorDetails(record.driverError, seen);
+  }
+  if (record.originalError) {
+    result.originalError = serializeErrorDetails(record.originalError, seen);
+  }
+  if (record.nativeError) {
+    result.nativeError = serializeErrorDetails(record.nativeError, seen);
+  }
+  if (record.error) {
+    result.error = serializeErrorDetails(record.error, seen);
+  }
+
+  return result;
+}
+
+function extractPostgresError(value: unknown, seen = new Set<unknown>()): Record<string, unknown> | undefined {
+  if (value === null || value === undefined || typeof value !== "object") return undefined;
+  if (seen.has(value)) return undefined;
+
+  seen.add(value);
+  const record = value as Record<string, unknown>;
+  const hasPostgresFields = typeof record.message === "string"
+    && (typeof record.code === "string"
+      || typeof record.detail === "string"
+      || typeof record.hint === "string"
+      || typeof record.constraint === "string"
+      || typeof record.table === "string"
+      || typeof record.column === "string"
+      || typeof record.schema === "string");
+
+  if (hasPostgresFields) {
+    return serializeErrorDetails(value, seen);
+  }
+
+  for (const key of ["cause", "driverError", "originalError", "nativeError", "error"]) {
+    const candidate = extractPostgresError(record[key], seen);
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  return undefined;
+}
+
 // POST /auth/register
 router.post("/auth/register", async (req, res): Promise<void> => {
   const parsed = RegisterUserBody.safeParse(req.body);
@@ -57,18 +125,34 @@ router.post("/auth/register", async (req, res): Promise<void> => {
 
   const { email, password, name, role, grade, subject, phone } = parsed.data;
 
-  const existing = await db.select().from(usersTable).where(eq(usersTable.email, email));
-  if (existing.length > 0) { res.status(400).json({ error: "Email already registered" }); return; }
+  try {
+    const existing = await db.select().from(usersTable).where(eq(usersTable.email, email));
+    if (existing.length > 0) { res.status(400).json({ error: "Email already registered" }); return; }
 
-  const [user] = await db.insert(usersTable).values({
-    email, passwordHash: hashPassword(password), name, role,
-    grade: grade ?? null, subject: subject ?? null, phone: phone ?? null,
-    isPrefect: false, isBlocked: false, isSuspended: false,
-  }).returning();
+    const [user] = await db.insert(usersTable).values({
+      email, passwordHash: hashPassword(password), name, role,
+      grade: grade ?? null, subject: subject ?? null, phone: phone ?? null,
+      isPrefect: false, isBlocked: false, isSuspended: false,
+    }).returning();
 
-  const token = generateToken(user.id);
-  const { passwordHash: _, ...safeUser } = user;
-  res.status(201).json({ user: safeUser, token });
+    const token = generateToken(user.id);
+    const { passwordHash: _, ...safeUser } = user;
+    res.status(201).json({ user: safeUser, token });
+  } catch (error) {
+    logger.error(
+      {
+        timestamp: new Date().toISOString(),
+        event: "auth.register.db_error",
+        method: req.method,
+        path: req.path,
+        email,
+        err: serializeErrorDetails(error),
+        postgresError: extractPostgresError(error),
+      },
+      "Registration database operation failed",
+    );
+    throw error;
+  }
 });
 
 // POST /auth/login
