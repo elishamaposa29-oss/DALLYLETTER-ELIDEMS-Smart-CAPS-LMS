@@ -21,7 +21,12 @@ const defaultOrigins = [
   "http://127.0.0.1:8081",
 ];
 
-const allowedOrigins = Array.from(new Set([...configuredOrigins, ...defaultOrigins]));
+const requiredOrigins = [
+  "https://dallyletterelidemslearningplatforme-six.vercel.app",
+  ...defaultOrigins,
+];
+
+const allowedOrigins = Array.from(new Set([...configuredOrigins, ...requiredOrigins]));
 
 app.disable("x-powered-by");
 
