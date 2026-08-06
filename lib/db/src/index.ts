@@ -80,6 +80,20 @@ function printPostgresError(error: unknown, indent = 2): void {
 
 function wrapQuery<T extends (...args: unknown[]) => unknown>(queryFn: T): T {
   return ((...args: unknown[]) => {
+    const lastArg = args[args.length - 1];
+    const callback = typeof lastArg === "function" ? (lastArg as (...args: unknown[]) => void) : undefined;
+
+    if (callback) {
+      const wrappedCallback = (error: unknown, ...resultArgs: unknown[]) => {
+        if (error) {
+          printPostgresError(error);
+        }
+        callback(error, ...resultArgs);
+      };
+
+      return queryFn(...args.slice(0, -1), wrappedCallback);
+    }
+
     const result = queryFn(...args);
     if (result && typeof (result as { catch?: unknown }).catch === "function") {
       return (result as Promise<unknown>).catch((error) => {
@@ -91,18 +105,49 @@ function wrapQuery<T extends (...args: unknown[]) => unknown>(queryFn: T): T {
   }) as T;
 }
 
+function wrapClientQuery(client: unknown): void {
+  if (!isObject(client) || typeof (client as { query?: unknown }).query !== "function") {
+    return;
+  }
+
+  const clientWithQuery = client as { query: (...args: unknown[]) => unknown };
+  const originalClientQuery = clientWithQuery.query.bind(clientWithQuery);
+  clientWithQuery.query = wrapQuery(originalClientQuery);
+}
+
 export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 const originalPoolQuery = pool.query.bind(pool);
 pool.query = wrapQuery(originalPoolQuery);
 
-const originalPoolConnect = pool.connect.bind(pool);
-pool.connect = async (...args: unknown[]) => {
-  const client = await originalPoolConnect(...args);
-  const originalClientQuery = client.query.bind(client);
-  client.query = wrapQuery(originalClientQuery);
-  return client;
-};
+const originalPoolConnect = pool.connect.bind(pool) as (...args: unknown[]) => unknown;
+pool.connect = ((...args: unknown[]) => {
+  const lastArg = args[args.length - 1];
+  const callback = typeof lastArg === "function" ? (lastArg as (...args: unknown[]) => void) : undefined;
+
+  if (callback) {
+    const wrappedCallback = (error: unknown, client?: unknown, release?: unknown) => {
+      if (error) {
+        printPostgresError(error);
+      } else {
+        wrapClientQuery(client);
+      }
+      callback(error, client, release);
+    };
+
+    return (originalPoolConnect as (...args: unknown[]) => unknown)(...args.slice(0, -1), wrappedCallback);
+  }
+
+  return Promise.resolve((originalPoolConnect as (...args: unknown[]) => unknown)(...args))
+    .then((client) => {
+      wrapClientQuery(client);
+      return client;
+    })
+    .catch((error) => {
+      printPostgresError(error);
+      throw error;
+    });
+}) as typeof pool.connect;
 
 export const db = drizzle(pool, { schema });
 

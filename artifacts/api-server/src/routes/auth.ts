@@ -151,7 +151,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
       },
       "Registration database operation failed",
     );
-    throw error;
+    res.status(500).json({ error: "Registration failed. Please try again." });
   }
 });
 
@@ -160,19 +160,36 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   const parsed = LoginUserBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
-  const { email, password } = parsed.data;
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
-  if (!user || user.passwordHash !== hashPassword(password)) {
-    res.status(401).json({ error: "Invalid email or password" }); return;
-  }
+  try {
+    const { email, password } = parsed.data;
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
+    if (!user || user.passwordHash !== hashPassword(password)) {
+      res.status(401).json({ error: "Invalid email or password" }); return;
+    }
 
-  if (user.isBlocked) {
-    res.status(403).json({ error: "Your account has been blocked. Please contact the school administrator." }); return;
-  }
+    if (user.isBlocked) {
+      res.status(403).json({ error: "Your account has been blocked. Please contact the school administrator." }); return;
+    }
 
-  const token = generateToken(user.id);
-  const { passwordHash: _, ...safeUser } = user;
-  res.json({ user: safeUser, token });
+    const token = generateToken(user.id);
+    const { passwordHash: _, ...safeUser } = user;
+    res.json({ user: safeUser, token });
+  } catch (error) {
+    const { logger } = await import("../lib/logger");
+    logger.error(
+      {
+        timestamp: new Date().toISOString(),
+        event: "auth.login.db_error",
+        method: req.method,
+        path: req.path,
+        email: parsed.data.email,
+        err: serializeErrorDetails(error),
+        postgresError: extractPostgresError(error),
+      },
+      "Login database operation failed",
+    );
+    res.status(500).json({ error: "Login failed. Please try again." });
+  }
 });
 
 // POST /auth/logout
