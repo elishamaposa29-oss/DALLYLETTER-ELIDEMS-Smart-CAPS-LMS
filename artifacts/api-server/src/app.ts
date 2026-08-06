@@ -26,7 +26,19 @@ const requiredOrigins = [
   ...defaultOrigins,
 ];
 
-const allowedOrigins = Array.from(new Set([...configuredOrigins, ...requiredOrigins]));
+const allowedOrigins = new Set([...configuredOrigins, ...requiredOrigins]);
+
+const isTrustedVercelOrigin = (origin: string) => {
+  try {
+    const url = new URL(origin);
+    return (
+      url.protocol === "https:" &&
+      /^[a-z0-9-]+\.vercel\.app$/.test(url.hostname)
+    );
+  } catch {
+    return false;
+  }
+};
 
 app.disable("x-powered-by");
 
@@ -52,7 +64,7 @@ app.use(
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin || allowedOrigins.has(origin) || isTrustedVercelOrigin(origin)) {
         callback(null, true);
         return;
       }
@@ -60,6 +72,16 @@ app.use(
       callback(new Error(`Origin ${origin} not allowed by CORS`));
     },
     credentials: true,
+    methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "Accept",
+      "Origin",
+      "X-Requested-With",
+      "X-CSRF-Token",
+    ],
+    optionsSuccessStatus: 204,
   }),
 );
 app.use(express.json({ limit: "10mb" }));
