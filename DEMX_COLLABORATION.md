@@ -10,12 +10,13 @@
 
 ## Before and during work
 
-- Check `git status`, the current branch, recent commits, and remote state before starting.
-- Pull or rebase safely when appropriate; never overwrite uncommitted work.
-- Avoid editing the same files simultaneously in VS Code and Replit.
-- Keep commits small, meaningful, and descriptive; use Git commits to communicate important changes.
-- Test changes before pushing them to GitHub.
-- Push completed work so both environments can synchronize from GitHub.
+- Before editing, verify the branch with `git branch --show-current`, then run `git status`, `git fetch --prune origin`, `git log`, and `git rev-list --left-right --count HEAD...@{upstream}`.
+- If the worktree is dirty, stop and preserve those changes. If the branch is behind, inspect the incoming commits and rebase or merge only after confirming it will not overwrite local work.
+- Before pushing, run `git diff --check` and inspect `git diff`; reject non-fast-forward pushes and resolve conflicts explicitly rather than force-pushing.
+- Treat files as shared resources: announce the files or feature area being changed, avoid simultaneous edits in VS Code and Replit, and pull/sync before resuming after another agent pushes.
+- Search for existing routes, components, helpers, and migrations before adding an implementation; extend the existing owner instead of creating duplicate logic.
+- Keep commits small, meaningful, and descriptive. Use commit messages to communicate behavior, affected areas, and follow-up needs to the other environment.
+- Test changes before pushing them to GitHub, then push completed work so both environments can synchronize from GitHub.
 
 ## Protection rules
 
@@ -23,4 +24,10 @@
 - Changes reach `main` only after tests pass, the build succeeds, review is complete, no secrets are present, and database changes are confirmed non-destructive.
 - Never commit secrets or credentials.
 - Never perform destructive operations against production databases.
-- Use Git history, revert, and recovery tools for rollback. Create a dated checkpoint tag before significant work when appropriate.
+- Use Git history, revert, and recovery tools for rollback. Before significant work, record the known-good commit and, when appropriate, create a dated checkpoint tag such as `demx-checkpoint-YYYYMMDD-HHMM`.
+- Treat `main` as protected: no direct development, force-push, destructive reset, deletion, or automatic merge. Merge only through reviewed changes after tests, builds, secret checks, and database-safety review pass.
+
+## Safe handoff
+
+- A handoff must include the commit pushed, files changed, checks run, and any unresolved conflict or follow-up.
+- The next environment must fetch and inspect that commit before editing. Never overwrite uncommitted work from either environment.
