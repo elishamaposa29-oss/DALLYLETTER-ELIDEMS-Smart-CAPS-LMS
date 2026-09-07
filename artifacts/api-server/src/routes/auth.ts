@@ -117,6 +117,16 @@ function extractPostgresError(value: unknown, seen = new Set<unknown>()): Record
   return undefined;
 }
 
+function databaseFailureResponse(error: unknown): { error: string; code: string; reason: string } {
+  const details = extractPostgresError(error);
+  const code = typeof details?.code === "string" ? details.code : "DATABASE_CONNECTION_FAILED";
+  const reason = typeof details?.message === "string"
+    ? details.message
+    : "The API could not connect to PostgreSQL.";
+
+  return { error: "Database unavailable", code, reason };
+}
+
 // POST /auth/register
 router.post("/auth/register", async (req, res): Promise<void> => {
   const parsed = RegisterUserBody.safeParse(req.body);
@@ -151,7 +161,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
       },
       "Registration database operation failed",
     );
-    res.status(500).json({ error: "Registration failed. Please try again." });
+    res.status(503).json(databaseFailureResponse(error));
   }
 });
 
@@ -188,7 +198,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
       },
       "Login database operation failed",
     );
-    res.status(500).json({ error: "Login failed. Please try again." });
+    res.status(503).json(databaseFailureResponse(error));
   }
 });
 
