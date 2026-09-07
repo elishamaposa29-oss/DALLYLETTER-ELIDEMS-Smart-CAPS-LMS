@@ -549,6 +549,40 @@ export const JoinStudyGroupResponse = zod.object({
 });
 
 /**
+ * @summary Leave a study group
+ */
+export const LeaveStudyGroupParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const LeaveStudyGroupResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  description: zod.string().nullish(),
+  subject: zod.string(),
+  creatorId: zod.number(),
+  creatorName: zod.string(),
+  memberCount: zod.number(),
+  members: zod.array(
+    zod.object({
+      id: zod.number(),
+      email: zod.string(),
+      name: zod.string(),
+      role: zod.enum(["student", "teacher", "owner"]),
+      isPrefect: zod.boolean(),
+      isBlocked: zod.boolean(),
+      phone: zod.string().nullish(),
+      grade: zod.string().nullish(),
+      subject: zod.string().nullish(),
+      avatarUrl: zod.string().nullish(),
+      lastPaymentDate: zod.string().nullish(),
+      createdAt: zod.string(),
+    }),
+  ),
+  createdAt: zod.string(),
+});
+
+/**
  * @summary List all payments (owner can see all, student sees own)
  */
 export const ListPaymentsResponseItem = zod.object({

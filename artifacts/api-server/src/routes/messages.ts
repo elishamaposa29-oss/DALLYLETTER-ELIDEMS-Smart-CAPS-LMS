@@ -1,7 +1,7 @@
 // Messages routes — group and private chat, including voice notes
 import { Router, type IRouter } from "express";
 import { eq, and, isNull, or } from "drizzle-orm";
-import { db, messagesTable, activityLogTable } from "@workspace/db";
+import { db, messagesTable, activityLogTable, studyGroupMembersTable } from "@workspace/db";
 import {
   ListMessagesQueryParams,
   SendMessageBody,
@@ -9,6 +9,14 @@ import {
 import { requireAuth } from "../lib/auth-middleware";
 
 const router: IRouter = Router();
+
+async function canAccessGroup(groupId: number, userId: number, role: string): Promise<boolean> {
+  if (role === "teacher" || role === "owner") return true;
+  const [membership] = await db.select({ id: studyGroupMembersTable.id })
+    .from(studyGroupMembersTable)
+    .where(and(eq(studyGroupMembersTable.groupId, groupId), eq(studyGroupMembersTable.userId, userId)));
+  return Boolean(membership);
+}
 
 // GET /messages — List messages filtered by groupId or recipientId
 router.get("/messages", requireAuth, async (req, res): Promise<void> => {
@@ -23,6 +31,10 @@ router.get("/messages", requireAuth, async (req, res): Promise<void> => {
 
   let messages;
   if (groupId != null) {
+    if (!(await canAccessGroup(groupId, currentUser.id, currentUser.role))) {
+      res.status(403).json({ error: "You must be a group member to view its messages" });
+      return;
+    }
     // Group messages
     messages = await db.select().from(messagesTable)
       .where(eq(messagesTable.groupId, groupId))
@@ -54,6 +66,11 @@ router.post("/messages", requireAuth, async (req, res): Promise<void> => {
   const parsed = SendMessageBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  if (parsed.data.groupId != null && !(await canAccessGroup(parsed.data.groupId, currentUser.id, currentUser.role))) {
+    res.status(403).json({ error: "You must be a group member to post messages" });
     return;
   }
 

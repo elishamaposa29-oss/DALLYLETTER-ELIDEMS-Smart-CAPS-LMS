@@ -2288,6 +2288,90 @@ export const useJoinStudyGroup = <
 };
 
 /**
+ * @summary Leave a study group
+ */
+export const getLeaveStudyGroupUrl = (id: number) => {
+  return `/api/study-groups/${id}/leave`;
+};
+
+export const leaveStudyGroup = async (
+  id: number,
+  options?: RequestInit,
+): Promise<StudyGroup> => {
+  return customFetch<StudyGroup>(getLeaveStudyGroupUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getLeaveStudyGroupMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof leaveStudyGroup>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof leaveStudyGroup>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["leaveStudyGroup"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof leaveStudyGroup>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return leaveStudyGroup(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type LeaveStudyGroupMutationResult = NonNullable<
+  Awaited<ReturnType<typeof leaveStudyGroup>>
+>;
+
+export type LeaveStudyGroupMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Leave a study group
+ */
+export const useLeaveStudyGroup = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof leaveStudyGroup>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof leaveStudyGroup>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getLeaveStudyGroupMutationOptions(options));
+};
+
+/**
  * @summary List all payments (owner can see all, student sees own)
  */
 export const getListPaymentsUrl = () => {

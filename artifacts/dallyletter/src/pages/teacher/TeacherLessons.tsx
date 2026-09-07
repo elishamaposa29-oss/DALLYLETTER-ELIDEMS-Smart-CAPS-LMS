@@ -7,8 +7,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { useState } from "react";
-import { Loader2, Plus, Trash2, Video, Image as ImageIcon, Headphones, FileText, BookOpen } from "lucide-react";
+import { useRef, useState } from "react";
+import { Loader2, Plus, Trash2, Video, Image as ImageIcon, Headphones, FileText, BookOpen, Upload, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -35,6 +35,9 @@ export default function TeacherLessons() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<{ name: string; previewUrl: string; mimeType: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<z.infer<typeof createLessonSchema>>({
     resolver: zodResolver(createLessonSchema),
@@ -48,6 +51,7 @@ export default function TeacherLessons() {
       content: "",
     },
   });
+  const selectedLessonType = form.watch("type");
 
   const onSubmit = (values: z.infer<typeof createLessonSchema>) => {
     createLessonMutation.mutate({ data: values }, {
@@ -61,6 +65,51 @@ export default function TeacherLessons() {
         toast({ variant: "destructive", title: "Error", description: error.message || "Failed to create lesson" });
       }
     });
+  };
+
+  const handleMediaUpload = (file: File) => {
+    const isDocument = selectedLessonType === "notes" && ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"].includes(file.type);
+    const expectedPrefix = selectedLessonType === "audio" ? "audio/" : selectedLessonType === "image" ? "image/" : "video/";
+    if (!file.type.startsWith(expectedPrefix) && !isDocument) {
+      toast({ variant: "destructive", title: "Unsupported media", description: `Choose a supported ${selectedLessonType} file.` });
+      return;
+    }
+    const previewUrl = URL.createObjectURL(file);
+    setUploadedFile({ name: file.name, previewUrl, mimeType: file.type });
+    setUploadProgress(0);
+    const request = new XMLHttpRequest();
+    request.open("POST", "/api/lessons/media");
+    const token = localStorage.getItem("dallyletter_token");
+    if (token) request.setRequestHeader("Authorization", `Bearer ${token}`);
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) setUploadProgress(Math.round((event.loaded / event.total) * 100));
+    };
+    request.onload = () => {
+      if (request.status < 200 || request.status >= 300) {
+        setUploadProgress(null);
+        toast({ variant: "destructive", title: "Upload failed", description: "The video could not be uploaded." });
+        return;
+      }
+      const result = JSON.parse(request.responseText) as { mediaUrl: string };
+      form.setValue("mediaUrl", result.mediaUrl, { shouldValidate: true });
+      setUploadProgress(100);
+      toast({ title: "Video uploaded", description: "Preview it below, then publish the lesson." });
+    };
+    request.onerror = () => {
+      setUploadProgress(null);
+      toast({ variant: "destructive", title: "Upload failed", description: "Check your connection and try again." });
+    };
+    const formData = new FormData();
+    formData.append("file", file);
+    request.send(formData);
+  };
+
+  const removeUploadedVideo = () => {
+    if (uploadedFile) URL.revokeObjectURL(uploadedFile.previewUrl);
+    setUploadedFile(null);
+    setUploadProgress(null);
+    form.setValue("mediaUrl", "");
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleDelete = (id: number) => {
@@ -205,7 +254,36 @@ export default function TeacherLessons() {
                         <FormControl>
                           <Input placeholder="https://... (learners click the title to open this)" {...field} />
                         </FormControl>
-                        <p className="text-xs text-muted-foreground">When set, learners can click the lesson title to open this link directly.</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept={selectedLessonType === "audio" ? "audio/*" : selectedLessonType === "image" ? "image/*" : selectedLessonType === "notes" ? ".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" : "video/*"}
+                            className="sr-only"
+                            onChange={(event) => event.target.files?.[0] && handleMediaUpload(event.target.files[0])}
+                          />
+                          <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => fileInputRef.current?.click()} disabled={uploadProgress !== null && uploadProgress < 100}>
+                            <Upload className="h-4 w-4" />
+                            Upload {selectedLessonType === "audio" ? "Audio" : selectedLessonType === "image" ? "Image" : "Video"}
+                          </Button>
+                          {uploadedFile && (
+                            <Button type="button" variant="ghost" size="sm" className="gap-1 text-destructive" onClick={removeUploadedVideo}>
+                              <X className="h-4 w-4" />
+                              Remove
+                            </Button>
+                          )}
+                        </div>
+                        {uploadProgress !== null && (
+                          <div className="space-y-1" aria-live="polite">
+                            <div className="flex justify-between text-xs text-muted-foreground"><span>Upload progress</span><span>{uploadProgress}%</span></div>
+                            <div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary transition-[width]" style={{ width: `${uploadProgress}%` }} /></div>
+                          </div>
+                        )}
+                        {uploadedFile && selectedLessonType === "video" && <video className="mt-2 max-h-48 w-full rounded-md bg-black" src={uploadedFile.previewUrl} controls />}
+                        {uploadedFile && selectedLessonType === "audio" && <audio className="mt-2 w-full" src={uploadedFile.previewUrl} controls />}
+                        {uploadedFile && selectedLessonType === "image" && <img className="mt-2 max-h-48 w-full rounded-md object-contain" src={uploadedFile.previewUrl} alt="Lesson preview" />}
+                        {uploadedFile && selectedLessonType === "notes" && uploadedFile.mimeType === "application/pdf" && <iframe className="mt-2 h-48 w-full rounded-md border" src={uploadedFile.previewUrl} title="Document preview" />}
+                        <p className="text-xs text-muted-foreground">Paste a URL for an external lesson, or upload media to keep playback inside Elidems.</p>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -225,7 +303,7 @@ export default function TeacherLessons() {
                   />
                   <DialogFooter>
                     <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-                    <Button type="submit" disabled={createLessonMutation.isPending}>
+                    <Button type="submit" disabled={createLessonMutation.isPending || uploadProgress !== null && uploadProgress < 100}>
                       {createLessonMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       Publish Lesson
                     </Button>

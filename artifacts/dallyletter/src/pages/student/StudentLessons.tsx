@@ -5,8 +5,36 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, Search, FileText, Image as ImageIcon, Video, Headphones, BookOpen, ExternalLink, GraduationCap } from "lucide-react";
+
+function YouTubeEmbed({ url, title }: { url: string; title: string }) {
+  return <iframe className="aspect-video w-full rounded-md" src={url} title={title} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />;
+}
+
+function StoredMedia({ url, type, title }: { url: string; type: string; title: string }) {
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  const [mediaType, setMediaType] = useState("");
+  useEffect(() => {
+    let active = true;
+    const token = localStorage.getItem("dallyletter_token");
+    fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : undefined })
+      .then((response) => {
+        if (!response.ok) throw new Error("Media unavailable");
+        return response.blob();
+      })
+      .then((blob) => { if (active) { setMediaType(blob.type); setObjectUrl(URL.createObjectURL(blob)); } })
+      .catch(() => setObjectUrl(null));
+    return () => { active = false; };
+  }, [url]);
+
+  if (!objectUrl) return <div className="flex aspect-video items-center justify-center rounded-md bg-muted text-sm text-muted-foreground">Loading media...</div>;
+  if (type === "video") return <video className="aspect-video w-full rounded-md bg-black" src={objectUrl} title={title} controls />;
+  if (type === "audio") return <audio className="w-full" src={objectUrl} title={title} controls />;
+  if (mediaType === "application/pdf") return <iframe className="h-64 w-full rounded-md border" src={objectUrl} title={title} />;
+  if (type === "notes") return <a className="text-sm font-medium text-primary underline" href={objectUrl} download>Download {title}</a>;
+  return <img className="max-h-64 w-full rounded-md object-contain" src={objectUrl} alt={title} />;
+}
 
 export default function StudentLessons() {
   const { data: lessons, isLoading } = useListLessons();
@@ -45,6 +73,8 @@ export default function StudentLessons() {
   const handleOpen = (url: string) => {
     window.open(url, "_blank", "noopener,noreferrer");
   };
+
+  const isYouTubeUrl = (url: string) => url.includes("youtube.com/embed/");
 
   return (
     <DashboardLayout>
@@ -107,7 +137,7 @@ export default function StudentLessons() {
                 <Card
                   key={lesson.id}
                   className={`flex flex-col h-full transition-all duration-200 border hover:shadow-lg hover:-translate-y-0.5 ${lesson.mediaUrl ? "hover:border-primary/60 cursor-pointer" : "hover:border-border/80"}`}
-                  onClick={() => lesson.mediaUrl && handleOpen(lesson.mediaUrl)}
+                  onClick={() => lesson.mediaUrl && !lesson.mediaUrl.startsWith("/api/lessons/media/") && !isYouTubeUrl(lesson.mediaUrl) && handleOpen(lesson.mediaUrl)}
                 >
                   <CardHeader className="pb-3 space-y-3">
                     {/* Top row: subject + type */}
@@ -138,6 +168,7 @@ export default function StudentLessons() {
                   </CardHeader>
 
                   <CardContent className="flex-1 flex flex-col justify-between gap-4">
+                    {lesson.mediaUrl && (isYouTubeUrl(lesson.mediaUrl) ? <YouTubeEmbed url={lesson.mediaUrl} title={lesson.title} /> : lesson.mediaUrl.startsWith("/api/lessons/media/") ? <StoredMedia url={lesson.mediaUrl} type={lesson.type} title={lesson.title} /> : null)}
                     <p className="text-sm text-muted-foreground line-clamp-3">
                       {lesson.description || "No description provided."}
                     </p>
