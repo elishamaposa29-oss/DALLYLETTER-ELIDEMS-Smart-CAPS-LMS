@@ -33,4 +33,4 @@ jobs:
 
       - name: Verify health endpoint is available
         run: |
-          node -e "const http=require('http'); const server=require('child_process').spawn('pnpm', ['start:api'], {stdio:'inherit'}); setTimeout(() => { const req=http.get('http://127.0.0.1:4000/healthz', (res)=>{ let data=''; res.on('data', chunk=>data+=chunk); res.on('end', ()=>{ console.log(data); server.kill('SIGTERM'); process.exit(res.statusCode===200?0:1); }); }); req.on('error', (err)=>{ console.error(err); server.kill('SIGTERM'); process.exit(1); }); }, 5000);"
+          node -e "const http=require('http'); const server=require('child_process').spawn('pnpm', ['start:api'], {stdio:'inherit'}); setTimeout(() => { const req=http.get('http://127.0.0.1:4000/api/healthz', (res)=>{ let data=''; res.on('data', chunk=>data+=chunk); res.on('end', ()=>{ console.log(data); server.kill('SIGTERM'); process.exit(res.statusCode===200?0:1); }); }); req.on('error', (err)=>{ console.error(err); server.kill('SIGTERM'); process.exit(1); }); }, 5000);"
