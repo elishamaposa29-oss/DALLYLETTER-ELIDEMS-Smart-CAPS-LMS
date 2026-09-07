@@ -1,7 +1,7 @@
 // Messages routes — group and private chat, including voice notes
 import { Router, type IRouter } from "express";
-import { eq, and, isNull, or } from "drizzle-orm";
-import { db, messagesTable, activityLogTable, studyGroupMembersTable } from "@workspace/db";
+import { eq, and, isNull, or, inArray } from "drizzle-orm";
+import { db, messagesTable, activityLogTable, studyGroupMembersTable, studyGroupsTable } from "@workspace/db";
 import {
   ListMessagesQueryParams,
   SendMessageBody,
@@ -11,6 +11,8 @@ import { requireAuth } from "../lib/auth-middleware";
 const router: IRouter = Router();
 
 async function canAccessGroup(groupId: number, userId: number, role: string): Promise<boolean> {
+  const [group] = await db.select({ id: studyGroupsTable.id }).from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
+  if (!group) return false;
   if (role === "teacher" || role === "owner") return true;
   const [membership] = await db.select({ id: studyGroupMembersTable.id })
     .from(studyGroupMembersTable)
@@ -50,10 +52,15 @@ router.get("/messages", requireAuth, async (req, res): Promise<void> => {
       )
       .orderBy(messagesTable.createdAt);
   } else {
-    // All group messages (no group filter)
-    messages = await db.select().from(messagesTable)
-      .where(isNull(messagesTable.recipientId))
-      .orderBy(messagesTable.createdAt);
+    const memberships = await db.select({ groupId: studyGroupMembersTable.groupId })
+      .from(studyGroupMembersTable)
+      .where(eq(studyGroupMembersTable.userId, currentUser.id));
+    const groupIds = memberships.map(({ groupId }) => groupId);
+    messages = groupIds.length === 0
+      ? []
+      : await db.select().from(messagesTable)
+        .where(and(isNull(messagesTable.recipientId), inArray(messagesTable.groupId, groupIds)))
+        .orderBy(messagesTable.createdAt);
   }
 
   res.json(messages.map(m => ({ ...m, createdAt: m.createdAt.toISOString() })));
