@@ -53,6 +53,12 @@ Required environment variables:
 - CORS_ORIGINS
 - NODE_ENV=production
 
+`DATABASE_URL` must be the current connection URL for a running PostgreSQL
+instance. If the API logs `getaddrinfo ENOTFOUND`, the hostname in Render's
+environment variable is stale or invalid; update it from the database
+provider's current connection details and redeploy. The API will return
+`503 Database unavailable` until this is fixed.
+
 ## 3. Deploy the web app
 
 For Vercel/Netlify:
