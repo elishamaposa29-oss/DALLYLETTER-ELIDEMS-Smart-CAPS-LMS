@@ -15,5 +15,7 @@ export interface SendMessageBody {
   /** @nullable */
   groupId?: number | null;
   /** @nullable */
+  parentMessageId?: number | null;
+  /** @nullable */
   recipientId?: number | null;
 }

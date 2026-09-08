@@ -424,6 +424,7 @@ export const ListMessagesResponseItem = zod.object({
   type: zod.enum(["text", "voice"]),
   mediaUrl: zod.string().nullish(),
   groupId: zod.number().nullish(),
+  parentMessageId: zod.number().nullish(),
   recipientId: zod.number().nullish(),
   createdAt: zod.string(),
 });
@@ -437,6 +438,7 @@ export const SendMessageBody = zod.object({
   type: zod.enum(["text", "voice"]),
   mediaUrl: zod.string().nullish(),
   groupId: zod.number().nullish(),
+  parentMessageId: zod.number().nullish(),
   recipientId: zod.number().nullish(),
 });
 

@@ -292,6 +292,8 @@ export interface Message {
   /** @nullable */
   groupId?: number | null;
   /** @nullable */
+  parentMessageId?: number | null;
+  /** @nullable */
   recipientId?: number | null;
   createdAt: string;
 }
@@ -311,6 +313,8 @@ export interface SendMessageBody {
   mediaUrl?: string | null;
   /** @nullable */
   groupId?: number | null;
+  /** @nullable */
+  parentMessageId?: number | null;
   /** @nullable */
   recipientId?: number | null;
 }
