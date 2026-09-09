@@ -1,12 +1,13 @@
 // Messages routes — group and private chat, including voice notes
 import { Router, type IRouter } from "express";
 import { eq, and, isNull, or, inArray } from "drizzle-orm";
-import { db, messagesTable, activityLogTable, studyGroupMembersTable, studyGroupsTable } from "@workspace/db";
+import { db, messagesTable, activityLogTable, studyGroupMembersTable, studyGroupsTable, contentFlagsTable, auditLogsTable } from "@workspace/db";
 import {
   ListMessagesQueryParams,
   SendMessageBody,
 } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth-middleware";
+import { getAIProvider } from "../lib/ai-provider";
 
 const router: IRouter = Router();
 
@@ -81,6 +82,22 @@ router.post("/messages", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
+  if (parsed.data.parentMessageId != null) {
+    if (parsed.data.groupId == null) {
+      res.status(400).json({ error: "Replies must belong to a group" });
+      return;
+    }
+    const [parent] = await db.select({
+      id: messagesTable.id,
+      groupId: messagesTable.groupId,
+      recipientId: messagesTable.recipientId,
+    }).from(messagesTable).where(eq(messagesTable.id, parsed.data.parentMessageId));
+    if (!parent || parent.groupId !== parsed.data.groupId || parent.recipientId != null) {
+      res.status(400).json({ error: "Parent message must belong to the selected group" });
+      return;
+    }
+  }
+
   const [message] = await db.insert(messagesTable).values({
     ...parsed.data,
     senderId: currentUser.id,
@@ -98,6 +115,57 @@ router.post("/messages", requireAuth, async (req, res): Promise<void> => {
   }
 
   res.status(201).json({ ...message, createdAt: message.createdAt.toISOString() });
+});
+
+router.post("/messages/:id/report", requireAuth, async (req, res): Promise<void> => {
+  const messageId = Number(req.params.id);
+  const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+  if (!Number.isInteger(messageId) || messageId <= 0 || reason.length < 3 || reason.length > 500) {
+    res.status(400).json({ error: "A valid message id and a reason between 3 and 500 characters are required" });
+    return;
+  }
+
+  const [message] = await db.select().from(messagesTable).where(eq(messagesTable.id, messageId));
+  if (!message || message.groupId == null || !(await canAccessGroup(message.groupId, req.currentUser!.id, req.currentUser!.role))) {
+    res.status(404).json({ error: "Message not found" });
+    return;
+  }
+
+  let severity = "medium";
+  let detectedBy = "user";
+  let storedReason = reason;
+  try {
+    const ai = await getAIProvider();
+    const moderation = await ai.moderateContent(message.content);
+    if (moderation.flagged) {
+      severity = moderation.severity;
+      detectedBy = `${ai.name}:user`;
+      storedReason = `${reason} AI assessment: ${moderation.reason ?? "Potential policy concern"}`.slice(0, 500);
+    }
+  } catch {
+    // Preserve the user report without inventing an AI result when the provider is unavailable.
+  }
+
+  const [flag] = await db.insert(contentFlagsTable).values({
+    contentType: "message",
+    contentId: message.id,
+    contentText: message.content.slice(0, 500),
+    reason: storedReason,
+    severity,
+    detectedBy,
+    status: "pending",
+  }).returning();
+
+  await db.insert(auditLogsTable).values({
+    action: `Reported group message #${message.id}`,
+    category: "moderation",
+    performedBy: req.currentUser!.id,
+    targetType: "message",
+    targetId: message.id,
+    details: JSON.stringify({ flagId: flag.id, reason }),
+  });
+
+  res.status(201).json(flag);
 });
 
 export default router;

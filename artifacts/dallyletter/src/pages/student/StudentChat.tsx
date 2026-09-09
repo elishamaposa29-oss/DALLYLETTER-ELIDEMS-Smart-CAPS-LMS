@@ -1,10 +1,10 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useListMessages, useSendMessage, useListStudyGroups } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
-import { Loader2, Send, Users, MessageSquare } from "lucide-react";
+import { Loader2, Send, Users, MessageSquare, Reply, X, Flag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getListMessagesQueryKey } from "@workspace/api-client-react";
 import { SendMessageBodyType } from "@workspace/api-client-react";
@@ -15,6 +15,8 @@ export default function Chat() {
   const { user } = useAuth();
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
   const [message, setMessage] = useState("");
+  const [replyTo, setReplyTo] = useState<number | null>(null);
+  const [reportingMessageId, setReportingMessageId] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
@@ -25,6 +27,8 @@ export default function Chat() {
   );
 
   const sendMessageMutation = useSendMessage();
+  const rootMessages = messages?.filter((message) => message.parentMessageId == null) ?? [];
+  const replyTarget = messages?.find((message) => message.id === replyTo);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -40,10 +44,11 @@ export default function Chat() {
     e.preventDefault();
     if (!message.trim() || !selectedGroupId) return;
     sendMessageMutation.mutate({
-      data: { content: message, type: SendMessageBodyType.text, groupId: selectedGroupId }
+      data: { content: message, type: SendMessageBodyType.text, groupId: selectedGroupId, parentMessageId: replyTo }
     }, {
       onSuccess: () => {
         setMessage("");
+        setReplyTo(null);
         queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId }) });
       }
     });
@@ -58,6 +63,29 @@ export default function Chat() {
         queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId }) });
       }
     });
+  };
+
+  const handleReport = async (messageId: number) => {
+    const reason = window.prompt("Why are you reporting this message?")?.trim();
+    if (!reason) return;
+    setReportingMessageId(messageId);
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const response = await fetch(`/api/messages/${messageId}/report`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ reason }),
+      });
+      if (!response.ok) throw new Error("Report could not be submitted");
+      window.alert("Report submitted for staff review.");
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Report could not be submitted");
+    } finally {
+      setReportingMessageId(null);
+    }
   };
 
   return (
@@ -134,34 +162,51 @@ export default function Chat() {
                     <p className="text-sm">No messages yet. Be the first to say hello!</p>
                   </div>
                 ) : (
-                  messages?.map(msg => {
+                  rootMessages.map((msg) => {
                     const isMe = msg.senderId === user?.id;
-                    return (
-                      <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
-                        <div className="flex items-end gap-2 max-w-[80%]">
-                          {!isMe && (
+                    const renderMessage = (message: typeof msg, depth = 0): ReactNode => {
+                      const messageIsMe = message.senderId === user?.id;
+                      const replies = messages?.filter((reply) => reply.parentMessageId === message.id) ?? [];
+                      return (
+                      <div key={message.id} className={`flex flex-col ${messageIsMe ? "items-end" : "items-start"}`}>
+                        <div className="flex items-end gap-2 max-w-[80%]" style={{ marginLeft: messageIsMe ? 0 : `${Math.min(depth, 4) * 1.5}rem` }}>
+                          {!messageIsMe && (
                             <div className="w-8 h-8 rounded-full bg-primary/20 flex-shrink-0 flex items-center justify-center text-xs font-bold text-primary mb-1">
-                              {msg.senderName.charAt(0)}
+                              {message.senderName.charAt(0)}
                             </div>
                           )}
-                          <div className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
-                            {!isMe && <span className="text-xs text-muted-foreground mb-1 ml-1">{msg.senderName} · {msg.senderRole}</span>}
+                          <div className={`flex flex-col ${messageIsMe ? "items-end" : "items-start"}`}>
+                            {!messageIsMe && <span className="text-xs text-muted-foreground mb-1 ml-1">{message.senderName} · {message.senderRole}</span>}
                             <div className={`px-4 py-2.5 rounded-2xl max-w-full ${
-                              isMe
+                              messageIsMe
                                 ? "bg-primary text-primary-foreground rounded-tr-sm"
                                 : "bg-card border shadow-sm rounded-tl-sm"
                             }`}>
-                              {msg.type === "voice" && msg.mediaUrl ? (
-                                <audio controls className="h-10 max-w-[200px] sm:max-w-[250px]" src={msg.mediaUrl} />
+                              {message.type === "voice" && message.mediaUrl ? (
+                                <audio controls className="h-10 max-w-[200px] sm:max-w-[250px]" src={message.mediaUrl} />
                               ) : (
-                                <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+                                <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
                               )}
                             </div>
+                            <button type="button" className="mt-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary" onClick={() => setReplyTo(message.id)}>
+                              <Reply className="h-3 w-3" /> Reply
+                            </button>
+                            <button type="button" className="mt-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-destructive disabled:opacity-50" onClick={() => handleReport(message.id)} disabled={reportingMessageId === message.id}>
+                              {reportingMessageId === message.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Flag className="h-3 w-3" />}
+                              Report
+                            </button>
                             <span className="text-[10px] text-muted-foreground mt-1 opacity-70">
-                              {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                              {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                             </span>
                           </div>
                         </div>
+                        {replies.length > 0 && <div className="mt-2 w-full space-y-2">{replies.map((reply) => renderMessage(reply, depth + 1))}</div>}
+                      </div>
+                      );
+                    };
+                    return (
+                      <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
+                        {renderMessage(msg)}
                       </div>
                     );
                   })
@@ -171,6 +216,14 @@ export default function Chat() {
 
               {/* Input Area */}
               <div className="p-4 border-t bg-card">
+                {replyTo && (
+                  <div className="mb-2 flex items-center justify-between rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+                    <span>Replying to {replyTarget?.senderName ?? "a message"}: {replyTarget?.content.slice(0, 80) ?? ""}</span>
+                    <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => setReplyTo(null)} aria-label="Cancel reply">
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
                 <form onSubmit={handleSendMessage} className="flex gap-2 items-center">
                   <VoiceRecorder onSend={handleSendVoice} isSending={sendMessageMutation.isPending} />
                   <Input

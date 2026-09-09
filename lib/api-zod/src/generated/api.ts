@@ -443,6 +443,23 @@ export const SendMessageBody = zod.object({
 });
 
 /**
+ * @summary Report a group message for moderation review
+ */
+export const ReportMessageParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const reportMessageBodyReasonMin = 3;
+export const reportMessageBodyReasonMax = 500;
+
+export const ReportMessageBody = zod.object({
+  reason: zod
+    .string()
+    .min(reportMessageBodyReasonMin)
+    .max(reportMessageBodyReasonMax),
+});
+
+/**
  * @summary List all study groups
  */
 export const ListStudyGroupsResponseItem = zod.object({

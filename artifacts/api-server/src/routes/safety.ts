@@ -5,11 +5,16 @@ import { requireAuth } from "../lib/auth-middleware";
 import { getAIProvider } from "../lib/ai-provider";
 
 const router = Router();
+const moderationRoles = new Set(["teacher", "owner"]);
+
+function canReviewContent(user: { role: string; isManager: boolean }): boolean {
+  return moderationRoles.has(user.role) || user.isManager;
+}
 
 // GET /content-flags — list flags (owner/teacher only)
 router.get("/content-flags", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (user.role === "student") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!canReviewContent(user)) { res.status(403).json({ error: "Authorized staff access required" }); return; }
   const flags = await db.select({
     id: contentFlagsTable.id,
     contentType: contentFlagsTable.contentType,
@@ -31,6 +36,7 @@ router.get("/content-flags", requireAuth, async (req, res): Promise<void> => {
 
 // POST /content-flags — create flag (internal use or manual)
 router.post("/content-flags", requireAuth, async (req, res): Promise<void> => {
+  if (!canReviewContent(req.currentUser!)) { res.status(403).json({ error: "Authorized staff access required" }); return; }
   const { contentType, contentId, contentText, reason, severity = "medium", detectedBy = "ai" } = req.body as {
     contentType: string; contentId: number; contentText?: string; reason: string; severity?: string; detectedBy?: string;
   };
@@ -42,10 +48,18 @@ router.post("/content-flags", requireAuth, async (req, res): Promise<void> => {
 // PATCH /content-flags/:id — review a flag
 router.patch("/content-flags/:id", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (user.role === "student") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!canReviewContent(user)) { res.status(403).json({ error: "Authorized staff access required" }); return; }
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const { status, reviewNote } = req.body as { status: string; reviewNote?: string };
+  if (!new Set(["pending", "reviewed", "dismissed", "actioned"]).has(status)) {
+    res.status(400).json({ error: "Invalid moderation status" });
+    return;
+  }
+  if (reviewNote != null && (typeof reviewNote !== "string" || reviewNote.length > 2000)) {
+    res.status(400).json({ error: "Review note must be at most 2000 characters" });
+    return;
+  }
   const [updated] = await db.update(contentFlagsTable)
     .set({ status, reviewNote, reviewedBy: user.id })
     .where(eq(contentFlagsTable.id, id))
@@ -67,6 +81,7 @@ router.delete("/content-flags/:id", requireAuth, async (req, res): Promise<void>
 
 // POST /content-flags/moderate — run AI moderation on text
 router.post("/content-flags/moderate", requireAuth, async (req, res): Promise<void> => {
+  if (!canReviewContent(req.currentUser!)) { res.status(403).json({ error: "Authorized staff access required" }); return; }
   const { text, contentType, contentId } = req.body as { text: string; contentType?: string; contentId?: number };
   if (!text) { res.status(400).json({ error: "text required" }); return; }
   try {

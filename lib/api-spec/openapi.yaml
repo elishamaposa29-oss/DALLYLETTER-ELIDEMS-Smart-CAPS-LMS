@@ -463,6 +463,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/Message"
 
+  /messages/{id}/report:
+    post:
+      operationId: reportMessage
+      tags: [studyGroups]
+      summary: Report a group message for moderation review
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportMessageBody"
+      responses:
+        "201":
+          description: Message report created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContentFlag"
+
   # STUDY GROUPS
   /study-groups:
     get:
@@ -1043,6 +1068,8 @@ components:
           type: ["string", "null"]
         groupId:
           type: ["integer", "null"]
+        parentMessageId:
+          type: ["integer", "null"]
         recipientId:
           type: ["integer", "null"]
         createdAt:
@@ -1068,11 +1095,54 @@ components:
           type: ["string", "null"]
         groupId:
           type: ["integer", "null"]
+        parentMessageId:
+          type: ["integer", "null"]
         recipientId:
           type: ["integer", "null"]
       required:
         - content
         - type
+
+    ReportMessageBody:
+      type: object
+      properties:
+        reason:
+          type: string
+          minLength: 3
+          maxLength: 500
+      required:
+        - reason
+
+    ContentFlag:
+      type: object
+      properties:
+        id:
+          type: integer
+        contentType:
+          type: string
+        contentId:
+          type: integer
+        contentText:
+          type: ["string", "null"]
+        reason:
+          type: string
+        severity:
+          type: string
+        status:
+          type: string
+        detectedBy:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - contentType
+        - contentId
+        - reason
+        - severity
+        - status
+        - detectedBy
+        - createdAt
 
     StudyGroup:
       type: object

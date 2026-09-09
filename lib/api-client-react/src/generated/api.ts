@@ -20,6 +20,7 @@ import type {
   ActivityItem,
   AuthResponse,
   BlockUserBody,
+  ContentFlag,
   CreateClassBody,
   CreateLessonBody,
   CreateNotificationBody,
@@ -40,6 +41,7 @@ import type {
   RaiseHandBody,
   RecordPaymentBody,
   RegisterUserBody,
+  ReportMessageBody,
   SendMessageBody,
   StudyGroup,
   UpdateClassBody,
@@ -1953,6 +1955,93 @@ export const useSendMessage = <
   TContext
 > => {
   return useMutation(getSendMessageMutationOptions(options));
+};
+
+/**
+ * @summary Report a group message for moderation review
+ */
+export const getReportMessageUrl = (id: number) => {
+  return `/api/messages/${id}/report`;
+};
+
+export const reportMessage = async (
+  id: number,
+  reportMessageBody: ReportMessageBody,
+  options?: RequestInit,
+): Promise<ContentFlag> => {
+  return customFetch<ContentFlag>(getReportMessageUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(reportMessageBody),
+  });
+};
+
+export const getReportMessageMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof reportMessage>>,
+    TError,
+    { id: number; data: BodyType<ReportMessageBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof reportMessage>>,
+  TError,
+  { id: number; data: BodyType<ReportMessageBody> },
+  TContext
+> => {
+  const mutationKey = ["reportMessage"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof reportMessage>>,
+    { id: number; data: BodyType<ReportMessageBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return reportMessage(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ReportMessageMutationResult = NonNullable<
+  Awaited<ReturnType<typeof reportMessage>>
+>;
+export type ReportMessageMutationBody = BodyType<ReportMessageBody>;
+export type ReportMessageMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Report a group message for moderation review
+ */
+export const useReportMessage = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof reportMessage>>,
+    TError,
+    { id: number; data: BodyType<ReportMessageBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof reportMessage>>,
+  TError,
+  { id: number; data: BodyType<ReportMessageBody> },
+  TContext
+> => {
+  return useMutation(getReportMessageMutationOptions(options));
 };
 
 /**
