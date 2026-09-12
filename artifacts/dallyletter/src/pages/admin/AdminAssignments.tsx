@@ -14,8 +14,9 @@ export default function AdminAssignments() {
   const { toast } = useToast();
   const [assignments, setAssignments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [materialUploading, setMaterialUploading] = useState(false);
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ title: "", description: "", subject: "", grade: "", dueDate: "", totalMarks: "100" });
+  const [form, setForm] = useState({ title: "", description: "", subject: "", grade: "", dueDate: "", totalMarks: "100", attachmentUrl: "" });
 
   const load = () => {
     void fetch("/api/assignments", { headers: { Authorization: `Bearer ${token()}` } })
@@ -23,6 +24,21 @@ export default function AdminAssignments() {
       .catch(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
+
+  const uploadMaterial = (file: File | undefined) => {
+    if (!file) return;
+    setMaterialUploading(true);
+    const body = new FormData();
+    body.append("file", file);
+    void fetch("/api/assignments/material", { method: "POST", headers: { Authorization: `Bearer ${token()}` }, body })
+      .then(async response => {
+        if (!response.ok) { const error = await response.json().catch(() => null) as { error?: string } | null; throw new Error(error?.error ?? "Material upload failed"); }
+        return response.json() as Promise<{ attachmentUrl: string }>;
+      })
+      .then(result => setForm(formState => ({ ...formState, attachmentUrl: result.attachmentUrl })))
+      .catch(error => toast({ variant: "destructive", title: error instanceof Error ? error.message : "Material upload failed" }))
+      .finally(() => setMaterialUploading(false));
+  };
 
   const create = () => {
     if (!form.title || !form.subject || !form.dueDate) { toast({ variant: "destructive", title: "Fill required fields" }); return; }
@@ -36,7 +52,7 @@ export default function AdminAssignments() {
       if (!r.ok) { const error = await r.json().catch(() => null) as { error?: string } | null; toast({ variant: "destructive", title: error?.error ?? "Failed to create" }); return; }
       toast({ title: "✅ Assignment created" });
       setOpen(false);
-      setForm({ title: "", description: "", subject: "", grade: "", dueDate: "", totalMarks: "100" });
+      setForm({ title: "", description: "", subject: "", grade: "", dueDate: "", totalMarks: "100", attachmentUrl: "" });
       load();
     }).catch(() => toast({ variant: "destructive", title: "Failed to create" }));
   };
@@ -63,6 +79,8 @@ export default function AdminAssignments() {
               <div className="space-y-3 mt-2">
                 <Input placeholder="Title *" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
                 <textarea className="w-full border rounded-lg px-3 py-2 text-sm min-h-[80px] resize-none" placeholder="Description" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+                <Input type="url" placeholder="Reference material URL (PDF, video, document)" value={form.attachmentUrl} onChange={e => setForm(f => ({ ...f, attachmentUrl: e.target.value }))} />
+                <Input type="file" accept="video/mp4,video/webm,video/quicktime,video/ogg,audio/mpeg,audio/mp4,audio/ogg,audio/wav,image/jpeg,image/png,image/webp,application/pdf,.doc,.docx" onChange={e => uploadMaterial(e.target.files?.[0])} disabled={materialUploading} />
                 <div className="grid grid-cols-2 gap-2">
                   <Input placeholder="Subject *" value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} />
                   <Input placeholder="Grade (e.g. Grade 10)" value={form.grade} onChange={e => setForm(f => ({ ...f, grade: e.target.value }))} />
@@ -71,7 +89,7 @@ export default function AdminAssignments() {
                   <div><label className="text-xs text-slate-500 mb-1 block">Due Date *</label><Input type="date" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} /></div>
                   <div><label className="text-xs text-slate-500 mb-1 block">Total Marks</label><Input type="number" value={form.totalMarks} onChange={e => setForm(f => ({ ...f, totalMarks: e.target.value }))} /></div>
                 </div>
-                <Button className="w-full bg-blue-600 text-white" onClick={create}>Create Assignment</Button>
+                <Button className="w-full bg-blue-600 text-white" onClick={create} disabled={materialUploading}>{materialUploading ? "Uploading material…" : "Create Assignment"}</Button>
               </div>
             </DialogContent>
           </Dialog>

@@ -1,10 +1,22 @@
 import { Router } from "express";
+import multer from "multer";
 import { db } from "@workspace/db";
 import { assignmentsTable, assignmentSubmissionsTable } from "@workspace/db/schema";
 import { eq, desc, and, or, isNull } from "drizzle-orm";
 import { requireAuth } from "../lib/auth-middleware";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
 
 const router = Router();
+const materialUpload = multer({
+  storage: multer.diskStorage({
+    destination: async (_req, _file, callback) => {
+      try { await ensureMediaDirectory(); callback(null, getMediaDirectory()); } catch (error) { callback(error as Error, ""); }
+    },
+    filename: (_req, _file, callback) => callback(null, createMediaStorageKey()),
+  }),
+  limits: { fileSize: MAX_MEDIA_SIZE_BYTES },
+  fileFilter: (_req, file, callback) => callback(null, isAllowedMediaType(file.mimetype)),
+});
 
 function isVisibleToStudent(assignment: { status: string; grade: string | null }, grade: string | null): boolean {
   return assignment.status === "active" && (assignment.grade == null || (grade != null && assignment.grade === grade));
@@ -18,6 +30,26 @@ function parseTotalMarks(value: unknown): number | null {
   const marks = typeof value === "number" ? value : Number(value);
   return Number.isInteger(marks) && marks > 0 && marks <= 10000 ? marks : null;
 }
+
+function normalizeAttachmentUrl(value: unknown): string | null {
+  if (value == null || value === "") return null;
+  if (typeof value !== "string" || value.length > 2048) return null;
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+router.post("/material", requireAuth, (req, res): void => {
+  if (req.currentUser?.role !== "teacher" && req.currentUser?.role !== "owner") { res.status(403).json({ error: "Teacher or owner access required" }); return; }
+  materialUpload.single("file")(req, res, (error) => {
+    if (error) { res.status(400).json({ error: "A supported material file up to 250 MB is required" }); return; }
+    if (!req.file) { res.status(400).json({ error: "A supported material file is required" }); return; }
+    res.status(201).json({ attachmentUrl: `/api/lessons/media/${req.file.filename}?type=${encodeURIComponent(req.file.mimetype)}`, fileName: req.file.originalname, mimeType: req.file.mimetype, size: req.file.size });
+  });
+});
 
 router.get("/", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
@@ -54,12 +86,16 @@ router.post("/", requireAuth, async (req, res): Promise<void> => {
   if (user.role !== "teacher" && user.role !== "owner") { res.status(403).json({ error: "Forbidden" }); return; }
   const { title, description, subject, grade, dueDate, totalMarks, attachmentUrl } = req.body;
   const parsedMarks = parseTotalMarks(totalMarks ?? 100);
+  const normalizedAttachmentUrl = normalizeAttachmentUrl(attachmentUrl);
+  if (attachmentUrl != null && normalizedAttachmentUrl == null) {
+    res.status(400).json({ error: "attachmentUrl must be a valid http(s) URL" }); return;
+  }
   if (typeof title !== "string" || !title.trim() || typeof subject !== "string" || !subject.trim() || !isValidDueDate(dueDate) || parsedMarks == null) {
     res.status(400).json({ error: "title, subject, valid dueDate, and totalMarks between 1 and 10000 are required" }); return;
   }
   const [row] = await db.insert(assignmentsTable).values({
     title: title.trim(), description, subject: subject.trim(), grade: typeof grade === "string" && grade.trim() ? grade.trim() : null, dueDate, totalMarks: parsedMarks,
-    teacherId: user.id, teacherName: user.name, attachmentUrl,
+    teacherId: user.id, teacherName: user.name, attachmentUrl: normalizedAttachmentUrl,
   }).returning();
   res.status(201).json(row);
 });
@@ -73,10 +109,14 @@ router.put("/:id", requireAuth, async (req, res): Promise<void> => {
   if (user.role !== "owner" && existing.teacherId !== user.id) { res.status(403).json({ error: "You can only edit your own assignments" }); return; }
   const { title, description, subject, grade, dueDate, totalMarks, status, attachmentUrl } = req.body;
   const parsedMarks = parseTotalMarks(totalMarks);
+  const normalizedAttachmentUrl = normalizeAttachmentUrl(attachmentUrl);
+  if (attachmentUrl != null && normalizedAttachmentUrl == null) {
+    res.status(400).json({ error: "attachmentUrl must be a valid http(s) URL" }); return;
+  }
   if (typeof title !== "string" || !title.trim() || typeof subject !== "string" || !subject.trim() || !isValidDueDate(dueDate) || parsedMarks == null || (status !== "active" && status !== "archived")) {
     res.status(400).json({ error: "title, subject, valid dueDate, status, and totalMarks between 1 and 10000 are required" }); return;
   }
-  const [row] = await db.update(assignmentsTable).set({ title: title.trim(), description, subject: subject.trim(), grade: typeof grade === "string" && grade.trim() ? grade.trim() : null, dueDate, totalMarks: parsedMarks, status, attachmentUrl })
+  const [row] = await db.update(assignmentsTable).set({ title: title.trim(), description, subject: subject.trim(), grade: typeof grade === "string" && grade.trim() ? grade.trim() : null, dueDate, totalMarks: parsedMarks, status, attachmentUrl: normalizedAttachmentUrl })
     .where(eq(assignmentsTable.id, assignmentId)).returning();
   res.json(row);
 });
