@@ -3,6 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -18,6 +19,7 @@ export default function StudentAssignments() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<any>(null);
   const [content, setContent] = useState("");
+  const [submissionFile, setSubmissionFile] = useState<{ url: string; fileName: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const load = () => {
@@ -43,6 +45,19 @@ export default function StudentAssignments() {
 
   useEffect(() => { load(); }, []);
 
+  const uploadSubmissionMaterial = (file: File | undefined) => {
+    if (!file) return;
+    const body = new FormData();
+    body.append("file", file);
+    void fetch("/api/assignments/material", { method: "POST", headers: { Authorization: `Bearer ${token()}` }, body })
+      .then(async response => {
+        if (!response.ok) { const error = await response.json().catch(() => null) as { error?: string } | null; throw new Error(error?.error ?? "Attachment upload failed"); }
+        return response.json() as Promise<{ attachmentUrl: string; fileName: string }>;
+      })
+      .then(result => setSubmissionFile({ url: result.attachmentUrl, fileName: result.fileName }))
+      .catch(error => toast({ variant: "destructive", title: error instanceof Error ? error.message : "Attachment upload failed" }));
+  };
+
   const submit = () => {
     if (!selected || !content.trim()) { toast({ variant: "destructive", title: "Write your answer first" }); return; }
     if (isOverdue(selected.dueDate)) { toast({ variant: "destructive", title: "This assignment is past its due date" }); return; }
@@ -50,7 +65,7 @@ export default function StudentAssignments() {
     void fetch(`/api/assignments/${selected.id}/submit`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, fileUrl: submissionFile?.url ?? null, fileName: submissionFile?.fileName ?? null }),
     }).then(async r => {
       setSubmitting(false);
       if (!r.ok) {
@@ -59,7 +74,7 @@ export default function StudentAssignments() {
         return;
       }
       toast({ title: "✅ Assignment submitted!" });
-      setSelected(null); setContent(""); load();
+      setSelected(null); setContent(""); setSubmissionFile(null); load();
     }).catch(() => {
       setSubmitting(false);
       toast({ variant: "destructive", title: "Submission failed" });
@@ -119,7 +134,7 @@ export default function StudentAssignments() {
                         </div>
                       </div>
                       {!sub && !overdue && (
-                        <Button size="sm" className="bg-blue-600 text-white gap-1.5" onClick={() => { setSelected(a); setContent(""); }}>
+                        <Button size="sm" className="bg-blue-600 text-white gap-1.5" onClick={() => { setSelected(a); setContent(""); setSubmissionFile(null); }}>
                           <Send className="h-3.5 w-3.5" /> Submit
                         </Button>
                       )}
@@ -142,7 +157,12 @@ export default function StudentAssignments() {
           <DialogContent className="sm:max-w-lg">
             <DialogHeader><DialogTitle>{selected.title}</DialogTitle></DialogHeader>
             <div className="space-y-3">
-              <div className="bg-slate-50 rounded-lg p-3 text-sm text-slate-600">{selected.description || "No description provided."}</div>
+              <div className="bg-slate-50 rounded-lg p-3 text-sm text-slate-600 whitespace-pre-wrap">{selected.description || "No description provided."}</div>
+              {selected.attachmentUrl && (
+                <a className="text-sm text-blue-700 hover:underline block" href={selected.attachmentUrl} target="_blank" rel="noreferrer">
+                  Open assignment reference material
+                </a>
+              )}
               <div>
                 <label className="text-sm font-medium text-slate-700 mb-1 block">Your Answer</label>
                 <textarea
@@ -151,6 +171,11 @@ export default function StudentAssignments() {
                   value={content}
                   onChange={e => setContent(e.target.value)}
                 />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">Optional attachment</label>
+                <Input type="file" accept="video/mp4,video/webm,video/quicktime,video/ogg,audio/mpeg,audio/mp4,audio/ogg,audio/wav,image/jpeg,image/png,image/webp,application/pdf,.doc,.docx" onChange={e => uploadSubmissionMaterial(e.target.files?.[0])} />
+                {submissionFile && <p className="text-xs text-slate-500">Attached: {submissionFile.fileName}</p>}
               </div>
               <Button className="w-full bg-blue-600 text-white gap-2" onClick={submit} disabled={submitting}>
                 <Send className="h-4 w-4" /> {submitting ? "Submitting…" : "Submit Assignment"}
