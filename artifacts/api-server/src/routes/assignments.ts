@@ -1,10 +1,14 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { assignmentsTable, assignmentSubmissionsTable, usersTable } from "@workspace/db/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, or, isNull } from "drizzle-orm";
 import { requireAuth } from "../lib/auth-middleware";
 
 const router = Router();
+
+function isVisibleToStudent(assignment: { status: string; grade: string | null }, grade: string | null): boolean {
+  return assignment.status === "active" && (assignment.grade == null || (grade != null && assignment.grade === grade));
+}
 
 router.get("/", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
@@ -13,7 +17,10 @@ router.get("/", requireAuth, async (req, res): Promise<void> => {
     rows = await db.select().from(assignmentsTable).orderBy(desc(assignmentsTable.createdAt));
   } else {
     rows = await db.select().from(assignmentsTable)
-      .where(eq(assignmentsTable.status, "active"))
+      .where(and(
+        eq(assignmentsTable.status, "active"),
+        or(isNull(assignmentsTable.grade), eq(assignmentsTable.grade, user.grade ?? "")),
+      ))
       .orderBy(desc(assignmentsTable.createdAt));
   }
   res.json(rows);
@@ -23,7 +30,7 @@ router.get("/:id", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   const [assignment] = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, parseInt(String(req.params.id))));
   if (!assignment) { res.status(404).json({ error: "Not found" }); return; }
-  if (user.role === "student" && assignment.status !== "active") { res.status(404).json({ error: "Not found" }); return; }
+  if (user.role === "student" && !isVisibleToStudent(assignment, user.grade)) { res.status(404).json({ error: "Not found" }); return; }
     if (user.role === "teacher" && assignment.teacherId !== user.id) { res.status(403).json({ error: "You can only view your own assignments" }); return; }
   const submissions = user.role === "student"
     ? await db.select().from(assignmentSubmissionsTable).where(and(eq(assignmentSubmissionsTable.assignmentId, assignment.id), eq(assignmentSubmissionsTable.studentId, user.id)))
@@ -67,8 +74,8 @@ router.get("/:id/submissions", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   const assignmentId = parseInt(String(req.params.id));
   if (user.role === "student") {
-    const [assignment] = await db.select({ status: assignmentsTable.status }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
-    if (!assignment || assignment.status !== "active") { res.status(404).json({ error: "Not found" }); return; }
+    const [assignment] = await db.select({ status: assignmentsTable.status, grade: assignmentsTable.grade }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
+    if (!assignment || !isVisibleToStudent(assignment, user.grade)) { res.status(404).json({ error: "Not found" }); return; }
     const [sub] = await db.select().from(assignmentSubmissionsTable)
       .where(and(eq(assignmentSubmissionsTable.assignmentId, assignmentId), eq(assignmentSubmissionsTable.studentId, user.id)));
     res.json(sub ? [sub] : []); return;
@@ -88,8 +95,8 @@ router.post("/:id/submit", requireAuth, async (req, res): Promise<void> => {
   if (user.role !== "student") { res.status(403).json({ error: "Forbidden" }); return; }
   const assignmentId = parseInt(String(req.params.id));
   const { content, fileUrl, fileName } = req.body;
-    const [assignment] = await db.select({ status: assignmentsTable.status }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
-    if (!assignment || assignment.status !== "active") { res.status(404).json({ error: "Not found" }); return; }
+    const [assignment] = await db.select({ status: assignmentsTable.status, grade: assignmentsTable.grade }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
+    if (!assignment || !isVisibleToStudent(assignment, user.grade)) { res.status(404).json({ error: "Not found" }); return; }
   const [existing] = await db.select().from(assignmentSubmissionsTable)
     .where(and(eq(assignmentSubmissionsTable.assignmentId, assignmentId), eq(assignmentSubmissionsTable.studentId, user.id)));
   if (existing) {
