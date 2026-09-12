@@ -22,35 +22,47 @@ export default function StudentAssignments() {
 
   const load = () => {
     void fetch("/api/assignments", { headers: { Authorization: `Bearer ${token()}` } })
-      .then(r => r.json())
+      .then(r => { if (!r.ok) throw new Error("Unable to load assignments"); return r.json(); })
       .then(async (data) => {
         const list = Array.isArray(data) ? data : [];
         setAssignments(list);
         const subs: Record<number, any> = {};
         await Promise.all(list.map(async (a: any) => {
           const sr = await fetch(`/api/assignments/${a.id}/submissions`, { headers: { Authorization: `Bearer ${token()}` } });
+          if (!sr.ok) throw new Error("Unable to load submissions");
           const sd = await sr.json();
           if (Array.isArray(sd) && sd.length > 0) subs[a.id] = sd[0];
         }));
         setSubmissions(subs);
         setLoading(false);
-      }).catch(() => setLoading(false));
+      }).catch(() => {
+        setLoading(false);
+        toast({ variant: "destructive", title: "Unable to load assignments" });
+      });
   };
 
   useEffect(() => { load(); }, []);
 
   const submit = () => {
     if (!selected || !content.trim()) { toast({ variant: "destructive", title: "Write your answer first" }); return; }
+    if (isOverdue(selected.dueDate)) { toast({ variant: "destructive", title: "This assignment is past its due date" }); return; }
     setSubmitting(true);
     void fetch(`/api/assignments/${selected.id}/submit`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
       body: JSON.stringify({ content }),
-    }).then(r => {
+    }).then(async r => {
       setSubmitting(false);
-      if (!r.ok) { toast({ variant: "destructive", title: "Submission failed" }); return; }
+      if (!r.ok) {
+        const error = await r.json().catch(() => null) as { error?: string } | null;
+        toast({ variant: "destructive", title: error?.error ?? "Submission failed" });
+        return;
+      }
       toast({ title: "✅ Assignment submitted!" });
       setSelected(null); setContent(""); load();
+    }).catch(() => {
+      setSubmitting(false);
+      toast({ variant: "destructive", title: "Submission failed" });
     });
   };
 
@@ -105,7 +117,7 @@ export default function StudentAssignments() {
                           <span className="flex items-center gap-1"><BookOpen className="h-3 w-3" /> {a.totalMarks} marks</span>
                         </div>
                       </div>
-                      {!sub && (
+                      {!sub && !overdue && (
                         <Button size="sm" className="bg-blue-600 text-white gap-1.5" onClick={() => { setSelected(a); setContent(""); }}>
                           <Send className="h-3.5 w-3.5" /> Submit
                         </Button>

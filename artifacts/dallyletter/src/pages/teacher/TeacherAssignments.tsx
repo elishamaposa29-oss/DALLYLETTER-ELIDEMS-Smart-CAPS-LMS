@@ -28,17 +28,19 @@ export default function TeacherAssignments() {
 
   const create = () => {
     if (!form.title || !form.subject || !form.dueDate) { toast({ variant: "destructive", title: "Fill required fields" }); return; }
+    const totalMarks = Number(form.totalMarks);
+    if (!Number.isInteger(totalMarks) || totalMarks <= 0 || totalMarks > 10000) { toast({ variant: "destructive", title: "Total marks must be between 1 and 10000" }); return; }
     void fetch("/api/assignments", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
-      body: JSON.stringify({ ...form, totalMarks: parseInt(form.totalMarks) }),
-    }).then(r => {
-      if (!r.ok) { toast({ variant: "destructive", title: "Failed to create" }); return; }
+      body: JSON.stringify({ ...form, totalMarks }),
+    }).then(async r => {
+      if (!r.ok) { const error = await r.json().catch(() => null) as { error?: string } | null; toast({ variant: "destructive", title: error?.error ?? "Failed to create" }); return; }
       toast({ title: "✅ Assignment created" });
       setOpen(false);
       setForm({ title: "", description: "", subject: "", grade: "", dueDate: "", totalMarks: "100" });
       load();
-    });
+    }).catch(() => toast({ variant: "destructive", title: "Failed to create" }));
   };
 
   const loadSubs = (assignment: any) => {
