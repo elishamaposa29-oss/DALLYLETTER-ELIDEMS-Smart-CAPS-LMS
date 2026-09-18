@@ -1,9 +1,11 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
-import { db, platformSettingsTable } from "@workspace/db";
+import { db, auditLogsTable, platformSettingsTable } from "@workspace/db";
 import { requireAuth, requireOwner } from "../lib/auth-middleware";
 
 const router: IRouter = Router();
+
+const PUBLIC_SETTING_KEYS = new Set(["paypal_url", "trust_wallet", "ecocash_number", "payment_instructions"]);
 
 const DEFAULT_SETTINGS = {
   paypal_url: "",
@@ -17,16 +19,25 @@ router.get("/settings", requireAuth, async (_req, res): Promise<void> => {
   const rows = await db.select().from(platformSettingsTable);
   const settings: Record<string, string> = { ...DEFAULT_SETTINGS };
   for (const row of rows) {
-    settings[row.key] = row.value;
+    if (PUBLIC_SETTING_KEYS.has(row.key)) settings[row.key] = row.value;
+  }
+  if (updates.length > 0) {
+    await db.insert(auditLogsTable).values({
+      action: "Updated platform payment settings",
+      category: "admin",
+      performedBy: req.currentUser!.id,
+      details: JSON.stringify({ keys: updates.map(([key]) => key) }),
+    });
   }
   res.json(settings);
 });
 
 // PATCH /settings — Update settings (owner only)
 router.patch("/settings", requireAuth, requireOwner, async (req, res): Promise<void> => {
-  const updates = req.body as Record<string, string>;
+  const updates = Object.entries(req.body as Record<string, unknown>)
+    .filter(([key, value]) => PUBLIC_SETTING_KEYS.has(key) && typeof value === "string") as [string, string][];
 
-  for (const [key, value] of Object.entries(updates)) {
+  for (const [key, value] of updates) {
     if (typeof value !== "string") continue;
     // Upsert each key
     const existing = await db.select().from(platformSettingsTable).where(eq(platformSettingsTable.key, key));
