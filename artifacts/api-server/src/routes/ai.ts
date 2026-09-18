@@ -28,7 +28,7 @@ Platform context: Role-based system with Students, Teachers, and Owner/Admin.`;
 // GET /ai/status — check AI provider status
 router.get("/ai/status", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (user.role === "student") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (user.role !== "owner") { res.status(403).json({ error: "Owner only" }); return; }
   const ai = await getAIProvider();
   const rows = await db.select().from(platformSettingsTable);
   const cfg: Record<string, string> = {};
@@ -86,7 +86,10 @@ router.post("/ai/settings", requireAuth, async (req, res): Promise<void> => {
   const { provider, gemini_api_key, openai_api_key, anthropic_api_key } = req.body as Record<string, string>;
 
   const updates: { key: string; value: string }[] = [];
-  if (provider) updates.push({ key: "ai_provider", value: provider });
+  if (provider) {
+    if (!["mock", "gemini", "openai", "anthropic"].includes(provider)) { res.status(400).json({ error: "Unsupported AI provider" }); return; }
+    updates.push({ key: "ai_provider", value: provider });
+  }
   if (gemini_api_key !== undefined) updates.push({ key: "gemini_api_key", value: gemini_api_key });
   if (openai_api_key !== undefined) updates.push({ key: "openai_api_key", value: openai_api_key });
   if (anthropic_api_key !== undefined) updates.push({ key: "anthropic_api_key", value: anthropic_api_key });
