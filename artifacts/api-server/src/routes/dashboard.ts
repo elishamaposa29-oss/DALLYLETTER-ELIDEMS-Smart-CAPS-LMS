@@ -2,12 +2,13 @@
 import { Router, type IRouter } from "express";
 import { eq, count, sum, sql } from "drizzle-orm";
 import { db, usersTable, lessonsTable, classesTable, studyGroupsTable, paymentsTable, messagesTable, activityLogTable, notificationsTable } from "@workspace/db";
-import { requireAuth } from "../lib/auth-middleware";
+import { requireOwner } from "../lib/auth-middleware";
 
 const router: IRouter = Router();
+router.use(requireOwner);
 
 // GET /dashboard/stats — Get platform-wide statistics
-router.get("/dashboard/stats", requireAuth, async (_req, res): Promise<void> => {
+router.get("/dashboard/stats", async (_req, res): Promise<void> => {
   const [studentCount] = await db.select({ count: count() }).from(usersTable).where(eq(usersTable.role, "student"));
   const [teacherCount] = await db.select({ count: count() }).from(usersTable).where(eq(usersTable.role, "teacher"));
   const [lessonCount] = await db.select({ count: count() }).from(lessonsTable);
@@ -39,7 +40,7 @@ router.get("/dashboard/stats", requireAuth, async (_req, res): Promise<void> => 
 });
 
 // GET /dashboard/activity — Get recent activity feed
-router.get("/dashboard/activity", requireAuth, async (_req, res): Promise<void> => {
+router.get("/dashboard/activity", async (_req, res): Promise<void> => {
   const activities = await db.select().from(activityLogTable)
     .orderBy(sql`${activityLogTable.createdAt} DESC`)
     .limit(20);
@@ -48,7 +49,7 @@ router.get("/dashboard/activity", requireAuth, async (_req, res): Promise<void> 
 });
 
 // GET /dashboard/payment-summary — Get payment breakdown
-router.get("/dashboard/payment-summary", requireAuth, async (_req, res): Promise<void> => {
+router.get("/dashboard/payment-summary", async (_req, res): Promise<void> => {
   const [paidRow] = await db.select({ count: count(), total: sum(paymentsTable.amount) })
     .from(paymentsTable).where(eq(paymentsTable.status, "paid"));
   const [overdueRow] = await db.select({ count: count() })
