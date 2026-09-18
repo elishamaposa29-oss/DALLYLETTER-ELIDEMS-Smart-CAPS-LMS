@@ -21,14 +21,6 @@ router.get("/settings", requireAuth, async (_req, res): Promise<void> => {
   for (const row of rows) {
     if (PUBLIC_SETTING_KEYS.has(row.key)) settings[row.key] = row.value;
   }
-  if (updates.length > 0) {
-    await db.insert(auditLogsTable).values({
-      action: "Updated platform payment settings",
-      category: "admin",
-      performedBy: req.currentUser!.id,
-      details: JSON.stringify({ keys: updates.map(([key]) => key) }),
-    });
-  }
   res.json(settings);
 });
 
@@ -51,8 +43,18 @@ router.patch("/settings", requireAuth, requireOwner, async (req, res): Promise<v
   const rows = await db.select().from(platformSettingsTable);
   const settings: Record<string, string> = { ...DEFAULT_SETTINGS };
   for (const row of rows) {
-    settings[row.key] = row.value;
+    if (PUBLIC_SETTING_KEYS.has(row.key)) settings[row.key] = row.value;
   }
+
+  if (updates.length > 0) {
+    await db.insert(auditLogsTable).values({
+      action: "Updated platform payment settings",
+      category: "admin",
+      performedBy: req.currentUser!.id,
+      details: JSON.stringify({ keys: updates.map(([key]) => key) }),
+    });
+  }
+
   res.json(settings);
 });
 
