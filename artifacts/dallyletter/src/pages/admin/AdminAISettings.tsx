@@ -60,7 +60,8 @@ export default function AdminAISettings() {
         const s = await fetch("/api/ai/status", { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json());
         setStatus(s);
       } else {
-        toast({ variant: "destructive", title: "Save failed" });
+        const data = await r.json().catch(() => ({}));
+        toast({ variant: "destructive", title: "Save failed", description: data.error || "Unable to save AI settings." });
       }
     } finally {
       setSaving(false);
@@ -181,7 +182,7 @@ export default function AdminAISettings() {
           <Card>
             <CardHeader>
               <CardTitle>{activeProvider.label} — API Key</CardTitle>
-              <CardDescription>Your key is stored securely in the database. It is never exposed to students.</CardDescription>
+              <CardDescription>Your key is stored in the platform settings database and is never returned in full to students.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-1.5">
@@ -207,7 +208,7 @@ export default function AdminAISettings() {
                     </Button>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground">The key is encrypted at rest. Never share it with anyone.</p>
+                <p className="text-xs text-muted-foreground">The full key is only entered here and is not displayed by the status endpoint. Never share it with anyone.</p>
               </div>
             </CardContent>
           </Card>
