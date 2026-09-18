@@ -7,11 +7,13 @@ import { useAuth } from "@/contexts/AuthContext";
 
 export default function AdminHome() {
   const { user } = useAuth();
-  const { data: stats, isLoading: statsLoading } = useGetDashboardStats();
-  const { data: paymentSummary, isLoading: paymentsLoading } = useGetPaymentSummary();
-  const { data: activity, isLoading: activityLoading } = useGetRecentActivity();
+  const { data: stats, isLoading: statsLoading, isError: statsError, refetch: refetchStats } = useGetDashboardStats();
+  const { data: paymentSummary, isLoading: paymentsLoading, isError: paymentsError, refetch: refetchPayments } = useGetPaymentSummary();
+  const { data: activity, isLoading: activityLoading, isError: activityError, refetch: refetchActivity } = useGetRecentActivity();
 
   const isLoading = statsLoading || paymentsLoading || activityLoading;
+  const hasError = statsError || paymentsError || activityError;
+  const refreshAll = async () => { await Promise.all([refetchStats(), refetchPayments(), refetchActivity()]); };
 
   const statCards = [
     {
@@ -75,9 +77,9 @@ export default function AdminHome() {
               Welcome back, <span className="font-semibold text-foreground">{user?.name}</span>. Here's your platform at a glance.
             </p>
           </div>
-          <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 px-4 py-2 rounded-full">
-            <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">Platform Online</span>
+          <div className="flex items-center gap-2">
+            <button onClick={refreshAll} disabled={isLoading} className="inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50">Refresh</button>
+            <div className={"flex items-center gap-2 px-4 py-2 rounded-full border " + (hasError ? "bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800" : "bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800")}><div className={"h-2 w-2 rounded-full " + (hasError ? "bg-red-500" : "bg-emerald-500") + " animate-pulse"} /><span className={"text-sm font-medium " + (hasError ? "text-red-700 dark:text-red-400" : "text-emerald-700 dark:text-emerald-400")}>{hasError ? "Dashboard needs attention" : "Platform Online"}</span></div>
           </div>
         </div>
 
@@ -90,6 +92,7 @@ export default function AdminHome() {
           </div>
         ) : (
           <>
+            {hasError && <Card className="border-red-200 bg-red-50/70 dark:bg-red-950/20 dark:border-red-800"><CardContent className="p-4 text-sm text-red-800 dark:text-red-300">One or more dashboard services could not be loaded. The displayed numbers may be incomplete. Restore the database/API and press Refresh.</CardContent></Card>}
             {/* Stat Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
               {statCards.map((card) => {
