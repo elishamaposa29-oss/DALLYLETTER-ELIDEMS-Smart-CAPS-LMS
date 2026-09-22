@@ -6,8 +6,11 @@ import { getAIProvider } from "../lib/ai-provider";
 
 const router = Router();
 
-function requireRole(...roles: string[]) {
-  return requireAuth;
+async function getPollForManager(pollId: number, userId: number, role: string) {
+  const [poll] = await db.select().from(pollsTable).where(eq(pollsTable.id, pollId));
+  if (!poll) return null;
+  if (role !== "owner" && role !== "admin" && (role !== "teacher" || poll.createdBy !== userId)) return null;
+  return poll;
 }
 
 // GET /polls — list polls
@@ -33,7 +36,12 @@ router.post("/polls", requireAuth, async (req, res): Promise<void> => {
     mode?: string; timerSeconds?: number;
     questions?: { question: string; difficulty?: string; explanation?: string; options: { text: string; isCorrect: boolean }[] }[];
   };
-  if (!title) { res.status(400).json({ error: "title required" }); return; }
+  if (typeof title !== "string" || !title.trim()) { res.status(400).json({ error: "title required" }); return; }
+  if (!Array.isArray(questions) || questions.length === 0) { res.status(400).json({ error: "At least one question is required" }); return; }
+  if (questions.some(q => !q || typeof q.question !== "string" || !q.question.trim() || !Array.isArray(q.options) || q.options.length < 2 || q.options.some(option => !option || typeof option.text !== "string" || !option.text.trim()) || q.options.filter(option => option.isCorrect === true).length !== 1)) {
+    res.status(400).json({ error: "Each question needs text, at least two options, and exactly one correct option" });
+    return;
+  }
 
   const [poll] = await db.insert(pollsTable).values({ title, topic, type, grade, subject, mode, timerSeconds, createdBy: user.id, status: "draft" }).returning();
 
@@ -92,11 +100,20 @@ router.patch("/polls/:id", requireAuth, async (req, res): Promise<void> => {
   if (user.role === "student") { res.status(403).json({ error: "Forbidden" }); return; }
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const poll = await getPollForManager(id, user.id, user.role);
+  if (!poll) { res.status(user.role === "teacher" ? 403 : 404).json({ error: "Poll not found" }); return; }
   const { status, title, timerSeconds } = req.body as { status?: string; title?: string; timerSeconds?: number };
   const update: Record<string, unknown> = {};
-  if (status) update.status = status;
-  if (title) update.title = title;
+  if (status !== undefined) {
+    if (!["draft", "active", "closed"].includes(status)) { res.status(400).json({ error: "Invalid poll status" }); return; }
+    update.status = status;
+  }
+  if (title !== undefined) {
+    if (typeof title !== "string" || !title.trim()) { res.status(400).json({ error: "title cannot be empty" }); return; }
+    update.title = title.trim();
+  }
   if (timerSeconds !== undefined) update.timerSeconds = timerSeconds;
+  if (Object.keys(update).length === 0) { res.status(400).json({ error: "No poll changes supplied" }); return; }
   const [updated] = await db.update(pollsTable).set(update).where(eq(pollsTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
   res.json(updated);
@@ -108,6 +125,8 @@ router.delete("/polls/:id", requireAuth, async (req, res): Promise<void> => {
   if (user.role === "student") { res.status(403).json({ error: "Forbidden" }); return; }
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const poll = await getPollForManager(id, user.id, user.role);
+  if (!poll) { res.status(user.role === "teacher" ? 403 : 404).json({ error: "Poll not found" }); return; }
   await db.delete(pollsTable).where(eq(pollsTable.id, id));
   res.sendStatus(204);
 });
@@ -115,6 +134,7 @@ router.delete("/polls/:id", requireAuth, async (req, res): Promise<void> => {
 // POST /polls/:id/submit — student submits answers
 router.post("/polls/:id/submit", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
+  if (user.role !== "student") { res.status(403).json({ error: "Student access required" }); return; }
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
@@ -127,16 +147,29 @@ router.post("/polls/:id/submit", requireAuth, async (req, res): Promise<void> =>
   if (existing) { res.status(400).json({ error: "Already submitted" }); return; }
 
   const { answers } = req.body as { answers: { questionId: number; optionId: number }[] };
-  if (!answers || !Array.isArray(answers)) { res.status(400).json({ error: "answers required" }); return; }
+  if (!Array.isArray(answers) || answers.length === 0) { res.status(400).json({ error: "At least one answer is required" }); return; }
 
   // Score calculation
   const questions = await db.select().from(pollQuestionsTable).where(eq(pollQuestionsTable.pollId, id));
+  if (questions.length === 0 || answers.length !== questions.length) { res.status(400).json({ error: "One answer is required for every poll question" }); return; }
+  const questionIds = new Set(questions.map(question => question.id));
+  const answerQuestionIds = new Set<number>();
+  for (const answer of answers) {
+    if (!answer || !Number.isInteger(answer.questionId) || !Number.isInteger(answer.optionId) || !questionIds.has(answer.questionId) || answerQuestionIds.has(answer.questionId)) {
+      res.status(400).json({ error: "Answers must match each poll question exactly once" });
+      return;
+    }
+    answerQuestionIds.add(answer.questionId);
+  }
   let score = 0;
   const detailedAnswers: { questionId: number; optionId: number; isCorrect: boolean }[] = [];
 
   for (const ans of answers) {
     const [correctOpt] = await db.select().from(pollOptionsTable)
       .where(and(eq(pollOptionsTable.questionId, ans.questionId), eq(pollOptionsTable.isCorrect, true)));
+    const [selectedOpt] = await db.select({ id: pollOptionsTable.id }).from(pollOptionsTable)
+      .where(and(eq(pollOptionsTable.id, ans.optionId), eq(pollOptionsTable.questionId, ans.questionId)));
+    if (!selectedOpt) { res.status(400).json({ error: "Each answer option must belong to its question" }); return; }
     const isCorrect = correctOpt?.id === ans.optionId;
     if (isCorrect) score++;
     detailedAnswers.push({ ...ans, isCorrect });
@@ -156,13 +189,15 @@ router.post("/polls/:id/submit", requireAuth, async (req, res): Promise<void> =>
     return { questionId: q.id, question: q.question, explanation: q.explanation, correctOptionId: correct?.id, correctText: correct?.text, submittedOptionId: submitted?.optionId, isCorrect: submitted?.isCorrect ?? false };
   }));
 
-  res.json({ submission, score, totalQuestions: questions.length, percentage: Math.round((score / questions.length) * 100), feedback });
+  res.json({ submission, score, totalQuestions: questions.length, percentage: questions.length > 0 ? Math.round((score / questions.length) * 100) : 0, feedback });
 });
 
 // GET /polls/:id/results — leaderboard + analytics
 router.get("/polls/:id/results", requireAuth, async (req, res): Promise<void> => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const poll = await getPollForManager(id, req.currentUser!.id, req.currentUser!.role);
+  if (!poll) { res.status(req.currentUser!.role === "teacher" ? 403 : 404).json({ error: "Poll not found" }); return; }
   const submissions = await db.select({
     id: pollSubmissionsTable.id, score: pollSubmissionsTable.score,
     totalQuestions: pollSubmissionsTable.totalQuestions, completedAt: pollSubmissionsTable.completedAt,
