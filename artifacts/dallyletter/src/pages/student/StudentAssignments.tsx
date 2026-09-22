@@ -49,7 +49,7 @@ export default function StudentAssignments() {
     if (!file) return;
     const body = new FormData();
     body.append("file", file);
-    void fetch("/api/assignments/material", { method: "POST", headers: { Authorization: `Bearer ${token()}` }, body })
+    void fetch("/api/assignments/submission-material", { method: "POST", headers: { Authorization: `Bearer ${token()}` }, body })
       .then(async response => {
         if (!response.ok) { const error = await response.json().catch(() => null) as { error?: string } | null; throw new Error(error?.error ?? "Attachment upload failed"); }
         return response.json() as Promise<{ attachmentUrl: string; fileName: string }>;

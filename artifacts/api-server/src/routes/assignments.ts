@@ -34,6 +34,18 @@ function parseTotalMarks(value: unknown): number | null {
 function normalizeAttachmentUrl(value: unknown): string | null {
   if (value == null || value === "") return null;
   if (typeof value !== "string" || value.length > 2048) return null;
+
+  if (value.startsWith("/api/lessons/media/")) {
+    try {
+      const url = new URL(value, "https://internal.invalid");
+      return /^\/api\/lessons\/media\/[a-f0-9-]{36}$/i.test(url.pathname) && !url.hash
+        ? value
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
   try {
     const url = new URL(value);
     return ["http:", "https:"].includes(url.protocol) ? url.toString() : null;
@@ -47,6 +59,15 @@ router.post("/material", requireAuth, (req, res): void => {
   materialUpload.single("file")(req, res, (error) => {
     if (error) { res.status(400).json({ error: "A supported material file up to 250 MB is required" }); return; }
     if (!req.file) { res.status(400).json({ error: "A supported material file is required" }); return; }
+    res.status(201).json({ attachmentUrl: `/api/lessons/media/${req.file.filename}?type=${encodeURIComponent(req.file.mimetype)}`, fileName: req.file.originalname, mimeType: req.file.mimetype, size: req.file.size });
+  });
+});
+
+router.post("/submission-material", requireAuth, (req, res): void => {
+  if (req.currentUser?.role !== "student") { res.status(403).json({ error: "Student access required" }); return; }
+  materialUpload.single("file")(req, res, (error) => {
+    if (error) { res.status(400).json({ error: "A supported submission file up to 250 MB is required" }); return; }
+    if (!req.file) { res.status(400).json({ error: "A supported submission file is required" }); return; }
     res.status(201).json({ attachmentUrl: `/api/lessons/media/${req.file.filename}?type=${encodeURIComponent(req.file.mimetype)}`, fileName: req.file.originalname, mimeType: req.file.mimetype, size: req.file.size });
   });
 });
@@ -155,18 +176,20 @@ router.post("/:id/submit", requireAuth, async (req, res): Promise<void> => {
   const assignmentId = parseInt(String(req.params.id));
   const { content, fileUrl, fileName } = req.body;
   if (typeof content !== "string" || !content.trim() || content.length > 100000) { res.status(400).json({ error: "content is required and must be at most 100000 characters" }); return; }
+  const normalizedFileUrl = normalizeAttachmentUrl(fileUrl);
+  if (fileUrl != null && normalizedFileUrl == null) { res.status(400).json({ error: "fileUrl must be a valid internal media or http(s) URL" }); return; }
   const [assignment] = await db.select({ status: assignmentsTable.status, grade: assignmentsTable.grade, dueDate: assignmentsTable.dueDate }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
   if (!assignment || !isVisibleToStudent(assignment, user.grade)) { res.status(404).json({ error: "Not found" }); return; }
   if (new Date(`${assignment.dueDate}T23:59:59Z`) < new Date()) { res.status(409).json({ error: "This assignment is past its due date" }); return; }
   const [existing] = await db.select().from(assignmentSubmissionsTable)
     .where(and(eq(assignmentSubmissionsTable.assignmentId, assignmentId), eq(assignmentSubmissionsTable.studentId, user.id)));
   if (existing) {
-    const [updated] = await db.update(assignmentSubmissionsTable).set({ content, fileUrl, fileName, status: "submitted" })
+    const [updated] = await db.update(assignmentSubmissionsTable).set({ content, fileUrl: normalizedFileUrl, fileName, status: "submitted" })
       .where(eq(assignmentSubmissionsTable.id, existing.id)).returning();
     res.json(updated); return;
   }
   const [row] = await db.insert(assignmentSubmissionsTable).values({
-    assignmentId, studentId: user.id, studentName: user.name, content: content.trim(), fileUrl, fileName,
+    assignmentId, studentId: user.id, studentName: user.name, content: content.trim(), fileUrl: normalizedFileUrl, fileName,
   }).returning();
   res.status(201).json(row);
 });
