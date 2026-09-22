@@ -10,6 +10,7 @@ import { getListMessagesQueryKey } from "@workspace/api-client-react";
 import { SendMessageBodyType } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { VoiceRecorder } from "@/components/VoiceRecorder";
+import { AuthenticatedAudio } from "@/components/AuthenticatedAudio";
 
 export default function Chat() {
   const { user } = useAuth();
@@ -54,15 +55,21 @@ export default function Chat() {
     });
   };
 
-  const handleSendVoice = (dataUrl: string) => {
-    if (!selectedGroupId) return;
-    sendMessageMutation.mutate({
-      data: { content: "🎤 Voice message", type: SendMessageBodyType.voice, groupId: selectedGroupId, mediaUrl: dataUrl }
-    }, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId }) });
-      }
+  const handleSendVoice = async (audio: Blob) => {
+    if (!selectedGroupId) throw new Error("Select a group before sending a voice message.");
+    const body = new FormData();
+    body.append("file", audio, "voice-message.webm");
+    const token = localStorage.getItem("dallyletter_token");
+    const upload = await fetch("/api/messages/media", { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body });
+    if (!upload.ok) {
+      const result = await upload.json().catch(() => null) as { error?: string } | null;
+      throw new Error(result?.error ?? "Voice upload failed.");
+    }
+    const { mediaUrl } = await upload.json() as { mediaUrl: string };
+    await sendMessageMutation.mutateAsync({
+      data: { content: "Voice message", type: SendMessageBodyType.voice, groupId: selectedGroupId, mediaUrl },
     });
+    await queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId }) });
   };
 
   const handleReport = async (messageId: number) => {
@@ -183,7 +190,7 @@ export default function Chat() {
                                 : "bg-card border shadow-sm rounded-tl-sm"
                             }`}>
                               {message.type === "voice" && message.mediaUrl ? (
-                                <audio controls className="h-10 max-w-[200px] sm:max-w-[250px]" src={message.mediaUrl} />
+                                <AuthenticatedAudio className="h-10 max-w-[200px] sm:max-w-[250px]" src={message.mediaUrl} />
                               ) : (
                                 <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
                               )}
