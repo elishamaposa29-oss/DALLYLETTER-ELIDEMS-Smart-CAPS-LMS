@@ -7,33 +7,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
 import { Loader2, Search, FileText, Image as ImageIcon, Video, Headphones, BookOpen, ExternalLink, GraduationCap } from "lucide-react";
+import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 
 function YouTubeEmbed({ url, title }: { url: string; title: string }) {
   return <iframe className="aspect-video w-full rounded-md" src={url} title={title} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />;
 }
 
 function StoredMedia({ url, type, title }: { url: string; type: string; title: string }) {
-  const [objectUrl, setObjectUrl] = useState<string | null>(null);
-  const [mediaType, setMediaType] = useState("");
-  useEffect(() => {
-    let active = true;
-    const token = localStorage.getItem("dallyletter_token");
-    fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : undefined })
-      .then((response) => {
-        if (!response.ok) throw new Error("Media unavailable");
-        return response.blob();
-      })
-      .then((blob) => { if (active) { setMediaType(blob.type); setObjectUrl(URL.createObjectURL(blob)); } })
-      .catch(() => setObjectUrl(null));
-    return () => { active = false; };
-  }, [url]);
-
-  if (!objectUrl) return <div className="flex aspect-video items-center justify-center rounded-md bg-muted text-sm text-muted-foreground">Loading media...</div>;
-  if (type === "video") return <video className="aspect-video w-full rounded-md bg-black" src={objectUrl} title={title} controls />;
-  if (type === "audio") return <audio className="w-full" src={objectUrl} title={title} controls />;
-  if (mediaType === "application/pdf") return <iframe className="h-64 w-full rounded-md border" src={objectUrl} title={title} />;
-  if (type === "notes") return <a className="text-sm font-medium text-primary underline" href={objectUrl} download>Download {title}</a>;
-  return <img className="max-h-64 w-full rounded-md object-contain" src={objectUrl} alt={title} />;
+  const mediaType = type === "audio" || type === "video" || type === "image" ? type : "document";
+  return <AuthenticatedMedia url={url} type={mediaType} title={title} />;
 }
 
 export default function StudentLessons() {
