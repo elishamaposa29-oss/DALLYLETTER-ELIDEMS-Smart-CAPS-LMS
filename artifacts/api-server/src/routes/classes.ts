@@ -1,7 +1,7 @@
 // Live classes routes — manage Google Meet classes
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
-import { db, classesTable, activityLogTable } from "@workspace/db";
+import { db, classesTable, handRaisesTable, attendanceTable, activityLogTable } from "@workspace/db";
 import {
   CreateClassBody,
   GetClassParams,
@@ -106,7 +106,14 @@ router.delete("/classes/:id", requireAuth, requireTeacherOrOwner, async (req, re
     return;
   }
 
-  await db.delete(classesTable).where(eq(classesTable.id, params.data.id));
+  await db.transaction(async (tx) => {
+    // These records are scoped to the class and their foreign keys do not
+    // currently cascade. Delete them in the same transaction so the class
+    // deletion cannot fail with a foreign-key violation.
+    await tx.delete(handRaisesTable).where(eq(handRaisesTable.classId, params.data.id));
+    await tx.delete(attendanceTable).where(eq(attendanceTable.classId, params.data.id));
+    await tx.delete(classesTable).where(eq(classesTable.id, params.data.id));
+  });
   res.sendStatus(204);
 });
 

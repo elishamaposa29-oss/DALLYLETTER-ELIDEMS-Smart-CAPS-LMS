@@ -54,17 +54,28 @@ function normalizeYouTubeUrl(value: string): string {
   }
 }
 
-router.post("/lessons/media", requireAuth, requireTeacherOrOwner, upload.single("file"), (req, res): void => {
-  if (!req.file) {
-    res.status(400).json({ error: "A supported media file is required" });
-    return;
-  }
+router.post("/lessons/media", requireAuth, requireTeacherOrOwner, (req, res, next): void => {
+  upload.single("file")(req, res, (error) => {
+    if (error instanceof multer.MulterError) {
+      res.status(400).json({ error: "A supported media file up to 250 MB is required" });
+      return;
+    }
+    if (error) {
+      next(error);
+      return;
+    }
 
-  res.status(201).json({
-    mediaUrl: `/api/lessons/media/${req.file.filename}?type=${encodeURIComponent(req.file.mimetype)}`,
-    storageKey: req.file.filename,
-    mimeType: req.file.mimetype,
-    size: req.file.size,
+    if (!req.file) {
+      res.status(400).json({ error: "A supported media file is required" });
+      return;
+    }
+
+    res.status(201).json({
+      mediaUrl: `/api/lessons/media/${req.file.filename}?type=${encodeURIComponent(req.file.mimetype)}`,
+      storageKey: req.file.filename,
+      mimeType: req.file.mimetype,
+      size: req.file.size,
+    });
   });
 });
 

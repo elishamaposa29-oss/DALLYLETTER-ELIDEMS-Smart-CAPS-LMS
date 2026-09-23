@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { getApiUrl } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -40,7 +41,7 @@ export default function TeacherAssignments() {
     setMaterialUploading(true);
     const body = new FormData();
     body.append("file", file);
-    void fetch("/api/assignments/material", { method: "POST", headers: { Authorization: `Bearer ${token()}` }, body })
+    void fetch(getApiUrl("/api/assignments/material"), { method: "POST", headers: { Authorization: `Bearer ${token()}` }, body })
       .then(async response => {
         if (!response.ok) { const error = await response.json().catch(() => null) as { error?: string } | null; throw new Error(error?.error ?? "Material upload failed"); }
         return response.json() as Promise<{ attachmentUrl: string }>;

@@ -1,5 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { useListLessons } from "@workspace/api-client-react";
+import { useListLessons, getApiUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -53,7 +53,7 @@ export default function StudentLessons() {
   };
 
   const handleOpen = (url: string) => {
-    window.open(url, "_blank", "noopener,noreferrer");
+    window.open(getApiUrl(url), "_blank", "noopener,noreferrer");
   };
 
   const isYouTubeUrl = (url: string) => url.includes("youtube.com/embed/");

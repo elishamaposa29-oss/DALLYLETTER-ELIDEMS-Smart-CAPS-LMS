@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { getApiUrl } from "@workspace/api-client-react";
 
 interface AuthenticatedMediaProps {
   url: string;
@@ -16,7 +17,7 @@ export function AuthenticatedMedia({ url, type, title }: AuthenticatedMediaProps
 
     setObjectUrl(null);
     setError(false);
-    fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : undefined })
+    fetch(getApiUrl(url), { headers: token ? { Authorization: `Bearer ${token}` } : undefined })
       .then(response => {
         if (!response.ok) throw new Error("Media unavailable");
         return response.blob();

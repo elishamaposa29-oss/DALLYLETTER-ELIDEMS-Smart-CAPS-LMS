@@ -35,6 +35,18 @@ export function setBaseUrl(url: string | null): void {
 }
 
 /**
+ * Resolve a frontend API path against the configured API server.
+ *
+ * Raw fetch callers need the same host as generated API-client requests.
+ * Absolute URLs are left unchanged so external lesson links continue to work.
+ */
+export function getApiUrl(path: string): string {
+  if (/^(?:[a-z][a-z\d+\-.]*:|\/\/)/i.test(path)) return path;
+  if (!_baseUrl) return path;
+  return `${_baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+/**
  * Register a getter that supplies a bearer auth token.  Before every fetch
  * the getter is invoked; when it returns a non-null string, an
  * `Authorization: Bearer <token>` header is attached to the request.

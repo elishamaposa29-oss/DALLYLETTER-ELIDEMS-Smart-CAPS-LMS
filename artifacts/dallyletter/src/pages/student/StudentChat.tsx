@@ -1,5 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { useListMessages, useSendMessage, useListStudyGroups } from "@workspace/api-client-react";
+import { useListMessages, useSendMessage, useListStudyGroups, getApiUrl } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
 import { Loader2, Send, Users, MessageSquare, Reply, X, Flag } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -60,7 +60,7 @@ export default function Chat() {
     const body = new FormData();
     body.append("file", audio, "voice-message.webm");
     const token = localStorage.getItem("dallyletter_token");
-    const upload = await fetch("/api/messages/media", { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body });
+    const upload = await fetch(getApiUrl("/api/messages/media"), { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body });
     if (!upload.ok) {
       const result = await upload.json().catch(() => null) as { error?: string } | null;
       throw new Error(result?.error ?? "Voice upload failed.");
