@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Loader2, Settings, Key, CreditCard, Bitcoin, Phone, Save, CheckCircle2 } from "lucide-react";
+import { Loader2, Settings, Key, CreditCard, Bitcoin, Phone, Save, CheckCircle2, Sparkles, RotateCcw } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -19,6 +19,7 @@ export default function AdminSettings() {
   });
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
 
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: "",
@@ -30,9 +31,9 @@ export default function AdminSettings() {
   useEffect(() => {
     const token = localStorage.getItem("dallyletter_token");
     fetch("/api/settings", { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(data => { setSettings(data); setLoadingSettings(false); })
-      .catch(() => setLoadingSettings(false));
+      .then(async r => { const data = await r.json(); if (!r.ok) throw new Error(data.error || "Unable to load settings"); return data; })
+      .then(data => { setSettings(data); setSettingsError(null); setLoadingSettings(false); })
+      .catch(err => { setSettingsError(err instanceof Error ? err.message : "Unable to load settings"); setLoadingSettings(false); });
   }, []);
 
   const handleSaveSettings = async () => {
@@ -44,10 +45,15 @@ export default function AdminSettings() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(settings),
       });
-      if (!res.ok) throw new Error();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to save settings.");
+      setSettings(data);
+      setSettingsError(null);
       toast({ title: "Settings saved", description: "Payment settings have been updated." });
-    } catch {
-      toast({ variant: "destructive", title: "Error", description: "Failed to save settings." });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to save settings.";
+      setSettingsError(message);
+      toast({ variant: "destructive", title: "Error", description: message });
     } finally {
       setSavingSettings(false);
     }
@@ -93,7 +99,8 @@ export default function AdminSettings() {
             <Settings className="h-8 w-8 text-primary" />
             Platform Settings
           </h1>
-          <p className="text-muted-foreground mt-1">Configure payment methods and security settings.</p>
+          <p className="text-muted-foreground mt-1">Manage payment, security, and AI configuration for the owner account.</p>
+          {settingsError && <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/20 dark:text-red-300">{settingsError}</div>}
         </div>
 
         {/* Payment Settings */}
@@ -171,13 +178,18 @@ export default function AdminSettings() {
                   />
                 </div>
 
-                <Button onClick={handleSaveSettings} disabled={savingSettings} className="gap-2">
+                <Button onClick={handleSaveSettings} disabled={savingSettings || loadingSettings} className="gap-2">
                   {savingSettings ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   Save Payment Settings
                 </Button>
               </>
             )}
           </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="border-b"><CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-purple-500" />ELIDEMS AI</CardTitle><CardDescription>AI provider keys and Live/Development mode are managed separately.</CardDescription></CardHeader>
+          <CardContent className="pt-6"><a href="/admin/ai/settings" className="inline-flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted">Open AI Settings <Sparkles className="h-4 w-4" /></a></CardContent>
         </Card>
 
         {/* Password Change */}

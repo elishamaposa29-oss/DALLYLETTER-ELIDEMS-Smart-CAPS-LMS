@@ -1,8 +1,8 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { useListStudyGroups, useJoinStudyGroup } from "@workspace/api-client-react";
+import { useListStudyGroups, useJoinStudyGroup, useLeaveStudyGroup } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Users, BookOpen } from "lucide-react";
+import { Loader2, Users, LogOut } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -12,6 +12,7 @@ import { useAuth } from "@/contexts/AuthContext";
 export default function StudentStudyGroups() {
   const { data: groups, isLoading } = useListStudyGroups();
   const joinGroupMutation = useJoinStudyGroup();
+  const leaveGroupMutation = useLeaveStudyGroup();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -32,6 +33,17 @@ export default function StudentStudyGroups() {
           description: error.message || "Failed to join group",
         });
       }
+    });
+  };
+
+  const handleLeaveGroup = (groupId: number) => {
+    if (!confirm("Leave this study group?")) return;
+    leaveGroupMutation.mutate({ id: groupId }, {
+      onSuccess: () => {
+        toast({ title: "You left the study group." });
+        queryClient.invalidateQueries({ queryKey: getListStudyGroupsQueryKey() });
+      },
+      onError: (error) => toast({ variant: "destructive", title: "Could not leave group", description: error.message }),
     });
   };
 
@@ -58,6 +70,7 @@ export default function StudentStudyGroups() {
             ) : (
               groups?.map((group) => {
                 const isMember = group.members?.some(m => m.id === user?.id);
+                const canLeave = isMember && group.creatorId !== user?.id;
                 
                 return (
                   <Card key={group.id} className="flex flex-col h-full">
@@ -103,9 +116,9 @@ export default function StudentStudyGroups() {
                     </CardContent>
                     <CardFooter className="pt-4 border-t">
                       {isMember ? (
-                        <Button variant="secondary" className="w-full gap-2" disabled>
-                          <BookOpen className="h-4 w-4" />
-                          Already Joined
+                        <Button variant="secondary" className="w-full gap-2" onClick={() => canLeave && handleLeaveGroup(group.id)} disabled={!canLeave || leaveGroupMutation.isPending}>
+                          {canLeave ? (leaveGroupMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />) : <Users className="h-4 w-4" />}
+                          {canLeave ? "Leave Group" : "Group Owner"}
                         </Button>
                       ) : (
                         <Button 

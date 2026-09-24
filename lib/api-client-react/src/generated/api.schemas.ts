@@ -292,6 +292,8 @@ export interface Message {
   /** @nullable */
   groupId?: number | null;
   /** @nullable */
+  parentMessageId?: number | null;
+  /** @nullable */
   recipientId?: number | null;
   createdAt: string;
 }
@@ -312,7 +314,30 @@ export interface SendMessageBody {
   /** @nullable */
   groupId?: number | null;
   /** @nullable */
+  parentMessageId?: number | null;
+  /** @nullable */
   recipientId?: number | null;
+}
+
+export interface ReportMessageBody {
+  /**
+   * @minLength 3
+   * @maxLength 500
+   */
+  reason: string;
+}
+
+export interface ContentFlag {
+  id: number;
+  contentType: string;
+  contentId: number;
+  /** @nullable */
+  contentText?: string | null;
+  reason: string;
+  severity: string;
+  status: string;
+  detectedBy: string;
+  createdAt: string;
 }
 
 export interface StudyGroup {

@@ -424,6 +424,7 @@ export const ListMessagesResponseItem = zod.object({
   type: zod.enum(["text", "voice"]),
   mediaUrl: zod.string().nullish(),
   groupId: zod.number().nullish(),
+  parentMessageId: zod.number().nullish(),
   recipientId: zod.number().nullish(),
   createdAt: zod.string(),
 });
@@ -437,7 +438,25 @@ export const SendMessageBody = zod.object({
   type: zod.enum(["text", "voice"]),
   mediaUrl: zod.string().nullish(),
   groupId: zod.number().nullish(),
+  parentMessageId: zod.number().nullish(),
   recipientId: zod.number().nullish(),
+});
+
+/**
+ * @summary Report a group message for moderation review
+ */
+export const ReportMessageParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const reportMessageBodyReasonMin = 3;
+export const reportMessageBodyReasonMax = 500;
+
+export const ReportMessageBody = zod.object({
+  reason: zod
+    .string()
+    .min(reportMessageBodyReasonMin)
+    .max(reportMessageBodyReasonMax),
 });
 
 /**
@@ -522,6 +541,40 @@ export const JoinStudyGroupParams = zod.object({
 });
 
 export const JoinStudyGroupResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  description: zod.string().nullish(),
+  subject: zod.string(),
+  creatorId: zod.number(),
+  creatorName: zod.string(),
+  memberCount: zod.number(),
+  members: zod.array(
+    zod.object({
+      id: zod.number(),
+      email: zod.string(),
+      name: zod.string(),
+      role: zod.enum(["student", "teacher", "owner"]),
+      isPrefect: zod.boolean(),
+      isBlocked: zod.boolean(),
+      phone: zod.string().nullish(),
+      grade: zod.string().nullish(),
+      subject: zod.string().nullish(),
+      avatarUrl: zod.string().nullish(),
+      lastPaymentDate: zod.string().nullish(),
+      createdAt: zod.string(),
+    }),
+  ),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Leave a study group
+ */
+export const LeaveStudyGroupParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const LeaveStudyGroupResponse = zod.object({
   id: zod.number(),
   name: zod.string(),
   description: zod.string().nullish(),

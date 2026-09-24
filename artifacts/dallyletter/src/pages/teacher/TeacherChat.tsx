@@ -1,5 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { useListMessages, useSendMessage, useListStudyGroups, useListUsers } from "@workspace/api-client-react";
+import { useListMessages, useSendMessage, useListStudyGroups, useListUsers, getApiUrl } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
 import { Loader2, Send, Users, MessageSquare, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { SendMessageBodyType } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VoiceRecorder } from "@/components/VoiceRecorder";
+import { AuthenticatedAudio } from "@/components/AuthenticatedAudio";
 
 export default function TeacherChat() {
   const { user } = useAuth();
@@ -48,14 +49,21 @@ export default function TeacherChat() {
     });
   };
 
-  const handleSendVoice = (dataUrl: string) => {
-    sendMessageMutation.mutate({
-      data: { content: "🎤 Voice message", type: SendMessageBodyType.voice, groupId: selectedGroupId, recipientId: selectedUserId, mediaUrl: dataUrl }
-    }, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId, recipientId: selectedUserId }) });
-      }
+  const handleSendVoice = async (audio: Blob) => {
+    if (!selectedGroupId && !selectedUserId) throw new Error("Select a conversation before sending a voice message.");
+    const body = new FormData();
+    body.append("file", audio, "voice-message.webm");
+    const token = localStorage.getItem("dallyletter_token");
+    const upload = await fetch(getApiUrl("/api/messages/media"), { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body });
+    if (!upload.ok) {
+      const result = await upload.json().catch(() => null) as { error?: string } | null;
+      throw new Error(result?.error ?? "Voice upload failed.");
+    }
+    const { mediaUrl } = await upload.json() as { mediaUrl: string };
+    await sendMessageMutation.mutateAsync({
+      data: { content: "Voice message", type: SendMessageBodyType.voice, groupId: selectedGroupId, recipientId: selectedUserId, mediaUrl },
     });
+    await queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId, recipientId: selectedUserId }) });
   };
 
   const selectGroup = (id: number) => { setSelectedGroupId(id); setSelectedUserId(null); };
@@ -181,7 +189,7 @@ export default function TeacherChat() {
                                 : "bg-card border shadow-sm rounded-tl-sm"
                             }`}>
                               {msg.type === "voice" && msg.mediaUrl ? (
-                                <audio controls className="h-10 max-w-[200px] sm:max-w-[250px]" src={msg.mediaUrl} />
+                                <AuthenticatedAudio className="h-10 max-w-[200px] sm:max-w-[250px]" src={msg.mediaUrl} />
                               ) : (
                                 <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
                               )}

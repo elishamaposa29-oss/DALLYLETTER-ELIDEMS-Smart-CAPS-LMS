@@ -1,0 +1,2 @@
+GitHub push verification test.
+This file is intentionally harmless and isolated.

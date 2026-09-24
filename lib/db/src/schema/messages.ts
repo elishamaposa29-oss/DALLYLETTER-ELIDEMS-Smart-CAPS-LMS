@@ -15,6 +15,7 @@ export const messagesTable = pgTable("messages", {
   mediaUrl: text("media_url"),
   // groupId = null means private message
   groupId: integer("group_id"),
+  parentMessageId: integer("parent_message_id"),
   // recipientId = null means group message
   recipientId: integer("recipient_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

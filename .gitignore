@@ -11,6 +11,15 @@ out-tsc
 # dependencies
 node_modules
 
+# environment files and local secrets
+.env
+.env.*
+!.env.example
+!.env.production.example
+*.pem
+*.key
+ELIDEMS-SECRETS-BACKUP.enc
+
 # IDEs and editors
 /.idea
 .project

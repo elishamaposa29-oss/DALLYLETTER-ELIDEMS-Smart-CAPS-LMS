@@ -10,6 +10,24 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     environment: ${{ github.ref_name == 'production' && 'production' || github.ref_name == 'staging' && 'staging' || 'development' }}
+    env:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/dallyletter_ci
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: dallyletter_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d dallyletter_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,4 +51,4 @@ jobs:
 
       - name: Verify health endpoint is available
         run: |
-          node -e "const http=require('http'); const server=require('child_process').spawn('pnpm', ['start:api'], {stdio:'inherit'}); setTimeout(() => { const req=http.get('http://127.0.0.1:4000/healthz', (res)=>{ let data=''; res.on('data', chunk=>data+=chunk); res.on('end', ()=>{ console.log(data); server.kill('SIGTERM'); process.exit(res.statusCode===200?0:1); }); }); req.on('error', (err)=>{ console.error(err); server.kill('SIGTERM'); process.exit(1); }); }, 5000);"
+          node -e "const http=require('http'); const server=require('child_process').spawn('pnpm', ['start:api'], {stdio:'inherit'}); setTimeout(() => { const req=http.get('http://127.0.0.1:4000/api/healthz', (res)=>{ let data=''; res.on('data', chunk=>data+=chunk); res.on('end', ()=>{ console.log(data); server.kill('SIGTERM'); process.exit(res.statusCode===200?0:1); }); }); req.on('error', (err)=>{ console.error(err); server.kill('SIGTERM'); process.exit(1); }); }, 5000);"

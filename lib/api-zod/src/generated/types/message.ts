@@ -19,6 +19,8 @@ export interface Message {
   /** @nullable */
   groupId?: number | null;
   /** @nullable */
+  parentMessageId?: number | null;
+  /** @nullable */
   recipientId?: number | null;
   createdAt: string;
 }

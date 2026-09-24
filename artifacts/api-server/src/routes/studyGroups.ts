@@ -1,6 +1,6 @@
 // Study groups routes — create, join, and manage study groups
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { db, studyGroupsTable, studyGroupMembersTable, usersTable, activityLogTable } from "@workspace/db";
 import {
   CreateStudyGroupBody,
@@ -147,6 +147,32 @@ router.post("/study-groups/:id/join", requireAuth, async (req, res): Promise<voi
     members,
     createdAt: group.createdAt.toISOString(),
   });
+});
+
+// POST /study-groups/:id/leave — Leave a study group
+router.post("/study-groups/:id/leave", requireAuth, async (req, res): Promise<void> => {
+  const params = JoinStudyGroupParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const currentUser = req.currentUser!;
+  const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, params.data.id));
+  if (!group) {
+    res.status(404).json({ error: "Study group not found" });
+    return;
+  }
+  if (group.creatorId === currentUser.id) {
+    res.status(400).json({ error: "The group owner cannot leave their own group" });
+    return;
+  }
+
+  await db.delete(studyGroupMembersTable).where(
+    and(eq(studyGroupMembersTable.groupId, group.id), eq(studyGroupMembersTable.userId, currentUser.id)),
+  );
+  const members = await getGroupMembers(group.id);
+  res.json({ ...group, memberCount: members.length, members, createdAt: group.createdAt.toISOString() });
 });
 
 export default router;

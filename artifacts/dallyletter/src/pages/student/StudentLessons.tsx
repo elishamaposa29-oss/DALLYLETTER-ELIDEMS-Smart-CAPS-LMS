@@ -1,12 +1,27 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { useListLessons } from "@workspace/api-client-react";
+import { useListLessons, getApiUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, Search, FileText, Image as ImageIcon, Video, Headphones, BookOpen, ExternalLink, GraduationCap } from "lucide-react";
+import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
+import { isValidLessonUrl } from "@/lib/media-url";
+
+function YouTubeEmbed({ url, title }: { url: string; title: string }) {
+  return <iframe className="aspect-video w-full rounded-md" src={url} title={title} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />;
+}
+
+function StoredMedia({ url, type, title }: { url: string; type: string; title: string }) {
+  const mediaType = type === "audio" || type === "video" || type === "image" ? type : "document";
+  return <AuthenticatedMedia url={url} type={mediaType} title={title} />;
+}
+
+function hasValidMediaUrl(url: string | null | undefined): url is string {
+  return Boolean(url && isValidLessonUrl(url));
+}
 
 export default function StudentLessons() {
   const { data: lessons, isLoading } = useListLessons();
@@ -43,8 +58,10 @@ export default function StudentLessons() {
   };
 
   const handleOpen = (url: string) => {
-    window.open(url, "_blank", "noopener,noreferrer");
+    window.open(getApiUrl(url), "_blank", "noopener,noreferrer");
   };
+
+  const isYouTubeUrl = (url: string) => url.includes("youtube.com/embed/");
 
   return (
     <DashboardLayout>
@@ -106,8 +123,8 @@ export default function StudentLessons() {
               filteredLessons?.map((lesson) => (
                 <Card
                   key={lesson.id}
-                  className={`flex flex-col h-full transition-all duration-200 border hover:shadow-lg hover:-translate-y-0.5 ${lesson.mediaUrl ? "hover:border-primary/60 cursor-pointer" : "hover:border-border/80"}`}
-                  onClick={() => lesson.mediaUrl && handleOpen(lesson.mediaUrl)}
+                  className={`flex flex-col h-full transition-all duration-200 border hover:shadow-lg hover:-translate-y-0.5 ${hasValidMediaUrl(lesson.mediaUrl) ? "hover:border-primary/60 cursor-pointer" : "hover:border-border/80"}`}
+                  onClick={() => hasValidMediaUrl(lesson.mediaUrl) && !lesson.mediaUrl.startsWith("/api/lessons/media/") && !isYouTubeUrl(lesson.mediaUrl) && handleOpen(lesson.mediaUrl)}
                 >
                   <CardHeader className="pb-3 space-y-3">
                     {/* Top row: subject + type */}
@@ -123,7 +140,7 @@ export default function StudentLessons() {
 
                     {/* Title */}
                     <div>
-                      {lesson.mediaUrl ? (
+                      {hasValidMediaUrl(lesson.mediaUrl) ? (
                         <h3 className="font-bold text-lg leading-tight text-primary hover:underline flex items-start gap-1.5 group line-clamp-2">
                           {lesson.title}
                           <ExternalLink className="h-3.5 w-3.5 shrink-0 mt-1 opacity-60 group-hover:opacity-100" />
@@ -138,6 +155,7 @@ export default function StudentLessons() {
                   </CardHeader>
 
                   <CardContent className="flex-1 flex flex-col justify-between gap-4">
+                    {hasValidMediaUrl(lesson.mediaUrl) && (isYouTubeUrl(lesson.mediaUrl) ? <YouTubeEmbed url={lesson.mediaUrl} title={lesson.title} /> : lesson.mediaUrl.startsWith("/api/lessons/media/") ? <StoredMedia url={lesson.mediaUrl} type={lesson.type} title={lesson.title} /> : null)}
                     <p className="text-sm text-muted-foreground line-clamp-3">
                       {lesson.description || "No description provided."}
                     </p>
@@ -146,7 +164,7 @@ export default function StudentLessons() {
                       <span className="text-xs text-muted-foreground">
                         {new Date(lesson.createdAt).toLocaleDateString("en-ZA", { day: "numeric", month: "short", year: "numeric" })}
                       </span>
-                      {lesson.mediaUrl && (
+                      {hasValidMediaUrl(lesson.mediaUrl) && (
                         <Button
                           size="sm"
                           variant="default"

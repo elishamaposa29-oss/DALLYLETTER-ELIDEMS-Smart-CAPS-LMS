@@ -27,7 +27,18 @@ This service hosts the Express API for DALLYLETTER ELIDEMS.
 
 ## Health endpoint
 
-- GET /healthz
+- GET /api/healthz
+
+The health endpoint verifies PostgreSQL with `SELECT 1`. A `503` response with
+`code: ENOTFOUND` means the configured `DATABASE_URL` hostname cannot be
+resolved; authentication cannot work until the database URL is corrected.
+
+## Database connection failures
+
+On Render, open the API service's Environment settings and replace
+`DATABASE_URL` with the current Internal Database URL from the PostgreSQL
+service. Do not use an old hostname copied from a deleted or recreated
+database. Redeploy the API, then confirm `GET /api/healthz` returns `{"status":"ok"}`.
 
 ## Deployment notes
 
