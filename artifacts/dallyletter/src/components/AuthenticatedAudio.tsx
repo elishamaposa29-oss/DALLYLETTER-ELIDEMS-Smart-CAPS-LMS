@@ -1,11 +1,18 @@
 import { useEffect, useState } from "react";
 import { getApiUrl } from "@workspace/api-client-react";
+import { isStoredMediaUrl } from "@/lib/media-url";
 
 export function AuthenticatedAudio({ src, className }: { src: string; className?: string }) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
+    if (!isStoredMediaUrl(src)) {
+      return () => {
+        active = false;
+      };
+    }
+
     const token = localStorage.getItem("dallyletter_token");
     fetch(getApiUrl(src), { headers: token ? { Authorization: `Bearer ${token}` } : undefined })
       .then(response => {
