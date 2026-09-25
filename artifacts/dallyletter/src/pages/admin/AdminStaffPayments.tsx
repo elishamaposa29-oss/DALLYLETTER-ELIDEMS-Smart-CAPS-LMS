@@ -1,3 +1,4 @@
+import { getApiUrl } from "@workspace/api-client-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,8 +22,8 @@ export default function AdminStaffPayments() {
 
   const load = () => {
     void Promise.all([
-      fetch("/api/staff-payments", { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
-      fetch("/api/users", { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
+      fetch(getApiUrl("/api/staff-payments"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
+      fetch(getApiUrl("/api/users"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
     ]).then(([p, u]) => {
       setPayments(Array.isArray(p) ? p : []);
       setStaff(Array.isArray(u) ? u.filter((x: any) => x.role === "teacher" || x.isManager || x.isPrefect) : []);
@@ -33,7 +34,7 @@ export default function AdminStaffPayments() {
 
   const handlePay = () => {
     if (!form.recipientId || !form.amount) { toast({ variant: "destructive", title: "Fill all required fields" }); return; }
-    void fetch("/api/staff-payments", {
+    void fetch(getApiUrl("/api/staff-payments"), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
       body: JSON.stringify({ ...form, recipientId: parseInt(form.recipientId), amount: form.amount }),

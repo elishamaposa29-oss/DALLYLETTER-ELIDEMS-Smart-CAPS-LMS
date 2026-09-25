@@ -1,3 +1,4 @@
+import { getApiUrl } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,7 +29,7 @@ export default function AdminAuditLogs() {
 
   useEffect(() => {
     setLoading(true);
-    fetch("/api/audit-logs?limit=500", { headers: { Authorization: `Bearer ${token()}` } })
+    fetch(getApiUrl("/api/audit-logs?limit=500"), { headers: { Authorization: `Bearer ${token()}` } })
       .then(r => r.json())
       .then(d => { setLogs(d); setLoading(false); })
       .catch(() => setLoading(false));

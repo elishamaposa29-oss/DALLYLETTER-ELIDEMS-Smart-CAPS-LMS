@@ -1,3 +1,4 @@
+import { getApiUrl } from "@workspace/api-client-react";
 import { useCallback, useEffect, useState } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -26,14 +27,14 @@ function OwnerCommandCenterPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const load = useCallback(async (nextOffset = offset) => {
+  const load = useCallback(async (nextOffset: number) => {
     setLoading(true); setError("");
     const headers = { Authorization: `Bearer ${token()}` };
     try {
       const responses = await Promise.all([
-        fetch("/api/owner/command-center/health", { headers }),
-        fetch("/api/owner/command-center/snapshot", { headers }),
-        fetch(`/api/owner/command-center/events?limit=10&offset=${nextOffset}`, { headers }),
+        fetch(getApiUrl("/api/owner/command-center/health"), { headers }),
+        fetch(getApiUrl("/api/owner/command-center/snapshot"), { headers }),
+        fetch(getApiUrl(`/api/owner/command-center/events?limit=10&offset=${nextOffset}`), { headers }),
       ]);
       if (responses.some((response) => response.status === 401)) throw new Error("Your session has expired. Please sign in again.");
       if (responses.some((response) => response.status === 403)) throw new Error("Owner access is required for this page.");
@@ -42,7 +43,7 @@ function OwnerCommandCenterPage() {
       setHealth(healthData.services ?? []); setSnapshot(snapshotData); setEvents(eventData.events ?? []); setHasMore(Boolean(eventData.hasMore)); setOffset(nextOffset);
     } catch (err) { setError(err instanceof Error ? err.message : "Unable to load the Owner Command Center."); }
     finally { setLoading(false); }
-  }, [offset]);
+  }, []);
 
   useEffect(() => { void load(0); }, [load]);
   const display = (value: number | string | null | undefined) => value === null || value === undefined ? "Unavailable" : String(value);

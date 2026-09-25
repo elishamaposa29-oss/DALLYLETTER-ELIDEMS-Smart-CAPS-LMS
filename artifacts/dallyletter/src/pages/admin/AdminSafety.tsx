@@ -1,3 +1,4 @@
+import { getApiUrl } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,7 +25,7 @@ export default function AdminSafety() {
 
   async function load() {
     setLoading(true);
-    const r = await fetch("/api/content-flags", { headers: { Authorization: `Bearer ${token()}` } });
+    const r = await fetch(getApiUrl("/api/content-flags"), { headers: { Authorization: `Bearer ${token()}` } });
     if (r.ok) setFlags(await r.json());
     setLoading(false);
   }
@@ -34,7 +35,7 @@ export default function AdminSafety() {
   async function reviewFlag(status: string) {
     if (!reviewing) return;
     setSaving(true);
-    const r = await fetch(`/api/content-flags/${reviewing.id}`, {
+    const r = await fetch(getApiUrl(`/api/content-flags/${reviewing.id}`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
       body: JSON.stringify({ status, reviewNote }),
@@ -49,7 +50,7 @@ export default function AdminSafety() {
   }
 
   async function deleteFlag(id: number) {
-    await fetch(`/api/content-flags/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token()}` } });
+    await fetch(getApiUrl(`/api/content-flags/${id}`), { method: "DELETE", headers: { Authorization: `Bearer ${token()}` } });
     toast({ title: "Flag deleted" });
     load();
   }

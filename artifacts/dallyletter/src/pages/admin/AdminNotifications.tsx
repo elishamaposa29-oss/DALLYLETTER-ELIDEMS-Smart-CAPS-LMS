@@ -1,5 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { useListNotifications, useCreateNotification, useListUsers } from "@workspace/api-client-react";
+import { useListNotifications, useCreateNotification, useListUsers, getApiUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,7 +60,7 @@ export default function AdminNotifications() {
   const handleDelete = async (id: number) => {
     if (!confirm("Delete this notification? Students who have not yet read it will no longer see it.")) return;
     const token = localStorage.getItem("dallyletter_token");
-    const res = await fetch(`/api/notifications/${id}`, {
+    const res = await fetch(getApiUrl(`/api/notifications/${id}`), {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
     });

@@ -1,3 +1,4 @@
+import { getApiUrl } from "@workspace/api-client-react";
 import { useState, useEffect, useRef } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -55,7 +56,7 @@ export default function AdminAI() {
   const token = () => localStorage.getItem("dallyletter_token");
 
   useEffect(() => {
-    fetch("/api/ai/status", { headers: { Authorization: `Bearer ${token()}` } })
+    fetch(getApiUrl("/api/ai/status"), { headers: { Authorization: `Bearer ${token()}` } })
       .then(r => r.json()).then(setStatus).catch(() => {});
     loadActions();
   }, []);
@@ -65,7 +66,7 @@ export default function AdminAI() {
   }, [messages]);
 
   async function loadActions() {
-    const r = await fetch("/api/ai/actions", { headers: { Authorization: `Bearer ${token()}` } });
+    const r = await fetch(getApiUrl("/api/ai/actions"), { headers: { Authorization: `Bearer ${token()}` } });
     if (r.ok) setActions(await r.json());
   }
 
@@ -78,7 +79,7 @@ export default function AdminAI() {
     setSending(true);
     try {
       const apiMessages = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }));
-      const r = await fetch("/api/ai/chat", {
+      const r = await fetch(getApiUrl("/api/ai/chat"), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
         body: JSON.stringify({ messages: apiMessages }),
@@ -97,7 +98,7 @@ export default function AdminAI() {
   async function reverseAction(id: number) {
     setReversingId(id);
     try {
-      const r = await fetch(`/api/ai/actions/${id}/reverse`, { method: "PATCH", headers: { Authorization: `Bearer ${token()}` } });
+      const r = await fetch(getApiUrl(`/api/ai/actions/${id}/reverse`), { method: "PATCH", headers: { Authorization: `Bearer ${token()}` } });
       if (r.ok) {
         toast({ title: "Action reversed successfully" });
         await loadActions();

@@ -1,3 +1,4 @@
+import { getApiUrl } from "@workspace/api-client-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -25,20 +26,20 @@ export default function AdminOwnerAlerts() {
   const [filter, setFilter] = useState<"all"|"open"|"resolved">("all");
 
   const load = () => {
-    void fetch("/api/owner-alerts", { headers: { Authorization: `Bearer ${token()}` } })
+    void fetch(getApiUrl("/api/owner-alerts"), { headers: { Authorization: `Bearer ${token()}` } })
       .then(r => r.json()).then(d => { setAlerts(Array.isArray(d) ? d : []); setLoading(false); })
       .catch(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
 
   const markRead = (id: number) => {
-    void fetch(`/api/owner-alerts/${id}/read`, { method: "PUT", headers: { Authorization: `Bearer ${token()}` } }).then(() => load());
+    void fetch(getApiUrl(`/api/owner-alerts/${id}/read`), { method: "PUT", headers: { Authorization: `Bearer ${token()}` } }).then(() => load());
   };
 
   const resolve = () => {
     if (!selected) return;
     if (!resolution.trim()) { toast({ variant: "destructive", title: "Enter a resolution note" }); return; }
-    void fetch(`/api/owner-alerts/${selected.id}/resolve`, {
+    void fetch(getApiUrl(`/api/owner-alerts/${selected.id}/resolve`), {
       method: "PUT",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
       body: JSON.stringify({ resolution }),
@@ -50,7 +51,7 @@ export default function AdminOwnerAlerts() {
   };
 
   const del = (id: number) => {
-    void fetch(`/api/owner-alerts/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token()}` } }).then(() => load());
+    void fetch(getApiUrl(`/api/owner-alerts/${id}`), { method: "DELETE", headers: { Authorization: `Bearer ${token()}` } }).then(() => load());
   };
 
   const filtered = alerts.filter(a => filter === "all" ? true : filter === "open" ? a.status === "open" : a.status === "resolved");
