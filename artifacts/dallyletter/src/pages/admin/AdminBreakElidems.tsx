@@ -1,3 +1,4 @@
+import { getApiUrl } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -28,8 +29,8 @@ export default function AdminBreakElidems() {
   async function load() {
     setLoading(true);
     const [evR, todR] = await Promise.all([
-      fetch("/api/break-elidems", { headers: { Authorization: `Bearer ${token()}` } }),
-      fetch("/api/break-elidems/today", { headers: { Authorization: `Bearer ${token()}` } }),
+      fetch(getApiUrl("/api/break-elidems"), { headers: { Authorization: `Bearer ${token()}` } }),
+      fetch(getApiUrl("/api/break-elidems/today"), { headers: { Authorization: `Bearer ${token()}` } }),
     ]);
     if (evR.ok) setEvents(await evR.json());
     if (todR.ok) { const d = await todR.json(); setTodayEvent(d); }
@@ -41,7 +42,7 @@ export default function AdminBreakElidems() {
   async function handleCreate() {
     if (!form.title || !form.eventDate) { toast({ variant: "destructive", title: "Title and date required" }); return; }
     setCreating(true);
-    const r = await fetch("/api/break-elidems", {
+    const r = await fetch(getApiUrl("/api/break-elidems"), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
       body: JSON.stringify(form),
@@ -52,7 +53,7 @@ export default function AdminBreakElidems() {
   }
 
   async function updateStatus(id: number, status: string) {
-    await fetch(`/api/break-elidems/${id}`, {
+    await fetch(getApiUrl(`/api/break-elidems/${id}`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
       body: JSON.stringify({ status }),
@@ -62,25 +63,25 @@ export default function AdminBreakElidems() {
   }
 
   async function deleteEvent(id: number) {
-    await fetch(`/api/break-elidems/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token()}` } });
+    await fetch(getApiUrl(`/api/break-elidems/${id}`), { method: "DELETE", headers: { Authorization: `Bearer ${token()}` } });
     toast({ title: "Event deleted" });
     load();
   }
 
   async function openEvent(id: number) {
-    const r = await fetch(`/api/break-elidems/${id}`, { headers: { Authorization: `Bearer ${token()}` } });
+    const r = await fetch(getApiUrl(`/api/break-elidems/${id}`), { headers: { Authorization: `Bearer ${token()}` } });
     if (r.ok) setSelectedEvent(await r.json());
   }
 
   async function toggleSelect(eventId: number, volId: number, current: boolean) {
-    await fetch(`/api/break-elidems/${eventId}/volunteers/${volId}`, {
+    await fetch(getApiUrl(`/api/break-elidems/${eventId}/volunteers/${volId}`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
       body: JSON.stringify({ isSelected: !current }),
     });
     openEvent(eventId);
     if (selectedEvent) {
-      const r = await fetch(`/api/break-elidems/${selectedEvent.id}`, { headers: { Authorization: `Bearer ${token()}` } });
+      const r = await fetch(getApiUrl(`/api/break-elidems/${selectedEvent.id}`), { headers: { Authorization: `Bearer ${token()}` } });
       if (r.ok) setSelectedEvent(await r.json());
     }
   }
