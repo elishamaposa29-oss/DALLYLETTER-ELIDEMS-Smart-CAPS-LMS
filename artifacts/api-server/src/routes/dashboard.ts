@@ -5,7 +5,7 @@ import { db, usersTable, lessonsTable, classesTable, studyGroupsTable, paymentsT
 import { requireOwner } from "../lib/auth-middleware";
 
 const router: IRouter = Router();
-router.use(requireOwner);
+router.use(requireOwner); // Owner/admin compatibility is handled by requireOwner.
 
 // GET /dashboard/stats — Get platform-wide statistics
 router.get("/dashboard/stats", async (_req, res): Promise<void> => {

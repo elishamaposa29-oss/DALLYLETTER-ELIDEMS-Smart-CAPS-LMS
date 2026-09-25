@@ -40,7 +40,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
 // Middleware that requires owner role
 export async function requireOwner(req: Request, res: Response, next: NextFunction): Promise<void> {
-  if (!req.currentUser || req.currentUser.role !== "owner") {
+  if (!req.currentUser || !["owner", "admin"].includes(req.currentUser.role)) {
     res.status(403).json({ error: "Owner access required" });
     return;
   }
@@ -49,7 +49,7 @@ export async function requireOwner(req: Request, res: Response, next: NextFuncti
 
 // Middleware that requires teacher or owner role
 export async function requireTeacherOrOwner(req: Request, res: Response, next: NextFunction): Promise<void> {
-  if (!req.currentUser || !["teacher", "owner"].includes(req.currentUser.role)) {
+  if (!req.currentUser || !["teacher", "owner", "admin"].includes(req.currentUser.role)) {
     res.status(403).json({ error: "Teacher or owner access required" });
     return;
   }
