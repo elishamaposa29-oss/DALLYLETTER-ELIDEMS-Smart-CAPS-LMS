@@ -6,24 +6,26 @@ import { requireAuth } from "../lib/auth-middleware";
 
 const router = Router();
 
+const isOwnerOrAdmin = (role: string): boolean => role === "owner" || role === "admin";
+
 router.get("/owner-alerts", requireAuth, async (req, res): Promise<void> => {
-  const user = req.currentUser;
+  const user = req.currentUser!;
   const rows = await db.select().from(ownerAlertsTable).orderBy(desc(ownerAlertsTable.createdAt));
-  if (user.role !== "owner" && !user.isManager) {
+  if (!isOwnerOrAdmin(user.role) && !user.isManager) {
     res.json(rows.filter((r: any) => r.reportedBy === user.id)); return;
   }
   res.json(rows);
 });
 
 router.get("/owner-alerts/unread-count", requireAuth, async (req, res): Promise<void> => {
-  const user = req.currentUser;
-  if (user.role !== "owner") { res.json({ count: 0 }); return; }
+  const user = req.currentUser!;
+  if (!isOwnerOrAdmin(user.role)) { res.json({ count: 0 }); return; }
   const rows = await db.select().from(ownerAlertsTable).where(eq(ownerAlertsTable.isRead, false));
   res.json({ count: rows.length });
 });
 
 router.post("/owner-alerts", requireAuth, async (req, res): Promise<void> => {
-  const user = req.currentUser;
+  const user = req.currentUser!;
   const { title, description, category, severity, targetType, targetId, targetName, attachmentUrl } = req.body;
   if (!title || !description) { res.status(400).json({ error: "title and description required" }); return; }
   const [row] = await db.insert(ownerAlertsTable).values({
@@ -39,16 +41,16 @@ router.post("/owner-alerts", requireAuth, async (req, res): Promise<void> => {
 });
 
 router.put("/owner-alerts/:id/read", requireAuth, async (req, res): Promise<void> => {
-  const user = req.currentUser;
-  if (user.role !== "owner") { res.status(403).json({ error: "Forbidden" }); return; }
+  const user = req.currentUser!;
+  if (!isOwnerOrAdmin(user.role)) { res.status(403).json({ error: "Forbidden" }); return; }
   const [row] = await db.update(ownerAlertsTable).set({ isRead: true })
     .where(eq(ownerAlertsTable.id, parseInt(String(req.params.id)))).returning();
   res.json(row);
 });
 
 router.put("/owner-alerts/:id/resolve", requireAuth, async (req, res): Promise<void> => {
-  const user = req.currentUser;
-  if (user.role !== "owner") { res.status(403).json({ error: "Forbidden" }); return; }
+  const user = req.currentUser!;
+  if (!isOwnerOrAdmin(user.role)) { res.status(403).json({ error: "Forbidden" }); return; }
   const { resolution } = req.body;
   const [row] = await db.update(ownerAlertsTable)
     .set({ status: "resolved", isRead: true, resolution, resolvedBy: user.id, resolvedAt: new Date() })
@@ -57,8 +59,8 @@ router.put("/owner-alerts/:id/resolve", requireAuth, async (req, res): Promise<v
 });
 
 router.delete("/owner-alerts/:id", requireAuth, async (req, res): Promise<void> => {
-  const user = req.currentUser;
-  if (user.role !== "owner") { res.status(403).json({ error: "Forbidden" }); return; }
+  const user = req.currentUser!;
+  if (!isOwnerOrAdmin(user.role)) { res.status(403).json({ error: "Forbidden" }); return; }
   await db.delete(ownerAlertsTable).where(eq(ownerAlertsTable.id, parseInt(String(req.params.id))));
   res.json({ ok: true });
 });
