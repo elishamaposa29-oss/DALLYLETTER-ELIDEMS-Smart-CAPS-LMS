@@ -1,3 +1,4 @@
+import { getApiUrl } from "@workspace/api-client-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { useState, useEffect } from "react";
@@ -30,8 +31,8 @@ export default function AdminFinancial() {
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/payments", { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
-      fetch("/api/staff-payments/summary", { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
+      fetch(getApiUrl("/api/payments"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
+      fetch(getApiUrl("/api/staff-payments/summary"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
     ]).then(([p, s]) => {
       setPayments(Array.isArray(p) ? p : []);
       setStaffSummary(s);
