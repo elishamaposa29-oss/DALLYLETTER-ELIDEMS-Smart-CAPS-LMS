@@ -27,7 +27,7 @@ function OwnerCommandCenterPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const load = useCallback(async (nextOffset = offset) => {
+  const load = useCallback(async (nextOffset: number) => {
     setLoading(true); setError("");
     const headers = { Authorization: `Bearer ${token()}` };
     try {
@@ -43,7 +43,7 @@ function OwnerCommandCenterPage() {
       setHealth(healthData.services ?? []); setSnapshot(snapshotData); setEvents(eventData.events ?? []); setHasMore(Boolean(eventData.hasMore)); setOffset(nextOffset);
     } catch (err) { setError(err instanceof Error ? err.message : "Unable to load the Owner Command Center."); }
     finally { setLoading(false); }
-  }, [offset]);
+  }, []);
 
   useEffect(() => { void load(0); }, [load]);
   const display = (value: number | string | null | undefined) => value === null || value === undefined ? "Unavailable" : String(value);
