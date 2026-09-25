@@ -1,3 +1,4 @@
+import { getApiUrl } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -31,7 +32,7 @@ export default function AdminAISettings() {
   const token = () => localStorage.getItem("dallyletter_token");
 
   useEffect(() => {
-    fetch("/api/ai/status", { headers: { Authorization: `Bearer ${token()}` } })
+    fetch(getApiUrl("/api/ai/status"), { headers: { Authorization: `Bearer ${token()}` } })
       .then(r => r.json())
       .then((s: AIStatus) => {
         setStatus(s);
@@ -50,14 +51,14 @@ export default function AdminAISettings() {
         payload[currentProvider.keyField] = keys[currentProvider.keyField as keyof typeof keys];
       }
 
-      const r = await fetch("/api/ai/settings", {
+      const r = await fetch(getApiUrl("/api/ai/settings"), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
         body: JSON.stringify(payload),
       });
       if (r.ok) {
         toast({ title: "AI settings saved!", description: "ELIDEMS AI will use the new provider on next request." });
-        const s = await fetch("/api/ai/status", { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json());
+        const s = await fetch(getApiUrl("/api/ai/status"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json());
         setStatus(s);
       } else {
         const data = await r.json().catch(() => ({}));
@@ -77,12 +78,12 @@ export default function AdminAISettings() {
       if (currentProvider?.keyField && keys[currentProvider.keyField as keyof typeof keys]) {
         payload[currentProvider.keyField] = keys[currentProvider.keyField as keyof typeof keys];
       }
-      await fetch("/api/ai/settings", {
+      await fetch(getApiUrl("/api/ai/settings"), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
         body: JSON.stringify(payload),
       });
-      const r = await fetch("/api/ai/test-connection", {
+      const r = await fetch(getApiUrl("/api/ai/test-connection"), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
       });
@@ -92,7 +93,7 @@ export default function AdminAISettings() {
         message: data.success ? `✅ Connected to ${data.provider}! Response: "${data.response?.slice(0, 80)}…"` : `❌ ${data.error ?? "Connection failed"}`,
       });
       if (data.success) {
-        const s = await fetch("/api/ai/status", { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json());
+        const s = await fetch(getApiUrl("/api/ai/status"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json());
         setStatus(s);
       }
     } finally {
@@ -101,14 +102,14 @@ export default function AdminAISettings() {
   }
 
   async function clearKey(field: string) {
-    await fetch("/api/ai/settings", {
+    await fetch(getApiUrl("/api/ai/settings"), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
       body: JSON.stringify({ [field]: "" }),
     });
     setKeys(prev => ({ ...prev, [field]: "" }));
     toast({ title: "API key cleared" });
-    const s = await fetch("/api/ai/status", { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json());
+    const s = await fetch(getApiUrl("/api/ai/status"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json());
     setStatus(s);
   }
 
