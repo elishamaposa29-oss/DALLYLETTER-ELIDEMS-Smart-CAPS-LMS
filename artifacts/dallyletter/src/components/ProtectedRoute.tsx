@@ -17,11 +17,11 @@ export function ProtectedRoute({
     if (!isLoading) {
       if (!user) {
         setLocation("/login");
-      } else if (allowedRoles && !allowedRoles.includes(user.role)) {
+      } else if (allowedRoles && !allowedRoles.includes(user.role) && !(user.role === "admin" && allowedRoles.includes("owner"))) {
         // Redirect to their respective dashboard
         if (user.role === "student") setLocation("/");
         else if (user.role === "teacher") setLocation("/teacher");
-        else if (user.role === "owner") setLocation("/admin");
+        else if (user.role === "owner" || user.role === "admin") setLocation("/admin");
       } else if (user.isBlocked) {
         setLocation("/suspended");
       }
