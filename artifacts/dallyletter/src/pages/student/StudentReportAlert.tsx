@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { getApiUrl } from "@workspace/api-client-react";
 import { Shield, Send, CheckCircle } from "lucide-react";
 
 const token = () => localStorage.getItem("dallyletter_token") ?? "";
@@ -36,7 +37,7 @@ export default function StudentReportAlert() {
   const submit = () => {
     if (!category || !title || !description) { toast({ variant: "destructive", title: "Fill all fields" }); return; }
     setSubmitting(true);
-    void fetch("/api/owner-alerts", {
+    void fetch(getApiUrl("/api/owner-alerts"), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
       body: JSON.stringify({ category, severity, title, description }),
