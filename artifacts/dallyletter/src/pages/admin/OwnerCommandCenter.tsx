@@ -1,3 +1,4 @@
+import { getApiUrl } from "@workspace/api-client-react";
 import { useCallback, useEffect, useState } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -31,9 +32,9 @@ function OwnerCommandCenterPage() {
     const headers = { Authorization: `Bearer ${token()}` };
     try {
       const responses = await Promise.all([
-        fetch("/api/owner/command-center/health", { headers }),
-        fetch("/api/owner/command-center/snapshot", { headers }),
-        fetch(`/api/owner/command-center/events?limit=10&offset=${nextOffset}`, { headers }),
+        fetch(getApiUrl("/api/owner/command-center/health"), { headers }),
+        fetch(getApiUrl("/api/owner/command-center/snapshot"), { headers }),
+        fetch(getApiUrl(`/api/owner/command-center/events?limit=10&offset=${nextOffset}`), { headers }),
       ]);
       if (responses.some((response) => response.status === 401)) throw new Error("Your session has expired. Please sign in again.");
       if (responses.some((response) => response.status === 403)) throw new Error("Owner access is required for this page.");
