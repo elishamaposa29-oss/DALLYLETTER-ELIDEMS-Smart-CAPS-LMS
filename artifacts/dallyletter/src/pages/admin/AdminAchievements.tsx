@@ -1,3 +1,4 @@
+import { getApiUrl } from "@workspace/api-client-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -26,8 +27,8 @@ export default function AdminAchievements() {
 
   const load = () => {
     void Promise.all([
-      fetch("/api/achievements", { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
-      fetch("/api/users", { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
+      fetch(getApiUrl("/api/achievements"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
+      fetch(getApiUrl("/api/users"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
     ]).then(([a, u]) => {
       setAchievements(Array.isArray(a) ? a : []);
       setStudents(Array.isArray(u) ? u : []);
@@ -38,7 +39,7 @@ export default function AdminAchievements() {
 
   const create = () => {
     if (!form.name || !form.description) { toast({ variant: "destructive", title: "Name and description required" }); return; }
-    void fetch("/api/achievements", {
+    void fetch(getApiUrl("/api/achievements"), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
       body: JSON.stringify({ ...form, pointsValue: parseInt(form.pointsValue) }),
@@ -53,7 +54,7 @@ export default function AdminAchievements() {
 
   const award = () => {
     if (!selectedAchievement || !awardUserId) { toast({ variant: "destructive", title: "Select a student" }); return; }
-    void fetch("/api/achievements/award", {
+    void fetch(getApiUrl("/api/achievements/award"), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
       body: JSON.stringify({ userId: parseInt(awardUserId), achievementId: selectedAchievement.id, note: awardNote }),
