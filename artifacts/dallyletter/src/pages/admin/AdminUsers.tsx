@@ -1,5 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { useListUsers, useBlockUser, usePromoteUser, useDeleteUser } from "@workspace/api-client-react";
+import { useListUsers, useBlockUser, usePromoteUser, useDeleteUser, getApiUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Users, Search, Shield, Ban, Trash2, PauseCircle, Briefcase } from "lucide-react";
@@ -42,7 +42,7 @@ export default function AdminUsers() {
     setSuspending(id);
     try {
       const token = localStorage.getItem("dallyletter_token");
-      const res = await fetch(`/api/users/${id}/suspend`, {
+      const res = await fetch(getApiUrl(`/api/users/${id}/suspend`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ isSuspended: !isSuspended }),
@@ -69,7 +69,7 @@ export default function AdminUsers() {
   const handleToggleManager = (id: number, isManager: boolean) => {
     if (!confirm(isManager ? "Remove Manager status from this user?" : "Promote this user to Manager? They will gain access to the Manager Dashboard.")) return;
     const tok = localStorage.getItem("dallyletter_token");
-    void fetch(`/api/users/${id}/promote-manager`, {
+    void fetch(getApiUrl(`/api/users/${id}/promote-manager`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
       body: JSON.stringify({ isManager: !isManager }),
