@@ -11,7 +11,7 @@ export default function ManagerReports() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(getApiUrl("/api/manager/reports/overview", { headers: { Authorization: `Bearer ${token()}` } })
+    fetch(getApiUrl("/api/manager/reports/overview"), { headers: { Authorization: `Bearer ${token()}` } })
       .then(r => r.json()).then(d => { setReport(d); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
