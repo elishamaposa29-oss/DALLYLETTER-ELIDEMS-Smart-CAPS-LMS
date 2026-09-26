@@ -17,8 +17,9 @@ export function ExerciseBuilderPanel({lessonId,onSaved}:ExerciseBuilderPanelProp
  const [busy,setBusy]=useState(false);const [message,setMessage]=useState<string|null>(null);
  const [preparedExerciseId,setPreparedExerciseId]=useState<number|null>(null);const [aiEnabled,setAiEnabled]=useState(false);const [aiApproved,setAiApproved]=useState(false);const [aiReadiness,setAiReadiness]=useState<AIReadiness|null>(null);const [aiClarification,setAiClarification]=useState("");
  const addQuestion=(type:ExerciseQuestionDraft["type"]="input")=>setQuestions(c=>[...c,{id:crypto.randomUUID(),prompt:"",type,marks:1,options:type==="poll"?[{id:crypto.randomUUID(),label:"",value:"A",isCorrect:false},{id:crypto.randomUUID(),label:"",value:"B",isCorrect:false}]:[]}]);
- const updateQuestion=(id:string,patch:Partial<ExerciseQuestionDraft>)=>setQuestions(c=>c.map(q=>q.id===id?{...q,...patch}:q));
- const updateOption=(qid:string,oid:string,patch:Partial<PollOption>)=>setQuestions(c=>c.map(q=>q.id===qid?{...q,options:q.options.map(o=>o.id===oid?{...o,...patch}:o)}:q));
+ const invalidateAIReadiness=()=>{setAiReadiness(null);setAiApproved(false);setPreparedExerciseId(null)};
+ const updateQuestion=(id:string,patch:Partial<ExerciseQuestionDraft>)=>{invalidateAIReadiness();setQuestions(c=>c.map(q=>q.id===id?{...q,...patch}:q))};
+ const updateOption=(qid:string,oid:string,patch:Partial<PollOption>)=>{invalidateAIReadiness();setQuestions(c=>c.map(q=>q.id===qid?{...q,options:q.options.map(o=>o.id===oid?{...o,...patch}:o)}:q))};
  const removeQuestion=(id:string)=>setQuestions(c=>c.filter(q=>q.id!==id));
 
  const checkAI=async()=>{
@@ -53,9 +54,11 @@ export function ExerciseBuilderPanel({lessonId,onSaved}:ExerciseBuilderPanelProp
        if(!er.ok)throw new Error((await er.json().catch(()=>null))?.error||"Could not create exercise");
        exercise=await er.json() as {id:number};
      }
-     for(const[index,q]of questions.entries()){
-       const qr=await fetch(getApiUrl(`/api/exercises/${exercise.id}/questions`),{method:"POST",headers,body:JSON.stringify({prompt:q.prompt.trim(),type:q.type,marksAllocated:q.marks,position:index,config:{layout:"book"},options:q.type==="poll"?q.options.map(o=>({label:o.label.trim(),value:o.value.trim()||o.label.trim(),isCorrect:o.isCorrect})):undefined})});
-       if(!qr.ok)throw new Error((await qr.json().catch(()=>null))?.error||`Could not save question ${index+1}`);
+     if(!preparedExerciseId){
+       for(const[index,q]of questions.entries()){
+         const qr=await fetch(getApiUrl(`/api/exercises/${exercise.id}/questions`),{method:"POST",headers,body:JSON.stringify({prompt:q.prompt.trim(),type:q.type,marksAllocated:q.marks,position:index,config:{layout:"book"},options:q.type==="poll"?q.options.map(o=>({label:o.label.trim(),value:o.value.trim()||o.label.trim(),isCorrect:o.isCorrect})):undefined})});
+         if(!qr.ok)throw new Error((await qr.json().catch(()=>null))?.error||`Could not save question ${index+1}`);
+       }
      }
      if(publish){
        const pr=await fetch(getApiUrl(`/api/exercises/${exercise.id}/publish`),{method:"POST",headers,body:JSON.stringify({aiMarking:{enabled:aiEnabled,approved:aiEnabled&&aiApproved},teacherClarification:aiClarification||undefined})});
