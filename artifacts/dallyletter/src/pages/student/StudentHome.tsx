@@ -36,7 +36,7 @@ export default function StudentHome() {
     setSchedulingLesson(true);
     try {
       const token = localStorage.getItem("dallyletter_token");
-      await fetch(getApiUrl("/api/notifications", {
+      await fetch(getApiUrl("/api/notifications"), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
