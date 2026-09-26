@@ -13,6 +13,25 @@ declare global {
   }
 }
 
+/** Normalize role values at the authentication boundary so legacy/case-variant
+ * database values cannot silently disagree with route authorization checks. */
+export function normalizeRole(role: unknown): string {
+  return typeof role === "string" ? role.trim().toLowerCase() : "";
+}
+
+/** Roles that have platform-owner privileges. */
+export function isOwnerRole(role: unknown): boolean {
+  return ["owner", "admin"].includes(normalizeRole(role));
+}
+
+/** Academic-content staff. Manager is an explicit staff flag in the existing
+ * user model; it grants the same content-management capability as teacher,
+ * but does not grant owner-only administration. */
+export function canManageAcademicContent(user: NonNullable<Express.Request["currentUser"]>): boolean {
+  const role = normalizeRole(user.role);
+  return role === "teacher" || isOwnerRole(role) || user.isManager === true;
+}
+
 // Middleware that extracts user from token (non-blocking — user may be null)
 export async function extractUser(req: Request, _res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers.authorization;
@@ -22,7 +41,8 @@ export async function extractUser(req: Request, _res: Response, next: NextFuncti
     if (parsed) {
       const [user] = await db.select().from(usersTable).where(eq(usersTable.id, parsed.userId));
       if (user) {
-        req.currentUser = user;
+        // Keep one canonical role representation throughout the request.
+        req.currentUser = { ...user, role: normalizeRole(user.role) };
       }
     }
   }
@@ -40,17 +60,19 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
 // Middleware that requires owner role
 export async function requireOwner(req: Request, res: Response, next: NextFunction): Promise<void> {
-  if (!req.currentUser || !["owner", "admin"].includes(req.currentUser.role)) {
+  if (!req.currentUser || !isOwnerRole(req.currentUser.role)) {
     res.status(403).json({ error: "Owner access required" });
     return;
   }
   next();
 }
 
-// Middleware that requires teacher or owner role
+// Middleware that requires teacher, manager, or owner role.
+// Student/payment-health rules are deliberately not applied here: they belong
+// to product-specific access decisions, not generic staff authorization.
 export async function requireTeacherOrOwner(req: Request, res: Response, next: NextFunction): Promise<void> {
-  if (!req.currentUser || !["teacher", "owner", "admin"].includes(req.currentUser.role)) {
-    res.status(403).json({ error: "Teacher or owner access required" });
+  if (!req.currentUser || !canManageAcademicContent(req.currentUser)) {
+    res.status(403).json({ error: "Teacher or manager access required" });
     return;
   }
   next();
