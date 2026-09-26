@@ -24,7 +24,7 @@ export default function StudentPayments() {
 
   useEffect(() => {
     const token = localStorage.getItem("dallyletter_token");
-    fetch(getApiUrl("/api/settings", { headers: { Authorization: `Bearer ${token}` } })
+    fetch(getApiUrl("/api/settings"), { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(data => setSettings(data))
       .catch(() => {});
@@ -62,7 +62,7 @@ export default function StudentPayments() {
     setNotifying(true);
     try {
       const token = localStorage.getItem("dallyletter_token");
-      const res = await fetch(getApiUrl("/api/payments/notify-admin", {
+      const res = await fetch(getApiUrl("/api/payments/notify-admin"), {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ amount: totalOwed }),
