@@ -14,7 +14,7 @@ export default function ManagerStudents() {
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    fetch(getApiUrl("/api/manager/students", { headers: { Authorization: `Bearer ${token()}` } })
+    fetch(getApiUrl("/api/manager/students"), { headers: { Authorization: `Bearer ${token()}` } })
       .then(r => r.json()).then(d => { setStudents(Array.isArray(d) ? d : []); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
