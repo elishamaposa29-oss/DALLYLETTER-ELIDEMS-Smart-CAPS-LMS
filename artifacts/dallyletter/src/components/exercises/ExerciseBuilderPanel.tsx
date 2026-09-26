@@ -6,136 +6,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getApiUrl } from "@workspace/api-client-react";
-
-interface ExerciseQuestionDraft {
-  id: string;
-  prompt: string;
-  type: "input" | "poll" | "drawbox";
-  marks: number;
-}
-
-interface ExerciseBuilderPanelProps {
-  lessonId: number;
-  onSaved?: () => void;
-}
-
-export function ExerciseBuilderPanel({ lessonId, onSaved }: ExerciseBuilderPanelProps) {
-  const [title, setTitle] = useState("");
-  const [instructions, setInstructions] = useState("");
-  const [questions, setQuestions] = useState<ExerciseQuestionDraft[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-
-  const addQuestion = (type: ExerciseQuestionDraft["type"] = "input") => {
-    setQuestions((current) => [
-      ...current,
-      { id: crypto.randomUUID(), prompt: "", type, marks: 1 },
-    ]);
-  };
-
-  const updateQuestion = (id: string, patch: Partial<ExerciseQuestionDraft>) => {
-    setQuestions((current) => current.map((question) => question.id === id ? { ...question, ...patch } : question));
-  };
-
-  const removeQuestion = (id: string) => {
-    setQuestions((current) => current.filter((question) => question.id !== id));
-  };
-
-  const save = async (publish: boolean) => {
-    if (!title.trim() || questions.some((question) => !question.prompt.trim())) {
-      setMessage("Add an exercise title and complete every question first.");
-      return;
-    }
-    setBusy(true);
-    setMessage(null);
-    try {
-      const token = localStorage.getItem("dallyletter_token");
-      const headers: HeadersInit = { "Content-Type": "application/json" };
-      if (token) headers.Authorization = `Bearer ${token}`;
-
-      const exerciseResponse = await fetch(getApiUrl(`/api/exercises/lessons/${lessonId}/exercises`), {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ title: title.trim(), instructions: instructions.trim() || undefined, layout: { version: 1, page: "book", mode: "freeform" } }),
-      });
-      if (!exerciseResponse.ok) throw new Error((await exerciseResponse.json().catch(() => null))?.error || "Could not create exercise");
-      const exercise = await exerciseResponse.json() as { id: number };
-
-      for (const [index, question] of questions.entries()) {
-        const response = await fetch(getApiUrl(`/api/exercises/${exercise.id}/questions`), {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ prompt: question.prompt.trim(), type: question.type, marksAllocated: question.marks, position: index, config: { layout: "book" } }),
-        });
-        if (!response.ok) throw new Error((await response.json().catch(() => null))?.error || `Could not save question ${index + 1}`);
-      }
-
-      if (publish) {
-        const response = await fetch(getApiUrl(`/api/exercises/${exercise.id}/publish`), { method: "POST", headers });
-        if (!response.ok) throw new Error((await response.json().catch(() => null))?.error || "Could not publish exercise");
-        setMessage("Exercise published and attached to this lesson.");
-      } else {
-        setMessage("Exercise saved as a draft.");
-      }
-      onSaved?.();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Something went wrong while saving the exercise.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Card className="border-primary/20 bg-card/80 shadow-sm">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <CardTitle className="text-base">Lesson Exercise</CardTitle>
-            <p className="mt-1 text-xs text-muted-foreground">Build questions directly beside this lesson's media.</p>
-          </div>
-          <Badge variant="outline">Attached to lesson</Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Exercise title" />
-          <Input value={instructions} onChange={(event) => setInstructions(event.target.value)} placeholder="Instructions (optional)" />
-        </div>
-
-        <div className="rounded-xl border bg-background/60 p-3 sm:p-4">
-          <div className="mb-3 flex flex-wrap gap-2">
-            <Button type="button" size="sm" variant="outline" onClick={() => addQuestion("input")}><Plus className="mr-1 h-4 w-4" />Question</Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => addQuestion("poll")}><Plus className="mr-1 h-4 w-4" />Poll</Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => addQuestion("drawbox")}><Plus className="mr-1 h-4 w-4" />Drawbox</Button>
-          </div>
-
-          <div className="space-y-3">
-            {questions.map((question, index) => (
-              <div key={question.id} className="rounded-lg border bg-card p-3">
-                <div className="mb-2 flex items-center gap-2">
-                  <GripVertical className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                  <Badge variant="secondary">Q{index + 1} · {question.type}</Badge>
-                  <div className="ml-auto flex items-center gap-2">
-                    <Input type="number" min={0} step="0.5" className="w-20" value={question.marks} onChange={(event) => updateQuestion(question.id, { marks: Number(event.target.value) || 0 })} aria-label={`Marks for question ${index + 1}`} />
-                    <Button type="button" variant="ghost" size="icon" onClick={() => removeQuestion(question.id)} aria-label={`Remove question ${index + 1}`}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                  </div>
-                </div>
-                <Textarea value={question.prompt} onChange={(event) => updateQuestion(question.id, { prompt: event.target.value })} placeholder="Type the exercise question..." className="min-h-20" />
-                {question.type === "drawbox" && <p className="mt-2 text-xs text-muted-foreground">Learners will receive a drawing workspace for this question.</p>}
-                {question.type === "poll" && <p className="mt-2 text-xs text-muted-foreground">Poll option editing is the next builder layer; the question is already persisted as a poll type.</p>}
-              </div>
-            ))}
-            {!questions.length && <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">Add a question, poll, or drawbox to start.</div>}
-          </div>
-        </div>
-
-        {message && <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm" role="status"><CheckCircle2 className="h-4 w-4" />{message}</div>}
-
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button type="button" variant="outline" disabled={busy} onClick={() => save(false)}><Save className="mr-2 h-4 w-4" />Save draft</Button>
-          <Button type="button" disabled={busy || !questions.length} onClick={() => save(true)}><Send className="mr-2 h-4 w-4" />Publish exercise</Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
+interface PollOption { id:string; label:string; value:string; isCorrect:boolean }
+interface ExerciseQuestionDraft { id:string; prompt:string; type:"input"|"poll"|"drawbox"; marks:number; options:PollOption[] }
+interface ExerciseBuilderPanelProps { lessonId:number; onSaved?:()=>void }
+export function ExerciseBuilderPanel({lessonId,onSaved}:ExerciseBuilderPanelProps){
+ const [title,setTitle]=useState("");const [instructions,setInstructions]=useState("");const [questions,setQuestions]=useState<ExerciseQuestionDraft[]>([]);const [busy,setBusy]=useState(false);const [message,setMessage]=useState<string|null>(null);
+ const addQuestion=(type:ExerciseQuestionDraft["type"]="input")=>setQuestions(c=>[...c,{id:crypto.randomUUID(),prompt:"",type,marks:1,options:type==="poll"?[{id:crypto.randomUUID(),label:"",value:"A",isCorrect:false},{id:crypto.randomUUID(),label:"",value:"B",isCorrect:false}]:[]}]);
+ const updateQuestion=(id:string,patch:Partial<ExerciseQuestionDraft>)=>setQuestions(c=>c.map(q=>q.id===id?{...q,...patch}:q));
+ const updateOption=(qid:string,oid:string,patch:Partial<PollOption>)=>setQuestions(c=>c.map(q=>q.id===qid?{...q,options:q.options.map(o=>o.id===oid?{...o,...patch}:o)}:q));
+ const removeQuestion=(id:string)=>setQuestions(c=>c.filter(q=>q.id!==id));
+ const save=async(publish:boolean)=>{if(!title.trim()||questions.some(q=>!q.prompt.trim()||(q.type==="poll"&&(q.options.length<2||q.options.some(o=>!o.label.trim())||!q.options.some(o=>o.isCorrect))))){setMessage("Complete the title, questions, and poll options before saving.");return;}setBusy(true);setMessage(null);try{const token=localStorage.getItem("dallyletter_token");const headers:HeadersInit={"Content-Type":"application/json"};if(token)headers.Authorization=`Bearer ${token}`;const er=await fetch(getApiUrl(`/api/exercises/lessons/${lessonId}/exercises`),{method:"POST",headers,body:JSON.stringify({title:title.trim(),instructions:instructions.trim()||undefined,layout:{version:1,page:"book",mode:"freeform"}})});if(!er.ok)throw new Error((await er.json().catch(()=>null))?.error||"Could not create exercise");const exercise=await er.json() as {id:number};for(const[index,q]of questions.entries()){const r=await fetch(getApiUrl(`/api/exercises/${exercise.id}/questions`),{method:"POST",headers,body:JSON.stringify({prompt:q.prompt.trim(),type:q.type,marksAllocated:q.marks,position:index,config:{layout:"book"},options:q.type==="poll"?q.options.map(o=>({label:o.label.trim(),value:o.value.trim()||o.label.trim(),isCorrect:o.isCorrect})):undefined})});if(!r.ok)throw new Error((await r.json().catch(()=>null))?.error||`Could not save question ${index+1}`);}if(publish){const r=await fetch(getApiUrl(`/api/exercises/${exercise.id}/publish`),{method:"POST",headers});if(!r.ok)throw new Error((await r.json().catch(()=>null))?.error||"Could not publish exercise");setMessage("Exercise published and attached to this lesson.");}else setMessage("Exercise saved as a draft.");onSaved?.();}catch(e){setMessage(e instanceof Error?e.message:"Something went wrong while saving the exercise.");}finally{setBusy(false)}};
+ return <Card className="border-primary/20 bg-card/80 shadow-sm"><CardHeader className="pb-3"><div className="flex items-center justify-between gap-3"><div><CardTitle className="text-base">Lesson Exercise</CardTitle><p className="mt-1 text-xs text-muted-foreground">Build questions directly beside this lesson's media.</p></div><Badge variant="outline">Attached to lesson</Badge></div></CardHeader><CardContent className="space-y-4"><div className="grid gap-3 sm:grid-cols-2"><Input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Exercise title"/><Input value={instructions} onChange={e=>setInstructions(e.target.value)} placeholder="Instructions (optional)"/></div><div className="rounded-xl border bg-background/60 p-3 sm:p-4"><div className="mb-3 flex flex-wrap gap-2"><Button type="button" size="sm" variant="outline" onClick={()=>addQuestion("input")}><Plus className="mr-1 h-4 w-4"/>Question</Button><Button type="button" size="sm" variant="outline" onClick={()=>addQuestion("poll")}><Plus className="mr-1 h-4 w-4"/>Poll</Button><Button type="button" size="sm" variant="outline" onClick={()=>addQuestion("drawbox")}><Plus className="mr-1 h-4 w-4"/>Drawbox</Button></div><div className="space-y-3">{questions.map((q,i)=><div key={q.id} className="rounded-lg border bg-card p-3"><div className="mb-2 flex items-center gap-2"><GripVertical className="h-4 w-4 text-muted-foreground"/><Badge variant="secondary">Q{i+1} · {q.type}</Badge><div className="ml-auto flex items-center gap-2"><Input type="number" min={0} step="0.5" className="w-20" value={q.marks} onChange={e=>updateQuestion(q.id,{marks:Number(e.target.value)||0})} aria-label={`Marks for question ${i+1}`}/><Button type="button" variant="ghost" size="icon" onClick={()=>removeQuestion(q.id)}><Trash2 className="h-4 w-4 text-destructive"/></Button></div></div><Textarea value={q.prompt} onChange={e=>updateQuestion(q.id,{prompt:e.target.value})} placeholder="Type the exercise question..." className="min-h-20"/>{q.type==="poll"&&<div className="mt-3 space-y-2"><p className="text-xs font-medium">Poll options — select the correct answer</p>{q.options.map((o,oi)=><div key={o.id} className="flex items-center gap-2"><input type="radio" name={`correct-${q.id}`} checked={o.isCorrect} onChange={()=>updateQuestion(q.id,{options:q.options.map(x=>({...x,isCorrect:x.id===o.id}))})}/><Input value={o.label} onChange={e=>updateOption(q.id,o.id,{label:e.target.value,value:e.target.value})} placeholder={`Option ${oi+1}`}/>{q.options.length>2&&<Button type="button" variant="ghost" size="icon" onClick={()=>updateQuestion(q.id,{options:q.options.filter(x=>x.id!==o.id)})}><Trash2 className="h-4 w-4"/></Button>}</div>)}<Button type="button" size="sm" variant="ghost" onClick={()=>updateQuestion(q.id,{options:[...q.options,{id:crypto.randomUUID(),label:"",value:String.fromCharCode(65+q.options.length),isCorrect:false}]})}><Plus className="mr-1 h-4 w-4"/>Option</Button></div>}{q.type==="drawbox"&&<p className="mt-2 text-xs text-muted-foreground">Learners receive a drawing workspace for this question.</p>}</div>)}{!questions.length&&<div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">Add a question, poll, or drawbox to start.</div>}</div></div>{message&&<div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm" role="status"><CheckCircle2 className="h-4 w-4"/>{message}</div>}<div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={busy} onClick={()=>save(false)}><Save className="mr-2 h-4 w-4"/>Save draft</Button><Button type="button" disabled={busy||!questions.length} onClick={()=>save(true)}><Send className="mr-2 h-4 w-4"/>Publish exercise</Button></div></CardContent></Card>;
 }
