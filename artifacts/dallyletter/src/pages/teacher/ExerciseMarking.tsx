@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Sparkles, AlertTriangle } from "lucide-react";
 import { useRoute } from "wouter";
 import { getApiUrl } from "@workspace/api-client-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
@@ -20,6 +21,8 @@ export default function ExerciseMarking() {
   const [marks, setMarks] = useState<Record<number, string>>({});
   const [notes, setNotes] = useState<Record<number, string>>({});
   const [message, setMessage] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiMessage, setAiMessage] = useState("");
 
   const token = localStorage.getItem("dallyletter_token");
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
@@ -40,6 +43,20 @@ export default function ExerciseMarking() {
     setAnswers(d.answers ?? []);
     setMarks(Object.fromEntries((d.answers ?? []).map((a: Answer) => [a.id, a.awardedMarks])));
     setNotes(Object.fromEntries((d.answers ?? []).map((a: Answer) => [a.id, a.correctionNotes ?? ""])));
+  };
+
+  const runAIMarking = async () => {
+    if (!id || selected === null) return;
+    setAiBusy(true);setAiMessage("");
+    try {
+      const r = await fetch(getApiUrl(`/api/exercises/${id}/ai-marking/${selected}/run`), { method:"POST", headers:{...headers,"Content-Type":"application/json"} });
+      const d = await r.json();
+      if (!r.ok) { setAiMessage(d.error || "AI marking could not start."); return; }
+      setAiMessage(d.needsReview ? "AI completed the portions it could mark and sent the submission back for teacher review." : "AI prepared marks for teacher review. Nothing has been returned to the learner yet.");
+      await load(selected);
+      setSubs((current) => current.map((x) => x.id === selected ? {...x,status:d.status} : x));
+    } catch { setAiMessage("AI marking could not start. The normal teacher workflow remains available."); }
+    finally { setAiBusy(false); }
   };
 
   const save = async () => {
@@ -93,6 +110,12 @@ export default function ExerciseMarking() {
                   <Textarea value={notes[a.id] ?? ""} onChange={(e) => setNotes((n) => ({ ...n, [a.id]: e.target.value }))} placeholder="Correction / feedback" />
                 </div>
               ))}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button onClick={runAIMarking} disabled={aiBusy || !selected} variant="outline">
+                  <Sparkles className="mr-2 h-4 w-4" />{aiBusy ? "AI marking…" : "Ask ELIDEMS AI to mark"}
+                </Button>
+                {aiMessage && <span className="flex items-center gap-2 text-sm text-muted-foreground"><AlertTriangle className="h-4 w-4 shrink-0" />{aiMessage}</span>}
+              </div>
               <Button onClick={save}>Save marks & return result</Button>
               <span className="ml-3 text-sm text-muted-foreground">{message}</span>
             </CardContent>
