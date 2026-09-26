@@ -12,7 +12,7 @@ export default function ManagerPrefects() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(getApiUrl("/api/achievements/prefect-leaderboard", { headers: { Authorization: `Bearer ${token()}` } })
+    fetch(getApiUrl("/api/achievements/prefect-leaderboard"), { headers: { Authorization: `Bearer ${token()}` } })
       .then(r => r.json())
       .then(d => { setPrefects(Array.isArray(d) ? d : []); setLoading(false); })
       .catch(() => setLoading(false));
