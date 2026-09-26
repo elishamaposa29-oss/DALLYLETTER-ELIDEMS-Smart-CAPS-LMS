@@ -18,9 +18,9 @@ export default function StudentAchievements() {
 
   useEffect(() => {
     Promise.all([
-      fetch(getApiUrl("/api/achievements/my", { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
-      fetch(getApiUrl("/api/achievements/leaderboard", { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
-      fetch(getApiUrl("/api/achievements", { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
+      fetch(getApiUrl("/api/achievements/my"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
+      fetch(getApiUrl("/api/achievements/leaderboard"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
+      fetch(getApiUrl("/api/achievements"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
     ]).then(([my, lb, all]) => {
       setMyBadges(Array.isArray(my) ? my : []);
       setLeaderboard(Array.isArray(lb) ? lb : []);
