@@ -30,7 +30,13 @@ router.get("/lessons/:lessonId/exercises", requireAuth, async (req,res):Promise<
   if(req.currentUser && teacherRoles.includes(req.currentUser.role)){
     const own=await db.select().from(exercisesTable).where(eq(exercisesTable.lessonId,lessonId)).orderBy(desc(exercisesTable.createdAt));res.json(own);return;
   }
-  res.json(published);
+  const learnerId=req.currentUser?.role===learnerRole ? req.currentUser.id : null;
+  if(!learnerId){res.json(published);return;}
+  const withStatus=await Promise.all(published.map(async exercise=>{
+    const [submission]=await db.select({status:exerciseSubmissionsTable.status,totalScore:exerciseSubmissionsTable.totalScore,percentage:exerciseSubmissionsTable.percentage,submittedAt:exerciseSubmissionsTable.submittedAt,returnedAt:exerciseSubmissionsTable.returnedAt}).from(exerciseSubmissionsTable).where(and(eq(exerciseSubmissionsTable.exerciseId,exercise.id),eq(exerciseSubmissionsTable.learnerId,learnerId)));
+    return {...exercise, submissionStatus:submission?.status??"not_started", submission:submission??null};
+  }));
+  res.json(withStatus);
 });
 
 router.get("/:id",requireAuth,async(req,res):Promise<void>=>{
