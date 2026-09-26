@@ -15,7 +15,7 @@ interface AIReadiness { provider:string; configured:boolean; canMark:boolean; cl
 export function ExerciseBuilderPanel({lessonId,onSaved}:ExerciseBuilderPanelProps){
  const [title,setTitle]=useState("");const [instructions,setInstructions]=useState("");const [questions,setQuestions]=useState<ExerciseQuestionDraft[]>([]);
  const [busy,setBusy]=useState(false);const [message,setMessage]=useState<string|null>(null);
- const [aiEnabled,setAiEnabled]=useState(false);const [aiApproved,setAiApproved]=useState(false);const [aiReadiness,setAiReadiness]=useState<AIReadiness|null>(null);const [aiClarification,setAiClarification]=useState("");
+ const [preparedExerciseId,setPreparedExerciseId]=useState<number|null>(null);const [aiEnabled,setAiEnabled]=useState(false);const [aiApproved,setAiApproved]=useState(false);const [aiReadiness,setAiReadiness]=useState<AIReadiness|null>(null);const [aiClarification,setAiClarification]=useState("");
  const addQuestion=(type:ExerciseQuestionDraft["type"]="input")=>setQuestions(c=>[...c,{id:crypto.randomUUID(),prompt:"",type,marks:1,options:type==="poll"?[{id:crypto.randomUUID(),label:"",value:"A",isCorrect:false},{id:crypto.randomUUID(),label:"",value:"B",isCorrect:false}]:[]}]);
  const updateQuestion=(id:string,patch:Partial<ExerciseQuestionDraft>)=>setQuestions(c=>c.map(q=>q.id===id?{...q,...patch}:q));
  const updateOption=(qid:string,oid:string,patch:Partial<PollOption>)=>setQuestions(c=>c.map(q=>q.id===qid?{...q,options:q.options.map(o=>o.id===oid?{...o,...patch}:o)}:q));
@@ -35,7 +35,7 @@ export function ExerciseBuilderPanel({lessonId,onSaved}:ExerciseBuilderPanelProp
      const rr=await fetch(getApiUrl(`/api/exercises/${exercise.id}/ai-marking/check`),{method:"POST",headers,body:JSON.stringify({teacherClarification:aiClarification})});
      const data=await rr.json();
      if(!rr.ok)throw new Error(data.error||"AI readiness check failed");
-     setAiReadiness(data);setAiApproved(Boolean(data.canMark)&&data.clarifications?.length===0);
+     setPreparedExerciseId(exercise.id);setAiReadiness(data);setAiApproved(Boolean(data.canMark)&&data.clarifications?.length===0);
      setMessage(data.canMark&&data.clarifications?.length===0?"AI marking is ready. Confirm below before publishing.":data.clarifications?.length?"AI needs clarification before it can be enabled.":"AI marking cannot be enabled for this exercise yet.");
    }catch(e){setMessage(e instanceof Error?e.message:"AI readiness check failed.");}finally{setBusy(false)}
  };
@@ -46,9 +46,13 @@ export function ExerciseBuilderPanel({lessonId,onSaved}:ExerciseBuilderPanelProp
    setBusy(true);setMessage(null);
    try{
      const token=localStorage.getItem("dallyletter_token");const headers:HeadersInit={"Content-Type":"application/json"};if(token)headers.Authorization=`Bearer ${token}`;
-     const er=await fetch(getApiUrl(`/api/exercises/lessons/${lessonId}/exercises`),{method:"POST",headers,body:JSON.stringify({title:title.trim(),instructions:instructions.trim()||undefined,layout:{version:1,page:"book",mode:"freeform",aiMarking:{enabled:false,approved:false}}})});
-     if(!er.ok)throw new Error((await er.json().catch(()=>null))?.error||"Could not create exercise");
-     const exercise=await er.json() as {id:number};
+     let exercise:{id:number};
+     if(publish&&preparedExerciseId){ exercise={id:preparedExerciseId}; }
+     else {
+       const er=await fetch(getApiUrl(`/api/exercises/lessons/${lessonId}/exercises`),{method:"POST",headers,body:JSON.stringify({title:title.trim(),instructions:instructions.trim()||undefined,layout:{version:1,page:"book",mode:"freeform",aiMarking:{enabled:false,approved:false}}})});
+       if(!er.ok)throw new Error((await er.json().catch(()=>null))?.error||"Could not create exercise");
+       exercise=await er.json() as {id:number};
+     }
      for(const[index,q]of questions.entries()){
        const qr=await fetch(getApiUrl(`/api/exercises/${exercise.id}/questions`),{method:"POST",headers,body:JSON.stringify({prompt:q.prompt.trim(),type:q.type,marksAllocated:q.marks,position:index,config:{layout:"book"},options:q.type==="poll"?q.options.map(o=>({label:o.label.trim(),value:o.value.trim()||o.label.trim(),isCorrect:o.isCorrect})):undefined})});
        if(!qr.ok)throw new Error((await qr.json().catch(()=>null))?.error||`Could not save question ${index+1}`);
@@ -65,7 +69,7 @@ export function ExerciseBuilderPanel({lessonId,onSaved}:ExerciseBuilderPanelProp
  return <Card className="border-primary/20 bg-card/80 shadow-sm">
   <CardHeader className="pb-3"><div className="flex items-center justify-between gap-3"><div><CardTitle className="text-base">Lesson Exercise</CardTitle><p className="mt-1 text-xs text-muted-foreground">Build questions directly beside this lesson's media.</p></div><Badge variant="outline">Attached to lesson</Badge></div></CardHeader>
   <CardContent className="space-y-4">
-   <div className="grid gap-3 sm:grid-cols-2"><Input value={title} onChange={e=>{setTitle(e.target.value);setAiReadiness(null);setAiApproved(false)}} placeholder="Exercise title"/><Input value={instructions} onChange={e=>{setInstructions(e.target.value);setAiReadiness(null);setAiApproved(false)}} placeholder="Instructions (optional)"/></div>
+   <div className="grid gap-3 sm:grid-cols-2"><Input value={title} onChange={e=>{setTitle(e.target.value);setAiReadiness(null);setAiApproved(false);setPreparedExerciseId(null)}} placeholder="Exercise title"/><Input value={instructions} onChange={e=>{setInstructions(e.target.value);setAiReadiness(null);setAiApproved(false)}} placeholder="Instructions (optional)"/></div>
    <div className="rounded-xl border bg-background/60 p-3 sm:p-4"><div className="mb-3 flex flex-wrap gap-2"><Button type="button" size="sm" variant="outline" onClick={()=>addQuestion("input")}><Plus className="mr-1 h-4 w-4"/>Question</Button><Button type="button" size="sm" variant="outline" onClick={()=>addQuestion("poll")}><Plus className="mr-1 h-4 w-4"/>Poll</Button><Button type="button" size="sm" variant="outline" onClick={()=>addQuestion("drawbox")}><Plus className="mr-1 h-4 w-4"/>Drawbox</Button></div>
     <div className="space-y-3">{questions.map((q,i)=><div key={q.id} className="rounded-lg border bg-card p-3"><div className="mb-2 flex items-center gap-2"><GripVertical className="h-4 w-4 text-muted-foreground"/><Badge variant="secondary">Q{i+1} · {q.type}</Badge><div className="ml-auto flex items-center gap-2"><Input type="number" min={0} step="0.5" className="w-20" value={q.marks} onChange={e=>updateQuestion(q.id,{marks:Number(e.target.value)||0})} aria-label={`Marks for question ${i+1}`}/><Button type="button" variant="ghost" size="icon" onClick={()=>removeQuestion(q.id)}><Trash2 className="h-4 w-4 text-destructive"/></Button></div></div><Textarea value={q.prompt} onChange={e=>{updateQuestion(q.id,{prompt:e.target.value});setAiReadiness(null);setAiApproved(false)}} placeholder="Type the exercise question..." className="min-h-20"/>{q.type==="poll"&&<div className="mt-3 space-y-2"><p className="text-xs font-medium">Poll options — select the correct answer</p>{q.options.map((o,oi)=><div key={o.id} className="flex items-center gap-2"><input type="radio" name={`correct-${q.id}`} checked={o.isCorrect} onChange={()=>updateQuestion(q.id,{options:q.options.map(x=>({...x,isCorrect:x.id===o.id}))})}/><Input value={o.label} onChange={e=>updateOption(q.id,o.id,{label:e.target.value,value:e.target.value})} placeholder={`Option ${oi+1}`}/>{q.options.length>2&&<Button type="button" variant="ghost" size="icon" onClick={()=>updateQuestion(q.id,{options:q.options.filter(x=>x.id!==o.id)})}><Trash2 className="h-4 w-4"/></Button>}</div>)}<Button type="button" size="sm" variant="ghost" onClick={()=>updateQuestion(q.id,{options:[...q.options,{id:crypto.randomUUID(),label:"",value:String.fromCharCode(65+q.options.length),isCorrect:false}]})}><Plus className="mr-1 h-4 w-4"/>Option</Button></div>}{q.type==="drawbox"&&<p className="mt-2 text-xs text-muted-foreground">Learners receive a drawing workspace for this question.</p>}</div>)}{!questions.length&&<div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">Add a question, poll, or drawbox to start.</div>}</div>
    </div>
