@@ -100,6 +100,7 @@ router.post("/:id/ai-marking/check",requireAuth,async(req,res):Promise<void>=>{
   if(!exercise||!canEditExercise(user,exercise.createdBy)){res.status(404).json({error:"Exercise not found"});return;}
   const questions=await db.select().from(exerciseQuestionsTable).where(eq(exerciseQuestionsTable.exerciseId,exerciseId)).orderBy(asc(exerciseQuestionsTable.position));
   if(!questions.length){res.status(409).json({error:"Add at least one question before checking AI marking"});return;}
+  const teacherClarification=typeof req.body?.teacherClarification==="string"?req.body.teacherClarification.trim():"";
   const ai=await getAIProvider();
   if(ai.name==="mock"){res.json({provider:"mock",configured:false,canMark:false,clarifications:["No live AI provider is configured yet. Add a Gemini, OpenAI, or Anthropic API key before enabling AI marking."]});return;}
   const payload=[];
@@ -108,7 +109,7 @@ router.post("/:id/ai-marking/check",requireAuth,async(req,res):Promise<void>=>{
     payload.push({id:q.id,type:q.type,prompt:q.prompt,marksAllocated:q.marksAllocated,options:options.map(o=>({label:o.label,value:o.value,isCorrect:o.isCorrect}))});
   }
   try{
-    const raw=await ai.chat([{role:"user",content:`Assess whether you can reliably mark this educational exercise. Do not mark learner work yet. Identify any question types, wording, diagrams, rubrics, or missing information that would require teacher clarification. Return ONLY JSON: {"canMark":true|false,"clarifications":["specific questions for the teacher"],"reason":"brief reason"}\\nExercise:\\n${JSON.stringify(payload)}`}]);
+    const raw=await ai.chat([{role:"user",content:`Assess whether you can reliably mark this educational exercise. Do not mark learner work yet. Identify any question types, wording, diagrams, rubrics, or missing information that would require teacher clarification. If the teacher has supplied a clarification, use it to reassess the concern. Return ONLY JSON: {"canMark":true|false,"clarifications":["specific questions for the teacher"],"reason":"brief reason"}\\nExercise:\\n${JSON.stringify(payload)}\\nTeacher clarification:\\n${teacherClarification || "(none)"}`}]);
     const match=raw.match(/\\{[\\s\\S]*\\}/);if(!match)throw new Error("AI readiness response was not valid JSON");
     const result=JSON.parse(match[0]) as {canMark?:boolean;clarifications?:string[];reason?:string};
     res.json({provider:ai.name,configured:true,canMark:Boolean(result.canMark),clarifications:Array.isArray(result.clarifications)?result.clarifications.filter(x=>typeof x==="string"):[],reason:result.reason??null});
