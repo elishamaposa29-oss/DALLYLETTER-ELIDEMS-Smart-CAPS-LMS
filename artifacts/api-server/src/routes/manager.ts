@@ -2,13 +2,13 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { usersTable, classesTable, lessonsTable, paymentsTable, ownerAlertsTable, assignmentsTable } from "@workspace/db/schema";
 import { eq, desc, and } from "drizzle-orm";
-import { requireAuth } from "../lib/auth-middleware";
+import { requireAuth, canAccessManager } from "../lib/auth-middleware";
 
 const router = Router();
 
 function requireManager(req: any, res: any, next: any) {
-  const user = req.user;
-  if (!user || (user.role !== "owner" && !user.isManager)) {
+  const user = req.currentUser;
+  if (!user || !canAccessManager(user)) {
     return res.status(403).json({ error: "Manager access required" });
   }
   next();
