@@ -123,7 +123,7 @@ router.post("/", requireAuth, async (req, res): Promise<void> => {
 
 router.put("/:id", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (user.role !== "teacher" && user.role !== "owner") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Forbidden" }); return; }
   const assignmentId = parseInt(String(req.params.id));
   const [existing] = await db.select({ teacherId: assignmentsTable.teacherId }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
