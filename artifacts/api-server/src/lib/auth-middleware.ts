@@ -55,3 +55,14 @@ export async function requireTeacherOrOwner(req: Request, res: Response, next: N
   }
   next();
 }
+
+
+/** Academic-content access: teachers, managers, and owners. */
+export function canManageAcademicContent(user: NonNullable<Express.Request["currentUser"]>): boolean {
+  return user.role === "owner" || user.role === "teacher" || user.isManager === true;
+}
+
+/** Manager dashboard access: owner or users explicitly promoted to manager. */
+export function canAccessManager(user: NonNullable<Express.Request["currentUser"]>): boolean {
+  return user.role === "owner" || user.isManager === true;
+}
