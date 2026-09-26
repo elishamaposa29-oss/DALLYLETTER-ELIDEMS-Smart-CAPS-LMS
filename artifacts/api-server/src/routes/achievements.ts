@@ -12,7 +12,7 @@ router.get("/", requireAuth, async (_req, res): Promise<void> => {
 });
 
 router.get("/my", requireAuth, async (req, res): Promise<void> => {
-  const user = (req as any).user;
+  const user = req.currentUser!;
   const rows = await db.select().from(userAchievementsTable)
     .where(eq(userAchievementsTable.userId, user.id))
     .orderBy(desc(userAchievementsTable.earnedAt));
@@ -62,7 +62,7 @@ router.post("/", requireAuth, async (req, res): Promise<void> => {
 
 router.post("/award", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
-  if (user.role !== "owner" && !(user as any).isManager) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (user.role !== "owner" && !user.isManager) { res.status(403).json({ error: "Forbidden" }); return; }
   const { userId, achievementId, note } = req.body;
   if (!userId || !achievementId) { res.status(400).json({ error: "userId and achievementId required" }); return; }
   const existing = await db.select().from(userAchievementsTable)
