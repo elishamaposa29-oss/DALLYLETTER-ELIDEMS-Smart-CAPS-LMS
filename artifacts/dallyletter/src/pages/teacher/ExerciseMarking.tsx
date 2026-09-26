@@ -288,7 +288,7 @@ export default function ExerciseMarking() {
                           onChange={(e) => setMarks((m) => ({ ...m, [a.id]: e.target.value }))}
                           className="w-28"
                           aria-label={`Awarded marks for question ${i + 1}`}
-                        />
+                        /></div>
                         <span className="text-sm text-muted-foreground">/ {q?.marksAllocated ?? "—"} • 0.5 steps</span>
                       </div>
                       <Textarea
