@@ -5,9 +5,10 @@ import { requireAuth, requireOwner } from "../lib/auth-middleware";
 
 const router: IRouter = Router();
 
-const PUBLIC_SETTING_KEYS = new Set(["paypal_url", "trust_wallet", "ecocash_number", "payment_instructions"]);
+const PUBLIC_SETTING_KEYS = new Set(["paynow_url", "paypal_url", "trust_wallet", "ecocash_number", "payment_instructions"]);
 
 const DEFAULT_SETTINGS = {
+  paynow_url: "",
   paypal_url: "",
   trust_wallet: "",
   ecocash_number: "",
