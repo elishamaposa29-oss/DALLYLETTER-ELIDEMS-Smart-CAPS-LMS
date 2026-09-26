@@ -79,6 +79,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         { label: "Monitor Teachers", href: "/manager/teachers", icon: GraduationCap },
         { label: "Monitor Students", href: "/manager/students", icon: Users },
         { label: "Reports", href: "/manager/reports", icon: ScrollText },
+        { label: "Assignments", href: "/teacher/assignments", icon: ClipboardList },
+        { label: "Polls & Quizzes", href: "/teacher/polls", icon: BarChart3 },
+        { label: "Manage Prefects", href: "/manager/prefects", icon: Shield },
       ] : []),
     ];
   } else if (user.role === "owner") {
