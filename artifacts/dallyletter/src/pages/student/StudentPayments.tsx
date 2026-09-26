@@ -21,7 +21,7 @@ export default function StudentPayments() {
   const { toast } = useToast();
   const [notifying, setNotifying] = useState(false);
   const [reported, setReported] = useState(false);
-  const [settings, setSettings] = useState<Settings>({ paypal_url: "", trust_wallet: "", ecocash_number: "", payment_instructions: "" });
+  const [settings, setSettings] = useState<Settings>({ paynow_url: "", paypal_url: "", trust_wallet: "", ecocash_number: "", payment_instructions: "" });
 
   useEffect(() => {
     const token = localStorage.getItem("dallyletter_token");
