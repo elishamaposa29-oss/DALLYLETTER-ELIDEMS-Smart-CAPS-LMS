@@ -33,6 +33,27 @@ function DrawAnswer({ data }: { data: unknown }) {
   );
 }
 
+function AuthenticatedAttachment({ url }: { url: string }) {
+  const [busy, setBusy] = useState(false);
+  const open = async () => {
+    setBusy(true);
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const r = await fetch(getApiUrl(url), { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      if (!r.ok) throw new Error("Attachment could not be opened.");
+      const blob = await r.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      window.open(objectUrl, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Attachment could not be opened.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return <Button type="button" size="sm" variant="link" className="h-auto p-0" onClick={open} disabled={busy}>{busy ? "Opening…" : "Open attachment"}</Button>;
+}
+
 interface Submission {
   id: number;
   learnerId: number;
@@ -277,7 +298,7 @@ export default function ExerciseMarking() {
 
                     <div className="rounded-lg bg-muted p-3 text-sm">
                       <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Learner answer</div>
-                      {a.textAnswer || a.selectedValue || (a.drawData ? <DrawAnswer data={a.drawData} /> : null) || (a.mediaReference ? <a className="underline" href={getApiUrl(a.mediaReference)} target="_blank" rel="noreferrer">Open attachment</a> : "No answer")} {a.mediaReference && (a.textAnswer || a.selectedValue || a.drawData ? <a className="ml-2 underline" href={getApiUrl(a.mediaReference)} target="_blank" rel="noreferrer">Open attachment</a> : null)}
+                      {a.textAnswer || a.selectedValue || (a.drawData ? <DrawAnswer data={a.drawData} /> : null) || (a.mediaReference ? <AuthenticatedAttachment url={a.mediaReference} /> : "No answer")} {a.mediaReference && (a.textAnswer || a.selectedValue || a.drawData ? <AuthenticatedAttachment url={a.mediaReference} /> : null)}
                     </div>
 
                     <div className="grid gap-3 sm:grid-cols-[auto_1fr]">
