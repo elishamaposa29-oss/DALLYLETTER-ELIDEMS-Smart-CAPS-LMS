@@ -151,7 +151,7 @@ router.delete("/:id", requireAuth, async (req, res): Promise<void> => {
 
 router.get("/:id/submissions", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (!["student", "teacher", "owner"].includes(user.role)) { res.status(403).json({ error: "Assignment access required" }); return; }
+  if (!canManageAcademicContent(user) && user.role !== "student") { res.status(403).json({ error: "Assignment access required" }); return; }
   const assignmentId = parseInt(String(req.params.id));
   if (user.role === "student") {
     const [assignment] = await db.select({ status: assignmentsTable.status, grade: assignmentsTable.grade }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
@@ -196,7 +196,7 @@ router.post("/:id/submit", requireAuth, async (req, res): Promise<void> => {
 
 router.put("/submissions/:subId/grade", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (user.role !== "teacher" && user.role !== "owner") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Teacher, manager, or owner access required" }); return; }
   const { marks, feedback } = req.body;
   const submissionId = parseInt(String(req.params.subId));
   const [submission] = await db.select({ teacherId: assignmentsTable.teacherId, totalMarks: assignmentsTable.totalMarks }).from(assignmentSubmissionsTable)
