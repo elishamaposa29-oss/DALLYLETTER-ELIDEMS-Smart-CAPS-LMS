@@ -13,6 +13,7 @@ export default function AdminSettings() {
   const { toast } = useToast();
 
   const [settings, setSettings] = useState({
+    paynow_url: "",
     paypal_url: "",
     trust_wallet: "",
     ecocash_number: "",
@@ -123,6 +124,13 @@ export default function AdminSettings() {
               </div>
             ) : (
               <>
+                {/* Paynow */}
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2 text-sm font-semibold">Paynow payment link</Label>
+                  <Input placeholder="https://www.paynow.co.zw/..." value={settings.paynow_url} onChange={e => setSettings(s => ({ ...s, paynow_url: e.target.value }))} />
+                  <p className="text-xs text-muted-foreground">Use a live Paynow merchant payment link. Do not enter test-mode links for production.</p>
+                </div>
+
                 {/* PayPal */}
                 <div className="space-y-2">
                   <Label className="flex items-center gap-2 text-sm font-semibold">
