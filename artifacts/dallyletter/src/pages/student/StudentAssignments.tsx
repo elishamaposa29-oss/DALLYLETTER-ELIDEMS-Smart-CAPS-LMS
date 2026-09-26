@@ -24,14 +24,14 @@ export default function StudentAssignments() {
   const [submitting, setSubmitting] = useState(false);
 
   const load = () => {
-    void fetch("/api/assignments", { headers: { Authorization: `Bearer ${token()}` } })
+    void fetch(getApiUrl("/api/assignments", { headers: { Authorization: `Bearer ${token()}` } })
       .then(r => { if (!r.ok) throw new Error("Unable to load assignments"); return r.json(); })
       .then(async (data) => {
         const list = Array.isArray(data) ? data : [];
         setAssignments(list);
         const subs: Record<number, any> = {};
         await Promise.all(list.map(async (a: any) => {
-          const sr = await fetch(`/api/assignments/${a.id}/submissions`, { headers: { Authorization: `Bearer ${token()}` } });
+          const sr = await fetch(getApiUrl(`/api/assignments/${a.id}/submissions`, { headers: { Authorization: `Bearer ${token()}` } });
           if (!sr.ok) throw new Error("Unable to load submissions");
           const sd = await sr.json();
           if (Array.isArray(sd) && sd.length > 0) subs[a.id] = sd[0];
@@ -63,7 +63,7 @@ export default function StudentAssignments() {
     if (!selected || !content.trim()) { toast({ variant: "destructive", title: "Write your answer first" }); return; }
     if (isOverdue(selected.dueDate)) { toast({ variant: "destructive", title: "This assignment is past its due date" }); return; }
     setSubmitting(true);
-    void fetch(`/api/assignments/${selected.id}/submit`, {
+    void fetch(getApiUrl(`/api/assignments/${selected.id}/submit`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
       body: JSON.stringify({ content, fileUrl: submissionFile?.url ?? null, fileName: submissionFile?.fileName ?? null }),
