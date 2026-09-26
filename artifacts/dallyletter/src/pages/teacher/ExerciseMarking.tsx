@@ -36,6 +36,7 @@ function DrawAnswer({ data }: { data: unknown }) {
 interface Submission {
   id: number;
   learnerId: number;
+  attemptNumber: number;
   totalScore: string;
   percentage: string | null;
   status: string;
@@ -49,6 +50,7 @@ interface Answer {
   drawData: unknown;
   awardedMarks: string;
   correctionNotes: string | null;
+  mediaReference: string | null;
 }
 
 interface Question {
@@ -229,7 +231,7 @@ export default function ExerciseMarking() {
                     onClick={() => load(s.id)}
                   >
                     <span className="text-left">
-                      <span className="block">Learner #{s.learnerId}</span>
+                      <span className="block">Learner #{s.learnerId} · Attempt {s.attemptNumber}</span>
                       <span className="mt-1 flex flex-wrap items-center gap-2 text-xs opacity-90">
                         <SubmissionStatus status={s.status} />
                         <span>{s.totalScore} marks</span>
@@ -260,6 +262,7 @@ export default function ExerciseMarking() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="rounded-lg border bg-muted/40 p-3 text-sm"><strong>Answer coverage:</strong> {answers.length} / {questions.length} questions answered. Unanswered questions receive 0 marks unless the teacher enters a different valid mark. {answers.length < questions.length ? "This was an incomplete submission." : "All questions have an answer."}</div>
               {answers.map((a, i) => {
                 const q = selectedQuestion(a);
                 return (
@@ -274,7 +277,7 @@ export default function ExerciseMarking() {
 
                     <div className="rounded-lg bg-muted p-3 text-sm">
                       <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Learner answer</div>
-                      {a.textAnswer || a.selectedValue || (a.drawData ? <DrawAnswer data={a.drawData} /> : "No answer")}
+                      {a.textAnswer || a.selectedValue || (a.drawData ? <DrawAnswer data={a.drawData} /> : null) || (a.mediaReference ? <a className="underline" href={getApiUrl(a.mediaReference)} target="_blank" rel="noreferrer">Open attachment</a> : "No answer")} {a.mediaReference && (a.textAnswer || a.selectedValue || a.drawData ? <a className="ml-2 underline" href={getApiUrl(a.mediaReference)} target="_blank" rel="noreferrer">Open attachment</a> : null)}
                     </div>
 
                     <div className="grid gap-3 sm:grid-cols-[auto_1fr]">
