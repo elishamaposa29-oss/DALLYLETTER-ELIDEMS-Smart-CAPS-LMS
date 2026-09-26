@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useRef, useState } from "react";
-import { Loader2, Plus, Trash2, Video, Image as ImageIcon, Headphones, FileText, BookOpen, Upload, X, ClipboardList } from "lucide-react";
+import { Loader2, Plus, Trash2, Video, Image as ImageIcon, Headphones, FileText, BookOpen, Upload, X, ClipboardList, ClipboardCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -373,6 +373,21 @@ export default function TeacherLessons() {
                     >
                       <ClipboardList className="h-4 w-4" />
                       {activeExerciseLessonId === lesson.id ? "Close Exercise" : "Exercise"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={async () => {
+                        const token = localStorage.getItem("dallyletter_token");
+                        const r = await fetch(getApiUrl(`/api/exercises/lessons/${lesson.id}/exercises`), { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+                        const exercises = r.ok ? await r.json() as { id: number }[] : [];
+                        if (exercises[0]) window.location.assign(`/teacher/exercises/${exercises[0].id}/mark`);
+                        else toast({ variant: "destructive", title: "No exercise submissions", description: "Create and publish an exercise for this lesson first." });
+                      }}
+                    >
+                      <ClipboardCheck className="h-4 w-4" />
+                      Mark Submissions
                     </Button>
                     <Button 
                       variant="ghost" 
