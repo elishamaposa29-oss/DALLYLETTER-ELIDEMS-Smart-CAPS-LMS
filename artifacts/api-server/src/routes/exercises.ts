@@ -135,6 +135,7 @@ router.post("/:id/ai-marking/:submissionId/run",requireAuth,async(req,res):Promi
   if(!aiConfig?.enabled||!aiConfig?.approved){res.status(409).json({error:"AI marking is not enabled and approved for this exercise"});return;}
   const [submission]=await db.select().from(exerciseSubmissionsTable).where(and(eq(exerciseSubmissionsTable.id,submissionId),eq(exerciseSubmissionsTable.exerciseId,exerciseId)));
   if(!submission){res.status(404).json({error:"Submission not found"});return;}
+  if(submission.status==="marked"){res.status(409).json({error:"This submission has already been returned to the learner"});return;}
   const ai=await getAIProvider();if(ai.name==="mock"){res.status(409).json({error:"AI marking is not available until a live AI provider is configured"});return;}
   const questions=await db.select().from(exerciseQuestionsTable).where(eq(exerciseQuestionsTable.exerciseId,exerciseId)).orderBy(asc(exerciseQuestionsTable.position));
   const answers=await db.select().from(exerciseAnswersTable).where(eq(exerciseAnswersTable.submissionId,submissionId));
