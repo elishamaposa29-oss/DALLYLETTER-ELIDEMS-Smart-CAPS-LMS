@@ -24,6 +24,7 @@ import ownerCommandCenterRouter from "./ownerCommandCenter";
 import staffPaymentsRouter from "./staffPayments";
 import achievementsRouter from "./achievements";
 import managerRouter from "./manager";
+import exercisesRouter from "./exercises";
 
 const router: IRouter = Router();
 
@@ -51,5 +52,6 @@ router.use(ownerAlertsRouter);
 router.use(staffPaymentsRouter);
 router.use("/achievements", achievementsRouter);
 router.use("/manager", managerRouter);
+router.use("/exercises", exercisesRouter);
 
 export default router;
