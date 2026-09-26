@@ -34,7 +34,7 @@ router.get("/lessons/:lessonId/exercises", requireAuth, async (req,res):Promise<
   const learnerId=req.currentUser?.role===learnerRole ? req.currentUser.id : null;
   if(!learnerId){res.json(published);return;}
   const withStatus=await Promise.all(published.map(async exercise=>{
-    const [submission]=await db.select({status:exerciseSubmissionsTable.status,totalScore:exerciseSubmissionsTable.totalScore,percentage:exerciseSubmissionsTable.percentage,submittedAt:exerciseSubmissionsTable.submittedAt,returnedAt:exerciseSubmissionsTable.returnedAt}).from(exerciseSubmissionsTable).where(and(eq(exerciseSubmissionsTable.exerciseId,exercise.id),eq(exerciseSubmissionsTable.learnerId,learnerId)));
+    const [submission]=await db.select({attemptNumber:exerciseSubmissionsTable.attemptNumber,status:exerciseSubmissionsTable.status,totalScore:exerciseSubmissionsTable.totalScore,percentage:exerciseSubmissionsTable.percentage,submittedAt:exerciseSubmissionsTable.submittedAt,returnedAt:exerciseSubmissionsTable.returnedAt}).from(exerciseSubmissionsTable).where(and(eq(exerciseSubmissionsTable.exerciseId,exercise.id),eq(exerciseSubmissionsTable.learnerId,learnerId)));
     return {...exercise, submissionStatus:submission?.status??"not_started", submission:submission??null};
   }));
   res.json(withStatus);
@@ -167,10 +167,15 @@ router.post("/:id/submit",requireAuth,async(req,res):Promise<void>=>{
   const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}
   const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));if(!exercise||exercise.status!=="published"){res.status(404).json({error:"Exercise not found"});return;}
   const answers=Array.isArray(req.body?.answers)?req.body.answers:[];
-  const [existing]=await db.select().from(exerciseSubmissionsTable).where(and(eq(exerciseSubmissionsTable.exerciseId,exercise.id),eq(exerciseSubmissionsTable.learnerId,user.id)));
-  const [submission]=existing?await db.update(exerciseSubmissionsTable).set({status:"submitted",submittedAt:new Date(),markedAt:null,returnedAt:null}).where(eq(exerciseSubmissionsTable.id,existing.id)).returning():await db.insert(exerciseSubmissionsTable).values({exerciseId:exercise.id,learnerId:user.id}).returning();
+  const startNewAttempt=Boolean(req.body?.newAttempt);
+  const [existing]=await db.select().from(exerciseSubmissionsTable).where(and(eq(exerciseSubmissionsTable.exerciseId,exercise.id),eq(exerciseSubmissionsTable.learnerId,user.id))).orderBy(desc(exerciseSubmissionsTable.attemptNumber)).limit(1);
+  if(existing && existing.status!=="marked" && startNewAttempt){res.status(409).json({error:"Finish the current attempt before starting another attempt"});return;}
+  if(existing && !startNewAttempt && ["submitted","ai_partial","ai_marked_pending_return"].includes(existing.status)){res.status(409).json({error:"This attempt is already submitted and is awaiting marking"});return;}
+  const nextAttempt=(existing?.attemptNumber??0)+1;
+  const createNew=Boolean(startNewAttempt||!existing);
+  const [submission]=createNew?await db.insert(exerciseSubmissionsTable).values({exerciseId:exercise.id,learnerId:user.id,attemptNumber:nextAttempt,status:"submitted"}).returning():await db.update(exerciseSubmissionsTable).set({status:"submitted",submittedAt:new Date(),markedAt:null,returnedAt:null,totalScore:"0",percentage:null}).where(eq(exerciseSubmissionsTable.id,existing!.id)).returning();
   for(const answer of answers){const questionId=parseId(answer?.questionId);if(!questionId)continue;const [question]=await db.select({id:exerciseQuestionsTable.id}).from(exerciseQuestionsTable).where(and(eq(exerciseQuestionsTable.id,questionId),eq(exerciseQuestionsTable.exerciseId,exercise.id)));if(!question)continue;const values={textAnswer:typeof answer.textAnswer==="string"?answer.textAnswer:null,selectedValue:typeof answer.selectedValue==="string"?answer.selectedValue:null,drawData:answer.drawData&&typeof answer.drawData==="object"?answer.drawData:null,mediaReference:typeof answer.mediaReference==="string"?answer.mediaReference:null};const [existingAnswer]=await db.select().from(exerciseAnswersTable).where(and(eq(exerciseAnswersTable.submissionId,submission.id),eq(exerciseAnswersTable.questionId,questionId)));if(existingAnswer)await db.update(exerciseAnswersTable).set(values).where(eq(exerciseAnswersTable.id,existingAnswer.id));else await db.insert(exerciseAnswersTable).values({submissionId:submission.id,questionId,...values});}
-  await writeAudit(user.id,"exercise_submitted",exercise.id,{submissionId:submission.id,answerCount:answers.length});res.status(existing?200:201).json({submissionId:submission.id,status:submission.status});
+  await writeAudit(user.id,"exercise_submitted",exercise.id,{submissionId:submission.id,attemptNumber:submission.attemptNumber,answerCount:answers.length});res.status(createNew?201:200).json({submissionId:submission.id,status:submission.status});
 });
 
 router.get("/:id/submissions",requireAuth,async(req,res):Promise<void>=>{
