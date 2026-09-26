@@ -7,14 +7,14 @@ import { requireAuth } from "../lib/auth-middleware";
 const router = Router();
 
 router.get("/staff-payments", requireAuth, async (req, res): Promise<void> => {
-  const user = (req as any).user;
+  const user = req.currentUser!;
   if (user.role !== "owner") { res.status(403).json({ error: "Forbidden" }); return; }
   const rows = await db.select().from(staffPaymentsTable).orderBy(desc(staffPaymentsTable.createdAt));
   res.json(rows);
 });
 
 router.get("/staff-payments/my", requireAuth, async (req, res): Promise<void> => {
-  const user = (req as any).user;
+  const user = req.currentUser!;
   const rows = await db.select().from(staffPaymentsTable)
     .where(eq(staffPaymentsTable.recipientId, user.id))
     .orderBy(desc(staffPaymentsTable.createdAt));
@@ -22,7 +22,7 @@ router.get("/staff-payments/my", requireAuth, async (req, res): Promise<void> =>
 });
 
 router.get("/staff-payments/summary", requireAuth, async (req, res): Promise<void> => {
-  const user = (req as any).user;
+  const user = req.currentUser!;
   if (user.role !== "owner") { res.status(403).json({ error: "Forbidden" }); return; }
   const rows = await db.select().from(staffPaymentsTable);
   const total = rows.reduce((s: number, r: any) => s + parseFloat(r.amount ?? "0"), 0);
@@ -34,7 +34,7 @@ router.get("/staff-payments/summary", requireAuth, async (req, res): Promise<voi
 });
 
 router.post("/staff-payments", requireAuth, async (req, res): Promise<void> => {
-  const user = (req as any).user;
+  const user = req.currentUser!;
   if (user.role !== "owner") { res.status(403).json({ error: "Forbidden" }); return; }
   const { recipientId, amount, reason, description, paymentMethod, referenceNumber, period } = req.body;
   if (!recipientId || !amount) { res.status(400).json({ error: "recipientId and amount required" }); return; }
@@ -50,7 +50,7 @@ router.post("/staff-payments", requireAuth, async (req, res): Promise<void> => {
 });
 
 router.delete("/staff-payments/:id", requireAuth, async (req, res): Promise<void> => {
-  const user = (req as any).user;
+  const user = req.currentUser!;
   if (user.role !== "owner") { res.status(403).json({ error: "Forbidden" }); return; }
   await db.delete(staffPaymentsTable).where(eq(staffPaymentsTable.id, parseInt(String(req.params.id))));
   res.json({ ok: true });
