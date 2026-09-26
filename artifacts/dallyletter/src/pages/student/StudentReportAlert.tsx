@@ -1,5 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +32,19 @@ export default function StudentReportAlert() {
   const [description, setDescription] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [reports, setReports] = useState<any[]>([]);
+  const [reportsLoading, setReportsLoading] = useState(true);
+
+  const loadReports = async () => {
+    setReportsLoading(true);
+    try {
+      const r = await fetch("/api/owner-alerts", { headers: { Authorization: `Bearer ${token()}` } });
+      const data = await r.json();
+      setReports(Array.isArray(data) ? data : []);
+    } finally { setReportsLoading(false); }
+  };
+
+  useEffect(() => { void loadReports(); }, []);
 
   const submit = () => {
     if (!category || !title || !description) { toast({ variant: "destructive", title: "Fill all fields" }); return; }
@@ -44,6 +57,7 @@ export default function StudentReportAlert() {
       setSubmitting(false);
       if (!r.ok) { toast({ variant: "destructive", title: "Failed to send report" }); return; }
       setSubmitted(true);
+      void loadReports();
     });
   };
 
@@ -63,6 +77,18 @@ export default function StudentReportAlert() {
   return (
     <DashboardLayout>
       <div className="max-w-xl mx-auto space-y-6">
+        <Card className="border-0 shadow-sm">
+          <CardHeader><CardTitle className="text-sm">My Reports & Owner Responses</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            {reportsLoading ? <p className="text-sm text-muted-foreground">Loading reports…</p> : reports.length === 0 ? <p className="text-sm text-muted-foreground">No reports submitted yet.</p> : reports.map((report: any) => (
+              <div key={report.id} className="rounded-xl border p-3 space-y-1">
+                <div className="flex items-center justify-between gap-2"><p className="font-semibold text-sm">{report.title}</p><span className="text-xs rounded-full px-2 py-1 bg-muted">{report.status}</span></div>
+                <p className="text-xs text-muted-foreground">{report.description}</p>
+                {report.resolution && <div className="mt-2 rounded-lg bg-emerald-50 border border-emerald-200 p-2 text-xs text-emerald-800"><strong>Owner response:</strong> {report.resolution}</div>}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
         <div className="bg-gradient-to-r from-red-600 to-red-800 rounded-2xl p-6 text-white">
           <div className="flex items-center gap-3 mb-2"><Shield className="h-6 w-6" /><h1 className="text-xl font-bold">Report to Owner</h1></div>
           <p className="text-red-100 text-sm">Report cyberbullying, threats, abuse, or any serious concern directly to the platform owner. All reports are confidential.</p>
