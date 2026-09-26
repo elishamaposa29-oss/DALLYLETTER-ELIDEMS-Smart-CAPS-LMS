@@ -118,7 +118,7 @@ router.post("/:id/ai-marking/check",requireAuth,async(req,res):Promise<void>=>{
   }
   try{
     const raw=await ai.chat([{role:"user",content:`Assess whether you can reliably mark this educational exercise. Do not mark learner work yet. Identify any question types, wording, diagrams, rubrics, or missing information that would require teacher clarification. If the teacher has supplied a clarification, use it to reassess the concern. Return ONLY JSON: {"canMark":true|false,"clarifications":["specific questions for the teacher"],"reason":"brief reason"}\\nExercise:\\n${JSON.stringify(payload)}\\nTeacher clarification:\\n${teacherClarification || "(none)"}`}]);
-    const match=raw.match(/\\{[\\s\\S]*\\}/);if(!match)throw new Error("AI readiness response was not valid JSON");
+    const match=raw.match(/\{[\s\S]*\}/);if(!match)throw new Error("AI readiness response was not valid JSON");
     const result=JSON.parse(match[0]) as {canMark?:boolean;clarifications?:string[];reason?:string};
     res.json({provider:ai.name,configured:true,canMark:Boolean(result.canMark),clarifications:Array.isArray(result.clarifications)?result.clarifications.filter(x=>typeof x==="string"):[],reason:result.reason??null});
   }catch(err){res.status(502).json({error:err instanceof Error?err.message:"AI readiness check failed",provider:ai.name});}
@@ -143,7 +143,7 @@ router.post("/:id/ai-marking/:submissionId/run",requireAuth,async(req,res):Promi
   const packet=questions.map(q=>({question:{id:q.id,type:q.type,prompt:q.prompt,marksAllocated:q.marksAllocated,options:optionsByQuestion.get(q.id)??[]},answer:answers.find(a=>a.questionId===q.id)||null}));
   try{
     const raw=await ai.chat([{role:"user",content:`Mark this learner exercise conservatively. Never invent evidence. Use only the question, allocation, rubric/configuration, and learner answer supplied. For drawings, if the image/strokes are ambiguous or you cannot reliably interpret them, set needsReview=true and awardedMarks=0 rather than guessing. Return ONLY JSON: {"marks":[{"answerId":1,"awardedMarks":0,"needsReview":false,"confidence":0.99,"correctionNotes":"..."}],"overallNotes":"..."}\\nExercise submission:\\n${JSON.stringify(packet)}`}]);
-    const match=raw.match(/\\{[\\s\\S]*\\}/);if(!match)throw new Error("AI marking response was not valid JSON");
+    const match=raw.match(/\{[\s\S]*\}/);if(!match)throw new Error("AI marking response was not valid JSON");
     const result=JSON.parse(match[0]) as {marks?:Array<{answerId?:number;awardedMarks?:number;needsReview?:boolean;confidence?:number;correctionNotes?:string}>;overallNotes?:string};
     const proposals=Array.isArray(result.marks)?result.marks:[];
     let needsReview=false;
