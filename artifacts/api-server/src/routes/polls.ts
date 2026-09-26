@@ -6,10 +6,10 @@ import { getAIProvider } from "../lib/ai-provider";
 
 const router = Router();
 
-async function getPollForManager(pollId: number, userId: number, role: string) {
+async function getPollForManager(pollId: number, user: NonNullable<Express.Request["currentUser"]>) {
   const [poll] = await db.select().from(pollsTable).where(eq(pollsTable.id, pollId));
   if (!poll) return null;
-  if (!canManageAcademicContent({ role, isManager: role === "manager" } as any) || (role === "teacher" && poll.createdBy !== userId)) return null;
+  if (!canManageAcademicContent(user) || (user.role === "teacher" && !user.isManager && poll.createdBy !== user.id)) return null;
   return poll;
 }
 
@@ -100,7 +100,7 @@ router.patch("/polls/:id", requireAuth, async (req, res): Promise<void> => {
   if (user.role === "student") { res.status(403).json({ error: "Forbidden" }); return; }
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const poll = await getPollForManager(id, user.id, user.role);
+  const poll = await getPollForManager(id, user);
   if (!poll) { res.status(user.role === "teacher" ? 403 : 404).json({ error: "Poll not found" }); return; }
   const { status, title, timerSeconds } = req.body as { status?: string; title?: string; timerSeconds?: number };
   const update: Record<string, unknown> = {};
@@ -196,7 +196,7 @@ router.post("/polls/:id/submit", requireAuth, async (req, res): Promise<void> =>
 router.get("/polls/:id/results", requireAuth, async (req, res): Promise<void> => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const poll = await getPollForManager(id, req.currentUser!.id, req.currentUser!.role);
+  const poll = await getPollForManager(id, req.currentUser!);
   if (!poll) { res.status(req.currentUser!.role === "teacher" ? 403 : 404).json({ error: "Poll not found" }); return; }
   const submissions = await db.select({
     id: pollSubmissionsTable.id, score: pollSubmissionsTable.score,
