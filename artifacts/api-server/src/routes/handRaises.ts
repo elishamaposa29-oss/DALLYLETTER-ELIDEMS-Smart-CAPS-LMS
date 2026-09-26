@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, handRaisesTable, activityLogTable } from "@workspace/db";
 import { RaiseHandBody, ListHandRaisesQueryParams } from "@workspace/api-zod";
-import { requireAuth } from "../lib/auth-middleware";
+import { canManageAcademicContent, requireAuth } from "../lib/auth-middleware";
 
 const router: IRouter = Router();
 
@@ -58,7 +58,7 @@ router.patch("/raise-hand/:id/resolve", requireAuth, async (req, res): Promise<v
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
 
   // Only the student who raised OR a teacher/owner may resolve
-  if (existing.studentId !== currentUser.id && currentUser.role !== "teacher" && currentUser.role !== "owner") {
+  if (existing.studentId !== currentUser.id && !canManageAcademicContent(currentUser)) {
     res.status(403).json({ error: "Not authorised to lower this hand" });
     return;
   }

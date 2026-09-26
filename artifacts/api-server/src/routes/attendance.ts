@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { attendanceTable, usersTable } from "@workspace/db/schema";
 import { eq, desc, and } from "drizzle-orm";
-import { requireAuth } from "../lib/auth-middleware";
+import { canManageAcademicContent, requireAuth } from "../lib/auth-middleware";
 
 const router = Router();
 
@@ -58,7 +58,7 @@ router.put("/:id/leave", requireAuth, async (req, res): Promise<void> => {
 
 router.get("/stats", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
-  if (user.role !== "owner" && !user.isManager && user.role !== "teacher") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Forbidden" }); return; }
   const rows = await db.select().from(attendanceTable);
   const totalSessions = new Set(rows.map((r: any) => r.classId)).size;
   const totalAttendances = rows.length;

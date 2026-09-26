@@ -1,15 +1,15 @@
 import { Router } from "express";
 import { db, pollsTable, pollQuestionsTable, pollOptionsTable, pollSubmissionsTable, usersTable, auditLogsTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
-import { requireAuth } from "../lib/auth-middleware";
+import { canManageAcademicContent, requireAuth } from "../lib/auth-middleware";
 import { getAIProvider } from "../lib/ai-provider";
 
 const router = Router();
 
-async function getPollForManager(pollId: number, userId: number, role: string) {
+async function getPollForManager(pollId: number, user: NonNullable<Express.Request["currentUser"]>) {
   const [poll] = await db.select().from(pollsTable).where(eq(pollsTable.id, pollId));
   if (!poll) return null;
-  if (role !== "owner" && role !== "admin" && (role !== "teacher" || poll.createdBy !== userId)) return null;
+  if (!canManageAcademicContent(user) || (user.role === "teacher" && !user.isManager && poll.createdBy !== user.id)) return null;
   return poll;
 }
 
@@ -17,7 +17,7 @@ async function getPollForManager(pollId: number, userId: number, role: string) {
 router.get("/polls", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   let polls;
-  if (user.role === "owner" || user.role === "teacher") {
+  if (canManageAcademicContent(user)) {
     polls = await db.select().from(pollsTable).orderBy(desc(pollsTable.createdAt));
   } else {
     polls = await db.select().from(pollsTable)
@@ -30,7 +30,7 @@ router.get("/polls", requireAuth, async (req, res): Promise<void> => {
 // POST /polls — create poll (teacher/owner)
 router.post("/polls", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (user.role === "student") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Academic staff access required" }); return; }
   const { title, topic, type = "manual", grade, subject, mode = "practice", timerSeconds, questions } = req.body as {
     title: string; topic?: string; type?: string; grade?: string; subject?: string;
     mode?: string; timerSeconds?: number;
@@ -62,7 +62,7 @@ router.post("/polls", requireAuth, async (req, res): Promise<void> => {
 // POST /polls/ai-generate — generate poll questions with AI
 router.post("/polls/ai-generate", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (user.role === "student") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Academic staff access required" }); return; }
   const { topic, grade, subject, count = 5 } = req.body as { topic: string; grade?: string; subject?: string; count?: number };
   if (!topic) { res.status(400).json({ error: "topic required" }); return; }
   try {
@@ -97,10 +97,10 @@ router.get("/polls/:id", requireAuth, async (req, res): Promise<void> => {
 // PATCH /polls/:id — update poll status / metadata
 router.patch("/polls/:id", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (user.role === "student") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Academic staff access required" }); return; }
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const poll = await getPollForManager(id, user.id, user.role);
+  const poll = await getPollForManager(id, user);
   if (!poll) { res.status(user.role === "teacher" ? 403 : 404).json({ error: "Poll not found" }); return; }
   const { status, title, timerSeconds } = req.body as { status?: string; title?: string; timerSeconds?: number };
   const update: Record<string, unknown> = {};
@@ -125,7 +125,7 @@ router.delete("/polls/:id", requireAuth, async (req, res): Promise<void> => {
   if (user.role === "student") { res.status(403).json({ error: "Forbidden" }); return; }
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const poll = await getPollForManager(id, user.id, user.role);
+  const poll = await getPollForManager(id, user);
   if (!poll) { res.status(user.role === "teacher" ? 403 : 404).json({ error: "Poll not found" }); return; }
   await db.delete(pollsTable).where(eq(pollsTable.id, id));
   res.sendStatus(204);
@@ -196,7 +196,7 @@ router.post("/polls/:id/submit", requireAuth, async (req, res): Promise<void> =>
 router.get("/polls/:id/results", requireAuth, async (req, res): Promise<void> => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const poll = await getPollForManager(id, req.currentUser!.id, req.currentUser!.role);
+  const poll = await getPollForManager(id, req.currentUser!);
   if (!poll) { res.status(req.currentUser!.role === "teacher" ? 403 : 404).json({ error: "Poll not found" }); return; }
   const submissions = await db.select({
     id: pollSubmissionsTable.id, score: pollSubmissionsTable.score,
