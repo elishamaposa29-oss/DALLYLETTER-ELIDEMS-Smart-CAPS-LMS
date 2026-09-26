@@ -3,7 +3,7 @@ import multer from "multer";
 import { db } from "@workspace/db";
 import { assignmentsTable, assignmentSubmissionsTable } from "@workspace/db/schema";
 import { eq, desc, and, or, isNull } from "drizzle-orm";
-import { requireAuth } from "../lib/auth-middleware";
+import { canManageAcademicContent, isOwnerRole, requireAuth } from "../lib/auth-middleware";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
 
 const router = Router();
@@ -55,7 +55,7 @@ function normalizeAttachmentUrl(value: unknown): string | null {
 }
 
 router.post("/material", requireAuth, (req, res): void => {
-  if (req.currentUser?.role !== "teacher" && req.currentUser?.role !== "owner") { res.status(403).json({ error: "Teacher or owner access required" }); return; }
+  if (!canManageAcademicContent(req.currentUser!)) { res.status(403).json({ error: "Teacher or owner access required" }); return; }
   materialUpload.single("file")(req, res, (error) => {
     if (error) { res.status(400).json({ error: "A supported material file up to 250 MB is required" }); return; }
     if (!req.file) { res.status(400).json({ error: "A supported material file is required" }); return; }
@@ -76,7 +76,7 @@ router.get("/", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!["student", "teacher", "owner"].includes(user.role)) { res.status(403).json({ error: "Assignment access required" }); return; }
   let rows;
-  if (user.role === "owner" || user.role === "teacher") {
+  if (canManageAcademicContent(user)) {
     rows = await db.select().from(assignmentsTable).orderBy(desc(assignmentsTable.createdAt));
   } else {
     rows = await db.select().from(assignmentsTable)
@@ -104,7 +104,7 @@ router.get("/:id", requireAuth, async (req, res): Promise<void> => {
 
 router.post("/", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (user.role !== "teacher" && user.role !== "owner") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Forbidden" }); return; }
   const { title, description, subject, grade, dueDate, totalMarks, attachmentUrl } = req.body;
   const parsedMarks = parseTotalMarks(totalMarks ?? 100);
   const normalizedAttachmentUrl = normalizeAttachmentUrl(attachmentUrl);
@@ -127,7 +127,7 @@ router.put("/:id", requireAuth, async (req, res): Promise<void> => {
   const assignmentId = parseInt(String(req.params.id));
   const [existing] = await db.select({ teacherId: assignmentsTable.teacherId }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
-  if (user.role !== "owner" && existing.teacherId !== user.id) { res.status(403).json({ error: "You can only edit your own assignments" }); return; }
+  if (!isOwnerRole(user.role) && !user.isManager && existing.teacherId !== user.id) { res.status(403).json({ error: "You can only edit your own assignments" }); return; }
   const { title, description, subject, grade, dueDate, totalMarks, status, attachmentUrl } = req.body;
   const parsedMarks = parseTotalMarks(totalMarks);
   const normalizedAttachmentUrl = normalizeAttachmentUrl(attachmentUrl);
@@ -203,7 +203,7 @@ router.put("/submissions/:subId/grade", requireAuth, async (req, res): Promise<v
     .innerJoin(assignmentsTable, eq(assignmentSubmissionsTable.assignmentId, assignmentsTable.id))
     .where(eq(assignmentSubmissionsTable.id, submissionId));
   if (!submission) { res.status(404).json({ error: "Not found" }); return; }
-  if (user.role !== "owner" && submission.teacherId !== user.id) { res.status(403).json({ error: "You can only grade your own assignments" }); return; }
+  if (!isOwnerRole(user.role) && !user.isManager && submission.teacherId !== user.id) { res.status(403).json({ error: "You can only grade your own assignments" }); return; }
   const numericMarks = typeof marks === "number" ? marks : Number(marks);
   if (!Number.isFinite(numericMarks) || numericMarks < 0 || numericMarks > submission.totalMarks || (feedback != null && (typeof feedback !== "string" || feedback.length > 5000))) {
     res.status(400).json({ error: `marks must be between 0 and ${submission.totalMarks}; feedback must be at most 5000 characters` }); return;
