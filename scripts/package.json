@@ -7,7 +7,8 @@
     "hello": "tsx ./src/hello.ts",
     "seed:owner": "tsx ./src/seed-owner.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "repair:messages-schema": "tsx ./src/repair-messages-schema.ts"
+    "repair:messages-schema": "tsx ./src/repair-messages-schema.ts",
+    "migrate:exercise-schema": "tsx ./src/migrate-exercise-schema.ts"
   },
   "dependencies": {
     "@workspace/db": "workspace:*",

@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useRef, useState } from "react";
-import { Loader2, Plus, Trash2, Video, Image as ImageIcon, Headphones, FileText, BookOpen, Upload, X } from "lucide-react";
+import { Loader2, Plus, Trash2, Video, Image as ImageIcon, Headphones, FileText, BookOpen, Upload, X, ClipboardList, ClipboardCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -17,6 +17,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { CreateLessonBodyType } from "@workspace/api-client-react";
+import { ExerciseBuilderPanel } from "@/components/exercises/ExerciseBuilderPanel";
 
 const createLessonSchema = z.object({
   title: z.string().min(2, "Title is required"),
@@ -37,6 +38,9 @@ export default function TeacherLessons() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [uploadedFile, setUploadedFile] = useState<{ name: string; previewUrl: string; mimeType: string } | null>(null);
+  const [activeExerciseLessonId, setActiveExerciseLessonId] = useState<number | null>(null);
+  const [markingExercises, setMarkingExercises] = useState<{ id: number; title: string; status?: string; totalMarks?: string }[]>([]);
+  const [markingLessonId, setMarkingLessonId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<z.infer<typeof createLessonSchema>>({
@@ -117,6 +121,7 @@ export default function TeacherLessons() {
       deleteLessonMutation.mutate({ id }, {
         onSuccess: () => {
           toast({ title: "Lesson deleted" });
+          if (activeExerciseLessonId === id) setActiveExerciseLessonId(null);
           queryClient.invalidateQueries({ queryKey: getListLessonsQueryKey() });
         }
       });
@@ -314,6 +319,34 @@ export default function TeacherLessons() {
           </Dialog>
         </div>
 
+        <Dialog open={markingLessonId !== null} onOpenChange={(open) => { if (!open) { setMarkingLessonId(null); setMarkingExercises([]); } }}>
+          <DialogContent className="sm:max-w-[520px]">
+            <DialogHeader>
+              <DialogTitle>Choose an exercise to mark</DialogTitle>
+              <DialogDescription>This lesson has multiple published exercises. Select the one whose learner submissions you want to review.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              {markingExercises.map((exercise) => (
+                <Button
+                  key={exercise.id}
+                  type="button"
+                  variant="outline"
+                  className="h-auto w-full justify-between gap-4 p-4 text-left"
+                  onClick={() => window.location.assign(`/teacher/exercises/${exercise.id}/mark`)}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{exercise.title}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {exercise.totalMarks ? `${exercise.totalMarks} marks` : "Published exercise"}
+                    </span>
+                  </span>
+                  <ClipboardCheck className="h-4 w-4 shrink-0" />
+                </Button>
+              ))}
+            </div>
+          </DialogContent>
+        </Dialog>
+
         {isLoading ? (
           <div className="flex justify-center p-8">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -353,7 +386,48 @@ export default function TeacherLessons() {
                       Added on {new Date(lesson.createdAt).toLocaleDateString()}
                     </div>
                   </CardContent>
-                  <CardFooter className="pt-4 border-t flex justify-end">
+                  {activeExerciseLessonId === lesson.id && (
+                    <CardContent className="border-t pt-4">
+                      <ExerciseBuilderPanel
+                        lessonId={lesson.id}
+                        onSaved={() => queryClient.invalidateQueries({ queryKey: getListLessonsQueryKey() })}
+                      />
+                    </CardContent>
+                  )}
+                  <CardFooter className="pt-4 border-t flex justify-end gap-2">
+                    <Button
+                      variant={activeExerciseLessonId === lesson.id ? "secondary" : "outline"}
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => setActiveExerciseLessonId((current) => current === lesson.id ? null : lesson.id)}
+                    >
+                      <ClipboardList className="h-4 w-4" />
+                      {activeExerciseLessonId === lesson.id ? "Close Exercise" : "Exercise"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={async () => {
+                        const token = localStorage.getItem("dallyletter_token");
+                        const r = await fetch(getApiUrl(`/api/exercises/lessons/${lesson.id}/exercises`), { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+                        const exercises = r.ok ? await r.json() as { id: number; title: string; status?: string; totalMarks?: string }[] : [];
+                        const published = exercises.filter((exercise) => exercise.status === "published");
+                        if (!published.length) {
+                          toast({ variant: "destructive", title: "No published exercises", description: "Create and publish an exercise for this lesson first." });
+                          return;
+                        }
+                        if (published.length === 1) {
+                          window.location.assign(`/teacher/exercises/${published[0].id}/mark`);
+                          return;
+                        }
+                        setMarkingExercises(published);
+                        setMarkingLessonId(lesson.id);
+                      }}
+                    >
+                      <ClipboardCheck className="h-4 w-4" />
+                      Mark Submissions
+                    </Button>
                     <Button 
                       variant="ghost" 
                       size="sm" 
