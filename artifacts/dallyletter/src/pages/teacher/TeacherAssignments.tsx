@@ -24,7 +24,7 @@ export default function TeacherAssignments() {
   const [form, setForm] = useState(emptyForm);
 
   const load = () => {
-    void fetch("/api/assignments", { headers: { Authorization: `Bearer ${token()}` } })
+    void fetch(getApiUrl("/api/assignments"), { headers: { Authorization: `Bearer ${token()}` } })
       .then(r => r.json()).then(d => { setAssignments(Array.isArray(d) ? d : []); setLoading(false); })
       .catch(() => setLoading(false));
   };
@@ -57,12 +57,12 @@ export default function TeacherAssignments() {
     if (!Number.isInteger(totalMarks) || totalMarks <= 0 || totalMarks > 10000) { toast({ variant: "destructive", title: "Total marks must be between 1 and 10000" }); return; }
     const payload = { ...form, totalMarks, status: "active" };
     const request = editingId == null
-      ? fetch("/api/assignments", {
+      ? fetch(getApiUrl("/api/assignments"), {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
           body: JSON.stringify(payload),
         })
-      : fetch(`/api/assignments/${editingId}`, {
+      : fetch(getApiUrl(`/api/assignments/${editingId}`), {
           method: "PUT",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
           body: JSON.stringify({ ...payload, status: "active" }),
@@ -77,14 +77,14 @@ export default function TeacherAssignments() {
   };
 
   const loadSubs = (assignment: any) => {
-    void fetch(`/api/assignments/${assignment.id}/submissions`, { headers: { Authorization: `Bearer ${token()}` } })
+    void fetch(getApiUrl(`/api/assignments/${assignment.id}/submissions`), { headers: { Authorization: `Bearer ${token()}` } })
       .then(r => r.json())
       .then(subs => setViewSubs({ assignment, submissions: Array.isArray(subs) ? subs : [] }));
   };
 
   const grade = () => {
     if (!grading) return;
-    void fetch(`/api/assignments/submissions/${grading.subId}/grade`, {
+    void fetch(getApiUrl(`/api/assignments/submissions/${grading.subId}/grade`), {
       method: "PUT",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
       body: JSON.stringify({ marks: grading.marks, feedback: grading.feedback }),
