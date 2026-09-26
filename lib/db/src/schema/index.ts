@@ -18,3 +18,4 @@ export * from "./attendance";
 export * from "./ownerAlerts";
 export * from "./staffPayments";
 export * from "./achievements";
+export * from "./exercises";
