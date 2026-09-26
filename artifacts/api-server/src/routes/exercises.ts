@@ -1,4 +1,5 @@
 import { Router } from "express";
+import multer from "multer";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
@@ -7,11 +8,39 @@ import {
 } from "@workspace/db/schema";
 import { requireAuth } from "../lib/auth-middleware";
 import { getAIProvider } from "../lib/ai-provider";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
 
 const router = Router();
 const teacherRoles = ["teacher", "owner", "admin"];
 const learnerRole = "student";
 const questionTypes = new Set(["input", "poll", "drawbox"]);
+const exerciseAnswerMediaUpload = multer({
+  storage: multer.diskStorage({
+    destination: async (_req, _file, callback) => {
+      try { await ensureMediaDirectory(); callback(null, getMediaDirectory()); }
+      catch (error) { callback(error as Error, ""); }
+    },
+    filename: (_req, _file, callback) => callback(null, createMediaStorageKey()),
+  }),
+  limits: { fileSize: MAX_MEDIA_SIZE_BYTES },
+  fileFilter: (_req, file, callback) => callback(null, isAllowedMediaType(file.mimetype)),
+});
+
+router.post("/answer-media", requireAuth, (req,res):void => {
+  if (req.currentUser?.role !== learnerRole) { res.status(403).json({error:"Student access required"}); return; }
+  exerciseAnswerMediaUpload.single("file")(req,res,(error) => {
+    if (error instanceof multer.MulterError) { res.status(400).json({error:"A supported answer file up to 250 MB is required"}); return; }
+    if (error) { res.status(400).json({error:"A supported answer file is required"}); return; }
+    if (!req.file) { res.status(400).json({error:"A supported answer file is required"}); return; }
+    res.status(201).json({
+      mediaUrl: `/api/lessons/media/${req.file.filename}?type=${encodeURIComponent(req.file.mimetype)}`,
+      storageKey: req.file.filename,
+      fileName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      size: req.file.size,
+    });
+  });
+});
 
 function parseId(value: unknown): number | null {
   const id = Number(value);
