@@ -12,7 +12,7 @@ export default function ManagerTeachers() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(getApiUrl("/api/manager/teachers", { headers: { Authorization: `Bearer ${token()}` } })
+    fetch(getApiUrl("/api/manager/teachers"), { headers: { Authorization: `Bearer ${token()}` } })
       .then(r => r.json()).then(d => { setTeachers(Array.isArray(d) ? d : []); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
