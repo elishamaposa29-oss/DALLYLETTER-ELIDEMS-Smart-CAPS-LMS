@@ -31,7 +31,7 @@ export default function AdminSettings() {
 
   useEffect(() => {
     const token = localStorage.getItem("dallyletter_token");
-    fetch(getApiUrl("/api/settings", { headers: { Authorization: `Bearer ${token}` } })
+    fetch(getApiUrl("/api/settings"), { headers: { Authorization: `Bearer ${token}` } })
       .then(async r => { const data = await r.json(); if (!r.ok) throw new Error(data.error || "Unable to load settings"); return data; })
       .then(data => { setSettings(data); setSettingsError(null); setLoadingSettings(false); })
       .catch(err => { setSettingsError(err instanceof Error ? err.message : "Unable to load settings"); setLoadingSettings(false); });
@@ -41,7 +41,7 @@ export default function AdminSettings() {
     setSavingSettings(true);
     try {
       const token = localStorage.getItem("dallyletter_token");
-      const res = await fetch(getApiUrl("/api/settings", {
+      const res = await fetch(getApiUrl("/api/settings"), {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(settings),
@@ -72,7 +72,7 @@ export default function AdminSettings() {
     setChangingPassword(true);
     try {
       const token = localStorage.getItem("dallyletter_token");
-      const res = await fetch(getApiUrl("/api/auth/change-password", {
+      const res = await fetch(getApiUrl("/api/auth/change-password"), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
