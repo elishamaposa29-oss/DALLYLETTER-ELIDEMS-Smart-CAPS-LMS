@@ -22,7 +22,7 @@ export default function AdminAssignments() {
   const [form, setForm] = useState(emptyForm);
 
   const load = () => {
-    void fetch(getApiUrl("/api/assignments", { headers: { Authorization: `Bearer ${token()}` } })
+    void fetch(getApiUrl("/api/assignments"), { headers: { Authorization: `Bearer ${token()}` } })
       .then(r => r.json()).then(d => { setAssignments(Array.isArray(d) ? d : []); setLoading(false); })
       .catch(() => setLoading(false));
   };
@@ -55,7 +55,7 @@ export default function AdminAssignments() {
     if (!Number.isInteger(totalMarks) || totalMarks <= 0 || totalMarks > 10000) { toast({ variant: "destructive", title: "Total marks must be between 1 and 10000" }); return; }
     const payload = { ...form, totalMarks, status: "active" };
     const request = editingId == null
-      ? fetch(getApiUrl("/api/assignments", {
+      ? fetch(getApiUrl("/api/assignments"), {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
           body: JSON.stringify(payload),
