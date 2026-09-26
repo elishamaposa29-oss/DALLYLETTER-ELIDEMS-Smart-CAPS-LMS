@@ -6,7 +6,7 @@ import {
   exercisesTable, exerciseAnswersTable, exerciseOptionsTable, exerciseQuestionsTable,
   exerciseSubmissionsTable, lessonsTable, auditLogsTable,
 } from "@workspace/db/schema";
-import { canManageAcademicContent, requireAuth } from "../lib/auth-middleware";
+import { canManageAcademicContent, isOwnerRole, requireAuth } from "../lib/auth-middleware";
 import { getAIProvider } from "../lib/ai-provider";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
 
@@ -46,7 +46,7 @@ function parseId(value: unknown): number | null {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 function canEditExercise(user: NonNullable<Express.Request["currentUser"]>, createdBy: number): boolean {
-  return user.role === "owner" || user.role === "admin" || (user.role === "teacher" && createdBy === user.id);
+  return isOwnerRole(user.role) || user.isManager === true || (user.role === "teacher" && createdBy === user.id);
 }
 async function writeAudit(userId: number, action: string, targetId: number, details: Record<string, unknown>) {
   await db.insert(auditLogsTable).values({ action, category: "exercise", performedBy: userId, targetType: "exercise", targetId, details: JSON.stringify(details) });
