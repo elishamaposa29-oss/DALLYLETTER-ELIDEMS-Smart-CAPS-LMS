@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useRef, useState } from "react";
-import { Loader2, Plus, Trash2, Video, Image as ImageIcon, Headphones, FileText, BookOpen, Upload, X } from "lucide-react";
+import { Loader2, Plus, Trash2, Video, Image as ImageIcon, Headphones, FileText, BookOpen, Upload, X, ClipboardList } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -17,6 +17,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { CreateLessonBodyType } from "@workspace/api-client-react";
+import { ExerciseBuilderPanel } from "@/components/exercises/ExerciseBuilderPanel";
 
 const createLessonSchema = z.object({
   title: z.string().min(2, "Title is required"),
@@ -37,6 +38,7 @@ export default function TeacherLessons() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [uploadedFile, setUploadedFile] = useState<{ name: string; previewUrl: string; mimeType: string } | null>(null);
+  const [activeExerciseLessonId, setActiveExerciseLessonId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<z.infer<typeof createLessonSchema>>({
@@ -117,6 +119,7 @@ export default function TeacherLessons() {
       deleteLessonMutation.mutate({ id }, {
         onSuccess: () => {
           toast({ title: "Lesson deleted" });
+          if (activeExerciseLessonId === id) setActiveExerciseLessonId(null);
           queryClient.invalidateQueries({ queryKey: getListLessonsQueryKey() });
         }
       });
@@ -353,7 +356,24 @@ export default function TeacherLessons() {
                       Added on {new Date(lesson.createdAt).toLocaleDateString()}
                     </div>
                   </CardContent>
-                  <CardFooter className="pt-4 border-t flex justify-end">
+                  {activeExerciseLessonId === lesson.id && (
+                    <CardContent className="border-t pt-4">
+                      <ExerciseBuilderPanel
+                        lessonId={lesson.id}
+                        onSaved={() => queryClient.invalidateQueries({ queryKey: getListLessonsQueryKey() })}
+                      />
+                    </CardContent>
+                  )}
+                  <CardFooter className="pt-4 border-t flex justify-end gap-2">
+                    <Button
+                      variant={activeExerciseLessonId === lesson.id ? "secondary" : "outline"}
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => setActiveExerciseLessonId((current) => current === lesson.id ? null : lesson.id)}
+                    >
+                      <ClipboardList className="h-4 w-4" />
+                      {activeExerciseLessonId === lesson.id ? "Close Exercise" : "Exercise"}
+                    </Button>
                     <Button 
                       variant="ghost" 
                       size="sm" 
