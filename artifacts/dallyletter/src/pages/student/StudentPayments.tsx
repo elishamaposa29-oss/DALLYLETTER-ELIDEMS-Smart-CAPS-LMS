@@ -9,6 +9,7 @@ import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 
 interface Settings {
+  paynow_url: string;
   paypal_url: string;
   trust_wallet: string;
   ecocash_number: string;
@@ -96,7 +97,7 @@ export default function StudentPayments() {
     }
   };
 
-  const hasAnyPaymentMethod = settings.paypal_url || settings.trust_wallet || settings.ecocash_number;
+  const hasAnyPaymentMethod = settings.paynow_url || settings.paypal_url || settings.trust_wallet || settings.ecocash_number;
 
   const PaymentMethods = () => (
     <div className="space-y-3">
@@ -105,7 +106,14 @@ export default function StudentPayments() {
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {/* PayPal */}
+        {/* Paynow */}
+      {settings.paynow_url && (
+        <Button onClick={() => window.open(settings.paynow_url, "_blank", "noopener,noreferrer")} className="h-auto py-3 flex-col gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white">
+          <div className="font-bold">Paynow</div><span className="text-[11px] opacity-80 font-normal">Pay securely online</span><ExternalLink className="h-3 w-3 opacity-70" />
+        </Button>
+      )}
+
+      {/* PayPal */}
         {settings.paypal_url && (
           <Button
             onClick={handlePayPal}
