@@ -55,7 +55,7 @@ function normalizeAttachmentUrl(value: unknown): string | null {
 }
 
 router.post("/material", requireAuth, (req, res): void => {
-  if (!canManageAcademicContent(req.currentUser!)) { res.status(403).json({ error: "Teacher or owner access required" }); return; }
+  if (!canManageAcademicContent(req.currentUser!)) { res.status(403).json({ error: "Academic staff access required" }); return; }
   materialUpload.single("file")(req, res, (error) => {
     if (error) { res.status(400).json({ error: "A supported material file up to 250 MB is required" }); return; }
     if (!req.file) { res.status(400).json({ error: "A supported material file is required" }); return; }
@@ -74,7 +74,7 @@ router.post("/submission-material", requireAuth, (req, res): void => {
 
 router.get("/", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (!["student", "teacher", "owner"].includes(user.role)) { res.status(403).json({ error: "Assignment access required" }); return; }
+  if (user.role !== "student" && !canManageAcademicContent(user)) { res.status(403).json({ error: "Assignment access required" }); return; }
   let rows;
   if (canManageAcademicContent(user)) {
     rows = await db.select().from(assignmentsTable).orderBy(desc(assignmentsTable.createdAt));
@@ -91,11 +91,11 @@ router.get("/", requireAuth, async (req, res): Promise<void> => {
 
 router.get("/:id", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (!["student", "teacher", "owner"].includes(user.role)) { res.status(403).json({ error: "Assignment access required" }); return; }
+  if (user.role !== "student" && !canManageAcademicContent(user)) { res.status(403).json({ error: "Assignment access required" }); return; }
   const [assignment] = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, parseInt(String(req.params.id))));
   if (!assignment) { res.status(404).json({ error: "Not found" }); return; }
   if (user.role === "student" && !isVisibleToStudent(assignment, user.grade)) { res.status(404).json({ error: "Not found" }); return; }
-    if (user.role === "teacher" && assignment.teacherId !== user.id) { res.status(403).json({ error: "You can only view your own assignments" }); return; }
+    if (user.role === "teacher" && !user.isManager && assignment.teacherId !== user.id) { res.status(403).json({ error: "You can only view your own assignments" }); return; }
   const submissions = user.role === "student"
     ? await db.select().from(assignmentSubmissionsTable).where(and(eq(assignmentSubmissionsTable.assignmentId, assignment.id), eq(assignmentSubmissionsTable.studentId, user.id)))
     : await db.select().from(assignmentSubmissionsTable).where(eq(assignmentSubmissionsTable.assignmentId, assignment.id));
@@ -151,7 +151,7 @@ router.delete("/:id", requireAuth, async (req, res): Promise<void> => {
 
 router.get("/:id/submissions", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (!["student", "teacher", "owner"].includes(user.role)) { res.status(403).json({ error: "Assignment access required" }); return; }
+  if (user.role !== "student" && !canManageAcademicContent(user)) { res.status(403).json({ error: "Assignment access required" }); return; }
   const assignmentId = parseInt(String(req.params.id));
   if (user.role === "student") {
     const [assignment] = await db.select({ status: assignmentsTable.status, grade: assignmentsTable.grade }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
@@ -162,7 +162,7 @@ router.get("/:id/submissions", requireAuth, async (req, res): Promise<void> => {
   }
   const [assignment] = await db.select({ teacherId: assignmentsTable.teacherId }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
   if (!assignment) { res.status(404).json({ error: "Not found" }); return; }
-  if (user.role !== "owner" && (user.role !== "teacher" || assignment.teacherId !== user.id)) {
+  if (!isOwnerRole(user.role) && !user.isManager && (user.role !== "teacher" || assignment.teacherId !== user.id)) {
     res.status(403).json({ error: "You can only view submissions for your own assignments" });
     return;
   }
@@ -196,7 +196,7 @@ router.post("/:id/submit", requireAuth, async (req, res): Promise<void> => {
 
 router.put("/submissions/:subId/grade", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (user.role !== "teacher" && user.role !== "owner") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Forbidden" }); return; }
   const { marks, feedback } = req.body;
   const submissionId = parseInt(String(req.params.subId));
   const [submission] = await db.select({ teacherId: assignmentsTable.teacherId, totalMarks: assignmentsTable.totalMarks }).from(assignmentSubmissionsTable)
