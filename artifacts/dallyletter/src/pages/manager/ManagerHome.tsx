@@ -16,7 +16,7 @@ export default function ManagerHome() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(getApiUrl("/api/manager/dashboard", { headers: { Authorization: `Bearer ${token()}` } })
+    fetch(getApiUrl("/api/manager/dashboard"), { headers: { Authorization: `Bearer ${token()}` } })
       .then(r => r.json()).then(d => { setData(d); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
