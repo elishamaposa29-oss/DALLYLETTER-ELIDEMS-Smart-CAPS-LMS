@@ -1,3 +1,4 @@
+import { getApiUrl } from "@workspace/api-client-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { useState, useEffect } from "react";
@@ -17,9 +18,9 @@ export default function StudentAchievements() {
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/achievements/my", { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
-      fetch("/api/achievements/leaderboard", { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
-      fetch("/api/achievements", { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
+      fetch(getApiUrl("/api/achievements/my", { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
+      fetch(getApiUrl("/api/achievements/leaderboard", { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
+      fetch(getApiUrl("/api/achievements", { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
     ]).then(([my, lb, all]) => {
       setMyBadges(Array.isArray(my) ? my : []);
       setLeaderboard(Array.isArray(lb) ? lb : []);
