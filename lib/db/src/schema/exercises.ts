@@ -56,6 +56,7 @@ export const exerciseSubmissionsTable = pgTable(
     id: serial("id").primaryKey(),
     exerciseId: integer("exercise_id").notNull().references(() => exercisesTable.id, { onDelete: "cascade" }),
     learnerId: integer("learner_id").notNull().references(() => usersTable.id),
+    attemptNumber: integer("attempt_number").notNull().default(1),
     status: text("status").notNull().default("submitted"),
     totalScore: numeric("total_score", { precision: 8, scale: 2 }).notNull().default("0"),
     percentage: numeric("percentage", { precision: 6, scale: 2 }),
@@ -63,7 +64,7 @@ export const exerciseSubmissionsTable = pgTable(
     markedAt: timestamp("marked_at", { withTimezone: true }),
     returnedAt: timestamp("returned_at", { withTimezone: true }),
   },
-  (table) => [uniqueIndex("exercise_submission_once_idx").on(table.exerciseId, table.learnerId), index("exercise_submissions_exercise_idx").on(table.exerciseId)],
+  (table) => [uniqueIndex("exercise_submission_attempt_idx").on(table.exerciseId, table.learnerId, table.attemptNumber), index("exercise_submissions_exercise_idx").on(table.exerciseId)],
 );
 
 export const exerciseAnswersTable = pgTable(
