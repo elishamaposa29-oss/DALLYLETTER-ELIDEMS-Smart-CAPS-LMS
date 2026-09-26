@@ -1,3 +1,4 @@
+import { getApiUrl } from "@workspace/api-client-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useGetDashboardStats, useListLessons, useListClasses, useListNotifications } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -35,7 +36,7 @@ export default function StudentHome() {
     setSchedulingLesson(true);
     try {
       const token = localStorage.getItem("dallyletter_token");
-      await fetch("/api/notifications", {
+      await fetch(getApiUrl("/api/notifications", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
