@@ -88,6 +88,14 @@ router.post("/:id/publish",requireAuth,async(req,res):Promise<void>=>{
   if(!questions.length){res.status(409).json({error:"Add at least one question before publishing"});return;}
   for(const q of questions){if(q.type==="poll"){const opts=await db.select().from(exerciseOptionsTable).where(eq(exerciseOptionsTable.questionId,q.id));if(opts.length<2||!opts.some(o=>o.isCorrect)){res.status(409).json({error:`Poll question ${q.position+1} needs at least two options and one correct option`});return;}}}
   const totalMarks=questions.reduce((sum,q)=>sum+Number(q.marksAllocated),0);
+  const requestedAI=req.body?.aiMarking&&typeof req.body.aiMarking==="object"?req.body.aiMarking as {enabled?:boolean;approved?:boolean}:{};
+  if(requestedAI.enabled){
+    if(!requestedAI.approved){res.status(409).json({error:"AI marking must be explicitly approved after the readiness check before publishing"});return;}
+    const currentLayout=exercise.layout&&typeof exercise.layout==="object"?exercise.layout as Record<string,unknown>:{};
+    const aiLayout={...currentLayout,aiMarking:{enabled:true,approved:true,approvedAt:new Date().toISOString()}};
+    const [updated]=await db.update(exercisesTable).set({status:"published",totalMarks:totalMarks.toString(),publishedAt:new Date(),layout:aiLayout}).where(eq(exercisesTable.id,exercise.id)).returning();
+    await writeAudit(user.id,"exercise_published",exercise.id,{totalMarks,aiMarking:true,teacherClarification:typeof req.body?.teacherClarification==="string"?req.body.teacherClarification.slice(0,1000):null});res.json(updated);return;
+  }
   const [updated]=await db.update(exercisesTable).set({status:"published",totalMarks:totalMarks.toString(),publishedAt:new Date()}).where(eq(exercisesTable.id,exercise.id)).returning();
   await writeAudit(user.id,"exercise_published",exercise.id,{totalMarks});res.json(updated);
 });
