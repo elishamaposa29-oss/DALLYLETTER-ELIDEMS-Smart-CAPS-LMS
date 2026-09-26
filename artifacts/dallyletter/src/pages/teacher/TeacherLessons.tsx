@@ -39,6 +39,8 @@ export default function TeacherLessons() {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [uploadedFile, setUploadedFile] = useState<{ name: string; previewUrl: string; mimeType: string } | null>(null);
   const [activeExerciseLessonId, setActiveExerciseLessonId] = useState<number | null>(null);
+  const [markingExercises, setMarkingExercises] = useState<{ id: number; title: string; status?: string; totalMarks?: string }[]>([]);
+  const [markingLessonId, setMarkingLessonId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<z.infer<typeof createLessonSchema>>({
@@ -317,6 +319,34 @@ export default function TeacherLessons() {
           </Dialog>
         </div>
 
+        <Dialog open={markingLessonId !== null} onOpenChange={(open) => { if (!open) { setMarkingLessonId(null); setMarkingExercises([]); } }}>
+          <DialogContent className="sm:max-w-[520px]">
+            <DialogHeader>
+              <DialogTitle>Choose an exercise to mark</DialogTitle>
+              <DialogDescription>This lesson has multiple published exercises. Select the one whose learner submissions you want to review.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              {markingExercises.map((exercise) => (
+                <Button
+                  key={exercise.id}
+                  type="button"
+                  variant="outline"
+                  className="h-auto w-full justify-between gap-4 p-4 text-left"
+                  onClick={() => window.location.assign(`/teacher/exercises/${exercise.id}/mark`)}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{exercise.title}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {exercise.totalMarks ? `${exercise.totalMarks} marks` : "Published exercise"}
+                    </span>
+                  </span>
+                  <ClipboardCheck className="h-4 w-4 shrink-0" />
+                </Button>
+              ))}
+            </div>
+          </DialogContent>
+        </Dialog>
+
         {isLoading ? (
           <div className="flex justify-center p-8">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -381,9 +411,18 @@ export default function TeacherLessons() {
                       onClick={async () => {
                         const token = localStorage.getItem("dallyletter_token");
                         const r = await fetch(getApiUrl(`/api/exercises/lessons/${lesson.id}/exercises`), { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-                        const exercises = r.ok ? await r.json() as { id: number }[] : [];
-                        if (exercises[0]) window.location.assign(`/teacher/exercises/${exercises[0].id}/mark`);
-                        else toast({ variant: "destructive", title: "No exercise submissions", description: "Create and publish an exercise for this lesson first." });
+                        const exercises = r.ok ? await r.json() as { id: number; title: string; status?: string; totalMarks?: string }[] : [];
+                        const published = exercises.filter((exercise) => exercise.status === "published");
+                        if (!published.length) {
+                          toast({ variant: "destructive", title: "No published exercises", description: "Create and publish an exercise for this lesson first." });
+                          return;
+                        }
+                        if (published.length === 1) {
+                          window.location.assign(`/teacher/exercises/${published[0].id}/mark`);
+                          return;
+                        }
+                        setMarkingExercises(published);
+                        setMarkingLessonId(lesson.id);
                       }}
                     >
                       <ClipboardCheck className="h-4 w-4" />
