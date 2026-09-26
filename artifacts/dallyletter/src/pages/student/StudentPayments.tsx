@@ -1,3 +1,4 @@
+import { getApiUrl } from "@workspace/api-client-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useListPayments } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,7 +24,7 @@ export default function StudentPayments() {
 
   useEffect(() => {
     const token = localStorage.getItem("dallyletter_token");
-    fetch("/api/settings", { headers: { Authorization: `Bearer ${token}` } })
+    fetch(getApiUrl("/api/settings", { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(data => setSettings(data))
       .catch(() => {});
@@ -61,7 +62,7 @@ export default function StudentPayments() {
     setNotifying(true);
     try {
       const token = localStorage.getItem("dallyletter_token");
-      const res = await fetch("/api/payments/notify-admin", {
+      const res = await fetch(getApiUrl("/api/payments/notify-admin", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ amount: totalOwed }),
