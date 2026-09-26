@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
-import { Loader2, Search, FileText, Image as ImageIcon, Video, Headphones, BookOpen, ExternalLink, GraduationCap } from "lucide-react";
+import { Loader2, Search, FileText, Image as ImageIcon, Video, Headphones, BookOpen, ExternalLink, GraduationCap, ClipboardList } from "lucide-react";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 import { isValidLessonUrl } from "@/lib/media-url";
 
@@ -27,6 +27,8 @@ export default function StudentLessons() {
   const { data: lessons, isLoading } = useListLessons();
   const [search, setSearch] = useState("");
   const [subjectFilter, setSubjectFilter] = useState("all");
+  const [exerciseMap, setExerciseMap] = useState<Record<number, { id:number; title:string; status:string; totalMarks:string }[]>>({});
+  useEffect(() => { let cancelled = false; const token = localStorage.getItem("dallyletter_token"); if (!lessons?.length) return; Promise.all(lessons.map(async lesson => { try { const r = await fetch(getApiUrl(`/api/exercises/lessons/${lesson.id}/exercises`), { headers: token ? { Authorization: `Bearer ${token}` } : {} }); return [lesson.id, r.ok ? await r.json() : []] as const; } catch { return [lesson.id, []] as const; } })).then(rows => { if (!cancelled) setExerciseMap(Object.fromEntries(rows)); }); return () => { cancelled = true; }; }, [lessons]);
 
   const filteredLessons = lessons?.filter(lesson => {
     const matchesSearch = lesson.title.toLowerCase().includes(search.toLowerCase()) ||
@@ -160,6 +162,7 @@ export default function StudentLessons() {
                       {lesson.description || "No description provided."}
                     </p>
 
+                    {(exerciseMap[lesson.id] ?? []).length > 0 && <div className="space-y-2 border-t pt-3"><div className="flex items-center gap-2 text-sm font-medium"><ClipboardList className="h-4 w-4 text-primary" />Exercises</div>{(exerciseMap[lesson.id] ?? []).map(ex => <Button key={ex.id} variant="outline" className="w-full justify-between" onClick={(e) => { e.stopPropagation(); window.location.assign(`/student/exercises/${ex.id}`); }}><span className="truncate">{ex.title}</span><Badge variant="secondary">{ex.totalMarks} marks</Badge></Button>)}</div>}
                     <div className="flex items-center justify-between pt-3 border-t">
                       <span className="text-xs text-muted-foreground">
                         {new Date(lesson.createdAt).toLocaleDateString("en-ZA", { day: "numeric", month: "short", year: "numeric" })}
