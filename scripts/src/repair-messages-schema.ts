@@ -1,4 +1,5 @@
 import { pool } from "@workspace/db";
+import { migrateExerciseSchema } from "./exercise-schema.js";
 
 async function repairMessagesSchema(): Promise<void> {
   await pool.query(`
@@ -6,6 +7,7 @@ async function repairMessagesSchema(): Promise<void> {
     ADD COLUMN IF NOT EXISTS parent_message_id integer;
   `);
   console.log("Verified messages.parent_message_id exists.");
+  await migrateExerciseSchema();
 }
 
 try {
