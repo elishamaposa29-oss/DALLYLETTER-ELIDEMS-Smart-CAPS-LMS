@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, pollsTable, pollQuestionsTable, pollOptionsTable, pollSubmissionsTable, usersTable, auditLogsTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
-import { requireAuth } from "../lib/auth-middleware";
+import { requireAuth, canManageAcademicContent } from "../lib/auth-middleware";
 import { getAIProvider } from "../lib/ai-provider";
 
 const router = Router();
@@ -9,7 +9,7 @@ const router = Router();
 async function getPollForManager(pollId: number, userId: number, role: string) {
   const [poll] = await db.select().from(pollsTable).where(eq(pollsTable.id, pollId));
   if (!poll) return null;
-  if (role !== "owner" && role !== "admin" && (role !== "teacher" || poll.createdBy !== userId)) return null;
+  if (!canManageAcademicContent({ role, isManager: role === "manager" } as any) || (role === "teacher" && poll.createdBy !== userId)) return null;
   return poll;
 }
 
@@ -30,7 +30,7 @@ router.get("/polls", requireAuth, async (req, res): Promise<void> => {
 // POST /polls — create poll (teacher/owner)
 router.post("/polls", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (user.role === "student") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Teacher, manager, or owner access required" }); return; }
   const { title, topic, type = "manual", grade, subject, mode = "practice", timerSeconds, questions } = req.body as {
     title: string; topic?: string; type?: string; grade?: string; subject?: string;
     mode?: string; timerSeconds?: number;
