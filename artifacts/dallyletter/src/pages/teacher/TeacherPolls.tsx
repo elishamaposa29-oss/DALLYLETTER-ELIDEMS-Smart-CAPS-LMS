@@ -1,3 +1,4 @@
+import { getApiUrl } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent } from "@/components/ui/card";
@@ -33,7 +34,7 @@ export default function TeacherPolls() {
 
   async function load() {
     setLoading(true);
-    const r = await fetch("/api/polls", { headers: { Authorization: `Bearer ${token()}` } });
+    const r = await fetch(getApiUrl("/api/polls"), { headers: { Authorization: `Bearer ${token()}` } });
     if (r.ok) setPolls(await r.json());
     setLoading(false);
   }
@@ -47,7 +48,7 @@ export default function TeacherPolls() {
       question: q.question, difficulty: q.difficulty,
       options: q.options.map((o, i) => ({ text: o, isCorrect: i === q.correct }))
     }));
-    const r = await fetch("/api/polls", {
+    const r = await fetch(getApiUrl("/api/polls"), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
       body: JSON.stringify({ ...newPoll, type: "manual", questions }),
@@ -60,7 +61,7 @@ export default function TeacherPolls() {
     if (!aiTopic.topic) { toast({ variant: "destructive", title: "Topic required" }); return; }
     setAiGenerating(true);
     setAiGenerated(null);
-    const r = await fetch("/api/polls/ai-generate", {
+    const r = await fetch(getApiUrl("/api/polls/ai-generate"), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
       body: JSON.stringify({ topic: aiTopic.topic, grade: aiTopic.grade || undefined, subject: aiTopic.subject || undefined, count: parseInt(aiTopic.count) }),
@@ -73,7 +74,7 @@ export default function TeacherPolls() {
   async function handleSaveAIPoll() {
     if (!aiGenerated) return;
     setCreating(true);
-    const r = await fetch("/api/polls", {
+    const r = await fetch(getApiUrl("/api/polls"), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
       body: JSON.stringify({ title: aiGenerated.title, topic: aiTopic.topic, type: "ai", grade: aiTopic.grade || undefined, subject: aiTopic.subject || undefined, mode: "practice", questions: aiGenerated.questions }),
@@ -83,18 +84,18 @@ export default function TeacherPolls() {
   }
 
   async function setStatus(id: number, status: string) {
-    await fetch(`/api/polls/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` }, body: JSON.stringify({ status }) });
+    await fetch(getApiUrl(`/api/polls/${id}`), { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` }, body: JSON.stringify({ status }) });
     toast({ title: status === "active" ? "Poll is now live for students!" : "Poll closed" });
     load();
   }
 
   async function deletePoll(id: number) {
-    await fetch(`/api/polls/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token()}` } });
+    await fetch(getApiUrl(`/api/polls/${id}`), { method: "DELETE", headers: { Authorization: `Bearer ${token()}` } });
     toast({ title: "Poll deleted" }); load();
   }
 
   async function loadResults(id: number) {
-    const r = await fetch(`/api/polls/${id}/results`, { headers: { Authorization: `Bearer ${token()}` } });
+    const r = await fetch(getApiUrl(`/api/polls/${id}/results`), { headers: { Authorization: `Bearer ${token()}` } });
     if (r.ok) { setResults(await r.json()); setResultsId(id); }
   }
 

@@ -1,3 +1,4 @@
+import { getApiUrl } from "@workspace/api-client-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { useState, useEffect } from "react";
@@ -15,7 +16,7 @@ export default function ManagerHome() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/manager/dashboard", { headers: { Authorization: `Bearer ${token()}` } })
+    fetch(getApiUrl("/api/manager/dashboard"), { headers: { Authorization: `Bearer ${token()}` } })
       .then(r => r.json()).then(d => { setData(d); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);

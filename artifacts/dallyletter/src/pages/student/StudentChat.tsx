@@ -78,7 +78,7 @@ export default function Chat() {
     setReportingMessageId(messageId);
     try {
       const token = localStorage.getItem("dallyletter_token");
-      const response = await fetch(`/api/messages/${messageId}/report`, {
+      const response = await fetch(getApiUrl(`/api/messages/${messageId}/report`), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

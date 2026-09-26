@@ -77,3 +77,9 @@ export async function requireTeacherOrOwner(req: Request, res: Response, next: N
   }
   next();
 }
+
+
+/** Manager dashboard access: owner or users explicitly promoted to manager. */
+export function canAccessManager(user: NonNullable<Express.Request["currentUser"]>): boolean {
+  return user.role === "owner" || user.isManager === true;
+}
