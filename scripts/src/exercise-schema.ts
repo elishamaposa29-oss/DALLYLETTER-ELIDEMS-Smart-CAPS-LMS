@@ -95,6 +95,20 @@ export async function migrateExerciseSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS exercise_media_exercise_idx ON exercise_media(exercise_id);
       CREATE INDEX IF NOT EXISTS exercise_media_question_idx ON exercise_media(question_id);
       CREATE INDEX IF NOT EXISTS exercise_media_answer_idx ON exercise_media(answer_id);
+
+      DO $
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM pg_constraint
+          WHERE conname = 'exercise_media_owner_check'
+            AND conrelid = 'exercise_media'::regclass
+        ) THEN
+          ALTER TABLE exercise_media
+            ADD CONSTRAINT exercise_media_owner_check
+            CHECK (exercise_id IS NOT NULL OR question_id IS NOT NULL OR answer_id IS NOT NULL);
+        END IF;
+      END $;
     `);
 
     await client.query("COMMIT");
