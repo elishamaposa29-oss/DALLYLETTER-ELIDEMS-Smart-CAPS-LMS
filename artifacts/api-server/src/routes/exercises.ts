@@ -6,6 +6,7 @@ import {
   exerciseSubmissionsTable, lessonsTable, auditLogsTable,
 } from "@workspace/db/schema";
 import { requireAuth } from "../lib/auth-middleware";
+import { getAIProvider } from "../lib/ai-provider";
 
 const router = Router();
 const teacherRoles = ["teacher", "owner", "admin"];
@@ -89,6 +90,67 @@ router.post("/:id/publish",requireAuth,async(req,res):Promise<void>=>{
   const totalMarks=questions.reduce((sum,q)=>sum+Number(q.marksAllocated),0);
   const [updated]=await db.update(exercisesTable).set({status:"published",totalMarks:totalMarks.toString(),publishedAt:new Date()}).where(eq(exercisesTable.id,exercise.id)).returning();
   await writeAudit(user.id,"exercise_published",exercise.id,{totalMarks});res.json(updated);
+});
+
+router.post("/:id/ai-marking/check",requireAuth,async(req,res):Promise<void>=>{
+  const user=req.currentUser!;
+  if(!teacherRoles.includes(user.role)){res.status(403).json({error:"Teacher or owner access required"});return;}
+  const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}
+  const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));
+  if(!exercise||!canEditExercise(user,exercise.createdBy)){res.status(404).json({error:"Exercise not found"});return;}
+  const questions=await db.select().from(exerciseQuestionsTable).where(eq(exerciseQuestionsTable.exerciseId,exerciseId)).orderBy(asc(exerciseQuestionsTable.position));
+  if(!questions.length){res.status(409).json({error:"Add at least one question before checking AI marking"});return;}
+  const ai=await getAIProvider();
+  if(ai.name==="mock"){res.json({provider:"mock",configured:false,canMark:false,clarifications:["No live AI provider is configured yet. Add a Gemini, OpenAI, or Anthropic API key before enabling AI marking."]});return;}
+  const payload=[];
+  for(const q of questions){
+    const options=q.type==="poll"?await db.select().from(exerciseOptionsTable).where(eq(exerciseOptionsTable.questionId,q.id)):[];
+    payload.push({id:q.id,type:q.type,prompt:q.prompt,marksAllocated:q.marksAllocated,options:options.map(o=>({label:o.label,value:o.value,isCorrect:o.isCorrect}))});
+  }
+  try{
+    const raw=await ai.chat([{role:"user",content:`Assess whether you can reliably mark this educational exercise. Do not mark learner work yet. Identify any question types, wording, diagrams, rubrics, or missing information that would require teacher clarification. Return ONLY JSON: {"canMark":true|false,"clarifications":["specific questions for the teacher"],"reason":"brief reason"}\\nExercise:\\n${JSON.stringify(payload)}`}]);
+    const match=raw.match(/\\{[\\s\\S]*\\}/);if(!match)throw new Error("AI readiness response was not valid JSON");
+    const result=JSON.parse(match[0]) as {canMark?:boolean;clarifications?:string[];reason?:string};
+    res.json({provider:ai.name,configured:true,canMark:Boolean(result.canMark),clarifications:Array.isArray(result.clarifications)?result.clarifications.filter(x=>typeof x==="string"):[],reason:result.reason??null});
+  }catch(err){res.status(502).json({error:err instanceof Error?err.message:"AI readiness check failed",provider:ai.name});}
+});
+
+router.post("/:id/ai-marking/:submissionId/run",requireAuth,async(req,res):Promise<void>=>{
+  const user=req.currentUser!;
+  if(!teacherRoles.includes(user.role)){res.status(403).json({error:"Teacher or owner access required"});return;}
+  const exerciseId=parseId(req.params.id),submissionId=parseId(req.params.submissionId);
+  if(!exerciseId||!submissionId){res.status(400).json({error:"Invalid exercise or submission id"});return;}
+  const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));
+  if(!exercise||!canEditExercise(user,exercise.createdBy)){res.status(404).json({error:"Exercise not found"});return;}
+  const aiConfig=(exercise.layout&&typeof exercise.layout==="object"?(exercise.layout as Record<string,unknown>).aiMarking:null) as {enabled?:boolean;approved?:boolean}|null;
+  if(!aiConfig?.enabled||!aiConfig?.approved){res.status(409).json({error:"AI marking is not enabled and approved for this exercise"});return;}
+  const [submission]=await db.select().from(exerciseSubmissionsTable).where(and(eq(exerciseSubmissionsTable.id,submissionId),eq(exerciseSubmissionsTable.exerciseId,exerciseId)));
+  if(!submission){res.status(404).json({error:"Submission not found"});return;}
+  const ai=await getAIProvider();if(ai.name==="mock"){res.status(409).json({error:"AI marking is not available until a live AI provider is configured"});return;}
+  const questions=await db.select().from(exerciseQuestionsTable).where(eq(exerciseQuestionsTable.exerciseId,exerciseId)).orderBy(asc(exerciseQuestionsTable.position));
+  const answers=await db.select().from(exerciseAnswersTable).where(eq(exerciseAnswersTable.submissionId,submissionId));
+  const optionsByQuestion=new Map<number,unknown[]>();
+  for(const q of questions) optionsByQuestion.set(q.id,q.type==="poll"?await db.select().from(exerciseOptionsTable).where(eq(exerciseOptionsTable.questionId,q.id)):[]);
+  const packet=questions.map(q=>({question:{id:q.id,type:q.type,prompt:q.prompt,marksAllocated:q.marksAllocated,options:optionsByQuestion.get(q.id)??[]},answer:answers.find(a=>a.questionId===q.id)||null}));
+  try{
+    const raw=await ai.chat([{role:"user",content:`Mark this learner exercise conservatively. Never invent evidence. Use only the question, allocation, rubric/configuration, and learner answer supplied. For drawings, if the image/strokes are ambiguous or you cannot reliably interpret them, set needsReview=true and awardedMarks=0 rather than guessing. Return ONLY JSON: {"marks":[{"answerId":1,"awardedMarks":0,"needsReview":false,"confidence":0.99,"correctionNotes":"..."}],"overallNotes":"..."}\\nExercise submission:\\n${JSON.stringify(packet)}`}]);
+    const match=raw.match(/\\{[\\s\\S]*\\}/);if(!match)throw new Error("AI marking response was not valid JSON");
+    const result=JSON.parse(match[0]) as {marks?:Array<{answerId?:number;awardedMarks?:number;needsReview?:boolean;confidence?:number;correctionNotes?:string}>;overallNotes?:string};
+    const proposals=Array.isArray(result.marks)?result.marks:[];
+    let needsReview=false;
+    for(const p of proposals){
+      const answerId=parseId(p.answerId);if(!answerId)continue;
+      const answer=answers.find(a=>a.id===answerId);if(!answer)continue;
+      const q=questions.find(x=>x.id===answer.questionId);if(!q)continue;
+      const review=Boolean(p.needsReview)||Number(p.confidence??0)<0.75;needsReview ||= review;
+      const awarded=review?Number(answer.awardedMarks):Math.max(0,Math.min(Number(q.marksAllocated),Math.round(Number(p.awardedMarks??0)*2)/2));
+      await db.update(exerciseAnswersTable).set({awardedMarks:String(awarded),correctionNotes:typeof p.correctionNotes==="string"?p.correctionNotes:null,markedBy:user.id,markedAt:new Date()}).where(eq(exerciseAnswersTable.id,answerId));
+    }
+    const status=needsReview?"ai_partial":"ai_marked_pending_return";
+    await db.update(exerciseSubmissionsTable).set({status}).where(eq(exerciseSubmissionsTable.id,submissionId));
+    await writeAudit(user.id,"exercise_ai_marking",exercise.id,{submissionId,status,provider:ai.name,overallNotes:result.overallNotes??null});
+    res.json({submissionId,status,needsReview,overallNotes:result.overallNotes??null,proposals});
+  }catch(err){res.status(502).json({error:err instanceof Error?err.message:"AI marking failed",provider:ai.name});}
 });
 
 router.post("/:id/submit",requireAuth,async(req,res):Promise<void>=>{
