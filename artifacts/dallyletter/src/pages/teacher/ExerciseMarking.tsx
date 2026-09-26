@@ -279,7 +279,7 @@ export default function ExerciseMarking() {
 
                     <div className="grid gap-3 sm:grid-cols-[auto_1fr]">
                       <div className="flex items-center gap-2">
-                        <Input
+                        <div className="flex items-center gap-1"><Button type="button" size="sm" variant="outline" onClick={()=>setMarks((m)=>({...m,[a.id]:q?.marksAllocated??"0"}))} aria-label={`Mark question ${i+1} correct`}>✓</Button><Button type="button" size="sm" variant="outline" onClick={()=>setMarks((m)=>({...m,[a.id]:"0"}))} aria-label={`Unmark question ${i+1}`}>×</Button><Input
                           type="number"
                           min="0"
                           max={q?.marksAllocated ?? undefined}
