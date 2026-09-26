@@ -35,7 +35,7 @@ export default function StudentPolls() {
   const token = () => localStorage.getItem("dallyletter_token");
 
   useEffect(() => {
-    fetch(getApiUrl("/api/polls", { headers: { Authorization: `Bearer ${token()}` } })
+    fetch(getApiUrl("/api/polls"), { headers: { Authorization: `Bearer ${token()}` } })
       .then(r => r.json()).then(d => { setPolls(d); setLoading(false); }).catch(() => setLoading(false));
   }, []);
 
@@ -53,7 +53,7 @@ export default function StudentPolls() {
   }, [screen, timeLeft]);
 
   async function startPoll(pollId: number) {
-    const r = await fetch(getApiUrl(`/api/polls/${pollId}`, { headers: { Authorization: `Bearer ${token()}` } });
+    const r = await fetch(getApiUrl(`/api/polls/${pollId}`), { headers: { Authorization: `Bearer ${token()}` } });
     if (!r.ok) { toast({ variant: "destructive", title: "Could not load poll" }); return; }
     const poll = await r.json() as PollDetail;
     setActivePoll(poll);
@@ -69,7 +69,7 @@ export default function StudentPolls() {
     setSubmitting(true);
     const answerArray = activePoll.questions.map(q => ({ questionId: q.id, optionId: answers[q.id] ?? -1 }));
     try {
-      const r = await fetch(getApiUrl(`/api/polls/${activePoll.id}/submit`, {
+      const r = await fetch(getApiUrl(`/api/polls/${activePoll.id}/submit`), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
         body: JSON.stringify({ answers: answerArray }),
@@ -94,7 +94,7 @@ export default function StudentPolls() {
 
   async function loadLeaderboard(pollId: number) {
     setSelectedPollId(pollId);
-    const r = await fetch(getApiUrl(`/api/polls/${pollId}/results`, { headers: { Authorization: `Bearer ${token()}` } });
+    const r = await fetch(getApiUrl(`/api/polls/${pollId}/results`), { headers: { Authorization: `Bearer ${token()}` } });
     if (r.ok) { const d = await r.json(); setLeaderboard(d.submissions ?? []); setScreen("leaderboard"); }
   }
 
