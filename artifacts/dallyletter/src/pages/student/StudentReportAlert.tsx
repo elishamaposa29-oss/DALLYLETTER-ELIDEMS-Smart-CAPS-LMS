@@ -1,3 +1,4 @@
+import { getApiUrl } from "@workspace/api-client-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,7 +39,7 @@ export default function StudentReportAlert() {
   const loadReports = async () => {
     setReportsLoading(true);
     try {
-      const r = await fetch("/api/owner-alerts", { headers: { Authorization: `Bearer ${token()}` } });
+      const r = await fetch(getApiUrl("/api/owner-alerts", { headers: { Authorization: `Bearer ${token()}` } });
       const data = await r.json();
       setReports(Array.isArray(data) ? data : []);
     } finally { setReportsLoading(false); }
@@ -49,7 +50,7 @@ export default function StudentReportAlert() {
   const submit = () => {
     if (!category || !title || !description) { toast({ variant: "destructive", title: "Fill all fields" }); return; }
     setSubmitting(true);
-    void fetch("/api/owner-alerts", {
+    void fetch(getApiUrl("/api/owner-alerts", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
       body: JSON.stringify({ category, severity, title, description }),
