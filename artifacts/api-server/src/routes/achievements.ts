@@ -82,6 +82,15 @@ router.post("/award", requireAuth, async (req, res): Promise<void> => {
   res.status(201).json(ua);
 });
 
+router.get("/prefect-teachers", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  if (!user.isPrefect) { res.status(403).json({ error: "Prefect access required" }); return; }
+  const teachers = await db.select({
+    id: usersTable.id, name: usersTable.name, subject: usersTable.subject,
+  }).from(usersTable).where(eq(usersTable.role, "teacher"));
+  res.json(teachers);
+});
+
 router.get("/prefect-leaderboard", requireAuth, async (_req, res): Promise<void> => {
   const prefects = await db.select({
     id: usersTable.id, name: usersTable.name, grade: usersTable.grade,
