@@ -1,3 +1,4 @@
+import { getApiUrl } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -28,8 +29,8 @@ export default function StudentBreakElidems() {
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/break-elidems/today", { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.ok ? r.json() : null),
-      fetch("/api/break-elidems", { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.ok ? r.json() : []),
+      fetch(getApiUrl("/api/break-elidems/today"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.ok ? r.json() : null),
+      fetch(getApiUrl("/api/break-elidems"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.ok ? r.json() : []),
     ]).then(([today, all]) => {
       setTodayEvent(today);
       setUpcomingEvents((all as BreakEvent[]).filter((e: BreakEvent) => e.status === "scheduled").slice(0, 3));
@@ -43,7 +44,7 @@ export default function StudentBreakElidems() {
   async function handleVolunteer() {
     if (!todayEvent) return;
     setVolunteering(true);
-    const r = await fetch(`/api/break-elidems/${todayEvent.id}/volunteer`, {
+    const r = await fetch(getApiUrl(`/api/break-elidems/${todayEvent.id}/volunteer`), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
       body: JSON.stringify({ details: volunteerDetails }),
