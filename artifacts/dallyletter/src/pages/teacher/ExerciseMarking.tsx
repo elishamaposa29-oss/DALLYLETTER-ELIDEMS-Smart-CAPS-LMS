@@ -96,6 +96,7 @@ export default function ExerciseMarking() {
   const [message, setMessage] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const [aiMessage, setAiMessage] = useState("");
+  const [aiState, setAiState] = useState<"idle"|"checking"|"partially_marked"|"awaiting_teacher"|"returned">("idle");
   const [loading, setLoading] = useState(false);
 
   const token = localStorage.getItem("dallyletter_token");
@@ -150,6 +151,7 @@ export default function ExerciseMarking() {
   const runAIMarking = async () => {
     if (!id || selected === null) return;
     setAiBusy(true);
+    setAiState("checking");
     setAiMessage("Checking learner work with ELIDEMS AI…");
     setMessage("");
     try {
@@ -159,16 +161,19 @@ export default function ExerciseMarking() {
       });
       const d = await r.json();
       if (!r.ok) {
+        setAiState("idle");
         setAiMessage(d.error || "AI marking could not start. The normal teacher workflow remains available.");
         return;
       }
       const nextLabel = d.needsReview ? "Partially marked — awaiting teacher review." : "AI marks prepared — awaiting teacher confirmation.";
+      setAiState(d.needsReview ? "partially_marked" : "awaiting_teacher");
       setAiMessage(nextLabel);
       await load(selected);
       setSubs((current) =>
         current.map((x) => (x.id === selected ? { ...x, status: d.status } : x)),
       );
     } catch {
+      setAiState("idle");
       setAiMessage("AI marking could not start. The normal teacher workflow remains available.");
     } finally {
       setAiBusy(false);
@@ -321,6 +326,7 @@ export default function ExerciseMarking() {
                     <span>{aiMessage}</span>
                   </div>
                 )}
+                <div className="mt-3 flex flex-wrap gap-2 text-xs" aria-label="AI marking workflow state"><Badge variant={aiState==="checking"?"default":"outline"}>Checking</Badge><Badge variant={aiState==="awaiting_teacher"?"default":"outline"}>Ready</Badge><Badge variant={aiState==="partially_marked"?"default":"outline"}>Partially marked</Badge><Badge variant={aiState==="awaiting_teacher"||aiState==="partially_marked"?"default":"outline"}>Awaiting teacher</Badge><Badge variant={selectedSubmission.status==="marked"?"default":"outline"}>Returned</Badge></div>
               </div>
 
               <div className="flex flex-wrap items-center gap-3 border-t pt-4">
