@@ -96,7 +96,7 @@ export async function migrateExerciseSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS exercise_media_question_idx ON exercise_media(question_id);
       CREATE INDEX IF NOT EXISTS exercise_media_answer_idx ON exercise_media(answer_id);
 
-      DO $
+      DO $$
       BEGIN
         IF NOT EXISTS (
           SELECT 1
@@ -108,7 +108,7 @@ export async function migrateExerciseSchema(): Promise<void> {
             ADD CONSTRAINT exercise_media_owner_check
             CHECK (exercise_id IS NOT NULL OR question_id IS NOT NULL OR answer_id IS NOT NULL);
         END IF;
-      END $;
+      END $$;
     `);
 
     await client.query("COMMIT");
