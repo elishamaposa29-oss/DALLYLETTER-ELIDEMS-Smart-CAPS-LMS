@@ -139,9 +139,9 @@ export default function StudentAssignments() {
                           <Send className="h-3.5 w-3.5" /> Submit
                         </Button>
                       )}
-                      {sub && sub.status !== "graded" && (
+                      {sub && !overdue && (
                         <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { setSelected(a); setContent(sub.content ?? ""); }}>
-                          Edit Submission
+                          Resubmit / Edit
                         </Button>
                       )}
                     </div>
