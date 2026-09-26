@@ -89,7 +89,7 @@ router.post("/lessons/:lessonId/exercises",requireAuth,async(req,res):Promise<vo
 });
 
 router.post("/:id/questions",requireAuth,async(req,res):Promise<void>=>{
-  const user=req.currentUser!;if(!canManageAcademicContent(user.role)){res.status(403).json({error:"Teacher or owner access required"});return;}
+  const user=req.currentUser!;if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}
   const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}
   const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));if(!exercise){res.status(404).json({error:"Exercise not found"});return;}
   if(!canEditExercise(user,exercise.createdBy)){res.status(403).json({error:"You can only edit your own exercise"});return;}
