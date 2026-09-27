@@ -1,6 +1,8 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useGetDashboardStats, useGetPaymentSummary, useGetRecentActivity } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { PremiumButton } from "@/components/ui/PremiumButton";
+import { StatCard } from "@/components/dashboard/StatCard";
 import { Loader2, Users, BookOpen, Video, Activity, DollarSign, AlertTriangle, TrendingUp, CheckCircle2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
@@ -16,69 +18,29 @@ export default function AdminHome() {
   const refreshAll = async () => { await Promise.all([refetchStats(), refetchPayments(), refetchActivity()]); };
 
   const statCards = [
-    {
-      label: "Total Students",
-      value: stats?.totalStudents ?? 0,
-      icon: Users,
-      gradient: "from-blue-500 to-blue-700",
-      bg: "from-blue-50 to-blue-100/50 dark:from-blue-950/40 dark:to-blue-900/20",
-      border: "border-blue-200 dark:border-blue-800",
-      text: "text-blue-700 dark:text-blue-300",
-    },
-    {
-      label: "Teachers",
-      value: stats?.totalTeachers ?? 0,
-      icon: Users,
-      gradient: "from-violet-500 to-violet-700",
-      bg: "from-violet-50 to-violet-100/50 dark:from-violet-950/40 dark:to-violet-900/20",
-      border: "border-violet-200 dark:border-violet-800",
-      text: "text-violet-700 dark:text-violet-300",
-    },
-    {
-      label: "Lessons",
-      value: stats?.totalLessons ?? 0,
-      icon: BookOpen,
-      gradient: "from-emerald-500 to-emerald-700",
-      bg: "from-emerald-50 to-emerald-100/50 dark:from-emerald-950/40 dark:to-emerald-900/20",
-      border: "border-emerald-200 dark:border-emerald-800",
-      text: "text-emerald-700 dark:text-emerald-300",
-    },
-    {
-      label: "Live Classes",
-      value: stats?.totalClasses ?? 0,
-      icon: Video,
-      gradient: "from-sky-500 to-sky-700",
-      bg: "from-sky-50 to-sky-100/50 dark:from-sky-950/40 dark:to-sky-900/20",
-      border: "border-sky-200 dark:border-sky-800",
-      text: "text-sky-700 dark:text-sky-300",
-    },
-    {
-      label: "Revenue",
-      value: `$${paymentSummary?.totalRevenue?.toFixed(2) ?? "0.00"}`,
-      icon: DollarSign,
-      gradient: "from-amber-500 to-amber-700",
-      bg: "from-amber-50 to-amber-100/50 dark:from-amber-950/40 dark:to-amber-900/20",
-      border: "border-amber-200 dark:border-amber-800",
-      text: "text-amber-700 dark:text-amber-300",
-    },
+    { label: "Total Students", value: stats?.totalStudents ?? 0, icon: Users },
+    { label: "Teachers", value: stats?.totalTeachers ?? 0, icon: Users },
+    { label: "Lessons", value: stats?.totalLessons ?? 0, icon: BookOpen },
+    { label: "Live Classes", value: stats?.totalClasses ?? 0, icon: Video },
+    { label: "Revenue", value: `$${paymentSummary?.totalRevenue?.toFixed(2) ?? "0.00"}`, icon: DollarSign },
   ];
 
   return (
     <DashboardLayout>
-      <div className="space-y-8">
+      <div className="space-y-8 rounded-[28px] bg-[#0A1931] p-3 text-white sm:p-5 md:p-7">
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-foreground">
+            <h1 className="text-3xl font-black tracking-tight text-white md:text-4xl">
               Admin Overview
             </h1>
-            <p className="text-muted-foreground mt-1">
-              Welcome back, <span className="font-semibold text-foreground">{user?.name}</span>. Here's your platform at a glance.
+            <p className="mt-1 text-white/60">
+              Welcome back, <span className="font-semibold text-[#FFC72C]">{user?.name}</span>. Here's your platform at a glance.
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={refreshAll} disabled={isLoading} className="inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50">Refresh</button>
+            <PremiumButton variant="outline" onClick={refreshAll} disabled={isLoading}>Refresh</PremiumButton>
             <div className={"flex items-center gap-2 px-4 py-2 rounded-full border " + (hasError ? "bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800" : "bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800")}><div className={"h-2 w-2 rounded-full " + (hasError ? "bg-red-500" : "bg-emerald-500") + " animate-pulse"} /><span className={"text-sm font-medium " + (hasError ? "text-red-700 dark:text-red-400" : "text-emerald-700 dark:text-emerald-400")}>{hasError ? "Dashboard needs attention" : "Platform Online"}</span></div>
           </div>
         </div>
@@ -87,29 +49,15 @@ export default function AdminHome() {
           <div className="flex justify-center items-center p-20">
             <div className="text-center space-y-3">
               <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto" />
-              <p className="text-sm text-muted-foreground">Loading dashboard...</p>
+              <p className="text-sm text-white/55">Loading dashboard...</p>
             </div>
           </div>
         ) : (
           <>
             {hasError && <Card className="border-red-200 bg-red-50/70 dark:bg-red-950/20 dark:border-red-800"><CardContent className="p-4 text-sm text-red-800 dark:text-red-300">One or more dashboard services could not be loaded. The displayed numbers may be incomplete. Restore the database/API and press Refresh.</CardContent></Card>}
             {/* Stat Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-              {statCards.map((card) => {
-                const Icon = card.icon;
-                return (
-                  <Card key={card.label} className={`bg-gradient-to-br ${card.bg} ${card.border} overflow-hidden relative`}>
-                    <CardContent className="p-5">
-                      <div className={`inline-flex p-2 rounded-lg bg-gradient-to-br ${card.gradient} shadow-lg mb-3`}>
-                        <Icon className="h-4 w-4 text-white" />
-                      </div>
-                      <p className={`text-3xl font-bold ${card.text} leading-none`}>{card.value}</p>
-                      <p className="text-xs font-semibold text-muted-foreground mt-1.5 uppercase tracking-wider">{card.label}</p>
-                    </CardContent>
-                    <div className={`absolute -bottom-4 -right-4 h-20 w-20 rounded-full bg-gradient-to-br ${card.gradient} opacity-10`} />
-                  </Card>
-                );
-              })}
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+              {statCards.map((card) => <StatCard key={card.label} {...card} />)}
             </div>
 
             {/* Payment Health Bar */}
@@ -121,7 +69,7 @@ export default function AdminHome() {
                       <TrendingUp className="h-4 w-4 text-primary" />
                       Payment Health
                     </CardTitle>
-                    <span className="text-sm text-muted-foreground">
+                    <span className="text-sm text-white/55">
                       {paymentSummary.paidCount ?? 0} paid · {paymentSummary.overdueCount ?? 0} overdue
                     </span>
                   </div>
@@ -169,21 +117,21 @@ export default function AdminHome() {
                 </CardHeader>
                 <CardContent className="p-0">
                   {!paymentSummary?.overdueStudents?.length ? (
-                    <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
+                    <div className="flex flex-col items-center justify-center py-10 text-white/55 gap-2">
                       <CheckCircle2 className="h-10 w-10 text-emerald-400 opacity-60" />
                       <p className="font-medium text-emerald-600">All payments up to date!</p>
                     </div>
                   ) : (
                     <div className="divide-y">
                       {paymentSummary.overdueStudents.slice(0, 6).map(student => (
-                        <div key={student.id} className="flex items-center justify-between px-5 py-3.5 hover:bg-muted/30 transition-colors">
+                        <div key={student.id} className="flex items-center justify-between px-5 py-3.5 hover:bg-[#FFC72C]/5 transition-colors">
                           <div className="flex items-center gap-3">
                             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-red-400 to-red-600 flex items-center justify-center text-white font-bold text-sm shadow-sm">
                               {student.name.charAt(0).toUpperCase()}
                             </div>
                             <div>
-                              <p className="font-semibold text-sm text-foreground">{student.name}</p>
-                              <p className="text-xs text-muted-foreground">{student.email}</p>
+                              <p className="font-semibold text-sm text-white">{student.name}</p>
+                              <p className="text-xs text-white/55">{student.email}</p>
                             </div>
                           </div>
                           <Badge className="bg-red-100 text-red-700 border border-red-200 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800">
@@ -209,22 +157,22 @@ export default function AdminHome() {
                 </CardHeader>
                 <CardContent className="p-0">
                   {!activity?.length ? (
-                    <div className="py-10 text-center text-muted-foreground">
+                    <div className="py-10 text-center text-white/55">
                       <Activity className="h-8 w-8 mx-auto mb-2 opacity-30" />
                       <p>No recent activity found.</p>
                     </div>
                   ) : (
                     <div className="divide-y">
                       {activity.slice(0, 6).map((item, i) => (
-                        <div key={item.id} className="flex gap-4 px-5 py-3.5 hover:bg-muted/30 transition-colors">
+                        <div key={item.id} className="flex gap-4 px-5 py-3.5 hover:bg-[#FFC72C]/5 transition-colors">
                           <div className="flex flex-col items-center gap-1 shrink-0 pt-1">
                             <div className="w-2.5 h-2.5 rounded-full bg-primary" />
                             {i < 5 && <div className="w-px flex-1 bg-border" />}
                           </div>
                           <div className="flex-1 min-w-0 pb-1">
-                            <p className="text-sm font-semibold text-foreground">{item.actorName}</p>
-                            <p className="text-sm text-muted-foreground line-clamp-2">{item.description}</p>
-                            <p className="text-xs text-muted-foreground/60 mt-1">
+                            <p className="text-sm font-semibold text-white">{item.actorName}</p>
+                            <p className="text-sm text-white/55 line-clamp-2">{item.description}</p>
+                            <p className="text-xs text-white/55/60 mt-1">
                               {new Date(item.createdAt).toLocaleString("en-ZA", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                             </p>
                           </div>
