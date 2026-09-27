@@ -15,9 +15,28 @@ export default function ManagerPrefects() {
   const [selected,setSelected]=useState<number[]>([]);
   const [achievements,setAchievements]=useState<any[]>([]);
   const {toast}=useToast();
-  useEffect(()=>{\n    fetch(getApiUrl("/api/achievements"),{headers:{Authorization:`Bearer ${token()}`}})\n      .then(r=>r.ok?r.json():[])\n      .then(d=>setAchievements(Array.isArray(d)?d:[]))\n      .catch(()=>{});\n  },[]);\n  const awardSelected=async()=>{if(!selected.length||!achievements.length)return;const pick=window.prompt("Enter achievement ID to award:
-"+achievements.map(a=>`${a.id}: ${a.icon} ${a.name}`).join("
-"));const achievementId=Number(pick);if(!achievements.some(a=>a.id===achievementId))return;for(const userId of selected){await fetch(getApiUrl("/api/achievements/award"),{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token()}`},body:JSON.stringify({userId,achievementId})});}toast({title:"Achievement awarded"});setSelected([]);};
+  useEffect(() => {
+    fetch(getApiUrl("/api/achievements"), { headers: { Authorization: `Bearer ${token()}` } })
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setAchievements(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, []);
+
+  const awardSelected = async () => {
+    if (!selected.length || !achievements.length) return;
+    const pick = window.prompt("Enter achievement ID to award:\n" + achievements.map(a => `${a.id}: ${a.icon} ${a.name}`).join("\n"));
+    const achievementId = Number(pick);
+    if (!achievements.some(a => a.id === achievementId)) return;
+    for (const userId of selected) {
+      await fetch(getApiUrl("/api/achievements/award"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({ userId, achievementId }),
+      });
+    }
+    toast({ title: "Achievement awarded" });
+    setSelected([]);
+  };
 
   useEffect(() => {
     fetch(getApiUrl("/api/achievements/prefect-leaderboard"), { headers: { Authorization: `Bearer ${token()}` } })
