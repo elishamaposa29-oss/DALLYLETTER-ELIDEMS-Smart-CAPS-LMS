@@ -1,7 +1,7 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useListMessages, useSendMessage, useListStudyGroups, getApiUrl } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
-import { Loader2, Send, Users, MessageSquare, Reply, X, Flag } from "lucide-react";
+import { Loader2, Send, Users, MessageSquare, Reply, X, Flag, BarChart3, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState, useRef, useEffect, type ReactNode } from "react";
@@ -27,7 +27,7 @@ export default function Chat() {
     { query: { enabled: !!selectedGroupId, refetchInterval: 5000 } as any }
   );
 
-  const sendMessageMutation = useSendMessage();
+  const sendMessageMutation = useSendMessage();\n  const createPoll = async () => { if(!selectedGroupId)return; const question=window.prompt("Poll question"); if(!question?.trim())return; const raw=window.prompt("Options separated by commas (at least 2)"); const options=(raw??"").split(",").map(x=>x.trim()).filter(Boolean); if(options.length<2){window.alert("Add at least two options.");return;} const token=localStorage.getItem("dallyletter_token"); const r=await fetch(getApiUrl(`/api/chat/groups/${selectedGroupId}/polls`),{method:"POST",headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({question,options})}); if(!r.ok)window.alert("Poll could not be created."); else queryClient.invalidateQueries({queryKey:getListMessagesQueryKey({groupId:selectedGroupId})}); };
   const rootMessages = messages?.filter((message) => message.parentMessageId == null) ?? [];
   const replyTarget = messages?.find((message) => message.id === replyTo);
 
@@ -97,9 +97,9 @@ export default function Chat() {
 
   return (
     <DashboardLayout>
-      <div className="h-[calc(100vh-8rem)] min-h-[500px] flex gap-6">
+      <div className="h-[calc(100dvh-8rem)] min-h-[500px] flex flex-col md:flex-row gap-3 md:gap-6 min-w-0">
         {/* Groups Sidebar */}
-        <Card className="w-1/3 hidden md:flex flex-col bg-card/50">
+        <Card className="w-full md:w-1/3 flex flex-col bg-card/50 max-h-40 md:max-h-none shrink-0">
           <div className="p-4 border-b font-semibold flex items-center gap-2">
             <Users className="h-5 w-5 text-primary" />
             Study Groups
@@ -146,14 +146,14 @@ export default function Chat() {
           ) : (
             <>
               {/* Chat Header */}
-              <div className="p-4 border-b bg-muted/30 font-semibold flex items-center justify-between">
+              <div className="p-4 border-b bg-muted/30 font-semibold flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
                     <Users className="h-4 w-4 text-primary" />
                   </div>
                   {groups?.find(g => g.id === selectedGroupId)?.name}
                 </div>
-                <div className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-1 rounded-full">
+                <div className="flex items-center gap-1.5"> <Button type="button" size="sm" variant="outline" className="h-8" onClick={()=>void createPoll()}><BarChart3 className="h-4 w-4 mr-1"/>Poll</Button><div className="text-xs text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-1 rounded-full">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   Live
                 </div>
