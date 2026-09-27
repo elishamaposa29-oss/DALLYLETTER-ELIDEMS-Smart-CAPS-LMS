@@ -45,6 +45,7 @@ export default function TeacherLessons() {
   const [requestBusy, setRequestBusy] = useState<number | null>(null);
   const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("dallyletter_token") ?? ""}` });
   const loadLessonRequests = async () => { const r=await fetch(getApiUrl("/api/achievements/lesson-requests"),{headers:authHeaders()}); if(r.ok)setLessonRequests(await r.json()); };
+  const respondToRequest = async (id:number,status:"accepted"|"declined"|"completed") => { setRequestBusy(id); try { const r=await fetch(getApiUrl(`/api/achievements/lesson-requests/${id}`),{method:"PATCH",headers:{"Content-Type":"application/json",...authHeaders()},body:JSON.stringify({status})}); if(!r.ok) throw new Error("Could not update request"); await loadLessonRequests(); toast({title:"Lesson request updated"}); } catch(e) { toast({variant:"destructive",title:"Request update failed",description:e instanceof Error?e.message:"Try again"}); } finally { setRequestBusy(null); } };
   useEffect(()=>{void loadLessonRequests();},[]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
