@@ -4,7 +4,9 @@ import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Users, Shield, Flame, Star, Search, AlertTriangle } from "lucide-react";
+import { Users, Shield, Flame, Star, Search, AlertTriangle, Ban, UserCheck, MessageSquare, Award } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 
 const token = () => localStorage.getItem("dallyletter_token") ?? "";
 
@@ -12,6 +14,11 @@ export default function ManagerStudents() {
   const [students, setStudents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const { toast } = useToast();
+  const [selected, setSelected] = useState<number[]>([]);
+  const [busy, setBusy] = useState<number | null>(null);
+  const toggleSelect=(id:number)=>setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
+  const action=async(id:number, actionName:string)=>{setBusy(id);try{const r=await fetch(getApiUrl(`/api/manager/users/${id}/action`),{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token()}`},body:JSON.stringify({action:actionName})});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||"Action failed");toast({title:"Action applied"});const next=await fetch(getApiUrl("/api/manager/students"),{headers:{Authorization:`Bearer ${token()}`}});setStudents(await next.json());}catch(e){toast({variant:"destructive",title:"Action failed",description:e instanceof Error?e.message:"Try again."});}finally{setBusy(null);}};
 
   useEffect(() => {
     fetch(getApiUrl("/api/manager/students"), { headers: { Authorization: `Bearer ${token()}` } })
@@ -31,7 +38,7 @@ export default function ManagerStudents() {
             </h1>
             <p className="text-slate-500 mt-1">{students.length} enrolled learner{students.length !== 1 ? "s" : ""}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Search className="h-4 w-4 text-slate-400" />
             <Input placeholder="Search students…" value={search} onChange={e => setSearch(e.target.value)} className="w-48 h-9 text-sm" />
           </div>
@@ -42,7 +49,7 @@ export default function ManagerStudents() {
             {filtered.length === 0 ? (
               <div className="text-center py-16 text-slate-400"><Users className="h-12 w-12 mx-auto mb-3 opacity-20" /><p>No students found</p></div>
             ) : filtered.map(s => (
-              <Card key={s.id} className={`border-0 shadow-sm ${s.isSuspended || s.isBlocked ? "border-l-4 border-l-red-400" : ""}`}>
+              <Card key={s.id} onClick={()=>toggleSelect(s.id)} className={`cursor-pointer ${selected.includes(s.id)?"ring-2 ring-primary":""} ` className={`border-0 shadow-sm ${s.isSuspended || s.isBlocked ? "border-l-4 border-l-red-400" : ""}`}>
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold shrink-0">
