@@ -3,40 +3,15 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Shield, Star, TrendingUp, Award, Gift } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
+import { Shield, Star, TrendingUp, Award } from "lucide-react";
+
 
 const token = () => localStorage.getItem("dallyletter_token") ?? "";
 
 export default function ManagerPrefects() {
   const [prefects, setPrefects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selected,setSelected]=useState<number[]>([]);
-  const [achievements,setAchievements]=useState<any[]>([]);
-  const {toast}=useToast();
-  useEffect(() => {
-    fetch(getApiUrl("/api/achievements"), { headers: { Authorization: `Bearer ${token()}` } })
-      .then(r => r.ok ? r.json() : [])
-      .then(d => setAchievements(Array.isArray(d) ? d : []))
-      .catch(() => {});
-  }, []);
 
-  const awardSelected = async () => {
-    if (!selected.length || !achievements.length) return;
-    const pick = window.prompt("Enter achievement ID to award:\n" + achievements.map(a => `${a.id}: ${a.icon} ${a.name}`).join("\n"));
-    const achievementId = Number(pick);
-    if (!achievements.some(a => a.id === achievementId)) return;
-    for (const userId of selected) {
-      await fetch(getApiUrl("/api/achievements/award"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
-        body: JSON.stringify({ userId, achievementId }),
-      });
-    }
-    toast({ title: "Achievement awarded" });
-    setSelected([]);
-  };
 
   useEffect(() => {
     fetch(getApiUrl("/api/achievements/prefect-leaderboard"), { headers: { Authorization: `Bearer ${token()}` } })
