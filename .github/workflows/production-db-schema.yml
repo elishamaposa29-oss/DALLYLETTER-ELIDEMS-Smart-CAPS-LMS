@@ -1,0 +1,95 @@
+name: Production DB Schema
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: production-db-schema
+  cancel-in-progress: false
+
+jobs:
+  schema:
+    name: Apply production Drizzle schema
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Enable pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify production database secret
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          test -n "$DATABASE_URL" || {
+            echo "DATABASE_URL is not configured in the production environment."
+            exit 1
+          }
+
+      - name: Apply schema
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: pnpm run db:push
+
+      - name: Verify ELIDEMS Connect tables
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          node --input-type=module <<'NODE'
+          import pg from "pg";
+          const { Client } = pg;
+          const expected = [
+            "lesson_requests",
+            "group_member_controls",
+            "group_settings",
+            "chat_polls",
+            "chat_poll_options",
+            "chat_poll_votes",
+            "broadcasts",
+            "broadcast_recipients",
+            "communities",
+            "community_groups"
+          ];
+
+          const client = new Client({ connectionString: process.env.DATABASE_URL });
+          await client.connect();
+
+          const result = await client.query(
+            `select table_name
+             from information_schema.tables
+             where table_schema = 'public'
+               and table_name = any($1::text[])
+             order by table_name`,
+            [expected]
+          );
+
+          const found = result.rows.map((row) => row.table_name);
+          const missing = expected.filter((name) => !found.includes(name));
+
+          console.log("Verified tables:", found.join(", "));
+
+          await client.end();
+
+          if (missing.length) {
+            console.error("Missing tables:", missing.join(", "));
+            process.exit(1);
+          }
+          NODE
