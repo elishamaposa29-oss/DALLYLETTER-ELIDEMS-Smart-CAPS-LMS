@@ -11,7 +11,7 @@ permissions:
   statuses: write
 
 jobs:
-  verify:
+  ci_verify:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
