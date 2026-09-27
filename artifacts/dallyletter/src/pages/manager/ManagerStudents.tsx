@@ -49,7 +49,7 @@ export default function ManagerStudents() {
             {filtered.length === 0 ? (
               <div className="text-center py-16 text-slate-400"><Users className="h-12 w-12 mx-auto mb-3 opacity-20" /><p>No students found</p></div>
             ) : filtered.map(s => (
-              <Card key={s.id} onClick={()=>toggleSelect(s.id)} className={`cursor-pointer ${selected.includes(s.id)?"ring-2 ring-primary":""} ` className={`border-0 shadow-sm ${s.isSuspended || s.isBlocked ? "border-l-4 border-l-red-400" : ""}`}>
+              <Card key={s.id} onClick={()=>toggleSelect(s.id)} className={`cursor-pointer border-0 shadow-sm ${selected.includes(s.id)?"ring-2 ring-primary":""} ${s.isSuspended || s.isBlocked ? "border-l-4 border-l-red-400" : ""}`}>
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold shrink-0">
