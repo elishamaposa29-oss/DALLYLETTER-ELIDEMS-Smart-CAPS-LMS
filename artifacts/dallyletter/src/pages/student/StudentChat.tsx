@@ -27,7 +27,8 @@ export default function Chat() {
     { query: { enabled: !!selectedGroupId, refetchInterval: 5000 } as any }
   );
 
-  const sendMessageMutation = useSendMessage();\n  const createPoll = async () => { if(!selectedGroupId)return; const question=window.prompt("Poll question"); if(!question?.trim())return; const raw=window.prompt("Options separated by commas (at least 2)"); const options=(raw??"").split(",").map(x=>x.trim()).filter(Boolean); if(options.length<2){window.alert("Add at least two options.");return;} const token=localStorage.getItem("dallyletter_token"); const r=await fetch(getApiUrl(`/api/chat/groups/${selectedGroupId}/polls`),{method:"POST",headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({question,options})}); if(!r.ok)window.alert("Poll could not be created."); else queryClient.invalidateQueries({queryKey:getListMessagesQueryKey({groupId:selectedGroupId})}); };
+  const sendMessageMutation = useSendMessage();
+  const createPoll = async () => { if(!selectedGroupId)return; const question=window.prompt("Poll question"); if(!question?.trim())return; const raw=window.prompt("Options separated by commas (at least 2)"); const options=(raw??"").split(",").map(x=>x.trim()).filter(Boolean); if(options.length<2){window.alert("Add at least two options.");return;} const token=localStorage.getItem("dallyletter_token"); const r=await fetch(getApiUrl(`/api/chat/groups/${selectedGroupId}/polls`),{method:"POST",headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({question,options})}); if(!r.ok)window.alert("Poll could not be created."); else queryClient.invalidateQueries({queryKey:getListMessagesQueryKey({groupId:selectedGroupId})}); };
   const rootMessages = messages?.filter((message) => message.parentMessageId == null) ?? [];
   const replyTarget = messages?.find((message) => message.id === replyTo);
 
