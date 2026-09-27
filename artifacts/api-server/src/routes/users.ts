@@ -32,9 +32,28 @@ const safeUserFields = {
   createdAt: usersTable.createdAt,
 };
 
-// GET /users — List all users (owner only)
-router.get("/users", requireAuth, requireOwner, async (_req, res): Promise<void> => {
-  const users = await db.select(safeUserFields).from(usersTable).orderBy(usersTable.createdAt);
+// Fields exposed to authenticated users for chat, groups, follows and member pickers.
+// Keep private account/payment fields restricted to owner/admin views.
+const directoryUserFields = {
+  id: usersTable.id,
+  name: usersTable.name,
+  role: usersTable.role,
+  isPrefect: usersTable.isPrefect,
+  isManager: usersTable.isManager,
+  grade: usersTable.grade,
+  subject: usersTable.subject,
+  avatarUrl: usersTable.avatarUrl,
+  bio: usersTable.bio,
+  performanceScore: usersTable.performanceScore,
+  badgeCount: usersTable.badgeCount,
+  streakDays: usersTable.streakDays,
+  lastActiveDate: usersTable.lastActiveDate,
+};
+
+// GET /users — owner gets the full management-safe view; authenticated users get a privacy-safe directory.
+router.get("/users", requireAuth, async (req, res): Promise<void> => {
+  const fields = req.currentUser!.role === "owner" ? safeUserFields : directoryUserFields;
+  const users = await db.select(fields).from(usersTable).orderBy(usersTable.createdAt);
   res.json(users.map(u => ({ ...u, createdAt: u.createdAt.toISOString() })));
 });
 
