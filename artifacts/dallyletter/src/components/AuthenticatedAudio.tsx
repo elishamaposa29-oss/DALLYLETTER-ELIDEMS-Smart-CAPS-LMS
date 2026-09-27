@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getApiUrl } from "@workspace/api-client-react";
 import { isStoredMediaUrl } from "@/lib/media-url";
 
 export function AuthenticatedAudio({ src, className }: { src: string; className?: string }) {
-  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);\n  const audioRef = useRef<HTMLAudioElement>(null);\n  const [speed, setSpeed] = useState(1);
 
   useEffect(() => {
     let active = true;
@@ -33,5 +33,5 @@ export function AuthenticatedAudio({ src, className }: { src: string; className?
     };
   }, [src]);
 
-  return objectUrl ? <audio controls className={className} src={objectUrl} /> : <span className="text-xs text-muted-foreground">Loading voice message...</span>;
+  useEffect(()=>{ if(audioRef.current) audioRef.current.playbackRate=speed; },[speed,objectUrl]);\n  return objectUrl ? <div className="flex items-center gap-2 max-w-full"><audio ref={audioRef} controls className={className} src={objectUrl} /><select aria-label="Playback speed" value={speed} onChange={e=>setSpeed(Number(e.target.value))} className="h-8 rounded-md border bg-background px-1 text-xs"><option value="1">1×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></div> : <span className="text-xs text-muted-foreground">Loading voice message...</span>;
 }
