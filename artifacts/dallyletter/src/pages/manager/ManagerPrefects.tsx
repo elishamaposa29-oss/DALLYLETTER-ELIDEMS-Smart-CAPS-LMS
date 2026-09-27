@@ -64,10 +64,9 @@ export default function ManagerPrefects() {
           </Card>
         ) : (
           <>
-            <div className="flex items-center justify-between gap-3"><div className="text-sm text-muted-foreground">{prefects.length} prefect{prefects.length !== 1 ? "s" : ""} active</div>{selected.length>0&&<Button size="sm" onClick={()=>void awardSelected()}><Gift className="h-4 w-4 mr-1"/>Award achievement ({selected.length})</Button>}</div>
             <div className="space-y-3">
               {prefects.map((p, i) => (
-                <Card key={p.id} onClick={()=>setSelected(s=>s.includes(p.id)?s.filter(x=>x!==p.id):[...s,p.id])} className={`border-0 shadow-sm cursor-pointer ${selected.includes(p.id)?"ring-2 ring-primary":i === 0 ? "ring-2 ring-amber-400/40" : ""}`}>
+                <Card key={p.id} className={`border-0 shadow-sm ${i === 0 ? "ring-2 ring-amber-400/40" : ""}`}>
                   <CardContent className="p-4">
                     <div className="flex items-center gap-4">
                       <div className="relative shrink-0">
