@@ -40,7 +40,12 @@ export default function TeacherLessons() {
   const [uploadedFile, setUploadedFile] = useState<{ name: string; previewUrl: string; mimeType: string } | null>(null);
   const [activeExerciseLessonId, setActiveExerciseLessonId] = useState<number | null>(null);
   const [markingExercises, setMarkingExercises] = useState<{ id: number; title: string; status?: string; totalMarks?: string }[]>([]);
-  const [markingLessonId, setMarkingLessonId] = useState<number | null>(null);\n  const [lessonRequests, setLessonRequests] = useState<any[]>([]);\n  const [requestBusy, setRequestBusy] = useState<number | null>(null);\n  const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("dallyletter_token") ?? ""}` });\n  const loadLessonRequests = async () => { const r=await fetch(getApiUrl("/api/achievements/lesson-requests"),{headers:authHeaders()}); if(r.ok)setLessonRequests(await r.json()); };\n  useEffect(()=>{void loadLessonRequests();},[]);
+  const [markingLessonId, setMarkingLessonId] = useState<number | null>(null);
+  const [lessonRequests, setLessonRequests] = useState<any[]>([]);
+  const [requestBusy, setRequestBusy] = useState<number | null>(null);
+  const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("dallyletter_token") ?? ""}` });
+  const loadLessonRequests = async () => { const r=await fetch(getApiUrl("/api/achievements/lesson-requests"),{headers:authHeaders()}); if(r.ok)setLessonRequests(await r.json()); };
+  useEffect(()=>{void loadLessonRequests();},[]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<z.infer<typeof createLessonSchema>>({
@@ -140,7 +145,8 @@ export default function TeacherLessons() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">\n        {lessonRequests.length>0 && <Card className="border-amber-200 bg-amber-50/50"><CardHeader><CardTitle className="text-lg">Prefect lesson requests</CardTitle><CardDescription>Requests sent directly to your teacher account.</CardDescription></CardHeader><CardContent className="space-y-3">{lessonRequests.map(r=><div key={r.id} className="rounded-xl border bg-background p-3 flex flex-col sm:flex-row sm:items-center gap-3"><div className="flex-1 min-w-0"><p className="font-semibold truncate">{r.topic}</p><p className="text-xs text-muted-foreground">{r.preferredDate?`Preferred ${r.preferredDate} · `:""}{r.status}</p>{r.notes&&<p className="text-sm mt-1">{r.notes}</p>}</div><div className="flex gap-2 flex-wrap"><Button size="sm" onClick={()=>void respondToRequest(r.id,"accepted")} disabled={requestBusy===r.id}>Accept</Button><Button size="sm" variant="outline" onClick={()=>void respondToRequest(r.id,"declined")} disabled={requestBusy===r.id}>Decline</Button><Button size="sm" variant="ghost" onClick={()=>void respondToRequest(r.id,"completed")} disabled={requestBusy===r.id}>Complete</Button></div></div>)}</CardContent></Card>}
+      <div className="space-y-6">
+        {lessonRequests.length>0 && <Card className="border-amber-200 bg-amber-50/50"><CardHeader><CardTitle className="text-lg">Prefect lesson requests</CardTitle><CardDescription>Requests sent directly to your teacher account.</CardDescription></CardHeader><CardContent className="space-y-3">{lessonRequests.map(r=><div key={r.id} className="rounded-xl border bg-background p-3 flex flex-col sm:flex-row sm:items-center gap-3"><div className="flex-1 min-w-0"><p className="font-semibold truncate">{r.topic}</p><p className="text-xs text-muted-foreground">{r.preferredDate?`Preferred ${r.preferredDate} · `:""}{r.status}</p>{r.notes&&<p className="text-sm mt-1">{r.notes}</p>}</div><div className="flex gap-2 flex-wrap"><Button size="sm" onClick={()=>void respondToRequest(r.id,"accepted")} disabled={requestBusy===r.id}>Accept</Button><Button size="sm" variant="outline" onClick={()=>void respondToRequest(r.id,"declined")} disabled={requestBusy===r.id}>Decline</Button><Button size="sm" variant="ghost" onClick={()=>void respondToRequest(r.id,"completed")} disabled={requestBusy===r.id}>Complete</Button></div></div>)}</CardContent></Card>}
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">My Lessons</h1>
