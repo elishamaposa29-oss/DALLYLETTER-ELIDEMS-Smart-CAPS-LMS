@@ -3,13 +3,13 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Shield, Star, TrendingUp, Award } from "lucide-react";
+import { Shield, Star, TrendingUp, Award, Gift } from "lucide-react";\nimport { Button } from "@/components/ui/button";\nimport { useToast } from "@/hooks/use-toast";
 
 const token = () => localStorage.getItem("dallyletter_token") ?? "";
 
 export default function ManagerPrefects() {
   const [prefects, setPrefects] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);\n  const [selected,setSelected]=useState<number[]>([]);\n  const [achievements,setAchievements]=useState<any[]>([]);\n  const {toast}=useToast();\n  useEffect(()=>{fetch(getApiUrl("/api/achievements"),{headers:{Authorization:`Bearer ${token()}`}}).then(r=>r.ok?r.json():[]).then(d=>setAchievements(Array.isArray(d)?d:[])).catch(()=>{});},[]);\n  const awardSelected=async()=>{if(!selected.length||!achievements.length)return;const pick=window.prompt("Enter achievement ID to award:\n"+achievements.map(a=>`${a.id}: ${a.icon} ${a.name}`).join("\n"));const achievementId=Number(pick);if(!achievements.some(a=>a.id===achievementId))return;for(const userId of selected){await fetch(getApiUrl("/api/achievements/award"),{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token()}`},body:JSON.stringify({userId,achievementId})});}toast({title:"Achievement awarded"});setSelected([]);};
 
   useEffect(() => {
     fetch(getApiUrl("/api/achievements/prefect-leaderboard"), { headers: { Authorization: `Bearer ${token()}` } })
@@ -62,10 +62,10 @@ export default function ManagerPrefects() {
           </Card>
         ) : (
           <>
-            <div className="text-sm text-muted-foreground">{prefects.length} prefect{prefects.length !== 1 ? "s" : ""} active</div>
+            <div className="flex items-center justify-between gap-3"><div className="text-sm text-muted-foreground">{prefects.length} prefect{prefects.length !== 1 ? "s" : ""} active</div>{selected.length>0&&<Button size="sm" onClick={()=>void awardSelected()}><Gift className="h-4 w-4 mr-1"/>Award achievement ({selected.length})</Button>}</div>
             <div className="space-y-3">
               {prefects.map((p, i) => (
-                <Card key={p.id} className={`border-0 shadow-sm ${i === 0 ? "ring-2 ring-amber-400/40" : ""}`}>
+                <Card key={p.id} onPointerDown={()=>{const timer=window.setTimeout(()=>setSelected(s=>s.includes(p.id)?s.filter(x=>x!==p.id):[...s,p.id]),450);const clear=()=>window.clearTimeout(timer);window.addEventListener("pointerup",clear,{once:true});}} className={`border-0 shadow-sm cursor-pointer ${selected.includes(p.id)?"ring-2 ring-primary":i === 0 ? "ring-2 ring-amber-400/40" : ""}`}>
                   <CardContent className="p-4">
                     <div className="flex items-center gap-4">
                       <div className="relative shrink-0">
