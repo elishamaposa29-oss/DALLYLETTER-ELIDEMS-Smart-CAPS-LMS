@@ -8,7 +8,8 @@ export const notificationsTable = pgTable("notifications", {
   // recipientId = null means broadcast to all
   recipientId: integer("recipient_id"),
   title: text("title").notNull(),
-  message: text("message").notNull(),\n  link: text("link"),
+  message: text("message").notNull(),
+  link: text("link"),
   // Type: payment_overdue, new_lesson, class_starting, system, general
   type: text("type").notNull().default("general"),
   isRead: boolean("is_read").notNull().default(false),
