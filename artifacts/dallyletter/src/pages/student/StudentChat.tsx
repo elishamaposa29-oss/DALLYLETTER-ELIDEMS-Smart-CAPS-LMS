@@ -157,6 +157,7 @@ export default function Chat() {
                 <div className="flex items-center gap-1.5"> <Button type="button" size="sm" variant="outline" className="h-8" onClick={()=>void createPoll()}><BarChart3 className="h-4 w-4 mr-1"/>Poll</Button><div className="text-xs text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-1 rounded-full">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   Live
+                  </div>
                 </div>
               </div>
 
