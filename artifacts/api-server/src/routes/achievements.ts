@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { achievementsTable, userAchievementsTable, usersTable } from "@workspace/db/schema";
+import { achievementsTable, userAchievementsTable, usersTable, lessonRequestsTable, notificationsTable } from "@workspace/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { requireAuth } from "../lib/auth-middleware";
 
@@ -88,6 +88,56 @@ router.get("/prefect-teachers", requireAuth, async (req, res): Promise<void> => 
   const teachers = await db.select({ id: usersTable.id, name: usersTable.name, subject: usersTable.subject })
     .from(usersTable).where(eq(usersTable.role, "teacher"));
   res.json(teachers);
+});
+
+router.get("/lesson-requests", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  const rows = user.isPrefect
+    ? await db.select().from(lessonRequestsTable).where(eq(lessonRequestsTable.prefectId, user.id)).orderBy(desc(lessonRequestsTable.createdAt))
+    : user.role === "teacher"
+      ? await db.select().from(lessonRequestsTable).where(eq(lessonRequestsTable.teacherId, user.id)).orderBy(desc(lessonRequestsTable.createdAt))
+      : [];
+  res.json(rows.map(r => ({ ...r, createdAt: r.createdAt.toISOString(), responseAt: r.responseAt?.toISOString() ?? null })));
+});
+
+router.post("/lesson-requests", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  if (!user.isPrefect) { res.status(403).json({ error: "Prefect access required" }); return; }
+  const { teacherId, topic, notes, preferredDate } = req.body ?? {};
+  const teacher = Number(teacherId);
+  if (!Number.isInteger(teacher) || !topic?.trim()) { res.status(400).json({ error: "teacherId and topic are required" }); return; }
+  const [target] = await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable).where(and(eq(usersTable.id, teacher), eq(usersTable.role, "teacher")));
+  if (!target) { res.status(404).json({ error: "Teacher not found" }); return; }
+  const [request] = await db.insert(lessonRequestsTable).values({
+    prefectId: user.id, teacherId: target.id, topic: topic.trim(), notes: notes?.trim() || null, preferredDate: preferredDate || null,
+  }).returning();
+  await db.insert(notificationsTable).values({
+    title: `Lesson request: ${topic.trim()}`,
+    message: `Prefect ${user.name} requested "${topic.trim()}". Open Prefect Requests to respond.`,
+    type: "lesson_request", recipientId: target.id, isRead: false,
+  });
+  res.status(201).json(request);
+});
+
+router.patch("/lesson-requests/:id", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  const id = Number(req.params.id);
+  const [request] = await db.select().from(lessonRequestsTable).where(eq(lessonRequestsTable.id, id));
+  if (!request) { res.status(404).json({ error: "Lesson request not found" }); return; }
+  if (user.id !== request.teacherId && user.id !== request.prefectId && user.role !== "owner" && !user.isManager) { res.status(403).json({ error: "Forbidden" }); return; }
+  const status = String(req.body?.status ?? request.status);
+  const allowed = ["pending","accepted","declined","completed","cancelled"];
+  if (!allowed.includes(status)) { res.status(400).json({ error: "Invalid status" }); return; }
+  const reply = typeof req.body?.teacherReply === "string" ? req.body.teacherReply.trim() : request.teacherReply;
+  const [updated] = await db.update(lessonRequestsTable).set({ status, teacherReply: reply, responseAt: user.id === request.teacherId ? new Date() : request.responseAt }).where(eq(lessonRequestsTable.id,id)).returning();
+  if (user.id === request.teacherId) {
+    await db.insert(notificationsTable).values({
+      title: `Lesson request ${status}`,
+      message: reply ? `Teacher reply: ${reply}` : `Your lesson request is now ${status}.`,
+      type: "lesson_request", recipientId: request.prefectId, isRead: false,
+    });
+  }
+  res.json(updated);
 });
 
 router.get("/prefect-leaderboard", requireAuth, async (_req, res): Promise<void> => {
