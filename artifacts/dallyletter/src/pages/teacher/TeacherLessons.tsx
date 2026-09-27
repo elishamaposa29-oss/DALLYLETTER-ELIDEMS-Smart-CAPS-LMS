@@ -203,7 +203,7 @@ export default function TeacherLessons() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              {["Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"].map(g => (
+                              {["Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8 / Form 1","Grade 9 / Form 2","Grade 10 / Form 3","Grade 11 / Form 4","Grade 12 / Form 5","Form 6"].map(g => (
                                 <SelectItem key={g} value={g}>{g}</SelectItem>
                               ))}
                             </SelectContent>
