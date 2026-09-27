@@ -12,7 +12,9 @@ import { requireAuth } from "../lib/auth-middleware";
 const router: IRouter = Router();
 
 // Helper to get members of a study group
-function canManageGroup(user: any, group: any) { return user.role === "owner" || user.isManager || user.isPrefect || group.creatorId === user.id; }\n\nasync function getGroupMembers(groupId: number) {
+function canManageGroup(user: any, group: any) { return user.role === "owner" || user.isManager || user.isPrefect || group.creatorId === user.id; }
+
+async function getGroupMembers(groupId: number) {
   const memberRows = await db.select({
     id: usersTable.id,
     email: usersTable.email,
