@@ -19,3 +19,4 @@ export * from "./ownerAlerts";
 export * from "./staffPayments";
 export * from "./achievements";
 export * from "./exercises";
+export * from "./chatFeatures";
