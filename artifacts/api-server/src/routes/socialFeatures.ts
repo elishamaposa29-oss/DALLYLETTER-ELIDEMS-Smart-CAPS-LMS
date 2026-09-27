@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { and, desc, eq } from "drizzle-orm";
-import { db, followsTable, notificationPreferencesTable, notificationsTable, usersTable, contentCommentsTable, moderationActionsTable } from "@workspace/db";
+import { db, followsTable, notificationPreferencesTable, notificationsTable, usersTable, lessonsTable, contentCommentsTable, moderationActionsTable } from "@workspace/db";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 
 const router = Router();
@@ -36,7 +36,7 @@ router.post("/content-comments", requireAuth, async(req,res):Promise<void>=>{
  const {contentType,contentId,body}=req.body??{}; if(!["lesson","exercise","assignment","activity"].includes(contentType)||!Number.isInteger(Number(contentId))||typeof body!=="string"||!body.trim()){res.status(400).json({error:"contentType, contentId and body are required"});return;}
  if(!manager(req.currentUser)){res.status(403).json({error:"Staff access required"});return;}
  const [row]=await db.insert(contentCommentsTable).values({authorId:req.currentUser!.id,contentType,contentId:Number(contentId),body:body.trim().slice(0,4000)}).returning();
- if(contentType==="lesson"){const [lesson]=await db.select({teacherId:usersTable.id}).from(usersTable).innerJoin((await import("@workspace/db")).lessonsTable,eq((await import("@workspace/db")).lessonsTable.teacherId,usersTable.id)).where(eq((await import("@workspace/db")).lessonsTable.id,Number(contentId)));if(lesson) await db.insert(notificationsTable).values({recipientId:lesson.teacherId,title:"New content comment",message:`${req.currentUser!.name} commented on a lesson.`,type:"content_comment"});}
+ if(contentType==="lesson"){const [lesson]=await db.select({teacherId:lessonsTable.teacherId}).from(lessonsTable).where(eq(lessonsTable.id,Number(contentId)));if(lesson) await db.insert(notificationsTable).values({recipientId:lesson.teacherId,title:"New content comment",message:`${req.currentUser!.name} commented on a lesson.`,type:"content_comment"});}
  res.status(201).json(row);
 });
 
