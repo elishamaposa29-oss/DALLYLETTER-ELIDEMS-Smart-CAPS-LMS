@@ -3,7 +3,7 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { createReadStream } from "node:fs";
 import multer from "multer";
-import { db, lessonsTable, activityLogTable } from "@workspace/db";
+import { db, lessonsTable, activityLogTable, followsTable, notificationPreferencesTable, notificationsTable } from "@workspace/db";
 import {
   CreateLessonBody,
   GetLessonParams,
