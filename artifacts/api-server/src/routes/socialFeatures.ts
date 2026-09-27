@@ -76,7 +76,7 @@ router.post("/chat/polls/:pollId/vote", requireAuth, async(req,res):Promise<void
  const pollId=Number(req.params.pollId), user=req.currentUser!, optionIds=Array.isArray(req.body?.optionIds)?req.body.optionIds.map(Number).filter(Number.isInteger):[];
  const [poll]=await db.select().from(chatPollsTable).where(eq(chatPollsTable.id,pollId)); if(!poll||poll.closed){res.status(404).json({error:"Poll unavailable"});return;}
  if(optionIds.length===0||(!poll.allowMultiple&&optionIds.length>1)){res.status(400).json({error:"Choose a valid option"});return;}
- const valid=await db.select().from(chatPollOptionsTable).where(eq(chatPollOptionsTable.pollId,pollId)); const validIds=new Set(valid.map((o: { id: number })=>o.id)); if(optionIds.some(id=>!validIds.has(id))){res.status(400).json({error:"Invalid poll option"});return;}
+ const valid=await db.select().from(chatPollOptionsTable).where(eq(chatPollOptionsTable.pollId,pollId)); const validIds=new Set(valid.map((o: { id: number })=>o.id)); if(optionIds.some((id: number)=>!validIds.has(id))){res.status(400).json({error:"Invalid poll option"});return;}
  await db.delete(chatPollVotesTable).where(and(eq(chatPollVotesTable.pollId,pollId),eq(chatPollVotesTable.userId,user.id)));
  await db.insert(chatPollVotesTable).values(optionIds.map((optionId: number)=>({pollId,optionId,userId:user.id})));
  res.json({ok:true});
