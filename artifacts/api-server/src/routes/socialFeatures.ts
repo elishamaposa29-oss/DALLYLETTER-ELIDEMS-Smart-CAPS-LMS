@@ -4,7 +4,7 @@ import { db, followsTable, notificationPreferencesTable, notificationsTable, use
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 
 const router = Router();
-const manager = (u:any) => canAccessManager(u) || u?.isPrefect === true;
+const manager = (u:any) => canAccessManager(u);
 const targetTypes = new Set(["teacher","prefect","manager","event","subject"]);
 
 router.get("/follows", requireAuth, async (req,res) => {
