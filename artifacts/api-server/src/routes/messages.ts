@@ -2,7 +2,7 @@
 import { Router, type IRouter } from "express";
 import { eq, and, isNull, or, inArray } from "drizzle-orm";
 import multer from "multer";
-import { db, messagesTable, activityLogTable, studyGroupMembersTable, studyGroupsTable, contentFlagsTable, auditLogsTable } from "@workspace/db";
+import { db, messagesTable, activityLogTable, studyGroupMembersTable, studyGroupsTable, contentFlagsTable, auditLogsTable, groupMemberControlsTable, groupSettingsTable } from "@workspace/db";
 import {
   ListMessagesQueryParams,
   SendMessageBody,
@@ -101,6 +101,20 @@ router.get("/messages", requireAuth, async (req, res): Promise<void> => {
 });
 
 // POST /messages — Send a message
+router.delete("/messages/:id", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!, id = Number(req.params.id);
+  const [message] = await db.select().from(messagesTable).where(eq(messagesTable.id, id));
+  if (!message) { res.status(404).json({ error: "Message not found" }); return; }
+  let allowed = message.senderId === user.id || user.role === "owner" || user.isManager || user.isPrefect;
+  if (message.groupId) {
+    const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, message.groupId));
+    allowed = allowed && Boolean(group) && (message.senderId === user.id || user.role === "owner" || user.isManager || user.isPrefect || group!.creatorId === user.id);
+  }
+  if (!allowed) { res.status(403).json({ error: "You cannot delete this message" }); return; }
+  await db.delete(messagesTable).where(eq(messagesTable.id, id));
+  res.sendStatus(204);
+});
+
 router.post("/messages", requireAuth, async (req, res): Promise<void> => {
   const currentUser = req.currentUser!;
 
@@ -129,6 +143,13 @@ router.post("/messages", requireAuth, async (req, res): Promise<void> => {
       res.status(400).json({ error: "Parent message must belong to the selected group" });
       return;
     }
+  }
+
+  if (parsed.data.groupId != null) {
+    const [control] = await db.select().from(groupMemberControlsTable).where(and(eq(groupMemberControlsTable.groupId, parsed.data.groupId), eq(groupMemberControlsTable.userId, currentUser.id)));
+    const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, parsed.data.groupId));
+    if (control?.blocked || control?.suspended || control?.muted) { res.status(403).json({ error: "You are restricted from messaging in this group" }); return; }
+    if (parsed.data.type === "voice" && (control?.mediaBlocked || settings?.allowMedia === false)) { res.status(403).json({ error: "Media uploads are disabled for you in this group" }); return; }
   }
 
   const [message] = await db.insert(messagesTable).values({
