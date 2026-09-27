@@ -32,7 +32,7 @@ router.patch("/notification-preferences", requireAuth, async(req,res)=>{
  const [row]=await db.insert(notificationPreferencesTable).values({userId:req.currentUser!.id,...values}).onConflictDoUpdate({target:notificationPreferencesTable.userId,set:values}).returning();res.json(row);
 });
 
-router.post("/content-comments", requireAuth, async(req,res):Promise<void>=>{
+router.get("/content-comments/:contentType/:contentId", requireAuth, async(req,res)=>{const rows=await db.select().from(contentCommentsTable).where(and(eq(contentCommentsTable.contentType,String(req.params.contentType)),eq(contentCommentsTable.contentId,Number(req.params.contentId)))).orderBy(desc(contentCommentsTable.createdAt));res.json(rows);});\nrouter.post("/content-comments", requireAuth, async(req,res):Promise<void>=>{
  const {contentType,contentId,body}=req.body??{}; if(!["lesson","exercise","assignment","activity"].includes(contentType)||!Number.isInteger(Number(contentId))||typeof body!=="string"||!body.trim()){res.status(400).json({error:"contentType, contentId and body are required"});return;}
  if(!manager(req.currentUser)){res.status(403).json({error:"Staff access required"});return;}
  const [row]=await db.insert(contentCommentsTable).values({authorId:req.currentUser!.id,contentType,contentId:Number(contentId),body:body.trim().slice(0,4000)}).returning();
