@@ -16,7 +16,8 @@ router.get("/notifications", requireAuth, async (req, res): Promise<void> => {
 });
 
 // POST /notifications — Create (teacher/owner only)
-router.post("/notifications", requireAuth, requireTeacherOrOwner, async (req, res): Promise<void> => {
+router.post("/notifications", requireAuth, async (req, res): Promise<void> => {
+  if (req.currentUser?.role !== "teacher" && req.currentUser?.role !== "owner" && !req.currentUser?.isPrefect) { res.status(403).json({ error: "Only teachers, owners, or prefects can create notifications" }); return; }
   const parsed = CreateNotificationBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
