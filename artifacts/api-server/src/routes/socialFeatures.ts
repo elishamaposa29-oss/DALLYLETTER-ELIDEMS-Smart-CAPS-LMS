@@ -88,19 +88,19 @@ router.get("/communities", requireAuth, async(_req,res)=>{
 router.post("/communities", requireAuth, async(req,res):Promise<void>=>{
  const user=req.currentUser!; if(!canAccessManager(user)){res.status(403).json({error:"Manager access required"});return;}
  const name=typeof req.body?.name==="string"?req.body.name.trim():""; if(!name){res.status(400).json({error:"Community name required"});return;}
- const [row]=await db.insert(communitiesTable).values({name,description:typeof req.body?.description==="string"?req.body.description:null,createdBy:user.id}).returning();res.status(201).json(row);
+ const [row]=await db.insert(communitiesTable).values({name,description:typeof req.body?.description==="string"?req.body.description:null,ownerId:user.id}).returning();res.status(201).json(row);
 });
 router.post("/communities/:id/groups", requireAuth, async(req,res):Promise<void>=>{
  const user=req.currentUser!; if(!canAccessManager(user)){res.status(403).json({error:"Manager access required"});return;}
  const communityId=Number(req.params.id),groupId=Number(req.body?.groupId); if(!groupId){res.status(400).json({error:"groupId required"});return;}
- const [row]=await db.insert(communityGroupsTable).values({communityId,groupId,isAnnouncementGroup:Boolean(req.body?.isAnnouncementGroup)}).returning();res.status(201).json(row);
+ const [row]=await db.insert(communityGroupsTable).values({communityId,groupId}).returning();res.status(201).json(row);
 });
 
 router.post("/broadcasts", requireAuth, async(req,res):Promise<void>=>{
  const user=req.currentUser!, recipientIds=Array.isArray(req.body?.recipientIds)?req.body.recipientIds.map(Number).filter(Number.isInteger):[], content=typeof req.body?.content==="string"?req.body.content.trim():"";
  if(!content||recipientIds.length===0){res.status(400).json({error:"content and recipients are required"});return;}
- const [broadcast]=await db.insert(broadcastsTable).values({senderId:user.id,content}).returning();
- await db.insert(broadcastRecipientsTable).values(recipientIds.slice(0,1024).map(recipientId=>({broadcastId:broadcast.id,recipientId})));
+ const [broadcast]=await db.insert(broadcastsTable).values({senderId:user.id,name:typeof req.body?.name==="string"&&req.body.name.trim()?req.body.name.trim():"Broadcast"}).returning();
+ await db.insert(broadcastRecipientsTable).values(recipientIds.slice(0,1024).map(recipientId=>({broadcastId:broadcast.id,userId:recipientId})));
  await db.insert(messagesTable).values(recipientIds.slice(0,1024).map(recipientId=>({senderId:user.id,senderName:user.name,senderRole:user.role,content,type:"text",groupId:null,recipientId})));
  res.status(201).json({broadcast,recipientCount:Math.min(recipientIds.length,1024)});
 });
