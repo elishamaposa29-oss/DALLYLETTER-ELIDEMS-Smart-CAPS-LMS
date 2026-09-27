@@ -4,11 +4,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, Bell, AlertTriangle, BookOpen, Video, Info, CheckCircle, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";\nimport { useLocation } from "wouter";
 import { getListNotificationsQueryKey } from "@workspace/api-client-react";
 
 export default function StudentNotifications() {
-  const { data: notifications, isLoading } = useListNotifications();
+  const { data: notifications, isLoading } = useListNotifications();\n  const [, navigate] = useLocation();
   const markReadMutation = useMarkNotificationRead();
   const queryClient = useQueryClient();
 
@@ -68,7 +68,7 @@ export default function StudentNotifications() {
                 return (
                   <Card
                     key={notification.id}
-                    className={`transition-colors ${
+                    className={`transition-colors cursor-pointer ${
                       admin
                         ? !notification.isRead
                           ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-300 dark:border-amber-700 border-l-4 border-l-amber-400'
