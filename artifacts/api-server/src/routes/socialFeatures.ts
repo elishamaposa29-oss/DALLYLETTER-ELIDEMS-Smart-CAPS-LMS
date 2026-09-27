@@ -76,9 +76,9 @@ router.post("/chat/polls/:pollId/vote", requireAuth, async(req,res):Promise<void
  const pollId=Number(req.params.pollId), user=req.currentUser!, optionIds=Array.isArray(req.body?.optionIds)?req.body.optionIds.map(Number).filter(Number.isInteger):[];
  const [poll]=await db.select().from(chatPollsTable).where(eq(chatPollsTable.id,pollId)); if(!poll||poll.closed){res.status(404).json({error:"Poll unavailable"});return;}
  if(optionIds.length===0||(!poll.allowMultiple&&optionIds.length>1)){res.status(400).json({error:"Choose a valid option"});return;}
- const valid=await db.select().from(chatPollOptionsTable).where(eq(chatPollOptionsTable.pollId,pollId)); const validIds=new Set(valid.map(o=>o.id)); if(optionIds.some(id=>!validIds.has(id))){res.status(400).json({error:"Invalid poll option"});return;}
+ const valid=await db.select().from(chatPollOptionsTable).where(eq(chatPollOptionsTable.pollId,pollId)); const validIds=new Set(valid.map((o: { id: number })=>o.id)); if(optionIds.some(id=>!validIds.has(id))){res.status(400).json({error:"Invalid poll option"});return;}
  await db.delete(chatPollVotesTable).where(and(eq(chatPollVotesTable.pollId,pollId),eq(chatPollVotesTable.userId,user.id)));
- await db.insert(chatPollVotesTable).values(optionIds.map(optionId=>({pollId,optionId,userId:user.id})));
+ await db.insert(chatPollVotesTable).values(optionIds.map((optionId: number)=>({pollId,optionId,userId:user.id})));
  res.json({ok:true});
 });
 
@@ -101,7 +101,7 @@ router.post("/broadcasts", requireAuth, async(req,res):Promise<void>=>{
  const user=req.currentUser!, recipientIds=Array.isArray(req.body?.recipientIds)?req.body.recipientIds.map(Number).filter(Number.isInteger):[], content=typeof req.body?.content==="string"?req.body.content.trim():"";
  if(!content||recipientIds.length===0){res.status(400).json({error:"content and recipients are required"});return;}
  const [broadcast]=await db.insert(broadcastsTable).values({senderId:user.id,name:typeof req.body?.name==="string"&&req.body.name.trim()?req.body.name.trim():"Broadcast"}).returning();
- await db.insert(broadcastRecipientsTable).values(recipientIds.slice(0,1024).map(recipientId=>({broadcastId:broadcast.id,userId:recipientId})));
- await db.insert(messagesTable).values(recipientIds.slice(0,1024).map(recipientId=>({senderId:user.id,senderName:user.name,senderRole:user.role,content,type:"text",groupId:null,recipientId})));
+ await db.insert(broadcastRecipientsTable).values(recipientIds.slice(0,1024).map((recipientId: number)=>({broadcastId:broadcast.id,userId:recipientId})));
+ await db.insert(messagesTable).values(recipientIds.slice(0,1024).map((recipientId: number)=>({senderId:user.id,senderName:user.name,senderRole:user.role,content,type:"text",groupId:null,recipientId})));
  res.status(201).json({broadcast,recipientCount:Math.min(recipientIds.length,1024)});
 });
