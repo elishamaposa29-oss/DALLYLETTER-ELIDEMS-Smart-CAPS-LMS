@@ -4,11 +4,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, Bell, AlertTriangle, BookOpen, Video, Info, CheckCircle, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useQueryClient } from "@tanstack/react-query";\nimport { useLocation } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { getListNotificationsQueryKey } from "@workspace/api-client-react";
 
 export default function StudentNotifications() {
-  const { data: notifications, isLoading } = useListNotifications();\n  const [, navigate] = useLocation();
+  const { data: notifications, isLoading } = useListNotifications();
+  const [, navigate] = useLocation();
   const markReadMutation = useMarkNotificationRead();
   const queryClient = useQueryClient();
 
