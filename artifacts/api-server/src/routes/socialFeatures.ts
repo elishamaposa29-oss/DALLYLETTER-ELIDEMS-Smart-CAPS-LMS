@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { and, desc, eq } from "drizzle-orm";
-import { db, followsTable, notificationPreferencesTable, notificationsTable, usersTable, lessonsTable, contentCommentsTable, moderationActionsTable, chatPollsTable, chatPollOptionsTable, chatPollVotesTable, broadcastsTable, broadcastRecipientsTable, communitiesTable, communityGroupsTable, messagesTable, studyGroupMembersTable } from "@workspace/db";
+import { and, desc, eq, inArray } from "drizzle-orm";
+import { db, followsTable, notificationPreferencesTable, notificationsTable, usersTable, lessonsTable, contentCommentsTable, moderationActionsTable, chatPollsTable, chatPollOptionsTable, chatPollVotesTable, broadcastsTable, broadcastRecipientsTable, communitiesTable, communityGroupsTable, messagesTable, studyGroupMembersTable, studyGroupsTable, groupSettingsTable } from "@workspace/db";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 
 const router = Router();
@@ -59,22 +59,45 @@ router.post("/manager/users/:id/unblock", requireAuth, async(req,res):Promise<vo
 
 export default router;
 
+async function canAccessChatGroup(groupId: number, userId: number, user: NonNullable<Express.Request["currentUser"]>): Promise<boolean> {
+  const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
+  if (!group) return false;
+  if (isOwnerRole(user.role) || user.isManager || user.isPrefect || group.creatorId === userId) return true;
+  const [member] = await db.select({ id: studyGroupMembersTable.id }).from(studyGroupMembersTable)
+    .where(and(eq(studyGroupMembersTable.groupId, groupId), eq(studyGroupMembersTable.userId, userId)));
+  return Boolean(member);
+}
+
 router.get("/chat/groups/:groupId/polls", requireAuth, async(req,res)=>{
- const rows=await db.select().from(chatPollsTable).where(eq(chatPollsTable.groupId,Number(req.params.groupId))).orderBy(desc(chatPollsTable.createdAt));
- const out=await Promise.all(rows.map(async poll=>({poll,options:await db.select().from(chatPollOptionsTable).where(eq(chatPollOptionsTable.pollId,poll.id))})));
+  const groupId = Number(req.params.groupId);
+  if (!Number.isInteger(groupId) || groupId <= 0 || !(await canAccessChatGroup(groupId, req.currentUser!.id, req.currentUser!))) {
+    res.status(403).json({ error: "You must be a group member to view polls" });
+    return;
+  }
+  const rows=await db.select().from(chatPollsTable).where(eq(chatPollsTable.groupId,groupId)).orderBy(desc(chatPollsTable.createdAt));
+  const out=await Promise.all(rows.map(async poll=>{
+    const options=await db.select().from(chatPollOptionsTable).where(eq(chatPollOptionsTable.pollId,poll.id));
+    const votes=await db.select().from(chatPollVotesTable).where(eq(chatPollVotesTable.pollId,poll.id));
+    return { poll, options: options.map(option => ({ ...option, voteCount: votes.filter(vote => vote.optionId === option.id).length, selected: votes.some(vote => vote.optionId === option.id && vote.userId === req.currentUser!.id) })), totalVotes: new Set(votes.map(vote => vote.userId)).size };
+  }));
  res.json(out);
 });
 router.post("/chat/groups/:groupId/polls", requireAuth, async(req,res):Promise<void>=>{
  const groupId=Number(req.params.groupId), user=req.currentUser!, question=typeof req.body?.question==="string"?req.body.question.trim():"", options=Array.isArray(req.body?.options)?req.body.options.filter((x:any)=>typeof x==="string"&&x.trim()).slice(0,20):[];
- const member=await db.select().from(studyGroupMembersTable).where(and(eq(studyGroupMembersTable.groupId,groupId),eq(studyGroupMembersTable.userId,user.id)));
- if(!member[0]||!question||options.length<2){res.status(400).json({error:"Group member access and at least two options are required"});return;}
+  if(!(await canAccessChatGroup(groupId, user.id, user))||!question||options.length<2){res.status(400).json({error:"Group member access and at least two options are required"});return;}
+  const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, groupId));
+  if (settings?.allowPolls === false) { res.status(403).json({ error: "Polls are disabled in this group" }); return; }
+  const uniqueOptions = [...new Set(options.map((option: string) => option.trim()))];
+  if (uniqueOptions.length < 2) { res.status(400).json({ error: "Poll options must be unique" }); return; }
  const [poll]=await db.insert(chatPollsTable).values({groupId,creatorId:user.id,question,allowMultiple:Boolean(req.body?.allowMultiple),anonymous:Boolean(req.body?.anonymous)}).returning();
- await db.insert(chatPollOptionsTable).values(options.map((label:string,i:number)=>({pollId:poll.id,label,position:i})));
+  await db.insert(chatPollOptionsTable).values(uniqueOptions.map((label:string)=>({pollId:poll.id,label})));
  res.status(201).json({poll,options:await db.select().from(chatPollOptionsTable).where(eq(chatPollOptionsTable.pollId,poll.id))});
 });
 router.post("/chat/polls/:pollId/vote", requireAuth, async(req,res):Promise<void>=>{
  const pollId=Number(req.params.pollId), user=req.currentUser!, optionIds=Array.isArray(req.body?.optionIds)?req.body.optionIds.map(Number).filter(Number.isInteger):[];
  const [poll]=await db.select().from(chatPollsTable).where(eq(chatPollsTable.id,pollId)); if(!poll||poll.closed){res.status(404).json({error:"Poll unavailable"});return;}
+  if (!poll.groupId || !(await canAccessChatGroup(poll.groupId, user.id, user))) { res.status(403).json({ error: "You must be a group member to vote" }); return; }
+  if (new Set(optionIds).size !== optionIds.length) { res.status(400).json({ error: "Choose each option only once" }); return; }
  if(optionIds.length===0||(!poll.allowMultiple&&optionIds.length>1)){res.status(400).json({error:"Choose a valid option"});return;}
  const valid=await db.select().from(chatPollOptionsTable).where(eq(chatPollOptionsTable.pollId,pollId)); const validIds=new Set(valid.map((o: { id: number })=>o.id)); if(optionIds.some((id: number)=>!validIds.has(id))){res.status(400).json({error:"Invalid poll option"});return;}
  await db.delete(chatPollVotesTable).where(and(eq(chatPollVotesTable.pollId,pollId),eq(chatPollVotesTable.userId,user.id)));
@@ -98,10 +121,18 @@ router.post("/communities/:id/groups", requireAuth, async(req,res):Promise<void>
 });
 
 router.post("/broadcasts", requireAuth, async(req,res):Promise<void>=>{
- const user=req.currentUser!, recipientIds=Array.isArray(req.body?.recipientIds)?req.body.recipientIds.map(Number).filter(Number.isInteger):[], content=typeof req.body?.content==="string"?req.body.content.trim():"";
+  const user=req.currentUser!;
+  const recipientIds: number[] = Array.isArray(req.body?.recipientIds)
+    ? req.body.recipientIds.map(Number).filter((id: number) => Number.isInteger(id))
+    : [];
+  const content=typeof req.body?.content==="string"?req.body.content.trim():"";
+  if (!manager(user) && !isOwnerRole(user.role)) { res.status(403).json({ error: "Staff access required" }); return; }
  if(!content||recipientIds.length===0){res.status(400).json({error:"content and recipients are required"});return;}
+  const uniqueRecipientIds = [...new Set(recipientIds)].filter(id => id !== user.id).slice(0, 1024);
+  const recipients = await db.select({ id: usersTable.id }).from(usersTable).where(inArray(usersTable.id, uniqueRecipientIds));
+  if (recipients.length !== uniqueRecipientIds.length) { res.status(400).json({ error: "One or more recipients do not exist" }); return; }
  const [broadcast]=await db.insert(broadcastsTable).values({senderId:user.id,name:typeof req.body?.name==="string"&&req.body.name.trim()?req.body.name.trim():"Broadcast"}).returning();
- await db.insert(broadcastRecipientsTable).values(recipientIds.slice(0,1024).map((recipientId: number)=>({broadcastId:broadcast.id,userId:recipientId})));
- await db.insert(messagesTable).values(recipientIds.slice(0,1024).map((recipientId: number)=>({senderId:user.id,senderName:user.name,senderRole:user.role,content,type:"text",groupId:null,recipientId})));
- res.status(201).json({broadcast,recipientCount:Math.min(recipientIds.length,1024)});
+  await db.insert(broadcastRecipientsTable).values(uniqueRecipientIds.map((recipientId: number)=>({broadcastId:broadcast.id,userId:recipientId})));
+  await db.insert(messagesTable).values(uniqueRecipientIds.map((recipientId: number)=>({senderId:user.id,senderName:user.name,senderRole:user.role,content,type:"text",groupId:null,recipientId})));
+  res.status(201).json({broadcast,recipientCount:uniqueRecipientIds.length});
 });

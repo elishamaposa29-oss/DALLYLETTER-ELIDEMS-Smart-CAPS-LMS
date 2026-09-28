@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, or, isNull } from "drizzle-orm";
+import { eq, or, isNull, and } from "drizzle-orm";
 import { db, notificationsTable } from "@workspace/db";
 import { CreateNotificationBody, MarkNotificationReadParams } from "@workspace/api-zod";
 import { requireAuth, requireTeacherOrOwner, requireOwner } from "../lib/auth-middleware";
@@ -36,7 +36,10 @@ router.patch("/notifications/:id/read", requireAuth, async (req, res): Promise<v
 
   const [notification] = await db.update(notificationsTable)
     .set({ isRead: true })
-    .where(eq(notificationsTable.id, params.data.id))
+    .where(and(
+      eq(notificationsTable.id, params.data.id),
+      or(eq(notificationsTable.recipientId, req.currentUser!.id), isNull(notificationsTable.recipientId)),
+    ))
     .returning();
 
   if (!notification) { res.status(404).json({ error: "Notification not found" }); return; }

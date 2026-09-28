@@ -155,6 +155,29 @@ router.post("/lessons", requireAuth, async (req, res): Promise<void> => {
     actorName: currentUser.name,
   });
 
+  const followers = await db.select({ followerId: followsTable.followerId, notificationsEnabled: followsTable.notificationsEnabled })
+    .from(followsTable)
+    .where(and(eq(followsTable.targetType, "teacher"), eq(followsTable.targetUserId, currentUser.id)));
+  const optedInFollowers = followers.filter(follower => follower.notificationsEnabled);
+  if (optedInFollowers.length > 0) {
+    const preferences = await db.select({ userId: notificationPreferencesTable.userId, enabled: notificationPreferencesTable.followNotificationsEnabled })
+      .from(notificationPreferencesTable)
+      .where(and(
+        eq(notificationPreferencesTable.followNotificationsEnabled, true),
+      ));
+    const enabledUsers = new Set(preferences.map(preference => preference.userId));
+    const notifications = optedInFollowers
+      .filter(follower => enabledUsers.has(follower.followerId))
+      .map(follower => ({
+        recipientId: follower.followerId,
+        title: "New lesson from a teacher you follow",
+        message: `${currentUser.name} published "${lesson.title}".`,
+        type: "follow_lesson",
+        isRead: false,
+      }));
+    if (notifications.length > 0) await db.insert(notificationsTable).values(notifications);
+  }
+
   res.status(201).json({ ...lesson, createdAt: lesson.createdAt.toISOString() });
 });
 
