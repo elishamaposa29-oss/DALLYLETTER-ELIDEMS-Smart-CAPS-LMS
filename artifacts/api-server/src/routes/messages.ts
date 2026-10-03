@@ -127,7 +127,12 @@ router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise
 
 // GET /messages — List messages filtered by groupId or recipientId
 router.get("/messages", requireAuth, async (req, res): Promise<void> => {
-  const queryParams = ListMessagesQueryParams.safeParse(req.query);
+  // The generated client historically serialized nullable filters as the literal string "null".
+  // Treat null/empty query values as absent so harmless nullable filters never become a 400.
+  const normalizedQuery = Object.fromEntries(
+    Object.entries(req.query).filter(([, value]) => value !== "null" && value !== "" && value !== undefined),
+  );
+  const queryParams = ListMessagesQueryParams.safeParse(normalizedQuery);
   if (!queryParams.success) {
     res.status(400).json({ error: queryParams.error.message });
     return;
