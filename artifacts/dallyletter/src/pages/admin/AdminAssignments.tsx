@@ -75,8 +75,17 @@ export default function AdminAssignments() {
   };
 
   const del = (id: number) => {
+    if (!window.confirm("Delete this assignment permanently?")) return;
     void fetch(getApiUrl(`/api/assignments/${id}`), { method: "DELETE", headers: { Authorization: `Bearer ${token()}` } })
-      .then(() => load());
+      .then(async response => {
+        if (!response.ok) {
+          const data = await response.json().catch(() => null) as { error?: string } | null;
+          throw new Error(data?.error ?? "Failed to delete assignment");
+        }
+        toast({ title: "Assignment deleted" });
+        load();
+      })
+      .catch(error => toast({ variant: "destructive", title: error instanceof Error ? error.message : "Failed to delete assignment" }));
   };
 
   return (
