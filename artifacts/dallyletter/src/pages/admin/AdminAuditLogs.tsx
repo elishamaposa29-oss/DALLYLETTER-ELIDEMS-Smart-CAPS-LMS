@@ -29,13 +29,21 @@ export default function AdminAuditLogs() {
 
   const token = () => localStorage.getItem("dallyletter_token");
 
-  useEffect(() => {
+  const loadLogs = async () => {
     setLoading(true);
-    fetch(getApiUrl("/api/audit-logs?limit=500"), { headers: { Authorization: `Bearer ${token()}` } })
-      .then(r => r.json())
-      .then(d => { setLogs(d); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
+    try {
+      const response = await fetch(getApiUrl("/api/audit-logs?limit=500"), { headers: { Authorization: `Bearer ${token()}` } });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error ?? "Audit logs could not be loaded");
+      setLogs(Array.isArray(data) ? data : []);
+    } catch (error) {
+      setLogs([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void loadLogs(); }, []);
 
   const filtered = logs.filter(l => {
     if (categoryFilter !== "all" && l.category !== categoryFilter) return false;
@@ -49,15 +57,16 @@ export default function AdminAuditLogs() {
   const toggle = (id: number) => setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
   const visibleIds = filtered.map(l => l.id);
   const selectAll = () => setSelected(selected.length === visibleIds.length ? [] : visibleIds);
-  async function bulkDelete() { const r = await fetch(getApiUrl("/api/audit-logs/delete"), { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token() }, body: JSON.stringify({ ids: selected }) }); if (r.ok) { setSelected([]); const d = await fetch(getApiUrl("/api/audit-logs?limit=500"), { headers: { Authorization: "Bearer " + token() } }); setLogs(await d.json()); } }
+  async function bulkDelete() { if (!window.confirm(`Delete ${selected.length} selected audit log(s)?`)) return; const r = await fetch(getApiUrl("/api/audit-logs/delete"), { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token() }, body: JSON.stringify({ ids: selected }) }); if (r.ok) { setSelected([]); await loadLogs(); } else { const d = await r.json().catch(() => null); setSummary(d?.error ?? "Audit log deletion failed"); } }
   async function summarizeAI() { const r = await fetch(getApiUrl("/api/audit-logs/summarize"), { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token() }, body: JSON.stringify({ ids: selected }) }); const d = await r.json(); setSummary(r.ok ? d.summary : (d.error ?? "AI summary unavailable")); }
   function openSelected() { const rows = filtered.filter(l => selected.includes(l.id)); const url = URL.createObjectURL(new Blob([JSON.stringify(rows, null, 2)], { type: "application/json" })); window.open(url, "_blank", "noopener,noreferrer"); }
   async function sendSelected() { const rows = filtered.filter(l => selected.includes(l.id)); const text = rows.map(l => "[" + l.id + "] " + l.action + " — " + (l.performerName ?? "Unknown") + " (" + (l.performerRole ?? "unknown") + ")").join("\n"); if (navigator.share) await navigator.share({ title: "DALLYLETTER Audit Logs", text }); else await navigator.clipboard.writeText(text); }
   function exportSelected(format: "json" | "csv") { if (format === "json") { const rows = filtered.filter(l => selected.includes(l.id)); const blob = new Blob([JSON.stringify(rows, null, 2)], { type: "application/json" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "audit-logs-selected.json"; a.click(); return; } exportCSV(); }
 
   function exportCSV() {
+    const rowsToExport = selected.length ? filtered.filter(l => selected.includes(l.id)) : filtered;
     const header = "ID,Action,Category,Performed By,Target,Date\n";
-    const rows = filtered.map(l =>
+    const rows = rowsToExport.map(l =>
       `${l.id},"${l.action.replace(/"/g, '""')}",${l.category},"${l.performerName ?? ""}","${l.targetType ?? ""} ${l.targetId ?? ""}","${new Date(l.createdAt).toLocaleString()}"`
     ).join("\n");
     const blob = new Blob([header + rows], { type: "text/csv" });

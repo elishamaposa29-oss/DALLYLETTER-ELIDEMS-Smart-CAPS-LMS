@@ -79,6 +79,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         { label: "Manager Panel", href: "/manager", icon: Briefcase, section: "Management", accent: "text-purple-400" },
         { label: "Monitor Teachers", href: "/manager/teachers", icon: GraduationCap },
         { label: "Monitor Students", href: "/manager/students", icon: Users },
+        { label: "Assignments", href: "/manager/assignments", icon: ClipboardList },
+        { label: "Connect", href: "/manager/chat", icon: MessageSquare },
         { label: "Reports", href: "/manager/reports", icon: ScrollText },
       ] : []),
     ];

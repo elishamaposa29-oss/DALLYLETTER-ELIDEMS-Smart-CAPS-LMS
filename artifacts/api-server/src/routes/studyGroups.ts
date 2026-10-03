@@ -91,6 +91,12 @@ router.post("/study-groups", requireAuth, async (req, res): Promise<void> => {
     userId: currentUser.id,
   });
 
+  // Keep every created group immediately readable by Connect/settings.
+  await db.insert(groupSettingsTable).values({
+    groupId: group.id,
+    updatedBy: currentUser.id,
+  }).onConflictDoNothing({ target: groupSettingsTable.groupId });
+
   await db.insert(activityLogTable).values({
     type: "user_joined",
     description: `${currentUser.name} created study group "${group.name}"`,
