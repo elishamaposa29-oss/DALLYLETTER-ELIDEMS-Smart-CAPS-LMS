@@ -93,6 +93,8 @@ app.use(extractUser);
 
 app.use("/api", router);
 
+app.use("/api", router);
+
 // Record authenticated activity for owner auditability. Request bodies are intentionally excluded.
 app.use((req, res, next) => {
   res.on("finish", () => {
