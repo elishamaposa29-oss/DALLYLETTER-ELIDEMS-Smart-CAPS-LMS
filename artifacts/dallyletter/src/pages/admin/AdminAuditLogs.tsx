@@ -5,10 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, ScrollText, Search, Download } from "lucide-react";
+import { Loader2, ScrollText, Search, Download, Trash2, Send, ExternalLink, Brain, CheckSquare } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-interface AuditLog { id: number; action: string; category: string; targetType: string | null; targetId: number | null; details: string | null; createdAt: string; performerName: string | null; performerRole: string | null; }
+interface AuditLog { id: number; action: string; category: string; targetType: string | null; targetId: number | null; details: string | null; createdAt: string; performerName: string | null; performerRole: string | null; performerId?: number | null; }
 
 const CATEGORY_COLORS: Record<string, string> = {
   ai: "bg-purple-100 text-purple-800 border-purple-300",
@@ -24,6 +24,8 @@ export default function AdminAuditLogs() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [selected, setSelected] = useState<number[]>([]);
+  const [summary, setSummary] = useState<string | null>(null);
 
   const token = () => localStorage.getItem("dallyletter_token");
 
@@ -43,6 +45,15 @@ export default function AdminAuditLogs() {
     }
     return true;
   });
+
+  const toggle = (id: number) => setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
+  const visibleIds = filtered.map(l => l.id);
+  const selectAll = () => setSelected(selected.length === visibleIds.length ? [] : visibleIds);
+  async function bulkDelete() { const r = await fetch(getApiUrl("/api/audit-logs/delete"), { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token() }, body: JSON.stringify({ ids: selected }) }); if (r.ok) { setSelected([]); const d = await fetch(getApiUrl("/api/audit-logs?limit=500"), { headers: { Authorization: "Bearer " + token() } }); setLogs(await d.json()); } }
+  async function summarizeAI() { const r = await fetch(getApiUrl("/api/audit-logs/summarize"), { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token() }, body: JSON.stringify({ ids: selected }) }); const d = await r.json(); setSummary(r.ok ? d.summary : (d.error ?? "AI summary unavailable")); }
+  function openSelected() { const rows = filtered.filter(l => selected.includes(l.id)); const url = URL.createObjectURL(new Blob([JSON.stringify(rows, null, 2)], { type: "application/json" })); window.open(url, "_blank", "noopener,noreferrer"); }
+  async function sendSelected() { const rows = filtered.filter(l => selected.includes(l.id)); const text = rows.map(l => "[" + l.id + "] " + l.action + " — " + (l.performerName ?? "Unknown") + " (" + (l.performerRole ?? "unknown") + ")").join("\n"); if (navigator.share) await navigator.share({ title: "DALLYLETTER Audit Logs", text }); else await navigator.clipboard.writeText(text); }
+  function exportSelected(format: "json" | "csv") { if (format === "json") { const rows = filtered.filter(l => selected.includes(l.id)); const blob = new Blob([JSON.stringify(rows, null, 2)], { type: "application/json" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "audit-logs-selected.json"; a.click(); return; } exportCSV(); }
 
   function exportCSV() {
     const header = "ID,Action,Category,Performed By,Target,Date\n";
@@ -82,6 +93,16 @@ export default function AdminAuditLogs() {
             </SelectContent>
           </Select>
           <span className="text-sm text-muted-foreground self-center">{filtered.length} entries</span>
+          <div className="flex flex-wrap gap-2 w-full">
+            <Button size="sm" variant="outline" onClick={selectAll} className="gap-1.5"><CheckSquare className="h-4 w-4" />{selected.length === visibleIds.length && visibleIds.length ? "Clear selection" : "Select all"}</Button>
+            <Button size="sm" variant="outline" disabled={!selected.length} onClick={() => void sendSelected()} className="gap-1.5"><Send className="h-4 w-4" />Send</Button>
+            <Button size="sm" variant="outline" disabled={!selected.length} onClick={openSelected} className="gap-1.5"><ExternalLink className="h-4 w-4" />Open with</Button>
+            <Button size="sm" variant="outline" disabled={!selected.length} onClick={() => exportSelected("json")} className="gap-1.5"><Download className="h-4 w-4" />Download as JSON</Button>
+            <Button size="sm" variant="outline" disabled={!selected.length} onClick={() => void summarizeAI()} className="gap-1.5"><Brain className="h-4 w-4" />Summarise with AI</Button>
+            <Button size="sm" variant="destructive" disabled={!selected.length} onClick={() => void bulkDelete()} className="gap-1.5"><Trash2 className="h-4 w-4" />Delete</Button>
+          </div>
+          {summary && <Card><CardContent className="p-4 whitespace-pre-wrap text-sm">{summary}</CardContent></Card>}
+
         </div>
 
         {loading ? (
@@ -91,7 +112,7 @@ export default function AdminAuditLogs() {
         ) : (
           <div className="space-y-1.5">
             {filtered.map(log => (
-              <div key={log.id} className="flex items-start gap-3 border rounded-lg p-3 bg-card hover:bg-muted/30 transition-colors">
+              <div key={log.id} className="flex items-start gap-3 border rounded-lg p-3 bg-card hover:bg-muted/30 transition-colors"><input type="checkbox" checked={selected.includes(log.id)} onChange={() => toggle(log.id)} aria-label={"Select audit log " + log.id} className="mt-1 h-4 w-4" />
                 <Badge variant="outline" className={`text-xs shrink-0 capitalize ${CATEGORY_COLORS[log.category] ?? CATEGORY_COLORS.system}`}>{log.category}</Badge>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium leading-tight">{log.action}</p>

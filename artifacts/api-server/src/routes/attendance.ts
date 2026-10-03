@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
+import { db, auditLogsTable } from "@workspace/db";
 import { attendanceTable, usersTable } from "@workspace/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { canManageAcademicContent, requireAuth } from "../lib/auth-middleware";
@@ -42,7 +42,20 @@ router.post("/join/:classId", requireAuth, async (req, res): Promise<void> => {
     classId, studentId: user.id, studentName: user.name, status: "present",
   }).returning();
   await db.update(usersTable).set({ lastActiveDate: new Date().toISOString().split("T")[0] }).where(eq(usersTable.id, user.id));
+  await db.insert(auditLogsTable).values({ action: `Marked attendance present for ${user.name}`, category: "attendance", performedBy: user.id, targetType: "attendance", targetId: row.id, details: JSON.stringify({ userId: user.id, userName: user.name, status: "present" }) });
   res.status(201).json(row);
+});
+
+router.put("/:id/status", requireAuth, async (req, res): Promise<void> => {
+  const user = (req as any).user;
+  if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Academic staff access required" }); return; }
+  const status = req.body?.status === "absent" ? "absent" : req.body?.status === "present" ? "present" : null;
+  const id = parseInt(String(req.params.id));
+  if (!status || !Number.isInteger(id)) { res.status(400).json({ error: "status must be present or absent" }); return; }
+  const [row] = await db.update(attendanceTable).set({ status }).where(eq(attendanceTable.id, id)).returning();
+  if (!row) { res.status(404).json({ error: "Attendance record not found" }); return; }
+  await db.insert(auditLogsTable).values({ action: `Marked attendance ${status} for ${row.studentName}`, category: "attendance", performedBy: user.id, targetType: "attendance", targetId: row.id, details: JSON.stringify({ studentId: row.studentId, studentName: row.studentName, status }) });
+  res.json(row);
 });
 
 router.put("/:id/leave", requireAuth, async (req, res): Promise<void> => {

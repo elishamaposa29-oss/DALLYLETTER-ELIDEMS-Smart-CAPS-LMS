@@ -4,6 +4,7 @@ import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { extractUser } from "./lib/auth-middleware";
+import { db, auditLogsTable } from "@workspace/db";
 
 const app: Express = express();
 
@@ -92,4 +93,24 @@ app.use(extractUser);
 
 app.use("/api", router);
 
+// Record authenticated activity for owner auditability. Request bodies are intentionally excluded.
+app.use((req, res, next) => {
+  res.on("finish", () => {
+    const user = req.currentUser;
+    if (!user || req.method === "OPTIONS" || req.path.startsWith("/api/audit-logs")) return;
+    void db.insert(auditLogsTable).values({
+      action: `${req.method} ${req.path} → ${res.statusCode}`,
+      category: "activity",
+      performedBy: user.id,
+      targetType: "route",
+      details: JSON.stringify({ userId: user.id, userName: user.name, role: user.role, statusCode: res.statusCode }),
+    }).catch(() => undefined);
+  });
+  next();
+});
+
 export default app;
+
+
+
+

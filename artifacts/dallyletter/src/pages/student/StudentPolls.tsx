@@ -30,11 +30,16 @@ export default function StudentPolls() {
   const [leaderboard, setLeaderboard] = useState<LeaderEntry[]>([]);
   const [selectedPollId, setSelectedPollId] = useState<number | null>(null);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const [myPerformance, setMyPerformance] = useState<{ submitted: boolean; score: number; totalQuestions: number; percentage: number } | null>(null);
+  const [resultPrivacy, setResultPrivacy] = useState<"public" | "private" | "selected_friends">("private");
+  const [selectedFriendIds, setSelectedFriendIds] = useState<number[]>([]);
+  const [friends, setFriends] = useState<{ id: number; name: string }[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const token = () => localStorage.getItem("dallyletter_token");
 
   useEffect(() => {
+    fetch(getApiUrl("/api/users"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.ok ? r.json() : []).then((rows: { id:number; name:string; role:string }[]) => setFriends(rows.filter(r => r.role === "student").map(r => ({ id:r.id, name:r.name })))).catch(() => undefined);
     fetch(getApiUrl("/api/polls"), { headers: { Authorization: `Bearer ${token()}` } })
       .then(r => r.json()).then(d => { setPolls(d); setLoading(false); }).catch(() => setLoading(false));
   }, []);
@@ -72,7 +77,7 @@ export default function StudentPolls() {
       const r = await fetch(getApiUrl(`/api/polls/${activePoll.id}/submit`), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
-        body: JSON.stringify({ answers: answerArray }),
+        body: JSON.stringify({ answers: answerArray, resultPrivacy, selectedFriendIds }),
       });
       if (r.status === 400) {
         const d = await r.json() as { error: string };
@@ -94,8 +99,11 @@ export default function StudentPolls() {
 
   async function loadLeaderboard(pollId: number) {
     setSelectedPollId(pollId);
+    const mine = await fetch(getApiUrl(`/api/polls/${pollId}/my-results`), { headers: { Authorization: `Bearer ${token()}` } });
+    if (mine.ok) setMyPerformance(await mine.json());
     const r = await fetch(getApiUrl(`/api/polls/${pollId}/results`), { headers: { Authorization: `Bearer ${token()}` } });
-    if (r.ok) { const d = await r.json(); setLeaderboard(d.submissions ?? []); setScreen("leaderboard"); }
+    if (r.ok) { const d = await r.json(); setLeaderboard(d.submissions ?? []); } else setLeaderboard([]);
+    setScreen("leaderboard");
   }
 
   function formatTime(s: number) { return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`; }
@@ -139,7 +147,16 @@ export default function StudentPolls() {
           </Card>
           <div className="flex items-center justify-between">
             <Button variant="outline" onClick={() => setCurrentQ(q => Math.max(0, q - 1))} disabled={currentQ === 0} className="gap-1.5"><ChevronLeft className="h-4 w-4" />Back</Button>
-            <span className="text-sm text-muted-foreground">{answered}/{activePoll.questions.length} answered</span>
+            <div className="w-full rounded-lg border bg-muted/20 p-3 space-y-2">
+            <p className="text-xs font-semibold">Results privacy</p>
+            <select value={resultPrivacy} onChange={e => setResultPrivacy(e.target.value as typeof resultPrivacy)} className="w-full h-9 rounded-md border bg-background px-2 text-sm">
+              <option value="private">Private — only me and authorized staff</option>
+              <option value="public">Public — classmates can see my result</option>
+              <option value="selected_friends">Selected friends only</option>
+            </select>
+            {resultPrivacy === "selected_friends" && <div className="max-h-28 overflow-y-auto space-y-1">{friends.map(friend => <label key={friend.id} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={selectedFriendIds.includes(friend.id)} onChange={() => setSelectedFriendIds(ids => ids.includes(friend.id) ? ids.filter(id => id !== friend.id) : [...ids, friend.id])} />{friend.name}</label>)}</div>}
+          </div>
+          <span className="text-sm text-muted-foreground">{answered}/{activePoll.questions.length} answered</span>
             {currentQ < activePoll.questions.length - 1 ? (
               <Button onClick={() => setCurrentQ(q => q + 1)} className="gap-1.5">Next<ChevronRight className="h-4 w-4" /></Button>
             ) : (
@@ -197,8 +214,8 @@ export default function StudentPolls() {
       <DashboardLayout>
         <div className="max-w-lg mx-auto space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold flex items-center gap-2"><Trophy className="h-5 w-5 text-amber-500" />Leaderboard</h2>
-            <Button variant="outline" size="sm" onClick={() => setScreen(results ? "results" : "list")}>Back</Button>
+            <h2 className="text-xl font-bold flex items-center gap-2"><Trophy className="h-5 w-5 text-amber-500" />Performance & Results</h2>
+            <Button variant="outline" size="sm" onClick={() => setScreen(results ? "results" : "list")}>Back</Button>\n          {myPerformance && <Card className="w-full"><CardContent className="p-4"><p className="font-semibold">Your performance</p><p className="text-2xl font-bold mt-1">{myPerformance.percentage}%</p><p className="text-sm text-muted-foreground">{myPerformance.submitted ? `You scored ${myPerformance.score}/${myPerformance.totalQuestions}.` : "You have not submitted this poll yet."}</p></CardContent></Card>}
           </div>
           {leaderboard.length === 0 ? <Card><CardContent className="p-8 text-center text-muted-foreground">No submissions yet.</CardContent></Card> : (
             <div className="space-y-2">

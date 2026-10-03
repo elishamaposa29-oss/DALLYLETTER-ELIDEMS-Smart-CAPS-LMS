@@ -111,7 +111,7 @@ router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise
   const mediaUrl = requestedType ? messageMediaPath(storageKey) + "?type=" + encodeURIComponent(requestedType) : messageMediaPath(storageKey);
   const [message] = await db.select({ senderId: messagesTable.senderId, groupId: messagesTable.groupId, recipientId: messagesTable.recipientId })
     .from(messagesTable)
-    .where(eq(messagesTable.mediaUrl, mediaUrl));
+    .where(or(eq(messagesTable.mediaUrl, mediaUrl), eq(messagesTable.mediaUrl, messageMediaPath(storageKey))));
   if (!message) { res.status(404).json({ error: "Media not found" }); return; }
   const user = req.currentUser!;
   const allowed = message.groupId != null
