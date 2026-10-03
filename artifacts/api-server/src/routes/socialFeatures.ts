@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { db, followsTable, notificationPreferencesTable, notificationsTable, usersTable, lessonsTable, contentCommentsTable, moderationActionsTable, chatPollsTable, chatPollOptionsTable, chatPollVotesTable, broadcastsTable, broadcastRecipientsTable, communitiesTable, communityGroupsTable, messagesTable, studyGroupMembersTable, studyGroupsTable, groupSettingsTable } from "@workspace/db";
+import { db, followsTable, notificationPreferencesTable, notificationsTable, usersTable, lessonsTable, contentCommentsTable, moderationActionsTable, auditLogsTable, chatPollsTable, chatPollOptionsTable, chatPollVotesTable, broadcastsTable, broadcastRecipientsTable, communitiesTable, communityGroupsTable, messagesTable, studyGroupMembersTable, studyGroupsTable, groupSettingsTable } from "@workspace/db";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 
 const router = Router();
@@ -51,7 +51,16 @@ router.post("/manager/users/:id/action", requireAuth, async(req,res):Promise<voi
  if(action==="block") await db.update(usersTable).set({isBlocked:true}).where(eq(usersTable.id,targetId));
  if(action==="suspend") await db.update(usersTable).set({isSuspended:true}).where(eq(usersTable.id,targetId));
  if(action==="promote_prefect") await db.update(usersTable).set({isPrefect:true}).where(eq(usersTable.id,targetId));
+ if(action==="remove_prefect") await db.update(usersTable).set({isPrefect:false}).where(eq(usersTable.id,targetId));
  await db.insert(moderationActionsTable).values({actorId:req.currentUser!.id,targetUserId:targetId,action,note});
+ await db.insert(auditLogsTable).values({
+   action: `Manager action: ${action}`,
+   category: "moderation",
+   performedBy: req.currentUser!.id,
+   targetType: "user",
+   targetId,
+   details: JSON.stringify({ actorId: req.currentUser!.id, actorName: req.currentUser!.name, actorRole: req.currentUser!.role, targetUserId: targetId, action, note: note ?? null }),
+ });
  if(["warn","comment","block","suspend","promote_prefect"].includes(action)) await db.insert(notificationsTable).values({recipientId:targetId,title:action==="warn"?"Account warning":"Account update",message:note??`A manager performed: ${action.replace("_"," ")}.`,type:"moderation"});
  res.json({ok:true});
 });
