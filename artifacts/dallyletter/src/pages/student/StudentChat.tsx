@@ -74,7 +74,7 @@ export default function StudentChat() {
   const { data: users, isLoading: usersLoading, isError: usersError, refetch: refetchUsers } = useListUsers();
   const contacts = (users ?? []).filter(contact =>
     contact.id !== user?.id
-    && (contact.role === "teacher" || contact.role === "owner" || contact.role === "admin" || contact.isPrefect || contact.isManager),
+    && (contact.role === "teacher" || contact.role === "owner" || contact.isPrefect),
   );
 
   const { data: messages, isLoading: messagesLoading, isError: messagesError, refetch: refetchMessages } = useListMessages(
