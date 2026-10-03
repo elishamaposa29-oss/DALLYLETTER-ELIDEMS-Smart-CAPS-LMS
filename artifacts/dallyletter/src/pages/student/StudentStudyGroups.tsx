@@ -306,6 +306,7 @@ export default function StudentStudyGroups() {
                                   <Button type="button" variant={member.control?.muted ? "destructive" : "ghost"} size="sm" className="h-7 px-2 text-[10px]" onClick={() => void toggleMemberControl(group.id, member, "muted")} disabled={busyGroup === group.id}>{member.control?.muted ? "Unmute" : "Mute"}</Button>
                                   <Button type="button" variant={member.control?.mediaBlocked ? "destructive" : "ghost"} size="sm" className="h-7 px-2 text-[10px]" onClick={() => void toggleMemberControl(group.id, member, "mediaBlocked")} disabled={busyGroup === group.id}>{member.control?.mediaBlocked ? "Allow voice" : "Block voice"}</Button>
                                   <Button type="button" variant={member.control?.blocked ? "destructive" : "ghost"} size="sm" className="h-7 px-2 text-[10px]" onClick={() => void toggleMemberControl(group.id, member, "blocked")} disabled={busyGroup === group.id}>{member.control?.blocked ? "Unblock" : "Block"}</Button>
+                                  <Button type="button" variant={member.control?.suspended ? "destructive" : "ghost"} size="sm" className="h-7 px-2 text-[10px]" onClick={() => void toggleMemberControl(group.id, member, "suspended")} disabled={busyGroup === group.id}>{member.control?.suspended ? "Unsuspend" : "Suspend"}</Button>
                                   {isOwner && <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => void apiJson(`/api/study-groups/${group.id}/members/${member.id}`, { method: "DELETE" }).then(() => { toast({ title: "Member removed" }); refresh(); }).catch(error => toast({ variant: "destructive", title: "Could not remove member", description: error instanceof Error ? error.message : "Try again." }))} disabled={busyGroup === group.id} aria-label={`Remove ${member.name}`}><UserMinus className="h-3.5 w-3.5" /></Button>}
                                 </div>
                               )}
@@ -317,6 +318,11 @@ export default function StudentStudyGroups() {
                   </CardContent>
                   <CardFooter className="flex flex-wrap gap-2 border-t pt-4">
                     {canManage && <Button variant="outline" className="gap-2" onClick={() => void openSettings(group.id)} disabled={busyGroup === group.id}><Settings2 className="h-4 w-4" />Settings</Button>}
+                    {canManage && <Button variant="ghost" size="sm" onClick={() => {
+                      if (!window.confirm("Clear all messages in this study group?")) return;
+                      setBusyGroup(group.id);
+                      void apiJson(`/api/study-groups/${group.id}/messages`, { method: "DELETE" }).then(() => toast({ title: "Group messages cleared" })).catch(error => toast({ variant: "destructive", title: "Could not clear messages", description: error instanceof Error ? error.message : "Try again." })).finally(() => setBusyGroup(null));
+                    }} disabled={busyGroup === group.id}>Clear chat</Button>}
                     {isMember ? (
                       <Button variant="secondary" className="min-w-[130px] flex-1 gap-2" onClick={() => handleLeaveGroup(group.id)} disabled={isOwner || leaveGroupMutation.isPending}>
                         {isOwner ? <Users className="h-4 w-4" /> : <LogOut className="h-4 w-4" />}{isOwner ? "Group Owner" : "Leave Group"}

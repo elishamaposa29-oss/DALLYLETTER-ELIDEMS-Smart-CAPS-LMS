@@ -278,6 +278,7 @@ export type MessageType = (typeof MessageType)[keyof typeof MessageType];
 export const MessageType = {
   text: "text",
   voice: "voice",
+  media: "media",
 } as const;
 
 export interface Message {

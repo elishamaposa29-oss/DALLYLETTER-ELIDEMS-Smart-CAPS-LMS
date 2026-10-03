@@ -8,7 +8,7 @@ import {
   getListMessagesQueryKey,
 } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
-import { Loader2, Send, Users, MessageSquare, Reply, X, Flag, BarChart3, RefreshCw, User, ArrowLeft, Check } from "lucide-react";
+import { Loader2, Send, Users, MessageSquare, Reply, X, Flag, BarChart3, RefreshCw, User, ArrowLeft, Check, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,6 +18,7 @@ import { SendMessageBodyType } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { VoiceRecorder } from "@/components/VoiceRecorder";
 import { AuthenticatedAudio } from "@/components/AuthenticatedAudio";
+import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 
@@ -141,6 +142,22 @@ export default function StudentChat() {
       },
       onError: error => toast({ variant: "destructive", title: "Message not sent", description: error.message }),
     });
+  };
+
+  const handleSendMedia = async (file: File) => {
+    if (!selectedGroupId && !selectedUserId) throw new Error("Select a conversation before attaching a learning file.");
+    if (selectedGroupId && !settings.allowMedia) throw new Error("Learning attachments are disabled in this group.");
+    const body = new FormData();
+    if (selectedGroupId) body.append("groupId", String(selectedGroupId));
+    if (selectedUserId) body.append("recipientId", String(selectedUserId));
+    body.append("file", file, file.name);
+    const upload = await authenticatedFetch("/api/messages/media", { method: "POST", body });
+    const result = await upload.json().catch(() => null) as { mediaUrl?: string; mimeType?: string; error?: string } | null;
+    if (!upload.ok || !result?.mediaUrl) throw new Error(result?.error ?? "Attachment upload failed.");
+    await sendMessageMutation.mutateAsync({ data: {
+      content: file.name, type: "media" as SendMessageBodyType, groupId: selectedGroupId, recipientId: selectedUserId, mediaUrl: result.mediaUrl,
+    }});
+    invalidateMessages();
   };
 
   const handleSendVoice = async (audio: Blob) => {
@@ -343,7 +360,13 @@ export default function StudentChat() {
                             <div className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
                               {!isMe && <span className="mb-1 ml-1 text-xs text-muted-foreground">{currentMessage.senderName} · {currentMessage.senderRole}</span>}
                               <div className={`rounded-2xl px-4 py-2.5 ${isMe ? "rounded-tr-sm bg-primary text-primary-foreground" : "rounded-tl-sm border bg-card shadow-sm"}`}>
-                                {currentMessage.type === "voice" && currentMessage.mediaUrl ? <AuthenticatedAudio className="h-10 max-w-[250px]" src={currentMessage.mediaUrl} /> : <p className="whitespace-pre-wrap break-words text-sm">{currentMessage.content}</p>}
+                                {currentMessage.type === "voice" && currentMessage.mediaUrl ? <AuthenticatedAudio className="h-10 max-w-[250px]" src={currentMessage.mediaUrl} /> : currentMessage.type === "media" && currentMessage.mediaUrl ? (
+  <AuthenticatedMedia
+    url={currentMessage.mediaUrl}
+    type={new URL(currentMessage.mediaUrl, window.location.origin).searchParams.get("type")?.startsWith("image/") ? "image" : new URL(currentMessage.mediaUrl, window.location.origin).searchParams.get("type")?.startsWith("video/") ? "video" : "document"}
+    title={currentMessage.content}
+  />
+) : <p className="whitespace-pre-wrap break-words text-sm">{currentMessage.content}</p>}
                               </div>
                               {isGroupConversation && <div className="mt-1 flex gap-2"><button type="button" className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary" onClick={() => setReplyTo(currentMessage.id)}><Reply className="h-3 w-3" />Reply</button><button type="button" className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-destructive disabled:opacity-50" onClick={() => void handleReport(currentMessage.id)} disabled={reportingMessageId === currentMessage.id}>{reportingMessageId === currentMessage.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Flag className="h-3 w-3" />}Report</button></div>}
                               <span className="mt-1 text-[10px] text-muted-foreground opacity-70">{new Date(currentMessage.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
@@ -365,6 +388,14 @@ export default function StudentChat() {
                 )}
                 {isGroupConversation && settings.announcementsOnly && user?.role === "student" && !user.isPrefect && <p className="mb-2 text-xs text-muted-foreground">Only group moderators can post in this group.</p>}
                 <form onSubmit={handleSendMessage} className="flex items-center gap-2">
+                  {(!isGroupConversation || settings.allowMedia) && <label className="inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full border bg-background hover:bg-muted" title="Attach learning media">
+                    <Paperclip className="h-4 w-4" />
+                    <input type="file" className="sr-only" accept="image/*,video/*,application/pdf,.doc,.docx" onChange={event => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      if (file) void handleSendMedia(file).catch(error => toast({ variant: "destructive", title: "Attachment failed", description: error instanceof Error ? error.message : "Try again." }));
+                    }} />
+                  </label>}
                   {(!isGroupConversation || settings.allowMedia) && <VoiceRecorder onSend={handleSendVoice} isSending={sendMessageMutation.isPending} />}
                   <Input placeholder={isGroupConversation ? "Type a message…" : "Message your educator…"} className="flex-1 bg-muted/50" value={message} onChange={event => setMessage(event.target.value)} disabled={isGroupConversation && settings.announcementsOnly && user?.role === "student" && !user.isPrefect} />
                   <Button type="submit" disabled={!message.trim() || sendMessageMutation.isPending || (isGroupConversation && settings.announcementsOnly && user?.role === "student" && !user.isPrefect)} className="h-10 w-10 shrink-0 rounded-full p-0">{sendMessageMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="ml-0.5 h-5 w-5" />}</Button>

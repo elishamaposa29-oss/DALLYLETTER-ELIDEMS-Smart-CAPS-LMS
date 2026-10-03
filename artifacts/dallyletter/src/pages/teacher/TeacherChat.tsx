@@ -1,7 +1,7 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useListMessages, useSendMessage, useListStudyGroups, useListUsers, getApiUrl } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
-import { Loader2, Send, Users, MessageSquare, User } from "lucide-react";
+import { Loader2, Send, Users, MessageSquare, User, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState, useRef, useEffect } from "react";
@@ -12,6 +12,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VoiceRecorder } from "@/components/VoiceRecorder";
 import { AuthenticatedAudio } from "@/components/AuthenticatedAudio";
+import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 
 export default function TeacherChat() {
   const { user } = useAuth();
@@ -19,6 +20,8 @@ export default function TeacherChat() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [message, setMessage] = useState("");
   const [activeTab, setActiveTab] = useState("groups");
+  const [lessonRequests, setLessonRequests] = useState<Array<{id:number; topic:string; notes:string|null; preferredDate:string|null; status:string; teacherReply:string|null; prefectId:number}>>([]);
+  const [requestLoading, setRequestLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
@@ -31,6 +34,17 @@ export default function TeacherChat() {
   );
 
   const sendMessageMutation = useSendMessage();
+
+  const loadLessonRequests = async () => {
+    setRequestLoading(true);
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const response = await fetch(getApiUrl("/api/achievements/lesson-requests"), { headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+      if (response.ok) setLessonRequests(await response.json());
+    } finally { setRequestLoading(false); }
+  };
+
+  useEffect(() => { void loadLessonRequests(); }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -49,9 +63,24 @@ export default function TeacherChat() {
     });
   };
 
+  const handleSendMedia = async (file: File) => {
+    if (!selectedGroupId && !selectedUserId) throw new Error("Select a conversation before attaching learning media.");
+    const body = new FormData();
+    if (selectedGroupId) body.append("groupId", String(selectedGroupId));
+    if (selectedUserId) body.append("recipientId", String(selectedUserId));
+    body.append("file", file, file.name);
+    const upload = await fetch(getApiUrl("/api/messages/media"), { method: "POST", headers: localStorage.getItem("dallyletter_token") ? { Authorization: `Bearer ${localStorage.getItem("dallyletter_token")}` } : undefined, body });
+    const result = await upload.json().catch(() => null) as { mediaUrl?: string; error?: string } | null;
+    if (!upload.ok || !result?.mediaUrl) throw new Error(result?.error ?? "Attachment upload failed.");
+    await sendMessageMutation.mutateAsync({ data: { content: file.name, type: "media" as SendMessageBodyType, groupId: selectedGroupId, recipientId: selectedUserId, mediaUrl: result.mediaUrl } });
+    await queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId, recipientId: selectedUserId }) });
+  };
+
   const handleSendVoice = async (audio: Blob) => {
     if (!selectedGroupId && !selectedUserId) throw new Error("Select a conversation before sending a voice message.");
     const body = new FormData();
+    if (selectedGroupId) body.append("groupId", String(selectedGroupId));
+    if (selectedUserId) body.append("recipientId", String(selectedUserId));
     body.append("file", audio, "voice-message.webm");
     const token = localStorage.getItem("dallyletter_token");
     const upload = await fetch(getApiUrl("/api/messages/media"), { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body });
@@ -79,15 +108,49 @@ export default function TeacherChat() {
         <Card className="w-full md:w-1/3 flex flex-col bg-card/50 max-h-40 md:max-h-none shrink-0">
           <div className="p-4 border-b">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="w-full grid grid-cols-2">
+              <TabsList className="w-full grid grid-cols-3">
                 <TabsTrigger value="groups">Groups</TabsTrigger>
                 <TabsTrigger value="students">Students</TabsTrigger>
+              <TabsTrigger value="requests">Lesson Requests</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
 
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            {activeTab === "groups" ? (
+            {activeTab === "requests" ? (
+              requestLoading ? (
+                <div className="flex justify-center p-6"><Loader2 className="h-5 w-5 animate-spin" /></div>
+              ) : lessonRequests.length === 0 ? (
+                <div className="p-6 text-center text-sm text-muted-foreground">No lesson requests yet.</div>
+              ) : lessonRequests.map(request => (
+                <div key={request.id} className="rounded-lg border p-3 space-y-2">
+                  <div className="flex items-start justify-between gap-2"><p className="font-medium text-sm">{request.topic}</p><span className="text-[10px] uppercase text-muted-foreground">{request.status}</span></div>
+                  {request.preferredDate && <p className="text-xs text-muted-foreground">Preferred: {request.preferredDate}</p>}
+                  {request.notes && <p className="text-xs text-muted-foreground">{request.notes}</p>}
+                  {request.status === "pending" && (
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={async () => {
+                        const reply = window.prompt("Optional reply to the learner:", "I can help with this topic.") ?? "";
+                        try {
+                          const token = localStorage.getItem("dallyletter_token");
+                          const response = await fetch(getApiUrl(`/api/achievements/lesson-requests/${request.id}`), { method:"PATCH", headers:{ "Content-Type":"application/json", ...(token ? {Authorization:`Bearer ${token}`} : {}) }, body:JSON.stringify({status:"accepted",teacherReply:reply.trim() || null}) });
+                          if (!response.ok) throw new Error("Request update failed");
+                          await loadLessonRequests();
+                        } catch (error) { window.alert(error instanceof Error ? error.message : "Request update failed"); }
+                      }}>Accept</Button>
+                      <Button size="sm" variant="outline" onClick={async () => {
+                        try {
+                          const token = localStorage.getItem("dallyletter_token");
+                          const response = await fetch(getApiUrl(`/api/achievements/lesson-requests/${request.id}`), { method:"PATCH", headers:{ "Content-Type":"application/json", ...(token ? {Authorization:`Bearer ${token}`} : {}) }, body:JSON.stringify({status:"declined",teacherReply:"I cannot take this request right now."}) });
+                          if (!response.ok) throw new Error("Request update failed");
+                          await loadLessonRequests();
+                        } catch (error) { window.alert(error instanceof Error ? error.message : "Request update failed"); }
+                      }}>Decline</Button>
+                    </div>
+                  )}
+                </div>
+              ))
+            ) : activeTab === "groups" ? (
               groupsLoading ? (
                 <div className="flex justify-center p-4"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
               ) : groups?.length === 0 ? (
@@ -190,6 +253,8 @@ export default function TeacherChat() {
                             }`}>
                               {msg.type === "voice" && msg.mediaUrl ? (
                                 <AuthenticatedAudio className="h-10 max-w-[200px] sm:max-w-[250px]" src={msg.mediaUrl} />
+                              ) : msg.type === "media" && msg.mediaUrl ? (
+                                <AuthenticatedMedia url={msg.mediaUrl} type={new URL(msg.mediaUrl, window.location.origin).searchParams.get("type")?.startsWith("image/") ? "image" : new URL(msg.mediaUrl, window.location.origin).searchParams.get("type")?.startsWith("video/") ? "video" : "document"} title={msg.content} />
                               ) : (
                                 <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
                               )}
@@ -208,6 +273,13 @@ export default function TeacherChat() {
 
               <div className="p-4 border-t bg-card">
                 <form onSubmit={handleSendMessage} className="flex gap-2 items-center">
+                  <label className="inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full border bg-background hover:bg-muted" title="Attach learning media">
+                    <Paperclip className="h-4 w-4" />
+                    <input type="file" className="sr-only" accept="image/*,video/*,application/pdf,.doc,.docx" onChange={event => {
+                      const file = event.target.files?.[0]; event.target.value = "";
+                      if (file) void handleSendMedia(file).catch(error => alert(error instanceof Error ? error.message : "Attachment failed."));
+                    }} />
+                  </label>
                   <VoiceRecorder onSend={handleSendVoice} isSending={sendMessageMutation.isPending} />
                   <Input
                     placeholder="Type a message..."
