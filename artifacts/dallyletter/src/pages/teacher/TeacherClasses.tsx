@@ -1,5 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { useListClasses, useCreateClass, useUpdateClass, useDeleteClass, useListHandRaises } from "@workspace/api-client-react";
+import { useListClasses, useCreateClass, useUpdateClass, useDeleteClass, useListHandRaises, getApiUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -311,7 +311,7 @@ function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean
     setLoweringId(handId);
     try {
       const token = localStorage.getItem("dallyletter_token");
-      const res = await fetch(`/api/raise-hand/${handId}/resolve`, {
+      const res = await fetch(getApiUrl(`/api/raise-hand/${handId}/resolve`), {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}` },
       });
