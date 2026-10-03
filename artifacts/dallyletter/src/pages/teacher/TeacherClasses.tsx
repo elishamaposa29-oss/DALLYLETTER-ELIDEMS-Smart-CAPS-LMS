@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useState } from "react";
-import { Loader2, Plus, Trash2, Video, Calendar, Clock, Hand, Settings2, CheckCircle } from "lucide-react";
+import { Loader2, Plus, Trash2, Video, Calendar, Clock, Hand, Settings2, CheckCircle, MessageSquare, Paperclip } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -307,6 +307,19 @@ function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean
   const unresolved = hands.filter(h => !h.isResolved);
   if (unresolved.length === 0) return null;
 
+  const handleReply = async (studentId: number, studentName: string) => {
+    const reply = window.prompt("Reply to " + studentName + ":");
+    if (!reply?.trim()) return;
+    const token = localStorage.getItem("dallyletter_token");
+    const response = await fetch(getApiUrl("/api/messages"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
+      body: JSON.stringify({ content: reply.trim(), type: "text", recipientId: studentId }),
+    });
+    if (!response.ok) throw new Error("Reply failed");
+    toast({ title: "Reply sent" });
+  };
+
   const handleLowerHand = async (handId: number, studentName: string) => {
     setLoweringId(handId);
     try {
@@ -339,6 +352,13 @@ function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean
               <p className="font-medium">{hand.studentName}</p>
               {hand.question && <p className="text-muted-foreground mt-0.5">{hand.question}</p>}
             </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" title="Reply to learner" onClick={() => void handleReply(hand.studentId, hand.studentName).catch(() => toast({ variant: "destructive", title: "Reply failed" }))}>
+                <MessageSquare className="h-3 w-3" /><span className="ml-1">Reply</span>
+              </Button>
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" title="Attach media to learner" onClick={() => toast({ title: "Use Chat to attach media", description: "Open the learner conversation to send a file or voice message." })}>
+                <Paperclip className="h-3 w-3" /><span className="ml-1">Attach</span>
+              </Button>
             <Button
               variant="ghost"
               size="sm"
@@ -350,6 +370,7 @@ function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean
               {loweringId === hand.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
               <span className="ml-1">Lower</span>
             </Button>
+            </div>
           </div>
         ))}
       </div>
