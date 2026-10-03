@@ -10,7 +10,9 @@ import {
 } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth-middleware";
 import { getAIProvider } from "../lib/ai-provider";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, deleteStoredMedia } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, deleteStoredMedia, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
+
+const MAX_CHAT_MEDIA_SIZE_BYTES = MAX_MEDIA_SIZE_BYTES;
 import { isOwnerRole, normalizeRole } from "../lib/auth-middleware";
 
 const router: IRouter = Router();
@@ -27,8 +29,8 @@ const voiceUpload = multer({
     },
     filename: (_req, _file, callback) => callback(null, createMediaStorageKey()),
   }),
-  limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (_req, file, callback) => callback(null, isAllowedMediaType(file.mimetype) && file.mimetype.toLowerCase().startsWith("audio/")),
+  limits: { fileSize: MAX_CHAT_MEDIA_SIZE_BYTES },
+  fileFilter: (_req, file, callback) => callback(null, isAllowedMediaType(file.mimetype)),
 });
 
 async function canAccessGroup(groupId: number, userId: number, role: string): Promise<boolean> {
@@ -63,7 +65,7 @@ router.post("/messages/media", requireAuth, (req, res): void => {
   voiceUpload.single("file")(req, res, (error) => {
     void (async () => {
       if (error || !req.file) {
-        res.status(400).json({ error: "A supported audio file up to 10 MB is required" });
+        res.status(400).json({ error: "A supported learning media file up to 250 MB is required" });
         return;
       }
 
@@ -91,7 +93,7 @@ router.post("/messages/media", requireAuth, (req, res): void => {
       }
 
       res.status(201).json({
-        mediaUrl: messageMediaPath(req.file.filename),
+        mediaUrl: messageMediaPath(req.file.filename) + "?type=" + encodeURIComponent(req.file.mimetype),
         storageKey: req.file.filename,
         mimeType: req.file.mimetype,
         size: req.file.size,
@@ -216,12 +218,12 @@ router.post("/messages", requireAuth, async (req, res): Promise<void> => {
     res.status(403).json({ error: "You cannot message this user" });
     return;
   }
-  if (parsed.data.type === "voice" && !parsed.data.mediaUrl) {
+  if (["voice", "media"].includes(parsed.data.type) && !parsed.data.mediaUrl) {
     res.status(400).json({ error: "Voice messages require an uploaded audio file" });
     return;
   }
-  if (parsed.data.type !== "voice" && parsed.data.mediaUrl) {
-    res.status(400).json({ error: "Only voice messages may include media" });
+  if (!["voice", "media"].includes(parsed.data.type) && parsed.data.mediaUrl) {
+    res.status(400).json({ error: "Only voice and learning-media messages may include media" });
     return;
   }
 
@@ -245,7 +247,7 @@ router.post("/messages", requireAuth, async (req, res): Promise<void> => {
     const [control] = await db.select().from(groupMemberControlsTable).where(and(eq(groupMemberControlsTable.groupId, parsed.data.groupId), eq(groupMemberControlsTable.userId, currentUser.id)));
     const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, parsed.data.groupId));
     if (control?.blocked || control?.suspended || control?.muted) { res.status(403).json({ error: "You are restricted from messaging in this group" }); return; }
-    if (parsed.data.type === "voice" && (control?.mediaBlocked || settings?.allowMedia === false)) { res.status(403).json({ error: "Media uploads are disabled for you in this group" }); return; }
+    if ((parsed.data.type === "voice" || parsed.data.type === "media") && (control?.mediaBlocked || settings?.allowMedia === false)) { res.status(403).json({ error: "Media uploads are disabled for you in this group" }); return; }
     if (settings?.announcementsOnly && !(isOwnerRole(currentUser.role) || currentUser.isManager || currentUser.isPrefect)) {
       res.status(403).json({ error: "Only group moderators can post announcements in this group" });
       return;
