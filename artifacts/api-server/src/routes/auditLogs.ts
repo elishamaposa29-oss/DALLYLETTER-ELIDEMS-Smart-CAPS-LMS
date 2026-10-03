@@ -45,7 +45,7 @@ router.post("/audit-logs/delete", requireAuth, async (req, res): Promise<void> =
   if (req.currentUser!.role !== "owner") { res.status(403).json({ error: "Owner only" }); return; }
   const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter((id: number) => Number.isInteger(id) && id > 0) : [];
   if (ids.length === 0) { res.status(400).json({ error: "Select at least one audit log" }); return; }
-  const uniqueIds = [...new Set(ids)].slice(0, 500);
+  const uniqueIds: number[] = [...new Set<number>(ids)].slice(0, 500);
   await db.delete(auditLogsTable).where(inArray(auditLogsTable.id, uniqueIds));
   res.json({ ok: true, deleted: uniqueIds.length });
 });
@@ -54,7 +54,7 @@ router.post("/audit-logs/summarize", requireAuth, async (req, res): Promise<void
   if (req.currentUser!.role !== "owner") { res.status(403).json({ error: "Owner only" }); return; }
   const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter((id: number) => Number.isInteger(id) && id > 0) : [];
   if (ids.length === 0) { res.status(400).json({ error: "Select at least one audit log" }); return; }
-  const uniqueIds = [...new Set(ids)].slice(0, 100);
+  const uniqueIds: number[] = [...new Set<number>(ids)].slice(0, 100);
   const rows = await db.select({ id: auditLogsTable.id, action: auditLogsTable.action, category: auditLogsTable.category, details: auditLogsTable.details, createdAt: auditLogsTable.createdAt, performerName: usersTable.name, performerRole: usersTable.role }).from(auditLogsTable).leftJoin(usersTable, eq(auditLogsTable.performedBy, usersTable.id)).where(inArray(auditLogsTable.id, uniqueIds));
   try {
     const ai = await getAIProvider();
