@@ -216,6 +216,7 @@ router.get("/polls/:id/results", requireAuth, async (req, res): Promise<void> =>
   const user = req.currentUser!;
   const allSubmissions = await db.select({ id: pollSubmissionsTable.id, score: pollSubmissionsTable.score, totalQuestions: pollSubmissionsTable.totalQuestions, completedAt: pollSubmissionsTable.completedAt, answers: pollSubmissionsTable.answers, studentName: usersTable.name, studentId: usersTable.id }).from(pollSubmissionsTable).leftJoin(usersTable, eq(pollSubmissionsTable.studentId, usersTable.id)).where(eq(pollSubmissionsTable.pollId, id)).orderBy(desc(pollSubmissionsTable.score));
   const submissions = user.role === "student" ? allSubmissions.filter(row => { if (row.studentId === user.id) return true; try { const meta = JSON.parse(row.answers) as { resultPrivacy?: string; selectedFriendIds?: number[] }; return meta.resultPrivacy === "public" || (meta.resultPrivacy === "selected_friends" && meta.selectedFriendIds?.includes(user.id)); } catch { return false; } }) : allSubmissions;
+  const visible = submissions.map(({ answers: _answers, ...row }) => row);
   const total = visible.length;
   const avgScore = total > 0 ? visible.reduce((s, r) => s + (r.totalQuestions > 0 ? r.score / r.totalQuestions : 0), 0) / total * 100 : 0;
   res.json({ submissions: visible, total, avgScore: Math.round(avgScore) });
