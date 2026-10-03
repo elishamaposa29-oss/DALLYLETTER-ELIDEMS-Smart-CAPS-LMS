@@ -279,7 +279,6 @@ export const MessageType = {
   text: "text",
   voice: "voice",
   media: "media",
-  media: "media",
 } as const;
 
 export interface Message {
