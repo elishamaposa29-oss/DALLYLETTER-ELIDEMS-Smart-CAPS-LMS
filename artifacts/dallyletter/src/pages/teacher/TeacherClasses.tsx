@@ -1,5 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { useListClasses, useCreateClass, useUpdateClass, useDeleteClass, useListHandRaises } from "@workspace/api-client-react";
+import { useListClasses, useCreateClass, useUpdateClass, useDeleteClass, useListHandRaises, getApiUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useState } from "react";
-import { Loader2, Plus, Trash2, Video, Calendar, Clock, Hand, Settings2, CheckCircle } from "lucide-react";
+import { Loader2, Plus, Trash2, Video, Calendar, Clock, Hand, Settings2, CheckCircle, MessageSquare, Paperclip } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -307,11 +307,45 @@ function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean
   const unresolved = hands.filter(h => !h.isResolved);
   if (unresolved.length === 0) return null;
 
+  const handleAttachMedia = async (studentId: number, file: File) => {
+    const token = localStorage.getItem("dallyletter_token");
+    const body = new FormData();
+    body.append("recipientId", String(studentId));
+    body.append("file", file, file.name);
+    const upload = await fetch(getApiUrl("/api/messages/media"), {
+      method: "POST",
+      headers: token ? { Authorization: "Bearer " + token } : {},
+      body,
+    });
+    const result = await upload.json().catch(() => null) as { mediaUrl?: string; error?: string } | null;
+    if (!upload.ok || !result?.mediaUrl) throw new Error(result?.error || "Attachment upload failed");
+    const send = await fetch(getApiUrl("/api/messages"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
+      body: JSON.stringify({ content: file.name, type: "media", recipientId: studentId, mediaUrl: result.mediaUrl }),
+    });
+    if (!send.ok) throw new Error("Attachment message failed");
+    toast({ title: "Media sent" });
+  };
+
+  const handleReply = async (studentId: number, studentName: string) => {
+    const reply = window.prompt("Reply to " + studentName + ":");
+    if (!reply?.trim()) return;
+    const token = localStorage.getItem("dallyletter_token");
+    const response = await fetch(getApiUrl("/api/messages"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
+      body: JSON.stringify({ content: reply.trim(), type: "text", recipientId: studentId }),
+    });
+    if (!response.ok) throw new Error("Reply failed");
+    toast({ title: "Reply sent" });
+  };
+
   const handleLowerHand = async (handId: number, studentName: string) => {
     setLoweringId(handId);
     try {
       const token = localStorage.getItem("dallyletter_token");
-      const res = await fetch(`/api/raise-hand/${handId}/resolve`, {
+      const res = await fetch(getApiUrl(`/api/raise-hand/${handId}/resolve`), {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -339,6 +373,18 @@ function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean
               <p className="font-medium">{hand.studentName}</p>
               {hand.question && <p className="text-muted-foreground mt-0.5">{hand.question}</p>}
             </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" title="Reply to learner" onClick={() => void handleReply(hand.studentId, hand.studentName).catch(() => toast({ variant: "destructive", title: "Reply failed" }))}>
+                <MessageSquare className="h-3 w-3" /><span className="ml-1">Reply</span>
+              </Button>
+              <label className="inline-flex h-7 cursor-pointer items-center rounded-md px-2 text-xs hover:bg-muted" title="Attach learning media">
+                <Paperclip className="h-3 w-3" /><span className="ml-1">Attach</span>
+                <input type="file" className="sr-only" accept="image/*,video/*,application/pdf,.doc,.docx" onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  if (file) void handleAttachMedia(hand.studentId, file).catch((error) => toast({ variant: "destructive", title: "Attachment failed", description: error instanceof Error ? error.message : "Could not send media." }));
+                }} />
+              </label>
             <Button
               variant="ghost"
               size="sm"
@@ -350,6 +396,7 @@ function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean
               {loweringId === hand.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
               <span className="ml-1">Lower</span>
             </Button>
+            </div>
           </div>
         ))}
       </div>
