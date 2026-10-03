@@ -1,6 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
-import { db } from "@workspace/db";
+import { db, notificationsTable, auditLogsTable } from "@workspace/db";
 import { assignmentsTable, assignmentSubmissionsTable } from "@workspace/db/schema";
 import { eq, desc, and, or, isNull } from "drizzle-orm";
 import { canManageAcademicContent, isOwnerRole, requireAuth } from "../lib/auth-middleware";
@@ -77,7 +77,9 @@ router.get("/", requireAuth, async (req, res): Promise<void> => {
   if (user.role !== "student" && !canManageAcademicContent(user)) { res.status(403).json({ error: "Assignment access required" }); return; }
   let rows;
   if (canManageAcademicContent(user)) {
-    rows = await db.select().from(assignmentsTable).orderBy(desc(assignmentsTable.createdAt));
+    rows = user.role === "teacher" && !user.isManager
+      ? await db.select().from(assignmentsTable).where(eq(assignmentsTable.teacherId, user.id)).orderBy(desc(assignmentsTable.createdAt))
+      : await db.select().from(assignmentsTable).orderBy(desc(assignmentsTable.createdAt));
   } else {
     rows = await db.select().from(assignmentsTable)
       .where(and(
@@ -139,6 +141,11 @@ router.put("/:id", requireAuth, async (req, res): Promise<void> => {
   }
   const [row] = await db.update(assignmentsTable).set({ title: title.trim(), description, subject: subject.trim(), grade: typeof grade === "string" && grade.trim() ? grade.trim() : null, dueDate, totalMarks: parsedMarks, status, attachmentUrl: normalizedAttachmentUrl })
     .where(eq(assignmentsTable.id, assignmentId)).returning();
+  await db.insert(auditLogsTable).values({ action: `Updated assignment #${assignmentId}`, category: "academic", performedBy: user.id, targetType: "assignment", targetId: assignmentId });
+  if (existing.teacherId !== user.id) {
+    const [assignmentOwner] = await db.select({ teacherId: assignmentsTable.teacherId, title: assignmentsTable.title }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
+    if (assignmentOwner?.teacherId) await db.insert(notificationsTable).values({ recipientId: assignmentOwner.teacherId, title: "Assignment updated", message: `Your assignment "${assignmentOwner.title}" was updated by authorized management staff.`, type: "assignment_update", link: `/teacher/assignments` });
+  }
   res.json(row);
 });
 
