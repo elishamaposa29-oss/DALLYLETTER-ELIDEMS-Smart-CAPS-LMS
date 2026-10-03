@@ -52,6 +52,8 @@ export default function TeacherChat() {
   const handleSendVoice = async (audio: Blob) => {
     if (!selectedGroupId && !selectedUserId) throw new Error("Select a conversation before sending a voice message.");
     const body = new FormData();
+    if (selectedGroupId) body.append("groupId", String(selectedGroupId));
+    if (selectedUserId) body.append("recipientId", String(selectedUserId));
     body.append("file", audio, "voice-message.webm");
     const token = localStorage.getItem("dallyletter_token");
     const upload = await fetch(getApiUrl("/api/messages/media"), { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body });
