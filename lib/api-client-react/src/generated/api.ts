@@ -1784,7 +1784,7 @@ export const getListMessagesUrl = (params?: ListMessagesParams) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== "") {
+    if (value !== undefined && value !== null) {
       normalizedParams.append(key, value.toString());
     }
   });
