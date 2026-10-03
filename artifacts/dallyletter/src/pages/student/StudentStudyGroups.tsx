@@ -82,7 +82,7 @@ export default function StudentStudyGroups() {
   const [settingsLoading, setSettingsLoading] = useState(false);
 
   const refresh = () => void queryClient.invalidateQueries({ queryKey: getListStudyGroupsQueryKey() });
-  const isStaff = user?.role === "owner" || user?.role === "admin" || user?.isManager === true || user?.isPrefect === true;
+  const isStaff = user?.role === "owner" || user?.isPrefect === true;
 
   const handleCreate = (event: FormEvent) => {
     event.preventDefault();
