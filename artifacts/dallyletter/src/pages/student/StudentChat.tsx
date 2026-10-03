@@ -395,7 +395,7 @@ export default function StudentChat() {
                       event.target.value = "";
                       if (file) void handleSendMedia(file).catch(error => toast({ variant: "destructive", title: "Attachment failed", description: error instanceof Error ? error.message : "Try again." }));
                     }} />
-                  </label>
+                  </label>}
                   {(!isGroupConversation || settings.allowMedia) && <VoiceRecorder onSend={handleSendVoice} isSending={sendMessageMutation.isPending} />}
                   <Input placeholder={isGroupConversation ? "Type a message…" : "Message your educator…"} className="flex-1 bg-muted/50" value={message} onChange={event => setMessage(event.target.value)} disabled={isGroupConversation && settings.announcementsOnly && user?.role === "student" && !user.isPrefect} />
                   <Button type="submit" disabled={!message.trim() || sendMessageMutation.isPending || (isGroupConversation && settings.announcementsOnly && user?.role === "student" && !user.isPrefect)} className="h-10 w-10 shrink-0 rounded-full p-0">{sendMessageMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="ml-0.5 h-5 w-5" />}</Button>
