@@ -192,6 +192,18 @@ router.post("/polls/:id/submit", requireAuth, async (req, res): Promise<void> =>
   res.json({ submission, score, totalQuestions: questions.length, percentage: questions.length > 0 ? Math.round((score / questions.length) * 100) : 0, feedback });
 });
 
+// GET /polls/:id/my-results — every learner can see their own performance
+router.get("/polls/:id/my-results", requireAuth, async (req, res): Promise<void> => {
+  if (req.currentUser!.role !== "student") { res.status(403).json({ error: "Student access required" }); return; }
+  const id = parseInt(String(req.params.id));
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [poll] = await db.select({ id: pollsTable.id, title: pollsTable.title }).from(pollsTable).where(eq(pollsTable.id, id));
+  if (!poll) { res.status(404).json({ error: "Poll not found" }); return; }
+  const [submission] = await db.select({ score: pollSubmissionsTable.score, totalQuestions: pollSubmissionsTable.totalQuestions, completedAt: pollSubmissionsTable.completedAt }).from(pollSubmissionsTable).where(and(eq(pollSubmissionsTable.pollId, id), eq(pollSubmissionsTable.studentId, req.currentUser!.id)));
+  if (!submission) { res.json({ poll, submitted: false, score: 0, totalQuestions: 0, percentage: 0 }); return; }
+  res.json({ poll, submitted: true, ...submission, percentage: submission.totalQuestions ? Math.round((submission.score / submission.totalQuestions) * 100) : 0 });
+});
+
 // GET /polls/:id/results — leaderboard + analytics
 router.get("/polls/:id/results", requireAuth, async (req, res): Promise<void> => {
   const id = parseInt(String(req.params.id));
