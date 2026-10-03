@@ -1,5 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { useListClasses, useRaiseHand } from "@workspace/api-client-react";
+import { useListClasses, useRaiseHand, getApiUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -46,7 +46,7 @@ export default function StudentClasses() {
     setLoweringHand(classId);
     try {
       const token = localStorage.getItem("dallyletter_token");
-      const res = await fetch(`/api/raise-hand/${handRaiseId}/resolve`, {
+      const res = await fetch(getApiUrl(`/api/raise-hand/${handRaiseId}/resolve`), {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}` },
       });
