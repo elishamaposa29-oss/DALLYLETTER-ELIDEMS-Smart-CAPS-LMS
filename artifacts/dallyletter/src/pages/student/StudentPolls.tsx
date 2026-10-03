@@ -39,6 +39,7 @@ export default function StudentPolls() {
   const token = () => localStorage.getItem("dallyletter_token");
 
   useEffect(() => {
+    fetch(getApiUrl("/api/users"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.ok ? r.json() : []).then((rows: { id:number; name:string; role:string }[]) => setFriends(rows.filter(r => r.role === "student").map(r => ({ id:r.id, name:r.name })))).catch(() => undefined);
     fetch(getApiUrl("/api/polls"), { headers: { Authorization: `Bearer ${token()}` } })
       .then(r => r.json()).then(d => { setPolls(d); setLoading(false); }).catch(() => setLoading(false));
   }, []);
