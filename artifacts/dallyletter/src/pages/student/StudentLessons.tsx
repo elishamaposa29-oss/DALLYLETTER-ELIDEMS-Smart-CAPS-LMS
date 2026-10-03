@@ -27,6 +27,11 @@ export default function StudentLessons() {
   const { data: lessons, isLoading } = useListLessons();
   const [search, setSearch] = useState("");
   const [subjectFilter, setSubjectFilter] = useState("all");
+  const [gradeFilter, setGradeFilter] = useState("all");
+  const [follows, setFollows] = useState<any[]>([]);
+  const token = localStorage.getItem("dallyletter_token");
+  useEffect(()=>{fetch(getApiUrl("/api/follows"),{headers:token?{Authorization:`Bearer ${token}`}:{}}).then(r=>r.ok?r.json():[]).then(d=>setFollows(Array.isArray(d)?d:[])).catch(()=>{});},[]);
+  const toggleFollow=async(targetType:string,targetUserId:number|undefined,targetKey:string|undefined,targetName:string)=>{const existing=follows.find(f=>f.targetType===targetType&&(targetUserId?f.targetUserId===targetUserId:f.targetKey===targetKey));if(existing){await fetch(getApiUrl(`/api/follows/${existing.id}`),{method:"DELETE",headers:token?{Authorization:`Bearer ${token}`}:{}});setFollows(follows.filter(f=>f.id!==existing.id));return;}const r=await fetch(getApiUrl("/api/follows"),{method:"POST",headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({targetType,targetUserId,targetKey,targetName})});if(r.ok)setFollows([...follows,await r.json()]);};
   const [exerciseMap, setExerciseMap] = useState<Record<number, { id:number; title:string; status:string; totalMarks:string; submissionStatus?:string; submission?:{totalScore:string;percentage:string|null;returnedAt:string|null}|null }[]>>({});
   useEffect(() => { let cancelled = false; const token = localStorage.getItem("dallyletter_token"); if (!lessons?.length) return; Promise.all(lessons.map(async lesson => { try { const r = await fetch(getApiUrl(`/api/exercises/lessons/${lesson.id}/exercises`), { headers: token ? { Authorization: `Bearer ${token}` } : {} }); return [lesson.id, r.ok ? await r.json() : []] as const; } catch { return [lesson.id, []] as const; } })).then(rows => { if (!cancelled) setExerciseMap(Object.fromEntries(rows)); }); return () => { cancelled = true; }; }, [lessons]);
 
@@ -34,7 +39,8 @@ export default function StudentLessons() {
     const matchesSearch = lesson.title.toLowerCase().includes(search.toLowerCase()) ||
                           (lesson.description?.toLowerCase().includes(search.toLowerCase()));
     const matchesSubject = subjectFilter === "all" || lesson.subject === subjectFilter;
-    return matchesSearch && matchesSubject;
+    const matchesGrade = gradeFilter === "all" || lesson.grade === gradeFilter;
+    return matchesSearch && matchesSubject && matchesGrade;
   });
 
   const subjects = Array.from(new Set(lessons?.map(l => l.subject) || []));
@@ -92,6 +98,8 @@ export default function StudentLessons() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
+          <Select value={gradeFilter} onValueChange={setGradeFilter}><SelectTrigger><SelectValue placeholder="Grade / Form" /></SelectTrigger><SelectContent><SelectItem value="all">All grades</SelectItem>{Array.from(new Set(lessons?.map(l=>l.grade).filter(Boolean) as string[])).map(g=><SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent></Select>
+          <Select value={gradeFilter} onValueChange={setGradeFilter}><SelectTrigger><SelectValue placeholder="Grade / Form" /></SelectTrigger><SelectContent><SelectItem value="all">All grades</SelectItem>{Array.from(new Set((lessons ?? []).map(l=>l.grade).filter(Boolean) as string[])).map(g=><SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent></Select>
           <Select value={subjectFilter} onValueChange={setSubjectFilter}>
             <SelectTrigger className="w-full sm:w-[200px] h-11">
               <SelectValue placeholder="All Subjects" />

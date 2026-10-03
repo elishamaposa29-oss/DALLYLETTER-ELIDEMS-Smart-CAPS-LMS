@@ -1,15 +1,17 @@
 // Messages routes — group and private chat, including voice notes
 import { Router, type IRouter } from "express";
 import { eq, and, isNull, or, inArray } from "drizzle-orm";
+import { createReadStream } from "node:fs";
 import multer from "multer";
-import { db, messagesTable, activityLogTable, studyGroupMembersTable, studyGroupsTable, contentFlagsTable, auditLogsTable } from "@workspace/db";
+import { db, messagesTable, activityLogTable, studyGroupMembersTable, studyGroupsTable, contentFlagsTable, auditLogsTable, groupMemberControlsTable, groupSettingsTable, usersTable } from "@workspace/db";
 import {
   ListMessagesQueryParams,
   SendMessageBody,
 } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth-middleware";
 import { getAIProvider } from "../lib/ai-provider";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, deleteStoredMedia } from "../lib/media-storage";
+import { isOwnerRole, normalizeRole } from "../lib/auth-middleware";
 
 const router: IRouter = Router();
 
@@ -32,26 +34,95 @@ const voiceUpload = multer({
 async function canAccessGroup(groupId: number, userId: number, role: string): Promise<boolean> {
   const [group] = await db.select({ id: studyGroupsTable.id }).from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
   if (!group) return false;
-  if (role === "teacher" || role === "owner") return true;
+  if (normalizeRole(role) === "teacher" || isOwnerRole(role)) return true;
   const [membership] = await db.select({ id: studyGroupMembersTable.id })
     .from(studyGroupMembersTable)
     .where(and(eq(studyGroupMembersTable.groupId, groupId), eq(studyGroupMembersTable.userId, userId)));
   return Boolean(membership);
 }
 
+async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]>, recipientId: number): Promise<boolean> {
+  if (!Number.isInteger(recipientId) || recipientId <= 0 || recipientId === sender.id) return false;
+  const [recipient] = await db.select({ id: usersTable.id, role: usersTable.role, isPrefect: usersTable.isPrefect, isBlocked: usersTable.isBlocked, isSuspended: usersTable.isSuspended })
+    .from(usersTable)
+    .where(eq(usersTable.id, recipientId));
+  if (!recipient || recipient.isBlocked || recipient.isSuspended) return false;
+  const senderRole = normalizeRole(sender.role);
+  const recipientRole = normalizeRole(recipient.role);
+  if (senderRole === "student") {
+    return recipientRole === "teacher" || isOwnerRole(recipientRole) || recipient.isPrefect === true;
+  }
+  return true;
+}
+
+function messageMediaPath(storageKey: string): string {
+  return `/api/messages/media/${storageKey}`;
+}
+
 router.post("/messages/media", requireAuth, (req, res): void => {
   voiceUpload.single("file")(req, res, (error) => {
-    if (error || !req.file) {
-      res.status(400).json({ error: "A supported audio file up to 10 MB is required" });
-      return;
-    }
+    void (async () => {
+      if (error || !req.file) {
+        res.status(400).json({ error: "A supported audio file up to 10 MB is required" });
+        return;
+      }
 
-    res.status(201).json({
-      mediaUrl: `/api/lessons/media/${req.file.filename}?type=${encodeURIComponent(req.file.mimetype)}`,
-      mimeType: req.file.mimetype,
-      size: req.file.size,
+      const groupId = req.body?.groupId == null || req.body.groupId === "" ? null : Number(req.body.groupId);
+      const recipientId = req.body?.recipientId == null || req.body.recipientId === "" ? null : Number(req.body.recipientId);
+      const currentUser = req.currentUser!;
+      const validTarget = (groupId != null && recipientId == null) || (groupId == null && recipientId != null);
+      const allowed = validTarget
+        && (groupId != null
+          ? await canAccessGroup(groupId, currentUser.id, currentUser.role)
+          : await canMessageUser(currentUser, recipientId!));
+      if (!allowed) {
+        await deleteStoredMedia(req.file.filename);
+        res.status(403).json({ error: "You cannot upload media to this conversation" });
+        return;
+      }
+      if (groupId != null) {
+        const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, groupId));
+        const [control] = await db.select().from(groupMemberControlsTable).where(and(eq(groupMemberControlsTable.groupId, groupId), eq(groupMemberControlsTable.userId, currentUser.id)));
+        if (settings?.allowMedia === false || control?.mediaBlocked || control?.blocked || control?.suspended || control?.muted) {
+          await deleteStoredMedia(req.file.filename);
+          res.status(403).json({ error: "Media uploads are disabled for you in this group" });
+          return;
+        }
+      }
+
+      res.status(201).json({
+        mediaUrl: messageMediaPath(req.file.filename),
+        storageKey: req.file.filename,
+        mimeType: req.file.mimetype,
+        size: req.file.size,
+      });
+    })().catch(() => {
+      res.status(500).json({ error: "Media upload failed" });
     });
   });
+});
+
+router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise<void> => {
+  const storageKey = String(req.params.storageKey);
+  if (!/^[a-f0-9-]{36}$/i.test(storageKey)) { res.status(400).json({ error: "Invalid media key" }); return; }
+  const mediaUrl = messageMediaPath(storageKey);
+  const [message] = await db.select({ senderId: messagesTable.senderId, groupId: messagesTable.groupId, recipientId: messagesTable.recipientId })
+    .from(messagesTable)
+    .where(eq(messagesTable.mediaUrl, mediaUrl));
+  if (!message) { res.status(404).json({ error: "Media not found" }); return; }
+  const user = req.currentUser!;
+  const allowed = message.groupId != null
+    ? await canAccessGroup(message.groupId, user.id, user.role)
+    : message.recipientId != null && (message.recipientId === user.id || message.senderId === user.id);
+  if (!allowed) { res.status(403).json({ error: "You cannot access this media" }); return; }
+  try {
+    const stats = await getMediaStats(storageKey);
+    res.setHeader("Content-Type", typeof req.query.type === "string" && isAllowedMediaType(req.query.type) ? req.query.type : "audio/webm");
+    res.setHeader("Content-Length", stats.size);
+    createReadStream(getMediaPath(storageKey)).pipe(res);
+  } catch {
+    res.status(404).json({ error: "Media not found" });
+  }
 });
 
 // GET /messages — List messages filtered by groupId or recipientId
@@ -76,6 +147,10 @@ router.get("/messages", requireAuth, async (req, res): Promise<void> => {
       .where(eq(messagesTable.groupId, groupId))
       .orderBy(messagesTable.createdAt);
   } else if (recipientId != null) {
+    if (!(await canMessageUser(currentUser, recipientId))) {
+      res.status(403).json({ error: "You cannot access this conversation" });
+      return;
+    }
     // Private messages between current user and recipient
     messages = await db.select().from(messagesTable)
       .where(
@@ -101,6 +176,20 @@ router.get("/messages", requireAuth, async (req, res): Promise<void> => {
 });
 
 // POST /messages — Send a message
+router.delete("/messages/:id", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!, id = Number(req.params.id);
+  const [message] = await db.select().from(messagesTable).where(eq(messagesTable.id, id));
+  if (!message) { res.status(404).json({ error: "Message not found" }); return; }
+  let allowed = message.senderId === user.id || user.role === "owner" || user.isManager || user.isPrefect;
+  if (message.groupId) {
+    const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, message.groupId));
+    allowed = allowed && Boolean(group) && (message.senderId === user.id || user.role === "owner" || user.isManager || user.isPrefect || group!.creatorId === user.id);
+  }
+  if (!allowed) { res.status(403).json({ error: "You cannot delete this message" }); return; }
+  await db.delete(messagesTable).where(eq(messagesTable.id, id));
+  res.sendStatus(204);
+});
+
 router.post("/messages", requireAuth, async (req, res): Promise<void> => {
   const currentUser = req.currentUser!;
 
@@ -112,6 +201,22 @@ router.post("/messages", requireAuth, async (req, res): Promise<void> => {
 
   if (parsed.data.groupId != null && !(await canAccessGroup(parsed.data.groupId, currentUser.id, currentUser.role))) {
     res.status(403).json({ error: "You must be a group member to post messages" });
+    return;
+  }
+  if ((parsed.data.groupId != null && parsed.data.recipientId != null) || (parsed.data.groupId == null && parsed.data.recipientId == null)) {
+    res.status(400).json({ error: "Choose exactly one group or recipient conversation" });
+    return;
+  }
+  if (parsed.data.recipientId != null && !(await canMessageUser(currentUser, parsed.data.recipientId))) {
+    res.status(403).json({ error: "You cannot message this user" });
+    return;
+  }
+  if (parsed.data.type === "voice" && !parsed.data.mediaUrl) {
+    res.status(400).json({ error: "Voice messages require an uploaded audio file" });
+    return;
+  }
+  if (parsed.data.type !== "voice" && parsed.data.mediaUrl) {
+    res.status(400).json({ error: "Only voice messages may include media" });
     return;
   }
 
@@ -127,6 +232,17 @@ router.post("/messages", requireAuth, async (req, res): Promise<void> => {
     }).from(messagesTable).where(eq(messagesTable.id, parsed.data.parentMessageId));
     if (!parent || parent.groupId !== parsed.data.groupId || parent.recipientId != null) {
       res.status(400).json({ error: "Parent message must belong to the selected group" });
+      return;
+    }
+  }
+
+  if (parsed.data.groupId != null) {
+    const [control] = await db.select().from(groupMemberControlsTable).where(and(eq(groupMemberControlsTable.groupId, parsed.data.groupId), eq(groupMemberControlsTable.userId, currentUser.id)));
+    const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, parsed.data.groupId));
+    if (control?.blocked || control?.suspended || control?.muted) { res.status(403).json({ error: "You are restricted from messaging in this group" }); return; }
+    if (parsed.data.type === "voice" && (control?.mediaBlocked || settings?.allowMedia === false)) { res.status(403).json({ error: "Media uploads are disabled for you in this group" }); return; }
+    if (settings?.announcementsOnly && !(isOwnerRole(currentUser.role) || currentUser.isManager || currentUser.isPrefect)) {
+      res.status(403).json({ error: "Only group moderators can post announcements in this group" });
       return;
     }
   }

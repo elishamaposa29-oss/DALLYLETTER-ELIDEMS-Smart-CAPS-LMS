@@ -75,8 +75,8 @@ export default function TeacherChat() {
 
   return (
     <DashboardLayout>
-      <div className="h-[calc(100vh-8rem)] min-h-[500px] flex gap-6">
-        <Card className="w-1/3 hidden md:flex flex-col bg-card/50">
+      <div className="h-[calc(100dvh-8rem)] min-h-[500px] flex flex-col md:flex-row gap-3 md:gap-6 min-w-0">
+        <Card className="w-full md:w-1/3 flex flex-col bg-card/50 max-h-40 md:max-h-none shrink-0">
           <div className="p-4 border-b">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="w-full grid grid-cols-2">

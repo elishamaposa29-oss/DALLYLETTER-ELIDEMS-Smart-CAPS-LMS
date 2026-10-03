@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, or, isNull } from "drizzle-orm";
+import { eq, or, isNull, and } from "drizzle-orm";
 import { db, notificationsTable } from "@workspace/db";
 import { CreateNotificationBody, MarkNotificationReadParams } from "@workspace/api-zod";
 import { requireAuth, requireTeacherOrOwner, requireOwner } from "../lib/auth-middleware";
@@ -16,7 +16,8 @@ router.get("/notifications", requireAuth, async (req, res): Promise<void> => {
 });
 
 // POST /notifications — Create (teacher/owner only)
-router.post("/notifications", requireAuth, requireTeacherOrOwner, async (req, res): Promise<void> => {
+router.post("/notifications", requireAuth, async (req, res): Promise<void> => {
+  if (req.currentUser?.role !== "teacher" && req.currentUser?.role !== "owner" && !req.currentUser?.isPrefect) { res.status(403).json({ error: "Only teachers, owners, or prefects can create notifications" }); return; }
   const parsed = CreateNotificationBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
@@ -35,7 +36,10 @@ router.patch("/notifications/:id/read", requireAuth, async (req, res): Promise<v
 
   const [notification] = await db.update(notificationsTable)
     .set({ isRead: true })
-    .where(eq(notificationsTable.id, params.data.id))
+    .where(and(
+      eq(notificationsTable.id, params.data.id),
+      or(eq(notificationsTable.recipientId, req.currentUser!.id), isNull(notificationsTable.recipientId)),
+    ))
     .returning();
 
   if (!notification) { res.status(404).json({ error: "Notification not found" }); return; }

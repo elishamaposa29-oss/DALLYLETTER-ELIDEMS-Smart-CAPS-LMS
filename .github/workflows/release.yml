@@ -9,7 +9,8 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    environment: ${{ github.ref_name == 'production' && 'production' || github.ref_name == 'staging' && 'staging' || 'development' }}
+    environment: >-
+      ${{ github.ref_name == 'production' && 'production' || github.ref_name == 'staging' && 'staging' || 'development' }}
     env:
       NODE_ENV: production
       PORT: 4000
@@ -51,4 +52,42 @@ jobs:
 
       - name: Verify health endpoint is available
         run: |
-          node -e "const http=require('http'); const server=require('child_process').spawn('pnpm', ['start:api'], {stdio:'inherit'}); setTimeout(() => { const req=http.get('http://127.0.0.1:4000/api/healthz', (res)=>{ let data=''; res.on('data', chunk=>data+=chunk); res.on('end', ()=>{ console.log(data); server.kill('SIGTERM'); process.exit(res.statusCode===200?0:1); }); }); req.on('error', (err)=>{ console.error(err); server.kill('SIGTERM'); process.exit(1); }); }, 5000);"
+          node - <<'NODE'
+          const http = require('http');
+          const { spawn } = require('child_process');
+
+          const server = spawn('pnpm', ['start:api'], { stdio: 'inherit' });
+
+          const deadline = Date.now() + 30000;
+          const check = () => {
+            const req = http.get('http://127.0.0.1:4000/api/healthz', (res) => {
+              let data = '';
+              res.on('data', (chunk) => data += chunk);
+              res.on('end', () => {
+                if (res.statusCode === 200) {
+                  console.log(data);
+                  server.kill('SIGTERM');
+                  process.exit(0);
+                }
+                retry();
+              });
+            });
+
+            req.on('error', retry);
+            req.setTimeout(3000, () => {
+              req.destroy();
+              retry();
+            });
+          };
+
+          const retry = () => {
+            if (Date.now() >= deadline) {
+              console.error('API health endpoint did not become ready within 30 seconds.');
+              server.kill('SIGTERM');
+              process.exit(1);
+            }
+            setTimeout(check, 1000);
+          };
+
+          check();
+          NODE

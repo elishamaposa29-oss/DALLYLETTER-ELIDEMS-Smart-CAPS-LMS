@@ -72,7 +72,7 @@ router.get("/:id",requireAuth,async(req,res):Promise<void>=>{
   const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}
   const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));
   if(!exercise){res.status(404).json({error:"Exercise not found"});return;}
-  if(exercise.status!=="published"&&!canEditExercise(req.currentUser!,exercise.createdBy)){res.status(404).json({error:"Exercise not found"});return;}
+  if(exercise.status!=="published"&&!canManageAcademicContent(req.currentUser!)){res.status(404).json({error:"Exercise not found"});return;}
   const questions=await db.select().from(exerciseQuestionsTable).where(eq(exerciseQuestionsTable.exerciseId,exercise.id)).orderBy(asc(exerciseQuestionsTable.position));
   const allOptionRows=questions.length?(await Promise.all(questions.map(q=>db.select().from(exerciseOptionsTable).where(eq(exerciseOptionsTable.questionId,q.id))))).flat():[];
   res.json({exercise,questions,options:allOptionRows.map(({isCorrect:_isCorrect,...option})=>option)});

@@ -5,11 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Shield, Star, TrendingUp, Award } from "lucide-react";
 
+
 const token = () => localStorage.getItem("dallyletter_token") ?? "";
 
 export default function ManagerPrefects() {
   const [prefects, setPrefects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
 
   useEffect(() => {
     fetch(getApiUrl("/api/achievements/prefect-leaderboard"), { headers: { Authorization: `Bearer ${token()}` } })
@@ -62,7 +64,6 @@ export default function ManagerPrefects() {
           </Card>
         ) : (
           <>
-            <div className="text-sm text-muted-foreground">{prefects.length} prefect{prefects.length !== 1 ? "s" : ""} active</div>
             <div className="space-y-3">
               {prefects.map((p, i) => (
                 <Card key={p.id} className={`border-0 shadow-sm ${i === 0 ? "ring-2 ring-amber-400/40" : ""}`}>
