@@ -20,6 +20,8 @@ export default function TeacherChat() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [message, setMessage] = useState("");
   const [activeTab, setActiveTab] = useState("groups");
+  const [lessonRequests, setLessonRequests] = useState<Array<{id:number; topic:string; notes:string|null; preferredDate:string|null; status:string; teacherReply:string|null; prefectId:number}>>([]);
+  const [requestLoading, setRequestLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
@@ -32,6 +34,17 @@ export default function TeacherChat() {
   );
 
   const sendMessageMutation = useSendMessage();
+
+  const loadLessonRequests = async () => {
+    setRequestLoading(true);
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const response = await fetch(getApiUrl("/api/achievements/lesson-requests"), { headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+      if (response.ok) setLessonRequests(await response.json());
+    } finally { setRequestLoading(false); }
+  };
+
+  useEffect(() => { void loadLessonRequests(); }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -95,15 +108,49 @@ export default function TeacherChat() {
         <Card className="w-full md:w-1/3 flex flex-col bg-card/50 max-h-40 md:max-h-none shrink-0">
           <div className="p-4 border-b">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="w-full grid grid-cols-2">
+              <TabsList className="w-full grid grid-cols-3">
                 <TabsTrigger value="groups">Groups</TabsTrigger>
                 <TabsTrigger value="students">Students</TabsTrigger>
+              <TabsTrigger value="requests">Lesson Requests</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
 
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            {activeTab === "groups" ? (
+            {activeTab === "requests" ? (
+              requestLoading ? (
+                <div className="flex justify-center p-6"><Loader2 className="h-5 w-5 animate-spin" /></div>
+              ) : lessonRequests.length === 0 ? (
+                <div className="p-6 text-center text-sm text-muted-foreground">No lesson requests yet.</div>
+              ) : lessonRequests.map(request => (
+                <div key={request.id} className="rounded-lg border p-3 space-y-2">
+                  <div className="flex items-start justify-between gap-2"><p className="font-medium text-sm">{request.topic}</p><span className="text-[10px] uppercase text-muted-foreground">{request.status}</span></div>
+                  {request.preferredDate && <p className="text-xs text-muted-foreground">Preferred: {request.preferredDate}</p>}
+                  {request.notes && <p className="text-xs text-muted-foreground">{request.notes}</p>}
+                  {request.status === "pending" && (
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={async () => {
+                        const reply = window.prompt("Optional reply to the learner:", "I can help with this topic.") ?? "";
+                        try {
+                          const token = localStorage.getItem("dallyletter_token");
+                          const response = await fetch(getApiUrl(`/api/achievements/lesson-requests/${request.id}`), { method:"PATCH", headers:{ "Content-Type":"application/json", ...(token ? {Authorization:`Bearer ${token}`} : {}) }, body:JSON.stringify({status:"accepted",teacherReply:reply.trim() || null}) });
+                          if (!response.ok) throw new Error("Request update failed");
+                          await loadLessonRequests();
+                        } catch (error) { window.alert(error instanceof Error ? error.message : "Request update failed"); }
+                      }}>Accept</Button>
+                      <Button size="sm" variant="outline" onClick={async () => {
+                        try {
+                          const token = localStorage.getItem("dallyletter_token");
+                          const response = await fetch(getApiUrl(`/api/achievements/lesson-requests/${request.id}`), { method:"PATCH", headers:{ "Content-Type":"application/json", ...(token ? {Authorization:`Bearer ${token}`} : {}) }, body:JSON.stringify({status:"declined",teacherReply:"I cannot take this request right now."}) });
+                          if (!response.ok) throw new Error("Request update failed");
+                          await loadLessonRequests();
+                        } catch (error) { window.alert(error instanceof Error ? error.message : "Request update failed"); }
+                      }}>Decline</Button>
+                    </div>
+                  )}
+                </div>
+              ))
+            ) : activeTab === "groups" ? (
               groupsLoading ? (
                 <div className="flex justify-center p-4"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
               ) : groups?.length === 0 ? (
