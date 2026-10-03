@@ -107,7 +107,8 @@ router.post("/messages/media", requireAuth, (req, res): void => {
 router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise<void> => {
   const storageKey = String(req.params.storageKey);
   if (!/^[a-f0-9-]{36}$/i.test(storageKey)) { res.status(400).json({ error: "Invalid media key" }); return; }
-  const mediaUrl = messageMediaPath(storageKey);
+  const requestedType = typeof req.query.type === "string" ? req.query.type : "";
+  const mediaUrl = requestedType ? messageMediaPath(storageKey) + "?type=" + encodeURIComponent(requestedType) : messageMediaPath(storageKey);
   const [message] = await db.select({ senderId: messagesTable.senderId, groupId: messagesTable.groupId, recipientId: messagesTable.recipientId })
     .from(messagesTable)
     .where(eq(messagesTable.mediaUrl, mediaUrl));
