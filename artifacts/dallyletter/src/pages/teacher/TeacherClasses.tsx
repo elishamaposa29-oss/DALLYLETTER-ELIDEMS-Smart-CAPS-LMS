@@ -307,6 +307,27 @@ function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean
   const unresolved = hands.filter(h => !h.isResolved);
   if (unresolved.length === 0) return null;
 
+  const handleAttachMedia = async (studentId: number, file: File) => {
+    const token = localStorage.getItem("dallyletter_token");
+    const body = new FormData();
+    body.append("recipientId", String(studentId));
+    body.append("file", file, file.name);
+    const upload = await fetch(getApiUrl("/api/messages/media"), {
+      method: "POST",
+      headers: token ? { Authorization: "Bearer " + token } : {},
+      body,
+    });
+    const result = await upload.json().catch(() => null) as { mediaUrl?: string; error?: string } | null;
+    if (!upload.ok || !result?.mediaUrl) throw new Error(result?.error || "Attachment upload failed");
+    const send = await fetch(getApiUrl("/api/messages"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
+      body: JSON.stringify({ content: file.name, type: "media", recipientId: studentId, mediaUrl: result.mediaUrl }),
+    });
+    if (!send.ok) throw new Error("Attachment message failed");
+    toast({ title: "Media sent" });
+  };
+
   const handleReply = async (studentId: number, studentName: string) => {
     const reply = window.prompt("Reply to " + studentName + ":");
     if (!reply?.trim()) return;
@@ -356,9 +377,14 @@ function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean
               <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" title="Reply to learner" onClick={() => void handleReply(hand.studentId, hand.studentName).catch(() => toast({ variant: "destructive", title: "Reply failed" }))}>
                 <MessageSquare className="h-3 w-3" /><span className="ml-1">Reply</span>
               </Button>
-              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" title="Attach media to learner" onClick={() => toast({ title: "Use Chat to attach media", description: "Open the learner conversation to send a file or voice message." })}>
+              <label className="inline-flex h-7 cursor-pointer items-center rounded-md px-2 text-xs hover:bg-muted" title="Attach learning media">
                 <Paperclip className="h-3 w-3" /><span className="ml-1">Attach</span>
-              </Button>
+                <input type="file" className="sr-only" accept="image/*,video/*,application/pdf,.doc,.docx" onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  if (file) void handleAttachMedia(hand.studentId, file).catch((error) => toast({ variant: "destructive", title: "Attachment failed", description: error instanceof Error ? error.message : "Could not send media." }));
+                }} />
+              </label>
             <Button
               variant="ghost"
               size="sm"
