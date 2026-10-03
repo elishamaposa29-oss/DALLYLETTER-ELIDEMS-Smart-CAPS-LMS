@@ -31,6 +31,9 @@ export default function StudentPolls() {
   const [selectedPollId, setSelectedPollId] = useState<number | null>(null);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [myPerformance, setMyPerformance] = useState<{ submitted: boolean; score: number; totalQuestions: number; percentage: number } | null>(null);
+  const [resultPrivacy, setResultPrivacy] = useState<"public" | "private" | "selected_friends">("private");
+  const [selectedFriendIds, setSelectedFriendIds] = useState<number[]>([]);
+  const [friends, setFriends] = useState<{ id: number; name: string }[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const token = () => localStorage.getItem("dallyletter_token");
@@ -73,7 +76,7 @@ export default function StudentPolls() {
       const r = await fetch(getApiUrl(`/api/polls/${activePoll.id}/submit`), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
-        body: JSON.stringify({ answers: answerArray }),
+        body: JSON.stringify({ answers: answerArray, resultPrivacy, selectedFriendIds }),
       });
       if (r.status === 400) {
         const d = await r.json() as { error: string };
@@ -143,7 +146,16 @@ export default function StudentPolls() {
           </Card>
           <div className="flex items-center justify-between">
             <Button variant="outline" onClick={() => setCurrentQ(q => Math.max(0, q - 1))} disabled={currentQ === 0} className="gap-1.5"><ChevronLeft className="h-4 w-4" />Back</Button>
-            <span className="text-sm text-muted-foreground">{answered}/{activePoll.questions.length} answered</span>
+            <div className="w-full rounded-lg border bg-muted/20 p-3 space-y-2">
+            <p className="text-xs font-semibold">Results privacy</p>
+            <select value={resultPrivacy} onChange={e => setResultPrivacy(e.target.value as typeof resultPrivacy)} className="w-full h-9 rounded-md border bg-background px-2 text-sm">
+              <option value="private">Private — only me and authorized staff</option>
+              <option value="public">Public — classmates can see my result</option>
+              <option value="selected_friends">Selected friends only</option>
+            </select>
+            {resultPrivacy === "selected_friends" && <div className="max-h-28 overflow-y-auto space-y-1">{friends.map(friend => <label key={friend.id} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={selectedFriendIds.includes(friend.id)} onChange={() => setSelectedFriendIds(ids => ids.includes(friend.id) ? ids.filter(id => id !== friend.id) : [...ids, friend.id])} />{friend.name}</label>)}</div>}
+          </div>
+          <span className="text-sm text-muted-foreground">{answered}/{activePoll.questions.length} answered</span>
             {currentQ < activePoll.questions.length - 1 ? (
               <Button onClick={() => setCurrentQ(q => q + 1)} className="gap-1.5">Next<ChevronRight className="h-4 w-4" /></Button>
             ) : (
