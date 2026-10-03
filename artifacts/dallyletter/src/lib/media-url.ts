@@ -1,4 +1,4 @@
-const storedMediaPath = /^\/api\/lessons\/media\/[a-f0-9-]{36}$/i;
+const storedMediaPath = /^\/api\/(?:lessons|messages)\/media\/[a-f0-9-]{36}$/i;
 
 export function isStoredMediaUrl(value: string): boolean {
   try {
