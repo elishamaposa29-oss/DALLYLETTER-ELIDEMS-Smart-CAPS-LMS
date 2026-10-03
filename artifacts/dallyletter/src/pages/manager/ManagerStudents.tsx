@@ -39,6 +39,17 @@ export default function ManagerStudents() {
             <p className="text-slate-500 mt-1">{students.length} enrolled learner{students.length !== 1 ? "s" : ""}</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            {selected.length > 0 && <Button size="sm" variant="outline" onClick={async () => {
+              const content = window.prompt(`Broadcast to ${selected.length} selected learners:`);
+              if (!content?.trim()) return;
+              try {
+                const response = await fetch(getApiUrl("/api/broadcasts"), { method:"POST", headers:{ "Content-Type":"application/json", Authorization:`Bearer ${token()}` }, body:JSON.stringify({ name:"Learning announcement", content:content.trim(), recipientIds:selected }) });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.error || "Broadcast failed");
+                toast({ title:"Announcement sent", description:`Delivered to ${data.recipientCount ?? selected.length} learners.` });
+                setSelected([]);
+              } catch (error) { toast({ variant:"destructive", title:"Broadcast failed", description:error instanceof Error ? error.message : "Try again." }); }
+            }}><MessageSquare className="mr-1.5 h-3.5 w-3.5" />Broadcast</Button>}
             <Search className="h-4 w-4 text-slate-400" />
             <Input placeholder="Search students…" value={search} onChange={e => setSearch(e.target.value)} className="w-48 h-9 text-sm" />
           </div>
