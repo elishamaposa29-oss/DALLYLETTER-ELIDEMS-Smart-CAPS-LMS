@@ -91,10 +91,6 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 // Extract user from Bearer token on all requests
 app.use(extractUser);
 
-app.use("/api", router);
-
-app.use("/api", router);
-
 // Record authenticated activity for owner auditability. Request bodies are intentionally excluded.
 app.use((req, res, next) => {
   res.on("finish", () => {
@@ -112,3 +108,7 @@ app.use((req, res, next) => {
 });
 
 export default app;
+
+
+
+
