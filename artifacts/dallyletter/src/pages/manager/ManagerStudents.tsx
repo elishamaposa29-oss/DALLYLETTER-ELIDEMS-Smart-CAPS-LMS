@@ -93,7 +93,7 @@ export default function ManagerStudents() {
                       </>
                     )}
                     {!s.isPrefect && <Button size="sm" variant="outline" onClick={() => void action(s.id, "promote_prefect")} disabled={busy === s.id}><Shield className="mr-1.5 h-3.5 w-3.5" />Make prefect</Button>}
-                    <Button size="sm" variant="outline" onClick={() => window.location.assign("/student/chat")}><MessageSquare className="mr-1.5 h-3.5 w-3.5" />Open Connect</Button>
+                    <Button size="sm" variant="outline" onClick={() => window.location.assign("/manager/chat")}><MessageSquare className="mr-1.5 h-3.5 w-3.5" />Open Connect</Button>
                   </div>
                 </CardContent>
               </Card>
