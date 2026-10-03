@@ -30,6 +30,7 @@ export default function StudentPolls() {
   const [leaderboard, setLeaderboard] = useState<LeaderEntry[]>([]);
   const [selectedPollId, setSelectedPollId] = useState<number | null>(null);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const [myPerformance, setMyPerformance] = useState<{ submitted: boolean; score: number; totalQuestions: number; percentage: number } | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const token = () => localStorage.getItem("dallyletter_token");
@@ -94,8 +95,11 @@ export default function StudentPolls() {
 
   async function loadLeaderboard(pollId: number) {
     setSelectedPollId(pollId);
+    const mine = await fetch(getApiUrl(`/api/polls/${pollId}/my-results`), { headers: { Authorization: `Bearer ${token()}` } });
+    if (mine.ok) setMyPerformance(await mine.json());
     const r = await fetch(getApiUrl(`/api/polls/${pollId}/results`), { headers: { Authorization: `Bearer ${token()}` } });
-    if (r.ok) { const d = await r.json(); setLeaderboard(d.submissions ?? []); setScreen("leaderboard"); }
+    if (r.ok) { const d = await r.json(); setLeaderboard(d.submissions ?? []); } else setLeaderboard([]);
+    setScreen("leaderboard");
   }
 
   function formatTime(s: number) { return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`; }
@@ -197,8 +201,8 @@ export default function StudentPolls() {
       <DashboardLayout>
         <div className="max-w-lg mx-auto space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold flex items-center gap-2"><Trophy className="h-5 w-5 text-amber-500" />Leaderboard</h2>
-            <Button variant="outline" size="sm" onClick={() => setScreen(results ? "results" : "list")}>Back</Button>
+            <h2 className="text-xl font-bold flex items-center gap-2"><Trophy className="h-5 w-5 text-amber-500" />Performance & Results</h2>
+            <Button variant="outline" size="sm" onClick={() => setScreen(results ? "results" : "list")}>Back</Button>\n          {myPerformance && <Card className="w-full"><CardContent className="p-4"><p className="font-semibold">Your performance</p><p className="text-2xl font-bold mt-1">{myPerformance.percentage}%</p><p className="text-sm text-muted-foreground">{myPerformance.submitted ? `You scored ${myPerformance.score}/${myPerformance.totalQuestions}.` : "You have not submitted this poll yet."}</p></CardContent></Card>}
           </div>
           {leaderboard.length === 0 ? <Card><CardContent className="p-8 text-center text-muted-foreground">No submissions yet.</CardContent></Card> : (
             <div className="space-y-2">
