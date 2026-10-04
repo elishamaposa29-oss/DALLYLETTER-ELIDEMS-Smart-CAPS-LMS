@@ -7,6 +7,20 @@ export async function ensureConnectSchema(): Promise<void> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+
+    // The CI database and some fresh deployments may contain the core users table
+    // without the optional notifications table. Create the canonical table first,
+    // then safely extend it. This is idempotent and matches lib/db schema.
+    await client.query(`CREATE TABLE IF NOT EXISTS notifications (
+      id serial PRIMARY KEY,
+      recipient_id integer,
+      title text NOT NULL,
+      message text NOT NULL,
+      link text,
+      type text NOT NULL DEFAULT 'general',
+      is_read boolean NOT NULL DEFAULT false,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`);
     await client.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS link text`);
 
     await client.query(`CREATE TABLE IF NOT EXISTS lesson_requests (
