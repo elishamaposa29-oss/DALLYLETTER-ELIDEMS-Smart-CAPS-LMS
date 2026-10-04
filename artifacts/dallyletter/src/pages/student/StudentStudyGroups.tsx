@@ -175,7 +175,7 @@ export default function StudentStudyGroups() {
       <div className="space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">{isStaff ? "Study Groups Management" : "Study Groups"}</h1>
+            <h1 className="text-3xl font-bold tracking-tight">{(user?.role === "owner" || user?.isManager === true) ? "Study Groups Management" : "Study Groups"}</h1>
             <p className="text-muted-foreground">Create, join and manage focused learning communities.</p>
           </div>
           {canCreateGroup && <Button onClick={() => setShowCreate(value => !value)} className="gap-2 shrink-0">
