@@ -11,7 +11,7 @@ import {
   UpdateLessonBody,
   DeleteLessonParams,
 } from "@workspace/api-zod";
-import { requireAuth, requireTeacherOrOwner, isOwnerRole } from "../lib/auth-middleware";
+import { requireAuth, requireTeacherOrOwner } from "../lib/auth-middleware";
 import {
   createMediaStorageKey,
   ensureMediaDirectory,
