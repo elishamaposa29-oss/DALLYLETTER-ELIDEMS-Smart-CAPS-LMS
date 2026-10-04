@@ -141,10 +141,7 @@ router.post("/polls/:id/submit", requireAuth, async (req, res): Promise<void> =>
   const [poll] = await db.select().from(pollsTable).where(eq(pollsTable.id, id));
   if (!poll || poll.status !== "active") { res.status(400).json({ error: "Poll not available" }); return; }
 
-  // Check already submitted
-  const [existing] = await db.select().from(pollSubmissionsTable)
-    .where(and(eq(pollSubmissionsTable.pollId, id), eq(pollSubmissionsTable.studentId, user.id)));
-  if (existing) { res.status(400).json({ error: "Already submitted" }); return; }
+  // Each submission is a new attempt. Historical submissions remain available for analytics.
 
   const { answers, resultPrivacy = "private", selectedFriendIds = [] } = req.body as { answers: { questionId: number; optionId: number }[]; resultPrivacy?: string; selectedFriendIds?: number[] };
   if (!["public", "private", "selected_friends"].includes(resultPrivacy)) { res.status(400).json({ error: "Invalid results privacy" }); return; }
