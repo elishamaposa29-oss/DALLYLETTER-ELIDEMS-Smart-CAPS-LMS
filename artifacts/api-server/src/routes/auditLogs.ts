@@ -2,14 +2,14 @@ import { Router } from "express";
 import { db, auditLogsTable, usersTable } from "@workspace/db";
 import { eq, desc, inArray } from "drizzle-orm";
 import { getAIProvider } from "../lib/ai-provider";
-import { requireAuth } from "../lib/auth-middleware";
+import { requireAuth, canAccessManager } from "../lib/auth-middleware";
 
 const router = Router();
 
 // GET /audit-logs — list audit logs (owner only)
 router.get("/audit-logs", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (user.role !== "owner") { res.status(403).json({ error: "Owner only" }); return; }
+  if (!canAccessManager(user)) { res.status(403).json({ error: "Manager or owner access required" }); return; }
   const limit = Math.min(parseInt(String(req.query.limit ?? "200")), 500);
   const logs = await db.select({
     id: auditLogsTable.id,

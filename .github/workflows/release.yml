@@ -50,6 +50,9 @@ jobs:
       - name: Typecheck and build
         run: pnpm run ci:verify
 
+      - name: Provision CI database schema
+        run: pnpm --filter @workspace/db push
+
       - name: Verify health endpoint is available
         run: |
           node - <<'NODE'

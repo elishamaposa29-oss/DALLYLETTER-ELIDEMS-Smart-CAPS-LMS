@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { Loader2, ClipboardList, Play, CheckCircle, XCircle, Trophy, Clock, ChevronRight, ChevronLeft, BarChart3 } from "lucide-react";
 
 interface Poll { id: number; title: string; grade: string | null; subject: string | null; mode: string; status: string; timerSeconds: number | null; type: string; }
@@ -19,6 +20,8 @@ type Screen = "list" | "quiz" | "results" | "leaderboard";
 
 export default function StudentPolls() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const previewOnly = user?.role !== "student";
   const [polls, setPolls] = useState<Poll[]>([]);
   const [loading, setLoading] = useState(true);
   const [screen, setScreen] = useState<Screen>("list");
@@ -58,6 +61,7 @@ export default function StudentPolls() {
   }, [screen, timeLeft]);
 
   async function startPoll(pollId: number) {
+    if (previewOnly) { toast({ title: "Preview mode", description: "Staff can inspect polls without submitting answers." }); return; }
     const r = await fetch(getApiUrl(`/api/polls/${pollId}`), { headers: { Authorization: `Bearer ${token()}` } });
     if (!r.ok) { toast({ variant: "destructive", title: "Could not load poll" }); return; }
     const poll = await r.json() as PollDetail;

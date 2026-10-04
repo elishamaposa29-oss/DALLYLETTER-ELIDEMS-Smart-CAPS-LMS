@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { Users, BookOpen, Video, AlertTriangle, TrendingUp, GraduationCap, Shield, BarChart3, Star } from "lucide-react";
+import { ActivityMonitor } from "@/components/ActivityMonitor";
 
 const token = () => localStorage.getItem("dallyletter_token") ?? "";
 
@@ -120,6 +121,7 @@ export default function ManagerHome() {
           </Card>
         </div>
 
+<ActivityMonitor />
         {/* Quick Nav */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {[

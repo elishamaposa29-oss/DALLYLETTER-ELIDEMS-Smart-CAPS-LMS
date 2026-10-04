@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq, or, isNull, and } from "drizzle-orm";
 import { db, notificationsTable } from "@workspace/db";
 import { CreateNotificationBody, MarkNotificationReadParams } from "@workspace/api-zod";
-import { requireAuth, requireTeacherOrOwner, requireOwner } from "../lib/auth-middleware";
+import { requireAuth, requireTeacherOrOwner, requireOwner, canAccessManager } from "../lib/auth-middleware";
 
 const router: IRouter = Router();
 
@@ -17,7 +17,7 @@ router.get("/notifications", requireAuth, async (req, res): Promise<void> => {
 
 // POST /notifications — Create (teacher/owner only)
 router.post("/notifications", requireAuth, async (req, res): Promise<void> => {
-  if (req.currentUser?.role !== "teacher" && req.currentUser?.role !== "owner" && !req.currentUser?.isPrefect) { res.status(403).json({ error: "Only teachers, owners, or prefects can create notifications" }); return; }
+  if (!canAccessManager(req.currentUser!) && !req.currentUser?.isPrefect) { res.status(403).json({ error: "Only authorized staff or prefects can create notifications" }); return; }
   const parsed = CreateNotificationBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
