@@ -24,6 +24,7 @@ export const groupMemberControlsTable = pgTable("group_member_controls", {
   mediaBlocked: boolean("media_blocked").notNull().default(false),
   suspended: boolean("suspended").notNull().default(false),
   muted: boolean("muted").notNull().default(false),
+  canManageSettings: boolean("can_manage_settings").notNull().default(false),
   reason: text("reason"),
   updatedBy: integer("updated_by").references(() => usersTable.id),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
