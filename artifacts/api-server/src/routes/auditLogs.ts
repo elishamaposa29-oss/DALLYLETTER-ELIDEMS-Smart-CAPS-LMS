@@ -25,14 +25,18 @@ router.get("/audit-logs", requireAuth, async (req, res): Promise<void> => {
     performerId: usersTable.id,
     performerIsPrefect: usersTable.isPrefect,
   }).from(auditLogsTable).leftJoin(usersTable, eq(auditLogsTable.performedBy, usersTable.id));
+  // Managers may monitor academic/user activity only. Never expose operational,
+  // owner/admin, payment, app/system, auth, security, or data-management logs.
+  const managerVisibleCategories = [
+    "academic", "attendance", "content", "activity", "staff", "moderation",
+  ];
   const logs = isOwner
     ? await base.orderBy(desc(auditLogsTable.createdAt)).limit(limit)
     : await base.where(and(
-        // Manager scope is determined by who performed the action:
-        // learner + prefect (student role) and teacher activity only.
         inArray(usersTable.role, ["student", "teacher"]),
         eq(usersTable.isManager, false),
-        eq(usersTable.isBlocked, false)
+        eq(usersTable.isBlocked, false),
+        inArray(auditLogsTable.category, managerVisibleCategories),
       )).orderBy(desc(auditLogsTable.createdAt)).limit(limit);
   res.json(logs.map(({ details, performerIsPrefect, ...log }) => ({
     ...log,
