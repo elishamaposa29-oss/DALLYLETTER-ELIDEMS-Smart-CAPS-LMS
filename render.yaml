@@ -27,7 +27,7 @@ services:
     branch: production
     autoDeploy: false
     rootDir: artifacts/api-server
-    buildCommand: cd ../.. && pnpm install --frozen-lockfile && pnpm --dir scripts repair:messages-schema && pnpm --dir scripts seed:owner && pnpm --dir artifacts/api-server build
+    buildCommand: cd ../.. && pnpm install --frozen-lockfile && pnpm --dir scripts repair:messages-schema && pnpm --dir scripts repair:connect-schema && pnpm --dir scripts seed:owner && pnpm --dir artifacts/api-server build
     preDeployCommand: cd ../.. && pnpm run db:push && pnpm --dir scripts migrate:exercise-schema
     startCommand: pnpm start
     healthCheckPath: /api/healthz
