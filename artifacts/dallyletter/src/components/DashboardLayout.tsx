@@ -115,7 +115,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const NavLinks = ({ onNav }: { onNav?: () => void }) => {
     let lastSection: string | undefined;
     return (
-      <SystemNotificationBridge />
       <div className="space-y-0.5">
         {navItems.map((item) => {
           const Icon = item.icon;
@@ -211,6 +210,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   );
 
   return (
+    <SystemNotificationBridge />
     <div className="min-h-screen bg-background flex flex-col md:flex-row">
       <header className="md:hidden flex items-center justify-between px-4 py-3 border-b bg-[#0a1628] sticky top-0 z-30">
         <div className="flex items-center gap-2">
