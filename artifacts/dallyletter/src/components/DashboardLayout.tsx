@@ -1,3 +1,4 @@
+import { SystemNotificationBridge } from "@/components/SystemNotificationBridge";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -114,6 +115,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const NavLinks = ({ onNav }: { onNav?: () => void }) => {
     let lastSection: string | undefined;
     return (
+      <SystemNotificationBridge />
       <div className="space-y-0.5">
         {navItems.map((item) => {
           const Icon = item.icon;
