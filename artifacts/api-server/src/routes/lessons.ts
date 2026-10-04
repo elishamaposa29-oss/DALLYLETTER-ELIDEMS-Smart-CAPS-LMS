@@ -11,7 +11,7 @@ import {
   UpdateLessonBody,
   DeleteLessonParams,
 } from "@workspace/api-zod";
-import { requireAuth, requireTeacherOrOwner } from "../lib/auth-middleware";
+import { requireAuth, requireTeacherOrOwner, isOwnerRole } from "../lib/auth-middleware";
 import {
   createMediaStorageKey,
   ensureMediaDirectory,
@@ -212,6 +212,17 @@ router.patch("/lessons/:id", requireAuth, requireTeacherOrOwner, async (req, res
     return;
   }
 
+  const [existingLesson] = await db.select({ teacherId: lessonsTable.teacherId }).from(lessonsTable).where(eq(lessonsTable.id, params.data.id));
+  if (!existingLesson) {
+    res.status(404).json({ error: "Lesson not found" });
+    return;
+  }
+  const actor = req.currentUser!;
+  if (actor.role === "teacher" && !actor.isManager && existingLesson.teacherId !== actor.id) {
+    res.status(403).json({ error: "Teachers can only modify lessons they created" });
+    return;
+  }
+
   const updates: Record<string, unknown> = {};
   if (body.data.title != null) updates.title = body.data.title;
   if (body.data.description != null) updates.description = body.data.description;
@@ -242,6 +253,16 @@ router.delete("/lessons/:id", requireAuth, requireTeacherOrOwner, async (req, re
     return;
   }
 
+  const [existingLesson] = await db.select({ teacherId: lessonsTable.teacherId }).from(lessonsTable).where(eq(lessonsTable.id, params.data.id));
+  if (!existingLesson) {
+    res.status(404).json({ error: "Lesson not found" });
+    return;
+  }
+  const actor = req.currentUser!;
+  if (actor.role === "teacher" && !actor.isManager && existingLesson.teacherId !== actor.id) {
+    res.status(403).json({ error: "Teachers can only delete lessons they created" });
+    return;
+  }
   await db.delete(lessonsTable).where(eq(lessonsTable.id, params.data.id));
   res.sendStatus(204);
 });
