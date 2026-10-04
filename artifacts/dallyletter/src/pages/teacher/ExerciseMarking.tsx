@@ -10,28 +10,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 
 function DrawAnswer({ data }: { data: unknown }) {
-  const d = data as { strokes?: { x: number; y: number; px: number; py: number }[] };
-  return (
-    <canvas
-      width={900}
-      height={320}
-      className="w-full rounded border bg-white"
-      ref={(canvas) => {
-        if (!canvas) return;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.lineWidth = 2;
-        for (const s of d?.strokes ?? []) {
-          ctx.beginPath();
-          ctx.moveTo(s.px, s.py);
-          ctx.lineTo(s.x, s.y);
-          ctx.stroke();
-        }
-      }}
-    />
-  );
+  const d = data as { strokes?: { x:number;y:number;px:number;py:number;color?:string;width?:number;tool?:string }[]; labels?: { text:string;x:number;y:number;color?:string }[] };
+  return <canvas width={1200} height={700} className="w-full max-h-[520px] rounded border bg-white" ref={canvas => {
+    if (!canvas) return; const ctx=canvas.getContext("2d"); if (!ctx) return;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    for (const s of d?.strokes ?? []) { ctx.save(); ctx.lineCap="round"; ctx.lineWidth=Number(s.width??2); ctx.strokeStyle=s.color??"#111827"; ctx.globalCompositeOperation=s.tool==="eraser"?"destination-out":"source-over"; ctx.beginPath(); ctx.moveTo(s.px,s.py); ctx.lineTo(s.x,s.y); ctx.stroke(); ctx.restore(); }
+    ctx.font="16px sans-serif"; for (const label of d?.labels ?? []) { ctx.fillStyle=label.color??"#111827"; ctx.fillText(label.text,label.x,label.y); }
+  }} />;
 }
+
 
 function AuthenticatedAttachment({ url }: { url: string }) {
   const [busy, setBusy] = useState(false);
