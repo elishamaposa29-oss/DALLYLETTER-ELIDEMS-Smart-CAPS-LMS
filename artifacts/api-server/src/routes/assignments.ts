@@ -77,9 +77,8 @@ router.get("/", requireAuth, async (req, res): Promise<void> => {
   if (user.role !== "student" && !canManageAcademicContent(user)) { res.status(403).json({ error: "Assignment access required" }); return; }
   let rows;
   if (canManageAcademicContent(user)) {
-    rows = user.role === "teacher" && !user.isManager
-      ? await db.select().from(assignmentsTable).where(eq(assignmentsTable.teacherId, user.id)).orderBy(desc(assignmentsTable.createdAt))
-      : await db.select().from(assignmentsTable).orderBy(desc(assignmentsTable.createdAt));
+    // Staff may preview all assignments, but mutation endpoints below enforce ownership.
+    rows = await db.select().from(assignmentsTable).orderBy(desc(assignmentsTable.createdAt));
   } else {
     rows = await db.select().from(assignmentsTable)
       .where(and(
@@ -97,8 +96,7 @@ router.get("/:id", requireAuth, async (req, res): Promise<void> => {
   const [assignment] = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, parseInt(String(req.params.id))));
   if (!assignment) { res.status(404).json({ error: "Not found" }); return; }
   if (user.role === "student" && !isVisibleToStudent(assignment, user.grade)) { res.status(404).json({ error: "Not found" }); return; }
-    if (user.role === "teacher" && !user.isManager && assignment.teacherId !== user.id) { res.status(403).json({ error: "You can only view your own assignments" }); return; }
-  const submissions = user.role === "student"
+    const submissions = user.role === "student"
     ? await db.select().from(assignmentSubmissionsTable).where(and(eq(assignmentSubmissionsTable.assignmentId, assignment.id), eq(assignmentSubmissionsTable.studentId, user.id)))
     : await db.select().from(assignmentSubmissionsTable).where(eq(assignmentSubmissionsTable.assignmentId, assignment.id));
   res.json({ ...assignment, submissions });
@@ -169,10 +167,6 @@ router.get("/:id/submissions", requireAuth, async (req, res): Promise<void> => {
   }
   const [assignment] = await db.select({ teacherId: assignmentsTable.teacherId }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
   if (!assignment) { res.status(404).json({ error: "Not found" }); return; }
-  if (!isOwnerRole(user.role) && !user.isManager && (user.role !== "teacher" || assignment.teacherId !== user.id)) {
-    res.status(403).json({ error: "You can only view submissions for your own assignments" });
-    return;
-  }
   const subs = await db.select().from(assignmentSubmissionsTable).where(eq(assignmentSubmissionsTable.assignmentId, assignmentId));
   res.json(subs);
 });
