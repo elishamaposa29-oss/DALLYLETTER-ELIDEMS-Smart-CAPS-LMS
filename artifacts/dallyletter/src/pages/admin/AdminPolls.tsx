@@ -109,7 +109,10 @@ export default function AdminPolls() {
     });
     setCreating(false);
     if (r.ok) {
-      toast({ title: "AI Poll saved!" });
+      const created = await r.json();
+      const activate = await fetch(getApiUrl(`/api/polls/${created.id}`), { method:"PATCH", headers:{ "Content-Type":"application/json", Authorization:`Bearer ${token()}` }, body:JSON.stringify({ status:"active" }) });
+      if (!activate.ok) { toast({ variant:"destructive", title:"AI poll created but not published" }); return; }
+      toast({ title: "AI Poll created and published!" });
       setAiGenOpen(false);
       setAiGenerated(null);
       setAiTopic({ topic: "", grade: "", subject: "", count: "5" });
