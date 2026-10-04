@@ -11,6 +11,7 @@ import { Loader2, Plus, Trash2, Play, Square, BarChart3, Sparkles, ClipboardList
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 
 interface Poll { id: number; title: string; topic: string | null; type: string; grade: string | null; subject: string | null; mode: string; status: string; createdAt: string; }
 interface PollQuestion { id: number; question: string; difficulty: string; explanation: string; imageUrl?: string | null; options: { id: number; text: string; isCorrect?: boolean }[]; }
@@ -211,7 +212,7 @@ export default function AdminPolls() {
                             </div>
                           ))}
                         </div>
-                        {q.imageUrl && <img src={q.imageUrl.startsWith("/api/") ? undefined : q.imageUrl} alt="" className="mb-2 max-h-56 w-full rounded-md object-contain bg-background" />}{q.explanation && <p className="text-xs text-muted-foreground mt-2 italic">{q.explanation}</p>}
+                        {q.imageUrl && (q.imageUrl.startsWith("/api/") ? <AuthenticatedMedia url={q.imageUrl} type="image" title={q.question} /> : <img src={q.imageUrl} alt={q.question} className="mb-2 max-h-56 w-full rounded-md object-contain bg-background" />)}{q.explanation && <p className="text-xs text-muted-foreground mt-2 italic">{q.explanation}</p>}
                       </div>
                     ))}
                   </div>
@@ -263,7 +264,7 @@ export default function AdminPolls() {
                     </div>
                     <Input placeholder="Enter question" value={q.question} onChange={e => setNewQuestions(qs => qs.map((x, i) => i === qi ? { ...x, question: e.target.value } : x))} />
                     <div className="flex flex-wrap items-center gap-2"><label className="cursor-pointer rounded-md border px-3 py-2 text-xs font-medium hover:bg-muted"><input type="file" accept="image/*" className="sr-only" onChange={e => { const file=e.target.files?.[0]; if(file) void uploadQuestionImage(qi,file).catch(error => toast({ variant:"destructive", title:"Image upload failed", description:error instanceof Error?error.message:"Try again" })); e.currentTarget.value=""; }} />{q.imageUrl ? "Replace question image" : "Add question image"}</label>{q.imageUrl && <Badge variant="outline">Image attached</Badge>}</div>
-                    {q.imageUrl && <img src={q.imageUrl.startsWith("/api/") ? undefined : q.imageUrl} alt="" className="max-h-40 w-full rounded-md object-contain bg-background" />}
+                    {q.imageUrl && (q.imageUrl.startsWith("/api/") ? <AuthenticatedMedia url={q.imageUrl} type="image" title={q.question} /> : <img src={q.imageUrl} alt={q.question} className="max-h-40 w-full rounded-md object-contain bg-background" />)}
                     <div className="space-y-1.5">
                       {q.options.map((opt, oi) => (
                         <div key={oi} className="flex gap-2 items-center">
