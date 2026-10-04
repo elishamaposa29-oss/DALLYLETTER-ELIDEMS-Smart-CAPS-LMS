@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Sparkles, AlertTriangle, CheckCircle2, Clock3, RotateCcw } from "lucide-react";
+import { Sparkles, AlertTriangle, CheckCircle2, Clock3, RotateCcw, XCircle } from "lucide-react";
 import { useRoute } from "wouter";
 import { getApiUrl } from "@workspace/api-client-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
@@ -10,28 +10,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 
 function DrawAnswer({ data }: { data: unknown }) {
-  const d = data as { strokes?: { x: number; y: number; px: number; py: number }[] };
-  return (
-    <canvas
-      width={900}
-      height={320}
-      className="w-full rounded border bg-white"
-      ref={(canvas) => {
-        if (!canvas) return;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.lineWidth = 2;
-        for (const s of d?.strokes ?? []) {
-          ctx.beginPath();
-          ctx.moveTo(s.px, s.py);
-          ctx.lineTo(s.x, s.y);
-          ctx.stroke();
-        }
-      }}
-    />
-  );
+  const d = data as { strokes?: { x:number;y:number;px:number;py:number;color?:string;width?:number;tool?:string }[]; labels?: { text:string;x:number;y:number;color?:string }[] };
+  return <canvas width={1200} height={700} className="w-full max-h-[520px] rounded border bg-white" ref={canvas => {
+    if (!canvas) return; const ctx=canvas.getContext("2d"); if (!ctx) return;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    for (const s of d?.strokes ?? []) { ctx.save(); ctx.lineCap="round"; ctx.lineWidth=Number(s.width??2); ctx.strokeStyle=s.color??"#111827"; ctx.globalCompositeOperation=s.tool==="eraser"?"destination-out":"source-over"; ctx.beginPath(); ctx.moveTo(s.px,s.py); ctx.lineTo(s.x,s.y); ctx.stroke(); ctx.restore(); }
+    ctx.font="16px sans-serif"; for (const label of d?.labels ?? []) { ctx.fillStyle=label.color??"#111827"; ctx.fillText(label.text,label.x,label.y); }
+  }} />;
 }
+
 
 function AuthenticatedAttachment({ url }: { url: string }) {
   const [busy, setBusy] = useState(false);
@@ -303,7 +290,7 @@ export default function ExerciseMarking() {
 
                     <div className="grid gap-3 sm:grid-cols-[auto_1fr]">
                       <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1"><Button type="button" size="sm" variant="outline" onClick={()=>setMarks((m)=>({...m,[a.id]:q?.marksAllocated??"0"}))} aria-label={`Mark question ${i+1} correct`}>✓</Button><Button type="button" size="sm" variant="outline" onClick={()=>setMarks((m)=>({...m,[a.id]:"0"}))} aria-label={`Unmark question ${i+1}`}>×</Button><Input
+                        <div className="flex items-center gap-1"><Button type="button" size="sm" variant="outline" className="text-emerald-600 border-emerald-300 hover:bg-emerald-50" onClick={()=>setMarks((m)=>({...m,[a.id]:q?.marksAllocated??"0"}))} aria-label={`Mark question ${i+1} correct`}><CheckCircle2 className="h-4 w-4" /></Button><Button type="button" size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50" onClick={()=>setMarks((m)=>({...m,[a.id]:"0"}))} aria-label={`Mark question ${i+1} incorrect`}><XCircle className="h-4 w-4" /></Button><Input
                           type="number"
                           min="0"
                           max={q?.marksAllocated ?? undefined}

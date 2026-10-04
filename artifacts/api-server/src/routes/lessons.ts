@@ -1,6 +1,6 @@
 // Lessons routes — CRUD for educational content
 import { Router, type IRouter } from "express";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { createReadStream } from "node:fs";
 import multer from "multer";
 import { db, lessonsTable, activityLogTable, followsTable, notificationPreferencesTable, notificationsTable } from "@workspace/db";
@@ -23,6 +23,30 @@ import {
 } from "../lib/media-storage";
 
 const router: IRouter = Router();
+
+async function notifyTeacherFollowers(teacherId: number, lessonId: number, title: string) {
+  const followers = await db.select({ followerId: followsTable.followerId, notificationsEnabled: followsTable.notificationsEnabled })
+    .from(followsTable)
+    .where(and(eq(followsTable.targetType, "teacher"), eq(followsTable.targetUserId, teacherId)));
+  const opted = followers.filter(f => f.notificationsEnabled).map(f => f.followerId);
+  if (!opted.length) return 0;
+  const preferences = await db.select({ userId: notificationPreferencesTable.userId, enabled: notificationPreferencesTable.followNotificationsEnabled })
+    .from(notificationPreferencesTable)
+    .where(inArray(notificationPreferencesTable.userId, opted));
+  const prefMap = new Map(preferences.map(p => [p.userId, p.enabled]));
+  const recipientIds = opted.filter(id => prefMap.get(id) !== false);
+  if (!recipientIds.length) return 0;
+  await db.insert(notificationsTable).values(recipientIds.map(recipientId => ({
+    recipientId,
+    title: "New activity from a teacher you follow",
+    message: title,
+    type: "follow_activity",
+    isRead: false,
+    link: `/student/lessons?lesson=${lessonId}`,
+  })));
+  return recipientIds.length;
+}
+
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -155,30 +179,20 @@ router.post("/lessons", requireAuth, async (req, res): Promise<void> => {
     actorName: currentUser.name,
   });
 
-  const followers = await db.select({ followerId: followsTable.followerId, notificationsEnabled: followsTable.notificationsEnabled })
-    .from(followsTable)
-    .where(and(eq(followsTable.targetType, "teacher"), eq(followsTable.targetUserId, currentUser.id)));
-  const optedInFollowers = followers.filter(follower => follower.notificationsEnabled);
-  if (optedInFollowers.length > 0) {
-    const preferences = await db.select({ userId: notificationPreferencesTable.userId, enabled: notificationPreferencesTable.followNotificationsEnabled })
-      .from(notificationPreferencesTable)
-      .where(and(
-        eq(notificationPreferencesTable.followNotificationsEnabled, true),
-      ));
-    const enabledUsers = new Set(preferences.map(preference => preference.userId));
-    const notifications = optedInFollowers
-      .filter(follower => enabledUsers.has(follower.followerId))
-      .map(follower => ({
-        recipientId: follower.followerId,
-        title: "New lesson from a teacher you follow",
-        message: `${currentUser.name} published "${lesson.title}".`,
-        type: "follow_lesson",
-        isRead: false,
-      }));
-    if (notifications.length > 0) await db.insert(notificationsTable).values(notifications);
-  }
+  await notifyTeacherFollowers(currentUser.id, lesson.id, `${currentUser.name} published "${lesson.title}".`);
 
   res.status(201).json({ ...lesson, createdAt: lesson.createdAt.toISOString() });
+});
+
+router.post("/lessons/:id/notify-followers", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+  const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, id));
+  if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
+  if (lesson.teacherId !== user.id && user.role !== "owner" && !user.isManager) { res.status(403).json({ error: "You can only notify followers for authorized lessons" }); return; }
+  const count = await notifyTeacherFollowers(lesson.teacherId, lesson.id, `${lesson.teacherName} posted "${lesson.title}".`);
+  res.json({ ok: true, recipientCount: count });
 });
 
 // GET /lessons/:id — Get lesson by ID

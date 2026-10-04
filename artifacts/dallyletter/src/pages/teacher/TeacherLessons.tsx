@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Plus, Trash2, Video, Image as ImageIcon, Headphones, FileText, BookOpen, Upload, X, ClipboardList, ClipboardCheck } from "lucide-react";
+import { Loader2, Plus, Trash2, Video, Image as ImageIcon, Headphones, FileText, BookOpen, Upload, X, ClipboardList, ClipboardCheck, Bell } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -46,6 +46,7 @@ export default function TeacherLessons() {
   const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("dallyletter_token") ?? ""}` });
   const loadLessonRequests = async () => { const r=await fetch(getApiUrl("/api/achievements/lesson-requests"),{headers:authHeaders()}); if(r.ok)setLessonRequests(await r.json()); };
   const respondToRequest = async (id:number,status:"accepted"|"declined"|"completed") => { setRequestBusy(id); try { const r=await fetch(getApiUrl(`/api/achievements/lesson-requests/${id}`),{method:"PATCH",headers:{"Content-Type":"application/json",...authHeaders()},body:JSON.stringify({status})}); if(!r.ok) throw new Error("Could not update request"); await loadLessonRequests(); toast({title:"Lesson request updated"}); } catch(e) { toast({variant:"destructive",title:"Request update failed",description:e instanceof Error?e.message:"Try again"}); } finally { setRequestBusy(null); } };
+  const dismissRequest = async (id:number) => { setRequestBusy(id); try { const r=await fetch(getApiUrl(`/api/achievements/lesson-requests/${id}`),{method:"DELETE",headers:authHeaders()}); if(!r.ok) throw new Error("Could not dismiss request"); await loadLessonRequests(); toast({title:"Lesson request dismissed"}); } catch(e) { toast({variant:"destructive",title:"Dismiss failed",description:e instanceof Error?e.message:"Try again"}); } finally { setRequestBusy(null); } };
   useEffect(()=>{void loadLessonRequests();},[]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -147,7 +148,7 @@ export default function TeacherLessons() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        {lessonRequests.length>0 && <Card className="border-amber-200 bg-amber-50/50"><CardHeader><CardTitle className="text-lg">Prefect lesson requests</CardTitle><CardDescription>Requests sent directly to your teacher account.</CardDescription></CardHeader><CardContent className="space-y-3">{lessonRequests.map(r=><div key={r.id} className="rounded-xl border bg-background p-3 flex flex-col sm:flex-row sm:items-center gap-3"><div className="flex-1 min-w-0"><p className="font-semibold truncate">{r.topic}</p><p className="text-xs text-muted-foreground">{r.preferredDate?`Preferred ${r.preferredDate} · `:""}{r.status}</p>{r.notes&&<p className="text-sm mt-1">{r.notes}</p>}</div><div className="flex gap-2 flex-wrap"><Button size="sm" onClick={()=>void respondToRequest(r.id,"accepted")} disabled={requestBusy===r.id}>Accept</Button><Button size="sm" variant="outline" onClick={()=>void respondToRequest(r.id,"declined")} disabled={requestBusy===r.id}>Decline</Button><Button size="sm" variant="ghost" onClick={()=>void respondToRequest(r.id,"completed")} disabled={requestBusy===r.id}>Complete</Button></div></div>)}</CardContent></Card>}
+        {lessonRequests.length>0 && <Card className="border-amber-200 bg-amber-50/50"><CardHeader><CardTitle className="text-lg">Prefect lesson requests</CardTitle><CardDescription>Requests sent directly to your teacher account.</CardDescription></CardHeader><CardContent className="space-y-3">{lessonRequests.map(r=><div key={r.id} className="rounded-xl border bg-background p-3 flex flex-col sm:flex-row sm:items-center gap-3"><div className="flex-1 min-w-0"><p className="font-semibold truncate">{r.topic}</p><p className="text-xs text-muted-foreground">{r.preferredDate?`Preferred ${r.preferredDate} · `:""}{r.status}</p>{r.notes&&<p className="text-sm mt-1">{r.notes}</p>}</div><div className="flex gap-2 flex-wrap"><Button size="sm" onClick={()=>void respondToRequest(r.id,"accepted")} disabled={requestBusy===r.id}>Accept</Button><Button size="sm" variant="outline" onClick={()=>void respondToRequest(r.id,"declined")} disabled={requestBusy===r.id}>Decline</Button><Button size="sm" variant="ghost" onClick={()=>void dismissRequest(r.id)} disabled={requestBusy===r.id}>Dismiss</Button></div></div>)}</CardContent></Card>}
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">My Lessons</h1>
@@ -434,6 +435,22 @@ export default function TeacherLessons() {
                     >
                       <ClipboardCheck className="h-4 w-4" />
                       Mark Submissions
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={async () => {
+                        try {
+                          const r = await fetch(getApiUrl(`/api/lessons/${lesson.id}/notify-followers`), { method: "POST", headers: authHeaders() });
+                          const data = await r.json().catch(() => ({}));
+                          if (!r.ok) throw new Error(data.error || "Could not notify followers");
+                          toast({ title: "Followers notified", description: `${data.recipientCount ?? 0} follower(s) notified.` });
+                        } catch (e) { toast({ variant: "destructive", title: "Follower notification failed", description: e instanceof Error ? e.message : "Try again." }); }
+                      }}
+                    >
+                      <Bell className="h-4 w-4" />
+                      Notify followers
                     </Button>
                     <Button 
                       variant="ghost" 

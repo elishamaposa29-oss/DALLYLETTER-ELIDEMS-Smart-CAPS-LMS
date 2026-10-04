@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useListNotifications, useMarkNotificationRead } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,6 +10,8 @@ import { useLocation } from "wouter";
 import { getListNotificationsQueryKey } from "@workspace/api-client-react";
 
 export default function StudentNotifications() {
+  const [devicePermission, setDevicePermission] = useState<NotificationPermission>(() => typeof Notification !== "undefined" ? Notification.permission : "default");
+  const enableDeviceNotifications = async () => { if (!("Notification" in window)) return; const permission = await Notification.requestPermission(); setDevicePermission(permission); if (permission === "granted" && "serviceWorker" in navigator) { await navigator.serviceWorker.ready; } };
   const { data: notifications, isLoading } = useListNotifications();
   const [, navigate] = useLocation();
   const markReadMutation = useMarkNotificationRead();
@@ -42,7 +45,8 @@ export default function StudentNotifications() {
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Notifications</h1>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-3"><div><p className="font-semibold text-sm">Device notifications</p><p className="text-xs text-muted-foreground">Get clickable DALLYLETTER alerts in your phone notification panel.</p></div><Button size="sm" variant={devicePermission==="granted"?"secondary":"default"} onClick={()=>void enableDeviceNotifications()} disabled={devicePermission==="granted"}>{devicePermission==="granted"?"Enabled":"Enable notifications"}</Button></div>
+        <h1 className="text-3xl font-bold tracking-tight">Notifications</h1>
             <p className="text-muted-foreground">Updates on your classes, lessons, and account status.</p>
           </div>
           {unreadCount > 0 && (

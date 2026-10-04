@@ -13,7 +13,15 @@ const router: IRouter = Router();
 
 // Helper to get members of a study group
 function canManageGroup(user: any, group: any) {
-  return isOwnerRole(user.role) || user.isManager === true || user.isPrefect === true || group.creatorId === user.id;
+  return isOwnerRole(user.role) || user.isManager === true || group.creatorId === user.id;
+}
+
+async function canManageGroupSettings(user: any, groupId: number, group?: any) {
+  if (group && (isOwnerRole(user.role) || user.isManager === true || group.creatorId === user.id)) return true;
+  const [control] = await db.select({ canManageSettings: groupMemberControlsTable.canManageSettings })
+    .from(groupMemberControlsTable)
+    .where(and(eq(groupMemberControlsTable.groupId, groupId), eq(groupMemberControlsTable.userId, user.id)));
+  return control?.canManageSettings === true;
 }
 
 async function isGroupMember(groupId: number, userId: number): Promise<boolean> {
@@ -38,12 +46,33 @@ async function getGroupMembers(groupId: number) {
     avatarUrl: usersTable.avatarUrl,
     lastPaymentDate: usersTable.lastPaymentDate,
     createdAt: usersTable.createdAt,
+    control: {
+      blocked: groupMemberControlsTable.blocked,
+      mediaBlocked: groupMemberControlsTable.mediaBlocked,
+      suspended: groupMemberControlsTable.suspended,
+      muted: groupMemberControlsTable.muted,
+      canManageSettings: groupMemberControlsTable.canManageSettings,
+    },
   })
   .from(studyGroupMembersTable)
   .innerJoin(usersTable, eq(studyGroupMembersTable.userId, usersTable.id))
+  .leftJoin(groupMemberControlsTable, and(
+    eq(groupMemberControlsTable.groupId, groupId),
+    eq(groupMemberControlsTable.userId, usersTable.id),
+  ))
   .where(eq(studyGroupMembersTable.groupId, groupId));
 
-  return memberRows.map(m => ({ ...m, createdAt: m.createdAt.toISOString() }));
+  return memberRows.map(m => ({
+    ...m,
+    control: m.control && Object.values(m.control).some(value => value !== null) ? {
+      blocked: Boolean(m.control.blocked),
+      mediaBlocked: Boolean(m.control.mediaBlocked),
+      suspended: Boolean(m.control.suspended),
+      muted: Boolean(m.control.muted),
+      canManageSettings: Boolean(m.control.canManageSettings),
+    } : null,
+    createdAt: m.createdAt.toISOString(),
+  }));
 }
 
 // GET /study-groups — List all study groups
@@ -217,10 +246,7 @@ router.get("/study-groups/:id/settings", requireAuth, async (req, res): Promise<
   if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid group id" }); return; }
   const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, id));
   if (!group) { res.status(404).json({ error: "Study group not found" }); return; }
-  if (!(await isGroupMember(id, req.currentUser!.id) || canManageGroup(req.currentUser!, group))) {
-    res.status(403).json({ error: "You must be a group member to view settings" });
-    return;
-  }
+  if (!(await canManageGroupSettings(req.currentUser!, id, group))) { res.status(403).json({ error: "Group settings access required" }); return; }
   const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, id));
   res.json(settings ?? { groupId: id, rules: null, announcementsOnly: false, allowPolls: true, allowMedia: true, maxMembers: 1024 });
 });
@@ -231,7 +257,7 @@ router.patch("/study-groups/:id/settings", requireAuth, async (req, res): Promis
   if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid group id" }); return; }
   const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, id));
   if (!group) { res.status(404).json({ error: "Study group not found" }); return; }
-  if (!canManageGroup(user, group)) { res.status(403).json({ error: "Group management access required" }); return; }
+  if (!(await canManageGroupSettings(user, id, group))) { res.status(403).json({ error: "Group settings access required" }); return; }
   const values = {
     rules: typeof req.body?.rules === "string" ? req.body.rules.trim().slice(0, 4000) : req.body?.rules === null ? null : undefined,
     announcementsOnly: typeof req.body?.announcementsOnly === "boolean" ? req.body.announcementsOnly : undefined,
@@ -251,10 +277,10 @@ router.patch("/study-groups/:id/settings", requireAuth, async (req, res): Promis
 router.post("/study-groups/:id/members/:userId/control", requireAuth, async (req, res): Promise<void> => {
   const groupId = Number(req.params.id), userId = Number(req.params.userId), user = req.currentUser!;
   const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
-  if (!group || !canManageGroup(user, group)) { res.status(403).json({ error: "Group management access required" }); return; }
+  if (!group || !(await canManageGroupSettings(user, groupId, group))) { res.status(403).json({ error: "Group management access required" }); return; }
   const [member] = await db.select().from(studyGroupMembersTable).where(and(eq(studyGroupMembersTable.groupId, groupId), eq(studyGroupMembersTable.userId, userId)));
   if (!member) { res.status(404).json({ error: "User is not a group member" }); return; }
-  const allowed = ["blocked","mediaBlocked","suspended","muted"];
+  const allowed = ["blocked","mediaBlocked","suspended","muted","canManageSettings"];
   const patch: any = { updatedBy: user.id };
   for (const key of allowed) if (typeof req.body?.[key] === "boolean") patch[key] = req.body[key];
   const [existing] = await db.select().from(groupMemberControlsTable).where(and(eq(groupMemberControlsTable.groupId, groupId), eq(groupMemberControlsTable.userId, userId)));
@@ -284,7 +310,7 @@ router.get("/study-groups/:id/members", requireAuth, async (req, res): Promise<v
 router.delete("/study-groups/:id/members/:userId", requireAuth, async (req, res): Promise<void> => {
   const groupId = Number(req.params.id), userId = Number(req.params.userId), user = req.currentUser!;
   const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
-  if (!group || !canManageGroup(user, group)) { res.status(403).json({ error: "Group management access required" }); return; }
+  if (!group || !(await canManageGroupSettings(user, groupId, group))) { res.status(403).json({ error: "Group management access required" }); return; }
   if (userId === group.creatorId) { res.status(400).json({ error: "The group owner cannot be removed" }); return; }
   await db.delete(studyGroupMembersTable).where(and(eq(studyGroupMembersTable.groupId, groupId), eq(studyGroupMembersTable.userId, userId)));
   res.sendStatus(204);
@@ -294,7 +320,7 @@ router.delete("/study-groups/:id/members/:userId", requireAuth, async (req, res)
 router.delete("/study-groups/:id/messages", requireAuth, async (req, res): Promise<void> => {
   const groupId = Number(req.params.id), user = req.currentUser!;
   const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
-  if (!group || !canManageGroup(user, group)) { res.status(403).json({ error: "Group management access required" }); return; }
+  if (!group || !(await canManageGroupSettings(user, groupId, group))) { res.status(403).json({ error: "Group management access required" }); return; }
   await db.delete(messagesTable).where(eq(messagesTable.groupId, groupId));
   res.sendStatus(204);
 });

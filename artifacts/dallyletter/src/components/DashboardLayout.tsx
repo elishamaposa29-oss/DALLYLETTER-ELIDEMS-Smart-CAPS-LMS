@@ -1,3 +1,4 @@
+import { SystemNotificationBridge } from "@/components/SystemNotificationBridge";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -210,6 +211,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background flex flex-col md:flex-row">
+      <SystemNotificationBridge />
       <header className="md:hidden flex items-center justify-between px-4 py-3 border-b bg-[#0a1628] sticky top-0 z-30">
         <div className="flex items-center gap-2">
           <div className="bg-gradient-to-br from-amber-400 to-amber-600 p-1.5 rounded-lg">

@@ -11,9 +11,10 @@ import { Loader2, Plus, Trash2, Play, Square, BarChart3, Sparkles, ClipboardList
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 
 interface Poll { id: number; title: string; topic: string | null; type: string; grade: string | null; subject: string | null; mode: string; status: string; createdAt: string; }
-interface PollQuestion { id: number; question: string; difficulty: string; explanation: string; options: { id: number; text: string; isCorrect?: boolean }[]; }
+interface PollQuestion { id: number; question: string; difficulty: string; explanation: string; imageUrl?: string | null; options: { id: number; text: string; isCorrect?: boolean }[]; }
 interface PollWithQuestions extends Poll { questions: PollQuestion[]; }
 interface PollResults { submissions: { studentName: string; score: number; totalQuestions: number; completedAt: string }[]; total: number; avgScore: number; }
 
@@ -29,7 +30,7 @@ export default function AdminPolls() {
   const [pollDetail, setPollDetail] = useState<PollWithQuestions | null>(null);
 
   const [newPoll, setNewPoll] = useState({ title: "", grade: "", subject: "", mode: "practice" });
-  const [newQuestions, setNewQuestions] = useState([{ question: "", options: ["", "", "", ""], correct: 0, difficulty: "medium" }]);
+  const [newQuestions, setNewQuestions] = useState([{ question: "", imageUrl: "", options: ["", "", "", ""], correct: 0, difficulty: "medium" }]);
   const [aiTopic, setAiTopic] = useState({ topic: "", grade: "", subject: "", count: "5" });
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiGenerated, setAiGenerated] = useState<{ title: string; questions: { question: string; difficulty: string; options: { text: string; isCorrect: boolean }[]; explanation: string }[] } | null>(null);
@@ -46,26 +47,46 @@ export default function AdminPolls() {
 
   useEffect(() => { loadPolls(); }, []);
 
+  async function uploadQuestionImage(index: number, file: File) {
+    const body = new FormData();
+    body.append("file", file, file.name);
+    const r = await fetch(getApiUrl("/api/lessons/media"), { method: "POST", headers: { Authorization: `Bearer ${token()}` }, body });
+    const payload = await r.json().catch(() => null) as { mediaUrl?: string; error?: string } | null;
+    if (!r.ok || !payload?.mediaUrl) throw new Error(payload?.error ?? "Question image upload failed");
+    setNewQuestions(qs => qs.map((q, i) => i === index ? { ...q, imageUrl: payload.mediaUrl! } : q));
+  }
+
   async function handleCreate() {
-    if (!newPoll.title) { toast({ variant: "destructive", title: "Title required" }); return; }
+    if (!newPoll.title.trim()) { toast({ variant: "destructive", title: "Title required" }); return; }
+    const validQuestions = newQuestions.filter(q => q.question.trim() && q.options.filter(Boolean).length >= 2);
+    if (!validQuestions.length) { toast({ variant: "destructive", title: "Add at least one complete question" }); return; }
     setCreating(true);
-    const questions = newQuestions.filter(q => q.question.trim()).map(q => ({
-      question: q.question, difficulty: q.difficulty,
-      options: q.options.map((o, i) => ({ text: o, isCorrect: i === q.correct }))
-    }));
-    const r = await fetch(getApiUrl("/api/polls"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
-      body: JSON.stringify({ ...newPoll, type: "manual", questions }),
-    });
-    setCreating(false);
-    if (r.ok) {
-      toast({ title: "Poll created!" });
+    try {
+      const questions = validQuestions.map(q => ({
+        question: q.question.trim(), difficulty: q.difficulty,
+        imageUrl: q.imageUrl || undefined,
+        options: q.options.filter(Boolean).map((o, i) => ({ text: o, isCorrect: i === q.correct }))
+      }));
+      const r = await fetch(getApiUrl("/api/polls"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({ ...newPoll, title: newPoll.title.trim(), type: "manual", questions }),
+      });
+      const created = await r.json().catch(() => null);
+      if (!r.ok || !created?.id) throw new Error(created?.error || "Poll could not be created.");
+      const activate = await fetch(getApiUrl(`/api/polls/${created.id}`), {
+        method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({ status: "active" }),
+      });
+      if (!activate.ok) throw new Error("Poll was created but could not be published automatically.");
+      toast({ title: "Poll created and published!" });
       setCreateOpen(false);
       setNewPoll({ title: "", grade: "", subject: "", mode: "practice" });
-      setNewQuestions([{ question: "", options: ["", "", "", ""], correct: 0, difficulty: "medium" }]);
-      loadPolls();
-    }
+      setNewQuestions([{ question: "", imageUrl: "", options: ["", "", "", ""], correct: 0, difficulty: "medium" }]);
+      await loadPolls();
+    } catch (error) {
+      toast({ variant: "destructive", title: "Poll creation failed", description: error instanceof Error ? error.message : "Try again." });
+    } finally { setCreating(false); }
   }
 
   async function handleAIGenerate() {
@@ -96,7 +117,10 @@ export default function AdminPolls() {
     });
     setCreating(false);
     if (r.ok) {
-      toast({ title: "AI Poll saved!" });
+      const created = await r.json();
+      const activate = await fetch(getApiUrl(`/api/polls/${created.id}`), { method:"PATCH", headers:{ "Content-Type":"application/json", Authorization:`Bearer ${token()}` }, body:JSON.stringify({ status:"active" }) });
+      if (!activate.ok) { toast({ variant:"destructive", title:"AI poll created but not published" }); return; }
+      toast({ title: "AI Poll created and published!" });
       setAiGenOpen(false);
       setAiGenerated(null);
       setAiTopic({ topic: "", grade: "", subject: "", count: "5" });
@@ -199,7 +223,7 @@ export default function AdminPolls() {
                             </div>
                           ))}
                         </div>
-                        {q.explanation && <p className="text-xs text-muted-foreground mt-2 italic">{q.explanation}</p>}
+                        {q.imageUrl && (q.imageUrl.startsWith("/api/") ? <AuthenticatedMedia url={q.imageUrl} type="image" title={q.question} /> : <img src={q.imageUrl} alt={q.question} className="mb-2 max-h-56 w-full rounded-md object-contain bg-background" />)}{q.explanation && <p className="text-xs text-muted-foreground mt-2 italic">{q.explanation}</p>}
                       </div>
                     ))}
                   </div>
@@ -235,7 +259,7 @@ export default function AdminPolls() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <Label>Questions</Label>
-                  <Button type="button" variant="outline" size="sm" onClick={() => setNewQuestions(q => [...q, { question: "", options: ["","","",""], correct: 0, difficulty: "medium" }])}>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setNewQuestions(q => [...q, { question: "", imageUrl: "", options: ["","","",""], correct: 0, difficulty: "medium" }])}>
                     <Plus className="h-3.5 w-3.5 mr-1" />Add Question
                   </Button>
                 </div>
@@ -250,6 +274,8 @@ export default function AdminPolls() {
                       )}
                     </div>
                     <Input placeholder="Enter question" value={q.question} onChange={e => setNewQuestions(qs => qs.map((x, i) => i === qi ? { ...x, question: e.target.value } : x))} />
+                    <div className="flex flex-wrap items-center gap-2"><label className="cursor-pointer rounded-md border px-3 py-2 text-xs font-medium hover:bg-muted"><input type="file" accept="image/*" className="sr-only" onChange={e => { const file=e.target.files?.[0]; if(file) void uploadQuestionImage(qi,file).catch(error => toast({ variant:"destructive", title:"Image upload failed", description:error instanceof Error?error.message:"Try again" })); e.currentTarget.value=""; }} />{q.imageUrl ? "Replace question image" : "Add question image"}</label>{q.imageUrl && <Badge variant="outline">Image attached</Badge>}</div>
+                    {q.imageUrl && (q.imageUrl.startsWith("/api/") ? <AuthenticatedMedia url={q.imageUrl} type="image" title={q.question} /> : <img src={q.imageUrl} alt={q.question} className="max-h-40 w-full rounded-md object-contain bg-background" />)}
                     <div className="space-y-1.5">
                       {q.options.map((opt, oi) => (
                         <div key={oi} className="flex gap-2 items-center">

@@ -23,6 +23,7 @@ export interface User {
   name: string;
   role: UserRole;
   isPrefect: boolean;
+  isManager: boolean;
   isBlocked: boolean;
   /** @nullable */
   phone?: string | null;

@@ -198,7 +198,6 @@ router.post("/:id/submit",requireAuth,async(req,res):Promise<void>=>{
   const answers=Array.isArray(req.body?.answers)?req.body.answers:[];
   const startNewAttempt=Boolean(req.body?.newAttempt);
   const [existing]=await db.select().from(exerciseSubmissionsTable).where(and(eq(exerciseSubmissionsTable.exerciseId,exercise.id),eq(exerciseSubmissionsTable.learnerId,user.id))).orderBy(desc(exerciseSubmissionsTable.attemptNumber)).limit(1);
-  if(existing && existing.status!=="marked" && startNewAttempt){res.status(409).json({error:"Finish the current attempt before starting another attempt"});return;}
   if(existing && !startNewAttempt && ["submitted","ai_partial","ai_marked_pending_return"].includes(existing.status)){res.status(409).json({error:"This attempt is already submitted and is awaiting marking"});return;}
   const nextAttempt=(existing?.attemptNumber??0)+1;
   const createNew=Boolean(startNewAttempt||!existing);

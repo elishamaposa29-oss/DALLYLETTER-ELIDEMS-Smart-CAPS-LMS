@@ -19,6 +19,18 @@ function StoredMedia({ url, type, title }: { url: string; type: string; title: s
   return <AuthenticatedMedia url={url} type={mediaType} title={title} />;
 }
 
+function sanitizeLessonHtml(input: string): string {
+  if (!input) return "";
+  const doc = new DOMParser().parseFromString(input, "text/html");
+  doc.querySelectorAll("script,iframe,object,embed,style,link").forEach(node => node.remove());
+  doc.querySelectorAll("*").forEach(node => {
+    [...node.attributes].forEach(attr => {
+      if (/^on/i.test(attr.name) || ((attr.name === "href" || attr.name === "src") && /^javascript:/i.test(attr.value))) node.removeAttribute(attr.name);
+    });
+  });
+  return doc.body.innerHTML;
+}
+
 function hasValidMediaUrl(url: string | null | undefined): url is string {
   return Boolean(url && isValidLessonUrl(url));
 }
@@ -160,15 +172,14 @@ export default function StudentLessons() {
                           {lesson.title}
                         </h3>
                       )}
-                      <p className="text-xs text-muted-foreground mt-1">by {lesson.teacherName}</p>
+                      <div className="mt-1 flex items-center gap-2"><p className="text-xs text-muted-foreground">by {lesson.teacherName}</p>{lesson.teacherId && <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-[11px]" onClick={e=>{e.stopPropagation();void toggleFollow("teacher",lesson.teacherId,undefined,lesson.teacherName)}}>{follows.some(f=>f.targetType==="teacher"&&f.targetUserId===lesson.teacherId)?"Following":"Follow teacher"}</Button>}</div>
                     </div>
                   </CardHeader>
 
                   <CardContent className="flex-1 flex flex-col justify-between gap-4">
                     {hasValidMediaUrl(lesson.mediaUrl) && (isYouTubeUrl(lesson.mediaUrl) ? <YouTubeEmbed url={lesson.mediaUrl} title={lesson.title} /> : lesson.mediaUrl.startsWith("/api/lessons/media/") ? <StoredMedia url={lesson.mediaUrl} type={lesson.type} title={lesson.title} /> : null)}
-                    <p className="text-sm text-muted-foreground line-clamp-3">
-                      {lesson.description || "No description provided."}
-                    </p>
+                    {lesson.content && <div className="rounded-xl border bg-background/70 p-4"><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Lesson notes</p><div className="prose prose-sm max-w-none dark:prose-invert" dangerouslySetInnerHTML={{__html:sanitizeLessonHtml(lesson.content)}} /></div>}
+                    <div className="rounded-lg bg-muted/20 p-3"><p className="text-sm text-muted-foreground line-clamp-4">{lesson.description || "No description provided."}</p></div>
 
                     {(exerciseMap[lesson.id] ?? []).length > 0 && <div className="space-y-2 border-t pt-3"><div className="flex items-center gap-2 text-sm font-medium"><ClipboardList className="h-4 w-4 text-primary" />Exercises</div>{(exerciseMap[lesson.id] ?? []).map(ex => <Button key={ex.id} variant="outline" className="w-full justify-between gap-2" onClick={(e) => { e.stopPropagation(); window.location.assign(`/student/exercises/${ex.id}`); }}><span className="truncate text-left">{ex.title}</span><span className="flex shrink-0 items-center gap-1"><Badge variant="secondary">{ex.totalMarks} marks</Badge><Badge variant={ex.submissionStatus==="marked"?"default":"outline"}>{ex.submissionStatus==="marked" ? `Result: ${ex.submission?.totalScore ?? "0"}/${ex.totalMarks}` : ex.submissionStatus==="submitted" ? "Awaiting marking" : "Open"}</Badge></span></Button>)}</div>}
                     <div className="flex items-center justify-between pt-3 border-t">
