@@ -31,6 +31,7 @@ router.get("/audit-logs", requireAuth, async (req, res): Promise<void> => {
         // Manager scope is determined by who performed the action:
         // learner + prefect (student role) and teacher activity only.
         inArray(usersTable.role, ["student", "teacher"]),
+        eq(usersTable.isManager, false),
         eq(usersTable.isBlocked, false)
       )).orderBy(desc(auditLogsTable.createdAt)).limit(limit);
   res.json(logs.map(({ details, performerIsPrefect, ...log }) => ({
