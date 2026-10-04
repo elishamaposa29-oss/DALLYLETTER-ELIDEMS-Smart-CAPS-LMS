@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, auditLogsTable, usersTable } from "@workspace/db";
-import { eq, desc, inArray, and, inArray as drizzleInArray } from "drizzle-orm";
+import { eq, desc, inArray, and } from "drizzle-orm";
 import { getAIProvider } from "../lib/ai-provider";
 import { requireAuth, canAccessManager } from "../lib/auth-middleware";
 
@@ -30,7 +30,7 @@ router.get("/audit-logs", requireAuth, async (req, res): Promise<void> => {
     : await base.where(and(
         // Manager scope is determined by who performed the action:
         // learner + prefect (student role) and teacher activity only.
-        drizzleInArray(usersTable.role, ["student", "teacher"]),
+        inArray(usersTable.role, ["student", "teacher"]),
         eq(usersTable.isBlocked, false)
       )).orderBy(desc(auditLogsTable.createdAt)).limit(limit);
   res.json(logs.map(({ details, performerIsPrefect, ...log }) => ({
