@@ -31,10 +31,14 @@ export default function StudentAssignments() {
         setAssignments(list);
         const subs: Record<number, any> = {};
         await Promise.all(list.map(async (a: any) => {
-          const sr = await fetch(getApiUrl(`/api/assignments/${a.id}/submissions`), { headers: { Authorization: `Bearer ${token()}` } });
-          if (!sr.ok) throw new Error("Unable to load submissions");
-          const sd = await sr.json();
-          if (Array.isArray(sd) && sd.length > 0) subs[a.id] = sd[0];
+          try {
+            const sr = await fetch(getApiUrl(`/api/assignments/${a.id}/submissions`), { headers: { Authorization: `Bearer ${token()}` } });
+            if (!sr.ok) return;
+            const sd = await sr.json().catch(() => []);
+            if (Array.isArray(sd) && sd.length > 0) subs[a.id] = sd[0];
+          } catch {
+            // A submission lookup must never hide otherwise valid assignments.
+          }
         }));
         setSubmissions(subs);
         setLoading(false);
