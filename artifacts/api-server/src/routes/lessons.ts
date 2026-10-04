@@ -1,6 +1,6 @@
 // Lessons routes — CRUD for educational content
 import { Router, type IRouter } from "express";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { createReadStream } from "node:fs";
 import multer from "multer";
 import { db, lessonsTable, activityLogTable, followsTable, notificationPreferencesTable, notificationsTable } from "@workspace/db";
