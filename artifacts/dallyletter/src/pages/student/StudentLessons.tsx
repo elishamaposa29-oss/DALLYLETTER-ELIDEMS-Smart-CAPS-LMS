@@ -160,7 +160,7 @@ export default function StudentLessons() {
                           {lesson.title}
                         </h3>
                       )}
-                      <p className="text-xs text-muted-foreground mt-1">by {lesson.teacherName}</p>
+                      <div className="mt-1 flex items-center gap-2"><p className="text-xs text-muted-foreground">by {lesson.teacherName}</p>{lesson.teacherId && <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-[11px]" onClick={e=>{e.stopPropagation();void toggleFollow("teacher",lesson.teacherId,undefined,lesson.teacherName)}}>{follows.some(f=>f.targetType==="teacher"&&f.targetUserId===lesson.teacherId)?"Following":"Follow teacher"}</Button>}</div>
                     </div>
                   </CardHeader>
 
