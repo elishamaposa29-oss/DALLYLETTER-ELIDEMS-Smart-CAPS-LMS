@@ -12,7 +12,7 @@ import { Loader2, ClipboardList, Play, CheckCircle, XCircle, Trophy, Clock, Chev
 
 interface Poll { id: number; title: string; grade: string | null; subject: string | null; mode: string; status: string; timerSeconds: number | null; type: string; }
 interface PollOption { id: number; text: string; isCorrect?: boolean; }
-interface PollQuestion { id: number; question: string; difficulty: string; explanation: string | null; options: PollOption[]; }
+interface PollQuestion { id: number; question: string; difficulty: string; explanation: string | null; imageUrl?: string | null; options: PollOption[]; }
 interface PollDetail extends Poll { questions: PollQuestion[]; }
 interface SubmitResult { score: number; totalQuestions: number; percentage: number; feedback: { questionId: number; question: string; explanation: string | null; correctText: string | null; submittedOptionId: number | null; isCorrect: boolean; }[]; }
 interface LeaderEntry { studentName: string; score: number; totalQuestions: number; }
