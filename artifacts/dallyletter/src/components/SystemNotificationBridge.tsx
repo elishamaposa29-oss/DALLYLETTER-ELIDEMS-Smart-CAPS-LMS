@@ -5,7 +5,7 @@ const token = () => localStorage.getItem("dallyletter_token") ?? "";
 
 export function SystemNotificationBridge() {
   useEffect(() => {
-    if (!("serviceWorker" in navigator)) return;
+    if (!("serviceWorker" in navigator) || !("Notification" in window)) return;
     let stopped = false;
     const seenKey = "dallyletter.system-notifications.seen";
     const readSeen = () => { try { return new Set<string>(JSON.parse(localStorage.getItem(seenKey) || "[]")); } catch { return new Set<string>(); } };
