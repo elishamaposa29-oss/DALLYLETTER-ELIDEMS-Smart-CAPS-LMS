@@ -45,3 +45,17 @@ self.addEventListener("notificationclick", event => {
     await clients.openWindow(target);
   })());
 });
+
+self.addEventListener("push", event => {
+  let payload = {};
+  try { payload = event.data ? event.data.json() : {}; } catch { payload = { body: event.data?.text?.() || "" }; }
+  const title = payload.title || "DALLYLETTER ELIDEMS";
+  event.waitUntil(self.registration.showNotification(title, {
+    body: payload.body || payload.message || "",
+    icon: payload.icon || "/favicon.ico",
+    badge: payload.badge || "/favicon.ico",
+    tag: String(payload.id || title),
+    data: { url: payload.url || "/student/notifications" },
+    requireInteraction: Boolean(payload.requireInteraction),
+  }));
+});
