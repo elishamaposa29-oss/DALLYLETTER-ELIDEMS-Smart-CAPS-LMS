@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Sparkles, AlertTriangle, CheckCircle2, Clock3, RotateCcw } from "lucide-react";
+import { Sparkles, AlertTriangle, CheckCircle2, Clock3, RotateCcw, XCircle } from "lucide-react";
 import { useRoute } from "wouter";
 import { getApiUrl } from "@workspace/api-client-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
@@ -303,7 +303,7 @@ export default function ExerciseMarking() {
 
                     <div className="grid gap-3 sm:grid-cols-[auto_1fr]">
                       <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1"><Button type="button" size="sm" variant="outline" onClick={()=>setMarks((m)=>({...m,[a.id]:q?.marksAllocated??"0"}))} aria-label={`Mark question ${i+1} correct`}>✓</Button><Button type="button" size="sm" variant="outline" onClick={()=>setMarks((m)=>({...m,[a.id]:"0"}))} aria-label={`Unmark question ${i+1}`}>×</Button><Input
+                        <div className="flex items-center gap-1"><Button type="button" size="sm" variant="outline" className="text-emerald-600 border-emerald-300 hover:bg-emerald-50" onClick={()=>setMarks((m)=>({...m,[a.id]:q?.marksAllocated??"0"}))} aria-label={`Mark question ${i+1} correct`}><CheckCircle2 className="h-4 w-4" /></Button><Button type="button" size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50" onClick={()=>setMarks((m)=>({...m,[a.id]:"0"}))} aria-label={`Mark question ${i+1} incorrect`}><XCircle className="h-4 w-4" /></Button><Input
                           type="number"
                           min="0"
                           max={q?.marksAllocated ?? undefined}
