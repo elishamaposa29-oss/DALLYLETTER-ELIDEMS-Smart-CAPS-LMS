@@ -95,7 +95,7 @@ router.get("/lesson-requests", requireAuth, async (req, res): Promise<void> => {
   const rows = user.isPrefect
     ? await db.select().from(lessonRequestsTable).where(eq(lessonRequestsTable.prefectId, user.id)).orderBy(desc(lessonRequestsTable.createdAt))
     : user.role === "teacher"
-      ? await db.select().from(lessonRequestsTable).where(eq(lessonRequestsTable.teacherId, user.id)).orderBy(desc(lessonRequestsTable.createdAt))
+      ? await db.select().from(lessonRequestsTable).where(and(eq(lessonRequestsTable.teacherId, user.id), eq(lessonRequestsTable.status, "pending")).orderBy(desc(lessonRequestsTable.createdAt))
       : [];
   res.json(rows.map(r => ({ ...r, createdAt: r.createdAt.toISOString(), responseAt: r.responseAt?.toISOString() ?? null })));
 });
@@ -126,7 +126,7 @@ router.patch("/lesson-requests/:id", requireAuth, async (req, res): Promise<void
   if (!request) { res.status(404).json({ error: "Lesson request not found" }); return; }
   if (user.id !== request.teacherId && user.id !== request.prefectId && user.role !== "owner" && !user.isManager) { res.status(403).json({ error: "Forbidden" }); return; }
   const status = String(req.body?.status ?? request.status);
-  const allowed = ["pending","accepted","declined","completed","cancelled"];
+  const allowed = ["pending","accepted","declined","completed","cancelled","dismissed"];
   if (!allowed.includes(status)) { res.status(400).json({ error: "Invalid status" }); return; }
   const reply = typeof req.body?.teacherReply === "string" ? req.body.teacherReply.trim() : request.teacherReply;
   const [updated] = await db.update(lessonRequestsTable).set({ status, teacherReply: reply, responseAt: user.id === request.teacherId ? new Date() : request.responseAt }).where(eq(lessonRequestsTable.id,id)).returning();
@@ -135,6 +135,7 @@ router.patch("/lesson-requests/:id", requireAuth, async (req, res): Promise<void
       title: `Lesson request ${status}`,
       message: reply ? `Teacher reply: ${reply}` : `Your lesson request is now ${status}.`,
       type: "lesson_request", recipientId: request.prefectId, isRead: false,
+      link: `/student/prefect?request=${request.id}`,
     });
   }
   res.json(updated);
@@ -148,6 +149,19 @@ router.get("/prefect-leaderboard", requireAuth, async (_req, res): Promise<void>
   }).from(usersTable).where(and(eq(usersTable.isPrefect, true), eq(usersTable.role, "student")));
   prefects.sort((a: any, b: any) => (b.performanceScore ?? 0) - (a.performanceScore ?? 0));
   res.json(prefects);
+});
+
+router.delete("/lesson-requests/:id", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid request id" }); return; }
+  const [request] = await db.select().from(lessonRequestsTable).where(eq(lessonRequestsTable.id, id));
+  if (!request) { res.status(404).json({ error: "Lesson request not found" }); return; }
+  if (user.id !== request.teacherId && user.id !== request.prefectId && user.role !== "owner" && !user.isManager) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+  await db.delete(lessonRequestsTable).where(eq(lessonRequestsTable.id, id));
+  res.sendStatus(204);
 });
 
 export default router;
