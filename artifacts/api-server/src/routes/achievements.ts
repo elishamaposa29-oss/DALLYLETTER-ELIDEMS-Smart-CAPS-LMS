@@ -95,7 +95,7 @@ router.get("/lesson-requests", requireAuth, async (req, res): Promise<void> => {
   const rows = user.isPrefect
     ? await db.select().from(lessonRequestsTable).where(eq(lessonRequestsTable.prefectId, user.id)).orderBy(desc(lessonRequestsTable.createdAt))
     : user.role === "teacher"
-      ? await db.select().from(lessonRequestsTable).where(and(eq(lessonRequestsTable.teacherId, user.id), eq(lessonRequestsTable.status, "pending")).orderBy(desc(lessonRequestsTable.createdAt))
+      ? await db.select().from(lessonRequestsTable).where(and(eq(lessonRequestsTable.teacherId, user.id), eq(lessonRequestsTable.status, "pending"))).orderBy(desc(lessonRequestsTable.createdAt))
       : [];
   res.json(rows.map(r => ({ ...r, createdAt: r.createdAt.toISOString(), responseAt: r.responseAt?.toISOString() ?? null })));
 });
