@@ -22,6 +22,7 @@ export async function ensureConnectSchema(): Promise<void> {
       created_at timestamptz NOT NULL DEFAULT now()
     )`);
     await client.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS link text`);
+    await client.query(`ALTER TABLE group_member_controls ADD COLUMN IF NOT EXISTS can_manage_settings boolean NOT NULL DEFAULT false`);
 
     await client.query(`CREATE TABLE IF NOT EXISTS lesson_requests (
       id serial PRIMARY KEY,
