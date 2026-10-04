@@ -34,7 +34,7 @@ router.post("/polls", requireAuth, async (req, res): Promise<void> => {
   const { title, topic, type = "manual", grade, subject, mode = "practice", timerSeconds, questions } = req.body as {
     title: string; topic?: string; type?: string; grade?: string; subject?: string;
     mode?: string; timerSeconds?: number;
-    questions?: { question: string; difficulty?: string; explanation?: string; options: { text: string; isCorrect: boolean }[] }[];
+    questions?: { question: string; difficulty?: string; explanation?: string; imageUrl?: string; options: { text: string; isCorrect: boolean }[] }[];
   };
   if (typeof title !== "string" || !title.trim()) { res.status(400).json({ error: "title required" }); return; }
   if (!Array.isArray(questions) || questions.length === 0) { res.status(400).json({ error: "At least one question is required" }); return; }
@@ -43,12 +43,12 @@ router.post("/polls", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  const [poll] = await db.insert(pollsTable).values({ title, topic, type, grade, subject, mode, timerSeconds, createdBy: user.id, status: "draft" }).returning();
+  const [poll] = await db.insert(pollsTable).values({ title: title.trim(), topic, type, grade, subject, mode, timerSeconds, createdBy: user.id, status: "draft" }).returning();
 
   if (questions && questions.length > 0) {
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
-      const [pq] = await db.insert(pollQuestionsTable).values({ pollId: poll.id, question: q.question, difficulty: q.difficulty ?? "medium", explanation: q.explanation, orderIndex: i }).returning();
+      const [pq] = await db.insert(pollQuestionsTable).values({ pollId: poll.id, question: q.question.trim(), difficulty: q.difficulty ?? "medium", explanation: q.explanation, imageUrl: typeof q.imageUrl === "string" ? q.imageUrl.trim().slice(0, 2000) || null : null, orderIndex: i }).returning();
       for (const opt of q.options) {
         await db.insert(pollOptionsTable).values({ questionId: pq.id, text: opt.text, isCorrect: opt.isCorrect });
       }
