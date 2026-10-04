@@ -51,10 +51,10 @@ export default function ManagerTeachers() {
     if (!selectedTeacher || !comment.trim()) return;
     setSending(true);
     try {
-      const r = await fetch(getApiUrl("/api/notifications"), { method:"POST", headers:{ "Content-Type":"application/json", Authorization:`Bearer ${token()}` }, body:JSON.stringify({ recipientId:selectedTeacher.id,title:"Manager message",message:comment.trim(),type:"manager_message",link:"/teacher" }) });
-      if (!r.ok) throw new Error((await r.json().catch(()=>null))?.error || "Notification failed");
-      setComment(""); window.alert("Notification sent.");
-    } catch(e) { window.alert(e instanceof Error ? e.message : "Notification failed"); }
+      const r = await fetch(getApiUrl("/api/messages"), { method:"POST", headers:{ "Content-Type":"application/json", Authorization:`Bearer ${token()}` }, body:JSON.stringify({ content:comment.trim(),type:"text",groupId:null,recipientId:selectedTeacher.id }) });
+      if (!r.ok) throw new Error((await r.json().catch(()=>null))?.error || "Private message failed");
+      setComment(""); window.alert("Private message sent.");
+    } catch(e) { window.alert(e instanceof Error ? e.message : "Private message failed"); }
     finally { setSending(false); }
   };
 
@@ -106,7 +106,7 @@ export default function ManagerTeachers() {
             {activityLoading ? <div className="flex justify-center p-10"><Loader2 className="h-6 w-6 animate-spin" /></div> : activity && <div className="space-y-5">
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">{Object.entries(activity.counts ?? {}).map(([k,v]) => <div key={k} className="rounded-lg border p-3 text-center"><p className="text-lg font-bold">{String(v)}</p><p className="text-xs text-muted-foreground capitalize">{k}</p></div>)}</div>
               <Card><CardHeader><CardTitle className="text-base">Recent activity</CardTitle></CardHeader><CardContent className="space-y-2">{(activity.activities ?? []).slice(0,50).map((a:any)=><div key={a.id} className="flex items-center gap-2 rounded-lg border p-2"><div className="min-w-0 flex-1"><p className="text-sm font-medium">{a.action}</p><p className="text-xs text-muted-foreground">{a.category} · {a.targetType ?? "activity"}{a.targetId ? ` #${a.targetId}`:""} · {new Date(a.createdAt).toLocaleString()}</p></div><Button size="sm" variant="outline" onClick={()=>preview(a)}><ExternalLink className="h-3.5 w-3.5" /></Button></div>)}</CardContent></Card>
-              <div className="rounded-lg border p-3 space-y-2"><Textarea value={comment} onChange={e=>setComment(e.target.value)} placeholder="Comment or message the teacher…" /><div className="flex flex-wrap gap-2"><Button onClick={()=>void sendComment()} disabled={sending||!comment.trim()}><MessageSquare className="mr-2 h-4 w-4" />Comment</Button><Button variant="outline" onClick={()=>void notifyTeacher()} disabled={sending||!comment.trim()}><Bell className="mr-2 h-4 w-4" />Notify teacher</Button></div></div>
+              <div className="rounded-lg border p-3 space-y-2"><Textarea value={comment} onChange={e=>setComment(e.target.value)} placeholder="Comment or message the teacher…" /><div className="flex flex-wrap gap-2"><Button onClick={()=>void sendComment()} disabled={sending||!comment.trim()}><MessageSquare className="mr-2 h-4 w-4" />Comment</Button><Button variant="outline" onClick={()=>void notifyTeacher()} disabled={sending||!comment.trim()}><Bell className="mr-2 h-4 w-4" />Private message</Button></div></div>
             </div>}
           </DialogContent>
         </Dialog>
