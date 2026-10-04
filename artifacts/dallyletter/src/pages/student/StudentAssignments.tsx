@@ -14,6 +14,7 @@ const token = () => localStorage.getItem("dallyletter_token") ?? "";
 
 export default function StudentAssignments() {
   const { user } = useAuth();
+  const previewOnly = user?.role !== "student";
   const { toast } = useToast();
   const [assignments, setAssignments] = useState<any[]>([]);
   const [submissions, setSubmissions] = useState<Record<number, any>>({});
@@ -138,12 +139,12 @@ export default function StudentAssignments() {
                           <span className="flex items-center gap-1"><BookOpen className="h-3 w-3" /> {a.totalMarks} marks</span>
                         </div>
                       </div>
-                      {!sub && !overdue && (
+                      {!previewOnly && !sub && !overdue && (
                         <Button size="sm" className="bg-blue-600 text-white gap-1.5" onClick={() => { setSelected(a); setContent(""); setSubmissionFile(null); }}>
                           <Send className="h-3.5 w-3.5" /> Submit
                         </Button>
                       )}
-                      {sub && !overdue && (
+                      {!previewOnly && sub && !overdue && (
                         <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { setSelected(a); setContent(sub.content ?? ""); }}>
                           Resubmit / Edit
                         </Button>
