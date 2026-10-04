@@ -180,7 +180,7 @@ export default function StudentStudyGroups() {
           </div>
           {canCreateGroup && <Button onClick={() => setShowCreate(value => !value)} className="gap-2 shrink-0">
             <Plus className="h-4 w-4" /> Create Group
-          </Button>
+          </Button>}
         </div>
 
         {showCreate && (
