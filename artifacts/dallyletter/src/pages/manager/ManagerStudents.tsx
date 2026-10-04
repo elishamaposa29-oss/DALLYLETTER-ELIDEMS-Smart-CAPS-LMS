@@ -4,9 +4,11 @@ import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Users, Shield, Flame, Star, Search, AlertTriangle, Ban, UserCheck, MessageSquare, Award, UserX } from "lucide-react";
+import { Users, Shield, Flame, Star, Search, AlertTriangle, Ban, UserCheck, MessageSquare, Award, UserX, ExternalLink, Loader2, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 
 const token = () => localStorage.getItem("dallyletter_token") ?? "";
 
@@ -17,6 +19,17 @@ export default function ManagerStudents() {
   const { toast } = useToast();
   const [selected, setSelected] = useState<number[]>([]);
   const [busy, setBusy] = useState<number | null>(null);
+  const [monitorUser, setMonitorUser] = useState<any | null>(null);
+  const [monitorData, setMonitorData] = useState<any | null>(null);
+  const [monitorLoading, setMonitorLoading] = useState(false);
+  const [monitorMessage, setMonitorMessage] = useState("");
+  const [monitorSending, setMonitorSending] = useState(false);
+  const openMonitor = async (student:any) => {
+    setMonitorUser(student); setMonitorData(null); setMonitorMessage(""); setMonitorLoading(true);
+    try { const r=await fetch(getApiUrl(`/api/manager/users/${student.id}/activity`),{headers:{Authorization:`Bearer ${token()}`}}); const d=await r.json(); if(!r.ok)throw new Error(d.error||"Could not load activity"); setMonitorData(d); } catch(e){toast({variant:"destructive",title:"Monitor failed",description:e instanceof Error?e.message:"Try again."});} finally{setMonitorLoading(false);}
+  };
+  const previewActivity=(a:any)=>{const routes:Record<string,string>={lesson:"/student/lessons",assignment:"/student/assignments",poll:"/student/polls",exercise:a.targetId?`/student/exercises/${a.targetId}`:"/student/lessons",attendance:"/student/classes"};const route=routes[a.targetType];if(route)window.open(route,"_blank","noopener,noreferrer");};
+  const sendPrivateMessage=async()=>{if(!monitorUser||!monitorMessage.trim())return;setMonitorSending(true);try{const r=await fetch(getApiUrl("/api/messages"),{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token()}`},body:JSON.stringify({content:monitorMessage.trim(),type:"text",groupId:null,recipientId:monitorUser.id})});if(!r.ok)throw new Error((await r.json().catch(()=>null))?.error||"Message failed");toast({title:"Private message sent"});setMonitorMessage("");}catch(e){toast({variant:"destructive",title:"Message failed",description:e instanceof Error?e.message:"Try again."});}finally{setMonitorSending(false);}};
   const toggleSelect=(id:number)=>setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
   const action=async(id:number, actionName:string)=>{setBusy(id);try{const endpoint = actionName === "unblock" ? `/api/manager/users/${id}/unblock` : `/api/manager/users/${id}/action`; const r=await fetch(getApiUrl(endpoint),{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token()}`},body:JSON.stringify(actionName === "unblock" ? {} : {action:actionName})}); const data=await r.json().catch(()=>({})); if(!r.ok)throw new Error(data.error||"Action failed"); toast({title:"Action applied"}); try { const next=await fetch(getApiUrl("/api/manager/students"),{headers:{Authorization:`Bearer ${token()}`}}); if(next.ok){const refreshed=await next.json().catch(()=>null); if(Array.isArray(refreshed)) setStudents(refreshed);} } catch { /* The moderation action already succeeded; keep the success state and allow a later refresh. */ }}catch(e){toast({variant:"destructive",title:"Action failed",description:e instanceof Error?e.message:"Try again."});}finally{setBusy(null);}};
 
@@ -93,13 +106,15 @@ export default function ManagerStudents() {
                       </>
                     )}
                     {!s.isPrefect && <Button size="sm" variant="outline" onClick={() => void action(s.id, "promote_prefect")} disabled={busy === s.id}><Shield className="mr-1.5 h-3.5 w-3.5" />Make prefect</Button>}
-                    <Button size="sm" variant="outline" onClick={() => window.location.assign("/manager/chat")}><MessageSquare className="mr-1.5 h-3.5 w-3.5" />Open Connect</Button>
+                    <Button size="sm" variant="outline" onClick={() => void openMonitor(s)}><ExternalLink className="mr-1.5 h-3.5 w-3.5" />Monitor</Button><Button size="sm" variant="outline" onClick={() => window.location.assign("/manager/chat")}><MessageSquare className="mr-1.5 h-3.5 w-3.5" />Open Connect</Button>
                   </div>
                 </CardContent>
               </Card>
             ))}
           </div>
         )}
+
+        <Dialog open={Boolean(monitorUser)} onOpenChange={open=>{if(!open)setMonitorUser(null)}}><DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto"><DialogHeader><DialogTitle>Monitor {monitorUser?.name}</DialogTitle></DialogHeader>{monitorLoading?<div className="flex justify-center p-10"><Loader2 className="h-6 w-6 animate-spin"/></div>:monitorData&&<div className="space-y-4"><div className="grid grid-cols-2 sm:grid-cols-4 gap-2">{Object.entries(monitorData.counts??{}).map(([k,v])=><div key={k} className="rounded-lg border p-3 text-center"><p className="font-bold">{String(v)}</p><p className="text-xs text-muted-foreground capitalize">{k}</p></div>)}<div className="rounded-lg border p-3 text-center"><p className="font-bold">#{monitorData.learning?.leaderboardPosition||"—"}</p><p className="text-xs text-muted-foreground">Leaderboard</p></div></div><Card><CardContent className="p-4 space-y-2"><p className="font-semibold">Recent activity</p>{(monitorData.activities??[]).slice(0,60).map((a:any)=><div key={a.id} className="flex items-center gap-2 rounded border p-2"><div className="flex-1 min-w-0"><p className="text-sm">{a.action}</p><p className="text-xs text-muted-foreground">{a.category} · {a.targetType??"activity"}{a.targetId?` #${a.targetId}`:""} · {new Date(a.createdAt).toLocaleString()}</p></div><Button size="sm" variant="outline" onClick={()=>previewActivity(a)}><ExternalLink className="h-3.5 w-3.5"/></Button></div>)}</CardContent></Card><div className="rounded-lg border p-3 space-y-2"><Textarea value={monitorMessage} onChange={e=>setMonitorMessage(e.target.value)} placeholder="Send the learner a private manager message…"/><Button onClick={()=>void sendPrivateMessage()} disabled={monitorSending||!monitorMessage.trim()}><Bell className="mr-2 h-4 w-4"/>Send privately</Button></div></div>}</DialogContent></Dialog>
       </div>
     </DashboardLayout>
   );
