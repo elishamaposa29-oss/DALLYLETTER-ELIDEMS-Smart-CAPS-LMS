@@ -80,10 +80,10 @@ router.get("/users/:id/activity", requireAuth, requireManager, async (req, res):
   if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid user id" }); return; }
   const [target] = await db.select({
     id: usersTable.id, name: usersTable.name, email: usersTable.email, role: usersTable.role,
-    isPrefect: usersTable.isPrefect, grade: usersTable.grade, subject: usersTable.subject,
+    isPrefect: usersTable.isPrefect, isManager: usersTable.isManager, grade: usersTable.grade, subject: usersTable.subject,
     performanceScore: usersTable.performanceScore, badgeCount: usersTable.badgeCount, streakDays: usersTable.streakDays,
   }).from(usersTable).where(eq(usersTable.id, id));
-  if (!target || !["student", "teacher"].includes(target.role)) { res.status(404).json({ error: "User activity is not available" }); return; }
+  if (!target || !["student", "teacher"].includes(target.role) || (target.role === "teacher" && target.isManager === true)) { res.status(404).json({ error: "User activity is not available" }); return; }
 
   const audit = await db.select({
     id: auditLogsTable.id, action: auditLogsTable.action, category: auditLogsTable.category,
