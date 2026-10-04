@@ -28,10 +28,10 @@ router.get("/audit-logs", requireAuth, async (req, res): Promise<void> => {
   const logs = isOwner
     ? await base.orderBy(desc(auditLogsTable.createdAt)).limit(limit)
     : await base.where(and(
+        // Manager scope is determined by who performed the action:
+        // learner + prefect (student role) and teacher activity only.
         drizzleInArray(usersTable.role, ["student", "teacher"]),
-        eq(usersTable.isBlocked, false),
-        // Managers may monitor learner/teacher/prefect activity only.
-        drizzleInArray(auditLogsTable.category, ["academic", "lesson", "assignment", "exercise", "poll", "attendance", "moderation"])
+        eq(usersTable.isBlocked, false)
       )).orderBy(desc(auditLogsTable.createdAt)).limit(limit);
   res.json(logs.map(({ details, performerIsPrefect, ...log }) => ({
     ...log,
