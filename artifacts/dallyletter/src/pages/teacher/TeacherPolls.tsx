@@ -85,7 +85,7 @@ export default function TeacherPolls() {
       body: JSON.stringify({ title: aiGenerated.title, topic: aiTopic.topic, type: "ai", grade: aiTopic.grade || undefined, subject: aiTopic.subject || undefined, mode: "practice", questions: aiGenerated.questions }),
     });
     setCreating(false);
-    if (r.ok) { toast({ title: "AI Poll saved!" }); setAiGenOpen(false); setAiGenerated(null); load(); }
+    if (r.ok) { const created=await r.json(); const activate=await fetch(getApiUrl(`/api/polls/${created.id}`),{method:"PATCH",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token()}`},body:JSON.stringify({status:"active"})}); if(!activate.ok){toast({variant:"destructive",title:"AI poll created but not published"});return;} toast({ title: "AI Poll created and published!" }); setAiGenOpen(false); setAiGenerated(null); load(); }
   }
 
   async function setStatus(id: number, status: string) {
