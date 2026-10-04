@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { usersTable, classesTable, lessonsTable, paymentsTable, ownerAlertsTable, assignmentsTable } from "@workspace/db/schema";
+import { usersTable, classesTable, lessonsTable, paymentsTable, ownerAlertsTable, assignmentsTable, pollsTable, exercisesTable, auditLogsTable, attendanceTable, userAchievementsTable, achievementsTable, exerciseSubmissionsTable, pollSubmissionsTable } from "@workspace/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { requireAuth, canAccessManager } from "../lib/auth-middleware";
 
@@ -73,6 +73,44 @@ router.put("/teacher/:id/score", requireAuth, requireManager, async (req, res): 
   const [row] = await db.update(usersTable).set({ performanceScore })
     .where(eq(usersTable.id, parseInt(String(req.params.id)))).returning();
   res.json(row);
+});
+
+router.get("/users/:id/activity", requireAuth, requireManager, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid user id" }); return; }
+  const [target] = await db.select({
+    id: usersTable.id, name: usersTable.name, email: usersTable.email, role: usersTable.role,
+    isPrefect: usersTable.isPrefect, grade: usersTable.grade, subject: usersTable.subject,
+    performanceScore: usersTable.performanceScore, badgeCount: usersTable.badgeCount, streakDays: usersTable.streakDays,
+  }).from(usersTable).where(eq(usersTable.id, id));
+  if (!target || !["student", "teacher"].includes(target.role)) { res.status(404).json({ error: "User activity is not available" }); return; }
+
+  const audit = await db.select({
+    id: auditLogsTable.id, action: auditLogsTable.action, category: auditLogsTable.category,
+    targetType: auditLogsTable.targetType, targetId: auditLogsTable.targetId, createdAt: auditLogsTable.createdAt,
+  }).from(auditLogsTable).where(eq(auditLogsTable.performedBy, id)).orderBy(desc(auditLogsTable.createdAt)).limit(200);
+
+  if (target.role === "teacher") {
+    const [lessons, classes, assignments, polls, exercises] = await Promise.all([
+      db.select().from(lessonsTable).where(eq(lessonsTable.teacherId, id)).orderBy(desc(lessonsTable.createdAt)),
+      db.select().from(classesTable).where(eq(classesTable.teacherId, id)).orderBy(desc(classesTable.createdAt)),
+      db.select().from(assignmentsTable).where(eq(assignmentsTable.teacherId, id)).orderBy(desc(assignmentsTable.createdAt)),
+      db.select().from(pollsTable).where(eq(pollsTable.createdBy, id)).orderBy(desc(pollsTable.createdAt)),
+      db.select().from(exercisesTable).where(eq(exercisesTable.createdBy, id)).orderBy(desc(exercisesTable.createdAt)),
+    ]);
+    res.json({ user: target, activities: audit, created: { lessons, classes, assignments, polls, exercises }, counts: { lessons: lessons.length, classes: classes.length, assignments: assignments.length, polls: polls.length, exercises: exercises.length } });
+    return;
+  }
+
+  const [attendance, achievements, exerciseResults, pollResults, leaderboardUsers] = await Promise.all([
+    db.select().from(attendanceTable).where(eq(attendanceTable.studentId, id)).orderBy(desc(attendanceTable.joinedAt)).limit(200),
+    db.select({ id: userAchievementsTable.id, name: achievementsTable.name, icon: achievementsTable.icon, pointsValue: achievementsTable.pointsValue, note: userAchievementsTable.note, earnedAt: userAchievementsTable.earnedAt }).from(userAchievementsTable).innerJoin(achievementsTable, eq(userAchievementsTable.achievementId, achievementsTable.id)).where(eq(userAchievementsTable.userId, id)).orderBy(desc(userAchievementsTable.earnedAt)),
+    db.select().from(exerciseSubmissionsTable).where(eq(exerciseSubmissionsTable.learnerId, id)).orderBy(desc(exerciseSubmissionsTable.submittedAt)).limit(200),
+    db.select().from(pollSubmissionsTable).where(eq(pollSubmissionsTable.studentId, id)).orderBy(desc(pollSubmissionsTable.completedAt)).limit(200),
+    db.select({ id: usersTable.id, performanceScore: usersTable.performanceScore }).from(usersTable).where(eq(usersTable.role, "student")).orderBy(desc(usersTable.performanceScore)),
+  ]);
+  const leaderboardPosition = leaderboardUsers.findIndex(row => row.id === id) + 1;
+  res.json({ user: target, activities: audit, learning: { attendance, achievements, exerciseResults, pollResults, leaderboardPosition }, counts: { attendance: attendance.length, achievements: achievements.length, exerciseResults: exerciseResults.length, pollResults: pollResults.length } });
 });
 
 router.get("/reports/overview", requireAuth, requireManager, async (req, res) => {
