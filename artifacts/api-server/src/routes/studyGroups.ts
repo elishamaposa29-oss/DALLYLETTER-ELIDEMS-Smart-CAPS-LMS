@@ -72,6 +72,11 @@ router.get("/study-groups", requireAuth, async (req, res): Promise<void> => {
 // POST /study-groups — Create a study group
 router.post("/study-groups", requireAuth, async (req, res): Promise<void> => {
   const currentUser = req.currentUser!;
+  const canCreate = isOwnerRole(currentUser.role) || currentUser.isManager === true || currentUser.isPrefect === true || currentUser.role === "teacher";
+  if (!canCreate) {
+    res.status(403).json({ error: "Only teachers, prefects, managers, and owners can create study groups" });
+    return;
+  }
 
   const parsed = CreateStudyGroupBody.safeParse(req.body);
   if (!parsed.success) {
