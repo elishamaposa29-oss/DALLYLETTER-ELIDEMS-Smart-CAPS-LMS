@@ -46,12 +46,33 @@ async function getGroupMembers(groupId: number) {
     avatarUrl: usersTable.avatarUrl,
     lastPaymentDate: usersTable.lastPaymentDate,
     createdAt: usersTable.createdAt,
+    control: {
+      blocked: groupMemberControlsTable.blocked,
+      mediaBlocked: groupMemberControlsTable.mediaBlocked,
+      suspended: groupMemberControlsTable.suspended,
+      muted: groupMemberControlsTable.muted,
+      canManageSettings: groupMemberControlsTable.canManageSettings,
+    },
   })
   .from(studyGroupMembersTable)
   .innerJoin(usersTable, eq(studyGroupMembersTable.userId, usersTable.id))
+  .leftJoin(groupMemberControlsTable, and(
+    eq(groupMemberControlsTable.groupId, groupId),
+    eq(groupMemberControlsTable.userId, usersTable.id),
+  ))
   .where(eq(studyGroupMembersTable.groupId, groupId));
 
-  return memberRows.map(m => ({ ...m, createdAt: m.createdAt.toISOString() }));
+  return memberRows.map(m => ({
+    ...m,
+    control: m.control && Object.values(m.control).some(value => value !== null) ? {
+      blocked: Boolean(m.control.blocked),
+      mediaBlocked: Boolean(m.control.mediaBlocked),
+      suspended: Boolean(m.control.suspended),
+      muted: Boolean(m.control.muted),
+      canManageSettings: Boolean(m.control.canManageSettings),
+    } : null,
+    createdAt: m.createdAt.toISOString(),
+  }));
 }
 
 // GET /study-groups — List all study groups
