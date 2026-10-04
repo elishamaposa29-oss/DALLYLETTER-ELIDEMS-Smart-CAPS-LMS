@@ -436,6 +436,22 @@ export default function TeacherLessons() {
                       <ClipboardCheck className="h-4 w-4" />
                       Mark Submissions
                     </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={async () => {
+                        try {
+                          const r = await fetch(getApiUrl(`/api/lessons/${lesson.id}/notify-followers`), { method: "POST", headers: authHeaders() });
+                          const data = await r.json().catch(() => ({}));
+                          if (!r.ok) throw new Error(data.error || "Could not notify followers");
+                          toast({ title: "Followers notified", description: `${data.recipientCount ?? 0} follower(s) notified.` });
+                        } catch (e) { toast({ variant: "destructive", title: "Follower notification failed", description: e instanceof Error ? e.message : "Try again." }); }
+                      }}
+                    >
+                      <Bell className="h-4 w-4" />
+                      Notify followers
+                    </Button>
                     <Button 
                       variant="ghost" 
                       size="sm" 
