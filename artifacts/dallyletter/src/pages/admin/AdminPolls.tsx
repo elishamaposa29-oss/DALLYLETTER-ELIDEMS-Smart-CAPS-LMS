@@ -259,7 +259,7 @@ export default function AdminPolls() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <Label>Questions</Label>
-                  <Button type="button" variant="outline" size="sm" onClick={() => setNewQuestions(q => [...q, { question: "", options: ["","","",""], correct: 0, difficulty: "medium" }])}>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setNewQuestions(q => [...q, { question: "", imageUrl: "", options: ["","","",""], correct: 0, difficulty: "medium" }])}>
                     <Plus className="h-3.5 w-3.5 mr-1" />Add Question
                   </Button>
                 </div>
