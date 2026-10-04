@@ -58,9 +58,16 @@ async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]
 }
 
 async function canViewPrivateConversation(user: NonNullable<Express.Request["currentUser"]>, recipientId: number): Promise<boolean> {
-  if (!Number.isInteger(recipientId) || recipientId <= 0) return false;
+  if (!Number.isInteger(recipientId) || recipientId <= 0 || recipientId === user.id) return false;
   if (isOwnerRole(user.role)) return true;
-  return user.id === recipientId;
+  const [conversation] = await db.select({ id: messagesTable.id })
+    .from(messagesTable)
+    .where(or(
+      and(eq(messagesTable.senderId, user.id), eq(messagesTable.recipientId, recipientId)),
+      and(eq(messagesTable.senderId, recipientId), eq(messagesTable.recipientId, user.id)),
+    ))
+    .limit(1);
+  return Boolean(conversation);
 }
 
 function messageMediaPath(storageKey: string): string {
