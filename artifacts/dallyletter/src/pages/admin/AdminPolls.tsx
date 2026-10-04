@@ -57,28 +57,36 @@ export default function AdminPolls() {
   }
 
   async function handleCreate() {
-    if (!newPoll.title) { toast({ variant: "destructive", title: "Title required" }); return; }
+    if (!newPoll.title.trim()) { toast({ variant: "destructive", title: "Title required" }); return; }
+    const validQuestions = newQuestions.filter(q => q.question.trim() && q.options.filter(Boolean).length >= 2);
+    if (!validQuestions.length) { toast({ variant: "destructive", title: "Add at least one complete question" }); return; }
     setCreating(true);
-    const questions = newQuestions.filter(q => q.question.trim()).map(q => ({
-      question: q.question, difficulty: q.difficulty,
-      imageUrl: q.imageUrl || undefined, options: q.options.map((o, i) => ({ text: o, isCorrect: i === q.correct }))
-    }));
-    const r = await fetch(getApiUrl("/api/polls"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
-      body: JSON.stringify({ ...newPoll, type: "manual", questions }),
-    });
-    setCreating(false);
-    if (r.ok) {
-      const created = await r.json();
-      const activate = await fetch(getApiUrl(`/api/polls/${created.id}`), { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` }, body: JSON.stringify({ status: "active" }) });
+    try {
+      const questions = validQuestions.map(q => ({
+        question: q.question.trim(), difficulty: q.difficulty,
+        imageUrl: q.imageUrl || undefined,
+        options: q.options.filter(Boolean).map((o, i) => ({ text: o, isCorrect: i === q.correct }))
+      }));
+      const r = await fetch(getApiUrl("/api/polls"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({ ...newPoll, title: newPoll.title.trim(), type: "manual", questions }),
+      });
+      const created = await r.json().catch(() => null);
+      if (!r.ok || !created?.id) throw new Error(created?.error || "Poll could not be created.");
+      const activate = await fetch(getApiUrl(`/api/polls/${created.id}`), {
+        method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({ status: "active" }),
+      });
       if (!activate.ok) throw new Error("Poll was created but could not be published automatically.");
       toast({ title: "Poll created and published!" });
       setCreateOpen(false);
       setNewPoll({ title: "", grade: "", subject: "", mode: "practice" });
       setNewQuestions([{ question: "", imageUrl: "", options: ["", "", "", ""], correct: 0, difficulty: "medium" }]);
-      loadPolls();
-    }
+      await loadPolls();
+    } catch (error) {
+      toast({ variant: "destructive", title: "Poll creation failed", description: error instanceof Error ? error.message : "Try again." });
+    } finally { setCreating(false); }
   }
 
   async function handleAIGenerate() {
