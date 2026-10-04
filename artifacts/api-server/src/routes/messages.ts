@@ -57,6 +57,12 @@ async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]
   return true;
 }
 
+async function canViewPrivateConversation(user: NonNullable<Express.Request["currentUser"]>, recipientId: number): Promise<boolean> {
+  if (!Number.isInteger(recipientId) || recipientId <= 0) return false;
+  if (isOwnerRole(user.role)) return true;
+  return user.id === recipientId;
+}
+
 function messageMediaPath(storageKey: string): string {
   return `/api/messages/media/${storageKey}`;
 }
@@ -116,7 +122,7 @@ router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise
   const user = req.currentUser!;
   const allowed = message.groupId != null
     ? await canAccessGroup(message.groupId, user.id, user.role)
-    : message.recipientId != null && (message.recipientId === user.id || message.senderId === user.id);
+    : message.recipientId != null && (isOwnerRole(user.role) || message.recipientId === user.id || message.senderId === user.id);
   if (!allowed) { res.status(403).json({ error: "You cannot access this media" }); return; }
   try {
     const stats = await getMediaStats(storageKey);
@@ -155,8 +161,8 @@ router.get("/messages", requireAuth, async (req, res): Promise<void> => {
       .where(eq(messagesTable.groupId, groupId))
       .orderBy(messagesTable.createdAt);
   } else if (recipientId != null) {
-    if (!(await canMessageUser(currentUser, recipientId))) {
-      res.status(403).json({ error: "You cannot access this conversation" });
+    if (!(await canViewPrivateConversation(currentUser, recipientId))) {
+      res.status(403).json({ error: "Private conversations are restricted to the participants and owner" });
       return;
     }
     // Private messages between current user and recipient
