@@ -9,7 +9,6 @@ on:
 permissions:
   contents: read
   statuses: write
-  pull-requests: write
 
 jobs:
   verify:
@@ -34,16 +33,6 @@ jobs:
 
       - name: Verify release safety
         run: pnpm run ci:verify
-
-      - name: Capture temporary CI diagnostic
-        if: failure()
-        continue-on-error: true
-        run: |
-          set +e
-          pnpm run ci:verify > /tmp/dallyletter-ci.log 2>&1
-          status=$?
-          echo "CI_VERIFY_EXIT=$status" >> /tmp/dallyletter-ci.log
-          exit 0
 
       - name: Publish temporary CI diagnostic to PR
         if: failure()
