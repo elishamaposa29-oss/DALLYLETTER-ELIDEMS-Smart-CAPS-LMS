@@ -19,6 +19,8 @@ const registerSchema = z.object({
   role: z.enum([RegisterUserBodyRole.student, RegisterUserBodyRole.teacher]),
   grade: z.string().optional(),
   subject: z.string().optional(),
+  country: z.enum(["ZW","ZA"]),
+  phone: z.string().optional(),
 }).superRefine((data, ctx) => {
   if (data.role === "student" && !data.grade) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Grade is required for students", path: ["grade"] });
@@ -43,13 +45,16 @@ export default function Register() {
 
   const form = useForm<z.infer<typeof registerSchema>>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { name: "", email: "", password: "", role: RegisterUserBodyRole.student, grade: "", subject: "" },
+    defaultValues: { name: "", email: "", password: "", role: RegisterUserBodyRole.student, grade: "", subject: "", country: "ZW", phone: "" },
   });
 
   const role = form.watch("role");
+  const country = form.watch("country");
+  const gradeOptions = country === "ZW" ? ["Grade 7","Form 1","Form 2","Form 3","Form 4","Form 5","Form 6"] : ["Grade 7","Grade 8","Grade 9","Grade 10","Grade 11","Grade 12"];
 
   function onSubmit(values: z.infer<typeof registerSchema>) {
-    registerMutation.mutate({ data: values }, {
+    const phone = values.phone?.trim() ? (values.country === "ZW" ? "+263" : "+27") + values.phone.trim().replace(/^0/, "") : undefined;
+    registerMutation.mutate({ data: { ...values, phone } }, {
       onSuccess: (data) => {
         login(data.token);
         if (data.user.role === "teacher") setLocation("/teacher");
@@ -180,6 +185,20 @@ export default function Register() {
                     )}
                   />
 
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <FormField control={form.control} name="country" render={({ field }) => (
+                      <FormItem><FormLabel className="text-gray-700 font-medium">Country</FormLabel>
+                        <Select onValueChange={(value) => { field.onChange(value); form.setValue("grade", ""); }} value={field.value}>
+                          <FormControl><SelectTrigger className="h-11 border-gray-200 bg-gray-50"><SelectValue /></SelectTrigger></FormControl>
+                          <SelectContent><SelectItem value="ZW">🇿🇼 Zimbabwe · +263</SelectItem><SelectItem value="ZA">🇿🇦 South Africa · +27</SelectItem></SelectContent>
+                        </Select>
+                      </FormItem>
+                    )}/>
+                    <FormField control={form.control} name="phone" render={({ field }) => (
+                      <FormItem><FormLabel className="text-gray-700 font-medium">Phone number</FormLabel><FormControl><Input placeholder="77 123 4567" className="h-11 border-gray-200 bg-gray-50" {...field}/></FormControl><FormMessage/></FormItem>
+                    )}/>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-3">
                     <FormField
                       control={form.control}
@@ -217,7 +236,7 @@ export default function Register() {
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                {["Grade 8","Grade 9","Grade 10","Grade 11","Grade 12"].map(g => (
+                                {gradeOptions.map(g => (
                                   <SelectItem key={g} value={g}>{g}</SelectItem>
                                 ))}
                               </SelectContent>
