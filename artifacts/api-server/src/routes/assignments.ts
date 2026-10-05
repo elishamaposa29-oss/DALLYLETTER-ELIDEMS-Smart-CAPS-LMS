@@ -91,12 +91,10 @@ router.get("/", requireAuth, async (req, res): Promise<void> => {
     // Staff may preview all assignments, but mutation endpoints below enforce ownership.
     rows = await db.select().from(assignmentsTable).orderBy(desc(assignmentsTable.createdAt));
   } else {
-    rows = await db.select().from(assignmentsTable)
-      .where(and(
-        eq(assignmentsTable.status, "active"),
-        or(isNull(assignmentsTable.grade), eq(assignmentsTable.grade, user.grade ?? "")),
-      ))
+    const activeRows = await db.select().from(assignmentsTable)
+      .where(eq(assignmentsTable.status, "active"))
       .orderBy(desc(assignmentsTable.createdAt));
+    rows = activeRows.filter(row => isVisibleToStudent(row, user.grade ?? null));
   }
   res.json(rows);
 });
