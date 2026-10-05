@@ -9,30 +9,39 @@ import { Badge } from "@/components/ui/badge";
 interface Question{id:number;prompt:string;type:"input"|"poll"|"drawbox";marksAllocated:string;position:number;config:Record<string,unknown>};interface AnswerMedia{url:string;fileName:string;mimeType?:string;size?:number};interface Option{id:number;questionId:number;label:string;value:string;position:number};interface Exercise{id:number;title:string;instructions:string|null;totalMarks:string};
 function DrawBox({value,onChange,readOnly=false}:{value:Record<string,unknown>|undefined;onChange:(v:Record<string,unknown>)=>void;readOnly?:boolean}){
  const ref=useRef<HTMLCanvasElement>(null);const wrapRef=useRef<HTMLDivElement>(null);const drawing=useRef(false);const last=useRef<{x:number;y:number}|null>(null);
- const [tool,setTool]=useState<"pen"|"eraser"|"text">("pen"),[color,setColor]=useState("#111827"),[width,setWidth]=useState(3),[fullscreen,setFullscreen]=useState(false);
- const redraw=()=>{const c=ref.current;if(!c)return;const ctx=c.getContext("2d");if(!ctx)return;ctx.clearRect(0,0,c.width,c.height);ctx.fillStyle="#ffffff";ctx.fillRect(0,0,c.width,c.height);
-   for(const s of ((value?.strokes??[]) as any[])){ctx.save();ctx.lineCap="round";ctx.lineJoin="round";ctx.lineWidth=Number(s.width??2);ctx.strokeStyle=s.color??"#111827";ctx.globalCompositeOperation=s.tool==="eraser"?"destination-out":"source-over";ctx.beginPath();ctx.moveTo(Number(s.px??s.x),Number(s.py??s.y));ctx.lineTo(Number(s.x),Number(s.y));ctx.stroke();ctx.restore();}
-   ctx.font="16px sans-serif";for(const label of ((value?.labels??[]) as any[])){ctx.fillStyle=label.color??"#111827";ctx.fillText(String(label.text??""),Number(label.x),Number(label.y));}
+ const [tool,setTool]=useState<"pen"|"eraser"|"text"|"paint"|"pointer">("pen"),[color,setColor]=useState("#111827"),[width,setWidth]=useState(3),[fullscreen,setFullscreen]=useState(false),[magnify,setMagnify]=useState(false);
+ const redraw=()=>{
+   const c=ref.current;if(!c)return;const ctx=c.getContext("2d");if(!ctx)return;
+   ctx.clearRect(0,0,c.width,c.height);ctx.fillStyle="#ffffff";ctx.fillRect(0,0,c.width,c.height);
+   for(const s of ((value?.paintStrokes??[]) as any[])){ctx.save();ctx.lineCap="round";ctx.lineJoin="round";ctx.lineWidth=Number(s.width??8);ctx.strokeStyle=s.color??"#f59e0b";ctx.globalCompositeOperation="source-over";ctx.globalAlpha=.28;ctx.beginPath();ctx.moveTo(Number(s.px??s.x),Number(s.py??s.y));ctx.lineTo(Number(s.x),Number(s.y));ctx.stroke();ctx.restore();}
+   for(const s of ((value?.strokes??[]) as any[])){ctx.save();ctx.lineCap="round";ctx.lineJoin="round";ctx.lineWidth=Number(s.width??2);ctx.strokeStyle=s.color??"#111827";ctx.globalCompositeOperation=s.tool==="eraser"?"destination-out":"source-over";ctx.globalAlpha=1;ctx.beginPath();ctx.moveTo(Number(s.px??s.x),Number(s.py??s.y));ctx.lineTo(Number(s.x),Number(s.y));ctx.stroke();ctx.restore();}
+   ctx.font="16px sans-serif";for(const label of ((value?.labels??[]) as any[])){ctx.save();ctx.fillStyle=label.color??"#111827";ctx.strokeStyle=label.color??"#111827";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(Number(label.anchorX??label.x),Number(label.anchorY??label.y));ctx.lineTo(Number(label.x)-4,Number(label.y)-4);ctx.stroke();ctx.fillText(String(label.text??""),Number(label.x),Number(label.y));ctx.restore();}
  };
  useEffect(()=>{redraw()},[value]);
  const point=(e:React.PointerEvent)=>{const c=ref.current;if(!c)return null;const r=c.getBoundingClientRect();return{x:(e.clientX-r.left)*(c.width/r.width),y:(e.clientY-r.top)*(c.height/r.height)}};
- const down=(e:React.PointerEvent)=>{if(readOnly)return;const p=point(e);if(!p)return;if(tool==="text"){const text=window.prompt("Enter drawing label");if(text?.trim())onChange({...value,labels:[...(((value?.labels??[]) as any[])),{text:text.trim(),x:p.x,y:p.y,color}]});return;}drawing.current=true;last.current=p;ref.current?.setPointerCapture(e.pointerId)};
- const move=(e:React.PointerEvent)=>{if(!drawing.current)return;const p=point(e);if(!p||!last.current)return;const stroke={x:p.x,y:p.y,px:last.current.x,py:last.current.y,color,width,tool};onChange({...value,strokes:[...(((value?.strokes??[]) as any[])),stroke]});last.current=p};
+ const down=(e:React.PointerEvent)=>{
+   if(readOnly)return;const p=point(e);if(!p)return;
+   if(tool==="text"||tool==="pointer"){const text=window.prompt(tool==="pointer"?"Enter label for this point":"Enter drawing label");if(text?.trim())onChange({...value,labels:[...(((value?.labels??[]) as any[])),{text:text.trim(),x:Math.min(p.x+42,1150),y:Math.max(p.y-28,24),anchorX:p.x,anchorY:p.y,color}]});return;}
+   drawing.current=true;last.current=p;ref.current?.setPointerCapture(e.pointerId);
+ };
+ const move=(e:React.PointerEvent)=>{if(!drawing.current)return;const p=point(e);if(!p||!last.current)return;const stroke={x:p.x,y:p.y,px:last.current.x,py:last.current.y,color,width,tool};const key=tool==="paint"?"paintStrokes":"strokes";onChange({...value,[key]:[...(((value?.[key]??[]) as any[])),stroke]});last.current=p};
  const up=()=>{drawing.current=false;last.current=null};
- const clear=()=>onChange({strokes:[],labels:[]});
+ const clear=()=>onChange({strokes:[],paintStrokes:[],labels:[]});
+ const detail=(1+width/12).toFixed(1);
  return <div ref={wrapRef} className={fullscreen?"fixed inset-0 z-50 bg-white p-3 flex flex-col":"space-y-2"}>
    {!readOnly&&<div className="flex flex-wrap items-center gap-2 rounded-lg border bg-background p-2">
-     <Button type="button" size="sm" variant={tool==="pen"?"default":"outline"} onClick={()=>setTool("pen")}>Pen</Button>
-     <Button type="button" size="sm" variant={tool==="eraser"?"default":"outline"} onClick={()=>setTool("eraser")}>Erase</Button>
-     <Button type="button" size="sm" variant={tool==="text"?"default":"outline"} onClick={()=>setTool("text")}>Text</Button>
+     {(["pen","paint","eraser","text","pointer"] as const).map(t=><Button key={t} type="button" size="sm" variant={tool===t?"default":"outline"} onClick={()=>setTool(t)}>{t==="paint"?"Paint":t==="eraser"?"Erase":t==="text"?"Text":t==="pointer"?"Pointer":"Pen"}</Button>)}
      <label className="flex items-center gap-1 text-xs">Colour<input type="color" value={color} onChange={e=>setColor(e.target.value)} className="h-7 w-8"/></label>
-     <label className="flex items-center gap-1 text-xs">Width<input type="range" min="1" max="24" value={width} onChange={e=>setWidth(Number(e.target.value))}/></label>
+     <label className="flex items-center gap-1 text-xs">Detail / size<input type="range" min="1" max="24" value={width} onChange={e=>{setWidth(Number(e.target.value));setMagnify(true)}}/></label>
+     <Button type="button" size="sm" variant={magnify?"secondary":"ghost"} onClick={()=>setMagnify(v=>!v)}>Magnifier ×{detail}</Button>
      <Button type="button" size="sm" variant="ghost" onClick={clear}>Clear</Button>
      <Button type="button" size="sm" variant="outline" onClick={()=>{if(!document.fullscreenElement)void wrapRef.current?.requestFullscreen?.();else void document.exitFullscreen?.();setFullscreen(v=>!v)}}>{fullscreen?"Exit fullscreen":"Fullscreen"}</Button>
    </div>}
+   {magnify&&!readOnly&&<div className="rounded-lg border bg-slate-50 px-3 py-2 text-xs text-muted-foreground">Magnifier is linked to the selected tool and size: <strong>×{detail}</strong>. Paint is stored separately and drawn underneath your pen work; Pointer labels keep a visible line back to the exact point.</div>}
    <canvas ref={ref} width={1200} height={700} className={fullscreen?"flex-1 h-full w-full touch-none rounded-lg border bg-white":"h-[320px] w-full touch-none rounded-lg border bg-white"} onPointerDown={readOnly?undefined:down} onPointerMove={readOnly?undefined:move} onPointerUp={readOnly?undefined:up} onPointerCancel={readOnly?undefined:up}/>
  </div>
 }
+
 export default function StudentExercise(){const[,params]=useRoute("/student/exercises/:id");const[,navigate]=useLocation();const id=params?.id;const[data,setData]=useState<{exercise:Exercise;questions:Question[];options:Option[]}|null>(null);const[answers,setAnswers]=useState<Record<number,{textAnswer?:string;selectedValue?:string;drawData?:Record<string,unknown>;mediaReference?:string}>>({});const[message,setMessage]=useState("");const[result,setResult]=useState<any>(null);const[busy,setBusy]=useState(false);const[uploadingQuestion,setUploadingQuestion]=useState<number|null>(null);const[newAttempt,setNewAttempt]=useState(false),[confirmAttempt,setConfirmAttempt]=useState(false);useEffect(()=>{if(!id)return;const token=localStorage.getItem("dallyletter_token");const headers: Record<string,string>={};if(token)headers.Authorization=`Bearer ${token}`;Promise.all([fetch(getApiUrl(`/api/exercises/${id}`),{headers}).then(async r=>{if(!r.ok)throw new Error("Exercise unavailable");return r.json()}),fetch(getApiUrl(`/api/exercises/${id}/result`),{headers}).then(async r=>r.ok?r.json():null).catch(()=>null)]).then(([exerciseData,resultData])=>{setData(exerciseData);setResult(resultData);if(resultData?.answers){setAnswers(Object.fromEntries(resultData.answers.map((a:any)=>[a.questionId,{textAnswer:a.textAnswer??undefined,selectedValue:a.selectedValue??undefined,drawData:a.drawData??undefined,mediaReference:a.mediaReference??undefined}])));}}).catch(e=>setMessage(e instanceof Error?e.message:"Exercise unavailable"));},[id]);const optionsByQuestion=useMemo(()=>{const m:Record<string,Option[]>={};for(const o of data?.options??[])(m[o.questionId]??=[]).push(o);return m},[data]);const update=(qid:number,patch:Record<string,unknown>)=>setAnswers(a=>({...a,[qid]:{...a[qid],...patch}}));
 const uploadAnswerMedia=async(qid:number,file:File)=>{
   setUploadingQuestion(qid);setMessage("");
