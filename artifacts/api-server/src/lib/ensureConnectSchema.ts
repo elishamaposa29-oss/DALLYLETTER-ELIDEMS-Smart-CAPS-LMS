@@ -8,6 +8,16 @@ export async function ensureConnectSchema(): Promise<void> {
   try {
     await client.query("BEGIN");
 
+    await client.query(`CREATE TABLE IF NOT EXISTS message_media (
+      storage_key text PRIMARY KEY,
+      message_id integer,
+      mime_type text NOT NULL,
+      size_bytes integer NOT NULL,
+      data bytea NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query(`CREATE INDEX IF NOT EXISTS message_media_message_id_idx ON message_media(message_id)`);
+
     // The CI database and some fresh deployments may contain the core users table
     // without the optional notifications table. Create the canonical table first,
     // then safely extend it. This is idempotent and matches lib/db schema.
