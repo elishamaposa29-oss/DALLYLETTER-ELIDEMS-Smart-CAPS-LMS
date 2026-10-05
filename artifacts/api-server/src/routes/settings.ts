@@ -5,7 +5,7 @@ import { requireAuth, requireOwner } from "../lib/auth-middleware";
 
 const router: IRouter = Router();
 
-const PUBLIC_SETTING_KEYS = new Set(["paynow_url", "paypal_url", "trust_wallet", "ecocash_number", "payment_instructions"]);
+const PUBLIC_SETTING_KEYS = new Set(["paynow_url", "paypal_url", "trust_wallet", "ecocash_number", "payment_instructions", "docs_url"]);
 
 const DEFAULT_SETTINGS = {
   paynow_url: "",
@@ -13,6 +13,7 @@ const DEFAULT_SETTINGS = {
   trust_wallet: "",
   ecocash_number: "",
   payment_instructions: "Pay your school fees using any of the methods below. After paying, click 'I\'ve Paid' to notify the school.",
+  docs_url: "/docs",
 };
 
 // GET /settings — Public settings (payment info visible to all logged-in users)
