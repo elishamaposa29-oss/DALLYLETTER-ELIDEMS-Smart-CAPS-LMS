@@ -20,6 +20,8 @@ import {
   getMediaStats,
   isAllowedMediaType,
   MAX_MEDIA_SIZE_BYTES,
+  persistUploadedMedia,
+  streamStoredMedia,
 } from "../lib/media-storage";
 
 const router: IRouter = Router();
@@ -94,6 +96,13 @@ router.post("/lessons/media", requireAuth, requireTeacherOrOwner, (req, res, nex
       return;
     }
 
+    try {
+      await persistUploadedMedia(req.file.filename, req.file.mimetype, req.file.path);
+    } catch {
+      res.status(503).json({ error: "Persistent media storage is temporarily unavailable. Please retry the upload." });
+      return;
+    }
+
     res.status(201).json({
       mediaUrl: `/api/lessons/media/${req.file.filename}?type=${encodeURIComponent(req.file.mimetype)}`,
       storageKey: req.file.filename,
@@ -111,6 +120,16 @@ router.get("/lessons/media/:storageKey", requireAuth, async (req, res): Promise<
   }
 
   try {
+    const remote = await streamStoredMedia(storageKey, req.headers.range);
+    if (remote) {
+      res.status(remote.status);
+      remote.headers.forEach((value, key) => res.setHeader(key, value));
+      if (remote.body) {
+        for await (const chunk of remote.body as any) res.write(chunk);
+      }
+      res.end();
+      return;
+    }
     const mediaStats = await getMediaStats(storageKey);
     const mediaType = typeof req.query.type === "string" && isAllowedMediaType(req.query.type)
       ? req.query.type
