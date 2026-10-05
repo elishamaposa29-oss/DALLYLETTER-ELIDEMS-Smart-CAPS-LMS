@@ -226,7 +226,7 @@ router.post("/submissions/:subId/ai-grade", requireAuth, async (req, res): Promi
     const result = await ai.analyzeData({
       assignment: { title: row.assignment.title, subject: row.assignment.subject, description: row.assignment.description, totalMarks: row.assignment.totalMarks },
       submission: { content: row.submission.content },
-    }, "Mark this educational assignment fairly. Return ONLY JSON with numeric marks between 0 and the totalMarks and a concise teacher feedback string. Do not invent unanswered work. JSON format: {"marks":0,"feedback":"..."}");
+    }, `Mark this educational assignment fairly. Return ONLY JSON with numeric marks between 0 and the totalMarks and a concise teacher feedback string. Do not invent unanswered work. JSON format: {"marks":0,"feedback":"..."}`);
     const match = result.match(/\{[\s\S]*\}/);
     if (!match) throw new Error("AI returned invalid marking data");
     const parsed = JSON.parse(match[0]) as { marks?: unknown; feedback?: unknown };
