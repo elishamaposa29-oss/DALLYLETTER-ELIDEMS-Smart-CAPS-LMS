@@ -17,6 +17,16 @@ export default function StudentNotifications() {
   const markReadMutation = useMarkNotificationRead();
   const queryClient = useQueryClient();
 
+  const openNotification = (notification: any) => {
+    const link = typeof notification.link === "string" ? notification.link.trim() : "";
+    if (link) {
+      if (!notification.isRead) handleMarkAsRead(notification.id);
+      navigate(link);
+      return;
+    }
+    if (!notification.isRead) handleMarkAsRead(notification.id);
+  };
+
   const handleMarkAsRead = (id: number) => {
     markReadMutation.mutate({ id }, {
       onSuccess: () => {
@@ -74,7 +84,7 @@ export default function StudentNotifications() {
                 return (
                   <Card
                     key={notification.id}
-                    className={`transition-colors cursor-pointer ${
+                    className={`transition-colors cursor-pointer hover:-translate-y-0.5 hover:shadow-md ${
                       admin
                         ? !notification.isRead
                           ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-300 dark:border-amber-700 border-l-4 border-l-amber-400'
