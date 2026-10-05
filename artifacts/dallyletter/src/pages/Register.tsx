@@ -54,7 +54,8 @@ export default function Register() {
 
   function onSubmit(values: z.infer<typeof registerSchema>) {
     const phone = values.phone?.trim() ? (values.country === "ZW" ? "+263" : "+27") + values.phone.trim().replace(/^0/, "") : undefined;
-    registerMutation.mutate({ data: { ...values, phone } }, {
+    const { country: _country, phone: _localPhone, ...registrationData } = values;
+    registerMutation.mutate({ data: { ...registrationData, phone } }, {
       onSuccess: (data) => {
         login(data.token);
         if (data.user.role === "teacher") setLocation("/teacher");
