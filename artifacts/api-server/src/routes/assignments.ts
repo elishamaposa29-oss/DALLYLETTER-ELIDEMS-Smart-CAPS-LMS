@@ -19,7 +19,7 @@ const materialUpload = multer({
 });
 
 function normalizeGrade(value: string | null | undefined): string {
-  return String(value ?? "").trim().toLowerCase().replace(/\\s+/g, " ");
+  return String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 function isVisibleToStudent(assignment: { status: string; grade: string | null }, grade: string | null): boolean {
