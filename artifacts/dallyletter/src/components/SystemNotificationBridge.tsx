@@ -3,10 +3,14 @@ import { getApiUrl } from "@workspace/api-client-react";
 
 const token = () => localStorage.getItem("dallyletter_token") ?? "";
 
-function decodeBase64Url(value: string): Uint8Array {
+function decodeBase64Url(value: string): ArrayBuffer {
   const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
   const raw = atob(padded);
-  return Uint8Array.from(raw, char => char.charCodeAt(0));
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
 }
 
 async function enableBackgroundPush(): Promise<boolean> {
