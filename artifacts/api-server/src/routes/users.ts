@@ -179,6 +179,11 @@ router.patch("/users/:id/teacher-review", requireAuth, async (req, res): Promise
   const id = Number(req.params.id);
   const action = req.body?.action;
   if (!Number.isInteger(id) || !["approve", "reject", "convert_to_learner"].includes(action)) { res.status(400).json({ error: "Invalid teacher review action" }); return; }
+  const [target] = await db.select({ id: usersTable.id, role: usersTable.role, teacherApplicationStatus: usersTable.teacherApplicationStatus })
+    .from(usersTable).where(eq(usersTable.id, id));
+  if (!target || target.role !== "teacher" || target.teacherApplicationStatus !== "pending_review") {
+    res.status(409).json({ error: "Only pending teacher applications can be reviewed" }); return;
+  }
   const [user] = await db.update(usersTable).set(
     action === "approve"
       ? { role: "teacher", teacherApplicationStatus: "approved", teacherReviewDeadline: null }
