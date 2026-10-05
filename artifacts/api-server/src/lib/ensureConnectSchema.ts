@@ -9,6 +9,9 @@ export async function ensureConnectSchema(): Promise<void> {
     await client.query("BEGIN");
 
     await client.query(`ALTER TABLE exercise_submissions ADD COLUMN IF NOT EXISTS overall_comment text`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS teacher_application_status text NOT NULL DEFAULT 'not_applicable'`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS teacher_review_deadline timestamptz`);
+
     await client.query(`CREATE TABLE IF NOT EXISTS message_media (
       storage_key text PRIMARY KEY,
       message_id integer,
