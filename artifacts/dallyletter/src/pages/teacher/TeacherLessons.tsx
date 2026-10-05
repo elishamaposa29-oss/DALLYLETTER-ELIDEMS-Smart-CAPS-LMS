@@ -402,7 +402,7 @@ export default function TeacherLessons() {
                       />
                     </CardContent>
                   )}
-                  <CardFooter className="pt-4 border-t flex justify-end gap-2">
+                  <CardFooter className="pt-4 border-t flex justify-end gap-2">\n                    <Button variant="outline" size="sm" className="gap-2" onClick={() => window.location.assign(`/preview/lesson/${lesson.id}`)}>Preview lesson</Button>
                     <Button
                       variant={activeExerciseLessonId === lesson.id ? "secondary" : "outline"}
                       size="sm"
