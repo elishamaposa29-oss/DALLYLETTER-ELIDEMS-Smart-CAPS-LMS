@@ -4,7 +4,7 @@ import { db, notificationsTable, auditLogsTable } from "@workspace/db";
 import { assignmentsTable, assignmentSubmissionsTable } from "@workspace/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { canManageAcademicContent, isOwnerRole, requireAuth } from "../lib/auth-middleware";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia } from "../lib/media-storage";
 
 const router = Router();
 const materialUpload = multer({
@@ -70,7 +70,7 @@ router.post("/material", requireAuth, (req, res): void => {
   materialUpload.single("file")(req, res, (error) => {
     if (error) { res.status(400).json({ error: "A supported material file up to 250 MB is required" }); return; }
     if (!req.file) { res.status(400).json({ error: "A supported material file is required" }); return; }
-    res.status(201).json({ attachmentUrl: `/api/lessons/media/${req.file.filename}?type=${encodeURIComponent(req.file.mimetype)}`, fileName: req.file.originalname, mimeType: req.file.mimetype, size: req.file.size });
+    persistUploadedMedia(req.file.filename, req.file.mimetype, req.file.path).then(() => res.status(201).json({ attachmentUrl: `/api/lessons/media/${req.file.filename}?type=${encodeURIComponent(req.file.mimetype)}`, fileName: req.file.originalname, mimeType: req.file.mimetype, size: req.file.size })).catch(() => res.status(503).json({ error: "Persistent media storage is temporarily unavailable. Please retry the upload." }));
   });
 });
 
@@ -79,7 +79,7 @@ router.post("/submission-material", requireAuth, (req, res): void => {
   materialUpload.single("file")(req, res, (error) => {
     if (error) { res.status(400).json({ error: "A supported submission file up to 250 MB is required" }); return; }
     if (!req.file) { res.status(400).json({ error: "A supported submission file is required" }); return; }
-    res.status(201).json({ attachmentUrl: `/api/lessons/media/${req.file.filename}?type=${encodeURIComponent(req.file.mimetype)}`, fileName: req.file.originalname, mimeType: req.file.mimetype, size: req.file.size });
+    persistUploadedMedia(req.file.filename, req.file.mimetype, req.file.path).then(() => res.status(201).json({ attachmentUrl: `/api/lessons/media/${req.file.filename}?type=${encodeURIComponent(req.file.mimetype)}`, fileName: req.file.originalname, mimeType: req.file.mimetype, size: req.file.size })).catch(() => res.status(503).json({ error: "Persistent media storage is temporarily unavailable. Please retry the upload." }));
   });
 });
 
