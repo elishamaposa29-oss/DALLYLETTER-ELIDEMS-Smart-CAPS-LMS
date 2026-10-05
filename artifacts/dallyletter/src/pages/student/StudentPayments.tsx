@@ -22,6 +22,7 @@ export default function StudentPayments() {
   const [notifying, setNotifying] = useState(false);
   const [reported, setReported] = useState(false);
   const [settings, setSettings] = useState<Settings>({ paynow_url: "", paypal_url: "", trust_wallet: "", ecocash_number: "", payment_instructions: "" });
+  const [paynowBusy, setPaynowBusy] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("dallyletter_token");
@@ -35,6 +36,20 @@ export default function StudentPayments() {
   const totalOwed = payments?.filter(p => p.status !== "paid").reduce((sum, p) => sum + p.amount, 0) || 0;
   const paidCount = payments?.filter(p => p.status === "paid").length || 0;
   const overdueCount = payments?.filter(p => p.status === "overdue").length || 0;
+
+  const handlePaynowLive = async () => {
+    const amount = Number(totalOwed);
+    if (!Number.isFinite(amount) || amount <= 0) { toast({ variant: "destructive", title: "Nothing to pay", description: "There is no outstanding balance." }); return; }
+    setPaynowBusy(true);
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const r = await fetch(getApiUrl("/api/payments/paynow/create"), { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ amount }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.checkoutUrl) throw new Error(d.error || "Could not start Paynow checkout");
+      window.location.assign(d.checkoutUrl);
+    } catch (e) { toast({ variant: "destructive", title: "Payment could not start", description: e instanceof Error ? e.message : "Try again." }); }
+    finally { setPaynowBusy(false); }
+  };
 
   const handlePayPal = () => {
     if (settings.paypal_url) {
@@ -107,7 +122,7 @@ export default function StudentPayments() {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* Paynow */}
-      {settings.paynow_url && (<Button onClick={() => window.open(settings.paynow_url, "_blank", "noopener,noreferrer")} className="h-auto py-3 flex-col gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"><div className="font-bold">Paynow</div><span className="text-[11px] opacity-80 font-normal">Pay securely online</span><ExternalLink className="h-3 w-3 opacity-70" /></Button>)}
+      {settings.paynow_url && (<Button onClick={handlePaynowLive} disabled={paynowBusy} className="h-auto py-3 flex-col gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"><div className="font-bold">{paynowBusy ? "Starting…" : "Paynow"}</div><span className="text-[11px] opacity-80 font-normal">Secure live checkout</span><ExternalLink className="h-3 w-3 opacity-70" /></Button>)}
 
       {/* PayPal */}
         {settings.paypal_url && (
