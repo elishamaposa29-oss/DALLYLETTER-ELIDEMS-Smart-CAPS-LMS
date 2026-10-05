@@ -8,7 +8,7 @@ import {
 } from "@workspace/db/schema";
 import { canManageAcademicContent, isOwnerRole, requireAuth } from "../lib/auth-middleware";
 import { getAIProvider } from "../lib/ai-provider";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia } from "../lib/media-storage";
 
 const router = Router();
 const learnerRole = "student";
@@ -31,13 +31,13 @@ router.post("/answer-media", requireAuth, (req,res):void => {
     if (error instanceof multer.MulterError) { res.status(400).json({error:"A supported answer file up to 250 MB is required"}); return; }
     if (error) { res.status(400).json({error:"A supported answer file is required"}); return; }
     if (!req.file) { res.status(400).json({error:"A supported answer file is required"}); return; }
-    res.status(201).json({
+    persistUploadedMedia(req.file.filename, req.file.mimetype, req.file.path).then(() => res.status(201).json({
       mediaUrl: `/api/lessons/media/${req.file.filename}?type=${encodeURIComponent(req.file.mimetype)}`,
       storageKey: req.file.filename,
       fileName: req.file.originalname,
       mimeType: req.file.mimetype,
       size: req.file.size,
-    });
+    })).catch(() => res.status(503).json({error:"Persistent media storage is temporarily unavailable. Please retry the upload."}));
   });
 });
 
