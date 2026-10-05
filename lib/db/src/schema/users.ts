@@ -17,6 +17,8 @@ export const usersTable = pgTable("users", {
   subject: text("subject"),
   avatarUrl: text("avatar_url"),
   bio: text("bio"),
+  teacherApplicationStatus: text("teacher_application_status").notNull().default("not_applicable"),
+  teacherReviewDeadline: timestamp("teacher_review_deadline", { withTimezone: true }),
   lastPaymentDate: text("last_payment_date"),
   paymentInfo: text("payment_info"),
   performanceScore: integer("performance_score").notNull().default(0),
