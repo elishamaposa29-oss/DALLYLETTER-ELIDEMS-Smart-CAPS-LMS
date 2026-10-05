@@ -6,7 +6,7 @@ import {
   DeleteUserParams, BlockUserParams, BlockUserBody,
   PromoteUserParams, PromoteUserBody,
 } from "@workspace/api-zod";
-import { requireAuth, requireOwner } from "../lib/auth-middleware";
+import { requireAuth, requireOwner, canAccessManager } from "../lib/auth-middleware";
 
 const router: IRouter = Router();
 
@@ -24,6 +24,8 @@ const safeUserFields = {
   subject: usersTable.subject,
   avatarUrl: usersTable.avatarUrl,
   bio: usersTable.bio,
+  teacherApplicationStatus: usersTable.teacherApplicationStatus,
+  teacherReviewDeadline: usersTable.teacherReviewDeadline,
   lastPaymentDate: usersTable.lastPaymentDate,
   performanceScore: usersTable.performanceScore,
   badgeCount: usersTable.badgeCount,
@@ -130,6 +132,21 @@ router.patch("/users/:id/promote-manager", requireAuth, requireOwner, async (req
   const { isManager } = req.body as { isManager: boolean };
   if (typeof isManager !== "boolean") { res.status(400).json({ error: "isManager must be boolean" }); return; }
   const [user] = await db.update(usersTable).set({ isManager }).where(eq(usersTable.id, id)).returning(safeUserFields);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  res.json({ ...user, createdAt: user.createdAt.toISOString() });
+});
+
+router.patch("/users/:id/teacher-review", requireAuth, async (req, res): Promise<void> => {
+  const actor = req.currentUser!;
+  if (!canAccessManager(actor)) { res.status(403).json({ error: "Manager or owner access required" }); return; }
+  const id = Number(req.params.id);
+  const action = req.body?.action;
+  if (!Number.isInteger(id) || !["approve", "reject", "convert_to_learner"].includes(action)) { res.status(400).json({ error: "Invalid teacher review action" }); return; }
+  const [user] = await db.update(usersTable).set(
+    action === "approve"
+      ? { role: "teacher", teacherApplicationStatus: "approved", teacherReviewDeadline: null }
+      : { role: "student", teacherApplicationStatus: action === "reject" ? "rejected" : "manual_conversion", teacherReviewDeadline: null, subject: null, isManager: false, isPrefect: false },
+  ).where(eq(usersTable.id, id)).returning(safeUserFields);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   res.json({ ...user, createdAt: user.createdAt.toISOString() });
 });
