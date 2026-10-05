@@ -12,6 +12,17 @@ export async function ensureConnectSchema(): Promise<void> {
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS teacher_application_status text NOT NULL DEFAULT 'not_applicable'`);
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS teacher_review_deadline timestamptz`);
 
+    await client.query(`CREATE TABLE IF NOT EXISTS teacher_documents (
+      id serial PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      document_type text NOT NULL,
+      file_name text NOT NULL,
+      mime_type text NOT NULL,
+      size_bytes integer NOT NULL,
+      data bytea NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS teacher_documents_user_idx ON teacher_documents(user_id)`);
     await client.query(`CREATE TABLE IF NOT EXISTS message_media (
       storage_key text PRIMARY KEY,
       message_id integer,
