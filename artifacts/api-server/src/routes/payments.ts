@@ -1,8 +1,8 @@
 // Payments routes — track and manage school fee payments
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import crypto from "node:crypto";
-import { db, paymentsTable, usersTable, activityLogTable, notificationsTable, sql } from "@workspace/db";
+import { db, paymentsTable, usersTable, activityLogTable, notificationsTable } from "@workspace/db";
 import {
   RecordPaymentBody,
   GetPaymentParams,
