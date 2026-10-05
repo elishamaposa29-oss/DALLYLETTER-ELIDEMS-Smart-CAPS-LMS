@@ -56,40 +56,7 @@ router.post("/audit-logs", requireAuth, async (req, res): Promise<void> => {
   res.status(201).json(log);
 });
 
-router.get("/manager/users/:id/activity", requireAuth, async (req, res): Promise<void> => {
-  const actor = req.currentUser!;
-  if (!canAccessManager(actor)) { res.status(403).json({ error: "Manager access required" }); return; }
-  const targetId = Number(req.params.id);
-  if (!Number.isInteger(targetId) || targetId <= 0) { res.status(400).json({ error: "Invalid user id" }); return; }
-  const [target] = await db.select({
-    id: usersTable.id, name: usersTable.name, role: usersTable.role,
-    grade: usersTable.grade, subject: usersTable.subject,
-    isManager: usersTable.isManager, isBlocked: usersTable.isBlocked,
-  }).from(usersTable).where(eq(usersTable.id, targetId));
-  if (!target) { res.status(404).json({ error: "User not found" }); return; }
-  if (target.role === "owner" || target.isManager || !["student", "teacher"].includes(target.role)) {
-    res.status(403).json({ error: "This account is outside manager monitoring scope" }); return;
-  }
-  const visibleCategories = ["academic", "attendance", "content", "activity", "staff", "moderation"];
-  const rows = await db.select({
-    id: auditLogsTable.id, action: auditLogsTable.action, category: auditLogsTable.category,
-    targetType: auditLogsTable.targetType, targetId: auditLogsTable.targetId,
-    createdAt: auditLogsTable.createdAt,
-  }).from(auditLogsTable)
-    .where(and(eq(auditLogsTable.performedBy, targetId), inArray(auditLogsTable.category, visibleCategories)))
-    .orderBy(desc(auditLogsTable.createdAt)).limit(100);
-  const counts = rows.reduce<Record<string, number>>((acc, row) => {
-    const key = row.category || "activity";
-    acc[key] = (acc[key] ?? 0) + 1;
-    return acc;
-  }, {});
-  res.json({
-    user: target,
-    counts,
-    activities: rows.map(row => ({ ...row, createdAt: row.createdAt.toISOString(), details: null })),
-    learning: { leaderboardPosition: null },
-  });
-});
+
 
 export default router;
 
