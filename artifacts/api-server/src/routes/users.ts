@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
-import { db, usersTable } from "@workspace/db";
+import multer from "multer";
+import { db, usersTable, pool } from "@workspace/db";
 import {
   GetUserParams, UpdateUserParams, UpdateUserBody,
   DeleteUserParams, BlockUserParams, BlockUserBody,
@@ -134,6 +135,33 @@ router.patch("/users/:id/promote-manager", requireAuth, requireOwner, async (req
   const [user] = await db.update(usersTable).set({ isManager }).where(eq(usersTable.id, id)).returning(safeUserFields);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   res.json({ ...user, createdAt: user.createdAt.toISOString() });
+});
+
+const teacherDocumentUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+router.post("/users/me/teacher-documents", requireAuth, (req, res): void => {
+  teacherDocumentUpload.single("file")(req, res, (error) => {
+    void (async () => {
+      if (error || !req.file) { res.status(400).json({ error: "Upload a PDF, image or document up to 10 MB" }); return; }
+      if (req.currentUser!.role !== "teacher") { res.status(403).json({ error: "Teacher account required" }); return; }
+      const documentType = typeof req.body?.documentType === "string" ? req.body.documentType.trim() : "";
+      if (!["resume", "certificate", "proof"].includes(documentType)) { res.status(400).json({ error: "Choose resume, certificate or proof" }); return; }
+      const allowed = ["application/pdf","image/jpeg","image/png","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+      if (!allowed.includes(req.file.mimetype)) { res.status(415).json({ error: "Unsupported document type" }); return; }
+      const result = await pool.query(
+        "INSERT INTO teacher_documents (user_id, document_type, file_name, mime_type, size_bytes, data) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, document_type, file_name, mime_type, size_bytes, created_at",
+        [req.currentUser!.id, documentType, req.file.originalname, req.file.mimetype, req.file.size, req.file.buffer],
+      );
+      res.status(201).json(result.rows[0]);
+    })().catch(() => res.status(500).json({ error: "Qualification document upload failed" }));
+  });
+});
+
+router.get("/users/:id/teacher-documents", requireAuth, async (req, res): Promise<void> => {
+  const id = Number(req.params.id); const actor = req.currentUser!;
+  if (!Number.isInteger(id) || (!canAccessManager(actor) && actor.id !== id)) { res.status(403).json({ error: "Access denied" }); return; }
+  const result = await pool.query("SELECT id, document_type, file_name, mime_type, size_bytes, created_at FROM teacher_documents WHERE user_id = $1 ORDER BY created_at DESC", [id]);
+  res.json(result.rows);
 });
 
 router.patch("/users/:id/teacher-review", requireAuth, async (req, res): Promise<void> => {
