@@ -40,6 +40,7 @@ router.get("/teachers", requireAuth, requireManager, async (req, res) => {
     id: usersTable.id, name: usersTable.name, email: usersTable.email,
     subject: usersTable.subject, performanceScore: usersTable.performanceScore,
     badgeCount: usersTable.badgeCount, createdAt: usersTable.createdAt,
+    teacherApplicationStatus: usersTable.teacherApplicationStatus, teacherReviewDeadline: usersTable.teacherReviewDeadline,
   }).from(usersTable).where(eq(usersTable.role, "teacher"));
   const lessonCounts = await db.select().from(lessonsTable);
   const classCounts = await db.select().from(classesTable);
