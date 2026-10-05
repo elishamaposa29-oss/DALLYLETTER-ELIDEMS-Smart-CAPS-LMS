@@ -2,7 +2,7 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import crypto from "node:crypto";
-import { db, paymentsTable, usersTable, activityLogTable, notificationsTable } from "@workspace/db";
+import { db, paymentsTable, usersTable, activityLogTable, notificationsTable, sql } from "@workspace/db";
 import {
   RecordPaymentBody,
   GetPaymentParams,
@@ -69,7 +69,8 @@ router.post("/payments/paynow/result", async (req, res): Promise<void> => {
   const reference = body.reference;
   const status = body.status || "Unknown";
   if (reference) {
-    await db.execute((await import("@workspace/db")).sql`UPDATE payments SET notes = CONCAT(COALESCE(notes, ''), CASE WHEN COALESCE(notes,'') = '' THEN '' ELSE ' | ' END, 'Paynow ', ${status}, ' ref ', ${reference}) WHERE notes LIKE ${"%" + reference + "%"}`);
+    const normalizedStatus = status.toLowerCase() === "paid" ? "paid" : status.toLowerCase() === "cancelled" ? "pending" : "pending";
+    await db.execute(sql`UPDATE payments SET status = ${normalizedStatus}, notes = CONCAT(COALESCE(notes, ''), CASE WHEN COALESCE(notes,'') = '' THEN '' ELSE ' | ' END, 'Paynow ', ${status}, ' ref ', ${reference}) WHERE notes LIKE ${"%" + reference + "%"}`);
   }
   res.status(200).send("OK");
 });
