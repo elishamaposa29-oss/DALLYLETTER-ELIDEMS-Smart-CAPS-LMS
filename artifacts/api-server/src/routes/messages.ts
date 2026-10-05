@@ -2,8 +2,9 @@
 import { Router, type IRouter } from "express";
 import { eq, and, isNull, or, inArray } from "drizzle-orm";
 import { createReadStream } from "node:fs";
+import { readFile } from "node:fs/promises";
 import multer from "multer";
-import { db, messagesTable, activityLogTable, studyGroupMembersTable, studyGroupsTable, contentFlagsTable, auditLogsTable, groupMemberControlsTable, groupSettingsTable, usersTable } from "@workspace/db";
+import { db, messagesTable, activityLogTable, studyGroupMembersTable, studyGroupsTable, contentFlagsTable, auditLogsTable, groupMemberControlsTable, groupSettingsTable, usersTable, pool } from "@workspace/db";
 import {
   ListMessagesQueryParams,
   SendMessageBody,
@@ -85,6 +86,10 @@ router.post("/messages/media", requireAuth, (req, res): void => {
       const groupId = req.body?.groupId == null || req.body.groupId === "" ? null : Number(req.body.groupId);
       const recipientId = req.body?.recipientId == null || req.body.recipientId === "" ? null : Number(req.body.recipientId);
       const currentUser = req.currentUser!;
+      if (req.file.mimetype.toLowerCase().startsWith("audio/")) {
+        const audioData = await readFile(req.file.path);
+        await pool.query("INSERT INTO message_media (storage_key, mime_type, size_bytes, data) VALUES ($1,$2,$3,$4) ON CONFLICT (storage_key) DO UPDATE SET mime_type = EXCLUDED.mime_type, size_bytes = EXCLUDED.size_bytes, data = EXCLUDED.data", [req.file.filename, req.file.mimetype, req.file.size, audioData]);
+      }
       const validTarget = (groupId != null && recipientId == null) || (groupId == null && recipientId != null);
       const allowed = validTarget
         && (groupId != null
@@ -131,13 +136,29 @@ router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise
     ? await canAccessGroup(message.groupId, user.id, user.role)
     : message.recipientId != null && (isOwnerRole(user.role) || message.recipientId === user.id || message.senderId === user.id);
   if (!allowed) { res.status(403).json({ error: "You cannot access this media" }); return; }
+  const stored = await pool.query("SELECT mime_type, size_bytes, data FROM message_media WHERE storage_key = $1 LIMIT 1", [storageKey]);
+  if (stored.rows[0]) {
+    const row = stored.rows[0] as { mime_type: string; size_bytes: number; data: Buffer };
+    const mediaType = typeof req.query.type === "string" && isAllowedMediaType(req.query.type) ? req.query.type : row.mime_type;
+    res.setHeader("Content-Type", mediaType);
+    res.setHeader("Accept-Ranges", "bytes");
+    const range = req.headers.range;
+    if (!range) { res.setHeader("Content-Length", row.size_bytes); res.end(row.data); return; }
+    const match = /^bytes=(\\d*)-(\\d*)$/.exec(range);
+    if (!match) { res.status(416).end(); return; }
+    const start = match[1] ? Number(match[1]) : Math.max(row.size_bytes - Number(match[2]), 0);
+    const end = match[2] ? Number(match[2]) : row.size_bytes - 1;
+    if (start > end || start >= row.size_bytes) { res.status(416).end(); return; }
+    res.status(206); res.setHeader("Content-Range", "bytes " + start + "-" + end + "/" + row.size_bytes); res.setHeader("Content-Length", end - start + 1); res.end(row.data.subarray(start, end + 1)); return;
+  }
   try {
     const stats = await getMediaStats(storageKey);
     res.setHeader("Content-Type", typeof req.query.type === "string" && isAllowedMediaType(req.query.type) ? req.query.type : "audio/webm");
     res.setHeader("Content-Length", stats.size);
+    res.setHeader("Accept-Ranges", "bytes");
     createReadStream(getMediaPath(storageKey)).pipe(res);
   } catch {
-    res.status(404).json({ error: "Media not found" });
+    res.status(410).json({ error: "Media not found; this legacy recording is no longer available. Please resend the voice note." });
   }
 });
 
@@ -274,6 +295,13 @@ router.post("/messages", requireAuth, async (req, res): Promise<void> => {
     senderName: currentUser.name,
     senderRole: currentUser.role,
   }).returning();
+
+  if (message.mediaUrl) {
+    try {
+      const storageKey = new URL(message.mediaUrl, "https://internal.invalid").pathname.split("/").pop();
+      if (storageKey) await pool.query("UPDATE message_media SET message_id = $1 WHERE storage_key = $2", [message.id, storageKey]);
+    } catch { /* keep message delivery successful if media metadata reconciliation fails */ }
+  }
 
   // Log activity for group messages
   if (message.groupId != null) {
