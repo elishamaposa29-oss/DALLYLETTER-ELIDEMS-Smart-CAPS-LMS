@@ -145,7 +145,7 @@ router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise
     res.setHeader("Accept-Ranges", "bytes");
     const range = req.headers.range;
     if (!range) { res.setHeader("Content-Length", row.size_bytes); res.end(row.data); return; }
-    const match = /^bytes=(\\d*)-(\\d*)$/.exec(range);
+    const match = /^bytes=(\d*)-(\d*)$/.exec(range);
     if (!match) { res.status(416).end(); return; }
     const start = match[1] ? Number(match[1]) : Math.max(row.size_bytes - Number(match[2]), 0);
     const end = match[2] ? Number(match[2]) : row.size_bytes - 1;
