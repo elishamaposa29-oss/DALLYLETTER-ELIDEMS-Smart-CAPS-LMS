@@ -1,5 +1,5 @@
-const CACHE = 'dallyletter-v1';
-const SHELL = ['/', '/manifest.json', '/favicon.svg'];
+const CACHE = 'dallyletter-v2';
+const SHELL = ['/', '/manifest.json', '/favicon.svg', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -17,9 +17,19 @@ self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
   if (url.pathname.startsWith('/api/')) return;
-  e.respondWith(
-    fetch(e.request).catch(() => caches.match(e.request).then(r => r || caches.match('/')))
-  );
+  e.respondWith((async () => {
+    const cached = await caches.match(e.request);
+    try {
+      const response = await fetch(e.request);
+      if (response.ok && response.type === "basic") {
+        const cache = await caches.open(CACHE);
+        await cache.put(e.request, response.clone());
+      }
+      return response;
+    } catch {
+      return cached || caches.match('/');
+    }
+  })());
 });
 
 self.addEventListener("message", event => {
@@ -27,8 +37,8 @@ self.addEventListener("message", event => {
   const n = event.data.notification || {};
   event.waitUntil(self.registration.showNotification(n.title || "DALLYLETTER ELIDEMS", {
     body: n.body || "",
-    icon: "/favicon.ico",
-    badge: "/favicon.ico",
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
     tag: String(n.id || n.title || "dallyletter-notification"),
     renotify: Boolean(n.renotify),
     data: { url: n.url || "/student/notifications" },
