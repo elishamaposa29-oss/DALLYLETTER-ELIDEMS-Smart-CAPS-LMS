@@ -35,6 +35,9 @@ router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<vo
     return;
   }
   const reference = "DL-" + user.id + "-" + Date.now();
+  const now = new Date();
+  const month = now.toLocaleString("en-US", { month: "long" });
+  await db.insert(paymentsTable).values({ studentId: user.id, studentName: user.name, amount: amount.toFixed(2), month, year: now.getUTCFullYear(), status: "pending", notes: "Paynow reference " + reference, recordedBy: user.id });
   const fields: Record<string,string> = {
     id: integrationId, reference, amount: amount.toFixed(2),
     additionalinfo: "DallyLetter Elidems school payment",
