@@ -103,6 +103,7 @@ export default function ExerciseMarking() {
   const [answers, setAnswers] = useState<Answer[]>([]);
   const [marks, setMarks] = useState<Record<number, string>>({});
   const [notes, setNotes] = useState<Record<number, string>>({});
+  const [overallComment, setOverallComment] = useState("");
   const [message, setMessage] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const [aiMessage, setAiMessage] = useState("");
@@ -153,6 +154,7 @@ export default function ExerciseMarking() {
       setAnswers(loadedAnswers);
       setMarks(Object.fromEntries(loadedAnswers.map((a) => [a.id, a.awardedMarks])));
       setNotes(Object.fromEntries(loadedAnswers.map((a) => [a.id, a.correctionNotes ?? ""])));
+      setOverallComment(d.submission?.overallComment ?? "");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not load submission.");
     }
@@ -202,6 +204,7 @@ export default function ExerciseMarking() {
           awardedMarks: Number(marks[a.id] ?? 0),
           correctionNotes: notes[a.id] ?? "",
         })),
+        overallComment,
       }),
     });
     const d = await r.json();
@@ -311,6 +314,14 @@ export default function ExerciseMarking() {
                   </div>
                 );
               })}
+
+              <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-5 shadow-sm">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div><p className="text-xs font-semibold uppercase tracking-widest text-amber-700">Final result</p><p className="mt-1 text-3xl font-black text-slate-900">{answers.reduce((sum,a)=>sum+Number(marks[a.id]??0),0).toFixed(2)} <span className="text-base font-semibold text-slate-500">/ {exercise?.totalMarks ?? "—"}</span></p></div>
+                  <Badge className="bg-amber-500 text-slate-950">{exercise?.totalMarks ? ((answers.reduce((sum,a)=>sum+Number(marks[a.id]??0),0)/Number(exercise.totalMarks))*100).toFixed(1)+"%" : "—"}</Badge>
+                </div>
+                <Textarea className="mt-4 bg-white" value={overallComment} onChange={e=>setOverallComment(e.target.value)} placeholder="Final teacher comment for the whole exercise — celebrate strengths, explain the main improvement point, and encourage the learner." />
+              </div>
 
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
