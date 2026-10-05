@@ -1,4 +1,4 @@
-import { createCipheriv, createHmac, createPrivateKey, generateKeyPairSync, randomBytes, sign } from "node:crypto";
+import { createCipheriv, createHmac, createPrivateKey, generateKeyPairSync, randomBytes, sign, diffieHellman, type KeyObject } from "node:crypto";
 import { pool } from "@workspace/db";
 
 const b64 = (value: Buffer | string) => Buffer.from(value).toString("base64url");
@@ -18,7 +18,7 @@ function hkdfExpand(prk: Buffer, info: Buffer, length: number): Buffer {
   return Buffer.concat(chunks).subarray(0, length);
 }
 
-function publicKeyRaw(key: ReturnType<typeof generateKeyPairSync>["publicKey"]): Buffer {
+function publicKeyRaw(key: KeyObject): Buffer {
   const jwk = key.export({ format: "jwk" }) as { x: string; y: string };
   return Buffer.concat([Buffer.from([4]), fromB64(jwk.x), fromB64(jwk.y)]);
 }
@@ -78,7 +78,7 @@ async function encryptPayload(payload: string, p256dh: string, auth: string): Pr
   });
   const ephemeral = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   const asRaw = publicKeyRaw(ephemeral.publicKey);
-  const ecdhSecret = require("node:crypto").diffieHellman({ privateKey: ephemeral.privateKey, publicKey: uaKey }) as Buffer;
+  const ecdhSecret = diffieHellman({ privateKey: ephemeral.privateKey, publicKey: uaKey });
 
   const prkKey = hkdfExtract(authSecret, ecdhSecret);
   const keyInfo = Buffer.concat([Buffer.from("WebPush: info"), Buffer.from([0]), uaRaw, asRaw]);
