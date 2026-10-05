@@ -210,6 +210,40 @@ router.post("/:id/submit", requireAuth, async (req, res): Promise<void> => {
   res.status(201).json(row);
 });
 
+router.post("/submissions/:subId/ai-grade", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Academic staff access required" }); return; }
+  const submissionId = parseInt(String(req.params.subId));
+  const [row] = await db.select({
+    submission: assignmentSubmissionsTable,
+    assignment: assignmentsTable,
+  }).from(assignmentSubmissionsTable).innerJoin(assignmentsTable, eq(assignmentSubmissionsTable.assignmentId, assignmentsTable.id))
+    .where(eq(assignmentSubmissionsTable.id, submissionId));
+  if (!row) { res.status(404).json({ error: "Submission not found" }); return; }
+  if (!isOwnerRole(user.role) && !user.isManager && row.assignment.teacherId !== user.id) {
+    res.status(403).json({ error: "You can only mark your own assignments" }); return;
+  }
+  try {
+    const ai = await getAIProvider();
+    const result = await ai.analyzeData({
+      assignment: { title: row.assignment.title, subject: row.assignment.subject, description: row.assignment.description, totalMarks: row.assignment.totalMarks },
+      submission: { content: row.submission.content },
+    }, "Mark this educational assignment fairly. Return ONLY JSON with numeric marks between 0 and the totalMarks and a concise teacher feedback string. Do not invent unanswered work. JSON format: {"marks":0,"feedback":"..."}");
+    const match = result.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error("AI returned invalid marking data");
+    const parsed = JSON.parse(match[0]) as { marks?: unknown; feedback?: unknown };
+    const marks = Number(parsed.marks);
+    if (!Number.isFinite(marks) || marks < 0 || marks > row.assignment.totalMarks) throw new Error("AI returned invalid marks");
+    const feedback = typeof parsed.feedback === "string" ? parsed.feedback.slice(0, 5000) : "";
+    const [updated] = await db.update(assignmentSubmissionsTable).set({
+      marks: marks.toString(), feedback, status: "graded", gradedBy: user.id, gradedAt: new Date(),
+    }).where(eq(assignmentSubmissionsTable.id, submissionId)).returning();
+    res.json({ provider: ai.name, submission: updated });
+  } catch (error) {
+    res.status(503).json({ error: error instanceof Error ? error.message : "AI marking unavailable" });
+  }
+});
+
 router.put("/submissions/:subId/grade", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Forbidden" }); return; }
