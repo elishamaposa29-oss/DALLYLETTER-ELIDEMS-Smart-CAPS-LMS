@@ -18,6 +18,7 @@ export default function AdminSettings() {
     trust_wallet: "",
     ecocash_number: "",
     payment_instructions: "",
+    docs_url: "/docs",
   });
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -181,6 +182,12 @@ export default function AdminSettings() {
                     value={settings.payment_instructions}
                     onChange={e => setSettings(s => ({ ...s, payment_instructions: e.target.value }))}
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Learner documentation destination</Label>
+                  <Input placeholder="/docs or https://docs.example.com" value={settings.docs_url} onChange={e => setSettings(s => ({ ...s, docs_url: e.target.value }))} />
+                  <p className="text-xs text-muted-foreground">Read-only destination opened by the Missing Resource / Docs buttons. Keep this to an approved documentation site.</p>
                 </div>
 
                 <Button onClick={handleSaveSettings} disabled={savingSettings || loadingSettings} className="gap-2">
