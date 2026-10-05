@@ -47,6 +47,17 @@ export default function ManagerTeachers() {
     } catch (e) { window.alert(e instanceof Error ? e.message : "Comment failed"); }
     finally { setSending(false); }
   };
+  const reviewTeacher = async (teacher: any, action: "approve" | "reject" | "convert_to_learner") => {
+    const label = action === "approve" ? "approve" : action === "reject" ? "reject" : "convert";
+    if (!window.confirm(`Are you sure you want to ${label} ${teacher.name}?`)) return;
+    try {
+      const r = await fetch(getApiUrl(`/api/users/${teacher.id}/teacher-review`), { method:"PATCH", headers:{ "Content-Type":"application/json", Authorization:`Bearer ${token()}` }, body:JSON.stringify({ action }) });
+      const d = await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.error||"Review failed");
+      setTeachers(current=>current.map(t=>t.id===teacher.id?{...t,...d}:t));
+      window.alert(action==="approve"?"Teacher approved.":"Account converted/rejected to learner.");
+    } catch(e) { window.alert(e instanceof Error?e.message:"Review failed"); }
+  };
+
   const notifyTeacher = async () => {
     if (!selectedTeacher || !comment.trim()) return;
     setSending(true);
@@ -87,6 +98,7 @@ export default function ManagerTeachers() {
                       </div>
                       <p className="text-xs text-slate-500 mb-2">{t.email}</p>
                       <Button size="sm" variant="outline" className="mt-3 gap-1" onClick={() => void openMonitor(t)}><ExternalLink className="h-3.5 w-3.5" />Monitor activity</Button>
+                      {t.teacherApplicationStatus === "pending_review" && <div className="mt-3 flex flex-wrap gap-2"><Badge className="bg-amber-100 text-amber-800">Qualification review</Badge><Button size="sm" onClick={(e)=>{e.stopPropagation();void reviewTeacher(t,"approve")}}>Approve teacher</Button><Button size="sm" variant="outline" onClick={(e)=>{e.stopPropagation();void reviewTeacher(t,"reject")}}>Convert to learner</Button></div>}
                       <div className="flex items-center gap-4 text-xs text-slate-400">
                         <span className="flex items-center gap-1"><BookOpen className="h-3 w-3" /> {t.lessonsCount ?? 0} lessons</span>
                         <span className="flex items-center gap-1"><Video className="h-3 w-3" /> {t.classesCount ?? 0} classes</span>
