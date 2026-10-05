@@ -1,6 +1,7 @@
 // Payments routes — track and manage school fee payments
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
+import crypto from "node:crypto";
 import { db, paymentsTable, usersTable, activityLogTable, notificationsTable } from "@workspace/db";
 import {
   RecordPaymentBody,
@@ -9,6 +10,66 @@ import {
 import { requireAuth, requireTeacherOrOwner } from "../lib/auth-middleware";
 
 const router: IRouter = Router();
+
+function paynowHash(values: Record<string, string>, key: string): string {
+  const raw = Object.entries(values).filter(([name]) => name.toLowerCase() !== "hash").map(([, value]) => value ?? "").join("") + key;
+  return crypto.createHash("sha512").update(raw, "utf8").digest("hex").toUpperCase();
+}
+
+function parsePaynow(text: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of new URLSearchParams(text)) out[key.toLowerCase()] = value;
+  return out;
+}
+
+router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  if (user.role !== "student") { res.status(403).json({ error: "Learner access required" }); return; }
+  const amount = Number(req.body?.amount);
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 100000) { res.status(400).json({ error: "Enter a valid payment amount" }); return; }
+  const integrationId = process.env.PAYNOW_INTEGRATION_ID;
+  const integrationKey = process.env.PAYNOW_INTEGRATION_KEY;
+  const publicBase = (process.env.PUBLIC_APP_URL || process.env.VITE_PUBLIC_APP_URL || "").replace(/\\/$/, "");
+  if (!integrationId || !integrationKey || !publicBase) {
+    res.status(503).json({ error: "Live Paynow payments are not configured yet. Add PAYNOW_INTEGRATION_ID, PAYNOW_INTEGRATION_KEY and PUBLIC_APP_URL to the server secrets." });
+    return;
+  }
+  const reference = "DL-" + user.id + "-" + Date.now();
+  const fields: Record<string,string> = {
+    id: integrationId, reference, amount: amount.toFixed(2),
+    additionalinfo: "DallyLetter Elidems school payment",
+    returnurl: publicBase + "/student/payments?reference=" + encodeURIComponent(reference),
+    resulturl: publicBase + "/api/payments/paynow/result",
+    authemail: user.email, status: "Message",
+  };
+  fields.hash = paynowHash(fields, integrationKey);
+  try {
+    const response = await fetch("https://www.paynow.co.zw/interface/initiatetransaction", {
+      method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(fields),
+    });
+    const parsed = parsePaynow(await response.text());
+    if (parsed.status?.toLowerCase() === "error") { res.status(502).json({ error: parsed.error || "Paynow rejected the transaction" }); return; }
+    if (!parsed.browserurl) { res.status(502).json({ error: "Paynow did not return a checkout URL" }); return; }
+    res.status(201).json({ reference, checkoutUrl: parsed.browserurl, status: parsed.status || "ok" });
+  } catch (error) {
+    res.status(502).json({ error: error instanceof Error ? error.message : "Paynow is unavailable" });
+  }
+});
+
+router.post("/payments/paynow/result", async (req, res): Promise<void> => {
+  const integrationKey = process.env.PAYNOW_INTEGRATION_KEY;
+  if (!integrationKey) { res.status(503).send("Paynow integration is not configured"); return; }
+  const body: Record<string,string> = {};
+  for (const [key, value] of Object.entries(req.body ?? {})) body[String(key).toLowerCase()] = String(value ?? "");
+  if (!body.hash || body.hash.toUpperCase() !== paynowHash(body, integrationKey)) { res.status(400).send("Invalid hash"); return; }
+  const reference = body.reference;
+  const status = body.status || "Unknown";
+  if (reference) {
+    await db.execute((await import("@workspace/db")).sql`UPDATE payments SET notes = CONCAT(COALESCE(notes, ''), CASE WHEN COALESCE(notes,'') = '' THEN '' ELSE ' | ' END, 'Paynow ', ${status}, ' ref ', ${reference}) WHERE notes LIKE ${"%" + reference + "%"}`);
+  }
+  res.status(200).send("OK");
+});
 
 // GET /payments — List payments (owner sees all, student sees own)
 router.get("/payments", requireAuth, async (req, res): Promise<void> => {
