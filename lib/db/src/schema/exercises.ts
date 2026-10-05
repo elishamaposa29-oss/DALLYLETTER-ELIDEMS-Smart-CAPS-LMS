@@ -63,6 +63,7 @@ export const exerciseSubmissionsTable = pgTable(
     submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),
     markedAt: timestamp("marked_at", { withTimezone: true }),
     returnedAt: timestamp("returned_at", { withTimezone: true }),
+    overallComment: text("overall_comment"),
   },
   (table) => [uniqueIndex("exercise_submission_attempt_idx").on(table.exerciseId, table.learnerId, table.attemptNumber), index("exercise_submissions_exercise_idx").on(table.exerciseId)],
 );
