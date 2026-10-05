@@ -2,6 +2,7 @@ import { createReadStream } from "node:fs";
 import { mkdir, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { deleteObject, getObject, isObjectStorageConfigured, putObject } from "./object-storage";
 
 const mediaDirectory = path.resolve(process.env.MEDIA_STORAGE_DIR ?? "./var/media");
 
@@ -61,4 +62,21 @@ export async function deleteStoredMedia(storageKey: string): Promise<void> {
   await unlink(getMediaPath(storageKey)).catch((error: NodeJS.ErrnoException) => {
     if (error.code !== "ENOENT") throw error;
   });
+}
+
+export async function persistUploadedMedia(storageKey: string, mimeType: string, localPath: string): Promise<"object-storage" | "local"> {
+  if (!isObjectStorageConfigured()) return "local";
+  await putObject(storageKey, mimeType, localPath);
+  await unlink(localPath).catch(() => undefined);
+  return "object-storage";
+}
+
+export async function streamStoredMedia(storageKey: string, range?: string): Promise<Response | null> {
+  if (!isObjectStorageConfigured()) return null;
+  return getObject(storageKey, range);
+}
+
+export async function removeStoredMedia(storageKey: string): Promise<void> {
+  if (isObjectStorageConfigured()) await deleteObject(storageKey);
+  await deleteStoredMedia(storageKey);
 }
