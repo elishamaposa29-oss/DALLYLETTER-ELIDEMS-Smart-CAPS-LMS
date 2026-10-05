@@ -164,6 +164,15 @@ router.get("/users/:id/teacher-documents", requireAuth, async (req, res): Promis
   res.json(result.rows);
 });
 
+router.get("/users/:id/teacher-documents/:docId", requireAuth, async (req, res): Promise<void> => {
+  const id = Number(req.params.id); const docId = Number(req.params.docId); const actor = req.currentUser!;
+  if (!Number.isInteger(id) || !Number.isInteger(docId) || (!canAccessManager(actor) && actor.id !== id)) { res.status(403).json({ error: "Access denied" }); return; }
+  const result = await pool.query("SELECT file_name, mime_type, size_bytes, data FROM teacher_documents WHERE id = $1 AND user_id = $2 LIMIT 1", [docId, id]);
+  if (!result.rows[0]) { res.status(404).json({ error: "Document not found" }); return; }
+  const row = result.rows[0] as { file_name:string; mime_type:string; size_bytes:number; data:Buffer };
+  res.setHeader("Content-Type", row.mime_type); res.setHeader("Content-Length", row.size_bytes); res.setHeader("Content-Disposition", "inline; filename*=UTF-8''" + encodeURIComponent(row.file_name)); res.end(row.data);
+});
+
 router.patch("/users/:id/teacher-review", requireAuth, async (req, res): Promise<void> => {
   const actor = req.currentUser!;
   if (!canAccessManager(actor)) { res.status(403).json({ error: "Manager or owner access required" }); return; }
