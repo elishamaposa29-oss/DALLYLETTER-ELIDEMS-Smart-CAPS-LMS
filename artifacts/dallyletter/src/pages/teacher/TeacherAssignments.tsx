@@ -207,10 +207,12 @@ export default function TeacherAssignments() {
                     <p className="text-sm text-slate-600 bg-slate-50 rounded-lg p-2 mb-2">{sub.content}</p>
                     {sub.feedback && <p className="text-xs text-purple-600 italic">Feedback: {sub.feedback}</p>}
                     {sub.status !== "graded" && (
-                      <Button size="sm" variant="outline" className="gap-1.5 mt-2" onClick={() => void aiGrade(sub.id)}><Star className="h-3.5 w-3.5" />AI mark</Button>
-                      <Button size="sm" className="bg-purple-600 text-white gap-1.5 mt-2" onClick={() => setGrading({ subId: sub.id, marks: "", feedback: "" })}>
-                        <Star className="h-3.5 w-3.5" /> Grade
-                      </Button>
+                      <>
+                        <Button size="sm" variant="outline" className="gap-1.5 mt-2" onClick={() => void aiGrade(sub.id)}><Star className="h-3.5 w-3.5" />AI mark</Button>
+                        <Button size="sm" className="bg-purple-600 text-white gap-1.5 mt-2" onClick={() => setGrading({ subId: sub.id, marks: "", feedback: "" })}>
+                          <Star className="h-3.5 w-3.5" /> Grade
+                        </Button>
+                      </>
                     )}
                   </div>
                 ))}
