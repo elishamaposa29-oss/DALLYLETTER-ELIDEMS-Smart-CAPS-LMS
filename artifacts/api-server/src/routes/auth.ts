@@ -142,6 +142,8 @@ router.post("/auth/register", async (req, res): Promise<void> => {
       email, passwordHash: hashPassword(password), name, role,
       grade: grade ?? null, subject: subject ?? null, phone: phone ?? null,
       isPrefect: false, isBlocked: false, isSuspended: false,
+      teacherApplicationStatus: role === "teacher" ? "pending_review" : "not_applicable",
+      teacherReviewDeadline: role === "teacher" ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) : null,
     }).returning();
 
     const token = generateToken(user.id);
