@@ -11,7 +11,7 @@ import {
 } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth-middleware";
 import { getAIProvider } from "../lib/ai-provider";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, deleteStoredMedia, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, deleteStoredMedia, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, streamStoredMedia } from "../lib/media-storage";
 
 const MAX_CHAT_MEDIA_SIZE_BYTES = MAX_MEDIA_SIZE_BYTES;
 import { isOwnerRole, normalizeRole } from "../lib/auth-middleware";
@@ -106,6 +106,14 @@ router.post("/messages/media", requireAuth, (req, res): void => {
         }
       }
 
+      try {
+        await persistUploadedMedia(req.file.filename, req.file.mimetype, req.file.path);
+      } catch {
+        await deleteStoredMedia(req.file.filename);
+        res.status(503).json({ error: "Persistent media storage is temporarily unavailable. Please retry the upload." });
+        return;
+      }
+
       if (req.file.mimetype.toLowerCase().startsWith("audio/")) {
         const audioData = await readFile(req.file.path);
         await pool.query("INSERT INTO message_media (storage_key, mime_type, size_bytes, data) VALUES ($1,$2,$3,$4) ON CONFLICT (storage_key) DO UPDATE SET mime_type = EXCLUDED.mime_type, size_bytes = EXCLUDED.size_bytes, data = EXCLUDED.data", [req.file.filename, req.file.mimetype, req.file.size, audioData]);
@@ -137,6 +145,14 @@ router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise
     ? await canAccessGroup(message.groupId, user.id, user.role)
     : message.recipientId != null && (isOwnerRole(user.role) || message.recipientId === user.id || message.senderId === user.id);
   if (!allowed) { res.status(403).json({ error: "You cannot access this media" }); return; }
+  const remote = await streamStoredMedia(storageKey, req.headers.range);
+  if (remote) {
+    res.status(remote.status);
+    remote.headers.forEach((value, key) => res.setHeader(key, value));
+    if (remote.body) for await (const chunk of remote.body as any) res.write(chunk);
+    res.end();
+    return;
+  }
   const stored = await pool.query("SELECT mime_type, size_bytes, data FROM message_media WHERE storage_key = $1 LIMIT 1", [storageKey]);
   if (stored.rows[0]) {
     const row = stored.rows[0] as { mime_type: string; size_bytes: number; data: Buffer };
