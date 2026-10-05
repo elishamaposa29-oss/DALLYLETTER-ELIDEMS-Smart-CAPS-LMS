@@ -91,23 +91,21 @@ router.post("/lessons/media", requireAuth, requireTeacherOrOwner, (req, res, nex
       return;
     }
 
-    if (!req.file) {
+    const file = req.file;
+    if (!file) {
       res.status(400).json({ error: "A supported media file is required" });
       return;
     }
 
-    try {
-      await persistUploadedMedia(req.file.filename, req.file.mimetype, req.file.path);
-    } catch {
+    persistUploadedMedia(file.filename, file.mimetype, file.path).then(() => {
+      res.status(201).json({
+        mediaUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`,
+        storageKey: file.filename,
+        mimeType: file.mimetype,
+        size: file.size,
+      });
+    }).catch(() => {
       res.status(503).json({ error: "Persistent media storage is temporarily unavailable. Please retry the upload." });
-      return;
-    }
-
-    res.status(201).json({
-      mediaUrl: `/api/lessons/media/${req.file.filename}?type=${encodeURIComponent(req.file.mimetype)}`,
-      storageKey: req.file.filename,
-      mimeType: req.file.mimetype,
-      size: req.file.size,
     });
   });
 });
