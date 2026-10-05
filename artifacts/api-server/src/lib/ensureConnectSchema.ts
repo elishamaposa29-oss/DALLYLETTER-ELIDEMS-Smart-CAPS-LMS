@@ -21,8 +21,18 @@ export async function ensureConnectSchema(): Promise<void> {
       size_bytes integer NOT NULL,
       data bytea NOT NULL,
       created_at timestamptz NOT NULL DEFAULT now()
-    `);
+    )`);
     await client.query(`CREATE INDEX IF NOT EXISTS teacher_documents_user_idx ON teacher_documents(user_id)`);
+    await client.query(`CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id serial PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      endpoint text NOT NULL UNIQUE,
+      p256dh text NOT NULL,
+      auth text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query(`CREATE INDEX IF NOT EXISTS push_subscriptions_user_idx ON push_subscriptions(user_id)`);
     await client.query(`CREATE TABLE IF NOT EXISTS message_media (
       storage_key text PRIMARY KEY,
       message_id integer,
@@ -47,6 +57,8 @@ export async function ensureConnectSchema(): Promise<void> {
       created_at timestamptz NOT NULL DEFAULT now()
     )`);
     await client.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS link text`);
+    await client.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS push_sent_at timestamptz`);
+    await client.query(`CREATE INDEX IF NOT EXISTS notifications_push_pending_idx ON notifications(id) WHERE push_sent_at IS NULL`);
     await client.query(`ALTER TABLE group_member_controls ADD COLUMN IF NOT EXISTS can_manage_settings boolean NOT NULL DEFAULT false`);
     await client.query(`ALTER TABLE poll_questions ADD COLUMN IF NOT EXISTS image_url text`);
 
