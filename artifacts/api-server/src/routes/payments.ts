@@ -30,6 +30,7 @@ router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<vo
   const integrationId = process.env.PAYNOW_INTEGRATION_ID;
   const integrationKey = process.env.PAYNOW_INTEGRATION_KEY;
   const publicBase = (process.env.PUBLIC_APP_URL || process.env.VITE_PUBLIC_APP_URL || "").replace(/\\/$/, "");
+  const publicApi = (process.env.PUBLIC_API_URL || "").replace(/\/$/, "");
   if (!integrationId || !integrationKey || !publicBase || !publicApi) {
     res.status(503).json({ error: "Live Paynow payments are not configured yet. Add PAYNOW_INTEGRATION_ID, PAYNOW_INTEGRATION_KEY, PUBLIC_APP_URL and PUBLIC_API_URL to the server secrets." });
     return;
