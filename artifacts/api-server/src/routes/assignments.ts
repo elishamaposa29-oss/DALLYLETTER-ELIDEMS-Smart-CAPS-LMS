@@ -18,8 +18,19 @@ const materialUpload = multer({
   fileFilter: (_req, file, callback) => callback(null, isAllowedMediaType(file.mimetype)),
 });
 
+function normalizeGrade(value: string | null | undefined): string {
+  return String(value ?? "").trim().toLowerCase().replace(/\\s+/g, " ");
+}
+
 function isVisibleToStudent(assignment: { status: string; grade: string | null }, grade: string | null): boolean {
-  return assignment.status === "active" && (assignment.grade == null || (grade != null && assignment.grade === grade));
+  if (assignment.status !== "active") return false;
+  if (assignment.grade == null || !grade) return true;
+  const required = normalizeGrade(assignment.grade);
+  const learner = normalizeGrade(grade);
+  if (required === learner) return true;
+  const requiredBase = required.split("/")[0].trim();
+  const learnerBase = learner.split("/")[0].trim();
+  return requiredBase === learnerBase;
 }
 
 function isValidDueDate(value: unknown): value is string {
