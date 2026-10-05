@@ -86,10 +86,6 @@ router.post("/messages/media", requireAuth, (req, res): void => {
       const groupId = req.body?.groupId == null || req.body.groupId === "" ? null : Number(req.body.groupId);
       const recipientId = req.body?.recipientId == null || req.body.recipientId === "" ? null : Number(req.body.recipientId);
       const currentUser = req.currentUser!;
-      if (req.file.mimetype.toLowerCase().startsWith("audio/")) {
-        const audioData = await readFile(req.file.path);
-        await pool.query("INSERT INTO message_media (storage_key, mime_type, size_bytes, data) VALUES ($1,$2,$3,$4) ON CONFLICT (storage_key) DO UPDATE SET mime_type = EXCLUDED.mime_type, size_bytes = EXCLUDED.size_bytes, data = EXCLUDED.data", [req.file.filename, req.file.mimetype, req.file.size, audioData]);
-      }
       const validTarget = (groupId != null && recipientId == null) || (groupId == null && recipientId != null);
       const allowed = validTarget
         && (groupId != null
@@ -108,6 +104,11 @@ router.post("/messages/media", requireAuth, (req, res): void => {
           res.status(403).json({ error: "Media uploads are disabled for you in this group" });
           return;
         }
+      }
+
+      if (req.file.mimetype.toLowerCase().startsWith("audio/")) {
+        const audioData = await readFile(req.file.path);
+        await pool.query("INSERT INTO message_media (storage_key, mime_type, size_bytes, data) VALUES ($1,$2,$3,$4) ON CONFLICT (storage_key) DO UPDATE SET mime_type = EXCLUDED.mime_type, size_bytes = EXCLUDED.size_bytes, data = EXCLUDED.data", [req.file.filename, req.file.mimetype, req.file.size, audioData]);
       }
 
       res.status(201).json({
