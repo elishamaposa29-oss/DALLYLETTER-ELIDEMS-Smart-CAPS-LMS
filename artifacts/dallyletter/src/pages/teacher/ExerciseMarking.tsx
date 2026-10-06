@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { Sparkles, AlertTriangle, CheckCircle2, Clock3, RotateCcw, XCircle } from "lucide-react";
 import { useRoute } from "wouter";
 import { getApiUrl } from "@workspace/api-client-react";
@@ -10,12 +10,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 
 function DrawAnswer({ data }: { data: unknown }) {
-  const d = data as { strokes?: { x:number;y:number;px:number;py:number;color?:string;width?:number;tool?:string }[]; labels?: { text:string;x:number;y:number;color?:string }[] };
+  const d = data as { strokes?: { x:number;y:number;px:number;py:number;color?:string;width?:number;tool?:string;opacity?:number }[]; paintStrokes?: { x:number;y:number;px:number;py:number;color?:string;width?:number;opacity?:number }[]; labels?: { text:string;x:number;y:number;anchorX?:number;anchorY?:number;color?:string;opacity?:number }[]; pointers?: { x:number;y:number;length?:number;thickness?:number;opacity?:number;color?:string;angle?:number }[] };
   return <canvas width={1200} height={700} className="w-full max-h-[520px] rounded border bg-white" ref={canvas => {
     if (!canvas) return; const ctx=canvas.getContext("2d"); if (!ctx) return;
     ctx.clearRect(0,0,canvas.width,canvas.height);
-    for (const s of d?.strokes ?? []) { ctx.save(); ctx.lineCap="round"; ctx.lineWidth=Number(s.width??2); ctx.strokeStyle=s.color??"#111827"; ctx.globalCompositeOperation=s.tool==="eraser"?"destination-out":"source-over"; ctx.beginPath(); ctx.moveTo(s.px,s.py); ctx.lineTo(s.x,s.y); ctx.stroke(); ctx.restore(); }
-    ctx.font="16px sans-serif"; for (const label of d?.labels ?? []) { ctx.fillStyle=label.color??"#111827"; ctx.fillText(label.text,label.x,label.y); }
+    for (const s of d?.paintStrokes ?? []) { ctx.save();ctx.lineCap="round";ctx.globalAlpha=Number(s.opacity??.28);ctx.lineWidth=Number(s.width??10);ctx.strokeStyle=s.color??"#f59e0b";ctx.beginPath();ctx.moveTo(s.px,s.py);ctx.lineTo(s.x,s.y);ctx.stroke();ctx.restore(); }
+    for (const s of d?.strokes ?? []) { ctx.save();ctx.lineCap="round";ctx.lineWidth=Number(s.width??2);ctx.globalAlpha=Number(s.opacity??1);ctx.strokeStyle=s.color??"#111827";ctx.globalCompositeOperation=s.tool==="eraser"?"destination-out":"source-over";ctx.beginPath();ctx.moveTo(s.px,s.py);ctx.lineTo(s.x,s.y);ctx.stroke();ctx.restore(); }
+    for (const p of d?.pointers ?? []) { const x=Number(p.x),y=Number(p.y),len=Number(p.length??90),ang=Number(p.angle??0),ex=x+Math.cos(ang)*len,ey=y+Math.sin(ang)*len;ctx.save();ctx.globalAlpha=Number(p.opacity??.8);ctx.strokeStyle=p.color??"#111827";ctx.fillStyle=p.color??"#111827";ctx.lineWidth=Number(p.thickness??3);ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(ex,ey);ctx.stroke();const ah=Math.max(7,Number(p.thickness??3)*3);ctx.beginPath();ctx.moveTo(ex,ey);ctx.lineTo(ex-Math.cos(ang-.55)*ah,ey-Math.sin(ang-.55)*ah);ctx.lineTo(ex-Math.cos(ang+.55)*ah,ey-Math.sin(ang+.55)*ah);ctx.closePath();ctx.fill();ctx.restore(); }
+    ctx.font="16px sans-serif"; for (const label of d?.labels ?? []) { ctx.save();ctx.globalAlpha=Number(label.opacity??1);ctx.fillStyle=label.color??"#111827";if(label.anchorX!=null&&label.anchorY!=null){ctx.beginPath();ctx.moveTo(label.anchorX,label.anchorY);ctx.lineTo(label.x-4,label.y-4);ctx.strokeStyle=label.color??"#111827";ctx.stroke();}ctx.fillText(label.text,label.x,label.y);ctx.restore(); }
   }} />;
 }
 
