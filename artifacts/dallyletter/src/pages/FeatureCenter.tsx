@@ -4,21 +4,22 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { Link } from "wouter";
+import type { LucideIcon } from "lucide-react";
 import { Bell, BookOpen, ClipboardList, CreditCard, FileCheck2, FileText, Headphones, Mail, MessageSquare, PenTool, ShieldCheck, Smartphone, Users, Video, WalletCards } from "lucide-react";
 
-type Feature = { title:string; description:string; href:string; icon:React.ElementType; tone:string; tag:string; roles?:string[] };
+type Feature = { title:string; description:string; href:string; icon:LucideIcon; tone:string; tag:string; roles?:string[] };
 
 const features:Feature[] = [
- {title:"Clickable notifications",description:"Recent alerts route to the exact lesson, assignment, class, poll or activity instead of a dead end.",href:"/student/notifications",icon:Bell,tone:"bg-amber-50 text-amber-700",tag:"Interactive"},
- {title:"Voice & media",description:"Open the chat/media experience and test authenticated playback without replacing the existing message flow.",href:"/student/chat",icon:Headphones,tone:"bg-indigo-50 text-indigo-700",tag:"Media"},
- {title:"Lessons & preview",description:"Preview current lessons, video, audio, images and notes before publishing or sharing.",href:"/teacher/lessons",icon:Video,tone:"bg-blue-50 text-blue-700",tag:"Preview"},
+ {title:"Clickable notifications",description:"Recent alerts route to the exact lesson, assignment, class, poll or activity instead of a dead end.",href:"/student/notifications",icon:Bell,tone:"bg-amber-50 text-amber-700",tag:"Interactive",roles:["student"]},
+ {title:"Voice & media",description:"Open the authenticated chat/media experience and test playback without replacing the existing message flow.",href:"/student/chat",icon:Headphones,tone:"bg-indigo-50 text-indigo-700",tag:"Media",roles:["student"]},
+ {title:"Lessons & preview",description:"Preview current lessons, video, audio, images and notes before publishing or sharing.",href:"/teacher/lessons",icon:Video,tone:"bg-blue-50 text-blue-700",tag:"Preview",roles:["teacher","owner"]},
  {title:"Missing resource recovery + Docs",description:"Broken lesson links land on a friendly recovery page with read-only documentation access.",href:"/docs",icon:FileText,tone:"bg-slate-50 text-slate-700",tag:"Recovery"},
- {title:"Interactive assignments",description:"Create assignments, attach reference media, collect submissions and grade returned work.",href:"/teacher/assignments",icon:ClipboardList,tone:"bg-emerald-50 text-emerald-700",tag:"Live UI"},
- {title:"Exercise marking",description:"Open exercise marking, learner results, per-question marks and correction feedback.",href:"/teacher/lessons",icon:FileCheck2,tone:"bg-purple-50 text-purple-700",tag:"Marking"},
+ {title:"Interactive assignments",description:"Create assignments, attach reference media, collect submissions and grade returned work.",href:"/teacher/assignments",icon:ClipboardList,tone:"bg-emerald-50 text-emerald-700",tag:"Live UI",roles:["teacher"]},
+ {title:"Exercise marking",description:"Open exercise marking, learner results, per-question marks and correction feedback.",href:"/teacher/exercises/1/mark",icon:FileCheck2,tone:"bg-purple-50 text-purple-700",tag:"Marking",roles:["teacher","owner"]},
  {title:"Teacher qualifications",description:"Submit CV/resume, certificates and supporting proof for the approval workflow.",href:"/teacher/qualifications",icon:ShieldCheck,tone:"bg-cyan-50 text-cyan-700",tag:"Verification",roles:["teacher"]},
- {title:"Drawing / answer workspace",description:"Open the learner exercise workspace with touch drawing and media answers. Existing drawing data is preserved.",href:"/student/lessons",icon:PenTool,tone:"bg-rose-50 text-rose-700",tag:"Touch"},
- {title:"Study groups & Connect",description:"Use group permissions, member previews and the Connect communication experience.",href:"/student/study-groups",icon:Users,tone:"bg-orange-50 text-orange-700",tag:"Social"},
- {title:"Payments",description:"Open the learner payment flow or staff financial dashboard. Provider-backed payouts remain gated until credentials are configured.",href:"/student/payments",icon:CreditCard,tone:"bg-green-50 text-green-700",tag:"Provider-ready"},
+ {title:"Drawing / answer workspace",description:"Open the learner exercise workspace with touch drawing and media answers. Existing drawing data is preserved.",href:"/student/lessons",icon:PenTool,tone:"bg-rose-50 text-rose-700",tag:"Touch",roles:["student"]},
+ {title:"Study groups & Connect",description:"Use group permissions, member previews and the Connect communication experience.",href:"/student/study-groups",icon:Users,tone:"bg-orange-50 text-orange-700",tag:"Social",roles:["student"]},
+ {title:"Payments",description:"Open the learner payment flow or staff financial dashboard. Provider-backed payouts remain gated until credentials are configured.",href:"/student/payments",icon:CreditCard,tone:"bg-green-50 text-green-700",tag:"Provider-ready",roles:["student"]},
  {title:"PWA / install",description:"Use the install experience and test the app shell across supported mobile and desktop browsers.",href:"/docs",icon:Smartphone,tone:"bg-sky-50 text-sky-700",tag:"PWA"},
  {title:"Email notifications",description:"Managers and owners can opt an in-app notification into server-side email delivery.",href:"/admin/notifications",icon:Mail,tone:"bg-violet-50 text-violet-700",tag:"Manager / Owner",roles:["teacher","owner"]},
 ];
