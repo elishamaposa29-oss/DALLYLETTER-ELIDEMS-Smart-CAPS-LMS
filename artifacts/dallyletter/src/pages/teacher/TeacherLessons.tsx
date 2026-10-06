@@ -402,7 +402,7 @@ export default function TeacherLessons() {
                       />
                     </CardContent>
                   )}
-                  <CardFooter className="pt-4 border-t flex justify-end gap-2">\n                    <Button variant="outline" size="sm" className="gap-2" onClick={() => window.location.assign(`/preview/lesson/${lesson.id}`)}>Preview lesson</Button>
+                  <CardFooter className="pt-4 border-t flex flex-wrap justify-end gap-2">\n                    <Button variant="outline" size="sm" className="gap-2" onClick={() => window.location.assign(`/preview/lesson/${lesson.id}`)}>Preview lesson</Button>
                     <Button
                       variant={activeExerciseLessonId === lesson.id ? "secondary" : "outline"}
                       size="sm"
@@ -437,20 +437,25 @@ export default function TeacherLessons() {
                       Mark Submissions
                     </Button>
                     <Button
+                      type="button"
                       variant="outline"
-                      size="sm"
-                      className="gap-2"
+                      size="icon"
+                      className="h-9 w-9 shrink-0 rounded-full"
+                      title="Notify followers"
+                      aria-label="Notify followers"
                       onClick={async () => {
                         try {
-                          const r = await fetch(getApiUrl(`/api/lessons/${lesson.id}/notify-followers`), { method: "POST", headers: authHeaders() });
+                          const r = await fetch(getApiUrl("/api/lessons/" + lesson.id + "/notify-followers"), { method: "POST", headers: authHeaders() });
                           const data = await r.json().catch(() => ({}));
                           if (!r.ok) throw new Error(data.error || "Could not notify followers");
-                          toast({ title: "Followers notified", description: `${data.recipientCount ?? 0} follower(s) notified.` });
-                        } catch (e) { toast({ variant: "destructive", title: "Follower notification failed", description: e instanceof Error ? e.message : "Try again." }); }
+                          toast({ title: "Followers notified ✓", description: (data.recipientCount ?? 0) + " follower(s) notified.", className: "border-emerald-200 bg-emerald-50 text-emerald-800" });
+                        } catch (e) {
+                          toast({ variant: "destructive", title: "Follower notification failed", description: e instanceof Error ? e.message : "Try again.", className: "border-red-200 bg-red-50 text-red-800" });
+                        }
                       }}
                     >
                       <Bell className="h-4 w-4" />
-                      Notify followers
+                      <span className="sr-only">Notify followers</span>
                     </Button>
                     <Button 
                       variant="ghost" 
