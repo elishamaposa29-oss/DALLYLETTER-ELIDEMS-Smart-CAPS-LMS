@@ -9,7 +9,7 @@ import { getApiUrl } from "@workspace/api-client-react";
 import { RichTextEditor } from "@/components/RichTextEditor";
 
 interface PollOption { id:string; label:string; value:string; isCorrect:boolean }
-interface ExerciseQuestionDraft { id:string; prompt:string; type:"input"|"poll"|"drawbox"; marks:number; options:PollOption[]; width:number; height:number; x:number; y:number; attachment?:{url:string;fileName:string;mimeType?:string} }
+interface ExerciseQuestionDraft { id:string; prompt:string; type:"input"|"poll"|"drawbox"; marks:number; options:PollOption[]; width:number; height:number; x:number; y:number; attachment?:{url?:string;previewUrl?:string;file?:File;fileName:string;mimeType?:string} }
 interface ExerciseBuilderPanelProps { lessonId:number; onSaved?:()=>void; onClose?:()=>void }
 interface AIReadiness { provider:string; configured:boolean; canMark:boolean; clarifications:string[]; reason?:string|null }
 
@@ -22,16 +22,18 @@ export function ExerciseBuilderPanel({lessonId,onSaved,onClose}:ExerciseBuilderP
  const [preparedExerciseId,setPreparedExerciseId]=useState<number|null>(null);const [aiEnabled,setAiEnabled]=useState(false);const [aiApproved,setAiApproved]=useState(false);const [aiReadiness,setAiReadiness]=useState<AIReadiness|null>(null);const [aiClarification,setAiClarification]=useState("");
  const addQuestion=(type:ExerciseQuestionDraft["type"]="input")=>{const id=crypto.randomUUID();setQuestions(c=>[...c,{id,prompt:"",type,marks:1,width:80,height:180,x:0,y:0,attachment:undefined,options:type==="poll"?[{id:crypto.randomUUID(),label:"",value:"A",isCorrect:false},{id:crypto.randomUUID(),label:"",value:"B",isCorrect:false}]:[]}]);setActiveQuestion(id)};
  const uploadQuestionAttachment=async(id:string,file:File)=>{
-   setUploadingQuestion(id);setMessage(null);
-   try{
-     const token=localStorage.getItem("dallyletter_token");const body=new FormData();body.append("file",file);
-     const r=await fetch(getApiUrl("/api/assignments/material"),{method:"POST",headers:token?{Authorization:"Bearer "+token}:{},body});
-     const data=await r.json().catch(()=>null) as {attachmentUrl?:string;fileName?:string;mimeType?:string;error?:string}|null;
-     if(!r.ok||!data?.attachmentUrl)throw new Error(data?.error||"Attachment upload failed");
-     updateQuestion(id,{attachment:{url:data.attachmentUrl,fileName:data.fileName||file.name,mimeType:data.mimeType||file.type}});
-     setMessage("Attachment added to the question.");
-   }catch(e){setMessage(e instanceof Error?e.message:"Attachment upload failed");}
-   finally{setUploadingQuestion(null);}
+   const previewUrl=URL.createObjectURL(file);
+   updateQuestion(id,{attachment:{previewUrl,file,fileName:file.name,mimeType:file.type}});
+   setMessage("Attachment ready and locked to this question. It will be stored when you save.");
+ };
+ const persistQuestionAttachment=async(exerciseId:number,questionId:number,attachment:ExerciseQuestionDraft["attachment"])=>{
+   if(!attachment?.file)return attachment?.url?attachment:null;
+   const token=localStorage.getItem("dallyletter_token");const body=new FormData();body.append("file",attachment.file);body.append("exerciseId",String(exerciseId));body.append("questionId",String(questionId));
+   const r=await fetch(getApiUrl("/api/exercises/question-media"),{method:"POST",headers:token?{Authorization:"Bearer "+token}:{},body});
+   const data=await r.json().catch(()=>null) as {attachmentUrl?:string;fileName?:string;mimeType?:string;error?:string}|null;
+   if(!r.ok||!data?.attachmentUrl)throw new Error(data?.error||"Question attachment upload failed");
+   if(attachment.previewUrl)URL.revokeObjectURL(attachment.previewUrl);
+   return {url:data.attachmentUrl,fileName:data.fileName||attachment.fileName,mimeType:data.mimeType||attachment.mimeType};
  };
  const moveQuestion=(from:number,to:number)=>setQuestions(c=>{if(to<0||to>=c.length||from===to)return c;const next=[...c];const [item]=next.splice(from,1);next.splice(to,0,item);return next.map((q,i)=>({...q,position:i} as ExerciseQuestionDraft));});
  const updatePosition=(id:string,x:number,y:number)=>setQuestions(c=>c.map(q=>q.id===id?{...q,x:Math.max(0,Math.min(90,x)),y:Math.max(0,Math.min(3000,y))}:q));
@@ -53,8 +55,8 @@ export function ExerciseBuilderPanel({lessonId,onSaved,onClose}:ExerciseBuilderP
      if(!er.ok)throw new Error((await er.json().catch(()=>null))?.error||"Could not prepare the exercise");
      const exercise=await er.json() as {id:number};
      for(const[index,q]of questions.entries()){
-       const qr=await fetch(getApiUrl(`/api/exercises/${exercise.id}/questions`),{method:"POST",headers,body:JSON.stringify({prompt:q.prompt.trim(),type:q.type,marksAllocated:q.marks,position:index,config:{layout:"book",mode:"freeform",x:q.x,y:q.y,width:q.width,height:q.height,attachment:q.attachment??null},options:q.type==="poll"?q.options.map(o=>({label:o.label.trim(),value:o.value.trim()||o.label.trim(),isCorrect:o.isCorrect})):undefined})});
-       if(!qr.ok)throw new Error((await qr.json().catch(()=>null))?.error||`Could not save question ${index+1}`);
+       const qr=await fetch(getApiUrl(`/api/exercises/${exercise.id}/questions`),{method:"POST",headers,body:JSON.stringify({prompt:q.prompt.trim(),type:q.type,marksAllocated:q.marks,position:index,config:{layout:"book",mode:"freeform",x:q.x,y:q.y,width:q.width,height:q.height},options:q.type==="poll"?q.options.map(o=>({label:o.label.trim(),value:o.value.trim()||o.label.trim(),isCorrect:o.isCorrect})):undefined})});
+       if(!qr.ok)throw new Error((await qr.json().catch(()=>null))?.error||`Could not save question ${index+1}`); const savedQuestion=await qr.clone().json() as {id:number}; if(q.attachment?.file) await persistQuestionAttachment(exercise.id,savedQuestion.id,q.attachment);
      }
      const rr=await fetch(getApiUrl(`/api/exercises/${exercise.id}/ai-marking/check`),{method:"POST",headers,body:JSON.stringify({teacherClarification:aiClarification})});
      const data=await rr.json();
