@@ -221,7 +221,7 @@ router.post("/lessons/:id/notify-followers", requireAuth, async (req, res): Prom
   if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid lesson id" }); return; }
   const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, id));
   if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
-  if (lesson.teacherId !== user.id && user.role !== "owner" && !user.isManager) { res.status(403).json({ error: "You can only notify followers for authorized lessons" }); return; }
+  if (lesson.teacherId !== user.id && user.role !== "owner" && !(user.isManager && user.managerLevel === "senior")) { res.status(403).json({ error: "You can only notify followers for authorized lessons" }); return; }
   const count = await notifyTeacherFollowers(lesson.teacherId, lesson.id, `${lesson.teacherName} posted "${lesson.title}".`);
   res.json({ ok: true, recipientCount: count });
 });
@@ -263,7 +263,7 @@ router.patch("/lessons/:id", requireAuth, requireTeacherOrOwner, async (req, res
     return;
   }
   const actor = req.currentUser!;
-  if (actor.role === "teacher" && !actor.isManager && existingLesson.teacherId !== actor.id) {
+  if (actor.role === "teacher" && (actor.isManager !== true || actor.managerLevel !== "senior") && existingLesson.teacherId !== actor.id) {
     res.status(403).json({ error: "Teachers can only modify lessons they created" });
     return;
   }
@@ -304,7 +304,7 @@ router.delete("/lessons/:id", requireAuth, requireTeacherOrOwner, async (req, re
     return;
   }
   const actor = req.currentUser!;
-  if (actor.role === "teacher" && !actor.isManager && existingLesson.teacherId !== actor.id) {
+  if (actor.role === "teacher" && (actor.isManager !== true || actor.managerLevel !== "senior") && existingLesson.teacherId !== actor.id) {
     res.status(403).json({ error: "Teachers can only delete lessons they created" });
     return;
   }
