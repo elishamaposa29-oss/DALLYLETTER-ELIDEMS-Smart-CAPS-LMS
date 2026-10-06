@@ -104,7 +104,6 @@ export default function ExerciseMarking() {
   const [selected, setSelected] = useState<number | null>(null);
   const [answers, setAnswers] = useState<Answer[]>([]);
   const [marks, setMarks] = useState<Record<number, string>>({});
-  const [markPositions, setMarkPositions] = useState<Record<number, {x:number;y:number}>>({});
   const [notes, setNotes] = useState<Record<number, string>>({});
   const [overallComment, setOverallComment] = useState("");
   const [message, setMessage] = useState("");
