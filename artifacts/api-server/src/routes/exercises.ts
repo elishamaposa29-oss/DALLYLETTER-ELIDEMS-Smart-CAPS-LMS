@@ -40,7 +40,7 @@ router.post("/question-media", requireAuth, async (req,res):Promise<void> => {
       const exerciseId=parseId(req.body?.exerciseId),questionId=parseId(req.body?.questionId);
       if(!exerciseId||!questionId){res.status(400).json({error:"exerciseId and questionId are required"});return;}
       const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));
-      if(!exercise||!canEditExercise(user,exercise.createdBy)){res.status(403).json({error:"You can only attach media to your own exercise"});return;}
+      if(!exercise||(!canEditExercise(user,exercise.createdBy) && !(await hasContentPermission(user.id,"exercise",exercise.id,"edit")))){res.status(403).json({error:"You do not have permission to attach media to this exercise"});return;}
       const [question]=await db.select().from(exerciseQuestionsTable).where(and(eq(exerciseQuestionsTable.id,questionId),eq(exerciseQuestionsTable.exerciseId,exerciseId)));
       if(!question){res.status(404).json({error:"Question not found"});return;}
       await persistUploadedMedia(req.file.filename,req.file.mimetype,req.file.path);
@@ -138,7 +138,7 @@ router.post("/:id/publish",requireAuth,async(req,res):Promise<void>=>{
   const user=req.currentUser!;if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}
   const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}
   const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));if(!exercise){res.status(404).json({error:"Exercise not found"});return;}
-  if(!canEditExercise(user,exercise.createdBy)){res.status(403).json({error:"You can only publish your own exercise"});return;}
+  if(!canEditExercise(user,exercise.createdBy) && !(await hasContentPermission(user.id,"exercise",exercise.id,"edit"))){res.status(403).json({error:"You do not have permission to publish this exercise"});return;}
   const questions=await db.select().from(exerciseQuestionsTable).where(eq(exerciseQuestionsTable.exerciseId,exercise.id));
   if(!questions.length){res.status(409).json({error:"Add at least one question before publishing"});return;}
   for(const q of questions){if(q.type==="poll"){const opts=await db.select().from(exerciseOptionsTable).where(eq(exerciseOptionsTable.questionId,q.id));if(opts.length<2||!opts.some(o=>o.isCorrect)){res.status(409).json({error:`Poll question ${q.position+1} needs at least two options and one correct option`});return;}}}
@@ -163,7 +163,7 @@ router.post("/:id/ai-marking/check",requireAuth,async(req,res):Promise<void>=>{
   if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}
   const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}
   const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));
-  if(!exercise||!canEditExercise(user,exercise.createdBy)){res.status(404).json({error:"Exercise not found"});return;}
+  if(!exercise||(!canEditExercise(user,exercise.createdBy) && !(await hasContentPermission(user.id,"exercise",exercise.id,"edit")))){res.status(404).json({error:"Exercise not found"});return;}
   const questions=await db.select().from(exerciseQuestionsTable).where(eq(exerciseQuestionsTable.exerciseId,exerciseId)).orderBy(asc(exerciseQuestionsTable.position));
   if(!questions.length){res.status(409).json({error:"Add at least one question before checking AI marking"});return;}
   const teacherClarification=typeof req.body?.teacherClarification==="string"?req.body.teacherClarification.trim():"";
@@ -237,7 +237,7 @@ router.post("/:id/submit",requireAuth,async(req,res):Promise<void>=>{
 });
 
 router.get("/:id/submissions",requireAuth,async(req,res):Promise<void>=>{
-  const user=req.currentUser!;if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));if(!exercise){res.status(404).json({error:"Exercise not found"});return;}if(!canEditExercise(user,exercise.createdBy)){res.status(403).json({error:"You can only view your own exercise submissions"});return;}res.json(await db.select().from(exerciseSubmissionsTable).where(eq(exerciseSubmissionsTable.exerciseId,exercise.id)).orderBy(desc(exerciseSubmissionsTable.submittedAt)));
+  const user=req.currentUser!;if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));if(!exercise){res.status(404).json({error:"Exercise not found"});return;}if(!canEditExercise(user,exercise.createdBy) && !(await hasContentPermission(user.id,"exercise",exercise.id,"edit"))){res.status(403).json({error:"You do not have permission to view exercise submissions"});return;}res.json(await db.select().from(exerciseSubmissionsTable).where(eq(exerciseSubmissionsTable.exerciseId,exercise.id)).orderBy(desc(exerciseSubmissionsTable.submittedAt)));
 });
 router.get("/:id/submissions/:submissionId",requireAuth,async(req,res):Promise<void>=>{
   const user=req.currentUser!;if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}const exerciseId=parseId(req.params.id),submissionId=parseId(req.params.submissionId);if(!exerciseId||!submissionId){res.status(400).json({error:"Invalid exercise or submission id"});return;}const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));if(!exercise||!canEditExercise(user,exercise.createdBy)){res.status(404).json({error:"Exercise not found"});return;}const [submission]=await db.select().from(exerciseSubmissionsTable).where(and(eq(exerciseSubmissionsTable.id,submissionId),eq(exerciseSubmissionsTable.exerciseId,exerciseId)));if(!submission){res.status(404).json({error:"Submission not found"});return;}res.json({submission,answers:await db.select().from(exerciseAnswersTable).where(eq(exerciseAnswersTable.submissionId,submissionId))});
