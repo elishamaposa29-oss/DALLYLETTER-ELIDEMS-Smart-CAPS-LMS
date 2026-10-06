@@ -160,7 +160,10 @@ router.delete("/lesson-requests/:id", requireAuth, async (req, res): Promise<voi
   if (user.id !== request.teacherId && user.id !== request.prefectId && user.role !== "owner" && !user.isManager) {
     res.status(403).json({ error: "Forbidden" }); return;
   }
-  await db.delete(lessonRequestsTable).where(eq(lessonRequestsTable.id, id));
+  await db.update(lessonRequestsTable).set({
+    status: "dismissed",
+    responseAt: user.id === request.teacherId ? new Date() : request.responseAt,
+  }).where(eq(lessonRequestsTable.id, id));
   res.sendStatus(204);
 });
 
