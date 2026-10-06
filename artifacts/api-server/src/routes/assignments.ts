@@ -164,7 +164,7 @@ router.delete("/:id", requireAuth, async (req, res): Promise<void> => {
   if (!isOwnerRole(user.role) && !user.isManager) { res.status(403).json({ error: "Manager or owner access required" }); return; }
   const assignmentId = parseInt(String(req.params.id));
   if (!Number.isInteger(assignmentId)) { res.status(400).json({ error: "Invalid assignment id" }); return; }
-  const [existing] = await db.select({ teacherId: assignmentsTable.teacherId }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
+  const [existing] = await db.select({ teacherId: assignmentsTable.teacherId, attachmentUrl: assignmentsTable.attachmentUrl }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
   await db.delete(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
   const storageKey = typeof existing.attachmentUrl === "string" ? existing.attachmentUrl.match(/\/api\/lessons\/media\/([a-f0-9-]{36})/i)?.[1] : null;
