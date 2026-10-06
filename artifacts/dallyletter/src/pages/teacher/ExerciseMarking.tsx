@@ -229,8 +229,10 @@ export default function ExerciseMarking() {
     setSubs((current) => current.map((x) => (x.id === selected ? d.submission : x)));
   };
 
-  const selectedQuestion = (answer: Answer) =>
-    questions.find((q) => q.id === answer.questionId);
+  const selectedQuestion = (answer: Answer) => questions.find((q) => q.id === answer.questionId);
+  const liveEarned = answers.reduce((sum,a)=>sum+Math.max(0,Math.min(Number(selectedQuestion(a)?.marksAllocated??0),Number(marks[a.id]??0)||0)),0);
+  const liveTotal = Number(exercise?.totalMarks??0);
+  const livePercentage = liveTotal>0 ? (liveEarned/liveTotal)*100 : 0;
 
   return (
     <DashboardLayout>
@@ -285,7 +287,7 @@ export default function ExerciseMarking() {
                 <SubmissionStatus status={selectedSubmission.status} />
               </div>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4"><div className="sticky top-2 z-10 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-background/95 p-3 shadow-sm backdrop-blur"><div><p className="text-xs uppercase tracking-wide text-muted-foreground">Current marking</p><p className="text-lg font-bold">{liveEarned.toFixed(2)} / {liveTotal.toFixed(2)} marks</p></div><Badge variant="secondary">{livePercentage.toFixed(2)}%</Badge></div>
               <div className="rounded-lg border bg-muted/40 p-3 text-sm"><strong>Answer coverage:</strong> {answers.length} / {questions.length} questions answered. Unanswered questions receive 0 marks unless the teacher enters a different valid mark. {answers.length < questions.length ? "This was an incomplete submission." : "All questions have an answer."}</div>
               {answers.map((a, i) => {
                 const q = selectedQuestion(a);
@@ -312,7 +314,7 @@ export default function ExerciseMarking() {
                           max={q?.marksAllocated ?? undefined}
                           step="0.01"
                           value={marks[a.id] ?? "0"}
-                          onChange={(e) => setMarks((m) => ({ ...m, [a.id]: e.target.value }))}
+                          onChange={(e) => { const max=Number(q?.marksAllocated??0); const raw=Number(e.target.value); setMarks((m) => ({ ...m, [a.id]: Number.isFinite(raw)?String(Math.max(0,Math.min(max,raw))):"0" })); }}
                           className="w-28"
                           aria-label={`Awarded marks for question ${i + 1}`}
                         /></div>
