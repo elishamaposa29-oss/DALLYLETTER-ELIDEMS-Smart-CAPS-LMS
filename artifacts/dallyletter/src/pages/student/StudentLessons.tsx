@@ -110,7 +110,6 @@ export default function StudentLessons() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <Select value={gradeFilter} onValueChange={setGradeFilter}><SelectTrigger><SelectValue placeholder="Grade / Form" /></SelectTrigger><SelectContent><SelectItem value="all">All grades</SelectItem>{Array.from(new Set(lessons?.map(l=>l.grade).filter(Boolean) as string[])).map(g=><SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent></Select>
           <Select value={gradeFilter} onValueChange={setGradeFilter}><SelectTrigger><SelectValue placeholder="Grade / Form" /></SelectTrigger><SelectContent><SelectItem value="all">All grades</SelectItem>{Array.from(new Set((lessons ?? []).map(l=>l.grade).filter(Boolean) as string[])).map(g=><SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent></Select>
           <Select value={subjectFilter} onValueChange={setSubjectFilter}>
             <SelectTrigger className="w-full sm:w-[200px] h-11">
