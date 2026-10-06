@@ -49,6 +49,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   if (user.role === "student") {
     navItems = [
       { label: "Dashboard", href: "/", icon: Home, section: "Main" },
+      { label: "Feature Center", href: "/features", icon: Sparkles },
       { label: "Lessons", href: "/student/lessons", icon: BookOpen },
       { label: "Live Classes", href: "/student/classes", icon: Video },
       { label: "Assignments", href: "/student/assignments", icon: ClipboardList },
@@ -69,6 +70,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   } else if (user.role === "teacher") {
     navItems = [
       { label: "Dashboard", href: "/teacher", icon: Home, section: "Main" },
+      { label: "Feature Center", href: "/features", icon: Sparkles },
       { label: "My Lessons", href: "/teacher/lessons", icon: BookOpen },
       { label: "My Classes", href: "/teacher/classes", icon: Video },
       { label: "Assignments", href: "/teacher/assignments", icon: ClipboardList },
@@ -88,6 +90,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   } else if (user.role === "owner") {
     navItems = [
       { label: "Overview", href: "/admin", icon: Home, section: "Platform" },
+      { label: "Feature Center", href: "/features", icon: Sparkles },
       { label: "Users", href: "/admin/users", icon: Users },
       { label: "All Lessons", href: "/admin/lessons", icon: BookOpen },
       { label: "All Classes", href: "/admin/classes", icon: Video },
@@ -95,6 +98,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Study Groups", href: "/student/study-groups", icon: Users },
       { label: "Chat", href: "/admin/chat", icon: MessageSquare },
       { label: "Notifications", href: "/admin/notifications", icon: Bell },
+      { label: "Email & Notifications", href: "/admin/notifications", icon: Mail },
       { label: "Financial Dashboard", href: "/admin/financial", icon: DollarSign, section: "Finance" },
       { label: "Payments (Fees)", href: "/admin/payments", icon: CreditCard },
       { label: "Staff Payments", href: "/admin/staff-payments", icon: Briefcase },
