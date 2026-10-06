@@ -47,3 +47,36 @@ The implementation uses the Web Push AES-128-GCM and VAPID standards rather than
 - Object-storage secret: Render/Replit secret only.
 - Push subscription endpoints and encryption secrets: database only; never log them.
 - Public VAPID key may be delivered to authenticated clients.
+
+## Production media storage workflow
+
+Teacher/Learner selects file
+        |
+        v
+Authenticated API upload
+        |
+        v
+Temporary server file (only during upload)
+        |
+        +--> S3-compatible object storage configured? --> YES --> PUT /media/<UUID>
+        |                                                        |
+        |                                                        v
+        |                                              DB keeps stable media URL/key
+        |                                                        |
+        |                                                        v
+        |                                              Authenticated GET + HTTP Range
+        |
+        +--> NO --> local fallback (development only)
+
+For production, configure an S3-compatible persistent provider. The application never puts provider credentials in the browser. Media is addressed by a UUID storage key, streamed through the authenticated API, supports HTTP Range requests for audio/video, and is deleted from both object storage and local fallback when the owning record is deleted.
+
+Required server variables:
+- MEDIA_S3_ENDPOINT
+- MEDIA_S3_BUCKET
+- MEDIA_S3_ACCESS_KEY_ID
+- MEDIA_S3_SECRET_ACCESS_KEY
+- MEDIA_S3_REGION=auto for Cloudflare R2
+
+Recommended current provider: Cloudflare R2 Standard storage. Its current free tier includes 10 GB-month, 1 million Class A operations, 10 million Class B operations, and free egress. The free allowance is monthly and Cloudflare can change pricing, so the project must not claim that any third-party free tier is guaranteed forever. Keep usage under the allowance and configure billing alerts.
+
+Never store media credentials in Git, frontend environment variables, database rows, or chat messages.
