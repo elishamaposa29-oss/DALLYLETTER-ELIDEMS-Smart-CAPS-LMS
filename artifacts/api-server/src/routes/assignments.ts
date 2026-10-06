@@ -5,7 +5,7 @@ import { assignmentsTable, assignmentSubmissionsTable } from "@workspace/db/sche
 import { eq, desc, and } from "drizzle-orm";
 import { canManageAcademicContent, isOwnerRole, requireAuth } from "../lib/auth-middleware";
 import { getAIProvider } from "../lib/ai-provider";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, removeStoredMedia } from "../lib/media-storage";
 
 const router = Router();
 const materialUpload = multer({
@@ -137,7 +137,7 @@ router.put("/:id", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Forbidden" }); return; }
   const assignmentId = parseInt(String(req.params.id));
-  const [existing] = await db.select({ teacherId: assignmentsTable.teacherId }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
+  const [existing] = await db.select({ teacherId: assignmentsTable.teacherId, attachmentUrl: assignmentsTable.attachmentUrl }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
   if (!isOwnerRole(user.role) && !user.isManager && existing.teacherId !== user.id) { res.status(403).json({ error: "You can only edit your own assignments" }); return; }
   const { title, description, subject, grade, dueDate, totalMarks, status, attachmentUrl } = req.body;
@@ -167,6 +167,8 @@ router.delete("/:id", requireAuth, async (req, res): Promise<void> => {
   const [existing] = await db.select({ teacherId: assignmentsTable.teacherId }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
   await db.delete(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
+  const storageKey = typeof existing.attachmentUrl === "string" ? existing.attachmentUrl.match(/\/api\/lessons\/media\/([a-f0-9-]{36})/i)?.[1] : null;
+  if (storageKey) await removeStoredMedia(storageKey);
   res.json({ ok: true });
 });
 
