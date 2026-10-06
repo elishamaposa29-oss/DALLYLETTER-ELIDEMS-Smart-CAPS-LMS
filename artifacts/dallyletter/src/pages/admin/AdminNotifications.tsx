@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { useAuth } from "@/contexts/AuthContext";
 import { useListNotifications, useCreateNotification, useListUsers, getApiUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ const createNotificationSchema = z.object({
 });
 
 export default function AdminNotifications() {
+  const { user } = useAuth();
   const { data: notifications, isLoading } = useListNotifications();
   const { data: users } = useListUsers();
   const createNotificationMutation = useCreateNotification();
@@ -109,8 +111,8 @@ export default function AdminNotifications() {
     <DashboardLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Broadcast Notifications</h1>
-          <p className="text-muted-foreground">Send alerts and announcements to users.</p>
+          <h1 className="text-3xl font-bold tracking-tight">Notifications & Email</h1>
+          <p className="text-muted-foreground">Send in-app alerts and optionally email them. Manager and owner access is protected separately from owner audit logs.</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -254,14 +256,14 @@ export default function AdminNotifications() {
                           <span className="text-xs text-muted-foreground hidden sm:block">
                             {new Date(notification.createdAt).toLocaleDateString()}
                           </span>
-                          <Button
+{user?.role === "owner" && <Button
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
                             onClick={() => handleDelete(notification.id)}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+                          </Button>}
                         </div>
                       </div>
                       <p className="text-sm text-foreground/80 mt-2 ml-7">{notification.message}</p>
