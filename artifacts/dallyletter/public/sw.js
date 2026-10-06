@@ -1,4 +1,4 @@
-const CACHE = 'dallyletter-v2';
+const CACHE = 'dallyletter-v3';
 const SHELL = ['/', '/manifest.json', '/favicon.svg', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -16,7 +16,9 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
-  if (url.pathname.startsWith('/api/')) return;
+  if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
+  const cacheable = e.request.destination === "document" || e.request.destination === "script" || e.request.destination === "style" || e.request.destination === "font";
+  if (!cacheable) return;
   e.respondWith((async () => {
     const cached = await caches.match(e.request);
     try {
