@@ -28,6 +28,7 @@ import exercisesRouter from "./exercises";
 import socialFeaturesRouter from "./socialFeatures";
 import pushRouter from "./push";
 import emailRouter from "./email";
+import contentPermissionsRouter from "./contentPermissions";
 
 const router: IRouter = Router();
 
@@ -59,5 +60,6 @@ router.use("/exercises", exercisesRouter);
 router.use(socialFeaturesRouter);
 router.use(pushRouter);
 router.use(emailRouter);
+router.use(contentPermissionsRouter);
 
 export default router;
