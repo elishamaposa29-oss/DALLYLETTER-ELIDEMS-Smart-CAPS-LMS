@@ -7,7 +7,7 @@ import {
   BookOpen, Users, Video, MessageSquare, CreditCard, Bell, LogOut, Home,
   Shield, Menu, GraduationCap, Settings, Sparkles, ClipboardList, Star,
   ScrollText, Trophy, AlertTriangle, DollarSign, BarChart3, Briefcase,
-  Flame, Send,
+  Flame, Send, Mail,
 } from "lucide-react";
 import { useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
