@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Sparkles, AlertTriangle, CheckCircle2, Clock3, RotateCcw, XCircle } from "lucide-react";
 import { useRoute } from "wouter";
 import { getApiUrl } from "@workspace/api-client-react";
