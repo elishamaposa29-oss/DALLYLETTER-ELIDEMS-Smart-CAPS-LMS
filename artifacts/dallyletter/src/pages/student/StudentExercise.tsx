@@ -12,7 +12,7 @@ function QuestionAttachment({url,fileName,mimeType}:{url:string;fileName:string;
 function DrawBox({value,onChange,readOnly=false}:{value:Record<string,unknown>|undefined;onChange:(v:Record<string,unknown>)=>void;readOnly?:boolean}){
  const ref=useRef<HTMLCanvasElement>(null);const wrapRef=useRef<HTMLDivElement>(null);const drawing=useRef(false);const last=useRef<{x:number;y:number}|null>(null);
  const [tool,setTool]=useState<"pen"|"eraser"|"text"|"paint"|"pointer"|"select">("pen");
- const [color,setColor]=useState("#111827");const [width,setWidth]=useState(3);const [opacity,setOpacity]=useState(1);const [pointerId,setPointerId]=useState<string|null>(null);const [labelMode,setLabelMode]=useState(false);const [fullscreen,setFullscreen]=useState(false);const [magnify,setMagnify]=useState(false);const [eraseTarget,setEraseTarget]=useState<"pen"|"paint"|"both">("both");
+ const [color,setColor]=useState("#111827");const [width,setWidth]=useState(3);const [draggingPointer,setDraggingPointer]=useState(false);const [opacity,setOpacity]=useState(1);const [pointerId,setPointerId]=useState<string|null>(null);const [labelMode,setLabelMode]=useState(false);const [fullscreen,setFullscreen]=useState(false);const [magnify,setMagnify]=useState(false);const [eraseTarget,setEraseTarget]=useState<"pen"|"paint"|"both">("both");
  const pointers=()=>((value?.pointers??[]) as any[]);const labels=()=>((value?.labels??[]) as any[]);const strokes=()=>((value?.strokes??[]) as any[]);const paints=()=>((value?.paintStrokes??[]) as any[]);
  const redraw=()=>{const c=ref.current;if(!c)return;const ctx=c.getContext("2d");if(!ctx)return;ctx.clearRect(0,0,c.width,c.height);ctx.fillStyle="#fff";ctx.fillRect(0,0,c.width,c.height);
    for(const s of paints()){ctx.save();ctx.lineCap="round";ctx.lineJoin="round";ctx.lineWidth=Number(s.width??10);ctx.strokeStyle=s.color??"#f59e0b";ctx.globalAlpha=Number(s.opacity??.28);ctx.beginPath();ctx.moveTo(Number(s.px??s.x),Number(s.py??s.y));ctx.lineTo(Number(s.x),Number(s.y));ctx.stroke();ctx.restore();}
@@ -24,16 +24,16 @@ function DrawBox({value,onChange,readOnly=false}:{value:Record<string,unknown>|u
  const point=(e:React.PointerEvent)=>{const c=ref.current;if(!c)return null;const r=c.getBoundingClientRect();return{x:(e.clientX-r.left)*(c.width/r.width),y:(e.clientY-r.top)*(c.height/r.height)}};
  const down=(e:React.PointerEvent)=>{if(readOnly)return;const p=point(e);if(!p)return;
    if(tool==="text"){setLabelMode(true);const text=window.prompt("Label text");if(text?.trim())onChange({...value,labels:[...labels(),{text:text.trim(),x:Math.min(p.x+42,1150),y:Math.max(p.y-28,24),anchorX:p.x,anchorY:p.y,color,opacity}]});setLabelMode(false);setTool("select");return;}
-   if(tool==="pointer"){const item={id:crypto.randomUUID(),x:p.x,y:p.y,length:90,width:3,thickness:3,opacity:.8,color,angle:0};setPointerId(item.id);onChange({...value,pointers:[...pointers(),item]});return;}
+   if(tool==="pointer"){const existing=pointers().find(item=>Math.hypot(Number(item.x)-p.x,Number(item.y)-p.y)<35);if(existing){setPointerId(existing.id);setDraggingPointer(true);last.current=p;ref.current?.setPointerCapture(e.pointerId);return;}const item={id:crypto.randomUUID(),x:p.x,y:p.y,length:90,width:3,thickness:3,opacity:.8,color,angle:0};setPointerId(item.id);setDraggingPointer(true);last.current=p;onChange({...value,pointers:[...pointers(),item]});return;}
    if(tool==="eraser"){drawing.current=true;last.current=p;ref.current?.setPointerCapture(e.pointerId);return;}
    if(tool==="select"){return;}
    drawing.current=true;last.current=p;ref.current?.setPointerCapture(e.pointerId);
  };
  const move=(e:React.PointerEvent)=>{if(!drawing.current)return;const p=point(e);if(!p||!last.current)return;
-   if(tool==="eraser"){const radius=Math.max(8,width*3);const near=(s:any)=>Math.hypot(Number(s.x)-p.x,Number(s.y)-p.y)<=radius||Math.hypot(Number(s.px??s.x)-p.x,Number(s.py??s.y)-p.y)<=radius;const next={...value};if(eraseTarget==="pen"||eraseTarget==="both")next.strokes=strokes().filter(s=>!near(s));if(eraseTarget==="paint"||eraseTarget==="both")next.paintStrokes=paints().filter(s=>!near(s));onChange(next);last.current=p;return;}
+   if(tool==="pointer"&&draggingPointer&&pointerId&&last.current){const dx=p.x-last.current.x,dy=p.y-last.current.y;onChange({...value,pointers:pointers().map(item=>item.id===pointerId?{...item,x:Number(item.x)+dx,y:Number(item.y)+dy}:item)});last.current=p;return;}\n   if(tool==="eraser"){const radius=Math.max(8,width*3);const near=(s:any)=>Math.hypot(Number(s.x)-p.x,Number(s.y)-p.y)<=radius||Math.hypot(Number(s.px??s.x)-p.x,Number(s.py??s.y)-p.y)<=radius;const next={...value};if(eraseTarget==="pen"||eraseTarget==="both")next.strokes=strokes().filter(s=>!near(s));if(eraseTarget==="paint"||eraseTarget==="both")next.paintStrokes=paints().filter(s=>!near(s));onChange(next);last.current=p;return;}
    const stroke={x:p.x,y:p.y,px:last.current.x,py:last.current.y,color,width:tool==="paint"?Math.max(width*2,width+8):width,opacity:tool==="paint"?Math.min(opacity,.45):opacity,tool};const key=tool==="paint"?"paintStrokes":"strokes";onChange({...value,[key]:[...(((value?.[key]??[]) as any[])),stroke]});last.current=p;
  };
- const up=()=>{drawing.current=false;last.current=null};
+ const up=()=>{drawing.current=false;setDraggingPointer(false);last.current=null};
  const clear=()=>onChange({strokes:[],paintStrokes:[],labels:[],pointers:[]});
  const selectedSize=tool==="paint"?Math.max(width*2,width+8):tool==="pointer"?width:width;const detail=(1+selectedSize/8).toFixed(1);
  const activePointer=pointers().find(p=>p.id===pointerId);
