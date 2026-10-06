@@ -7,6 +7,7 @@ import {
   exerciseSubmissionsTable, lessonsTable, auditLogsTable, exerciseMediaTable,
 } from "@workspace/db/schema";
 import { canManageAcademicContent, isOwnerRole, requireAuth } from "../lib/auth-middleware";
+import { hasContentPermission } from "../lib/content-permissions";
 import { getAIProvider } from "../lib/ai-provider";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia } from "../lib/media-storage";
 
@@ -118,7 +119,7 @@ router.post("/:id/questions",requireAuth,async(req,res):Promise<void>=>{
   const user=req.currentUser!;if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}
   const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}
   const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));if(!exercise){res.status(404).json({error:"Exercise not found"});return;}
-  if(!canEditExercise(user,exercise.createdBy)){res.status(403).json({error:"You can only edit your own exercise"});return;}
+  if(!canEditExercise(user,exercise.createdBy) && !(await hasContentPermission(user.id,"exercise",exercise.id,"edit"))){res.status(403).json({error:"Edit permission has not been granted by the exercise creator"});return;}
   const {prompt,type,marksAllocated,position,config,options}=req.body??{};
   const marks=Number(marksAllocated??1);
   if(typeof prompt!=="string"||!prompt.trim()||!questionTypes.has(type)||!Number.isFinite(marks)||marks<0||marks>10000||Math.round(marks*2)!==marks*2){res.status(400).json({error:"prompt, type (input|poll|drawbox), and marksAllocated in 0.5 increments are required"});return;}
