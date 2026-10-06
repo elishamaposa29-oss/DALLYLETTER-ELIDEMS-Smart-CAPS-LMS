@@ -43,6 +43,8 @@ export default function TeacherLessons() {
   const [activeExerciseLessonId, setActiveExerciseLessonId] = useState<number | null>(null);
   const [markingExercises, setMarkingExercises] = useState<{ id: number; title: string; status?: string; totalMarks?: string }[]>([]);
   const [markingLessonId, setMarkingLessonId] = useState<number | null>(null);
+  const [showAllTeachers, setShowAllTeachers] = useState(false);
+  const [sortMode, setSortMode] = useState<"newest"|"oldest"|"subject">("newest");
   const [lessonRequests, setLessonRequests] = useState<any[]>([]);
   const [requestBusy, setRequestBusy] = useState<number | null>(null);
   const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("dallyletter_token") ?? ""}` });
@@ -51,7 +53,14 @@ export default function TeacherLessons() {
   const dismissRequest = async (id:number) => { setRequestBusy(id); try { const r=await fetch(getApiUrl(`/api/achievements/lesson-requests/${id}`),{method:"DELETE",headers:authHeaders()}); if(!r.ok) throw new Error("Could not dismiss request"); await loadLessonRequests(); toast({title:"Lesson request dismissed"}); } catch(e) { toast({variant:"destructive",title:"Dismiss failed",description:e instanceof Error?e.message:"Try again"}); } finally { setRequestBusy(null); } };
   useEffect(()=>{void loadLessonRequests();},[]);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const visibleLessons = (lessons ?? []).filter((lesson) => user?.role !== "teacher" || lesson.teacherId === user.id).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const visibleLessons = [...(lessons ?? [])].filter((lesson) => user?.role !== "teacher" || showAllTeachers || lesson.teacherId === user.id).sort((a,b) => sortMode === "oldest" ? new Date(a.createdAt).getTime()-new Date(b.createdAt).getTime() : sortMode === "subject" ? String(a.subject).localeCompare(String(b.subject)) : new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime());
+  const requestPermission = async (contentId:number,requestedAction:"edit"|"create_exercise"|"delete"|"notify") => {
+    try {
+      const r=await fetch(getApiUrl("/api/content-permissions"),{method:"POST",headers:{"Content-Type":"application/json",...authHeaders()},body:JSON.stringify({contentType:"lesson",contentId,requestedAction})});
+      const d=await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.error||"Permission request failed");
+      toast({title:d.alreadyAuthorized?"Already authorized":"Permission requested",description:d.pending?"The creator will review your request.":"Permission is already available.",className:"border-emerald-200 bg-emerald-50 text-emerald-800"});
+    } catch(e){toast({variant:"destructive",title:"Permission request failed",description:e instanceof Error?e.message:"Try again"});}
+  };
 
   const form = useForm<z.infer<typeof createLessonSchema>>({
     resolver: zodResolver(createLessonSchema),
@@ -150,7 +159,11 @@ export default function TeacherLessons() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <div className="space-y-6"><div className="sticky top-0 z-20 -mx-2 overflow-x-auto border-b bg-background/95 px-2 py-2 backdrop-blur"><div className="flex min-w-max items-center gap-2">
+<Button size="sm" variant={!showAllTeachers?"default":"outline"} onClick={()=>setShowAllTeachers(false)}>My lessons</Button>
+<Button size="sm" variant={showAllTeachers?"default":"outline"} onClick={()=>setShowAllTeachers(true)}>All teachers · preview</Button>
+<Select value={sortMode} onValueChange={(v)=>setSortMode(v as "newest"|"oldest"|"subject")}><SelectTrigger className="h-9 w-[125px]"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="newest">Newest</SelectItem><SelectItem value="oldest">Oldest</SelectItem><SelectItem value="subject">Subject</SelectItem></SelectContent></Select>
+</div></div>
         {lessonRequests.length>0 && <Card className="border-amber-200 bg-amber-50/50"><CardHeader><CardTitle className="text-lg">Prefect lesson requests</CardTitle><CardDescription>Requests sent directly to your teacher account.</CardDescription></CardHeader><CardContent className="space-y-3">{lessonRequests.map(r=><div key={r.id} className="rounded-xl border bg-background p-3 flex flex-col sm:flex-row sm:items-center gap-3"><div className="flex-1 min-w-0"><p className="font-semibold truncate">{r.topic}</p><p className="text-xs text-muted-foreground">{r.preferredDate?`Preferred ${r.preferredDate} · `:""}{r.status}</p>{r.notes&&<p className="text-sm mt-1">{r.notes}</p>}</div><div className="flex gap-2 flex-wrap"><Button size="sm" onClick={()=>void respondToRequest(r.id,"accepted")} disabled={requestBusy===r.id}>Accept</Button><Button size="sm" variant="outline" onClick={()=>void respondToRequest(r.id,"declined")} disabled={requestBusy===r.id}>Decline</Button><Button size="sm" variant="ghost" onClick={()=>void dismissRequest(r.id)} disabled={requestBusy===r.id}>Dismiss</Button></div></div>)}</CardContent></Card>}
         <div className="flex justify-between items-center">
           <div>
@@ -405,7 +418,7 @@ export default function TeacherLessons() {
                     </div>
                   )}
                   <CardFooter className="pt-4 border-t flex flex-wrap justify-end gap-2">\n                    <Button variant="outline" size="sm" className="gap-2" onClick={() => window.location.assign(`/preview/lesson/${lesson.id}`)}>Preview lesson</Button>
-                    <Button
+                    {(lesson.teacherId === user?.id || user?.role === "owner" || (user?.role === "teacher" && (user as any).isManager && (user as any).managerLevel === "senior")) && <Button
                       variant={activeExerciseLessonId === lesson.id ? "secondary" : "outline"}
                       size="sm"
                       className="gap-2"
@@ -413,7 +426,8 @@ export default function TeacherLessons() {
                     >
                       <ClipboardList className="h-4 w-4" />
                       {activeExerciseLessonId === lesson.id ? "Close Exercise" : "Exercise"}
-                    </Button>
+                    </Button>}
+                    {showAllTeachers && lesson.teacherId !== user?.id && <Button type="button" variant="outline" size="sm" className="gap-2" onClick={()=>void requestPermission(lesson.id,"edit")}><span className="text-xs">Request edit</span></Button>}
                     <Button
                       variant="outline"
                       size="sm"
