@@ -431,7 +431,7 @@ export default function TeacherLessons() {
                       <ClipboardList className="h-4 w-4" />
                       {activeExerciseLessonId === lesson.id ? "Close Exercise" : "Exercise"}
                     </Button>}
-                    {showAllTeachers && lesson.teacherId !== user?.id && <Button type="button" variant="outline" size="sm" className="gap-2" onClick={()=>void requestPermission(lesson.id,"edit")}><span className="text-xs">Request edit</span></Button>}
+                    {showAllTeachers && lesson.teacherId !== user?.id && <div className="flex flex-wrap gap-1"><Button type="button" variant="outline" size="sm" className="h-9 text-xs" onClick={()=>void requestPermission(lesson.id,"edit")}>Request edit</Button><Button type="button" variant="outline" size="sm" className="h-9 text-xs" onClick={()=>void requestPermission(lesson.id,"create_exercise")}>Request exercise</Button><Button type="button" variant="outline" size="sm" className="h-9 text-xs" onClick={()=>void requestPermission(lesson.id,"notify")}>Request notify</Button><Button type="button" variant="outline" size="sm" className="h-9 text-xs text-destructive" onClick={()=>void requestPermission(lesson.id,"delete")}>Request delete</Button></div>}
                     <Button
                       variant="outline"
                       size="sm"
