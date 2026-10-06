@@ -33,21 +33,34 @@ async function notifyTeacherFollowers(teacherId: number, lessonId: number, title
     .where(and(eq(followsTable.targetType, "teacher"), eq(followsTable.targetUserId, teacherId)));
   const opted = followers.filter(f => f.notificationsEnabled).map(f => f.followerId);
   if (!opted.length) return 0;
-  const preferences = await db.select({ userId: notificationPreferencesTable.userId, enabled: notificationPreferencesTable.followNotificationsEnabled })
-    .from(notificationPreferencesTable)
-    .where(inArray(notificationPreferencesTable.userId, opted));
-  const prefMap = new Map(preferences.map(p => [p.userId, p.enabled]));
-  const recipientIds = opted.filter(id => prefMap.get(id) !== false);
+  let recipientIds = opted;
+  try {
+    const preferences = await db.select({ userId: notificationPreferencesTable.userId, enabled: notificationPreferencesTable.followNotificationsEnabled })
+      .from(notificationPreferencesTable)
+      .where(inArray(notificationPreferencesTable.userId, opted));
+    const prefMap = new Map(preferences.map(p => [p.userId, p.enabled]));
+    recipientIds = opted.filter(id => prefMap.get(id) !== false);
+  } catch {
+    // Older production databases may not have optional preference data yet.
+  }
   if (!recipientIds.length) return 0;
-  await db.insert(notificationsTable).values(recipientIds.map(recipientId => ({
-    recipientId,
-    title: "New activity from a teacher you follow",
-    message: title,
-    type: "follow_activity",
-    isRead: false,
-    link: `/student/lessons?lesson=${lessonId}`,
-  })));
-  return recipientIds.length;
+  let sent = 0;
+  for (const recipientId of recipientIds) {
+    try {
+      await db.insert(notificationsTable).values({
+        recipientId,
+        title: "New activity from a teacher you follow",
+        message: title,
+        type: "follow_activity",
+        isRead: false,
+        link: `/student/lessons?lesson=${lessonId}`,
+      });
+      sent += 1;
+    } catch {
+      // One bad recipient must not block all other followers.
+    }
+  }
+  return sent;
 }
 
 
