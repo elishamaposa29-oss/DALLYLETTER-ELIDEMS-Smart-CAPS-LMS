@@ -19,6 +19,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { CreateLessonBodyType } from "@workspace/api-client-react";
 import { ExerciseBuilderPanel } from "@/components/exercises/ExerciseBuilderPanel";
+import { RichTextEditor } from "@/components/RichTextEditor";
 
 const createLessonSchema = z.object({
   title: z.string().min(2, "Title is required"),
@@ -271,7 +272,7 @@ export default function TeacherLessons() {
                       <FormItem>
                         <FormLabel>Description</FormLabel>
                         <FormControl>
-                          <Textarea placeholder="Brief overview of the lesson..." {...field} />
+                          <RichTextEditor value={field.value || ""} onChange={field.onChange} placeholder="Brief overview of the lesson… Add formatting, emphasis and handwriting." />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
