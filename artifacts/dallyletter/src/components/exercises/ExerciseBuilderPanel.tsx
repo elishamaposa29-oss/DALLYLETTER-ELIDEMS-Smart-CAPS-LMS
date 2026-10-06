@@ -16,7 +16,7 @@ export function ExerciseBuilderPanel({lessonId,onSaved,onClose}:ExerciseBuilderP
  const [title,setTitle]=useState("");const [instructions,setInstructions]=useState("");const [questions,setQuestions]=useState<ExerciseQuestionDraft[]>([]);
  const [busy,setBusy]=useState(false);const [activeQuestion,setActiveQuestion]=useState<string|null>(null);const [message,setMessage]=useState<string|null>(null);const [uploadingQuestion,setUploadingQuestion]=useState<string|null>(null);
  const [preparedExerciseId,setPreparedExerciseId]=useState<number|null>(null);const [aiEnabled,setAiEnabled]=useState(false);const [aiApproved,setAiApproved]=useState(false);const [aiReadiness,setAiReadiness]=useState<AIReadiness|null>(null);const [aiClarification,setAiClarification]=useState("");
- const addQuestion=(type:ExerciseQuestionDraft["type"]="input")=>{const id=crypto.randomUUID();setQuestions(c=>[...c,{id,prompt:"",type,marks:1,width:80,height:180,x:0,y:0,attachment:undefined,options:type==="poll"?[{id:crypto.randomUUID(),label:"",value:"A",isCorrect:false},{id:crypto.randomUUID(),label:"",value:"B",isCorrect:false}]:[]}]);
+ const addQuestion=(type:ExerciseQuestionDraft["type"]="input")=>{const id=crypto.randomUUID();setQuestions(c=>[...c,{id,prompt:"",type,marks:1,width:80,height:180,x:0,y:0,attachment:undefined,options:type==="poll"?[{id:crypto.randomUUID(),label:"",value:"A",isCorrect:false},{id:crypto.randomUUID(),label:"",value:"B",isCorrect:false}]:[]}]);setActiveQuestion(id)};
  const uploadQuestionAttachment=async(id:string,file:File)=>{
    setUploadingQuestion(id);setMessage(null);
    try{
