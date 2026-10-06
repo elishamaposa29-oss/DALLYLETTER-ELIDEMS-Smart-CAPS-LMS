@@ -26,7 +26,6 @@ router.post("/content-permissions",requireAuth,async(req,res):Promise<void>=>{
 
 router.get("/content-permissions",requireAuth,async(req,res):Promise<void>=>{
   const actor=req.currentUser!;
-  if(!canAccessManager(actor)){res.status(403).json({error:"Manager or owner access required"});return;}
   const rows=await pool.query("SELECT * FROM content_permission_requests WHERE owner_id=$1 AND status='pending' ORDER BY created_at DESC",[actor.id]);
   res.json(rows.rows);
 });
