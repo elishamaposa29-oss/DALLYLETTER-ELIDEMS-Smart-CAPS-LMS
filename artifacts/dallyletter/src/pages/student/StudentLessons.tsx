@@ -40,6 +40,7 @@ export default function StudentLessons() {
   const [search, setSearch] = useState("");
   const [subjectFilter, setSubjectFilter] = useState("all");
   const [gradeFilter, setGradeFilter] = useState("all");
+  const [sortMode, setSortMode] = useState<"newest"|"oldest"|"subject">("newest");
   const [follows, setFollows] = useState<any[]>([]);
   const token = localStorage.getItem("dallyletter_token");
   useEffect(()=>{fetch(getApiUrl("/api/follows"),{headers:token?{Authorization:`Bearer ${token}`}:{}}).then(r=>r.ok?r.json():[]).then(d=>setFollows(Array.isArray(d)?d:[])).catch(()=>{});},[]);
@@ -111,7 +112,7 @@ export default function StudentLessons() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <Select value={gradeFilter} onValueChange={setGradeFilter}><SelectTrigger><SelectValue placeholder="Grade / Form" /></SelectTrigger><SelectContent><SelectItem value="all">All grades</SelectItem>{Array.from(new Set((lessons ?? []).map(l=>l.grade).filter(Boolean) as string[])).map(g=><SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent></Select>
+          <Select value={gradeFilter} onValueChange={setGradeFilter}><SelectTrigger><SelectValue placeholder="Grade / Form" /></SelectTrigger><SelectContent><SelectItem value="all">All grades</SelectItem>{Array.from(new Set((lessons ?? []).map(l=>l.grade).filter(Boolean) as string[])).map(g=><SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent></Select><Select value={sortMode} onValueChange={(v)=>setSortMode(v as "newest"|"oldest"|"subject")}><SelectTrigger className="h-10 w-full sm:w-[130px]"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="newest">Newest</SelectItem><SelectItem value="oldest">Oldest</SelectItem><SelectItem value="subject">Subject</SelectItem></SelectContent></Select>
           <Select value={subjectFilter} onValueChange={setSubjectFilter}>
             <SelectTrigger className="w-full sm:w-[200px] h-11">
               <SelectValue placeholder="All Subjects" />
