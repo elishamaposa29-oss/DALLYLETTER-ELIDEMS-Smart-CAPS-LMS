@@ -22,6 +22,7 @@ import {
   MAX_MEDIA_SIZE_BYTES,
   persistUploadedMedia,
   streamStoredMedia,
+  removeStoredMedia,
 } from "../lib/media-storage";
 
 const router: IRouter = Router();
@@ -243,7 +244,7 @@ router.patch("/lessons/:id", requireAuth, requireTeacherOrOwner, async (req, res
     return;
   }
 
-  const [existingLesson] = await db.select({ teacherId: lessonsTable.teacherId }).from(lessonsTable).where(eq(lessonsTable.id, params.data.id));
+  const [existingLesson] = await db.select({ teacherId: lessonsTable.teacherId, mediaUrl: lessonsTable.mediaUrl }).from(lessonsTable).where(eq(lessonsTable.id, params.data.id));
   if (!existingLesson) {
     res.status(404).json({ error: "Lesson not found" });
     return;
@@ -295,6 +296,9 @@ router.delete("/lessons/:id", requireAuth, requireTeacherOrOwner, async (req, re
     return;
   }
   await db.delete(lessonsTable).where(eq(lessonsTable.id, params.data.id));
+  const mediaUrl = existingLesson.mediaUrl;
+  const storageKey = typeof mediaUrl === "string" ? mediaUrl.match(/\/api\/lessons\/media\/([a-f0-9-]{36})/i)?.[1] : null;
+  if (storageKey) await removeStoredMedia(storageKey);
   res.sendStatus(204);
 });
 
