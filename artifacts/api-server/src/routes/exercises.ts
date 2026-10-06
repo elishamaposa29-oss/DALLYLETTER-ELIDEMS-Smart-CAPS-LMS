@@ -100,7 +100,8 @@ router.get("/:id",requireAuth,async(req,res):Promise<void>=>{
   if(exercise.status!=="published"&&!canManageAcademicContent(req.currentUser!)){res.status(404).json({error:"Exercise not found"});return;}
   const questions=await db.select().from(exerciseQuestionsTable).where(eq(exerciseQuestionsTable.exerciseId,exercise.id)).orderBy(asc(exerciseQuestionsTable.position));
   const allOptionRows=questions.length?(await Promise.all(questions.map(q=>db.select().from(exerciseOptionsTable).where(eq(exerciseOptionsTable.questionId,q.id))))).flat():[];
-  res.json({exercise,questions,options:allOptionRows.map(({isCorrect:_isCorrect,...option})=>option)});
+  const mediaRows=questions.length?(await Promise.all(questions.map(q=>db.select().from(exerciseMediaTable).where(eq(exerciseMediaTable.questionId,q.id))))).flat():[];
+  res.json({exercise,questions,options:allOptionRows.map(({isCorrect:_isCorrect,...option})=>option),media:mediaRows.map(m=>({id:m.id,questionId:m.questionId,fileName:m.fileName,mimeType:m.mimeType,sizeBytes:m.sizeBytes,url:`/api/lessons/media/${m.storageKey}?type=${encodeURIComponent(m.mimeType)}`}))});
 });
 
 router.post("/lessons/:lessonId/exercises",requireAuth,async(req,res):Promise<void>=>{
