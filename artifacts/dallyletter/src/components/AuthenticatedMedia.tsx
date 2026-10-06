@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Download, Expand, Share2, ZoomIn, ZoomOut } from "lucide-react";
+import { Download, Expand, Share2, ZoomIn, ZoomOut, RefreshCw } from "lucide-react";
 import { getApiUrl } from "@workspace/api-client-react";
 
 interface AuthenticatedMediaProps {
@@ -41,7 +41,7 @@ export function AuthenticatedMedia({ url, type, title }: AuthenticatedMediaProps
     };
   }, [url]);
 
-  if (error) return <p className="text-sm text-destructive">Media unavailable.</p>;
+  if (error) return <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"><p className="font-semibold">Media unavailable</p><p className="mt-1">The learning resource could not be loaded safely.</p><Button type="button" size="sm" variant="outline" className="mt-3 gap-1" onClick={()=>window.location.reload()}><RefreshCw className="h-3.5 w-3.5"/>Try again</Button></div>;
   if (!objectUrl) return <p className="text-sm text-muted-foreground">Loading media...</p>;
   if (type === "audio") return <audio className="w-full" src={objectUrl} title={title} controls />;
   if (type === "video") return <video className="aspect-video w-full rounded-md bg-black" src={objectUrl} title={title} controls />;
@@ -49,10 +49,8 @@ export function AuthenticatedMedia({ url, type, title }: AuthenticatedMediaProps
 
   return (
     <div className="space-y-2">
-      <iframe className="h-96 w-full rounded-md border" src={objectUrl} title={title} />
-      <a className="text-sm text-primary hover:underline" href={objectUrl} target="_blank" rel="noreferrer">
-        Open document
-      </a>
+      <div className="flex flex-wrap gap-2"><Button type="button" size="sm" variant="outline" className="gap-1" onClick={()=>window.open(objectUrl,"_blank","noopener,noreferrer")}><Expand className="h-4 w-4"/>Open full screen</Button><a className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm" href={objectUrl} download={title}><Download className="h-4 w-4"/>Download</a></div><iframe className="h-[70vh] min-h-96 w-full rounded-md border bg-white" src={objectUrl} title={title} />
+      <p className="text-xs text-muted-foreground">If the embedded viewer is unavailable on your device, use Open full screen or Download.</p>
     </div>
   );
 }
