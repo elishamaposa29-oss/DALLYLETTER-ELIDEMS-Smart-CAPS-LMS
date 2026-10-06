@@ -11,36 +11,47 @@ function QuestionAttachment({url,fileName,mimeType}:{url:string;fileName:string;
 
 function DrawBox({value,onChange,readOnly=false}:{value:Record<string,unknown>|undefined;onChange:(v:Record<string,unknown>)=>void;readOnly?:boolean}){
  const ref=useRef<HTMLCanvasElement>(null);const wrapRef=useRef<HTMLDivElement>(null);const drawing=useRef(false);const last=useRef<{x:number;y:number}|null>(null);
- const [tool,setTool]=useState<"pen"|"eraser"|"text"|"paint"|"pointer">("pen"),[color,setColor]=useState("#111827"),[width,setWidth]=useState(3),[fullscreen,setFullscreen]=useState(false),[magnify,setMagnify]=useState(false);
- const redraw=()=>{
-   const c=ref.current;if(!c)return;const ctx=c.getContext("2d");if(!ctx)return;
-   ctx.clearRect(0,0,c.width,c.height);ctx.fillStyle="#ffffff";ctx.fillRect(0,0,c.width,c.height);
-   for(const s of ((value?.paintStrokes??[]) as any[])){ctx.save();ctx.lineCap="round";ctx.lineJoin="round";ctx.lineWidth=Number(s.width??8);ctx.strokeStyle=s.color??"#f59e0b";ctx.globalCompositeOperation="source-over";ctx.globalAlpha=.28;ctx.beginPath();ctx.moveTo(Number(s.px??s.x),Number(s.py??s.y));ctx.lineTo(Number(s.x),Number(s.y));ctx.stroke();ctx.restore();}
-   for(const s of ((value?.strokes??[]) as any[])){ctx.save();ctx.lineCap="round";ctx.lineJoin="round";ctx.lineWidth=Number(s.width??2);ctx.strokeStyle=s.color??"#111827";ctx.globalCompositeOperation=s.tool==="eraser"?"destination-out":"source-over";ctx.globalAlpha=1;ctx.beginPath();ctx.moveTo(Number(s.px??s.x),Number(s.py??s.y));ctx.lineTo(Number(s.x),Number(s.y));ctx.stroke();ctx.restore();}
-   ctx.font="16px sans-serif";for(const label of ((value?.labels??[]) as any[])){ctx.save();ctx.fillStyle=label.color??"#111827";ctx.strokeStyle=label.color??"#111827";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(Number(label.anchorX??label.x),Number(label.anchorY??label.y));ctx.lineTo(Number(label.x)-4,Number(label.y)-4);ctx.stroke();ctx.fillText(String(label.text??""),Number(label.x),Number(label.y));ctx.restore();}
+ const [tool,setTool]=useState<"pen"|"eraser"|"text"|"paint"|"pointer"|"select">("pen");
+ const [color,setColor]=useState("#111827");const [width,setWidth]=useState(3);const [opacity,setOpacity]=useState(1);const [pointerId,setPointerId]=useState<string|null>(null);const [labelMode,setLabelMode]=useState(false);const [fullscreen,setFullscreen]=useState(false);const [magnify,setMagnify]=useState(false);const [eraseTarget,setEraseTarget]=useState<"pen"|"paint"|"both">("both");
+ const pointers=()=>((value?.pointers??[]) as any[]);const labels=()=>((value?.labels??[]) as any[]);const strokes=()=>((value?.strokes??[]) as any[]);const paints=()=>((value?.paintStrokes??[]) as any[]);
+ const redraw=()=>{const c=ref.current;if(!c)return;const ctx=c.getContext("2d");if(!ctx)return;ctx.clearRect(0,0,c.width,c.height);ctx.fillStyle="#fff";ctx.fillRect(0,0,c.width,c.height);
+   for(const s of paints()){ctx.save();ctx.lineCap="round";ctx.lineJoin="round";ctx.lineWidth=Number(s.width??10);ctx.strokeStyle=s.color??"#f59e0b";ctx.globalAlpha=Number(s.opacity??.28);ctx.beginPath();ctx.moveTo(Number(s.px??s.x),Number(s.py??s.y));ctx.lineTo(Number(s.x),Number(s.y));ctx.stroke();ctx.restore();}
+   for(const s of strokes()){ctx.save();ctx.lineCap="round";ctx.lineJoin="round";ctx.lineWidth=Number(s.width??2);ctx.strokeStyle=s.color??"#111827";ctx.globalAlpha=Number(s.opacity??1);ctx.beginPath();ctx.moveTo(Number(s.px??s.x),Number(s.py??s.y));ctx.lineTo(Number(s.x),Number(s.y));ctx.stroke();ctx.restore();}
+   for(const p of pointers()){const x=Number(p.x),y=Number(p.y),len=Number(p.length??90),th=Number(p.thickness??3),op=Number(p.opacity??.8),ang=Number(p.angle??0);const ex=x+Math.cos(ang)*len,ey=y+Math.sin(ang)*len;ctx.save();ctx.globalAlpha=op;ctx.strokeStyle=p.color??"#111827";ctx.fillStyle=p.color??"#111827";ctx.lineWidth=th;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(ex,ey);ctx.stroke();const ah=Math.max(7,th*3);const a=Math.atan2(ey-y,ex-x);ctx.beginPath();ctx.moveTo(ex,ey);ctx.lineTo(ex-Math.cos(a-.55)*ah,ey-Math.sin(a-.55)*ah);ctx.lineTo(ex-Math.cos(a+.55)*ah,ey-Math.sin(a+.55)*ah);ctx.closePath();ctx.fill();ctx.restore();}
+   ctx.font="16px sans-serif";for(const l of labels()){ctx.save();ctx.globalAlpha=Number(l.opacity??1);ctx.fillStyle=l.color??"#111827";ctx.strokeStyle=l.color??"#111827";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(Number(l.anchorX??l.x),Number(l.anchorY??l.y));ctx.lineTo(Number(l.x)-4,Number(l.y)-4);ctx.stroke();ctx.fillText(String(l.text??""),Number(l.x),Number(l.y));ctx.restore();}
  };
  useEffect(()=>{redraw()},[value]);
  const point=(e:React.PointerEvent)=>{const c=ref.current;if(!c)return null;const r=c.getBoundingClientRect();return{x:(e.clientX-r.left)*(c.width/r.width),y:(e.clientY-r.top)*(c.height/r.height)}};
- const down=(e:React.PointerEvent)=>{
-   if(readOnly)return;const p=point(e);if(!p)return;
-   if(tool==="text"||tool==="pointer"){const text=window.prompt(tool==="pointer"?"Enter label for this point":"Enter drawing label");if(text?.trim())onChange({...value,labels:[...(((value?.labels??[]) as any[])),{text:text.trim(),x:Math.min(p.x+42,1150),y:Math.max(p.y-28,24),anchorX:p.x,anchorY:p.y,color}]});return;}
+ const down=(e:React.PointerEvent)=>{if(readOnly)return;const p=point(e);if(!p)return;
+   if(tool==="text"){setLabelMode(true);const text=window.prompt("Label text");if(text?.trim())onChange({...value,labels:[...labels(),{text:text.trim(),x:Math.min(p.x+42,1150),y:Math.max(p.y-28,24),anchorX:p.x,anchorY:p.y,color,opacity}]});setLabelMode(false);setTool("select");return;}
+   if(tool==="pointer"){const item={id:crypto.randomUUID(),x:p.x,y:p.y,length:90,width:3,thickness:3,opacity:.8,color,angle:0};setPointerId(item.id);onChange({...value,pointers:[...pointers(),item]});return;}
+   if(tool==="eraser"){drawing.current=true;last.current=p;ref.current?.setPointerCapture(e.pointerId);return;}
+   if(tool==="select"){return;}
    drawing.current=true;last.current=p;ref.current?.setPointerCapture(e.pointerId);
  };
- const move=(e:React.PointerEvent)=>{if(!drawing.current)return;const p=point(e);if(!p||!last.current)return;const stroke={x:p.x,y:p.y,px:last.current.x,py:last.current.y,color,width,tool};const key=tool==="paint"?"paintStrokes":"strokes";onChange({...value,[key]:[...(((value?.[key]??[]) as any[])),stroke]});last.current=p};
+ const move=(e:React.PointerEvent)=>{if(!drawing.current)return;const p=point(e);if(!p||!last.current)return;
+   if(tool==="eraser"){const radius=Math.max(8,width*3);const near=(s:any)=>Math.hypot(Number(s.x)-p.x,Number(s.y)-p.y)<=radius||Math.hypot(Number(s.px??s.x)-p.x,Number(s.py??s.y)-p.y)<=radius;const next={...value};if(eraseTarget==="pen"||eraseTarget==="both")next.strokes=strokes().filter(s=>!near(s));if(eraseTarget==="paint"||eraseTarget==="both")next.paintStrokes=paints().filter(s=>!near(s));onChange(next);last.current=p;return;}
+   const stroke={x:p.x,y:p.y,px:last.current.x,py:last.current.y,color,width:tool==="paint"?Math.max(width*2,width+8):width,opacity:tool==="paint"?Math.min(opacity,.45):opacity,tool};const key=tool==="paint"?"paintStrokes":"strokes";onChange({...value,[key]:[...(((value?.[key]??[]) as any[])),stroke]});last.current=p;
+ };
  const up=()=>{drawing.current=false;last.current=null};
- const clear=()=>onChange({strokes:[],paintStrokes:[],labels:[]});
- const detail=(1+width/12).toFixed(1);
+ const clear=()=>onChange({strokes:[],paintStrokes:[],labels:[],pointers:[]});
+ const selectedSize=tool==="paint"?Math.max(width*2,width+8):tool==="pointer"?width:width;const detail=(1+selectedSize/8).toFixed(1);
+ const activePointer=pointers().find(p=>p.id===pointerId);
  return <div ref={wrapRef} className={fullscreen?"fixed inset-0 z-50 bg-white p-3 flex flex-col":"space-y-2"}>
    {!readOnly&&<div className="flex flex-wrap items-center gap-2 rounded-lg border bg-background p-2">
-     {(["pen","paint","eraser","text","pointer"] as const).map(t=><Button key={t} type="button" size="sm" variant={tool===t?"default":"outline"} onClick={()=>setTool(t)}>{t==="paint"?"Paint":t==="eraser"?"Erase":t==="text"?"Text":t==="pointer"?"Pointer":"Pen"}</Button>)}
+     {(["pen","paint","eraser","text","pointer","select"] as const).map(t=><Button key={t} type="button" size="icon" variant={tool===t?"default":"outline"} title={t==="text"?"Label":t==="eraser"?"Erase":t==="pointer"?"Pointer":t==="select"?"Stop tool":t==="paint"?"Paint":"Pen"} aria-label={t==="text"?"Label":t} onClick={()=>{setTool(t);if(t!=="text")setLabelMode(false)}}>{t==="text"?"🏷️":t==="eraser"?"⌫":t==="pointer"?"➤":t==="select"?"✕":t==="paint"?"🖌️":"✎"}</Button>)}
      <label className="flex items-center gap-1 text-xs">Colour<input type="color" value={color} onChange={e=>setColor(e.target.value)} className="h-7 w-8"/></label>
-     <label className="flex items-center gap-1 text-xs">Detail / size<input type="range" min="1" max="24" value={width} onChange={e=>{setWidth(Number(e.target.value));setMagnify(true)}}/></label>
-     <Button type="button" size="sm" variant={magnify?"secondary":"ghost"} onClick={()=>setMagnify(v=>!v)}>Magnifier ×{detail}</Button>
+     <label className="flex items-center gap-1 text-xs">Size<input type="range" min="1" max="24" value={width} onChange={e=>{setWidth(Number(e.target.value));setMagnify(true)}}/></label>
+     <label className="flex items-center gap-1 text-xs">Opacity<input type="range" min=".1" max="1" step=".05" value={opacity} onChange={e=>setOpacity(Number(e.target.value))}/></label>
+     {tool==="eraser"&&<select value={eraseTarget} onChange={e=>setEraseTarget(e.target.value as any)} className="h-8 rounded-md border bg-background px-2 text-xs"><option value="both">Erase both</option><option value="pen">Erase pen</option><option value="paint">Erase paint</option></select>}
+     <Button type="button" size="sm" variant={magnify?"secondary":"ghost"} onClick={()=>setMagnify(v=>!v)}>⌕ ×{detail}</Button>
      <Button type="button" size="sm" variant="ghost" onClick={clear}>Clear</Button>
-     <Button type="button" size="sm" variant="outline" onClick={()=>{if(!document.fullscreenElement)void wrapRef.current?.requestFullscreen?.();else void document.exitFullscreen?.();setFullscreen(v=>!v)}}>{fullscreen?"Exit fullscreen":"Fullscreen"}</Button>
+     <Button type="button" size="sm" variant="outline" onClick={()=>{if(!document.fullscreenElement)void wrapRef.current?.requestFullscreen?.();else void document.exitFullscreen?.();setFullscreen(v=>!v)}}>{fullscreen?"Exit":"Fullscreen"}</Button>
    </div>}
-   {magnify&&!readOnly&&<div className="rounded-lg border bg-slate-50 px-3 py-2 text-xs text-muted-foreground">Magnifier is linked to the selected tool and size: <strong>×{detail}</strong>. Paint is stored separately and drawn underneath your pen work; Pointer labels keep a visible line back to the exact point.</div>}
+   {magnify&&!readOnly&&<div className="rounded-lg border bg-slate-50 px-3 py-2 text-xs text-muted-foreground">Tool-aware controls: {tool==="paint"?"Paint uses a larger brush ratio and lower default opacity.":tool==="pointer"?"Pointer controls length, width, thickness and transparency.":tool==="eraser"?"Eraser controls impact, size and whether pen, paint or both are removed.":tool==="text"?"Label controls text placement and colour.":"Pen controls line size and opacity."}</div>}
+   {tool==="pointer"&&activePointer&&!readOnly&&<div className="grid grid-cols-2 gap-2 rounded-lg border bg-background p-2 text-xs sm:grid-cols-5"><label>Length<input className="w-full" type="range" min="20" max="400" value={activePointer.length} onChange={e=>onChange({...value,pointers:pointers().map(p=>p.id===pointerId?{...p,length:Number(e.target.value)}:p)})}/></label><label>Width<input className="w-full" type="range" min="20" max="100" value={activePointer.width} onChange={e=>onChange({...value,pointers:pointers().map(p=>p.id===pointerId?{...p,width:Number(e.target.value)}:p)})}/></label><label>Thickness<input className="w-full" type="range" min="1" max="12" value={activePointer.thickness} onChange={e=>onChange({...value,pointers:pointers().map(p=>p.id===pointerId?{...p,thickness:Number(e.target.value)}:p)})}/></label><label>Opacity<input className="w-full" type="range" min=".1" max="1" step=".05" value={activePointer.opacity} onChange={e=>onChange({...value,pointers:pointers().map(p=>p.id===pointerId?{...p,opacity:Number(e.target.value)}:p)})}/></label><Button type="button" size="sm" variant="outline" onClick={()=>{onChange({...value,pointers:pointers().filter(p=>p.id!==pointerId)});setPointerId(null)}}>Remove</Button></div>}
    <canvas ref={ref} width={1200} height={700} className={fullscreen?"flex-1 h-full w-full touch-none rounded-lg border bg-white":"h-[320px] w-full touch-none rounded-lg border bg-white"} onPointerDown={readOnly?undefined:down} onPointerMove={readOnly?undefined:move} onPointerUp={readOnly?undefined:up} onPointerCancel={readOnly?undefined:up}/>
+   {labelMode&&!readOnly&&<Button type="button" size="sm" variant="outline" onClick={()=>{setLabelMode(false);setTool("select")}}>Stop labelling</Button>}
  </div>
 }
 
