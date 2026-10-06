@@ -30,6 +30,7 @@ const createLessonSchema = z.object({
 });
 
 export default function TeacherLessons() {
+  const { user } = useAuth();
   const { data: lessons, isLoading } = useListLessons();
   const createLessonMutation = useCreateLesson();
   const deleteLessonMutation = useDeleteLesson();
@@ -49,6 +50,7 @@ export default function TeacherLessons() {
   const dismissRequest = async (id:number) => { setRequestBusy(id); try { const r=await fetch(getApiUrl(`/api/achievements/lesson-requests/${id}`),{method:"DELETE",headers:authHeaders()}); if(!r.ok) throw new Error("Could not dismiss request"); await loadLessonRequests(); toast({title:"Lesson request dismissed"}); } catch(e) { toast({variant:"destructive",title:"Dismiss failed",description:e instanceof Error?e.message:"Try again"}); } finally { setRequestBusy(null); } };
   useEffect(()=>{void loadLessonRequests();},[]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const visibleLessons = (lessons ?? []).filter((lesson) => user?.role !== "teacher" || lesson.teacherId === user.id).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   const form = useForm<z.infer<typeof createLessonSchema>>({
     resolver: zodResolver(createLessonSchema),
@@ -361,12 +363,12 @@ export default function TeacherLessons() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {lessons?.length === 0 ? (
+            {visibleLessons.length === 0 ? (
               <div className="col-span-full text-center p-8 border rounded-lg bg-card">
                 <p className="text-muted-foreground">You haven't created any lessons yet.</p>
               </div>
             ) : (
-              lessons?.map((lesson) => (
+              visibleLessons.map((lesson) => (
                 <Card key={lesson.id} className="flex flex-col h-full hover:border-primary/50 transition-colors group">
                   <CardHeader className="pb-3">
                     <div className="flex justify-between items-start gap-2">
@@ -395,12 +397,11 @@ export default function TeacherLessons() {
                     </div>
                   </CardContent>
                   {activeExerciseLessonId === lesson.id && (
-                    <CardContent className="border-t pt-4">
-                      <ExerciseBuilderPanel
-                        lessonId={lesson.id}
-                        onSaved={() => queryClient.invalidateQueries({ queryKey: getListLessonsQueryKey() })}
-                      />
-                    </CardContent>
+                    <div className="fixed inset-0 z-[70] overflow-y-auto bg-background/98 p-2 sm:p-6">
+                      <div className="mx-auto max-w-7xl">
+                        <ExerciseBuilderPanel lessonId={lesson.id} onSaved={() => queryClient.invalidateQueries({ queryKey: getListLessonsQueryKey() })} onClose={() => setActiveExerciseLessonId(null)} />
+                      </div>
+                    </div>
                   )}
                   <CardFooter className="pt-4 border-t flex flex-wrap justify-end gap-2">\n                    <Button variant="outline" size="sm" className="gap-2" onClick={() => window.location.assign(`/preview/lesson/${lesson.id}`)}>Preview lesson</Button>
                     <Button
