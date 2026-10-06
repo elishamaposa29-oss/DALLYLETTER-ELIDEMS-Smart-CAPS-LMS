@@ -10,6 +10,7 @@ export const usersTable = pgTable("users", {
   role: text("role").notNull().default("student"),
   isPrefect: boolean("is_prefect").notNull().default(false),
   isManager: boolean("is_manager").notNull().default(false),
+  managerLevel: text("manager_level").notNull().default("junior"),
   isBlocked: boolean("is_blocked").notNull().default(false),
   isSuspended: boolean("is_suspended").notNull().default(false),
   phone: text("phone"),
