@@ -82,6 +82,8 @@ const statusMeta: Record<string, { label: string; className: string; icon: typeo
   marked: { label: "Returned", className: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20", icon: CheckCircle2 },
 };
 
+function FloatingMark({value,max,onChange}:{value:string;max:string;onChange:(value:string)=>void}){const [pos,setPos]=useState({x:12,y:12});const dragging=useRef(false);const start=useRef({x:0,y:0,px:12,py:12});return <div className="absolute z-10 touch-none" style={{left:`${pos.x}%`,top:`${pos.y}%`}} onPointerDown={e=>{dragging.current=true;start.current={x:e.clientX,y:e.clientY,px:pos.x,py:pos.y};e.currentTarget.setPointerCapture(e.pointerId)}} onPointerMove={e=>{if(!dragging.current)return;const parent=(e.currentTarget.parentElement?.getBoundingClientRect());if(!parent)return;setPos({x:Math.max(0,Math.min(90,start.current.px+((e.clientX-start.current.x)/parent.width)*100)),y:Math.max(0,Math.min(90,start.current.py+((e.clientY-start.current.y)/parent.height)*100))})}} onPointerUp={()=>{dragging.current=false}}><div className="flex items-center gap-1 rounded-full border-2 border-amber-400 bg-amber-50/95 p-1 shadow-lg backdrop-blur"><span className="cursor-grab px-1 text-[10px] text-amber-700">⋮⋮</span><Input type="number" min="0" max={max} step="0.01" value={value} onChange={e=>onChange(e.target.value)} className="h-8 w-20 border-0 bg-transparent text-center font-bold focus-visible:ring-0"/></div></div>}
+
 function SubmissionStatus({ status }: { status: string }) {
   const meta = statusMeta[status] ?? { label: status, className: "bg-muted text-muted-foreground", icon: Clock3 };
   const Icon = meta.icon;
@@ -102,6 +104,7 @@ export default function ExerciseMarking() {
   const [selected, setSelected] = useState<number | null>(null);
   const [answers, setAnswers] = useState<Answer[]>([]);
   const [marks, setMarks] = useState<Record<number, string>>({});
+  const [markPositions, setMarkPositions] = useState<Record<number, {x:number;y:number}>>({});
   const [notes, setNotes] = useState<Record<number, string>>({});
   const [overallComment, setOverallComment] = useState("");
   const [message, setMessage] = useState("");
@@ -291,7 +294,7 @@ export default function ExerciseMarking() {
                       {a.textAnswer || a.selectedValue || (a.drawData ? <DrawAnswer data={a.drawData} /> : null) || (a.mediaReference ? <AuthenticatedAttachment url={a.mediaReference} /> : "No answer")} {a.mediaReference && (a.textAnswer || a.selectedValue || a.drawData ? <AuthenticatedAttachment url={a.mediaReference} /> : null)}
                     </div>
 
-                    <div className="grid gap-3 sm:grid-cols-[auto_1fr]">
+                    <div className="grid gap-3 sm:grid-cols-[auto_1fr]"><div className="relative min-h-20 rounded-xl border bg-background/30 p-2"><FloatingMark value={marks[a.id] ?? "0"} max={q?.marksAllocated ?? "0"} onChange={value=>setMarks(m=>({...m,[a.id]:value}))}/><div className="pt-12 text-xs text-muted-foreground">Drag the floating mark onto the learner answer. It remains linked to this question.</div></div>
                       <div className="flex items-center gap-2">
                         <div className="flex items-center gap-1"><Button type="button" size="sm" variant="outline" className="text-emerald-600 border-emerald-300 hover:bg-emerald-50" onClick={()=>setMarks((m)=>({...m,[a.id]:q?.marksAllocated??"0"}))} aria-label={`Mark question ${i+1} correct`}><CheckCircle2 className="h-4 w-4" /></Button><Button type="button" size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50" onClick={()=>setMarks((m)=>({...m,[a.id]:"0"}))} aria-label={`Mark question ${i+1} incorrect`}><XCircle className="h-4 w-4" /></Button><Input
                           type="number"
