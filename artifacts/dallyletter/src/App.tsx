@@ -66,7 +66,7 @@ import FeatureCenter from "@/pages/FeatureCenter";
 const fallbackApiBaseUrl = typeof window !== "undefined" && window.location.hostname === "localhost" ? "http://localhost:4000" : "https://dallyletter-elidems-smart-caps-lms-4.onrender.com";
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim() || import.meta.env.API_BASE_URL?.trim() || fallbackApiBaseUrl;
 if (apiBaseUrl) setBaseUrl(apiBaseUrl);
-const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false, staleTime: 30_000, gcTime: 10 * 60_000 } } });
 
 function Router() { return <Switch>
   <Route path="/login" component={Login} /><Route path="/features"><ProtectedRoute allowedRoles={["student","teacher","owner"]}><FeatureCenter /></ProtectedRoute></Route><Route path="/register" component={Register} /><Route path="/resource-unavailable" component={ResourceUnavailable} /><Route path="/docs" component={Docs} /><Route path="/preview/lesson/:id"><ProtectedRoute allowedRoles={["student","teacher","owner"]}><LessonPreview /></ProtectedRoute></Route><Route path="/teacher/qualifications"><ProtectedRoute allowedRoles={["teacher"]}><TeacherQualifications /></ProtectedRoute></Route><Route path="/suspended" component={Suspended} />
