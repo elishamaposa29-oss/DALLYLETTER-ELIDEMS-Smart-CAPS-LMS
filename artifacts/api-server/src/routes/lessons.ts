@@ -24,6 +24,7 @@ import {
   streamStoredMedia,
   removeStoredMedia,
 } from "../lib/media-storage";
+import { hasContentPermission } from "../lib/content-permissions";
 
 const router: IRouter = Router();
 
