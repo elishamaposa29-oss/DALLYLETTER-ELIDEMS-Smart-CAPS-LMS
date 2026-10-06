@@ -15,6 +15,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { CreateNotificationBodyType } from "@workspace/api-client-react";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const createNotificationSchema = z.object({
   recipientId: z.coerce.number().optional().nullable(),
@@ -22,6 +23,7 @@ const createNotificationSchema = z.object({
   message: z.string().min(5, "Message is required"),
   type: z.enum([CreateNotificationBodyType.payment_overdue, CreateNotificationBodyType.new_lesson, CreateNotificationBodyType.class_starting, CreateNotificationBodyType.system, CreateNotificationBodyType.general]),
   recipientType: z.enum(["all", "specific"]),
+  sendEmail: z.boolean(),
 });
 
 export default function AdminNotifications() {
@@ -33,7 +35,7 @@ export default function AdminNotifications() {
 
   const form = useForm<z.infer<typeof createNotificationSchema>>({
     resolver: zodResolver(createNotificationSchema),
-    defaultValues: { title: "", message: "", type: CreateNotificationBodyType.general, recipientType: "all", recipientId: null },
+    defaultValues: { title: "", message: "", type: CreateNotificationBodyType.general, recipientType: "all", recipientId: null, sendEmail: false },
   });
 
   const recipientType = form.watch("recipientType");
@@ -46,10 +48,21 @@ export default function AdminNotifications() {
       recipientId: values.recipientType === "specific" ? values.recipientId : null
     };
     createNotificationMutation.mutate({ data }, {
-      onSuccess: () => {
+
+      onSuccess: async () => {
+        if (values.sendEmail) {
+          try {
+            const token = localStorage.getItem("dallyletter_token");
+            const emailRes = await fetch(getApiUrl("/api/email/send"), { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ subject: values.title, text: values.message, recipientId: values.recipientType === "specific" ? values.recipientId : null }) });
+            if (!emailRes.ok) throw new Error((await emailRes.json()).error || "Email delivery failed");
+            toast({ title: "Notification and email sent" });
+          } catch (e) {
+            toast({ variant: "destructive", title: "In-app notification sent; email failed", description: e instanceof Error ? e.message : "Email provider is unavailable." });
+          }
+        }
         toast({ title: "Notification sent successfully" });
         queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() });
-        form.reset({ title: "", message: "", type: CreateNotificationBodyType.general, recipientType: "all", recipientId: null });
+        form.reset({ title: "", message: "", type: CreateNotificationBodyType.general, recipientType: "all", recipientId: null, sendEmail: false });
       },
       onError: (error) => {
         toast({ variant: "destructive", title: "Error", description: error.message });
@@ -181,6 +194,16 @@ export default function AdminNotifications() {
                         <Textarea placeholder="Write your message here..." className="resize-none" rows={4} {...field} />
                       </FormControl>
                       <FormMessage />
+                    </FormItem>
+                  )} />
+
+                  <FormField control={form.control} name="sendEmail" render={({ field }) => (
+                    <FormItem className="flex items-start gap-3 rounded-xl border p-3">
+                      <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                      <div>
+                        <FormLabel>Also send by email</FormLabel>
+                        <p className="text-xs text-muted-foreground">Uses the server email provider. No email is sent unless this is enabled and provider credentials are configured.</p>
+                      </div>
                     </FormItem>
                   )} />
 
