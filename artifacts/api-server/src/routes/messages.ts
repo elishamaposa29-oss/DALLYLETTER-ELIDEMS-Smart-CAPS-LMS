@@ -106,6 +106,12 @@ router.post("/messages/media", requireAuth, (req, res): void => {
         }
       }
 
+      // Capture an audio fallback before object storage is allowed to remove the temporary local file.
+      // This keeps legacy/database playback available even when object storage is later unavailable.
+      const audioData = req.file.mimetype.toLowerCase().startsWith("audio/")
+        ? await readFile(req.file.path)
+        : null;
+
       try {
         await persistUploadedMedia(req.file.filename, req.file.mimetype, req.file.path);
       } catch {
@@ -114,8 +120,7 @@ router.post("/messages/media", requireAuth, (req, res): void => {
         return;
       }
 
-      if (req.file.mimetype.toLowerCase().startsWith("audio/")) {
-        const audioData = await readFile(req.file.path);
+      if (audioData) {
         await pool.query("INSERT INTO message_media (storage_key, mime_type, size_bytes, data) VALUES ($1,$2,$3,$4) ON CONFLICT (storage_key) DO UPDATE SET mime_type = EXCLUDED.mime_type, size_bytes = EXCLUDED.size_bytes, data = EXCLUDED.data", [req.file.filename, req.file.mimetype, req.file.size, audioData]);
       }
 
