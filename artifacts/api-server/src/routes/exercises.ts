@@ -9,7 +9,7 @@ import {
 import { canManageAcademicContent, isOwnerRole, requireAuth } from "../lib/auth-middleware";
 import { hasContentPermission } from "../lib/content-permissions";
 import { getAIProvider } from "../lib/ai-provider";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, removeStoredMedia } from "../lib/media-storage";
 
 const router = Router();
 const learnerRole = "student";
@@ -40,11 +40,11 @@ router.post("/question-media", requireAuth, async (req,res):Promise<void> => {
       const exerciseId=parseId(req.body?.exerciseId),questionId=parseId(req.body?.questionId);
       if(!exerciseId||!questionId){res.status(400).json({error:"exerciseId and questionId are required"});return;}
       const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));
-      if(!exercise||(!canEditExercise(user,exercise.createdBy) && !(await hasContentPermission(user.id,"exercise",exercise.id,"edit")))){res.status(403).json({error:"You do not have permission to attach media to this exercise"});return;}
+      if(!exercise||(!canEditExercise(user,exercise.createdBy) && !(await hasContentPermission(user.id,"exercise",exercise.id,"edit")))){await removeStoredMedia(req.file?.filename??"").catch(()=>undefined);res.status(403).json({error:"You do not have permission to attach media to this exercise"});return;}
       const [question]=await db.select().from(exerciseQuestionsTable).where(and(eq(exerciseQuestionsTable.id,questionId),eq(exerciseQuestionsTable.exerciseId,exerciseId)));
       if(!question){res.status(404).json({error:"Question not found"});return;}
       await persistUploadedMedia(req.file.filename,req.file.mimetype,req.file.path);
-      await db.insert(exerciseMediaTable).values({exerciseId,questionId,fileName:req.file.originalname,mimeType:req.file.mimetype,storageKey:req.file.filename,sizeBytes:req.file.size});
+      try { await db.insert(exerciseMediaTable).values({exerciseId,questionId,fileName:req.file.originalname,mimeType:req.file.mimetype,storageKey:req.file.filename,sizeBytes:req.file.size}); } catch (dbError) { await removeStoredMedia(req.file.filename).catch(()=>undefined); throw dbError; }
       res.status(201).json({attachmentUrl:`/api/lessons/media/${req.file.filename}?type=${encodeURIComponent(req.file.mimetype)}`,storageKey:req.file.filename,fileName:req.file.originalname,mimeType:req.file.mimetype,size:req.file.size});
     })().catch(()=>res.status(503).json({error:"Persistent question attachment storage is temporarily unavailable. Please retry."}));
   });
