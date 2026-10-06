@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 
-function DrawAnswer({ data }: { data: unknown }) {
+function DrawAnswer({ data, markingData }: { data: unknown; markingData?: Record<string,unknown>|null }) {
   const d = data as { strokes?: { x:number;y:number;px:number;py:number;color?:string;width?:number;tool?:string;opacity?:number }[]; paintStrokes?: { x:number;y:number;px:number;py:number;color?:string;width?:number;opacity?:number }[]; labels?: { text:string;x:number;y:number;anchorX?:number;anchorY?:number;color?:string;opacity?:number }[]; pointers?: { x:number;y:number;length?:number;thickness?:number;opacity?:number;color?:string;angle?:number }[] };
   return <canvas width={1200} height={700} className="w-full max-h-[520px] rounded border bg-white" ref={canvas => {
     if (!canvas) return; const ctx=canvas.getContext("2d"); if (!ctx) return;
@@ -17,6 +17,7 @@ function DrawAnswer({ data }: { data: unknown }) {
     for (const s of d?.paintStrokes ?? []) { ctx.save();ctx.lineCap="round";ctx.globalAlpha=Number(s.opacity??.28);ctx.lineWidth=Number(s.width??10);ctx.strokeStyle=s.color??"#f59e0b";ctx.beginPath();ctx.moveTo(s.px,s.py);ctx.lineTo(s.x,s.y);ctx.stroke();ctx.restore(); }
     for (const s of d?.strokes ?? []) { ctx.save();ctx.lineCap="round";ctx.lineWidth=Number(s.width??2);ctx.globalAlpha=Number(s.opacity??1);ctx.strokeStyle=s.color??"#111827";ctx.globalCompositeOperation=s.tool==="eraser"?"destination-out":"source-over";ctx.beginPath();ctx.moveTo(s.px,s.py);ctx.lineTo(s.x,s.y);ctx.stroke();ctx.restore(); }
     for (const p of d?.pointers ?? []) { const x=Number(p.x),y=Number(p.y),len=Number(p.length??90),ang=Number(p.angle??0),ex=x+Math.cos(ang)*len,ey=y+Math.sin(ang)*len;ctx.save();ctx.globalAlpha=Number(p.opacity??.8);ctx.strokeStyle=p.color??"#111827";ctx.fillStyle=p.color??"#111827";ctx.lineWidth=Number(p.thickness??3);ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(ex,ey);ctx.stroke();const ah=Math.max(7,Number(p.thickness??3)*3);ctx.beginPath();ctx.moveTo(ex,ey);ctx.lineTo(ex-Math.cos(ang-.55)*ah,ey-Math.sin(ang-.55)*ah);ctx.lineTo(ex-Math.cos(ang+.55)*ah,ey-Math.sin(ang+.55)*ah);ctx.closePath();ctx.fill();ctx.restore(); }
+    for (const tick of ((markingData?.ticks??[]) as {x:number;y:number;size?:number;color?:string;opacity?:number}[])) { ctx.save();ctx.globalAlpha=Number(tick.opacity??.9);ctx.strokeStyle=tick.color??"#16a34a";ctx.lineWidth=Math.max(3,Number(tick.size??28)/8);ctx.lineCap="round";ctx.beginPath();ctx.moveTo(Number(tick.x),Number(tick.y)+Number(tick.size??28)*.45);ctx.lineTo(Number(tick.x)+Number(tick.size??28)*.32,Number(tick.y)+Number(tick.size??28)*.75);ctx.lineTo(Number(tick.x)+Number(tick.size??28),Number(tick.y));ctx.stroke();ctx.restore(); }
     ctx.font="16px sans-serif"; for (const label of d?.labels ?? []) { ctx.save();ctx.globalAlpha=Number(label.opacity??1);ctx.fillStyle=label.color??"#111827";if(label.anchorX!=null&&label.anchorY!=null){ctx.beginPath();ctx.moveTo(label.anchorX,label.anchorY);ctx.lineTo(label.x-4,label.y-4);ctx.strokeStyle=label.color??"#111827";ctx.stroke();}ctx.fillText(label.text,label.x,label.y);ctx.restore(); }
   }} />;
 }
@@ -61,6 +62,7 @@ interface Answer {
   awardedMarks: string;
   correctionNotes: string | null;
   mediaReference: string | null;
+  markingData?: Record<string,unknown> | null;
 }
 
 interface Question {
@@ -107,6 +109,7 @@ export default function ExerciseMarking() {
   const [answers, setAnswers] = useState<Answer[]>([]);
   const [marks, setMarks] = useState<Record<number, string>>({});
   const [notes, setNotes] = useState<Record<number, string>>({});
+  const [markingData, setMarkingData] = useState<Record<number, Record<string,unknown>>>({});
   const [overallComment, setOverallComment] = useState("");
   const [message, setMessage] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
@@ -158,6 +161,7 @@ export default function ExerciseMarking() {
       setAnswers(loadedAnswers);
       setMarks(Object.fromEntries(loadedAnswers.map((a) => [a.id, a.awardedMarks])));
       setNotes(Object.fromEntries(loadedAnswers.map((a) => [a.id, a.correctionNotes ?? ""])));
+      setMarkingData(Object.fromEntries(loadedAnswers.map((a) => [a.id, a.markingData ?? { ticks: [] }])))
       setOverallComment(d.submission?.overallComment ?? "");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not load submission.");
@@ -207,6 +211,7 @@ export default function ExerciseMarking() {
           answerId: a.id,
           awardedMarks: Number(marks[a.id] ?? 0),
           correctionNotes: notes[a.id] ?? "",
+          markingData: markingData[a.id] ?? { ticks: [] },
         })),
         overallComment,
       }),
