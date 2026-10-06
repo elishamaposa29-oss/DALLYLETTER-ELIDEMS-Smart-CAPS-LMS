@@ -71,7 +71,7 @@ function parseId(value: unknown): number | null {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 function canEditExercise(user: NonNullable<Express.Request["currentUser"]>, createdBy: number): boolean {
-  return isOwnerRole(user.role) || user.isManager === true || (user.role === "teacher" && createdBy === user.id);
+  return isOwnerRole(user.role) || (user.isManager === true && user.managerLevel === "senior") || (user.role === "teacher" && createdBy === user.id);
 }
 async function writeAudit(userId: number, action: string, targetId: number, details: Record<string, unknown>) {
   await db.insert(auditLogsTable).values({ action, category: "exercise", performedBy: userId, targetType: "exercise", targetId, details: JSON.stringify(details) });
@@ -106,7 +106,7 @@ router.get("/:id",requireAuth,async(req,res):Promise<void>=>{
 router.post("/lessons/:lessonId/exercises",requireAuth,async(req,res):Promise<void>=>{
   const user=req.currentUser!;if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}
   const lessonId=parseId(req.params.lessonId);if(!lessonId){res.status(400).json({error:"Invalid lesson id"});return;}
-  const [lesson]=await db.select({id:lessonsTable.id}).from(lessonsTable).where(eq(lessonsTable.id,lessonId));if(!lesson){res.status(404).json({error:"Lesson not found"});return;}
+  const [lesson]=await db.select({id:lessonsTable.id,teacherId:lessonsTable.teacherId}).from(lessonsTable).where(eq(lessonsTable.id,lessonId));if(!lesson){res.status(404).json({error:"Lesson not found"});return;}if(user.role==="teacher" && user.isManager!==true && lesson.teacherId!==user.id){res.status(403).json({error:"Preview only. Request permission from the lesson creator to create an exercise."});return;}if(user.isManager===true && user.managerLevel!=="senior" && lesson.teacherId!==user.id){res.status(403).json({error:"Senior manager permission is required to modify another teacher's lesson."});return;}
   const {title,instructions,grade,stream,layout,totalMarks}=req.body??{};
   if(typeof title!=="string"||!title.trim()||title.length>300){res.status(400).json({error:"title is required"});return;}
   const [exercise]=await db.insert(exercisesTable).values({lessonId,createdBy:user.id,title:title.trim(),instructions:typeof instructions==="string"?instructions:null,grade:typeof grade==="string"&&grade.trim()?grade.trim():null,stream:typeof stream==="string"&&stream.trim()?stream.trim():null,layout:layout&&typeof layout==="object"?layout:{version:1,page:"book"},totalMarks:Number.isFinite(Number(totalMarks))&&Number(totalMarks)>=0?Number(totalMarks).toFixed(2):"0"}).returning();
