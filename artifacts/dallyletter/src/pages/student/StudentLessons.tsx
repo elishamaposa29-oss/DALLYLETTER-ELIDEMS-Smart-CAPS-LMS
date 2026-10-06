@@ -77,8 +77,9 @@ export default function StudentLessons() {
     }
   };
 
-  const handleOpen = (url: string) => {
-    window.open(getApiUrl(url), "_blank", "noopener,noreferrer");
+  const handleOpen = (url: string, lessonId?: number) => {
+    if (url.startsWith("/api/lessons/media/") && lessonId) { window.location.assign(`/preview/lesson/${lessonId}`); return; }
+    window.open(url.startsWith("/") ? getApiUrl(url) : url, "_blank", "noopener,noreferrer");
   };
 
   const isYouTubeUrl = (url: string) => url.includes("youtube.com/embed/");
@@ -145,7 +146,7 @@ export default function StudentLessons() {
                 <Card
                   key={lesson.id}
                   className={`flex flex-col h-full transition-all duration-200 border hover:shadow-lg hover:-translate-y-0.5 ${hasValidMediaUrl(lesson.mediaUrl) ? "hover:border-primary/60 cursor-pointer" : "hover:border-border/80"}`}
-                  onClick={() => hasValidMediaUrl(lesson.mediaUrl) && !lesson.mediaUrl.startsWith("/api/lessons/media/") && !isYouTubeUrl(lesson.mediaUrl) && handleOpen(lesson.mediaUrl)}
+                  onClick={() => hasValidMediaUrl(lesson.mediaUrl) && handleOpen(lesson.mediaUrl!, lesson.id)}
                 >
                   <CardHeader className="pb-3 space-y-3">
                     {/* Top row: subject + type */}
@@ -190,7 +191,7 @@ export default function StudentLessons() {
                           size="sm"
                           variant="default"
                           className="gap-1.5 h-8 text-xs"
-                          onClick={(e) => { e.stopPropagation(); handleOpen(lesson.mediaUrl!); }}
+                          onClick={(e) => { e.stopPropagation(); handleOpen(lesson.mediaUrl!, lesson.id); }}
                         >
                           Open Lesson
                           <ExternalLink className="h-3 w-3" />
