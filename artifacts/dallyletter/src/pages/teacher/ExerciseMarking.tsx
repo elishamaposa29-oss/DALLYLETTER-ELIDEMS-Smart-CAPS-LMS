@@ -297,13 +297,13 @@ export default function ExerciseMarking() {
                           type="number"
                           min="0"
                           max={q?.marksAllocated ?? undefined}
-                          step="0.5"
+                          step="0.01"
                           value={marks[a.id] ?? "0"}
                           onChange={(e) => setMarks((m) => ({ ...m, [a.id]: e.target.value }))}
                           className="w-28"
                           aria-label={`Awarded marks for question ${i + 1}`}
                         /></div>
-                        <span className="text-sm text-muted-foreground">/ {q?.marksAllocated ?? "—"} • 0.5 steps</span>
+                        <span className="text-sm text-muted-foreground">/ {q?.marksAllocated ?? "—"} • up to 2 decimal places</span>
                       </div>
                       <Textarea
                         value={notes[a.id] ?? ""}
