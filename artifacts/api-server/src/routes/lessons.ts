@@ -285,7 +285,7 @@ router.delete("/lessons/:id", requireAuth, requireTeacherOrOwner, async (req, re
     return;
   }
 
-  const [existingLesson] = await db.select({ teacherId: lessonsTable.teacherId }).from(lessonsTable).where(eq(lessonsTable.id, params.data.id));
+  const [existingLesson] = await db.select({ teacherId: lessonsTable.teacherId, mediaUrl: lessonsTable.mediaUrl }).from(lessonsTable).where(eq(lessonsTable.id, params.data.id));
   if (!existingLesson) {
     res.status(404).json({ error: "Lesson not found" });
     return;
