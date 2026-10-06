@@ -4,7 +4,7 @@ import { and, asc, desc, eq } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
   exercisesTable, exerciseAnswersTable, exerciseOptionsTable, exerciseQuestionsTable,
-  exerciseSubmissionsTable, lessonsTable, auditLogsTable,
+  exerciseSubmissionsTable, lessonsTable, auditLogsTable, exerciseMediaTable,
 } from "@workspace/db/schema";
 import { canManageAcademicContent, isOwnerRole, requireAuth } from "../lib/auth-middleware";
 import { getAIProvider } from "../lib/ai-provider";
@@ -13,6 +13,10 @@ import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllow
 const router = Router();
 const learnerRole = "student";
 const questionTypes = new Set(["input", "poll", "drawbox"]);
+const exerciseQuestionMediaUpload = multer({
+  storage: multer.diskStorage({ destination: async (_req,_file,cb)=>{ try{ await ensureMediaDirectory(); cb(null,getMediaDirectory()); }catch(e){ cb(e as Error,""); } }, filename: (_req,_file,cb)=>cb(null,createMediaStorageKey()) }),
+  limits: { fileSize: MAX_MEDIA_SIZE_BYTES }, fileFilter: (_req,file,cb)=>cb(null,isAllowedMediaType(file.mimetype)),
+});
 const exerciseAnswerMediaUpload = multer({
   storage: multer.diskStorage({
     destination: async (_req, _file, callback) => {
@@ -23,6 +27,26 @@ const exerciseAnswerMediaUpload = multer({
   }),
   limits: { fileSize: MAX_MEDIA_SIZE_BYTES },
   fileFilter: (_req, file, callback) => callback(null, isAllowedMediaType(file.mimetype)),
+});
+
+router.post("/question-media", requireAuth, async (req,res):Promise<void> => {
+  const user=req.currentUser!;
+  if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}
+  exerciseQuestionMediaUpload.single("file")(req,res,(error)=>{
+    void (async()=>{
+      if(error instanceof multer.MulterError){res.status(400).json({error:"A supported question attachment up to 250 MB is required"});return;}
+      if(error||!req.file){res.status(400).json({error:"A supported question attachment is required"});return;}
+      const exerciseId=parseId(req.body?.exerciseId),questionId=parseId(req.body?.questionId);
+      if(!exerciseId||!questionId){res.status(400).json({error:"exerciseId and questionId are required"});return;}
+      const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));
+      if(!exercise||!canEditExercise(user,exercise.createdBy)){res.status(403).json({error:"You can only attach media to your own exercise"});return;}
+      const [question]=await db.select().from(exerciseQuestionsTable).where(and(eq(exerciseQuestionsTable.id,questionId),eq(exerciseQuestionsTable.exerciseId,exerciseId)));
+      if(!question){res.status(404).json({error:"Question not found"});return;}
+      await persistUploadedMedia(req.file.filename,req.file.mimetype,req.file.path);
+      await db.insert(exerciseMediaTable).values({exerciseId,questionId,fileName:req.file.originalname,mimeType:req.file.mimetype,storageKey:req.file.filename,sizeBytes:req.file.size});
+      res.status(201).json({attachmentUrl:`/api/lessons/media/${req.file.filename}?type=${encodeURIComponent(req.file.mimetype)}`,storageKey:req.file.filename,fileName:req.file.originalname,mimeType:req.file.mimetype,size:req.file.size});
+    })().catch(()=>res.status(503).json({error:"Persistent question attachment storage is temporarily unavailable. Please retry."}));
+  });
 });
 
 router.post("/answer-media", requireAuth, (req,res):void => {
@@ -83,9 +107,9 @@ router.post("/lessons/:lessonId/exercises",requireAuth,async(req,res):Promise<vo
   const user=req.currentUser!;if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}
   const lessonId=parseId(req.params.lessonId);if(!lessonId){res.status(400).json({error:"Invalid lesson id"});return;}
   const [lesson]=await db.select({id:lessonsTable.id}).from(lessonsTable).where(eq(lessonsTable.id,lessonId));if(!lesson){res.status(404).json({error:"Lesson not found"});return;}
-  const {title,instructions,grade,stream,layout}=req.body??{};
+  const {title,instructions,grade,stream,layout,totalMarks}=req.body??{};
   if(typeof title!=="string"||!title.trim()||title.length>300){res.status(400).json({error:"title is required"});return;}
-  const [exercise]=await db.insert(exercisesTable).values({lessonId,createdBy:user.id,title:title.trim(),instructions:typeof instructions==="string"?instructions:null,grade:typeof grade==="string"&&grade.trim()?grade.trim():null,stream:typeof stream==="string"&&stream.trim()?stream.trim():null,layout:layout&&typeof layout==="object"?layout:{version:1,page:"book"}}).returning();
+  const [exercise]=await db.insert(exercisesTable).values({lessonId,createdBy:user.id,title:title.trim(),instructions:typeof instructions==="string"?instructions:null,grade:typeof grade==="string"&&grade.trim()?grade.trim():null,stream:typeof stream==="string"&&stream.trim()?stream.trim():null,layout:layout&&typeof layout==="object"?layout:{version:1,page:"book"},totalMarks:Number.isFinite(Number(totalMarks))&&Number(totalMarks)>=0?Number(totalMarks).toFixed(2):"0"}).returning();
   res.status(201).json(exercise);
 });
 
@@ -116,7 +140,10 @@ router.post("/:id/publish",requireAuth,async(req,res):Promise<void>=>{
   const questions=await db.select().from(exerciseQuestionsTable).where(eq(exerciseQuestionsTable.exerciseId,exercise.id));
   if(!questions.length){res.status(409).json({error:"Add at least one question before publishing"});return;}
   for(const q of questions){if(q.type==="poll"){const opts=await db.select().from(exerciseOptionsTable).where(eq(exerciseOptionsTable.questionId,q.id));if(opts.length<2||!opts.some(o=>o.isCorrect)){res.status(409).json({error:`Poll question ${q.position+1} needs at least two options and one correct option`});return;}}}
-  const totalMarks=questions.reduce((sum,q)=>sum+Number(q.marksAllocated),0);
+  const questionTotal=questions.reduce((sum,q)=>sum+Number(q.marksAllocated),0);
+  const configuredTotal=Number(exercise.totalMarks);
+  if(configuredTotal>0 && Math.abs(configuredTotal-questionTotal)>0.0001){res.status(409).json({error:`Total possible marks must equal the sum of question marks (${questionTotal}).`});return;}
+  const totalMarks=questionTotal;
   const requestedAI=req.body?.aiMarking&&typeof req.body.aiMarking==="object"?req.body.aiMarking as {enabled?:boolean;approved?:boolean}:{};
   if(requestedAI.enabled){
     if(!requestedAI.approved){res.status(409).json({error:"AI marking must be explicitly approved after the readiness check before publishing"});return;}
