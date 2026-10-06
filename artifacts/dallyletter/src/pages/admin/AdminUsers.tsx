@@ -66,13 +66,13 @@ export default function AdminUsers() {
     });
   };
 
-  const handleToggleManager = (id: number, isManager: boolean) => {
+  const handleToggleManager = (id: number, isManager: boolean, managerLevel?: "junior"|"senior") => {
     if (!confirm(isManager ? "Remove Manager status from this user?" : "Promote this user to Manager? They will gain access to the Manager Dashboard.")) return;
     const tok = localStorage.getItem("dallyletter_token");
     void fetch(getApiUrl(`/api/users/${id}/promote-manager`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
-      body: JSON.stringify({ isManager: !isManager }),
+      body: JSON.stringify({ isManager: !isManager, ...(managerLevel ? { managerLevel } : {}) }),
     }).then(res => {
       if (!res.ok) { toast({ variant: "destructive", title: "Error", description: "Could not update manager status." }); return; }
       toast({ title: !isManager ? "✅ Promoted to Manager" : "Manager status removed" });
@@ -203,15 +203,15 @@ export default function AdminUsers() {
                                 </Button>
                               )}
                               {user.role === 'teacher' && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-8 w-8 p-0"
-                                  title={(user as any).isManager ? "Remove Manager status" : "Promote to Manager"}
-                                  onClick={() => handleToggleManager(user.id, !!(user as any).isManager)}
-                                >
-                                  <Briefcase className={`h-4 w-4 ${(user as any).isManager ? "text-purple-500" : "text-muted-foreground"}`} />
-                                </Button>
+                                <div className="flex items-center gap-1">
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title={(user as any).isManager ? "Remove Manager status" : "Promote to Manager"} onClick={() => handleToggleManager(user.id, !!(user as any).isManager)}>
+                                    <Briefcase className={`h-4 w-4 ${(user as any).isManager ? "text-purple-500" : "text-muted-foreground"}`} />
+                                  </Button>
+                                  {(user as any).isManager && <div className="flex rounded-md border overflow-hidden">
+                                    <button type="button" className={`px-1.5 py-1 text-[10px] ${(user as any).managerLevel === "junior" ? "bg-muted font-bold" : ""}`} onClick={() => handleToggleManager(user.id,true,"junior")} title="Junior Manager">Jr</button>
+                                    <button type="button" className={`px-1.5 py-1 text-[10px] ${(user as any).managerLevel === "senior" ? "bg-primary/10 font-bold text-primary" : ""}`} onClick={() => handleToggleManager(user.id,true,"senior")} title="Senior Manager">Sr</button>
+                                  </div>}
+                                </div>
                               )}
                               {/* Suspend button */}
                               <Button
