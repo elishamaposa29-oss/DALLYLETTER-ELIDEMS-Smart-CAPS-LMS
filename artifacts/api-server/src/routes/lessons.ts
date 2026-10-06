@@ -222,7 +222,7 @@ router.post("/lessons/:id/notify-followers", requireAuth, async (req, res): Prom
   if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid lesson id" }); return; }
   const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, id));
   if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
-  if (lesson.teacherId !== user.id && user.role !== "owner" && !(user.isManager && user.managerLevel === "senior")) { res.status(403).json({ error: "You can only notify followers for authorized lessons" }); return; }
+  if (lesson.teacherId !== user.id && user.role !== "owner" && !(user.isManager && user.managerLevel === "senior") && !(await hasContentPermission(user.id,"lesson",id,"notify"))) { res.status(403).json({ error: "Notify permission has not been granted by the lesson creator" }); return; }
   const count = await notifyTeacherFollowers(lesson.teacherId, lesson.id, `${lesson.teacherName} posted "${lesson.title}".`);
   res.json({ ok: true, recipientCount: count, message: count ? "Followers notified successfully." : "No followers are currently opted in to notifications." });
 });
@@ -265,8 +265,8 @@ router.patch("/lessons/:id", requireAuth, requireTeacherOrOwner, async (req, res
   }
   const actor = req.currentUser!;
   if (actor.role === "teacher" && (actor.isManager !== true || actor.managerLevel !== "senior") && existingLesson.teacherId !== actor.id) {
-    res.status(403).json({ error: "Teachers can only modify lessons they created" });
-    return;
+    const allowed = await hasContentPermission(actor.id,"lesson",params.data.id,"edit");
+    if(!allowed){ res.status(403).json({ error: "Preview only. Request edit permission from the lesson creator." }); return; }
   }
 
   const updates: Record<string, unknown> = {};
@@ -306,8 +306,8 @@ router.delete("/lessons/:id", requireAuth, requireTeacherOrOwner, async (req, re
   }
   const actor = req.currentUser!;
   if (actor.role === "teacher" && (actor.isManager !== true || actor.managerLevel !== "senior") && existingLesson.teacherId !== actor.id) {
-    res.status(403).json({ error: "Teachers can only delete lessons they created" });
-    return;
+    const allowed = await hasContentPermission(actor.id,"lesson",params.data.id,"delete");
+    if(!allowed){ res.status(403).json({ error: "Delete permission has not been granted by the lesson creator." }); return; }
   }
   await db.delete(lessonsTable).where(eq(lessonsTable.id, params.data.id));
   const mediaUrl = existingLesson.mediaUrl;
