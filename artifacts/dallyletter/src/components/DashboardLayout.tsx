@@ -84,6 +84,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         { label: "Monitor Students", href: "/manager/students", icon: Users },
         { label: "Assignments", href: "/manager/assignments", icon: ClipboardList },
         { label: "Connect", href: "/manager/chat", icon: MessageSquare },
+        { label: "Notifications & Email", href: "/manager/notifications", icon: Bell },
         { label: "Reports", href: "/manager/reports", icon: ScrollText },
       ] : []),
     ];
