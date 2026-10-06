@@ -16,13 +16,19 @@ export async function sendEmail(input: EmailInput): Promise<{ sent: number; fail
   if (!cfg) throw new Error("Email delivery is not configured. Set RESEND_API_KEY and EMAIL_FROM on the server.");
   const recipients = [...new Set(input.to.map(v => v.trim().toLowerCase()).filter(v => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)))];
   if (!recipients.length) return { sent: 0, failed: 0 };
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${cfg.apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: cfg.from, to: recipients, subject: input.subject, text: input.text, html: input.html ?? undefined }),
-  });
-  if (!response.ok) throw new Error(`Email provider returned HTTP ${response.status}`);
-  return { sent: recipients.length, failed: 0 };
+  let sent = 0;
+  let failed = 0;
+  for (const recipient of recipients) {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${cfg.apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from: cfg.from, to: [recipient], subject: input.subject, text: input.text, html: input.html ?? undefined }),
+    });
+    if (response.ok) sent++;
+    else failed++;
+  }
+  if (sent === 0 && failed > 0) throw new Error("Email provider rejected every recipient");
+  return { sent, failed };
 }
 
 export async function resolveNotificationRecipients(recipientId: number | null): Promise<string[]> {
