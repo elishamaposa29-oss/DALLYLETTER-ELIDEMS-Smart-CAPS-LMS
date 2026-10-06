@@ -79,6 +79,7 @@ export const exerciseAnswersTable = pgTable(
     drawData: jsonb("draw_data").$type<Record<string, unknown> | null>(),
     mediaReference: text("media_reference"),
     awardedMarks: numeric("awarded_marks", { precision: 8, scale: 2 }).notNull().default("0"),
+    markingData: jsonb("marking_data").$type<Record<string, unknown> | null>(),
     correctionNotes: text("correction_notes"),
     markedBy: integer("marked_by").references(() => usersTable.id),
     markedAt: timestamp("marked_at", { withTimezone: true }),
