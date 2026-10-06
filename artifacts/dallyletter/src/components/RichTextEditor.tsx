@@ -3,7 +3,7 @@ import { Bold, Italic, Underline, Type, List, AlignLeft, AlignCenter, AlignRight
 import { Button } from "@/components/ui/button";
 
 const allowedTags=new Set(["B","STRONG","I","EM","U","SPAN","P","BR","UL","OL","LI","DIV"]);
-function clean(html:string){
+export function sanitizeRichText(html:string){
   if(typeof DOMParser==="undefined") return html.replace(/<[^>]+>/g,"");
   const doc=new DOMParser().parseFromString(html,"text/html");
   const walk=(node:Node)=>{
@@ -25,7 +25,7 @@ function clean(html:string){
 }
 export function RichTextEditor({value,onChange,placeholder="Write here…",className=""}:{value:string;onChange:(value:string)=>void;placeholder?:string;className?:string}){
  const ref=useRef<HTMLDivElement>(null);
- const command=(name:string,arg?:string)=>{ref.current?.focus();document.execCommand(name,false,arg);onChange(clean(ref.current?.innerHTML||""));};
+ const command=(name:string,arg?:string)=>{ref.current?.focus();document.execCommand(name,false,arg);onChange(sanitizeRichText(ref.current?.innerHTML||""));};
  const size=(v:string)=>command("fontSize",v);
  const family=(v:string)=>command("fontName",v);
  return <div className={`overflow-hidden rounded-xl border bg-background ${className}`}>
@@ -42,6 +42,6 @@ export function RichTextEditor({value,onChange,placeholder="Write here…",class
    <Button type="button" size="icon" variant="ghost" className="h-8 w-8" title="Center" onClick={()=>command("justifyCenter")}><AlignCenter className="h-4 w-4"/></Button>
    <Button type="button" size="icon" variant="ghost" className="h-8 w-8" title="Align right" onClick={()=>command("justifyRight")}><AlignRight className="h-4 w-4"/></Button>
   </div>
-  <div ref={ref} contentEditable suppressContentEditableWarning onInput={()=>onChange(clean(ref.current?.innerHTML||""))} dangerouslySetInnerHTML={{__html:clean(value)}} data-placeholder={placeholder} className="min-h-24 p-3 text-sm outline-none empty:before:text-muted-foreground empty:before:content-[attr(data-placeholder)]" />
+  <div ref={ref} contentEditable suppressContentEditableWarning onInput={()=>onChange(sanitizeRichText(ref.current?.innerHTML||""))} dangerouslySetInnerHTML={{__html:sanitizeRichText(value)}} data-placeholder={placeholder} className="min-h-24 p-3 text-sm outline-none empty:before:text-muted-foreground empty:before:content-[attr(data-placeholder)]" />
  </div>;
 }
