@@ -457,7 +457,7 @@ export default function TeacherLessons() {
                       <ClipboardCheck className="h-4 w-4" />
                       Mark Submissions
                     </Button>
-                    <Button
+                    {canManageLesson(lesson) && <Button
                       type="button"
                       variant="outline"
                       size="icon"
@@ -477,8 +477,8 @@ export default function TeacherLessons() {
                     >
                       <Bell className="h-4 w-4" />
                       <span className="sr-only">Notify followers</span>
-                    </Button>
-                    <Button 
+                    </Button>}
+                    {canManageLesson(lesson) && <Button 
                       variant="ghost" 
                       size="sm" 
                       className="text-destructive hover:bg-destructive/10 hover:text-destructive gap-2"
@@ -487,7 +487,7 @@ export default function TeacherLessons() {
                     >
                       <Trash2 className="h-4 w-4" />
                       Delete
-                    </Button>
+                    </Button>}
                   </CardFooter>
                 </Card>
               ))
