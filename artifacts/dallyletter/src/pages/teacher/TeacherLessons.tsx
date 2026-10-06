@@ -58,6 +58,7 @@ export default function TeacherLessons() {
   useEffect(()=>{void loadLessonRequests();void loadPermissionRequests();},[]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const visibleLessons = [...(lessons ?? [])].filter((lesson) => user?.role !== "teacher" || showAllTeachers || lesson.teacherId === user.id).sort((a,b) => sortMode === "oldest" ? new Date(a.createdAt).getTime()-new Date(b.createdAt).getTime() : sortMode === "subject" ? String(a.subject).localeCompare(String(b.subject)) : new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime());
+  const canManageLesson = (lesson:any) => lesson.teacherId === user?.id || user?.role === "owner" || (user?.role === "teacher" && (user as any).isManager && (user as any).managerLevel === "senior");
   const requestPermission = async (contentId:number,requestedAction:"edit"|"create_exercise"|"delete"|"notify") => {
     try {
       const r=await fetch(getApiUrl("/api/content-permissions"),{method:"POST",headers:{"Content-Type":"application/json",...authHeaders()},body:JSON.stringify({contentType:"lesson",contentId,requestedAction})});
@@ -422,7 +423,7 @@ export default function TeacherLessons() {
                     </div>
                   )}
                   <CardFooter className="pt-4 border-t flex flex-wrap justify-end gap-2">\n                    <Button variant="outline" size="sm" className="gap-2" onClick={() => window.location.assign(`/preview/lesson/${lesson.id}`)}>Preview lesson</Button>
-                    {(lesson.teacherId === user?.id || user?.role === "owner" || (user?.role === "teacher" && (user as any).isManager && (user as any).managerLevel === "senior")) && <Button
+                    {canManageLesson(lesson) && <Button
                       variant={activeExerciseLessonId === lesson.id ? "secondary" : "outline"}
                       size="sm"
                       className="gap-2"
@@ -432,7 +433,7 @@ export default function TeacherLessons() {
                       {activeExerciseLessonId === lesson.id ? "Close Exercise" : "Exercise"}
                     </Button>}
                     {showAllTeachers && lesson.teacherId !== user?.id && <div className="flex flex-wrap gap-1"><Button type="button" variant="outline" size="sm" className="h-9 text-xs" onClick={()=>void requestPermission(lesson.id,"edit")}>Request edit</Button><Button type="button" variant="outline" size="sm" className="h-9 text-xs" onClick={()=>void requestPermission(lesson.id,"create_exercise")}>Request exercise</Button><Button type="button" variant="outline" size="sm" className="h-9 text-xs" onClick={()=>void requestPermission(lesson.id,"notify")}>Request notify</Button><Button type="button" variant="outline" size="sm" className="h-9 text-xs text-destructive" onClick={()=>void requestPermission(lesson.id,"delete")}>Request delete</Button></div>}
-                    <Button
+                    {canManageLesson(lesson) && <Button
                       variant="outline"
                       size="sm"
                       className="gap-2"
