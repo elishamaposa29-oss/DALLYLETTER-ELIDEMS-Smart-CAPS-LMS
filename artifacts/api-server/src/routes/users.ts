@@ -18,6 +18,7 @@ const safeUserFields = {
   role: usersTable.role,
   isPrefect: usersTable.isPrefect,
   isManager: usersTable.isManager,
+  managerLevel: usersTable.managerLevel,
   isBlocked: usersTable.isBlocked,
   isSuspended: usersTable.isSuspended,
   phone: usersTable.phone,
@@ -130,9 +131,12 @@ router.patch("/users/:id/promote", requireAuth, requireOwner, async (req, res): 
 router.patch("/users/:id/promote-manager", requireAuth, requireOwner, async (req, res): Promise<void> => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const { isManager } = req.body as { isManager: boolean };
-  if (typeof isManager !== "boolean") { res.status(400).json({ error: "isManager must be boolean" }); return; }
-  const [user] = await db.update(usersTable).set({ isManager }).where(eq(usersTable.id, id)).returning(safeUserFields);
+  const { isManager, managerLevel } = req.body as { isManager?: boolean; managerLevel?: string };
+  if (typeof isManager !== "boolean" && managerLevel == null) { res.status(400).json({ error: "Provide isManager or managerLevel" }); return; }
+  const updates: Record<string, unknown> = {};
+  if (typeof isManager === "boolean") updates.isManager = isManager;
+  if (managerLevel != null) { if (!["junior","senior"].includes(managerLevel)) { res.status(400).json({ error: "managerLevel must be junior or senior" }); return; } updates.managerLevel = managerLevel; }
+  const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, id)).returning(safeUserFields);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   res.json({ ...user, createdAt: user.createdAt.toISOString() });
 });
