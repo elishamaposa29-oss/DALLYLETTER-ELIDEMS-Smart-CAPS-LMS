@@ -28,6 +28,7 @@ import {
 const router: IRouter = Router();
 
 async function notifyTeacherFollowers(teacherId: number, lessonId: number, title: string) {
+  try {
   const followers = await db.select({ followerId: followsTable.followerId, notificationsEnabled: followsTable.notificationsEnabled })
     .from(followsTable)
     .where(and(eq(followsTable.targetType, "teacher"), eq(followsTable.targetUserId, teacherId)));
@@ -61,8 +62,8 @@ async function notifyTeacherFollowers(teacherId: number, lessonId: number, title
     }
   }
   return sent;
+  } catch { return 0; }
 }
-
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -223,7 +224,7 @@ router.post("/lessons/:id/notify-followers", requireAuth, async (req, res): Prom
   if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
   if (lesson.teacherId !== user.id && user.role !== "owner" && !(user.isManager && user.managerLevel === "senior")) { res.status(403).json({ error: "You can only notify followers for authorized lessons" }); return; }
   const count = await notifyTeacherFollowers(lesson.teacherId, lesson.id, `${lesson.teacherName} posted "${lesson.title}".`);
-  res.json({ ok: true, recipientCount: count });
+  res.json({ ok: true, recipientCount: count, message: count ? "Followers notified successfully." : "No followers are currently opted in to notifications." });
 });
 
 // GET /lessons/:id — Get lesson by ID
