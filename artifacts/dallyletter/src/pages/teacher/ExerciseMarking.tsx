@@ -22,9 +22,60 @@ function DrawAnswer({ data, markingData }: { data: unknown; markingData?: Record
 }
 
 
-function FloatingTicks({data,onChange}:{data:Record<string,unknown>|null|undefined;onChange:(data:Record<string,unknown>)=>void}){
- const ticks=(data?.ticks??[]) as {x:number;y:number;size?:number;color?:string;opacity?:number}[];
- return <>{ticks.map((tick,index)=><div key={index} className="absolute z-20 touch-none cursor-grab select-none font-black" style={{left:`${Math.max(0,Math.min(96,tick.x/1200*100))}%`,top:`${Math.max(0,Math.min(94,tick.y/700*100))}%`,fontSize:Math.max(18,Number(tick.size??28)),color:tick.color??"#16a34a",opacity:Number(tick.opacity??.9)}} onPointerDown={e=>{const parent=(e.currentTarget.parentElement?.getBoundingClientRect());if(!parent)return;const sx=e.clientX,sy=e.clientY,ox=tick.x,oy=tick.y;const move=(ev:PointerEvent)=>{onChange({...data,ticks:ticks.map((t,i)=>i===index?{...t,x:Math.max(0,Math.min(1140,ox+((ev.clientX-sx)/parent.width)*1200)),y:Math.max(0,Math.min(660,oy+((ev.clientY-sy)/parent.height)*700))}:t)})};const up=()=>{window.removeEventListener("pointermove",move);window.removeEventListener("pointerup",up)};window.addEventListener("pointermove",move);window.addEventListener("pointerup",up)}}}>✓</div>)}</>;
+function FloatingTicks({ data, onChange }: { data: Record<string, unknown> | null | undefined; onChange: (data: Record<string, unknown>) => void }) {
+  const ticks = (data?.ticks ?? []) as Array<{ x: number; y: number; size?: number; color?: string; opacity?: number }>;
+
+  return (
+    <>
+      {ticks.map((tick, index) => {
+        const left = Math.max(0, Math.min(96, (tick.x / 1200) * 100));
+        const top = Math.max(0, Math.min(94, (tick.y / 700) * 100));
+        return (
+          <div
+            key={index}
+            className="absolute z-20 touch-none cursor-grab select-none font-black"
+            style={{
+              left: left + "%",
+              top: top + "%",
+              fontSize: Math.max(18, Number(tick.size ?? 28)),
+              color: tick.color ?? "#16a34a",
+              opacity: Number(tick.opacity ?? 0.9),
+            }}
+            onPointerDown={(event) => {
+              const parent = event.currentTarget.parentElement?.getBoundingClientRect();
+              if (!parent) return;
+              const startX = event.clientX;
+              const startY = event.clientY;
+              const originX = tick.x;
+              const originY = tick.y;
+              const move = (moveEvent: PointerEvent) => {
+                onChange({
+                  ...data,
+                  ticks: ticks.map((item, itemIndex) =>
+                    itemIndex === index
+                      ? {
+                          ...item,
+                          x: Math.max(0, Math.min(1140, originX + ((moveEvent.clientX - startX) / parent.width) * 1200)),
+                          y: Math.max(0, Math.min(660, originY + ((moveEvent.clientY - startY) / parent.height) * 700)),
+                        }
+                      : item,
+                  ),
+                });
+              };
+              const up = () => {
+                window.removeEventListener("pointermove", move);
+                window.removeEventListener("pointerup", up);
+              };
+              window.addEventListener("pointermove", move);
+              window.addEventListener("pointerup", up);
+            }}
+          >
+            ✓
+          </div>
+        );
+      })}
+    </>
+  );
 }
 
 function AuthenticatedAttachment({ url }: { url: string }) {
