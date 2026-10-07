@@ -422,73 +422,83 @@ export default function TeacherLessons() {
                       </div>
                     </div>
                   )}
-                  <CardFooter className="pt-4 border-t flex flex-wrap justify-end gap-2">\n                    <Button variant="outline" size="sm" className="gap-2" onClick={() => window.location.assign(`/preview/lesson/${lesson.id}`)}>Preview lesson</Button>
-                    {canManageLesson(lesson) && <Button
-                      variant={activeExerciseLessonId === lesson.id ? "secondary" : "outline"}
-                      size="sm"
-                      className="gap-2"
-                      onClick={() => setActiveExerciseLessonId((current) => current === lesson.id ? null : lesson.id)}
-                    >
-                      <ClipboardList className="h-4 w-4" />
-                      {activeExerciseLessonId === lesson.id ? "Close Exercise" : "Exercise"}
-                    </Button>}
-                    {showAllTeachers && lesson.teacherId !== user?.id && <div className="flex flex-wrap gap-1"><Button type="button" variant="outline" size="sm" className="h-9 text-xs" onClick={()=>void requestPermission(lesson.id,"edit")}>Request edit</Button><Button type="button" variant="outline" size="sm" className="h-9 text-xs" onClick={()=>void requestPermission(lesson.id,"create_exercise")}>Request exercise</Button><Button type="button" variant="outline" size="sm" className="h-9 text-xs" onClick={()=>void requestPermission(lesson.id,"notify")}>Request notify</Button><Button type="button" variant="outline" size="sm" className="h-9 text-xs text-destructive" onClick={()=>void requestPermission(lesson.id,"delete")}>Request delete</Button></div>}
-                    {canManageLesson(lesson) && <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-2"
-                      onClick={async () => {
-                        const token = localStorage.getItem("dallyletter_token");
-                        const r = await fetch(getApiUrl(`/api/exercises/lessons/${lesson.id}/exercises`), { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-                        const exercises = r.ok ? await r.json() as { id: number; title: string; status?: string; totalMarks?: string }[] : [];
-                        const published = exercises.filter((exercise) => exercise.status === "published");
-                        if (!published.length) {
-                          toast({ variant: "destructive", title: "No published exercises", description: "Create and publish an exercise for this lesson first." });
-                          return;
-                        }
-                        if (published.length === 1) {
-                          window.location.assign(`/teacher/exercises/${published[0].id}/mark`);
-                          return;
-                        }
-                        setMarkingExercises(published);
-                        setMarkingLessonId(lesson.id);
-                      }}
-                    >
-                      <ClipboardCheck className="h-4 w-4" />
-                      Mark Submissions
-                    </Button>
-                    {canManageLesson(lesson) && <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="h-9 w-9 shrink-0 rounded-full"
-                      title="Notify followers"
-                      aria-label="Notify followers"
-                      onClick={async () => {
-                        try {
-                          const r = await fetch(getApiUrl("/api/lessons/" + lesson.id + "/notify-followers"), { method: "POST", headers: authHeaders() });
-                          const data = await r.json().catch(() => ({}));
-                          if (!r.ok) throw new Error(data.error || "Could not notify followers");
-                          toast({ title: "Followers notified ✓", description: (data.recipientCount ?? 0) + " follower(s) notified.", className: "border-emerald-200 bg-emerald-50 text-emerald-800" });
-                        } catch (e) {
-                          toast({ variant: "destructive", title: "Follower notification failed", description: e instanceof Error ? e.message : "Try again.", className: "border-red-200 bg-red-50 text-red-800" });
-                        }
-                      }}
-                    >
-                      <Bell className="h-4 w-4" />
-                      <span className="sr-only">Notify followers</span>
-                    </Button>}
-                    {canManageLesson(lesson) && <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="text-destructive hover:bg-destructive/10 hover:text-destructive gap-2"
-                      onClick={() => handleDelete(lesson.id)}
-                      disabled={deleteLessonMutation.isPending}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      Delete
-                    </Button>}
-                  </CardFooter>
+                  <CardFooter className="pt-4 border-t flex flex-wrap justify-end gap-2">
+  <Button variant="outline" size="sm" className="gap-2" onClick={() => window.location.assign(\`/preview/lesson/\${lesson.id}\`)}>Preview lesson</Button>
+  {canManageLesson(lesson) && (
+    <Button
+      variant={activeExerciseLessonId === lesson.id ? "secondary" : "outline"}
+      size="sm"
+      className="gap-2"
+      onClick={() => setActiveExerciseLessonId((current) => current === lesson.id ? null : lesson.id)}
+    >
+      <ClipboardList className="h-4 w-4" />
+      {activeExerciseLessonId === lesson.id ? "Close Exercise" : "Exercise"}
+    </Button>
+  )}
+  {showAllTeachers && lesson.teacherId !== user?.id && (
+    <div className="flex flex-wrap gap-1">
+      <Button type="button" variant="outline" size="sm" className="h-9 text-xs" onClick={() => void requestPermission(lesson.id, "edit")}>Request edit</Button>
+      <Button type="button" variant="outline" size="sm" className="h-9 text-xs" onClick={() => void requestPermission(lesson.id, "create_exercise")}>Request exercise</Button>
+      <Button type="button" variant="outline" size="sm" className="h-9 text-xs" onClick={() => void requestPermission(lesson.id, "notify")}>Request notify</Button>
+      <Button type="button" variant="outline" size="sm" className="h-9 text-xs text-destructive" onClick={() => void requestPermission(lesson.id, "delete")}>Request delete</Button>
+    </div>
+  )}
+  {canManageLesson(lesson) && (
+    <Button
+      variant="outline"
+      size="sm"
+      className="gap-2"
+      onClick={async () => {
+        const token = localStorage.getItem("dallyletter_token");
+        const r = await fetch(getApiUrl(\`/api/exercises/lessons/\${lesson.id}/exercises\`), { headers: token ? { Authorization: \`Bearer \${token}\` } : {} });
+        const exercises = r.ok ? await r.json() as { id: number; title: string; status?: string; totalMarks?: string }[] : [];
+        const published = exercises.filter((exercise) => exercise.status === "published");
+        if (!published.length) {
+          toast({ variant: "destructive", title: "No published exercises", description: "Create and publish an exercise for this lesson first." });
+          return;
+        }
+        if (published.length === 1) {
+          window.location.assign(\`/teacher/exercises/\${published[0].id}/mark\`);
+          return;
+        }
+        setMarkingExercises(published);
+        setMarkingLessonId(lesson.id);
+      }}
+    >
+      <ClipboardCheck className="h-4 w-4" />
+      Mark Submissions
+    </Button>
+  )}
+  {canManageLesson(lesson) && (
+    <Button
+      type="button"
+      variant="outline"
+      size="icon"
+      className="h-9 w-9 shrink-0 rounded-full"
+      title="Notify followers"
+      aria-label="Notify followers"
+      onClick={async () => {
+        try {
+          const r = await fetch(getApiUrl(\`/api/lessons/\${lesson.id}/notify-followers\`), { method: "POST", headers: authHeaders() });
+          const data = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(data.error || "Could not notify followers");
+          toast({ title: "Followers notified ✓", description: (data.recipientCount ?? 0) + " follower(s) notified.", className: "border-emerald-200 bg-emerald-50 text-emerald-800" });
+        } catch (error) {
+          toast({ variant: "destructive", title: "Follower notification failed", description: error instanceof Error ? error.message : "Try again.", className: "border-red-200 bg-red-50 text-red-800" });
+        }
+      }}
+    >
+      <Bell className="h-4 w-4" />
+      <span className="sr-only">Notify followers</span>
+    </Button>
+  )}
+  {canManageLesson(lesson) && (
+    <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive gap-2" onClick={() => handleDelete(lesson.id)} disabled={deleteLessonMutation.isPending}>
+      <Trash2 className="h-4 w-4" />
+      Delete
+    </Button>
+  )}
+</CardFooter>
                 </Card>
               ))
             )}
