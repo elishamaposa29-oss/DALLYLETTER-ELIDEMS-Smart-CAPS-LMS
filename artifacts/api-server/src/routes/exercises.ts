@@ -144,8 +144,8 @@ router.post("/:id/publish",requireAuth,async(req,res):Promise<void>=>{
   for(const q of questions){if(q.type==="poll"){const opts=await db.select().from(exerciseOptionsTable).where(eq(exerciseOptionsTable.questionId,q.id));if(opts.length<2||!opts.some(o=>o.isCorrect)){res.status(409).json({error:`Poll question ${q.position+1} needs at least two options and one correct option`});return;}}}
   const questionTotal=questions.reduce((sum,q)=>sum+Number(q.marksAllocated),0);
   const configuredTotal=Number(exercise.totalMarks);
-  if(configuredTotal>0 && Math.abs(configuredTotal-questionTotal)>0.0001){res.status(409).json({error:`Total possible marks must equal the sum of question marks (${questionTotal}).`});return;}
-  const totalMarks=questionTotal;
+  if(configuredTotal<=0){res.status(409).json({error:"Set the exercise total possible marks before publishing."});return;}
+  const totalMarks=configuredTotal > 0 ? configuredTotal : questionTotal;
   const requestedAI=req.body?.aiMarking&&typeof req.body.aiMarking==="object"?req.body.aiMarking as {enabled?:boolean;approved?:boolean}:{};
   if(requestedAI.enabled){
     if(!requestedAI.approved){res.status(409).json({error:"AI marking must be explicitly approved after the readiness check before publishing"});return;}
