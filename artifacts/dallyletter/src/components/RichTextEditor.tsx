@@ -45,6 +45,6 @@ export function RichTextEditor({value,onChange,placeholder="Write here…",class
    <Button type="button" size="icon" variant="ghost" className="h-8 w-8" title="Center" onClick={()=>command("justifyCenter")}><AlignCenter className="h-4 w-4"/></Button>
    <Button type="button" size="icon" variant="ghost" className="h-8 w-8" title="Align right" onClick={()=>command("justifyRight")}><AlignRight className="h-4 w-4"/></Button>
   </div>
-  <div ref={ref} contentEditable suppressContentEditableWarning onInput={()=>{ const html=sanitizeRichText(ref.current?.innerHTML||""); lastValue.current=html; onChange(html); }} dangerouslySetInnerHTML={{__html:sanitizeRichText(value)}} data-placeholder={placeholder} className="min-h-24 p-3 text-sm outline-none empty:before:text-muted-foreground empty:before:content-[attr(data-placeholder)]" />
+  <div ref={ref} contentEditable suppressContentEditableWarning onInput={()=>{ const html=sanitizeRichText(ref.current?.innerHTML||""); lastValue.current=html; onChange(html); }} dangerouslySetInnerHTML={{__html:sanitizeRichText(value)}} data-placeholder={placeholder} dir="ltr" style={{ direction: "ltr", unicodeBidi: "plaintext" }} className="min-h-24 p-3 text-sm outline-none empty:before:text-muted-foreground empty:before:content-[attr(data-placeholder)]" />
  </div>;
 }
