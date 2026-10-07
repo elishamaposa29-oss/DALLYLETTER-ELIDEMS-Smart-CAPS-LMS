@@ -423,7 +423,7 @@ export default function TeacherLessons() {
                     </div>
                   )}
                   <CardFooter className="pt-4 border-t flex flex-wrap justify-end gap-2">
-  <Button variant="outline" size="sm" className="gap-2" onClick={() => window.location.assign(\`/preview/lesson/\${lesson.id}\`)}>Preview lesson</Button>
+  <Button variant="outline" size="sm" className="gap-2" onClick={() => window.location.assign(`/preview/lesson/${lesson.id}`)}>Preview lesson</Button>
   {canManageLesson(lesson) && (
     <Button
       variant={activeExerciseLessonId === lesson.id ? "secondary" : "outline"}
@@ -450,7 +450,7 @@ export default function TeacherLessons() {
       className="gap-2"
       onClick={async () => {
         const token = localStorage.getItem("dallyletter_token");
-        const r = await fetch(getApiUrl(\`/api/exercises/lessons/\${lesson.id}/exercises\`), { headers: token ? { Authorization: \`Bearer \${token}\` } : {} });
+        const r = await fetch(getApiUrl(`/api/exercises/lessons/${lesson.id}/exercises`), { headers: token ? { Authorization: `Bearer ${token}` } : {} });
         const exercises = r.ok ? await r.json() as { id: number; title: string; status?: string; totalMarks?: string }[] : [];
         const published = exercises.filter((exercise) => exercise.status === "published");
         if (!published.length) {
@@ -458,7 +458,7 @@ export default function TeacherLessons() {
           return;
         }
         if (published.length === 1) {
-          window.location.assign(\`/teacher/exercises/\${published[0].id}/mark\`);
+          window.location.assign(`/teacher/exercises/${published[0].id}/mark`);
           return;
         }
         setMarkingExercises(published);
@@ -479,7 +479,7 @@ export default function TeacherLessons() {
       aria-label="Notify followers"
       onClick={async () => {
         try {
-          const r = await fetch(getApiUrl(\`/api/lessons/\${lesson.id}/notify-followers\`), { method: "POST", headers: authHeaders() });
+          const r = await fetch(getApiUrl(`/api/lessons/${lesson.id}/notify-followers`), { method: "POST", headers: authHeaders() });
           const data = await r.json().catch(() => ({}));
           if (!r.ok) throw new Error(data.error || "Could not notify followers");
           toast({ title: "Followers notified ✓", description: (data.recipientCount ?? 0) + " follower(s) notified.", className: "border-emerald-200 bg-emerald-50 text-emerald-800" });
