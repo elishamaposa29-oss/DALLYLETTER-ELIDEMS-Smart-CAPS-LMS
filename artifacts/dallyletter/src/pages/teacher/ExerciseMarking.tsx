@@ -98,7 +98,7 @@ function FloatingMark({ value, max, onChange }: { value: string; max: string; on
   return (
     <div
       className="absolute z-10 touch-none"
-      style={{ left: \`\${pos.x}%\`, top: \`\${pos.y}%\` }}
+      style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
       onPointerDown={(event) => {
         dragging.current = true;
         startPoint.current = { x: event.clientX, y: event.clientY, px: pos.x, py: pos.y };
