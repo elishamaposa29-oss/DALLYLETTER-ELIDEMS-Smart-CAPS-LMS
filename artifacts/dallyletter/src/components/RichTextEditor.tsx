@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Bold, Italic, Underline, Type, List, AlignLeft, AlignCenter, AlignRight, PenLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -25,6 +25,9 @@ export function sanitizeRichText(html:string){
 }
 export function RichTextEditor({value,onChange,placeholder="Write here…",className=""}:{value:string;onChange:(value:string)=>void;placeholder?:string;className?:string}){
  const ref=useRef<HTMLDivElement>(null);
+ const lastValue=useRef(value);
+ useEffect(()=>{ lastValue.current=value; },[value]);
+ useEffect(()=>{ const el=ref.current; if(!el) return; if(document.activeElement!==el && el.innerHTML!==sanitizeRichText(value)) el.innerHTML=sanitizeRichText(value); },[value]);
  const command=(name:string,arg?:string)=>{ref.current?.focus();document.execCommand(name,false,arg);onChange(sanitizeRichText(ref.current?.innerHTML||""));};
  const size=(v:string)=>command("fontSize",v);
  const family=(v:string)=>command("fontName",v);
@@ -42,6 +45,6 @@ export function RichTextEditor({value,onChange,placeholder="Write here…",class
    <Button type="button" size="icon" variant="ghost" className="h-8 w-8" title="Center" onClick={()=>command("justifyCenter")}><AlignCenter className="h-4 w-4"/></Button>
    <Button type="button" size="icon" variant="ghost" className="h-8 w-8" title="Align right" onClick={()=>command("justifyRight")}><AlignRight className="h-4 w-4"/></Button>
   </div>
-  <div ref={ref} contentEditable suppressContentEditableWarning onInput={()=>onChange(sanitizeRichText(ref.current?.innerHTML||""))} dangerouslySetInnerHTML={{__html:sanitizeRichText(value)}} data-placeholder={placeholder} className="min-h-24 p-3 text-sm outline-none empty:before:text-muted-foreground empty:before:content-[attr(data-placeholder)]" />
+  <div ref={ref} contentEditable suppressContentEditableWarning onInput={()=>{ const html=sanitizeRichText(ref.current?.innerHTML||""); lastValue.current=html; onChange(html); }} dangerouslySetInnerHTML={{__html:sanitizeRichText(value)}} data-placeholder={placeholder} className="min-h-24 p-3 text-sm outline-none empty:before:text-muted-foreground empty:before:content-[attr(data-placeholder)]" />
  </div>;
 }
