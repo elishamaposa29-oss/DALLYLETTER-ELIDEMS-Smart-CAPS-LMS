@@ -33,7 +33,7 @@ async function notifyTeacherFollowers(teacherId: number, lessonId: number, title
   const followers = await db.select({ followerId: followsTable.followerId, notificationsEnabled: followsTable.notificationsEnabled })
     .from(followsTable)
     .where(and(eq(followsTable.targetType, "teacher"), eq(followsTable.targetUserId, teacherId)));
-  const opted = followers.filter(f => f.notificationsEnabled).map(f => f.followerId);
+  const opted = followers.filter(f => f.notificationsEnabled !== false).map(f => f.followerId);
   if (!opted.length) return 0;
   let recipientIds = opted;
   try {
