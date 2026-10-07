@@ -262,6 +262,13 @@
  * Even without handling focused or not, this is six possible combinations that
  * need to be distinguished from eachother visually.
  */
+@layer base {
+  input, textarea, [contenteditable="true"] {
+    direction: ltr;
+    unicode-bidi: plaintext;
+  }
+}
+
 @layer utilities {
 
   /* Hide ugly search cancel button in Chrome until we can style it properly */
