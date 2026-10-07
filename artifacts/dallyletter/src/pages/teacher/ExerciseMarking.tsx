@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Sparkles, AlertTriangle, CheckCircle2, Clock3, RotateCcw, XCircle } from "lucide-react";
 import { useRoute } from "wouter";
 import { getApiUrl } from "@workspace/api-client-react";
@@ -90,7 +90,47 @@ const statusMeta: Record<string, { label: string; className: string; icon: typeo
   marked: { label: "Returned", className: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20", icon: CheckCircle2 },
 };
 
-function FloatingMark({value,max,onChange}:{value:string;max:string;onChange:(value:string)=>void}){const [pos,setPos]=useState({x:12,y:12});const dragging=useRef(false);const start=useRef({x:0,y:0,px:12,py:12});return <div className="absolute z-10 touch-none" style={{left:`${pos.x}%`,top:`${pos.y}%`}} onPointerDown={e=>{dragging.current=true;start.current={x:e.clientX,y:e.clientY,px:pos.x,py:pos.y};e.currentTarget.setPointerCapture(e.pointerId)}} onPointerMove={e=>{if(!dragging.current)return;const parent=(e.currentTarget.parentElement?.getBoundingClientRect());if(!parent)return;setPos({x:Math.max(0,Math.min(90,start.current.px+((e.clientX-start.current.x)/parent.width)*100)),y:Math.max(0,Math.min(90,start.current.py+((e.clientY-start.current.y)/parent.height)*100))})}} onPointerUp={()=>{dragging.current=false}}><div className="flex items-center gap-1 rounded-full border-2 border-amber-400 bg-amber-50/95 p-1 shadow-lg backdrop-blur"><span className="cursor-grab px-1 text-[10px] text-amber-700">⋮⋮</span><Input type="number" min="0" max={max} step="0.01" value={value} onChange={e=>onChange(e.target.value)} className="h-8 w-20 border-0 bg-transparent text-center font-bold focus-visible:ring-0"/></div></div>}
+function FloatingMark({ value, max, onChange }: { value: string; max: string; onChange: (value: string) => void }) {
+  const [pos, setPos] = useState({ x: 12, y: 12 });
+  const dragging = useRef(false);
+  const startPoint = useRef({ x: 0, y: 0, px: 12, py: 12 });
+
+  return (
+    <div
+      className="absolute z-10 touch-none"
+      style={{ left: \`\${pos.x}%\`, top: \`\${pos.y}%\` }}
+      onPointerDown={(event) => {
+        dragging.current = true;
+        startPoint.current = { x: event.clientX, y: event.clientY, px: pos.x, py: pos.y };
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerMove={(event) => {
+        if (!dragging.current) return;
+        const parent = event.currentTarget.parentElement?.getBoundingClientRect();
+        if (!parent) return;
+        setPos({
+          x: Math.max(0, Math.min(90, startPoint.current.px + ((event.clientX - startPoint.current.x) / parent.width) * 100)),
+          y: Math.max(0, Math.min(90, startPoint.current.py + ((event.clientY - startPoint.current.y) / parent.height) * 100)),
+        });
+      }}
+      onPointerUp={() => { dragging.current = false; }}
+    >
+      <div className="flex items-center gap-1 rounded-full border-2 border-amber-400 bg-amber-50/95 p-1 shadow-lg backdrop-blur">
+        <span className="cursor-grab px-1 text-[10px] text-amber-700">⋮⋮</span>
+        <Input
+          type="number"
+          min="0"
+          max={max}
+          step="0.01"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="h-8 w-20 border-0 bg-transparent text-center font-bold focus-visible:ring-0"
+          aria-label="Floating mark"
+        />
+      </div>
+    </div>
+  );
+}
 
 function SubmissionStatus({ status }: { status: string }) {
   const meta = statusMeta[status] ?? { label: status, className: "bg-muted text-muted-foreground", icon: Clock3 };
