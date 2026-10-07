@@ -211,6 +211,7 @@ export default function ExerciseMarking() {
   const [aiMessage, setAiMessage] = useState("");
   const [aiState, setAiState] = useState<"idle"|"checking"|"partially_marked"|"awaiting_teacher"|"returned">("idle");
   const [loading, setLoading] = useState(false);
+  const [tickMode, setTickMode] = useState<number | null>(null);
 
   const token = localStorage.getItem("dallyletter_token");
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
@@ -393,8 +394,8 @@ export default function ExerciseMarking() {
                     </div>
 
                     <div className="rounded-lg bg-muted p-3 text-sm">
-                      <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Learner answer</div>
-                      {a.textAnswer || a.selectedValue || (a.drawData ? <DrawAnswer data={a.drawData} /> : null) || (a.mediaReference ? <AuthenticatedAttachment url={a.mediaReference} /> : "No answer")} {a.mediaReference && (a.textAnswer || a.selectedValue || a.drawData ? <AuthenticatedAttachment url={a.mediaReference} /> : null)}
+                      <div className="mb-2 flex items-center justify-between gap-2"><div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Learner answer</div>{a.drawData && <Button type="button" size="sm" variant={tickMode===a.id?"default":"outline"} onClick={()=>setTickMode(v=>v===a.id?null:a.id)} aria-label={`Toggle tick marking for question ${i+1}`}>✓ {tickMode===a.id?"Tick mode on":"Add ticks"}</Button>}</div>
+                      {a.drawData ? <div className="relative overflow-hidden rounded-lg border bg-white" onClick={(event)=>{if(tickMode!==a.id)return;const rect=event.currentTarget.getBoundingClientRect();const current=(markingData[a.id]?.ticks??[]) as Array<Record<string,unknown>>;const next={...markingData[a.id],ticks:[...current,{x:Math.max(0,Math.min(1190,((event.clientX-rect.left)/rect.width)*1200)),y:Math.max(0,Math.min(690,((event.clientY-rect.top)/rect.height)*700)),size:30,color:"#16a34a",opacity:.95}]};setMarkingData(m=>({...m,[a.id]:next}));}}><DrawAnswer data={a.drawData} /><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div> : (a.textAnswer || a.selectedValue || (a.mediaReference ? <AuthenticatedAttachment url={a.mediaReference} /> : "No answer"))} {a.mediaReference && (a.textAnswer || a.selectedValue || a.drawData ? <AuthenticatedAttachment url={a.mediaReference} /> : null)}
                     </div>
 
                     <div className="grid gap-3 sm:grid-cols-[auto_1fr]"><div className="relative min-h-20 rounded-xl border bg-background/30 p-2"><FloatingMark value={marks[a.id] ?? "0"} max={q?.marksAllocated ?? "0"} onChange={value=>setMarks(m=>({...m,[a.id]:value}))}/><div className="pt-12 text-xs text-muted-foreground">Drag the floating mark onto the learner answer. It remains linked to this question.</div></div>
