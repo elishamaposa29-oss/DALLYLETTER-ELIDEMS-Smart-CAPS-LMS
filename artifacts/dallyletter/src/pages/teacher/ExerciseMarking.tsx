@@ -173,7 +173,7 @@ function FloatingMark({ value, max, onChange }: { value: string; max?: string; o
         <Input
           type="number"
           min="0"
-          max={max}
+          max={undefined}
           step="0.01"
           value={value}
           onChange={(event) => onChange(event.target.value)}
@@ -390,7 +390,7 @@ export default function ExerciseMarking() {
               {answers.map((a, i) => {
                 const q = selectedQuestion(a);
                 return (
-                  <div key={a.id} className="relative space-y-3 rounded-xl border p-4"><FloatingMark value={marks[a.id] ?? "0"} max={q?.marksAllocated} onChange={value=>setMarks(m=>({...m,[a.id]:value}))}/>
+                  <div key={a.id} className="relative space-y-3 rounded-xl border p-4"><FloatingMark value={marks[a.id] ?? "0"} max={undefined} onChange={value=>setMarks(m=>({...m,[a.id]:value}))}/>
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
                         <div className="font-medium">Question {q?.position != null ? q.position + 1 : i + 1}</div>
@@ -409,7 +409,7 @@ export default function ExerciseMarking() {
                         <div className="flex items-center gap-1"><Button type="button" size="sm" variant="outline" className="text-emerald-600 border-emerald-300 hover:bg-emerald-50" onClick={()=>setMarks((m)=>({...m,[a.id]:q?.marksAllocated??"0"}))} aria-label={`Mark question ${i+1} correct`}><CheckCircle2 className="h-4 w-4" /></Button><Button type="button" size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50" onClick={()=>setMarks((m)=>({...m,[a.id]:"0"}))} aria-label={`Mark question ${i+1} incorrect`}><XCircle className="h-4 w-4" /></Button><Input
                           type="number"
                           min="0"
-                          max={q?.marksAllocated ?? undefined}
+                          max={undefined}
                           step="0.01"
                           value={marks[a.id] ?? "0"}
                           onChange={(e) => { const raw=Number(e.target.value); setMarks((m) => ({ ...m, [a.id]: Number.isFinite(raw)?String(Math.max(0,raw)):"0" })); }}
