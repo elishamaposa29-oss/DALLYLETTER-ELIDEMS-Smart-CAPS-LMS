@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { sanitizeRichText } from "@/components/RichTextEditor";
 import { Badge } from "@/components/ui/badge";
+import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 
 interface Question {
   id: number;
@@ -44,36 +45,8 @@ type PointerMark = { id: string; x: number; y: number; length?: number; thicknes
 type LabelMark = { text: string; x: number; y: number; anchorX?: number; anchorY?: number; color?: string; opacity?: number; fontSize?: number };
 
 function QuestionAttachment({ url, fileName, mimeType }: { url: string; fileName: string; mimeType?: string }) {
-  const [src, setSrc] = useState<string | null>(null);
-  const [error, setError] = useState("");
-  useEffect(() => {
-    let active = true;
-    const token = localStorage.getItem("dallyletter_token");
-    fetch(getApiUrl(url), { headers: token ? { Authorization: `Bearer ${token}` } : {} })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Attachment unavailable");
-        const blob = await response.blob();
-        const objectUrl = URL.createObjectURL(blob);
-        if (active) setSrc(objectUrl);
-        else URL.revokeObjectURL(objectUrl);
-      })
-      .catch((cause) => {
-        if (active) setError(cause instanceof Error ? cause.message : "Attachment unavailable");
-      });
-    return () => {
-      active = false;
-      setSrc((current) => {
-        if (current) URL.revokeObjectURL(current);
-        return null;
-      });
-    };
-  }, [url]);
-
-  if (error) return <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>;
-  if (!src) return <div className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">Loading attachment…</div>;
-  if (mimeType?.startsWith("image/")) return <img src={src} alt={fileName} className="max-h-72 w-full rounded-md object-contain bg-white" loading="lazy" />;
-  if (mimeType === "application/pdf") return <iframe src={src} title={fileName} className="h-72 w-full rounded-md border bg-white" />;
-  return <a href={src} target="_blank" rel="noreferrer" className="inline-flex rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">Open {fileName}</a>;
+  const type = (() => { const raw=mimeType || new URL(url,window.location.origin).searchParams.get("type") || ""; if(raw.startsWith("image/")) return "image" as const; if(raw.startsWith("video/")) return "video" as const; if(raw.startsWith("audio/")) return "audio" as const; return "document" as const; })();
+  return <AuthenticatedMedia url={url} type={type} title={fileName} />;
 }
 
 function DrawBox({
@@ -465,10 +438,10 @@ export default function StudentExercise() {
 
   return (
     <DashboardLayout>
-      <div className="mx-auto max-w-3xl space-y-5 p-4">
+      <div className="mx-auto max-w-5xl space-y-4 p-3 sm:p-4">
         <Card>
           <CardHeader>
-            <CardTitle>{data.exercise.title}</CardTitle>
+            <CardTitle className="text-xl font-black text-[#0A1931] dark:text-[#FFF8E1]">{data.exercise.title}</CardTitle>
             {data.exercise.instructions && <div className="prose prose-sm max-w-none text-muted-foreground" dangerouslySetInnerHTML={{ __html: sanitizeRichText(data.exercise.instructions) }} />}
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="outline">{data.exercise.totalMarks} marks</Badge>
@@ -483,13 +456,13 @@ export default function StudentExercise() {
           const attachmentUrl = attachment?.url || media?.url;
           const answerMedia = answers[question.id]?.mediaReference;
           return (
-            <Card key={question.id}>
+            <Card key={question.id} className="overflow-hidden border-primary/10 shadow-sm transition-all hover:border-primary/30 hover:shadow-md">
               <CardHeader>
                 <CardTitle className="text-base">
                   <span className="mr-1">Q{index + 1}.</span>
                   <span dangerouslySetInnerHTML={{ __html: sanitizeRichText(question.prompt) }} />
                 </CardTitle>
-                <Badge variant="secondary" className="w-fit">{question.marksAllocated} marks · {question.type}</Badge>
+                <div className="flex flex-wrap items-center gap-2"><Badge variant="secondary" className="w-fit">{question.marksAllocated} marks</Badge><Badge variant="outline" className="w-fit capitalize">{question.type}</Badge></div>
                 {attachmentUrl && (
                   <div className="mt-3 rounded-xl border bg-background/70 p-2">
                     <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Question attachment</div>
