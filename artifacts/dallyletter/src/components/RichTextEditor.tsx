@@ -113,7 +113,7 @@ export function RichTextEditor({value,onChange,placeholder="Write here…",class
   </div>
   <div ref={ref} contentEditable suppressContentEditableWarning dir="ltr" spellCheck className="min-h-24 p-3 text-sm leading-6 outline-none empty:before:text-muted-foreground empty:before:content-[attr(data-placeholder)]" data-placeholder={placeholder}
     onInput={emit} onKeyUp={saveSelection} onMouseUp={saveSelection} onFocus={saveSelection}
-    style={{direction:"ltr",unicodeBidi:"plaintext",writingMode:"horizontal-tb",textAlign:"left",caretColor:"#FFC72C"}}
+    style={{direction:"ltr",unicodeBidi:"normal",writingMode:"horizontal-tb",textAlign:"left",caretColor:"#FFC72C"}}
   />
  </div>;
 }
