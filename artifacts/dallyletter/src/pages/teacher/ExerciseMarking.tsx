@@ -83,7 +83,7 @@ function MediaMarkOverlay({ data, onChange }: { data: Record<string, unknown> | 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const last = useRef<{ x: number; y: number } | null>(null);
-  const [tool, setTool] = useState<"pen" | "tick">("pen");
+  const [tool, setTool] = useState<"pen" | "tick">("pen");\n  const [active, setActive] = useState(false);
   const redraw = () => {
     const canvas = canvasRef.current; if (!canvas) return;
     const ctx = canvas.getContext("2d"); if (!ctx) return;
@@ -99,10 +99,10 @@ function MediaMarkOverlay({ data, onChange }: { data: Record<string, unknown> | 
   const move=(e:React.PointerEvent<HTMLCanvasElement>)=>{if(!drawing.current||tool!=="pen"||!last.current)return;const p=point(e);if(!p)return;const strokes=(data?.mediaStrokes??[]) as Array<Record<string,unknown>>;onChange({...data,mediaStrokes:[...strokes,{px:last.current.x,py:last.current.y,x:p.x,y:p.y,color:"#16a34a",width:4,opacity:.95}]});last.current=p;};
   return <div className="absolute inset-0 z-20 pointer-events-none">
     <div className="pointer-events-auto absolute left-2 top-2 flex gap-1 rounded-full border bg-[#0A1931]/95 p-1 shadow-lg">
-      <Button type="button" size="icon" variant={tool==="pen"?"default":"ghost"} className="h-8 w-8" aria-label="Draw on media" title="Draw on media" onClick={()=>setTool("pen")}>✎</Button>
-      <Button type="button" size="icon" variant={tool==="tick"?"default":"ghost"} className="h-8 w-8" aria-label="Place mark on media" title="Place mark on media" onClick={()=>setTool("tick")}>✓</Button>
+      <Button type="button" size="icon" variant={tool==="pen"?"default":"ghost"} className="h-8 w-8" aria-label="Draw on media" title="Draw on media" onClick={()=>{setTool("pen");setActive(true)}}>✎</Button>
+      <Button type="button" size="icon" variant={tool==="tick"?"default":"ghost"} className="h-8 w-8" aria-label="Place mark on media" title="Place mark on media" onClick={()=>{setTool("tick");setActive(true)}}>✓</Button><Button type="button" size="icon" variant="ghost" className="h-8 w-8" aria-label="Stop media marking" title="Stop media marking" onClick={()=>setActive(false)}>✕</Button>
     </div>
-    <canvas ref={canvasRef} width={1200} height={700} className="pointer-events-auto absolute inset-0 h-full w-full touch-none" onPointerDown={down} onPointerMove={move} onPointerUp={()=>{drawing.current=false;last.current=null}} onPointerCancel={()=>{drawing.current=false;last.current=null}} />
+    <canvas ref={canvasRef} width={1200} height={700} className={active ? "pointer-events-auto absolute inset-0 h-full w-full touch-none" : "pointer-events-none absolute inset-0 h-full w-full"} onPointerDown={down} onPointerMove={move} onPointerUp={()=>{drawing.current=false;last.current=null}} onPointerCancel={()=>{drawing.current=false;last.current=null}} />
   </div>;
 }
 
