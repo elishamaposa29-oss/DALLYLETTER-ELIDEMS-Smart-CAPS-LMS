@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Search, FileText, Image as ImageIcon, Video, Headphones, BookOpen, ExternalLink, GraduationCap, ClipboardList } from "lucide-react";
+import { Loader2, Search, FileText, Image as ImageIcon, Video, Headphones, BookOpen, ExternalLink, GraduationCap, ClipboardList, Sparkles } from "lucide-react";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 import { isValidLessonUrl } from "@/lib/media-url";
 
@@ -94,7 +94,7 @@ export default function StudentLessons() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-4">
+      <div className="space-y-4 rounded-2xl bg-gradient-to-b from-[#FFF8E1]/70 via-background to-[#0A1931]/5 p-1">
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center">
@@ -109,7 +109,7 @@ export default function StudentLessons() {
         </div>
 
         {/* Filters */}
-        <div className="flex flex-col sm:flex-row gap-3">
+        <div className="sticky top-0 z-20 flex flex-col gap-3 rounded-2xl border border-[#D4AF37]/20 bg-[#0A1931]/95 p-3 shadow-lg backdrop-blur sm:flex-row">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -144,7 +144,7 @@ export default function StudentLessons() {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {filteredLessons?.length === 0 ? (
               <div className="col-span-full text-center py-16 border-2 border-dashed rounded-xl bg-muted/20">
                 <BookOpen className="h-12 w-12 mx-auto mb-4 text-muted-foreground/40" />
@@ -155,7 +155,7 @@ export default function StudentLessons() {
               filteredLessons?.map((lesson) => (
                 <Card
                   key={lesson.id}
-                  className={`flex flex-col h-full transition-all duration-200 border hover:shadow-lg hover:-translate-y-0.5 ${hasValidMediaUrl(lesson.mediaUrl) ? "hover:border-primary/60 cursor-pointer" : "hover:border-border/80"}`}
+                  className={`flex flex-col h-full overflow-hidden rounded-2xl border-[#D4AF37]/20 bg-[#FFF8E1]/60 shadow-md transition-all duration-200 hover:-translate-y-1 hover:border-[#D4AF37]/70 hover:shadow-xl dark:bg-[#0A1931]/80 ${hasValidMediaUrl(lesson.mediaUrl) ? "cursor-pointer" : ""}`}
                   onClick={() => hasValidMediaUrl(lesson.mediaUrl) && handleOpen(lesson.mediaUrl!, lesson.id)}
                 >
                   <CardHeader className="pb-3 space-y-3">
