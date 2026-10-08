@@ -35,7 +35,10 @@ type Props={value:string;onChange:(value:string)=>void;placeholder?:string;class
 
 export function RichTextEditor({value,onChange,placeholder="Write here…",className=""}:Props){
  const ref=useRef<HTMLDivElement>(null);
- const savedSelection=useRef<Range|null>(null);\n const internalChange=useRef(false);\n const [fontSizeChoice,setFontSizeChoice]=useState("");\n const [fontNameChoice,setFontNameChoice]=useState("");
+ const savedSelection=useRef<Range|null>(null);
+ const internalChange=useRef(false);
+ const [fontSizeChoice,setFontSizeChoice]=useState("");
+ const [fontNameChoice,setFontNameChoice]=useState("");
 
  const saveSelection=()=>{
    const el=ref.current,selection=window.getSelection();
