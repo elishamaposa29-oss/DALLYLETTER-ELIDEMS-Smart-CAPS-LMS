@@ -265,7 +265,7 @@
 @layer base {
   input, textarea, [contenteditable="true"] {
     direction: ltr;
-    unicode-bidi: plaintext;
+    unicode-bidi: normal;
   }
 }
 
