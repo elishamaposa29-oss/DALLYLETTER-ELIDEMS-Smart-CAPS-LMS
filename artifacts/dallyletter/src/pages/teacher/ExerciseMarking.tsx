@@ -79,6 +79,33 @@ function FloatingTicks({ data, onChange }: { data: Record<string, unknown> | nul
   );
 }
 
+function MediaMarkOverlay({ data, onChange }: { data: Record<string, unknown> | null | undefined; onChange: (data: Record<string, unknown>) => void }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawing = useRef(false);
+  const last = useRef<{ x: number; y: number } | null>(null);
+  const [tool, setTool] = useState<"pen" | "tick">("pen");
+  const redraw = () => {
+    const canvas = canvasRef.current; if (!canvas) return;
+    const ctx = canvas.getContext("2d"); if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const strokes = (data?.mediaStrokes ?? []) as Array<Record<string, unknown>>;
+    for (const s of strokes) { ctx.save(); ctx.strokeStyle=String(s.color??"#16a34a"); ctx.lineWidth=Number(s.width??4); ctx.globalAlpha=Number(s.opacity??.95); ctx.lineCap="round"; ctx.beginPath(); ctx.moveTo(Number(s.px??s.x),Number(s.py??s.y)); ctx.lineTo(Number(s.x),Number(s.y)); ctx.stroke(); ctx.restore(); }
+    const ticks = (data?.ticks ?? []) as Array<Record<string, unknown>>;
+    for (const t of ticks) { ctx.save(); ctx.fillStyle=String(t.color??"#16a34a"); ctx.globalAlpha=Number(t.opacity??.95); ctx.font=`bold ${Math.max(22,Number(t.size??34))}px sans-serif`; ctx.fillText("✓",Number(t.x),Number(t.y)); ctx.restore(); }
+  };
+  useEffect(()=>redraw(),[data]);
+  const point=(e:React.PointerEvent<HTMLCanvasElement>)=>{const c=canvasRef.current;if(!c)return null;const r=c.getBoundingClientRect();return{x:(e.clientX-r.left)*(1200/r.width),y:(e.clientY-r.top)*(700/r.height)};};
+  const down=(e:React.PointerEvent<HTMLCanvasElement>)=>{const p=point(e);if(!p)return;drawing.current=true;last.current=p;e.currentTarget.setPointerCapture(e.pointerId);if(tool==="tick"){const ticks=(data?.ticks??[]) as Array<Record<string,unknown>>;onChange({...data,ticks:[...ticks,{x:p.x,y:p.y,size:34,color:"#16a34a",opacity:.95}]});drawing.current=false;}};
+  const move=(e:React.PointerEvent<HTMLCanvasElement>)=>{if(!drawing.current||tool!=="pen"||!last.current)return;const p=point(e);if(!p)return;const strokes=(data?.mediaStrokes??[]) as Array<Record<string,unknown>>;onChange({...data,mediaStrokes:[...strokes,{px:last.current.x,py:last.current.y,x:p.x,y:p.y,color:"#16a34a",width:4,opacity:.95}]});last.current=p;};
+  return <div className="absolute inset-0 z-20 pointer-events-none">
+    <div className="pointer-events-auto absolute left-2 top-2 flex gap-1 rounded-full border bg-[#0A1931]/95 p-1 shadow-lg">
+      <Button type="button" size="icon" variant={tool==="pen"?"default":"ghost"} className="h-8 w-8" aria-label="Draw on media" title="Draw on media" onClick={()=>setTool("pen")}>✎</Button>
+      <Button type="button" size="icon" variant={tool==="tick"?"default":"ghost"} className="h-8 w-8" aria-label="Place mark on media" title="Place mark on media" onClick={()=>setTool("tick")}>✓</Button>
+    </div>
+    <canvas ref={canvasRef} width={1200} height={700} className="pointer-events-auto absolute inset-0 h-full w-full touch-none" onPointerDown={down} onPointerMove={move} onPointerUp={()=>{drawing.current=false;last.current=null}} onPointerCancel={()=>{drawing.current=false;last.current=null}} />
+  </div>;
+}
+
 function AuthenticatedAttachment({ url }: { url: string }) {
   const [busy, setBusy] = useState(false);
   const open = async () => {
@@ -401,7 +428,7 @@ export default function ExerciseMarking() {
 
                     <div className="rounded-lg bg-muted p-3 text-sm">
                       <div className="mb-2 flex items-center justify-between gap-2"><div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Learner answer</div>{(Boolean(a.drawData)||Boolean(a.mediaReference)) && <Button type="button" size="sm" variant={tickMode===a.id?"default":"outline"} onClick={()=>setTickMode(v=>v===a.id?null:a.id)} aria-label={`Toggle tick marking for question ${i+1}`}>✓ {tickMode===a.id?"Tick mode on":"Add ticks"}</Button>}</div>
-                      {a.drawData ? <div className="relative overflow-hidden rounded-lg border bg-white" onClick={(event)=>{if(tickMode!==a.id)return;const rect=event.currentTarget.getBoundingClientRect();const current=(markingData[a.id]?.ticks??[]) as Array<Record<string,unknown>>;const next={...markingData[a.id],ticks:[...current,{x:Math.max(0,Math.min(1190,((event.clientX-rect.left)/rect.width)*1200)),y:Math.max(0,Math.min(690,((event.clientY-rect.top)/rect.height)*700)),size:30,color:"#16a34a",opacity:.95}]};setMarkingData(m=>({...m,[a.id]:next}));}}><DrawAnswer data={a.drawData} /><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div> : a.mediaReference ? <div className="relative overflow-hidden rounded-lg border bg-background" onClick={(event)=>{if(tickMode!==a.id)return;const rect=event.currentTarget.getBoundingClientRect();const current=(markingData[a.id]?.ticks??[]) as Array<Record<string,unknown>>;setMarkingData(m=>({...m,[a.id]:{...m[a.id],ticks:[...current,{x:((event.clientX-rect.left)/rect.width)*1200,y:((event.clientY-rect.top)/rect.height)*700,size:30,color:"#16a34a",opacity:.95}]}}));}}><AuthenticatedMedia url={a.mediaReference} type={mediaTypeFor(a.mediaReference)} title={`Question ${i+1} learner media`} /><div className="pointer-events-none absolute inset-0"><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div></div> : q?.type==="poll" && a.selectedValue ? <div className={`rounded-lg border p-3 font-semibold ${optionsFor(q.id).find(o=>o.value===a.selectedValue)?.isCorrect ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-red-300 bg-red-50 text-red-800"}`}>Selected: {optionsFor(q.id).find(o=>o.value===a.selectedValue)?.label ?? a.selectedValue} {optionsFor(q.id).find(o=>o.value===a.selectedValue)?.isCorrect ? "✓ Correct" : "✕ Wrong"}</div> : (a.textAnswer || "No answer")}
+                      {a.drawData ? <div className="relative overflow-hidden rounded-lg border bg-white" onClick={(event)=>{if(tickMode!==a.id)return;const rect=event.currentTarget.getBoundingClientRect();const current=(markingData[a.id]?.ticks??[]) as Array<Record<string,unknown>>;const next={...markingData[a.id],ticks:[...current,{x:Math.max(0,Math.min(1190,((event.clientX-rect.left)/rect.width)*1200)),y:Math.max(0,Math.min(690,((event.clientY-rect.top)/rect.height)*700)),size:30,color:"#16a34a",opacity:.95}]};setMarkingData(m=>({...m,[a.id]:next}));}}><DrawAnswer data={a.drawData} /><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div> : a.mediaReference ? <div className="relative overflow-hidden rounded-lg border bg-background"><AuthenticatedMedia url={a.mediaReference} type={mediaTypeFor(a.mediaReference)} title={`Question ${i+1} learner media`} /><MediaMarkOverlay data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/><div className="pointer-events-none absolute inset-0"><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div></div> : q?.type==="poll" && a.selectedValue ? <div className={`rounded-lg border p-3 font-semibold ${optionsFor(q.id).find(o=>o.value===a.selectedValue)?.isCorrect ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-red-300 bg-red-50 text-red-800"}`}>Selected: {optionsFor(q.id).find(o=>o.value===a.selectedValue)?.label ?? a.selectedValue} {optionsFor(q.id).find(o=>o.value===a.selectedValue)?.isCorrect ? "✓ Correct" : "✕ Wrong"}</div> : (a.textAnswer || "No answer")}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 pt-1">
