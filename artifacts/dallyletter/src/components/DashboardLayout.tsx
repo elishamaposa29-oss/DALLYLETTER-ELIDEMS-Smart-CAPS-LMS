@@ -138,7 +138,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             <div key={item.href}>
               {sectionEl}
               <Link href={item.href} onClick={onNav}>
-                <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 group ${isActive ? "bg-white/15 text-white shadow-sm" : "text-white/60 hover:text-white hover:bg-white/10"}`}>
+                <div className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 group hover:translate-x-0.5 ${isActive ? "bg-gradient-to-r from-white/16 to-[#D4AF37]/10 text-white shadow-[0_8px_30px_rgba(0,0,0,.18)] border border-white/10" : "text-white/60 hover:text-white hover:bg-white/8"}`}>
                   <Icon className={`h-4 w-4 shrink-0 ${isActive ? "text-white" : item.accent ? item.accent + " opacity-80" : "text-white/50 group-hover:text-white/80"}`} />
                   <span className="truncate">{item.label}</span>
                   {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white/80 shrink-0" />}
@@ -215,7 +215,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="min-h-screen bg-background flex flex-col md:flex-row">
+    <div className="min-h-screen bg-[#071426] text-foreground flex flex-col md:flex-row selection:bg-[#D4AF37]/30">
       <SystemNotificationBridge />
       <header className="md:hidden flex items-center justify-between px-4 py-3 border-b bg-[#0a1628] sticky top-0 z-30">
         <div className="flex items-center gap-2">
@@ -241,8 +241,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       <main className="flex-1 min-h-0 overflow-hidden">
-        <div className="h-full overflow-y-auto bg-slate-50 dark:bg-background">
-          <div className="max-w-6xl mx-auto p-4 md:p-8">
+        <div className="h-full overflow-y-auto bg-[radial-gradient(circle_at_15%_0%,rgba(30,82,150,.28),transparent_32%),radial-gradient(circle_at_85%_10%,rgba(212,175,55,.10),transparent_28%),linear-gradient(135deg,#08172b,#0b1f35_48%,#071426)]">
+          <div className="mx-auto w-full max-w-7xl p-3 md:p-5 lg:p-6 animate-in fade-in-50 duration-500">
             {children}
           </div>
         </div>
