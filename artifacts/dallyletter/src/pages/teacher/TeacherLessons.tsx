@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Plus, Trash2, Video, Image as ImageIcon, Headphones, FileText, BookOpen, Upload, X, ClipboardList, ClipboardCheck, Bell } from "lucide-react";
+import { Loader2, Plus, Trash2, Video, Image as ImageIcon, Headphones, FileText, BookOpen, Upload, X, ClipboardList, ClipboardCheck, Bell, Maximize2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -164,7 +164,7 @@ export default function TeacherLessons() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6"><div className="rounded-xl border border-primary/15 bg-card p-3 shadow-sm"><div className="mb-2 flex items-center justify-between"><div><p className="font-semibold text-sm">Permission requests</p><p className="text-xs text-muted-foreground">Control who may modify your lessons.</p></div><Badge variant="outline">{permissionRequests.length}</Badge></div>{permissionRequests.length>0&&<div className="space-y-2">{permissionRequests.map(r=><div key={r.id} className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 p-2"><span className="text-xs flex-1">User #{r.requester_id} requests <strong>{r.requested_action}</strong> on {r.content_type} #{r.content_id}</span><Button size="sm" onClick={()=>void respondPermission(r.id,"approved")}>Allow</Button><Button size="sm" variant="outline" onClick={()=>void respondPermission(r.id,"declined")}>Decline</Button></div>)}</div>}</div><div className="sticky top-0 z-20 -mx-2 overflow-x-auto border-b bg-background/95 px-2 py-2 backdrop-blur"><div className="flex min-w-max items-center gap-2">
+      <div className="space-y-4 bg-gradient-to-b from-[#FFF8E1] via-background to-[#0A1931]/5 p-1"><div className="rounded-2xl border border-[#D4AF37]/30 bg-[#0A1931] p-4 text-[#FFF8E1] shadow-lg border-primary/15 bg-card p-3 shadow-sm"><div className="mb-2 flex items-center justify-between"><div><p className="font-semibold text-sm">Permission requests</p><p className="text-xs text-muted-foreground">Control who may modify your lessons.</p></div><Badge variant="outline">{permissionRequests.length}</Badge></div>{permissionRequests.length>0&&<div className="space-y-2">{permissionRequests.map(r=><div key={r.id} className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 p-2"><span className="text-xs flex-1">User #{r.requester_id} requests <strong>{r.requested_action}</strong> on {r.content_type} #{r.content_id}</span><Button size="sm" onClick={()=>void respondPermission(r.id,"approved")}>Allow</Button><Button size="sm" variant="outline" onClick={()=>void respondPermission(r.id,"declined")}>Decline</Button></div>)}</div>}</div><div className="sticky top-0 z-20 -mx-2 overflow-x-auto border-b bg-background/95 px-2 py-2 backdrop-blur"><div className="flex min-w-max items-center gap-2">
 <Button size="sm" variant={!showAllTeachers?"default":"outline"} onClick={()=>setShowAllTeachers(false)}>My lessons</Button>
 <Button size="sm" variant={showAllTeachers?"default":"outline"} onClick={()=>setShowAllTeachers(true)}>All teachers · preview</Button>
 <Select value={sortMode} onValueChange={(v)=>setSortMode(v as "newest"|"oldest"|"subject")}><SelectTrigger className="h-9 w-[125px]"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="newest">Newest</SelectItem><SelectItem value="oldest">Oldest</SelectItem><SelectItem value="subject">Subject</SelectItem></SelectContent></Select>
@@ -172,7 +172,7 @@ export default function TeacherLessons() {
         {lessonRequests.length>0 && <Card className="border-amber-200 bg-amber-50/50"><CardHeader><CardTitle className="text-lg">Prefect lesson requests</CardTitle><CardDescription>Requests sent directly to your teacher account.</CardDescription></CardHeader><CardContent className="space-y-3">{lessonRequests.map(r=><div key={r.id} className="rounded-xl border bg-background p-3 flex flex-col sm:flex-row sm:items-center gap-3"><div className="flex-1 min-w-0"><p className="font-semibold truncate">{r.topic}</p><p className="text-xs text-muted-foreground">{r.preferredDate?`Preferred ${r.preferredDate} · `:""}{r.status}</p>{r.notes&&<p className="text-sm mt-1">{r.notes}</p>}</div><div className="flex gap-2 flex-wrap"><Button size="sm" onClick={()=>void respondToRequest(r.id,"accepted")} disabled={requestBusy===r.id}>Accept</Button><Button size="sm" variant="outline" onClick={()=>void respondToRequest(r.id,"declined")} disabled={requestBusy===r.id}>Decline</Button><Button size="sm" variant="ghost" onClick={()=>void dismissRequest(r.id)} disabled={requestBusy===r.id}>Dismiss</Button></div></div>)}</CardContent></Card>}
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">My Lessons</h1>
+            <h1 className="text-3xl font-black tracking-tight text-[#FFF8E1]">My Lessons</h1>
             <p className="text-muted-foreground">Manage and publish your course materials.</p>
           </div>
           
@@ -183,7 +183,7 @@ export default function TeacherLessons() {
                 Add Lesson
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+            <DialogContent className="w-[calc(100vw-1rem)] max-w-5xl max-h-[96vh] overflow-y-auto border-[#D4AF37]/30 bg-[#FFF8E1] dark:bg-[#0A1931]">
               <DialogHeader>
                 <DialogTitle>Create New Lesson</DialogTitle>
                 <DialogDescription>
@@ -199,13 +199,13 @@ export default function TeacherLessons() {
                       <FormItem>
                         <FormLabel>Title</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g. Introduction to Algebra" {...field} />
+                          <RichTextEditor value={field.value || ""} onChange={field.onChange} placeholder="Lesson title — add emphasis, colour, handwriting or word art." />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <FormField
                       control={form.control}
                       name="subject"
@@ -337,7 +337,7 @@ export default function TeacherLessons() {
                   />
                   <DialogFooter>
                     <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-                    <Button type="submit" disabled={createLessonMutation.isPending || uploadProgress !== null && uploadProgress < 100}>
+                    <Button type="submit" className="bg-[#D4AF37] text-[#0A1931] hover:bg-[#E0BE52]" disabled={createLessonMutation.isPending || uploadProgress !== null && uploadProgress < 100}>
                       {createLessonMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       Publish Lesson
                     </Button>
@@ -423,7 +423,7 @@ export default function TeacherLessons() {
                     </div>
                   )}
                   <CardFooter className="pt-4 border-t flex flex-wrap justify-end gap-2">
-  <Button variant="outline" size="sm" className="gap-2" onClick={() => window.location.assign(`/preview/lesson/${lesson.id}`)}>Preview lesson</Button>
+  <Button variant="outline" size="icon" title="Preview lesson" aria-label="Preview lesson" onClick={() => window.location.assign(`/preview/lesson/${lesson.id}`)}><Maximize2 className="h-4 w-4" /></Button>
   {canManageLesson(lesson) && (
     <Button
       variant={activeExerciseLessonId === lesson.id ? "secondary" : "outline"}
