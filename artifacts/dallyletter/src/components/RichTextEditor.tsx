@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Bold, Italic, Underline, Type, List, AlignLeft, AlignCenter, AlignRight, PenLine, Palette, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -35,7 +35,7 @@ type Props={value:string;onChange:(value:string)=>void;placeholder?:string;class
 
 export function RichTextEditor({value,onChange,placeholder="Write here…",className=""}:Props){
  const ref=useRef<HTMLDivElement>(null);
- const savedSelection=useRef<Range|null>(null);
+ const savedSelection=useRef<Range|null>(null);\n const internalChange=useRef(false);\n const [fontSizeChoice,setFontSizeChoice]=useState("");\n const [fontNameChoice,setFontNameChoice]=useState("");
 
  const saveSelection=()=>{
    const el=ref.current,selection=window.getSelection();
@@ -55,7 +55,7 @@ export function RichTextEditor({value,onChange,placeholder="Write here…",class
 
  useEffect(()=>{
    const el=ref.current;
-   if(!el||document.activeElement===el)return;
+   if(!el||internalChange.current)return;
    const next=sanitizeRichText(value);
    if(el.innerHTML!==next)el.innerHTML=next;
  },[value]);
@@ -66,7 +66,7 @@ export function RichTextEditor({value,onChange,placeholder="Write here…",class
    return()=>document.removeEventListener("selectionchange",handler);
  });
 
- const emit=()=>{const html=sanitizeRichText(ref.current?.innerHTML||"");onChange(html);};
+ const emit=()=>{internalChange.current=true;const html=sanitizeRichText(ref.current?.innerHTML||"");onChange(html);queueMicrotask(()=>{internalChange.current=false;saveSelection();});};
 
  const command=(name:string,arg?:string)=>{
    restoreSelection();
@@ -81,8 +81,8 @@ export function RichTextEditor({value,onChange,placeholder="Write here…",class
    onMouseDown={e=>{e.preventDefault();saveSelection();}} onClick={()=>command(name,arg)}
  >{icon}</Button>;
 
- const fontSize=(v:string)=>command("fontSize",v);
- const fontName=(v:string)=>command("fontName",v);
+ const fontSize=(v:string)=>{setFontSizeChoice(v);command("fontSize",v);};
+ const fontName=(v:string)=>{setFontNameChoice(v);command("fontName",v);};
  const color=(v:string)=>command("foreColor",v);
 
  return <div className={`overflow-hidden rounded-xl border bg-background shadow-sm ${className}`}>
@@ -97,10 +97,10 @@ export function RichTextEditor({value,onChange,placeholder="Write here…",class
    <label className="relative inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md hover:bg-muted" title="Word art colour">
     <Sparkles className="h-4 w-4"/><input aria-label="Word art colour" type="color" defaultValue="#D4AF37" className="absolute inset-0 h-full w-full cursor-pointer opacity-0" onMouseDown={()=>saveSelection()} onChange={e=>{restoreSelection();try{document.execCommand("styleWithCSS",false,"true");}catch{};try{document.execCommand("foreColor",false,e.target.value);document.execCommand("bold",false,"true");}catch{};const selection=window.getSelection();if(selection&&selection.rangeCount){const span=document.createElement("span");span.style.textShadow="1px 1px 0 rgba(0,0,0,.12)";try{selection.getRangeAt(0).surroundContents(span);}catch{};}emit();saveSelection();}}/>
    </label>
-   <select aria-label="Text size" defaultValue="" className="h-8 min-w-[92px] rounded-md border border-[#D4AF37]/50 bg-[#0A1931] px-2 text-xs font-semibold text-[#FFF8E1]" onMouseDown={()=>saveSelection()} onChange={e=>{if(e.target.value)fontSize(e.target.value);e.currentTarget.value="";}}>
+   <select aria-label="Text size" value={fontSizeChoice} className="h-8 min-w-[92px] rounded-md border border-[#D4AF37]/50 bg-[#0A1931] px-2 text-xs font-semibold text-[#FFF8E1]" onMouseDown={()=>saveSelection()} onChange={e=>{if(e.target.value)fontSize(e.target.value);}}>
     <option value="">T • Size</option><option value="2">Small</option><option value="3">Normal</option><option value="5">Large</option><option value="7">Huge</option>
    </select>
-   <select aria-label="Font style" defaultValue="" className="h-8 min-w-[92px] rounded-md border border-[#D4AF37]/50 bg-[#0A1931] px-2 text-xs font-semibold text-[#FFF8E1]" onMouseDown={()=>saveSelection()} onChange={e=>{if(e.target.value)fontName(e.target.value);e.currentTarget.value="";}}>
+   <select aria-label="Font style" value={fontNameChoice} className="h-8 min-w-[92px] rounded-md border border-[#D4AF37]/50 bg-[#0A1931] px-2 text-xs font-semibold text-[#FFF8E1]" onMouseDown={()=>saveSelection()} onChange={e=>{if(e.target.value)fontName(e.target.value);}}>
     <option value="">Font</option><option value="Arial">Sans</option><option value="Georgia">Serif</option><option value="monospace">Mono</option><option value="cursive">Handwriting</option><option value="Impact">Word Art</option>
    </select>
    {formatButton("insertUnorderedList",undefined,"Bullets",<List className="h-4 w-4"/>)} 
@@ -110,7 +110,7 @@ export function RichTextEditor({value,onChange,placeholder="Write here…",class
   </div>
   <div ref={ref} contentEditable suppressContentEditableWarning dir="ltr" spellCheck className="min-h-24 p-3 text-sm leading-6 outline-none empty:before:text-muted-foreground empty:before:content-[attr(data-placeholder)]" data-placeholder={placeholder}
     onInput={emit} onKeyUp={saveSelection} onMouseUp={saveSelection} onFocus={saveSelection}
-    style={{direction:"ltr",unicodeBidi:"normal",writingMode:"horizontal-tb",textAlign:"left",caretColor:"#FFC72C"}}
+    style={{direction:"ltr",unicodeBidi:"plaintext",writingMode:"horizontal-tb",textAlign:"left",caretColor:"#FFC72C"}}
   />
  </div>;
 }
