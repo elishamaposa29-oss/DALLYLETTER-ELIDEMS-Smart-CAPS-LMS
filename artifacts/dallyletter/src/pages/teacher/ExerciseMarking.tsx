@@ -83,7 +83,8 @@ function MediaMarkOverlay({ data, onChange }: { data: Record<string, unknown> | 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const last = useRef<{ x: number; y: number } | null>(null);
-  const [tool, setTool] = useState<"pen" | "tick">("pen");\n  const [active, setActive] = useState(false);
+  const [tool, setTool] = useState<"pen" | "tick">("pen");
+  const [active, setActive] = useState(false);
   const redraw = () => {
     const canvas = canvasRef.current; if (!canvas) return;
     const ctx = canvas.getContext("2d"); if (!ctx) return;
