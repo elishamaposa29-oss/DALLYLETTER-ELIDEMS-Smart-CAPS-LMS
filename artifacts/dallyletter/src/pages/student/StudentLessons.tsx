@@ -21,7 +21,13 @@ function StoredMedia({ url, type, title }: { url: string; type: string; title: s
 
 function sanitizeLessonHtml(input: string): string {
   if (!input) return "";
-  const doc = new DOMParser().parseFromString(input, "text/html");
+  // Older lesson records may contain HTML that was escaped before being saved.
+  // Decode one layer only, then sanitize the resulting document before rendering.
+  const decoder = document.createElement("textarea");
+  decoder.innerHTML = input;
+  const decoded = decoder.value;
+  const source = decoded.includes("<") && decoded.includes(">") ? decoded : input;
+  const doc = new DOMParser().parseFromString(source, "text/html");
   doc.querySelectorAll("script,iframe,object,embed,style,link").forEach(node => node.remove());
   doc.querySelectorAll("*").forEach(node => {
     [...node.attributes].forEach(attr => {
