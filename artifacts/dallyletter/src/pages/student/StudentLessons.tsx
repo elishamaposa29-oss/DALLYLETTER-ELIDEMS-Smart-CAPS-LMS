@@ -94,12 +94,12 @@ export default function StudentLessons() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <div className="space-y-4">
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Lessons</h1>
+            <h1 className="text-3xl font-black tracking-tight text-[#0A1931] dark:text-[#FFF8E1]">Lessons</h1>
             <p className="text-muted-foreground">Browse your course materials and study notes.</p>
           </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 px-3 py-1.5 rounded-full border">
@@ -191,7 +191,7 @@ export default function StudentLessons() {
                     {lesson.content && <div className="rounded-xl border bg-background/70 p-4"><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Lesson notes</p><div className="prose prose-sm max-w-none dark:prose-invert" dangerouslySetInnerHTML={{__html:sanitizeLessonHtml(lesson.content)}} /></div>}
                     <div className="rounded-lg bg-muted/20 p-3"><p className="text-sm text-muted-foreground line-clamp-4">{lesson.description || "No description provided."}</p></div>
 
-                    {(exerciseMap[lesson.id] ?? []).length > 0 && <div className="space-y-2 border-t pt-3"><div className="flex items-center gap-2 text-sm font-medium"><ClipboardList className="h-4 w-4 text-primary" />Exercises</div>{(exerciseMap[lesson.id] ?? []).map(ex => <Button key={ex.id} variant="outline" className="w-full justify-between gap-2" onClick={(e) => { e.stopPropagation(); window.location.assign(`/student/exercises/${ex.id}`); }}><span className="truncate text-left">{ex.title}</span><span className="flex shrink-0 items-center gap-1"><Badge variant="secondary">{ex.totalMarks} marks</Badge><Badge variant={ex.submissionStatus==="marked"?"default":"outline"}>{ex.submissionStatus==="marked" ? `Result: ${ex.submission?.totalScore ?? "0"}/${ex.totalMarks}` : ex.submissionStatus==="submitted" ? "Awaiting marking" : "Open"}</Badge></span></Button>)}</div>}
+                    {(exerciseMap[lesson.id] ?? []).length > 0 && <div className="space-y-2 border-t pt-3"><div className="flex items-center gap-2 text-sm font-medium"><ClipboardList className="h-4 w-4 text-primary" />Exercises</div>{(exerciseMap[lesson.id] ?? []).map(ex => <Button key={ex.id} variant="outline" className={`w-full justify-between gap-2 border transition-all hover:-translate-y-0.5 ${ex.submissionStatus==="marked" ? (localStorage.getItem(`dallyletter.exercise.viewed.${ex.id}`)==="1" ? "border-[#D4AF37]/60 bg-[#D4AF37]/10 text-[#6b4f00]" : "border-emerald-300 bg-emerald-50 text-emerald-800") : "border-purple-300 bg-purple-50 text-purple-800"}`} onClick={(e) => { e.stopPropagation(); localStorage.setItem(`dallyletter.exercise.viewed.${ex.id}`,"1"); window.location.assign(`/student/exercises/${ex.id}`); }}><span className="truncate text-left font-semibold">{ex.title}</span><span className="flex shrink-0 items-center gap-1"><Badge variant="secondary">{ex.totalMarks} marks</Badge><Badge className={ex.submissionStatus==="marked" ? (localStorage.getItem(`dallyletter.exercise.viewed.${ex.id}`)==="1" ? "bg-[#D4AF37] text-[#0A1931]" : "bg-emerald-600 text-white") : "bg-purple-600 text-white"}>{ex.submissionStatus==="marked" ? `Result: ${ex.submission?.totalScore ?? "0"}/${ex.totalMarks}` : ex.submissionStatus==="submitted" ? "Awaiting marking" : "Unmarked • Unviewed"}</Badge></span></Button>)}</div>}
                     <div className="flex items-center justify-between pt-3 border-t">
                       <span className="text-xs text-muted-foreground">
                         {new Date(lesson.createdAt).toLocaleDateString("en-ZA", { day: "numeric", month: "short", year: "numeric" })}
