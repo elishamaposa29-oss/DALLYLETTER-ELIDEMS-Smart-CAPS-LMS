@@ -19,7 +19,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { CreateLessonBodyType } from "@workspace/api-client-react";
 import { ExerciseBuilderPanel } from "@/components/exercises/ExerciseBuilderPanel";
-import { RichTextEditor } from "@/components/RichTextEditor";
+import { RichTextEditor, sanitizeRichText } from "@/components/RichTextEditor";
 
 const createLessonSchema = z.object({
   title: z.string().min(2, "Title is required"),
@@ -329,7 +329,7 @@ export default function TeacherLessons() {
                       <FormItem>
                         <FormLabel>Content / Notes (Optional)</FormLabel>
                         <FormControl>
-                          <Textarea placeholder="Full lesson content..." className="min-h-[150px]" {...field} />
+                          <RichTextEditor value={field.value || ""} onChange={field.onChange} placeholder="Full lesson content / study notes… Add headings, handwriting, colour, word art and formatting." className="min-h-[180px]" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -405,7 +405,7 @@ export default function TeacherLessons() {
                         {getTypeIcon(lesson.type)}
                       </div>
                     </div>
-                    <CardTitle className="text-lg mt-2 line-clamp-2">{lesson.title}</CardTitle>
+                    <CardTitle className="text-lg mt-2 line-clamp-2 text-[#0A1931] dark:text-[#FFF8E1]">{lesson.title}</CardTitle>
                   </CardHeader>
                   <CardContent className="mt-auto flex-1">
                     <p className="text-sm text-muted-foreground line-clamp-3 mb-4">
