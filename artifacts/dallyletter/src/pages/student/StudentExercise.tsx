@@ -78,7 +78,7 @@ function DrawBox({
   const paintStrokes = () => (value?.paintStrokes as Stroke[] | undefined) ?? [];
   const pointers = () => (value?.pointers as PointerMark[] | undefined) ?? [];
   const labels = () => (value?.labels as LabelMark[] | undefined) ?? [];
-  const teacherStrokes = () => (teacherDrawing?.strokes as Stroke[] | undefined) ?? [];
+  const teacherStrokes = () => (teacherDrawing?.strokes as Stroke[] | undefined) ?? [];\n  const teacherPaintStrokes = () => (teacherDrawing?.paintStrokes as Stroke[] | undefined) ?? [];\n  const teacherPointers = () => (teacherDrawing?.pointers as PointerMark[] | undefined) ?? [];\n  const teacherLabels = () => (teacherDrawing?.labels as LabelMark[] | undefined) ?? [];
 
   const redraw = () => {
     const canvas = canvasRef.current;
@@ -103,7 +103,7 @@ function DrawBox({
       ctx.restore();
     };
 
-    for (const stroke of teacherStrokes()) drawStroke(stroke, 0.72);
+    for (const stroke of teacherPaintStrokes()) drawStroke(stroke, 0.72);\n    for (const stroke of teacherStrokes()) drawStroke(stroke, 0.72);
     for (const stroke of paintStrokes()) drawStroke(stroke, 0.3);
     for (const stroke of strokes()) drawStroke(stroke, 1);
 
@@ -410,7 +410,7 @@ export default function StudentExercise() {
       const response = await fetch(getApiUrl(`/api/exercises/${data.exercise.id}/submit`), {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ newAttempt, answers: Object.entries(answers).map(([questionId, answer]) => ({ questionId: Number(questionId), ...answer })) }),
+        body: JSON.stringify({ newAttempt, answers: Object.entries(answers).map(([questionId, answer]) => { const question = data.questions.find((item) => item.id === Number(questionId)); const teacherDrawing = question?.config?.teacherDrawing as DrawValue | undefined; return { questionId: Number(questionId), ...answer, ...(answer.drawData ? { drawData: { ...(answer.drawData as DrawValue), teacherDrawing: teacherDrawing ?? null, learnerDrawing: answer.drawData } } : {}) }; }) }),
       });
       if (!response.ok) throw new Error((await response.json().catch(() => null))?.error || "Submission failed");
       setResult({ submission: { status: "submitted" }, answers: [] });
