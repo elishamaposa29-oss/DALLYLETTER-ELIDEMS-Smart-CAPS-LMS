@@ -12,7 +12,15 @@ export function sanitizeRichText(html:string){
     [...node.childNodes].forEach(child=>{
       if(child.nodeType===1){
         const el=child as HTMLElement;
-        if(el.tagName==="FONT"){\n          const span=document.createElement("span");\n          if(el.getAttribute("face")) span.style.fontFamily=el.getAttribute("face")!;\n          if(el.getAttribute("color")) span.style.color=el.getAttribute("color")!;\n          const size=el.getAttribute("size");\n          if(size) span.style.fontSize=({1:"0.75rem",2:"0.875rem",3:"1rem",4:"1.125rem",5:"1.35rem",6:"1.7rem",7:"2.2rem"} as Record<string,string>)[size] ?? "1rem";\n          span.innerHTML=el.innerHTML; el.replaceWith(span); return;\n        }\n        if(!allowedTags.has(el.tagName)){
+        if(el.tagName==="FONT"){
+          const span=document.createElement("span");
+          if(el.getAttribute("face")) span.style.fontFamily=el.getAttribute("face")!;
+          if(el.getAttribute("color")) span.style.color=el.getAttribute("color")!;
+          const size=el.getAttribute("size");
+          if(size) span.style.fontSize=({1:"0.75rem",2:"0.875rem",3:"1rem",4:"1.125rem",5:"1.35rem",6:"1.7rem",7:"2.2rem"} as Record<string,string>)[size] ?? "1rem";
+          span.innerHTML=el.innerHTML; el.replaceWith(span); return;
+        }
+        if(!allowedTags.has(el.tagName)){
           const text=document.createTextNode(el.textContent||"");
           el.replaceWith(text);
           return;
@@ -21,7 +29,8 @@ export function sanitizeRichText(html:string){
         if(el.hasAttribute("style")){
           const styles=[...el.style].filter(k=>safeStyleNames.includes(k))
             .map(k=>`${k}:${el.style.getPropertyValue(k)}`).join(";");
-          if(styles)el.setAttribute("style",styles);else el.removeAttribute("style");\n          el.style.direction="ltr"; el.style.unicodeBidi="normal";
+          if(styles)el.setAttribute("style",styles);else el.removeAttribute("style");
+          el.style.direction="ltr"; el.style.unicodeBidi="normal";
         }
       }
       walk(child);
