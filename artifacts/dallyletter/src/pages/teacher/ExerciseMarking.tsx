@@ -12,7 +12,13 @@ import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 
 function DrawAnswer({ data, markingData }: { data: unknown; markingData?: Record<string,unknown>|null }) {
   const source = data as { teacherDrawing?: any; learnerDrawing?: any; strokes?: { x:number;y:number;px:number;py:number;color?:string;width?:number;tool?:string;opacity?:number }[]; paintStrokes?: { x:number;y:number;px:number;py:number;color?:string;width?:number;opacity?:number }[]; labels?: { text:string;x:number;y:number;anchorX?:number;anchorY?:number;color?:string;opacity?:number }[]; pointers?: { x:number;y:number;length?:number;thickness?:number;opacity?:number;color?:string;angle?:number }[] };
-  const d = source.learnerDrawing ?? source;\n  const teacher = source.teacherDrawing as any;\n  const combinedPaint = [...(teacher?.paintStrokes ?? []), ...(d?.paintStrokes ?? [])];\n  const combinedStrokes = [...(teacher?.strokes ?? []), ...(d?.strokes ?? [])];\n  const combinedPointers = [...(teacher?.pointers ?? []), ...(d?.pointers ?? [])];\n  const combinedLabels = [...(teacher?.labels ?? []), ...(d?.labels ?? [])];\n  return <canvas width={1200} height={700} className="w-full max-h-[520px] rounded border bg-white" ref={canvas => {
+  const d = source.learnerDrawing ?? source;
+  const teacher = source.teacherDrawing as any;
+  const combinedPaint = [...(teacher?.paintStrokes ?? []), ...(d?.paintStrokes ?? [])];
+  const combinedStrokes = [...(teacher?.strokes ?? []), ...(d?.strokes ?? [])];
+  const combinedPointers = [...(teacher?.pointers ?? []), ...(d?.pointers ?? [])];
+  const combinedLabels = [...(teacher?.labels ?? []), ...(d?.labels ?? [])];
+  return <canvas width={1200} height={700} className="w-full max-h-[520px] rounded border bg-white" ref={canvas => {
     if (!canvas) return; const ctx=canvas.getContext("2d"); if (!ctx) return;
     ctx.clearRect(0,0,canvas.width,canvas.height);
     for (const s of combinedPaint) { ctx.save();ctx.lineCap="round";ctx.globalAlpha=Number(s.opacity??.28);ctx.lineWidth=Number(s.width??10);ctx.strokeStyle=s.color??"#f59e0b";ctx.beginPath();ctx.moveTo(s.px,s.py);ctx.lineTo(s.x,s.y);ctx.stroke();ctx.restore(); }
