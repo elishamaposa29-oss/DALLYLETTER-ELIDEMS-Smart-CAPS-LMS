@@ -97,10 +97,10 @@ export function RichTextEditor({value,onChange,placeholder="Write here…",class
    <label className="relative inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md hover:bg-muted" title="Word art colour">
     <Sparkles className="h-4 w-4"/><input aria-label="Word art colour" type="color" defaultValue="#D4AF37" className="absolute inset-0 h-full w-full cursor-pointer opacity-0" onMouseDown={()=>saveSelection()} onChange={e=>{restoreSelection();try{document.execCommand("styleWithCSS",false,"true");}catch{};try{document.execCommand("foreColor",false,e.target.value);document.execCommand("bold",false,"true");}catch{};const selection=window.getSelection();if(selection&&selection.rangeCount){const span=document.createElement("span");span.style.textShadow="1px 1px 0 rgba(0,0,0,.12)";try{selection.getRangeAt(0).surroundContents(span);}catch{};}emit();saveSelection();}}/>
    </label>
-   <select aria-label="Text size" defaultValue="" className="h-8 rounded-md border bg-background px-2 text-xs" onMouseDown={()=>saveSelection()} onChange={e=>{if(e.target.value)fontSize(e.target.value);e.currentTarget.value="";}}>
+   <select aria-label="Text size" defaultValue="" className="h-8 min-w-[92px] rounded-md border border-[#D4AF37]/50 bg-[#0A1931] px-2 text-xs font-semibold text-[#FFF8E1]" onMouseDown={()=>saveSelection()} onChange={e=>{if(e.target.value)fontSize(e.target.value);e.currentTarget.value="";}}>
     <option value="">T • Size</option><option value="2">Small</option><option value="3">Normal</option><option value="5">Large</option><option value="7">Huge</option>
    </select>
-   <select aria-label="Font style" defaultValue="" className="h-8 rounded-md border bg-background px-2 text-xs" onMouseDown={()=>saveSelection()} onChange={e=>{if(e.target.value)fontName(e.target.value);e.currentTarget.value="";}}>
+   <select aria-label="Font style" defaultValue="" className="h-8 min-w-[92px] rounded-md border border-[#D4AF37]/50 bg-[#0A1931] px-2 text-xs font-semibold text-[#FFF8E1]" onMouseDown={()=>saveSelection()} onChange={e=>{if(e.target.value)fontName(e.target.value);e.currentTarget.value="";}}>
     <option value="">Font</option><option value="Arial">Sans</option><option value="Georgia">Serif</option><option value="monospace">Mono</option><option value="cursive">Handwriting</option><option value="Impact">Word Art</option>
    </select>
    {formatButton("insertUnorderedList",undefined,"Bullets",<List className="h-4 w-4"/>)} 
