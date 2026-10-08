@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Sparkles, AlertTriangle, CheckCircle2, Clock3, RotateCcw } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Sparkles, AlertTriangle, CheckCircle2, Clock3, RotateCcw, XCircle } from "lucide-react";
 import { useRoute } from "wouter";
 import { getApiUrl } from "@workspace/api-client-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
@@ -8,29 +8,109 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 
-function DrawAnswer({ data }: { data: unknown }) {
-  const d = data as { strokes?: { x: number; y: number; px: number; py: number }[] };
+function DrawAnswer({ data, markingData }: { data: unknown; markingData?: Record<string,unknown>|null }) {
+  const source = data as { teacherDrawing?: any; learnerDrawing?: any; strokes?: { x:number;y:number;px:number;py:number;color?:string;width?:number;tool?:string;opacity?:number }[]; paintStrokes?: { x:number;y:number;px:number;py:number;color?:string;width?:number;opacity?:number }[]; labels?: { text:string;x:number;y:number;anchorX?:number;anchorY?:number;color?:string;opacity?:number }[]; pointers?: { x:number;y:number;length?:number;thickness?:number;opacity?:number;color?:string;angle?:number }[] };
+  const d = source.learnerDrawing ?? source;
+  const teacher = source.teacherDrawing as any;
+  const combinedPaint = [...(teacher?.paintStrokes ?? []), ...(d?.paintStrokes ?? [])];
+  const combinedStrokes = [...(teacher?.strokes ?? []), ...(d?.strokes ?? [])];
+  const combinedPointers = [...(teacher?.pointers ?? []), ...(d?.pointers ?? [])];
+  const combinedLabels = [...(teacher?.labels ?? []), ...(d?.labels ?? [])];
+  return <canvas width={1200} height={700} className="w-full max-h-[520px] rounded border bg-white" ref={canvas => {
+    if (!canvas) return; const ctx=canvas.getContext("2d"); if (!ctx) return;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    for (const s of combinedPaint) { ctx.save();ctx.lineCap="round";ctx.globalAlpha=Number(s.opacity??.28);ctx.lineWidth=Number(s.width??10);ctx.strokeStyle=s.color??"#f59e0b";ctx.beginPath();ctx.moveTo(s.px,s.py);ctx.lineTo(s.x,s.y);ctx.stroke();ctx.restore(); }
+    for (const s of combinedStrokes) { ctx.save();ctx.lineCap="round";ctx.lineWidth=Number(s.width??2);ctx.globalAlpha=Number(s.opacity??1);ctx.strokeStyle=s.color??"#111827";ctx.globalCompositeOperation=s.tool==="eraser"?"destination-out":"source-over";ctx.beginPath();ctx.moveTo(s.px,s.py);ctx.lineTo(s.x,s.y);ctx.stroke();ctx.restore(); }
+    for (const p of combinedPointers) { const x=Number(p.x),y=Number(p.y),len=Number(p.length??90),ang=Number(p.angle??0),ex=x+Math.cos(ang)*len,ey=y+Math.sin(ang)*len;ctx.save();ctx.globalAlpha=Number(p.opacity??.8);ctx.strokeStyle=p.color??"#111827";ctx.fillStyle=p.color??"#111827";ctx.lineWidth=Number(p.thickness??3);ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(ex,ey);ctx.stroke();const ah=Math.max(7,Number(p.thickness??3)*3);ctx.beginPath();ctx.moveTo(ex,ey);ctx.lineTo(ex-Math.cos(ang-.55)*ah,ey-Math.sin(ang-.55)*ah);ctx.lineTo(ex-Math.cos(ang+.55)*ah,ey-Math.sin(ang+.55)*ah);ctx.closePath();ctx.fill();ctx.restore(); }
+        ctx.font="16px sans-serif"; for (const label of combinedLabels) { ctx.save();ctx.globalAlpha=Number(label.opacity??1);ctx.fillStyle=label.color??"#111827";if(label.anchorX!=null&&label.anchorY!=null){ctx.beginPath();ctx.moveTo(label.anchorX,label.anchorY);ctx.lineTo(label.x-4,label.y-4);ctx.strokeStyle=label.color??"#111827";ctx.stroke();}ctx.fillText(label.text,label.x,label.y);ctx.restore(); }
+  }} />;
+}
+
+
+function FloatingTicks({ data, onChange }: { data: Record<string, unknown> | null | undefined; onChange: (data: Record<string, unknown>) => void }) {
+  const ticks = (data?.ticks ?? []) as Array<{ x: number; y: number; size?: number; color?: string; opacity?: number }>;
+
   return (
-    <canvas
-      width={900}
-      height={320}
-      className="w-full rounded border bg-white"
-      ref={(canvas) => {
-        if (!canvas) return;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.lineWidth = 2;
-        for (const s of d?.strokes ?? []) {
-          ctx.beginPath();
-          ctx.moveTo(s.px, s.py);
-          ctx.lineTo(s.x, s.y);
-          ctx.stroke();
-        }
-      }}
-    />
+    <>
+      {ticks.map((tick, index) => {
+        const left = Math.max(0, Math.min(96, (tick.x / 1200) * 100));
+        const top = Math.max(0, Math.min(94, (tick.y / 700) * 100));
+        return (
+          <div
+            key={index}
+            className="pointer-events-auto absolute z-20 touch-none cursor-grab select-none font-black"
+            style={{
+              left: left + "%",
+              top: top + "%",
+              fontSize: Math.max(18, Number(tick.size ?? 28)),
+              color: tick.color ?? "#16a34a",
+              opacity: Number(tick.opacity ?? 0.9),
+            }}
+            onPointerDown={(event) => {
+              const parent = event.currentTarget.parentElement?.getBoundingClientRect();
+              if (!parent) return;
+              const startX = event.clientX;
+              const startY = event.clientY;
+              const originX = tick.x;
+              const originY = tick.y;
+              const move = (moveEvent: PointerEvent) => {
+                onChange({
+                  ...data,
+                  ticks: ticks.map((item, itemIndex) =>
+                    itemIndex === index
+                      ? {
+                          ...item,
+                          x: Math.max(0, Math.min(1140, originX + ((moveEvent.clientX - startX) / parent.width) * 1200)),
+                          y: Math.max(0, Math.min(660, originY + ((moveEvent.clientY - startY) / parent.height) * 700)),
+                        }
+                      : item,
+                  ),
+                });
+              };
+              const up = () => {
+                window.removeEventListener("pointermove", move);
+                window.removeEventListener("pointerup", up);
+              };
+              window.addEventListener("pointermove", move);
+              window.addEventListener("pointerup", up);
+            }}
+          >
+            ✓
+          </div>
+        );
+      })}
+    </>
   );
+}
+
+function MediaMarkOverlay({ data, onChange }: { data: Record<string, unknown> | null | undefined; onChange: (data: Record<string, unknown>) => void }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawing = useRef(false);
+  const last = useRef<{ x: number; y: number } | null>(null);
+  const [tool, setTool] = useState<"pen" | "tick">("pen");
+  const [active, setActive] = useState(false);
+  const redraw = () => {
+    const canvas = canvasRef.current; if (!canvas) return;
+    const ctx = canvas.getContext("2d"); if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const strokes = (data?.mediaStrokes ?? []) as Array<Record<string, unknown>>;
+    for (const s of strokes) { ctx.save(); ctx.strokeStyle=String(s.color??"#16a34a"); ctx.lineWidth=Number(s.width??4); ctx.globalAlpha=Number(s.opacity??.95); ctx.lineCap="round"; ctx.beginPath(); ctx.moveTo(Number(s.px??s.x),Number(s.py??s.y)); ctx.lineTo(Number(s.x),Number(s.y)); ctx.stroke(); ctx.restore(); }
+    const ticks = (data?.ticks ?? []) as Array<Record<string, unknown>>;
+    for (const t of ticks) { ctx.save(); ctx.fillStyle=String(t.color??"#16a34a"); ctx.globalAlpha=Number(t.opacity??.95); ctx.font=`bold ${Math.max(22,Number(t.size??34))}px sans-serif`; ctx.fillText("✓",Number(t.x),Number(t.y)); ctx.restore(); }
+  };
+  useEffect(()=>redraw(),[data]);
+  const point=(e:React.PointerEvent<HTMLCanvasElement>)=>{const c=canvasRef.current;if(!c)return null;const r=c.getBoundingClientRect();return{x:(e.clientX-r.left)*(1200/r.width),y:(e.clientY-r.top)*(700/r.height)};};
+  const down=(e:React.PointerEvent<HTMLCanvasElement>)=>{const p=point(e);if(!p)return;drawing.current=true;last.current=p;e.currentTarget.setPointerCapture(e.pointerId);if(tool==="tick"){const ticks=(data?.ticks??[]) as Array<Record<string,unknown>>;onChange({...data,ticks:[...ticks,{x:p.x,y:p.y,size:34,color:"#16a34a",opacity:.95}]});drawing.current=false;}};
+  const move=(e:React.PointerEvent<HTMLCanvasElement>)=>{if(!drawing.current||tool!=="pen"||!last.current)return;const p=point(e);if(!p)return;const strokes=(data?.mediaStrokes??[]) as Array<Record<string,unknown>>;onChange({...data,mediaStrokes:[...strokes,{px:last.current.x,py:last.current.y,x:p.x,y:p.y,color:"#16a34a",width:4,opacity:.95}]});last.current=p;};
+  return <div className="absolute inset-0 z-20 pointer-events-none">
+    <div className="pointer-events-auto absolute left-2 top-2 flex gap-1 rounded-full border bg-[#0A1931]/95 p-1 shadow-lg">
+      <Button type="button" size="icon" variant={tool==="pen"?"default":"ghost"} className="h-8 w-8" aria-label="Draw on media" title="Draw on media" onClick={()=>{setTool("pen");setActive(true)}}>✎</Button>
+      <Button type="button" size="icon" variant={tool==="tick"?"default":"ghost"} className="h-8 w-8" aria-label="Place mark on media" title="Place mark on media" onClick={()=>{setTool("tick");setActive(true)}}>✓</Button><Button type="button" size="icon" variant="ghost" className="h-8 w-8" aria-label="Stop media marking" title="Stop media marking" onClick={()=>setActive(false)}>✕</Button>
+    </div>
+    <canvas ref={canvasRef} width={1200} height={700} className={active ? "pointer-events-auto absolute inset-0 h-full w-full touch-none" : "pointer-events-none absolute inset-0 h-full w-full"} onPointerDown={down} onPointerMove={move} onPointerUp={()=>{drawing.current=false;last.current=null}} onPointerCancel={()=>{drawing.current=false;last.current=null}} />
+  </div>;
 }
 
 function AuthenticatedAttachment({ url }: { url: string }) {
@@ -72,6 +152,7 @@ interface Answer {
   awardedMarks: string;
   correctionNotes: string | null;
   mediaReference: string | null;
+  markingData?: Record<string,unknown> | null;
 }
 
 interface Question {
@@ -81,6 +162,7 @@ interface Question {
   marksAllocated: string;
   position: number;
 }
+interface PollOption { id:number; questionId:number; label:string; value:string; isCorrect?:boolean; }
 
 interface Exercise {
   id: number;
@@ -94,6 +176,48 @@ const statusMeta: Record<string, { label: string; className: string; icon: typeo
   ai_marked_pending_return: { label: "Awaiting teacher", className: "bg-blue-500/10 text-blue-700 border-blue-500/20", icon: Sparkles },
   marked: { label: "Returned", className: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20", icon: CheckCircle2 },
 };
+
+function FloatingMark({ value, max, onChange }: { value: string; max?: string; onChange: (value: string) => void }) {
+  const [pos, setPos] = useState({ x: 12, y: 12 });
+  const dragging = useRef(false);
+  const startPoint = useRef({ x: 0, y: 0, px: 12, py: 12 });
+
+  return (
+    <div
+      className="absolute z-10 touch-none"
+      style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
+      onPointerDown={(event) => {
+        dragging.current = true;
+        startPoint.current = { x: event.clientX, y: event.clientY, px: pos.x, py: pos.y };
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerMove={(event) => {
+        if (!dragging.current) return;
+        const parent = event.currentTarget.parentElement?.getBoundingClientRect();
+        if (!parent) return;
+        setPos({
+          x: Math.max(0, Math.min(90, startPoint.current.px + ((event.clientX - startPoint.current.x) / parent.width) * 100)),
+          y: Math.max(0, Math.min(90, startPoint.current.py + ((event.clientY - startPoint.current.y) / parent.height) * 100)),
+        });
+      }}
+      onPointerUp={() => { dragging.current = false; }}
+    >
+      <div className="flex items-center gap-1 rounded-full border-2 border-amber-400 bg-amber-50/95 p-1 shadow-lg backdrop-blur">
+        <span className="cursor-grab px-1 text-[10px] text-amber-700">⋮⋮</span>
+        <Input
+          type="number"
+          min="0"
+          max={undefined}
+          step="0.01"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="h-8 w-20 border-0 bg-transparent text-center font-bold focus-visible:ring-0"
+          aria-label="Floating mark"
+        />
+      </div>
+    </div>
+  );
+}
 
 function SubmissionStatus({ status }: { status: string }) {
   const meta = statusMeta[status] ?? { label: status, className: "bg-muted text-muted-foreground", icon: Clock3 };
@@ -111,16 +235,20 @@ export default function ExerciseMarking() {
   const id = params?.id;
   const [exercise, setExercise] = useState<Exercise | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [pollOptions, setPollOptions] = useState<PollOption[]>([]);
   const [subs, setSubs] = useState<Submission[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
   const [answers, setAnswers] = useState<Answer[]>([]);
   const [marks, setMarks] = useState<Record<number, string>>({});
   const [notes, setNotes] = useState<Record<number, string>>({});
+  const [markingData, setMarkingData] = useState<Record<number, Record<string,unknown>>>({});
+  const [overallComment, setOverallComment] = useState("");
   const [message, setMessage] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const [aiMessage, setAiMessage] = useState("");
   const [aiState, setAiState] = useState<"idle"|"checking"|"partially_marked"|"awaiting_teacher"|"returned">("idle");
   const [loading, setLoading] = useState(false);
+  const [tickMode, setTickMode] = useState<number | null>(null);
 
   const token = localStorage.getItem("dallyletter_token");
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
@@ -142,6 +270,7 @@ export default function ExerciseMarking() {
         if (cancelled) return;
         if (exerciseData?.exercise) setExercise(exerciseData.exercise);
         setQuestions(Array.isArray(exerciseData?.questions) ? exerciseData.questions : []);
+        setPollOptions(Array.isArray(exerciseData?.options) ? exerciseData.options : []);
         setSubs(Array.isArray(submissionData) ? submissionData : []);
       })
       .catch(() => setMessage("Could not load the exercise and submissions."))
@@ -166,6 +295,8 @@ export default function ExerciseMarking() {
       setAnswers(loadedAnswers);
       setMarks(Object.fromEntries(loadedAnswers.map((a) => [a.id, a.awardedMarks])));
       setNotes(Object.fromEntries(loadedAnswers.map((a) => [a.id, a.correctionNotes ?? ""])));
+      setMarkingData(Object.fromEntries(loadedAnswers.map((a) => [a.id, a.markingData ?? { ticks: [] }])))
+      setOverallComment(d.submission?.overallComment ?? "");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not load submission.");
     }
@@ -214,7 +345,9 @@ export default function ExerciseMarking() {
           answerId: a.id,
           awardedMarks: Number(marks[a.id] ?? 0),
           correctionNotes: notes[a.id] ?? "",
+          markingData: markingData[a.id] ?? { ticks: [] },
         })),
+        overallComment,
       }),
     });
     const d = await r.json();
@@ -226,8 +359,12 @@ export default function ExerciseMarking() {
     setSubs((current) => current.map((x) => (x.id === selected ? d.submission : x)));
   };
 
-  const selectedQuestion = (answer: Answer) =>
-    questions.find((q) => q.id === answer.questionId);
+  const selectedQuestion = (answer: Answer) => questions.find((q) => q.id === answer.questionId);
+  const optionsFor = (questionId:number) => pollOptions.filter(option => option.questionId === questionId);
+  const mediaTypeFor = (url:string): "audio"|"video"|"image"|"document" => { const type=new URL(url,window.location.origin).searchParams.get("type") ?? ""; if(type.startsWith("image/"))return "image"; if(type.startsWith("video/"))return "video"; if(type.startsWith("audio/"))return "audio"; return "document"; };
+  const liveEarned = answers.reduce((sum,a)=>sum+Math.max(0,Math.min(Number(selectedQuestion(a)?.marksAllocated??0),Number(marks[a.id]??0)||0)),0);
+  const liveTotal = Number(exercise?.totalMarks??0);
+  const livePercentage = liveTotal>0 ? (liveEarned/liveTotal)*100 : 0;
 
   return (
     <DashboardLayout>
@@ -282,12 +419,12 @@ export default function ExerciseMarking() {
                 <SubmissionStatus status={selectedSubmission.status} />
               </div>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4"><div className="sticky top-2 z-10 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-background/95 p-3 shadow-sm backdrop-blur"><div><p className="text-xs uppercase tracking-wide text-muted-foreground">Current marking</p><p className="text-lg font-bold">{liveEarned.toFixed(2)} / {liveTotal.toFixed(2)} marks</p></div><Badge variant="secondary">{livePercentage.toFixed(2)}%</Badge></div>
               <div className="rounded-lg border bg-muted/40 p-3 text-sm"><strong>Answer coverage:</strong> {answers.length} / {questions.length} questions answered. Unanswered questions receive 0 marks unless the teacher enters a different valid mark. {answers.length < questions.length ? "This was an incomplete submission." : "All questions have an answer."}</div>
               {answers.map((a, i) => {
                 const q = selectedQuestion(a);
                 return (
-                  <div key={a.id} className="space-y-3 rounded-xl border p-4">
+                  <div key={a.id} className="relative space-y-3 rounded-xl border p-4"><FloatingMark value={marks[a.id] ?? "0"} max={undefined} onChange={value=>setMarks(m=>({...m,[a.id]:value}))}/>
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
                         <div className="font-medium">Question {q?.position != null ? q.position + 1 : i + 1}</div>
@@ -297,23 +434,23 @@ export default function ExerciseMarking() {
                     </div>
 
                     <div className="rounded-lg bg-muted p-3 text-sm">
-                      <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Learner answer</div>
-                      {a.textAnswer || a.selectedValue || (a.drawData ? <DrawAnswer data={a.drawData} /> : null) || (a.mediaReference ? <AuthenticatedAttachment url={a.mediaReference} /> : "No answer")} {a.mediaReference && (a.textAnswer || a.selectedValue || a.drawData ? <AuthenticatedAttachment url={a.mediaReference} /> : null)}
+                      <div className="mb-2 flex items-center justify-between gap-2"><div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Learner answer</div>{(Boolean(a.drawData)||Boolean(a.mediaReference)) && <Button type="button" size="sm" variant={tickMode===a.id?"default":"outline"} onClick={()=>setTickMode(v=>v===a.id?null:a.id)} aria-label={`Toggle tick marking for question ${i+1}`}>✓ {tickMode===a.id?"Tick mode on":"Add ticks"}</Button>}</div>
+                      {a.drawData ? <div className="relative overflow-hidden rounded-lg border bg-white" onClick={(event)=>{if(tickMode!==a.id)return;const rect=event.currentTarget.getBoundingClientRect();const current=(markingData[a.id]?.ticks??[]) as Array<Record<string,unknown>>;const next={...markingData[a.id],ticks:[...current,{x:Math.max(0,Math.min(1190,((event.clientX-rect.left)/rect.width)*1200)),y:Math.max(0,Math.min(690,((event.clientY-rect.top)/rect.height)*700)),size:30,color:"#16a34a",opacity:.95}]};setMarkingData(m=>({...m,[a.id]:next}));}}><DrawAnswer data={a.drawData} /><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div> : a.mediaReference ? <div className="relative overflow-hidden rounded-lg border bg-background"><AuthenticatedMedia url={a.mediaReference} type={mediaTypeFor(a.mediaReference)} title={`Question ${i+1} learner media`} /><MediaMarkOverlay data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/><div className="pointer-events-none absolute inset-0"><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div></div> : q?.type==="poll" && a.selectedValue ? <div className={`rounded-lg border p-3 font-semibold ${optionsFor(q.id).find(o=>o.value===a.selectedValue)?.isCorrect ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-red-300 bg-red-50 text-red-800"}`}>Selected: {optionsFor(q.id).find(o=>o.value===a.selectedValue)?.label ?? a.selectedValue} {optionsFor(q.id).find(o=>o.value===a.selectedValue)?.isCorrect ? "✓ Correct" : "✕ Wrong"}</div> : (a.textAnswer || "No answer")}
                     </div>
 
-                    <div className="grid gap-3 sm:grid-cols-[auto_1fr]">
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
                       <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1"><Button type="button" size="sm" variant="outline" onClick={()=>setMarks((m)=>({...m,[a.id]:q?.marksAllocated??"0"}))} aria-label={`Mark question ${i+1} correct`}>✓</Button><Button type="button" size="sm" variant="outline" onClick={()=>setMarks((m)=>({...m,[a.id]:"0"}))} aria-label={`Unmark question ${i+1}`}>×</Button><Input
+                        <div className="flex items-center gap-1"><Button type="button" size="sm" variant="outline" className="text-emerald-600 border-emerald-300 hover:bg-emerald-50" onClick={()=>setMarks((m)=>({...m,[a.id]:q?.marksAllocated??"0"}))} aria-label={`Mark question ${i+1} correct`}><CheckCircle2 className="h-4 w-4" /></Button><Button type="button" size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50" onClick={()=>setMarks((m)=>({...m,[a.id]:"0"}))} aria-label={`Mark question ${i+1} incorrect`}><XCircle className="h-4 w-4" /></Button><Input
                           type="number"
                           min="0"
-                          max={q?.marksAllocated ?? undefined}
-                          step="0.5"
+                          max={undefined}
+                          step="0.01"
                           value={marks[a.id] ?? "0"}
-                          onChange={(e) => setMarks((m) => ({ ...m, [a.id]: e.target.value }))}
+                          onChange={(e) => { const raw=Number(e.target.value); setMarks((m) => ({ ...m, [a.id]: Number.isFinite(raw)?String(Math.max(0,raw)):"0" })); }}
                           className="w-28"
                           aria-label={`Awarded marks for question ${i + 1}`}
                         /></div>
-                        <span className="text-sm text-muted-foreground">/ {q?.marksAllocated ?? "—"} • 0.5 steps</span>
+                        <span className="text-sm text-muted-foreground">/ {q?.marksAllocated ?? "—"} • any numeric mark; server validates the allocation</span>
                       </div>
                       <Textarea
                         value={notes[a.id] ?? ""}
@@ -324,6 +461,14 @@ export default function ExerciseMarking() {
                   </div>
                 );
               })}
+
+              <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-5 shadow-sm">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div><p className="text-xs font-semibold uppercase tracking-widest text-amber-700">Final result</p><p className="mt-1 text-3xl font-black text-slate-900">{answers.reduce((sum,a)=>sum+Number(marks[a.id]??0),0).toFixed(2)} <span className="text-base font-semibold text-slate-500">/ {exercise?.totalMarks ?? "—"}</span></p></div>
+                  <Badge className="bg-amber-500 text-slate-950">{exercise?.totalMarks ? ((answers.reduce((sum,a)=>sum+Number(marks[a.id]??0),0)/Number(exercise.totalMarks))*100).toFixed(1)+"%" : "—"}</Badge>
+                </div>
+                <Textarea className="mt-4 bg-white" value={overallComment} onChange={e=>setOverallComment(e.target.value)} placeholder="Final teacher comment for the whole exercise — celebrate strengths, explain the main improvement point, and encourage the learner." />
+              </div>
 
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">

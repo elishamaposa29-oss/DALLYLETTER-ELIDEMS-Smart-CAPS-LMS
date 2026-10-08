@@ -1,3 +1,4 @@
+import { SystemNotificationBridge } from "@/components/SystemNotificationBridge";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -6,7 +7,7 @@ import {
   BookOpen, Users, Video, MessageSquare, CreditCard, Bell, LogOut, Home,
   Shield, Menu, GraduationCap, Settings, Sparkles, ClipboardList, Star,
   ScrollText, Trophy, AlertTriangle, DollarSign, BarChart3, Briefcase,
-  Flame, Send,
+  Flame, Send, Mail,
 } from "lucide-react";
 import { useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -48,6 +49,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   if (user.role === "student") {
     navItems = [
       { label: "Dashboard", href: "/", icon: Home, section: "Main" },
+      { label: "Feature Center", href: "/features", icon: Sparkles },
       { label: "Lessons", href: "/student/lessons", icon: BookOpen },
       { label: "Live Classes", href: "/student/classes", icon: Video },
       { label: "Assignments", href: "/student/assignments", icon: ClipboardList },
@@ -68,6 +70,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   } else if (user.role === "teacher") {
     navItems = [
       { label: "Dashboard", href: "/teacher", icon: Home, section: "Main" },
+      { label: "Feature Center", href: "/features", icon: Sparkles },
       { label: "My Lessons", href: "/teacher/lessons", icon: BookOpen },
       { label: "My Classes", href: "/teacher/classes", icon: Video },
       { label: "Assignments", href: "/teacher/assignments", icon: ClipboardList },
@@ -81,12 +84,14 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         { label: "Monitor Students", href: "/manager/students", icon: Users },
         { label: "Assignments", href: "/manager/assignments", icon: ClipboardList },
         { label: "Connect", href: "/manager/chat", icon: MessageSquare },
+        { label: "Notifications & Email", href: "/manager/notifications", icon: Bell },
         { label: "Reports", href: "/manager/reports", icon: ScrollText },
       ] : []),
     ];
   } else if (user.role === "owner") {
     navItems = [
       { label: "Overview", href: "/admin", icon: Home, section: "Platform" },
+      { label: "Feature Center", href: "/features", icon: Sparkles },
       { label: "Users", href: "/admin/users", icon: Users },
       { label: "All Lessons", href: "/admin/lessons", icon: BookOpen },
       { label: "All Classes", href: "/admin/classes", icon: Video },
@@ -94,6 +99,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Study Groups", href: "/student/study-groups", icon: Users },
       { label: "Chat", href: "/admin/chat", icon: MessageSquare },
       { label: "Notifications", href: "/admin/notifications", icon: Bell },
+      { label: "Email & Notifications", href: "/admin/notifications", icon: Mail },
       { label: "Financial Dashboard", href: "/admin/financial", icon: DollarSign, section: "Finance" },
       { label: "Payments (Fees)", href: "/admin/payments", icon: CreditCard },
       { label: "Staff Payments", href: "/admin/staff-payments", icon: Briefcase },
@@ -132,7 +138,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             <div key={item.href}>
               {sectionEl}
               <Link href={item.href} onClick={onNav}>
-                <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 group ${isActive ? "bg-white/15 text-white shadow-sm" : "text-white/60 hover:text-white hover:bg-white/10"}`}>
+                <div className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 group hover:translate-x-0.5 ${isActive ? "bg-gradient-to-r from-white/16 to-[#D4AF37]/10 text-white shadow-[0_8px_30px_rgba(0,0,0,.18)] border border-white/10" : "text-white/60 hover:text-white hover:bg-white/8"}`}>
                   <Icon className={`h-4 w-4 shrink-0 ${isActive ? "text-white" : item.accent ? item.accent + " opacity-80" : "text-white/50 group-hover:text-white/80"}`} />
                   <span className="truncate">{item.label}</span>
                   {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white/80 shrink-0" />}
@@ -209,7 +215,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="min-h-screen bg-background flex flex-col md:flex-row">
+    <div className="min-h-screen bg-[#071426] text-foreground flex flex-col md:flex-row selection:bg-[#D4AF37]/30">
+      <SystemNotificationBridge />
       <header className="md:hidden flex items-center justify-between px-4 py-3 border-b bg-[#0a1628] sticky top-0 z-30">
         <div className="flex items-center gap-2">
           <div className="bg-gradient-to-br from-amber-400 to-amber-600 p-1.5 rounded-lg">
@@ -234,8 +241,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       <main className="flex-1 min-h-0 overflow-hidden">
-        <div className="h-full overflow-y-auto bg-slate-50 dark:bg-background">
-          <div className="max-w-6xl mx-auto p-4 md:p-8">
+        <div className="h-full overflow-y-auto bg-[radial-gradient(circle_at_15%_0%,rgba(30,82,150,.28),transparent_32%),radial-gradient(circle_at_85%_10%,rgba(212,175,55,.10),transparent_28%),linear-gradient(135deg,#08172b,#0b1f35_48%,#071426)]">
+          <div className="mx-auto w-full max-w-7xl p-3 md:p-5 lg:p-6 animate-in fade-in-50 duration-500">
             {children}
           </div>
         </div>

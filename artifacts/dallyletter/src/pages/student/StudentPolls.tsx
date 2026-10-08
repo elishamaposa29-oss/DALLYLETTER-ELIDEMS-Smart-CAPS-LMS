@@ -7,11 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 import { Loader2, ClipboardList, Play, CheckCircle, XCircle, Trophy, Clock, ChevronRight, ChevronLeft, BarChart3 } from "lucide-react";
 
 interface Poll { id: number; title: string; grade: string | null; subject: string | null; mode: string; status: string; timerSeconds: number | null; type: string; }
 interface PollOption { id: number; text: string; isCorrect?: boolean; }
-interface PollQuestion { id: number; question: string; difficulty: string; explanation: string | null; options: PollOption[]; }
+interface PollQuestion { id: number; question: string; difficulty: string; explanation: string | null; imageUrl?: string | null; options: PollOption[]; }
 interface PollDetail extends Poll { questions: PollQuestion[]; }
 interface SubmitResult { score: number; totalQuestions: number; percentage: number; feedback: { questionId: number; question: string; explanation: string | null; correctText: string | null; submittedOptionId: number | null; isCorrect: boolean; }[]; }
 interface LeaderEntry { studentName: string; score: number; totalQuestions: number; }
@@ -138,6 +139,7 @@ export default function StudentPolls() {
                 <Badge variant="outline" className="capitalize text-xs">{currentQuestion.difficulty}</Badge>
                 <span className="text-xs text-muted-foreground">{activePoll.grade} {activePoll.subject}</span>
               </div>
+              {currentQuestion.imageUrl && (currentQuestion.imageUrl.startsWith("/api/") ? <AuthenticatedMedia url={currentQuestion.imageUrl} type="image" title={currentQuestion.question} /> : <img src={currentQuestion.imageUrl} alt={currentQuestion.question} className="max-h-64 w-full rounded-lg object-contain bg-muted/20" />)}
               <p className="text-lg font-semibold leading-relaxed">{currentQuestion.question}</p>
               <div className="space-y-2.5">
                 {currentQuestion.options.map(opt => (
@@ -205,7 +207,7 @@ export default function StudentPolls() {
             ))}
           </div>
           <div className="flex gap-3">
-            <Button variant="outline" onClick={() => setScreen("list")} className="flex-1">Back to Polls</Button>
+            <Button variant="outline" onClick={() => setScreen("list")} className="flex-1">Back to Polls</Button>{activePoll && <Button onClick={() => void startPoll(activePoll.id)} className="flex-1">Try Again</Button>}
             {activePoll && <Button onClick={() => loadLeaderboard(activePoll.id)} className="flex-1 gap-2"><Trophy className="h-4 w-4" />Leaderboard</Button>}
           </div>
         </div>

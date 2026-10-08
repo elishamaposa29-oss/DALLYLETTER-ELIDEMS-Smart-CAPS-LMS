@@ -8,6 +8,46 @@ export async function ensureConnectSchema(): Promise<void> {
   try {
     await client.query("BEGIN");
 
+    await client.query(`ALTER TABLE exercise_submissions ADD COLUMN IF NOT EXISTS overall_comment text`);
+    await client.query(`ALTER TABLE exercise_answers ADD COLUMN IF NOT EXISTS marking_data jsonb`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS teacher_application_status text NOT NULL DEFAULT 'not_applicable'`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS manager_level text NOT NULL DEFAULT 'junior'`);
+    await client.query(`CREATE TABLE IF NOT EXISTS content_permission_requests (id serial PRIMARY KEY, requester_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE, owner_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE, content_type text NOT NULL, content_id integer NOT NULL, requested_action text NOT NULL, status text NOT NULL DEFAULT 'pending', created_at timestamptz NOT NULL DEFAULT now(), responded_at timestamptz)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS content_permission_requests_owner_idx ON content_permission_requests(owner_id, status)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS content_permission_requests_requester_idx ON content_permission_requests(requester_id, status)`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS teacher_review_deadline timestamptz`);
+
+    await client.query(`CREATE TABLE IF NOT EXISTS teacher_documents (
+      id serial PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      document_type text NOT NULL,
+      file_name text NOT NULL,
+      mime_type text NOT NULL,
+      size_bytes integer NOT NULL,
+      data bytea NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query(`CREATE INDEX IF NOT EXISTS teacher_documents_user_idx ON teacher_documents(user_id)`);
+    await client.query(`CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id serial PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      endpoint text NOT NULL UNIQUE,
+      p256dh text NOT NULL,
+      auth text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query(`CREATE INDEX IF NOT EXISTS push_subscriptions_user_idx ON push_subscriptions(user_id)`);
+    await client.query(`CREATE TABLE IF NOT EXISTS message_media (
+      storage_key text PRIMARY KEY,
+      message_id integer,
+      mime_type text NOT NULL,
+      size_bytes integer NOT NULL,
+      data bytea NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query(`CREATE INDEX IF NOT EXISTS message_media_message_id_idx ON message_media(message_id)`);
+
     // The CI database and some fresh deployments may contain the core users table
     // without the optional notifications table. Create the canonical table first,
     // then safely extend it. This is idempotent and matches lib/db schema.
@@ -22,6 +62,10 @@ export async function ensureConnectSchema(): Promise<void> {
       created_at timestamptz NOT NULL DEFAULT now()
     )`);
     await client.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS link text`);
+    await client.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS push_sent_at timestamptz`);
+    await client.query(`CREATE INDEX IF NOT EXISTS notifications_push_pending_idx ON notifications(id) WHERE push_sent_at IS NULL`);
+    await client.query(`ALTER TABLE group_member_controls ADD COLUMN IF NOT EXISTS can_manage_settings boolean NOT NULL DEFAULT false`);
+    await client.query(`ALTER TABLE poll_questions ADD COLUMN IF NOT EXISTS image_url text`);
 
     await client.query(`CREATE TABLE IF NOT EXISTS lesson_requests (
       id serial PRIMARY KEY,

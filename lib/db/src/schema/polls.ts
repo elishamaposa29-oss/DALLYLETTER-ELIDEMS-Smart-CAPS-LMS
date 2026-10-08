@@ -21,6 +21,7 @@ export const pollQuestionsTable = pgTable("poll_questions", {
   question: text("question").notNull(),
   difficulty: text("difficulty").default("medium"),
   explanation: text("explanation"),
+  imageUrl: text("image_url"),
   orderIndex: integer("order_index").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

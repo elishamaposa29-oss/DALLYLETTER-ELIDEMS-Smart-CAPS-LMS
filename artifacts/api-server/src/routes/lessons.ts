@@ -1,6 +1,6 @@
 // Lessons routes — CRUD for educational content
 import { Router, type IRouter } from "express";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { createReadStream } from "node:fs";
 import multer from "multer";
 import { db, lessonsTable, activityLogTable, followsTable, notificationPreferencesTable, notificationsTable } from "@workspace/db";
@@ -20,9 +20,51 @@ import {
   getMediaStats,
   isAllowedMediaType,
   MAX_MEDIA_SIZE_BYTES,
+  persistUploadedMedia,
+  streamStoredMedia,
+  removeStoredMedia,
 } from "../lib/media-storage";
+import { hasContentPermission } from "../lib/content-permissions";
 
 const router: IRouter = Router();
+
+async function notifyTeacherFollowers(teacherId: number, lessonId: number, title: string) {
+  try {
+  const followers = await db.select({ followerId: followsTable.followerId, notificationsEnabled: followsTable.notificationsEnabled })
+    .from(followsTable)
+    .where(and(eq(followsTable.targetType, "teacher"), eq(followsTable.targetUserId, teacherId)));
+  const opted = followers.filter(f => f.notificationsEnabled !== false).map(f => f.followerId);
+  if (!opted.length) return 0;
+  let recipientIds = opted;
+  try {
+    const preferences = await db.select({ userId: notificationPreferencesTable.userId, enabled: notificationPreferencesTable.followNotificationsEnabled })
+      .from(notificationPreferencesTable)
+      .where(inArray(notificationPreferencesTable.userId, opted));
+    const prefMap = new Map(preferences.map(p => [p.userId, p.enabled]));
+    recipientIds = opted.filter(id => prefMap.get(id) !== false);
+  } catch {
+    // Older production databases may not have optional preference data yet.
+  }
+  if (!recipientIds.length) return 0;
+  let sent = 0;
+  for (const recipientId of recipientIds) {
+    try {
+      await db.insert(notificationsTable).values({
+        recipientId,
+        title: "New activity from a teacher you follow",
+        message: title,
+        type: "follow_activity",
+        isRead: false,
+        link: `/student/lessons?lesson=${lessonId}`,
+      });
+      sent += 1;
+    } catch {
+      // One bad recipient must not block all other followers.
+    }
+  }
+  return sent;
+  } catch { return 0; }
+}
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -65,16 +107,21 @@ router.post("/lessons/media", requireAuth, requireTeacherOrOwner, (req, res, nex
       return;
     }
 
-    if (!req.file) {
+    const file = req.file;
+    if (!file) {
       res.status(400).json({ error: "A supported media file is required" });
       return;
     }
 
-    res.status(201).json({
-      mediaUrl: `/api/lessons/media/${req.file.filename}?type=${encodeURIComponent(req.file.mimetype)}`,
-      storageKey: req.file.filename,
-      mimeType: req.file.mimetype,
-      size: req.file.size,
+    persistUploadedMedia(file.filename, file.mimetype, file.path).then(() => {
+      res.status(201).json({
+        mediaUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`,
+        storageKey: file.filename,
+        mimeType: file.mimetype,
+        size: file.size,
+      });
+    }).catch(() => {
+      res.status(503).json({ error: "Persistent media storage is temporarily unavailable. Please retry the upload." });
     });
   });
 });
@@ -87,6 +134,16 @@ router.get("/lessons/media/:storageKey", requireAuth, async (req, res): Promise<
   }
 
   try {
+    const remote = await streamStoredMedia(storageKey, req.headers.range);
+    if (remote) {
+      res.status(remote.status);
+      remote.headers.forEach((value, key) => res.setHeader(key, value));
+      if (remote.body) {
+        for await (const chunk of remote.body as any) res.write(chunk);
+      }
+      res.end();
+      return;
+    }
     const mediaStats = await getMediaStats(storageKey);
     const mediaType = typeof req.query.type === "string" && isAllowedMediaType(req.query.type)
       ? req.query.type
@@ -155,30 +212,20 @@ router.post("/lessons", requireAuth, async (req, res): Promise<void> => {
     actorName: currentUser.name,
   });
 
-  const followers = await db.select({ followerId: followsTable.followerId, notificationsEnabled: followsTable.notificationsEnabled })
-    .from(followsTable)
-    .where(and(eq(followsTable.targetType, "teacher"), eq(followsTable.targetUserId, currentUser.id)));
-  const optedInFollowers = followers.filter(follower => follower.notificationsEnabled);
-  if (optedInFollowers.length > 0) {
-    const preferences = await db.select({ userId: notificationPreferencesTable.userId, enabled: notificationPreferencesTable.followNotificationsEnabled })
-      .from(notificationPreferencesTable)
-      .where(and(
-        eq(notificationPreferencesTable.followNotificationsEnabled, true),
-      ));
-    const enabledUsers = new Set(preferences.map(preference => preference.userId));
-    const notifications = optedInFollowers
-      .filter(follower => enabledUsers.has(follower.followerId))
-      .map(follower => ({
-        recipientId: follower.followerId,
-        title: "New lesson from a teacher you follow",
-        message: `${currentUser.name} published "${lesson.title}".`,
-        type: "follow_lesson",
-        isRead: false,
-      }));
-    if (notifications.length > 0) await db.insert(notificationsTable).values(notifications);
-  }
+  await notifyTeacherFollowers(currentUser.id, lesson.id, `${currentUser.name} published "${lesson.title}".`);
 
   res.status(201).json({ ...lesson, createdAt: lesson.createdAt.toISOString() });
+});
+
+router.post("/lessons/:id/notify-followers", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+  const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, id));
+  if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
+  if (lesson.teacherId !== user.id && user.role !== "owner" && !(user.isManager && user.managerLevel === "senior") && !(await hasContentPermission(user.id,"lesson",id,"notify"))) { res.status(403).json({ error: "Notify permission has not been granted by the lesson creator" }); return; }
+  const count = await notifyTeacherFollowers(lesson.teacherId, lesson.id, `${lesson.teacherName} posted "${lesson.title}".`);
+  res.json({ ok: true, recipientCount: count, message: count ? "Followers notified successfully." : "No followers are currently opted in to notifications." });
 });
 
 // GET /lessons/:id — Get lesson by ID
@@ -212,15 +259,15 @@ router.patch("/lessons/:id", requireAuth, requireTeacherOrOwner, async (req, res
     return;
   }
 
-  const [existingLesson] = await db.select({ teacherId: lessonsTable.teacherId }).from(lessonsTable).where(eq(lessonsTable.id, params.data.id));
+  const [existingLesson] = await db.select({ teacherId: lessonsTable.teacherId, mediaUrl: lessonsTable.mediaUrl }).from(lessonsTable).where(eq(lessonsTable.id, params.data.id));
   if (!existingLesson) {
     res.status(404).json({ error: "Lesson not found" });
     return;
   }
   const actor = req.currentUser!;
-  if (actor.role === "teacher" && !actor.isManager && existingLesson.teacherId !== actor.id) {
-    res.status(403).json({ error: "Teachers can only modify lessons they created" });
-    return;
+  if (actor.role === "teacher" && (actor.isManager !== true || actor.managerLevel !== "senior") && existingLesson.teacherId !== actor.id) {
+    const allowed = await hasContentPermission(actor.id,"lesson",params.data.id,"edit");
+    if(!allowed){ res.status(403).json({ error: "Preview only. Request edit permission from the lesson creator." }); return; }
   }
 
   const updates: Record<string, unknown> = {};
@@ -253,17 +300,20 @@ router.delete("/lessons/:id", requireAuth, requireTeacherOrOwner, async (req, re
     return;
   }
 
-  const [existingLesson] = await db.select({ teacherId: lessonsTable.teacherId }).from(lessonsTable).where(eq(lessonsTable.id, params.data.id));
+  const [existingLesson] = await db.select({ teacherId: lessonsTable.teacherId, mediaUrl: lessonsTable.mediaUrl }).from(lessonsTable).where(eq(lessonsTable.id, params.data.id));
   if (!existingLesson) {
     res.status(404).json({ error: "Lesson not found" });
     return;
   }
   const actor = req.currentUser!;
-  if (actor.role === "teacher" && !actor.isManager && existingLesson.teacherId !== actor.id) {
-    res.status(403).json({ error: "Teachers can only delete lessons they created" });
-    return;
+  if (actor.role === "teacher" && (actor.isManager !== true || actor.managerLevel !== "senior") && existingLesson.teacherId !== actor.id) {
+    const allowed = await hasContentPermission(actor.id,"lesson",params.data.id,"delete");
+    if(!allowed){ res.status(403).json({ error: "Delete permission has not been granted by the lesson creator." }); return; }
   }
   await db.delete(lessonsTable).where(eq(lessonsTable.id, params.data.id));
+  const mediaUrl = existingLesson.mediaUrl;
+  const storageKey = typeof mediaUrl === "string" ? mediaUrl.match(/\/api\/lessons\/media\/([a-f0-9-]{36})/i)?.[1] : null;
+  if (storageKey) await removeStoredMedia(storageKey);
   res.sendStatus(204);
 });
 

@@ -2,9 +2,10 @@ import { Router } from "express";
 import multer from "multer";
 import { db, notificationsTable, auditLogsTable } from "@workspace/db";
 import { assignmentsTable, assignmentSubmissionsTable } from "@workspace/db/schema";
-import { eq, desc, and, or, isNull } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { canManageAcademicContent, isOwnerRole, requireAuth } from "../lib/auth-middleware";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
+import { getAIProvider } from "../lib/ai-provider";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, removeStoredMedia } from "../lib/media-storage";
 
 const router = Router();
 const materialUpload = multer({
@@ -18,8 +19,19 @@ const materialUpload = multer({
   fileFilter: (_req, file, callback) => callback(null, isAllowedMediaType(file.mimetype)),
 });
 
+function normalizeGrade(value: string | null | undefined): string {
+  return String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 function isVisibleToStudent(assignment: { status: string; grade: string | null }, grade: string | null): boolean {
-  return assignment.status === "active" && (assignment.grade == null || (grade != null && assignment.grade === grade));
+  if (assignment.status !== "active") return false;
+  if (assignment.grade == null || !grade) return true;
+  const required = normalizeGrade(assignment.grade);
+  const learner = normalizeGrade(grade);
+  if (required === learner) return true;
+  const requiredBase = required.split("/")[0].trim();
+  const learnerBase = learner.split("/")[0].trim();
+  return requiredBase === learnerBase;
 }
 
 function isValidDueDate(value: unknown): value is string {
@@ -58,8 +70,9 @@ router.post("/material", requireAuth, (req, res): void => {
   if (!canManageAcademicContent(req.currentUser!)) { res.status(403).json({ error: "Academic staff access required" }); return; }
   materialUpload.single("file")(req, res, (error) => {
     if (error) { res.status(400).json({ error: "A supported material file up to 250 MB is required" }); return; }
-    if (!req.file) { res.status(400).json({ error: "A supported material file is required" }); return; }
-    res.status(201).json({ attachmentUrl: `/api/lessons/media/${req.file.filename}?type=${encodeURIComponent(req.file.mimetype)}`, fileName: req.file.originalname, mimeType: req.file.mimetype, size: req.file.size });
+    const file = req.file;
+    if (!file) { res.status(400).json({ error: "A supported material file is required" }); return; }
+    persistUploadedMedia(file.filename, file.mimetype, file.path).then(() => res.status(201).json({ attachmentUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`, fileName: file.originalname, mimeType: file.mimetype, size: file.size })).catch(() => res.status(503).json({ error: "Persistent media storage is temporarily unavailable. Please retry the upload." }));
   });
 });
 
@@ -67,8 +80,9 @@ router.post("/submission-material", requireAuth, (req, res): void => {
   if (req.currentUser?.role !== "student") { res.status(403).json({ error: "Student access required" }); return; }
   materialUpload.single("file")(req, res, (error) => {
     if (error) { res.status(400).json({ error: "A supported submission file up to 250 MB is required" }); return; }
-    if (!req.file) { res.status(400).json({ error: "A supported submission file is required" }); return; }
-    res.status(201).json({ attachmentUrl: `/api/lessons/media/${req.file.filename}?type=${encodeURIComponent(req.file.mimetype)}`, fileName: req.file.originalname, mimeType: req.file.mimetype, size: req.file.size });
+    const file = req.file;
+    if (!file) { res.status(400).json({ error: "A supported submission file is required" }); return; }
+    persistUploadedMedia(file.filename, file.mimetype, file.path).then(() => res.status(201).json({ attachmentUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`, fileName: file.originalname, mimeType: file.mimetype, size: file.size })).catch(() => res.status(503).json({ error: "Persistent media storage is temporarily unavailable. Please retry the upload." }));
   });
 });
 
@@ -80,12 +94,10 @@ router.get("/", requireAuth, async (req, res): Promise<void> => {
     // Staff may preview all assignments, but mutation endpoints below enforce ownership.
     rows = await db.select().from(assignmentsTable).orderBy(desc(assignmentsTable.createdAt));
   } else {
-    rows = await db.select().from(assignmentsTable)
-      .where(and(
-        eq(assignmentsTable.status, "active"),
-        or(isNull(assignmentsTable.grade), eq(assignmentsTable.grade, user.grade ?? "")),
-      ))
+    const activeRows = await db.select().from(assignmentsTable)
+      .where(eq(assignmentsTable.status, "active"))
       .orderBy(desc(assignmentsTable.createdAt));
+    rows = activeRows.filter(row => isVisibleToStudent(row, user.grade ?? null));
   }
   res.json(rows);
 });
@@ -125,7 +137,7 @@ router.put("/:id", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Forbidden" }); return; }
   const assignmentId = parseInt(String(req.params.id));
-  const [existing] = await db.select({ teacherId: assignmentsTable.teacherId }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
+  const [existing] = await db.select({ teacherId: assignmentsTable.teacherId, attachmentUrl: assignmentsTable.attachmentUrl }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
   if (!isOwnerRole(user.role) && !user.isManager && existing.teacherId !== user.id) { res.status(403).json({ error: "You can only edit your own assignments" }); return; }
   const { title, description, subject, grade, dueDate, totalMarks, status, attachmentUrl } = req.body;
@@ -152,9 +164,11 @@ router.delete("/:id", requireAuth, async (req, res): Promise<void> => {
   if (!isOwnerRole(user.role) && !user.isManager) { res.status(403).json({ error: "Manager or owner access required" }); return; }
   const assignmentId = parseInt(String(req.params.id));
   if (!Number.isInteger(assignmentId)) { res.status(400).json({ error: "Invalid assignment id" }); return; }
-  const [existing] = await db.select({ teacherId: assignmentsTable.teacherId }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
+  const [existing] = await db.select({ teacherId: assignmentsTable.teacherId, attachmentUrl: assignmentsTable.attachmentUrl }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
   await db.delete(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
+  const storageKey = typeof existing.attachmentUrl === "string" ? existing.attachmentUrl.match(/\/api\/lessons\/media\/([a-f0-9-]{36})/i)?.[1] : null;
+  if (storageKey) await removeStoredMedia(storageKey);
   res.json({ ok: true });
 });
 
@@ -197,6 +211,40 @@ router.post("/:id/submit", requireAuth, async (req, res): Promise<void> => {
     assignmentId, studentId: user.id, studentName: user.name, content: content.trim(), fileUrl: normalizedFileUrl, fileName,
   }).returning();
   res.status(201).json(row);
+});
+
+router.post("/submissions/:subId/ai-grade", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Academic staff access required" }); return; }
+  const submissionId = parseInt(String(req.params.subId));
+  const [row] = await db.select({
+    submission: assignmentSubmissionsTable,
+    assignment: assignmentsTable,
+  }).from(assignmentSubmissionsTable).innerJoin(assignmentsTable, eq(assignmentSubmissionsTable.assignmentId, assignmentsTable.id))
+    .where(eq(assignmentSubmissionsTable.id, submissionId));
+  if (!row) { res.status(404).json({ error: "Submission not found" }); return; }
+  if (!isOwnerRole(user.role) && !user.isManager && row.assignment.teacherId !== user.id) {
+    res.status(403).json({ error: "You can only mark your own assignments" }); return;
+  }
+  try {
+    const ai = await getAIProvider();
+    const result = await ai.analyzeData({
+      assignment: { title: row.assignment.title, subject: row.assignment.subject, description: row.assignment.description, totalMarks: row.assignment.totalMarks },
+      submission: { content: row.submission.content },
+    }, `Mark this educational assignment fairly. Return ONLY JSON with numeric marks between 0 and the totalMarks and a concise teacher feedback string. Do not invent unanswered work. JSON format: {"marks":0,"feedback":"..."}`);
+    const match = result.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error("AI returned invalid marking data");
+    const parsed = JSON.parse(match[0]) as { marks?: unknown; feedback?: unknown };
+    const marks = Number(parsed.marks);
+    if (!Number.isFinite(marks) || marks < 0 || marks > row.assignment.totalMarks) throw new Error("AI returned invalid marks");
+    const feedback = typeof parsed.feedback === "string" ? parsed.feedback.slice(0, 5000) : "";
+    const [updated] = await db.update(assignmentSubmissionsTable).set({
+      marks: marks.toString(), feedback, status: "graded", gradedBy: user.id, gradedAt: new Date(),
+    }).where(eq(assignmentSubmissionsTable.id, submissionId)).returning();
+    res.json({ provider: ai.name, submission: updated });
+  } catch (error) {
+    res.status(503).json({ error: error instanceof Error ? error.message : "AI marking unavailable" });
+  }
 });
 
 router.put("/submissions/:subId/grade", requireAuth, async (req, res): Promise<void> => {

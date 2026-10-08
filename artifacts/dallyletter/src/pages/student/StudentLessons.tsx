@@ -5,8 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useEffect, useState } from "react";
-import { Loader2, Search, FileText, Image as ImageIcon, Video, Headphones, BookOpen, ExternalLink, GraduationCap, ClipboardList } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Loader2, Search, FileText, Image as ImageIcon, Video, Headphones, BookOpen, ExternalLink, GraduationCap, ClipboardList, Sparkles } from "lucide-react";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 import { isValidLessonUrl } from "@/lib/media-url";
 
@@ -19,6 +19,24 @@ function StoredMedia({ url, type, title }: { url: string; type: string; title: s
   return <AuthenticatedMedia url={url} type={mediaType} title={title} />;
 }
 
+function sanitizeLessonHtml(input: string): string {
+  if (!input) return "";
+  // Older lesson records may contain HTML that was escaped before being saved.
+  // Decode one layer only, then sanitize the resulting document before rendering.
+  const decoder = document.createElement("textarea");
+  decoder.innerHTML = input;
+  const decoded = decoder.value;
+  const source = decoded.includes("<") && decoded.includes(">") ? decoded : input;
+  const doc = new DOMParser().parseFromString(source, "text/html");
+  doc.querySelectorAll("script,iframe,object,embed,style,link").forEach(node => node.remove());
+  doc.querySelectorAll("*").forEach(node => {
+    [...node.attributes].forEach(attr => {
+      if (/^on/i.test(attr.name) || ((attr.name === "href" || attr.name === "src") && /^javascript:/i.test(attr.value))) node.removeAttribute(attr.name);
+    });
+  });
+  return doc.body.innerHTML;
+}
+
 function hasValidMediaUrl(url: string | null | undefined): url is string {
   return Boolean(url && isValidLessonUrl(url));
 }
@@ -27,7 +45,13 @@ export default function StudentLessons() {
   const { data: lessons, isLoading } = useListLessons();
   const [search, setSearch] = useState("");
   const [subjectFilter, setSubjectFilter] = useState("all");
-  const [gradeFilter, setGradeFilter] = useState("all");
+  const [teacherFilter, setTeacherFilter] = useState(() => localStorage.getItem("dallyletter.student.lesson.teacherFilter") ?? "all");
+  const [classFilter, setClassFilter] = useState(() => localStorage.getItem("dallyletter.student.lesson.classFilter") ?? "all");
+  const [sortMode, setSortMode] = useState<"newest"|"oldest"|"subject">("newest");
+  const [classes, setClasses] = useState<Array<{id:number;title:string;subject:string;grade:string|null;teacherId:number;teacherName:string}>>([]);
+  useEffect(() => { const token = localStorage.getItem("dallyletter_token"); fetch(getApiUrl("/api/classes"), { headers: token ? { Authorization: `Bearer ${token}` } : {} }).then(r=>r.ok?r.json():[]).then(d=>setClasses(Array.isArray(d)?d:[])).catch(()=>setClasses([])); }, []);
+  useEffect(() => { localStorage.setItem("dallyletter.student.lesson.teacherFilter", teacherFilter); }, [teacherFilter]);
+  useEffect(() => { localStorage.setItem("dallyletter.student.lesson.classFilter", classFilter); }, [classFilter]);
   const [follows, setFollows] = useState<any[]>([]);
   const token = localStorage.getItem("dallyletter_token");
   useEffect(()=>{fetch(getApiUrl("/api/follows"),{headers:token?{Authorization:`Bearer ${token}`}:{}}).then(r=>r.ok?r.json():[]).then(d=>setFollows(Array.isArray(d)?d:[])).catch(()=>{});},[]);
@@ -39,8 +63,10 @@ export default function StudentLessons() {
     const matchesSearch = lesson.title.toLowerCase().includes(search.toLowerCase()) ||
                           (lesson.description?.toLowerCase().includes(search.toLowerCase()));
     const matchesSubject = subjectFilter === "all" || lesson.subject === subjectFilter;
-    const matchesGrade = gradeFilter === "all" || lesson.grade === gradeFilter;
-    return matchesSearch && matchesSubject && matchesGrade;
+    const matchesTeacher = teacherFilter === "all" || String(lesson.teacherId) === teacherFilter;
+    const selectedClass = classes.find(item => String(item.id) === classFilter);
+    const matchesClass = !selectedClass || (lesson.subject === selectedClass.subject && (!selectedClass.grade || lesson.grade === selectedClass.grade));
+    return matchesSearch && matchesSubject && matchesTeacher && matchesClass;
   });
 
   const subjects = Array.from(new Set(lessons?.map(l => l.subject) || []));
@@ -65,20 +91,21 @@ export default function StudentLessons() {
     }
   };
 
-  const handleOpen = (url: string) => {
-    window.open(getApiUrl(url), "_blank", "noopener,noreferrer");
+  const handleOpen = (url: string, lessonId?: number) => {
+    if (url.startsWith("/api/lessons/media/") && lessonId) { window.location.assign(`/preview/lesson/${lessonId}`); return; }
+    window.open(url.startsWith("/") ? getApiUrl(url) : url, "_blank", "noopener,noreferrer");
   };
 
   const isYouTubeUrl = (url: string) => url.includes("youtube.com/embed/");
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <div className="space-y-4 rounded-2xl bg-gradient-to-b from-[#FFF8E1]/70 via-background to-[#0A1931]/5 p-1">
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Lessons</h1>
+            <h1 className="text-3xl font-black tracking-tight text-[#0A1931] dark:text-[#FFF8E1]">Lessons</h1>
             <p className="text-muted-foreground">Browse your course materials and study notes.</p>
           </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 px-3 py-1.5 rounded-full border">
@@ -88,7 +115,7 @@ export default function StudentLessons() {
         </div>
 
         {/* Filters */}
-        <div className="flex flex-col sm:flex-row gap-3">
+        <div className="sticky top-0 z-20 flex flex-col gap-3 rounded-2xl border border-[#D4AF37]/20 bg-[#0A1931]/95 p-3 shadow-lg backdrop-blur sm:flex-row">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -98,8 +125,9 @@ export default function StudentLessons() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <Select value={gradeFilter} onValueChange={setGradeFilter}><SelectTrigger><SelectValue placeholder="Grade / Form" /></SelectTrigger><SelectContent><SelectItem value="all">All grades</SelectItem>{Array.from(new Set(lessons?.map(l=>l.grade).filter(Boolean) as string[])).map(g=><SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent></Select>
-          <Select value={gradeFilter} onValueChange={setGradeFilter}><SelectTrigger><SelectValue placeholder="Grade / Form" /></SelectTrigger><SelectContent><SelectItem value="all">All grades</SelectItem>{Array.from(new Set((lessons ?? []).map(l=>l.grade).filter(Boolean) as string[])).map(g=><SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent></Select>
+          <Select value={teacherFilter} onValueChange={setTeacherFilter}><SelectTrigger><SelectValue placeholder="Teacher" /></SelectTrigger><SelectContent><SelectItem value="all">All teachers</SelectItem>{Array.from(new Map((lessons ?? []).map(l=>[String(l.teacherId),l.teacherName])).entries()).map(([id,name])=><SelectItem key={id} value={id}>{name}</SelectItem>)}</SelectContent></Select>
+          <Select value={classFilter} onValueChange={setClassFilter}><SelectTrigger><SelectValue placeholder="Class" /></SelectTrigger><SelectContent><SelectItem value="all">All classes</SelectItem>{classes.map(item=><SelectItem key={item.id} value={String(item.id)}>{item.title}{item.grade?` · ${item.grade}`:""}</SelectItem>)}</SelectContent></Select>
+          <Select value={sortMode} onValueChange={(v)=>setSortMode(v as "newest"|"oldest"|"subject")}><SelectTrigger className="h-10 w-full sm:w-[130px]"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="newest">Newest</SelectItem><SelectItem value="oldest">Oldest</SelectItem><SelectItem value="subject">Subject</SelectItem></SelectContent></Select>
           <Select value={subjectFilter} onValueChange={setSubjectFilter}>
             <SelectTrigger className="w-full sm:w-[200px] h-11">
               <SelectValue placeholder="All Subjects" />
@@ -122,7 +150,7 @@ export default function StudentLessons() {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {filteredLessons?.length === 0 ? (
               <div className="col-span-full text-center py-16 border-2 border-dashed rounded-xl bg-muted/20">
                 <BookOpen className="h-12 w-12 mx-auto mb-4 text-muted-foreground/40" />
@@ -133,8 +161,8 @@ export default function StudentLessons() {
               filteredLessons?.map((lesson) => (
                 <Card
                   key={lesson.id}
-                  className={`flex flex-col h-full transition-all duration-200 border hover:shadow-lg hover:-translate-y-0.5 ${hasValidMediaUrl(lesson.mediaUrl) ? "hover:border-primary/60 cursor-pointer" : "hover:border-border/80"}`}
-                  onClick={() => hasValidMediaUrl(lesson.mediaUrl) && !lesson.mediaUrl.startsWith("/api/lessons/media/") && !isYouTubeUrl(lesson.mediaUrl) && handleOpen(lesson.mediaUrl)}
+                  className={`flex flex-col h-full overflow-hidden rounded-2xl border-[#D4AF37]/20 bg-[#FFF8E1]/60 shadow-md transition-all duration-200 hover:-translate-y-1 hover:border-[#D4AF37]/70 hover:shadow-xl dark:bg-[#0A1931]/80 ${hasValidMediaUrl(lesson.mediaUrl) ? "cursor-pointer" : ""}`}
+                  onClick={() => hasValidMediaUrl(lesson.mediaUrl) && handleOpen(lesson.mediaUrl!, lesson.id)}
                 >
                   <CardHeader className="pb-3 space-y-3">
                     {/* Top row: subject + type */}
@@ -160,17 +188,16 @@ export default function StudentLessons() {
                           {lesson.title}
                         </h3>
                       )}
-                      <p className="text-xs text-muted-foreground mt-1">by {lesson.teacherName}</p>
+                      <div className="mt-1 flex items-center gap-2"><p className="text-xs text-muted-foreground">by {lesson.teacherName}</p>{lesson.teacherId && <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-[11px]" onClick={e=>{e.stopPropagation();void toggleFollow("teacher",lesson.teacherId,undefined,lesson.teacherName)}}>{follows.some(f=>f.targetType==="teacher"&&f.targetUserId===lesson.teacherId)?"Following":"Follow teacher"}</Button>}</div>
                     </div>
                   </CardHeader>
 
                   <CardContent className="flex-1 flex flex-col justify-between gap-4">
                     {hasValidMediaUrl(lesson.mediaUrl) && (isYouTubeUrl(lesson.mediaUrl) ? <YouTubeEmbed url={lesson.mediaUrl} title={lesson.title} /> : lesson.mediaUrl.startsWith("/api/lessons/media/") ? <StoredMedia url={lesson.mediaUrl} type={lesson.type} title={lesson.title} /> : null)}
-                    <p className="text-sm text-muted-foreground line-clamp-3">
-                      {lesson.description || "No description provided."}
-                    </p>
+                    {lesson.content && <div className="rounded-xl border bg-background/70 p-4"><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Lesson notes</p><div className="prose prose-sm max-w-none dark:prose-invert" dangerouslySetInnerHTML={{__html:sanitizeLessonHtml(lesson.content)}} /></div>}
+                    <div className="rounded-lg bg-muted/20 p-3"><p className="text-sm text-muted-foreground line-clamp-4">{lesson.description || "No description provided."}</p></div>
 
-                    {(exerciseMap[lesson.id] ?? []).length > 0 && <div className="space-y-2 border-t pt-3"><div className="flex items-center gap-2 text-sm font-medium"><ClipboardList className="h-4 w-4 text-primary" />Exercises</div>{(exerciseMap[lesson.id] ?? []).map(ex => <Button key={ex.id} variant="outline" className="w-full justify-between gap-2" onClick={(e) => { e.stopPropagation(); window.location.assign(`/student/exercises/${ex.id}`); }}><span className="truncate text-left">{ex.title}</span><span className="flex shrink-0 items-center gap-1"><Badge variant="secondary">{ex.totalMarks} marks</Badge><Badge variant={ex.submissionStatus==="marked"?"default":"outline"}>{ex.submissionStatus==="marked" ? `Result: ${ex.submission?.totalScore ?? "0"}/${ex.totalMarks}` : ex.submissionStatus==="submitted" ? "Awaiting marking" : "Open"}</Badge></span></Button>)}</div>}
+                    {(exerciseMap[lesson.id] ?? []).length > 0 && <div className="space-y-2 border-t pt-3"><div className="flex items-center gap-2 text-sm font-medium"><ClipboardList className="h-4 w-4 text-primary" />Exercises</div>{(exerciseMap[lesson.id] ?? []).map(ex => <Button key={ex.id} variant="outline" className={`w-full justify-between gap-2 border transition-all hover:-translate-y-0.5 ${ex.submissionStatus==="marked" ? (localStorage.getItem(`dallyletter.exercise.viewed.${ex.id}`)==="1" ? "border-[#D4AF37]/60 bg-[#D4AF37]/10 text-[#6b4f00]" : "border-emerald-300 bg-emerald-50 text-emerald-800") : "border-purple-300 bg-purple-50 text-purple-800"}`} onClick={(e) => { e.stopPropagation(); localStorage.setItem(`dallyletter.exercise.viewed.${ex.id}`,"1"); window.location.assign(`/student/exercises/${ex.id}`); }}><span className="truncate text-left font-semibold">{ex.title}</span><span className="flex shrink-0 items-center gap-1"><Badge variant="secondary">{ex.totalMarks} marks</Badge><Badge className={ex.submissionStatus==="marked" ? (localStorage.getItem(`dallyletter.exercise.viewed.${ex.id}`)==="1" ? "bg-[#D4AF37] text-[#0A1931]" : "bg-emerald-600 text-white") : "bg-purple-600 text-white"}>{ex.submissionStatus==="marked" ? `Result: ${ex.submission?.totalScore ?? "0"}/${ex.totalMarks}` : ex.submissionStatus==="submitted" ? "Awaiting marking" : "Unmarked • Unviewed"}</Badge></span></Button>)}</div>}
                     <div className="flex items-center justify-between pt-3 border-t">
                       <span className="text-xs text-muted-foreground">
                         {new Date(lesson.createdAt).toLocaleDateString("en-ZA", { day: "numeric", month: "short", year: "numeric" })}
@@ -180,7 +207,7 @@ export default function StudentLessons() {
                           size="sm"
                           variant="default"
                           className="gap-1.5 h-8 text-xs"
-                          onClick={(e) => { e.stopPropagation(); handleOpen(lesson.mediaUrl!); }}
+                          onClick={(e) => { e.stopPropagation(); handleOpen(lesson.mediaUrl!, lesson.id); }}
                         >
                           Open Lesson
                           <ExternalLink className="h-3 w-3" />

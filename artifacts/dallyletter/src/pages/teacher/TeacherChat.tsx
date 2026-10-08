@@ -146,6 +146,20 @@ export default function TeacherChat() {
                           await loadLessonRequests();
                         } catch (error) { window.alert(error instanceof Error ? error.message : "Request update failed"); }
                       }}>Decline</Button>
+                      <Button size="sm" variant="ghost" onClick={async () => {
+                        try {
+                          const token = localStorage.getItem("dallyletter_token");
+                          const response = await fetch(getApiUrl(`/api/achievements/lesson-requests/${request.id}`), { method:"PATCH", headers:{ "Content-Type":"application/json", ...(token ? {Authorization:`Bearer ${token}`} : {}) }, body:JSON.stringify({status:"dismissed",teacherReply:"Request dismissed by teacher."}) });
+                          const data = await response.json().catch(() => ({}));
+                          if (!response.ok) throw new Error(data.error || "Could not dismiss lesson request");
+                          await loadLessonRequests();
+                          if (window.confirm("Lesson request dismissed. Do you also want to delete it?")) {
+                            const del = await fetch(getApiUrl(`/api/achievements/lesson-requests/${request.id}`), { method:"DELETE", headers: token ? {Authorization:`Bearer ${token}`} : {} });
+                            if (!del.ok) { const d = await del.json().catch(() => ({})); throw new Error(d.error || "Could not delete dismissed request"); }
+                            await loadLessonRequests();
+                          }
+                        } catch (error) { window.alert(error instanceof Error ? error.message : "Could not dismiss lesson request"); }
+                      }}>Dismiss</Button>
                     </div>
                   )}
                 </div>

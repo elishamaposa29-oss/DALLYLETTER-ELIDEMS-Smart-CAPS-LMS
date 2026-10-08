@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Plus, Play, Square, Trash2, BarChart3, Sparkles, ClipboardList, CheckCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 
 interface Poll { id: number; title: string; type: string; grade: string | null; subject: string | null; mode: string; status: string; createdAt: string; }
 interface PollResults { submissions: { studentName: string; score: number; totalQuestions: number }[]; total: number; avgScore: number; }
@@ -26,7 +27,7 @@ export default function TeacherPolls() {
   const [aiGenerating, setAiGenerating] = useState(false);
 
   const [newPoll, setNewPoll] = useState({ title: "", grade: "", subject: "", mode: "practice" });
-  const [newQuestions, setNewQuestions] = useState([{ question: "", options: ["","","",""], correct: 0, difficulty: "medium" }]);
+  const [newQuestions, setNewQuestions] = useState([{ question: "", imageUrl: "", options: ["","","",""], correct: 0, difficulty: "medium" }]);
   const [aiTopic, setAiTopic] = useState({ topic: "", grade: "", subject: "", count: "5" });
   const [aiGenerated, setAiGenerated] = useState<{ title: string; questions: { question: string; difficulty: string; options: { text: string; isCorrect: boolean }[]; explanation: string }[] } | null>(null);
 
@@ -41,20 +42,24 @@ export default function TeacherPolls() {
 
   useEffect(() => { load(); }, []);
 
+  async function uploadQuestionImage(index:number,file:File) {
+    const body=new FormData();body.append("file",file,file.name);
+    const r=await fetch(getApiUrl("/api/lessons/media"),{method:"POST",headers:{Authorization:`Bearer ${token()}`},body});
+    const d=await r.json().catch(()=>null);if(!r.ok||!d?.mediaUrl)throw new Error(d?.error||"Image upload failed");
+    setNewQuestions(qs=>qs.map((q,i)=>i===index?{...q,imageUrl:d.mediaUrl}:q));
+  }
+
   async function handleCreate() {
-    if (!newPoll.title) { toast({ variant: "destructive", title: "Title required" }); return; }
+    if (!newPoll.title.trim()) { toast({ variant:"destructive",title:"Title required" }); return; }
     setCreating(true);
-    const questions = newQuestions.filter(q => q.question.trim()).map(q => ({
-      question: q.question, difficulty: q.difficulty,
-      options: q.options.map((o, i) => ({ text: o, isCorrect: i === q.correct }))
-    }));
-    const r = await fetch(getApiUrl("/api/polls"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
-      body: JSON.stringify({ ...newPoll, type: "manual", questions }),
-    });
-    setCreating(false);
-    if (r.ok) { toast({ title: "Poll created!" }); setCreateOpen(false); load(); }
+    try {
+      const questions=newQuestions.filter(q=>q.question.trim()).map(q=>({question:q.question.trim(),imageUrl:q.imageUrl||undefined,difficulty:q.difficulty,options:q.options.filter(Boolean).map((o,i)=>({text:o,isCorrect:i===q.correct}))}));
+      const r=await fetch(getApiUrl("/api/polls"),{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token()}`},body:JSON.stringify({...newPoll,title:newPoll.title.trim(),type:"manual",questions})});
+      const created=await r.json().catch(()=>null);if(!r.ok||!created?.id)throw new Error(created?.error||"Poll creation failed");
+      const activate=await fetch(getApiUrl(`/api/polls/${created.id}`),{method:"PATCH",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token()}`},body:JSON.stringify({status:"active"})});
+      if(!activate.ok)throw new Error("Poll created but could not be published");
+      toast({title:"Poll created and published!"});setCreateOpen(false);setNewQuestions([{question:"",imageUrl:"",options:["","","",""],correct:0,difficulty:"medium"}]);await load();
+    } catch(e){toast({variant:"destructive",title:"Poll creation failed",description:e instanceof Error?e.message:"Try again."});} finally{setCreating(false);}
   }
 
   async function handleAIGenerate() {
@@ -80,7 +85,7 @@ export default function TeacherPolls() {
       body: JSON.stringify({ title: aiGenerated.title, topic: aiTopic.topic, type: "ai", grade: aiTopic.grade || undefined, subject: aiTopic.subject || undefined, mode: "practice", questions: aiGenerated.questions }),
     });
     setCreating(false);
-    if (r.ok) { toast({ title: "AI Poll saved!" }); setAiGenOpen(false); setAiGenerated(null); load(); }
+    if (r.ok) { const created=await r.json(); const activate=await fetch(getApiUrl(`/api/polls/${created.id}`),{method:"PATCH",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token()}`},body:JSON.stringify({status:"active"})}); if(!activate.ok){toast({variant:"destructive",title:"AI poll created but not published"});return;} toast({ title: "AI Poll created and published!" }); setAiGenOpen(false); setAiGenerated(null); load(); }
   }
 
   async function setStatus(id: number, status: string) {
@@ -168,7 +173,7 @@ export default function TeacherPolls() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <Label>Questions</Label>
-                  <Button type="button" variant="outline" size="sm" onClick={() => setNewQuestions(q => [...q, { question: "", options: ["","","",""], correct: 0, difficulty: "medium" }])}><Plus className="h-3.5 w-3.5 mr-1" />Add Question</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setNewQuestions(q => [...q, { question: "", imageUrl: "", options: ["","","",""], correct: 0, difficulty: "medium" }])}><Plus className="h-3.5 w-3.5 mr-1" />Add Question</Button>
                 </div>
                 {newQuestions.map((q, qi) => (
                   <Card key={qi} className="p-3 space-y-2 bg-muted/30">
@@ -176,7 +181,7 @@ export default function TeacherPolls() {
                       <Label className="text-xs">Question {qi + 1}</Label>
                       {newQuestions.length > 1 && <Button type="button" variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive" onClick={() => setNewQuestions(qs => qs.filter((_, i) => i !== qi))}><Trash2 className="h-3 w-3" /></Button>}
                     </div>
-                    <Input placeholder="Enter question" value={q.question} onChange={e => setNewQuestions(qs => qs.map((x, i) => i === qi ? { ...x, question: e.target.value } : x))} />
+                    <Input placeholder="Enter question" value={q.question} onChange={e => setNewQuestions(qs => qs.map((x, i) => i === qi ? { ...x, question: e.target.value } : x))} /><div className="flex items-center gap-2"><label className="cursor-pointer rounded-md border px-3 py-2 text-xs"><input type="file" accept="image/*" className="sr-only" onChange={e=>{const f=e.target.files?.[0];if(f)void uploadQuestionImage(qi,f).catch(err=>toast({variant:"destructive",title:"Image upload failed",description:err instanceof Error?err.message:"Try again."}));e.currentTarget.value=""}} />{q.imageUrl?"Replace image":"Add question image"}</label>{q.imageUrl && (q.imageUrl.startsWith("/api/")?<AuthenticatedMedia url={q.imageUrl} type="image" title={q.question}/>:<img src={q.imageUrl} alt={q.question} className="max-h-40 rounded object-contain"/>)}</div>
                     <div className="space-y-1">
                       {q.options.map((opt, oi) => (
                         <div key={oi} className="flex gap-2 items-center">

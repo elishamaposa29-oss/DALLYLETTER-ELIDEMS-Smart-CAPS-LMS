@@ -1,12 +1,13 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
-import { db, usersTable } from "@workspace/db";
+import multer from "multer";
+import { db, usersTable, pool } from "@workspace/db";
 import {
   GetUserParams, UpdateUserParams, UpdateUserBody,
   DeleteUserParams, BlockUserParams, BlockUserBody,
   PromoteUserParams, PromoteUserBody,
 } from "@workspace/api-zod";
-import { requireAuth, requireOwner } from "../lib/auth-middleware";
+import { requireAuth, requireOwner, canAccessManager } from "../lib/auth-middleware";
 
 const router: IRouter = Router();
 
@@ -17,6 +18,7 @@ const safeUserFields = {
   role: usersTable.role,
   isPrefect: usersTable.isPrefect,
   isManager: usersTable.isManager,
+  managerLevel: usersTable.managerLevel,
   isBlocked: usersTable.isBlocked,
   isSuspended: usersTable.isSuspended,
   phone: usersTable.phone,
@@ -24,6 +26,8 @@ const safeUserFields = {
   subject: usersTable.subject,
   avatarUrl: usersTable.avatarUrl,
   bio: usersTable.bio,
+  teacherApplicationStatus: usersTable.teacherApplicationStatus,
+  teacherReviewDeadline: usersTable.teacherReviewDeadline,
   lastPaymentDate: usersTable.lastPaymentDate,
   performanceScore: usersTable.performanceScore,
   badgeCount: usersTable.badgeCount,
@@ -127,9 +131,68 @@ router.patch("/users/:id/promote", requireAuth, requireOwner, async (req, res): 
 router.patch("/users/:id/promote-manager", requireAuth, requireOwner, async (req, res): Promise<void> => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const { isManager } = req.body as { isManager: boolean };
-  if (typeof isManager !== "boolean") { res.status(400).json({ error: "isManager must be boolean" }); return; }
-  const [user] = await db.update(usersTable).set({ isManager }).where(eq(usersTable.id, id)).returning(safeUserFields);
+  const { isManager, managerLevel } = req.body as { isManager?: boolean; managerLevel?: string };
+  if (typeof isManager !== "boolean" && managerLevel == null) { res.status(400).json({ error: "Provide isManager or managerLevel" }); return; }
+  const updates: Record<string, unknown> = {};
+  if (typeof isManager === "boolean") updates.isManager = isManager;
+  if (managerLevel != null) { if (!["junior","senior"].includes(managerLevel)) { res.status(400).json({ error: "managerLevel must be junior or senior" }); return; } updates.managerLevel = managerLevel; }
+  const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, id)).returning(safeUserFields);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  res.json({ ...user, createdAt: user.createdAt.toISOString() });
+});
+
+const teacherDocumentUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+router.post("/users/me/teacher-documents", requireAuth, (req, res): void => {
+  teacherDocumentUpload.single("file")(req, res, (error) => {
+    void (async () => {
+      if (error || !req.file) { res.status(400).json({ error: "Upload a PDF, image or document up to 10 MB" }); return; }
+      if (req.currentUser!.role !== "teacher") { res.status(403).json({ error: "Teacher account required" }); return; }
+      const documentType = typeof req.body?.documentType === "string" ? req.body.documentType.trim() : "";
+      if (!["resume", "certificate", "proof"].includes(documentType)) { res.status(400).json({ error: "Choose resume, certificate or proof" }); return; }
+      const allowed = ["application/pdf","image/jpeg","image/png","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+      if (!allowed.includes(req.file.mimetype)) { res.status(415).json({ error: "Unsupported document type" }); return; }
+      const result = await pool.query(
+        "INSERT INTO teacher_documents (user_id, document_type, file_name, mime_type, size_bytes, data) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, document_type, file_name, mime_type, size_bytes, created_at",
+        [req.currentUser!.id, documentType, req.file.originalname, req.file.mimetype, req.file.size, req.file.buffer],
+      );
+      res.status(201).json(result.rows[0]);
+    })().catch(() => res.status(500).json({ error: "Qualification document upload failed" }));
+  });
+});
+
+router.get("/users/:id/teacher-documents", requireAuth, async (req, res): Promise<void> => {
+  const id = Number(req.params.id); const actor = req.currentUser!;
+  if (!Number.isInteger(id) || (!canAccessManager(actor) && actor.id !== id)) { res.status(403).json({ error: "Access denied" }); return; }
+  const result = await pool.query("SELECT id, document_type, file_name, mime_type, size_bytes, created_at FROM teacher_documents WHERE user_id = $1 ORDER BY created_at DESC", [id]);
+  res.json(result.rows);
+});
+
+router.get("/users/:id/teacher-documents/:docId", requireAuth, async (req, res): Promise<void> => {
+  const id = Number(req.params.id); const docId = Number(req.params.docId); const actor = req.currentUser!;
+  if (!Number.isInteger(id) || !Number.isInteger(docId) || (!canAccessManager(actor) && actor.id !== id)) { res.status(403).json({ error: "Access denied" }); return; }
+  const result = await pool.query("SELECT file_name, mime_type, size_bytes, data FROM teacher_documents WHERE id = $1 AND user_id = $2 LIMIT 1", [docId, id]);
+  if (!result.rows[0]) { res.status(404).json({ error: "Document not found" }); return; }
+  const row = result.rows[0] as { file_name:string; mime_type:string; size_bytes:number; data:Buffer };
+  res.setHeader("Content-Type", row.mime_type); res.setHeader("Content-Length", row.size_bytes); res.setHeader("Content-Disposition", "inline; filename*=UTF-8''" + encodeURIComponent(row.file_name)); res.end(row.data);
+});
+
+router.patch("/users/:id/teacher-review", requireAuth, async (req, res): Promise<void> => {
+  const actor = req.currentUser!;
+  if (!canAccessManager(actor)) { res.status(403).json({ error: "Manager or owner access required" }); return; }
+  const id = Number(req.params.id);
+  const action = req.body?.action;
+  if (!Number.isInteger(id) || !["approve", "reject", "convert_to_learner"].includes(action)) { res.status(400).json({ error: "Invalid teacher review action" }); return; }
+  const [target] = await db.select({ id: usersTable.id, role: usersTable.role, teacherApplicationStatus: usersTable.teacherApplicationStatus })
+    .from(usersTable).where(eq(usersTable.id, id));
+  if (!target || target.role !== "teacher" || target.teacherApplicationStatus !== "pending_review") {
+    res.status(409).json({ error: "Only pending teacher applications can be reviewed" }); return;
+  }
+  const [user] = await db.update(usersTable).set(
+    action === "approve"
+      ? { role: "teacher", teacherApplicationStatus: "approved", teacherReviewDeadline: null }
+      : { role: "student", teacherApplicationStatus: action === "reject" ? "rejected" : "manual_conversion", teacherReviewDeadline: null, subject: null, isManager: false, isPrefect: false },
+  ).where(eq(usersTable.id, id)).returning(safeUserFields);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   res.json({ ...user, createdAt: user.createdAt.toISOString() });
 });

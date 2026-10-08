@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, auditLogsTable, usersTable } from "@workspace/db";
-import { eq, desc, inArray } from "drizzle-orm";
+import { eq, desc, inArray, and } from "drizzle-orm";
 import { getAIProvider } from "../lib/ai-provider";
 import { requireAuth, canAccessManager } from "../lib/auth-middleware";
 
@@ -10,8 +10,9 @@ const router = Router();
 router.get("/audit-logs", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canAccessManager(user)) { res.status(403).json({ error: "Manager or owner access required" }); return; }
+  const isOwner = user.role === "owner";
   const limit = Math.min(parseInt(String(req.query.limit ?? "200")), 500);
-  const logs = await db.select({
+  const base = db.select({
     id: auditLogsTable.id,
     action: auditLogsTable.action,
     category: auditLogsTable.category,
@@ -22,21 +23,40 @@ router.get("/audit-logs", requireAuth, async (req, res): Promise<void> => {
     performerName: usersTable.name,
     performerRole: usersTable.role,
     performerId: usersTable.id,
-  }).from(auditLogsTable)
-    .leftJoin(usersTable, eq(auditLogsTable.performedBy, usersTable.id))
-    .orderBy(desc(auditLogsTable.createdAt))
-    .limit(limit);
-  res.json(logs);
+    performerIsPrefect: usersTable.isPrefect,
+  }).from(auditLogsTable).leftJoin(usersTable, eq(auditLogsTable.performedBy, usersTable.id));
+  // Managers may monitor academic/user activity only. Never expose operational,
+  // owner/admin, payment, app/system, auth, security, or data-management logs.
+  const managerVisibleCategories = [
+    "academic", "attendance", "content", "activity", "staff", "moderation",
+  ];
+  const logs = isOwner
+    ? await base.orderBy(desc(auditLogsTable.createdAt)).limit(limit)
+    : await base.where(and(
+        inArray(usersTable.role, ["student", "teacher"]),
+        eq(usersTable.isManager, false),
+        eq(usersTable.isBlocked, false),
+        inArray(auditLogsTable.category, managerVisibleCategories),
+      )).orderBy(desc(auditLogsTable.createdAt)).limit(limit);
+  res.json(logs.map(({ details, performerIsPrefect, ...log }) => ({
+    ...log,
+    // Never expose raw audit details to managers: details can contain sensitive operational data.
+    details: isOwner ? details : null,
+    performerIsPrefect,
+  })));
 });
 
 // POST /audit-logs — create manual audit entry
 router.post("/audit-logs", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
+  if (user.role !== "owner") { res.status(403).json({ error: "Owner only" }); return; }
   const { action, category = "system", targetType, targetId, details } = req.body as { action: string; category?: string; targetType?: string; targetId?: number; details?: string };
   if (!action) { res.status(400).json({ error: "action required" }); return; }
   const [log] = await db.insert(auditLogsTable).values({ action, category, performedBy: user.id, targetType, targetId, details }).returning();
   res.status(201).json(log);
 });
+
+
 
 export default router;
 

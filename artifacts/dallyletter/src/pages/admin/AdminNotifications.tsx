@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { useAuth } from "@/contexts/AuthContext";
 import { useListNotifications, useCreateNotification, useListUsers, getApiUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { CreateNotificationBodyType } from "@workspace/api-client-react";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const createNotificationSchema = z.object({
   recipientId: z.coerce.number().optional().nullable(),
@@ -22,9 +24,11 @@ const createNotificationSchema = z.object({
   message: z.string().min(5, "Message is required"),
   type: z.enum([CreateNotificationBodyType.payment_overdue, CreateNotificationBodyType.new_lesson, CreateNotificationBodyType.class_starting, CreateNotificationBodyType.system, CreateNotificationBodyType.general]),
   recipientType: z.enum(["all", "specific"]),
+  sendEmail: z.boolean(),
 });
 
 export default function AdminNotifications() {
+  const { user } = useAuth();
   const { data: notifications, isLoading } = useListNotifications();
   const { data: users } = useListUsers();
   const createNotificationMutation = useCreateNotification();
@@ -33,7 +37,7 @@ export default function AdminNotifications() {
 
   const form = useForm<z.infer<typeof createNotificationSchema>>({
     resolver: zodResolver(createNotificationSchema),
-    defaultValues: { title: "", message: "", type: CreateNotificationBodyType.general, recipientType: "all", recipientId: null },
+    defaultValues: { title: "", message: "", type: CreateNotificationBodyType.general, recipientType: "all", recipientId: null, sendEmail: false },
   });
 
   const recipientType = form.watch("recipientType");
@@ -46,10 +50,21 @@ export default function AdminNotifications() {
       recipientId: values.recipientType === "specific" ? values.recipientId : null
     };
     createNotificationMutation.mutate({ data }, {
-      onSuccess: () => {
+
+      onSuccess: async () => {
+        if (values.sendEmail) {
+          try {
+            const token = localStorage.getItem("dallyletter_token");
+            const emailRes = await fetch(getApiUrl("/api/email/send"), { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ subject: values.title, text: values.message, recipientId: values.recipientType === "specific" ? values.recipientId : null }) });
+            if (!emailRes.ok) throw new Error((await emailRes.json()).error || "Email delivery failed");
+            toast({ title: "Notification and email sent" });
+          } catch (e) {
+            toast({ variant: "destructive", title: "In-app notification sent; email failed", description: e instanceof Error ? e.message : "Email provider is unavailable." });
+          }
+        }
         toast({ title: "Notification sent successfully" });
         queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() });
-        form.reset({ title: "", message: "", type: CreateNotificationBodyType.general, recipientType: "all", recipientId: null });
+        form.reset({ title: "", message: "", type: CreateNotificationBodyType.general, recipientType: "all", recipientId: null, sendEmail: false });
       },
       onError: (error) => {
         toast({ variant: "destructive", title: "Error", description: error.message });
@@ -96,8 +111,8 @@ export default function AdminNotifications() {
     <DashboardLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Broadcast Notifications</h1>
-          <p className="text-muted-foreground">Send alerts and announcements to users.</p>
+          <h1 className="text-3xl font-bold tracking-tight">Notifications & Email</h1>
+          <p className="text-muted-foreground">Send in-app alerts and optionally email them. Manager and owner access is protected separately from owner audit logs.</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -184,6 +199,16 @@ export default function AdminNotifications() {
                     </FormItem>
                   )} />
 
+                  <FormField control={form.control} name="sendEmail" render={({ field }) => (
+                    <FormItem className="flex items-start gap-3 rounded-xl border p-3">
+                      <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                      <div>
+                        <FormLabel>Also send by email</FormLabel>
+                        <p className="text-xs text-muted-foreground">Uses the server email provider. No email is sent unless this is enabled and provider credentials are configured.</p>
+                      </div>
+                    </FormItem>
+                  )} />
+
                   <Button type="submit" className="w-full" disabled={createNotificationMutation.isPending}>
                     {createNotificationMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Send Notification
@@ -231,14 +256,14 @@ export default function AdminNotifications() {
                           <span className="text-xs text-muted-foreground hidden sm:block">
                             {new Date(notification.createdAt).toLocaleDateString()}
                           </span>
-                          <Button
+{user?.role === "owner" && <Button
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
                             onClick={() => handleDelete(notification.id)}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+                          </Button>}
                         </div>
                       </div>
                       <p className="text-sm text-foreground/80 mt-2 ml-7">{notification.message}</p>

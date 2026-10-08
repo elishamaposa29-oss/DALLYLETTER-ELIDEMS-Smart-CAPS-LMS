@@ -32,6 +32,7 @@ type MemberControl = {
   mediaBlocked: boolean;
   suspended: boolean;
   muted: boolean;
+  canManageSettings: boolean;
 };
 
 type GroupMember = {
@@ -82,7 +83,8 @@ export default function StudentStudyGroups() {
   const [settingsLoading, setSettingsLoading] = useState(false);
 
   const refresh = () => void queryClient.invalidateQueries({ queryKey: getListStudyGroupsQueryKey() });
-  const isStaff = user?.role === "owner" || user?.isPrefect === true;
+  const canCreateGroup = user?.role === "owner" || user?.role === "teacher" || user?.isManager === true || user?.isPrefect === true;
+  const isManager = user?.role === "owner" || user?.isManager === true;
 
   const handleCreate = (event: FormEvent) => {
     event.preventDefault();
@@ -173,12 +175,12 @@ export default function StudentStudyGroups() {
       <div className="space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">{isStaff ? "Study Groups Management" : "Study Groups"}</h1>
+            <h1 className="text-3xl font-bold tracking-tight">{(user?.role === "owner" || user?.isManager === true) ? "Study Groups Management" : "Study Groups"}</h1>
             <p className="text-muted-foreground">Create, join and manage focused learning communities.</p>
           </div>
-          <Button onClick={() => setShowCreate(value => !value)} className="gap-2 shrink-0">
+          {canCreateGroup && <Button onClick={() => setShowCreate(value => !value)} className="gap-2 shrink-0">
             <Plus className="h-4 w-4" /> Create Group
-          </Button>
+          </Button>}
         </div>
 
         {showCreate && (
@@ -265,7 +267,8 @@ export default function StudentStudyGroups() {
             ) : groups.map(group => {
               const isMember = group.isMember ?? group.members?.some(member => member.id === user?.id) ?? false;
               const isOwner = group.creatorId === user?.id;
-              const canManage = isOwner || isStaff;
+              const selectedControl = group.members?.find(member => member.id === user?.id)?.control;
+              const canManage = isOwner || isManager || selectedControl?.canManageSettings === true;
               const groupSettings = group.settings ?? defaultSettings(group.id);
               return (
                 <Card key={group.id} className="flex h-full flex-col transition-shadow hover:shadow-md">
@@ -306,7 +309,7 @@ export default function StudentStudyGroups() {
                                   <Button type="button" variant={member.control?.muted ? "destructive" : "ghost"} size="sm" className="h-7 px-2 text-[10px]" onClick={() => void toggleMemberControl(group.id, member, "muted")} disabled={busyGroup === group.id}>{member.control?.muted ? "Unmute" : "Mute"}</Button>
                                   <Button type="button" variant={member.control?.mediaBlocked ? "destructive" : "ghost"} size="sm" className="h-7 px-2 text-[10px]" onClick={() => void toggleMemberControl(group.id, member, "mediaBlocked")} disabled={busyGroup === group.id}>{member.control?.mediaBlocked ? "Allow voice" : "Block voice"}</Button>
                                   <Button type="button" variant={member.control?.blocked ? "destructive" : "ghost"} size="sm" className="h-7 px-2 text-[10px]" onClick={() => void toggleMemberControl(group.id, member, "blocked")} disabled={busyGroup === group.id}>{member.control?.blocked ? "Unblock" : "Block"}</Button>
-                                  <Button type="button" variant={member.control?.suspended ? "destructive" : "ghost"} size="sm" className="h-7 px-2 text-[10px]" onClick={() => void toggleMemberControl(group.id, member, "suspended")} disabled={busyGroup === group.id}>{member.control?.suspended ? "Unsuspend" : "Suspend"}</Button>
+                                  <Button type="button" variant={member.control?.suspended ? "destructive" : "ghost"} size="sm" className="h-7 px-2 text-[10px]" onClick={() => void toggleMemberControl(group.id, member, "suspended")} disabled={busyGroup === group.id}>{member.control?.suspended ? "Unsuspend" : "Suspend"}</Button>{canManage && <Button type="button" variant={member.control?.canManageSettings ? "secondary" : "ghost"} size="sm" className="h-7 px-2 text-[10px]" onClick={() => void toggleMemberControl(group.id, member, "canManageSettings")} disabled={busyGroup === group.id}>{member.control?.canManageSettings ? "Remove settings access" : "Grant settings access"}</Button>}
                                   {isOwner && <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => void apiJson(`/api/study-groups/${group.id}/members/${member.id}`, { method: "DELETE" }).then(() => { toast({ title: "Member removed" }); refresh(); }).catch(error => toast({ variant: "destructive", title: "Could not remove member", description: error instanceof Error ? error.message : "Try again." }))} disabled={busyGroup === group.id} aria-label={`Remove ${member.name}`}><UserMinus className="h-3.5 w-3.5" /></Button>}
                                 </div>
                               )}

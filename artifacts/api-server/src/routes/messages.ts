@@ -2,15 +2,16 @@
 import { Router, type IRouter } from "express";
 import { eq, and, isNull, or, inArray } from "drizzle-orm";
 import { createReadStream } from "node:fs";
+import { readFile } from "node:fs/promises";
 import multer from "multer";
-import { db, messagesTable, activityLogTable, studyGroupMembersTable, studyGroupsTable, contentFlagsTable, auditLogsTable, groupMemberControlsTable, groupSettingsTable, usersTable } from "@workspace/db";
+import { db, messagesTable, activityLogTable, studyGroupMembersTable, studyGroupsTable, contentFlagsTable, auditLogsTable, groupMemberControlsTable, groupSettingsTable, usersTable, pool } from "@workspace/db";
 import {
   ListMessagesQueryParams,
   SendMessageBody,
 } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth-middleware";
 import { getAIProvider } from "../lib/ai-provider";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, deleteStoredMedia, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, deleteStoredMedia, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, streamStoredMedia } from "../lib/media-storage";
 
 const MAX_CHAT_MEDIA_SIZE_BYTES = MAX_MEDIA_SIZE_BYTES;
 import { isOwnerRole, normalizeRole } from "../lib/auth-middleware";
@@ -57,6 +58,19 @@ async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]
   return true;
 }
 
+async function canViewPrivateConversation(user: NonNullable<Express.Request["currentUser"]>, recipientId: number): Promise<boolean> {
+  if (!Number.isInteger(recipientId) || recipientId <= 0 || recipientId === user.id) return false;
+  if (isOwnerRole(user.role)) return true;
+  const [conversation] = await db.select({ id: messagesTable.id })
+    .from(messagesTable)
+    .where(or(
+      and(eq(messagesTable.senderId, user.id), eq(messagesTable.recipientId, recipientId)),
+      and(eq(messagesTable.senderId, recipientId), eq(messagesTable.recipientId, user.id)),
+    ))
+    .limit(1);
+  return Boolean(conversation);
+}
+
 function messageMediaPath(storageKey: string): string {
   return `/api/messages/media/${storageKey}`;
 }
@@ -92,6 +106,24 @@ router.post("/messages/media", requireAuth, (req, res): void => {
         }
       }
 
+      // Capture an audio fallback before object storage is allowed to remove the temporary local file.
+      // This keeps legacy/database playback available even when object storage is later unavailable.
+      const audioData = req.file.mimetype.toLowerCase().startsWith("audio/")
+        ? await readFile(req.file.path)
+        : null;
+
+      try {
+        await persistUploadedMedia(req.file.filename, req.file.mimetype, req.file.path);
+      } catch {
+        await deleteStoredMedia(req.file.filename);
+        res.status(503).json({ error: "Persistent media storage is temporarily unavailable. Please retry the upload." });
+        return;
+      }
+
+      if (audioData) {
+        await pool.query("INSERT INTO message_media (storage_key, mime_type, size_bytes, data) VALUES ($1,$2,$3,$4) ON CONFLICT (storage_key) DO UPDATE SET mime_type = EXCLUDED.mime_type, size_bytes = EXCLUDED.size_bytes, data = EXCLUDED.data", [req.file.filename, req.file.mimetype, req.file.size, audioData]);
+      }
+
       res.status(201).json({
         mediaUrl: messageMediaPath(req.file.filename) + "?type=" + encodeURIComponent(req.file.mimetype),
         storageKey: req.file.filename,
@@ -116,15 +148,39 @@ router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise
   const user = req.currentUser!;
   const allowed = message.groupId != null
     ? await canAccessGroup(message.groupId, user.id, user.role)
-    : message.recipientId != null && (message.recipientId === user.id || message.senderId === user.id);
+    : message.recipientId != null && (isOwnerRole(user.role) || message.recipientId === user.id || message.senderId === user.id);
   if (!allowed) { res.status(403).json({ error: "You cannot access this media" }); return; }
+  const remote = await streamStoredMedia(storageKey, req.headers.range);
+  if (remote) {
+    res.status(remote.status);
+    remote.headers.forEach((value, key) => res.setHeader(key, value));
+    if (remote.body) for await (const chunk of remote.body as any) res.write(chunk);
+    res.end();
+    return;
+  }
+  const stored = await pool.query("SELECT mime_type, size_bytes, data FROM message_media WHERE storage_key = $1 LIMIT 1", [storageKey]);
+  if (stored.rows[0]) {
+    const row = stored.rows[0] as { mime_type: string; size_bytes: number; data: Buffer };
+    const mediaType = typeof req.query.type === "string" && isAllowedMediaType(req.query.type) ? req.query.type : row.mime_type;
+    res.setHeader("Content-Type", mediaType);
+    res.setHeader("Accept-Ranges", "bytes");
+    const range = req.headers.range;
+    if (!range) { res.setHeader("Content-Length", row.size_bytes); res.end(row.data); return; }
+    const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+    if (!match) { res.status(416).end(); return; }
+    const start = match[1] ? Number(match[1]) : Math.max(row.size_bytes - Number(match[2]), 0);
+    const end = match[2] ? Number(match[2]) : row.size_bytes - 1;
+    if (start > end || start >= row.size_bytes) { res.status(416).end(); return; }
+    res.status(206); res.setHeader("Content-Range", "bytes " + start + "-" + end + "/" + row.size_bytes); res.setHeader("Content-Length", end - start + 1); res.end(row.data.subarray(start, end + 1)); return;
+  }
   try {
     const stats = await getMediaStats(storageKey);
     res.setHeader("Content-Type", typeof req.query.type === "string" && isAllowedMediaType(req.query.type) ? req.query.type : "audio/webm");
     res.setHeader("Content-Length", stats.size);
+    res.setHeader("Accept-Ranges", "bytes");
     createReadStream(getMediaPath(storageKey)).pipe(res);
   } catch {
-    res.status(404).json({ error: "Media not found" });
+    res.status(410).json({ error: "Media not found; this legacy recording is no longer available. Please resend the voice note." });
   }
 });
 
@@ -155,8 +211,8 @@ router.get("/messages", requireAuth, async (req, res): Promise<void> => {
       .where(eq(messagesTable.groupId, groupId))
       .orderBy(messagesTable.createdAt);
   } else if (recipientId != null) {
-    if (!(await canMessageUser(currentUser, recipientId))) {
-      res.status(403).json({ error: "You cannot access this conversation" });
+    if (!(await canViewPrivateConversation(currentUser, recipientId))) {
+      res.status(403).json({ error: "Private conversations are restricted to the participants and owner" });
       return;
     }
     // Private messages between current user and recipient
@@ -261,6 +317,13 @@ router.post("/messages", requireAuth, async (req, res): Promise<void> => {
     senderName: currentUser.name,
     senderRole: currentUser.role,
   }).returning();
+
+  if (message.mediaUrl) {
+    try {
+      const storageKey = new URL(message.mediaUrl, "https://internal.invalid").pathname.split("/").pop();
+      if (storageKey) await pool.query("UPDATE message_media SET message_id = $1 WHERE storage_key = $2", [message.id, storageKey]);
+    } catch { /* keep message delivery successful if media metadata reconciliation fails */ }
+  }
 
   // Log activity for group messages
   if (message.groupId != null) {
