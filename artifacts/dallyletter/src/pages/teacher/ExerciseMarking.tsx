@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 
 function DrawAnswer({ data, markingData }: { data: unknown; markingData?: Record<string,unknown>|null }) {
   const d = data as { strokes?: { x:number;y:number;px:number;py:number;color?:string;width?:number;tool?:string;opacity?:number }[]; paintStrokes?: { x:number;y:number;px:number;py:number;color?:string;width?:number;opacity?:number }[]; labels?: { text:string;x:number;y:number;anchorX?:number;anchorY?:number;color?:string;opacity?:number }[]; pointers?: { x:number;y:number;length?:number;thickness?:number;opacity?:number;color?:string;angle?:number }[] };
@@ -127,6 +128,7 @@ interface Question {
   marksAllocated: string;
   position: number;
 }
+interface PollOption { id:number; questionId:number; label:string; value:string; isCorrect?:boolean; }
 
 interface Exercise {
   id: number;
@@ -141,7 +143,7 @@ const statusMeta: Record<string, { label: string; className: string; icon: typeo
   marked: { label: "Returned", className: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20", icon: CheckCircle2 },
 };
 
-function FloatingMark({ value, max, onChange }: { value: string; max: string; onChange: (value: string) => void }) {
+function FloatingMark({ value, max, onChange }: { value: string; max?: string; onChange: (value: string) => void }) {
   const [pos, setPos] = useState({ x: 12, y: 12 });
   const dragging = useRef(false);
   const startPoint = useRef({ x: 0, y: 0, px: 12, py: 12 });
@@ -199,6 +201,7 @@ export default function ExerciseMarking() {
   const id = params?.id;
   const [exercise, setExercise] = useState<Exercise | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [pollOptions, setPollOptions] = useState<PollOption[]>([]);
   const [subs, setSubs] = useState<Submission[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
   const [answers, setAnswers] = useState<Answer[]>([]);
@@ -233,6 +236,7 @@ export default function ExerciseMarking() {
         if (cancelled) return;
         if (exerciseData?.exercise) setExercise(exerciseData.exercise);
         setQuestions(Array.isArray(exerciseData?.questions) ? exerciseData.questions : []);
+        setPollOptions(Array.isArray(exerciseData?.options) ? exerciseData.options : []);
         setSubs(Array.isArray(submissionData) ? submissionData : []);
       })
       .catch(() => setMessage("Could not load the exercise and submissions."))
@@ -322,6 +326,8 @@ export default function ExerciseMarking() {
   };
 
   const selectedQuestion = (answer: Answer) => questions.find((q) => q.id === answer.questionId);
+  const optionsFor = (questionId:number) => pollOptions.filter(option => option.questionId === questionId);
+  const mediaTypeFor = (url:string): "audio"|"video"|"image"|"document" => { const type=new URL(url,window.location.origin).searchParams.get("type") ?? ""; if(type.startsWith("image/"))return "image"; if(type.startsWith("video/"))return "video"; if(type.startsWith("audio/"))return "audio"; return "document"; };
   const liveEarned = answers.reduce((sum,a)=>sum+Math.max(0,Math.min(Number(selectedQuestion(a)?.marksAllocated??0),Number(marks[a.id]??0)||0)),0);
   const liveTotal = Number(exercise?.totalMarks??0);
   const livePercentage = liveTotal>0 ? (liveEarned/liveTotal)*100 : 0;
@@ -384,7 +390,7 @@ export default function ExerciseMarking() {
               {answers.map((a, i) => {
                 const q = selectedQuestion(a);
                 return (
-                  <div key={a.id} className="space-y-3 rounded-xl border p-4">
+                  <div key={a.id} className="relative space-y-3 rounded-xl border p-4"><FloatingMark value={marks[a.id] ?? "0"} max={q?.marksAllocated} onChange={value=>setMarks(m=>({...m,[a.id]:value}))}/>
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
                         <div className="font-medium">Question {q?.position != null ? q.position + 1 : i + 1}</div>
@@ -394,11 +400,11 @@ export default function ExerciseMarking() {
                     </div>
 
                     <div className="rounded-lg bg-muted p-3 text-sm">
-                      <div className="mb-2 flex items-center justify-between gap-2"><div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Learner answer</div>{Boolean(a.drawData) && <Button type="button" size="sm" variant={tickMode===a.id?"default":"outline"} onClick={()=>setTickMode(v=>v===a.id?null:a.id)} aria-label={`Toggle tick marking for question ${i+1}`}>✓ {tickMode===a.id?"Tick mode on":"Add ticks"}</Button>}</div>
-                      {a.drawData ? <div className="relative overflow-hidden rounded-lg border bg-white" onClick={(event)=>{if(tickMode!==a.id)return;const rect=event.currentTarget.getBoundingClientRect();const current=(markingData[a.id]?.ticks??[]) as Array<Record<string,unknown>>;const next={...markingData[a.id],ticks:[...current,{x:Math.max(0,Math.min(1190,((event.clientX-rect.left)/rect.width)*1200)),y:Math.max(0,Math.min(690,((event.clientY-rect.top)/rect.height)*700)),size:30,color:"#16a34a",opacity:.95}]};setMarkingData(m=>({...m,[a.id]:next}));}}><DrawAnswer data={a.drawData} /><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div> : (a.textAnswer || a.selectedValue || (a.mediaReference ? <AuthenticatedAttachment url={a.mediaReference} /> : "No answer"))} {a.mediaReference && (a.textAnswer || a.selectedValue || a.drawData ? <AuthenticatedAttachment url={a.mediaReference} /> : null)}
+                      <div className="mb-2 flex items-center justify-between gap-2"><div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Learner answer</div>{(Boolean(a.drawData)||Boolean(a.mediaReference)) && <Button type="button" size="sm" variant={tickMode===a.id?"default":"outline"} onClick={()=>setTickMode(v=>v===a.id?null:a.id)} aria-label={`Toggle tick marking for question ${i+1}`}>✓ {tickMode===a.id?"Tick mode on":"Add ticks"}</Button>}</div>
+                      {a.drawData ? <div className="relative overflow-hidden rounded-lg border bg-white" onClick={(event)=>{if(tickMode!==a.id)return;const rect=event.currentTarget.getBoundingClientRect();const current=(markingData[a.id]?.ticks??[]) as Array<Record<string,unknown>>;const next={...markingData[a.id],ticks:[...current,{x:Math.max(0,Math.min(1190,((event.clientX-rect.left)/rect.width)*1200)),y:Math.max(0,Math.min(690,((event.clientY-rect.top)/rect.height)*700)),size:30,color:"#16a34a",opacity:.95}]};setMarkingData(m=>({...m,[a.id]:next}));}}><DrawAnswer data={a.drawData} /><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div> : a.mediaReference ? <div className="relative overflow-hidden rounded-lg border bg-background" onClick={(event)=>{if(tickMode!==a.id)return;const rect=event.currentTarget.getBoundingClientRect();const current=(markingData[a.id]?.ticks??[]) as Array<Record<string,unknown>>;setMarkingData(m=>({...m,[a.id]:{...m[a.id],ticks:[...current,{x:((event.clientX-rect.left)/rect.width)*1200,y:((event.clientY-rect.top)/rect.height)*700,size:30,color:"#16a34a",opacity:.95}]}}));}}><AuthenticatedMedia url={a.mediaReference} type={mediaTypeFor(a.mediaReference)} title={`Question ${i+1} learner media`} /><div className="pointer-events-none absolute inset-0"><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div></div> : q?.type==="poll" && a.selectedValue ? <div className={`rounded-lg border p-3 font-semibold ${optionsFor(q.id).find(o=>o.value===a.selectedValue)?.isCorrect ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-red-300 bg-red-50 text-red-800"}`}>Selected: {optionsFor(q.id).find(o=>o.value===a.selectedValue)?.label ?? a.selectedValue} {optionsFor(q.id).find(o=>o.value===a.selectedValue)?.isCorrect ? "✓ Correct" : "✕ Wrong"}</div> : (a.textAnswer || "No answer")}
                     </div>
 
-                    <div className="grid gap-3 sm:grid-cols-[auto_1fr]"><div className="relative min-h-20 rounded-xl border bg-background/30 p-2"><FloatingMark value={marks[a.id] ?? "0"} max={q?.marksAllocated ?? "0"} onChange={value=>setMarks(m=>({...m,[a.id]:value}))}/><div className="pt-12 text-xs text-muted-foreground">Drag the floating mark onto the learner answer. It remains linked to this question.</div></div>
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
                       <div className="flex items-center gap-2">
                         <div className="flex items-center gap-1"><Button type="button" size="sm" variant="outline" className="text-emerald-600 border-emerald-300 hover:bg-emerald-50" onClick={()=>setMarks((m)=>({...m,[a.id]:q?.marksAllocated??"0"}))} aria-label={`Mark question ${i+1} correct`}><CheckCircle2 className="h-4 w-4" /></Button><Button type="button" size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50" onClick={()=>setMarks((m)=>({...m,[a.id]:"0"}))} aria-label={`Mark question ${i+1} incorrect`}><XCircle className="h-4 w-4" /></Button><Input
                           type="number"
@@ -406,11 +412,11 @@ export default function ExerciseMarking() {
                           max={q?.marksAllocated ?? undefined}
                           step="0.01"
                           value={marks[a.id] ?? "0"}
-                          onChange={(e) => { const max=Number(q?.marksAllocated??0); const raw=Number(e.target.value); setMarks((m) => ({ ...m, [a.id]: Number.isFinite(raw)?String(Math.max(0,Math.min(max,raw))):"0" })); }}
+                          onChange={(e) => { const raw=Number(e.target.value); setMarks((m) => ({ ...m, [a.id]: Number.isFinite(raw)?String(Math.max(0,raw)):"0" })); }}
                           className="w-28"
                           aria-label={`Awarded marks for question ${i + 1}`}
                         /></div>
-                        <span className="text-sm text-muted-foreground">/ {q?.marksAllocated ?? "—"} • up to 2 decimal places</span>
+                        <span className="text-sm text-muted-foreground">/ {q?.marksAllocated ?? "—"} • any numeric mark; server validates the allocation</span>
                       </div>
                       <Textarea
                         value={notes[a.id] ?? ""}
