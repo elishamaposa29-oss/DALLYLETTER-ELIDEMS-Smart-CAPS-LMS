@@ -78,7 +78,10 @@ function DrawBox({
   const paintStrokes = () => (value?.paintStrokes as Stroke[] | undefined) ?? [];
   const pointers = () => (value?.pointers as PointerMark[] | undefined) ?? [];
   const labels = () => (value?.labels as LabelMark[] | undefined) ?? [];
-  const teacherStrokes = () => (teacherDrawing?.strokes as Stroke[] | undefined) ?? [];\n  const teacherPaintStrokes = () => (teacherDrawing?.paintStrokes as Stroke[] | undefined) ?? [];\n  const teacherPointers = () => (teacherDrawing?.pointers as PointerMark[] | undefined) ?? [];\n  const teacherLabels = () => (teacherDrawing?.labels as LabelMark[] | undefined) ?? [];
+  const teacherStrokes = () => (teacherDrawing?.strokes as Stroke[] | undefined) ?? [];
+  const teacherPaintStrokes = () => (teacherDrawing?.paintStrokes as Stroke[] | undefined) ?? [];
+  const teacherPointers = () => (teacherDrawing?.pointers as PointerMark[] | undefined) ?? [];
+  const teacherLabels = () => (teacherDrawing?.labels as LabelMark[] | undefined) ?? [];
 
   const redraw = () => {
     const canvas = canvasRef.current;
@@ -103,7 +106,8 @@ function DrawBox({
       ctx.restore();
     };
 
-    for (const stroke of teacherPaintStrokes()) drawStroke(stroke, 0.72);\n    for (const stroke of teacherStrokes()) drawStroke(stroke, 0.72);
+    for (const stroke of teacherPaintStrokes()) drawStroke(stroke, 0.72);
+    for (const stroke of teacherStrokes()) drawStroke(stroke, 0.72);
     for (const stroke of paintStrokes()) drawStroke(stroke, 0.3);
     for (const stroke of strokes()) drawStroke(stroke, 1);
 
