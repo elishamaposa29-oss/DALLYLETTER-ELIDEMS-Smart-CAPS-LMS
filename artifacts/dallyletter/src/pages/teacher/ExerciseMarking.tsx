@@ -34,7 +34,7 @@ function FloatingTicks({ data, onChange }: { data: Record<string, unknown> | nul
         return (
           <div
             key={index}
-            className="absolute z-20 touch-none cursor-grab select-none font-black"
+            className="pointer-events-auto absolute z-20 touch-none cursor-grab select-none font-black"
             style={{
               left: left + "%",
               top: top + "%",
