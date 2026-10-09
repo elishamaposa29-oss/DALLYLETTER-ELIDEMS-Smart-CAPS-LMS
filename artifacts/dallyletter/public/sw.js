@@ -24,12 +24,14 @@ async function cacheAsset(request, response) {
   if (!response.ok || response.type !== "basic") return;
   const size = Number(response.headers.get("content-length") || 0);
   if (size > MAX_ASSET_BYTES) return;
-  const cache = await caches.open(ASSET_CACHE);
-  await cache.put(request, response.clone());
-  const keys = await cache.keys();
-  if (keys.length > MAX_ASSETS) {
-    await Promise.all(keys.slice(0, keys.length - MAX_ASSETS).map(key => cache.delete(key)));
-  }
+  try {
+    const cache = await caches.open(ASSET_CACHE);
+    await cache.put(request, response.clone());
+    const keys = await cache.keys();
+    if (keys.length > MAX_ASSETS) {
+      await Promise.all(keys.slice(0, keys.length - MAX_ASSETS).map(key => cache.delete(key)));
+    }
+  } catch { /* Quota/private-mode failures must not break online loading. */ }
 }
 
 self.addEventListener("fetch", event => {
@@ -59,7 +61,7 @@ self.addEventListener("fetch", event => {
     const network = fetch(request).then(async response => {
       await cacheAsset(request, response);
       return response;
-    });
+    }).catch(() => cached || Response.error());
     return cached || network;
   })());
 });
