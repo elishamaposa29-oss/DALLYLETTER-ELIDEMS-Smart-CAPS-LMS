@@ -89,7 +89,7 @@ function MediaMarkOverlay({ data, onChange }: { data: Record<string, unknown> | 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const last = useRef<{ x: number; y: number } | null>(null);
-  const [tool, setTool] = useState<"pen" | "tick">("pen");
+  const [tool, setTool] = useState<"pen" | "tick" | "eraser">("pen");
   const [active, setActive] = useState(false);
   const redraw = () => {
     const canvas = canvasRef.current; if (!canvas) return;
@@ -103,11 +103,11 @@ function MediaMarkOverlay({ data, onChange }: { data: Record<string, unknown> | 
   useEffect(()=>redraw(),[data]);
   const point=(e:React.PointerEvent<HTMLCanvasElement>)=>{const c=canvasRef.current;if(!c)return null;const r=c.getBoundingClientRect();return{x:(e.clientX-r.left)*(1200/r.width),y:(e.clientY-r.top)*(700/r.height)};};
   const down=(e:React.PointerEvent<HTMLCanvasElement>)=>{const p=point(e);if(!p)return;drawing.current=true;last.current=p;e.currentTarget.setPointerCapture(e.pointerId);if(tool==="tick"){const ticks=(data?.ticks??[]) as Array<Record<string,unknown>>;onChange({...data,ticks:[...ticks,{x:p.x,y:p.y,size:34,color:"#16a34a",opacity:.95}]});drawing.current=false;}};
-  const move=(e:React.PointerEvent<HTMLCanvasElement>)=>{if(!drawing.current||tool!=="pen"||!last.current)return;const p=point(e);if(!p)return;const strokes=(data?.mediaStrokes??[]) as Array<Record<string,unknown>>;onChange({...data,mediaStrokes:[...strokes,{px:last.current.x,py:last.current.y,x:p.x,y:p.y,color:"#16a34a",width:4,opacity:.95}]});last.current=p;};
+  const move=(e:React.PointerEvent<HTMLCanvasElement>)=>{if(!drawing.current||!last.current)return;const p=point(e);if(!p)return;if(tool==="eraser"){const radius=42;const near=(item:Record<string,unknown>)=>Math.hypot(Number(item.x??0)-p.x,Number(item.y??0)-p.y)<radius;const strokes=(data?.mediaStrokes??[]) as Array<Record<string,unknown>>;const ticks=(data?.ticks??[]) as Array<Record<string,unknown>>;onChange({...data,mediaStrokes:strokes.filter(item=>!near(item)),ticks:ticks.filter(item=>!near(item))});last.current=p;return;}if(tool!=="pen")return;const strokes=(data?.mediaStrokes??[]) as Array<Record<string,unknown>>;onChange({...data,mediaStrokes:[...strokes,{px:last.current.x,py:last.current.y,x:p.x,y:p.y,color:"#dc2626",width:4,opacity:.95}]});last.current=p;};
   return <div className="absolute inset-0 z-20 pointer-events-none">
     <div className="pointer-events-auto absolute left-2 top-2 flex gap-1 rounded-full border bg-[#0A1931]/95 p-1 shadow-lg">
       <Button type="button" size="icon" variant={tool==="pen"?"default":"ghost"} className="h-8 w-8" aria-label="Draw on media" title="Draw on media" onClick={()=>{setTool("pen");setActive(true)}}>✎</Button>
-      <Button type="button" size="icon" variant={tool==="tick"?"default":"ghost"} className="h-8 w-8" aria-label="Place mark on media" title="Place mark on media" onClick={()=>{setTool("tick");setActive(true)}}>✓</Button><Button type="button" size="icon" variant="ghost" className="h-8 w-8" aria-label="Stop media marking" title="Stop media marking" onClick={()=>setActive(false)}>✕</Button>
+      <Button type="button" size="icon" variant={tool==="tick"?"default":"ghost"} className="h-8 w-8" aria-label="Place mark on media" title="Place mark on media" onClick={()=>{setTool("tick");setActive(true)}}>✓</Button><Button type="button" size="icon" variant={tool==="eraser"?"default":"ghost"} className="h-8 w-8" aria-label="Erase media marks" title="Erase nearby marks" onClick={()=>{setTool("eraser");setActive(true)}}>⌫</Button><Button type="button" size="icon" variant="ghost" className="h-8 w-8" aria-label="Stop media marking" title="Stop media marking" onClick={()=>setActive(false)}>✕</Button>
     </div>
     <canvas ref={canvasRef} width={1200} height={700} className={active ? "pointer-events-auto absolute inset-0 h-full w-full touch-none" : "pointer-events-none absolute inset-0 h-full w-full"} onPointerDown={down} onPointerMove={move} onPointerUp={()=>{drawing.current=false;last.current=null}} onPointerCancel={()=>{drawing.current=false;last.current=null}} />
   </div>;
