@@ -8,15 +8,15 @@ const safeStyleNames=["font-size","font-family","text-align","font-weight","font
 function looksLikeEmbeddedSource(text:string){
   const value=text.trim();
   if(!value)return false;
-  const hasMarkup=/<\\/?(?:html|head|body|style|script|div|span|section|main|table|button|iframe|svg)\\b[^>]*>/i.test(value);
-  const hasCss=/[.#][\\w-]+\\s*\\{[\\s\\S]*?(?:[.#][\\w-]+|[a-z-]+)\\s*:/i.test(value) ||
-    /(?:font-family|background(?:-color)?|display|position|margin|padding|z-index)\\s*:[^;{}]+;[\\s\\S]*[{}]/i.test(value);
-  const hasProgramCode=/(?:function\\s+\\w+|=>\\s*\\{|document\\.querySelector|window\\.addEventListener|<script|<style)/i.test(value);
+  const hasMarkup=/<\/?(?:html|head|body|style|script|div|span|section|main|table|button|iframe|svg)\b[^>]*>/i.test(value);
+  const hasCss=/(?:^|\n)\s*(?:[.#][\w-]+|@[a-z-]+)\s*\{[\s\S]*?\}/i.test(value) ||
+    /(?:font-family|background(?:-color)?|display|position|margin|padding|z-index)\s*:[^;{}]+;[\s\S]*[{}]/i.test(value);
+  const hasProgramCode=/(?:function\s+\w+|=>\s*\{|document\.querySelector|window\.addEventListener|<script|<style)/i.test(value);
   return (hasMarkup && (/[{};]/.test(value) || /className=|<style|<script/i.test(value))) || hasCss || hasProgramCode;
 }
 
 export function sanitizeRichText(html:string){
-  if(typeof DOMParser==="undefined") return html.replace(/<\\/?(?:script|style|iframe|object|svg|pre|code)\\b[^>]*>[\\s\\S]*?<\\/?(?:script|style|iframe|object|svg|pre|code)\\s*>/gi,"").replace(/<[^>]+>/g,"");
+  if(typeof DOMParser==="undefined") return html.replace(/<\/?(?:script|style|iframe|object|svg|pre|code)\b[^>]*>[\s\S]*?<\/?(?:script|style|iframe|object|svg|pre|code)\s*>/gi,"").replace(/<[^>]+>/g,"");
   const doc=new DOMParser().parseFromString(html,"text/html");
   const walk=(node:Node)=>{
     [...node.childNodes].forEach(child=>{
@@ -46,7 +46,7 @@ export function sanitizeRichText(html:string){
         [...el.attributes].forEach(a=>{if(a.name!=="style")el.removeAttribute(a.name);});
         if(el.hasAttribute("style")){
           const styles=[...el.style].filter(k=>safeStyleNames.includes(k))
-            .map(k=>`${k}:${el.style.getPropertyValue(k)}`).join(";");
+            .map(k=>k+":"+el.style.getPropertyValue(k)).join(";");
           if(styles)el.setAttribute("style",styles);else el.removeAttribute("style");
           el.style.direction="ltr"; el.style.unicodeBidi="normal";
         }
