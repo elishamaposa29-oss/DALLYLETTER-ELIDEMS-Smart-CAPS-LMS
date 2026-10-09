@@ -56,6 +56,7 @@ function ReturnedMediaAnnotations({ data }: { data: Record<string, unknown> | nu
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const source = data ?? {};
     const drawSegments = (items: unknown, fallback: string, alpha: number) => {
       if (!Array.isArray(items)) return;
       for (const raw of items) {
@@ -73,10 +74,10 @@ function ReturnedMediaAnnotations({ data }: { data: Record<string, unknown> | nu
         ctx.restore();
       }
     };
-    drawSegments(data.mediaStrokes, "#dc2626", 0.95);
-    drawSegments(data.strokes, "#dc2626", 0.95);
-    drawSegments(data.paintStrokes, "#f59e0b", 0.4);
-    const ticks = Array.isArray(data.ticks) ? data.ticks as Array<Record<string, unknown>> : [];
+    drawSegments(source.mediaStrokes, "#dc2626", 0.95);
+    drawSegments(source.strokes, "#dc2626", 0.95);
+    drawSegments(source.paintStrokes, "#f59e0b", 0.4);
+    const ticks = Array.isArray(source.ticks) ? source.ticks as Array<Record<string, unknown>> : [];
     for (const tick of ticks) {
       ctx.save();
       ctx.globalAlpha = Number(tick.opacity ?? 0.95);
@@ -85,7 +86,7 @@ function ReturnedMediaAnnotations({ data }: { data: Record<string, unknown> | nu
       ctx.fillText("✓", Number(tick.x ?? 0), Number(tick.y ?? 0));
       ctx.restore();
     }
-    const pointers = Array.isArray(data.pointers) ? data.pointers as Array<Record<string, unknown>> : [];
+    const pointers = Array.isArray(source.pointers) ? source.pointers as Array<Record<string, unknown>> : [];
     for (const p of pointers) {
       const x = Number(p.x ?? 0), y = Number(p.y ?? 0), angle = Number(p.angle ?? 0), length = Number(p.length ?? 90);
       const ex = x + Math.cos(angle) * length, ey = y + Math.sin(angle) * length;
@@ -94,7 +95,7 @@ function ReturnedMediaAnnotations({ data }: { data: Record<string, unknown> | nu
       ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ex, ey); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(ex - Math.cos(angle - .55) * 12, ey - Math.sin(angle - .55) * 12); ctx.lineTo(ex - Math.cos(angle + .55) * 12, ey - Math.sin(angle + .55) * 12); ctx.closePath(); ctx.fill(); ctx.restore();
     }
-    const labels = Array.isArray(data.labels) ? data.labels as Array<Record<string, unknown>> : [];
+    const labels = Array.isArray(source.labels) ? source.labels as Array<Record<string, unknown>> : [];
     for (const label of labels) {
       ctx.save(); ctx.fillStyle = String(label.color ?? "#dc2626"); ctx.globalAlpha = Number(label.opacity ?? 1);
       ctx.font = `bold ${Number(label.fontSize ?? 18)}px sans-serif`;
