@@ -40,7 +40,11 @@ export function sanitizeRichText(html:string){
           if(el.getAttribute("color")) span.style.color=el.getAttribute("color")!;
           const size=el.getAttribute("size");
           if(size) span.style.fontSize=({1:"0.75rem",2:"0.875rem",3:"1rem",4:"1.125rem",5:"1.35rem",6:"1.7rem",7:"2.2rem"} as Record<string,string>)[size] ?? "1rem";
-          span.innerHTML=el.innerHTML; el.replaceWith(span); return;
+          const children=[...el.childNodes];
+          span.append(...children);
+          el.replaceWith(span);
+          walk(span);
+          return;
         }
         if(!allowedTags.has(el.tagName)){
           const plainText=el.textContent||"";
