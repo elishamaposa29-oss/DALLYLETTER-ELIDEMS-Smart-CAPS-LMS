@@ -109,6 +109,14 @@
 
 The checked-in `render.yaml` production service pointed at `production`; the `production` and `staging` branches were each 348 commits behind `main` at audit time. This branch changes the production Blueprint target to `main` and adds placeholders for R2, VAPID and Paynow server environment variables. `autoDeploy: false` is intentionally retained until CI and the actual Render service/workspace are verified. Editing this repository file does not change the live Render service by itself.
 
+## Branch and pull-request inventory
+
+- 35 Git branches were listed; `main` is protected and remained unchanged during this repair work.
+- `production` and `staging` each trail `main` by 348 commits; the two stable recovery branches trail by 324 and 322 commits; `chore/production-db-schema` trails by 114; `fix/platform-feature-auth-loading` trails by 174.
+- `fix/platform-role-routing-and-academic-workflows` is diverged (56 commits ahead and 299 behind, 27 changed files). Its old API-base URL and prefect-panel changes overlap with code already on current `main`; do not merge it wholesale.
+- Open PRs at audit time: #1 (owner/admin settings; conflicts), #17 (premium UI redesign; mergeable but changes visual components), #25 (preview/notifications/security; conflicts), and this focused #27. Closed PRs #26 and #24–#2 remain historical context, not merge candidates.
+- No branch or Vercel project was deleted, no old branch was merged, and no live service was changed during this audit.
+
 ## Completion policy
 
 A task is complete only after code review, successful CI/release safety, successful deployment to the intended production service, and role-appropriate end-to-end verification. Any blocked check must retain a named owner/action and must not be relabeled as passed.
