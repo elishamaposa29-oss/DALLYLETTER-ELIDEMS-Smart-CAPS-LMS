@@ -39,8 +39,16 @@ export function sanitizeRichText(html:string){
           span.innerHTML=el.innerHTML; el.replaceWith(span); return;
         }
         if(!allowedTags.has(el.tagName)){
-          const text=document.createTextNode(el.textContent||"");
-          el.replaceWith(text);
+          const plainText=el.textContent||"";
+          // Unknown wrappers can contain pasted HTML/CSS source. Drop that source, but
+          // preserve and sanitize ordinary lesson text nested inside harmless wrappers.
+          if(looksLikeEmbeddedSource(plainText)){
+            el.remove();
+            return;
+          }
+          const children=[...el.childNodes];
+          children.forEach(walk);
+          el.replaceWith(...children);
           return;
         }
         [...el.attributes].forEach(a=>{if(a.name!=="style")el.removeAttribute(a.name);});
