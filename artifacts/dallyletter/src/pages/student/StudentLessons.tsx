@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, Search, FileText, Image as ImageIcon, Video, Headphones, BookOpen, ExternalLink, GraduationCap, ClipboardList, Sparkles } from "lucide-react";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
+import { sanitizeRichText } from "@/components/RichTextEditor";
 import { isValidLessonUrl } from "@/lib/media-url";
 
 function YouTubeEmbed({ url, title }: { url: string; title: string }) {
@@ -17,24 +18,6 @@ function YouTubeEmbed({ url, title }: { url: string; title: string }) {
 function StoredMedia({ url, type, title }: { url: string; type: string; title: string }) {
   const mediaType = type === "audio" || type === "video" || type === "image" ? type : "document";
   return <AuthenticatedMedia url={url} type={mediaType} title={title} />;
-}
-
-function sanitizeLessonHtml(input: string): string {
-  if (!input) return "";
-  // Older lesson records may contain HTML that was escaped before being saved.
-  // Decode one layer only, then sanitize the resulting document before rendering.
-  const decoder = document.createElement("textarea");
-  decoder.innerHTML = input;
-  const decoded = decoder.value;
-  const source = decoded.includes("<") && decoded.includes(">") ? decoded : input;
-  const doc = new DOMParser().parseFromString(source, "text/html");
-  doc.querySelectorAll("script,iframe,object,embed,style,link").forEach(node => node.remove());
-  doc.querySelectorAll("*").forEach(node => {
-    [...node.attributes].forEach(attr => {
-      if (/^on/i.test(attr.name) || ((attr.name === "href" || attr.name === "src") && /^javascript:/i.test(attr.value))) node.removeAttribute(attr.name);
-    });
-  });
-  return doc.body.innerHTML;
 }
 
 function hasValidMediaUrl(url: string | null | undefined): url is string {
@@ -194,7 +177,7 @@ export default function StudentLessons() {
 
                   <CardContent className="flex-1 flex flex-col justify-between gap-4">
                     {hasValidMediaUrl(lesson.mediaUrl) && (isYouTubeUrl(lesson.mediaUrl) ? <YouTubeEmbed url={lesson.mediaUrl} title={lesson.title} /> : lesson.mediaUrl.startsWith("/api/lessons/media/") ? <StoredMedia url={lesson.mediaUrl} type={lesson.type} title={lesson.title} /> : null)}
-                    {lesson.content && <div className="rounded-xl border bg-background/70 p-4"><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Lesson notes</p><div className="prose prose-sm max-w-none dark:prose-invert" dangerouslySetInnerHTML={{__html:sanitizeLessonHtml(lesson.content)}} /></div>}
+                    {lesson.content && <div className="rounded-xl border bg-background/70 p-4"><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Lesson notes</p><div className="prose prose-sm max-w-none dark:prose-invert" dangerouslySetInnerHTML={{__html:sanitizeRichText(lesson.content)}} /></div>}
                     <div className="rounded-lg bg-muted/20 p-3"><p className="text-sm text-muted-foreground line-clamp-4">{lesson.description || "No description provided."}</p></div>
 
                     {(exerciseMap[lesson.id] ?? []).length > 0 && <div className="space-y-2 border-t pt-3"><div className="flex items-center gap-2 text-sm font-medium"><ClipboardList className="h-4 w-4 text-primary" />Exercises</div>{(exerciseMap[lesson.id] ?? []).map(ex => <Button key={ex.id} variant="outline" className={`w-full justify-between gap-2 border transition-all hover:-translate-y-0.5 ${ex.submissionStatus==="marked" ? (localStorage.getItem(`dallyletter.exercise.viewed.${ex.id}`)==="1" ? "border-[#D4AF37]/60 bg-[#D4AF37]/10 text-[#6b4f00]" : "border-emerald-300 bg-emerald-50 text-emerald-800") : "border-purple-300 bg-purple-50 text-purple-800"}`} onClick={(e) => { e.stopPropagation(); localStorage.setItem(`dallyletter.exercise.viewed.${ex.id}`,"1"); window.location.assign(`/student/exercises/${ex.id}`); }}><span className="truncate text-left font-semibold">{ex.title}</span><span className="flex shrink-0 items-center gap-1"><Badge variant="secondary">{ex.totalMarks} marks</Badge><Badge className={ex.submissionStatus==="marked" ? (localStorage.getItem(`dallyletter.exercise.viewed.${ex.id}`)==="1" ? "bg-[#D4AF37] text-[#0A1931]" : "bg-emerald-600 text-white") : "bg-purple-600 text-white"}>{ex.submissionStatus==="marked" ? `Result: ${ex.submission?.totalScore ?? "0"}/${ex.totalMarks}` : ex.submissionStatus==="submitted" ? "Awaiting marking" : "Unmarked • Unviewed"}</Badge></span></Button>)}</div>}
