@@ -100,6 +100,8 @@
 - Paynow: the callback verifies a hash but maps every non-paid status (including cancellation/failure) to `pending`; the UI supports only paid/pending/overdue. A failed checkout initialization can leave a pending row. Fix only after defining provider-state mapping, idempotent callback handling and a tested migration/UI contract.
 - Existing PR #25 changes overlap with code already on `main` (including portions of audit isolation, manager activity, follower notifications and marking). Reapplying whole files would risk reverting newer safeguards; compare individual behavior and preserve current code.
 
+- Render Blueprint CORS: the original `render.yaml` contained a placeholder frontend origin (`your-frontend-domain.com`). This branch removes the placeholder and makes CORS origins dashboard-managed; verify the exact canonical frontend origin before the next production deployment, or the browser may block API calls.
+
 ## Render branch alignment
 
 The checked-in `render.yaml` production service pointed at `production`; the `production` and `staging` branches were each 348 commits behind `main` at audit time. This branch changes the production Blueprint target to `main` and adds placeholders for R2, VAPID and Paynow server environment variables. `autoDeploy: false` is intentionally retained until CI and the actual Render service/workspace are verified. Editing this repository file does not change the live Render service by itself.
