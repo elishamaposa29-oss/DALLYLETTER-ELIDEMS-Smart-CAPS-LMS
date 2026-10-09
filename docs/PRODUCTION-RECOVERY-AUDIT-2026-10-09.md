@@ -37,6 +37,9 @@
 - Hand-raise privacy: the prior `GET /raise-hand` route returned all hand raises to any authenticated user when no class filter was supplied, and teacher resolution was not limited to the teacher's classes. This branch now scopes learners to their own raises, teachers to their own classes, and broad monitoring to owner/senior managers; verify with role-based API tests.
 - Older product brief status: hand lowering, prefect lesson requests, voice recording, payment-setting UI and block/suspend controls have code footprints, so do not recreate them. Still require end-to-end checks for role promotion/removal, reason capture/audit, voice upload/playback across browsers, account-role exclusivity, admin credential change, and notification deletion/styling. No matching password-change workflow was found in the inspected API routes; treat it as missing until a safe owner-authenticated design is approved.
 
+- Manager moderation reason mismatch: the current moderation route accepts a missing/blank `note`, although the stored product brief requires a reason before a manager blocks or suspends a user. Fix this in a separate permission-focused change with UI validation, API validation, and audit-log verification.
+- Role/account exclusivity is not proven by a database constraint or centralized account policy in the inspected code. Do not add a broad unique constraint without defining whether it means one account per person or one role per account; audit and decide with migration-safe rules.
+
 ## Must-fix verification gates before merge/deploy
 
 ### A. Build, API and release safety
