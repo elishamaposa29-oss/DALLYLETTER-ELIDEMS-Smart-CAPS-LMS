@@ -132,7 +132,7 @@ function DrawBox({
   const [color, setColor] = useState("#111827");
   const [width, setWidth] = useState(3);
   const [opacity, setOpacity] = useState(1);
-  const [magnify, setMagnify] = useState(0);
+  const [magnify, setMagnify] = useState(1);
   const [labelText, setLabelText] = useState("");
   const [pointerId, setPointerId] = useState<string | null>(null);
   const [eraseTarget, setEraseTarget] = useState<"pen" | "paint" | "both">("both");
@@ -352,7 +352,7 @@ function DrawBox({
           <label className="flex items-center gap-1 text-xs">Colour <input type="color" value={color} onChange={(event) => setColor(event.target.value)} className="h-7 w-8" /></label>
           <label className="flex items-center gap-1 text-xs">Size <input type="range" min="1" max="24" value={width} onChange={(event) => setWidth(Number(event.target.value))} /></label>
           <label className="flex items-center gap-1 text-xs">Opacity <input type="range" min="0.1" max="1" step="0.05" value={opacity} onChange={(event) => setOpacity(Number(event.target.value))} /></label>
-          <label className="flex items-center gap-1 text-xs" title="Magnifier">⌕ <input type="range" min="0" max="25" step="0.5" value={magnify} onChange={(event) => setMagnify(Number(event.target.value))} /> <span>×{magnify.toFixed(1)}</span></label>
+          <label className="flex items-center gap-1 text-xs" title="Magnifier">⌕ <input type="range" min="1" max="2.5" step="0.1" value={magnify} onChange={(event) => setMagnify(Number(event.target.value))} /> <span>×{magnify.toFixed(1)}</span></label>
           {tool === "eraser" && (
             <select value={eraseTarget} onChange={(event) => setEraseTarget(event.target.value as "pen" | "paint" | "both")} className="h-8 rounded-md border bg-background px-2 text-xs">
               <option value="both">Erase both</option><option value="pen">Erase pen</option><option value="paint">Erase paint</option>
@@ -383,7 +383,7 @@ function DrawBox({
           ref={canvasRef}
           width={1200}
           height={700}
-          style={{ transform: magnify > 0 ? `scale(${Math.min(25, Math.max(1, magnify))})` : "scale(1)", transformOrigin: "top left" }}
+          style={{ transform: `scale(${magnify})`, transformOrigin: "top left" }}
           className="h-[320px] w-full touch-none"
           onPointerDown={handleDown}
           onPointerMove={handleMove}
