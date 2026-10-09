@@ -22,8 +22,10 @@ self.addEventListener("activate", event => {
 
 async function cacheAsset(request, response) {
   if (!response.ok || response.type !== "basic") return;
-  const size = Number(response.headers.get("content-length") || 0);
-  if (size > MAX_ASSET_BYTES) return;
+  const rawSize = response.headers.get("content-length");
+  if (!rawSize) return;
+  const size = Number(rawSize);
+  if (!Number.isFinite(size) || size <= 0 || size > MAX_ASSET_BYTES) return;
   try {
     const cache = await caches.open(ASSET_CACHE);
     await cache.put(request, response.clone());
