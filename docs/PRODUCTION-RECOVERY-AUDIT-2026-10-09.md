@@ -34,6 +34,9 @@
 - Add an eraser to the teacher's media-marking overlay.
 - Fail closed on production uploads when persistent object storage is not configured, preventing a false success on ephemeral local disk. The live Render configuration must now be verified to avoid unintended upload outage.
 
+- Hand-raise privacy: the prior `GET /raise-hand` route returned all hand raises to any authenticated user when no class filter was supplied, and teacher resolution was not limited to the teacher's classes. This branch now scopes learners to their own raises, teachers to their own classes, and broad monitoring to owner/senior managers; verify with role-based API tests.
+- Older product brief status: hand lowering, prefect lesson requests, voice recording, payment-setting UI and block/suspend controls have code footprints, so do not recreate them. Still require end-to-end checks for role promotion/removal, reason capture/audit, voice upload/playback across browsers, account-role exclusivity, admin credential change, and notification deletion/styling. No matching password-change workflow was found in the inspected API routes; treat it as missing until a safe owner-authenticated design is approved.
+
 ## Must-fix verification gates before merge/deploy
 
 ### A. Build, API and release safety
