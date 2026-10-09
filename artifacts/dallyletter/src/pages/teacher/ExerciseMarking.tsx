@@ -97,8 +97,6 @@ function MediaMarkOverlay({ data, onChange }: { data: Record<string, unknown> | 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const strokes = (data?.mediaStrokes ?? []) as Array<Record<string, unknown>>;
     for (const s of strokes) { ctx.save(); ctx.strokeStyle=String(s.color??"#16a34a"); ctx.lineWidth=Number(s.width??4); ctx.globalAlpha=Number(s.opacity??.95); ctx.lineCap="round"; ctx.beginPath(); ctx.moveTo(Number(s.px??s.x),Number(s.py??s.y)); ctx.lineTo(Number(s.x),Number(s.y)); ctx.stroke(); ctx.restore(); }
-    const ticks = (data?.ticks ?? []) as Array<Record<string, unknown>>;
-    for (const t of ticks) { ctx.save(); ctx.fillStyle=String(t.color??"#16a34a"); ctx.globalAlpha=Number(t.opacity??.95); ctx.font=`bold ${Math.max(22,Number(t.size??34))}px sans-serif`; ctx.fillText("✓",Number(t.x),Number(t.y)); ctx.restore(); }
   };
   useEffect(()=>redraw(),[data]);
   const point=(e:React.PointerEvent<HTMLCanvasElement>)=>{const c=canvasRef.current;if(!c)return null;const r=c.getBoundingClientRect();return{x:(e.clientX-r.left)*(1200/r.width),y:(e.clientY-r.top)*(700/r.height)};};
@@ -248,7 +246,6 @@ export default function ExerciseMarking() {
   const [aiMessage, setAiMessage] = useState("");
   const [aiState, setAiState] = useState<"idle"|"checking"|"partially_marked"|"awaiting_teacher"|"returned">("idle");
   const [loading, setLoading] = useState(false);
-  const [tickMode, setTickMode] = useState<number | null>(null);
 
   const token = localStorage.getItem("dallyletter_token");
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
@@ -434,8 +431,8 @@ export default function ExerciseMarking() {
                     </div>
 
                     <div className="rounded-lg bg-muted p-3 text-sm">
-                      <div className="mb-2 flex items-center justify-between gap-2"><div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Learner answer</div>{(Boolean(a.drawData)||Boolean(a.mediaReference)) && <Button type="button" size="sm" variant={tickMode===a.id?"default":"outline"} onClick={()=>setTickMode(v=>v===a.id?null:a.id)} aria-label={`Toggle tick marking for question ${i+1}`}>✓ {tickMode===a.id?"Tick mode on":"Add ticks"}</Button>}</div>
-                      {a.drawData ? <div className="relative overflow-hidden rounded-lg border bg-white" onClick={(event)=>{if(tickMode!==a.id)return;const rect=event.currentTarget.getBoundingClientRect();const current=(markingData[a.id]?.ticks??[]) as Array<Record<string,unknown>>;const next={...markingData[a.id],ticks:[...current,{x:Math.max(0,Math.min(1190,((event.clientX-rect.left)/rect.width)*1200)),y:Math.max(0,Math.min(690,((event.clientY-rect.top)/rect.height)*700)),size:30,color:"#16a34a",opacity:.95}]};setMarkingData(m=>({...m,[a.id]:next}));}}><DrawAnswer data={a.drawData} /><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div> : a.mediaReference ? <div className="relative overflow-hidden rounded-lg border bg-background"><AuthenticatedMedia url={a.mediaReference} type={mediaTypeFor(a.mediaReference)} title={`Question ${i+1} learner media`} /><MediaMarkOverlay data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/><div className="pointer-events-none absolute inset-0"><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div></div> : q?.type==="poll" && a.selectedValue ? <div className={`rounded-lg border p-3 font-semibold ${optionsFor(q.id).find(o=>o.value===a.selectedValue)?.isCorrect ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-red-300 bg-red-50 text-red-800"}`}>Selected: {optionsFor(q.id).find(o=>o.value===a.selectedValue)?.label ?? a.selectedValue} {optionsFor(q.id).find(o=>o.value===a.selectedValue)?.isCorrect ? "✓ Correct" : "✕ Wrong"}</div> : (a.textAnswer || "No answer")}
+                      <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Learner answer · teacher annotations are saved with the returned result</div>
+                      {a.drawData ? <div className="relative overflow-hidden rounded-lg border bg-white"><DrawAnswer data={a.drawData} /><MediaMarkOverlay data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/><div className="pointer-events-none absolute inset-0"><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div></div> : a.mediaReference ? <div className="relative overflow-hidden rounded-lg border bg-background"><AuthenticatedMedia url={a.mediaReference} type={mediaTypeFor(a.mediaReference)} title={`Question ${i+1} learner media`} /><MediaMarkOverlay data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/><div className="pointer-events-none absolute inset-0"><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div></div> : q?.type==="poll" && a.selectedValue ? <div className={`rounded-lg border p-3 font-semibold ${optionsFor(q.id).find(o=>o.value===a.selectedValue)?.isCorrect ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-red-300 bg-red-50 text-red-800"}`}>Selected: {optionsFor(q.id).find(o=>o.value===a.selectedValue)?.label ?? a.selectedValue} {optionsFor(q.id).find(o=>o.value===a.selectedValue)?.isCorrect ? "✓ Correct" : "✕ Wrong"}</div> : (a.textAnswer || "No answer")}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 pt-1">
