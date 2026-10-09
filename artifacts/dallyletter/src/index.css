@@ -360,3 +360,9 @@
     inset: -1px;
   }
 }
+@layer utilities { .content-visibility-auto { content-visibility: auto; contain-intrinsic-size: 1px 240px; } }
+@keyframes elidems-stroke { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+.premium-button__stroke { stroke-dasharray: .08 .92; stroke-dashoffset: 0; opacity: .8; transition: stroke-dashoffset .3s cubic-bezier(.4,0,.2,1), opacity .3s ease; }
+.premium-button:hover .premium-button__stroke,.premium-button:focus-visible .premium-button__stroke { animation: elidems-stroke 1.2s linear infinite; }
+.premium-button:active .premium-button__stroke { animation: elidems-stroke .45s linear 1; }
+@media (prefers-reduced-motion: reduce) { .premium-button__stroke { animation: none !important; transition: none; } }
