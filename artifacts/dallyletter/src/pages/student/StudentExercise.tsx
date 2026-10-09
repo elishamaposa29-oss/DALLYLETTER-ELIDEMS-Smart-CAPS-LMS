@@ -166,6 +166,8 @@ function DrawBox({
     for (const stroke of teacherStrokes()) drawStroke(stroke, 0.72);
     for (const stroke of paintStrokes()) drawStroke(stroke, 0.3);
     for (const stroke of strokes()) drawStroke(stroke, 1);
+    const teacherMediaStrokes = Array.isArray(teacherDrawing?.mediaStrokes) ? teacherDrawing.mediaStrokes as Stroke[] : [];
+    for (const stroke of teacherMediaStrokes) drawStroke(stroke, 0.98);
 
     for (const pointer of pointers()) {
       const x = Number(pointer.x);
