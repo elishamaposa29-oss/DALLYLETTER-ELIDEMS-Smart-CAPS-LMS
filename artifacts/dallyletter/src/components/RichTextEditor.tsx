@@ -17,7 +17,11 @@ function looksLikeEmbeddedSource(text:string){
 
 export function sanitizeRichText(html:string){
   if(typeof DOMParser==="undefined") return html.replace(/<\/?(?:script|style|iframe|object|svg|pre|code)\b[^>]*>[\s\S]*?<\/?(?:script|style|iframe|object|svg|pre|code)\s*>/gi,"").replace(/<[^>]+>/g,"");
-  const doc=new DOMParser().parseFromString(html,"text/html");
+  const decoder=document.createElement("textarea");
+  decoder.innerHTML=html;
+  const decoded=decoder.value;
+  const source=decoded.includes("<")&&decoded.includes(">")?decoded:html;
+  const doc=new DOMParser().parseFromString(source,"text/html");
   const walk=(node:Node)=>{
     [...node.childNodes].forEach(child=>{
       if(child.nodeType===3){
