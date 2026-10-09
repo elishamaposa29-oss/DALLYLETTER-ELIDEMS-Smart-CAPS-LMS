@@ -16,7 +16,7 @@ interface AIReadiness { provider:string; configured:boolean; canMark:boolean; cl
 function richTextPlainText(value:string){
  if(typeof DOMParser==="undefined")return value.replace(/<[^>]*>/g," ").replace(/&nbsp;/g," ").trim();
  const doc=new DOMParser().parseFromString(value,"text/html");
- return (doc.body.textContent||"").replace(/\\u00a0/g," ").replace(/\\s+/g," ").trim();
+ return (doc.body.textContent||"").replace(/\u00a0/g," ").replace(/\s+/g," ").trim();
 }
 
 function TeacherDrawboxSetup({value,onChange,permissions,onPermissionsChange}:{value:Record<string,unknown>|undefined;onChange:(v:Record<string,unknown>)=>void;permissions:{preview:boolean;allowClear:boolean;allowModify:boolean;allowRewrite:boolean};onPermissionsChange:(v:{preview:boolean;allowClear:boolean;allowModify:boolean;allowRewrite:boolean})=>void}){
