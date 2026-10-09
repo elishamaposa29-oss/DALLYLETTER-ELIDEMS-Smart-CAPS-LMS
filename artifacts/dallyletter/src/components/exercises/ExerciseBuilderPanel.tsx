@@ -13,6 +13,12 @@ interface ExerciseQuestionDraft { id:string; prompt:string; type:"input"|"poll"|
 interface ExerciseBuilderPanelProps { lessonId:number; onSaved?:()=>void; onClose?:()=>void }
 interface AIReadiness { provider:string; configured:boolean; canMark:boolean; clarifications:string[]; reason?:string|null }
 
+function richTextPlainText(value:string){
+ if(typeof DOMParser==="undefined")return value.replace(/<[^>]*>/g," ").replace(/&nbsp;/g," ").trim();
+ const doc=new DOMParser().parseFromString(value,"text/html");
+ return (doc.body.textContent||"").replace(/\\u00a0/g," ").replace(/\\s+/g," ").trim();
+}
+
 function TeacherDrawboxSetup({value,onChange,permissions,onPermissionsChange}:{value:Record<string,unknown>|undefined;onChange:(v:Record<string,unknown>)=>void;permissions:{preview:boolean;allowClear:boolean;allowModify:boolean;allowRewrite:boolean};onPermissionsChange:(v:{preview:boolean;allowClear:boolean;allowModify:boolean;allowRewrite:boolean})=>void}){
  const [tool,setTool]=useState<"pen"|"paint"|"eraser"|"text"|"pointer">("pen"); const [color,setColor]=useState("#0A1931"); const [width,setWidth]=useState(4); const [label,setLabel]=useState(""); const [drawing,setDrawing]=useState(false); const [last,setLast]=useState<{x:number;y:number}|null>(null);
  const strokes=()=>((value?.strokes??[]) as any[]); const paints=()=>((value?.paintStrokes??[]) as any[]); const pointers=()=>((value?.pointers??[]) as any[]);
@@ -62,7 +68,7 @@ export function ExerciseBuilderPanel({lessonId,onSaved,onClose}:ExerciseBuilderP
    setBusy(true);setMessage(null);
    try{
      const token=localStorage.getItem("dallyletter_token");const headers:HeadersInit={"Content-Type":"application/json"};if(token)headers.Authorization=`Bearer ${token}`;
-     const er=await fetch(getApiUrl(`/api/exercises/lessons/${lessonId}/exercises`),{method:"POST",headers,body:JSON.stringify({title:title.trim(),instructions:instructions.trim()||undefined,totalMarks:configuredTotal,layout:{version:1,page:"book",mode:"freeform"}})});
+     const er=await fetch(getApiUrl(`/api/exercises/lessons/${lessonId}/exercises`),{method:"POST",headers,body:JSON.stringify({title:richTextPlainText(title),instructions:instructions.trim()||undefined,totalMarks:configuredTotal,layout:{version:1,page:"book",mode:"freeform"}})});
      if(!er.ok)throw new Error((await er.json().catch(()=>null))?.error||"Could not prepare the exercise");
      const exercise=await er.json() as {id:number};
      for(const[index,q]of questions.entries()){
@@ -78,7 +84,7 @@ export function ExerciseBuilderPanel({lessonId,onSaved,onClose}:ExerciseBuilderP
  };
 
  const save=async(publish:boolean)=>{
-   if(!title.replace(/<[^>]+>/g,"").trim()||questions.length===0||configuredTotal<=0||questions.some(q=>!q.prompt.replace(/<[^>]+>/g,"").trim()||(q.type==="poll"&&(q.options.length<2||q.options.some(o=>!o.label.trim())||!q.options.some(o=>o.isCorrect))))){setMessage("Complete the title, exercise maximum marks, questions, and poll options before saving.");return;}
+   if(!richTextPlainText(title)||questions.length===0||configuredTotal<=0||questions.some(q=>!q.prompt.replace(/<[^>]+>/g,"").trim()||(q.type==="poll"&&(q.options.length<2||q.options.some(o=>!o.label.trim())||!q.options.some(o=>o.isCorrect))))){setMessage("Complete the title, exercise maximum marks, questions, and poll options before saving.");return;}
    if(publish&&aiEnabled&&(!aiReadiness?.canMark||aiReadiness.clarifications.length>0||!aiApproved)){setMessage("Run the AI marking check, resolve any clarification, and confirm AI marking before publishing.");return;}
    setBusy(true);setMessage(null);
    try{
@@ -86,7 +92,7 @@ export function ExerciseBuilderPanel({lessonId,onSaved,onClose}:ExerciseBuilderP
      let exercise:{id:number};
      if(publish&&preparedExerciseId){ exercise={id:preparedExerciseId}; }
      else {
-       const er=await fetch(getApiUrl(`/api/exercises/lessons/${lessonId}/exercises`),{method:"POST",headers,body:JSON.stringify({title:title.trim(),instructions:instructions.trim()||undefined,totalMarks:configuredTotal,layout:{version:1,page:"book",mode:"freeform",aiMarking:{enabled:false,approved:false}}})});
+       const er=await fetch(getApiUrl(`/api/exercises/lessons/${lessonId}/exercises`),{method:"POST",headers,body:JSON.stringify({title:richTextPlainText(title),instructions:instructions.trim()||undefined,totalMarks:configuredTotal,layout:{version:1,page:"book",mode:"freeform",aiMarking:{enabled:false,approved:false}}})});
        if(!er.ok)throw new Error((await er.json().catch(()=>null))?.error||"Could not create exercise");
        exercise=await er.json() as {id:number};
      }
