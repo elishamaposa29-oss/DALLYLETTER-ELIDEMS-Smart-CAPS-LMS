@@ -2,6 +2,8 @@
 import { Router, type IRouter } from "express";
 import { eq, and, inArray } from "drizzle-orm";
 import { createReadStream } from "node:fs";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import multer from "multer";
 import { db, lessonsTable, activityLogTable, followsTable, notificationPreferencesTable, notificationsTable } from "@workspace/db";
 import {
@@ -139,9 +141,11 @@ router.get("/lessons/media/:storageKey", requireAuth, async (req, res): Promise<
       res.status(remote.status);
       remote.headers.forEach((value, key) => res.setHeader(key, value));
       if (remote.body) {
-        for await (const chunk of remote.body as any) res.write(chunk);
+        // Preserve backpressure for large R2 videos/PDFs and stop cleanly if the client disconnects.
+        await pipeline(Readable.fromWeb(remote.body as import("node:stream/web").ReadableStream<Uint8Array>), res);
+      } else {
+        res.end();
       }
-      res.end();
       return;
     }
     const mediaStats = await getMediaStats(storageKey);
