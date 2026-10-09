@@ -169,7 +169,7 @@ function DrawBox({
     const teacherMediaStrokes = Array.isArray(teacherDrawing?.mediaStrokes) ? teacherDrawing.mediaStrokes as Stroke[] : [];
     for (const stroke of teacherMediaStrokes) drawStroke(stroke, 0.98);
 
-    for (const pointer of pointers()) {
+    for (const pointer of [...teacherPointers(), ...pointers()]) {
       const x = Number(pointer.x);
       const y = Number(pointer.y);
       const length = Number(pointer.length ?? 90);
@@ -196,7 +196,7 @@ function DrawBox({
       ctx.restore();
     }
 
-    for (const label of labels()) {
+    for (const label of [...teacherLabels(), ...labels()]) {
       ctx.save();
       ctx.globalAlpha = Number(label.opacity ?? 1);
       ctx.fillStyle = label.color ?? "#111827";
