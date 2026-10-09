@@ -44,6 +44,13 @@ type Stroke = { x: number; y: number; px?: number; py?: number; color?: string; 
 type PointerMark = { id: string; x: number; y: number; length?: number; thickness?: number; opacity?: number; color?: string; angle?: number; width?: number };
 type LabelMark = { text: string; x: number; y: number; anchorX?: number; anchorY?: number; color?: string; opacity?: number; fontSize?: number };
 
+function distanceToDrawingSegment(point: {x:number;y:number}, item: Record<string,unknown>){
+  const x1=Number(item.px??item.x??0), y1=Number(item.py??item.y??0), x2=Number(item.x??x1), y2=Number(item.y??y1);
+  const dx=x2-x1, dy=y2-y1, lengthSquared=dx*dx+dy*dy;
+  const t=lengthSquared===0?0:Math.max(0,Math.min(1,((point.x-x1)*dx+(point.y-y1)*dy)/lengthSquared));
+  return Math.hypot(point.x-(x1+t*dx),point.y-(y1+t*dy));
+}
+
 function QuestionAttachment({ url, fileName, mimeType }: { url: string; fileName: string; mimeType?: string }) {
   const type = (() => { const raw=mimeType || new URL(url,window.location.origin).searchParams.get("type") || ""; if(raw.startsWith("image/")) return "image" as const; if(raw.startsWith("video/")) return "video" as const; if(raw.startsWith("audio/")) return "audio" as const; return "document" as const; })();
   return <AuthenticatedMedia url={url} type={type} title={fileName} />;
@@ -295,7 +302,7 @@ function DrawBox({
 
     if (tool === "eraser") {
       const radius = Math.max(8, width * 3);
-      const near = (stroke: Stroke) => Math.hypot(Number(stroke.x) - position.x, Number(stroke.y) - position.y) <= radius;
+      const near = (stroke: Stroke) => distanceToDrawingSegment(position, stroke as unknown as Record<string,unknown>) <= radius;
       onChange({
         ...value,
         strokes: eraseTarget === "paint" ? strokes() : strokes().filter((stroke) => !near(stroke)),
