@@ -89,6 +89,14 @@
 - Attached AI upgrade specification (ideas, not verified implementations): ELIDEMS AI agent; AI-generated polls; AI monitoring/alerts; external-content learning overlays and content limits; BREAK-ELIDEMS rotating events; temporary event benefits; content safety detection and automated actions; admin override/reversal. These require separate authorization, legal/privacy review, permissions, auditable reversible actions and cost/safety planning before implementation. Do not silently activate them during production repair.
 - Native mobile publishing/signing, custom domain cutover, canonical Vercel integration cleanup, and Render/R2 production secret verification remain infrastructure tasks, not solved by web preview success.
 
+## Additional findings from expanded project/mobile/payment scan
+
+- Vercel: 13 Dallyletter-named projects were listed. 11 latest deployments reported ERROR; 2 reported READY (one explicitly targeted production and one had no production target). All returned project metadata showed live=false. This does not prove which URL users are currently using; canonical domain and production project must be confirmed before deleting or disconnecting anything. Twelve duplicate/obsolete Vercel checks currently fail from build-rate limits; one differently scoped Vercel check has been successful/pending across recent runs.
+- PWA offline: `public/sw.js` caches the shell and same-origin documents/scripts/styles/fonts when online; it bypasses `/api/` and does not cache authenticated lesson data or media. The manifest makes it installable, but this is not complete offline learning.
+- Native mobile: Expo app config and router are present, but the root query client has no persistent cache configured and no evidence of a built/sign-tested APK was found in the inspected files. APK size, cold-start, low-memory and offline behavior remain unverified.
+- Paynow: the callback verifies a hash but maps every non-paid status (including cancellation/failure) to `pending`; the UI supports only paid/pending/overdue. A failed checkout initialization can leave a pending row. Fix only after defining provider-state mapping, idempotent callback handling and a tested migration/UI contract.
+- Existing PR #25 changes overlap with code already on `main` (including portions of audit isolation, manager activity, follower notifications and marking). Reapplying whole files would risk reverting newer safeguards; compare individual behavior and preserve current code.
+
 ## Completion policy
 
 A task is complete only after code review, successful CI/release safety, successful deployment to the intended production service, and role-appropriate end-to-end verification. Any blocked check must retain a named owner/action and must not be relabeled as passed.
