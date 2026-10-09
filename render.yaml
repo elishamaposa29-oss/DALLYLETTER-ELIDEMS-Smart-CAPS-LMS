@@ -2,11 +2,11 @@ services:
   - type: web
     name: dallyletter-api-staging
     env: node
-    plan: starter
+    plan: free
     branch: staging
     autoDeploy: false
     rootDir: artifacts/api-server
-    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    buildCommand: cd ../.. && pnpm install --frozen-lockfile && pnpm --dir artifacts/api-server build
     startCommand: pnpm start
     healthCheckPath: /api/healthz
     envVars:
@@ -19,16 +19,15 @@ services:
       - key: JWT_SECRET
         sync: false
       - key: CORS_ORIGINS
-        value: https://dallyletter-web.onrender.com,https://your-frontend-domain.com
+        sync: false
   - type: web
     name: dallyletter-api-production
     env: node
-    plan: starter
-    branch: production
-    autoDeploy: false
+    plan: free
+    branch: main
+    autoDeploy: true
     rootDir: artifacts/api-server
-    buildCommand: cd ../.. && pnpm install --frozen-lockfile && pnpm --dir scripts repair:messages-schema && pnpm --dir scripts repair:connect-schema && pnpm --dir scripts seed:owner && pnpm --dir artifacts/api-server build
-    preDeployCommand: cd ../.. && pnpm run db:push && pnpm --dir scripts migrate:exercise-schema
+    buildCommand: cd ../.. && pnpm install --frozen-lockfile && pnpm --dir scripts repair:messages-schema && pnpm --dir scripts seed:owner && pnpm --dir artifacts/api-server build
     startCommand: pnpm start
     healthCheckPath: /api/healthz
     envVars:
@@ -41,4 +40,4 @@ services:
       - key: JWT_SECRET
         sync: false
       - key: CORS_ORIGINS
-        value: https://dallyletter-web.onrender.com,https://your-frontend-domain.com
+        sync: false
