@@ -1,36 +1,70 @@
-const CACHE = 'dallyletter-v3';
-const SHELL = ['/', '/manifest.json', '/favicon.svg', '/icons/icon-192.png', '/icons/icon-512.png'];
+const SHELL_CACHE = "dallyletter-shell-v4";
+const ASSET_CACHE = "dallyletter-assets-v4";
+const SHELL = ["/", "/manifest.json", "/favicon.svg", "/icons/icon-192.png", "/icons/icon-512.png"];
+const MAX_ASSETS = 30;
+const MAX_ASSET_BYTES = 2 * 1024 * 1024;
 
-self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
-});
-
-self.addEventListener('activate', e => {
-  e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-    ).then(() => self.clients.claim())
+self.addEventListener("install", event => {
+  event.waitUntil(
+    caches.open(SHELL_CACHE).then(cache => cache.addAll(SHELL)).catch(() => undefined)
+      .then(() => self.skipWaiting())
   );
 });
 
-self.addEventListener('fetch', e => {
-  if (e.request.method !== 'GET') return;
-  const url = new URL(e.request.url);
-  if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
-  const cacheable = e.request.destination === "document" || e.request.destination === "script" || e.request.destination === "style" || e.request.destination === "font";
-  if (!cacheable) return;
-  e.respondWith((async () => {
-    const cached = await caches.match(e.request);
-    try {
-      const response = await fetch(e.request);
+self.addEventListener("activate", event => {
+  event.waitUntil(
+    caches.keys().then(keys => Promise.all(keys
+      .filter(key => key.startsWith("dallyletter-") && key !== SHELL_CACHE && key !== ASSET_CACHE)
+      .map(key => caches.delete(key))))
+      .then(() => self.clients.claim())
+  );
+});
+
+async function cacheAsset(request, response) {
+  if (!response.ok || response.type !== "basic") return;
+  const rawSize = response.headers.get("content-length");
+  if (!rawSize) return;
+  const size = Number(rawSize);
+  if (!Number.isFinite(size) || size <= 0 || size > MAX_ASSET_BYTES) return;
+  try {
+    const cache = await caches.open(ASSET_CACHE);
+    await cache.put(request, response.clone());
+    const keys = await cache.keys();
+    if (keys.length > MAX_ASSETS) {
+      await Promise.all(keys.slice(0, keys.length - MAX_ASSETS).map(key => cache.delete(key)));
+    }
+  } catch { /* Quota/private-mode failures must not break online loading. */ }
+}
+
+self.addEventListener("fetch", event => {
+  const request = event.request;
+  if (request.method !== "GET") return;
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+  // Never cache API responses, uploads, or private media.
+  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/media/")) return;
+
+  if (request.mode === "navigate" || request.destination === "document") {
+    event.respondWith(fetch(request).then(response => {
       if (response.ok && response.type === "basic") {
-        const cache = await caches.open(CACHE);
-        await cache.put(e.request, response.clone());
+        caches.open(SHELL_CACHE).then(cache => cache.put("/", response.clone())).catch(() => undefined);
       }
       return response;
-    } catch {
-      return cached || caches.match('/');
-    }
+    }).catch(async () => (await caches.match(request)) || (await caches.match("/")) || Response.error()));
+    return;
+  }
+
+  const isAsset = request.destination === "script" || request.destination === "style" ||
+    request.destination === "font" || url.pathname.startsWith("/assets/");
+  if (!isAsset) return;
+  event.respondWith((async () => {
+    const cache = await caches.open(ASSET_CACHE);
+    const cached = await cache.match(request);
+    const network = fetch(request).then(async response => {
+      await cacheAsset(request, response);
+      return response;
+    }).catch(() => cached || Response.error());
+    return cached || network;
   })());
 });
 

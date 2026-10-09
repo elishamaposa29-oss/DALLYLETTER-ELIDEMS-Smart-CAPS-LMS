@@ -1,8 +1,8 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
-import { db, handRaisesTable, activityLogTable } from "@workspace/db";
+import { and, eq, inArray } from "drizzle-orm";
+import { db, handRaisesTable, activityLogTable, classesTable } from "@workspace/db";
 import { RaiseHandBody, ListHandRaisesQueryParams } from "@workspace/api-zod";
-import { canManageAcademicContent, requireAuth } from "../lib/auth-middleware";
+import { requireAuth } from "../lib/auth-middleware";
 
 const router: IRouter = Router();
 
@@ -29,45 +29,51 @@ router.post("/raise-hand", requireAuth, async (req, res): Promise<void> => {
   res.status(201).json({ ...handRaise, createdAt: handRaise.createdAt.toISOString() });
 });
 
-// GET /raise-hand — List hand raises
+// GET /raise-hand — list only hand raises the current role may view
 router.get("/raise-hand", requireAuth, async (req, res): Promise<void> => {
   const queryParams = ListHandRaisesQueryParams.safeParse(req.query);
   if (!queryParams.success) { res.status(400).json({ error: queryParams.error.message }); return; }
-
-  let handRaises;
-  if (queryParams.data.classId != null) {
-    handRaises = await db.select().from(handRaisesTable)
-      .where(eq(handRaisesTable.classId, queryParams.data.classId))
-      .orderBy(handRaisesTable.createdAt);
+  const user = req.currentUser!;
+  const classId = queryParams.data.classId;
+  let rows: (typeof handRaisesTable.$inferSelect)[];
+  if (user.role === "owner" || (user.isManager === true && user.managerLevel === "senior")) {
+    rows = classId == null
+      ? await db.select().from(handRaisesTable).orderBy(handRaisesTable.createdAt)
+      : await db.select().from(handRaisesTable).where(eq(handRaisesTable.classId, classId)).orderBy(handRaisesTable.createdAt);
+  } else if (user.role === "teacher") {
+    const ownedClasses = await db.select({ id: classesTable.id }).from(classesTable).where(eq(classesTable.teacherId, user.id));
+    const classIds = ownedClasses.map(item => item.id);
+    if (classId != null && !classIds.includes(classId)) { res.status(403).json({ error: "You can only monitor hand raises in your own classes." }); return; }
+    if (!classIds.length) { res.json([]); return; }
+    rows = classId == null
+      ? await db.select().from(handRaisesTable).where(inArray(handRaisesTable.classId, classIds)).orderBy(handRaisesTable.createdAt)
+      : await db.select().from(handRaisesTable).where(and(inArray(handRaisesTable.classId, classIds), eq(handRaisesTable.classId, classId))).orderBy(handRaisesTable.createdAt);
+  } else if (user.role === "student") {
+    rows = classId == null
+      ? await db.select().from(handRaisesTable).where(eq(handRaisesTable.studentId, user.id)).orderBy(handRaisesTable.createdAt)
+      : await db.select().from(handRaisesTable).where(and(eq(handRaisesTable.studentId, user.id), eq(handRaisesTable.classId, classId))).orderBy(handRaisesTable.createdAt);
   } else {
-    handRaises = await db.select().from(handRaisesTable).orderBy(handRaisesTable.createdAt);
+    res.status(403).json({ error: "Hand-raise access is not available for this role." }); return;
   }
-
-  res.json(handRaises.map(h => ({ ...h, createdAt: h.createdAt.toISOString() })));
+  res.json(rows.map(h => ({ ...h, createdAt: h.createdAt.toISOString() })));
 });
 
-// PATCH /raise-hand/:id/resolve — Lower/resolve a raised hand (student who raised OR teacher)
+// PATCH /raise-hand/:id/resolve — lower own hand or resolve a hand in a managed class
 router.patch("/raise-hand/:id/resolve", requireAuth, async (req, res): Promise<void> => {
   const id = parseInt(String(req.params.id));
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-
-  const currentUser = req.currentUser!;
-
-  // Find the raise
+  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  const user = req.currentUser!;
   const [existing] = await db.select().from(handRaisesTable).where(eq(handRaisesTable.id, id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
-
-  // Only the student who raised OR a teacher/owner may resolve
-  if (existing.studentId !== currentUser.id && !canManageAcademicContent(currentUser)) {
-    res.status(403).json({ error: "Not authorised to lower this hand" });
-    return;
+  let allowed = existing.studentId === user.id;
+  if (!allowed && (user.role === "owner" || (user.isManager === true && user.managerLevel === "senior"))) allowed = true;
+  if (!allowed && user.role === "teacher") {
+    const [ownedClass] = await db.select({ id: classesTable.id }).from(classesTable)
+      .where(and(eq(classesTable.id, existing.classId), eq(classesTable.teacherId, user.id)));
+    allowed = Boolean(ownedClass);
   }
-
-  const [updated] = await db.update(handRaisesTable)
-    .set({ isResolved: true })
-    .where(eq(handRaisesTable.id, id))
-    .returning();
-
+  if (!allowed) { res.status(403).json({ error: "Not authorised to lower this hand." }); return; }
+  const [updated] = await db.update(handRaisesTable).set({ isResolved: true }).where(eq(handRaisesTable.id, id)).returning();
   res.json({ ...updated, createdAt: updated.createdAt.toISOString() });
 });
 

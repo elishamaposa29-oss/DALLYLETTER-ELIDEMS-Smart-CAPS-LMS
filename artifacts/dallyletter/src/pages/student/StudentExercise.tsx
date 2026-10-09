@@ -44,9 +44,72 @@ type Stroke = { x: number; y: number; px?: number; py?: number; color?: string; 
 type PointerMark = { id: string; x: number; y: number; length?: number; thickness?: number; opacity?: number; color?: string; angle?: number; width?: number };
 type LabelMark = { text: string; x: number; y: number; anchorX?: number; anchorY?: number; color?: string; opacity?: number; fontSize?: number };
 
+function distanceToDrawingSegment(point: {x:number;y:number}, item: Record<string,unknown>){
+  const x1=Number(item.px??item.x??0), y1=Number(item.py??item.y??0), x2=Number(item.x??x1), y2=Number(item.y??y1);
+  const dx=x2-x1, dy=y2-y1, lengthSquared=dx*dx+dy*dy;
+  const t=lengthSquared===0?0:Math.max(0,Math.min(1,((point.x-x1)*dx+(point.y-y1)*dy)/lengthSquared));
+  return Math.hypot(point.x-(x1+t*dx),point.y-(y1+t*dy));
+}
+
 function QuestionAttachment({ url, fileName, mimeType }: { url: string; fileName: string; mimeType?: string }) {
   const type = (() => { const raw=mimeType || new URL(url,window.location.origin).searchParams.get("type") || ""; if(raw.startsWith("image/")) return "image" as const; if(raw.startsWith("video/")) return "video" as const; if(raw.startsWith("audio/")) return "audio" as const; return "document" as const; })();
   return <AuthenticatedMedia url={url} type={type} title={fileName} />;
+}
+
+function ReturnedMediaAnnotations({ data }: { data: Record<string, unknown> | null | undefined }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const source = data ?? {};
+    const drawSegments = (items: unknown, fallback: string, alpha: number) => {
+      if (!Array.isArray(items)) return;
+      for (const raw of items) {
+        const s = raw as Record<string, unknown>;
+        ctx.save();
+        ctx.globalAlpha = Number(s.opacity ?? alpha);
+        ctx.strokeStyle = String(s.color ?? fallback);
+        ctx.lineWidth = Number(s.width ?? 4);
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.beginPath();
+        ctx.moveTo(Number(s.px ?? s.x ?? 0), Number(s.py ?? s.y ?? 0));
+        ctx.lineTo(Number(s.x ?? 0), Number(s.y ?? 0));
+        ctx.stroke();
+        ctx.restore();
+      }
+    };
+    drawSegments(source.mediaStrokes, "#dc2626", 0.95);
+    drawSegments(source.strokes, "#dc2626", 0.95);
+    drawSegments(source.paintStrokes, "#f59e0b", 0.4);
+    const ticks = Array.isArray(source.ticks) ? source.ticks as Array<Record<string, unknown>> : [];
+    for (const tick of ticks) {
+      ctx.save();
+      ctx.globalAlpha = Number(tick.opacity ?? 0.95);
+      ctx.fillStyle = String(tick.color ?? "#16a34a");
+      ctx.font = `900 ${Math.max(22, Number(tick.size ?? 34))}px sans-serif`;
+      ctx.fillText("✓", Number(tick.x ?? 0), Number(tick.y ?? 0));
+      ctx.restore();
+    }
+    const pointers = Array.isArray(source.pointers) ? source.pointers as Array<Record<string, unknown>> : [];
+    for (const p of pointers) {
+      const x = Number(p.x ?? 0), y = Number(p.y ?? 0), angle = Number(p.angle ?? 0), length = Number(p.length ?? 90);
+      const ex = x + Math.cos(angle) * length, ey = y + Math.sin(angle) * length;
+      ctx.save(); ctx.strokeStyle = String(p.color ?? "#dc2626"); ctx.fillStyle = ctx.strokeStyle;
+      ctx.lineWidth = Number(p.thickness ?? 3); ctx.globalAlpha = Number(p.opacity ?? 0.9);
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(ex - Math.cos(angle - .55) * 12, ey - Math.sin(angle - .55) * 12); ctx.lineTo(ex - Math.cos(angle + .55) * 12, ey - Math.sin(angle + .55) * 12); ctx.closePath(); ctx.fill(); ctx.restore();
+    }
+    const labels = Array.isArray(source.labels) ? source.labels as Array<Record<string, unknown>> : [];
+    for (const label of labels) {
+      ctx.save(); ctx.fillStyle = String(label.color ?? "#dc2626"); ctx.globalAlpha = Number(label.opacity ?? 1);
+      ctx.font = `bold ${Number(label.fontSize ?? 18)}px sans-serif`;
+      ctx.fillText(String(label.text ?? ""), Number(label.x ?? 0), Number(label.y ?? 0)); ctx.restore();
+    }
+  }, [data]);
+  return <canvas ref={canvasRef} width={1200} height={700} aria-label="Teacher's returned annotations" className="pointer-events-none absolute inset-0 h-full w-full" />;
 }
 
 function DrawBox({
@@ -69,7 +132,7 @@ function DrawBox({
   const [color, setColor] = useState("#111827");
   const [width, setWidth] = useState(3);
   const [opacity, setOpacity] = useState(1);
-  const [magnify, setMagnify] = useState(0);
+  const [magnify, setMagnify] = useState(1);
   const [labelText, setLabelText] = useState("");
   const [pointerId, setPointerId] = useState<string | null>(null);
   const [eraseTarget, setEraseTarget] = useState<"pen" | "paint" | "both">("both");
@@ -110,8 +173,10 @@ function DrawBox({
     for (const stroke of teacherStrokes()) drawStroke(stroke, 0.72);
     for (const stroke of paintStrokes()) drawStroke(stroke, 0.3);
     for (const stroke of strokes()) drawStroke(stroke, 1);
+    const teacherMediaStrokes = Array.isArray(teacherDrawing?.mediaStrokes) ? teacherDrawing.mediaStrokes as Stroke[] : [];
+    for (const stroke of teacherMediaStrokes) drawStroke(stroke, 0.98);
 
-    for (const pointer of pointers()) {
+    for (const pointer of [...teacherPointers(), ...pointers()]) {
       const x = Number(pointer.x);
       const y = Number(pointer.y);
       const length = Number(pointer.length ?? 90);
@@ -138,7 +203,7 @@ function DrawBox({
       ctx.restore();
     }
 
-    for (const label of labels()) {
+    for (const label of [...teacherLabels(), ...labels()]) {
       ctx.save();
       ctx.globalAlpha = Number(label.opacity ?? 1);
       ctx.fillStyle = label.color ?? "#111827";
@@ -151,6 +216,12 @@ function DrawBox({
       }
       ctx.fillText(String(label.text ?? ""), Number(label.x), Number(label.y));
       ctx.restore();
+    }
+    const teacherTicks = Array.isArray(teacherDrawing?.ticks) ? teacherDrawing.ticks as Array<Record<string, unknown>> : [];
+    for (const tick of teacherTicks) {
+      ctx.save(); ctx.globalAlpha = Number(tick.opacity ?? 0.95); ctx.fillStyle = String(tick.color ?? "#16a34a");
+      ctx.font = `900 ${Math.max(22, Number(tick.size ?? 30))}px sans-serif`;
+      ctx.fillText("✓", Number(tick.x ?? 0), Number(tick.y ?? 0)); ctx.restore();
     }
   };
 
@@ -231,7 +302,7 @@ function DrawBox({
 
     if (tool === "eraser") {
       const radius = Math.max(8, width * 3);
-      const near = (stroke: Stroke) => Math.hypot(Number(stroke.x) - position.x, Number(stroke.y) - position.y) <= radius;
+      const near = (stroke: Stroke) => distanceToDrawingSegment(position, stroke as unknown as Record<string,unknown>) <= radius;
       onChange({
         ...value,
         strokes: eraseTarget === "paint" ? strokes() : strokes().filter((stroke) => !near(stroke)),
@@ -281,7 +352,7 @@ function DrawBox({
           <label className="flex items-center gap-1 text-xs">Colour <input type="color" value={color} onChange={(event) => setColor(event.target.value)} className="h-7 w-8" /></label>
           <label className="flex items-center gap-1 text-xs">Size <input type="range" min="1" max="24" value={width} onChange={(event) => setWidth(Number(event.target.value))} /></label>
           <label className="flex items-center gap-1 text-xs">Opacity <input type="range" min="0.1" max="1" step="0.05" value={opacity} onChange={(event) => setOpacity(Number(event.target.value))} /></label>
-          <label className="flex items-center gap-1 text-xs" title="Magnifier">⌕ <input type="range" min="0" max="25" step="0.5" value={magnify} onChange={(event) => setMagnify(Number(event.target.value))} /> <span>×{magnify.toFixed(1)}</span></label>
+          <label className="flex items-center gap-1 text-xs" title="Magnifier">⌕ <input type="range" min="1" max="2.5" step="0.1" value={magnify} onChange={(event) => setMagnify(Number(event.target.value))} /> <span>×{magnify.toFixed(1)}</span></label>
           {tool === "eraser" && (
             <select value={eraseTarget} onChange={(event) => setEraseTarget(event.target.value as "pen" | "paint" | "both")} className="h-8 rounded-md border bg-background px-2 text-xs">
               <option value="both">Erase both</option><option value="pen">Erase pen</option><option value="paint">Erase paint</option>
@@ -312,7 +383,7 @@ function DrawBox({
           ref={canvasRef}
           width={1200}
           height={700}
-          style={{ transform: magnify > 0 ? `scale(${Math.min(25, Math.max(1, magnify))})` : "scale(1)", transformOrigin: "top left" }}
+          style={{ transform: `scale(${magnify})`, transformOrigin: "top left" }}
           className="h-[320px] w-full touch-none"
           onPointerDown={handleDown}
           onPointerMove={handleMove}
@@ -568,15 +639,29 @@ export default function StudentExercise() {
               <p className="text-lg font-semibold">{result.submission.totalScore} / {data.exercise.totalMarks} marks</p>
               <p className="text-sm text-muted-foreground">{result.submission.percentage}%</p>
               <div className="mt-3 space-y-2">
-                {(result.answers ?? []).map((answer: any) => (
-                  <div key={answer.id} className="rounded-lg border p-3">
-                    <div className="flex items-center gap-2 font-medium">
-                      {Number(answer.awardedMarks) > 0 ? <span>✓</span> : <span>✕</span>}
-                      {answer.awardedMarks} marks
+                {(result.answers ?? []).map((answer: any, answerIndex: number) => {
+                  const question = data.questions.find((item) => item.id === answer.questionId);
+                  const marking = (answer.markingData && typeof answer.markingData === "object" ? answer.markingData : {}) as Record<string, unknown>;
+                  const mediaUrl = answer.mediaReference as string | null;
+                  const mediaType = mediaUrl ? (() => { const type = new URL(mediaUrl, window.location.origin).searchParams.get("type") ?? ""; return type.startsWith("image/") ? "image" as const : type.startsWith("video/") ? "video" as const : type.startsWith("audio/") ? "audio" as const : "document" as const; })() : null;
+                  return (
+                    <div key={answer.id} className="space-y-3 rounded-lg border p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-semibold">Question {question?.position != null ? question.position + 1 : answerIndex + 1}</p>
+                        <Badge variant="outline">{answer.awardedMarks} / {question?.marksAllocated ?? "—"} marks</Badge>
+                      </div>
+                      {question?.prompt && <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: sanitizeRichText(question.prompt) }} />}
+                      {answer.drawData && <div className="space-y-1"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Your answer with teacher's marks</p><DrawBox value={answer.drawData as DrawValue} onChange={() => undefined} readOnly teacherDrawing={marking} /></div>}
+                      {mediaUrl && mediaType && <div className="space-y-1"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Your media with teacher's marks</p><div className="relative overflow-hidden rounded-lg border"><AuthenticatedMedia url={mediaUrl} type={mediaType} title={`Question ${answerIndex + 1} returned media`} /><ReturnedMediaAnnotations data={marking} /></div></div>}
+                      {!answer.drawData && !mediaUrl && <div className="rounded-md bg-muted/40 p-3 text-sm">{answer.textAnswer || answer.selectedValue || "No written answer was submitted."}</div>}
+                      <div className="flex items-center gap-2 font-semibold">
+                        {Number(answer.awardedMarks) > 0 ? <span className="text-emerald-600">✓</span> : <span className="text-red-600">✕</span>}
+                        {answer.awardedMarks} marks earned
+                      </div>
+                      {answer.correctionNotes && <p className="mt-2 rounded-md border-l-4 border-red-500 bg-red-50 px-3 py-2 text-sm text-red-950"><span className="font-semibold">Teacher's correction:</span> {answer.correctionNotes}</p>}
                     </div>
-                    {answer.correctionNotes && <p className="mt-2 rounded-md border-l-4 border-amber-400 bg-amber-50 px-3 py-2 text-sm">{answer.correctionNotes}</p>}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               <div className="mt-4 rounded-xl border bg-muted/30 p-4">
                 <p className="font-semibold">Teacher's final comment</p>
