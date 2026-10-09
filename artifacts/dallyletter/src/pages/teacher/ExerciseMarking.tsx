@@ -85,6 +85,8 @@ function FloatingTicks({ data, onChange }: { data: Record<string, unknown> | nul
   );
 }
 
+function distanceToMarkSegment(point:{x:number;y:number},item:Record<string,unknown>){const x1=Number(item.px??item.x??0),y1=Number(item.py??item.y??0),x2=Number(item.x??x1),y2=Number(item.y??y1),dx=x2-x1,dy=y2-y1,len=dx*dx+dy*dy,t=len===0?0:Math.max(0,Math.min(1,((point.x-x1)*dx+(point.y-y1)*dy)/len));return Math.hypot(point.x-(x1+t*dx),point.y-(y1+t*dy));}
+
 function MediaMarkOverlay({ data, onChange }: { data: Record<string, unknown> | null | undefined; onChange: (data: Record<string, unknown>) => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
@@ -121,7 +123,7 @@ function MediaMarkOverlay({ data, onChange }: { data: Record<string, unknown> | 
   };
   const move=(e:React.PointerEvent<HTMLCanvasElement>)=>{
     if(!drawing.current||!last.current)return;const p=point(e);if(!p)return;
-    if(tool==="eraser"){const radius=Math.max(16,width*4);const near=(item:Record<string,unknown>)=>Math.hypot(Number(item.x??0)-p.x,Number(item.y??0)-p.y)<radius;const strokes=(data?.mediaStrokes??[]) as Array<Record<string,unknown>>;const ticks=(data?.ticks??[]) as Array<Record<string,unknown>>;const pointers=(data?.pointers??[]) as Array<Record<string,unknown>>;const labels=(data?.labels??[]) as Array<Record<string,unknown>>;onChange({...data,mediaStrokes:strokes.filter(item=>!near(item)),ticks:ticks.filter(item=>!near(item)),pointers:pointers.filter(item=>!near(item)),labels:labels.filter(item=>!near(item))});last.current=p;return;}
+    if(tool==="eraser"){const radius=Math.max(16,width*4);const near=(item:Record<string,unknown>)=>distanceToMarkSegment(p,item)<radius;const strokes=(data?.mediaStrokes??[]) as Array<Record<string,unknown>>;const ticks=(data?.ticks??[]) as Array<Record<string,unknown>>;const pointers=(data?.pointers??[]) as Array<Record<string,unknown>>;const labels=(data?.labels??[]) as Array<Record<string,unknown>>;onChange({...data,mediaStrokes:strokes.filter(item=>!near(item)),ticks:ticks.filter(item=>!near(item)),pointers:pointers.filter(item=>!near(item)),labels:labels.filter(item=>!near(item))});last.current=p;return;}
     if(tool==="pointer"){const id=activePointerId.current;const origin=pointerOrigin.current??p;if(id){const dx=p.x-origin.x,dy=p.y-origin.y;const pointers=(data?.pointers??[]) as Array<Record<string,unknown>>;onChange({...data,pointers:pointers.map(item=>item.id===id?{...item,x:origin.x,y:origin.y,length:Math.max(12,Math.hypot(dx,dy)),angle:Math.atan2(dy,dx)}:item)});}last.current=p;return;}
     if(tool!=="pen")return;
     const strokes=(data?.mediaStrokes??[]) as Array<Record<string,unknown>>;onChange({...data,mediaStrokes:[...strokes,{px:last.current.x,py:last.current.y,x:p.x,y:p.y,color,width,opacity:.98}]});last.current=p;
