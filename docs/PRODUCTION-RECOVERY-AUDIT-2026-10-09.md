@@ -111,6 +111,16 @@
 
 The checked-in `render.yaml` production service pointed at `production`; the `production` and `staging` branches were each 348 commits behind `main` at audit time. This branch changes the production Blueprint target to `main` and adds placeholders for R2, VAPID and Paynow server environment variables. `autoDeploy: false` is intentionally retained until CI and the actual Render service/workspace are verified. Editing this repository file does not change the live Render service by itself.
 
+## AI-upgrade specification: implementation status, not just code presence
+
+- **ELIDEMS AI natural-language agent:** provider configuration and AI routes exist, but a fully authorized, auditable, reversible command executor for owner/manager/admin is not confirmed as complete.
+- **AI-generated polls:** not confirmed implemented end-to-end. Manual teacher poll CRUD/submission exists; verify publish, scoring, retry, privacy, results and analytics before considering that separate feature complete.
+- **AI monitoring and automated safety actions:** moderation actions/content flags exist, but continuous permission-based detection, alerting, appeals and reliable undo/restore across all actions are not confirmed.
+- **Overlay learning / external content control:** no implementation was found in the inspected Expo app/config. This needs explicit consent, Android-specific permission design, a clear opt-out, no hidden monitoring, and privacy review before code is written.
+- **BREAK-ELIDEMS:** event CRUD and volunteering exist. Automatic daily participant rotation, payment/subscription eligibility gates, automatic end-time closure/session termination and temporary benefit expiry are not confirmed in the inspected route.
+- **Admin override / reversal:** unblock and manual moderation endpoints exist, but a single audited undo/appeal workflow for automated decisions is not confirmed.
+- Treat these as separately scoped backlog items. Do not implement the overlay/accessibility or AI auto-action features as part of the current UI repair PR; they can affect learner privacy, payments, account access and safety.
+
 ## Branch and pull-request inventory
 
 - 35 Git branches were listed; `main` is protected and remained unchanged during this repair work.
