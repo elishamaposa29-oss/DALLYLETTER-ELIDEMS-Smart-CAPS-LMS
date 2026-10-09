@@ -19,7 +19,7 @@ services:
       - key: JWT_SECRET
         sync: false
       - key: CORS_ORIGINS
-        value: https://dallyletter-web.onrender.com,https://your-frontend-domain.com
+        sync: false
   - type: web
     name: dallyletter-api-production
     env: node
@@ -41,7 +41,7 @@ services:
       - key: JWT_SECRET
         sync: false
       - key: CORS_ORIGINS
-        value: https://dallyletter-web.onrender.com,https://your-frontend-domain.com
+        sync: false
       - key: MEDIA_S3_ENDPOINT
         sync: false
       - key: MEDIA_S3_BUCKET
