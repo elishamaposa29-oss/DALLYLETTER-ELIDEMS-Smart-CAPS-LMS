@@ -96,6 +96,9 @@ function MediaMarkOverlay({ data, onChange }: { data: Record<string, unknown> | 
   const [color, setColor] = useState("#dc2626");
   const [width, setWidth] = useState(4);
   const [label, setLabel] = useState("");
+  const [zoom, setZoom] = useState(1);
+  const adjustZoom = (event: React.MouseEvent<HTMLButtonElement>, delta: number) => { const surface=event.currentTarget.closest("[data-marking-surface]") as HTMLElement|null; const next=Math.max(0.75,Math.min(2,Math.round((zoom+delta)*100)/100)); if(surface){surface.style.setProperty("zoom",String(next));surface.style.setProperty("overflow","auto");} setZoom(next); };
+  useEffect(()=>()=>{const surface=canvasRef.current?.closest("[data-marking-surface]") as HTMLElement|null;if(surface){surface.style.removeProperty("zoom");surface.style.removeProperty("overflow");}},[]);
   const redraw = () => {
     const canvas = canvasRef.current; if (!canvas) return;
     const ctx = canvas.getContext("2d"); if (!ctx) return;
@@ -130,7 +133,7 @@ function MediaMarkOverlay({ data, onChange }: { data: Record<string, unknown> | 
       <input aria-label="Correction ink colour" type="color" value={color} onChange={e=>setColor(e.target.value)} className="h-7 w-8" />
       <input aria-label="Correction ink size" type="range" min="1" max="12" value={width} onChange={e=>setWidth(Number(e.target.value))} className="w-14" />
       {tool==="text"&&<input aria-label="Correction label text" value={label} onChange={e=>setLabel(e.target.value)} placeholder="Correction note" className="h-8 w-28 rounded border bg-white px-2 text-xs text-black" />}
-      <Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-white" onClick={openFullscreen}>Full screen</Button>
+      <Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-white" aria-label="Zoom out" onClick={e=>adjustZoom(e,-0.25)}>−</Button><span className="self-center px-1 text-xs text-white">{Math.round(zoom*100)}%</span><Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-white" aria-label="Zoom in" onClick={e=>adjustZoom(e,0.25)}>+</Button><Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-white" onClick={openFullscreen}>Full screen</Button>
       <Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-white" aria-label="Stop marking" title="Stop marking" onClick={()=>setActive(false)}>✕</Button>
     </div>
     <canvas ref={canvasRef} width={1200} height={700} className={active ? "pointer-events-auto absolute inset-0 h-full w-full touch-none" : "pointer-events-none absolute inset-0 h-full w-full"} onPointerDown={down} onPointerMove={move} onPointerUp={()=>{drawing.current=false;last.current=null;activePointerId.current=null;pointerOrigin.current=null}} onPointerCancel={()=>{drawing.current=false;last.current=null;activePointerId.current=null;pointerOrigin.current=null}} />
