@@ -111,6 +111,14 @@
 
 The live Render service is already correctly configured to deploy from `main` with auto-deploy enabled. The checked-in Blueprint declares different service names and stale `production`/`staging` branches (348 commits behind `main`), so it is not proven to manage the live service. This PR intentionally leaves `render.yaml` unchanged to avoid accidentally creating duplicate services. Reconcile the Blueprint with the live service before any future sync.
 
+## Render production inventory and runtime evidence
+
+- The selected Render workspace contains four similarly named API web services: `DALLYLETTER-ELIDEMS-Smart-CAPS-LMS-4` (`srv-d9ihv8favr4c73assgag`), `-3`, `-2`, and the unsuffixed service. The selected `-4` service is the latest one and is configured to deploy from `main`, repository `elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS`, root directory `artifacts/api-server`; it was live on merge commit `4d8c4f1e29c52ef1a60056e000d0d9d0053a9d5c`.
+- The supplied Oct 9 production logs show successful exercise reads, submission reads, marking (`POST /api/exercises/33/submissions/18/mark` → 200), push subscription creation (201), and several 304 cache responses. No 4xx/5xx responses are present in the supplied excerpt.
+- A lone `ELIFECYCLE Command failed` line appears at 2026-10-09T01:26:20Z in the Render log query, but no matching failure event or adjacent context was returned. Treat as unexplained—not proof of a healthy process or a confirmed outage—and check again if it recurs.
+- Do not disable or delete the other Render services until the frontend/API environment variables and live traffic have been verified against the `-4` URL. Duplicate services can incur confusion/cost, but deleting the wrong service can break production.
+- Durable R2 upload/playback/deletion is not proven by HTTP exercise/marking logs. The repair intentionally rejects production uploads if `MEDIA_S3_*` is absent; confirm bucket credentials and perform an upload → reload → stream → delete lifecycle test before claiming durability.
+
 ## AI-upgrade specification: implementation status, not just code presence
 
 - **ELIDEMS AI natural-language agent:** provider configuration and AI routes exist, but a fully authorized, auditable, reversible command executor for owner/manager/admin is not confirmed as complete.
