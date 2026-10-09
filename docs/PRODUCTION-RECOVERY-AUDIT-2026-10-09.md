@@ -105,6 +105,8 @@
 
 - Render Blueprint CORS: the original `render.yaml` contained a placeholder frontend origin (`your-frontend-domain.com`). This branch removes the placeholder and makes CORS origins dashboard-managed; verify the exact canonical frontend origin before the next production deployment, or the browser may block API calls.
 
+- Vercel deployment/domain detail: all 13 account-scope projects have a READY production-target deployment on the current crowned `main` SHA (`4d8c4f1e29c52ef1a60056e000d0d9d0053a9d5c`). Each of those 13 projects exposes only its own default `.vercel.app` domain; no custom domain is attached in that scope. Their latest non-production deployments for the repair branch are mostly ERROR from build-rate limits. This means production deployments exist, but they are duplicated and the requested custom-domain cutover is not done in the accessible account scope.
+
 ## Render branch alignment
 
 The checked-in `render.yaml` production service pointed at `production`; the `production` and `staging` branches were each 348 commits behind `main` at audit time. This branch changes the production Blueprint target to `main` and adds placeholders for R2, VAPID and Paynow server environment variables. `autoDeploy: false` is intentionally retained until CI and the actual Render service/workspace are verified. Editing this repository file does not change the live Render service by itself.
