@@ -35,7 +35,7 @@ router.get("/raise-hand", requireAuth, async (req, res): Promise<void> => {
   if (!queryParams.success) { res.status(400).json({ error: queryParams.error.message }); return; }
   const user = req.currentUser!;
   const classId = queryParams.data.classId;
-  let rows;
+  let rows: (typeof handRaisesTable.$inferSelect)[];
   if (user.role === "owner" || (user.isManager === true && user.managerLevel === "senior")) {
     rows = classId == null
       ? await db.select().from(handRaisesTable).orderBy(handRaisesTable.createdAt)
