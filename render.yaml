@@ -24,7 +24,7 @@ services:
     name: dallyletter-api-production
     env: node
     plan: starter
-    branch: production
+    branch: main
     autoDeploy: false
     rootDir: artifacts/api-server
     buildCommand: cd ../.. && pnpm install --frozen-lockfile && pnpm --dir scripts repair:messages-schema && pnpm --dir scripts repair:connect-schema && pnpm --dir scripts seed:owner && pnpm --dir artifacts/api-server build
@@ -42,3 +42,27 @@ services:
         sync: false
       - key: CORS_ORIGINS
         value: https://dallyletter-web.onrender.com,https://your-frontend-domain.com
+      - key: MEDIA_S3_ENDPOINT
+        sync: false
+      - key: MEDIA_S3_BUCKET
+        sync: false
+      - key: MEDIA_S3_ACCESS_KEY_ID
+        sync: false
+      - key: MEDIA_S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: MEDIA_S3_REGION
+        value: auto
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        sync: false
+      - key: PAYNOW_INTEGRATION_ID
+        sync: false
+      - key: PAYNOW_INTEGRATION_KEY
+        sync: false
+      - key: PUBLIC_APP_URL
+        sync: false
+      - key: PUBLIC_API_URL
+        sync: false
