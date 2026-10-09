@@ -143,6 +143,12 @@ function MediaMarkOverlay({ data, onChange }: { data: Record<string, unknown> | 
 function AuthenticatedAttachment({ url }: { url: string }) {
   const [busy, setBusy] = useState(false);
   const open = async () => {
+    // Open the tab synchronously from the click; browsers often block window.open after fetch awaits.
+    const tab = window.open("about:blank", "_blank");
+    if (!tab) { window.alert("Your browser blocked the preview tab. Allow pop-ups for Dallyletter and try again."); return; }
+    tab.opener = null;
+    tab.document.title = "Opening Dallyletter attachment…";
+    tab.document.body.textContent = "Loading your attachment…";
     setBusy(true);
     try {
       const token = localStorage.getItem("dallyletter_token");
@@ -150,9 +156,10 @@ function AuthenticatedAttachment({ url }: { url: string }) {
       if (!r.ok) throw new Error("Attachment could not be opened.");
       const blob = await r.blob();
       const objectUrl = URL.createObjectURL(blob);
-      window.open(objectUrl, "_blank", "noopener,noreferrer");
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      tab.location.href = objectUrl;
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 5 * 60_000);
     } catch (error) {
+      tab.close();
       window.alert(error instanceof Error ? error.message : "Attachment could not be opened.");
     } finally {
       setBusy(false);
