@@ -40,6 +40,8 @@
 - Manager moderation reason mismatch: the current moderation route accepts a missing/blank `note`, although the stored product brief requires a reason before a manager blocks or suspends a user. Fix this in a separate permission-focused change with UI validation, API validation, and audit-log verification.
 - Role/account exclusivity is not proven by a database constraint or centralized account policy in the inspected code. Do not add a broad unique constraint without defining whether it means one account per person or one role per account; audit and decide with migration-safe rules.
 
+- Offline/PWA update: the existing service worker now uses separate bounded shell/asset caches (30 assets, 2 MiB per asset), keeps notification/push handlers, and explicitly excludes API/private media. This provides an offline app shell and previously cached static assets only; offline lessons, assignments, and private media still require a deliberate encrypted/local-data sync design and device testing.
+
 ## Must-fix verification gates before merge/deploy
 
 ### A. Build, API and release safety
