@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 type GroupSettings = {
   groupId: number;
@@ -54,6 +54,27 @@ type GroupView = {
   members?: GroupMember[];
   settings?: GroupSettings;
 };
+
+type GroupMessagePreviewItem = { id: number; content?: string | null; senderName?: string | null; type?: string | null; createdAt?: string };
+
+function GroupMessagePreview({ groupId }: { groupId: number }) {
+  const [latest, setLatest] = useState<GroupMessagePreviewItem | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const rows = await apiJson<GroupMessagePreviewItem[]>(`/api/messages?groupId=${groupId}`);
+        if (active) setLatest(rows.length ? rows[rows.length - 1] : null);
+      } catch { if (active) setLatest(null); }
+      finally { if (active) setLoading(false); }
+    };
+    void load();
+    const timer = window.setInterval(() => { void load(); }, 15000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [groupId]);
+  return <div className="rounded-lg border bg-muted/30 p-3"><p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Latest message</p><p className="text-sm">{loading ? "Loading conversation…" : latest ? <><span className="font-medium">{latest.senderName || "Group member"}: </span>{latest.type === "voice" ? "🎙️ Voice message" : latest.type === "media" ? "📎 Shared media" : (latest.content || "Message")}</> : "No messages yet. Start the conversation in Chat."}</p><Button type="button" variant="link" className="mt-1 h-auto p-0 text-sm" onClick={() => { window.location.href = "/student/chat"; }}>Open group chat</Button></div>;
+}
 
 const defaultSettings = (groupId: number): GroupSettings => ({
   groupId,
