@@ -94,7 +94,7 @@ export default function StudentStudyGroups() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const chatPath = user?.role === "teacher" ? (user?.isManager ? "/manager/chat" : "/teacher/chat") : user?.role === "owner" ? "/admin/chat" : "/student/chat";
+  const chatPath = user?.role === "teacher" ? (user?.isManager ? "/manager/chat" : "/teacher/chat") : user?.role === "owner" || user?.role === "admin" ? "/admin/chat" : "/student/chat";
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
   const [subject, setSubject] = useState("");
