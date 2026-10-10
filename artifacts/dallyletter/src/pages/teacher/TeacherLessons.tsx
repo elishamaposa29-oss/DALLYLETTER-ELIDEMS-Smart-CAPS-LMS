@@ -21,8 +21,22 @@ import { CreateLessonBodyType } from "@workspace/api-client-react";
 import { ExerciseBuilderPanel } from "@/components/exercises/ExerciseBuilderPanel";
 import { RichTextEditor, sanitizeRichText } from "@/components/RichTextEditor";
 
+function richTextPlainText(value: string): string {
+  if (typeof document !== "undefined") {
+    const decoder = document.createElement("textarea");
+    decoder.innerHTML = value;
+    const decoded = decoder.value;
+    const container = document.createElement("div");
+    container.innerHTML = decoded;
+    return (container.textContent || "").replace(/\\u00a0/g, " ").replace(/\\s+/g, " ").trim();
+  }
+  return value.replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/<[^>]*>/g, "").replace(/&nbsp;/gi, " ").trim();
+}
+
 const createLessonSchema = z.object({
-  title: z.string().min(2, "Title is required"),
+  title: z.string().refine(value => richTextPlainText(value).length >= 2, {
+    message: "Enter a title with at least 2 visible characters. Formatting alone does not count."
+  }),
   description: z.string().optional(),
   subject: z.string().min(2, "Subject is required"),
   grade: z.string().optional(),
@@ -46,6 +60,7 @@ export default function TeacherLessons() {
   const [markingLessonId, setMarkingLessonId] = useState<number | null>(null);
   const [showAllTeachers, setShowAllTeachers] = useState(false);
   const [sortMode, setSortMode] = useState<"newest"|"oldest"|"subject">("newest");
+  const [expandedDescriptions, setExpandedDescriptions] = useState<Record<number, boolean>>({});
   const [lessonRequests, setLessonRequests] = useState<any[]>([]);
   const [requestBusy, setRequestBusy] = useState<number | null>(null);
   const [permissionRequests, setPermissionRequests] = useState<any[]>([]);
@@ -405,10 +420,11 @@ export default function TeacherLessons() {
                         {getTypeIcon(lesson.type)}
                       </div>
                     </div>
-                    <CardTitle className="text-lg mt-2 line-clamp-2 text-[#0A1931] dark:text-[#FFF8E1]">{lesson.title}</CardTitle>
+                    <CardTitle className="mt-2 text-lg line-clamp-2 text-[#0A1931] dark:text-[#FFF8E1]"><span dangerouslySetInnerHTML={{ __html: sanitizeRichText(lesson.title || "") }} /></CardTitle>
                   </CardHeader>
                   <CardContent className="mt-auto flex-1">
-                    <div className="prose prose-sm max-w-none line-clamp-3 mb-4 dark:prose-invert" dangerouslySetInnerHTML={{__html:sanitizeRichText(lesson.description || "No description provided.")}} />
+                    <div className={`prose prose-sm max-w-none mb-2 dark:prose-invert ${expandedDescriptions[lesson.id] ? "" : "line-clamp-3"}`} dangerouslySetInnerHTML={{__html:sanitizeRichText(lesson.description || "No description provided.")}} />
+                    {(lesson.description || "").length > 180 && <Button type="button" variant="link" size="sm" className="h-auto px-0 py-1 text-[#0A1931] underline dark:text-[#FFC72C]" aria-expanded={Boolean(expandedDescriptions[lesson.id])} onClick={() => setExpandedDescriptions(current => ({ ...current, [lesson.id]: !current[lesson.id] }))}>{expandedDescriptions[lesson.id] ? "Read less" : "Read more"}</Button>}
                     <div className="text-xs text-muted-foreground">
                       Added on {new Date(lesson.createdAt).toLocaleDateString()}
                     </div>
