@@ -107,6 +107,7 @@ export default function StudentStudyGroups() {
   const canCreateGroup = user?.role === "owner" || user?.role === "teacher" || user?.isManager === true || user?.isPrefect === true;
   const isManager = user?.role === "owner" || user?.isManager === true;
   const editingGroup = groups.find(group => group.id === editingGroupId);
+  const editingGroupCanManage = Boolean(editingGroup && (editingGroup.creatorId === user?.id || isManager || editingGroup.members?.find(member => member.id === user?.id)?.control?.canManageSettings));
 
   const handleCreate = (event: FormEvent) => {
     event.preventDefault();
@@ -240,7 +241,7 @@ export default function StudentStudyGroups() {
                 <CardContent className="space-y-4">
                   <div>
                     <label className="text-sm font-medium" htmlFor="group-rules">Group rules</label>
-                    <Textarea id="group-rules" className="mt-1" value={settings.rules ?? ""} onChange={event => setSettings({ ...settings, rules: event.target.value })} rows={4} maxLength={4000} placeholder="Share the rules members should follow." />
+                    <Textarea id="group-rules" className="mt-1" value={settings.rules ?? ""} readOnly={!editingGroupCanManage} onChange={event => setSettings({ ...settings, rules: event.target.value })} rows={4} maxLength={4000} placeholder="Share the rules members should follow." />
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {([
@@ -249,14 +250,14 @@ export default function StudentStudyGroups() {
                       ["allowMedia", "Allow voice messages", "Members can send audio messages."],
                     ] as const).map(([key, label, help]) => (
                       <label key={key} className="flex items-start gap-3 rounded-lg border p-3">
-                        <input type="checkbox" className="mt-1 h-4 w-4" checked={settings[key]} onChange={event => setSettings({ ...settings, [key]: event.target.checked })} />
+                        <input type="checkbox" className="mt-1 h-4 w-4" checked={settings[key]} disabled={!editingGroupCanManage} onChange={event => setSettings({ ...settings, [key]: event.target.checked })} />
                         <span><span className="block text-sm font-medium">{label}</span><span className="block text-xs text-muted-foreground">{help}</span></span>
                       </label>
                     ))}
                   </div>
                   <div className="max-w-xs">
                     <label className="text-sm font-medium" htmlFor="max-members">Maximum members</label>
-                    <Input id="max-members" className="mt-1" type="number" min={2} max={1024} value={settings.maxMembers} onChange={event => setSettings({ ...settings, maxMembers: Math.max(2, Math.min(1024, Number(event.target.value) || 2)) })} />
+                    <Input id="max-members" className="mt-1" type="number" min={2} max={1024} value={settings.maxMembers} disabled={!editingGroupCanManage} onChange={event => setSettings({ ...settings, maxMembers: Math.max(2, Math.min(1024, Number(event.target.value) || 2)) })} />
                   </div>
                   {editingGroup?.members && editingGroup.members.length > 0 && (
                     <div className="space-y-2 border-t pt-4">
@@ -280,7 +281,7 @@ export default function StudentStudyGroups() {
                   )}
                 </CardContent>
                 <CardFooter className="gap-2">
-                  <Button type="submit" disabled={busyGroup === settings.groupId}>Save settings</Button>
+                  {editingGroupCanManage && <Button type="submit" disabled={busyGroup === settings.groupId}>Save settings</Button>}
                   <Button type="button" variant="ghost" onClick={() => { setEditingGroupId(null); setSettings(null); }}>Cancel</Button>
                 </CardFooter>
               </form>
@@ -356,7 +357,7 @@ export default function StudentStudyGroups() {
                     )}
                   </CardContent>
                   <CardFooter className="flex flex-wrap gap-2 border-t pt-4">
-                    {canManage && <Button variant="outline" className="gap-2" onClick={() => void openSettings(group.id)} disabled={busyGroup === group.id}><Settings2 className="h-4 w-4" />Settings</Button>}
+                    {(canManage || isMember) && <Button variant="outline" className="gap-2" onClick={() => void openSettings(group.id)} disabled={busyGroup === group.id}><Settings2 className="h-4 w-4" />Settings</Button>}
                     {canManage && <Button variant="ghost" size="sm" onClick={() => {
                       if (!window.confirm("Clear all messages in this study group?")) return;
                       setBusyGroup(group.id);
