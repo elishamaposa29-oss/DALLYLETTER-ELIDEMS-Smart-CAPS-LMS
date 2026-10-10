@@ -279,6 +279,16 @@ export default function StudentStudyGroups() {
                       <Button type="button" variant="destructive" onClick={() => { setEditingGroupId(null); setSettings(null); handleLeaveGroup(editingGroup.id); }} disabled={leaveGroupMutation.isPending}><LogOut className="mr-2 h-4 w-4" />Leave group</Button>
                     </div>
                   )}
+                  {editingGroup && editingGroupCanManage && (
+                    <div className="border-t pt-4">
+                      <h3 className="mb-2 text-sm font-semibold">Group actions</h3>
+                      <Button type="button" variant="destructive" onClick={() => {
+                        if (!window.confirm("Clear all messages in this study group?")) return;
+                        setBusyGroup(editingGroup.id);
+                        void apiJson(`/api/study-groups/${editingGroup.id}/messages`, { method: "DELETE" }).then(() => { toast({ title: "Group messages cleared" }); refresh(); }).catch(error => toast({ variant: "destructive", title: "Could not clear messages", description: error instanceof Error ? error.message : "Try again." })).finally(() => setBusyGroup(null));
+                      }} disabled={busyGroup === editingGroup.id}>Clear group chat</Button>
+                    </div>
+                  )}
                 </CardContent>
                 <CardFooter className="gap-2">
                   {editingGroupCanManage && <Button type="submit" disabled={busyGroup === settings.groupId}>Save settings</Button>}
@@ -358,11 +368,7 @@ export default function StudentStudyGroups() {
                   </CardContent>
                   <CardFooter className="flex flex-wrap gap-2 border-t pt-4">
                     {(canManage || isMember) && <Button variant="outline" className="gap-2" onClick={() => void openSettings(group.id)} disabled={busyGroup === group.id}><Settings2 className="h-4 w-4" />Settings</Button>}
-                    {canManage && <Button variant="ghost" size="sm" onClick={() => {
-                      if (!window.confirm("Clear all messages in this study group?")) return;
-                      setBusyGroup(group.id);
-                      void apiJson(`/api/study-groups/${group.id}/messages`, { method: "DELETE" }).then(() => toast({ title: "Group messages cleared" })).catch(error => toast({ variant: "destructive", title: "Could not clear messages", description: error instanceof Error ? error.message : "Try again." })).finally(() => setBusyGroup(null));
-                    }} disabled={busyGroup === group.id}>Clear chat</Button>}
+
                     {isMember ? (
                       <Button variant="secondary" className="min-w-[130px] flex-1 gap-2" disabled={isOwner}><Users className="h-4 w-4" />{isOwner ? "Group Owner" : "Joined"}</Button>
                     ) : (
