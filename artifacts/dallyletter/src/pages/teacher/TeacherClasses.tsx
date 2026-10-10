@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useState } from "react";
-import { Loader2, Plus, Trash2, Video, Calendar, Clock, Hand, Settings2, CheckCircle, MessageSquare, Paperclip, Send } from "lucide-react";
+import { Loader2, Plus, Trash2, Video, Calendar, Clock, Hand, Settings2, CheckCircle, Paperclip, Send } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
