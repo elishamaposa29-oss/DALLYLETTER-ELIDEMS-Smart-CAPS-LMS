@@ -4,11 +4,40 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 import { Loader2, Video, Hand, HandMetal, Calendar, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
+
+type TeacherReplyMessage = { id: number; senderId: number; senderRole: string; content: string; type: string; mediaUrl?: string | null; createdAt: string };
+
+function TeacherReplyPreview({ teacherId }: { teacherId: number }) {
+  const [latest, setLatest] = useState<TeacherReplyMessage | null>(null);
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      const token = localStorage.getItem("dallyletter_token");
+      try {
+        const response = await fetch(getApiUrl(`/api/messages?recipientId=${teacherId}`), { headers: token ? { Authorization: `Bearer ${token}` } : {} , cache: "no-store" });
+        if (!response.ok) return;
+        const messages = await response.json() as TeacherReplyMessage[];
+        const reply = messages.filter(message => message.senderId === teacherId && (message.senderRole === "teacher" || message.senderRole === "owner" || message.senderRole === "admin")).at(-1) ?? null;
+        if (active) setLatest(reply);
+      } catch { /* A conversation may not exist until the teacher replies. */ }
+    };
+    void load();
+    const timer = window.setInterval(() => void load(), 10000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [teacherId]);
+  if (!latest) return null;
+  return <div className="mt-3 w-full rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-emerald-950">
+    <p className="mb-1 text-xs font-semibold uppercase tracking-wide">Teacher reply</p>
+    {latest.content && <p className="whitespace-pre-wrap break-words text-sm">{latest.content}</p>}
+    {latest.mediaUrl && <div className="mt-2"><AuthenticatedMedia url={latest.mediaUrl} type={new URL(latest.mediaUrl, window.location.origin).searchParams.get("type")?.startsWith("image/") ? "image" : new URL(latest.mediaUrl, window.location.origin).searchParams.get("type")?.startsWith("video/") ? "video" : "document"} title={latest.content || "Teacher attachment"} /></div>}
+  </div>;
+}
 
 export default function StudentClasses() {
   const { data: classes, isLoading } = useListClasses();
@@ -131,6 +160,7 @@ export default function StudentClasses() {
                     )}
                   </CardContent>
                   <CardFooter className="gap-2 pt-4 border-t flex-wrap">
+                    <TeacherReplyPreview teacherId={c.teacherId} />
                     <Button
                       className="flex-1 gap-2"
                       variant={c.status === "live" ? "default" : "secondary"}
