@@ -21,11 +21,23 @@ export function AuthenticatedAudio({ src, className }: { src: string; className?
     fetch(getApiUrl(src), { headers: token ? { Authorization: `Bearer ${token}` } : undefined, cache: "no-store" })
       .then(async response => {
         if (!response.ok) throw new Error(`Audio unavailable (${response.status})`);
-        const contentType = response.headers.get("content-type") || "";
+        const contentType = (response.headers.get("content-type") || "").toLowerCase();
         const blob = await response.blob();
         if (blob.size === 0) throw new Error("Empty audio response");
-        if (!contentType.toLowerCase().startsWith("audio/")) throw new Error("The server returned a non-audio response");
-        return blob.type.toLowerCase().startsWith("audio/") ? blob : new Blob([blob], { type: contentType });
+        // Object storage/CDN proxies can label valid uploaded audio as octet-stream.
+        // Reject obvious login/error pages, but don't reject playable audio for that generic MIME.
+        if (contentType.includes("text/html") || contentType.includes("application/json") || contentType.includes("text/plain")) {
+          throw new Error("The media endpoint returned an error page instead of audio");
+        }
+        if (blob.type.toLowerCase().startsWith("audio/")) return blob;
+        const path = src.split("?")[0].toLowerCase();
+        const inferredType = path.endsWith(".ogg") ? "audio/ogg"
+          : path.endsWith(".mp3") ? "audio/mpeg"
+          : path.endsWith(".m4a") || path.endsWith(".mp4") ? "audio/mp4"
+          : path.endsWith(".wav") ? "audio/wav"
+          : path.endsWith(".webm") ? "audio/webm"
+          : contentType.startsWith("audio/") ? contentType : "audio/webm";
+        return new Blob([blob], { type: inferredType });
       })
       .then(blob => {
         if (active) setObjectUrl(URL.createObjectURL(blob));
