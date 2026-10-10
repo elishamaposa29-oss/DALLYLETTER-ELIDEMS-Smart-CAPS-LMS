@@ -7,7 +7,14 @@ const safeStyleNames=["font-size","font-family","text-align","font-weight","font
 
 export function sanitizeRichText(html:string){
   if(typeof DOMParser==="undefined") return html.replace(/<[^>]+>/g,"");
-  const doc=new DOMParser().parseFromString(html,"text/html");
+  // Older records sometimes stored editor HTML escaped as text. Decode only when
+  // the decoded value contains recognizable formatting markup, then sanitize it.
+  const decoder=document.createElement("textarea");
+  decoder.innerHTML=html;
+  const decoded=decoder.value;
+  const hasEscapedMarkup=/&lt;\/?(?:p|div|span|b|strong|i|em|u|ul|ol|li|br|font|style)\b/i.test(html);
+  const source=hasEscapedMarkup && decoded!==html ? decoded : html;
+  const doc=new DOMParser().parseFromString(source,"text/html");
   const walk=(node:Node)=>{
     [...node.childNodes].forEach(child=>{
       if(child.nodeType===1){
