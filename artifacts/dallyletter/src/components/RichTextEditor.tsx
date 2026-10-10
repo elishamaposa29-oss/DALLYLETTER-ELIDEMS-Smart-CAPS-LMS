@@ -19,6 +19,11 @@ export function sanitizeRichText(html:string){
     [...node.childNodes].forEach(child=>{
       if(child.nodeType===1){
         const el=child as HTMLElement;
+        // Never render stylesheet or script source as learner-visible text.
+        if(el.tagName==="STYLE" || el.tagName==="SCRIPT" || el.tagName==="IFRAME" || el.tagName==="OBJECT" || el.tagName==="EMBED"){
+          el.remove();
+          return;
+        }
         if(el.tagName==="FONT"){
           const span=document.createElement("span");
           if(el.getAttribute("face")) span.style.fontFamily=el.getAttribute("face")!;
