@@ -408,9 +408,7 @@ export default function TeacherLessons() {
                     <CardTitle className="text-lg mt-2 line-clamp-2 text-[#0A1931] dark:text-[#FFF8E1]">{lesson.title}</CardTitle>
                   </CardHeader>
                   <CardContent className="mt-auto flex-1">
-                    <p className="text-sm text-muted-foreground line-clamp-3 mb-4">
-                      {lesson.description || "No description provided."}
-                    </p>
+                    <div className="prose prose-sm max-w-none line-clamp-3 mb-4 dark:prose-invert" dangerouslySetInnerHTML={{__html:sanitizeRichText(lesson.description || "No description provided.")}} />
                     <div className="text-xs text-muted-foreground">
                       Added on {new Date(lesson.createdAt).toLocaleDateString()}
                     </div>
