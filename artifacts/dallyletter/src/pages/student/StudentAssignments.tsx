@@ -87,6 +87,31 @@ export default function StudentAssignments() {
     });
   };
 
+  const openReference = async (url: string, title: string) => {
+    if (!url.startsWith("/")) {
+      window.open(url, "_blank", "noopener,noreferrer");
+      return;
+    }
+    const tab = window.open("about:blank", "_blank");
+    if (!tab) {
+      toast({ variant: "destructive", title: "Allow pop-ups to open reference material" });
+      return;
+    }
+    try {
+      const response = await fetch(getApiUrl(url), { headers: { Authorization: `Bearer ${token()}` }, cache: "no-store" });
+      if (!response.ok) throw new Error(`Reference material unavailable (${response.status})`);
+      const blob = await response.blob();
+      if (!blob.size) throw new Error("The reference file is empty");
+      const objectUrl = URL.createObjectURL(blob);
+      tab.document.title = title;
+      tab.location.href = objectUrl;
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 120000);
+    } catch (error) {
+      tab.close();
+      toast({ variant: "destructive", title: "Could not open reference material", description: error instanceof Error ? error.message : "Please try again." });
+    }
+  };
+
   const isOverdue = (dueDate: string) => new Date(dueDate) < new Date();
 
   return (
@@ -129,7 +154,7 @@ export default function StudentAssignments() {
                           )}
                         </div>
                         {a.description && <p className="text-sm text-slate-500 mb-2">{a.description}</p>}
-                        {a.attachmentUrl && <a className="text-sm text-blue-600 hover:underline" href={a.attachmentUrl.startsWith("/") ? getApiUrl(a.attachmentUrl) : a.attachmentUrl} target="_blank" rel="noreferrer">Open reference material</a>}
+                        {a.attachmentUrl && <Button type="button" variant="link" className="h-auto p-0 text-sm text-blue-600" onClick={() => void openReference(a.attachmentUrl, a.title)}>Open reference material</Button>}
                         {sub?.feedback && <p className="text-sm text-purple-600 italic mb-2">Feedback: {sub.feedback}</p>}
                         <div className="flex items-center gap-4 text-xs text-slate-400">
                           <span className="flex items-center gap-1">
@@ -165,9 +190,9 @@ export default function StudentAssignments() {
             <div className="space-y-3">
               <div className="bg-slate-50 rounded-lg p-3 text-sm text-slate-600 whitespace-pre-wrap">{selected.description || "No description provided."}</div>
               {selected.attachmentUrl && (
-                <a className="text-sm text-blue-700 hover:underline block" href={selected.attachmentUrl.startsWith("/") ? getApiUrl(selected.attachmentUrl) : selected.attachmentUrl} target="_blank" rel="noreferrer">
+                <Button type="button" variant="link" className="h-auto p-0 text-sm text-blue-700" onClick={() => void openReference(selected.attachmentUrl, selected.title)}>
                   Open assignment reference material
-                </a>
+                </Button>
               )}
               <div>
                 <label className="text-sm font-medium text-slate-700 mb-1 block">Your Answer</label>
