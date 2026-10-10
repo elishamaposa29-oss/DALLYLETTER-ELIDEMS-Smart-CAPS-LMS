@@ -129,7 +129,7 @@ export default function StudentAssignments() {
                           )}
                         </div>
                         {a.description && <p className="text-sm text-slate-500 mb-2">{a.description}</p>}
-                        {a.attachmentUrl && <a className="text-sm text-blue-600 hover:underline" href={a.attachmentUrl} target="_blank" rel="noreferrer">Open reference material</a>}
+                        {a.attachmentUrl && <a className="text-sm text-blue-600 hover:underline" href={a.attachmentUrl.startsWith("/") ? getApiUrl(a.attachmentUrl) : a.attachmentUrl} target="_blank" rel="noreferrer">Open reference material</a>}
                         {sub?.feedback && <p className="text-sm text-purple-600 italic mb-2">Feedback: {sub.feedback}</p>}
                         <div className="flex items-center gap-4 text-xs text-slate-400">
                           <span className="flex items-center gap-1">
