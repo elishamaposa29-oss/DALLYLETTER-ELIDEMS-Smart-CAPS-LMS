@@ -58,22 +58,22 @@ type GroupView = {
 type GroupMessagePreviewItem = { id: number; content?: string | null; senderName?: string | null; type?: string | null; createdAt?: string };
 
 function GroupMessagePreview({ groupId, chatPath }: { groupId: number; chatPath: string }) {
-  const [latest, setLatest] = useState<GroupMessagePreviewItem | null>(null);
+  const [latestMessages, setLatestMessages] = useState<GroupMessagePreviewItem[]>([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     let active = true;
     const load = async () => {
       try {
         const rows = await apiJson<GroupMessagePreviewItem[]>(`/api/messages?groupId=${groupId}`);
-        if (active) setLatest(rows.length ? rows[rows.length - 1] : null);
-      } catch { if (active) setLatest(null); }
+        if (active) setLatestMessages(rows.slice(-3));
+      } catch { if (active) setLatestMessages([]); }
       finally { if (active) setLoading(false); }
     };
     void load();
     const timer = window.setInterval(() => { void load(); }, 15000);
     return () => { active = false; window.clearInterval(timer); };
   }, [groupId]);
-  return <div className="rounded-lg border bg-muted/30 p-3"><p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Latest message</p><p className="text-sm">{loading ? "Loading conversation…" : latest ? <><span className="font-medium">{latest.senderName || "Group member"}: </span>{latest.type === "voice" ? "🎙️ Voice message" : latest.type === "media" ? "📎 Shared media" : (latest.content || "Message")}</> : "No messages yet. Start the conversation in Chat."}</p><Button type="button" variant="link" className="mt-1 h-auto p-0 text-sm" onClick={() => { window.location.href = `${chatPath}?groupId=${groupId}`; }}>Open group chat</Button></div>;
+  return <div className="rounded-xl border border-sky-200 bg-gradient-to-br from-sky-50 via-white to-amber-50 p-3 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md"><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-sky-800">Group chat preview</p>{loading ? <p className="text-sm text-slate-500">Loading conversation…</p> : latestMessages.length ? <div className="space-y-2">{latestMessages.map(item => <div key={item.id} className="rounded-lg border border-white/90 bg-white/85 px-3 py-2 shadow-sm"><p className="text-xs font-semibold text-slate-700">{item.senderName || "Group member"}</p><p className="mt-0.5 break-words text-sm text-slate-800">{item.type === "voice" ? "🎙️ Voice message" : item.type === "media" ? "📎 Shared media" : (item.content || "Message")}</p></div>)}</div> : <p className="text-sm text-slate-600">No messages yet. Start the conversation in Chat.</p>}<Button type="button" variant="link" className="mt-2 h-auto p-0 text-sm font-semibold text-sky-800" onClick={() => { window.location.href = `${chatPath}?groupId=${groupId}`; }}>Open full group chat →</Button></div>;
 }
 
 const defaultSettings = (groupId: number): GroupSettings => ({
@@ -325,7 +325,7 @@ export default function StudentStudyGroups() {
               const canManage = isOwner || isManager || selectedControl?.canManageSettings === true;
               const groupSettings = group.settings ?? defaultSettings(group.id);
               return (
-                <Card key={group.id} className="flex h-full flex-col transition-shadow hover:shadow-md">
+                <Card key={group.id} className="flex h-full flex-col border-slate-200 bg-gradient-to-br from-white via-sky-50/40 to-amber-50/50 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-sky-200 hover:shadow-lg">
                   <CardHeader>
                     <div className="flex items-start justify-between gap-2">
                       <Badge variant="secondary">{group.subject}</Badge>
