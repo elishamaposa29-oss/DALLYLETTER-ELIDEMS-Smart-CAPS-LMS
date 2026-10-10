@@ -36,9 +36,6 @@ export default function TeacherClasses() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [handReplies, setHandReplies] = useState<Record<number, string>>({});
-  const [handReplyFiles, setHandReplyFiles] = useState<Record<number, File | null>>({});
-  const [sendingHandReply, setSendingHandReply] = useState<number | null>(null);
 
   const form = useForm<z.infer<typeof createClassSchema>>({
     resolver: zodResolver(createClassSchema),
@@ -304,6 +301,9 @@ export default function TeacherClasses() {
 function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean }) {
   const { data: hands, refetch } = useListHandRaises({ classId }, { query: { enabled: isLive, refetchInterval: 8000 } as any });
   const { toast } = useToast();
+  const [handReplies, setHandReplies] = useState<Record<number, string>>({});
+  const [handReplyFiles, setHandReplyFiles] = useState<Record<number, File | null>>({});
+  const [sendingHandReply, setSendingHandReply] = useState<number | null>(null);
   const [loweringId, setLoweringId] = useState<number | null>(null);
 
   if (!isLive || !hands) return null;
