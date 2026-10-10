@@ -361,11 +361,14 @@ export default function StudentChat() {
                               {!isMe && <span className="mb-1 ml-1 text-xs text-muted-foreground">{currentMessage.senderName} · {currentMessage.senderRole}</span>}
                               <div className={`rounded-2xl px-4 py-2.5 ${isMe ? "rounded-tr-sm bg-primary text-primary-foreground" : "rounded-tl-sm border bg-card shadow-sm"}`}>
                                 {currentMessage.type === "voice" && currentMessage.mediaUrl ? <AuthenticatedAudio className="h-10 max-w-[250px]" src={currentMessage.mediaUrl} /> : currentMessage.type === "media" && currentMessage.mediaUrl ? (
-  <AuthenticatedMedia
-    url={currentMessage.mediaUrl}
-    type={new URL(currentMessage.mediaUrl, window.location.origin).searchParams.get("type")?.startsWith("image/") ? "image" : new URL(currentMessage.mediaUrl, window.location.origin).searchParams.get("type")?.startsWith("video/") ? "video" : "document"}
-    title={currentMessage.content}
-  />
+  <div className="space-y-2">
+    {currentMessage.content && <p className="whitespace-pre-wrap break-words text-sm">{currentMessage.content}</p>}
+    <AuthenticatedMedia
+      url={currentMessage.mediaUrl}
+      type={new URL(currentMessage.mediaUrl, window.location.origin).searchParams.get("type")?.startsWith("image/") ? "image" : new URL(currentMessage.mediaUrl, window.location.origin).searchParams.get("type")?.startsWith("video/") ? "video" : "document"}
+      title={currentMessage.content}
+    />
+  </div>
 ) : <p className="whitespace-pre-wrap break-words text-sm">{currentMessage.content}</p>}
                               </div>
                               {isGroupConversation && <div className="mt-1 flex gap-2"><button type="button" className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary" onClick={() => setReplyTo(currentMessage.id)}><Reply className="h-3 w-3" />Reply</button><button type="button" className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-destructive disabled:opacity-50" onClick={() => void handleReport(currentMessage.id)} disabled={reportingMessageId === currentMessage.id}>{reportingMessageId === currentMessage.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Flag className="h-3 w-3" />}Report</button></div>}
