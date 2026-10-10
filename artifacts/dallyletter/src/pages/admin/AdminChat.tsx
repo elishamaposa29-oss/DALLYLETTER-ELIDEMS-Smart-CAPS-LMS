@@ -1,5 +1,7 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useListMessages, useSendMessage, useListStudyGroups, useListUsers } from "@workspace/api-client-react";
+import { AuthenticatedAudio } from "@/components/AuthenticatedAudio";
+import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, Send, Users, MessageSquare, User, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -177,7 +179,7 @@ export default function AdminChat() {
                                 ? "bg-primary text-primary-foreground rounded-tr-sm" 
                                 : "bg-card border shadow-sm rounded-tl-sm"
                             }`}>
-                              <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+                              {msg.type === "voice" && msg.mediaUrl ? <AuthenticatedAudio className="h-10 max-w-[250px]" src={msg.mediaUrl} /> : msg.type === "media" && msg.mediaUrl ? <div className="space-y-2">{msg.content && <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>}<AuthenticatedMedia url={msg.mediaUrl} type={new URL(msg.mediaUrl, window.location.origin).searchParams.get("type")?.startsWith("image/") ? "image" : new URL(msg.mediaUrl, window.location.origin).searchParams.get("type")?.startsWith("video/") ? "video" : "document"} title={msg.content || "Shared learning media"} /></div> : <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>}
                             </div>
                             <span className="text-[10px] text-muted-foreground mt-1 opacity-70">
                               {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
