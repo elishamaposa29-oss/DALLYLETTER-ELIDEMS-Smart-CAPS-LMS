@@ -407,7 +407,6 @@ function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean
               {loweringId === hand.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
               <span className="ml-1">Lower</span>
             </Button>
-            </div>
           </div>
         ))}
       </div>
