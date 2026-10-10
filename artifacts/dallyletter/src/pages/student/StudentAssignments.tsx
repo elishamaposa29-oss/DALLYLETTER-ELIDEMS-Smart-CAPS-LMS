@@ -165,7 +165,7 @@ export default function StudentAssignments() {
             <div className="space-y-3">
               <div className="bg-slate-50 rounded-lg p-3 text-sm text-slate-600 whitespace-pre-wrap">{selected.description || "No description provided."}</div>
               {selected.attachmentUrl && (
-                <a className="text-sm text-blue-700 hover:underline block" href={selected.attachmentUrl} target="_blank" rel="noreferrer">
+                <a className="text-sm text-blue-700 hover:underline block" href={selected.attachmentUrl.startsWith("/") ? getApiUrl(selected.attachmentUrl) : selected.attachmentUrl} target="_blank" rel="noreferrer">
                   Open assignment reference material
                 </a>
               )}
