@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 type GroupSettings = {
   groupId: number;
@@ -55,6 +55,27 @@ type GroupView = {
   settings?: GroupSettings;
 };
 
+type GroupMessagePreviewItem = { id: number; content?: string | null; senderName?: string | null; type?: string | null; createdAt?: string };
+
+function GroupMessagePreview({ groupId, chatPath }: { groupId: number; chatPath: string }) {
+  const [latestMessages, setLatestMessages] = useState<GroupMessagePreviewItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const rows = await apiJson<GroupMessagePreviewItem[]>(`/api/messages?groupId=${groupId}`);
+        if (active) setLatestMessages(rows.slice(-3));
+      } catch { if (active) setLatestMessages([]); }
+      finally { if (active) setLoading(false); }
+    };
+    void load();
+    const timer = window.setInterval(() => { void load(); }, 15000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [groupId]);
+  return <div className="rounded-xl border border-sky-200 bg-gradient-to-br from-sky-50 via-white to-amber-50 p-3 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md"><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-sky-800">Group chat preview</p>{loading ? <p className="text-sm text-slate-500">Loading conversation…</p> : latestMessages.length ? <div className="space-y-2">{latestMessages.map(item => <div key={item.id} className="rounded-lg border border-white/90 bg-white/85 px-3 py-2 shadow-sm"><p className="text-xs font-semibold text-slate-700">{item.senderName || "Group member"}</p><p className="mt-0.5 break-words text-sm text-slate-800">{item.type === "voice" ? "🎙️ Voice message" : item.type === "media" ? "📎 Shared media" : (item.content || "Message")}</p></div>)}</div> : <p className="text-sm text-slate-600">No messages yet. Start the conversation in Chat.</p>}<Button type="button" variant="link" className="mt-2 h-auto p-0 text-sm font-semibold text-sky-800" onClick={() => { window.location.href = `${chatPath}?groupId=${groupId}`; }}>Open full group chat →</Button></div>;
+}
+
 const defaultSettings = (groupId: number): GroupSettings => ({
   groupId,
   rules: null,
@@ -73,6 +94,7 @@ export default function StudentStudyGroups() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const chatPath = user?.role === "teacher" ? (user?.isManager ? "/manager/chat" : "/teacher/chat") : user?.role === "owner" ? "/admin/chat" : "/student/chat";
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
   const [subject, setSubject] = useState("");
@@ -85,6 +107,8 @@ export default function StudentStudyGroups() {
   const refresh = () => void queryClient.invalidateQueries({ queryKey: getListStudyGroupsQueryKey() });
   const canCreateGroup = user?.role === "owner" || user?.role === "teacher" || user?.isManager === true || user?.isPrefect === true;
   const isManager = user?.role === "owner" || user?.isManager === true;
+  const editingGroup = groups.find(group => group.id === editingGroupId);
+  const editingGroupCanManage = Boolean(editingGroup && (editingGroup.creatorId === user?.id || isManager || editingGroup.members?.find(member => member.id === user?.id)?.control?.canManageSettings));
 
   const handleCreate = (event: FormEvent) => {
     event.preventDefault();
@@ -218,7 +242,7 @@ export default function StudentStudyGroups() {
                 <CardContent className="space-y-4">
                   <div>
                     <label className="text-sm font-medium" htmlFor="group-rules">Group rules</label>
-                    <Textarea id="group-rules" className="mt-1" value={settings.rules ?? ""} onChange={event => setSettings({ ...settings, rules: event.target.value })} rows={4} maxLength={4000} placeholder="Share the rules members should follow." />
+                    <Textarea id="group-rules" className="mt-1" value={settings.rules ?? ""} readOnly={!editingGroupCanManage} onChange={event => setSettings({ ...settings, rules: event.target.value })} rows={4} maxLength={4000} placeholder="Share the rules members should follow." />
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {([
@@ -227,18 +251,48 @@ export default function StudentStudyGroups() {
                       ["allowMedia", "Allow voice messages", "Members can send audio messages."],
                     ] as const).map(([key, label, help]) => (
                       <label key={key} className="flex items-start gap-3 rounded-lg border p-3">
-                        <input type="checkbox" className="mt-1 h-4 w-4" checked={settings[key]} onChange={event => setSettings({ ...settings, [key]: event.target.checked })} />
+                        <input type="checkbox" className="mt-1 h-4 w-4" checked={settings[key]} disabled={!editingGroupCanManage} onChange={event => setSettings({ ...settings, [key]: event.target.checked })} />
                         <span><span className="block text-sm font-medium">{label}</span><span className="block text-xs text-muted-foreground">{help}</span></span>
                       </label>
                     ))}
                   </div>
                   <div className="max-w-xs">
                     <label className="text-sm font-medium" htmlFor="max-members">Maximum members</label>
-                    <Input id="max-members" className="mt-1" type="number" min={2} max={1024} value={settings.maxMembers} onChange={event => setSettings({ ...settings, maxMembers: Math.max(2, Math.min(1024, Number(event.target.value) || 2)) })} />
+                    <Input id="max-members" className="mt-1" type="number" min={2} max={1024} value={settings.maxMembers} disabled={!editingGroupCanManage} onChange={event => setSettings({ ...settings, maxMembers: Math.max(2, Math.min(1024, Number(event.target.value) || 2)) })} />
                   </div>
+                  {editingGroup?.members && editingGroup.members.length > 0 && (
+                    <div className="space-y-2 border-t pt-4">
+                      <h3 className="text-sm font-semibold">Member actions</h3>
+                      {editingGroup.members.filter(member => member.id !== editingGroup.creatorId).map(member => (
+                        <div key={member.id} className="flex flex-wrap items-center gap-2 rounded-lg border p-2">
+                          <span className="min-w-0 flex-1 text-sm">{member.name}</span>
+                          <Button type="button" size="sm" variant={member.control?.muted ? "destructive" : "outline"} onClick={() => void toggleMemberControl(editingGroup.id, member, "muted")} disabled={!editingGroupCanManage || busyGroup === editingGroup.id}>{member.control?.muted ? "Unmute" : "Mute"}</Button>
+                          <Button type="button" size="sm" variant={member.control?.suspended ? "destructive" : "outline"} onClick={() => void toggleMemberControl(editingGroup.id, member, "suspended")} disabled={!editingGroupCanManage || busyGroup === editingGroup.id}>{member.control?.suspended ? "Unsuspend" : "Suspend"}</Button>
+                          <Button type="button" size="sm" variant={member.control?.blocked ? "destructive" : "outline"} onClick={() => void toggleMemberControl(editingGroup.id, member, "blocked")} disabled={!editingGroupCanManage || busyGroup === editingGroup.id}>{member.control?.blocked ? "Unblock" : "Block"}</Button>
+                          <Button type="button" size="sm" variant={member.control?.mediaBlocked ? "destructive" : "outline"} onClick={() => void toggleMemberControl(editingGroup.id, member, "mediaBlocked")} disabled={!editingGroupCanManage || busyGroup === editingGroup.id}>{member.control?.mediaBlocked ? "Allow voice" : "Block voice"}</Button>
+                          {editingGroup.creatorId === user?.id && <Button type="button" size="sm" variant="ghost" onClick={() => void apiJson(`/api/study-groups/${editingGroup.id}/members/${member.id}`, { method: "DELETE" }).then(() => { toast({ title: "Member removed" }); refresh(); }).catch(error => toast({ variant: "destructive", title: "Could not remove member", description: error instanceof Error ? error.message : "Try again." }))} disabled={busyGroup === editingGroup.id}>Remove</Button>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {editingGroup && (editingGroup.isMember ?? editingGroup.members?.some(member => member.id === user?.id)) && editingGroup.creatorId !== user?.id && (
+                    <div className="border-t pt-4">
+                      <Button type="button" variant="destructive" onClick={() => { setEditingGroupId(null); setSettings(null); handleLeaveGroup(editingGroup.id); }} disabled={leaveGroupMutation.isPending}><LogOut className="mr-2 h-4 w-4" />Leave group</Button>
+                    </div>
+                  )}
+                  {editingGroup && editingGroupCanManage && (
+                    <div className="border-t pt-4">
+                      <h3 className="mb-2 text-sm font-semibold">Group actions</h3>
+                      <Button type="button" variant="destructive" onClick={() => {
+                        if (!window.confirm("Clear all messages in this study group?")) return;
+                        setBusyGroup(editingGroup.id);
+                        void apiJson(`/api/study-groups/${editingGroup.id}/messages`, { method: "DELETE" }).then(() => { toast({ title: "Group messages cleared" }); refresh(); }).catch(error => toast({ variant: "destructive", title: "Could not clear messages", description: error instanceof Error ? error.message : "Try again." })).finally(() => setBusyGroup(null));
+                      }} disabled={busyGroup === editingGroup.id}>Clear group chat</Button>
+                    </div>
+                  )}
                 </CardContent>
                 <CardFooter className="gap-2">
-                  <Button type="submit" disabled={busyGroup === settings.groupId}>Save settings</Button>
+                  {editingGroupCanManage && <Button type="submit" disabled={busyGroup === settings.groupId}>Save settings</Button>}
                   <Button type="button" variant="ghost" onClick={() => { setEditingGroupId(null); setSettings(null); }}>Cancel</Button>
                 </CardFooter>
               </form>
@@ -271,7 +325,7 @@ export default function StudentStudyGroups() {
               const canManage = isOwner || isManager || selectedControl?.canManageSettings === true;
               const groupSettings = group.settings ?? defaultSettings(group.id);
               return (
-                <Card key={group.id} className="flex h-full flex-col transition-shadow hover:shadow-md">
+                <Card key={group.id} className="flex h-full flex-col border-slate-200 bg-gradient-to-br from-white via-sky-50/40 to-amber-50/50 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-sky-200 hover:shadow-lg">
                   <CardHeader>
                     <div className="flex items-start justify-between gap-2">
                       <Badge variant="secondary">{group.subject}</Badge>
@@ -283,6 +337,7 @@ export default function StudentStudyGroups() {
                   </CardHeader>
                   <CardContent className="flex-1 space-y-4">
                     <p className="text-sm text-muted-foreground">{group.description || "No description provided."}</p>
+                    {isMember && <GroupMessagePreview groupId={group.id} chatPath={chatPath} />}
                     {isMember && groupSettings.rules && (
                       <div className="rounded-lg bg-muted/60 p-3">
                         <p className="mb-1 text-xs font-semibold uppercase tracking-wide">Group rules</p>
@@ -304,15 +359,8 @@ export default function StudentStudyGroups() {
                                 {member.avatarUrl ? <img src={member.avatarUrl} alt="" className="h-full w-full rounded-full object-cover" /> : member.name.charAt(0).toUpperCase()}
                               </div>
                               <span className="min-w-0 flex-1 truncate text-xs">{member.name}{member.id === group.creatorId ? " · owner" : ""}</span>
-                              {canManage && member.id !== group.creatorId && (
-                                <div className="flex gap-1">
-                                  <Button type="button" variant={member.control?.muted ? "destructive" : "ghost"} size="sm" className="h-7 px-2 text-[10px]" onClick={() => void toggleMemberControl(group.id, member, "muted")} disabled={busyGroup === group.id}>{member.control?.muted ? "Unmute" : "Mute"}</Button>
-                                  <Button type="button" variant={member.control?.mediaBlocked ? "destructive" : "ghost"} size="sm" className="h-7 px-2 text-[10px]" onClick={() => void toggleMemberControl(group.id, member, "mediaBlocked")} disabled={busyGroup === group.id}>{member.control?.mediaBlocked ? "Allow voice" : "Block voice"}</Button>
-                                  <Button type="button" variant={member.control?.blocked ? "destructive" : "ghost"} size="sm" className="h-7 px-2 text-[10px]" onClick={() => void toggleMemberControl(group.id, member, "blocked")} disabled={busyGroup === group.id}>{member.control?.blocked ? "Unblock" : "Block"}</Button>
-                                  <Button type="button" variant={member.control?.suspended ? "destructive" : "ghost"} size="sm" className="h-7 px-2 text-[10px]" onClick={() => void toggleMemberControl(group.id, member, "suspended")} disabled={busyGroup === group.id}>{member.control?.suspended ? "Unsuspend" : "Suspend"}</Button>{canManage && <Button type="button" variant={member.control?.canManageSettings ? "secondary" : "ghost"} size="sm" className="h-7 px-2 text-[10px]" onClick={() => void toggleMemberControl(group.id, member, "canManageSettings")} disabled={busyGroup === group.id}>{member.control?.canManageSettings ? "Remove settings access" : "Grant settings access"}</Button>}
-                                  {isOwner && <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => void apiJson(`/api/study-groups/${group.id}/members/${member.id}`, { method: "DELETE" }).then(() => { toast({ title: "Member removed" }); refresh(); }).catch(error => toast({ variant: "destructive", title: "Could not remove member", description: error instanceof Error ? error.message : "Try again." }))} disabled={busyGroup === group.id} aria-label={`Remove ${member.name}`}><UserMinus className="h-3.5 w-3.5" /></Button>}
-                                </div>
-                              )}
+                              {canManage && member.id !== group.creatorId && <span className="text-xs text-muted-foreground">Manage in Settings</span>}
+
                             </div>
                           ))}
                         </div>
@@ -320,16 +368,10 @@ export default function StudentStudyGroups() {
                     )}
                   </CardContent>
                   <CardFooter className="flex flex-wrap gap-2 border-t pt-4">
-                    {canManage && <Button variant="outline" className="gap-2" onClick={() => void openSettings(group.id)} disabled={busyGroup === group.id}><Settings2 className="h-4 w-4" />Settings</Button>}
-                    {canManage && <Button variant="ghost" size="sm" onClick={() => {
-                      if (!window.confirm("Clear all messages in this study group?")) return;
-                      setBusyGroup(group.id);
-                      void apiJson(`/api/study-groups/${group.id}/messages`, { method: "DELETE" }).then(() => toast({ title: "Group messages cleared" })).catch(error => toast({ variant: "destructive", title: "Could not clear messages", description: error instanceof Error ? error.message : "Try again." })).finally(() => setBusyGroup(null));
-                    }} disabled={busyGroup === group.id}>Clear chat</Button>}
+                    {(canManage || isMember) && <Button variant="outline" className="gap-2" onClick={() => void openSettings(group.id)} disabled={busyGroup === group.id}><Settings2 className="h-4 w-4" />Settings</Button>}
+
                     {isMember ? (
-                      <Button variant="secondary" className="min-w-[130px] flex-1 gap-2" onClick={() => handleLeaveGroup(group.id)} disabled={isOwner || leaveGroupMutation.isPending}>
-                        {isOwner ? <Users className="h-4 w-4" /> : <LogOut className="h-4 w-4" />}{isOwner ? "Group Owner" : "Leave Group"}
-                      </Button>
+                      <Button variant="secondary" className="min-w-[130px] flex-1 gap-2" disabled={isOwner}><Users className="h-4 w-4" />{isOwner ? "Group Owner" : "Joined"}</Button>
                     ) : (
                       <Button className="min-w-[130px] flex-1 gap-2" onClick={() => handleJoinGroup(group.id)} disabled={joinGroupMutation.isPending || group.memberCount >= groupSettings.maxMembers}><Users className="h-4 w-4" />{group.memberCount >= groupSettings.maxMembers ? "Group Full" : "Join Group"}</Button>
                     )}

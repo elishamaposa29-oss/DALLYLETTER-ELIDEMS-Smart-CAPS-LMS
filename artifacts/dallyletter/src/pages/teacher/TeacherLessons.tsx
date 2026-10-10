@@ -21,8 +21,22 @@ import { CreateLessonBodyType } from "@workspace/api-client-react";
 import { ExerciseBuilderPanel } from "@/components/exercises/ExerciseBuilderPanel";
 import { RichTextEditor, sanitizeRichText } from "@/components/RichTextEditor";
 
+function richTextPlainText(value: string): string {
+  if (typeof document !== "undefined") {
+    const decoder = document.createElement("textarea");
+    decoder.innerHTML = value;
+    const decoded = decoder.value;
+    const container = document.createElement("div");
+    container.innerHTML = decoded;
+    return (container.textContent || "").replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+  }
+  return value.replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/<[^>]*>/g, "").replace(/&nbsp;/gi, " ").trim();
+}
+
 const createLessonSchema = z.object({
-  title: z.string().min(2, "Title is required"),
+  title: z.string().refine(value => richTextPlainText(value).length >= 2, {
+    message: "Enter a title with at least 2 visible characters. Formatting alone does not count."
+  }),
   description: z.string().optional(),
   subject: z.string().min(2, "Subject is required"),
   grade: z.string().optional(),
@@ -46,15 +60,20 @@ export default function TeacherLessons() {
   const [markingLessonId, setMarkingLessonId] = useState<number | null>(null);
   const [showAllTeachers, setShowAllTeachers] = useState(false);
   const [sortMode, setSortMode] = useState<"newest"|"oldest"|"subject">("newest");
+  const [expandedDescriptions, setExpandedDescriptions] = useState<Record<number, boolean>>({});
   const [lessonRequests, setLessonRequests] = useState<any[]>([]);
   const [requestBusy, setRequestBusy] = useState<number | null>(null);
   const [permissionRequests, setPermissionRequests] = useState<any[]>([]);
+  const [requestStatusFilter, setRequestStatusFilter] = useState<"all"|"pending"|"accepted"|"declined"|"dismissed"|"deleted">("all");
+  const [expandedNotes, setExpandedNotes] = useState<Record<number, boolean>>({});
   const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("dallyletter_token") ?? ""}` });
   const loadLessonRequests = async () => { const r=await fetch(getApiUrl("/api/achievements/lesson-requests"),{headers:authHeaders()}); if(r.ok)setLessonRequests(await r.json()); };
   const respondToRequest = async (id:number,status:"accepted"|"declined"|"completed") => { setRequestBusy(id); try { const r=await fetch(getApiUrl(`/api/achievements/lesson-requests/${id}`),{method:"PATCH",headers:{"Content-Type":"application/json",...authHeaders()},body:JSON.stringify({status})}); if(!r.ok) throw new Error("Could not update request"); await loadLessonRequests(); toast({title:"Lesson request updated"}); } catch(e) { toast({variant:"destructive",title:"Request update failed",description:e instanceof Error?e.message:"Try again"}); } finally { setRequestBusy(null); } };
   const dismissRequest = async (id:number) => { if(!window.confirm("Dismiss this lesson request?")) return; setRequestBusy(id); try { const r=await fetch(getApiUrl(`/api/achievements/lesson-requests/${id}`),{method:"PATCH",headers:{"Content-Type":"application/json",...authHeaders()},body:JSON.stringify({status:"dismissed"})}); if(!r.ok) throw new Error((await r.json().catch(()=>null))?.error||"Could not dismiss request"); await loadLessonRequests(); toast({title:"Lesson request dismissed"}); if(window.confirm("The request is closed. Do you also want to permanently delete it?")) { const dr=await fetch(getApiUrl(`/api/achievements/lesson-requests/${id}`),{method:"DELETE",headers:authHeaders()}); if(!dr.ok) throw new Error((await dr.json().catch(()=>null))?.error||"Request closed, but deletion failed"); await loadLessonRequests(); toast({title:"Lesson request deleted"}); } } catch(e) { toast({variant:"destructive",title:"Request action failed",description:e instanceof Error?e.message:"Try again"}); } finally { setRequestBusy(null); } };
   const loadPermissionRequests = async () => { const r=await fetch(getApiUrl("/api/content-permissions"),{headers:authHeaders()}); if(r.ok)setPermissionRequests(await r.json()); };
-  const respondPermission = async (id:number,status:"approved"|"declined") => { const r=await fetch(getApiUrl(`/api/content-permissions/${id}`),{method:"PATCH",headers:{"Content-Type":"application/json",...authHeaders()},body:JSON.stringify({status})}); if(r.ok){setPermissionRequests(x=>x.filter(v=>v.id!==id));toast({title:status==="approved"?"Permission granted ✓":"Permission declined"});}else toast({variant:"destructive",title:"Permission update failed"}); };
+  const respondPermission = async (id:number,status:"approved"|"declined") => { const r=await fetch(getApiUrl(`/api/content-permissions/${id}`),{method:"PATCH",headers:{"Content-Type":"application/json",...authHeaders()},body:JSON.stringify({status})}); if(r.ok){setPermissionRequests(x=>x.map(v=>v.id===id?{...v,status}:v));toast({title:status==="approved"?"Permission granted ✓":"Permission declined"});}else toast({variant:"destructive",title:"Permission update failed"}); };
+  const respondPermissionsBulk = async (requests:any[], status:"approved"|"declined") => { for (const request of requests) await respondPermission(Number(request.id),status); };
+  const visibleLessonRequests = lessonRequests.filter(r => requestStatusFilter === "all" || String(r.status || "pending").toLowerCase() === requestStatusFilter);
   useEffect(()=>{void loadLessonRequests();void loadPermissionRequests();},[]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const visibleLessons = [...(lessons ?? [])].filter((lesson) => user?.role !== "teacher" || showAllTeachers || lesson.teacherId === user.id).sort((a,b) => sortMode === "oldest" ? new Date(a.createdAt).getTime()-new Date(b.createdAt).getTime() : sortMode === "subject" ? String(a.subject).localeCompare(String(b.subject)) : new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime());
@@ -164,12 +183,12 @@ export default function TeacherLessons() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-4 bg-gradient-to-b from-[#FFF8E1] via-background to-[#0A1931]/5 p-1"><div className="rounded-2xl border border-[#D4AF37]/30 bg-[#0A1931] p-4 text-[#FFF8E1] shadow-lg border-primary/15 bg-card p-3 shadow-sm"><div className="mb-2 flex items-center justify-between"><div><p className="font-semibold text-sm">Permission requests</p><p className="text-xs text-muted-foreground">Control who may modify your lessons.</p></div><Badge variant="outline">{permissionRequests.length}</Badge></div>{permissionRequests.length>0&&<div className="space-y-2">{permissionRequests.map(r=><div key={r.id} className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 p-2"><span className="text-xs flex-1">User #{r.requester_id} requests <strong>{r.requested_action}</strong> on {r.content_type} #{r.content_id}</span><Button size="sm" onClick={()=>void respondPermission(r.id,"approved")}>Allow</Button><Button size="sm" variant="outline" onClick={()=>void respondPermission(r.id,"declined")}>Decline</Button></div>)}</div>}</div><div className="sticky top-0 z-20 -mx-2 overflow-x-auto border-b bg-background/95 px-2 py-2 backdrop-blur"><div className="flex min-w-max items-center gap-2">
+      <div className="space-y-4 bg-gradient-to-b from-[#FFF8E1] via-background to-[#0A1931]/5 p-1"><div className="rounded-2xl border border-[#D4AF37]/30 bg-[#0A1931] p-4 text-[#FFF8E1] shadow-lg border-primary/15 bg-card p-3 shadow-sm"><div className="mb-2 flex flex-wrap items-center justify-between gap-2"><div><p className="font-semibold text-sm">Permission requests</p><p className="text-xs text-muted-foreground">Requests are also shown under their related lesson.</p></div><Badge variant="outline">{permissionRequests.filter(r=>!r.status||r.status==="pending").length} pending</Badge></div>{permissionRequests.some(r=>!r.status||r.status==="pending")&&<div className="flex flex-wrap gap-2 pb-2"><Button size="sm" onClick={()=>void respondPermissionsBulk(permissionRequests.filter(r=>!r.status||r.status==="pending"),"approved")}>Grant all pending</Button><Button size="sm" variant="outline" onClick={()=>void respondPermissionsBulk(permissionRequests.filter(r=>!r.status||r.status==="pending"),"declined")}>Deny all pending</Button></div>}</div><div className="sticky top-0 z-20 -mx-2 overflow-x-auto border-b bg-background/95 px-2 py-2 backdrop-blur"><div className="flex min-w-max items-center gap-2">
 <Button size="sm" variant={!showAllTeachers?"default":"outline"} onClick={()=>setShowAllTeachers(false)}>My lessons</Button>
 <Button size="sm" variant={showAllTeachers?"default":"outline"} onClick={()=>setShowAllTeachers(true)}>All teachers · preview</Button>
 <Select value={sortMode} onValueChange={(v)=>setSortMode(v as "newest"|"oldest"|"subject")}><SelectTrigger className="h-9 w-[125px]"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="newest">Newest</SelectItem><SelectItem value="oldest">Oldest</SelectItem><SelectItem value="subject">Subject</SelectItem></SelectContent></Select>
 </div></div>
-        {lessonRequests.length>0 && <Card className="border-amber-200 bg-amber-50/50"><CardHeader><CardTitle className="text-lg">Prefect lesson requests</CardTitle><CardDescription>Requests sent directly to your teacher account.</CardDescription></CardHeader><CardContent className="space-y-3">{lessonRequests.map(r=><div key={r.id} className="rounded-xl border bg-background p-3 flex flex-col sm:flex-row sm:items-center gap-3"><div className="flex-1 min-w-0"><p className="font-semibold truncate">{r.topic}</p><p className="text-xs text-muted-foreground">{r.preferredDate?`Preferred ${r.preferredDate} · `:""}{r.status}</p>{r.notes&&<p className="text-sm mt-1">{r.notes}</p>}</div><div className="flex gap-2 flex-wrap"><Button size="sm" onClick={()=>void respondToRequest(r.id,"accepted")} disabled={requestBusy===r.id}>Accept</Button><Button size="sm" variant="outline" onClick={()=>void respondToRequest(r.id,"declined")} disabled={requestBusy===r.id}>Decline</Button><Button size="sm" variant="ghost" onClick={()=>void dismissRequest(r.id)} disabled={requestBusy===r.id}>Dismiss</Button></div></div>)}</CardContent></Card>}
+        {lessonRequests.length>0 && <Card className="border-amber-200 bg-amber-50/50"><CardHeader><CardTitle className="text-lg">Lesson requests</CardTitle><CardDescription>Requests sent directly to your teacher account. Filter by status.</CardDescription><Select value={requestStatusFilter} onValueChange={(v)=>setRequestStatusFilter(v as typeof requestStatusFilter)}><SelectTrigger className="mt-2 w-full sm:w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All requests</SelectItem><SelectItem value="pending">Pending</SelectItem><SelectItem value="accepted">Accepted</SelectItem><SelectItem value="declined">Declined</SelectItem><SelectItem value="dismissed">Dismissed</SelectItem><SelectItem value="deleted">Deleted</SelectItem></SelectContent></Select></CardHeader><CardContent className="space-y-3">{visibleLessonRequests.map(r=><div key={r.id} className="rounded-xl border bg-background p-3 flex flex-col sm:flex-row sm:items-center gap-3"><div className="flex-1 min-w-0"><p className="font-semibold truncate">{r.topic}</p><p className="text-xs text-muted-foreground">{r.preferredDate?`Preferred ${r.preferredDate} · `:""}{r.status}</p>{r.notes&&<p className="text-sm mt-1">{r.notes}</p>}</div><div className="flex gap-2 flex-wrap"><Button size="sm" onClick={()=>void respondToRequest(r.id,"accepted")} disabled={requestBusy===r.id}>Accept</Button><Button size="sm" variant="outline" onClick={()=>void respondToRequest(r.id,"declined")} disabled={requestBusy===r.id}>Decline</Button><Button size="sm" variant="ghost" onClick={()=>void dismissRequest(r.id)} disabled={requestBusy===r.id}>Dismiss</Button></div></div>)}</CardContent></Card>}
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-black tracking-tight text-[#FFF8E1]">My Lessons</h1>
@@ -405,12 +424,12 @@ export default function TeacherLessons() {
                         {getTypeIcon(lesson.type)}
                       </div>
                     </div>
-                    <CardTitle className="text-lg mt-2 line-clamp-2 text-[#0A1931] dark:text-[#FFF8E1]">{lesson.title}</CardTitle>
+                    <CardTitle className="mt-2 text-lg line-clamp-2 text-[#0A1931] dark:text-[#FFF8E1]"><span dangerouslySetInnerHTML={{ __html: sanitizeRichText(lesson.title || "") }} /></CardTitle>
                   </CardHeader>
-                  <CardContent className="mt-auto flex-1">
-                    <p className="text-sm text-muted-foreground line-clamp-3 mb-4">
-                      {lesson.description || "No description provided."}
-                    </p>
+                  <CardContent className="mt-auto flex-1">{permissionRequests.filter(r => Number(r.content_id ?? r.contentId) === Number(lesson.id) && String(r.content_type ?? r.contentType ?? "lesson").toLowerCase() === "lesson").length > 0 && <div className="mb-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-[#0A1931]"><p className="mb-2 text-sm font-bold">Requests for this lesson</p>{permissionRequests.filter(r => Number(r.content_id ?? r.contentId) === Number(lesson.id) && String(r.content_type ?? r.contentType ?? "lesson").toLowerCase() === "lesson").map(r=><div key={r.id} className="mb-2 rounded-lg border border-amber-200 bg-white/80 p-2"><p className="text-xs">User #{r.requester_id ?? r.requesterId} requests <strong>{String(r.requested_action ?? r.requestedAction ?? "permission").replaceAll("_"," ")}</strong></p><div className="mt-2 flex flex-wrap gap-2"><Button size="sm" onClick={()=>void respondPermission(Number(r.id),"approved")} disabled={r.status==="approved"}>Grant</Button><Button size="sm" variant="outline" onClick={()=>void respondPermission(Number(r.id),"declined")} disabled={r.status==="declined"}>Deny</Button></div></div>)}</div>}
+                    <div className={`prose prose-sm max-w-none mb-2 dark:prose-invert ${expandedDescriptions[lesson.id] ? "" : "line-clamp-3"}`} dangerouslySetInnerHTML={{__html:sanitizeRichText(lesson.description || "No description provided.")}} />
+                    {(lesson.description || "").length > 180 && <Button type="button" variant="link" size="sm" className="h-auto px-0 py-1 text-[#0A1931] underline dark:text-[#FFC72C]" aria-expanded={Boolean(expandedDescriptions[lesson.id])} onClick={() => setExpandedDescriptions(current => ({ ...current, [lesson.id]: !current[lesson.id] }))}>{expandedDescriptions[lesson.id] ? "Read less" : "Read more"}</Button>}
+                    {lesson.content && <div className="mt-3 rounded-lg border border-[#D4AF37]/30 bg-[#FFF8E1]/60 p-3 text-sm text-[#0A1931]"><p className="mb-1 font-semibold">Lesson notes</p><div className={expandedNotes[lesson.id] ? "whitespace-pre-wrap break-words" : "line-clamp-4 whitespace-pre-wrap break-words"}>{lesson.content}</div>{String(lesson.content).length > 240 && <Button type="button" variant="link" size="sm" className="px-0" aria-expanded={Boolean(expandedNotes[lesson.id])} onClick={() => setExpandedNotes(current=>({...current,[lesson.id]:!current[lesson.id]}))}>{expandedNotes[lesson.id] ? "Show less notes" : "Read full notes"}</Button>}</div>}
                     <div className="text-xs text-muted-foreground">
                       Added on {new Date(lesson.createdAt).toLocaleDateString()}
                     </div>

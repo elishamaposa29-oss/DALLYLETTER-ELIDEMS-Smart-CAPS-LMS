@@ -65,7 +65,13 @@ export async function deleteStoredMedia(storageKey: string): Promise<void> {
 }
 
 export async function persistUploadedMedia(storageKey: string, mimeType: string, localPath: string): Promise<"object-storage" | "local"> {
-  if (!isObjectStorageConfigured()) return "local";
+  if (!isObjectStorageConfigured()) {
+    if (process.env.NODE_ENV === "production") {
+      await unlink(localPath).catch(() => undefined);
+      throw new Error("Persistent object storage is not configured; refusing an ephemeral production media upload.");
+    }
+    return "local";
+  }
   await putObject(storageKey, mimeType, localPath);
   await unlink(localPath).catch(() => undefined);
   return "object-storage";

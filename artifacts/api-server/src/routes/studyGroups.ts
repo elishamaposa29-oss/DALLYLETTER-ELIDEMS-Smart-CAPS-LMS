@@ -246,7 +246,7 @@ router.get("/study-groups/:id/settings", requireAuth, async (req, res): Promise<
   if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid group id" }); return; }
   const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, id));
   if (!group) { res.status(404).json({ error: "Study group not found" }); return; }
-  if (!(await canManageGroupSettings(req.currentUser!, id, group))) { res.status(403).json({ error: "Group settings access required" }); return; }
+  if (!(await canManageGroupSettings(req.currentUser!, id, group)) && !(await isGroupMember(id, req.currentUser!.id))) { res.status(403).json({ error: "Group membership required" }); return; }
   const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, id));
   res.json(settings ?? { groupId: id, rules: null, announcementsOnly: false, allowPolls: true, allowMedia: true, maxMembers: 1024 });
 });
