@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Search, FileText, Image as ImageIcon, Video, Headphones, BookOpen, ExternalLink, GraduationCap, ClipboardList, Sparkles } from "lucide-react";
+import { Loader2, Search, FileText, Image as ImageIcon, Video, Headphones, BookOpen, ExternalLink, GraduationCap, ClipboardList, Sparkles, Users, Layers, Clock, ListFilter } from "lucide-react";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 import { isValidLessonUrl } from "@/lib/media-url";
 
@@ -47,7 +47,7 @@ export default function StudentLessons() {
   const [subjectFilter, setSubjectFilter] = useState("all");
   const [teacherFilter, setTeacherFilter] = useState(() => localStorage.getItem("dallyletter.student.lesson.teacherFilter") ?? "all");
   const [classFilter, setClassFilter] = useState(() => localStorage.getItem("dallyletter.student.lesson.classFilter") ?? "all");
-  const [sortMode, setSortMode] = useState<"newest"|"oldest"|"subject">("newest");
+  const [sortMode, setSortMode] = useState<"newest"|"oldest"|"subject">("newest");\n  const [activeSortLabel, setActiveSortLabel] = useState<"teachers"|"classes"|"newest"|"all">("all");
   const [classes, setClasses] = useState<Array<{id:number;title:string;subject:string;grade:string|null;teacherId:number;teacherName:string}>>([]);
   useEffect(() => { const token = localStorage.getItem("dallyletter_token"); fetch(getApiUrl("/api/classes"), { headers: token ? { Authorization: `Bearer ${token}` } : {} }).then(r=>r.ok?r.json():[]).then(d=>setClasses(Array.isArray(d)?d:[])).catch(()=>setClasses([])); }, []);
   useEffect(() => { localStorage.setItem("dallyletter.student.lesson.teacherFilter", teacherFilter); }, [teacherFilter]);
@@ -59,7 +59,7 @@ export default function StudentLessons() {
   const [exerciseMap, setExerciseMap] = useState<Record<number, { id:number; title:string; status:string; totalMarks:string; submissionStatus?:string; submission?:{totalScore:string;percentage:string|null;returnedAt:string|null}|null }[]>>({});
   useEffect(() => { let cancelled = false; const token = localStorage.getItem("dallyletter_token"); if (!lessons?.length) return; Promise.all(lessons.map(async lesson => { try { const r = await fetch(getApiUrl(`/api/exercises/lessons/${lesson.id}/exercises`), { headers: token ? { Authorization: `Bearer ${token}` } : {} }); return [lesson.id, r.ok ? await r.json() : []] as const; } catch { return [lesson.id, []] as const; } })).then(rows => { if (!cancelled) setExerciseMap(Object.fromEntries(rows)); }); return () => { cancelled = true; }; }, [lessons]);
 
-  const filteredLessons = lessons?.filter(lesson => {
+  const filteredLessons = (lessons?.filter(lesson => {
     const matchesSearch = lesson.title.toLowerCase().includes(search.toLowerCase()) ||
                           (lesson.description?.toLowerCase().includes(search.toLowerCase()));
     const matchesSubject = subjectFilter === "all" || lesson.subject === subjectFilter;
@@ -125,9 +125,15 @@ export default function StudentLessons() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <Select value={teacherFilter} onValueChange={setTeacherFilter}><SelectTrigger><SelectValue placeholder="Teacher" /></SelectTrigger><SelectContent><SelectItem value="all">All teachers</SelectItem>{Array.from(new Map((lessons ?? []).map(l=>[String(l.teacherId),l.teacherName])).entries()).map(([id,name])=><SelectItem key={id} value={id}>{name}</SelectItem>)}</SelectContent></Select>
-          <Select value={classFilter} onValueChange={setClassFilter}><SelectTrigger><SelectValue placeholder="Class" /></SelectTrigger><SelectContent><SelectItem value="all">All classes</SelectItem>{classes.map(item=><SelectItem key={item.id} value={String(item.id)}>{item.title}{item.grade?` · ${item.grade}`:""}</SelectItem>)}</SelectContent></Select>
-          <Select value={sortMode} onValueChange={(v)=>setSortMode(v as "newest"|"oldest"|"subject")}><SelectTrigger className="h-10 w-full sm:w-[130px]"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="newest">Newest</SelectItem><SelectItem value="oldest">Oldest</SelectItem><SelectItem value="subject">Subject</SelectItem></SelectContent></Select>
+          <div className="flex w-full flex-nowrap items-center gap-1 overflow-x-auto sm:w-auto" aria-label="Lesson sorting and filters">
+            <Button type="button" variant="ghost" size="sm" className={`shrink-0 gap-1 px-2 text-white hover:bg-white/15 ${activeSortLabel === "teachers" ? "bg-white/15" : ""}`} onClick={() => { setActiveSortLabel("teachers"); setTeacherFilter("all"); }} title="All teachers"><Users className="h-4 w-4" /><span className="sr-only sm:not-sr-only">All teachers</span></Button>
+            <Button type="button" variant="ghost" size="sm" className={`shrink-0 gap-1 px-2 text-white hover:bg-white/15 ${activeSortLabel === "classes" ? "bg-white/15" : ""}`} onClick={() => { setActiveSortLabel("classes"); setClassFilter("all"); }} title="All classes"><Layers className="h-4 w-4" /><span className="sr-only sm:not-sr-only">All classes</span></Button>
+            <Button type="button" variant="ghost" size="sm" className={`shrink-0 gap-1 px-2 text-white hover:bg-white/15 ${activeSortLabel === "newest" ? "bg-white/15" : ""}`} onClick={() => { setActiveSortLabel("newest"); setSortMode("newest"); }} title="Newest first"><Clock className="h-4 w-4" /><span className="sr-only sm:not-sr-only">Newest</span></Button>
+            <Button type="button" variant="ghost" size="sm" className={`shrink-0 gap-1 px-2 text-white hover:bg-white/15 ${activeSortLabel === "all" ? "bg-white/15" : ""}`} onClick={() => { setActiveSortLabel("all"); setTeacherFilter("all"); setClassFilter("all"); setSubjectFilter("all"); setSearch(""); setSortMode("newest"); }} title="Show all lessons"><ListFilter className="h-4 w-4" /><span className="sr-only sm:not-sr-only">All</span></Button>
+          </div>
+          <Select value={teacherFilter} onValueChange={(value) => { setTeacherFilter(value); setActiveSortLabel("teachers"); }}><SelectTrigger className="hidden"><SelectValue placeholder="Teacher" /></SelectTrigger><SelectContent><SelectItem value="all">All teachers</SelectItem>{Array.from(new Map((lessons ?? []).map(l=>[String(l.teacherId),l.teacherName])).entries()).map(([id,name])=><SelectItem key={id} value={id}>{name}</SelectItem>)}</SelectContent></Select>
+          <Select value={classFilter} onValueChange={(value) => { setClassFilter(value); setActiveSortLabel("classes"); }}><SelectTrigger className="hidden"><SelectValue placeholder="Class" /></SelectTrigger><SelectContent><SelectItem value="all">All classes</SelectItem>{classes.map(item=><SelectItem key={item.id} value={String(item.id)}>{item.title}{item.grade?` · ${item.grade}`:""}</SelectItem>)}</SelectContent></Select>
+          <Select value={sortMode} onValueChange={(value)=>{setSortMode(value as "newest"|"oldest"|"subject");setActiveSortLabel("newest");}}><SelectTrigger className="hidden"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="newest">Newest</SelectItem><SelectItem value="oldest">Oldest</SelectItem><SelectItem value="subject">Subject</SelectItem></SelectContent></Select>
           <Select value={subjectFilter} onValueChange={setSubjectFilter}>
             <SelectTrigger className="w-full sm:w-[200px] h-11">
               <SelectValue placeholder="All Subjects" />
