@@ -5,22 +5,32 @@ import { Button } from "@/components/ui/button";
 const allowedTags=new Set(["B","STRONG","I","EM","U","SPAN","P","BR","UL","OL","LI","DIV","FONT"]);
 const safeStyleNames=["font-size","font-family","text-align","font-weight","font-style","text-decoration","color","text-shadow","direction","unicode-bidi"];
 
+function looksLikeEmbeddedSource(text:string){
+  const value=text.trim();
+  if(!value)return false;
+  const hasMarkup=/<\/?(?:html|head|body|style|script|div|span|section|main|table|button|iframe|svg)\b[^>]*>/i.test(value);
+  const hasCss=/(?:^|\n)\s*(?:[.#][\w-]+|@[a-z-]+)\s*\{[\s\S]*?\}/i.test(value) ||
+    /(?:font-family|background(?:-color)?|display|position|margin|padding|z-index)\s*:[^;{}]+;[\s\S]*[{}]/i.test(value);
+  const hasProgramCode=/(?:function\s+\w+|=>\s*\{|document\.querySelector|window\.addEventListener|<script|<style)/i.test(value);
+  return (hasMarkup && (/[{};]/.test(value) || /className=|<style|<script/i.test(value))) || hasCss || hasProgramCode;
+}
+
 export function sanitizeRichText(html:string){
-  if(typeof DOMParser==="undefined") return html.replace(/<[^>]+>/g,"");
-  // Older records sometimes stored editor HTML escaped as text. Decode only when
-  // the decoded value contains recognizable formatting markup, then sanitize it.
+  if(typeof DOMParser==="undefined") return html.replace(/<\/?(?:script|style|iframe|object|svg|pre|code)\b[^>]*>[\s\S]*?<\/?(?:script|style|iframe|object|svg|pre|code)\s*>/gi,"").replace(/<[^>]+>/g,"");
   const decoder=document.createElement("textarea");
   decoder.innerHTML=html;
   const decoded=decoder.value;
-  const hasEscapedMarkup=/&lt;\/?(?:p|div|span|b|strong|i|em|u|ul|ol|li|br|font|style)\b/i.test(html);
-  const source=hasEscapedMarkup && decoded!==html ? decoded : html;
+  const source=decoded.includes("<")&&decoded.includes(">")?decoded:html;
   const doc=new DOMParser().parseFromString(source,"text/html");
   const walk=(node:Node)=>{
     [...node.childNodes].forEach(child=>{
+      if(child.nodeType===3){
+        if(looksLikeEmbeddedSource(child.textContent||"")) child.parentNode?.removeChild(child);
+        return;
+      }
       if(child.nodeType===1){
         const el=child as HTMLElement;
-        // Never render stylesheet or script source as learner-visible text.
-        if(el.tagName==="STYLE" || el.tagName==="SCRIPT" || el.tagName==="IFRAME" || el.tagName==="OBJECT" || el.tagName==="EMBED"){
+        if(["SCRIPT","STYLE","IFRAME","OBJECT","SVG","PRE","CODE"].includes(el.tagName)){
           el.remove();
           return;
         }
@@ -30,17 +40,29 @@ export function sanitizeRichText(html:string){
           if(el.getAttribute("color")) span.style.color=el.getAttribute("color")!;
           const size=el.getAttribute("size");
           if(size) span.style.fontSize=({1:"0.75rem",2:"0.875rem",3:"1rem",4:"1.125rem",5:"1.35rem",6:"1.7rem",7:"2.2rem"} as Record<string,string>)[size] ?? "1rem";
-          span.innerHTML=el.innerHTML; el.replaceWith(span); return;
+          const children=[...el.childNodes];
+          span.append(...children);
+          el.replaceWith(span);
+          walk(span);
+          return;
         }
         if(!allowedTags.has(el.tagName)){
-          const text=document.createTextNode(el.textContent||"");
-          el.replaceWith(text);
+          const plainText=el.textContent||"";
+          // Unknown wrappers can contain pasted HTML/CSS source. Drop that source, but
+          // preserve and sanitize ordinary lesson text nested inside harmless wrappers.
+          if(looksLikeEmbeddedSource(plainText)){
+            el.remove();
+            return;
+          }
+          const children=[...el.childNodes];
+          children.forEach(walk);
+          el.replaceWith(...children);
           return;
         }
         [...el.attributes].forEach(a=>{if(a.name!=="style")el.removeAttribute(a.name);});
         if(el.hasAttribute("style")){
           const styles=[...el.style].filter(k=>safeStyleNames.includes(k))
-            .map(k=>`${k}:${el.style.getPropertyValue(k)}`).join(";");
+            .map(k=>k+":"+el.style.getPropertyValue(k)).join(";");
           if(styles)el.setAttribute("style",styles);else el.removeAttribute("style");
           el.style.direction="ltr"; el.style.unicodeBidi="normal";
         }

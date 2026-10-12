@@ -1,5 +1,5 @@
 import { createHash, createHmac } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
 
 type StorageConfig = {
   endpoint: string;
@@ -97,14 +97,27 @@ function signRequest(
   };
 }
 
+async function sha256File(filePath: string): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(filePath)) hash.update(chunk);
+  return hash.digest("hex");
+}
+
 export async function putObject(storageKey: string, mimeType: string, localPath: string): Promise<void> {
   const cfg = config();
   if (!cfg) return;
-  const body = await readFile(localPath);
+  // Hash and upload as streams so large lesson videos do not require a full-file Buffer in RAM.
+  const payloadHash = await sha256File(localPath);
   const signed = signRequest(cfg, "PUT", `media/${storageKey}`, {
     "content-type": mimeType,
-  }, sha256(body));
-  const response = await fetch(signed.url, { method: "PUT", headers: signed.headers, body });
+  }, payloadHash);
+  const body = createReadStream(localPath);
+  const response = await fetch(signed.url, {
+    method: "PUT",
+    headers: signed.headers,
+    body,
+    duplex: "half",
+  } as RequestInit & { duplex: "half" });
   if (!response.ok) throw new Error(`Object storage upload failed: HTTP ${response.status}`);
 }
 

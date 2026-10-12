@@ -56,8 +56,6 @@ router.post("/audit-logs", requireAuth, async (req, res): Promise<void> => {
   res.status(201).json(log);
 });
 
-
-
 export default router;
 
 

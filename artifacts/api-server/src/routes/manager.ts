@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { usersTable, classesTable, lessonsTable, paymentsTable, ownerAlertsTable, assignmentsTable, pollsTable, exercisesTable, auditLogsTable, attendanceTable, userAchievementsTable, achievementsTable, exerciseSubmissionsTable, pollSubmissionsTable } from "@workspace/db/schema";
-import { eq, desc, and, inArray } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { requireAuth, canAccessManager } from "../lib/auth-middleware";
 
 const router = Router();
@@ -40,7 +40,6 @@ router.get("/teachers", requireAuth, requireManager, async (req, res) => {
     id: usersTable.id, name: usersTable.name, email: usersTable.email,
     subject: usersTable.subject, performanceScore: usersTable.performanceScore,
     badgeCount: usersTable.badgeCount, createdAt: usersTable.createdAt,
-    teacherApplicationStatus: usersTable.teacherApplicationStatus, teacherReviewDeadline: usersTable.teacherReviewDeadline,
   }).from(usersTable).where(eq(usersTable.role, "teacher"));
   const lessonCounts = await db.select().from(lessonsTable);
   const classCounts = await db.select().from(classesTable);
@@ -86,13 +85,10 @@ router.get("/users/:id/activity", requireAuth, requireManager, async (req, res):
   }).from(usersTable).where(eq(usersTable.id, id));
   if (!target || !["student", "teacher"].includes(target.role) || (target.role === "teacher" && target.isManager === true)) { res.status(404).json({ error: "User activity is not available" }); return; }
 
-  const managerVisibleCategories = ["academic", "attendance", "content", "activity", "staff", "moderation"] as const;
   const audit = await db.select({
     id: auditLogsTable.id, action: auditLogsTable.action, category: auditLogsTable.category,
     targetType: auditLogsTable.targetType, targetId: auditLogsTable.targetId, createdAt: auditLogsTable.createdAt,
-  }).from(auditLogsTable)
-    .where(and(eq(auditLogsTable.performedBy, id), inArray(auditLogsTable.category, managerVisibleCategories)))
-    .orderBy(desc(auditLogsTable.createdAt)).limit(200);
+  }).from(auditLogsTable).where(eq(auditLogsTable.performedBy, id)).orderBy(desc(auditLogsTable.createdAt)).limit(200);
 
   if (target.role === "teacher") {
     const [lessons, classes, assignments, polls, exercises] = await Promise.all([

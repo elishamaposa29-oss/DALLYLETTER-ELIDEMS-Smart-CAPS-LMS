@@ -85,37 +85,72 @@ function FloatingTicks({ data, onChange }: { data: Record<string, unknown> | nul
   );
 }
 
+function distanceToMarkSegment(point:{x:number;y:number},item:Record<string,unknown>){const x1=Number(item.px??item.x??0),y1=Number(item.py??item.y??0),x2=Number(item.x??x1),y2=Number(item.y??y1),dx=x2-x1,dy=y2-y1,len=dx*dx+dy*dy,t=len===0?0:Math.max(0,Math.min(1,((point.x-x1)*dx+(point.y-y1)*dy)/len));return Math.hypot(point.x-(x1+t*dx),point.y-(y1+t*dy));}
+
 function MediaMarkOverlay({ data, onChange }: { data: Record<string, unknown> | null | undefined; onChange: (data: Record<string, unknown>) => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const last = useRef<{ x: number; y: number } | null>(null);
-  const [tool, setTool] = useState<"pen" | "tick">("pen");
+  const activePointerId = useRef<string | null>(null);
+  const pointerOrigin = useRef<{x:number;y:number}|null>(null);
+  const [tool, setTool] = useState<"pen" | "tick" | "eraser" | "pointer" | "text">("pen");
   const [active, setActive] = useState(false);
+  const [color, setColor] = useState("#dc2626");
+  const [width, setWidth] = useState(4);
+  const [label, setLabel] = useState("");
+  const [zoom, setZoom] = useState(1);
+  const adjustZoom = (event: React.MouseEvent<HTMLButtonElement>, delta: number) => { const surface=event.currentTarget.closest("[data-marking-surface]") as HTMLElement|null; const next=Math.max(0.75,Math.min(2,Math.round((zoom+delta)*100)/100)); if(surface){surface.style.setProperty("zoom",String(next));surface.style.setProperty("overflow","auto");} setZoom(next); };
+  useEffect(()=>()=>{const surface=canvasRef.current?.closest("[data-marking-surface]") as HTMLElement|null;if(surface){surface.style.removeProperty("zoom");surface.style.removeProperty("overflow");}},[]);
   const redraw = () => {
     const canvas = canvasRef.current; if (!canvas) return;
     const ctx = canvas.getContext("2d"); if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const strokes = (data?.mediaStrokes ?? []) as Array<Record<string, unknown>>;
-    for (const s of strokes) { ctx.save(); ctx.strokeStyle=String(s.color??"#16a34a"); ctx.lineWidth=Number(s.width??4); ctx.globalAlpha=Number(s.opacity??.95); ctx.lineCap="round"; ctx.beginPath(); ctx.moveTo(Number(s.px??s.x),Number(s.py??s.y)); ctx.lineTo(Number(s.x),Number(s.y)); ctx.stroke(); ctx.restore(); }
-    const ticks = (data?.ticks ?? []) as Array<Record<string, unknown>>;
-    for (const t of ticks) { ctx.save(); ctx.fillStyle=String(t.color??"#16a34a"); ctx.globalAlpha=Number(t.opacity??.95); ctx.font=`bold ${Math.max(22,Number(t.size??34))}px sans-serif`; ctx.fillText("✓",Number(t.x),Number(t.y)); ctx.restore(); }
+    for (const s of strokes) { ctx.save(); ctx.strokeStyle=String(s.color??"#dc2626"); ctx.lineWidth=Number(s.width??4); ctx.globalAlpha=Number(s.opacity??.95); ctx.lineCap="round"; ctx.lineJoin="round"; ctx.beginPath(); ctx.moveTo(Number(s.px??s.x),Number(s.py??s.y)); ctx.lineTo(Number(s.x),Number(s.y)); ctx.stroke(); ctx.restore(); }
+    const pointers = (data?.pointers ?? []) as Array<Record<string, unknown>>;
+    for (const p of pointers) { const x=Number(p.x??0),y=Number(p.y??0),angle=Number(p.angle??0),length=Number(p.length??90),ex=x+Math.cos(angle)*length,ey=y+Math.sin(angle)*length; ctx.save();ctx.strokeStyle=String(p.color??"#dc2626");ctx.fillStyle=ctx.strokeStyle;ctx.lineWidth=Number(p.thickness??3);ctx.globalAlpha=Number(p.opacity??.95);ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(ex,ey);ctx.stroke();ctx.beginPath();ctx.moveTo(ex,ey);ctx.lineTo(ex-Math.cos(angle-.55)*12,ey-Math.sin(angle-.55)*12);ctx.lineTo(ex-Math.cos(angle+.55)*12,ey-Math.sin(angle+.55)*12);ctx.closePath();ctx.fill();ctx.restore(); }
+    const labels = (data?.labels ?? []) as Array<Record<string, unknown>>;
+    for (const item of labels) { ctx.save();ctx.fillStyle=String(item.color??"#dc2626");ctx.globalAlpha=Number(item.opacity??1);ctx.font=`bold ${Number(item.fontSize??18)}px sans-serif`;ctx.fillText(String(item.text??""),Number(item.x??0),Number(item.y??0));ctx.restore(); }
   };
   useEffect(()=>redraw(),[data]);
   const point=(e:React.PointerEvent<HTMLCanvasElement>)=>{const c=canvasRef.current;if(!c)return null;const r=c.getBoundingClientRect();return{x:(e.clientX-r.left)*(1200/r.width),y:(e.clientY-r.top)*(700/r.height)};};
-  const down=(e:React.PointerEvent<HTMLCanvasElement>)=>{const p=point(e);if(!p)return;drawing.current=true;last.current=p;e.currentTarget.setPointerCapture(e.pointerId);if(tool==="tick"){const ticks=(data?.ticks??[]) as Array<Record<string,unknown>>;onChange({...data,ticks:[...ticks,{x:p.x,y:p.y,size:34,color:"#16a34a",opacity:.95}]});drawing.current=false;}};
-  const move=(e:React.PointerEvent<HTMLCanvasElement>)=>{if(!drawing.current||tool!=="pen"||!last.current)return;const p=point(e);if(!p)return;const strokes=(data?.mediaStrokes??[]) as Array<Record<string,unknown>>;onChange({...data,mediaStrokes:[...strokes,{px:last.current.x,py:last.current.y,x:p.x,y:p.y,color:"#16a34a",width:4,opacity:.95}]});last.current=p;};
+  const down=(e:React.PointerEvent<HTMLCanvasElement>)=>{
+    const p=point(e);if(!p)return;
+    if(tool==="text"){if(label.trim())onChange({...data,labels:[...((data?.labels??[]) as Array<Record<string,unknown>>),{text:label.trim(),x:p.x,y:p.y,color,fontSize:Math.max(14,width*4),opacity:1}]});return;}
+    drawing.current=true;last.current=p;e.currentTarget.setPointerCapture(e.pointerId);
+    if(tool==="tick"){const ticks=(data?.ticks??[]) as Array<Record<string,unknown>>;onChange({...data,ticks:[...ticks,{x:p.x,y:p.y,size:Math.max(22,width*8),color:"#16a34a",opacity:.95}]});drawing.current=false;return;}
+    if(tool==="pointer"){const id=crypto.randomUUID();activePointerId.current=id;pointerOrigin.current=p;const pointers=(data?.pointers??[]) as Array<Record<string,unknown>>;onChange({...data,pointers:[...pointers,{id,x:p.x,y:p.y,length:90,thickness:Math.max(2,width),opacity:1,color,angle:0}]});}
+  };
+  const move=(e:React.PointerEvent<HTMLCanvasElement>)=>{
+    if(!drawing.current||!last.current)return;const p=point(e);if(!p)return;
+    if(tool==="eraser"){const radius=Math.max(16,width*4);const near=(item:Record<string,unknown>)=>distanceToMarkSegment(p,item)<radius;const strokes=(data?.mediaStrokes??[]) as Array<Record<string,unknown>>;const ticks=(data?.ticks??[]) as Array<Record<string,unknown>>;const pointers=(data?.pointers??[]) as Array<Record<string,unknown>>;const labels=(data?.labels??[]) as Array<Record<string,unknown>>;onChange({...data,mediaStrokes:strokes.filter(item=>!near(item)),ticks:ticks.filter(item=>!near(item)),pointers:pointers.filter(item=>!near(item)),labels:labels.filter(item=>!near(item))});last.current=p;return;}
+    if(tool==="pointer"){const id=activePointerId.current;const origin=pointerOrigin.current??p;if(id){const dx=p.x-origin.x,dy=p.y-origin.y;const pointers=(data?.pointers??[]) as Array<Record<string,unknown>>;onChange({...data,pointers:pointers.map(item=>item.id===id?{...item,x:origin.x,y:origin.y,length:Math.max(12,Math.hypot(dx,dy)),angle:Math.atan2(dy,dx)}:item)});}last.current=p;return;}
+    if(tool!=="pen")return;
+    const strokes=(data?.mediaStrokes??[]) as Array<Record<string,unknown>>;onChange({...data,mediaStrokes:[...strokes,{px:last.current.x,py:last.current.y,x:p.x,y:p.y,color,width,opacity:.98}]});last.current=p;
+  };
+  const openFullscreen=async(e:React.MouseEvent<HTMLButtonElement>)=>{const surface=e.currentTarget.closest("[data-marking-surface]") as HTMLElement|null;if(!surface)return;try{if(document.fullscreenElement)await document.exitFullscreen();else await surface.requestFullscreen();}catch{window.alert("Full-screen mode is not available in this browser.");}};
   return <div className="absolute inset-0 z-20 pointer-events-none">
-    <div className="pointer-events-auto absolute left-2 top-2 flex gap-1 rounded-full border bg-[#0A1931]/95 p-1 shadow-lg">
-      <Button type="button" size="icon" variant={tool==="pen"?"default":"ghost"} className="h-8 w-8" aria-label="Draw on media" title="Draw on media" onClick={()=>{setTool("pen");setActive(true)}}>✎</Button>
-      <Button type="button" size="icon" variant={tool==="tick"?"default":"ghost"} className="h-8 w-8" aria-label="Place mark on media" title="Place mark on media" onClick={()=>{setTool("tick");setActive(true)}}>✓</Button><Button type="button" size="icon" variant="ghost" className="h-8 w-8" aria-label="Stop media marking" title="Stop media marking" onClick={()=>setActive(false)}>✕</Button>
+    <div className="pointer-events-auto absolute left-2 top-2 flex max-w-[calc(100%-1rem)] flex-wrap items-center gap-1 rounded-xl border bg-[#0A1931]/95 p-1 shadow-lg">
+      {(["pen","tick","eraser","pointer","text"] as const).map(item=><Button key={item} type="button" size="icon" variant={tool===item?"default":"ghost"} className="h-8 w-8 text-white" aria-label={item==="tick"?"Place tick":item==="eraser"?"Erase marks":item==="pointer"?"Add directional pointer":item==="text"?"Add correction label":"Draw correction"} title={item} onClick={()=>{setTool(item);setActive(true)}}>{item==="pen"?"✎":item==="tick"?"✓":item==="eraser"?"⌫":item==="pointer"?"➤":"T"}</Button>)}
+      <input aria-label="Correction ink colour" type="color" value={color} onChange={e=>setColor(e.target.value)} className="h-7 w-8" />
+      <input aria-label="Correction ink size" type="range" min="1" max="12" value={width} onChange={e=>setWidth(Number(e.target.value))} className="w-14" />
+      {tool==="text"&&<input aria-label="Correction label text" value={label} onChange={e=>setLabel(e.target.value)} placeholder="Correction note" className="h-8 w-28 rounded border bg-white px-2 text-xs text-black" />}
+      <Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-white" aria-label="Zoom out" onClick={e=>adjustZoom(e,-0.25)}>−</Button><span className="self-center px-1 text-xs text-white">{Math.round(zoom*100)}%</span><Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-white" aria-label="Zoom in" onClick={e=>adjustZoom(e,0.25)}>+</Button><Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-white" onClick={openFullscreen}>Full screen</Button>
+      <Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-white" aria-label="Stop marking" title="Stop marking" onClick={()=>setActive(false)}>✕</Button>
     </div>
-    <canvas ref={canvasRef} width={1200} height={700} className={active ? "pointer-events-auto absolute inset-0 h-full w-full touch-none" : "pointer-events-none absolute inset-0 h-full w-full"} onPointerDown={down} onPointerMove={move} onPointerUp={()=>{drawing.current=false;last.current=null}} onPointerCancel={()=>{drawing.current=false;last.current=null}} />
+    <canvas ref={canvasRef} width={1200} height={700} className={active ? "pointer-events-auto absolute inset-0 h-full w-full touch-none" : "pointer-events-none absolute inset-0 h-full w-full"} onPointerDown={down} onPointerMove={move} onPointerUp={()=>{drawing.current=false;last.current=null;activePointerId.current=null;pointerOrigin.current=null}} onPointerCancel={()=>{drawing.current=false;last.current=null;activePointerId.current=null;pointerOrigin.current=null}} />
   </div>;
 }
 
 function AuthenticatedAttachment({ url }: { url: string }) {
   const [busy, setBusy] = useState(false);
   const open = async () => {
+    // Open the tab synchronously from the click; browsers often block window.open after fetch awaits.
+    const tab = window.open("about:blank", "_blank");
+    if (!tab) { window.alert("Your browser blocked the preview tab. Allow pop-ups for Dallyletter and try again."); return; }
+    tab.opener = null;
+    tab.document.title = "Opening Dallyletter attachment…";
+    tab.document.body.textContent = "Loading your attachment…";
     setBusy(true);
     try {
       const token = localStorage.getItem("dallyletter_token");
@@ -123,9 +158,10 @@ function AuthenticatedAttachment({ url }: { url: string }) {
       if (!r.ok) throw new Error("Attachment could not be opened.");
       const blob = await r.blob();
       const objectUrl = URL.createObjectURL(blob);
-      window.open(objectUrl, "_blank", "noopener,noreferrer");
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      tab.location.href = objectUrl;
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 5 * 60_000);
     } catch (error) {
+      tab.close();
       window.alert(error instanceof Error ? error.message : "Attachment could not be opened.");
     } finally {
       setBusy(false);
@@ -248,7 +284,6 @@ export default function ExerciseMarking() {
   const [aiMessage, setAiMessage] = useState("");
   const [aiState, setAiState] = useState<"idle"|"checking"|"partially_marked"|"awaiting_teacher"|"returned">("idle");
   const [loading, setLoading] = useState(false);
-  const [tickMode, setTickMode] = useState<number | null>(null);
 
   const token = localStorage.getItem("dallyletter_token");
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
@@ -434,8 +469,8 @@ export default function ExerciseMarking() {
                     </div>
 
                     <div className="rounded-lg bg-muted p-3 text-sm">
-                      <div className="mb-2 flex items-center justify-between gap-2"><div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Learner answer</div>{(Boolean(a.drawData)||Boolean(a.mediaReference)) && <Button type="button" size="sm" variant={tickMode===a.id?"default":"outline"} onClick={()=>setTickMode(v=>v===a.id?null:a.id)} aria-label={`Toggle tick marking for question ${i+1}`}>✓ {tickMode===a.id?"Tick mode on":"Add ticks"}</Button>}</div>
-                      {a.drawData ? <div className="relative overflow-hidden rounded-lg border bg-white" onClick={(event)=>{if(tickMode!==a.id)return;const rect=event.currentTarget.getBoundingClientRect();const current=(markingData[a.id]?.ticks??[]) as Array<Record<string,unknown>>;const next={...markingData[a.id],ticks:[...current,{x:Math.max(0,Math.min(1190,((event.clientX-rect.left)/rect.width)*1200)),y:Math.max(0,Math.min(690,((event.clientY-rect.top)/rect.height)*700)),size:30,color:"#16a34a",opacity:.95}]};setMarkingData(m=>({...m,[a.id]:next}));}}><DrawAnswer data={a.drawData} /><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div> : a.mediaReference ? <div className="relative overflow-hidden rounded-lg border bg-background"><AuthenticatedMedia url={a.mediaReference} type={mediaTypeFor(a.mediaReference)} title={`Question ${i+1} learner media`} /><MediaMarkOverlay data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/><div className="pointer-events-none absolute inset-0"><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div></div> : q?.type==="poll" && a.selectedValue ? <div className={`rounded-lg border p-3 font-semibold ${optionsFor(q.id).find(o=>o.value===a.selectedValue)?.isCorrect ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-red-300 bg-red-50 text-red-800"}`}>Selected: {optionsFor(q.id).find(o=>o.value===a.selectedValue)?.label ?? a.selectedValue} {optionsFor(q.id).find(o=>o.value===a.selectedValue)?.isCorrect ? "✓ Correct" : "✕ Wrong"}</div> : (a.textAnswer || "No answer")}
+                      <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Learner answer · teacher annotations are saved with the returned result</div>
+                      {a.drawData ? <div data-marking-surface className="relative overflow-hidden rounded-lg border bg-white"><DrawAnswer data={a.drawData} /><MediaMarkOverlay data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/><div className="pointer-events-none absolute inset-0"><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div></div> : a.mediaReference ? <div data-marking-surface className="relative overflow-hidden rounded-lg border bg-background"><AuthenticatedMedia url={a.mediaReference} type={mediaTypeFor(a.mediaReference)} title={`Question ${i+1} learner media`} /><MediaMarkOverlay data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/><div className="pointer-events-none absolute inset-0"><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div></div> : q?.type==="poll" && a.selectedValue ? <div className={`rounded-lg border p-3 font-semibold ${optionsFor(q.id).find(o=>o.value===a.selectedValue)?.isCorrect ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-red-300 bg-red-50 text-red-800"}`}>Selected: {optionsFor(q.id).find(o=>o.value===a.selectedValue)?.label ?? a.selectedValue} {optionsFor(q.id).find(o=>o.value===a.selectedValue)?.isCorrect ? "✓ Correct" : "✕ Wrong"}</div> : (a.textAnswer || "No answer")}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 pt-1">
