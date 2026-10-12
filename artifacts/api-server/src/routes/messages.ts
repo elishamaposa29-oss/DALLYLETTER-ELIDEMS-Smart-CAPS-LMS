@@ -2,16 +2,15 @@
 import { Router, type IRouter } from "express";
 import { eq, and, isNull, or, inArray } from "drizzle-orm";
 import { createReadStream } from "node:fs";
-import { readFile } from "node:fs/promises";
 import multer from "multer";
-import { db, messagesTable, activityLogTable, studyGroupMembersTable, studyGroupsTable, contentFlagsTable, auditLogsTable, groupMemberControlsTable, groupSettingsTable, usersTable, pool } from "@workspace/db";
+import { db, messagesTable, activityLogTable, studyGroupMembersTable, studyGroupsTable, contentFlagsTable, auditLogsTable, groupMemberControlsTable, groupSettingsTable, usersTable } from "@workspace/db";
 import {
   ListMessagesQueryParams,
   SendMessageBody,
 } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth-middleware";
 import { getAIProvider } from "../lib/ai-provider";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, deleteStoredMedia, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, streamStoredMedia } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, deleteStoredMedia, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
 
 const MAX_CHAT_MEDIA_SIZE_BYTES = MAX_MEDIA_SIZE_BYTES;
 import { isOwnerRole, normalizeRole } from "../lib/auth-middleware";
@@ -106,24 +105,6 @@ router.post("/messages/media", requireAuth, (req, res): void => {
         }
       }
 
-      // Capture an audio fallback before object storage is allowed to remove the temporary local file.
-      // This keeps legacy/database playback available even when object storage is later unavailable.
-      const audioData = req.file.mimetype.toLowerCase().startsWith("audio/")
-        ? await readFile(req.file.path)
-        : null;
-
-      try {
-        await persistUploadedMedia(req.file.filename, req.file.mimetype, req.file.path);
-      } catch {
-        await deleteStoredMedia(req.file.filename);
-        res.status(503).json({ error: "Persistent media storage is temporarily unavailable. Please retry the upload." });
-        return;
-      }
-
-      if (audioData) {
-        await pool.query("INSERT INTO message_media (storage_key, mime_type, size_bytes, data) VALUES ($1,$2,$3,$4) ON CONFLICT (storage_key) DO UPDATE SET mime_type = EXCLUDED.mime_type, size_bytes = EXCLUDED.size_bytes, data = EXCLUDED.data", [req.file.filename, req.file.mimetype, req.file.size, audioData]);
-      }
-
       res.status(201).json({
         mediaUrl: messageMediaPath(req.file.filename) + "?type=" + encodeURIComponent(req.file.mimetype),
         storageKey: req.file.filename,
@@ -150,37 +131,13 @@ router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise
     ? await canAccessGroup(message.groupId, user.id, user.role)
     : message.recipientId != null && (isOwnerRole(user.role) || message.recipientId === user.id || message.senderId === user.id);
   if (!allowed) { res.status(403).json({ error: "You cannot access this media" }); return; }
-  const remote = await streamStoredMedia(storageKey, req.headers.range);
-  if (remote) {
-    res.status(remote.status);
-    remote.headers.forEach((value, key) => res.setHeader(key, value));
-    if (remote.body) for await (const chunk of remote.body as any) res.write(chunk);
-    res.end();
-    return;
-  }
-  const stored = await pool.query("SELECT mime_type, size_bytes, data FROM message_media WHERE storage_key = $1 LIMIT 1", [storageKey]);
-  if (stored.rows[0]) {
-    const row = stored.rows[0] as { mime_type: string; size_bytes: number; data: Buffer };
-    const mediaType = typeof req.query.type === "string" && isAllowedMediaType(req.query.type) ? req.query.type : row.mime_type;
-    res.setHeader("Content-Type", mediaType);
-    res.setHeader("Accept-Ranges", "bytes");
-    const range = req.headers.range;
-    if (!range) { res.setHeader("Content-Length", row.size_bytes); res.end(row.data); return; }
-    const match = /^bytes=(\d*)-(\d*)$/.exec(range);
-    if (!match) { res.status(416).end(); return; }
-    const start = match[1] ? Number(match[1]) : Math.max(row.size_bytes - Number(match[2]), 0);
-    const end = match[2] ? Number(match[2]) : row.size_bytes - 1;
-    if (start > end || start >= row.size_bytes) { res.status(416).end(); return; }
-    res.status(206); res.setHeader("Content-Range", "bytes " + start + "-" + end + "/" + row.size_bytes); res.setHeader("Content-Length", end - start + 1); res.end(row.data.subarray(start, end + 1)); return;
-  }
   try {
     const stats = await getMediaStats(storageKey);
     res.setHeader("Content-Type", typeof req.query.type === "string" && isAllowedMediaType(req.query.type) ? req.query.type : "audio/webm");
     res.setHeader("Content-Length", stats.size);
-    res.setHeader("Accept-Ranges", "bytes");
     createReadStream(getMediaPath(storageKey)).pipe(res);
   } catch {
-    res.status(410).json({ error: "Media not found; this legacy recording is no longer available. Please resend the voice note." });
+    res.status(404).json({ error: "Media not found" });
   }
 });
 
@@ -240,55 +197,6 @@ router.get("/messages", requireAuth, async (req, res): Promise<void> => {
 });
 
 // POST /messages — Send a message
-router.delete("/messages/mine", requireAuth, async (req, res): Promise<void> => {
-  const user = req.currentUser!;
-  const rawIds = req.body?.ids;
-  const deleteAllInConversation = req.body?.all === true;
-  const groupId = req.body?.groupId == null ? null : Number(req.body.groupId);
-  const recipientId = req.body?.recipientId == null ? null : Number(req.body.recipientId);
-  if (groupId != null && (!Number.isInteger(groupId) || groupId <= 0)) {
-    res.status(400).json({ error: "Invalid group id" }); return;
-  }
-  if (recipientId != null && (!Number.isInteger(recipientId) || recipientId <= 0 || recipientId === user.id)) {
-    res.status(400).json({ error: "Invalid conversation recipient" }); return;
-  }
-  if ((groupId != null && recipientId != null) || (!deleteAllInConversation && !Array.isArray(rawIds))) {
-    res.status(400).json({ error: "Choose one conversation and provide selected message ids, or set all=true" }); return;
-  }
-  if (groupId != null && !(await canAccessGroup(groupId, user.id, user.role))) {
-    res.status(403).json({ error: "You cannot access this group" }); return;
-  }
-  if (recipientId != null && !(await canViewPrivateConversation(user, recipientId))) {
-    res.status(403).json({ error: "You cannot access this private conversation" }); return;
-  }
-  let deletedIds: number[] = [];
-  if (deleteAllInConversation) {
-    const conditions = [eq(messagesTable.senderId, user.id)];
-    if (groupId != null) conditions.push(eq(messagesTable.groupId, groupId) as any);
-    else if (recipientId != null) {
-      conditions.push(or(
-        and(eq(messagesTable.recipientId, recipientId), eq(messagesTable.groupId, null as any)),
-        and(eq(messagesTable.recipientId, user.id), eq(messagesTable.groupId, null as any)),
-      ) as any);
-    } else {
-      res.status(400).json({ error: "Select a group or private conversation before deleting all your messages" }); return;
-    }
-    const rows = await db.select({ id: messagesTable.id }).from(messagesTable).where(and(...conditions));
-    deletedIds = rows.map(row => row.id);
-    if (deletedIds.length) await db.delete(messagesTable).where(and(eq(messagesTable.senderId, user.id), inArray(messagesTable.id, deletedIds)));
-  } else {
-    const ids = [...new Set((rawIds as unknown[]).map(Number))];
-    if (!ids.length || ids.length > 200 || ids.some(id => !Number.isInteger(id) || id <= 0)) {
-      res.status(400).json({ error: "Provide between 1 and 200 valid message ids" }); return;
-    }
-    const rows = await db.select({ id: messagesTable.id }).from(messagesTable)
-      .where(and(eq(messagesTable.senderId, user.id), inArray(messagesTable.id, ids)));
-    deletedIds = rows.map(row => row.id);
-    if (deletedIds.length) await db.delete(messagesTable).where(and(eq(messagesTable.senderId, user.id), inArray(messagesTable.id, deletedIds)));
-  }
-  res.json({ ok: true, deletedCount: deletedIds.length, deletedIds });
-});
-
 router.delete("/messages/:id", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!, id = Number(req.params.id);
   const [message] = await db.select().from(messagesTable).where(eq(messagesTable.id, id));
@@ -366,13 +274,6 @@ router.post("/messages", requireAuth, async (req, res): Promise<void> => {
     senderName: currentUser.name,
     senderRole: currentUser.role,
   }).returning();
-
-  if (message.mediaUrl) {
-    try {
-      const storageKey = new URL(message.mediaUrl, "https://internal.invalid").pathname.split("/").pop();
-      if (storageKey) await pool.query("UPDATE message_media SET message_id = $1 WHERE storage_key = $2", [message.id, storageKey]);
-    } catch { /* keep message delivery successful if media metadata reconciliation fails */ }
-  }
 
   // Log activity for group messages
   if (message.groupId != null) {

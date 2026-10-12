@@ -12,7 +12,7 @@ The API now supports an S3-compatible object-storage connector. It is provider-n
 
 Cloudflare R2 is a recommended low-cost option because it exposes an S3-compatible API and currently includes a monthly free tier of 10 GB standard storage, 1 million Class A operations and 10 million Class B operations, with no internet egress charge.
 
-When these variables are absent, Dallyletter keeps using its existing local-media fallback. When they are present, lesson, assignment, exercise-answer and chat media are uploaded to object storage and served from there, while existing database-backed voice recovery remains available.
+When these variables are absent, local-media fallback is for development only. Production uploads fail explicitly instead of silently storing files on an ephemeral disk. When all required variables are present, lesson, assignment, exercise-answer and chat media are uploaded to object storage and served from there, while existing database-backed voice recovery remains available.
 
 Never put object-storage secrets in frontend code or Git.
 
