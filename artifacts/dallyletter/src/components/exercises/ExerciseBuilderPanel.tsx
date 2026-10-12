@@ -70,12 +70,16 @@ export function ExerciseBuilderPanel({lessonId,onSaved,onClose}:ExerciseBuilderP
    setBusy(true);setMessage(null);
    try{
      const token=localStorage.getItem("dallyletter_token");const headers:HeadersInit={"Content-Type":"application/json"};if(token)headers.Authorization=`Bearer ${token}`;
-     const er=await fetch(getApiUrl(`/api/exercises/lessons/${lessonId}/exercises`),{method:"POST",headers,body:JSON.stringify({title:richTextPlainText(title),instructions:instructions.trim()||undefined,totalMarks:configuredTotal,layout:{version:1,page:"book",mode:"freeform"}})});
-     if(!er.ok)throw new Error((await er.json().catch(()=>null))?.error||"Could not prepare the exercise");
-     const exercise=await er.json() as {id:number};
-     for(const[index,q]of questions.entries()){
-       const qr=await fetch(getApiUrl(`/api/exercises/${exercise.id}/questions`),{method:"POST",headers,body:JSON.stringify({prompt:q.prompt.trim(),type:q.type,marksAllocated:q.marks,position:index,config:{layout:"book",mode:"freeform",x:q.x,y:q.y,width:q.width,height:q.height,teacherDrawing:q.type==="drawbox"&&q.drawPermissions?.preview?q.drawData:undefined,drawPermissions:q.type==="drawbox"?q.drawPermissions:undefined},options:q.type==="poll"?q.options.map(o=>({label:o.label.trim(),value:o.value.trim()||o.label.trim(),isCorrect:o.isCorrect})):undefined})});
-       if(!qr.ok)throw new Error((await qr.json().catch(()=>null))?.error||`Could not save question ${index+1}`); const savedQuestion=await qr.clone().json() as {id:number}; if(q.attachment?.file) await persistQuestionAttachment(exercise.id,savedQuestion.id,q.attachment,index+1);
+     let exercise:{id:number};
+     if(preparedExerciseId){ exercise={id:preparedExerciseId}; }
+     else {
+       const er=await fetch(getApiUrl(`/api/exercises/lessons/${lessonId}/exercises`),{method:"POST",headers,body:JSON.stringify({title:richTextPlainText(title),instructions:instructions.trim()||undefined,totalMarks:configuredTotal,layout:{version:1,page:"book",mode:"freeform"}})});
+       if(!er.ok)throw new Error((await er.json().catch(()=>null))?.error||"Could not prepare the exercise");
+       exercise=await er.json() as {id:number};
+       for(const[index,q]of questions.entries()){
+         const qr=await fetch(getApiUrl(`/api/exercises/${exercise.id}/questions`),{method:"POST",headers,body:JSON.stringify({prompt:q.prompt.trim(),type:q.type,marksAllocated:q.marks,position:index,config:{layout:"book",mode:"freeform",x:q.x,y:q.y,width:q.width,height:q.height,teacherDrawing:q.type==="drawbox"&&q.drawPermissions?.preview?q.drawData:undefined,drawPermissions:q.type==="drawbox"?q.drawPermissions:undefined},options:q.type==="poll"?q.options.map(o=>({label:o.label.trim(),value:o.value.trim()||o.label.trim(),isCorrect:o.isCorrect})):undefined})});
+         if(!qr.ok)throw new Error((await qr.json().catch(()=>null))?.error||`Could not save question ${index+1}`); const savedQuestion=await qr.clone().json() as {id:number}; if(q.attachment?.file) await persistQuestionAttachment(exercise.id,savedQuestion.id,q.attachment,index+1);
+       }
      }
      const rr=await fetch(getApiUrl(`/api/exercises/${exercise.id}/ai-marking/check`),{method:"POST",headers,body:JSON.stringify({teacherClarification:aiClarification})});
      const data=await rr.json();
@@ -92,7 +96,7 @@ export function ExerciseBuilderPanel({lessonId,onSaved,onClose}:ExerciseBuilderP
    try{
      const token=localStorage.getItem("dallyletter_token");const headers:HeadersInit={"Content-Type":"application/json"};if(token)headers.Authorization=`Bearer ${token}`;
      let exercise:{id:number};
-     if(publish&&preparedExerciseId){ exercise={id:preparedExerciseId}; }
+     if(preparedExerciseId){ exercise={id:preparedExerciseId}; }
      else {
        const er=await fetch(getApiUrl(`/api/exercises/lessons/${lessonId}/exercises`),{method:"POST",headers,body:JSON.stringify({title:richTextPlainText(title),instructions:instructions.trim()||undefined,totalMarks:configuredTotal,layout:{version:1,page:"book",mode:"freeform",aiMarking:{enabled:false,approved:false}}})});
        if(!er.ok)throw new Error((await er.json().catch(()=>null))?.error||"Could not create exercise");
