@@ -19,13 +19,13 @@ import {
   getMediaPath,
   getMediaStats,
   isAllowedMediaType,
-  isObjectStorageConfigured,
   MAX_MEDIA_SIZE_BYTES,
   persistUploadedMedia,
   streamStoredMedia,
   removeStoredMedia,
 } from "../lib/media-storage";
 import { hasContentPermission } from "../lib/content-permissions";
+import { isObjectStorageConfigured } from "../lib/object-storage";
 
 const router: IRouter = Router();
 
