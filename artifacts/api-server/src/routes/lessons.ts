@@ -19,6 +19,7 @@ import {
   getMediaPath,
   getMediaStats,
   isAllowedMediaType,
+  isObjectStorageConfigured,
   MAX_MEDIA_SIZE_BYTES,
   persistUploadedMedia,
   streamStoredMedia,
@@ -142,6 +143,17 @@ router.get("/lessons/media/:storageKey", requireAuth, async (req, res): Promise<
         for await (const chunk of remote.body as any) res.write(chunk);
       }
       res.end();
+      return;
+    }
+    // If object storage is configured, a missing object is not a local-file miss:
+    // production uploads are deliberately removed from local disk after persistence.
+    // Never mask a missing durable object by falling back to an ephemeral path.
+    if (isObjectStorageConfigured()) {
+      res.status(410).json({
+        error: "This media file is missing from persistent storage. The lesson still references it; upload the file again and update the lesson.",
+        code: "MEDIA_OBJECT_MISSING",
+        storageKey,
+      });
       return;
     }
     const mediaStats = await getMediaStats(storageKey);
