@@ -161,14 +161,33 @@ router.put("/:id", requireAuth, async (req, res): Promise<void> => {
 
 router.delete("/:id", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (!isOwnerRole(user.role) && !user.isManager) { res.status(403).json({ error: "Manager or owner access required" }); return; }
-  const assignmentId = parseInt(String(req.params.id));
-  if (!Number.isInteger(assignmentId)) { res.status(400).json({ error: "Invalid assignment id" }); return; }
-  const [existing] = await db.select({ teacherId: assignmentsTable.teacherId, attachmentUrl: assignmentsTable.attachmentUrl }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
-  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Academic staff access required" }); return; }
+  const assignmentId = Number(req.params.id);
+  if (!Number.isInteger(assignmentId) || assignmentId <= 0) { res.status(400).json({ error: "Invalid assignment id" }); return; }
+  const [existing] = await db.select({
+    id: assignmentsTable.id,
+    teacherId: assignmentsTable.teacherId,
+    attachmentUrl: assignmentsTable.attachmentUrl,
+  }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
+  if (!existing) { res.status(404).json({ error: "Assignment not found" }); return; }
+  const privileged = isOwnerRole(user.role) || user.isManager === true;
+  if (!privileged && existing.teacherId !== user.id) {
+    res.status(403).json({ error: "You can delete only assignments you created" });
+    return;
+  }
+  // Delete the row first. A storage cleanup failure must not leave the UI believing
+  // the assignment still exists; report cleanup separately for safe retry/operations.
   await db.delete(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
-  const storageKey = typeof existing.attachmentUrl === "string" ? existing.attachmentUrl.match(/\/api\/lessons\/media\/([a-f0-9-]{36})/i)?.[1] : null;
-  if (storageKey) await removeStoredMedia(storageKey);
+  const storageKey = typeof existing.attachmentUrl === "string"
+    ? existing.attachmentUrl.match(/\/api\/lessons\/media\/([a-f0-9-]{36})/i)?.[1]
+    : null;
+  if (storageKey) {
+    try { await removeStoredMedia(storageKey); }
+    catch {
+      res.status(200).json({ ok: true, warning: "Assignment deleted, but its attachment cleanup needs attention." });
+      return;
+    }
+  }
   res.json({ ok: true });
 });
 
