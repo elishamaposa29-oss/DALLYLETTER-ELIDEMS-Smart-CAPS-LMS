@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { ClipboardList, Plus, Calendar, BookOpen, Eye, Star } from "lucide-react";
+import { ClipboardList, Plus, Calendar, BookOpen, Eye, Star, Trash2 } from "lucide-react";
 
 const token = () => localStorage.getItem("dallyletter_token") ?? "";
 
@@ -20,6 +20,7 @@ export default function TeacherAssignments() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [viewSubs, setViewSubs] = useState<{ assignment: any; submissions: any[] } | null>(null);
   const [grading, setGrading] = useState<{ subId: number; marks: string; feedback: string } | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const emptyForm = { title: "", description: "", subject: "", grade: "", dueDate: "", totalMarks: "100", attachmentUrl: "" };
   const [form, setForm] = useState(emptyForm);
 
@@ -74,6 +75,22 @@ export default function TeacherAssignments() {
       resetForm();
       load();
     }).catch(() => toast({ variant: "destructive", title: editingId == null ? "Failed to create" : "Failed to update" }));
+  };
+
+  const deleteAssignment = async (assignment: any) => {
+    const id = Number(assignment?.id);
+    if (!Number.isInteger(id) || id <= 0 || deletingId !== null) return;
+    if (!window.confirm(`Delete assignment “${String(assignment.title ?? "Untitled")}”? This may also remove its submissions. This cannot be undone.`)) return;
+    setDeletingId(id);
+    try {
+      const response = await fetch(getApiUrl(`/api/assignments/${id}`), { method: "DELETE", headers: { Authorization: `Bearer ${token()}` } });
+      const payload = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(payload.error || `Delete failed (${response.status})`);
+      setAssignments(current => current.filter(item => Number(item.id) !== id));
+      toast({ title: "Assignment deleted" });
+    } catch (error) {
+      toast({ variant: "destructive", title: "Could not delete assignment", description: error instanceof Error ? error.message : "Please try again." });
+    } finally { setDeletingId(null); }
   };
 
   const loadSubs = (assignment: any) => {
@@ -176,6 +193,7 @@ export default function TeacherAssignments() {
                       <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { setEditingId(a.id); setForm({ title: a.title, description: a.description ?? "", subject: a.subject, grade: a.grade ?? "", dueDate: a.dueDate, totalMarks: String(a.totalMarks), attachmentUrl: a.attachmentUrl ?? "" }); setOpen(true); }}>
                         Edit
                       </Button>
+                      <Button size="sm" variant="destructive" className="gap-1.5" disabled={deletingId !== null} onClick={() => void deleteAssignment(a)}><Trash2 className="h-3.5 w-3.5" />{deletingId === Number(a.id) ? "Deleting…" : "Delete"}</Button>
                       <Button size="sm" variant="outline" className="gap-1.5" onClick={() => loadSubs(a)}>
                         <Eye className="h-3.5 w-3.5" /> Submissions
                       </Button>

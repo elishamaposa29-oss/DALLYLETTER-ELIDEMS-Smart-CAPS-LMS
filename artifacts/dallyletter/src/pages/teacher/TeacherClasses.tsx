@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useState } from "react";
-import { Loader2, Plus, Trash2, Video, Calendar, Clock, Hand, Settings2, CheckCircle, MessageSquare, Paperclip } from "lucide-react";
+import { Loader2, Plus, Trash2, Video, Calendar, Clock, Hand, Settings2, CheckCircle, Paperclip, Send } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -301,44 +301,57 @@ export default function TeacherClasses() {
 function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean }) {
   const { data: hands, refetch } = useListHandRaises({ classId }, { query: { enabled: isLive, refetchInterval: 8000 } as any });
   const { toast } = useToast();
+  const [handReplies, setHandReplies] = useState<Record<number, string>>({});
+  const [handReplyFiles, setHandReplyFiles] = useState<Record<number, File | null>>({});
+  const [sendingHandReply, setSendingHandReply] = useState<number | null>(null);
   const [loweringId, setLoweringId] = useState<number | null>(null);
 
   if (!isLive || !hands) return null;
   const unresolved = hands.filter(h => !h.isResolved);
   if (unresolved.length === 0) return null;
 
-  const handleAttachMedia = async (studentId: number, file: File) => {
-    const token = localStorage.getItem("dallyletter_token");
-    const body = new FormData();
-    body.append("recipientId", String(studentId));
-    body.append("file", file, file.name);
-    const upload = await fetch(getApiUrl("/api/messages/media"), {
-      method: "POST",
-      headers: token ? { Authorization: "Bearer " + token } : {},
-      body,
-    });
-    const result = await upload.json().catch(() => null) as { mediaUrl?: string; error?: string } | null;
-    if (!upload.ok || !result?.mediaUrl) throw new Error(result?.error || "Attachment upload failed");
-    const send = await fetch(getApiUrl("/api/messages"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
-      body: JSON.stringify({ content: file.name, type: "media", recipientId: studentId, mediaUrl: result.mediaUrl }),
-    });
-    if (!send.ok) throw new Error("Attachment message failed");
-    toast({ title: "Media sent" });
-  };
-
-  const handleReply = async (studentId: number, studentName: string) => {
-    const reply = window.prompt("Reply to " + studentName + ":");
-    if (!reply?.trim()) return;
-    const token = localStorage.getItem("dallyletter_token");
-    const response = await fetch(getApiUrl("/api/messages"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
-      body: JSON.stringify({ content: reply.trim(), type: "text", recipientId: studentId }),
-    });
-    if (!response.ok) throw new Error("Reply failed");
-    toast({ title: "Reply sent" });
+  const handleReply = async (handId: number, studentId: number, studentName: string) => {
+    const reply = (handReplies[handId] ?? "").trim();
+    const file = handReplyFiles[handId] ?? null;
+    if (!reply && !file) {
+      toast({ variant: "destructive", title: "Write a reply or attach a file first" });
+      return;
+    }
+    setSendingHandReply(handId);
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      let mediaUrl: string | undefined;
+      if (file) {
+        const body = new FormData();
+        body.append("recipientId", String(studentId));
+        body.append("file", file, file.name);
+        const upload = await fetch(getApiUrl("/api/messages/media"), {
+          method: "POST",
+          headers: token ? { Authorization: "Bearer " + token } : {},
+          body,
+        });
+        const result = await upload.json().catch(() => null) as { mediaUrl?: string; error?: string } | null;
+        if (!upload.ok || !result?.mediaUrl) throw new Error(result?.error || "Attachment upload failed");
+        mediaUrl = result.mediaUrl;
+      }
+      const response = await fetch(getApiUrl("/api/messages"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
+        body: JSON.stringify({
+          content: reply || (file ? `Teacher attached: ${file.name}` : ""),
+          type: mediaUrl ? "media" : "text",
+          recipientId: studentId,
+          ...(mediaUrl ? { mediaUrl } : {}),
+        }),
+      });
+      const result = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) throw new Error(result?.error || "Reply could not be delivered");
+      setHandReplies(current => ({ ...current, [handId]: "" }));
+      setHandReplyFiles(current => ({ ...current, [handId]: null }));
+      toast({ title: "Reply delivered", description: `${studentName} can see it in Chat.` });
+    } finally {
+      setSendingHandReply(null);
+    }
   };
 
   const handleLowerHand = async (handId: number, studentName: string) => {
@@ -373,18 +386,16 @@ function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean
               <p className="font-medium">{hand.studentName}</p>
               {hand.question && <p className="text-muted-foreground mt-0.5">{hand.question}</p>}
             </div>
-            <div className="flex items-center gap-1 shrink-0">
-              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" title="Reply to learner" onClick={() => void handleReply(hand.studentId, hand.studentName).catch(() => toast({ variant: "destructive", title: "Reply failed" }))}>
-                <MessageSquare className="h-3 w-3" /><span className="ml-1">Reply</span>
-              </Button>
-              <label className="inline-flex h-7 cursor-pointer items-center rounded-md px-2 text-xs hover:bg-muted" title="Attach learning media">
-                <Paperclip className="h-3 w-3" /><span className="ml-1">Attach</span>
-                <input type="file" className="sr-only" accept="image/*,video/*,application/pdf,.doc,.docx" onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  event.target.value = "";
-                  if (file) void handleAttachMedia(hand.studentId, file).catch((error) => toast({ variant: "destructive", title: "Attachment failed", description: error instanceof Error ? error.message : "Could not send media." }));
-                }} />
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+              <Input aria-label={`Reply to ${hand.studentName}`} className="min-w-[160px] flex-1" placeholder="Write a reply to this learner…" value={handReplies[hand.id] ?? ""} onChange={event => setHandReplies(current => ({ ...current, [hand.id]: event.target.value }))} />
+              <label className="inline-flex h-9 cursor-pointer items-center gap-1 rounded-md border px-3 text-xs hover:bg-muted" title="Attach to this reply">
+                <Paperclip className="h-3 w-3" />{handReplyFiles[hand.id]?.name ?? "Attach"}
+                <input type="file" className="sr-only" accept="image/*,video/*,audio/*,application/pdf,.doc,.docx" onChange={event => { const file = event.target.files?.[0] ?? null; event.target.value = ""; setHandReplyFiles(current => ({ ...current, [hand.id]: file })); }} />
               </label>
+              <Button variant="default" size="sm" className="h-9" disabled={sendingHandReply === hand.id} onClick={() => void handleReply(hand.id, hand.studentId, hand.studentName).catch(error => toast({ variant: "destructive", title: "Reply failed", description: error instanceof Error ? error.message : "Could not send reply." }))}>
+                {sendingHandReply === hand.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}<span className="ml-1">Send</span>
+              </Button>
+            </div>
             <Button
               variant="ghost"
               size="sm"
@@ -396,7 +407,6 @@ function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean
               {loweringId === hand.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
               <span className="ml-1">Lower</span>
             </Button>
-            </div>
           </div>
         ))}
       </div>

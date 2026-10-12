@@ -240,6 +240,55 @@ router.get("/messages", requireAuth, async (req, res): Promise<void> => {
 });
 
 // POST /messages — Send a message
+router.delete("/messages/mine", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  const rawIds = req.body?.ids;
+  const deleteAllInConversation = req.body?.all === true;
+  const groupId = req.body?.groupId == null ? null : Number(req.body.groupId);
+  const recipientId = req.body?.recipientId == null ? null : Number(req.body.recipientId);
+  if (groupId != null && (!Number.isInteger(groupId) || groupId <= 0)) {
+    res.status(400).json({ error: "Invalid group id" }); return;
+  }
+  if (recipientId != null && (!Number.isInteger(recipientId) || recipientId <= 0 || recipientId === user.id)) {
+    res.status(400).json({ error: "Invalid conversation recipient" }); return;
+  }
+  if ((groupId != null && recipientId != null) || (!deleteAllInConversation && !Array.isArray(rawIds))) {
+    res.status(400).json({ error: "Choose one conversation and provide selected message ids, or set all=true" }); return;
+  }
+  if (groupId != null && !(await canAccessGroup(groupId, user.id, user.role))) {
+    res.status(403).json({ error: "You cannot access this group" }); return;
+  }
+  if (recipientId != null && !(await canViewPrivateConversation(user, recipientId))) {
+    res.status(403).json({ error: "You cannot access this private conversation" }); return;
+  }
+  let deletedIds: number[] = [];
+  if (deleteAllInConversation) {
+    const conditions = [eq(messagesTable.senderId, user.id)];
+    if (groupId != null) conditions.push(eq(messagesTable.groupId, groupId) as any);
+    else if (recipientId != null) {
+      conditions.push(or(
+        and(eq(messagesTable.recipientId, recipientId), eq(messagesTable.groupId, null as any)),
+        and(eq(messagesTable.recipientId, user.id), eq(messagesTable.groupId, null as any)),
+      ) as any);
+    } else {
+      res.status(400).json({ error: "Select a group or private conversation before deleting all your messages" }); return;
+    }
+    const rows = await db.select({ id: messagesTable.id }).from(messagesTable).where(and(...conditions));
+    deletedIds = rows.map(row => row.id);
+    if (deletedIds.length) await db.delete(messagesTable).where(and(eq(messagesTable.senderId, user.id), inArray(messagesTable.id, deletedIds)));
+  } else {
+    const ids = [...new Set((rawIds as unknown[]).map(Number))];
+    if (!ids.length || ids.length > 200 || ids.some(id => !Number.isInteger(id) || id <= 0)) {
+      res.status(400).json({ error: "Provide between 1 and 200 valid message ids" }); return;
+    }
+    const rows = await db.select({ id: messagesTable.id }).from(messagesTable)
+      .where(and(eq(messagesTable.senderId, user.id), inArray(messagesTable.id, ids)));
+    deletedIds = rows.map(row => row.id);
+    if (deletedIds.length) await db.delete(messagesTable).where(and(eq(messagesTable.senderId, user.id), inArray(messagesTable.id, deletedIds)));
+  }
+  res.json({ ok: true, deletedCount: deletedIds.length, deletedIds });
+});
+
 router.delete("/messages/:id", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!, id = Number(req.params.id);
   const [message] = await db.select().from(messagesTable).where(eq(messagesTable.id, id));
