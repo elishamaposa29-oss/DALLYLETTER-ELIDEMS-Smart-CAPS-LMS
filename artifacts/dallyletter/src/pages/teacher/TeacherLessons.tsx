@@ -429,7 +429,7 @@ export default function TeacherLessons() {
                     </CardContent>
                   )}
                   <CardFooter className="pt-4 border-t flex flex-wrap justify-end gap-2">
-                    {user?.role === "teacher" && lesson.teacherId !== user.id ? (
+                    {!canManageLesson(lesson) ? (
                       <>
                         <Button type="button" variant="outline" size="icon" title="Preview lesson" aria-label="Preview lesson" onClick={() => window.location.assign(`/preview/lesson/${lesson.id}`)}><Maximize2 className="h-4 w-4" /></Button>
                         <Button type="button" variant="outline" size="sm" onClick={() => void requestPermission(lesson.id,"edit")}>Request edit</Button>
