@@ -2,6 +2,8 @@
 import { Router, type IRouter } from "express";
 import { eq, and, count } from "drizzle-orm";
 import { db, studyGroupsTable, studyGroupMembersTable, usersTable, activityLogTable, groupSettingsTable, groupMemberControlsTable, messagesTable } from "@workspace/db";
+import { pool } from "@workspace/db";
+import { deleteStoredMedia } from "../lib/media-storage";
 import {
   CreateStudyGroupBody,
   GetStudyGroupParams,
@@ -314,6 +316,40 @@ router.delete("/study-groups/:id/members/:userId", requireAuth, async (req, res)
   if (userId === group.creatorId) { res.status(400).json({ error: "The group owner cannot be removed" }); return; }
   await db.delete(studyGroupMembersTable).where(and(eq(studyGroupMembersTable.groupId, groupId), eq(studyGroupMembersTable.userId, userId)));
   res.sendStatus(204);
+});
+
+// DELETE /study-groups/:id — permanent platform-owner deletion with related group data cleanup
+router.delete("/study-groups/:id", requireAuth, async (req, res): Promise<void> => {
+  const groupId = Number(req.params.id);
+  if (!Number.isInteger(groupId) || groupId <= 0) { res.status(400).json({ error: "Invalid group id" }); return; }
+  if (!isOwnerRole(req.currentUser!.role)) { res.status(403).json({ error: "Only the platform owner can permanently delete a study group." }); return; }
+
+  const client = await pool.connect();
+  let mediaKeys: string[] = [];
+  try {
+    await client.query("BEGIN");
+    const found = await client.query("SELECT id, name FROM study_groups WHERE id=$1 FOR UPDATE", [groupId]);
+    if (!found.rows[0]) { await client.query("ROLLBACK"); res.status(404).json({ error: "Study group not found" }); return; }
+    const media = await client.query("SELECT media_url FROM messages WHERE group_id=$1 AND media_url IS NOT NULL", [groupId]);
+    mediaKeys = media.rows.map((row:any) => String(row.media_url || "").match(/\/api\/messages\/media\/([a-f0-9-]{36})/i)?.[1]).filter((key:unknown): key is string => typeof key === "string");
+    await client.query("DELETE FROM chat_poll_votes USING chat_polls WHERE chat_poll_votes.poll_id=chat_polls.id AND chat_polls.group_id=$1", [groupId]);
+    await client.query("DELETE FROM chat_poll_options USING chat_polls WHERE chat_poll_options.poll_id=chat_polls.id AND chat_polls.group_id=$1", [groupId]);
+    await client.query("DELETE FROM chat_polls WHERE group_id=$1", [groupId]);
+    await client.query("DELETE FROM chat_community_groups WHERE group_id=$1", [groupId]);
+    await client.query("DELETE FROM group_member_controls WHERE group_id=$1", [groupId]);
+    await client.query("DELETE FROM group_settings WHERE group_id=$1", [groupId]);
+    await client.query("DELETE FROM messages WHERE group_id=$1", [groupId]);
+    await client.query("DELETE FROM study_group_members WHERE group_id=$1", [groupId]);
+    await client.query("DELETE FROM study_groups WHERE id=$1", [groupId]);
+    await client.query("COMMIT");
+    for (const key of mediaKeys) { try { await deleteStoredMedia(key); } catch { /* Group data is deleted; orphaned storage cleanup can be retried independently. */ } }
+    res.status(200).json({ ok: true, deletedGroupId: groupId, deletedGroupName: found.rows[0].name });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    res.status(500).json({ error: "Study group deletion failed; no group deletion was committed." });
+  } finally {
+    client.release();
+  }
 });
 
 // DELETE /study-groups/:id/messages
