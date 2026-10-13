@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Search, FileText, Image as ImageIcon, Video, Headphones, BookOpen, ExternalLink, GraduationCap, ClipboardList, Sparkles } from "lucide-react";
+import { Loader2, Search, FileText, Image as ImageIcon, Video, Headphones, BookOpen, ExternalLink, GraduationCap, ClipboardList, Sparkles, Users, Layers, Clock, ListFilter } from "lucide-react";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 import { sanitizeRichText } from "@/components/RichTextEditor";
 import { isValidLessonUrl } from "@/lib/media-url";
@@ -42,7 +42,7 @@ export default function StudentLessons() {
   const [exerciseMap, setExerciseMap] = useState<Record<number, { id:number; title:string; status:string; totalMarks:string; submissionStatus?:string; submission?:{totalScore:string;percentage:string|null;returnedAt:string|null}|null }[]>>({});
   useEffect(() => { let cancelled = false; const token = localStorage.getItem("dallyletter_token"); if (!lessons?.length) return; Promise.all(lessons.map(async lesson => { try { const r = await fetch(getApiUrl(`/api/exercises/lessons/${lesson.id}/exercises`), { headers: token ? { Authorization: `Bearer ${token}` } : {} }); return [lesson.id, r.ok ? await r.json() : []] as const; } catch { return [lesson.id, []] as const; } })).then(rows => { if (!cancelled) setExerciseMap(Object.fromEntries(rows)); }); return () => { cancelled = true; }; }, [lessons]);
 
-  const filteredLessons = lessons?.filter(lesson => {
+  const filteredLessons = [...(lessons ?? [])].filter(lesson => {
     const matchesSearch = lesson.title.toLowerCase().includes(search.toLowerCase()) ||
                           (lesson.description?.toLowerCase().includes(search.toLowerCase()));
     const matchesSubject = subjectFilter === "all" || lesson.subject === subjectFilter;
@@ -50,7 +50,7 @@ export default function StudentLessons() {
     const selectedClass = classes.find(item => String(item.id) === classFilter);
     const matchesClass = !selectedClass || (lesson.subject === selectedClass.subject && (!selectedClass.grade || lesson.grade === selectedClass.grade));
     return matchesSearch && matchesSubject && matchesTeacher && matchesClass;
-  });
+  }).sort((a,b) => sortMode === "oldest" ? new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() : sortMode === "subject" ? a.subject.localeCompare(b.subject) || a.title.localeCompare(b.title) : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   const subjects = Array.from(new Set(lessons?.map(l => l.subject) || []));
 
@@ -108,10 +108,10 @@ export default function StudentLessons() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <Select value={teacherFilter} onValueChange={setTeacherFilter}><SelectTrigger><SelectValue placeholder="Teacher" /></SelectTrigger><SelectContent><SelectItem value="all">All teachers</SelectItem>{Array.from(new Map((lessons ?? []).map(l=>[String(l.teacherId),l.teacherName])).entries()).map(([id,name])=><SelectItem key={id} value={id}>{name}</SelectItem>)}</SelectContent></Select>
-          <Select value={classFilter} onValueChange={setClassFilter}><SelectTrigger><SelectValue placeholder="Class" /></SelectTrigger><SelectContent><SelectItem value="all">All classes</SelectItem>{classes.map(item=><SelectItem key={item.id} value={String(item.id)}>{item.title}{item.grade?` · ${item.grade}`:""}</SelectItem>)}</SelectContent></Select>
-          <Select value={sortMode} onValueChange={(v)=>setSortMode(v as "newest"|"oldest"|"subject")}><SelectTrigger className="h-10 w-full sm:w-[130px]"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="newest">Newest</SelectItem><SelectItem value="oldest">Oldest</SelectItem><SelectItem value="subject">Subject</SelectItem></SelectContent></Select>
-          <Select value={subjectFilter} onValueChange={setSubjectFilter}>
+          <div className="flex shrink-0 items-center gap-1 rounded-lg border border-white/15 px-2 text-white"><Users className="h-4 w-4" /><Select value={teacherFilter} onValueChange={setTeacherFilter}><SelectTrigger className="h-9 w-[118px] border-0 bg-transparent text-white focus:ring-0"><SelectValue placeholder="All teachers" /></SelectTrigger><SelectContent><SelectItem value="all">All teachers</SelectItem>{Array.from(new Map((lessons ?? []).map(l=>[String(l.teacherId),l.teacherName])).entries()).map(([id,name])=><SelectItem key={id} value={id}>{name}</SelectItem>)}</SelectContent></Select></div>
+          <div className="flex shrink-0 items-center gap-1 rounded-lg border border-white/15 px-2 text-white"><Layers className="h-4 w-4" /><Select value={classFilter} onValueChange={setClassFilter}><SelectTrigger className="h-9 w-[118px] border-0 bg-transparent text-white focus:ring-0"><SelectValue placeholder="All classes" /></SelectTrigger><SelectContent><SelectItem value="all">All classes</SelectItem>{classes.map(item=><SelectItem key={item.id} value={String(item.id)}>{item.title}{item.grade?` · ${item.grade}`:""}</SelectItem>)}</SelectContent></Select></div>
+          <div className="flex shrink-0 items-center gap-1 rounded-lg border border-white/15 px-2 text-white"><Clock className="h-4 w-4" /><Select value={sortMode} onValueChange={(v)=>setSortMode(v as "newest"|"oldest"|"subject")}><SelectTrigger className="h-9 w-[118px] border-0 bg-transparent text-white focus:ring-0"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="newest">Newest</SelectItem><SelectItem value="oldest">Oldest</SelectItem><SelectItem value="subject">Subject</SelectItem></SelectContent></Select></div>
+          <div className="flex shrink-0 items-center gap-1 rounded-lg border border-white/15 px-2 text-white"><ListFilter className="h-4 w-4" /><Select value={subjectFilter} onValueChange={setSubjectFilter}>
             <SelectTrigger className="w-full sm:w-[200px] h-11">
               <SelectValue placeholder="All Subjects" />
             </SelectTrigger>
@@ -121,7 +121,7 @@ export default function StudentLessons() {
                 <SelectItem key={sub} value={sub}>{sub}</SelectItem>
               ))}
             </SelectContent>
-          </Select>
+          </Select></div>
         </div>
 
         {/* Lessons Grid */}
