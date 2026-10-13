@@ -222,7 +222,7 @@ router.delete("/messages/:id", requireAuth, async (req, res): Promise<void> => {
   }
   if (!allowed) { res.status(403).json({ error: "You can delete your own messages. Only the platform owner or group creator can delete another member's group message." }); return; }
   await db.delete(messagesTable).where(eq(messagesTable.id, id));
-  const storageKey = message.mediaUrl?.match(/\\/api\\/messages\\/media\\/([a-f0-9-]{36})/i)?.[1];
+  const storageKey = message.mediaUrl?.match(/\/api\/messages\/media\/([a-f0-9-]{36})/i)?.[1];
   if (storageKey) { try { await deleteStoredMedia(storageKey); } catch { /* Message is deleted; media cleanup can be retried without restoring the message. */ } }
   res.sendStatus(204);
 });
