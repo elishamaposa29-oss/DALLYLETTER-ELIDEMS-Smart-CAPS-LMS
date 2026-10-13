@@ -132,9 +132,9 @@ export async function dispatchPendingPushNotifications(): Promise<void> {
     LEFT JOIN notification_preferences np ON np.user_id = ps.user_id
     WHERE n.push_sent_at IS NULL
       AND COALESCE(np.push_enabled, true) = true
-      AND n.created_at > now() - interval '24 hours'
-    ORDER BY n.id ASC
-    LIMIT 100
+      AND n.created_at > now() - interval '1 minute'
+    ORDER BY n.created_at DESC, n.id DESC
+    LIMIT 10
   `);
   const grouped = new Map<number, typeof rows>();
   for (const row of rows) grouped.set(row.id, [...(grouped.get(row.id) ?? []), row]);
@@ -164,5 +164,5 @@ export function startPushDispatcher(): void {
   if (!isPushConfigured()) return;
   const run = () => dispatchPendingPushNotifications().catch(() => undefined);
   void run();
-  setInterval(run, 5000).unref();
+  setInterval(run, 60000).unref();
 }
