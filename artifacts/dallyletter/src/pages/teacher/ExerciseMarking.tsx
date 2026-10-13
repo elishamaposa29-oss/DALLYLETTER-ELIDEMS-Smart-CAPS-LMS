@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
+import { sanitizeRichText } from "@/components/RichTextEditor";
 
 function DrawAnswer({ data, markingData }: { data: unknown; markingData?: Record<string,unknown>|null }) {
   const source = data as { teacherDrawing?: any; learnerDrawing?: any; strokes?: { x:number;y:number;px:number;py:number;color?:string;width?:number;tool?:string;opacity?:number }[]; paintStrokes?: { x:number;y:number;px:number;py:number;color?:string;width?:number;opacity?:number }[]; labels?: { text:string;x:number;y:number;anchorX?:number;anchorY?:number;color?:string;opacity?:number }[]; pointers?: { x:number;y:number;length?:number;thickness?:number;opacity?:number;color?:string;angle?:number }[] };
@@ -463,7 +464,7 @@ export default function ExerciseMarking() {
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
                         <div className="font-medium">Question {q?.position != null ? q.position + 1 : i + 1}</div>
-                        {q?.prompt && <p className="mt-1 text-sm">{q.prompt}</p>}
+                        {q?.prompt && <div className="prose prose-sm dark:prose-invert mt-1 max-w-none break-words" dangerouslySetInnerHTML={{ __html: sanitizeRichText(q.prompt) }} />}
                       </div>
                       <Badge variant="secondary">{q?.marksAllocated ?? "—"} marks</Badge>
                     </div>
