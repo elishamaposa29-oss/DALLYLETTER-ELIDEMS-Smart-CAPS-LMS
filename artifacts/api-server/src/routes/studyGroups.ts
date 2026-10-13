@@ -3,7 +3,7 @@ import { Router, type IRouter } from "express";
 import { eq, and, count } from "drizzle-orm";
 import { db, studyGroupsTable, studyGroupMembersTable, usersTable, activityLogTable, groupSettingsTable, groupMemberControlsTable, messagesTable } from "@workspace/db";
 import { pool } from "@workspace/db";
-import { deleteStoredMedia } from "../lib/media-storage";
+import { removeStoredMedia } from "../lib/media-storage";
 import {
   CreateStudyGroupBody,
   GetStudyGroupParams,
@@ -264,7 +264,7 @@ router.patch("/study-groups/:id/profile", requireAuth, async (req, res): Promise
   const [updated] = await db.update(studyGroupsTable).set({ grade, topic, coverImageUrl }).where(eq(studyGroupsTable.id, groupId)).returning();
   if (coverImageUrl !== group.coverImageUrl && group.coverImageUrl) {
     const oldKey = group.coverImageUrl.match(/\/api\/lessons\/media\/([a-f0-9-]{36})/i)?.[1];
-    if (oldKey) { try { await deleteStoredMedia(oldKey); } catch { /* Old cover cleanup can be retried independently. */ } }
+    if (oldKey) { try { await removeStoredMedia(oldKey); } catch { /* Old cover cleanup can be retried independently. */ } }
   }
   res.json(updated);
 });
@@ -369,7 +369,7 @@ router.delete("/study-groups/:id", requireAuth, async (req, res): Promise<void> 
     await client.query("DELETE FROM study_group_members WHERE group_id=$1", [groupId]);
     await client.query("DELETE FROM study_groups WHERE id=$1", [groupId]);
     await client.query("COMMIT");
-    for (const key of mediaKeys) { try { await deleteStoredMedia(key); } catch { /* Group data is deleted; orphaned storage cleanup can be retried independently. */ } }
+    for (const key of mediaKeys) { try { await removeStoredMedia(key); } catch { /* Group data is deleted; orphaned storage cleanup can be retried independently. */ } }
     res.status(200).json({ ok: true, deletedGroupId: groupId, deletedGroupName: found.rows[0].name });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
