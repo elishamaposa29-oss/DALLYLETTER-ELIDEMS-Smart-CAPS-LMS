@@ -30,6 +30,11 @@ export default function StudentAssignments() {
       .then(async (data) => {
         const list = Array.isArray(data) ? data : [];
         setAssignments(list);
+        const requestedAssignmentId = Number(new URLSearchParams(window.location.search).get("assignment"));
+        if (Number.isInteger(requestedAssignmentId) && requestedAssignmentId > 0) {
+          const requestedAssignment = list.find((assignment: any) => Number(assignment.id) === requestedAssignmentId);
+          if (requestedAssignment) setSelected(requestedAssignment);
+        }
         const subs: Record<number, any> = {};
         await Promise.all(list.map(async (a: any) => {
           try {
