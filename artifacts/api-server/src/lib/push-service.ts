@@ -139,6 +139,7 @@ export async function dispatchPendingPushNotifications(): Promise<void> {
       JOIN push_subscriptions ps ON (n.recipient_id = ps.user_id OR n.recipient_id IS NULL)
       LEFT JOIN notification_preferences np ON np.user_id = ps.user_id
       WHERE n.push_sent_at IS NULL
+        AND n.is_read = false
         AND COALESCE(np.push_enabled, true) = true
         AND n.created_at > now() - interval '1 minute'
     )
