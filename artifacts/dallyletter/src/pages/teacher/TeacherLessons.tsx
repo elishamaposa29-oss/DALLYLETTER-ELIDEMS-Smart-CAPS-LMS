@@ -420,7 +420,7 @@ export default function TeacherLessons() {
                       Added on {new Date(lesson.createdAt).toLocaleDateString()}
                     </div>
                   </CardContent>
-                  {activeExerciseLessonId === lesson.id && (
+                  {activeExerciseLessonId === lesson.id && canManageLesson(lesson) && (
                     <CardContent className="border-t pt-4">
                       <ExerciseBuilderPanel
                         lessonId={lesson.id}
