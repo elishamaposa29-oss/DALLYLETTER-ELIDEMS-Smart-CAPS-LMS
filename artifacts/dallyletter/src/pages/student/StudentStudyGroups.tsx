@@ -93,6 +93,13 @@ export default function StudentStudyGroups() {
   const refresh = () => void queryClient.invalidateQueries({ queryKey: getListStudyGroupsQueryKey() });
   const canCreateGroup = user?.role === "owner" || user?.role === "teacher" || user?.isManager === true || user?.isPrefect === true;
   const isManager = user?.role === "owner" || user?.isManager === true;
+  const groupSlides = Array.from(groups.reduce((slides, group) => {
+    const key = [group.grade || "All grades", group.subject || "Other subject", group.topic || "General"].join(" · ");
+    const existing = slides.get(key) ?? [];
+    existing.push(group);
+    slides.set(key, existing);
+    return slides;
+  }, new Map<string, GroupView[]>()).entries());
 
   const handleCreate = (event: FormEvent) => {
     event.preventDefault();
@@ -217,7 +224,7 @@ export default function StudentStudyGroups() {
                 <Input placeholder="Subject (e.g. Mathematics)" value={subject} onChange={event => setSubject(event.target.value)} required maxLength={120} />
                 <Input placeholder="Grade / Form (e.g. Form 3)" value={grade} onChange={event => setGrade(event.target.value)} maxLength={80} />
                 <Input placeholder="Topic (e.g. Algebra)" value={topic} onChange={event => setTopic(event.target.value)} maxLength={120} />
-                {user?.role === "owner" && <div className="sm:col-span-2 space-y-2"><label className="text-sm font-medium" htmlFor="group-cover-image">Group cover image (owner upload)</label><Input id="group-cover-image" type="file" accept="image/*" onChange={event => setCoverFile(event.target.files?.[0] ?? null)} /><p className="text-xs text-muted-foreground">Use an image up to the platform's media upload limit. The image is stored through the existing persistent media service.</p>{coverFile && <img src={URL.createObjectURL(coverFile)} alt="Selected group cover preview" className="h-28 w-full rounded-lg object-cover" />}</div>}
+                {user?.role === "owner" && <div className="sm:col-span-2 space-y-2"><label className="text-sm font-medium" htmlFor="group-cover-image">Group cover image (owner upload)</label><Input id="group-cover-image" type="file" accept="image/*" onChange={event => setCoverFile(event.target.files?.[0] ?? null)} /><p className="text-xs text-muted-foreground">Use an image up to the platform's media upload limit. The image is stored through the existing persistent media service.</p>{coverFile && <p className="text-xs text-muted-foreground">Selected: {coverFile.name}</p>}</div>}
                 <Textarea className="sm:col-span-2" placeholder="What will this group focus on?" value={description} onChange={event => setDescription(event.target.value)} rows={3} maxLength={1000} />
               </CardContent>
               <CardFooter className="gap-2">
@@ -289,14 +296,18 @@ export default function StudentStudyGroups() {
                 <p className="font-medium">No study groups yet</p>
                 <p className="mt-1 text-sm text-muted-foreground">Create the first group for your class or subject.</p>
               </div>
-            ) : groups.map(group => {
+            ) : groupSlides.map(([slideKey, slideGroups]) => (
+              <section key={slideKey} className="col-span-full min-w-0 space-y-3">
+                <div className="flex items-center justify-between gap-3"><h2 className="text-sm font-semibold">{slideKey}</h2><span className="text-xs text-muted-foreground">{slideGroups.length} group{slideGroups.length === 1 ? "" : "s"}</span></div>
+                <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-3">
+                  {slideGroups.map(group => {
               const isMember = group.isMember ?? group.members?.some(member => member.id === user?.id) ?? false;
               const isOwner = group.creatorId === user?.id;
               const selectedControl = group.members?.find(member => member.id === user?.id)?.control;
               const canManage = isOwner || isManager || selectedControl?.canManageSettings === true;
               const groupSettings = group.settings ?? defaultSettings(group.id);
               return (
-                <Card key={group.id} className="flex h-full flex-col transition-shadow hover:shadow-md">
+                <Card key={group.id} className="flex h-full w-[min(88vw,360px)] shrink-0 snap-start flex-col transition-shadow hover:shadow-md">
                   <CardHeader>
                     {group.coverImageUrl && <img src={getApiUrl(group.coverImageUrl)} alt={`${group.name} cover`} className="mb-3 h-32 w-full rounded-lg object-cover" loading="lazy" />}
                     <div className="flex items-start justify-between gap-2">
@@ -379,7 +390,10 @@ export default function StudentStudyGroups() {
                   </CardFooter>
                 </Card>
               );
-            })}
+                  })}
+                </div>
+              </section>
+            ))}
           </div>
         )}
       </div>
