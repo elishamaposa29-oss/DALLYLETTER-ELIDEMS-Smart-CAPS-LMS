@@ -113,6 +113,8 @@ export function ExerciseBuilderPanel({lessonId,onSaved,onClose}:ExerciseBuilderP
        if(!pr.ok)throw new Error((await pr.json().catch(()=>null))?.error||"Could not publish exercise");
        setMessage(aiEnabled?"Exercise published with AI marking enabled. AI will remain teacher-controlled and will never auto-return a result.":"Exercise published and attached to this lesson.");
      }else setMessage("Exercise saved as a draft.");
+     // Reuse the successfully saved draft on later saves/publish actions instead of creating duplicates.
+     setPreparedExerciseId(exercise.id);
      onSaved?.();
    }catch(e){setMessage(e instanceof Error?e.message:"Something went wrong while saving the exercise.");}finally{setBusy(false)}
  };
