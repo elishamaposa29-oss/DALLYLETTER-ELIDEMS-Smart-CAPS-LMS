@@ -6,6 +6,7 @@ import {
   useLeaveStudyGroup,
   useCreateStudyGroup,
   getListStudyGroupsQueryKey,
+  getApiUrl,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,9 @@ type GroupView = {
   id: number;
   name: string;
   subject: string;
+  grade?: string | null;
+  topic?: string | null;
+  coverImageUrl?: string | null;
   description: string | null;
   creatorId: number;
   creatorName: string;
@@ -77,6 +81,9 @@ export default function StudentStudyGroups() {
   const [name, setName] = useState("");
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
+  const [grade, setGrade] = useState("");
+  const [topic, setTopic] = useState("");
+  const [coverFile, setCoverFile] = useState<File | null>(null);
   const [busyGroup, setBusyGroup] = useState<number | null>(null);
   const [moderationTargetByGroup, setModerationTargetByGroup] = useState<Record<number, number>>({});
   const [editingGroupId, setEditingGroupId] = useState<number | null>(null);
@@ -93,13 +100,27 @@ export default function StudentStudyGroups() {
     createGroupMutation.mutate(
       { data: { name: name.trim(), subject: subject.trim(), description: description.trim() || null } },
       {
-        onSuccess: () => {
-          toast({ title: "Study group created", description: "Your group is ready for learners to join." });
-          setName("");
-          setSubject("");
-          setDescription("");
-          setShowCreate(false);
-          refresh();
+        onSuccess: async (created) => {
+          try {
+            let coverImageUrl: string | undefined;
+            if (coverFile && user?.role === "owner") {
+              const formData = new FormData();
+              formData.append("file", coverFile);
+              const token = localStorage.getItem("dallyletter_token");
+              const upload = await fetch(getApiUrl("/api/lessons/media"), { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData });
+              const uploaded = await upload.json().catch(() => null) as { mediaUrl?: string; error?: string } | null;
+              if (!upload.ok || !uploaded?.mediaUrl) throw new Error(uploaded?.error ?? "Group cover upload failed.");
+              coverImageUrl = uploaded.mediaUrl;
+            }
+            const createdId = (created as unknown as { id: number }).id;
+            const profile = await apiJson(`/api/study-groups/${createdId}/profile`, { method: "PATCH", body: JSON.stringify({ grade, topic, ...(coverImageUrl ? { coverImageUrl } : {}) }) });
+            void profile;
+            toast({ title: "Study group created", description: "Your group profile is ready for learners to join." });
+            setName(""); setSubject(""); setDescription(""); setGrade(""); setTopic(""); setCoverFile(null); setShowCreate(false); refresh();
+          } catch (error) {
+            toast({ variant: "destructive", title: "Group created but profile needs attention", description: error instanceof Error ? error.message : "Update the group profile and retry." });
+            refresh();
+          }
         },
         onError: (error) => toast({ variant: "destructive", title: "Could not create group", description: error.message }),
       },
@@ -194,6 +215,9 @@ export default function StudentStudyGroups() {
               <CardContent className="grid gap-4 sm:grid-cols-2">
                 <Input placeholder="Group name" value={name} onChange={event => setName(event.target.value)} required maxLength={120} />
                 <Input placeholder="Subject (e.g. Mathematics)" value={subject} onChange={event => setSubject(event.target.value)} required maxLength={120} />
+                <Input placeholder="Grade / Form (e.g. Form 3)" value={grade} onChange={event => setGrade(event.target.value)} maxLength={80} />
+                <Input placeholder="Topic (e.g. Algebra)" value={topic} onChange={event => setTopic(event.target.value)} maxLength={120} />
+                {user?.role === "owner" && <div className="sm:col-span-2 space-y-2"><label className="text-sm font-medium" htmlFor="group-cover-image">Group cover image (owner upload)</label><Input id="group-cover-image" type="file" accept="image/*" onChange={event => setCoverFile(event.target.files?.[0] ?? null)} /><p className="text-xs text-muted-foreground">Use an image up to the platform's media upload limit. The image is stored through the existing persistent media service.</p>{coverFile && <img src={URL.createObjectURL(coverFile)} alt="Selected group cover preview" className="h-28 w-full rounded-lg object-cover" />}</div>}
                 <Textarea className="sm:col-span-2" placeholder="What will this group focus on?" value={description} onChange={event => setDescription(event.target.value)} rows={3} maxLength={1000} />
               </CardContent>
               <CardFooter className="gap-2">
@@ -274,12 +298,13 @@ export default function StudentStudyGroups() {
               return (
                 <Card key={group.id} className="flex h-full flex-col transition-shadow hover:shadow-md">
                   <CardHeader>
+                    {group.coverImageUrl && <img src={getApiUrl(group.coverImageUrl)} alt={`${group.name} cover`} className="mb-3 h-32 w-full rounded-lg object-cover" loading="lazy" />}
                     <div className="flex items-start justify-between gap-2">
                       <Badge variant="secondary">{group.subject}</Badge>
                       <div className="flex items-center gap-1.5 rounded-full bg-muted px-2 py-1 text-sm text-muted-foreground"><Users className="h-3.5 w-3.5" /><span>{group.memberCount}/{groupSettings.maxMembers}</span></div>
                     </div>
                     <CardTitle className="mt-2 text-xl">{group.name}</CardTitle>
-                    <CardDescription>Created by {group.creatorName}</CardDescription>
+                    <CardDescription>Created by {group.creatorName}{group.grade ? ` · ${group.grade}` : ""}{group.topic ? ` · ${group.topic}` : ""}</CardDescription>
                     {isMember && <Badge className="mt-2 w-fit" variant="outline">Joined</Badge>}
                   </CardHeader>
                   <CardContent className="flex-1 space-y-4">
