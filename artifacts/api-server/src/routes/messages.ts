@@ -215,13 +215,15 @@ router.delete("/messages/:id", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!, id = Number(req.params.id);
   const [message] = await db.select().from(messagesTable).where(eq(messagesTable.id, id));
   if (!message) { res.status(404).json({ error: "Message not found" }); return; }
-  let allowed = message.senderId === user.id || user.role === "owner" || user.isManager || user.isPrefect;
+  let allowed = message.senderId === user.id || isOwnerRole(user.role);
   if (message.groupId) {
     const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, message.groupId));
-    allowed = allowed && Boolean(group) && (message.senderId === user.id || user.role === "owner" || user.isManager || user.isPrefect || group!.creatorId === user.id);
+    allowed = Boolean(group) && (message.senderId === user.id || isOwnerRole(user.role) || group!.creatorId === user.id);
   }
-  if (!allowed) { res.status(403).json({ error: "You cannot delete this message" }); return; }
+  if (!allowed) { res.status(403).json({ error: "You can delete your own messages. Only the platform owner or group creator can delete another member's group message." }); return; }
   await db.delete(messagesTable).where(eq(messagesTable.id, id));
+  const storageKey = message.mediaUrl?.match(/\\/api\\/messages\\/media\\/([a-f0-9-]{36})/i)?.[1];
+  if (storageKey) { try { await deleteStoredMedia(storageKey); } catch { /* Message is deleted; media cleanup can be retried without restoring the message. */ } }
   res.sendStatus(204);
 });
 
