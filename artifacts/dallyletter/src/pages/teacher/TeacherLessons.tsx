@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Plus, Trash2, Video, Image as ImageIcon, Headphones, FileText, BookOpen, Upload, X, ClipboardList, ClipboardCheck, Bell, Users, Clock, ListFilter, ArrowDownUp } from "lucide-react";
+import { Loader2, Plus, Trash2, Video, Image as ImageIcon, Headphones, FileText, BookOpen, Upload, X, ClipboardList, ClipboardCheck, Bell, Users, Clock, ListFilter, ArrowDownUp, Maximize2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -38,6 +38,16 @@ export default function TeacherLessons() {
   const visibleLessons = [...(lessons ?? [])]
     .filter((lesson) => user?.role !== "teacher" || showAllTeachers || lesson.teacherId === user.id)
     .sort((a,b) => sortMode === "oldest" ? new Date(a.createdAt).getTime()-new Date(b.createdAt).getTime() : sortMode === "subject" ? String(a.subject).localeCompare(String(b.subject)) : new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime());
+  const canManageLesson = (lesson: { teacherId: number }) => lesson.teacherId === user?.id || user?.role === "owner" || (user?.role === "teacher" && Boolean((user as any).isManager) && (user as any).managerLevel === "senior");
+  const requestPermission = async (contentId:number,requestedAction:"edit"|"create_exercise"|"delete"|"notify") => {
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const r = await fetch(getApiUrl("/api/content-permissions"), {method:"POST",headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({contentType:"lesson",contentId,requestedAction})});
+      const d = await r.json().catch(()=>({}));
+      if(!r.ok) throw new Error(d.error || "Permission request failed");
+      toast({title:d.alreadyAuthorized?"Already authorized":"Permission requested",description:d.pending?"The lesson creator will review your request.":"Permission is already available."});
+    } catch(e) { toast({variant:"destructive",title:"Permission request failed",description:e instanceof Error?e.message:"Try again"}); }
+  };
   const createLessonMutation = useCreateLesson();
   const deleteLessonMutation = useDeleteLesson();
   const { toast } = useToast();
@@ -418,7 +428,17 @@ export default function TeacherLessons() {
                       />
                     </CardContent>
                   )}
-                  <CardFooter className="pt-4 border-t flex justify-end gap-2">
+                  <CardFooter className="pt-4 border-t flex flex-wrap justify-end gap-2">
+                    {user?.role === "teacher" && lesson.teacherId !== user.id ? (
+                      <>
+                        <Button type="button" variant="outline" size="icon" title="Preview lesson" aria-label="Preview lesson" onClick={() => window.location.assign(`/preview/lesson/${lesson.id}`)}><Maximize2 className="h-4 w-4" /></Button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => void requestPermission(lesson.id,"edit")}>Request edit</Button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => void requestPermission(lesson.id,"create_exercise")}>Request exercise</Button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => void requestPermission(lesson.id,"notify")}>Request notify</Button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => void requestPermission(lesson.id,"delete")}>Request delete</Button>
+                      </>
+                    ) : (
+                      <>
                     <Button
                       variant={activeExerciseLessonId === lesson.id ? "secondary" : "outline"}
                       size="sm"
@@ -478,6 +498,8 @@ export default function TeacherLessons() {
                       <Trash2 className="h-4 w-4" />
                       Delete
                     </Button>
+                      </>
+                    )}
                   </CardFooter>
                 </Card>
               ))
