@@ -2,6 +2,8 @@
 import { Router, type IRouter } from "express";
 import { eq, and, isNull, or, inArray } from "drizzle-orm";
 import { createReadStream } from "node:fs";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import multer from "multer";
 import { db, messagesTable, activityLogTable, studyGroupMembersTable, studyGroupsTable, contentFlagsTable, auditLogsTable, groupMemberControlsTable, groupSettingsTable, usersTable } from "@workspace/db";
 import {
@@ -10,7 +12,7 @@ import {
 } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth-middleware";
 import { getAIProvider } from "../lib/ai-provider";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, deleteStoredMedia, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, deleteStoredMedia, persistUploadedMedia, streamStoredMedia, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
 
 const MAX_CHAT_MEDIA_SIZE_BYTES = MAX_MEDIA_SIZE_BYTES;
 import { isOwnerRole, normalizeRole } from "../lib/auth-middleware";
@@ -105,6 +107,7 @@ router.post("/messages/media", requireAuth, (req, res): void => {
         }
       }
 
+      await persistUploadedMedia(req.file.filename, req.file.mimetype, req.file.path);
       res.status(201).json({
         mediaUrl: messageMediaPath(req.file.filename) + "?type=" + encodeURIComponent(req.file.mimetype),
         storageKey: req.file.filename,
@@ -132,6 +135,17 @@ router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise
     : message.recipientId != null && (isOwnerRole(user.role) || message.recipientId === user.id || message.senderId === user.id);
   if (!allowed) { res.status(403).json({ error: "You cannot access this media" }); return; }
   try {
+    const remote = await streamStoredMedia(storageKey, req.headers.range);
+    if (remote) {
+      res.status(remote.status);
+      remote.headers.forEach((value, key) => res.setHeader(key, value));
+      if (remote.body) {
+        await pipeline(Readable.fromWeb(remote.body as import("node:stream/web").ReadableStream<Uint8Array>), res);
+      } else {
+        res.end();
+      }
+      return;
+    }
     const stats = await getMediaStats(storageKey);
     res.setHeader("Content-Type", typeof req.query.type === "string" && isAllowedMediaType(req.query.type) ? req.query.type : "audio/webm");
     res.setHeader("Content-Length", stats.size);
