@@ -19,6 +19,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { CreateLessonBodyType } from "@workspace/api-client-react";
 import { ExerciseBuilderPanel } from "@/components/exercises/ExerciseBuilderPanel";
+import { RichTextEditor } from "@/components/RichTextEditor";
 
 const createLessonSchema = z.object({
   title: z.string().min(2, "Title is required"),
@@ -331,7 +332,7 @@ export default function TeacherLessons() {
                       <FormItem>
                         <FormLabel>Content / Notes (Optional)</FormLabel>
                         <FormControl>
-                          <Textarea placeholder="Full lesson content..." className="min-h-[150px]" {...field} />
+                          <RichTextEditor value={field.value ?? ""} onChange={field.onChange} placeholder="Write the lesson content. Formatting is preserved; raw HTML/CSS/source code is not displayed as lesson text." className="min-h-[220px]" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -378,13 +379,15 @@ export default function TeacherLessons() {
           </DialogContent>
         </Dialog>
 
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-3">
-          <Button type="button" size="sm" variant={!showAllTeachers ? "default" : "outline"} onClick={() => setShowAllTeachers(false)} title="Show your lessons"><BookOpen className="mr-1 h-4 w-4" />My lessons</Button>
-          <Button type="button" size="sm" variant={showAllTeachers ? "default" : "outline"} onClick={() => setShowAllTeachers(true)} title="Preview other teachers’ lessons"><Users className="mr-1 h-4 w-4" />All teachers · preview</Button>
-          <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground"><Clock className="h-4 w-4" />Sort</span>
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-2" aria-label="Lesson filters">
+          <Button type="button" size="icon" variant={!showAllTeachers ? "default" : "ghost"} onClick={() => setShowAllTeachers(false)} title="My lessons" aria-label="My lessons"><BookOpen className="h-4 w-4" /></Button>
+          <Button type="button" size="icon" variant={showAllTeachers ? "default" : "ghost"} onClick={() => setShowAllTeachers(true)} title="All teachers — preview only" aria-label="All teachers — preview only"><Users className="h-4 w-4" /></Button>
+          <span className="ml-1 text-xs text-muted-foreground" aria-live="polite">{showAllTeachers ? "All teachers · preview only" : "My lessons"}</span>
+          <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground"><ArrowDownUp className="h-4 w-4" />Sort</span>
           <Button type="button" size="icon" variant={sortMode === "newest" ? "secondary" : "ghost"} onClick={() => setSortMode("newest")} title="Newest first" aria-label="Newest first"><Clock className="h-4 w-4" /></Button>
           <Button type="button" size="icon" variant={sortMode === "oldest" ? "secondary" : "ghost"} onClick={() => setSortMode("oldest")} title="Oldest first" aria-label="Oldest first"><ArrowDownUp className="h-4 w-4" /></Button>
           <Button type="button" size="icon" variant={sortMode === "subject" ? "secondary" : "ghost"} onClick={() => setSortMode("subject")} title="Sort by subject" aria-label="Sort by subject"><ListFilter className="h-4 w-4" /></Button>
+          <span className="text-xs text-muted-foreground" aria-live="polite">{sortMode === "newest" ? "Newest" : sortMode === "oldest" ? "Oldest" : "Subject"}</span>
         </div>
         {showAllTeachers && <p className="text-xs text-muted-foreground">Other teachers’ lessons are preview-only. Request permission before editing or managing them.</p>}
         {isLoading ? (
@@ -435,9 +438,9 @@ export default function TeacherLessons() {
                     </CardContent>
                   )}
                   <CardFooter className="pt-4 border-t flex flex-wrap justify-end gap-2">
+                    <Button type="button" variant="outline" size="icon" title="Preview lesson" aria-label={`Preview ${lesson.title}`} onClick={() => window.location.assign(`/preview/lesson/${lesson.id}`)}><Maximize2 className="h-4 w-4" /></Button>
                     {!canManageLesson(lesson) ? (
                       <>
-                        <Button type="button" variant="outline" size="icon" title="Preview lesson" aria-label="Preview lesson" onClick={() => window.location.assign(`/preview/lesson/${lesson.id}`)}><Maximize2 className="h-4 w-4" /></Button>
                         <Button type="button" variant="outline" size="sm" onClick={() => void requestPermission(lesson.id,"edit")}>Request edit</Button>
                         <Button type="button" variant="outline" size="sm" onClick={() => void requestPermission(lesson.id,"create_exercise")}>Request exercise</Button>
                         <Button type="button" variant="outline" size="sm" onClick={() => void requestPermission(lesson.id,"notify")}>Request notify</Button>
