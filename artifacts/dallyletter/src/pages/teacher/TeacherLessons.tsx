@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { useAuth } from "@/contexts/AuthContext";
 import { useListLessons, useCreateLesson, useDeleteLesson, getApiUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Plus, Trash2, Video, Image as ImageIcon, Headphones, FileText, BookOpen, Upload, X, ClipboardList, ClipboardCheck, Bell } from "lucide-react";
+import { Loader2, Plus, Trash2, Video, Image as ImageIcon, Headphones, FileText, BookOpen, Upload, X, ClipboardList, ClipboardCheck, Bell, Users, Clock, ListFilter, ArrowDownUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -31,6 +32,12 @@ const createLessonSchema = z.object({
 
 export default function TeacherLessons() {
   const { data: lessons, isLoading } = useListLessons();
+  const { user } = useAuth();
+  const [showAllTeachers, setShowAllTeachers] = useState(false);
+  const [sortMode, setSortMode] = useState<"newest"|"oldest"|"subject">("newest");
+  const visibleLessons = [...(lessons ?? [])]
+    .filter((lesson) => user?.role !== "teacher" || showAllTeachers || lesson.teacherId === user.id)
+    .sort((a,b) => sortMode === "oldest" ? new Date(a.createdAt).getTime()-new Date(b.createdAt).getTime() : sortMode === "subject" ? String(a.subject).localeCompare(String(b.subject)) : new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime());
   const createLessonMutation = useCreateLesson();
   const deleteLessonMutation = useDeleteLesson();
   const { toast } = useToast();
@@ -355,18 +362,27 @@ export default function TeacherLessons() {
           </DialogContent>
         </Dialog>
 
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-3">
+          <Button type="button" size="sm" variant={!showAllTeachers ? "default" : "outline"} onClick={() => setShowAllTeachers(false)} title="Show your lessons"><BookOpen className="mr-1 h-4 w-4" />My lessons</Button>
+          <Button type="button" size="sm" variant={showAllTeachers ? "default" : "outline"} onClick={() => setShowAllTeachers(true)} title="Preview other teachers’ lessons"><Users className="mr-1 h-4 w-4" />All teachers · preview</Button>
+          <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground"><Clock className="h-4 w-4" />Sort</span>
+          <Button type="button" size="icon" variant={sortMode === "newest" ? "secondary" : "ghost"} onClick={() => setSortMode("newest")} title="Newest first" aria-label="Newest first"><Clock className="h-4 w-4" /></Button>
+          <Button type="button" size="icon" variant={sortMode === "oldest" ? "secondary" : "ghost"} onClick={() => setSortMode("oldest")} title="Oldest first" aria-label="Oldest first"><ArrowDownUp className="h-4 w-4" /></Button>
+          <Button type="button" size="icon" variant={sortMode === "subject" ? "secondary" : "ghost"} onClick={() => setSortMode("subject")} title="Sort by subject" aria-label="Sort by subject"><ListFilter className="h-4 w-4" /></Button>
+        </div>
+        {showAllTeachers && <p className="text-xs text-muted-foreground">Other teachers’ lessons are preview-only. Request permission before editing or managing them.</p>}
         {isLoading ? (
           <div className="flex justify-center p-8">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {lessons?.length === 0 ? (
+            {visibleLessons.length === 0 ? (
               <div className="col-span-full text-center p-8 border rounded-lg bg-card">
                 <p className="text-muted-foreground">You haven't created any lessons yet.</p>
               </div>
             ) : (
-              lessons?.map((lesson) => (
+              visibleLessons.map((lesson) => (
                 <Card key={lesson.id} className="flex flex-col h-full hover:border-primary/50 transition-colors group">
                   <CardHeader className="pb-3">
                     <div className="flex justify-between items-start gap-2">
