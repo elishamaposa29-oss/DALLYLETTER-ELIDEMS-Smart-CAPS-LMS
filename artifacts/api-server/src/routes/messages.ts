@@ -12,7 +12,7 @@ import {
 } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth-middleware";
 import { getAIProvider } from "../lib/ai-provider";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, deleteStoredMedia, persistUploadedMedia, streamStoredMedia, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, removeStoredMedia, persistUploadedMedia, streamStoredMedia, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
 
 const MAX_CHAT_MEDIA_SIZE_BYTES = MAX_MEDIA_SIZE_BYTES;
 import { isOwnerRole, normalizeRole } from "../lib/auth-middleware";
@@ -93,7 +93,7 @@ router.post("/messages/media", requireAuth, (req, res): void => {
           ? await canAccessGroup(groupId, currentUser.id, currentUser.role)
           : await canMessageUser(currentUser, recipientId!));
       if (!allowed) {
-        await deleteStoredMedia(req.file.filename);
+        await removeStoredMedia(req.file.filename);
         res.status(403).json({ error: "You cannot upload media to this conversation" });
         return;
       }
@@ -101,7 +101,7 @@ router.post("/messages/media", requireAuth, (req, res): void => {
         const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, groupId));
         const [control] = await db.select().from(groupMemberControlsTable).where(and(eq(groupMemberControlsTable.groupId, groupId), eq(groupMemberControlsTable.userId, currentUser.id)));
         if (settings?.allowMedia === false || control?.mediaBlocked || control?.blocked || control?.suspended || control?.muted) {
-          await deleteStoredMedia(req.file.filename);
+          await removeStoredMedia(req.file.filename);
           res.status(403).json({ error: "Media uploads are disabled for you in this group" });
           return;
         }
@@ -223,7 +223,7 @@ router.delete("/messages/:id", requireAuth, async (req, res): Promise<void> => {
   if (!allowed) { res.status(403).json({ error: "You can delete your own messages. Only the platform owner or group creator can delete another member's group message." }); return; }
   await db.delete(messagesTable).where(eq(messagesTable.id, id));
   const storageKey = message.mediaUrl?.match(/\/api\/messages\/media\/([a-f0-9-]{36})/i)?.[1];
-  if (storageKey) { try { await deleteStoredMedia(storageKey); } catch { /* Message is deleted; media cleanup can be retried without restoring the message. */ } }
+  if (storageKey) { try { await removeStoredMedia(storageKey); } catch { /* Message is deleted; media cleanup can be retried without restoring the message. */ } }
   res.sendStatus(204);
 });
 
