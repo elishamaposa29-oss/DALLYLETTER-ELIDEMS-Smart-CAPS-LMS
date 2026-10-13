@@ -49,6 +49,11 @@ export default function StudentPolls() {
   }, []);
 
   useEffect(() => {
+    const requestedPollId = Number(new URLSearchParams(window.location.search).get("poll"));
+    if (user?.role === "student" && Number.isInteger(requestedPollId) && requestedPollId > 0) void loadLeaderboard(requestedPollId);
+  }, [user?.role]);
+
+  useEffect(() => {
     if (screen === "quiz" && activePoll?.timerSeconds && timeLeft === null) {
       setTimeLeft(activePoll.timerSeconds);
       return;
