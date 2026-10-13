@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Users, LogOut, Plus, Settings2, UserMinus, ShieldCheck, Mic, BarChart3, RefreshCw } from "lucide-react";
+import { Loader2, Users, LogOut, Plus, Settings2, UserMinus, ShieldCheck, Mic, BarChart3, RefreshCw, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -333,6 +333,11 @@ export default function StudentStudyGroups() {
                     )}
                   </CardContent>
                   <CardFooter className="flex flex-wrap gap-2 border-t pt-4">
+                    {user?.role === "owner" && <Button type="button" variant="outline" size="sm" className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/10" disabled={busyGroup === group.id} onClick={() => {
+                      if (!window.confirm(`Permanently delete "${group.name}" and its members, messages, polls, settings and moderation records from Dallyletter? This cannot be undone.`)) return;
+                      setBusyGroup(group.id);
+                      void apiJson<{ok:boolean;deletedGroupName:string}>(`/api/study-groups/${group.id}`,{method:"DELETE"}).then(result=>{toast({title:"Study group permanently deleted",description:result.deletedGroupName});if(editingGroupId===group.id){setEditingGroupId(null);setSettings(null);}refresh();}).catch(error=>toast({variant:"destructive",title:"Group deletion failed",description:error instanceof Error?error.message:"Try again."})).finally(()=>setBusyGroup(null));
+                    }}><Trash2 className="h-4 w-4" />Delete group</Button>}
                     {canManage && <Button variant="outline" className="gap-2" onClick={() => void openSettings(group.id)} disabled={busyGroup === group.id}><Settings2 className="h-4 w-4" />Settings</Button>}
                     {canManage && <Button variant="ghost" size="sm" onClick={() => {
                       if (!window.confirm("Clear all messages in this study group?")) return;
