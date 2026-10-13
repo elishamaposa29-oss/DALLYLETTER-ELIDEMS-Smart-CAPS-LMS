@@ -103,6 +103,9 @@ export default function StudentStudyGroups() {
   const [moderationTargetByGroup, setModerationTargetByGroup] = useState<Record<number, number>>({});
   const [editingGroupId, setEditingGroupId] = useState<number | null>(null);
   const [settings, setSettings] = useState<GroupSettings | null>(null);
+  const [profileGrade, setProfileGrade] = useState("");
+  const [profileTopic, setProfileTopic] = useState("");
+  const [profileCoverFile, setProfileCoverFile] = useState<File | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
 
   const refresh = () => void queryClient.invalidateQueries({ queryKey: getListStudyGroupsQueryKey() });
@@ -165,6 +168,10 @@ export default function StudentStudyGroups() {
   };
 
   const openSettings = async (groupId: number) => {
+    const group = groups.find(item => item.id === groupId);
+    setProfileGrade(group?.grade ?? "");
+    setProfileTopic(group?.topic ?? "");
+    setProfileCoverFile(null);
     setEditingGroupId(groupId);
     setSettingsLoading(true);
     try {
@@ -186,6 +193,20 @@ export default function StudentStudyGroups() {
         method: "PATCH",
         body: JSON.stringify(settings),
       });
+      const group = groups.find(item => item.id === settings.groupId);
+      const canEditProfile = user?.role === "owner" || user?.isManager === true || group?.creatorId === user?.id;
+      if (canEditProfile) {
+        let coverImageUrl: string | undefined;
+        if (profileCoverFile && user?.role === "owner") {
+          const formData = new FormData(); formData.append("file", profileCoverFile);
+          const token = localStorage.getItem("dallyletter_token");
+          const upload = await fetch(getApiUrl("/api/lessons/media"), { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData });
+          const uploaded = await upload.json().catch(() => null) as { mediaUrl?: string; error?: string } | null;
+          if (!upload.ok || !uploaded?.mediaUrl) throw new Error(uploaded?.error ?? "Group cover upload failed.");
+          coverImageUrl = uploaded.mediaUrl;
+        }
+        await apiJson(`/api/study-groups/${settings.groupId}/profile`, { method: "PATCH", body: JSON.stringify({ grade: profileGrade, topic: profileTopic, ...(coverImageUrl ? { coverImageUrl } : {}) }) });
+      }
       toast({ title: "Group settings saved" });
       setEditingGroupId(null);
       setSettings(null);
@@ -263,6 +284,11 @@ export default function StudentStudyGroups() {
             ) : (
               <form onSubmit={saveSettings}>
                 <CardContent className="space-y-4">
+                  {(user?.role === "owner" || user?.isManager === true || groups.find(item => item.id === settings.groupId)?.creatorId === user?.id) && <div className="grid gap-3 sm:grid-cols-2">
+                    <div><label className="text-sm font-medium" htmlFor="group-grade">Grade / Form</label><Input id="group-grade" className="mt-1" value={profileGrade} onChange={event => setProfileGrade(event.target.value)} maxLength={80} /></div>
+                    <div><label className="text-sm font-medium" htmlFor="group-topic">Topic</label><Input id="group-topic" className="mt-1" value={profileTopic} onChange={event => setProfileTopic(event.target.value)} maxLength={120} /></div>
+                    {user?.role === "owner" && <div className="sm:col-span-2"><label className="text-sm font-medium" htmlFor="group-cover-replace">Replace cover image</label><Input id="group-cover-replace" className="mt-1" type="file" accept="image/*" onChange={event => setProfileCoverFile(event.target.files?.[0] ?? null)} /><p className="mt-1 text-xs text-muted-foreground">{profileCoverFile ? profileCoverFile.name : "Only the platform owner can upload or replace group cover images."}</p></div>}
+                  </div>}
                   <div>
                     <label className="text-sm font-medium" htmlFor="group-rules">Group rules</label>
                     <Textarea id="group-rules" className="mt-1" value={settings.rules ?? ""} onChange={event => setSettings({ ...settings, rules: event.target.value })} rows={4} maxLength={4000} placeholder="Share the rules members should follow." />
