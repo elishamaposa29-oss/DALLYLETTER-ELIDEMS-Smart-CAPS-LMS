@@ -17,7 +17,7 @@ export default function TeacherHome() {
 
   const isLoading = statsLoading || classesLoading || activityLoading;
   const upcomingClasses = classes?.filter(c => c.status === "upcoming" || c.status === "live").slice(0, 5) ?? [];
-  const [selectedActivity, setSelectedActivity] = useState<typeof activity extends (infer T)[] | undefined ? T | null : any>(null);
+  const [selectedActivity, setSelectedActivity] = useState<any | null>(null);
 
   const statCards = [
     {
