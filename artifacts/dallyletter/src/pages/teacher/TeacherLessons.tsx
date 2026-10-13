@@ -19,7 +19,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { CreateLessonBodyType } from "@workspace/api-client-react";
 import { ExerciseBuilderPanel } from "@/components/exercises/ExerciseBuilderPanel";
-import { RichTextEditor } from "@/components/RichTextEditor";
+import { RichTextEditor, sanitizeRichText } from "@/components/RichTextEditor";
 
 const createLessonSchema = z.object({
   title: z.string().min(2, "Title is required"),
@@ -427,7 +427,7 @@ export default function TeacherLessons() {
                   </CardHeader>
                   <CardContent className="mt-auto flex-1">
                     <p className="text-sm text-muted-foreground line-clamp-3 mb-4">
-                      {lesson.description || "No description provided."}
+                      {lesson.description ? <span dangerouslySetInnerHTML={{ __html: sanitizeRichText(lesson.description) }} /> : "No description provided."}
                     </p>
                     <div className="text-xs text-muted-foreground">
                       Added on {new Date(lesson.createdAt).toLocaleDateString()}
