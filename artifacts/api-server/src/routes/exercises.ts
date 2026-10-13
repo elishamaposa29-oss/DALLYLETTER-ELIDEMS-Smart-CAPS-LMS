@@ -42,12 +42,20 @@ router.post("/answer-media", requireAuth, (req,res):void => {
     if (error instanceof multer.MulterError) { res.status(400).json({error:"A supported answer file up to 250 MB is required"}); return; }
     if (error) { res.status(400).json({error:"A supported answer file is required"}); return; }
     if (!req.file) { res.status(400).json({error:"A supported answer file is required"}); return; }
-    res.status(201).json({
-      mediaUrl: `/api/lessons/media/${req.file.filename}?type=${encodeURIComponent(req.file.mimetype)}`,
-      storageKey: req.file.filename,
-      fileName: req.file.originalname,
-      mimeType: req.file.mimetype,
-      size: req.file.size,
+    const file = req.file;
+    void persistUploadedMedia(file.filename, file.mimetype, file.path).then(() => {
+      if (res.headersSent) return;
+      res.status(201).json({
+        mediaUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`,
+        storageKey: file.filename,
+        fileName: file.originalname,
+        mimeType: file.mimetype,
+        size: file.size,
+      });
+    }).catch(async () => {
+      const { unlink } = await import("node:fs/promises");
+      await unlink(file.path).catch(() => undefined);
+      if (!res.headersSent) res.status(503).json({error:"Persistent media storage is unavailable. Configure durable object storage and retry."});
     });
   });
 });
