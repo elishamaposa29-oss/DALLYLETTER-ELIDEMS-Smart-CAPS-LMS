@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Calendar, Shield, Users, MessageSquare } from "lucide-react";
+import { Loader2, Calendar, Shield, Users, MessageSquare, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -63,6 +63,16 @@ export default function PrefectPanel() {
     if (response.ok) setRequests(await response.json());
   };
   useEffect(() => { loadRequests(); fetch(getApiUrl("/api/follows"), { headers: { Authorization: `Bearer ${token()}` } }).then(r=>r.ok?r.json():[]).then(d=>setFollows(Array.isArray(d)?d:[])).catch(()=>{}); }, []);
+  const deleteLessonRequest = async (id: number) => {
+    if (!window.confirm("Delete this lesson request? This cannot be undone.")) return;
+    try {
+      const response = await fetch(getApiUrl(`/api/achievements/lesson-requests/${id}`), { method: "DELETE", headers: { Authorization: `Bearer ${token()}` } });
+      const data = await response.json().catch(() => null) as {error?:string}|null;
+      if (!response.ok) throw new Error(data?.error ?? "Request could not be deleted.");
+      setRequests(current => current.filter(request => request.id !== id));
+      toast({ title: "Lesson request deleted" });
+    } catch (error) { toast({ variant: "destructive", title: "Could not delete request", description: error instanceof Error ? error.message : "Try again." }); }
+  };
   const toggleFollow = async (targetType:"teacher"|"prefect", targetUserId:number, targetName:string) => { const existing=follows.find(f=>f.targetType===targetType&&f.targetUserId===targetUserId); if(existing){ await fetch(getApiUrl(`/api/follows/${existing.id}`),{method:"DELETE",headers:{Authorization:`Bearer ${token()}`}}); setFollows(follows.filter(f=>f.id!==existing.id)); return; } const r=await fetch(getApiUrl("/api/follows"),{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token()}`},body:JSON.stringify({targetType,targetUserId,targetName})}); if(r.ok)setFollows([...follows,await r.json()]); };
 
 
@@ -75,6 +85,6 @@ export default function PrefectPanel() {
       <div className="space-y-2"><Label>Notes</Label><Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="What should the teacher cover?" /></div>
       <Button onClick={requestLesson} disabled={sending || loading} className="w-full gap-2">{sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquare className="h-4 w-4" />}Send to Teacher</Button>
     </CardContent></Card>
-    <Card><CardHeader><CardTitle className="flex items-center gap-2"><Calendar className="h-5 w-5" />My Lesson Requests</CardTitle></CardHeader><CardContent className="space-y-3">{requests.length === 0 ? <p className="text-sm text-muted-foreground">No lesson requests yet.</p> : requests.map(r => <div key={r.id} className="rounded-xl border p-3"><div className="flex justify-between gap-2"><p className="font-medium">{r.topic}</p><Badge variant="secondary">{r.status}</Badge></div><p className="text-xs text-muted-foreground mt-1">{r.preferredDate ? `Preferred: ${r.preferredDate}` : "No preferred date"}</p>{r.teacherReply && <p className="text-sm mt-2"><span className="font-semibold">Teacher reply:</span> {r.teacherReply}</p>}</div>)}</CardContent></Card><Card><CardHeader><CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" />Other Prefects</CardTitle></CardHeader><CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3">{prefects.map(p => <div key={p.id} className="rounded-xl border p-3 flex items-center gap-3"><div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center font-bold text-amber-700">{p.name.charAt(0)}</div><div className="min-w-0 flex-1"><p className="font-semibold truncate">{p.name}{p.id === user?.id ? " (You)" : ""}</p><p className="text-xs text-muted-foreground">{p.grade ?? "Learner"}</p></div><Badge variant="secondary">{p.badgeCount ?? 0} badges</Badge>{p.id !== user?.id && <Button type="button" size="sm" variant={follows.some(f=>f.targetType==="prefect"&&f.targetUserId===p.id)?"default":"outline"} onClick={()=>void toggleFollow("prefect",p.id,p.name)}>{follows.some(f=>f.targetType==="prefect"&&f.targetUserId===p.id)?"Following":"Follow"}</Button>}</div>)}</CardContent></Card>
+    <Card><CardHeader><CardTitle className="flex items-center gap-2"><Calendar className="h-5 w-5" />My Lesson Requests</CardTitle></CardHeader><CardContent className="space-y-3">{requests.length === 0 ? <p className="text-sm text-muted-foreground">No lesson requests yet.</p> : requests.map(r => <div key={r.id} className="rounded-xl border p-3"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="font-medium">{r.topic}</p><Badge variant="secondary">{r.status}</Badge></div><Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive" onClick={() => void deleteLessonRequest(r.id)} aria-label={`Delete lesson request ${r.topic}`} title="Delete request"><Trash2 className="h-4 w-4" /></Button></div><p className="text-xs text-muted-foreground mt-1">{r.preferredDate ? `Preferred: ${r.preferredDate}` : "No preferred date"}</p>{r.teacherReply && <p className="text-sm mt-2"><span className="font-semibold">Teacher reply:</span> {r.teacherReply}</p>}</div>)}</CardContent></Card><Card><CardHeader><CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" />Other Prefects</CardTitle></CardHeader><CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3">{prefects.map(p => <div key={p.id} className="rounded-xl border p-3 flex items-center gap-3"><div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center font-bold text-amber-700">{p.name.charAt(0)}</div><div className="min-w-0 flex-1"><p className="font-semibold truncate">{p.name}{p.id === user?.id ? " (You)" : ""}</p><p className="text-xs text-muted-foreground">{p.grade ?? "Learner"}</p></div><Badge variant="secondary">{p.badgeCount ?? 0} badges</Badge>{p.id !== user?.id && <Button type="button" size="sm" variant={follows.some(f=>f.targetType==="prefect"&&f.targetUserId===p.id)?"default":"outline"} onClick={()=>void toggleFollow("prefect",p.id,p.name)}>{follows.some(f=>f.targetType==="prefect"&&f.targetUserId===p.id)?"Following":"Follow"}</Button>}</div>)}</CardContent></Card>
   </div></DashboardLayout>;
 }
