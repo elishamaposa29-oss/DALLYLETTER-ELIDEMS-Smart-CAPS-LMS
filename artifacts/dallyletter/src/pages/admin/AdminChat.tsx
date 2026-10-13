@@ -1,5 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { useListMessages, useSendMessage, useListStudyGroups, useListUsers } from "@workspace/api-client-react";
+import { useListMessages, useSendMessage, useListStudyGroups, useListUsers, getApiUrl } from "@workspace/api-client-react";
 import { AuthenticatedAudio } from "@/components/AuthenticatedAudio";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 import { Card, CardContent } from "@/components/ui/card";
@@ -42,7 +42,7 @@ export default function AdminChat() {
     setDeletingMessageId(messageId);
     try {
       const token = localStorage.getItem("dallyletter_token");
-      const response = await fetch(`/api/messages/${messageId}`, { method: "DELETE", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+      const response = await fetch(getApiUrl(`/api/messages/${messageId}`), { method: "DELETE", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
       if (!response.ok) { const data = await response.json().catch(() => null) as {error?:string}|null; throw new Error(data?.error ?? "Message deletion failed."); }
       await queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId, recipientId: selectedUserId }) });
     } catch (error) { window.alert(error instanceof Error ? error.message : "Message deletion failed."); }
