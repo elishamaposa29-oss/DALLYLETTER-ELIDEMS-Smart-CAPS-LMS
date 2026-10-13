@@ -355,10 +355,12 @@ router.delete("/study-groups/:id", requireAuth, async (req, res): Promise<void> 
   let mediaKeys: string[] = [];
   try {
     await client.query("BEGIN");
-    const found = await client.query("SELECT id, name FROM study_groups WHERE id=$1 FOR UPDATE", [groupId]);
+    const found = await client.query("SELECT id, name, cover_image_url FROM study_groups WHERE id=$1 FOR UPDATE", [groupId]);
     if (!found.rows[0]) { await client.query("ROLLBACK"); res.status(404).json({ error: "Study group not found" }); return; }
     const media = await client.query("SELECT media_url FROM messages WHERE group_id=$1 AND media_url IS NOT NULL", [groupId]);
     mediaKeys = media.rows.map((row:any) => String(row.media_url || "").match(/\/api\/messages\/media\/([a-f0-9-]{36})/i)?.[1]).filter((key:unknown): key is string => typeof key === "string");
+    const coverKey = String(found.rows[0].cover_image_url || "").match(/\/api\/lessons\/media\/([a-f0-9-]{36})/i)?.[1];
+    if (coverKey) mediaKeys.push(coverKey);
     await client.query("DELETE FROM chat_poll_votes USING chat_polls WHERE chat_poll_votes.poll_id=chat_polls.id AND chat_polls.group_id=$1", [groupId]);
     await client.query("DELETE FROM chat_poll_options USING chat_polls WHERE chat_poll_options.poll_id=chat_polls.id AND chat_polls.group_id=$1", [groupId]);
     await client.query("DELETE FROM chat_polls WHERE group_id=$1", [groupId]);
