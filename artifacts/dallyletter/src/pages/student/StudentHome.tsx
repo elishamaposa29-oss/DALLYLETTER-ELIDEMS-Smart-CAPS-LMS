@@ -293,7 +293,7 @@ export default function StudentHome() {
                   ) : (
                     <div className="divide-y">
                       {unreadNotifs?.map((notif) => (
-                        <button type="button" key={notif.id} className="block w-full p-4 text-left hover:bg-muted/50 transition-colors" onClick={() => window.location.assign(notif.link || "/student/notifications")}>
+                        <button type="button" key={notif.id} className="block w-full p-4 text-left hover:bg-muted/50 transition-colors" onClick={() => window.location.assign((notif as typeof notif & { link?: string | null }).link || "/student/notifications")}>
                           <p className="font-medium text-sm text-foreground">{notif.title}</p>
                           <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{notif.message}</p>
                           <p className="mt-1 text-xs font-medium text-primary">Open notification</p>
