@@ -26,7 +26,19 @@ router.post("/content-permissions",requireAuth,async(req,res):Promise<void>=>{
 
 router.get("/content-permissions",requireAuth,async(req,res):Promise<void>=>{
   const actor=req.currentUser!;
-  const rows=await pool.query("SELECT * FROM content_permission_requests WHERE owner_id=$1 AND status='pending' ORDER BY created_at DESC",[actor.id]);
+  const rows=await pool.query(`
+    SELECT cp.*,
+      requester.name AS requester_name,
+      CASE WHEN cp.content_type='lesson' THEN lesson.title ELSE exercise.title END AS content_title,
+      CASE WHEN cp.content_type='lesson' THEN lesson.subject ELSE NULL END AS content_subject,
+      CASE WHEN cp.content_type='lesson' THEN lesson.grade ELSE NULL END AS content_grade
+    FROM content_permission_requests cp
+    LEFT JOIN users requester ON requester.id=cp.requester_id
+    LEFT JOIN lessons lesson ON cp.content_type='lesson' AND lesson.id=cp.content_id
+    LEFT JOIN exercises exercise ON cp.content_type='exercise' AND exercise.id=cp.content_id
+    WHERE cp.owner_id=$1 AND cp.status='pending'
+    ORDER BY cp.created_at DESC
+  `,[actor.id]);
   res.json(rows.rows);
 });
 
