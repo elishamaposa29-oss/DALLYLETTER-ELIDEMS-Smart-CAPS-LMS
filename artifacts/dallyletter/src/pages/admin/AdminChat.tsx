@@ -3,7 +3,7 @@ import { useListMessages, useSendMessage, useListStudyGroups, useListUsers } fro
 import { AuthenticatedAudio } from "@/components/AuthenticatedAudio";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, Send, Users, MessageSquare, User, ShieldAlert } from "lucide-react";
+import { Loader2, Send, Users, MessageSquare, User, ShieldAlert, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState, useRef, useEffect } from "react";
@@ -35,6 +35,19 @@ export default function AdminChat() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  const [deletingMessageId, setDeletingMessageId] = useState<number | null>(null);
+  const handleDeleteMessage = async (messageId: number) => {
+    if (!window.confirm("Delete this message and its attachment, if any? This cannot be undone.")) return;
+    setDeletingMessageId(messageId);
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const response = await fetch(`/api/messages/${messageId}`, { method: "DELETE", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+      if (!response.ok) { const data = await response.json().catch(() => null) as {error?:string}|null; throw new Error(data?.error ?? "Message deletion failed."); }
+      await queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId, recipientId: selectedUserId }) });
+    } catch (error) { window.alert(error instanceof Error ? error.message : "Message deletion failed."); }
+    finally { setDeletingMessageId(null); }
+  };
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
@@ -184,6 +197,7 @@ export default function AdminChat() {
                             <span className="text-[10px] text-muted-foreground mt-1 opacity-70">
                               {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
+                            {isMe && <button type="button" className="mt-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-destructive disabled:opacity-50" onClick={() => void handleDeleteMessage(msg.id)} disabled={deletingMessageId === msg.id}>{deletingMessageId === msg.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}Delete</button>}
                           </div>
                         </div>
                       </div>
