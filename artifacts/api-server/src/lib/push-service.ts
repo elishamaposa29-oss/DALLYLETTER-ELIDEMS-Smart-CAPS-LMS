@@ -124,30 +124,34 @@ async function sendOne(endpoint: string, p256dh: string, auth: string, payload: 
 
 export async function dispatchPendingPushNotifications(): Promise<void> {
   if (!isPushConfigured()) return;
-  const { rows } = await pool.query(`
-    SELECT n.id, n.recipient_id, n.title, n.message, n.link,
-           ps.id AS subscription_id, ps.endpoint, ps.p256dh, ps.auth
+
+  // Deliver a bounded burst: at most ten newest notifications per dispatch.
+  // The in-app notification history is not deleted or truncated by this limit.
+  const { rows: notifications } = await pool.query(`
+    SELECT n.id, n.recipient_id, n.title, n.message, n.link
     FROM notifications n
-    JOIN push_subscriptions ps ON (n.recipient_id = ps.user_id OR n.recipient_id IS NULL)
-    LEFT JOIN notification_preferences np ON np.user_id = ps.user_id
     WHERE n.push_sent_at IS NULL
-      AND COALESCE(np.push_enabled, true) = true
       AND n.created_at > now() - interval '1 minute'
     ORDER BY n.created_at DESC, n.id DESC
     LIMIT 10
   `);
-  const grouped = new Map<number, typeof rows>();
-  for (const row of rows) grouped.set(row.id, [...(grouped.get(row.id) ?? []), row]);
 
-  for (const [notificationId, subscriptions] of grouped) {
+  for (const notification of notifications) {
+    const { rows: subscriptions } = await pool.query(`
+      SELECT ps.id AS subscription_id, ps.endpoint, ps.p256dh, ps.auth
+      FROM push_subscriptions ps
+      LEFT JOIN notification_preferences np ON np.user_id = ps.user_id
+      WHERE (\$1::integer IS NULL OR ps.user_id = \$1)
+        AND COALESCE(np.push_enabled, true) = true
+    `, [notification.recipient_id]);
     let retry = false;
     for (const sub of subscriptions) {
       try {
         const result = await sendOne(sub.endpoint, sub.p256dh, sub.auth, JSON.stringify({
-          id: notificationId,
-          title: sub.title,
-          body: sub.message,
-          url: sub.link || "/student/notifications",
+          id: notification.id,
+          title: notification.title,
+          body: notification.message,
+          url: notification.link || "/student/notifications",
           icon: "/icons/icon-192.png",
           badge: "/icons/icon-192.png",
         }));
@@ -156,7 +160,7 @@ export async function dispatchPendingPushNotifications(): Promise<void> {
         retry = true;
       }
     }
-    if (!retry) await pool.query("UPDATE notifications SET push_sent_at = now() WHERE id = $1", [notificationId]);
+    if (!retry) await pool.query("UPDATE notifications SET push_sent_at = now() WHERE id = $1", [notification.id]);
   }
 }
 
