@@ -27,7 +27,7 @@ Read-only catalog queries returned:
 - No migration/drizzle/schema-history table in the public schema
 - Four exercise relationship checks returned zero orphan rows: question → exercise, option → question, answer → submission, and non-null media question → question.
 
-These checks are useful signals, not proof that every application query matches every live column. A source-level comparison across all 23 Drizzle schema modules identified 47 table declarations and 418 expected columns. No expected columns were missing for the matched live tables. Four live table definitions were not matched by the lightweight source parser, and column types/defaults/nullability have not yet been fully compared; reconcile those before approving any migration.
+These checks are useful signals, not proof that every application query matches every live column. A source-level comparison across all 23 Drizzle schema modules identified 47 table declarations and 418 expected columns. No expected columns were missing for the matched live tables. The four live tables with no matching table declaration in the checked-in Drizzle schema are `content_permission_requests`, `message_media`, `push_subscriptions`, and `teacher_documents`. Their live columns, keys, foreign keys, and indexes were inspected separately; they are currently managed outside the canonical Drizzle table declarations (raw SQL/legacy storage paths). Column types/defaults/nullability across the full schema still need a complete comparison before approving any migration.
 
 The live database contains application data (including users, lessons, exercises, submissions, messages, media metadata, notifications, and audit records). Do not reset or replace it.
 
@@ -53,7 +53,7 @@ The 503 log entries show the HTTP logger reporting the status code; they do not 
 ## Required release gates — still open
 
 1. **Back up and restore-test PostgreSQL before expiry.** The available Render connector exposes read-only SQL and no backup/export action. This PR does not create or claim a backup. Use Render's supported backup/PITR/export workflow or a secured `pg_dump` from a trusted environment; store the backup outside the expiring service and perform a restore test to a separate target.
-2. Finish reconciliation for the four live table definitions not matched by the lightweight parser; compare types, defaults, nullability, keys, and indexes against Drizzle and record differences before applying any migration.
+2. Decide how to version and reconcile the four raw-SQL/legacy tables (`content_permission_requests`, `message_media`, `push_subscriptions`, `teacher_documents`) with the canonical schema without duplicating or dropping existing constraints; finish type/default/nullability comparison before applying any migration.
 3. Replace ad-hoc schema repair scripts/build-time database mutation with versioned, ordered, idempotent migrations and a migration ledger, after rehearsing against a restored copy.
 4. Verify the live `MEDIA_S3_*` configuration without exposing secret values; test upload → reload/restart → authenticated stream/range playback → deletion → confirm missing after restart.
 5. Inspect provider configuration without exposing API keys; test real AI poll generation and a provider-outage path.
