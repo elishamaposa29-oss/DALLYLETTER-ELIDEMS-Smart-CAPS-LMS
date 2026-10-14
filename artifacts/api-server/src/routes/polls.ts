@@ -3,6 +3,7 @@ import { db, pollsTable, pollQuestionsTable, pollOptionsTable, pollSubmissionsTa
 import { eq, desc, and } from "drizzle-orm";
 import { canManageAcademicContent, requireAuth } from "../lib/auth-middleware";
 import { getAIProvider } from "../lib/ai-provider";
+import { logger } from "../lib/logger";
 
 const router = Router();
 
@@ -71,6 +72,9 @@ router.post("/polls/ai-generate", requireAuth, async (req, res): Promise<void> =
     res.json({ provider: ai.name, ...generated });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "AI generation failed";
+    logger.error({
+      error: err instanceof Error ? { name: err.name, message: err.message.slice(0, 500) } : "Unknown AI generation failure",
+    }, "AI poll generation failed");
     res.status(500).json({ error: msg });
   }
 });
