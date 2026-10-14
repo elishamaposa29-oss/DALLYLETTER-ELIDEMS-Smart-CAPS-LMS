@@ -27,6 +27,8 @@ import {
   removeStoredMedia,
 } from "../lib/media-storage";
 import { hasContentPermission } from "../lib/content-permissions";
+import { isObjectStorageConfigured } from "../lib/object-storage";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -122,8 +124,17 @@ router.post("/lessons/media", requireAuth, requireTeacherOrOwner, (req, res, nex
         mimeType: file.mimetype,
         size: file.size,
       });
-    }).catch(() => {
-      res.status(503).json({ error: "Persistent media storage is temporarily unavailable. Please retry the upload." });
+    }).catch((error) => {
+      logger.error({
+        error: error instanceof Error ? { name: error.name, message: error.message.slice(0, 500) } : "Unknown media upload failure",
+        persistentStorageConfigured: isObjectStorageConfigured(),
+      }, "Lesson media upload failed");
+      res.status(503).json({
+        error: isObjectStorageConfigured()
+          ? "Persistent media storage is temporarily unavailable. Please retry the upload."
+          : "Persistent media storage is not configured. Contact the platform administrator.",
+        code: isObjectStorageConfigured() ? "MEDIA_STORAGE_UNAVAILABLE" : "MEDIA_STORAGE_NOT_CONFIGURED",
+      });
     });
   });
 });
