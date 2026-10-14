@@ -64,18 +64,46 @@ router.post("/polls", requireAuth, async (req, res): Promise<void> => {
 router.post("/polls/ai-generate", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Academic staff access required" }); return; }
-  const { topic, grade, subject, count = 5 } = req.body as { topic: string; grade?: string; subject?: string; count?: number };
-  if (!topic) { res.status(400).json({ error: "topic required" }); return; }
+  const { topic, grade, subject, count = 5 } = req.body as { topic?: unknown; grade?: unknown; subject?: unknown; count?: unknown };
+  if (typeof topic !== "string" || !topic.trim() || topic.length > 300) {
+    res.status(400).json({ error: "topic must be a non-empty string of at most 300 characters" });
+    return;
+  }
+  if ((grade != null && (typeof grade !== "string" || grade.length > 80)) ||
+      (subject != null && (typeof subject !== "string" || subject.length > 100))) {
+    res.status(400).json({ error: "grade or subject is invalid" });
+    return;
+  }
+  const questionCount = count === undefined ? 5 : Number(count);
+  if (!Number.isInteger(questionCount) || questionCount < 1 || questionCount > 20) {
+    res.status(400).json({ error: "count must be an integer between 1 and 20" });
+    return;
+  }
   try {
     const ai = await getAIProvider();
-    const generated = await ai.generatePoll(topic, grade, subject, count);
+    // Never return placeholder questions as if they were real AI-generated learning content.
+    if (ai.name === "mock") {
+      res.status(503).json({ error: "AI generation is not configured. Ask the platform administrator to configure a provider.", code: "AI_PROVIDER_NOT_CONFIGURED" });
+      return;
+    }
+    const generated = await ai.generatePoll(topic.trim(), typeof grade === "string" ? grade : undefined, typeof subject === "string" ? subject : undefined, questionCount);
+    const valid = generated && typeof generated.title === "string" && Array.isArray(generated.questions) &&
+      generated.questions.length === questionCount &&
+      generated.questions.every(q => q && typeof q.question === "string" && q.question.trim() &&
+        Array.isArray(q.options) && q.options.length >= 2 &&
+        q.options.every(option => option && typeof option.text === "string" && option.text.trim() && typeof option.isCorrect === "boolean") &&
+        q.options.filter(option => option.isCorrect).length === 1);
+    if (!valid) {
+      logger.error({ provider: ai.name, requestedCount: questionCount }, "AI poll provider returned an invalid question payload");
+      res.status(502).json({ error: "The AI provider returned an invalid quiz. Please retry.", code: "AI_PROVIDER_INVALID_RESPONSE" });
+      return;
+    }
     res.json({ provider: ai.name, ...generated });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "AI generation failed";
     logger.error({
-      error: err instanceof Error ? { name: err.name, message: err.message.slice(0, 500) } : "Unknown AI generation failure",
+      providerError: err instanceof Error ? { name: err.name, message: err.message.slice(0, 500) } : "Unknown AI generation failure",
     }, "AI poll generation failed");
-    res.status(500).json({ error: msg });
+    res.status(502).json({ error: "AI generation failed upstream. Please retry or check provider configuration.", code: "AI_PROVIDER_REQUEST_FAILED" });
   }
 });
 
