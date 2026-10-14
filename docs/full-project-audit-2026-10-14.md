@@ -51,6 +51,15 @@ PR #31 adds declarations and `lib/db/migrations/0001_legacy_tables.sql` on its d
 - No credential rotation is recommended solely from this inspection. Rotate only if a real exposure is established, then update all consuming services and verify rollback.
 - Do not expose secrets while scanning. Search tracked files for key-shaped strings and verify any suspected match in context before classifying it as a live credential.
 
+## Canonical target and duplicate-deployment decision
+
+- **Canonical repository:** `elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS`.
+- **Canonical live API service:** `srv-d9ihv8favr4c73assgag` (`DALLYLETTER-ELIDEMS-Smart-CAPS-LMS-4`), URL `https://dallyletter-elidems-smart-caps-lms-4.onrender.com`, deployed from `main`. Do not confuse it with staging or older similarly named services.
+- **Recovery preview project:** Vercel project `prj_Xyxmr1MPPOnmRHzUMjGaBpiuYfwf` (`elishamaposa29-oss-dallyletter-elidems-smart-caps-lms`). It has a ready branch preview and SSO protection. Its `live` flag is false and the last observed deployment target was null; do not assume it owns the active public production alias.
+- **Database connection map:** the Render API service and database resource are known, but secret values are intentionally masked. Therefore the exact `DATABASE_URL` host was not proven by this audit. Before restricting the current database allowlist, inspect the protected Render environment setting and verify the canonical API uses the internal hostname/URL, then run health and read-only database checks. Do not tighten the existing allowlist until this is verified.
+- **Duplicate resource decision:** no similarly named service/project was deleted, paused or reconfigured. Name similarity is not proof of non-use. Inventory each resource's Git repo/branch, last deployment SHA, aliases/domains, traffic, env-variable presence and DB consumers; retain the canonical API and only retire duplicates after a reversible, approved cutover.
+- **Database recreation runbook:** [`docs/database-recreate-and-recovery.md`](database-recreate-and-recovery.md) explains how to provision a replacement from a dedicated Render Blueprint, safely dump/restore, compare records, use private networking, test staging and cut over. [`render.database-rebuild.yaml`](../render.database-rebuild.yaml) defines only a new PostgreSQL resource; it does not delete or alter existing services. Provisioning a blank DB alone does not recover data.
+
 ## Ordered completion plan
 
 ### P0 — protect data before expiry
