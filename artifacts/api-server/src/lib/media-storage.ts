@@ -72,7 +72,14 @@ export async function persistUploadedMedia(storageKey: string, mimeType: string,
     }
     return "local";
   }
-  await putObject(storageKey, mimeType, localPath);
+  try {
+    await putObject(storageKey, mimeType, localPath);
+  } catch (error) {
+    // Uploads are staged on the service disk. Remove the staging file on failure
+    // so repeated storage outages cannot fill Render's ephemeral filesystem.
+    await unlink(localPath).catch(() => undefined);
+    throw error;
+  }
   await unlink(localPath).catch(() => undefined);
   return "object-storage";
 }
