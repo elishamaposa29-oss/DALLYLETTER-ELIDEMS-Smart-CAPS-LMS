@@ -12,6 +12,27 @@
 - `message_media.data` and `teacher_documents.data` are PostgreSQL `bytea` blobs. These are small today, but growth is a reason to prefer durable object storage for new media/documents, keeping only object keys and metadata in PostgreSQL where application compatibility permits.
 - No public migration-history table was found. The canonical schema and live database had drifted. This runbook and versioned SQL migration begin addressing reproducibility; they do not claim the entire historical schema is already represented by a complete migration chain.
 
+## Complete live table inventory and how the schema works
+
+The live public schema contains these 51 base tables. The canonical Drizzle schema files are the source for each column definition; this inventory is a domain map, not a substitute for the column/default/FK comparison.
+
+- **Identity and audit:** `users`, `activity_log`, `audit_logs`, `ai_actions`.
+- **Learning content:** `lessons`, `classes`, `assignments`, `assignment_submissions`, `attendance`, `hand_raises`, `lesson_requests`.
+- **Exercises and marking:** `exercises`, `exercise_questions`, `exercise_options`, `exercise_submissions`, `exercise_answers`, `exercise_media`.
+- **Chat and communities:** `messages`, `message_media`, `study_groups`, `study_group_members`, `group_member_controls`, `group_settings`, `chat_communities`, `chat_community_groups`, `chat_polls`, `chat_poll_options`, `chat_poll_votes`, `chat_broadcasts`, `chat_broadcast_recipients`.
+- **Permissions, follows and moderation:** `content_permission_requests`, `follows`, `content_comments`, `content_flags`, `moderation_actions`.
+- **Polls and notifications:** `polls`, `poll_questions`, `poll_options`, `poll_submissions`, `notifications`, `notification_preferences`, `push_subscriptions`.
+- **People and engagement:** `achievements`, `user_achievements`, `break_elide_events`, `break_elide_volunteers`.
+- **Administration and finance:** `owner_alerts`, `platform_settings`, `payments`, `staff_payments`, `teacher_documents`.
+
+**Relationship pattern:** `users` is the identity root. Learning objects reference their teacher/creator; exercises have questions/options and submissions/answers; group/chat records connect members, messages and polls; notifications and push endpoints target users; audit/activity records provide traceability. Many older raw-SQL tables use explicit foreign keys and named indexes, while content IDs in some polymorphic tables (e.g. comments and permission requests) intentionally identify multiple content types and therefore do not use one FK to several possible tables.
+
+**Observed strengths:** normalized learning entities; primary/unique keys and query indexes; live foreign keys were reported validated; recent targeted exercise orphan checks found no orphans; PostgreSQL supports transactions, JSONB marking/layout fields and bytea binary data; small current footprint means no need for premature sharding or complicated distributed databases.
+
+**Observed risks/limits:** no migration-history table was found; canonical declarations omitted four active tables until this PR; Render reports the database as Free, expiring, without HA or replicas; its network allowlist is `0.0.0.0/0`; persistent object-storage configuration has not been verified; `message_media` and `teacher_documents` store raw `bytea` in PostgreSQL. These are reliability/recovery risks, not evidence that PostgreSQL itself is slow. Do not add speculative indexes or increase CPU before examining real query and metric data.
+
+**Four live legacy-table row counts observed read-only:** `content_permission_requests` 5; `message_media` 8; `push_subscriptions` 5; `teacher_documents` 0. Preserve these rows in any restore. In particular, message-media bytes are actual content, not disposable cache data.
+
 ## Restore is different from rebuild
 
 - **Restore** means load a verified data backup, retaining user accounts, lessons, submissions, marks, messages, audit history, and other rows.
