@@ -1,0 +1,109 @@
+name: Emergency PostgreSQL backup and restore verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type BACKUP-AND-RESTORE to authorize a read-only source dump and isolated restore test"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emergency-postgres-backup
+  cancel-in-progress: false
+
+jobs:
+  backup-and-restore-test:
+    if: ${{ inputs.confirm == 'BACKUP-AND-RESTORE' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: restore_test
+          POSTGRES_PASSWORD: restore_test_only
+          POSTGRES_DB: restore_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U restore_test -d restore_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PGPASSWORD: restore_test_only
+      RESTORE_URL: postgresql://restore_test:restore_test_only@localhost:5432/restore_test
+    steps:
+      - name: Validate required secrets without printing them
+        shell: bash
+        env:
+          SOURCE_DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ENCRYPTION_PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          test -n "$SOURCE_DATABASE_URL" || { echo "::error::Set repository secret DATABASE_URL to the current Render external PostgreSQL connection URL."; exit 1; }
+          test -n "$ENCRYPTION_PASSPHRASE" || { echo "::error::Set BACKUP_ENCRYPTION_PASSPHRASE to a strong, independently stored backup passphrase."; exit 1; }
+          unset SOURCE_DATABASE_URL ENCRYPTION_PASSPHRASE
+
+      - name: Install PostgreSQL client 18
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-18
+
+      - name: Create a consistent custom-format dump
+        shell: bash
+        env:
+          SOURCE_DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          mkdir -p backup
+          pg_dump --version
+          pg_dump --dbname="$SOURCE_DATABASE_URL" --format=custom --no-owner --no-acl --verbose --file=backup/dallyletter.dump 2>backup/pg_dump.log
+          test -s backup/dallyletter.dump
+          pg_restore --list backup/dallyletter.dump > backup/archive-contents.txt
+          test -s backup/archive-contents.txt
+          sha256sum backup/dallyletter.dump > backup/dump.sha256
+          echo "Dump created and archive listing validated; no credentials printed."
+
+      - name: Restore into an isolated PostgreSQL 18 instance
+        shell: bash
+        run: |
+          set -euo pipefail
+          pg_restore --dbname="$RESTORE_URL" --no-owner --no-acl --exit-on-error --verbose backup/dallyletter.dump 2>backup/pg_restore.log
+          source_tables="$(psql "$RESTORE_URL" -X -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema') AND table_type='BASE TABLE'")"
+          source_functions="$(psql "$RESTORE_URL" -X -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname NOT IN ('pg_catalog','information_schema')")"
+          test "$source_tables" -gt 0
+          echo "Isolated restore succeeded: tables=$source_tables functions=$source_functions"
+          printf 'restored_tables=%s\nrestored_functions=%s\n' "$source_tables" "$source_functions" > backup/restore-verification.txt
+
+      - name: Encrypt backup before uploading artifact
+        shell: bash
+        env:
+          ENCRYPTION_PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          openssl enc -aes-256-cbc -pbkdf2 -salt -in backup/dallyletter.dump -out backup/dallyletter.dump.enc -pass env:ENCRYPTION_PASSPHRASE
+          openssl enc -d -aes-256-cbc -pbkdf2 -in backup/dallyletter.dump.enc -out backup/roundtrip.dump -pass env:ENCRYPTION_PASSPHRASE
+          cmp backup/dallyletter.dump backup/roundtrip.dump
+          sha256sum backup/dallyletter.dump.enc > backup/encrypted-dump.sha256
+          rm -f backup/dallyletter.dump backup/roundtrip.dump
+          unset ENCRYPTION_PASSPHRASE
+          echo "Encrypted backup round-trip verified."
+
+      - name: Upload encrypted backup and sanitized verification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: dallyletter-postgres18-encrypted-backup-${{ github.run_id }}
+          path: |
+            backup/dallyletter.dump.enc
+            backup/encrypted-dump.sha256
+            backup/restore-verification.txt
+            backup/archive-contents.txt
+            backup/dump.sha256
+          if-no-files-found: error
+          retention-days: 90
