@@ -33,7 +33,7 @@ The live database contains application data (including users, lessons, exercises
 
 ## Log findings
 
-The supplied PostgreSQL log excerpt shows successful authentication and authorization for `dallyletter_user` and successful TLS connections for `postgres`. The excerpt alone does not establish a connection failure.
+The supplied PostgreSQL log excerpt shows successful authentication and authorization for `dallyletter_user` and successful TLS connections for `postgres`. The excerpt alone does not establish a connection failure. Two ERROR-level database log entries at 18:02 UTC on 14 October were caused by my read-only audit tool calls sending multiple SQL statements in one prepared query; PostgreSQL correctly rejected them with `cannot insert multiple commands into a prepared statement`. These were diagnostic-query errors, not application SQL failures, and the queries did not modify data. Subsequent one-statement queries succeeded.
 
 The API's 12–13 October logs include:
 - `POST /api/lessons/media` → HTTP 503
