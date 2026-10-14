@@ -69,6 +69,19 @@ pg_restore --exit-on-error --no-owner --no-acl --dbname="$RESTORE_TEST_DATABASE_
 
 Do not set `DATABASE_URL` and `RESTORE_TEST_DATABASE_URL` to the same target. Check that restore has completed without errors, compare table/column/index/FK counts, verify important row counts and sequences, and run authenticated learner/teacher/manager/owner regression tests. Keep the dump encrypted/private and restrict access. A checksum proves file integrity, not that a restore works.
 
+## Persistent media configuration verification
+
+The API code expects these Render API-service environment variables for S3-compatible object storage:
+
+- `MEDIA_S3_ENDPOINT` — the provider endpoint URL (for Cloudflare R2, the account's R2 S3 endpoint).
+- `MEDIA_S3_BUCKET` — existing bucket name.
+- `MEDIA_S3_ACCESS_KEY_ID` and `MEDIA_S3_SECRET_ACCESS_KEY` — credentials with only the required bucket/object permissions.
+- `MEDIA_S3_REGION` — optional in code; Cloudflare R2 commonly uses `auto`.
+
+The service-details API used during this audit does not expose environment-variable presence, and I did not read or change secrets. Therefore, **the current live R2 configuration is unverified**. An operator should inspect only whether each variable is set in the Render dashboard; never copy the secret value into logs, GitHub, a PR, or chat.
+
+After checking presence, use a staging bucket and test: authenticated upload; object exists in the bucket; API process restart; authenticated stream and byte-range/PDF/audio preview; unauthorized request denied; deletion removes the object and metadata; and a second read confirms deletion. Repeat with a production-safe test object only after staging passes. The current upload path stages files on local disk temporarily, but local disk is not the durable source of truth. Also note that teacher documents and legacy message media currently use database `bytea` storage; the R2 test does not prove those two features use R2.
+
 ## Capacity and performance strategy
 
 - Start with a small paid PostgreSQL plan only if its connection, backup, and recovery guarantees are necessary; otherwise use a genuinely persistent free/low-cost provider only after evaluating expiry, backups, storage caps, CPU/RAM, sleeping, and egress. Cheapest is not cheapest if it risks student records.
