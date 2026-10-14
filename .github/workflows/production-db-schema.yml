@@ -49,7 +49,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: pnpm run db:push
 
-      - name: Verify ELIDEMS Connect tables
+      - name: Verify ELIDEMS Connect and legacy tables
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
@@ -63,33 +63,39 @@ jobs:
             "chat_polls",
             "chat_poll_options",
             "chat_poll_votes",
-            "broadcasts",
-            "broadcast_recipients",
-            "communities",
-            "community_groups"
+            "chat_broadcasts",
+            "chat_broadcast_recipients",
+            "chat_communities",
+            "chat_community_groups",
+            "content_permission_requests",
+            "message_media",
+            "push_subscriptions",
+            "teacher_documents"
           ];
 
           const client = new Client({ connectionString: process.env.DATABASE_URL });
-          await client.connect();
+          try {
+            await client.connect();
+            const result = await client.query(
+              `select table_name
+               from information_schema.tables
+               where table_schema = 'public'
+                 and table_type = 'BASE TABLE'
+                 and table_name = any($1::text[])
+               order by table_name`,
+              [expected]
+            );
 
-          const result = await client.query(
-            `select table_name
-             from information_schema.tables
-             where table_schema = 'public'
-               and table_name = any($1::text[])
-             order by table_name`,
-            [expected]
-          );
+            const found = result.rows.map((row) => row.table_name);
+            const missing = expected.filter((name) => !found.includes(name));
 
-          const found = result.rows.map((row) => row.table_name);
-          const missing = expected.filter((name) => !found.includes(name));
+            console.log("Verified tables:", found.join(", "));
 
-          console.log("Verified tables:", found.join(", "));
-
-          await client.end();
-
-          if (missing.length) {
-            console.error("Missing tables:", missing.join(", "));
-            process.exit(1);
+            if (missing.length) {
+              console.error("Missing tables:", missing.join(", "));
+              process.exitCode = 1;
+            }
+          } finally {
+            await client.end();
           }
           NODE
