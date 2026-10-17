@@ -15,7 +15,25 @@ export function AuthenticatedMedia({ url, type, title }: AuthenticatedMediaProps
   const [error, setError] = useState(false);
   const [scale, setScale] = useState(1);
 
-  const shareBrandedLink = async () => {\n    const brandedUrl = `${window.location.href}${window.location.search ? "&" : "?"}utm_source=dallyletter_share`;\n    try {\n      if (typeof navigator.share === "function") {\n        await navigator.share({ title: `${title || "Learning resource"} · Dallyletter Elidems`, text: "Shared from Dallyletter Elidems — The fun way to success.", url: brandedUrl });\n        return;\n      }\n      if (navigator.clipboard?.writeText) {\n        await navigator.clipboard.writeText(brandedUrl);\n        window.alert("Dallyletter link copied. Private resources may require sign-in.");\n        return;\n      }\n    } catch (error) {\n      if (error instanceof DOMException && error.name === "AbortError") return;\n    }\n    window.alert("Your browser cannot share directly. Use Download, then share the file from your device.");\n  };\n\n  useEffect(() => {
+  const shareBrandedLink = async () => {
+    const brandedUrl = `${window.location.href}${window.location.search ? "&" : "?"}utm_source=dallyletter_share`;
+    try {
+      if (typeof navigator.share === "function") {
+        await navigator.share({ title: `${title || "Learning resource"} · Dallyletter Elidems`, text: "Shared from Dallyletter Elidems — The fun way to success.", url: brandedUrl });
+        return;
+      }
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(brandedUrl);
+        window.alert("Dallyletter link copied. Private resources may require sign-in.");
+        return;
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+    }
+    window.alert("Your browser cannot share directly. Use Download, then share the file from your device.");
+  };
+
+  useEffect(() => {
     let active = true;
     const token = localStorage.getItem("dallyletter_token");
 
