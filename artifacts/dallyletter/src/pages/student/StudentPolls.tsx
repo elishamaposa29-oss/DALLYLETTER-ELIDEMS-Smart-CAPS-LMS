@@ -38,6 +38,8 @@ export default function StudentPolls() {
   const [resultPrivacy, setResultPrivacy] = useState<"public" | "private" | "selected_friends">("private");
   const [instantMarking, setInstantMarking] = useState(false);
   const [feedbackEffects, setFeedbackEffects] = useState(true);
+  const [instantFeedback, setInstantFeedback] = useState<Record<number, { isCorrect: boolean; explanation: string | null; correctText?: string }>>({});
+  const [checkingAnswer, setCheckingAnswer] = useState(false);
   const [selectedFriendIds, setSelectedFriendIds] = useState<number[]>([]);
   const [friends, setFriends] = useState<{ id: number; name: string }[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -88,6 +90,8 @@ export default function StudentPolls() {
     const poll = await r.json() as PollDetail;
     setActivePoll(poll);
     setAnswers({});
+    setInstantFeedback({});
+    setInstantMarking(false);
     setCurrentQ(0);
     setTimeLeft(null);
     setScreen("quiz");
@@ -163,24 +167,35 @@ export default function StudentPolls() {
               <p className="text-lg font-semibold leading-relaxed">{currentQuestion.question}</p>
               <div className="space-y-2.5">
                 {currentQuestion.options.map(opt => (
-                  <button key={opt.id} onClick={() => {
+                  <button key={opt.id} disabled={checkingAnswer} onClick={async () => {
                     setAnswers(a => ({ ...a, [currentQuestion.id]: opt.id }));
-                    if (instantMarking) {
-                      const correct = Boolean(opt.isCorrect);
+                    if (!instantMarking || activePoll.mode !== "practice") return;
+                    setCheckingAnswer(true);
+                    try {
+                      const response = await fetch(getApiUrl(`/api/polls/${activePoll.id}/check-answer`), {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+                        body: JSON.stringify({ questionId: currentQuestion.id, optionId: opt.id }),
+                      });
+                      const result = await response.json();
+                      if (!response.ok) throw new Error(result.error || "Instant feedback unavailable");
+                      setInstantFeedback(previous => ({ ...previous, [currentQuestion.id]: result }));
                       if (feedbackEffects) {
-                        try { if (typeof navigator.vibrate === "function") navigator.vibrate(correct ? 35 : [35, 45, 35]); } catch { /* optional device vibration */ }
-                        try { const AudioContextClass = window.AudioContext; if (AudioContextClass) { const context = new AudioContextClass(); const oscillator = context.createOscillator(); const gain = context.createGain(); oscillator.frequency.value = correct ? 880 : 220; gain.gain.value = 0.04; oscillator.connect(gain); gain.connect(context.destination); oscillator.start(); oscillator.stop(context.currentTime + 0.12); oscillator.onended = () => void context.close(); } } catch { /* optional sound */ }
+                        try { if (typeof navigator.vibrate === "function") navigator.vibrate(result.isCorrect ? 35 : [35, 45, 35]); } catch { /* optional device vibration */ }
+                        try { const AudioContextClass = window.AudioContext; if (AudioContextClass) { const context = new AudioContextClass(); const oscillator = context.createOscillator(); const gain = context.createGain(); oscillator.frequency.value = result.isCorrect ? 880 : 220; gain.gain.value = 0.04; oscillator.connect(gain); gain.connect(context.destination); oscillator.start(); oscillator.stop(context.currentTime + 0.12); oscillator.onended = () => void context.close(); } } catch { /* optional sound */ }
                       }
-                    }
+                    } catch (error) {
+                      toast({ variant: "destructive", title: "Instant feedback unavailable", description: error instanceof Error ? error.message : "Try again." });
+                    } finally { setCheckingAnswer(false); }
                   }} aria-pressed={answers[currentQuestion.id] === opt.id}
-                    className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all text-sm font-medium ${answers[currentQuestion.id] === opt.id ? (instantMarking ? (opt.isCorrect ? "border-emerald-500 bg-emerald-50 text-emerald-800" : "border-rose-500 bg-rose-50 text-rose-800") : "border-primary bg-primary/5 text-primary") : "border-border hover:border-muted-foreground/40 hover:bg-muted/50"}`}>
+                    className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all text-sm font-medium ${answers[currentQuestion.id] === opt.id ? (instantFeedback[currentQuestion.id] ? (instantFeedback[currentQuestion.id].isCorrect ? "border-emerald-500 bg-emerald-50 text-emerald-800" : "border-rose-500 bg-rose-50 text-rose-800") : "border-primary bg-primary/5 text-primary") : "border-border hover:border-muted-foreground/40 hover:bg-muted/50"}`}>
                     {opt.text}
                   </button>
                 ))}
               </div>
-              {instantMarking && answers[currentQuestion.id] != null && (() => { const chosen = currentQuestion.options.find(opt => opt.id === answers[currentQuestion.id]); const correct = Boolean(chosen?.isCorrect); return <div role="status" aria-live="polite" className={`rounded-xl border p-3 ${correct ? "border-emerald-300 bg-emerald-50 text-emerald-900" : "border-rose-300 bg-rose-50 text-rose-900"}`}><p className="font-semibold">{correct ? "✓ Correct answer!" : "Not quite — review the explanation."}</p>{currentQuestion.explanation && <p className="mt-1 text-sm">{currentQuestion.explanation}</p>}</div>; })()}
+              {instantMarking && instantFeedback[currentQuestion.id] && (() => { const feedback = instantFeedback[currentQuestion.id]; return <div role="status" aria-live="polite" className={`rounded-xl border p-3 ${feedback.isCorrect ? "border-emerald-300 bg-emerald-50 text-emerald-900" : "border-rose-300 bg-rose-50 text-rose-900"}`}><p className="font-semibold">{feedback.isCorrect ? "✓ Correct answer!" : "Not quite — review the correction."}</p>{!feedback.isCorrect && feedback.correctText && <p className="mt-1 text-sm">Correct answer: {feedback.correctText}</p>}{feedback.explanation && <p className="mt-1 text-sm">{feedback.explanation}</p>}</div>; })()}
               <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/20 p-3">
-                <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={instantMarking} onChange={e => setInstantMarking(e.target.checked)} />Allow instant marking</label>
+                {activePoll.mode === "practice" && <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={instantMarking} onChange={e => setInstantMarking(e.target.checked)} />Allow instant marking (practice only)</label>}
                 <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={feedbackEffects} onChange={e => setFeedbackEffects(e.target.checked)} />Sound and vibration</label>
               </div>
             </CardContent>
