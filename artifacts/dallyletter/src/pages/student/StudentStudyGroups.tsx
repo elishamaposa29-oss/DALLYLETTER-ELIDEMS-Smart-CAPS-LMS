@@ -274,11 +274,8 @@ export default function StudentStudyGroups() {
         )}
 
         {editingGroupId && settings && (
-          <Card className="border-primary/30">
-            <CardHeader>
-              <CardTitle>Group settings</CardTitle>
-              <CardDescription>These controls are enforced by the chat API for every member.</CardDescription>
-            </CardHeader>
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-background/95 p-3 sm:p-6"><Card className="mx-auto min-h-[calc(100dvh-1.5rem)] w-full max-w-5xl border-primary/30 shadow-2xl">
+            <CardHeader className="border-b"><CardTitle className="text-xl sm:text-2xl">Group settings</CardTitle><CardDescription>Full-screen settings for easier reading and safer editing. These controls are enforced by the chat API for every member.</CardDescription></CardHeader>
             {settingsLoading ? (
               <CardContent className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin" /></CardContent>
             ) : (
@@ -316,7 +313,7 @@ export default function StudentStudyGroups() {
                 </CardFooter>
               </form>
             )}
-          </Card>
+          </Card></div>
         )}
 
         {isLoading ? (
