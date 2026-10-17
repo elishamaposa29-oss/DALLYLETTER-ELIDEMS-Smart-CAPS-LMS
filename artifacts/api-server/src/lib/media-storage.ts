@@ -66,10 +66,10 @@ export async function deleteStoredMedia(storageKey: string): Promise<void> {
 
 export async function persistUploadedMedia(storageKey: string, mimeType: string, localPath: string): Promise<"object-storage" | "local"> {
   if (!isObjectStorageConfigured()) {
-    if (process.env.NODE_ENV === "production" || Boolean(process.env.RENDER_SERVICE_ID)) {
-      await unlink(localPath).catch(() => undefined);
-      throw new Error("Persistent object storage is not configured. Configure MEDIA_S3_* before accepting production uploads.");
-    }
+    // Free emergency fallback: keep the upload on the app service filesystem.
+    // This restores uploads without external credentials, but Render's filesystem
+    // is ephemeral: files can be lost on restart/redeploy and this is NOT durable
+    // production storage. Switch to persistent object storage when available.
     return "local";
   }
   try {
