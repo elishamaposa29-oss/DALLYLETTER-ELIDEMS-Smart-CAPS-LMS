@@ -1,5 +1,4 @@
 import { createReadStream } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { pool } from "@workspace/db";
 import { mkdir, stat, unlink } from "node:fs/promises";
 import path from "node:path";
