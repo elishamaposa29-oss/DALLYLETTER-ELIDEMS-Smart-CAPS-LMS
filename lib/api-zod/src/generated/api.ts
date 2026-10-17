@@ -719,6 +719,7 @@ export const MarkNotificationReadResponse = zod.object({
 export const RaiseHandBody = zod.object({
   classId: zod.number(),
   question: zod.string().nullish(),
+  mediaUrl: zod.string().max(2048).nullish(),
 });
 
 /**
@@ -734,6 +735,7 @@ export const ListHandRaisesResponseItem = zod.object({
   studentName: zod.string(),
   classId: zod.number(),
   question: zod.string().nullish(),
+  mediaUrl: zod.string().nullish(),
   isResolved: zod.boolean(),
   createdAt: zod.string(),
 });
