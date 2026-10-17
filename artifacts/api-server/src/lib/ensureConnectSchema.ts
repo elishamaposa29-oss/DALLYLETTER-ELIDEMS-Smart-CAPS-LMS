@@ -7,6 +7,23 @@ export async function ensureConnectSchema(): Promise<void> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    // Add optional hand-raise media reference without rewriting existing records.
+    await client.query("ALTER TABLE hand_raises ADD COLUMN IF NOT EXISTS media_url text");
+    await client.query("ALTER TABLE hand_raises ADD COLUMN IF NOT EXISTS media_owned boolean NOT NULL DEFAULT false");
+
+    // Durable fallback for small media uploads when object storage credentials are
+    // unavailable. Chunks cap row sizes and make uploads atomic across failures.
+    // Existing media tables and keys remain unchanged.
+    await client.query(`CREATE TABLE IF NOT EXISTS media_object_chunks (
+      storage_key text NOT NULL,
+      mime_type text NOT NULL,
+      size_bytes bigint NOT NULL CHECK (size_bytes >= 0),
+      chunk_index integer NOT NULL CHECK (chunk_index >= 0),
+      data bytea NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (storage_key, chunk_index)
+    )`);
+    await client.query(`CREATE INDEX IF NOT EXISTS media_object_chunks_created_idx ON media_object_chunks(created_at)`);
 
     // The CI database and some fresh deployments may contain the core users table
     // without the optional notifications table. Create the canonical table first,
@@ -24,6 +41,9 @@ export async function ensureConnectSchema(): Promise<void> {
     )`);
     await client.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS link text`);
     await client.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS push_sent_at timestamptz`);
+    await client.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS push_attempts integer NOT NULL DEFAULT 0`);
+    await client.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS push_next_attempt_at timestamptz`);
+    await client.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS push_last_error text`);
     await client.query(`ALTER TABLE poll_questions ADD COLUMN IF NOT EXISTS image_url text`);
     // Additive, idempotent group profile fields; existing groups remain intact.
     await client.query(`ALTER TABLE study_groups ADD COLUMN IF NOT EXISTS grade text`);

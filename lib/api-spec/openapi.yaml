@@ -1304,6 +1304,8 @@ components:
           type: integer
         question:
           type: ["string", "null"]
+        mediaUrl:
+          type: ["string", "null"]
         isResolved:
           type: boolean
         createdAt:
@@ -1323,6 +1325,9 @@ components:
           type: integer
         question:
           type: ["string", "null"]
+        mediaUrl:
+          type: ["string", "null"]
+          maxLength: 2048
       required:
         - classId
 

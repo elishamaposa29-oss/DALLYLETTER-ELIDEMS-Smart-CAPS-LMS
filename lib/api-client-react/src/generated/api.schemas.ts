@@ -451,6 +451,8 @@ export interface HandRaise {
   classId: number;
   /** @nullable */
   question?: string | null;
+  /** @nullable */
+  mediaUrl?: string | null;
   isResolved: boolean;
   createdAt: string;
 }
@@ -459,6 +461,8 @@ export interface RaiseHandBody {
   classId: number;
   /** @nullable */
   question?: string | null;
+  /** @nullable */
+  mediaUrl?: string | null;
 }
 
 export interface DashboardStats {

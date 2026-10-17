@@ -1,5 +1,6 @@
-import { createCipheriv, createHmac, createPrivateKey, generateKeyPairSync, randomBytes, sign, diffieHellman, type KeyObject } from "node:crypto";
+import { createCipheriv, createHmac, createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes, sign, diffieHellman, type KeyObject } from "node:crypto";
 import { pool } from "@workspace/db";
+import { logger } from "./logger";
 
 const b64 = (value: Buffer | string) => Buffer.from(value).toString("base64url");
 const fromB64 = (value: string) => Buffer.from(value, "base64url");
@@ -44,11 +45,13 @@ function vapidConfig() {
 }
 
 export function isPushConfigured(): boolean {
-  return vapidConfig() !== null;
+  try { return vapidConfig() !== null; }
+  catch { return false; }
 }
 
 export function getVapidPublicKey(): string | null {
-  return process.env.VAPID_PUBLIC_KEY?.trim() || null;
+  try { return vapidConfig()?.publicKey ?? null; }
+  catch { return null; }
 }
 
 function vapidJwt(endpoint: string, cfg: NonNullable<ReturnType<typeof vapidConfig>>): string {
@@ -68,7 +71,9 @@ async function encryptPayload(payload: string, p256dh: string, auth: string): Pr
   const authSecret = fromB64(auth);
   if (uaRaw.length !== 65 || uaRaw[0] !== 4 || authSecret.length !== 16) throw new Error("Invalid push subscription keys");
 
-  const uaKey = createPrivateKey({
+  // Subscription p256dh is a public key. Import it as a public KeyObject;
+  // createPrivateKey rejects a JWK that has no private d member.
+  const uaKey = createPublicKey({
     key: {
       kty: "EC", crv: "P-256",
       x: b64(uaRaw.subarray(1, 33)),
@@ -129,7 +134,7 @@ export async function dispatchPendingPushNotifications(): Promise<void> {
   // globally. Broadcast notifications are fanned out to each subscribed user.
   const { rows } = await pool.query(`
     WITH eligible AS (
-      SELECT n.id, n.recipient_id, n.title, n.message, n.link, n.created_at,
+      SELECT n.id, n.recipient_id, n.title, n.message, n.link, n.created_at, n.push_attempts,
              ps.id AS subscription_id, ps.user_id, ps.endpoint, ps.p256dh, ps.auth,
              ROW_NUMBER() OVER (
                PARTITION BY ps.user_id
@@ -141,9 +146,9 @@ export async function dispatchPendingPushNotifications(): Promise<void> {
       WHERE n.push_sent_at IS NULL
         AND n.is_read = false
         AND COALESCE(np.push_enabled, true) = true
-        AND n.created_at > now() - interval '24 hours'
+        AND (n.push_next_attempt_at IS NULL OR n.push_next_attempt_at <= now())
     )
-    SELECT id, recipient_id, title, message, link, subscription_id, user_id, endpoint, p256dh, auth
+    SELECT id, recipient_id, title, message, link, push_attempts, subscription_id, user_id, endpoint, p256dh, auth
     FROM eligible
     WHERE recipient_rank <= 10
     ORDER BY created_at DESC, id DESC
@@ -153,6 +158,7 @@ export async function dispatchPendingPushNotifications(): Promise<void> {
 
   for (const [notificationId, subscriptions] of grouped) {
     let retry = false;
+    let lastError = "delivery_failed";
     for (const sub of subscriptions) {
       try {
         const result = await sendOne(sub.endpoint, sub.p256dh, sub.auth, JSON.stringify({
@@ -163,18 +169,55 @@ export async function dispatchPendingPushNotifications(): Promise<void> {
           icon: "/icons/icon-192.png",
           badge: "/icons/icon-192.png",
         }));
-        if (result === "gone") await pool.query("DELETE FROM push_subscriptions WHERE id = $1", [sub.subscription_id]);
-      } catch {
+        if (result === "gone") {
+          await pool.query("DELETE FROM push_subscriptions WHERE id = $1", [sub.subscription_id]);
+        } else {
+          logger.info({ notificationId, subscriptionId: sub.subscription_id }, "Web push notification delivered");
+        }
+      } catch (error) {
         retry = true;
+        lastError = error instanceof Error ? error.message.slice(0, 300) : "Unknown push delivery error";
+        let endpointHost = "invalid-endpoint";
+        try { endpointHost = new URL(sub.endpoint).host; } catch { /* Never log subscription secrets. */ }
+        logger.warn({
+          notificationId,
+          subscriptionId: sub.subscription_id,
+          endpointHost,
+          error: error instanceof Error ? { name: error.name, message: error.message.slice(0, 300) } : "Unknown push delivery error",
+        }, "Web push delivery failed; notification remains eligible for retry");
       }
     }
-    if (!retry) await pool.query("UPDATE notifications SET push_sent_at = now() WHERE id = $1", [notificationId]);
+    if (!retry) {
+      await pool.query(
+        "UPDATE notifications SET push_sent_at = now(), push_next_attempt_at = NULL, push_last_error = NULL WHERE id = $1",
+        [notificationId],
+      );
+    } else {
+      // Retry with bounded exponential backoff; do not abandon notifications after 24 hours.
+      const attempts = Math.max(0, Number(subscriptions[0]?.push_attempts) || 0);
+      const delaySeconds = Math.min(3600, 15 * (2 ** Math.min(attempts, 8)));
+      await pool.query(
+        "UPDATE notifications SET push_attempts = COALESCE(push_attempts, 0) + 1, push_next_attempt_at = now() + ($2 * interval '1 second'), push_last_error = $3 WHERE id = $1",
+        [notificationId, delaySeconds, lastError],
+      );
+    }
   }
 }
 
 export function startPushDispatcher(): void {
-  if (!isPushConfigured()) return;
-  const run = () => dispatchPendingPushNotifications().catch(() => undefined);
+  if (!isPushConfigured()) {
+    logger.warn({
+      publicKeyConfigured: Boolean(process.env.VAPID_PUBLIC_KEY?.trim()),
+      privateKeyConfigured: Boolean(process.env.VAPID_PRIVATE_KEY?.trim()),
+      subjectConfigured: Boolean(process.env.VAPID_SUBJECT?.trim()),
+    }, "Web push is disabled because VAPID configuration is missing or invalid");
+    return;
+  }
+  const run = () => dispatchPendingPushNotifications().catch((error) => {
+    logger.error({
+      error: error instanceof Error ? { name: error.name, message: error.message.slice(0, 500) } : "Unknown dispatcher error",
+    }, "Web push dispatcher cycle failed");
+  });
   void run();
   setInterval(run, 60000).unref();
 }

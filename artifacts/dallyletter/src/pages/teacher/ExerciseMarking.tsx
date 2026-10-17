@@ -100,6 +100,27 @@ function MediaMarkOverlay({ data, onChange }: { data: Record<string, unknown> | 
   const [width, setWidth] = useState(4);
   const [label, setLabel] = useState("");
   const [zoom, setZoom] = useState(1);
+  const [undoStack, setUndoStack] = useState<Record<string, unknown>[]>([]);
+  const [redoStack, setRedoStack] = useState<Record<string, unknown>[]>([]);
+  const snapshot = (value: Record<string, unknown> | null | undefined) => structuredClone(value ?? {});
+  const rememberChange = () => {
+    setUndoStack(stack => [...stack.slice(-49), snapshot(data)]);
+    setRedoStack([]);
+  };
+  const undo = () => {
+    if (!undoStack.length) return;
+    const previous = undoStack[undoStack.length - 1];
+    setRedoStack(stack => [...stack.slice(-49), snapshot(data)]);
+    setUndoStack(stack => stack.slice(0, -1));
+    onChange(snapshot(previous));
+  };
+  const redo = () => {
+    if (!redoStack.length) return;
+    const next = redoStack[redoStack.length - 1];
+    setUndoStack(stack => [...stack.slice(-49), snapshot(data)]);
+    setRedoStack(stack => stack.slice(0, -1));
+    onChange(snapshot(next));
+  };
   const adjustZoom = (event: React.MouseEvent<HTMLButtonElement>, delta: number) => { const surface=event.currentTarget.closest("[data-marking-surface]") as HTMLElement|null; const next=Math.max(0.75,Math.min(2,Math.round((zoom+delta)*100)/100)); if(surface){surface.style.setProperty("zoom",String(next));surface.style.setProperty("overflow","auto");} setZoom(next); };
   useEffect(()=>()=>{const surface=canvasRef.current?.closest("[data-marking-surface]") as HTMLElement|null;if(surface){surface.style.removeProperty("zoom");surface.style.removeProperty("overflow");}},[]);
   const redraw = () => {
@@ -117,9 +138,10 @@ function MediaMarkOverlay({ data, onChange }: { data: Record<string, unknown> | 
   const point=(e:React.PointerEvent<HTMLCanvasElement>)=>{const c=canvasRef.current;if(!c)return null;const r=c.getBoundingClientRect();return{x:(e.clientX-r.left)*(1200/r.width),y:(e.clientY-r.top)*(700/r.height)};};
   const down=(e:React.PointerEvent<HTMLCanvasElement>)=>{
     const p=point(e);if(!p)return;
-    if(tool==="text"){if(label.trim())onChange({...data,labels:[...((data?.labels??[]) as Array<Record<string,unknown>>),{text:label.trim(),x:p.x,y:p.y,color,fontSize:Math.max(14,width*4),opacity:1}]});return;}
+    if(tool==="text"){if(label.trim()){rememberChange();onChange({...data,labels:[...((data?.labels??[]) as Array<Record<string,unknown>>),{text:label.trim(),x:p.x,y:p.y,color,fontSize:Math.max(14,width*4),opacity:1}]});}return;}
     drawing.current=true;last.current=p;e.currentTarget.setPointerCapture(e.pointerId);
-    if(tool==="tick"){const ticks=(data?.ticks??[]) as Array<Record<string,unknown>>;onChange({...data,ticks:[...ticks,{x:p.x,y:p.y,size:Math.max(22,width*8),color:"#16a34a",opacity:.95}]});drawing.current=false;return;}
+    if(tool==="pen"||tool==="eraser"||tool==="pointer") rememberChange();
+    if(tool==="tick"){rememberChange();const ticks=(data?.ticks??[]) as Array<Record<string,unknown>>;onChange({...data,ticks:[...ticks,{x:p.x,y:p.y,size:Math.max(22,width*8),color:"#16a34a",opacity:.95}]});drawing.current=false;return;}
     if(tool==="pointer"){const id=crypto.randomUUID();activePointerId.current=id;pointerOrigin.current=p;const pointers=(data?.pointers??[]) as Array<Record<string,unknown>>;onChange({...data,pointers:[...pointers,{id,x:p.x,y:p.y,length:90,thickness:Math.max(2,width),opacity:1,color,angle:0}]});}
   };
   const move=(e:React.PointerEvent<HTMLCanvasElement>)=>{
@@ -136,7 +158,7 @@ function MediaMarkOverlay({ data, onChange }: { data: Record<string, unknown> | 
       <input aria-label="Correction ink colour" type="color" value={color} onChange={e=>setColor(e.target.value)} className="h-7 w-8" />
       <input aria-label="Correction ink size" type="range" min="1" max="12" value={width} onChange={e=>setWidth(Number(e.target.value))} className="w-14" />
       {tool==="text"&&<input aria-label="Correction label text" value={label} onChange={e=>setLabel(e.target.value)} placeholder="Correction note" className="h-8 w-28 rounded border bg-white px-2 text-xs text-black" />}
-      <Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-white" aria-label="Zoom out" onClick={e=>adjustZoom(e,-0.25)}>−</Button><span className="self-center px-1 text-xs text-white">{Math.round(zoom*100)}%</span><Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-white" aria-label="Zoom in" onClick={e=>adjustZoom(e,0.25)}>+</Button><Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-white" onClick={openFullscreen}>Full screen</Button>
+      <Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-white" aria-label="Undo correction" title="Undo correction" disabled={!undoStack.length} onClick={undo}>↶ Undo</Button><Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-white" aria-label="Redo correction" title="Redo correction" disabled={!redoStack.length} onClick={redo}>↷ Redo</Button><Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-white" aria-label="Zoom out" onClick={e=>adjustZoom(e,-0.25)}>−</Button><span className="self-center px-1 text-xs text-white">{Math.round(zoom*100)}%</span><Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-white" aria-label="Zoom in" onClick={e=>adjustZoom(e,0.25)}>+</Button><Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-white" onClick={openFullscreen}>Full screen</Button>
       <Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-white" aria-label="Stop marking" title="Stop marking" onClick={()=>setActive(false)}>✕</Button>
     </div>
     <canvas ref={canvasRef} width={1200} height={700} className={active ? "pointer-events-auto absolute inset-0 h-full w-full touch-none" : "pointer-events-none absolute inset-0 h-full w-full"} onPointerDown={down} onPointerMove={move} onPointerUp={()=>{drawing.current=false;last.current=null;activePointerId.current=null;pointerOrigin.current=null}} onPointerCancel={()=>{drawing.current=false;last.current=null;activePointerId.current=null;pointerOrigin.current=null}} />

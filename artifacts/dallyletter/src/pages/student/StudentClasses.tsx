@@ -46,20 +46,50 @@ export default function StudentClasses() {
   const queryClient = useQueryClient();
 
   const [question, setQuestion] = useState("");
+  const [handRaiseMedia, setHandRaiseMedia] = useState<File | null>(null);
+  const [uploadingHandRaise, setUploadingHandRaise] = useState(false);
   const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   // Track which classId the student has a raised hand for and the handRaise id
   const [raisedHands, setRaisedHands] = useState<Record<number, number>>({}); // classId -> handRaiseId
   const [loweringHand, setLoweringHand] = useState<number | null>(null);
 
-  const handleRaiseHand = () => {
-    if (!selectedClassId) return;
+  const handleRaiseHand = async () => {
+    if (!selectedClassId || uploadingHandRaise) return;
+    if (handRaiseMedia) {
+      setUploadingHandRaise(true);
+      try {
+        const token = localStorage.getItem("dallyletter_token");
+        const form = new FormData();
+        form.set("classId", String(selectedClassId));
+        form.set("question", question);
+        form.set("file", handRaiseMedia);
+        const response = await fetch(getApiUrl("/api/raise-hand/with-media"), {
+          method: "POST",
+          headers: token ? { Authorization: "Bearer " + token } : {},
+          body: form,
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || "Failed to raise hand with attachment");
+        toast({ title: "Hand raised", description: "Your teacher has been notified." });
+        setRaisedHands(prev => ({ ...prev, [selectedClassId]: result.id }));
+        setIsDialogOpen(false);
+        setQuestion("");
+        setHandRaiseMedia(null);
+        queryClient.invalidateQueries();
+      } catch (error) {
+        toast({ variant: "destructive", title: "Error", description: error instanceof Error ? error.message : "Failed to raise hand" });
+      } finally {
+        setUploadingHandRaise(false);
+      }
+      return;
+    }
     raiseHandMutation.mutate({ data: { classId: selectedClassId, question } }, {
       onSuccess: (data) => {
         toast({ title: "Hand raised", description: "Your teacher has been notified." });
         setIsDialogOpen(false);
         setQuestion("");
-        // Store the handRaise id so we can lower it
+        setHandRaiseMedia(null);
         setRaisedHands(prev => ({ ...prev, [selectedClassId]: (data as { id: number }).id }));
         queryClient.invalidateQueries();
       },
@@ -213,11 +243,22 @@ export default function StudentClasses() {
                                   onChange={(e) => setQuestion(e.target.value)}
                                   rows={4}
                                 />
+                                <div className="mt-3 space-y-1">
+                                  <label htmlFor={"hand-raise-media-" + c.id} className="text-sm font-medium">Attach a photo, PDF, audio or video (optional)</label>
+                                  <input
+                                    id={"hand-raise-media-" + c.id}
+                                    type="file"
+                                    accept="image/jpeg,image/png,image/webp,application/pdf,audio/mpeg,audio/mp4,audio/ogg,audio/webm,audio/wav,video/mp4,video/webm,video/quicktime,video/ogg"
+                                    onChange={(event) => setHandRaiseMedia(event.target.files?.[0] ?? null)}
+                                    className="block w-full text-sm"
+                                  />
+                                  {handRaiseMedia && <p className="text-xs text-muted-foreground">Selected: {handRaiseMedia.name}</p>}
+                                </div>
                               </div>
                               <DialogFooter>
                                 <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-                                <Button onClick={handleRaiseHand} disabled={raiseHandMutation.isPending}>
-                                  {raiseHandMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                <Button onClick={handleRaiseHand} disabled={raiseHandMutation.isPending || uploadingHandRaise}>
+                                  {(raiseHandMutation.isPending || uploadingHandRaise) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                                   Submit
                                 </Button>
                               </DialogFooter>

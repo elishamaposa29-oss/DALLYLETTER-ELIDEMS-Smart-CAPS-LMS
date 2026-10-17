@@ -17,10 +17,11 @@ router.post("/content-permissions",requireAuth,async(req,res):Promise<void>=>{
   const result=await pool.query(`SELECT ${ownerColumn} AS owner_id FROM ${table} WHERE id=$1 LIMIT 1`,[contentId]);
   const ownerId=result.rows[0]?.owner_id;
   if(!ownerId){res.status(404).json({error:"Content not found"});return;}
-  if(ownerId===actor.id||isOwnerRole(actor.role)||(canAccessManager(actor)&&actor.managerLevel==="senior")){res.status(200).json({ok:true,alreadyAuthorized:true});return;}
+  if(Number(ownerId)===actor.id||isOwnerRole(actor.role)||(canAccessManager(actor)&&actor.managerLevel==="senior")){res.status(200).json({ok:true,alreadyAuthorized:true});return;}
   const existing=await pool.query("SELECT id,status FROM content_permission_requests WHERE requester_id=$1 AND content_type=$2 AND content_id=$3 AND requested_action=$4 AND status='pending' LIMIT 1",[actor.id,contentType,contentId,requestedAction]);
   if(existing.rows[0]){res.json({ok:true,pending:true,id:existing.rows[0].id});return;}
   const inserted=await pool.query("INSERT INTO content_permission_requests(requester_id,owner_id,content_type,content_id,requested_action) VALUES($1,$2,$3,$4,$5) RETURNING id",[actor.id,ownerId,contentType,contentId,requestedAction]);
+  await pool.query("INSERT INTO activity_log(type,description,actor_name) VALUES($1,$2,$3)",["content_permission_requested","Permission request #"+inserted.rows[0].id+": "+contentType+" #"+contentId+", action "+requestedAction,actor.name]);
   res.status(201).json({ok:true,pending:true,id:inserted.rows[0].id});
 });
 
@@ -42,13 +43,24 @@ router.get("/content-permissions",requireAuth,async(req,res):Promise<void>=>{
   res.json(rows.rows);
 });
 
+// GET /content-permissions/mine — requester can track pending, approved and declined decisions.
+router.get("/content-permissions/mine",requireAuth,async(req,res):Promise<void>=>{
+  const actor=req.currentUser!;
+  const rows=await pool.query(
+    "SELECT cp.*, owner.name AS owner_name, CASE WHEN cp.content_type='lesson' THEN lesson.title ELSE exercise.title END AS content_title FROM content_permission_requests cp LEFT JOIN users owner ON owner.id=cp.owner_id LEFT JOIN lessons lesson ON cp.content_type='lesson' AND lesson.id=cp.content_id LEFT JOIN exercises exercise ON cp.content_type='exercise' AND exercise.id=cp.content_id WHERE cp.requester_id=$1 ORDER BY cp.created_at DESC LIMIT 100",
+    [actor.id]
+  );
+  res.json(rows.rows);
+});
 router.patch("/content-permissions/:id",requireAuth,async(req,res):Promise<void>=>{
   const actor=req.currentUser!;
   const id=Number(req.params.id); const status=String(req.body?.status||"");
   if(!Number.isInteger(id)||!["approved","declined"].includes(status)){res.status(400).json({error:"Invalid permission response"});return;}
   const result=await pool.query("UPDATE content_permission_requests SET status=$1,responded_at=now() WHERE id=$2 AND owner_id=$3 AND status='pending' RETURNING *",[status,id,actor.id]);
   if(!result.rows[0]){res.status(404).json({error:"Permission request not found"});return;}
-  res.json(result.rows[0]);
+  const decision=result.rows[0];
+  await pool.query("INSERT INTO activity_log(type,description,actor_name) VALUES($1,$2,$3)",[status==="approved"?"content_permission_approved":"content_permission_declined","Permission request #"+id+": "+decision.content_type+" #"+decision.content_id+", action "+decision.requested_action+", "+status,actor.name]);
+  res.json(decision);
 });
 
 export default router;

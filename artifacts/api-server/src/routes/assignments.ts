@@ -199,18 +199,26 @@ router.delete("/:id", requireAuth, async (req, res): Promise<void> => {
     res.status(403).json({ error: "You can delete only assignments you created" });
     return;
   }
-  // Delete the row first. A storage cleanup failure must not leave the UI believing
-  // the assignment still exists; report cleanup separately for safe retry/operations.
+  // Capture every attached object before deletion, including learner submission files.
+  // The row deletion remains authoritative; cleanup failures are reported for follow-up.
+  const submissions = await db.select({ fileUrl: assignmentSubmissionsTable.fileUrl })
+    .from(assignmentSubmissionsTable).where(eq(assignmentSubmissionsTable.assignmentId, assignmentId));
+  const storageKeys = new Set<string>();
+  for (const url of [existing.attachmentUrl, ...submissions.map(row => row.fileUrl)]) {
+    if (typeof url !== "string") continue;
+    const key = url.match(/\/api\/(?:lessons|messages)\/media\/([a-f0-9-]{36})/i)?.[1];
+    if (key) storageKeys.add(key);
+  }
   await db.delete(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
-  const storageKey = typeof existing.attachmentUrl === "string"
-    ? existing.attachmentUrl.match(/\/api\/lessons\/media\/([a-f0-9-]{36})/i)?.[1]
-    : null;
-  if (storageKey) {
-    try { await removeStoredMedia(storageKey); }
-    catch {
-      res.status(200).json({ ok: true, warning: "Assignment deleted, but its attachment cleanup needs attention." });
-      return;
-    }
+  const failedCleanup: string[] = [];
+  for (const key of storageKeys) {
+    try { await removeStoredMedia(key); }
+    catch { failedCleanup.push(key); }
+  }
+  if (failedCleanup.length) {
+    logger.warn({ assignmentId, failedMediaCount: failedCleanup.length }, "Assignment deleted; some attached media cleanup needs retry");
+    res.status(200).json({ ok: true, warning: "Assignment deleted, but some attached media cleanup needs attention." });
+    return;
   }
   res.json({ ok: true });
 });
