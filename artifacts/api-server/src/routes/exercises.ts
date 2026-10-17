@@ -93,6 +93,7 @@ router.post("/question-media", requireAuth, (req,res,next):void => {
         ? previousAttachment.url.match(/\/api\/lessons\/media\/([a-f0-9-]{36})/i)?.[1]
         : null;
       const attachmentUrl = `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`;
+      // Keep storage and the question config consistent: rollback the new object if the DB write fails.
       let mediaPersisted = false;
       try {
         await persistUploadedMedia(file.filename, file.mimetype, file.path);
