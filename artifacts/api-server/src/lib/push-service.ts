@@ -1,5 +1,6 @@
 import { createCipheriv, createHmac, createPrivateKey, generateKeyPairSync, randomBytes, sign, diffieHellman, type KeyObject } from "node:crypto";
 import { pool } from "@workspace/db";
+import { logger } from "./logger";
 
 const b64 = (value: Buffer | string) => Buffer.from(value).toString("base64url");
 const fromB64 = (value: string) => Buffer.from(value, "base64url");
@@ -164,17 +165,31 @@ export async function dispatchPendingPushNotifications(): Promise<void> {
           badge: "/icons/icon-192.png",
         }));
         if (result === "gone") await pool.query("DELETE FROM push_subscriptions WHERE id = $1", [sub.subscription_id]);
-      } catch {
+      } catch (error) {
         retry = true;
+        let endpointHost = "invalid-endpoint";
+        try { endpointHost = new URL(sub.endpoint).host; } catch { /* Never log subscription secrets. */ }
+        logger.warn({
+          notificationId,
+          subscriptionId: sub.subscription_id,
+          endpointHost,
+          error: error instanceof Error ? { name: error.name, message: error.message.slice(0, 300) } : "Unknown push delivery error",
+        }, "Web push delivery failed; notification remains eligible for retry");
       }
     }
-    if (!retry) await pool.query("UPDATE notifications SET push_sent_at = now() WHERE id = $1", [notificationId]);
+    if (!retry) {
+      await pool.query("UPDATE notifications SET push_sent_at = now() WHERE id = $1", [notificationId]);
+    }
   }
 }
 
 export function startPushDispatcher(): void {
   if (!isPushConfigured()) return;
-  const run = () => dispatchPendingPushNotifications().catch(() => undefined);
+  const run = () => dispatchPendingPushNotifications().catch((error) => {
+    logger.error({
+      error: error instanceof Error ? { name: error.name, message: error.message.slice(0, 500) } : "Unknown dispatcher error",
+    }, "Web push dispatcher cycle failed");
+  });
   void run();
   setInterval(run, 60000).unref();
 }

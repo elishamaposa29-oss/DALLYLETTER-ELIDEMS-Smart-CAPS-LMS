@@ -36,6 +36,8 @@ export default function StudentPolls() {
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [myPerformance, setMyPerformance] = useState<{ submitted: boolean; score: number; totalQuestions: number; percentage: number } | null>(null);
   const [resultPrivacy, setResultPrivacy] = useState<"public" | "private" | "selected_friends">("private");
+  const [instantMarking, setInstantMarking] = useState(false);
+  const [feedbackEffects, setFeedbackEffects] = useState(true);
   const [selectedFriendIds, setSelectedFriendIds] = useState<number[]>([]);
   const [friends, setFriends] = useState<{ id: number; name: string }[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -161,11 +163,25 @@ export default function StudentPolls() {
               <p className="text-lg font-semibold leading-relaxed">{currentQuestion.question}</p>
               <div className="space-y-2.5">
                 {currentQuestion.options.map(opt => (
-                  <button key={opt.id} onClick={() => setAnswers(a => ({ ...a, [currentQuestion.id]: opt.id }))}
-                    className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all text-sm font-medium ${answers[currentQuestion.id] === opt.id ? "border-primary bg-primary/5 text-primary" : "border-border hover:border-muted-foreground/40 hover:bg-muted/50"}`}>
+                  <button key={opt.id} onClick={() => {
+                    setAnswers(a => ({ ...a, [currentQuestion.id]: opt.id }));
+                    if (instantMarking) {
+                      const correct = Boolean(opt.isCorrect);
+                      if (feedbackEffects) {
+                        try { if (typeof navigator.vibrate === "function") navigator.vibrate(correct ? 35 : [35, 45, 35]); } catch { /* optional device vibration */ }
+                        try { const AudioContextClass = window.AudioContext; if (AudioContextClass) { const context = new AudioContextClass(); const oscillator = context.createOscillator(); const gain = context.createGain(); oscillator.frequency.value = correct ? 880 : 220; gain.gain.value = 0.04; oscillator.connect(gain); gain.connect(context.destination); oscillator.start(); oscillator.stop(context.currentTime + 0.12); oscillator.onended = () => void context.close(); } } catch { /* optional sound */ }
+                      }
+                    }
+                  }} aria-pressed={answers[currentQuestion.id] === opt.id}
+                    className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all text-sm font-medium ${answers[currentQuestion.id] === opt.id ? (instantMarking ? (opt.isCorrect ? "border-emerald-500 bg-emerald-50 text-emerald-800" : "border-rose-500 bg-rose-50 text-rose-800") : "border-primary bg-primary/5 text-primary") : "border-border hover:border-muted-foreground/40 hover:bg-muted/50"}`}>
                     {opt.text}
                   </button>
                 ))}
+              </div>
+              {instantMarking && answers[currentQuestion.id] != null && (() => { const chosen = currentQuestion.options.find(opt => opt.id === answers[currentQuestion.id]); const correct = Boolean(chosen?.isCorrect); return <div role="status" aria-live="polite" className={`rounded-xl border p-3 ${correct ? "border-emerald-300 bg-emerald-50 text-emerald-900" : "border-rose-300 bg-rose-50 text-rose-900"}`}><p className="font-semibold">{correct ? "✓ Correct answer!" : "Not quite — review the explanation."}</p>{currentQuestion.explanation && <p className="mt-1 text-sm">{currentQuestion.explanation}</p>}</div>; })()}
+              <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/20 p-3">
+                <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={instantMarking} onChange={e => setInstantMarking(e.target.checked)} />Allow instant marking</label>
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={feedbackEffects} onChange={e => setFeedbackEffects(e.target.checked)} />Sound and vibration</label>
               </div>
             </CardContent>
           </Card>
