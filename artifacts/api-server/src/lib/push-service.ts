@@ -130,7 +130,7 @@ export async function dispatchPendingPushNotifications(): Promise<void> {
   // globally. Broadcast notifications are fanned out to each subscribed user.
   const { rows } = await pool.query(`
     WITH eligible AS (
-      SELECT n.id, n.recipient_id, n.title, n.message, n.link, n.created_at,
+      SELECT n.id, n.recipient_id, n.title, n.message, n.link, n.created_at, n.push_attempts,
              ps.id AS subscription_id, ps.user_id, ps.endpoint, ps.p256dh, ps.auth,
              ROW_NUMBER() OVER (
                PARTITION BY ps.user_id
@@ -142,9 +142,9 @@ export async function dispatchPendingPushNotifications(): Promise<void> {
       WHERE n.push_sent_at IS NULL
         AND n.is_read = false
         AND COALESCE(np.push_enabled, true) = true
-        AND n.created_at > now() - interval '24 hours'
+        AND (n.push_next_attempt_at IS NULL OR n.push_next_attempt_at <= now())
     )
-    SELECT id, recipient_id, title, message, link, subscription_id, user_id, endpoint, p256dh, auth
+    SELECT id, recipient_id, title, message, link, push_attempts, subscription_id, user_id, endpoint, p256dh, auth
     FROM eligible
     WHERE recipient_rank <= 10
     ORDER BY created_at DESC, id DESC
@@ -154,6 +154,7 @@ export async function dispatchPendingPushNotifications(): Promise<void> {
 
   for (const [notificationId, subscriptions] of grouped) {
     let retry = false;
+    let lastError = "delivery_failed";
     for (const sub of subscriptions) {
       try {
         const result = await sendOne(sub.endpoint, sub.p256dh, sub.auth, JSON.stringify({
@@ -167,6 +168,7 @@ export async function dispatchPendingPushNotifications(): Promise<void> {
         if (result === "gone") await pool.query("DELETE FROM push_subscriptions WHERE id = $1", [sub.subscription_id]);
       } catch (error) {
         retry = true;
+        lastError = error instanceof Error ? error.message.slice(0, 300) : "Unknown push delivery error";
         let endpointHost = "invalid-endpoint";
         try { endpointHost = new URL(sub.endpoint).host; } catch { /* Never log subscription secrets. */ }
         logger.warn({
@@ -178,7 +180,18 @@ export async function dispatchPendingPushNotifications(): Promise<void> {
       }
     }
     if (!retry) {
-      await pool.query("UPDATE notifications SET push_sent_at = now() WHERE id = $1", [notificationId]);
+      await pool.query(
+        "UPDATE notifications SET push_sent_at = now(), push_next_attempt_at = NULL, push_last_error = NULL WHERE id = $1",
+        [notificationId],
+      );
+    } else {
+      // Retry with bounded exponential backoff; do not abandon notifications after 24 hours.
+      const attempts = Math.max(0, Number(subscriptions[0]?.push_attempts) || 0);
+      const delaySeconds = Math.min(3600, 15 * (2 ** Math.min(attempts, 8)));
+      await pool.query(
+        "UPDATE notifications SET push_attempts = COALESCE(push_attempts, 0) + 1, push_next_attempt_at = now() + ($2 * interval '1 second'), push_last_error = $3 WHERE id = $1",
+        [notificationId, delaySeconds, lastError],
+      );
     }
   }
 }
