@@ -16,21 +16,24 @@ export function AuthenticatedMedia({ url, type, title }: AuthenticatedMediaProps
   const [scale, setScale] = useState(1);
 
   const shareBrandedLink = async () => {
-    const brandedUrl = `${window.location.href}${window.location.search ? "&" : "?"}utm_source=dallyletter_share`;
+    // Share the actual resource URL, not the current dashboard route.
+    const resourceUrl = /^https?:\\/\\//i.test(url) ? url : getApiUrl(url);
+    const separator = resourceUrl.includes("?") ? "&" : "?";
+    const brandedUrl = `${resourceUrl}${separator}utm_source=dallyletter_share`;
     try {
       if (typeof navigator.share === "function") {
-        await navigator.share({ title: `${title || "Learning resource"} · Dallyletter Elidems`, text: "Shared from Dallyletter Elidems — The fun way to success.", url: brandedUrl });
+        await navigator.share({ title: `${title || "Learning resource"} · Dallyletter Elidems`, text: "Shared from Dallyletter Elidems — The fun way to success. The recipient may need to sign in.", url: brandedUrl });
         return;
       }
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(brandedUrl);
-        window.alert("Dallyletter link copied. Private resources may require sign-in.");
+        window.alert("Dallyletter resource link copied. Protected resources require the recipient to sign in.");
         return;
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
     }
-    window.alert("Your browser cannot share directly. Use Download, then share the file from your device.");
+    window.alert("Direct link sharing is unavailable here. Download the resource and share it from your device.");
   };
 
   useEffect(() => {
