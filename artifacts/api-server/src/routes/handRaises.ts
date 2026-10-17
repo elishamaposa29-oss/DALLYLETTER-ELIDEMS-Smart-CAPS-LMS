@@ -2,7 +2,8 @@ import { Router, type IRouter } from "express";
 import { and, eq, inArray } from "drizzle-orm";
 import { db, handRaisesTable, activityLogTable, classesTable } from "@workspace/db";
 import { RaiseHandBody, ListHandRaisesQueryParams } from "@workspace/api-zod";
-import { requireAuth } from "../lib/auth-middleware";
+import { requireAuth, isOwnerRole } from "../lib/auth-middleware";
+import { removeStoredMedia } from "../lib/media-storage";
 
 const router: IRouter = Router();
 
@@ -12,11 +13,16 @@ router.post("/raise-hand", requireAuth, async (req, res): Promise<void> => {
   const parsed = RaiseHandBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
+  const mediaUrl = typeof parsed.data.mediaUrl === "string" ? parsed.data.mediaUrl.trim() : null;
+  if (mediaUrl && !/^\/api\/(?:lessons|messages)\/media\/[a-f0-9-]{36}(?:\?type=[a-zA-Z0-9%./+-]+)?$/i.test(mediaUrl)) {
+    res.status(400).json({ error: "mediaUrl must reference authenticated Dallyletter media" }); return;
+  }
   const [handRaise] = await db.insert(handRaisesTable).values({
     studentId: currentUser.id,
     studentName: currentUser.name,
     classId: parsed.data.classId,
     question: parsed.data.question ?? null,
+    mediaUrl,
     isResolved: false,
   }).returning();
 
@@ -58,6 +64,28 @@ router.get("/raise-hand", requireAuth, async (req, res): Promise<void> => {
   res.json(rows.map(h => ({ ...h, createdAt: h.createdAt.toISOString() })));
 });
 
+// DELETE /raise-hand/:id — remove a hand raise and clean up its attached media.
+router.delete("/raise-hand/:id", requireAuth, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  const user = req.currentUser!;
+  const [existing] = await db.select().from(handRaisesTable).where(eq(handRaisesTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  let allowed = existing.studentId === user.id || isOwnerRole(user.role) || (user.isManager === true && user.managerLevel === "senior");
+  if (!allowed && user.role === "teacher") {
+    const [ownedClass] = await db.select({ id: classesTable.id }).from(classesTable)
+      .where(and(eq(classesTable.id, existing.classId), eq(classesTable.teacherId, user.id)));
+    allowed = Boolean(ownedClass);
+  }
+  if (!allowed) { res.status(403).json({ error: "Not authorised to delete this hand raise." }); return; }
+  await db.delete(handRaisesTable).where(eq(handRaisesTable.id, id));
+  const storageKey = existing.mediaUrl?.match(/\/api\/(?:lessons|messages)\/media\/([a-f0-9-]{36})/i)?.[1];
+  if (storageKey) {
+    try { await removeStoredMedia(storageKey); }
+    catch { res.status(200).json({ ok: true, warning: "Hand raise deleted, but media cleanup needs attention." }); return; }
+  }
+  res.json({ ok: true });
+});
 // PATCH /raise-hand/:id/resolve — lower own hand or resolve a hand in a managed class
 router.patch("/raise-hand/:id/resolve", requireAuth, async (req, res): Promise<void> => {
   const id = parseInt(String(req.params.id));
