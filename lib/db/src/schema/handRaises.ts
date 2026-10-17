@@ -12,6 +12,7 @@ export const handRaisesTable = pgTable("hand_raises", {
   classId: integer("class_id").notNull().references(() => classesTable.id),
   question: text("question"),
   mediaUrl: text("media_url"),
+  mediaOwned: boolean("media_owned").notNull().default(false),
   isResolved: boolean("is_resolved").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
