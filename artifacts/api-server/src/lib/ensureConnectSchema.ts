@@ -8,6 +8,20 @@ export async function ensureConnectSchema(): Promise<void> {
   try {
     await client.query("BEGIN");
 
+    // Durable fallback for small media uploads when object storage credentials are
+    // unavailable. Chunks cap row sizes and make uploads atomic across failures.
+    // Existing media tables and keys remain unchanged.
+    await client.query(`CREATE TABLE IF NOT EXISTS media_object_chunks (
+      storage_key text NOT NULL,
+      mime_type text NOT NULL,
+      size_bytes bigint NOT NULL CHECK (size_bytes >= 0),
+      chunk_index integer NOT NULL CHECK (chunk_index >= 0),
+      data bytea NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (storage_key, chunk_index)
+    )`);
+    await client.query(`CREATE INDEX IF NOT EXISTS media_object_chunks_created_idx ON media_object_chunks(created_at)`);
+
     // The CI database and some fresh deployments may contain the core users table
     // without the optional notifications table. Create the canonical table first,
     // then safely extend it. This is idempotent and matches lib/db schema.
