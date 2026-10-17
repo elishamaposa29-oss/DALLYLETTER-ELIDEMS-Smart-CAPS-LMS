@@ -63,7 +63,7 @@ router.post("/raise-hand/with-media", requireAuth, (req, res): void => {
         await persistUploadedMedia(key, req.file!.mimetype, req.file!.path);
         const mediaUrl = "/api/lessons/media/" + key + "?type=" + encodeURIComponent(req.file!.mimetype);
         const [handRaise] = await db.insert(handRaisesTable).values({
-          studentId: user.id, studentName: user.name, classId, question: question || null, mediaUrl, isResolved: false,
+          studentId: user.id, studentName: user.name, classId, question: question || null, mediaUrl, mediaOwned: true, isResolved: false,
         }).returning();
         await db.insert(activityLogTable).values({ type: "hand_raised", description: user.name + " raised a hand with an attachment", actorName: user.name });
         res.status(201).json({ ...handRaise, createdAt: handRaise.createdAt.toISOString() });
@@ -146,7 +146,7 @@ router.patch("/raise-hand/:id/resolve", requireAuth, async (req, res): Promise<v
   if (storageKey) {
     try {
       await removeStoredMedia(storageKey);
-      const [cleaned] = await db.update(handRaisesTable).set({ mediaUrl: null }).where(eq(handRaisesTable.id, id)).returning();
+      const [cleaned] = await db.update(handRaisesTable).set({ mediaUrl: null, mediaOwned: false }).where(eq(handRaisesTable.id, id)).returning();
       res.json({ ...cleaned, createdAt: cleaned.createdAt.toISOString() });
     } catch {
       res.status(200).json({ ...updated, createdAt: updated.createdAt.toISOString(), warning: "Hand resolved, but attachment cleanup needs attention." });
