@@ -8,7 +8,7 @@ import {
   getListMessagesQueryKey,
 } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
-import { Loader2, Send, Users, MessageSquare, Reply, X, Flag, BarChart3, RefreshCw, User, ArrowLeft, Check, Paperclip, Trash2 } from "lucide-react";
+import { Loader2, Send, Users, MessageSquare, Reply, X, Flag, BarChart3, RefreshCw, User, ArrowLeft, Check, Paperclip, Trash2, Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -56,6 +56,7 @@ export default function StudentChat() {
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("groupId"); return value && /^\d+$/.test(value) ? Number(value) : null; });
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<"groups" | "people">("groups");
+  const [chatFullscreen, setChatFullscreen] = useState(false);
   const [message, setMessage] = useState("");
   const [replyTo, setReplyTo] = useState<number | null>(null);
   const [reportingMessageId, setReportingMessageId] = useState<number | null>(null);
@@ -313,7 +314,7 @@ export default function StudentChat() {
           </div>
         </Card>
 
-        <Card className="flex min-h-[420px] flex-1 flex-col overflow-hidden bg-card">
+        <Card className={`flex min-h-[420px] flex-1 flex-col overflow-hidden bg-card ${chatFullscreen ? "fixed inset-0 z-[100] min-h-0 rounded-none" : ""}`}>
           {!selectedGroupId && !selectedUserId ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-muted-foreground"><MessageSquare className="h-14 w-14 text-muted-foreground/20" /><p className="font-medium">Select a group or educator</p><p className="text-sm">Use the tabs to open an ELIDEMS Connect conversation.</p></div>
           ) : (
@@ -324,7 +325,7 @@ export default function StudentChat() {
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">{isGroupConversation ? <Users className="h-4 w-4 text-primary" /> : <User className="h-4 w-4 text-primary" />}</div>
                   <div className="min-w-0"><p className="truncate font-semibold">{isGroupConversation ? selectedGroup?.name : selectedContact?.name}</p>{isGroupConversation && settings.rules && <p className="truncate text-xs text-muted-foreground">{settings.rules}</p>}</div>
                 </div>
-                {isGroupConversation && settings.allowPolls && <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => setPollComposerOpen(value => !value)}><BarChart3 className="mr-1 h-4 w-4" />Poll</Button>}
+                <div className="flex shrink-0 items-center gap-1">{isGroupConversation && settings.allowPolls && <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => setPollComposerOpen(value => !value)}><BarChart3 className="mr-1 h-4 w-4" />Poll</Button>}<Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={() => setChatFullscreen(value => !value)} aria-label={chatFullscreen ? "Exit full-screen chat" : "Open full-screen chat"} title={chatFullscreen ? "Exit full-screen chat" : "Open full-screen chat"}>{chatFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}</Button></div>
               </div>
 
               {pollComposerOpen && isGroupConversation && (
