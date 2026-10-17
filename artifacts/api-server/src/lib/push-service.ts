@@ -45,11 +45,13 @@ function vapidConfig() {
 }
 
 export function isPushConfigured(): boolean {
-  return vapidConfig() !== null;
+  try { return vapidConfig() !== null; }
+  catch { return false; }
 }
 
 export function getVapidPublicKey(): string | null {
-  return process.env.VAPID_PUBLIC_KEY?.trim() || null;
+  try { return vapidConfig()?.publicKey ?? null; }
+  catch { return null; }
 }
 
 function vapidJwt(endpoint: string, cfg: NonNullable<ReturnType<typeof vapidConfig>>): string {
@@ -203,7 +205,14 @@ export async function dispatchPendingPushNotifications(): Promise<void> {
 }
 
 export function startPushDispatcher(): void {
-  if (!isPushConfigured()) return;
+  if (!isPushConfigured()) {
+    logger.warn({
+      publicKeyConfigured: Boolean(process.env.VAPID_PUBLIC_KEY?.trim()),
+      privateKeyConfigured: Boolean(process.env.VAPID_PRIVATE_KEY?.trim()),
+      subjectConfigured: Boolean(process.env.VAPID_SUBJECT?.trim()),
+    }, "Web push is disabled because VAPID configuration is missing or invalid");
+    return;
+  }
   const run = () => dispatchPendingPushNotifications().catch((error) => {
     logger.error({
       error: error instanceof Error ? { name: error.name, message: error.message.slice(0, 500) } : "Unknown dispatcher error",
