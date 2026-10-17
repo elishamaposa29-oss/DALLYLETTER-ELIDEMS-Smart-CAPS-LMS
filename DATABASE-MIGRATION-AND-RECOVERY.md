@@ -1,56 +1,33 @@
-# Database Migration and Recovery
+# Database Recovery and Migration — Safety-First Runbook
 
-This is a runbook, not an instruction to change production. Do not run a migration against the suspended Render database or any production URL until access, target, and backup verification are confirmed.
+This document is a procedure, not permission to alter production. **Do not delete, replace, or overwrite a database until the replacement is proven usable and the owner explicitly confirms permanent data loss is acceptable.**
 
-## 1. Provision a recovery target
+## Current rebuild state
 
-Create a PostgreSQL 16-compatible database with backups, retention, TLS, and a documented restore process. Do not delete or replace `dallyletter-db` while its Render recovery options remain available.
+- The canonical Render API is DALLYLETTER-ELIDEMS-Smart-CAPS-LMS-4, service ID srv-d9ihv8favr4c73assgag, branch main.
+- A replacement PostgreSQL database is connected through the Render service's DATABASE_URL.
+- The original temporary PostgreSQL instance was suspended/expired. No verified dump or restore exists.
+- The replacement database is intended to be empty. Its schema is initialized from the canonical Drizzle schema during build; this does not recover old users or records.
+- A successful build does not prove signup, login, roles, or feature workflows are healthy. Test them against the live service before declaring readiness.
 
-## 2. Install client tools
+## Safe verification order
 
-On Debian/Ubuntu: `sudo apt-get update && sudo apt-get install postgresql-client`. Verify `pg_dump`, `pg_restore`, and `psql` before proceeding.
+1. Confirm Render deploy uses the expected main commit and the intended database URL. Never print secrets in logs or tickets.
+2. Confirm the database schema exists and all required tables/columns are present.
+3. Confirm API health and successful startup with no SQL errors.
+4. Test ordinary signup/login and secure owner provisioning. Never ship a default owner password.
+5. Test core features using authenticated roles: create/edit/reload lessons, create/publish/attempt/mark exercises, lesson requests, groups, polls, dashboards, and permissions.
+6. Confirm data survives page reload and API process restart.
+7. Only after the replacement is accepted, confirm whether the old database may be permanently deleted.
 
-## 3. Back up a resumed source
+## Recovery and backup
 
-Only after the source is accessible and the URL is confirmed:
+- Render's temporary free database may no longer be recoverable. Ask Render support whether any recovery/export window remains.
+- Do not claim a backup exists unless an actual dump was created, stored securely, and successfully restored to an isolated target.
+- Keep credentials in managed secret storage, never in source control.
+- Do not use an automatic schema push as a substitute for tested migrations in a long-lived production database.
+- Keep similarly named Render services until their consumers, database references, and deployment targets are mapped.
 
-```sh
-umask 077
-pg_dump -Fc "$DATABASE_URL" -f "dallyletter-db-backup-$(date +%F).dump"
-pg_restore --list dallyletter-db-backup-YYYY-MM-DD.dump > backup-contents.txt
-```
+## Release gates
 
-Review the list and keep the dump and checksum in protected storage. Never put `DATABASE_URL` or a password in shell history or documentation.
-
-## 4. Restore to a new database
-
-Set the target URL only in the current shell or an approved secret manager, then restore into the empty target:
-
-```sh
-export TARGET_DATABASE_URL='postgresql://...'
-pg_restore --clean --if-exists --no-owner --no-acl --dbname="$TARGET_DATABASE_URL" dallyletter-db-backup-YYYY-MM-DD.dump
-```
-
-`--clean` is appropriate only for a confirmed empty recovery target. Never use it against the source or a shared production database.
-
-## 5. Drizzle configuration
-
-`lib/db/drizzle.config.ts` requires `DATABASE_URL` and points to `lib/db/src/schema/index.ts`. This repository has no checked-in SQL migration directory. `pnpm --filter @workspace/db run push` is schema-push behavior, not a reviewed production migration history. Do not use `push-force` for recovery. Restore first and compare schema before any controlled change.
-
-## 6. Configure and start the backend
-
-Configure `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGINS`, `NODE_ENV=production`, and host-provided `PORT` in the backend secret/environment store:
-
-```sh
-pnpm install --frozen-lockfile
-pnpm --filter @workspace/api-server run build
-pnpm --filter @workspace/api-server run start
-```
-
-## 7. Verify without exposing secrets
-
-With `DATABASE_URL` set in a private shell, run `pnpm exec node scripts/db-verify-readonly.mjs`. Check `/api/healthz`, then use `psql "$DATABASE_URL" -c '\dt'` to verify expected tables. Do not paste connection strings or personal data into logs.
-
-## 8. Verify application functionality
-
-Using an approved test account, verify registration/login, role dashboards, lessons/classes, messages, notifications, payment configuration, AI configuration, and media URLs. Confirm frontend CORS. Do not seed or mutate production until approved; `scripts/src/seed-owner.ts` is not an automatic recovery step.
+Required evidence: passing CI and Release Safety on the exact commit, successful canonical Render deployment, healthy API startup, authenticated role tests, persistence/reload tests, and no unexplained SQL errors. Media and messaging can remain explicitly deferred only if their failures do not break core learning features.

@@ -141,7 +141,7 @@ export async function dispatchPendingPushNotifications(): Promise<void> {
       WHERE n.push_sent_at IS NULL
         AND n.is_read = false
         AND COALESCE(np.push_enabled, true) = true
-        AND n.created_at > now() - interval '1 minute'
+        AND n.created_at > now() - interval '24 hours'
     )
     SELECT id, recipient_id, title, message, link, subscription_id, user_id, endpoint, p256dh, auth
     FROM eligible
