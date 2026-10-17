@@ -18,7 +18,7 @@ export function AuthenticatedMedia({ url, type, title }: AuthenticatedMediaProps
   const shareBrandedLink = async () => {
     let resourcePath = url;
     try {
-      if (/^https?:\\/\\//i.test(url)) {
+      if (/^https?:\/\//i.test(url)) {
         const parsed = new URL(url);
         if (parsed.origin !== window.location.origin && !parsed.pathname.startsWith("/api/")) {
           window.alert("Only Dallyletter media links can be shared through the protected viewer.");
@@ -30,7 +30,7 @@ export function AuthenticatedMedia({ url, type, title }: AuthenticatedMediaProps
       window.alert("This media link cannot be shared safely.");
       return;
     }
-    if (!/^\\/api\\/(?:lessons|messages)\\/media\\/[a-f0-9-]{36}(?:\\?type=[a-zA-Z0-9%./+-]+)?$/i.test(resourcePath)) {
+    if (!/^\/api\/(?:lessons|messages)\/media\/[a-f0-9-]{36}(?:\?type=[a-zA-Z0-9%./+-]+)?$/i.test(resourcePath)) {
       window.alert("This resource does not have a supported Dallyletter media link.");
       return;
     }
