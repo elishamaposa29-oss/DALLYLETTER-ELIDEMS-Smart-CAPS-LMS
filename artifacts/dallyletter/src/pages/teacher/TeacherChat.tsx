@@ -1,7 +1,7 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useListMessages, useSendMessage, useListStudyGroups, useListUsers, getApiUrl } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
-import { Loader2, Send, Users, MessageSquare, User, Paperclip, Trash2 } from "lucide-react";
+import { Loader2, Send, Users, MessageSquare, User, Paperclip, Trash2, Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState, useRef, useEffect } from "react";
@@ -20,6 +20,7 @@ export default function TeacherChat() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [message, setMessage] = useState("");
   const [activeTab, setActiveTab] = useState("groups");
+  const [chatFullscreen, setChatFullscreen] = useState(false);
   const [lessonRequests, setLessonRequests] = useState<Array<{id:number; topic:string; notes:string|null; preferredDate:string|null; status:string; teacherReply:string|null; prefectId:number}>>([]);
   const [requestLoading, setRequestLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -228,7 +229,7 @@ export default function TeacherChat() {
         </Card>
 
         {/* Chat Area */}
-        <Card className="flex-1 flex flex-col overflow-hidden">
+        <Card className={`flex-1 flex flex-col overflow-hidden ${chatFullscreen ? "fixed inset-0 z-[100] min-h-0 rounded-none" : ""}`}>
           {!selectedGroupId && !selectedUserId ? (
             <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-3">
               <MessageSquare className="h-14 w-14 text-muted-foreground/20" />
@@ -246,10 +247,10 @@ export default function TeacherChat() {
                     : <><div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">{chatTitle?.charAt(0)}</div>{chatTitle}</>
                   }
                 </div>
-                <div className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-1 rounded-full">
+                <div className="flex items-center gap-2"><Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={() => setChatFullscreen(value => !value)} aria-label={chatFullscreen ? "Exit full-screen chat" : "Open full-screen chat"} title={chatFullscreen ? "Exit full-screen chat" : "Open full-screen chat"}>{chatFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}</Button><div className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-1 rounded-full">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   Live
-                </div>
+                </div></div>
               </div>
 
               <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50 dark:bg-slate-900/50">
