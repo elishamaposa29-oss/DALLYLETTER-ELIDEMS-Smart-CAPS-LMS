@@ -19,9 +19,11 @@ export async function ensureConnectSchema(): Promise<void> {
       link text,
       type text NOT NULL DEFAULT 'general',
       is_read boolean NOT NULL DEFAULT false,
+      push_sent_at timestamptz,
       created_at timestamptz NOT NULL DEFAULT now()
     )`);
     await client.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS link text`);
+    await client.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS push_sent_at timestamptz`);
     await client.query(`ALTER TABLE poll_questions ADD COLUMN IF NOT EXISTS image_url text`);
     // Additive, idempotent group profile fields; existing groups remain intact.
     await client.query(`ALTER TABLE study_groups ADD COLUMN IF NOT EXISTS grade text`);
