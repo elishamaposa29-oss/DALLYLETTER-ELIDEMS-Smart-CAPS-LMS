@@ -146,7 +146,7 @@ export async function streamStoredMedia(storageKey: string, range?: string): Pro
     headers.set("Content-Length", String(size));
     return new Response(bytes, { status: 200, headers });
   }
-  const match = /^bytes=(\\d*)-(\\d*)$/.exec(range);
+  const match = /^bytes=(\d*)-(\d*)$/.exec(range);
   if (!match) return new Response(null, { status: 416, headers });
   const start = match[1] ? Number(match[1]) : Math.max(size - Number(match[2]), 0);
   const end = match[2] ? Number(match[2]) : size - 1;
