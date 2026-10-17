@@ -1,0 +1,11 @@
+# Dedicated recovery database blueprint.
+# Intentionally contains no API/web service, migration, seed, or deletion.
+# Review the Render Blueprint diff before provisioning.
+databases:
+  - name: dallyletter-postgres-rebuild
+    databaseName: dallyletter
+    user: dallyletter_user
+    plan: basic-1gb
+    region: oregon
+    postgresMajorVersion: "18"
+    ipAllowList: []

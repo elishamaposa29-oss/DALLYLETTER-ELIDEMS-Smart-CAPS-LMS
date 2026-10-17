@@ -49,6 +49,24 @@ export default function StudentPolls() {
   }, []);
 
   useEffect(() => {
+    const requestedPollId = Number(new URLSearchParams(window.location.search).get("poll"));
+    if (user?.role !== "student" || !Number.isInteger(requestedPollId) || requestedPollId <= 0) return;
+    let active = true;
+    const headers = { Authorization: `Bearer ${token()}` };
+    void Promise.all([
+      fetch(getApiUrl(`/api/polls/${requestedPollId}/my-results`), { headers }).then(r => r.ok ? r.json() : null),
+      fetch(getApiUrl(`/api/polls/${requestedPollId}/results`), { headers }).then(r => r.ok ? r.json() : null),
+    ]).then(([mine, results]) => {
+      if (!active) return;
+      if (mine) setMyPerformance(mine);
+      setLeaderboard(results?.submissions ?? []);
+      setSelectedPollId(requestedPollId);
+      setScreen("leaderboard");
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [user?.role]);
+
+  useEffect(() => {
     if (screen === "quiz" && activePoll?.timerSeconds && timeLeft === null) {
       setTimeLeft(activePoll.timerSeconds);
       return;

@@ -22,8 +22,11 @@ export async function ensureConnectSchema(): Promise<void> {
       created_at timestamptz NOT NULL DEFAULT now()
     )`);
     await client.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS link text`);
-    await client.query(`ALTER TABLE group_member_controls ADD COLUMN IF NOT EXISTS can_manage_settings boolean NOT NULL DEFAULT false`);
     await client.query(`ALTER TABLE poll_questions ADD COLUMN IF NOT EXISTS image_url text`);
+    // Additive, idempotent group profile fields; existing groups remain intact.
+    await client.query(`ALTER TABLE study_groups ADD COLUMN IF NOT EXISTS grade text`);
+    await client.query(`ALTER TABLE study_groups ADD COLUMN IF NOT EXISTS topic text`);
+    await client.query(`ALTER TABLE study_groups ADD COLUMN IF NOT EXISTS cover_image_url text`);
 
     await client.query(`CREATE TABLE IF NOT EXISTS lesson_requests (
       id serial PRIMARY KEY,
@@ -46,11 +49,14 @@ export async function ensureConnectSchema(): Promise<void> {
       media_blocked boolean NOT NULL DEFAULT false,
       suspended boolean NOT NULL DEFAULT false,
       muted boolean NOT NULL DEFAULT false,
+      can_manage_settings boolean NOT NULL DEFAULT false,
       reason text,
       updated_by integer REFERENCES users(id),
       updated_at timestamptz NOT NULL DEFAULT now(),
       UNIQUE(group_id, user_id)
     )`);
+    // Upgrade an existing table without assuming it was just created.
+    await client.query(`ALTER TABLE group_member_controls ADD COLUMN IF NOT EXISTS can_manage_settings boolean NOT NULL DEFAULT false`);
     await client.query(`CREATE TABLE IF NOT EXISTS group_settings (
       id serial PRIMARY KEY,
       group_id integer NOT NULL REFERENCES study_groups(id),

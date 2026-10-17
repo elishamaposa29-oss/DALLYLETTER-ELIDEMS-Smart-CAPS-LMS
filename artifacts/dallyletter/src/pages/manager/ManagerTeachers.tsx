@@ -34,7 +34,7 @@ export default function ManagerTeachers() {
     finally { setActivityLoading(false); }
   };
   const preview = (item: any) => {
-    const routes: Record<string,string> = { lesson: "/student/lessons", assignment: "/student/assignments", poll: "/student/polls", exercise: item.targetId ? `/student/exercises/${item.targetId}` : "/student/lessons", class: "/student/classes" };
+    const routes: Record<string,string> = { lesson: item.targetId ? `/preview/lesson/${item.targetId}` : "/teacher/lessons", assignment: item.targetId ? `/student/assignments?assignment=${item.targetId}` : "/student/assignments", poll: item.targetId ? `/student/polls?poll=${item.targetId}` : "/student/polls", exercise: item.targetId ? `/student/exercises/${item.targetId}` : "/student/lessons", class: item.targetId ? `/student/classes?class=${item.targetId}` : "/student/classes" };
     const route = routes[item.targetType]; if (route) window.open(route, "_blank", "noopener,noreferrer");
   };
   const sendComment = async () => {

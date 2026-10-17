@@ -8,11 +8,22 @@ import {
 } from "@workspace/db/schema";
 import { canManageAcademicContent, isOwnerRole, requireAuth } from "../lib/auth-middleware";
 import { getAIProvider } from "../lib/ai-provider";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia } from "../lib/media-storage";
 
 const router = Router();
 const learnerRole = "student";
 const questionTypes = new Set(["input", "poll", "drawbox"]);
+const exerciseQuestionMediaUpload = multer({
+  storage: multer.diskStorage({
+    destination: async (_req, _file, callback) => {
+      try { await ensureMediaDirectory(); callback(null, getMediaDirectory()); }
+      catch (error) { callback(error as Error, ""); }
+    },
+    filename: (_req, _file, callback) => callback(null, createMediaStorageKey()),
+  }),
+  limits: { fileSize: MAX_MEDIA_SIZE_BYTES },
+  fileFilter: (_req, file, callback) => callback(null, isAllowedMediaType(file.mimetype)),
+});
 const exerciseAnswerMediaUpload = multer({
   storage: multer.diskStorage({
     destination: async (_req, _file, callback) => {
@@ -31,12 +42,20 @@ router.post("/answer-media", requireAuth, (req,res):void => {
     if (error instanceof multer.MulterError) { res.status(400).json({error:"A supported answer file up to 250 MB is required"}); return; }
     if (error) { res.status(400).json({error:"A supported answer file is required"}); return; }
     if (!req.file) { res.status(400).json({error:"A supported answer file is required"}); return; }
-    res.status(201).json({
-      mediaUrl: `/api/lessons/media/${req.file.filename}?type=${encodeURIComponent(req.file.mimetype)}`,
-      storageKey: req.file.filename,
-      fileName: req.file.originalname,
-      mimeType: req.file.mimetype,
-      size: req.file.size,
+    const file = req.file;
+    void persistUploadedMedia(file.filename, file.mimetype, file.path).then(() => {
+      if (res.headersSent) return;
+      res.status(201).json({
+        mediaUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`,
+        storageKey: file.filename,
+        fileName: file.originalname,
+        mimeType: file.mimetype,
+        size: file.size,
+      });
+    }).catch(async () => {
+      const { unlink } = await import("node:fs/promises");
+      await unlink(file.path).catch(() => undefined);
+      if (!res.headersSent) res.status(503).json({error:"Persistent media storage is unavailable. Configure durable object storage and retry."});
     });
   });
 });
@@ -48,6 +67,37 @@ function parseId(value: unknown): number | null {
 function canEditExercise(user: NonNullable<Express.Request["currentUser"]>, createdBy: number): boolean {
   return isOwnerRole(user.role) || user.isManager === true || (user.role === "teacher" && createdBy === user.id);
 }
+router.post("/question-media", requireAuth, (req,res,next):void => {
+  const user = req.currentUser!;
+  if (!canManageAcademicContent(user)) { res.status(403).json({error:"Teacher or owner access required"}); return; }
+  exerciseQuestionMediaUpload.single("file")(req,res,(error) => {
+    if (error instanceof multer.MulterError) { res.status(400).json({error:"A supported question attachment up to 250 MB is required"}); return; }
+    if (error) { next(error); return; }
+    const file = req.file;
+    if (!file) { res.status(400).json({error:"A supported question attachment is required"}); return; }
+    const exerciseId = parseId(req.body?.exerciseId);
+    const questionId = parseId(req.body?.questionId);
+    const discardTemporaryFile = async () => { const { unlink } = await import("node:fs/promises"); await unlink(file.path).catch(() => undefined); };
+    (async () => {
+      if (!exerciseId || !questionId) { await discardTemporaryFile(); res.status(400).json({error:"Valid exerciseId and questionId are required"}); return; }
+      const [exercise] = await db.select().from(exercisesTable).where(eq(exercisesTable.id, exerciseId));
+      if (!exercise) { await discardTemporaryFile(); res.status(404).json({error:"Exercise not found"}); return; }
+      if (!canEditExercise(user, exercise.createdBy)) { await discardTemporaryFile(); res.status(403).json({error:"You can only attach media to your own exercise"}); return; }
+      const [question] = await db.select().from(exerciseQuestionsTable).where(and(eq(exerciseQuestionsTable.id, questionId),eq(exerciseQuestionsTable.exerciseId,exerciseId)));
+      if (!question) { await discardTemporaryFile(); res.status(404).json({error:"Question not found in this exercise"}); return; }
+      try {
+        await persistUploadedMedia(file.filename, file.mimetype, file.path);
+        const attachmentUrl = `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`;
+        const config = question.config && typeof question.config === "object" && !Array.isArray(question.config) ? question.config as Record<string, unknown> : {};
+        await db.update(exerciseQuestionsTable).set({config:{...config,attachment:{url:attachmentUrl,fileName:file.originalname,mimeType:file.mimetype,size:file.size}}}).where(eq(exerciseQuestionsTable.id,question.id));
+        res.status(201).json({attachmentUrl,fileName:file.originalname,mimeType:file.mimetype,size:file.size});
+      } catch {
+        res.status(503).json({error:"Persistent media storage is unavailable or the attachment could not be saved. Please retry."});
+      }
+    })().catch(next);
+  });
+});
+
 async function writeAudit(userId: number, action: string, targetId: number, details: Record<string, unknown>) {
   await db.insert(auditLogsTable).values({ action, category: "exercise", performedBy: userId, targetType: "exercise", targetId, details: JSON.stringify(details) });
 }

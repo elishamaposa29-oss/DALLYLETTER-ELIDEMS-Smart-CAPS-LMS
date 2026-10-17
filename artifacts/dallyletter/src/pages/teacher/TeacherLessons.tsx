@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { useAuth } from "@/contexts/AuthContext";
 import { useListLessons, useCreateLesson, useDeleteLesson, getApiUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Plus, Trash2, Video, Image as ImageIcon, Headphones, FileText, BookOpen, Upload, X, ClipboardList, ClipboardCheck, Bell } from "lucide-react";
+import { Loader2, Plus, Trash2, Video, Image as ImageIcon, Headphones, FileText, BookOpen, Upload, X, ClipboardList, ClipboardCheck, Bell, Users, Clock, ListFilter, ArrowDownUp, Maximize2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -18,6 +19,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { CreateLessonBodyType } from "@workspace/api-client-react";
 import { ExerciseBuilderPanel } from "@/components/exercises/ExerciseBuilderPanel";
+import { RichTextEditor, sanitizeRichText } from "@/components/RichTextEditor";
 
 const createLessonSchema = z.object({
   title: z.string().min(2, "Title is required"),
@@ -31,6 +33,22 @@ const createLessonSchema = z.object({
 
 export default function TeacherLessons() {
   const { data: lessons, isLoading } = useListLessons();
+  const { user } = useAuth();
+  const [showAllTeachers, setShowAllTeachers] = useState(false);
+  const [sortMode, setSortMode] = useState<"newest"|"oldest"|"subject">("newest");
+  const visibleLessons = [...(lessons ?? [])]
+    .filter((lesson) => user?.role !== "teacher" || showAllTeachers || lesson.teacherId === user.id)
+    .sort((a,b) => sortMode === "oldest" ? new Date(a.createdAt).getTime()-new Date(b.createdAt).getTime() : sortMode === "subject" ? String(a.subject).localeCompare(String(b.subject)) : new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime());
+  const canManageLesson = (lesson: { teacherId: number }) => lesson.teacherId === user?.id || user?.role === "owner" || (user?.role === "teacher" && Boolean((user as any).isManager) && (user as any).managerLevel === "senior");
+  const requestPermission = async (contentId:number,requestedAction:"edit"|"create_exercise"|"delete"|"notify") => {
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const r = await fetch(getApiUrl("/api/content-permissions"), {method:"POST",headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({contentType:"lesson",contentId,requestedAction})});
+      const d = await r.json().catch(()=>({}));
+      if(!r.ok) throw new Error(d.error || "Permission request failed");
+      toast({title:d.alreadyAuthorized?"Already authorized":"Permission requested",description:d.pending?"The lesson creator will review your request.":"Permission is already available."});
+    } catch(e) { toast({variant:"destructive",title:"Permission request failed",description:e instanceof Error?e.message:"Try again"}); }
+  };
   const createLessonMutation = useCreateLesson();
   const deleteLessonMutation = useDeleteLesson();
   const { toast } = useToast();
@@ -42,12 +60,17 @@ export default function TeacherLessons() {
   const [markingExercises, setMarkingExercises] = useState<{ id: number; title: string; status?: string; totalMarks?: string }[]>([]);
   const [markingLessonId, setMarkingLessonId] = useState<number | null>(null);
   const [lessonRequests, setLessonRequests] = useState<any[]>([]);
+  const [requestStatusFilter, setRequestStatusFilter] = useState<"all"|"pending"|"accepted"|"declined"|"completed"|"cancelled"|"dismissed">("pending");
+  const visibleLessonRequests = lessonRequests.filter(r => requestStatusFilter === "all" || String(r.status || "pending").toLowerCase() === requestStatusFilter);
   const [requestBusy, setRequestBusy] = useState<number | null>(null);
+  const [permissionRequests, setPermissionRequests] = useState<any[]>([]);
   const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("dallyletter_token") ?? ""}` });
   const loadLessonRequests = async () => { const r=await fetch(getApiUrl("/api/achievements/lesson-requests"),{headers:authHeaders()}); if(r.ok)setLessonRequests(await r.json()); };
+  const loadPermissionRequests = async () => { const r=await fetch(getApiUrl("/api/content-permissions"),{headers:authHeaders()}); if(r.ok)setPermissionRequests(await r.json()); };
+  const respondPermission = async (id:number,status:"approved"|"declined") => { try { const r=await fetch(getApiUrl(`/api/content-permissions/${id}`),{method:"PATCH",headers:{"Content-Type":"application/json",...authHeaders()},body:JSON.stringify({status})}); const data=await r.json().catch(()=>({})); if(!r.ok) throw new Error(data.error||"Permission update failed"); setPermissionRequests(rows=>rows.filter(item=>Number(item.id)!==id)); toast({title:status==="approved"?"Permission granted ✓":"Permission declined"}); } catch(e) { toast({variant:"destructive",title:"Permission update failed",description:e instanceof Error?e.message:"Try again"}); } };
   const respondToRequest = async (id:number,status:"accepted"|"declined"|"completed") => { setRequestBusy(id); try { const r=await fetch(getApiUrl(`/api/achievements/lesson-requests/${id}`),{method:"PATCH",headers:{"Content-Type":"application/json",...authHeaders()},body:JSON.stringify({status})}); if(!r.ok) throw new Error("Could not update request"); await loadLessonRequests(); toast({title:"Lesson request updated"}); } catch(e) { toast({variant:"destructive",title:"Request update failed",description:e instanceof Error?e.message:"Try again"}); } finally { setRequestBusy(null); } };
-  const dismissRequest = async (id:number) => { setRequestBusy(id); try { const r=await fetch(getApiUrl(`/api/achievements/lesson-requests/${id}`),{method:"DELETE",headers:authHeaders()}); if(!r.ok) throw new Error("Could not dismiss request"); await loadLessonRequests(); toast({title:"Lesson request dismissed"}); } catch(e) { toast({variant:"destructive",title:"Dismiss failed",description:e instanceof Error?e.message:"Try again"}); } finally { setRequestBusy(null); } };
-  useEffect(()=>{void loadLessonRequests();},[]);
+  const dismissRequest = async (id:number) => { if(!window.confirm("Dismiss this lesson request?")) return; setRequestBusy(id); try { const r=await fetch(getApiUrl(`/api/achievements/lesson-requests/${id}`),{method:"PATCH",headers:{"Content-Type":"application/json",...authHeaders()},body:JSON.stringify({status:"dismissed"})}); if(!r.ok) throw new Error((await r.json().catch(()=>null))?.error||"Could not dismiss request"); await loadLessonRequests(); toast({title:"Lesson request dismissed"}); if(window.confirm("The request is closed. Do you also want to permanently delete it?")) { const dr=await fetch(getApiUrl(`/api/achievements/lesson-requests/${id}`),{method:"DELETE",headers:authHeaders()}); if(!dr.ok) throw new Error((await dr.json().catch(()=>null))?.error||"Request closed, but deletion failed"); await loadLessonRequests(); toast({title:"Lesson request deleted"}); } } catch(e) { toast({variant:"destructive",title:"Request action failed",description:e instanceof Error?e.message:"Try again"}); } finally { setRequestBusy(null); } };
+  useEffect(()=>{void loadLessonRequests();void loadPermissionRequests();},[]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<z.infer<typeof createLessonSchema>>({
@@ -130,6 +153,10 @@ export default function TeacherLessons() {
           toast({ title: "Lesson deleted" });
           if (activeExerciseLessonId === id) setActiveExerciseLessonId(null);
           queryClient.invalidateQueries({ queryKey: getListLessonsQueryKey() });
+        },
+        onError: (error) => {
+          const message = error instanceof Error ? error.message : "The lesson could not be deleted.";
+          toast({ variant: "destructive", title: "Lesson deletion blocked", description: message.includes("403") || /permission|forbidden|owner/i.test(message) ? "You are not the lesson owner. Request deletion from the lesson owner; deletion was not performed." : message });
         }
       });
     }
@@ -148,7 +175,8 @@ export default function TeacherLessons() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        {lessonRequests.length>0 && <Card className="border-amber-200 bg-amber-50/50"><CardHeader><CardTitle className="text-lg">Prefect lesson requests</CardTitle><CardDescription>Requests sent directly to your teacher account.</CardDescription></CardHeader><CardContent className="space-y-3">{lessonRequests.map(r=><div key={r.id} className="rounded-xl border bg-background p-3 flex flex-col sm:flex-row sm:items-center gap-3"><div className="flex-1 min-w-0"><p className="font-semibold truncate">{r.topic}</p><p className="text-xs text-muted-foreground">{r.preferredDate?`Preferred ${r.preferredDate} · `:""}{r.status}</p>{r.notes&&<p className="text-sm mt-1">{r.notes}</p>}</div><div className="flex gap-2 flex-wrap"><Button size="sm" onClick={()=>void respondToRequest(r.id,"accepted")} disabled={requestBusy===r.id}>Accept</Button><Button size="sm" variant="outline" onClick={()=>void respondToRequest(r.id,"declined")} disabled={requestBusy===r.id}>Decline</Button><Button size="sm" variant="ghost" onClick={()=>void dismissRequest(r.id)} disabled={requestBusy===r.id}>Dismiss</Button></div></div>)}</CardContent></Card>}
+        {permissionRequests.length>0 && <Card className="border-primary/20"><CardHeader><CardTitle className="text-lg">Content permission requests</CardTitle><CardDescription>Requests are attached to the lesson or exercise they concern. Grant only the specific access you trust.</CardDescription></CardHeader><CardContent className="space-y-3">{permissionRequests.map((request:any)=>{const contentType=String(request.content_type ?? request.contentType ?? "content");const contentId=Number(request.content_id ?? request.contentId);const contentTitle=String(request.content_title ?? request.contentTitle ?? `${contentType} #${contentId}`);return <div key={request.id} className="flex flex-col gap-3 rounded-xl border bg-background p-3 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="font-semibold">{contentTitle}</p><p className="text-sm">{request.requester_name ?? request.requesterName ?? `User #${request.requester_id ?? request.requesterId}`} requests {String(request.requested_action ?? request.requestedAction ?? "permission").replaceAll("_"," ")}</p><p className="text-xs text-muted-foreground">{contentType} #{contentId}{request.content_subject ? ` · ${request.content_subject}` : ""}{request.content_grade ? ` · ${request.content_grade}` : ""}</p>{contentType==="lesson" && <Button type="button" size="sm" variant="ghost" className="mt-1 h-8 px-2" onClick={()=>window.location.assign(`/preview/lesson/${contentId}`)}>Preview lesson</Button>}</div><div className="flex gap-2"><Button size="sm" onClick={()=>void respondPermission(Number(request.id),"approved")}>Grant</Button><Button size="sm" variant="outline" onClick={()=>void respondPermission(Number(request.id),"declined")}>Deny</Button></div></div>})}</CardContent></Card>}
+        {lessonRequests.length>0 && <Card className="border-amber-200 bg-amber-50/50"><CardHeader><CardTitle className="text-lg">Prefect lesson requests</CardTitle><CardDescription>Requests sent directly to your teacher account. Filter by status.</CardDescription><Select value={requestStatusFilter} onValueChange={(v)=>setRequestStatusFilter(v as typeof requestStatusFilter)}><SelectTrigger className="mt-2 w-full sm:w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All requests</SelectItem><SelectItem value="pending">Pending</SelectItem><SelectItem value="accepted">Accepted</SelectItem><SelectItem value="declined">Declined</SelectItem><SelectItem value="completed">Completed</SelectItem><SelectItem value="cancelled">Cancelled</SelectItem><SelectItem value="dismissed">Dismissed</SelectItem></SelectContent></Select></CardHeader><CardContent className="space-y-3">{visibleLessonRequests.map(r=><div key={r.id} className="rounded-xl border bg-background p-3 flex flex-col sm:flex-row sm:items-center gap-3"><div className="flex-1 min-w-0"><p className="font-semibold truncate">{r.topic}</p><p className="text-xs text-muted-foreground">{r.preferredDate?`Preferred ${r.preferredDate} · `:""}{r.status}</p>{r.notes&&<p className="text-sm mt-1">{r.notes}</p>}</div><div className="flex gap-2 flex-wrap"><Button size="sm" onClick={()=>void respondToRequest(r.id,"accepted")} disabled={requestBusy===r.id}>Accept</Button><Button size="sm" variant="outline" onClick={()=>void respondToRequest(r.id,"declined")} disabled={requestBusy===r.id}>Decline</Button><Button size="sm" variant="ghost" onClick={()=>void dismissRequest(r.id)} disabled={requestBusy===r.id}>Dismiss</Button></div></div>)}</CardContent></Card>}
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">My Lessons</h1>
@@ -308,7 +336,7 @@ export default function TeacherLessons() {
                       <FormItem>
                         <FormLabel>Content / Notes (Optional)</FormLabel>
                         <FormControl>
-                          <Textarea placeholder="Full lesson content..." className="min-h-[150px]" {...field} />
+                          <RichTextEditor value={field.value ?? ""} onChange={field.onChange} placeholder="Write the lesson content. Formatting is preserved; raw HTML/CSS/source code is not displayed as lesson text." className="min-h-[220px]" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -355,18 +383,29 @@ export default function TeacherLessons() {
           </DialogContent>
         </Dialog>
 
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-2" aria-label="Lesson filters">
+          <Button type="button" size="icon" variant={!showAllTeachers ? "default" : "ghost"} onClick={() => setShowAllTeachers(false)} title="My lessons" aria-label="My lessons"><BookOpen className="h-4 w-4" /></Button>
+          <Button type="button" size="icon" variant={showAllTeachers ? "default" : "ghost"} onClick={() => setShowAllTeachers(true)} title="All teachers — preview only" aria-label="All teachers — preview only"><Users className="h-4 w-4" /></Button>
+          <span className="ml-1 text-xs text-muted-foreground" aria-live="polite">{showAllTeachers ? "All teachers · preview only" : "My lessons"}</span>
+          <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground"><ArrowDownUp className="h-4 w-4" />Sort</span>
+          <Button type="button" size="icon" variant={sortMode === "newest" ? "secondary" : "ghost"} onClick={() => setSortMode("newest")} title="Newest first" aria-label="Newest first"><Clock className="h-4 w-4" /></Button>
+          <Button type="button" size="icon" variant={sortMode === "oldest" ? "secondary" : "ghost"} onClick={() => setSortMode("oldest")} title="Oldest first" aria-label="Oldest first"><ArrowDownUp className="h-4 w-4" /></Button>
+          <Button type="button" size="icon" variant={sortMode === "subject" ? "secondary" : "ghost"} onClick={() => setSortMode("subject")} title="Sort by subject" aria-label="Sort by subject"><ListFilter className="h-4 w-4" /></Button>
+          <span className="text-xs text-muted-foreground" aria-live="polite">{sortMode === "newest" ? "Newest" : sortMode === "oldest" ? "Oldest" : "Subject"}</span>
+        </div>
+        {showAllTeachers && <p className="text-xs text-muted-foreground">Other teachers’ lessons are preview-only. Request permission before editing or managing them.</p>}
         {isLoading ? (
           <div className="flex justify-center p-8">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {lessons?.length === 0 ? (
+            {visibleLessons.length === 0 ? (
               <div className="col-span-full text-center p-8 border rounded-lg bg-card">
                 <p className="text-muted-foreground">You haven't created any lessons yet.</p>
               </div>
             ) : (
-              lessons?.map((lesson) => (
+              visibleLessons.map((lesson) => (
                 <Card key={lesson.id} className="flex flex-col h-full hover:border-primary/50 transition-colors group">
                   <CardHeader className="pb-3">
                     <div className="flex justify-between items-start gap-2">
@@ -388,13 +427,13 @@ export default function TeacherLessons() {
                   </CardHeader>
                   <CardContent className="mt-auto flex-1">
                     <p className="text-sm text-muted-foreground line-clamp-3 mb-4">
-                      {lesson.description || "No description provided."}
+                      {lesson.description ? <span dangerouslySetInnerHTML={{ __html: sanitizeRichText(lesson.description) }} /> : "No description provided."}
                     </p>
                     <div className="text-xs text-muted-foreground">
                       Added on {new Date(lesson.createdAt).toLocaleDateString()}
                     </div>
                   </CardContent>
-                  {activeExerciseLessonId === lesson.id && (
+                  {activeExerciseLessonId === lesson.id && canManageLesson(lesson) && (
                     <CardContent className="border-t pt-4">
                       <ExerciseBuilderPanel
                         lessonId={lesson.id}
@@ -402,7 +441,17 @@ export default function TeacherLessons() {
                       />
                     </CardContent>
                   )}
-                  <CardFooter className="pt-4 border-t flex justify-end gap-2">
+                  <CardFooter className="pt-4 border-t flex flex-wrap justify-end gap-2">
+                    <Button type="button" variant="outline" size="icon" title="Preview lesson" aria-label={`Preview ${lesson.title}`} onClick={() => window.location.assign(`/preview/lesson/${lesson.id}`)}><Maximize2 className="h-4 w-4" /></Button>
+                    {!canManageLesson(lesson) ? (
+                      <>
+                        <Button type="button" variant="outline" size="sm" onClick={() => void requestPermission(lesson.id,"edit")}>Request edit</Button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => void requestPermission(lesson.id,"create_exercise")}>Request exercise</Button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => void requestPermission(lesson.id,"notify")}>Request notify</Button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => void requestPermission(lesson.id,"delete")}>Request delete</Button>
+                      </>
+                    ) : (
+                      <>
                     <Button
                       variant={activeExerciseLessonId === lesson.id ? "secondary" : "outline"}
                       size="sm"
@@ -462,6 +511,8 @@ export default function TeacherLessons() {
                       <Trash2 className="h-4 w-4" />
                       Delete
                     </Button>
+                      </>
+                    )}
                   </CardFooter>
                 </Card>
               ))

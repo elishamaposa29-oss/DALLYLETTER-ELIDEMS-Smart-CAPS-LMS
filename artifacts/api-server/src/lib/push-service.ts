@@ -124,17 +124,29 @@ async function sendOne(endpoint: string, p256dh: string, auth: string, payload: 
 
 export async function dispatchPendingPushNotifications(): Promise<void> {
   if (!isPushConfigured()) return;
+
+  // Cap each recipient to ten newest notifications per dispatch, not ten
+  // globally. Broadcast notifications are fanned out to each subscribed user.
   const { rows } = await pool.query(`
-    SELECT n.id, n.recipient_id, n.title, n.message, n.link,
-           ps.id AS subscription_id, ps.endpoint, ps.p256dh, ps.auth
-    FROM notifications n
-    JOIN push_subscriptions ps ON (n.recipient_id = ps.user_id OR n.recipient_id IS NULL)
-    LEFT JOIN notification_preferences np ON np.user_id = ps.user_id
-    WHERE n.push_sent_at IS NULL
-      AND COALESCE(np.push_enabled, true) = true
-      AND n.created_at > now() - interval '24 hours'
-    ORDER BY n.id ASC
-    LIMIT 100
+    WITH eligible AS (
+      SELECT n.id, n.recipient_id, n.title, n.message, n.link, n.created_at,
+             ps.id AS subscription_id, ps.user_id, ps.endpoint, ps.p256dh, ps.auth,
+             ROW_NUMBER() OVER (
+               PARTITION BY ps.user_id
+               ORDER BY n.created_at DESC, n.id DESC
+             ) AS recipient_rank
+      FROM notifications n
+      JOIN push_subscriptions ps ON (n.recipient_id = ps.user_id OR n.recipient_id IS NULL)
+      LEFT JOIN notification_preferences np ON np.user_id = ps.user_id
+      WHERE n.push_sent_at IS NULL
+        AND n.is_read = false
+        AND COALESCE(np.push_enabled, true) = true
+        AND n.created_at > now() - interval '1 minute'
+    )
+    SELECT id, recipient_id, title, message, link, subscription_id, user_id, endpoint, p256dh, auth
+    FROM eligible
+    WHERE recipient_rank <= 10
+    ORDER BY created_at DESC, id DESC
   `);
   const grouped = new Map<number, typeof rows>();
   for (const row of rows) grouped.set(row.id, [...(grouped.get(row.id) ?? []), row]);
@@ -164,5 +176,5 @@ export function startPushDispatcher(): void {
   if (!isPushConfigured()) return;
   const run = () => dispatchPendingPushNotifications().catch(() => undefined);
   void run();
-  setInterval(run, 5000).unref();
+  setInterval(run, 60000).unref();
 }

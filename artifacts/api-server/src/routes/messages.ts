@@ -2,6 +2,8 @@
 import { Router, type IRouter } from "express";
 import { eq, and, isNull, or, inArray } from "drizzle-orm";
 import { createReadStream } from "node:fs";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import multer from "multer";
 import { db, messagesTable, activityLogTable, studyGroupMembersTable, studyGroupsTable, contentFlagsTable, auditLogsTable, groupMemberControlsTable, groupSettingsTable, usersTable } from "@workspace/db";
 import {
@@ -10,7 +12,7 @@ import {
 } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth-middleware";
 import { getAIProvider } from "../lib/ai-provider";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, deleteStoredMedia, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, removeStoredMedia, persistUploadedMedia, streamStoredMedia, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
 
 const MAX_CHAT_MEDIA_SIZE_BYTES = MAX_MEDIA_SIZE_BYTES;
 import { isOwnerRole, normalizeRole } from "../lib/auth-middleware";
@@ -91,7 +93,7 @@ router.post("/messages/media", requireAuth, (req, res): void => {
           ? await canAccessGroup(groupId, currentUser.id, currentUser.role)
           : await canMessageUser(currentUser, recipientId!));
       if (!allowed) {
-        await deleteStoredMedia(req.file.filename);
+        await removeStoredMedia(req.file.filename);
         res.status(403).json({ error: "You cannot upload media to this conversation" });
         return;
       }
@@ -99,12 +101,13 @@ router.post("/messages/media", requireAuth, (req, res): void => {
         const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, groupId));
         const [control] = await db.select().from(groupMemberControlsTable).where(and(eq(groupMemberControlsTable.groupId, groupId), eq(groupMemberControlsTable.userId, currentUser.id)));
         if (settings?.allowMedia === false || control?.mediaBlocked || control?.blocked || control?.suspended || control?.muted) {
-          await deleteStoredMedia(req.file.filename);
+          await removeStoredMedia(req.file.filename);
           res.status(403).json({ error: "Media uploads are disabled for you in this group" });
           return;
         }
       }
 
+      await persistUploadedMedia(req.file.filename, req.file.mimetype, req.file.path);
       res.status(201).json({
         mediaUrl: messageMediaPath(req.file.filename) + "?type=" + encodeURIComponent(req.file.mimetype),
         storageKey: req.file.filename,
@@ -132,6 +135,17 @@ router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise
     : message.recipientId != null && (isOwnerRole(user.role) || message.recipientId === user.id || message.senderId === user.id);
   if (!allowed) { res.status(403).json({ error: "You cannot access this media" }); return; }
   try {
+    const remote = await streamStoredMedia(storageKey, req.headers.range);
+    if (remote) {
+      res.status(remote.status);
+      remote.headers.forEach((value, key) => res.setHeader(key, value));
+      if (remote.body) {
+        await pipeline(Readable.fromWeb(remote.body as import("node:stream/web").ReadableStream<Uint8Array>), res);
+      } else {
+        res.end();
+      }
+      return;
+    }
     const stats = await getMediaStats(storageKey);
     res.setHeader("Content-Type", typeof req.query.type === "string" && isAllowedMediaType(req.query.type) ? req.query.type : "audio/webm");
     res.setHeader("Content-Length", stats.size);
@@ -201,13 +215,15 @@ router.delete("/messages/:id", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!, id = Number(req.params.id);
   const [message] = await db.select().from(messagesTable).where(eq(messagesTable.id, id));
   if (!message) { res.status(404).json({ error: "Message not found" }); return; }
-  let allowed = message.senderId === user.id || user.role === "owner" || user.isManager || user.isPrefect;
+  let allowed = message.senderId === user.id || isOwnerRole(user.role);
   if (message.groupId) {
     const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, message.groupId));
-    allowed = allowed && Boolean(group) && (message.senderId === user.id || user.role === "owner" || user.isManager || user.isPrefect || group!.creatorId === user.id);
+    allowed = Boolean(group) && (message.senderId === user.id || isOwnerRole(user.role) || group!.creatorId === user.id);
   }
-  if (!allowed) { res.status(403).json({ error: "You cannot delete this message" }); return; }
+  if (!allowed) { res.status(403).json({ error: "You can delete your own messages. Only the platform owner or group creator can delete another member's group message." }); return; }
   await db.delete(messagesTable).where(eq(messagesTable.id, id));
+  const storageKey = message.mediaUrl?.match(/\/api\/messages\/media\/([a-f0-9-]{36})/i)?.[1];
+  if (storageKey) { try { await removeStoredMedia(storageKey); } catch { /* Message is deleted; media cleanup can be retried without restoring the message. */ } }
   res.sendStatus(204);
 });
 

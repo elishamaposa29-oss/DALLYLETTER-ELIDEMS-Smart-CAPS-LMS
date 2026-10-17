@@ -8,7 +8,7 @@ import {
   getListMessagesQueryKey,
 } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
-import { Loader2, Send, Users, MessageSquare, Reply, X, Flag, BarChart3, RefreshCw, User, ArrowLeft, Check, Paperclip } from "lucide-react";
+import { Loader2, Send, Users, MessageSquare, Reply, X, Flag, BarChart3, RefreshCw, User, ArrowLeft, Check, Paperclip, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -226,6 +226,19 @@ export default function StudentChat() {
     }
   };
 
+  const [deletingMessageId, setDeletingMessageId] = useState<number | null>(null);
+  const handleDeleteMessage = async (messageId: number) => {
+    if (!window.confirm("Delete this message and its attachment, if any? This cannot be undone.")) return;
+    setDeletingMessageId(messageId);
+    try {
+      await apiJson(`/api/messages/${messageId}`, { method: "DELETE" });
+      await queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId, recipientId: selectedUserId }) });
+      toast({ title: "Message deleted" });
+    } catch (error) {
+      toast({ variant: "destructive", title: "Message could not be deleted", description: error instanceof Error ? error.message : "Try again." });
+    } finally { setDeletingMessageId(null); }
+  };
+
   const handleReport = async (messageId: number) => {
     const reason = window.prompt("Why are you reporting this message?")?.trim();
     if (!reason) return;
@@ -371,7 +384,7 @@ export default function StudentChat() {
   </div>
 ) : <p className="whitespace-pre-wrap break-words text-sm">{currentMessage.content}</p>}
                               </div>
-                              {isGroupConversation && <div className="mt-1 flex gap-2"><button type="button" className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary" onClick={() => setReplyTo(currentMessage.id)}><Reply className="h-3 w-3" />Reply</button><button type="button" className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-destructive disabled:opacity-50" onClick={() => void handleReport(currentMessage.id)} disabled={reportingMessageId === currentMessage.id}>{reportingMessageId === currentMessage.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Flag className="h-3 w-3" />}Report</button></div>}
+                              <div className="mt-1 flex flex-wrap gap-2">{isGroupConversation && <><button type="button" className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary" onClick={() => setReplyTo(currentMessage.id)}><Reply className="h-3 w-3" />Reply</button><button type="button" className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-destructive disabled:opacity-50" onClick={() => void handleReport(currentMessage.id)} disabled={reportingMessageId === currentMessage.id}>{reportingMessageId === currentMessage.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Flag className="h-3 w-3" />}Report</button></>}{isMe && <button type="button" className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-destructive disabled:opacity-50" onClick={() => void handleDeleteMessage(currentMessage.id)} disabled={deletingMessageId === currentMessage.id}>{deletingMessageId === currentMessage.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}Delete</button>}</div>
                               <span className="mt-1 text-[10px] text-muted-foreground opacity-70">{new Date(currentMessage.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                             </div>
                           </div>

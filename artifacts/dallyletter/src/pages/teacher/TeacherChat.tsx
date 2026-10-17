@@ -1,7 +1,7 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useListMessages, useSendMessage, useListStudyGroups, useListUsers, getApiUrl } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
-import { Loader2, Send, Users, MessageSquare, User, Paperclip } from "lucide-react";
+import { Loader2, Send, Users, MessageSquare, User, Paperclip, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState, useRef, useEffect } from "react";
@@ -49,6 +49,19 @@ export default function TeacherChat() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  const [deletingMessageId, setDeletingMessageId] = useState<number | null>(null);
+  const handleDeleteMessage = async (messageId: number) => {
+    if (!window.confirm("Delete this message and its attachment, if any? This cannot be undone.")) return;
+    setDeletingMessageId(messageId);
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const response = await fetch(getApiUrl(`/api/messages/${messageId}`), { method: "DELETE", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+      if (!response.ok) { const data = await response.json().catch(() => null) as {error?:string}|null; throw new Error(data?.error ?? "Message deletion failed."); }
+      await queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId, recipientId: selectedUserId }) });
+    } catch (error) { window.alert(error instanceof Error ? error.message : "Message deletion failed."); }
+    finally { setDeletingMessageId(null); }
+  };
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
@@ -124,7 +137,7 @@ export default function TeacherChat() {
                 <div className="p-6 text-center text-sm text-muted-foreground">No lesson requests yet.</div>
               ) : lessonRequests.map(request => (
                 <div key={request.id} className="rounded-lg border p-3 space-y-2">
-                  <div className="flex items-start justify-between gap-2"><p className="font-medium text-sm">{request.topic}</p><span className="text-[10px] uppercase text-muted-foreground">{request.status}</span></div>
+                  <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="font-medium text-sm">{request.topic}</p><span className="text-[10px] uppercase text-muted-foreground">{request.status}</span></div><Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive" title="Delete lesson request" aria-label={`Delete lesson request ${request.topic}`} onClick={async () => { if (!window.confirm("Delete this lesson request permanently?")) return; try { const token=localStorage.getItem("dallyletter_token"); const response=await fetch(getApiUrl(`/api/achievements/lesson-requests/${request.id}`),{method:"DELETE",headers:token?{Authorization:`Bearer ${token}`}:{}}); const data=await response.json().catch(()=>null) as {error?:string}|null; if(!response.ok) throw new Error(data?.error ?? "Request deletion failed."); await loadLessonRequests(); } catch(error) { window.alert(error instanceof Error ? error.message : "Request deletion failed."); } }}><Trash2 className="h-4 w-4"/></Button></div>
                   {request.preferredDate && <p className="text-xs text-muted-foreground">Preferred: {request.preferredDate}</p>}
                   {request.notes && <p className="text-xs text-muted-foreground">{request.notes}</p>}
                   {request.status === "pending" && (
@@ -276,6 +289,7 @@ export default function TeacherChat() {
                             <span className="text-[10px] text-muted-foreground mt-1 opacity-70">
                               {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                             </span>
+                            {isMe && <button type="button" className="mt-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-destructive disabled:opacity-50" onClick={() => void handleDeleteMessage(msg.id)} disabled={deletingMessageId === msg.id}>{deletingMessageId === msg.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}Delete</button>}
                           </div>
                         </div>
                       </div>

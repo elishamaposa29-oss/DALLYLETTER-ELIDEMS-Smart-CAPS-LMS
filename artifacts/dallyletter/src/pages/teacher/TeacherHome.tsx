@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, Users, BookOpen, Video, Activity, ExternalLink, Clock, Plus } from "lucide-react";
 import { Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { useState } from "react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export default function TeacherHome() {
   const { user } = useAuth();
@@ -15,6 +17,7 @@ export default function TeacherHome() {
 
   const isLoading = statsLoading || classesLoading || activityLoading;
   const upcomingClasses = classes?.filter(c => c.status === "upcoming" || c.status === "live").slice(0, 5) ?? [];
+  const [selectedActivity, setSelectedActivity] = useState<any | null>(null);
 
   const statCards = [
     {
@@ -199,7 +202,7 @@ export default function TeacherHome() {
                   ) : (
                     <div className="divide-y">
                       {activity.slice(0, 6).map((item, i) => (
-                        <div key={item.id} className="flex gap-4 px-5 py-3.5 hover:bg-muted/30 transition-colors">
+                        <button type="button" key={item.id} onClick={() => setSelectedActivity(item)} className="flex w-full gap-4 px-5 py-3.5 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" aria-label={`Open activity: ${item.description}`}>
                           <div className="flex flex-col items-center gap-1 shrink-0 pt-1">
                             <div className="w-2.5 h-2.5 rounded-full bg-primary" />
                             {i < 5 && <div className="w-px flex-1 bg-border min-h-[12px]" />}
@@ -210,8 +213,9 @@ export default function TeacherHome() {
                             <p className="text-xs text-muted-foreground/60 mt-1">
                               {new Date(item.createdAt).toLocaleString("en-ZA", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                             </p>
+                            <p className="mt-1 text-xs font-medium text-primary">Open activity details</p>
                           </div>
-                        </div>
+                        </button>
                       ))}
                     </div>
                   )}
@@ -221,6 +225,19 @@ export default function TeacherHome() {
           </>
         )}
       </div>
+      <Dialog open={Boolean(selectedActivity)} onOpenChange={(open) => { if (!open) setSelectedActivity(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Activity details</DialogTitle>
+            <DialogDescription>Recorded teacher and learning activity</DialogDescription>
+          </DialogHeader>
+          {selectedActivity && <div className="space-y-3 rounded-xl border p-4">
+            <p className="font-semibold">{selectedActivity.actorName}</p>
+            <p className="whitespace-pre-wrap text-sm">{selectedActivity.description}</p>
+            <p className="text-xs text-muted-foreground">{new Date(selectedActivity.createdAt).toLocaleString()}</p>
+          </div>}
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

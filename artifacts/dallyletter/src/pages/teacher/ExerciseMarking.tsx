@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
+import { sanitizeRichText } from "@/components/RichTextEditor";
 
 function DrawAnswer({ data, markingData }: { data: unknown; markingData?: Record<string,unknown>|null }) {
   const source = data as { teacherDrawing?: any; learnerDrawing?: any; strokes?: { x:number;y:number;px:number;py:number;color?:string;width?:number;tool?:string;opacity?:number }[]; paintStrokes?: { x:number;y:number;px:number;py:number;color?:string;width?:number;opacity?:number }[]; labels?: { text:string;x:number;y:number;anchorX?:number;anchorY?:number;color?:string;opacity?:number }[]; pointers?: { x:number;y:number;length?:number;thickness?:number;opacity?:number;color?:string;angle?:number }[] };
@@ -463,7 +464,7 @@ export default function ExerciseMarking() {
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
                         <div className="font-medium">Question {q?.position != null ? q.position + 1 : i + 1}</div>
-                        {q?.prompt && <p className="mt-1 text-sm">{q.prompt}</p>}
+                        {q?.prompt && <div className="prose prose-sm dark:prose-invert mt-1 max-w-none break-words" dangerouslySetInnerHTML={{ __html: sanitizeRichText(q.prompt) }} />}
                       </div>
                       <Badge variant="secondary">{q?.marksAllocated ?? "—"} marks</Badge>
                     </div>
@@ -473,7 +474,7 @@ export default function ExerciseMarking() {
                       {a.drawData ? <div data-marking-surface className="relative overflow-hidden rounded-lg border bg-white"><DrawAnswer data={a.drawData} /><MediaMarkOverlay data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/><div className="pointer-events-none absolute inset-0"><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div></div> : a.mediaReference ? <div data-marking-surface className="relative overflow-hidden rounded-lg border bg-background"><AuthenticatedMedia url={a.mediaReference} type={mediaTypeFor(a.mediaReference)} title={`Question ${i+1} learner media`} /><MediaMarkOverlay data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/><div className="pointer-events-none absolute inset-0"><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div></div> : q?.type==="poll" && a.selectedValue ? <div className={`rounded-lg border p-3 font-semibold ${optionsFor(q.id).find(o=>o.value===a.selectedValue)?.isCorrect ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-red-300 bg-red-50 text-red-800"}`}>Selected: {optionsFor(q.id).find(o=>o.value===a.selectedValue)?.label ?? a.selectedValue} {optionsFor(q.id).find(o=>o.value===a.selectedValue)?.isCorrect ? "✓ Correct" : "✕ Wrong"}</div> : (a.textAnswer || "No answer")}
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <div className="grid items-start gap-3 pt-1 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]">
                       <div className="flex items-center gap-2">
                         <div className="flex items-center gap-1"><Button type="button" size="sm" variant="outline" className="text-emerald-600 border-emerald-300 hover:bg-emerald-50" onClick={()=>setMarks((m)=>({...m,[a.id]:q?.marksAllocated??"0"}))} aria-label={`Mark question ${i+1} correct`}><CheckCircle2 className="h-4 w-4" /></Button><Button type="button" size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50" onClick={()=>setMarks((m)=>({...m,[a.id]:"0"}))} aria-label={`Mark question ${i+1} incorrect`}><XCircle className="h-4 w-4" /></Button><Input
                           type="number"
@@ -488,6 +489,7 @@ export default function ExerciseMarking() {
                         <span className="text-sm text-muted-foreground">/ {q?.marksAllocated ?? "—"} • any numeric mark; server validates the allocation</span>
                       </div>
                       <Textarea
+                        className="min-h-24 w-full"
                         value={notes[a.id] ?? ""}
                         onChange={(e) => setNotes((n) => ({ ...n, [a.id]: e.target.value }))}
                         placeholder="Correction / feedback"
@@ -502,7 +504,7 @@ export default function ExerciseMarking() {
                   <div><p className="text-xs font-semibold uppercase tracking-widest text-amber-700">Final result</p><p className="mt-1 text-3xl font-black text-slate-900">{answers.reduce((sum,a)=>sum+Number(marks[a.id]??0),0).toFixed(2)} <span className="text-base font-semibold text-slate-500">/ {exercise?.totalMarks ?? "—"}</span></p></div>
                   <Badge className="bg-amber-500 text-slate-950">{exercise?.totalMarks ? ((answers.reduce((sum,a)=>sum+Number(marks[a.id]??0),0)/Number(exercise.totalMarks))*100).toFixed(1)+"%" : "—"}</Badge>
                 </div>
-                <Textarea className="mt-4 bg-white" value={overallComment} onChange={e=>setOverallComment(e.target.value)} placeholder="Final teacher comment for the whole exercise — celebrate strengths, explain the main improvement point, and encourage the learner." />
+                <Textarea className="mt-4 min-h-28 w-full bg-white" value={overallComment} onChange={e=>setOverallComment(e.target.value)} placeholder="Final teacher comment for the whole exercise — celebrate strengths, explain the main improvement point, and encourage the learner." />
               </div>
 
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
