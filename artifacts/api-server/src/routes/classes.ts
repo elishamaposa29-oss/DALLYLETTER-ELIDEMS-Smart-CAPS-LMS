@@ -10,6 +10,8 @@ import {
   DeleteClassParams,
 } from "@workspace/api-zod";
 import { requireAuth, requireTeacherOrOwner } from "../lib/auth-middleware";
+import { removeStoredMedia } from "../lib/media-storage";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -106,6 +108,10 @@ router.delete("/classes/:id", requireAuth, requireTeacherOrOwner, async (req, re
     return;
   }
 
+  // Only clean up attachments that this application created for a hand raise.
+  // Older rows and caller-supplied URLs are never treated as owned objects.
+  const handRaises = await db.select({ mediaUrl: handRaisesTable.mediaUrl, mediaOwned: handRaisesTable.mediaOwned })
+    .from(handRaisesTable).where(eq(handRaisesTable.classId, params.data.id));
   await db.transaction(async (tx) => {
     // These records are scoped to the class and their foreign keys do not
     // currently cascade. Delete them in the same transaction so the class
@@ -114,6 +120,14 @@ router.delete("/classes/:id", requireAuth, requireTeacherOrOwner, async (req, re
     await tx.delete(attendanceTable).where(eq(attendanceTable.classId, params.data.id));
     await tx.delete(classesTable).where(eq(classesTable.id, params.data.id));
   });
+  const ownedKeys = new Set(handRaises.filter(row => row.mediaOwned).map(row =>
+    row.mediaUrl?.match(/\\/api\\/(?:lessons|messages)\\/media\\/([a-f0-9-]{36})/i)?.[1]
+  ).filter((key): key is string => Boolean(key)));
+  const failedCleanup: string[] = [];
+  for (const key of ownedKeys) {
+    try { await removeStoredMedia(key); } catch { failedCleanup.push(key); }
+  }
+  if (failedCleanup.length) logger.warn({ classId: params.data.id, failedMediaCount: failedCleanup.length }, "Class deleted; some owned hand-raise attachments need cleanup");
   res.sendStatus(204);
 });
 
