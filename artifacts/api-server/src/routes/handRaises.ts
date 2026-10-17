@@ -142,6 +142,17 @@ router.patch("/raise-hand/:id/resolve", requireAuth, async (req, res): Promise<v
   }
   if (!allowed) { res.status(403).json({ error: "Not authorised to lower this hand." }); return; }
   const [updated] = await db.update(handRaisesTable).set({ isResolved: true }).where(eq(handRaisesTable.id, id)).returning();
+  const storageKey = existing.mediaUrl?.match(/\/api\/(?:lessons|messages)\/media\/([a-f0-9-]{36})/i)?.[1];
+  if (storageKey) {
+    try {
+      await removeStoredMedia(storageKey);
+      const [cleaned] = await db.update(handRaisesTable).set({ mediaUrl: null }).where(eq(handRaisesTable.id, id)).returning();
+      res.json({ ...cleaned, createdAt: cleaned.createdAt.toISOString() });
+    } catch {
+      res.status(200).json({ ...updated, createdAt: updated.createdAt.toISOString(), warning: "Hand resolved, but attachment cleanup needs attention." });
+    }
+    return;
+  }
   res.json({ ...updated, createdAt: updated.createdAt.toISOString() });
 });
 
