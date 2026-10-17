@@ -9,6 +9,7 @@ export async function ensureConnectSchema(): Promise<void> {
     await client.query("BEGIN");
     // Add optional hand-raise media reference without rewriting existing records.
     await client.query("ALTER TABLE hand_raises ADD COLUMN IF NOT EXISTS media_url text");
+    await client.query("ALTER TABLE hand_raises ADD COLUMN IF NOT EXISTS media_owned boolean NOT NULL DEFAULT false");
 
     // Durable fallback for small media uploads when object storage credentials are
     // unavailable. Chunks cap row sizes and make uploads atomic across failures.
