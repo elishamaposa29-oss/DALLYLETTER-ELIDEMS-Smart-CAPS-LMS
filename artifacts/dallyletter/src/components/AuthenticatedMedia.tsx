@@ -16,24 +16,39 @@ export function AuthenticatedMedia({ url, type, title }: AuthenticatedMediaProps
   const [scale, setScale] = useState(1);
 
   const shareBrandedLink = async () => {
-    // Share the actual resource URL, not the current dashboard route.
-    const resourceUrl = /^https?:\/\//i.test(url) ? url : getApiUrl(url);
-    const separator = resourceUrl.includes("?") ? "&" : "?";
-    const brandedUrl = `${resourceUrl}${separator}utm_source=dallyletter_share`;
+    let resourcePath = url;
+    try {
+      if (/^https?:\\/\\//i.test(url)) {
+        const parsed = new URL(url);
+        if (parsed.origin !== window.location.origin && !parsed.pathname.startsWith("/api/")) {
+          window.alert("Only Dallyletter media links can be shared through the protected viewer.");
+          return;
+        }
+        resourcePath = parsed.pathname + parsed.search;
+      }
+    } catch {
+      window.alert("This media link cannot be shared safely.");
+      return;
+    }
+    if (!/^\\/api\\/(?:lessons|messages)\\/media\\/[a-f0-9-]{36}(?:\\?type=[a-zA-Z0-9%./+-]+)?$/i.test(resourcePath)) {
+      window.alert("This resource does not have a supported Dallyletter media link.");
+      return;
+    }
+    const brandedUrl = `${window.location.origin}/shared-media?url=${encodeURIComponent(resourcePath)}&type=${encodeURIComponent(type)}&title=${encodeURIComponent(title || "Learning resource")}`;
     try {
       if (typeof navigator.share === "function") {
-        await navigator.share({ title: `${title || "Learning resource"} · Dallyletter Elidems`, text: "Shared from Dallyletter Elidems — The fun way to success. The recipient may need to sign in.", url: brandedUrl });
+        await navigator.share({ title: `${title || "Learning resource"} · Dallyletter Elidems`, text: "Shared from Dallyletter Elidems — The fun way to success. Sign in with your Dallyletter account to view this protected resource.", url: brandedUrl });
         return;
       }
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(brandedUrl);
-        window.alert("Dallyletter resource link copied. Protected resources require the recipient to sign in.");
+        window.alert("Dallyletter viewer link copied. The recipient must sign in and have permission to access the resource.");
         return;
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
     }
-    window.alert("Direct link sharing is unavailable here. Download the resource and share it from your device.");
+    window.alert("Link sharing is unavailable here. Download the resource and share it from your device.");
   };
 
   useEffect(() => {
