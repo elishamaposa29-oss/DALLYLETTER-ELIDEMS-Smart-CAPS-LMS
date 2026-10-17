@@ -11,6 +11,7 @@ export const handRaisesTable = pgTable("hand_raises", {
   studentName: text("student_name").notNull(),
   classId: integer("class_id").notNull().references(() => classesTable.id),
   question: text("question"),
+  mediaUrl: text("media_url"),
   isResolved: boolean("is_resolved").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
