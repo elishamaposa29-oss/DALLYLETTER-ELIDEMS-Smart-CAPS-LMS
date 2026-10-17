@@ -536,7 +536,7 @@ export default function ExerciseMarking() {
               </div>
 
               <div className="flex flex-wrap items-center gap-3 border-t pt-4">
-                <Button onClick={save} disabled={!answers.length}>
+                <Button onClick={save} disabled={!answers.length || selectedSubmission.status === "marked"}>
                   <CheckCircle2 className="mr-2 h-4 w-4" />
                   Save marks & return result
                 </Button>
