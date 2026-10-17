@@ -1,11 +1,25 @@
 import { Router, type IRouter } from "express";
+import multer from "multer";
 import { and, eq, inArray } from "drizzle-orm";
 import { db, handRaisesTable, activityLogTable, classesTable } from "@workspace/db";
 import { RaiseHandBody, ListHandRaisesQueryParams } from "@workspace/api-zod";
 import { requireAuth, isOwnerRole } from "../lib/auth-middleware";
-import { removeStoredMedia } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, removeStoredMedia } from "../lib/media-storage";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
+
+const handRaiseUpload = multer({
+  storage: multer.diskStorage({
+    destination: async (_req, _file, callback) => {
+      try { await ensureMediaDirectory(); callback(null, getMediaDirectory()); }
+      catch (error) { callback(error as Error, ""); }
+    },
+    filename: (_req, _file, callback) => callback(null, createMediaStorageKey()),
+  }),
+  limits: { fileSize: MAX_MEDIA_SIZE_BYTES },
+  fileFilter: (_req, file, callback) => callback(null, isAllowedMediaType(file.mimetype)),
+});
 
 // POST /raise-hand — Raise hand in a class
 router.post("/raise-hand", requireAuth, async (req, res): Promise<void> => {
@@ -35,6 +49,32 @@ router.post("/raise-hand", requireAuth, async (req, res): Promise<void> => {
   res.status(201).json({ ...handRaise, createdAt: handRaise.createdAt.toISOString() });
 });
 
+// POST /raise-hand/with-media — atomically upload a supported attachment and create the hand raise.
+router.post("/raise-hand/with-media", requireAuth, (req, res): void => {
+  if (req.currentUser?.role !== "student") { res.status(403).json({ error: "Student access required" }); return; }
+  handRaiseUpload.single("file")(req, res, (uploadError) => {
+    if (uploadError || !req.file) { res.status(400).json({ error: "A supported attachment up to the configured storage limit is required" }); return; }
+    void (async () => {
+      const user = req.currentUser!;
+      const classId = Number(req.body?.classId);
+      const question = typeof req.body?.question === "string" ? req.body.question.slice(0, 5000) : "";
+      const key = req.file!.filename;
+      try {
+        await persistUploadedMedia(key, req.file!.mimetype, req.file!.path);
+        const mediaUrl = "/api/lessons/media/" + key + "?type=" + encodeURIComponent(req.file!.mimetype);
+        const [handRaise] = await db.insert(handRaisesTable).values({
+          studentId: user.id, studentName: user.name, classId, question: question || null, mediaUrl, isResolved: false,
+        }).returning();
+        await db.insert(activityLogTable).values({ type: "hand_raised", description: user.name + " raised a hand with an attachment", actorName: user.name });
+        res.status(201).json({ ...handRaise, createdAt: handRaise.createdAt.toISOString() });
+      } catch (error) {
+        await removeStoredMedia(key).catch(() => undefined);
+        logger.warn({ error: error instanceof Error ? error.message.slice(0, 300) : "unknown" }, "Hand-raise media creation failed");
+        res.status(503).json({ error: "Could not save the hand raise and its attachment. Please retry." });
+      }
+    })();
+  });
+});
 // GET /raise-hand — list only hand raises the current role may view
 router.get("/raise-hand", requireAuth, async (req, res): Promise<void> => {
   const queryParams = ListHandRaisesQueryParams.safeParse(req.query);
