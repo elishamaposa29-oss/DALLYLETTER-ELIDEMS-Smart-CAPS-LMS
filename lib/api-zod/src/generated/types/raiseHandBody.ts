@@ -10,4 +10,6 @@ export interface RaiseHandBody {
   classId: number;
   /** @nullable */
   question?: string | null;
+  /** @nullable */
+  mediaUrl?: string | null;
 }
