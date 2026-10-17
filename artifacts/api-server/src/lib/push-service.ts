@@ -167,7 +167,11 @@ export async function dispatchPendingPushNotifications(): Promise<void> {
           icon: "/icons/icon-192.png",
           badge: "/icons/icon-192.png",
         }));
-        if (result === "gone") await pool.query("DELETE FROM push_subscriptions WHERE id = $1", [sub.subscription_id]);
+        if (result === "gone") {
+          await pool.query("DELETE FROM push_subscriptions WHERE id = $1", [sub.subscription_id]);
+        } else {
+          logger.info({ notificationId, subscriptionId: sub.subscription_id }, "Web push notification delivered");
+        }
       } catch (error) {
         retry = true;
         lastError = error instanceof Error ? error.message.slice(0, 300) : "Unknown push delivery error";
