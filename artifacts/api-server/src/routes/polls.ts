@@ -163,6 +163,28 @@ router.delete("/polls/:id", requireAuth, async (req, res): Promise<void> => {
   res.sendStatus(204);
 });
 
+// POST /polls/:id/check-answer — server-verified instant feedback for practice mode only.
+router.post("/polls/:id/check-answer", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  if (user.role !== "student") { res.status(403).json({ error: "Student access required" }); return; }
+  const id = Number(req.params.id);
+  const questionId = Number(req.body?.questionId);
+  const optionId = Number(req.body?.optionId);
+  if (!Number.isInteger(id) || id <= 0 || !Number.isInteger(questionId) || questionId <= 0 || !Number.isInteger(optionId) || optionId <= 0) {
+    res.status(400).json({ error: "Valid poll, question and option IDs are required" }); return;
+  }
+  const [poll] = await db.select().from(pollsTable).where(eq(pollsTable.id, id));
+  if (!poll || poll.status !== "active") { res.status(404).json({ error: "Active poll not found" }); return; }
+  if (poll.mode !== "practice") { res.status(403).json({ error: "Instant answer feedback is available in practice mode only" }); return; }
+  const [question] = await db.select().from(pollQuestionsTable).where(and(eq(pollQuestionsTable.id, questionId), eq(pollQuestionsTable.pollId, id)));
+  if (!question) { res.status(400).json({ error: "Question does not belong to this poll" }); return; }
+  const [selected] = await db.select().from(pollOptionsTable).where(and(eq(pollOptionsTable.id, optionId), eq(pollOptionsTable.questionId, questionId)));
+  if (!selected) { res.status(400).json({ error: "Option does not belong to this question" }); return; }
+  const options = await db.select().from(pollOptionsTable).where(eq(pollOptionsTable.questionId, questionId));
+  const correct = options.find(option => option.isCorrect);
+  res.json({ isCorrect: selected.isCorrect, explanation: question.explanation, correctText: selected.isCorrect ? undefined : correct?.text });
+});
+
 // POST /polls/:id/submit — student submits answers
 router.post("/polls/:id/submit", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
