@@ -140,7 +140,7 @@ router.patch("/raise-hand/:id/resolve", requireAuth, async (req, res): Promise<v
   }
   if (!allowed) { res.status(403).json({ error: "Not authorised to lower this hand." }); return; }
   const [updated] = await db.update(handRaisesTable).set({ isResolved: true }).where(eq(handRaisesTable.id, id)).returning();
-  const storageKey = existing.mediaUrl?.match(/\/api\/(?:lessons|messages)\/media\/([a-f0-9-]{36})/i)?.[1];
+  const storageKey = existing.mediaOwned ? existing.mediaUrl?.match(/\/api\/(?:lessons|messages)\/media\/([a-f0-9-]{36})/i)?.[1] : null;
   if (storageKey) {
     try {
       await removeStoredMedia(storageKey);
