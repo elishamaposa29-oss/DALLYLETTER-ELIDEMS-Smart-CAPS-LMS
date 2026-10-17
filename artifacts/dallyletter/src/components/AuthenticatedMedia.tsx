@@ -17,7 +17,7 @@ export function AuthenticatedMedia({ url, type, title }: AuthenticatedMediaProps
 
   const shareBrandedLink = async () => {
     // Share the actual resource URL, not the current dashboard route.
-    const resourceUrl = /^https?:\\/\\//i.test(url) ? url : getApiUrl(url);
+    const resourceUrl = /^https?:\/\//i.test(url) ? url : getApiUrl(url);
     const separator = resourceUrl.includes("?") ? "&" : "?";
     const brandedUrl = `${resourceUrl}${separator}utm_source=dallyletter_share`;
     try {
