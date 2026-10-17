@@ -121,7 +121,7 @@ router.delete("/classes/:id", requireAuth, requireTeacherOrOwner, async (req, re
     await tx.delete(classesTable).where(eq(classesTable.id, params.data.id));
   });
   const ownedKeys = new Set(handRaises.filter(row => row.mediaOwned).map(row =>
-    row.mediaUrl?.match(/\\/api\\/(?:lessons|messages)\\/media\\/([a-f0-9-]{36})/i)?.[1]
+    row.mediaUrl?.match(/\/api\/(?:lessons|messages)\/media\/([a-f0-9-]{36})/i)?.[1]
   ).filter((key): key is string => Boolean(key)));
   const failedCleanup: string[] = [];
   for (const key of ownedKeys) {
