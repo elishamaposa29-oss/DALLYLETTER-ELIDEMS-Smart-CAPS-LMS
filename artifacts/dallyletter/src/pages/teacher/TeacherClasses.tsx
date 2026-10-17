@@ -17,6 +17,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { CreateClassBodyStatus, UpdateClassBodyStatus } from "@workspace/api-client-react";
 import { Textarea } from "@/components/ui/textarea";
+import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 
 const createClassSchema = z.object({
   title: z.string().min(2, "Title is required"),
@@ -385,6 +386,11 @@ function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean
             <div className="flex-1">
               <p className="font-medium">{hand.studentName}</p>
               {hand.question && <p className="text-muted-foreground mt-0.5">{hand.question}</p>}
+              {hand.mediaUrl && <div className="mt-2"><AuthenticatedMedia
+                url={hand.mediaUrl}
+                type={new URL(hand.mediaUrl, window.location.origin).searchParams.get("type")?.startsWith("image/") ? "image" : new URL(hand.mediaUrl, window.location.origin).searchParams.get("type")?.startsWith("video/") ? "video" : new URL(hand.mediaUrl, window.location.origin).searchParams.get("type")?.startsWith("audio/") ? "audio" : "document"}
+                title={"Attachment from " + hand.studentName}
+              /></div>}
             </div>
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
               <Input aria-label={`Reply to ${hand.studentName}`} className="min-w-[160px] flex-1" placeholder="Write a reply to this learner…" value={handReplies[hand.id] ?? ""} onChange={event => setHandReplies(current => ({ ...current, [hand.id]: event.target.value }))} />
