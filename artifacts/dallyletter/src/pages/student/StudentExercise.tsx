@@ -136,6 +136,25 @@ function DrawBox({
   const [labelText, setLabelText] = useState("");
   const [pointerId, setPointerId] = useState<string | null>(null);
   const [eraseTarget, setEraseTarget] = useState<"pen" | "paint" | "both">("both");
+  const [undoStack, setUndoStack] = useState<DrawValue[]>([]);
+  const [redoStack, setRedoStack] = useState<DrawValue[]>([]);
+  const snapshot = (source: DrawValue | undefined): DrawValue => structuredClone(source ?? {}) as DrawValue;
+  const remember = () => {
+    setUndoStack(stack => [...stack.slice(-49), snapshot(value)]);
+    setRedoStack([]);
+  };
+  const undo = () => {
+    if (!undoStack.length) return;
+    setRedoStack(stack => [...stack.slice(-49), snapshot(value)]);
+    onChange(snapshot(undoStack[undoStack.length - 1]));
+    setUndoStack(stack => stack.slice(0, -1));
+  };
+  const redo = () => {
+    if (!redoStack.length) return;
+    setUndoStack(stack => [...stack.slice(-49), snapshot(value)]);
+    onChange(snapshot(redoStack[redoStack.length - 1]));
+    setRedoStack(stack => stack.slice(0, -1));
+  };
 
   const strokes = () => (value?.strokes as Stroke[] | undefined) ?? [];
   const paintStrokes = () => (value?.paintStrokes as Stroke[] | undefined) ?? [];
@@ -248,6 +267,7 @@ function DrawBox({
 
     if (tool === "text") {
       if (!labelText.trim()) return;
+      remember();
       onChange({
         ...value,
         labels: [...labels(), {
@@ -270,6 +290,7 @@ function DrawBox({
         setPointerId(existing.id);
         last.current = position;
       } else {
+        remember();
         const item: PointerMark = { id: crypto.randomUUID(), x: position.x, y: position.y, length: 90, thickness: 3, width: 3, opacity: 0.8, color, angle: 0 };
         setPointerId(item.id);
         onChange({ ...value, pointers: [...pointers(), item] });
@@ -281,6 +302,7 @@ function DrawBox({
 
     if (tool === "select" || (tool === "eraser" && permissions?.allowModify === false)) return;
     if (permissions?.allowModify === false) return;
+    remember();
     drawing.current = true;
     last.current = position;
     canvasRef.current?.setPointerCapture(event.pointerId);
@@ -329,6 +351,7 @@ function DrawBox({
 
   const clear = () => {
     if (permissions?.allowClear === false) return;
+    remember();
     onChange({ ...value, strokes: [], paintStrokes: [], labels: [], pointers: [] });
   };
 
@@ -358,6 +381,8 @@ function DrawBox({
               <option value="both">Erase both</option><option value="pen">Erase pen</option><option value="paint">Erase paint</option>
             </select>
           )}
+          <Button type="button" size="sm" variant="outline" onClick={undo} disabled={!undoStack.length} aria-label="Undo last DrawBox action">↶ Undo</Button>
+          <Button type="button" size="sm" variant="outline" onClick={redo} disabled={!redoStack.length} aria-label="Redo DrawBox action">↷ Redo</Button>
           <Button type="button" size="sm" variant="ghost" onClick={clear}>Clear</Button>
         </div>
       )}
