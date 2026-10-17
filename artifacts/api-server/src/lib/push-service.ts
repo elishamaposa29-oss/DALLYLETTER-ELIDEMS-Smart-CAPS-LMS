@@ -1,4 +1,4 @@
-import { createCipheriv, createHmac, createPrivateKey, generateKeyPairSync, randomBytes, sign, diffieHellman, type KeyObject } from "node:crypto";
+import { createCipheriv, createHmac, createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes, sign, diffieHellman, type KeyObject } from "node:crypto";
 import { pool } from "@workspace/db";
 import { logger } from "./logger";
 
@@ -69,7 +69,9 @@ async function encryptPayload(payload: string, p256dh: string, auth: string): Pr
   const authSecret = fromB64(auth);
   if (uaRaw.length !== 65 || uaRaw[0] !== 4 || authSecret.length !== 16) throw new Error("Invalid push subscription keys");
 
-  const uaKey = createPrivateKey({
+  // Subscription p256dh is a public key. Import it as a public KeyObject;
+  // createPrivateKey rejects a JWK that has no private d member.
+  const uaKey = createPublicKey({
     key: {
       kty: "EC", crv: "P-256",
       x: b64(uaRaw.subarray(1, 33)),
