@@ -40,6 +40,9 @@ export async function ensureConnectSchema(): Promise<void> {
     )`);
     await client.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS link text`);
     await client.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS push_sent_at timestamptz`);
+    await client.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS push_attempts integer NOT NULL DEFAULT 0`);
+    await client.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS push_next_attempt_at timestamptz`);
+    await client.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS push_last_error text`);
     await client.query(`ALTER TABLE poll_questions ADD COLUMN IF NOT EXISTS image_url text`);
     // Additive, idempotent group profile fields; existing groups remain intact.
     await client.query(`ALTER TABLE study_groups ADD COLUMN IF NOT EXISTS grade text`);
