@@ -27,10 +27,8 @@ router.post("/raise-hand", requireAuth, async (req, res): Promise<void> => {
   const parsed = RaiseHandBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
-  const mediaUrl = typeof parsed.data.mediaUrl === "string" ? parsed.data.mediaUrl.trim() : null;
-  if (mediaUrl && !/^\/api\/(?:lessons|messages)\/media\/[a-f0-9-]{36}(?:\?type=[a-zA-Z0-9%./+-]+)?$/i.test(mediaUrl)) {
-    res.status(400).json({ error: "mediaUrl must reference authenticated Dallyletter media" }); return;
-  }
+  if (parsed.data.mediaUrl) { res.status(400).json({ error: "Attachments must be uploaded through /raise-hand/with-media" }); return; }
+  const mediaUrl = null;
   const [handRaise] = await db.insert(handRaisesTable).values({
     studentId: currentUser.id,
     studentName: currentUser.name,
