@@ -13,6 +13,18 @@ import { ClipboardList, Calendar, BookOpen, Send, AlertTriangle } from "lucide-r
 
 const token = () => localStorage.getItem("dallyletter_token") ?? "";
 
+function referenceMediaType(url: string): "image" | "video" | "audio" | "document" {
+  try {
+    const parsed = new URL(url, window.location.origin);
+    const mime = (parsed.searchParams.get("type") ?? "").toLowerCase();
+    const path = parsed.pathname.toLowerCase();
+    if (mime.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg)$/.test(path)) return "image";
+    if (mime.startsWith("video/") || /\.(mp4|webm|mov|ogv)$/.test(path)) return "video";
+    if (mime.startsWith("audio/") || /\.(mp3|wav|ogg|m4a|aac)$/.test(path)) return "audio";
+  } catch { /* fall through to document preview */ }
+  return "document";
+}
+
 export default function StudentAssignments() {
   const { user } = useAuth();
   const previewOnly = user?.role !== "student";
@@ -160,7 +172,7 @@ export default function StudentAssignments() {
                           )}
                         </div>
                         {a.description && <p className="text-sm text-slate-500 mb-2">{a.description}</p>}
-                        {a.attachmentUrl && <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50/70 p-3 space-y-2"><p className="text-xs font-semibold uppercase tracking-wide text-blue-800">Reference material</p><AuthenticatedMedia url={a.attachmentUrl} type={/\.(png|jpe?g|gif|webp)(\?|$)/i.test(a.attachmentUrl) ? "image" : /\.(mp4|webm|mov)(\?|$)/i.test(a.attachmentUrl) ? "video" : /\.(mp3|wav|ogg|m4a)(\?|$)/i.test(a.attachmentUrl) ? "audio" : "document"} title={`${a.title} reference material`} /><Button type="button" variant="outline" size="sm" onClick={() => void openReference(a.attachmentUrl, a.title)}>Open reference in new tab</Button></div>}
+                        {a.attachmentUrl && <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50/70 p-3 space-y-2"><p className="text-xs font-semibold uppercase tracking-wide text-blue-800">Reference material</p><AuthenticatedMedia url={a.attachmentUrl} type={referenceMediaType(a.attachmentUrl)} title={`${a.title} reference material`} /><Button type="button" variant="outline" size="sm" onClick={() => void openReference(a.attachmentUrl, a.title)}>Open reference in new tab</Button></div>}
                         {sub?.feedback && <p className="text-sm text-purple-600 italic mb-2">Feedback: {sub.feedback}</p>}
                         <div className="flex items-center gap-4 text-xs text-slate-400">
                           <span className="flex items-center gap-1">
@@ -195,7 +207,7 @@ export default function StudentAssignments() {
             <DialogHeader><DialogTitle>{selected.title}</DialogTitle></DialogHeader>
             <div className="space-y-3">
               <div className="bg-slate-50 rounded-lg p-3 text-sm text-slate-600 whitespace-pre-wrap">{selected.description || "No description provided."}</div>
-              {selected.attachmentUrl && <div className="rounded-xl border p-3 space-y-2"><p className="text-sm font-semibold">Reference material</p><AuthenticatedMedia url={selected.attachmentUrl} type={/\.(png|jpe?g|gif|webp)(\?|$)/i.test(selected.attachmentUrl) ? "image" : /\.(mp4|webm|mov)(\?|$)/i.test(selected.attachmentUrl) ? "video" : /\.(mp3|wav|ogg|m4a)(\?|$)/i.test(selected.attachmentUrl) ? "audio" : "document"} title={`${selected.title} reference material`} /><Button type="button" variant="outline" size="sm" onClick={() => void openReference(selected.attachmentUrl, selected.title)}>Open in new tab</Button></div>}
+              {selected.attachmentUrl && <div className="rounded-xl border p-3 space-y-2"><p className="text-sm font-semibold">Reference material</p><AuthenticatedMedia url={selected.attachmentUrl} type={referenceMediaType(selected.attachmentUrl)} title={`${selected.title} reference material`} /><Button type="button" variant="outline" size="sm" onClick={() => void openReference(selected.attachmentUrl, selected.title)}>Open in new tab</Button></div>}
               <div>
                 <label className="text-sm font-medium text-slate-700 mb-1 block">Your Answer</label>
                 <textarea
