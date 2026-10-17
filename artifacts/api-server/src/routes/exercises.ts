@@ -8,7 +8,7 @@ import {
 } from "@workspace/db/schema";
 import { canManageAcademicContent, isOwnerRole, requireAuth } from "../lib/auth-middleware";
 import { getAIProvider } from "../lib/ai-provider";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, removeStoredMedia } from "../lib/media-storage";
 
 const router = Router();
 const learnerRole = "student";
@@ -85,15 +85,33 @@ router.post("/question-media", requireAuth, (req,res,next):void => {
       if (!canEditExercise(user, exercise.createdBy)) { await discardTemporaryFile(); res.status(403).json({error:"You can only attach media to your own exercise"}); return; }
       const [question] = await db.select().from(exerciseQuestionsTable).where(and(eq(exerciseQuestionsTable.id, questionId),eq(exerciseQuestionsTable.exerciseId,exerciseId)));
       if (!question) { await discardTemporaryFile(); res.status(404).json({error:"Question not found in this exercise"}); return; }
+      const config = question.config && typeof question.config === "object" && !Array.isArray(question.config) ? question.config as Record<string, unknown> : {};
+      const previousAttachment = config.attachment && typeof config.attachment === "object" && !Array.isArray(config.attachment)
+        ? config.attachment as Record<string, unknown>
+        : {};
+      const previousStorageKey = typeof previousAttachment.url === "string"
+        ? previousAttachment.url.match(/\/api\/lessons\/media\/([a-f0-9-]{36})/i)?.[1]
+        : null;
+      const attachmentUrl = `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`;
+      let mediaPersisted = false;
       try {
         await persistUploadedMedia(file.filename, file.mimetype, file.path);
-        const attachmentUrl = `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`;
-        const config = question.config && typeof question.config === "object" && !Array.isArray(question.config) ? question.config as Record<string, unknown> : {};
-        await db.update(exerciseQuestionsTable).set({config:{...config,attachment:{url:attachmentUrl,fileName:file.originalname,mimeType:file.mimetype,size:file.size}}}).where(eq(exerciseQuestionsTable.id,question.id));
-        res.status(201).json({attachmentUrl,fileName:file.originalname,mimeType:file.mimetype,size:file.size});
+        mediaPersisted = true;
+        const [updatedQuestion] = await db.update(exerciseQuestionsTable)
+          .set({ config: { ...config, attachment: { url: attachmentUrl, fileName: file.originalname, mimeType: file.mimetype, size: file.size } } })
+          .where(and(eq(exerciseQuestionsTable.id, question.id), eq(exerciseQuestionsTable.exerciseId, exerciseId)))
+          .returning({ id: exerciseQuestionsTable.id });
+        if (!updatedQuestion) throw new Error("Question attachment target disappeared before save");
       } catch {
+        if (mediaPersisted) await removeStoredMedia(file.filename).catch(() => undefined);
+        else await discardTemporaryFile();
         res.status(503).json({error:"Persistent media storage is unavailable or the attachment could not be saved. Please retry."});
+        return;
       }
+      if (previousStorageKey && previousStorageKey !== file.filename) {
+        await removeStoredMedia(previousStorageKey).catch(() => undefined);
+      }
+      res.status(201).json({attachmentUrl,fileName:file.originalname,mimeType:file.mimetype,size:file.size});
     })().catch(next);
   });
 });
