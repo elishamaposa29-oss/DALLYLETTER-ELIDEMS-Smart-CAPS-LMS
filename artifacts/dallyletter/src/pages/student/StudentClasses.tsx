@@ -13,14 +13,14 @@ import { useQueryClient } from "@tanstack/react-query";
 
 type TeacherReplyMessage = { id: number; senderId: number; senderRole: string; content: string; type: string; mediaUrl?: string | null; createdAt: string };
 
-function TeacherReplyPreview({ teacherId }: { teacherId: number }) {
+function TeacherReplyPreview({ teacherId, handRaiseId }: { teacherId: number; handRaiseId?: number }) {
   const [latest, setLatest] = useState<TeacherReplyMessage | null>(null);
   useEffect(() => {
     let active = true;
     const load = async () => {
       const token = localStorage.getItem("dallyletter_token");
       try {
-        const response = await fetch(getApiUrl(`/api/messages?recipientId=${teacherId}`), { headers: token ? { Authorization: `Bearer ${token}` } : {} , cache: "no-store" });
+        if (!handRaiseId) { if (active) setLatest(null); return; }\n        const response = await fetch(getApiUrl(`/api/messages?recipientId=${teacherId}&handRaiseId=${handRaiseId}`), { headers: token ? { Authorization: `Bearer ${token}` } : {} , cache: "no-store" });
         if (!response.ok) return;
         const messages = await response.json() as TeacherReplyMessage[];
         const reply = messages.filter(message => message.senderId === teacherId && (message.senderRole === "teacher" || message.senderRole === "owner" || message.senderRole === "admin")).at(-1) ?? null;
@@ -30,7 +30,7 @@ function TeacherReplyPreview({ teacherId }: { teacherId: number }) {
     void load();
     const timer = window.setInterval(() => void load(), 10000);
     return () => { active = false; window.clearInterval(timer); };
-  }, [teacherId]);
+  }, [teacherId, handRaiseId]);
   if (!latest) return null;
   return <div className="mt-3 w-full rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-emerald-950">
     <p className="mb-1 text-xs font-semibold uppercase tracking-wide">Teacher reply</p>
@@ -208,7 +208,7 @@ export default function StudentClasses() {
                     )}
                   </CardContent>
                   <CardFooter className="gap-2 pt-4 border-t flex-wrap">
-                    <TeacherReplyPreview teacherId={c.teacherId} />
+                    <TeacherReplyPreview teacherId={c.teacherId} handRaiseId={raisedHands[c.id]} />
                     <Button
                       className="flex-1 gap-2"
                       variant={c.status === "live" ? "default" : "secondary"}
