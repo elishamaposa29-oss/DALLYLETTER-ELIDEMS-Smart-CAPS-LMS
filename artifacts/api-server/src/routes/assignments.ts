@@ -157,6 +157,22 @@ router.post("/", requireAuth, async (req, res): Promise<void> => {
   res.status(201).json(row);
 });
 
+router.patch("/:id/reference-visibility", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Forbidden" }); return; }
+  const assignmentId = Number(req.params.id);
+  if (!Number.isInteger(assignmentId) || assignmentId <= 0 || typeof req.body?.hidden !== "boolean") {
+    res.status(400).json({ error: "A valid assignment ID and boolean hidden value are required" }); return;
+  }
+  const [existing] = await db.select({ teacherId: assignmentsTable.teacherId }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
+  if (!existing) { res.status(404).json({ error: "Assignment not found" }); return; }
+  if (!isOwnerRole(user.role) && !user.isManager && existing.teacherId !== user.id) {
+    res.status(403).json({ error: "You can only change reference visibility for your own assignments" }); return;
+  }
+  const [updated] = await db.update(assignmentsTable).set({ referenceMaterialHidden: req.body.hidden }).where(eq(assignmentsTable.id, assignmentId)).returning();
+  res.json({ id: updated.id, referenceMaterialHidden: updated.referenceMaterialHidden });
+});
+
 router.put("/:id", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Forbidden" }); return; }
