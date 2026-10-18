@@ -44,6 +44,16 @@ jobs:
       - name: Build reproducible debug APK
         working-directory: artifacts/dallyletter-mobile/android
         run: ./gradlew --no-daemon --stacktrace assembleDebug
+      - name: Preserve first install package
+        run: cp artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk /tmp/dallyletter-v1.apk
+      - name: Generate version 1.0.1 for upgrade test
+        working-directory: artifacts/dallyletter-mobile
+        run: |
+          node -e 'const fs=require("fs"); const p="app.json"; const j=JSON.parse(fs.readFileSync(p,"utf8")); j.expo.version="1.0.1"; j.expo.android.versionCode=2; fs.writeFileSync(p, JSON.stringify(j,null,2)+"\\n");'
+          pnpm exec expo prebuild --platform android --no-install
+      - name: Build update APK
+        working-directory: artifacts/dallyletter-mobile/android
+        run: ./gradlew --no-daemon --stacktrace assembleDebug
       - name: Boot Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -52,15 +62,16 @@ jobs:
           arch: x86_64
           profile: pixel_2
           script: |
+            adb install /tmp/dallyletter-v1.apk
+            adb shell monkey -p com.dallyletter.elidems 1
+            sleep 10
             adb install -r artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk
             adb shell monkey -p com.dallyletter.elidems 1
-            sleep 15
+            sleep 10
             if adb logcat -d -t 5000 | grep -A5 "FATAL EXCEPTION" | grep -q "com.dallyletter.elidems" ; then
-              echo "Android app crashed during launch"
+              echo "Android app crashed during install/upgrade smoke test"
               exit 1
             fi
-            adb install -r artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk
-            adb shell monkey -p com.dallyletter.elidems 1
       - name: Upload installable debug APK
         uses: actions/upload-artifact@v4
         with:
