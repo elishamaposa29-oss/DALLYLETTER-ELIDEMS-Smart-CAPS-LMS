@@ -203,10 +203,10 @@ export default function StudentStudyGroups() {
       const canEditProfile = user?.role === "owner" || user?.isManager === true || group?.creatorId === user?.id;
       if (canEditProfile) {
         let coverImageUrl: string | undefined;
-        if (profileCoverFile && user?.role === "owner") {
+        if (profileCoverFile && canEditProfile) {
           const formData = new FormData(); formData.append("file", profileCoverFile);
           const token = localStorage.getItem("dallyletter_token");
-          const upload = await fetch(getApiUrl("/api/lessons/media"), { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData });
+          const upload = await fetch(getApiUrl(`/api/lessons/media?purpose=group-cover&groupId=${settings.groupId}`), { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData });
           const uploaded = await upload.json().catch(() => null) as { mediaUrl?: string; error?: string } | null;
           if (!upload.ok || !uploaded?.mediaUrl) throw new Error(uploaded?.error ?? "Group cover upload failed.");
           coverImageUrl = uploaded.mediaUrl;
