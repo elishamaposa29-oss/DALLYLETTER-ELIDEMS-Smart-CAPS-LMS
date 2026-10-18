@@ -22,7 +22,7 @@ export default function TeacherPolls() {
   const [createOpen, setCreateOpen] = useState(false);
   const [aiGenOpen, setAiGenOpen] = useState(false);
   const [resultsId, setResultsId] = useState<number | null>(null);
-  const [results, setResults] = useState<PollResults | null>(null);
+  const [results, setResults] = useState<PollResults | null>(null);\n  const [learnerPreview, setLearnerPreview] = useState<any | null>(null);
   const [creating, setCreating] = useState(false);
   const [aiGenerating, setAiGenerating] = useState(false);
 
@@ -99,7 +99,7 @@ export default function TeacherPolls() {
     toast({ title: "Poll deleted" }); load();
   }
 
-  async function loadResults(id: number) {
+  async function previewPoll(id: number) {\n    try { const r = await fetch(getApiUrl(`/api/polls/${id}`), { headers: { Authorization: `Bearer ${token()}` } }); const data = await r.json().catch(() => null); if (!r.ok) throw new Error(data?.error || "Poll preview unavailable"); setLearnerPreview(data); } catch (error) { toast({ variant: "destructive", title: "Could not preview poll", description: error instanceof Error ? error.message : "Try again." }); }\n  }\n\n  async function loadResults(id: number) {
     const r = await fetch(getApiUrl(`/api/polls/${id}/results`), { headers: { Authorization: `Bearer ${token()}` } });
     if (r.ok) { setResults(await r.json()); setResultsId(id); }
   }
@@ -142,7 +142,7 @@ export default function TeacherPolls() {
                     <p className="text-xs text-muted-foreground">{new Date(poll.createdAt).toLocaleDateString()}</p>
                   </div>
                   <div className="flex gap-1.5 flex-wrap">
-                    <Button variant="ghost" size="sm" onClick={() => loadResults(poll.id)} className="text-xs gap-1"><BarChart3 className="h-3.5 w-3.5" />Results</Button>
+                    <Button variant="outline" size="sm" onClick={() => void previewPoll(poll.id)} className="text-xs gap-1"><Eye className="h-3.5 w-3.5" />Preview as learner</Button>\n                    <Button variant="ghost" size="sm" onClick={() => loadResults(poll.id)} className="text-xs gap-1"><BarChart3 className="h-3.5 w-3.5" />Results</Button>
                     {poll.status === "draft" && <Button size="sm" onClick={() => setStatus(poll.id, "active")} className="text-xs bg-emerald-600 hover:bg-emerald-700 gap-1"><Play className="h-3 w-3" />Activate</Button>}
                     {poll.status === "active" && <Button size="sm" variant="outline" onClick={() => setStatus(poll.id, "closed")} className="text-xs gap-1"><Square className="h-3 w-3" />Close</Button>}
                     {poll.status === "closed" && <Button size="sm" variant="outline" onClick={() => setStatus(poll.id, "active")} className="text-xs gap-1"><Play className="h-3 w-3" />Reopen</Button>}
@@ -247,7 +247,7 @@ export default function TeacherPolls() {
           </DialogContent>
         </Dialog>
 
-        {/* Results Dialog */}
+        {/* Learner preview: intentionally omits answer keys and results. */}\n        <Dialog open={learnerPreview !== null} onOpenChange={() => setLearnerPreview(null)}><DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl"><DialogHeader><DialogTitle>Learner preview · {learnerPreview?.title ?? "Poll"}</DialogTitle><DialogDescription>This is a learner-facing preview. Correct answers and teacher results are hidden.</DialogDescription></DialogHeader><div className="space-y-4">{Array.isArray(learnerPreview?.questions) ? learnerPreview.questions.map((q:any,i:number) => <div key={q.id ?? i} className="space-y-2 rounded-xl border p-3"><p className="font-medium">{i+1}. {q.question ?? q.prompt}</p>{q.imageUrl && <AuthenticatedMedia url={q.imageUrl} alt={`Question ${i+1}`} />}<div className="space-y-2">{(Array.isArray(q.options) ? q.options : []).map((option:any,j:number) => <div key={j} className="rounded-lg border p-2 text-sm">{typeof option === "string" ? option : option.text ?? option.label}</div>)}</div></div>) : <p className="text-sm text-muted-foreground">This poll has no previewable questions.</p>}</div></DialogContent></Dialog>\n\n        {/* Results Dialog */}
         <Dialog open={resultsId !== null} onOpenChange={() => { setResultsId(null); setResults(null); }}>
           <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto">
             <DialogHeader><DialogTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5" />Results</DialogTitle></DialogHeader>
