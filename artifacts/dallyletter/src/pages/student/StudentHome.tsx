@@ -163,6 +163,32 @@ export default function StudentHome() {
           </Card>
         )}
 
+        {/* Assignments load independently so slow lesson/class/notification requests cannot hide them. */}
+        <Card className="border-primary/20 shadow-md">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <div className="space-y-1">
+              <CardTitle className="text-xl flex items-center gap-2"><ClipboardList className="h-5 w-5 text-primary" /> Assignments</CardTitle>
+              <CardDescription>Your latest work and due dates</CardDescription>
+            </div>
+            <Link href="/student/assignments"><Button variant="ghost" size="sm">View all <ChevronRight className="ml-1 h-4 w-4" /></Button></Link>
+          </CardHeader>
+          <CardContent>
+            {assignmentsLoading ? <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading assignments…</div>
+              : assignments.length === 0 ? <div className="py-5 text-center text-sm text-muted-foreground bg-muted/30 rounded-lg border border-dashed">No assignments available right now.</div>
+              : <div className="divide-y">{assignments.map((assignment: any) => {
+                const due = assignment.dueDate ? new Date(assignment.dueDate) : null;
+                const overdue = !!due && !Number.isNaN(due.getTime()) && new Date(`${String(assignment.dueDate).slice(0, 10)}T23:59:59Z`).getTime() < Date.now();
+                return <Link key={assignment.id} href={`/student/assignments?assignment=${encodeURIComponent(String(assignment.id))}`}>
+                  <div className="flex items-center gap-3 py-3 cursor-pointer hover:bg-muted/30 rounded-md px-2">
+                    <div className="min-w-0 flex-1"><p className="font-medium truncate">{assignment.title || "Assignment"}</p><p className="text-xs text-muted-foreground">{assignment.subject || "General"}{due ? ` · Due ${due.toLocaleDateString()}` : ""}</p></div>
+                    <Badge variant={overdue ? "destructive" : "outline"}>{overdue ? <><AlertTriangle className="mr-1 h-3 w-3" />Overdue</> : "Open"}</Badge>
+                  </div>
+                </Link>;
+              })}</div>}
+          </CardContent>
+        </Card>
+
+
         {isLoading ? (
           <div className="flex justify-center p-12">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -173,31 +199,6 @@ export default function StudentHome() {
             {/* Left Column - Main Content */}
             <div className="lg:col-span-2 space-y-8">
               
-              {/* Assignments load independently so slow lesson/class/notification requests cannot hide them. */}
-              <Card className="border-primary/20 shadow-md">
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <div className="space-y-1">
-                    <CardTitle className="text-xl flex items-center gap-2"><ClipboardList className="h-5 w-5 text-primary" /> Assignments</CardTitle>
-                    <CardDescription>Your latest work and due dates</CardDescription>
-                  </div>
-                  <Link href="/student/assignments"><Button variant="ghost" size="sm">View all <ChevronRight className="ml-1 h-4 w-4" /></Button></Link>
-                </CardHeader>
-                <CardContent>
-                  {assignmentsLoading ? <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading assignments…</div>
-                    : assignments.length === 0 ? <div className="py-5 text-center text-sm text-muted-foreground bg-muted/30 rounded-lg border border-dashed">No assignments available right now.</div>
-                    : <div className="divide-y">{assignments.map((assignment: any) => {
-                      const due = assignment.dueDate ? new Date(assignment.dueDate) : null;
-                      const overdue = due && !Number.isNaN(due.getTime()) && due.getTime() < Date.now();
-                      return <Link key={assignment.id} href={`/student/assignments?assignment=${encodeURIComponent(String(assignment.id))}`}>
-                        <div className="flex items-center gap-3 py-3 cursor-pointer hover:bg-muted/30 rounded-md px-2">
-                          <div className="min-w-0 flex-1"><p className="font-medium truncate">{assignment.title || "Assignment"}</p><p className="text-xs text-muted-foreground">{assignment.subject || "General"}{due ? ` · Due ${due.toLocaleDateString()}` : ""}</p></div>
-                          <Badge variant={overdue ? "destructive" : "outline"}>{overdue ? <><AlertTriangle className="mr-1 h-3 w-3" />Overdue</> : "Open"}</Badge>
-                        </div>
-                      </Link>;
-                    })}</div>}
-                </CardContent>
-              </Card>
-
               {/* Upcoming Classes */}
               <Card className="border-primary/20 shadow-md">
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
