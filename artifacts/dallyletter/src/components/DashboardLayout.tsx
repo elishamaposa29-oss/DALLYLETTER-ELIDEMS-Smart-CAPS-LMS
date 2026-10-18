@@ -9,7 +9,7 @@ import {
   ScrollText, Trophy, AlertTriangle, DollarSign, BarChart3, Briefcase,
   Flame, Send, ImagePlus,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 interface NavItem {
@@ -32,7 +32,19 @@ const roleLabels: Record<string, string> = {
   owner: "Administrator",
 };
 
-function ProfileImageUpload({ userId }: { userId: number }) {
+function AuthenticatedAvatar({ url, name }: { url: string; name: string }) {
+  const [source, setSource] = useState<string | null>(null);
+  useEffect(() => {
+    if (/^https:\/\//i.test(url)) { setSource(url); return; }
+    let active=true; let objectUrl:string|undefined;
+    const token=localStorage.getItem("dallyletter_token") ?? "";
+    void fetch(getApiUrl(url),{headers:{Authorization:"Bearer "+token}}).then(response=>{if(!response.ok) throw new Error("Avatar fetch failed"); return response.blob();}).then(blob=>{objectUrl=URL.createObjectURL(blob); if(active)setSource(objectUrl);}).catch(()=>{if(active)setSource(null);});
+    return ()=>{active=false;if(objectUrl)URL.revokeObjectURL(objectUrl);};
+  },[url]);
+  return source ? <img src={source} alt={name} className="h-full w-full rounded-xl object-cover" /> : <span>{name.charAt(0).toUpperCase()}</span>;
+}
+
+function ProfileImageUpload() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const upload = async (file?: File) => {
@@ -44,9 +56,10 @@ function ProfileImageUpload({ userId }: { userId: number }) {
       const image = await new Promise<HTMLImageElement>((resolve,reject) => { const url=URL.createObjectURL(file); const img=new Image(); img.onload=()=>{URL.revokeObjectURL(url);resolve(img)}; img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error("Image could not be read"))}; img.src=url; });
       const canvas=document.createElement("canvas"); const scale=Math.min(1,320/Math.max(image.naturalWidth,image.naturalHeight)); canvas.width=Math.max(1,Math.round(image.naturalWidth*scale)); canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));
       const ctx=canvas.getContext("2d"); if(!ctx) throw new Error("Image processing is unavailable"); ctx.drawImage(image,0,0,canvas.width,canvas.height);
-      const avatarUrl=canvas.toDataURL("image/jpeg",0.78);
+      const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error("Image compression failed")),"image/jpeg",0.78));
       const token=localStorage.getItem("dallyletter_token");
-      const response=await fetch(getApiUrl(`/api/users/${userId}`),{method:"PATCH",headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({avatarUrl})});
+      const formData=new FormData(); formData.append("file",blob,"profile.jpg");
+      const response=await fetch(getApiUrl("/api/users/me/avatar"),{method:"POST",headers:token?{Authorization:`Bearer ${token}`}:{},body:formData});
       const result=await response.json().catch(()=>({}));
       if(!response.ok) throw new Error(result.error||"Upload failed");
       window.location.reload();
@@ -224,10 +237,10 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       <div className="mx-4 mb-4">
         <div className="bg-white/8 border border-white/10 rounded-xl p-3 flex items-center gap-3">
           <div className={`h-10 w-10 rounded-xl bg-gradient-to-br ${roleColors[user.role] || "from-slate-600 to-slate-800"} flex items-center justify-center text-white font-bold text-base shadow-lg shrink-0`}>
-            {user.avatarUrl ? <img src={user.avatarUrl} alt={user.name} className="h-full w-full object-cover rounded-xl" /> : user.name.charAt(0).toUpperCase()}
+            {user.avatarUrl ? <AuthenticatedAvatar url={user.avatarUrl} name={user.name} /> : user.name.charAt(0).toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-white truncate">{user.name}</p>\n            <ProfileImageUpload userId={user.id} />
+            <p className="text-sm font-semibold text-white truncate">{user.name}</p>\n            <ProfileImageUpload />
             <PushDeliveryTest />
             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
               <span className="text-xs text-white/50">{roleLabels[user.role] || user.role}</span>
