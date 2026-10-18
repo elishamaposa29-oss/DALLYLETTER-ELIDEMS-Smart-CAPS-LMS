@@ -32,6 +32,8 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools,platforms;android-35,build-tools;35.0.0,system-images;android-35;google_apis;x86_64"
       - name: Install locked workspace dependencies
         run: pnpm install --frozen-lockfile
       - name: Typecheck mobile app
@@ -53,7 +55,7 @@ jobs:
             adb install -r artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk
             adb shell monkey -p com.dallyletter.elidems 1
             sleep 15
-            if adb logcat -d -t 5000 | grep -E "FATAL EXCEPTION|Process: com.dallyletter.elidems" ; then
+            if adb logcat -d -t 5000 | grep -A5 "FATAL EXCEPTION" | grep -q "com.dallyletter.elidems" ; then
               echo "Android app crashed during launch"
               exit 1
             fi
