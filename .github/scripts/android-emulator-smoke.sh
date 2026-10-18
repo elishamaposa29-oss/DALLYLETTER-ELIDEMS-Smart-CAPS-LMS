@@ -6,11 +6,11 @@ diagnostics() {
   if [ "$status" -ne 0 ]; then
     echo "::group::Android emulator diagnostics (failure status $status)"
     adb devices -l || true
-    adb shell getprop sys.boot_completed || true
-    adb shell getprop init.svc.bootanim || true
-    adb shell dumpsys cpuinfo || true
-    adb shell dumpsys meminfo || true
-    adb logcat -d -t 4000 || true
+    timeout 15 adb shell getprop sys.boot_completed || true
+    timeout 15 adb shell getprop init.svc.bootanim || true
+    timeout 20 adb shell dumpsys cpuinfo || true
+    timeout 20 adb shell dumpsys meminfo || true
+    timeout 20 adb logcat -d -t 4000 || true
     echo "::endgroup::"
   fi
   return "$status"
@@ -19,22 +19,46 @@ trap diagnostics EXIT
 
 step() { echo "::group::Android smoke: $*"; date -u +%FT%TZ; }
 step "wait for device"
-timeout 90 adb wait-for-device
-timeout 300 bash -c 'until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d "\r")" = "1" ]; do sleep 5; done'
+timeout 120 adb wait-for-device
+
+# Emulator startup can be slow on hosted runners. Bound each adb call separately,
+# report progress, and allow the same 15-minute boot window configured on the action.
+step "wait for Android boot completion (up to 900 seconds)"
+boot_ready=0
+for attempt in $(seq 1 90); do
+  if boot_state="$(timeout 15 adb shell getprop sys.boot_completed 2>/dev/null | tr -d "\r")" && [ "$boot_state" = "1" ]; then
+    boot_ready=1
+    break
+  fi
+  if [ $((attempt % 6)) -eq 0 ]; then
+    echo "Android boot still pending after $((attempt * 10)) seconds (attempt $attempt/90)"
+    adb devices -l || true
+  fi
+  sleep 10
+done
+if [ "$boot_ready" -ne 1 ]; then
+  echo "::error::Android did not report sys.boot_completed=1 within 900 seconds"
+  exit 1
+fi
 step "verify Android boot complete"
-test "$(timeout 30 adb shell getprop sys.boot_completed | tr -d "\r")" = "1"
+test "$(timeout 20 adb shell getprop sys.boot_completed | tr -d "\r")" = "1"
 
 step "wait for package manager"
-# Wait for Android's package manager to become responsive, not just boot_completed.
+# Package manager can lag behind sys.boot_completed on slow emulators.
 ready=0
 for attempt in $(seq 1 24); do
   if timeout 20 adb shell cmd package list packages >/dev/null 2>&1; then
     ready=1
     break
   fi
+  echo "Package manager not ready (attempt $attempt/24)"
   sleep 5
 done
-test "$ready" = "1"
+if [ "$ready" -ne 1 ]; then
+  echo "::error::Android package manager did not become responsive within 120 seconds"
+  exit 1
+fi
+
 step "configure animations and clear logcat"
 timeout 30 adb shell settings put global window_animation_scale 0 || true
 timeout 30 adb shell settings put global transition_animation_scale 0 || true
@@ -48,7 +72,7 @@ timeout 30 adb shell pm path com.dallyletter.elidems | grep -q "package:"
 timeout 45 adb shell monkey -p com.dallyletter.elidems 1
 sleep 8
 step "check launch crash log"
-if timeout 30 adb logcat -d -t 8000 | awk '/FATAL EXCEPTION/ { in_exception=1; count=0 } in_exception { if (/Process: com\.dallyletter\.elidems/) found=1; if (++count > 20) in_exception=0 } END { exit !found }'; then
+if timeout 30 adb logcat -d -t 8000 | awk '/FATAL EXCEPTION/ { in_exception=1; count=0 } in_exception { if (/Process: com\\.dallyletter\\.elidems/) found=1; if (++count > 20) in_exception=0 } END { exit !found }'; then
   echo "Android app crashed after first install"
   exit 1
 fi
@@ -56,11 +80,11 @@ fi
 step "upgrade to version 1.0.1 without uninstalling"
 # Upgrade the installed package in place; do not uninstall between versions.
 timeout 180 adb install -r artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk
-adb shell pm path com.dallyletter.elidems | grep -q "package:"
-timeout 30 adb shell dumpsys package com.dallyletter.elidems | grep -E "versionCode=2|versionName=1\.0.1"
-adb shell monkey -p com.dallyletter.elidems 1
+timeout 30 adb shell pm path com.dallyletter.elidems | grep -q "package:"
+timeout 30 adb shell dumpsys package com.dallyletter.elidems | grep -E "versionCode=2|versionName=1\\.0\\.1"
+timeout 45 adb shell monkey -p com.dallyletter.elidems 1
 sleep 8
-if adb logcat -d -t 8000 | awk '/FATAL EXCEPTION/ { in_exception=1; count=0 } in_exception { if (/Process: com\.dallyletter\.elidems/) found=1; if (++count > 20) in_exception=0 } END { exit !found }'; then
+if timeout 30 adb logcat -d -t 8000 | awk '/FATAL EXCEPTION/ { in_exception=1; count=0 } in_exception { if (/Process: com\\.dallyletter\\.elidems/) found=1; if (++count > 20) in_exception=0 } END { exit !found }'; then
   echo "Android app crashed during upgrade smoke test"
   exit 1
 fi
