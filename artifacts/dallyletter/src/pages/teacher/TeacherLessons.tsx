@@ -499,6 +499,7 @@ export default function TeacherLessons() {
                         <Button type="button" variant="outline" size="sm" onClick={() => void requestPermission(lesson.id,"create_exercise")}>Request exercise</Button>
                         <Button type="button" variant="outline" size="sm" onClick={() => void requestPermission(lesson.id,"notify")}>Request notify</Button>
                         <Button type="button" variant="outline" size="sm" onClick={() => void requestPermission(lesson.id,"delete")}>Request delete</Button>
+                        {hasApprovedPermission(lesson.id,"create_exercise") && <Button type="button" size="sm" onClick={() => setActiveExerciseLessonId(lesson.id)}>Open exercise builder</Button>}
                       </>
                     ) : (
                       <>
