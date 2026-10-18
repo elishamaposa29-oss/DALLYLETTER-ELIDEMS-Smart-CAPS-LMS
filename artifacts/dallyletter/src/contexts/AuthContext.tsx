@@ -22,6 +22,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
+    if (!token || !error) return;
+    const message = error instanceof Error ? error.message : String(error);
+    if (/401|unauthorized|authentication required/i.test(message)) {
+      setToken(null);
+      setLocation("/login");
+    }
+  }, [token, error, setLocation]);
+
+  useEffect(() => {
     if (token) {
       localStorage.setItem("dallyletter_token", token);
     } else {
