@@ -340,7 +340,7 @@ function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
         body: JSON.stringify({
-          content: reply || (file ? `Teacher attached: ${file.name}` : ""),
+          content: `[[hand-raise:${handId}]] ${reply || (file ? `Teacher attached: ${file.name}` : "")}`,
           type: mediaUrl ? "media" : "text",
           recipientId: studentId,
           ...(mediaUrl ? { mediaUrl } : {}),
