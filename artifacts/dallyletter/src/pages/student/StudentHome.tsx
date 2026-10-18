@@ -3,11 +3,11 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { useGetDashboardStats, useListLessons, useListClasses, useListNotifications } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, BookOpen, Video, Bell, Clock, ChevronRight, Shield, Calendar } from "lucide-react";
+import { Loader2, BookOpen, Video, Bell, Clock, ChevronRight, Shield, Calendar, ClipboardList, AlertTriangle } from "lucide-react";
 import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,6 +21,20 @@ export default function StudentHome() {
   const { data: lessons, isLoading: lessonsLoading } = useListLessons();
   const { data: classes, isLoading: classesLoading } = useListClasses();
   const { data: notifications, isLoading: notifsLoading } = useListNotifications();
+
+  const [assignments, setAssignments] = useState<any[]>([]);
+  const [assignmentsLoading, setAssignmentsLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    const token = localStorage.getItem("dallyletter_token");
+    fetch(getApiUrl("/api/assignments"), { headers: token ? { Authorization: `Bearer ${token}` } : undefined })
+      .then(response => { if (!response.ok) throw new Error("Assignments unavailable"); return response.json(); })
+      .then(data => { if (active) setAssignments(Array.isArray(data) ? data.slice(0, 3) : []); })
+      .catch(() => { if (active) setAssignments([]); })
+      .finally(() => { if (active) setAssignmentsLoading(false); });
+    return () => { active = false; };
+  }, []);
 
   const [lessonTopic, setLessonTopic] = useState("");
   const [lessonDate, setLessonDate] = useState("");
@@ -148,6 +162,32 @@ export default function StudentHome() {
             </CardContent>
           </Card>
         )}
+
+        {/* Assignments load independently so slow lesson/class/notification requests cannot hide them. */}
+        <Card className="border-primary/20 shadow-md">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <div className="space-y-1">
+              <CardTitle className="text-xl flex items-center gap-2"><ClipboardList className="h-5 w-5 text-primary" /> Assignments</CardTitle>
+              <CardDescription>Your latest work and due dates</CardDescription>
+            </div>
+            <Link href="/student/assignments"><Button variant="ghost" size="sm">View all <ChevronRight className="ml-1 h-4 w-4" /></Button></Link>
+          </CardHeader>
+          <CardContent>
+            {assignmentsLoading ? <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading assignments…</div>
+              : assignments.length === 0 ? <div className="py-5 text-center text-sm text-muted-foreground bg-muted/30 rounded-lg border border-dashed">No assignments available right now.</div>
+              : <div className="divide-y">{assignments.map((assignment: any) => {
+                const due = assignment.dueDate ? new Date(assignment.dueDate) : null;
+                const overdue = !!due && !Number.isNaN(due.getTime()) && new Date(`${String(assignment.dueDate).slice(0, 10)}T23:59:59Z`).getTime() < Date.now();
+                return <Link key={assignment.id} href={`/student/assignments?assignment=${encodeURIComponent(String(assignment.id))}`}>
+                  <div className="flex items-center gap-3 py-3 cursor-pointer hover:bg-muted/30 rounded-md px-2">
+                    <div className="min-w-0 flex-1"><p className="font-medium truncate">{assignment.title || "Assignment"}</p><p className="text-xs text-muted-foreground">{assignment.subject || "General"}{due ? ` · Due ${due.toLocaleDateString()}` : ""}</p></div>
+                    <Badge variant={overdue ? "destructive" : "outline"}>{overdue ? <><AlertTriangle className="mr-1 h-3 w-3" />Overdue</> : "Open"}</Badge>
+                  </div>
+                </Link>;
+              })}</div>}
+          </CardContent>
+        </Card>
+
 
         {isLoading ? (
           <div className="flex justify-center p-12">

@@ -130,7 +130,7 @@ export default function StudentAssignments() {
     }
   };
 
-  const isOverdue = (dueDate: string) => new Date(dueDate) < new Date();
+  const isOverdue = (dueDate: string) => new Date(`${String(dueDate).slice(0, 10)}T23:59:59Z`).getTime() < Date.now();
 
   return (
     <DashboardLayout>
