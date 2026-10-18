@@ -40,6 +40,8 @@ jobs:
           sdkmanager "platforms;android-35" "build-tools;35.0.0" "system-images;android-35;google_apis;x86_64"
       - name: Install locked workspace dependencies
         run: pnpm install --frozen-lockfile
+      - name: Build workspace TypeScript references
+        run: pnpm run typecheck:libs
       - name: Typecheck mobile app
         run: pnpm --filter @workspace/dallyletter-mobile typecheck
       - name: Generate native Android project
