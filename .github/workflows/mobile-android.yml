@@ -1,0 +1,67 @@
+name: Mobile Android Build and Smoke Test
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "artifacts/dallyletter-mobile/**"
+      - "lib/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/mobile-android.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  android-build-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - name: Install locked workspace dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck mobile app
+        run: pnpm --filter @workspace/dallyletter-mobile typecheck
+      - name: Generate native Android project
+        working-directory: artifacts/dallyletter-mobile
+        run: pnpm exec expo prebuild --platform android --no-install
+      - name: Build reproducible debug APK
+        working-directory: artifacts/dallyletter-mobile/android
+        run: ./gradlew --no-daemon --stacktrace assembleDebug
+      - name: Boot Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          script: |
+            adb install -r artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk
+            adb shell monkey -p com.dallyletter.elidems 1
+            sleep 15
+            if adb logcat -d -t 5000 | grep -E "FATAL EXCEPTION|Process: com.dallyletter.elidems" ; then
+              echo "Android app crashed during launch"
+              exit 1
+            fi
+            adb install -r artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk
+            adb shell monkey -p com.dallyletter.elidems 1
+      - name: Upload installable debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: dallyletter-android-debug-apk
+          path: artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
