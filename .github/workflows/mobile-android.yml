@@ -83,7 +83,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
-            set -euo pipefail
+            bash -euo pipefail <<'BASH'
             diagnostics() {
               status=$?
               if [ "$status" -ne 0 ]; then
@@ -139,3 +139,4 @@ jobs:
               echo "Android app crashed during upgrade smoke test"
               exit 1
             fi
+            BASH
