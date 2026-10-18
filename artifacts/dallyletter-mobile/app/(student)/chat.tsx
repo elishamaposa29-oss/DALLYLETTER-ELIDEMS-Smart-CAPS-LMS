@@ -19,6 +19,7 @@ export default function StudentChat() {
   const queueKey = user?.id ? "dallyletter_mobile_chat_outbox_user_" + user.id : null;
   useEffect(() => { let active=true; if (!queueKey) { setQueuedMessages([]); return; } void AsyncStorage.getItem(queueKey).then(raw => { if(active && raw) setQueuedMessages(JSON.parse(raw)); }).catch(() => {}); return () => { active=false; }; }, [queueKey]);
   useEffect(() => { const sub=AppState.addEventListener("change", state => { if(state==="active") setRetrySignal(v=>v+1); }); return () => sub.remove(); }, []);
+  useEffect(() => { if (queuedMessages.length === 0) return; const timer=setInterval(() => { if(AppState.currentState==="active") setRetrySignal(v=>v+1); }, 30000); return () => clearInterval(timer); }, [queuedMessages.length]);
   const { data: messages, refetch } = useListMessages({});
   const sendMutation = useSendMessage({
     mutation: {
