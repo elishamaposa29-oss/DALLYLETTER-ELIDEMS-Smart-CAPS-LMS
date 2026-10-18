@@ -15,10 +15,10 @@ export default function SharedMedia() {
   const validUrl = /^\/api\/(?:lessons|messages)\/media\/[a-f0-9-]{36}(?:\?type=[a-zA-Z0-9%./+-]+)?$/i.test(url);
   return <DashboardLayout>
     <main className="mx-auto w-full max-w-4xl space-y-4 p-4 sm:p-6">
-      <div><p className="text-xs font-bold tracking-widest text-amber-600">DALLYLETTER ELIDEMS</p><h1 className="text-2xl font-bold">Shared learning resource</h1><p className="text-sm text-muted-foreground">The fun way to success.</p></div>
+      <div className="flex items-center gap-3"><img src="/icons/icon-192.png" alt="Dallyletter Elidems app icon" className="h-12 w-12 rounded-xl object-contain" /><div><p className="text-xs font-bold tracking-widest text-amber-600">DALLYLETTER ELIDEMS</p><h1 className="text-2xl font-bold">Shared learning resource</h1><p className="text-sm text-muted-foreground">The fun way to success.</p></div></div>
       {!validUrl || !validType
         ? <div className="rounded-lg border p-4 text-sm">This shared resource link is invalid or incomplete. Ask the sender to share it again.</div>
-        : <AuthenticatedMedia url={url} type={type} title={title} />}
+        : <AuthenticatedMedia url={url} type={type} title={title} brandedShare />}
     </main>
   </DashboardLayout>;
 }
