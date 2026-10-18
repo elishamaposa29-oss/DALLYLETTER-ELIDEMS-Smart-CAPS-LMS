@@ -190,7 +190,11 @@ export default function TeacherLessons() {
                 <p className="text-xs text-muted-foreground">{contentType} #{contentId} · {String(request.requested_action ?? request.requestedAction ?? "permission").replaceAll("_"," ")}</p>
                 {request.owner_name && <p className="text-xs text-muted-foreground">Owner: {request.owner_name}</p>}
               </div>
-              <Badge variant={status==="approved"?"default":status==="declined"?"destructive":"outline"}>{status==="approved"?"Granted":status==="declined"?"Declined":status==="pending"?"Pending":status}</Badge>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant={status==="approved"?"default":status==="declined"?"destructive":"outline"}>{status==="approved"?"Granted":status==="declined"?"Declined":status==="pending"?"Pending":status}</Badge>
+                {status==="approved" && contentType==="lesson" && <Button type="button" size="sm" onClick={() => window.location.assign(`/preview/lesson/${contentId}`)}>Open permitted lesson</Button>}
+                {status==="declined" && <><Button type="button" size="sm" variant="outline" onClick={() => void requestPermission(contentId, String(request.requested_action ?? request.requestedAction ?? "edit") as "edit"|"create_exercise"|"delete"|"notify")}>Request again</Button><Button type="button" size="sm" variant="secondary" onClick={async () => { try { const response=await fetch(getApiUrl(`/api/content-permissions/${Number(request.id)}/report`),{method:"POST",headers:{"Content-Type":"application/json",...authHeaders()},body:JSON.stringify({message:"Please review declined permission request"})}); const data=await response.json().catch(()=>({})); if(!response.ok) throw new Error(data.error||"Report failed"); toast({title:"Report sent to manager"}); } catch(error) { toast({variant:"destructive",title:"Could not report",description:error instanceof Error?error.message:"Try again"}); } }}>Report to manager</Button></>}
+              </div>
             </div>;
           })}</CardContent>
         </Card>}
