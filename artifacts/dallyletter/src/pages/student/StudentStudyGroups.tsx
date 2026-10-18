@@ -415,6 +415,7 @@ export default function StudentStudyGroups() {
                 <Card key={group.id} className="relative flex h-full w-[min(88vw,360px)] shrink-0 snap-start flex-col overflow-hidden transition-shadow hover:shadow-md">
                   <CardHeader className="relative z-10 text-white">
                     <AuthenticatedGroupCover url={group.coverImageUrl || ""} name={group.name} />
+                    {(isPlatformOwner || isManager || Number(group.creatorId) === Number(user?.id)) && <div className="flex justify-end"><label className="inline-flex cursor-pointer items-center gap-2 rounded-md border bg-background/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-background"><ImagePlus className="h-3.5 w-3.5" />{group.coverImageUrl ? "Change cover" : "Upload cover"}<input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" aria-label={`Upload cover for ${group.name}`} onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void uploadGroupCover(group.id, file); }} /></label></div>}
                     <div className="flex items-start justify-between gap-2">
                       <Badge variant="secondary">{group.subject}</Badge>
                       <div className="flex items-center gap-1.5 rounded-full bg-muted px-2 py-1 text-sm text-muted-foreground"><Users className="h-3.5 w-3.5" /><span>{group.memberCount}/{groupSettings.maxMembers}</span></div>
