@@ -53,7 +53,7 @@ export function useInstallPrompt() {
   const install = async () => {
     if (!deferredInstallPrompt) {
       if ("serviceWorker" in navigator) await navigator.serviceWorker.ready.catch(() => undefined);
-      throw new Error("Chrome has not offered its native install prompt for this visit yet. The browser controls whether installation can be started.");
+      return "manual";
     }
     const event = deferredInstallPrompt;
     await event.prompt();
