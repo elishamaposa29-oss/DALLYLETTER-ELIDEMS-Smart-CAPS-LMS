@@ -29,10 +29,29 @@ export default function TeacherAssignments() {
 
   const load = () => {
     void fetch(getApiUrl("/api/assignments"), { headers: { Authorization: `Bearer ${token()}` } })
-      .then(r => r.json()).then(d => { setAssignments(Array.isArray(d) ? d : []); setLoading(false); })
+      .then(r => r.json()).then(d => { const rows = Array.isArray(d) ? d : []; setAssignments(rows); setHiddenReferenceIds(new Set(rows.filter((row: any) => row.referenceMaterialHidden).map((row: any) => row.id))); setLoading(false); })
       .catch(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
+
+  const toggleReferenceVisibility = async (assignment: any) => {
+    const hidden = !hiddenReferenceIds.has(assignment.id);
+    const sessionToken = token();
+    if (!sessionToken) { toast({ variant: "destructive", title: "Sign-in required", description: "Sign in again to change reference visibility." }); window.location.href = "/login"; return; }
+    try {
+      const response = await fetch(getApiUrl(`/api/assignments/${assignment.id}/reference-visibility`), {
+        method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionToken}` }, body: JSON.stringify({ hidden }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (response.status === 401) { toast({ variant: "destructive", title: "Session expired", description: "Sign in again to change reference visibility." }); window.location.href = "/login"; return; }
+        throw new Error(result.error || `Could not update visibility (HTTP ${response.status})`);
+      }
+      setHiddenReferenceIds(previous => { const next = new Set(previous); hidden ? next.add(assignment.id) : next.delete(assignment.id); return next; });
+      setAssignments(previous => previous.map(row => row.id === assignment.id ? { ...row, referenceMaterialHidden: hidden } : row));
+      toast({ title: hidden ? "Reference material hidden from learners" : "Reference material visible to learners" });
+    } catch (error) { toast({ variant: "destructive", title: "Visibility update failed", description: error instanceof Error ? error.message : "Try again." }); }
+  };
 
   const resetForm = () => {
     setOpen(false);
@@ -206,8 +225,8 @@ export default function TeacherAssignments() {
                       </div>
                       {a.description && <p className="text-sm text-slate-500 mb-2 whitespace-pre-wrap">{a.description}</p>}
                       {a.attachmentUrl && <div className="mt-3 rounded-xl border bg-muted/20 p-3">
-                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Reference material · visible to learners by default</p><Button type="button" size="sm" variant="ghost" onClick={() => setHiddenReferenceIds(previous => { const next = new Set(previous); next.has(a.id) ? next.delete(a.id) : next.add(a.id); return next; })}>{hiddenReferenceIds.has(a.id) ? "Show material" : "Hide material"}</Button></div>
-                        {hiddenReferenceIds.has(a.id) ? <p className="text-sm text-muted-foreground">Hidden in this teacher view. Learners will not see this local preview toggle reflected until a persistent visibility setting is saved.</p> : <AuthenticatedMedia url={a.attachmentUrl} type="document" title={`${a.title} reference material`} />}
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Reference material · visible to learners by default</p><Button type="button" size="sm" variant="ghost" onClick={() => void toggleReferenceVisibility(a)}>{hiddenReferenceIds.has(a.id) ? "Show material" : "Hide material"}</Button></div>
+                        {hiddenReferenceIds.has(a.id) ? <p className="text-sm text-muted-foreground">Hidden from learners until you choose Show material.</p> : <AuthenticatedMedia url={a.attachmentUrl} type="document" title={`${a.title} reference material`} />}
                       </div>}
                       <div className="flex items-center gap-4 text-xs text-slate-400 mt-1 flex-wrap">
                         <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> Due: {a.dueDate}</span>
