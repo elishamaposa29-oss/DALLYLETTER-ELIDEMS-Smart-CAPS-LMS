@@ -506,7 +506,7 @@ export default function ExerciseMarking() {
               {answers.map((a, i) => {
                 const q = selectedQuestion(a);
                 return (
-                  <div key={a.id} className="relative space-y-3 rounded-xl border p-4">{selectedSubmission.status === "marked" ? <Badge className="absolute right-3 top-3 gap-1 bg-emerald-600 text-white"><CheckCircle2 className="h-3.5 w-3.5" />Mark submitted</Badge> : <FloatingMark value={marks[a.id] ?? "0"} max={undefined} onChange={value=>setMarks(m=>({...m,[a.id]:value}))}/>
+                  <div key={a.id} className="relative space-y-3 rounded-xl border p-4">{selectedSubmission.status === "marked" ? <Badge className="absolute right-3 top-3 gap-1 bg-emerald-600 text-white"><CheckCircle2 className="h-3.5 w-3.5" />Mark submitted</Badge> : <FloatingMark value={marks[a.id] ?? "0"} max={undefined} onChange={value=>setMarks(m=>({...m,[a.id]:value}))}/>}
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
                         <div className="font-medium">Question {q?.position != null ? q.position + 1 : i + 1}</div>
