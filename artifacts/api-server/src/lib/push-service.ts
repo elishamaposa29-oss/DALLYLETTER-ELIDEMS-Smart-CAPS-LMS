@@ -158,6 +158,7 @@ export async function dispatchPendingPushNotifications(): Promise<void> {
 
   for (const [notificationId, subscriptions] of grouped) {
     let retry = false;
+    let delivered = false;
     let lastError = "delivery_failed";
     for (const sub of subscriptions) {
       try {
@@ -172,6 +173,7 @@ export async function dispatchPendingPushNotifications(): Promise<void> {
         if (result === "gone") {
           await pool.query("DELETE FROM push_subscriptions WHERE id = $1", [sub.subscription_id]);
         } else {
+          delivered = true;
           logger.info({ notificationId, subscriptionId: sub.subscription_id }, "Web push notification delivered");
         }
       } catch (error) {
@@ -189,8 +191,8 @@ export async function dispatchPendingPushNotifications(): Promise<void> {
     }
     if (!retry) {
       await pool.query(
-        "UPDATE notifications SET push_sent_at = now(), push_next_attempt_at = NULL, push_last_error = NULL WHERE id = $1",
-        [notificationId],
+        "UPDATE notifications SET push_sent_at = now(), push_next_attempt_at = NULL, push_last_error = $2 WHERE id = $1",
+        [notificationId, delivered ? null : "All push subscriptions expired (HTTP 404/410)"],
       );
     } else {
       // Retry with bounded exponential backoff; do not abandon notifications after 24 hours.
