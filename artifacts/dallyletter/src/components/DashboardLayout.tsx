@@ -56,6 +56,41 @@ function ProfileImageUpload({ userId }: { userId: number }) {
   return <><input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" aria-label="Choose profile image" onChange={e=>void upload(e.target.files?.[0])}/><button type="button" disabled={busy} onClick={()=>inputRef.current?.click()} className="mt-1 inline-flex items-center gap-1 text-[11px] text-amber-300 hover:text-white disabled:opacity-50"><ImagePlus className="h-3 w-3"/>{busy?"Saving image…":"Change photo"}</button></>;
 }
 
+function PushDeliveryTest() {
+  const [busy, setBusy] = useState(false);
+  const [testId, setTestId] = useState<number | null>(null);
+  const [status, setStatus] = useState("");
+  const runTest = async () => {
+    setBusy(true);
+    try {
+      const token=localStorage.getItem("dallyletter_token") ?? "";
+      const response=await fetch(getApiUrl("/api/push/test"),{method:"POST",headers:{Authorization:"Bearer "+token}});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error(data.error||"Could not queue push test");
+      setTestId(Number(data.notificationId));
+      setStatus("Test queued. Check delivery status after the dispatcher runs.");
+    } catch(error) { window.alert(error instanceof Error?error.message:"Push test failed"); }
+    finally { setBusy(false); }
+  };
+  const checkStatus = async () => {
+    if(!testId) return;
+    setBusy(true);
+    try {
+      const token=localStorage.getItem("dallyletter_token") ?? "";
+      const response=await fetch(getApiUrl("/api/push/test/"+testId),{headers:{Authorization:"Bearer "+token}});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error(data.error||"Could not read push status");
+      setStatus(data.acceptedByPushService ? "Push service accepted the test. Check this device's notifications." : "Not delivered yet. Attempts: "+data.attempts+". "+(data.lastError||"Waiting for the next retry."));
+    } catch(error) { window.alert(error instanceof Error?error.message:"Could not check push status"); }
+    finally { setBusy(false); }
+  };
+  return <div className="mt-2 space-y-1">
+    <button type="button" disabled={busy} onClick={() => void runTest()} className="inline-flex items-center gap-1 text-[11px] text-amber-300 hover:text-white disabled:opacity-50"><Bell className="h-3 w-3"/>{busy?"Working…":"Test push delivery"}</button>
+    {testId !== null && <button type="button" disabled={busy} onClick={() => void checkStatus()} className="block text-[11px] text-white/70 underline disabled:opacity-50">Check test #{testId}</button>}
+    {status && <p className="max-w-[210px] text-[10px] leading-4 text-white/60" aria-live="polite">{status}</p>}
+  </div>;
+}
+
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const [location] = useLocation();
@@ -193,6 +228,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-white truncate">{user.name}</p>\n            <ProfileImageUpload userId={user.id} />
+            <PushDeliveryTest />
             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
               <span className="text-xs text-white/50">{roleLabels[user.role] || user.role}</span>
               {user.isPrefect && (
