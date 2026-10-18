@@ -19,7 +19,7 @@ export default function SharedMedia() {
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4"><div className="flex items-center gap-3"><img src="/icons/icon-192.png" alt="Dallyletter Elidems watermark app icon" className="h-12 w-12 rounded-xl object-contain" /><div><p className="text-xs font-bold tracking-widest text-amber-600">DALLYLETTER ELIDEMS</p><h1 className="text-2xl font-bold">Shared learning resource</h1><p className="text-sm text-muted-foreground">The fun way to success.</p></div></div><div className="flex gap-2"><Button variant="outline" onClick={() => { window.location.href = "/login"; }}>Sign in</Button><Button onClick={() => { window.location.href = "/register"; }}>Sign up</Button></div></div>
       {!validUrl || !validType
         ? <div className="rounded-lg border p-4 text-sm">This shared resource link is invalid or incomplete. Ask the sender to share it again.</div>
-        : <AuthenticatedMedia url={sharedUrl} type={type} title={title} brandedShare />}
+        : <AuthenticatedMedia url={url} type={type} title={title} brandedShare />}
     </main>
   </>;
 }
