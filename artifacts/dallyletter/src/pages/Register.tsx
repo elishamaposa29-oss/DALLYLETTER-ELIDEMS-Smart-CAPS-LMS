@@ -57,7 +57,7 @@ export default function Register() {
     const { country: _country, phone: _localPhone, ...registrationData } = values;
     registerMutation.mutate({ data: { ...registrationData, phone } }, {
       onSuccess: (data) => {
-        login(data.token);
+        login(data.token, data.user);
         if (data.user.role === "teacher") setLocation("/teacher");
         else setLocation("/");
       },
