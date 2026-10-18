@@ -73,9 +73,14 @@ export async function deleteStoredMedia(storageKey: string): Promise<void> {
 export async function persistUploadedMedia(storageKey: string, mimeType: string, localPath: string): Promise<"object-storage" | "database"> {
   try {
     if (isObjectStorageConfigured()) {
-      await putObject(storageKey, mimeType, localPath);
-      await unlink(localPath).catch(() => undefined);
-      return "object-storage";
+      try {
+        await putObject(storageKey, mimeType, localPath);
+        await unlink(localPath).catch(() => undefined);
+        return "object-storage";
+      } catch {
+        // An unavailable or misconfigured object store must not break small uploads.
+        // Fall through to the existing durable PostgreSQL chunk store when within its limit.
+      }
     }
 
     const fileStats = await stat(localPath);
