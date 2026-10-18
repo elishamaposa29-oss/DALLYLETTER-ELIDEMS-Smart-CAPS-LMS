@@ -123,7 +123,7 @@ router.get("/", requireAuth, async (req, res): Promise<void> => {
       .orderBy(desc(assignmentsTable.createdAt));
     rows = activeRows.filter(row => isVisibleToStudent(row, user.grade ?? null));
   }
-  res.json(rows);
+  res.json(user.role === "student" ? rows.map(row => row.referenceMaterialHidden ? { ...row, attachmentUrl: null } : row) : rows);
 });
 
 router.get("/:id", requireAuth, async (req, res): Promise<void> => {
@@ -135,7 +135,7 @@ router.get("/:id", requireAuth, async (req, res): Promise<void> => {
     const submissions = user.role === "student"
     ? await db.select().from(assignmentSubmissionsTable).where(and(eq(assignmentSubmissionsTable.assignmentId, assignment.id), eq(assignmentSubmissionsTable.studentId, user.id)))
     : await db.select().from(assignmentSubmissionsTable).where(eq(assignmentSubmissionsTable.assignmentId, assignment.id));
-  res.json({ ...assignment, submissions });
+  res.json({ ...assignment, ...(user.role === "student" && assignment.referenceMaterialHidden ? { attachmentUrl: null } : {}), submissions });
 });
 
 router.post("/", requireAuth, async (req, res): Promise<void> => {
