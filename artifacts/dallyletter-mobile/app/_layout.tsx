@@ -120,7 +120,8 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
-        <QueryClientProvider client={queryClient}>\n          <OfflineQueryCache />
+        <QueryClientProvider client={queryClient}>
+          <OfflineQueryCache />
           <AuthProvider>
             <GestureHandlerRootView style={{ flex: 1 }}>
               <KeyboardProvider>
