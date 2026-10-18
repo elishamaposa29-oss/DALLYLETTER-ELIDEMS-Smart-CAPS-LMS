@@ -126,7 +126,7 @@ function normalizeYouTubeUrl(value: string): string {
 
 const authorizeLessonMediaUpload = (req: Request, res: Response, next: NextFunction): void => {
   const user = req.currentUser!;
-  if (canManageAcademicContent(user)) { next(); return; }
+  if (canManageAcademicContent(user) || user.isManager === true || user.role === "owner" || user.role === "platform_owner") { next(); return; }
   const groupId = Number(req.query.groupId);
   if (!Number.isInteger(groupId) || groupId <= 0) { res.status(403).json({ error: "Teacher access or group-creator permission is required to upload media" }); return; }
   void db.select({ creatorId: studyGroupsTable.creatorId }).from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId)).then(([group]) => {
