@@ -82,23 +82,7 @@ jobs:
           emulator-boot-timeout: 900
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: |
-            set -eu
-            diagnostics() {
-              status=$?
-              if [ "$status" -ne 0 ]; then
-                echo "::group::Android emulator diagnostics (failure status $status)"
-                adb devices -l || true
-                adb shell getprop sys.boot_completed || true
-                adb shell getprop init.svc.bootanim || true
-                adb shell dumpsys cpuinfo || true
-                adb shell dumpsys meminfo || true
-                adb logcat -d -t 4000 || true
-                echo "::endgroup::"
-              fi
-              return "$status"
-            }
-            trap diagnostics EXIT
+          script: bash .github/scripts/android-emulator-smoke.sh
 
             adb wait-for-device
             timeout 300 sh -c 'until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d "\r")" = "1" ]; do sleep 5; done'
