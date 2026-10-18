@@ -8,6 +8,7 @@ export function InstallBanner() {
     return localStorage.getItem("install_banner_dismissed") === "1";
   });
   const [showIOSGuide, setShowIOSGuide] = useState(false);
+  const [showAndroidGuide, setShowAndroidGuide] = useState(false);
 
   const dismiss = () => {
     setDismissed(true);
@@ -16,8 +17,7 @@ export function InstallBanner() {
 
   // Already installed or dismissed — show nothing
   if (isInstalled || dismissed) return null;
-  // Desktop (no prompt, no iOS) — show nothing
-  if (!prompt && !isIOS) return null;
+  const manualInstall = !prompt && !isIOS;
 
   return (
     <>
@@ -54,11 +54,11 @@ export function InstallBanner() {
               </button>
             ) : (
               <button
-                onClick={install}
+                onClick={() => { if (manualInstall) setShowAndroidGuide(true); else void install().then(outcome => { if (outcome === "manual") setShowAndroidGuide(true); }).catch(() => setShowAndroidGuide(true)); }}
                 className="flex-1 bg-amber-500 hover:bg-amber-400 text-white font-semibold text-sm py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"
               >
                 <PlusSquare className="h-4 w-4" />
-                Add to Home Screen
+                {manualInstall ? "How to Install" : "Install App"}
               </button>
             )}
             <button
@@ -70,6 +70,8 @@ export function InstallBanner() {
           </div>
         </div>
       </div>
+
+      {showAndroidGuide && <div className="fixed inset-0 z-[60] bg-black/60 flex items-end justify-center p-4" role="dialog" aria-modal="true" aria-label="Install DallyLetter"><div className="bg-white text-slate-900 rounded-2xl w-full max-w-sm p-5 space-y-3"><div className="flex items-center justify-between"><p className="font-bold">Install DallyLetter on Android</p><button onClick={() => setShowAndroidGuide(false)} aria-label="Close install instructions"><X className="h-5 w-5" /></button></div><p className="text-sm">If Chrome has not shown the install prompt yet:</p><ol className="list-decimal pl-5 text-sm space-y-2"><li>Open this site in the latest Chrome over HTTPS.</li><li>Tap Chrome’s ⋮ menu.</li><li>Choose <strong>Install app</strong> or <strong>Add to Home screen</strong>, then confirm.</li></ol><p className="text-xs text-slate-500">Chrome controls when its native prompt is available. This uses Chrome’s own installation flow.</p><button className="w-full rounded-xl bg-[#0a1628] text-white py-2.5 font-semibold" onClick={() => setShowAndroidGuide(false)}>Got it</button></div></div>}
 
       {/* iOS step-by-step guide */}
       {showIOSGuide && (
