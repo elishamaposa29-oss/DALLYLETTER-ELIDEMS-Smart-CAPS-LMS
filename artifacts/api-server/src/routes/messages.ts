@@ -159,8 +159,9 @@ router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise
 router.get("/messages", requireAuth, async (req, res): Promise<void> => {
   // The generated client historically serialized nullable filters as the literal string "null".
   // Treat null/empty query values as absent so harmless nullable filters never become a 400.
+  const handRaiseId = typeof req.query.handRaiseId === "string" ? Number(req.query.handRaiseId) : null;
   const normalizedQuery = Object.fromEntries(
-    Object.entries(req.query).filter(([, value]) => value !== "null" && value !== "" && value !== undefined),
+    Object.entries(req.query).filter(([key, value]) => key !== "handRaiseId" && value !== "null" && value !== "" && value !== undefined),
   );
   const queryParams = ListMessagesQueryParams.safeParse(normalizedQuery);
   if (!queryParams.success) {
@@ -207,7 +208,14 @@ router.get("/messages", requireAuth, async (req, res): Promise<void> => {
         .orderBy(messagesTable.createdAt);
   }
 
-  res.json(messages.map(m => ({ ...m, createdAt: m.createdAt.toISOString() })));
+  const handRaiseMarker = /^\\[\\[hand-raise:(\\d+)\\]\\]\\s*/;
+  const scopedMessages = messages.filter(message => {
+    const match = message.content.match(handRaiseMarker);
+    if (handRaiseId != null) return Number.isInteger(handRaiseId) && handRaiseId > 0 && match?.[1] === String(handRaiseId);
+    return !match;
+  });
+  res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
+  res.json(scopedMessages.map(message => ({ ...message, content: message.content.replace(handRaiseMarker, ""), createdAt: message.createdAt.toISOString() })));
 });
 
 // POST /messages — Send a message
