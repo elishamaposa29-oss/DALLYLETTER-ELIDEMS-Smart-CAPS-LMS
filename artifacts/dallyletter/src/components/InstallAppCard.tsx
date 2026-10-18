@@ -33,7 +33,7 @@ export function InstallAppCard() {
           </> : <Button type="button" onClick={() => { setInstallError(""); void install().catch(error => setInstallError(error instanceof Error ? error.message : "This browser has not made native installation available.")); }}><Download className="mr-2 h-4 w-4" />Install app</Button> }
         </div>
         {!installed && <Button type="button" variant="ghost" size="sm" onClick={() => setShowHelp(v => !v)}>Compatibility help</Button>}
-        {installError && <p role="alert" className="basis-full text-sm text-destructive">{installError}</p>
+        {installError && <p role="alert" className="basis-full text-sm text-destructive">{installError}</p>}
         {showHelp && !installed && <div className="basis-full rounded-lg bg-background/80 p-3 text-sm text-muted-foreground">
           {isIOS ? "iOS does not expose a website API that can force installation. Open this page in Safari and use Share → Add to Home Screen." : "Android Chrome controls whether it can show a native install prompt. If it has not offered one, update Chrome, open this site directly in Chrome over HTTPS, and check the browser menu. The app cannot force Chrome to install without that browser approval."}
           <Button className="ml-2" variant="ghost" size="sm" onClick={() => setShowHelp(false)}>Close</Button>
