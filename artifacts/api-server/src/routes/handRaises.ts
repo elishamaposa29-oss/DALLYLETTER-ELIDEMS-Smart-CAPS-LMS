@@ -116,7 +116,15 @@ router.delete("/raise-hand/:id", requireAuth, async (req, res): Promise<void> =>
     allowed = Boolean(ownedClass);
   }
   if (!allowed) { res.status(403).json({ error: "Not authorised to delete this hand raise." }); return; }
+  const replyMarker = `[[hand-raise:${id}]]%`;
+  const linkedReplies = await db.select({ id: messagesTable.id, mediaUrl: messagesTable.mediaUrl })
+    .from(messagesTable).where(like(messagesTable.content, replyMarker));
   await db.delete(handRaisesTable).where(eq(handRaisesTable.id, id));
+  for (const reply of linkedReplies) {
+    const replyKey = typeof reply.mediaUrl === "string" ? reply.mediaUrl.match(/\/api\/(?:lessons|messages)\/media\/([a-f0-9-]{36})/i)?.[1] : null;
+    if (replyKey) await removeStoredMedia(replyKey).catch(() => undefined);
+    await db.delete(messagesTable).where(eq(messagesTable.id, reply.id));
+  }
   const storageKey = existing.mediaOwned ? existing.mediaUrl?.match(/\/api\/(?:lessons|messages)\/media\/([a-f0-9-]{36})/i)?.[1] : null;
   if (storageKey) {
     try { await removeStoredMedia(storageKey); }
