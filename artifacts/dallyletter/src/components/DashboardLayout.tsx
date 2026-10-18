@@ -2,14 +2,14 @@ import { SystemNotificationBridge } from "@/components/SystemNotificationBridge"
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { useLogoutUser } from "@workspace/api-client-react";
+import { getApiUrl, useLogoutUser } from "@workspace/api-client-react";
 import {
   BookOpen, Users, Video, MessageSquare, CreditCard, Bell, LogOut, Home,
   Shield, Menu, GraduationCap, Settings, Sparkles, ClipboardList, Star,
   ScrollText, Trophy, AlertTriangle, DollarSign, BarChart3, Briefcase,
-  Flame, Send,
+  Flame, Send, ImagePlus,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 interface NavItem {
@@ -31,6 +31,30 @@ const roleLabels: Record<string, string> = {
   teacher: "Educator",
   owner: "Administrator",
 };
+
+function ProfileImageUpload({ userId }: { userId: number }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const upload = async (file?: File) => {
+    if (!file) return;
+    if (!["image/jpeg","image/png","image/webp"].includes(file.type)) { window.alert("Choose a JPG, PNG, or WebP image."); return; }
+    if (file.size > 8 * 1024 * 1024) { window.alert("Choose an image smaller than 8 MB."); return; }
+    setBusy(true);
+    try {
+      const image = await new Promise<HTMLImageElement>((resolve,reject) => { const url=URL.createObjectURL(file); const img=new Image(); img.onload=()=>{URL.revokeObjectURL(url);resolve(img)}; img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error("Image could not be read"))}; img.src=url; });
+      const canvas=document.createElement("canvas"); const scale=Math.min(1,320/Math.max(image.naturalWidth,image.naturalHeight)); canvas.width=Math.max(1,Math.round(image.naturalWidth*scale)); canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));
+      const ctx=canvas.getContext("2d"); if(!ctx) throw new Error("Image processing is unavailable"); ctx.drawImage(image,0,0,canvas.width,canvas.height);
+      const avatarUrl=canvas.toDataURL("image/jpeg",0.78);
+      const token=localStorage.getItem("dallyletter_token");
+      const response=await fetch(getApiUrl(`/api/users/${userId}`),{method:"PATCH",headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({avatarUrl})});
+      const result=await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error(result.error||"Upload failed");
+      window.location.reload();
+    } catch(error) { window.alert(error instanceof Error?error.message:"Profile image upload failed"); }
+    finally { setBusy(false); if(inputRef.current) inputRef.current.value=""; }
+  };
+  return <><input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" aria-label="Choose profile image" onChange={e=>void upload(e.target.files?.[0])}/><button type="button" disabled={busy} onClick={()=>inputRef.current?.click()} className="mt-1 inline-flex items-center gap-1 text-[11px] text-amber-300 hover:text-white disabled:opacity-50"><ImagePlus className="h-3 w-3"/>{busy?"Saving image…":"Change photo"}</button></>;
+}
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
@@ -168,7 +192,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             {user.avatarUrl ? <img src={user.avatarUrl} alt={user.name} className="h-full w-full object-cover rounded-xl" /> : user.name.charAt(0).toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-white truncate">{user.name}</p>
+            <p className="text-sm font-semibold text-white truncate">{user.name}</p>\n            <ProfileImageUpload userId={user.id} />
             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
               <span className="text-xs text-white/50">{roleLabels[user.role] || user.role}</span>
               {user.isPrefect && (
