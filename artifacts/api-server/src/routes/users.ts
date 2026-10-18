@@ -82,7 +82,13 @@ router.patch("/users/:id", requireAuth, async (req, res): Promise<void> => {
   if (body.data.phone != null) updates.phone = body.data.phone;
   if (body.data.grade != null) updates.grade = body.data.grade;
   if (body.data.subject != null) updates.subject = body.data.subject;
-  if (body.data.avatarUrl != null) updates.avatarUrl = body.data.avatarUrl;
+  if (body.data.avatarUrl != null) {
+    const avatarUrl = body.data.avatarUrl.trim();
+    const isInlineImage = avatarUrl.length <= 180_000 && /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(avatarUrl);
+    const isHttpsImage = avatarUrl.length <= 2048 && /^https:\/\//i.test(avatarUrl);
+    if (!isInlineImage && !isHttpsImage) { res.status(400).json({ error: "Profile images must be JPG, PNG, or WebP up to 180 KB, or an HTTPS image URL." }); return; }
+    updates.avatarUrl = avatarUrl;
+  }
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, params.data.id)).returning(safeUserFields);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   res.json({ ...user, createdAt: user.createdAt.toISOString() });
