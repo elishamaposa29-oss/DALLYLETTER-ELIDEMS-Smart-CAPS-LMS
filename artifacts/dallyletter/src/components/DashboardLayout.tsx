@@ -63,7 +63,7 @@ function ProfileImageUpload() {
       const formData=new FormData(); formData.append("file",blob,"profile.jpg");
       const response=await fetch(getApiUrl("/api/users/me/avatar"),{method:"POST",headers:token?{Authorization:`Bearer ${token}`}:{},body:formData});
       const result=await response.json().catch(()=>({}));
-      if(!response.ok) throw new Error(result.error||"Upload failed");
+      if(!response.ok) throw new Error(result.error || result.message || `Upload failed (HTTP ${response.status}). ${result.detail || "Check server media storage and retry."}`);
       window.location.reload();
     } catch(error) { setUploadError(error instanceof Error ? error.message : "Profile image upload failed. Check your connection and retry."); }
     finally { setBusy(false); if(inputRef.current) inputRef.current.value=""; }
