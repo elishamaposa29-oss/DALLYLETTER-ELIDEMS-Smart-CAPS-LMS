@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 import { ClipboardList, Plus, Calendar, BookOpen, Eye, Star, Trash2 } from "lucide-react";
 
 const token = () => localStorage.getItem("dallyletter_token") ?? "";
@@ -22,6 +23,7 @@ export default function TeacherAssignments() {
   const [grading, setGrading] = useState<{ subId: number; marks: string; feedback: string } | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [learnerPreview, setLearnerPreview] = useState<any | null>(null);
+  const [hiddenReferenceIds, setHiddenReferenceIds] = useState<Set<number>>(new Set());
   const emptyForm = { title: "", description: "", subject: "", grade: "", dueDate: "", totalMarks: "100", attachmentUrl: "" };
   const [form, setForm] = useState(emptyForm);
 
@@ -180,11 +182,10 @@ export default function TeacherAssignments() {
                         <Badge className={`text-xs ${a.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{a.status}</Badge>
                       </div>
                       {a.description && <p className="text-sm text-slate-500 mb-2 whitespace-pre-wrap">{a.description}</p>}
-                      {a.attachmentUrl && (
-                        <a className="text-sm text-emerald-700 hover:underline block mb-2" href={a.attachmentUrl} target="_blank" rel="noreferrer">
-                          Open reference material
-                        </a>
-                      )}
+                      {a.attachmentUrl && <div className="mt-3 rounded-xl border bg-muted/20 p-3">
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Reference material · visible to learners by default</p><Button type="button" size="sm" variant="ghost" onClick={() => setHiddenReferenceIds(previous => { const next = new Set(previous); next.has(a.id) ? next.delete(a.id) : next.add(a.id); return next; })}>{hiddenReferenceIds.has(a.id) ? "Show material" : "Hide material"}</Button></div>
+                        {hiddenReferenceIds.has(a.id) ? <p className="text-sm text-muted-foreground">Hidden in this teacher view. Learners will not see this local preview toggle reflected until a persistent visibility setting is saved.</p> : <AuthenticatedMedia url={a.attachmentUrl} type="document" title={`${a.title} reference material`} />}
+                      </div>}
                       <div className="flex items-center gap-4 text-xs text-slate-400 mt-1 flex-wrap">
                         <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> Due: {a.dueDate}</span>
                         <span className="flex items-center gap-1"><BookOpen className="h-3 w-3" /> {a.totalMarks} marks</span>
