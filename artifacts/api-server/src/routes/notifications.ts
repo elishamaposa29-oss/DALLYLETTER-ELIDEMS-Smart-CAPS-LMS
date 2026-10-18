@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, or, isNull, and } from "drizzle-orm";
+import { eq, or, isNull, and, desc } from "drizzle-orm";
 import { db, notificationsTable } from "@workspace/db";
 import { CreateNotificationBody, MarkNotificationReadParams } from "@workspace/api-zod";
 import { requireAuth, requireTeacherOrOwner, requireOwner, canAccessManager } from "../lib/auth-middleware";
@@ -11,7 +11,7 @@ router.get("/notifications", requireAuth, async (req, res): Promise<void> => {
   const currentUser = req.currentUser!;
   const notifications = await db.select().from(notificationsTable)
     .where(or(eq(notificationsTable.recipientId, currentUser.id), isNull(notificationsTable.recipientId)))
-    .orderBy(notificationsTable.createdAt);
+    .orderBy(desc(notificationsTable.createdAt));
   res.json(notifications.map(n => ({ ...n, createdAt: n.createdAt.toISOString() })));
 });
 
