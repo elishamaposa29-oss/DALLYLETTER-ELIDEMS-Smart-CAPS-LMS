@@ -30,7 +30,8 @@
     "plugins": [
       "expo-router",
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      ["expo-image-picker", { "photosPermission": "Allow DallyLetter Elidems to choose your profile photo." }]
     ],
     "experiments": {
       "typedRoutes": true,
