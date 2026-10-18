@@ -6,7 +6,8 @@ import {
   useFonts,
 } from "@expo-google-fonts/inter";
 import { setBaseUrl } from "@workspace/api-client-react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, dehydrate, hydrate } from "@tanstack/react-query";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
@@ -29,10 +30,36 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 1,
-      staleTime: 30_000,
+      staleTime: 5 * 60_000,
+      gcTime: 7 * 24 * 60 * 60_000,
+      networkMode: "offlineFirst",
     },
   },
 });
+
+const QUERY_CACHE_KEY = "dallyletter_mobile_query_cache_v1";
+function OfflineQueryCache() {
+  useEffect(() => {
+    let active = true;
+    let hydrated = false;
+    let writeTimer: ReturnType<typeof setTimeout> | undefined;
+    const persist = () => {
+      if (!hydrated || !active) return;
+      if (writeTimer) clearTimeout(writeTimer);
+      writeTimer = setTimeout(() => {
+        const snapshot = dehydrate(queryClient, { shouldDehydrateQuery: query => query.state.status === "success" });
+        void AsyncStorage.setItem(QUERY_CACHE_KEY, JSON.stringify(snapshot)).catch(() => {});
+      }, 700);
+    };
+    const unsubscribe = queryClient.getQueryCache().subscribe(persist);
+    void AsyncStorage.getItem(QUERY_CACHE_KEY).then(serialized => {
+      if (!active || !serialized) return;
+      try { hydrate(queryClient, JSON.parse(serialized)); } catch { void AsyncStorage.removeItem(QUERY_CACHE_KEY); }
+    }).catch(() => {}).finally(() => { hydrated = true; persist(); });
+    return () => { active = false; unsubscribe(); if (writeTimer) clearTimeout(writeTimer); };
+  }, []);
+  return null;
+}
 
 function RootLayoutNav() {
   return (
@@ -65,7 +92,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
-        <QueryClientProvider client={queryClient}>
+        <QueryClientProvider client={queryClient}>\n          <OfflineQueryCache />
           <AuthProvider>
             <GestureHandlerRootView style={{ flex: 1 }}>
               <KeyboardProvider>
