@@ -208,7 +208,7 @@ router.get("/messages", requireAuth, async (req, res): Promise<void> => {
         .orderBy(messagesTable.createdAt);
   }
 
-  const handRaiseMarker = /^\\[\\[hand-raise:(\\d+)\\]\\]\\s*/;
+  const handRaiseMarker = /^\[\[hand-raise:(\d+)\]\]\s*/;
   const scopedMessages = messages.filter(message => {
     const match = message.content.match(handRaiseMarker);
     if (handRaiseId != null) return Number.isInteger(handRaiseId) && handRaiseId > 0 && match?.[1] === String(handRaiseId);
