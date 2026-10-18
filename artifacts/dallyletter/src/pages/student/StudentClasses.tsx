@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from "@/components/ui/textarea";
 import { useEffect, useState } from "react";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
-import { Loader2, Video, Hand, HandMetal, Calendar, Clock } from "lucide-react";
+import { Loader2, Video, Hand, HandMetal, Calendar, Clock, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -53,6 +53,7 @@ export default function StudentClasses() {
   // Track which classId the student has a raised hand for and the handRaise id
   const [raisedHands, setRaisedHands] = useState<Record<number, number>>({}); // classId -> handRaiseId
   const [loweringHand, setLoweringHand] = useState<number | null>(null);
+  const [deletingHand, setDeletingHand] = useState<number | null>(null);
 
   const handleRaiseHand = async () => {
     if (!selectedClassId || uploadingHandRaise) return;
@@ -125,6 +126,23 @@ export default function StudentClasses() {
     } finally {
       setLoweringHand(null);
     }
+  };
+
+  const handleDeleteHand = async (classId: number) => {
+    const handRaiseId = raisedHands[classId];
+    if (!handRaiseId || !window.confirm("Delete your hand raise and its attached media?")) return;
+    setDeletingHand(classId);
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const response = await fetch(getApiUrl(`/api/raise-hand/${handRaiseId}`), { method: "DELETE", headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || `Delete failed (${response.status})`);
+      setRaisedHands(previous => { const next = { ...previous }; delete next[classId]; return next; });
+      queryClient.invalidateQueries();
+      toast({ title: "Hand raise deleted" });
+    } catch (error) {
+      toast({ variant: "destructive", title: "Delete failed", description: error instanceof Error ? error.message : "Could not delete hand raise." });
+    } finally { setDeletingHand(null); }
   };
 
   const getStatusColor = (status: string) => {
@@ -216,6 +234,9 @@ export default function StudentClasses() {
                               : <HandMetal className="h-4 w-4" />
                             }
                             Lower Hand
+                          </Button>
+                          <Button variant="destructive" className="gap-2" disabled={deletingHand === c.id} onClick={() => void handleDeleteHand(c.id)} title="Delete hand raise and attached media">
+                            {deletingHand === c.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Delete
                           </Button>
                         ) : (
                           /* Raise Hand dialog */
