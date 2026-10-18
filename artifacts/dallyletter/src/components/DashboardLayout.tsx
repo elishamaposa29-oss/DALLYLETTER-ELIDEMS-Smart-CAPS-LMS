@@ -81,7 +81,7 @@ function PushDeliveryTest() {
       const data=await response.json().catch(()=>({}));
       if(!response.ok) throw new Error(data.error||"Could not queue push test");
       setTestId(Number(data.notificationId));
-      setStatus("Test queued. Check delivery status after the dispatcher runs.");
+      setStatus("Test queued. For a true background-push check, close Dallyletter now, then check system notifications. Reopen later to inspect provider status.");
     } catch(error) { window.alert(error instanceof Error?error.message:"Push test failed"); }
     finally { setBusy(false); }
   };
@@ -93,7 +93,7 @@ function PushDeliveryTest() {
       const response=await fetch(getApiUrl("/api/push/test/"+testId),{headers:{Authorization:"Bearer "+token}});
       const data=await response.json().catch(()=>({}));
       if(!response.ok) throw new Error(data.error||"Could not read push status");
-      setStatus(data.acceptedByPushService ? "Push service accepted the test. Check this device's notifications." : "Not delivered yet. Attempts: "+data.attempts+". "+(data.lastError||"Waiting for the next retry."));
+      setStatus(data.acceptedByPushService ? "Push service accepted the test. This confirms provider acceptance, not device display; close the app before the next test to avoid in-app polling notifications." : "Not delivered yet. Attempts: "+data.attempts+". "+(data.lastError||"Waiting for the next retry."));
     } catch(error) { window.alert(error instanceof Error?error.message:"Could not check push status"); }
     finally { setBusy(false); }
   };
