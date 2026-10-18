@@ -7,6 +7,7 @@ import { useInstallPrompt } from "@/hooks/useInstallPrompt";
 export function InstallAppCard() {
   const { prompt, install, isInstalled, isIOS } = useInstallPrompt();
   const [showHelp, setShowHelp] = useState(false);
+  const [installError, setInstallError] = useState("");
   const [standalone, setStandalone] = useState(false);
 
   useEffect(() => {
@@ -31,6 +32,7 @@ export function InstallAppCard() {
             <Button type="button" variant="outline" onClick={() => { window.location.href = "/"; }}> <ExternalLink className="mr-2 h-4 w-4" />Open app</Button>
           </> : prompt ? <Button type="button" onClick={() => void install()}><Download className="mr-2 h-4 w-4" />Install app</Button> : <Button type="button" onClick={() => setShowHelp(v => !v)}><Download className="mr-2 h-4 w-4" />{isIOS ? "How to install" : "Install instructions"}</Button>}
         </div>
+        {installError && <p role="alert" className="basis-full text-sm text-destructive">{installError}</p>}
         {showHelp && !installed && <div className="basis-full rounded-lg bg-background/80 p-3 text-sm text-muted-foreground">
           {isIOS ? "Open this page in Safari, tap Share, then Add to Home Screen." : "In Chrome, open the browser menu and choose Install app or Add to Home screen. If the option is missing, update Chrome and reopen this page while online."}
           <Button className="ml-2" variant="ghost" size="sm" onClick={() => setShowHelp(false)}>Close</Button>
