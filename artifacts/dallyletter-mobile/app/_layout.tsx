@@ -14,6 +14,7 @@ import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { DeviceEventEmitter } from "react-native";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider } from "@/contexts/AuthContext";
@@ -37,26 +38,53 @@ const queryClient = new QueryClient({
   },
 });
 
-const QUERY_CACHE_KEY = "dallyletter_mobile_query_cache_v1";
+const QUERY_CACHE_PREFIX = "dallyletter_mobile_query_cache_v1_user_";
+const USER_KEY = "dallyletter_user";
 function OfflineQueryCache() {
   useEffect(() => {
     let active = true;
     let hydrated = false;
+    let cacheKey: string | null = null;
     let writeTimer: ReturnType<typeof setTimeout> | undefined;
     const persist = () => {
-      if (!hydrated || !active) return;
+      if (!hydrated || !active || !cacheKey) return;
       if (writeTimer) clearTimeout(writeTimer);
       writeTimer = setTimeout(() => {
         const snapshot = dehydrate(queryClient, { shouldDehydrateQuery: query => query.state.status === "success" });
-        void AsyncStorage.setItem(QUERY_CACHE_KEY, JSON.stringify(snapshot)).catch(() => {});
+        if (cacheKey) void AsyncStorage.setItem(cacheKey, JSON.stringify(snapshot)).catch(() => {});
       }, 700);
     };
     const unsubscribe = queryClient.getQueryCache().subscribe(persist);
-    void AsyncStorage.getItem(QUERY_CACHE_KEY).then(serialized => {
-      if (!active || !serialized) return;
-      try { hydrate(queryClient, JSON.parse(serialized)); } catch { void AsyncStorage.removeItem(QUERY_CACHE_KEY); }
-    }).catch(() => {}).finally(() => { hydrated = true; persist(); });
-    return () => { active = false; unsubscribe(); if (writeTimer) clearTimeout(writeTimer); };
+    let switchSequence = 0;
+    const loadUserCache = async () => {
+      const sequence = ++switchSequence;
+      hydrated = false;
+      queryClient.clear();
+      cacheKey = null;
+      try {
+        const serializedUser = await AsyncStorage.getItem(USER_KEY);
+        if (!active || sequence !== switchSequence) return;
+        if (!serializedUser) { hydrated = true; return; }
+        const user = JSON.parse(serializedUser) as { id?: number };
+        if (!Number.isInteger(user.id) || Number(user.id) <= 0) { hydrated = true; return; }
+        cacheKey = QUERY_CACHE_PREFIX + String(user.id);
+        const serializedCache = await AsyncStorage.getItem(cacheKey);
+        if (!active || sequence !== switchSequence) return;
+        if (serializedCache) {
+          try { hydrate(queryClient, JSON.parse(serializedCache)); }
+          catch { await AsyncStorage.removeItem(cacheKey); }
+        }
+      } catch { /* Offline cache is best-effort; the app remains usable without it. */ }
+      finally { if (active && sequence === switchSequence) { hydrated = true; persist(); } }
+    };
+    void loadUserCache();
+    const authSubscription = DeviceEventEmitter.addListener("dallyletter-auth-changed", () => { void loadUserCache(); });
+    return () => {
+      active = false;
+      unsubscribe();
+      authSubscription.remove();
+      if (writeTimer) clearTimeout(writeTimer);
+    };
   }, []);
   return null;
 }
