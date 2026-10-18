@@ -75,6 +75,10 @@ router.post("/content-permissions/:id/report",requireAuth,async(req,res):Promise
   if(item.status!=="declined"){res.status(409).json({error:"Only declined requests can be reported"});return;}
   const details={requestId:id,requesterId:actor.id,ownerId:Number(item.owner_id),contentType:item.content_type,contentId:Number(item.content_id),requestedAction:item.requested_action,message};
   await pool.query("INSERT INTO activity_log(type,description,actor_name) VALUES($1,$2,$3)",["content_permission_reported_to_manager","Manager review requested for declined permission: "+JSON.stringify(details),actor.name]);
+  await pool.query(
+    "INSERT INTO notifications(recipient_id,title,message,type,is_read,link) SELECT id,$1,$2,$3,false,$4 FROM users WHERE role='owner' OR is_manager=true",
+    ["Permission decision needs manager review",actor.name+" reported declined permission request #"+id+". "+(message||"Please review the request."),"content_permission_report","/admin/notifications"]
+  );
   res.status(201).json({ok:true,reported:true});
 });
 
