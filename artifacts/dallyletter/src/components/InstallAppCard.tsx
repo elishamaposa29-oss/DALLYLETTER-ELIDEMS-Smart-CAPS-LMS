@@ -30,11 +30,12 @@ export function InstallAppCard() {
           {installed ? <>
             <span className="inline-flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-700"><CheckCircle2 className="h-4 w-4" /> Installed</span>
             <Button type="button" variant="outline" onClick={() => { window.location.href = "/"; }}> <ExternalLink className="mr-2 h-4 w-4" />Open app</Button>
-          </> : prompt ? <Button type="button" onClick={() => void install()}><Download className="mr-2 h-4 w-4" />Install app</Button> : <Button type="button" onClick={() => setShowHelp(v => !v)}><Download className="mr-2 h-4 w-4" />{isIOS ? "How to install" : "Install instructions"}</Button>}
+          </> : <Button type="button" onClick={() => { setInstallError(""); void install().catch(error => setInstallError(error instanceof Error ? error.message : "This browser has not made native installation available.")); }}><Download className="mr-2 h-4 w-4" />Install app</Button> }
         </div>
-        {installError && <p role="alert" className="basis-full text-sm text-destructive">{installError}</p>}
+        {!installed && <Button type="button" variant="ghost" size="sm" onClick={() => setShowHelp(v => !v)}>Compatibility help</Button>}
+        {installError && <p role="alert" className="basis-full text-sm text-destructive">{installError}</p>
         {showHelp && !installed && <div className="basis-full rounded-lg bg-background/80 p-3 text-sm text-muted-foreground">
-          {isIOS ? "Open this page in Safari, tap Share, then Add to Home Screen." : "In Chrome, open the browser menu and choose Install app or Add to Home screen. If the option is missing, update Chrome and reopen this page while online."}
+          {isIOS ? "iOS does not expose a website API that can force installation. Open this page in Safari and use Share → Add to Home Screen." : "Android Chrome controls whether it can show a native install prompt. If it has not offered one, update Chrome, open this site directly in Chrome over HTTPS, and check the browser menu. The app cannot force Chrome to install without that browser approval."}
           <Button className="ml-2" variant="ghost" size="sm" onClick={() => setShowHelp(false)}>Close</Button>
         </div>}
       </CardContent>
