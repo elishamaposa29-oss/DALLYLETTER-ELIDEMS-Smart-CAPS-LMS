@@ -223,7 +223,8 @@ export default function StudentClasses() {
                     {c.status === "live" && (
                       <>
                         {raisedHands[c.id] ? (
-                          /* Lower Hand button */
+                          <>
+                          {/* Lower Hand button */}
                           <Button
                             variant="outline"
                             className="gap-2 border-amber-400 text-amber-600 hover:bg-amber-50"
@@ -239,6 +240,7 @@ export default function StudentClasses() {
                           <Button variant="destructive" className="gap-2" disabled={deletingHand === c.id} onClick={() => void handleDeleteHand(c.id)} title="Delete hand raise and attached media">
                             {deletingHand === c.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Delete
                           </Button>
+                          </>
                         ) : (
                           /* Raise Hand dialog */
                           <Dialog open={isDialogOpen && selectedClassId === c.id} onOpenChange={(open) => {
