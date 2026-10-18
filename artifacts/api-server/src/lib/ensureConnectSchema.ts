@@ -7,6 +7,9 @@ export async function ensureConnectSchema(): Promise<void> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    // Assignment reference material is visible by default; teachers can persistently hide it.
+    await client.query("ALTER TABLE assignments ADD COLUMN IF NOT EXISTS reference_material_hidden boolean NOT NULL DEFAULT false");
+
     // Add optional hand-raise media reference without rewriting existing records.
     await client.query("ALTER TABLE hand_raises ADD COLUMN IF NOT EXISTS media_url text");
     await client.query("ALTER TABLE hand_raises ADD COLUMN IF NOT EXISTS media_owned boolean NOT NULL DEFAULT false");
