@@ -372,7 +372,7 @@ export default function StudentStudyGroups() {
                     <Input id="max-members" className="mt-1" type="number" min={2} max={1024} value={settings.maxMembers} onChange={event => setSettings({ ...settings, maxMembers: Math.max(2, Math.min(1024, Number(event.target.value) || 2)) })} />
                   </div>
                 </CardContent>
-                <CardFooter className="gap-2">
+                <CardFooter className="relative z-10 gap-2">
                   <Button type="submit" disabled={busyGroup === settings.groupId}>Save settings</Button>
                   <Button type="button" variant="ghost" onClick={() => { setEditingGroupId(null); setSettings(null); }}>Cancel</Button>
                 </CardFooter>
@@ -412,7 +412,7 @@ export default function StudentStudyGroups() {
               return (
                 <Card key={group.id} className="relative flex h-full w-[min(88vw,360px)] shrink-0 snap-start flex-col overflow-hidden transition-shadow hover:shadow-md">
                   <CardHeader>
-                    {group.coverImageUrl && <AuthenticatedGroupCover url={group.coverImageUrl} name={group.name} />}
+                    <AuthenticatedGroupCover url={group.coverImageUrl || ""} name={group.name} />
                     <div className="flex items-start justify-between gap-2">
                       <Badge variant="secondary">{group.subject}</Badge>
                       <div className="flex items-center gap-1.5 rounded-full bg-muted px-2 py-1 text-sm text-muted-foreground"><Users className="h-3.5 w-3.5" /><span>{group.memberCount}/{groupSettings.maxMembers}</span></div>
