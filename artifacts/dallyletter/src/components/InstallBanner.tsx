@@ -31,7 +31,7 @@ export function InstallBanner() {
             <div className="flex-1 min-w-0">
               <p className="font-bold text-sm leading-tight">Install DallyLetter</p>
               <p className="text-white/55 text-xs mt-0.5 leading-snug">
-                Add to your home screen for quick access — works offline too
+                Add to your home screen for quick access and faster repeat visits
               </p>
             </div>
             <button
