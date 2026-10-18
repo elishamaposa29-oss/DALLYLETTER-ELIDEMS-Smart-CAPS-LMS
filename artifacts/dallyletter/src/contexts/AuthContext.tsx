@@ -16,7 +16,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem("dallyletter_token"));
   const [, setLocation] = useLocation();
 
-  const { data: user, isLoading, refetch } = useGetCurrentUser({
+  const { data: user, isLoading, refetch, error } = useGetCurrentUser({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     query: { enabled: !!token, retry: false } as any,
   });
