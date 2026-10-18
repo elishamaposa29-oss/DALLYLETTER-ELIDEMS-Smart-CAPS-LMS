@@ -130,8 +130,9 @@ const authorizeLessonMediaUpload = (req: Request, res: Response, next: NextFunct
   const groupId = Number(req.query.groupId);
   if (!Number.isInteger(groupId) || groupId <= 0) { res.status(403).json({ error: "Teacher access or group-creator permission is required to upload media" }); return; }
   void db.select({ creatorId: studyGroupsTable.creatorId }).from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId)).then(([group]) => {
-    if (group && Number(group.creatorId) === Number(user.id)) next();
-    else res.status(403).json({ error: "Only the group creator or authorized academic staff can upload this group cover" });
+    if (!group) { res.status(404).json({ error: "Study group not found" }); return; }
+    if (Number(group.creatorId) === Number(user.id) || user.isManager === true) { next(); return; }
+    res.status(403).json({ error: "Only the group creator, manager, or platform owner can upload this group cover" });
   }).catch(next);
 };
 router.post("/lessons/media", requireAuth, authorizeLessonMediaUpload, (req, res, next): void => {
