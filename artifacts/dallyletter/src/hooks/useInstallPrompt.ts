@@ -33,14 +33,15 @@ export function useInstallPrompt() {
     };
   }, []);
 
-  const install = async () => {
-    if (!prompt) return "manual" as const;
+  const install = async (): Promise<"manual" | "accepted" | "dismissed"> => {
+    if (!prompt) return "manual";
     await prompt.prompt();
     const result = await prompt.userChoice;
     if (result.outcome === "accepted") {
       setPrompt(null);
       setIsInstalled(true);
     }
+    return result.outcome;
   };
 
   return { prompt, install, isInstalled, isIOS };
