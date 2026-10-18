@@ -116,18 +116,41 @@ export default function TeacherAssignments() {
     }
   };
 
-  const grade = () => {
+  const grade = async () => {
     if (!grading) return;
-    void fetch(getApiUrl(`/api/assignments/submissions/${grading.subId}/grade`), {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
-      body: JSON.stringify({ marks: grading.marks, feedback: grading.feedback }),
-    }).then(r => {
-      if (!r.ok) { toast({ variant: "destructive", title: "Grading failed" }); return; }
-      toast({ title: "✅ Graded successfully" });
+    const sessionToken = token();
+    if (!sessionToken) {
+      toast({ variant: "destructive", title: "Sign-in required", description: "Your session is missing. Sign in again before saving this grade." });
+      window.location.href = "/login";
+      return;
+    }
+    const marks = Number(grading.marks);
+    const totalMarks = Number(viewSubs?.assignment?.totalMarks);
+    if (!Number.isFinite(marks) || marks < 0 || !Number.isFinite(totalMarks) || marks > totalMarks) {
+      toast({ variant: "destructive", title: "Invalid marks", description: `Enter a score between 0 and ${Number.isFinite(totalMarks) ? totalMarks : "the assignment maximum"}.` });
+      return;
+    }
+    try {
+      const response = await fetch(getApiUrl(`/api/assignments/submissions/${grading.subId}/grade`), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionToken}` },
+        body: JSON.stringify({ marks, feedback: grading.feedback }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (response.status === 401) {
+          toast({ variant: "destructive", title: "Session expired", description: "Your grade was not saved. Sign in again, then retry." });
+          window.location.href = "/login";
+          return;
+        }
+        throw new Error(result.error || result.message || `Grading failed (HTTP ${response.status})`);
+      }
+      toast({ title: "Graded successfully" });
       setGrading(null);
-      if (viewSubs) loadSubs(viewSubs.assignment);
-    });
+      if (viewSubs) await loadSubs(viewSubs.assignment);
+    } catch (error) {
+      toast({ variant: "destructive", title: "Grading failed", description: error instanceof Error ? error.message : "Could not save this grade." });
+    }
   };
 
   return (
