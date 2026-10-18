@@ -134,11 +134,11 @@ export default function StudentStudyGroups() {
         onSuccess: async (created) => {
           try {
             let coverImageUrl: string | undefined;
-            if (coverFile && user?.role === "owner") {
+            if (coverFile && canCreateGroup) {
               const formData = new FormData();
               formData.append("file", coverFile);
               const token = localStorage.getItem("dallyletter_token");
-              const upload = await fetch(getApiUrl("/api/lessons/media"), { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData });
+              const upload = await fetch(getApiUrl("/api/lessons/media?purpose=group-cover"), { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData });
               const uploaded = await upload.json().catch(() => null) as { mediaUrl?: string; error?: string } | null;
               if (!upload.ok || !uploaded?.mediaUrl) throw new Error(uploaded?.error ?? "Group cover upload failed.");
               coverImageUrl = uploaded.mediaUrl;
@@ -266,7 +266,7 @@ export default function StudentStudyGroups() {
                 <Input placeholder="Subject (e.g. Mathematics)" value={subject} onChange={event => setSubject(event.target.value)} required maxLength={120} />
                 <Input placeholder="Grade / Form (e.g. Form 3)" value={grade} onChange={event => setGrade(event.target.value)} maxLength={80} />
                 <Input placeholder="Topic (e.g. Algebra)" value={topic} onChange={event => setTopic(event.target.value)} maxLength={120} />
-                {user?.role === "owner" && <div className="sm:col-span-2 space-y-2"><label className="text-sm font-medium" htmlFor="group-cover-image">Group cover image (owner upload)</label><Input id="group-cover-image" type="file" accept="image/*" onChange={event => setCoverFile(event.target.files?.[0] ?? null)} /><p className="text-xs text-muted-foreground">Use an image up to the platform's media upload limit. The image is stored through the existing persistent media service.</p>{coverFile && <p className="text-xs text-muted-foreground">Selected: {coverFile.name}</p>}</div>}
+                {canCreateGroup && <div className="sm:col-span-2 space-y-2"><label className="text-sm font-medium" htmlFor="group-cover-image">Group cover image</label><Input id="group-cover-image" type="file" accept="image/*" onChange={event => setCoverFile(event.target.files?.[0] ?? null)} /><p className="text-xs text-muted-foreground">Use an image up to the platform's media upload limit. The image is stored through the existing persistent media service.</p>{coverFile && <p className="text-xs text-muted-foreground">Selected: {coverFile.name}</p>}</div>}
                 <Textarea className="sm:col-span-2" placeholder="What will this group focus on?" value={description} onChange={event => setDescription(event.target.value)} rows={3} maxLength={1000} />
               </CardContent>
               <CardFooter className="gap-2">
