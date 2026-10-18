@@ -1,5 +1,6 @@
 // Lessons routes — CRUD for educational content
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { eq, and, inArray } from "drizzle-orm";
 import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
@@ -31,6 +32,29 @@ import { isObjectStorageConfigured } from "../lib/object-storage";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
+const mediaShareSecret = () => process.env.JWT_SECRET || process.env.AUTH_SECRET || process.env.SESSION_SECRET || "";
+function signMediaShare(storageKey: string, expiresAt: number): string {
+  const secret = mediaShareSecret();
+  if (!secret) throw new Error("Media sharing signing secret is not configured");
+  const payload = `${storageKey}.${expiresAt}`;
+  return `${expiresAt}.${createHmac("sha256", secret).update(payload).digest("hex")}`;
+}
+function validMediaShare(storageKey: string, token: unknown): boolean {
+  if (typeof token !== "string" || !/^[0-9]{10,12}\.[a-f0-9]{64}$/i.test(token)) return false;
+  const [expiryText, signature] = token.split(".");
+  const expiresAt = Number(expiryText);
+  if (!Number.isSafeInteger(expiresAt) || expiresAt < Math.floor(Date.now() / 1000)) return false;
+  const secret = mediaShareSecret();
+  if (!secret) return false;
+  const expected = createHmac("sha256", secret).update(`${storageKey}.${expiresAt}`).digest();
+  const supplied = Buffer.from(signature, "hex");
+  return supplied.length === expected.length && timingSafeEqual(supplied, expected);
+}
+const mediaAccess = (req: Request, res: Response, next: NextFunction) => {
+  if (validMediaShare(String(req.params.storageKey || ""), req.query.shareToken)) { next(); return; }
+  requireAuth(req, res, next);
+};
+
 
 async function notifyTeacherFollowers(teacherId: number, lessonId: number, title: string) {
   try {
@@ -139,7 +163,23 @@ router.post("/lessons/media", requireAuth, requireTeacherOrOwner, (req, res, nex
   });
 });
 
-router.get("/lessons/media/:storageKey", requireAuth, async (req, res): Promise<void> => {
+router.post("/lessons/media/:storageKey/share", requireAuth, async (req, res): Promise<void> => {
+  const storageKey = typeof req.params.storageKey === "string" ? req.params.storageKey : "";
+  if (!/^[a-f0-9-]{36}$/i.test(storageKey)) { res.status(400).json({ error: "Invalid media key" }); return; }
+  try {
+    const stored = await streamStoredMedia(storageKey);
+    if (!stored) {
+      try { await getMediaStats(storageKey); } catch { res.status(404).json({ error: "Media not found" }); return; }
+    }
+    const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30;
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ shareToken: signMediaShare(storageKey, expiresAt), expiresAt });
+  } catch (error) {
+    res.status(503).json({ error: error instanceof Error ? error.message : "Could not create a public share link" });
+  }
+});
+
+router.get("/lessons/media/:storageKey", mediaAccess, async (req, res): Promise<void> => {
   const storageKey = typeof req.params.storageKey === "string" ? req.params.storageKey : null;
   if (!storageKey) {
     res.status(400).json({ error: "Invalid media key" });
