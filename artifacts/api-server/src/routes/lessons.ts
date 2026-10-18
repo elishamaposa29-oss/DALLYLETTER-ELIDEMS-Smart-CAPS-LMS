@@ -5,7 +5,7 @@ import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import multer from "multer";
-import { db, lessonsTable, activityLogTable, followsTable, notificationPreferencesTable, notificationsTable } from "@workspace/db";
+import { db, lessonsTable, activityLogTable, followsTable, notificationPreferencesTable, notificationsTable, studyGroupsTable } from "@workspace/db";
 import {
   CreateLessonBody,
   GetLessonParams,
