@@ -36,7 +36,7 @@ export default function Login() {
   function onSubmit(values: z.infer<typeof loginSchema>) {
     loginMutation.mutate({ data: values }, {
       onSuccess: (data) => {
-        login(data.token);
+        login(data.token, data.user);
         if (data.user.role === "owner") setLocation("/admin");
         else if (data.user.role === "teacher") setLocation("/teacher");
         else setLocation("/");
