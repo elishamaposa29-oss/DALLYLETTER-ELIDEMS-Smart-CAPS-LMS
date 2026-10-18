@@ -47,6 +47,18 @@ export async function ensureConnectSchema(): Promise<void> {
     await client.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS push_attempts integer NOT NULL DEFAULT 0`);
     await client.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS push_next_attempt_at timestamptz`);
     await client.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS push_last_error text`);
+    // Push subscription storage must exist before the push-test endpoint accepts registrations.
+    await client.query(`CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id serial PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      endpoint text NOT NULL,
+      p256dh text NOT NULL,
+      auth text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS push_subscriptions_endpoint_key ON push_subscriptions(endpoint)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS push_subscriptions_user_idx ON push_subscriptions(user_id)`);
     await client.query(`ALTER TABLE poll_questions ADD COLUMN IF NOT EXISTS image_url text`);
     // Additive, idempotent group profile fields; existing groups remain intact.
     await client.query(`ALTER TABLE study_groups ADD COLUMN IF NOT EXISTS grade text`);
