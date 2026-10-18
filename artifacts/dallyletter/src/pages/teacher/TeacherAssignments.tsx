@@ -234,7 +234,7 @@ export default function TeacherAssignments() {
                       </div>
                     </div>
                     <div className="flex flex-col gap-2">
-                      <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setLearnerPreview(a)}><Eye className="h-3.5 w-3.5" />Preview as learner</Button>
+                      <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { window.location.href = `/student/assignments?assignment=${encodeURIComponent(String(a.id))}`; }}><Eye className="h-3.5 w-3.5" />Preview as learner</Button>
                       <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { setEditingId(a.id); setForm({ title: a.title, description: a.description ?? "", subject: a.subject, grade: a.grade ?? "", dueDate: a.dueDate, totalMarks: String(a.totalMarks), attachmentUrl: a.attachmentUrl ?? "" }); setOpen(true); }}>
                         Edit
                       </Button>
