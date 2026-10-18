@@ -26,7 +26,51 @@ export default function StudentNotifications() {
     } catch (error) { setPushTestError(error instanceof Error ? error.message : "Push test failed. Please retry."); }
     finally { setPushTesting(false); }
   };
-  const enableDeviceNotifications = async () => { if (!("Notification" in window)) return; const permission = await Notification.requestPermission(); setDevicePermission(permission); if (permission === "granted" && "serviceWorker" in navigator) { await navigator.serviceWorker.ready; } };
+  const enableDeviceNotifications = async () => {
+    setPushTestError("");
+    setPushTestMessage("");
+    if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setPushTestError("This browser does not support background push. Open Dallyletter in current Chrome on Android.");
+      return;
+    }
+    try {
+      const permission = await Notification.requestPermission();
+      setDevicePermission(permission);
+      if (permission !== "granted") {
+        if (permission === "denied") setPushTestError("Notifications are blocked in browser settings. Allow notifications for Dallyletter, then retry.");
+        return;
+      }
+      const authToken = localStorage.getItem("dallyletter_token") ?? "";
+      const headers = { Authorization: "Bearer " + authToken };
+      const configResponse = await fetch(getApiUrl("/api/push/config"), { headers });
+      const config = await configResponse.json().catch(() => ({})) as { enabled?: boolean; publicKey?: string | null; error?: string };
+      if (!configResponse.ok || !config.enabled || !config.publicKey) {
+        throw new Error(config.error || "Background push is not configured on the server. The platform owner must set VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, and VAPID_SUBJECT on the API service.");
+      }
+      const paddedKey = config.publicKey.replace(/-/g, "+").replace(/_/g, "/");
+      const decodedKey = window.atob(paddedKey + "=".repeat((4 - paddedKey.length % 4) % 4));
+      const applicationServerKey = new Uint8Array(decodedKey.length);
+      for (let index = 0; index < decodedKey.length; index++) applicationServerKey[index] = decodedKey.charCodeAt(index);
+      const registration = await navigator.serviceWorker.ready;
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: applicationServerKey as BufferSource,
+        });
+      }
+      const saveResponse = await fetch(getApiUrl("/api/push/subscriptions"), {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify(subscription),
+      });
+      const saved = await saveResponse.json().catch(() => ({})) as { error?: string };
+      if (!saveResponse.ok) throw new Error(saved.error || "Could not register this device for push notifications.");
+      setPushTestMessage("Device registered for background push. You can now run a delivery test.");
+    } catch (error) {
+      setPushTestError(error instanceof Error ? error.message : "Could not enable push notifications. Please retry.");
+    }
+  };
   const { data: notifications, isLoading } = useListNotifications();
   const [, navigate] = useLocation();
   const markReadMutation = useMarkNotificationRead();
