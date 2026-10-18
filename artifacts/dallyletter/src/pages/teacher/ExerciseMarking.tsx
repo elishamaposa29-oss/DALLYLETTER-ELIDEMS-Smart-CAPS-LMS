@@ -88,6 +88,26 @@ function FloatingTicks({ data, onChange }: { data: Record<string, unknown> | nul
 
 function distanceToMarkSegment(point:{x:number;y:number},item:Record<string,unknown>){const x1=Number(item.px??item.x??0),y1=Number(item.py??item.y??0),x2=Number(item.x??x1),y2=Number(item.y??y1),dx=x2-x1,dy=y2-y1,len=dx*dx+dy*dy,t=len===0?0:Math.max(0,Math.min(1,((point.x-x1)*dx+(point.y-y1)*dy)/len));return Math.hypot(point.x-(x1+t*dx),point.y-(y1+t*dy));}
 
+function ReturnedMarkingAnnotations({ data }: { data: Record<string, unknown> | null | undefined }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = ref.current; const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const d = data ?? {};
+    for (const s of (d.mediaStrokes ?? []) as Array<Record<string, unknown>>) {
+      ctx.save(); ctx.strokeStyle = String(s.color ?? "#dc2626"); ctx.lineWidth = Number(s.width ?? 4); ctx.globalAlpha = Number(s.opacity ?? .95); ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(Number(s.px ?? s.x), Number(s.py ?? s.y)); ctx.lineTo(Number(s.x), Number(s.y)); ctx.stroke(); ctx.restore();
+    }
+    for (const p of (d.pointers ?? []) as Array<Record<string, unknown>>) {
+      const x=Number(p.x??0), y=Number(p.y??0), a=Number(p.angle??0), len=Number(p.length??90), ex=x+Math.cos(a)*len, ey=y+Math.sin(a)*len;
+      ctx.save(); ctx.strokeStyle=String(p.color??"#dc2626"); ctx.fillStyle=ctx.strokeStyle; ctx.globalAlpha=Number(p.opacity??.95); ctx.lineWidth=Number(p.thickness??3); ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(ex,ey); ctx.stroke(); ctx.beginPath(); ctx.moveTo(ex,ey); ctx.lineTo(ex-Math.cos(a-.55)*12,ey-Math.sin(a-.55)*12); ctx.lineTo(ex-Math.cos(a+.55)*12,ey-Math.sin(a+.55)*12); ctx.closePath(); ctx.fill(); ctx.restore();
+    }
+    for (const label of (d.labels ?? []) as Array<Record<string, unknown>>) { ctx.save(); ctx.fillStyle=String(label.color??"#dc2626"); ctx.globalAlpha=Number(label.opacity??1); ctx.font="bold "+Number(label.fontSize??18)+"px sans-serif"; ctx.fillText(String(label.text??""),Number(label.x??0),Number(label.y??0)); ctx.restore(); }
+    for (const tick of (d.ticks ?? []) as Array<Record<string, unknown>>) { ctx.save(); ctx.fillStyle=String(tick.color??"#16a34a"); ctx.globalAlpha=Number(tick.opacity??.95); ctx.font="bold "+Math.max(22,Number(tick.size??28))+"px sans-serif"; ctx.fillText("✓",Number(tick.x??0),Number(tick.y??0)); ctx.restore(); }
+  }, [data]);
+  return <canvas ref={ref} width={1200} height={700} className="pointer-events-none absolute inset-0 h-full w-full" aria-label="Teacher marking annotations" />;
+}
+
 function MediaMarkOverlay({ data, onChange }: { data: Record<string, unknown> | null | undefined; onChange: (data: Record<string, unknown>) => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
@@ -99,6 +119,7 @@ function MediaMarkOverlay({ data, onChange }: { data: Record<string, unknown> | 
   const [color, setColor] = useState("#dc2626");
   const [width, setWidth] = useState(4);
   const [label, setLabel] = useState("");
+  const [eraseTarget, setEraseTarget] = useState<"all" | "pen" | "ticks" | "pointers" | "labels">("all");
   const [zoom, setZoom] = useState(1);
   const [undoStack, setUndoStack] = useState<Record<string, unknown>[]>([]);
   const [redoStack, setRedoStack] = useState<Record<string, unknown>[]>([]);
@@ -146,19 +167,19 @@ function MediaMarkOverlay({ data, onChange }: { data: Record<string, unknown> | 
   };
   const move=(e:React.PointerEvent<HTMLCanvasElement>)=>{
     if(!drawing.current||!last.current)return;const p=point(e);if(!p)return;
-    if(tool==="eraser"){const radius=Math.max(16,width*4);const near=(item:Record<string,unknown>)=>distanceToMarkSegment(p,item)<radius;const strokes=(data?.mediaStrokes??[]) as Array<Record<string,unknown>>;const ticks=(data?.ticks??[]) as Array<Record<string,unknown>>;const pointers=(data?.pointers??[]) as Array<Record<string,unknown>>;const labels=(data?.labels??[]) as Array<Record<string,unknown>>;onChange({...data,mediaStrokes:strokes.filter(item=>!near(item)),ticks:ticks.filter(item=>!near(item)),pointers:pointers.filter(item=>!near(item)),labels:labels.filter(item=>!near(item))});last.current=p;return;}
+    if(tool==="eraser"){const radius=Math.max(16,width*4);const near=(item:Record<string,unknown>)=>distanceToMarkSegment(p,item)<radius;const strokes=(data?.mediaStrokes??[]) as Array<Record<string,unknown>>;const ticks=(data?.ticks??[]) as Array<Record<string,unknown>>;const pointers=(data?.pointers??[]) as Array<Record<string,unknown>>;const labels=(data?.labels??[]) as Array<Record<string,unknown>>;onChange({...data,...(eraseTarget==="all"||eraseTarget==="pen"?{mediaStrokes:strokes.filter(item=>!near(item))}:{}),...(eraseTarget==="all"||eraseTarget==="ticks"?{ticks:ticks.filter(item=>!near(item))}:{}),...(eraseTarget==="all"||eraseTarget==="pointers"?{pointers:pointers.filter(item=>!near(item))}:{}),...(eraseTarget==="all"||eraseTarget==="labels"?{labels:labels.filter(item=>!near(item))}:{})});last.current=p;return;}
     if(tool==="pointer"){const id=activePointerId.current;const origin=pointerOrigin.current??p;if(id){const dx=p.x-origin.x,dy=p.y-origin.y;const pointers=(data?.pointers??[]) as Array<Record<string,unknown>>;onChange({...data,pointers:pointers.map(item=>item.id===id?{...item,x:origin.x,y:origin.y,length:Math.max(12,Math.hypot(dx,dy)),angle:Math.atan2(dy,dx)}:item)});}last.current=p;return;}
     if(tool!=="pen")return;
     const strokes=(data?.mediaStrokes??[]) as Array<Record<string,unknown>>;onChange({...data,mediaStrokes:[...strokes,{px:last.current.x,py:last.current.y,x:p.x,y:p.y,color,width,opacity:.98}]});last.current=p;
   };
   const openFullscreen=async(e:React.MouseEvent<HTMLButtonElement>)=>{const surface=e.currentTarget.closest("[data-marking-surface]") as HTMLElement|null;if(!surface)return;try{if(document.fullscreenElement)await document.exitFullscreen();else await surface.requestFullscreen();}catch{window.alert("Full-screen mode is not available in this browser.");}};
   return <div className="absolute inset-0 z-20 pointer-events-none">
-    <div className="pointer-events-auto absolute left-2 top-2 flex max-w-[calc(100%-1rem)] flex-wrap items-center gap-1 rounded-xl border bg-[#0A1931]/95 p-1 shadow-lg">
+    <div className="pointer-events-auto absolute left-2 top-2 flex max-w-[calc(100%-1rem)] flex-wrap items-center gap-1 rounded-xl border border-white/20 bg-[#0A1931]/65 backdrop-blur-md p-1 shadow-lg">
       {(["pen","tick","eraser","pointer","text"] as const).map(item=><Button key={item} type="button" size="icon" variant={tool===item?"default":"ghost"} className="h-8 w-8 text-white" aria-label={item==="tick"?"Place tick":item==="eraser"?"Erase marks":item==="pointer"?"Add directional pointer":item==="text"?"Add correction label":"Draw correction"} title={item} onClick={()=>{setTool(item);setActive(true)}}>{item==="pen"?"✎":item==="tick"?"✓":item==="eraser"?"⌫":item==="pointer"?"➤":"T"}</Button>)}
       <input aria-label="Correction ink colour" type="color" value={color} onChange={e=>setColor(e.target.value)} className="h-7 w-8" />
-      <input aria-label="Correction ink size" type="range" min="1" max="12" value={width} onChange={e=>setWidth(Number(e.target.value))} className="w-14" />
+      <input aria-label="Correction ink size" type="range" min="1" max="12" value={width} onChange={e=>setWidth(Number(e.target.value))} className="w-14" />{tool==="eraser"&&<select aria-label="Choose marks to erase" value={eraseTarget} onChange={e=>setEraseTarget(e.target.value as typeof eraseTarget)} className="h-8 max-w-28 rounded border bg-white/95 px-1 text-xs text-slate-900"><option value="all">Erase all</option><option value="pen">Pen only</option><option value="ticks">Ticks only</option><option value="pointers">Pointers only</option><option value="labels">Labels only</option></select>}
       {tool==="text"&&<input aria-label="Correction label text" value={label} onChange={e=>setLabel(e.target.value)} placeholder="Correction note" className="h-8 w-28 rounded border bg-white px-2 text-xs text-black" />}
-      <Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-white" aria-label="Undo correction" title="Undo correction" disabled={!undoStack.length} onClick={undo}>↶ Undo</Button><Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-white" aria-label="Redo correction" title="Redo correction" disabled={!redoStack.length} onClick={redo}>↷ Redo</Button><Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-white" aria-label="Zoom out" onClick={e=>adjustZoom(e,-0.25)}>−</Button><span className="self-center px-1 text-xs text-white">{Math.round(zoom*100)}%</span><Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-white" aria-label="Zoom in" onClick={e=>adjustZoom(e,0.25)}>+</Button><Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-white" onClick={openFullscreen}>Full screen</Button>
+      <Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-white" aria-label="Undo correction" title="Undo correction" disabled={!undoStack.length} onClick={undo}>↶ Undo</Button><Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-white" aria-label="Redo correction" title="Redo correction" disabled={!redoStack.length} onClick={redo}>↷ Redo</Button><Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-white" aria-label="Zoom out" onClick={e=>adjustZoom(e,-0.25)}>−</Button><span className="self-center px-1 text-xs text-white">{Math.round(zoom*100)}%</span><Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-white" aria-label="Zoom in" onClick={e=>adjustZoom(e,0.25)}>+</Button><Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-white" onClick={openFullscreen}>Full screen</Button>{(tool==="text"||tool==="tick"||tool==="pointer")&&<Button type="button" size="sm" variant="secondary" className="h-8 px-2" onClick={()=>{setTool("pen");setActive(true);}}>Stop {tool==="text"?"labelling":tool==="tick"?"ticks":"pointing"}</Button>}
       <Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-white" aria-label="Stop marking" title="Stop marking" onClick={()=>setActive(false)}>✕</Button>
     </div>
     <canvas ref={canvasRef} width={1200} height={700} className={active ? "pointer-events-auto absolute inset-0 h-full w-full touch-none" : "pointer-events-none absolute inset-0 h-full w-full"} onPointerDown={down} onPointerMove={move} onPointerUp={()=>{drawing.current=false;last.current=null;activePointerId.current=null;pointerOrigin.current=null}} onPointerCancel={()=>{drawing.current=false;last.current=null;activePointerId.current=null;pointerOrigin.current=null}} />
@@ -307,6 +328,7 @@ export default function ExerciseMarking() {
   const [aiMessage, setAiMessage] = useState("");
   const [aiState, setAiState] = useState<"idle"|"checking"|"partially_marked"|"awaiting_teacher"|"returned">("idle");
   const [loading, setLoading] = useState(false);
+  const [learnerPreviewOpen, setLearnerPreviewOpen] = useState(false);
 
   const token = localStorage.getItem("dallyletter_token");
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
@@ -426,6 +448,8 @@ export default function ExerciseMarking() {
 
   return (
     <DashboardLayout>
+      {learnerPreviewOpen && <div className="fixed inset-0 z-[70] overflow-y-auto bg-background/95 p-3 sm:p-6" role="dialog" aria-modal="true" aria-label="Learner view preview"><Card className="mx-auto min-h-[calc(100dvh-1.5rem)] w-full max-w-4xl"><CardHeader className="border-b"><div className="flex items-center justify-between gap-3"><div><CardTitle>Learner view preview</CardTitle><p className="mt-1 text-sm text-muted-foreground">Preview of the returned exercise using the current saved learner answer and teacher feedback.</p></div><Button type="button" variant="outline" onClick={()=>setLearnerPreviewOpen(false)}>Close preview</Button></div></CardHeader><CardContent className="space-y-4 p-4 sm:p-6"><div className="rounded-xl bg-amber-50 p-4 text-slate-900"><p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Returned result</p><p className="mt-1 text-2xl font-bold">{answers.reduce((sum,a)=>sum+Number(marks[a.id]??0),0).toFixed(2)} / {exercise?.totalMarks??"—"}</p><p className="text-sm">{exercise?.totalMarks ? ((answers.reduce((sum,a)=>sum+Number(marks[a.id]??0),0)/Number(exercise.totalMarks))*100).toFixed(1)+"%" : "Percentage unavailable"}</p><p className="mt-2 whitespace-pre-wrap text-sm">{overallComment}</p></div>{answers.map((a,i)=>{const q=selectedQuestion(a);return <section key={a.id} className="space-y-3 rounded-xl border p-4"><div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold">Question {q?.position!=null?q.position+1:i+1}</h3>{q?.prompt&&<div className="prose prose-sm dark:prose-invert mt-1 max-w-none" dangerouslySetInnerHTML={{__html:sanitizeRichText(q.prompt)}}/>}</div><Badge variant="secondary">{marks[a.id]??"0"} / {q?.marksAllocated??"—"}</Badge></div><div className="rounded-lg bg-muted/40 p-3 text-sm">{a.drawData?<div className="relative overflow-hidden rounded-lg bg-white"><DrawAnswer data={a.drawData} markingData={markingData[a.id]}/><ReturnedMarkingAnnotations data={markingData[a.id]}/></div>:a.mediaReference?<div className="relative overflow-hidden rounded-lg"><AuthenticatedMedia url={a.mediaReference} type={mediaTypeFor(a.mediaReference)} title={"Returned media for question "+(i+1)}/><ReturnedMarkingAnnotations data={markingData[a.id]}/></div>:a.textAnswer||a.selectedValue||"No answer submitted"}</div>{markingData[a.id]&&<div className="rounded-lg border p-3 text-sm"><strong>Teacher annotations</strong><p className="mt-1">{((markingData[a.id].labels??[]) as Array<Record<string,unknown>>).map(x=>String(x.text??"")).filter(Boolean).join(" · ")||"Annotations saved with this result."}</p></div>}{notes[a.id]&&<div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-950"><strong>Teacher feedback</strong><p className="mt-1 whitespace-pre-wrap">{notes[a.id]}</p></div>}</section>})}</CardContent></Card></div>}
+
       <div className="mx-auto max-w-5xl space-y-5 p-4">
         <Card>
           <CardHeader>
@@ -482,7 +506,7 @@ export default function ExerciseMarking() {
               {answers.map((a, i) => {
                 const q = selectedQuestion(a);
                 return (
-                  <div key={a.id} className="relative space-y-3 rounded-xl border p-4"><FloatingMark value={marks[a.id] ?? "0"} max={undefined} onChange={value=>setMarks(m=>({...m,[a.id]:value}))}/>
+                  <div key={a.id} className="relative space-y-3 rounded-xl border p-4">{selectedSubmission.status === "marked" ? <Badge className="absolute right-3 top-3 gap-1 bg-emerald-600 text-white"><CheckCircle2 className="h-3.5 w-3.5" />Mark submitted</Badge> : <FloatingMark value={marks[a.id] ?? "0"} max={undefined} onChange={value=>setMarks(m=>({...m,[a.id]:value}))}/>}
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
                         <div className="font-medium">Question {q?.position != null ? q.position + 1 : i + 1}</div>
@@ -557,7 +581,7 @@ export default function ExerciseMarking() {
                 <div className="mt-3 flex flex-wrap gap-2 text-xs" aria-label="AI marking workflow state"><Badge variant={aiState==="checking"?"default":"outline"}>Checking</Badge><Badge variant={aiState==="awaiting_teacher"?"default":"outline"}>Ready</Badge><Badge variant={aiState==="partially_marked"?"default":"outline"}>Partially marked</Badge><Badge variant={aiState==="awaiting_teacher"||aiState==="partially_marked"?"default":"outline"}>Awaiting teacher</Badge><Badge variant={selectedSubmission.status==="marked"?"default":"outline"}>Returned</Badge></div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 border-t pt-4">
+              <div className="flex flex-wrap items-center gap-3 border-t pt-4"><Button type="button" variant="outline" onClick={()=>setLearnerPreviewOpen(true)}>Preview as learner</Button>
                 <Button onClick={save} disabled={!answers.length || selectedSubmission.status === "marked"}>
                   <CheckCircle2 className="mr-2 h-4 w-4" />
                   Save marks & return result

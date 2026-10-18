@@ -91,7 +91,17 @@ router.get("/study-groups", requireAuth, async (req, res): Promise<void> => {
       ...g,
       memberCount: members.length,
       isMember,
-      members: isMember || canManage ? members : [],
+      // Non-members get only a safe public profile preview: never expose email, phone,
+      // moderation controls, payment details, or private account metadata.
+      members: isMember || canManage ? members : members.map(member => ({
+        id: member.id,
+        name: member.name,
+        role: member.role,
+        isPrefect: member.isPrefect,
+        avatarUrl: member.avatarUrl,
+        isManager: false,
+        control: null,
+      })),
       settings: settings ?? { groupId: g.id, rules: null, announcementsOnly: false, allowPolls: true, allowMedia: true, maxMembers: 1024 },
       createdAt: g.createdAt.toISOString(),
     };

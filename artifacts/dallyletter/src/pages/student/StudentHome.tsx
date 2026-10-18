@@ -24,16 +24,29 @@ export default function StudentHome() {
 
   const [assignments, setAssignments] = useState<any[]>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(true);
+  const [assignmentsError, setAssignmentsError] = useState(false);
+
+  const loadAssignments = async (showLoader = true) => {
+    if (showLoader) setAssignmentsLoading(true);
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const response = await fetch(getApiUrl("/api/assignments"), { headers: token ? { Authorization: "Bearer " + token } : undefined, cache: "no-store" });
+      if (!response.ok) throw new Error("Assignments request failed (" + response.status + ")");
+      const data = await response.json();
+      setAssignments(Array.isArray(data) ? data.slice(0, 3) : []);
+      setAssignmentsError(false);
+    } catch { setAssignmentsError(true); }
+    finally { setAssignmentsLoading(false); }
+  };
 
   useEffect(() => {
     let active = true;
-    const token = localStorage.getItem("dallyletter_token");
-    fetch(getApiUrl("/api/assignments"), { headers: token ? { Authorization: `Bearer ${token}` } : undefined })
-      .then(response => { if (!response.ok) throw new Error("Assignments unavailable"); return response.json(); })
-      .then(data => { if (active) setAssignments(Array.isArray(data) ? data.slice(0, 3) : []); })
-      .catch(() => { if (active) setAssignments([]); })
-      .finally(() => { if (active) setAssignmentsLoading(false); });
-    return () => { active = false; };
+    const run = async () => { if (active) await loadAssignments(false); };
+    void loadAssignments(true);
+    const interval = window.setInterval(run, 30000);
+    const onFocus = () => { void run(); };
+    window.addEventListener("focus", onFocus);
+    return () => { active = false; window.clearInterval(interval); window.removeEventListener("focus", onFocus); };
   }, []);
 
   const [lessonTopic, setLessonTopic] = useState("");
@@ -174,6 +187,7 @@ export default function StudentHome() {
           </CardHeader>
           <CardContent>
             {assignmentsLoading ? <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading assignments…</div>
+              : assignmentsError ? <div className="flex flex-col items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"><p>Assignments could not be loaded. Check your connection and retry.</p><Button size="sm" variant="outline" onClick={() => void loadAssignments(true)}>Retry assignments</Button></div>
               : assignments.length === 0 ? <div className="py-5 text-center text-sm text-muted-foreground bg-muted/30 rounded-lg border border-dashed">No assignments available right now.</div>
               : <div className="divide-y">{assignments.map((assignment: any) => {
                 const due = assignment.dueDate ? new Date(assignment.dueDate) : null;
