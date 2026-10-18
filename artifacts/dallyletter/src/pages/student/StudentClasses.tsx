@@ -20,7 +20,8 @@ function TeacherReplyPreview({ teacherId, handRaiseId }: { teacherId: number; ha
     const load = async () => {
       const token = localStorage.getItem("dallyletter_token");
       try {
-        if (!handRaiseId) { if (active) setLatest(null); return; }\n        const response = await fetch(getApiUrl(`/api/messages?recipientId=${teacherId}&handRaiseId=${handRaiseId}`), { headers: token ? { Authorization: `Bearer ${token}` } : {} , cache: "no-store" });
+        if (!handRaiseId) { if (active) setLatest(null); return; }
+        const response = await fetch(getApiUrl(`/api/messages?recipientId=${teacherId}&handRaiseId=${handRaiseId}`), { headers: token ? { Authorization: `Bearer ${token}` } : {} , cache: "no-store" });
         if (!response.ok) return;
         const messages = await response.json() as TeacherReplyMessage[];
         const reply = messages.filter(message => message.senderId === teacherId && (message.senderRole === "teacher" || message.senderRole === "owner" || message.senderRole === "admin")).at(-1) ?? null;
