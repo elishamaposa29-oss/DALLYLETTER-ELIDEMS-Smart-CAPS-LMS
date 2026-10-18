@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import multer from "multer";
 import { and, eq, inArray, like } from "drizzle-orm";
-import { db, handRaisesTable, activityLogTable, classesTable } from "@workspace/db";
+import { db, handRaisesTable, activityLogTable, classesTable, messagesTable } from "@workspace/db";
 import { RaiseHandBody, ListHandRaisesQueryParams } from "@workspace/api-zod";
 import { requireAuth, isOwnerRole } from "../lib/auth-middleware";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, removeStoredMedia } from "../lib/media-storage";
