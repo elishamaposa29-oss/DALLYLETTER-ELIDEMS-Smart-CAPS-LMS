@@ -54,7 +54,7 @@ export function InstallBanner() {
               </button>
             ) : (
               <button
-                onClick={() => { if (manualInstall) setShowAndroidGuide(true); else void install().then(outcome => { if (outcome === "manual") setShowAndroidGuide(true); }).catch(() => setShowAndroidGuide(true)); }}
+                onClick={() => { if (manualInstall) setShowAndroidGuide(true); else void install().catch(() => setShowAndroidGuide(true)); }}
                 className="flex-1 bg-amber-500 hover:bg-amber-400 text-white font-semibold text-sm py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"
               >
                 <PlusSquare className="h-4 w-4" />
