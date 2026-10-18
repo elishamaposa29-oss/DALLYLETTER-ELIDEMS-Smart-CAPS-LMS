@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Plus, Play, Square, Trash2, BarChart3, Sparkles, ClipboardList, CheckCircle } from "lucide-react";
+import { Loader2, Plus, Play, Square, Trash2, BarChart3, Sparkles, ClipboardList, CheckCircle, Eye } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
