@@ -221,7 +221,7 @@ export default function StudentStudyGroups() {
         if (profileCoverFile) {
           const formData = new FormData(); formData.append("file", profileCoverFile);
           const token = localStorage.getItem("dallyletter_token");
-          const upload = await fetch(getApiUrl("/api/lessons/media"), { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData });
+          const upload = await fetch(getApiUrl(`/api/lessons/media?groupId=${settings.groupId}`), { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData });
           const uploaded = await upload.json().catch(() => null) as { mediaUrl?: string; error?: string } | null;
           if (!upload.ok || !uploaded?.mediaUrl) throw new Error(uploaded?.error ?? "Group cover upload failed.");
           coverImageUrl = uploaded.mediaUrl;
