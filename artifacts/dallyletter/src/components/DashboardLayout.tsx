@@ -47,7 +47,9 @@ function AuthenticatedAvatar({ url, name }: { url: string; name: string }) {
 function ProfileImageUpload() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const [uploadError, setUploadError] = useState("");
   const upload = async (file?: File) => {
+    setUploadError("");
     if (!file) return;
     if (!["image/jpeg","image/png","image/webp"].includes(file.type)) { window.alert("Choose a JPG, PNG, or WebP image."); return; }
     if (file.size > 8 * 1024 * 1024) { window.alert("Choose an image smaller than 8 MB."); return; }
@@ -63,10 +65,10 @@ function ProfileImageUpload() {
       const result=await response.json().catch(()=>({}));
       if(!response.ok) throw new Error(result.error||"Upload failed");
       window.location.reload();
-    } catch(error) { window.alert(error instanceof Error?error.message:"Profile image upload failed"); }
+    } catch(error) { setUploadError(error instanceof Error ? error.message : "Profile image upload failed. Check your connection and retry."); }
     finally { setBusy(false); if(inputRef.current) inputRef.current.value=""; }
   };
-  return <><input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" aria-label="Choose profile image" onChange={e=>void upload(e.target.files?.[0])}/><button type="button" disabled={busy} onClick={()=>inputRef.current?.click()} className="mt-1 inline-flex items-center gap-1 text-[11px] text-amber-300 hover:text-white disabled:opacity-50"><ImagePlus className="h-3 w-3"/>{busy?"Saving image…":"Change photo"}</button></>;
+  return <div className="mt-1"><input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" aria-label="Choose profile image" onChange={e=>void upload(e.target.files?.[0])}/><button type="button" disabled={busy} onClick={()=>inputRef.current?.click()} className="inline-flex min-h-8 items-center gap-1 rounded-md border border-amber-400/30 px-2 text-xs font-medium text-amber-200 hover:bg-white/10 disabled:opacity-50"><ImagePlus className="h-3.5 w-3.5"/>{busy?"Saving image…":"Upload profile photo"}</button>{uploadError && <p role="alert" className="mt-1 max-w-56 text-[11px] text-rose-300">{uploadError}</p>}</div>;
 }
 
 function PushDeliveryTest() {
