@@ -308,6 +308,7 @@ export default function ExerciseMarking() {
   const [aiMessage, setAiMessage] = useState("");
   const [aiState, setAiState] = useState<"idle"|"checking"|"partially_marked"|"awaiting_teacher"|"returned">("idle");
   const [loading, setLoading] = useState(false);
+  const [learnerPreviewOpen, setLearnerPreviewOpen] = useState(false);
 
   const token = localStorage.getItem("dallyletter_token");
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
@@ -427,6 +428,8 @@ export default function ExerciseMarking() {
 
   return (
     <DashboardLayout>
+      {learnerPreviewOpen && <div className="fixed inset-0 z-[70] overflow-y-auto bg-background/95 p-3 sm:p-6" role="dialog" aria-modal="true" aria-label="Learner view preview"><Card className="mx-auto min-h-[calc(100dvh-1.5rem)] w-full max-w-4xl"><CardHeader className="border-b"><div className="flex items-center justify-between gap-3"><div><CardTitle>Learner view preview</CardTitle><p className="mt-1 text-sm text-muted-foreground">Preview of the returned exercise using the current saved learner answer and teacher feedback.</p></div><Button type="button" variant="outline" onClick={()=>setLearnerPreviewOpen(false)}>Close preview</Button></div></CardHeader><CardContent className="space-y-4 p-4 sm:p-6"><div className="rounded-xl bg-amber-50 p-4 text-slate-900"><p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Returned result</p><p className="mt-1 text-2xl font-bold">{answers.reduce((sum,a)=>sum+Number(marks[a.id]??0),0).toFixed(2)} / {exercise?.totalMarks??"—"}</p><p className="text-sm">{exercise?.totalMarks ? ((answers.reduce((sum,a)=>sum+Number(marks[a.id]??0),0)/Number(exercise.totalMarks))*100).toFixed(1)+"%" : "Percentage unavailable"}</p><p className="mt-2 whitespace-pre-wrap text-sm">{overallComment}</p></div>{answers.map((a,i)=>{const q=selectedQuestion(a);return <section key={a.id} className="space-y-3 rounded-xl border p-4"><div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold">Question {q?.position!=null?q.position+1:i+1}</h3>{q?.prompt&&<div className="prose prose-sm dark:prose-invert mt-1 max-w-none" dangerouslySetInnerHTML={{__html:sanitizeRichText(q.prompt)}}/>}</div><Badge variant="secondary">{marks[a.id]??"0"} / {q?.marksAllocated??"—"}</Badge></div><div className="rounded-lg bg-muted/40 p-3 text-sm">{a.drawData?<DrawAnswer data={a.drawData} markingData={markingData[a.id]}/>:a.mediaReference?<AuthenticatedMedia url={a.mediaReference} type={mediaTypeFor(a.mediaReference)} title={"Returned media for question "+(i+1)}/>:a.textAnswer||a.selectedValue||"No answer submitted"}</div>{markingData[a.id]&&<div className="rounded-lg border p-3 text-sm"><strong>Teacher annotations</strong><p className="mt-1">{((markingData[a.id].labels??[]) as Array<Record<string,unknown>>).map(x=>String(x.text??"")).filter(Boolean).join(" · ")||"Annotations saved with this result."}</p></div>}{notes[a.id]&&<div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-950"><strong>Teacher feedback</strong><p className="mt-1 whitespace-pre-wrap">{notes[a.id]}</p></div>}</section>})}</CardContent></Card></div>}
+
       <div className="mx-auto max-w-5xl space-y-5 p-4">
         <Card>
           <CardHeader>
@@ -483,7 +486,7 @@ export default function ExerciseMarking() {
               {answers.map((a, i) => {
                 const q = selectedQuestion(a);
                 return (
-                  <div key={a.id} className="relative space-y-3 rounded-xl border p-4"><FloatingMark value={marks[a.id] ?? "0"} max={undefined} onChange={value=>setMarks(m=>({...m,[a.id]:value}))}/>
+                  <div key={a.id} className="relative space-y-3 rounded-xl border p-4">{selectedSubmission.status === "marked" ? <Badge className="absolute right-3 top-3 gap-1 bg-emerald-600 text-white"><CheckCircle2 className="h-3.5 w-3.5" />Mark submitted</Badge> : <FloatingMark value={marks[a.id] ?? "0"} max={undefined} onChange={value=>setMarks(m=>({...m,[a.id]:value}))}/>
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
                         <div className="font-medium">Question {q?.position != null ? q.position + 1 : i + 1}</div>
@@ -558,7 +561,7 @@ export default function ExerciseMarking() {
                 <div className="mt-3 flex flex-wrap gap-2 text-xs" aria-label="AI marking workflow state"><Badge variant={aiState==="checking"?"default":"outline"}>Checking</Badge><Badge variant={aiState==="awaiting_teacher"?"default":"outline"}>Ready</Badge><Badge variant={aiState==="partially_marked"?"default":"outline"}>Partially marked</Badge><Badge variant={aiState==="awaiting_teacher"||aiState==="partially_marked"?"default":"outline"}>Awaiting teacher</Badge><Badge variant={selectedSubmission.status==="marked"?"default":"outline"}>Returned</Badge></div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 border-t pt-4">
+              <div className="flex flex-wrap items-center gap-3 border-t pt-4"><Button type="button" variant="outline" onClick={()=>setLearnerPreviewOpen(true)}>Preview as learner</Button>
                 <Button onClick={save} disabled={!answers.length || selectedSubmission.status === "marked"}>
                   <CheckCircle2 className="mr-2 h-4 w-4" />
                   Save marks & return result
