@@ -57,7 +57,7 @@ jobs:
       - name: Generate version 1.0.1 for upgrade test
         working-directory: artifacts/dallyletter-mobile
         run: |
-          node -e 'const fs=require("fs"); const p="app.json"; const j=JSON.parse(fs.readFileSync(p,"utf8")); j.expo.version="1.0.1"; j.expo.android.versionCode=2; fs.writeFileSync(p, JSON.stringify(j,null,2)+"\\n");'
+          node -e 'const fs=require("fs"); const p="app.json"; const j=JSON.parse(fs.readFileSync(p,"utf8")); j.expo.version="1.0.1"; j.expo.android.versionCode=2; fs.writeFileSync(p, JSON.stringify(j,null,2)+"\n");'
           pnpm exec expo prebuild --platform android --no-install
       - name: Build update APK
         working-directory: artifacts/dallyletter-mobile/android
@@ -92,8 +92,8 @@ jobs:
             trap diagnostics EXIT
 
             adb wait-for-device
-            timeout 300 sh -c 'until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d "\\r")" = "1" ]; do sleep 5; done'
-            test "$(adb shell getprop sys.boot_completed | tr -d "\\r")" = "1"
+            timeout 300 sh -c 'until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d "\r")" = "1" ]; do sleep 5; done'
+            test "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1"
 
             # Wait for Android's package manager to become responsive, not just boot_completed.
             ready=0
@@ -115,7 +115,7 @@ jobs:
             adb shell pm path com.dallyletter.elidems | grep -q "package:"
             adb shell monkey -p com.dallyletter.elidems 1
             sleep 8
-            if adb logcat -d -t 8000 | awk '/FATAL EXCEPTION/ { in_exception=1; count=0 } in_exception { if (/Process: com\\.dallyletter\\.elidems/) found=1; if (++count > 20) in_exception=0 } END { exit !found }'; then
+            if adb logcat -d -t 8000 | awk '/FATAL EXCEPTION/ { in_exception=1; count=0 } in_exception { if (/Process: com\.dallyletter\.elidems/) found=1; if (++count > 20) in_exception=0 } END { exit !found }'; then
               echo "Android app crashed after first install"
               exit 1
             fi
@@ -123,10 +123,10 @@ jobs:
             # Upgrade the installed package in place; do not uninstall between versions.
             adb install -r artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk
             adb shell pm path com.dallyletter.elidems | grep -q "package:"
-            adb shell dumpsys package com.dallyletter.elidems | grep -E "versionCode=2|versionName=1\\.0\\.1"
+            adb shell dumpsys package com.dallyletter.elidems | grep -E "versionCode=2|versionName=1\.0\.1"
             adb shell monkey -p com.dallyletter.elidems 1
             sleep 8
-            if adb logcat -d -t 8000 | awk '/FATAL EXCEPTION/ { in_exception=1; count=0 } in_exception { if (/Process: com\\.dallyletter\\.elidems/) found=1; if (++count > 20) in_exception=0 } END { exit !found }'; then
+            if adb logcat -d -t 8000 | awk '/FATAL EXCEPTION/ { in_exception=1; count=0 } in_exception { if (/Process: com\.dallyletter\.elidems/) found=1; if (++count > 20) in_exception=0 } END { exit !found }'; then
               echo "Android app crashed during upgrade smoke test"
               exit 1
             fi
