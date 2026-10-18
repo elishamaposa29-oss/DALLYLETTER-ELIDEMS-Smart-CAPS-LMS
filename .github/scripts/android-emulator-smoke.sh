@@ -23,21 +23,24 @@ timeout 120 adb wait-for-device
 
 # Emulator startup can be slow on hosted runners. Bound each adb call separately,
 # report progress, and allow the same 15-minute boot window configured on the action.
-step "wait for Android boot completion (up to 900 seconds)"
+step "verify Android boot completion (bounded to 900 seconds)"
+# The emulator action already waits for boot; bound adb checks so slow calls cannot extend the deadline.
+boot_deadline=$((SECONDS + 900))
 boot_ready=0
-for attempt in $(seq 1 90); do
-  if boot_state="$(timeout 15 adb shell getprop sys.boot_completed 2>/dev/null | tr -d "\r")" && [ "$boot_state" = "1" ]; then
+boot_state=""
+while [ "$SECONDS" -lt "$boot_deadline" ]; do
+  boot_state="$(timeout 10 adb shell getprop sys.boot_completed 2>/dev/null | tr -d "\r" || true)"
+  if [ "$boot_state" = "1" ]; then
     boot_ready=1
     break
   fi
-  if [ $((attempt % 6)) -eq 0 ]; then
-    echo "Android boot still pending after $((attempt * 10)) seconds (attempt $attempt/90)"
-    adb devices -l || true
-  fi
-  sleep 10
+  remaining=$((boot_deadline - SECONDS))
+  if [ "$remaining" -le 0 ]; then break; fi
+  echo "Android boot not confirmed yet (sys.boot_completed=$boot_state, ${remaining}s remaining)"
+  sleep "$((remaining < 5 ? remaining : 5))"
 done
 if [ "$boot_ready" -ne 1 ]; then
-  echo "::error::Android did not report sys.boot_completed=1 within 900 seconds"
+  echo "::error::Android did not report sys.boot_completed=1 within the 900-second verification window"
   exit 1
 fi
 step "verify Android boot complete"
