@@ -130,7 +130,7 @@ export default function StudentStudyGroups() {
 
   const refresh = () => void queryClient.invalidateQueries({ queryKey: getListStudyGroupsQueryKey() });
   const canCreateGroup = user?.role === "owner" || user?.role === "teacher" || user?.isManager === true || user?.isPrefect === true;
-  const isPlatformOwner = user?.role === "owner" || user?.role === "admin";
+  const isPlatformOwner = user?.role === "owner" || (user?.role as string | undefined) === "admin";
   const isManager = isPlatformOwner || user?.isManager === true;
   const groupSlides = Array.from(groups.reduce((slides, group) => {
     const key = [group.grade || "All grades", group.subject || "Other subject", group.topic || "General"].join(" · ");
