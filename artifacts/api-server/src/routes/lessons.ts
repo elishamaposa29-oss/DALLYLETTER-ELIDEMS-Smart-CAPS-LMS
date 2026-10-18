@@ -124,7 +124,7 @@ function normalizeYouTubeUrl(value: string): string {
   }
 }
 
-router.post("/lessons/media", requireAuth, (req, res, next): void => {
+const authorizeLessonMediaUpload = (req: Request, res: Response, next: NextFunction): void => {
   const user = req.currentUser!;
   if (canManageAcademicContent(user)) { next(); return; }
   const groupId = Number(req.query.groupId);
@@ -133,7 +133,8 @@ router.post("/lessons/media", requireAuth, (req, res, next): void => {
     if (group && Number(group.creatorId) === Number(user.id)) next();
     else res.status(403).json({ error: "Only the group creator or authorized academic staff can upload this group cover" });
   }).catch(next);
-
+};
+router.post("/lessons/media", requireAuth, authorizeLessonMediaUpload, (req, res, next): void => {
   upload.single("file")(req, res, (error) => {
     if (error instanceof multer.MulterError) {
       res.status(400).json({ error: "A supported media file up to 250 MB is required" });
