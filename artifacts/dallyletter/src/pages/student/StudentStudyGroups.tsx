@@ -241,8 +241,10 @@ export default function StudentStudyGroups() {
 
   const uploadGroupCover = async (groupId: number, file?: File) => {
     if (!file) return;
-    if (!isPlatformOwner) {
-      toast({ variant: "destructive", title: "Upload not permitted", description: "Only a platform owner can change group cover images." });
+    const targetGroup = groups.find(item => item.id === groupId);
+    const canEditCover = isPlatformOwner || isManager || targetGroup?.creatorId === user?.id;
+    if (!canEditCover) {
+      toast({ variant: "destructive", title: "Upload not permitted", description: "The group creator or an authorized manager can change this cover." });
       return;
     }
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
@@ -411,7 +413,7 @@ export default function StudentStudyGroups() {
               const groupSettings = group.settings ?? defaultSettings(group.id);
               return (
                 <Card key={group.id} className="relative flex h-full w-[min(88vw,360px)] shrink-0 snap-start flex-col overflow-hidden transition-shadow hover:shadow-md">
-                  <CardHeader>
+                  <CardHeader className="relative z-10 text-white">
                     <AuthenticatedGroupCover url={group.coverImageUrl || ""} name={group.name} />
                     <div className="flex items-start justify-between gap-2">
                       <Badge variant="secondary">{group.subject}</Badge>
