@@ -471,7 +471,7 @@ export default function StudentStudyGroups() {
                       </div>
                     )}
                   </CardContent>
-                  <CardFooter className="flex flex-wrap gap-2 border-t pt-4">
+                  <CardFooter className="relative z-10 flex flex-wrap gap-2 border-t border-white/20 bg-black/20 pt-4">
                     {user?.role === "owner" && <Button type="button" variant="outline" size="sm" className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/10" disabled={busyGroup === group.id} onClick={() => {
                       if (!window.confirm(`Permanently delete "${group.name}" and its members, messages, polls, settings and moderation records from Dallyletter? This cannot be undone.`)) return;
                       setBusyGroup(group.id);
