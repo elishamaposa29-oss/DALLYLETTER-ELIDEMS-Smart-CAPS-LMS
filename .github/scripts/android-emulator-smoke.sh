@@ -72,7 +72,7 @@ timeout 30 adb shell pm path com.dallyletter.elidems | grep -q "package:"
 timeout 45 adb shell monkey -p com.dallyletter.elidems 1
 sleep 8
 step "check launch crash log"
-if timeout 30 adb logcat -d -t 8000 | awk '/FATAL EXCEPTION/ { in_exception=1; count=0 } in_exception { if (/Process: com\\.dallyletter\\.elidems/) found=1; if (++count > 20) in_exception=0 } END { exit !found }'; then
+if timeout 30 adb logcat -d -t 8000 | awk '/FATAL EXCEPTION/ { in_exception=1; count=0 } in_exception { if (/Process: com\.dallyletter\.elidems/) found=1; if (++count > 20) in_exception=0 } END { exit !found }'; then
   echo "Android app crashed after first install"
   exit 1
 fi
@@ -81,10 +81,10 @@ step "upgrade to version 1.0.1 without uninstalling"
 # Upgrade the installed package in place; do not uninstall between versions.
 timeout 180 adb install -r artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk
 timeout 30 adb shell pm path com.dallyletter.elidems | grep -q "package:"
-timeout 30 adb shell dumpsys package com.dallyletter.elidems | grep -E "versionCode=2|versionName=1\\.0\\.1"
+timeout 30 adb shell dumpsys package com.dallyletter.elidems | grep -E "versionCode=2|versionName=1\.0\.1"
 timeout 45 adb shell monkey -p com.dallyletter.elidems 1
 sleep 8
-if timeout 30 adb logcat -d -t 8000 | awk '/FATAL EXCEPTION/ { in_exception=1; count=0 } in_exception { if (/Process: com\\.dallyletter\\.elidems/) found=1; if (++count > 20) in_exception=0 } END { exit !found }'; then
+if timeout 30 adb logcat -d -t 8000 | awk '/FATAL EXCEPTION/ { in_exception=1; count=0 } in_exception { if (/Process: com\.dallyletter\.elidems/) found=1; if (++count > 20) in_exception=0 } END { exit !found }'; then
   echo "Android app crashed during upgrade smoke test"
   exit 1
 fi
