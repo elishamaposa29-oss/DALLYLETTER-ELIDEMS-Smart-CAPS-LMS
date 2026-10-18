@@ -55,7 +55,7 @@ router.get("/push/test/:id", requireAuth, async (req, res): Promise<void> => {
   );
   if (!result.rows[0]) { res.status(404).json({ error: "Push test not found" }); return; }
   const row = result.rows[0];
-  res.json({ id: Number(row.id), acceptedByPushService: Boolean(row.push_sent_at), attempts: Number(row.push_attempts || 0), nextAttemptAt: row.push_next_attempt_at, lastError: row.push_last_error ? String(row.push_last_error).slice(0, 180) : null });
+  res.json({ id: Number(row.id), acceptedByPushService: Boolean(row.push_sent_at) && !row.push_last_error, dispatchComplete: Boolean(row.push_sent_at), attempts: Number(row.push_attempts || 0), nextAttemptAt: row.push_next_attempt_at, lastError: row.push_last_error ? String(row.push_last_error).slice(0, 180) : null });
 });
 
 export default router;
