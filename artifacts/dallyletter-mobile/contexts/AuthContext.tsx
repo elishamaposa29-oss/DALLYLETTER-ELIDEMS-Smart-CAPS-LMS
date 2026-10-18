@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { DeviceEventEmitter } from "react-native";
 import { setAuthTokenGetter } from "@workspace/api-client-react";
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 
@@ -72,6 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ]);
     setToken(newToken);
     setUser(newUser);
+    DeviceEventEmitter.emit("dallyletter-auth-changed");
   }, []);
 
   const logout = useCallback(async () => {
@@ -81,6 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ]);
     setToken(null);
     setUser(null);
+    DeviceEventEmitter.emit("dallyletter-auth-changed");
   }, []);
 
   return (
