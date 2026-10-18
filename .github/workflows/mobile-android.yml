@@ -63,10 +63,10 @@ jobs:
       - name: Boot Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: 34
           target: google_apis
           arch: x86_64
-          profile: pixel_2
+          profile: pixel_2\n          cores: 2\n          emulator-boot-timeout: 900\n          disable-animations: true
           script: |
             adb install /tmp/dallyletter-v1.apk
             adb shell monkey -p com.dallyletter.elidems 1
