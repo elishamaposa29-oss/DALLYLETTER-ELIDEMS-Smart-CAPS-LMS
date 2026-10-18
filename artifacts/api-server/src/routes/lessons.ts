@@ -100,7 +100,24 @@ function normalizeYouTubeUrl(value: string): string {
   }
 }
 
-router.post("/lessons/media", requireAuth, requireTeacherOrOwner, (req, res, next): void => {
+const authorizeMediaUpload = (req: any, res: any, next: any): void => {
+  const user = req.currentUser;
+  if (!user) { res.status(401).json({ error: "Sign in required" }); return; }
+  if (req.query.purpose === "group-cover") {
+    const groupId = Number(req.query.groupId);
+    if (Number.isInteger(groupId) && groupId > 0) {
+      void db.select({ creatorId: studyGroupsTable.creatorId }).from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId)).then(([group]) => {
+        if (group && (Number(group.creatorId) === Number(user.id) || user.isManager === true || user.role === "owner" || user.role === "platform_owner")) next();
+        else res.status(403).json({ error: "Only this group’s creator, a manager, or the platform owner can change its cover" });
+      }).catch(next);
+      return;
+    }
+    if (user.role === "owner" || user.role === "platform_owner" || user.isManager === true || user.isPrefect === true || user.role === "teacher") { next(); return; }
+    res.status(403).json({ error: "Only users authorized to create groups can upload a group cover" }); return;
+  }
+  requireTeacherOrOwner(req, res, next);
+};
+router.post("/lessons/media", requireAuth, authorizeMediaUpload, (req, res, next): void => {
   upload.single("file")(req, res, (error) => {
     if (error instanceof multer.MulterError) {
       res.status(400).json({ error: "A supported media file up to 250 MB is required" });
