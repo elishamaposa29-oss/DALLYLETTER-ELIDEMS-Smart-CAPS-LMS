@@ -8,6 +8,7 @@ import {
   PromoteUserParams, PromoteUserBody,
 } from "@workspace/api-zod";
 import { requireAuth, requireOwner, canAccessManager } from "../lib/auth-middleware";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, persistUploadedMedia, removeStoredMedia } from "../lib/media-storage";
 
 const router: IRouter = Router();
 
@@ -84,9 +85,9 @@ router.patch("/users/:id", requireAuth, async (req, res): Promise<void> => {
   if (body.data.subject != null) updates.subject = body.data.subject;
   if (body.data.avatarUrl != null) {
     const avatarUrl = body.data.avatarUrl.trim();
-    const isInlineImage = avatarUrl.length <= 180_000 && /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(avatarUrl);
+    const isMediaPath = avatarUrl.length <= 2048 && /^\/api\/lessons\/media\/[a-f0-9-]{36}\?type=image\/(?:jpeg|png|webp)$/i.test(avatarUrl);
     const isHttpsImage = avatarUrl.length <= 2048 && /^https:\/\//i.test(avatarUrl);
-    if (!isInlineImage && !isHttpsImage) { res.status(400).json({ error: "Profile images must be JPG, PNG, or WebP up to 180 KB, or an HTTPS image URL." }); return; }
+    if (!isMediaPath && !isHttpsImage) { res.status(400).json({ error: "Profile images must be uploaded through the secure avatar endpoint or use an HTTPS image URL." }); return; }
     updates.avatarUrl = avatarUrl;
   }
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, params.data.id)).returning(safeUserFields);
@@ -145,6 +146,42 @@ router.patch("/users/:id/promote-manager", requireAuth, requireOwner, async (req
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, id)).returning(safeUserFields);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   res.json({ ...user, createdAt: user.createdAt.toISOString() });
+});
+
+const avatarUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, callback) => {
+      void ensureMediaDirectory().then(() => callback(null, getMediaDirectory())).catch(error => callback(error as Error, ""));
+    },
+    filename: (_req, _file, callback) => callback(null, createMediaStorageKey()),
+  }),
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (_req, file, callback) => callback(null, ["image/jpeg", "image/png", "image/webp"].includes(file.mimetype)),
+});
+
+router.post("/users/me/avatar", requireAuth, (req, res, next): void => {
+  avatarUpload.single("file")(req, res, error => {
+    void (async () => {
+      if (error instanceof multer.MulterError) { res.status(400).json({ error: "Choose a JPG, PNG, or WebP image up to 8 MB" }); return; }
+      if (error) { next(error); return; }
+      const file = req.file;
+      if (!file) { res.status(415).json({ error: "Choose a JPG, PNG, or WebP image" }); return; }
+      const actor = req.currentUser!;
+      try {
+        const [before] = await db.select({ avatarUrl: usersTable.avatarUrl }).from(usersTable).where(eq(usersTable.id, actor.id));
+        await persistUploadedMedia(file.filename, file.mimetype, file.path);
+        const avatarUrl = "/api/lessons/media/" + file.filename + "?type=" + encodeURIComponent(file.mimetype);
+        const [user] = await db.update(usersTable).set({ avatarUrl }).where(eq(usersTable.id, actor.id)).returning(safeUserFields);
+        if (!user) { await removeStoredMedia(file.filename); res.status(404).json({ error: "User not found" }); return; }
+        const oldKey = typeof before?.avatarUrl === "string" ? before.avatarUrl.match(/^\/api\/lessons\/media\/([a-f0-9-]{36})\?type=image\/(?:jpeg|png|webp)$/i)?.[1] : null;
+        if (oldKey && oldKey !== file.filename) await removeStoredMedia(oldKey).catch(() => undefined);
+        res.status(200).json({ ...user, createdAt: user.createdAt.toISOString() });
+      } catch {
+        await removeStoredMedia(file.filename).catch(() => undefined);
+        if (!res.headersSent) res.status(503).json({ error: "Persistent profile image storage is unavailable. Please retry." });
+      }
+    })().catch(() => { if (!res.headersSent) res.status(500).json({ error: "Profile image upload failed" }); });
+  });
 });
 
 const teacherDocumentUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
