@@ -170,7 +170,7 @@ router.post("/users/me/avatar", requireAuth, (req, res, next): void => {
       try {
         const [before] = await db.select({ avatarUrl: usersTable.avatarUrl }).from(usersTable).where(eq(usersTable.id, actor.id));
         await persistUploadedMedia(file.filename, file.mimetype, file.path);
-        const avatarUrl = "/api/lessons/media/" + file.filename + "?type=" + encodeURIComponent(file.mimetype);
+        const avatarUrl = "/api/lessons/media/" + file.filename + "?type=" + file.mimetype;
         const [user] = await db.update(usersTable).set({ avatarUrl }).where(eq(usersTable.id, actor.id)).returning(safeUserFields);
         if (!user) { await removeStoredMedia(file.filename); res.status(404).json({ error: "User not found" }); return; }
         const oldKey = typeof before?.avatarUrl === "string" ? before.avatarUrl.match(/^\/api\/lessons\/media\/([a-f0-9-]{36})\?type=image\/(?:jpeg|png|webp)$/i)?.[1] : null;
