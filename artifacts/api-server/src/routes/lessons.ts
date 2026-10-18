@@ -6,7 +6,7 @@ import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import multer from "multer";
-import { db, lessonsTable, activityLogTable, followsTable, notificationPreferencesTable, notificationsTable } from "@workspace/db";
+import { db, lessonsTable, activityLogTable, followsTable, notificationPreferencesTable, notificationsTable, studyGroupsTable } from "@workspace/db";
 import {
   CreateLessonBody,
   GetLessonParams,
@@ -14,7 +14,7 @@ import {
   UpdateLessonBody,
   DeleteLessonParams,
 } from "@workspace/api-zod";
-import { requireAuth, requireTeacherOrOwner } from "../lib/auth-middleware";
+import { requireAuth, requireTeacherOrOwner, canManageAcademicContent } from "../lib/auth-middleware";
 import {
   createMediaStorageKey,
   ensureMediaDirectory,
@@ -124,7 +124,16 @@ function normalizeYouTubeUrl(value: string): string {
   }
 }
 
-router.post("/lessons/media", requireAuth, requireTeacherOrOwner, (req, res, next): void => {
+router.post("/lessons/media", requireAuth, (req, res, next): void => {
+  const user = req.currentUser!;
+  if (canManageAcademicContent(user)) { next(); return; }
+  const groupId = Number(req.query.groupId);
+  if (!Number.isInteger(groupId) || groupId <= 0) { res.status(403).json({ error: "Teacher access or group-creator permission is required to upload media" }); return; }
+  void db.select({ creatorId: studyGroupsTable.creatorId }).from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId)).then(([group]) => {
+    if (group && Number(group.creatorId) === Number(user.id)) next();
+    else res.status(403).json({ error: "Only the group creator or authorized academic staff can upload this group cover" });
+  }).catch(next);
+
   upload.single("file")(req, res, (error) => {
     if (error instanceof multer.MulterError) {
       res.status(400).json({ error: "A supported media file up to 250 MB is required" });
