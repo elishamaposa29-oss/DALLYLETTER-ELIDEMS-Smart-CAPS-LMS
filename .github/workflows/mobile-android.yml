@@ -68,7 +68,7 @@ jobs:
         with:
           name: dallyletter-android-debug-apk
           path: artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 14
 
       - name: Boot Android emulator
