@@ -33,7 +33,11 @@ jobs:
           java-version: "17"
       - uses: android-actions/setup-android@v3
         with:
-          packages: |\n            platform-tools\n            platforms;android-35\n            build-tools;35.0.0\n            system-images;android-35;google_apis;x86_64
+          packages: |
+            platform-tools
+            platforms;android-35
+            build-tools;35.0.0
+            system-images;android-35;google_apis;x86_64
       - name: Install locked workspace dependencies
         run: pnpm install --frozen-lockfile
       - name: Typecheck mobile app
