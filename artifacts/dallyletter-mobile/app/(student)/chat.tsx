@@ -1,10 +1,11 @@
 import { Feather } from "@expo/vector-icons";
 import { useListMessages, useSendMessage } from "@workspace/api-client-react";
 import * as Haptics from "expo-haptics";
-import { Platform, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { AppState, Platform, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
@@ -13,6 +14,11 @@ export default function StudentChat() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [text, setText] = useState("");
+  const [queuedMessages, setQueuedMessages] = useState<any[]>([]);
+  const [retrySignal, setRetrySignal] = useState(0);
+  const queueKey = user?.id ? "dallyletter_mobile_chat_outbox_user_" + user.id : null;
+  useEffect(() => { let active=true; if (!queueKey) { setQueuedMessages([]); return; } void AsyncStorage.getItem(queueKey).then(raw => { if(active && raw) setQueuedMessages(JSON.parse(raw)); }).catch(() => {}); return () => { active=false; }; }, [queueKey]);
+  useEffect(() => { const sub=AppState.addEventListener("change", state => { if(state==="active") setRetrySignal(v=>v+1); }); return () => sub.remove(); }, []);
   const { data: messages, refetch } = useListMessages({});
   const sendMutation = useSendMessage({
     mutation: {
@@ -24,12 +30,46 @@ export default function StudentChat() {
     },
   });
 
+  const persistQueue = async (next: any[]) => {
+    setQueuedMessages(next);
+    if (queueKey) await AsyncStorage.setItem(queueKey, JSON.stringify(next)).catch(() => {});
+  };
+
+  useEffect(() => {
+    if (!queueKey || queuedMessages.length === 0 || AppState.currentState !== "active") return;
+    let cancelled = false;
+    void (async () => {
+      const remaining = [...queuedMessages];
+      while (remaining.length && !cancelled) {
+        const item = remaining[0];
+        try {
+          await sendMutation.mutateAsync({ data: { content: item.content, type: "text" } });
+          remaining.shift();
+          if (!cancelled) await persistQueue([...remaining]);
+        } catch {
+          break;
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [retrySignal, queueKey, queuedMessages.length]);
+
   const top = insets.top + (Platform.OS === "web" ? 67 : 0);
   const bottom = insets.bottom + (Platform.OS === "web" ? 34 : 0);
 
-  const handleSend = () => {
-    if (!text.trim()) return;
-    sendMutation.mutate({ data: { content: text.trim(), type: "text" } });
+  const handleSend = async () => {
+    const content = text.trim();
+    if (!content || !user) return;
+    try {
+      await sendMutation.mutateAsync({ data: { content, type: "text" } });
+    } catch (error) {
+      const status = (error as { status?: number })?.status;
+      if (!status && queueKey) {
+        const item = { id: "queued-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8), content, createdAt: new Date().toISOString(), senderId: user.id, senderName: user.name, queued: true };
+        await persistQueue([...queuedMessages, item]);
+        setText("");
+      }
+    }
   };
 
   const s = StyleSheet.create({
@@ -117,7 +157,7 @@ export default function StudentChat() {
     emptySubtext: { fontSize: 13, fontFamily: "Inter_400Regular", color: colors.mutedForeground },
   });
 
-  const grouped = messages ?? [];
+  const grouped = [...(messages ?? []), ...queuedMessages];
   const isMe = (msg: any) => msg.senderId === user?.id;
 
   return (
@@ -153,6 +193,7 @@ export default function StudentChat() {
                 {!mine && <Text style={s.sender}>{msg.senderName ?? "Unknown"}</Text>}
                 <View style={[s.bubble, mine ? s.myBubble : s.theirBubble]}>
                   <Text style={mine ? s.myText : s.theirText}>{msg.content}</Text>
+                  {msg.queued && <Text style={{ color: "#fde68a", fontSize: 10, marginTop: 3 }}>Saved offline · waiting to send</Text>}
                   <Text style={mine ? s.time : s.theirTime}>
                     {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                   </Text>
