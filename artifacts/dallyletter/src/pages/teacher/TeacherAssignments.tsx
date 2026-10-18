@@ -20,7 +20,7 @@ export default function TeacherAssignments() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [viewSubs, setViewSubs] = useState<{ assignment: any; submissions: any[] } | null>(null);
   const [grading, setGrading] = useState<{ subId: number; marks: string; feedback: string } | null>(null);
-  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);\n  const [learnerPreview, setLearnerPreview] = useState<any | null>(null);
   const emptyForm = { title: "", description: "", subject: "", grade: "", dueDate: "", totalMarks: "100", attachmentUrl: "" };
   const [form, setForm] = useState(emptyForm);
 
@@ -190,7 +190,7 @@ export default function TeacherAssignments() {
                       </div>
                     </div>
                     <div className="flex flex-col gap-2">
-                      <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { setEditingId(a.id); setForm({ title: a.title, description: a.description ?? "", subject: a.subject, grade: a.grade ?? "", dueDate: a.dueDate, totalMarks: String(a.totalMarks), attachmentUrl: a.attachmentUrl ?? "" }); setOpen(true); }}>
+                      <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setLearnerPreview(a)}><Eye className="h-3.5 w-3.5" />Preview as learner</Button>\n                      <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { setEditingId(a.id); setForm({ title: a.title, description: a.description ?? "", subject: a.subject, grade: a.grade ?? "", dueDate: a.dueDate, totalMarks: String(a.totalMarks), attachmentUrl: a.attachmentUrl ?? "" }); setOpen(true); }}>
                         Edit
                       </Button>
                       <Button size="sm" variant="destructive" className="gap-1.5" disabled={deletingId !== null} onClick={() => void deleteAssignment(a)}><Trash2 className="h-3.5 w-3.5" />{deletingId === Number(a.id) ? "Deleting…" : "Delete"}</Button>
@@ -206,7 +206,7 @@ export default function TeacherAssignments() {
         )}
       </div>
 
-      {viewSubs && (
+      {learnerPreview && <Dialog open={!!learnerPreview} onOpenChange={() => setLearnerPreview(null)}><DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl"><DialogHeader><DialogTitle>Learner preview · {learnerPreview.title}</DialogTitle></DialogHeader><div className="space-y-3 rounded-xl border p-4"><div className="flex flex-wrap gap-2"><Badge>{learnerPreview.subject}</Badge>{learnerPreview.grade && <Badge variant="secondary">{learnerPreview.grade}</Badge>}<Badge>Due {learnerPreview.dueDate}</Badge></div><p className="whitespace-pre-wrap text-sm">{learnerPreview.description || "No instructions provided."}</p>{learnerPreview.attachmentUrl && <iframe title="Learner reference material" src={learnerPreview.attachmentUrl} className="h-64 w-full rounded-lg border" />}<p className="text-sm text-muted-foreground">Total marks: {learnerPreview.totalMarks}</p><p className="text-xs text-muted-foreground">Preview only — no submission has been created.</p></div></DialogContent></Dialog>}\n      {viewSubs && (
         <Dialog open={!!viewSubs} onOpenChange={() => setViewSubs(null)}>
           <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
             <DialogHeader><DialogTitle>Submissions: {viewSubs.assignment.title}</DialogTitle></DialogHeader>
