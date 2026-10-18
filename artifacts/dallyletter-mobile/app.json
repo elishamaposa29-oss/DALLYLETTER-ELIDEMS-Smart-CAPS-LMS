@@ -3,7 +3,7 @@
     "name": "DallyLetter Elidems",
     "slug": "dallyletter-mobile",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "dallyletter",
     "userInterfaceStyle": "light",
@@ -14,11 +14,12 @@
       "backgroundColor": "#0d0d73"
     },
     "ios": {
-      "supportsTablet": false,
+      "supportsTablet": true,
       "bundleIdentifier": "com.dallyletter.elidems"
     },
     "android": {
       "package": "com.dallyletter.elidems",
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#0d0d73"
