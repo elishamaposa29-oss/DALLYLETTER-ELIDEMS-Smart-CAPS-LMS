@@ -456,7 +456,7 @@ export default function TeacherLessons() {
               </div>
             ) : (
               visibleLessons.map((lesson) => (
-                <Card key={lesson.id} className="flex flex-col h-full hover:border-primary/50 transition-colors group">
+                <Card key={lesson.id} id={"lesson-"+lesson.id} className="flex flex-col h-full hover:border-primary/50 transition-colors group">
                   <CardHeader className="pb-3">
                     <div className="flex justify-between items-start gap-2">
                       <div className="flex gap-2 flex-wrap">
