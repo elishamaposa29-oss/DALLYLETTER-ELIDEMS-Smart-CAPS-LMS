@@ -30,7 +30,7 @@ export function InstallAppCard() {
           {installed ? <>
             <span className="inline-flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-700"><CheckCircle2 className="h-4 w-4" /> Installed</span>
             <Button type="button" variant="outline" onClick={() => { window.location.href = "/"; }}> <ExternalLink className="mr-2 h-4 w-4" />Open app</Button>
-          </> : <Button type="button" onClick={() => { setInstallError(""); void install().catch(error => setInstallError(error instanceof Error ? error.message : "This browser has not made native installation available.")); }}><Download className="mr-2 h-4 w-4" />Install app</Button> }
+          </> : <Button type="button" onClick={() => { setInstallError(""); if (!prompt) { setShowHelp(true); return; } void install().catch(error => setInstallError(error instanceof Error ? error.message : "Installation could not be started. Use Compatibility help for browser instructions.")); }}><Download className="mr-2 h-4 w-4" />Install app</Button> }
         </div>
         {!installed && <Button type="button" variant="ghost" size="sm" onClick={() => setShowHelp(v => !v)}>Compatibility help</Button>}
         {installError && <p role="alert" className="basis-full text-sm text-destructive">{installError}</p>}
