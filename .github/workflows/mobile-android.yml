@@ -49,7 +49,7 @@ jobs:
       - name: Generate version 1.0.1 for upgrade test
         working-directory: artifacts/dallyletter-mobile
         run: |
-          node -e 'const fs=require("fs"); const p="app.json"; const j=JSON.parse(fs.readFileSync(p,"utf8")); j.expo.version="1.0.1"; j.expo.android.versionCode=2; fs.writeFileSync(p, JSON.stringify(j,null,2)+"\\n");'
+          node -e 'const fs=require("fs"); const p="app.json"; const j=JSON.parse(fs.readFileSync(p,"utf8")); j.expo.version="1.0.1"; j.expo.android.versionCode=2; fs.writeFileSync(p, JSON.stringify(j,null,2)+"\n");'
           pnpm exec expo prebuild --platform android --no-install
       - name: Build update APK
         working-directory: artifacts/dallyletter-mobile/android
