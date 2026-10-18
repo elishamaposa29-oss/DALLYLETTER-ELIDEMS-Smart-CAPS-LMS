@@ -34,7 +34,7 @@ export function useInstallPrompt() {
   }, []);
 
   const install = async () => {
-    if (!prompt) return;
+    if (!prompt) return "manual" as const;
     await prompt.prompt();
     const result = await prompt.userChoice;
     if (result.outcome === "accepted") {
