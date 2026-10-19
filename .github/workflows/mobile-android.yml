@@ -1,0 +1,85 @@
+name: Mobile Android Build and Smoke Test
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "artifacts/dallyletter-mobile/**"
+      - "lib/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/mobile-android.yml"
+      - ".github/scripts/android-emulator-smoke.sh"
+
+permissions:
+  contents: read
+
+jobs:
+  android-build-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      EXPO_PUBLIC_API_BASE_URL: https://dallyletter-elidems-smart-caps-lms-4.onrender.com
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools"
+      - name: Install Android platform and emulator image
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Install locked workspace dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build workspace TypeScript references
+        run: pnpm run typecheck:libs
+      - name: Typecheck mobile app
+        run: pnpm --filter @workspace/dallyletter-mobile typecheck
+      - name: Generate native Android project
+        working-directory: artifacts/dallyletter-mobile
+        run: pnpm exec expo prebuild --platform android --no-install
+      - name: Build reproducible debug APK
+        working-directory: artifacts/dallyletter-mobile/android
+        run: ./gradlew --no-daemon --stacktrace assembleDebug
+      - name: Preserve first install package
+        run: cp artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk /tmp/dallyletter-v1.apk
+      - name: Generate version 1.0.1 for upgrade test
+        working-directory: artifacts/dallyletter-mobile
+        run: |
+          node -e 'const fs=require("fs"); const p="app.json"; const j=JSON.parse(fs.readFileSync(p,"utf8")); j.expo.version="1.0.1"; j.expo.android.versionCode=2; fs.writeFileSync(p, JSON.stringify(j,null,2)+"\n");'
+          pnpm exec expo prebuild --platform android --no-install
+      - name: Build update APK
+        working-directory: artifacts/dallyletter-mobile/android
+        run: ./gradlew --no-daemon --stacktrace assembleDebug
+      - name: Upload installable debug APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dallyletter-android-debug-apk
+          path: artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: Boot Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          cores: 2
+          emulator-boot-timeout: 1200
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: bash .github/scripts/android-emulator-smoke.sh
