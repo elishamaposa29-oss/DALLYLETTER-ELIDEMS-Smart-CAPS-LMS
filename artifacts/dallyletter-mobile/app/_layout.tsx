@@ -9,7 +9,7 @@ import { setBaseUrl } from "@workspace/api-client-react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -19,26 +19,17 @@ import { AuthProvider } from "@/contexts/AuthContext";
 
 const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim() || process.env.EXPO_PUBLIC_API_URL?.trim() || (process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : "");
 
-if (apiBaseUrl) {
-  setBaseUrl(apiBaseUrl);
-}
+if (apiBaseUrl) setBaseUrl(apiBaseUrl);
+void SplashScreen.preventAutoHideAsync().catch(() => {});
 
-SplashScreen.preventAutoHideAsync();
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 1,
-      staleTime: 30_000,
-    },
-  },
-});
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 30_000 } } });
 
 function RootLayoutNav() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="login" />
+      <Stack.Screen name="signup" />
       <Stack.Screen name="(student)" />
       <Stack.Screen name="(teacher)" />
       <Stack.Screen name="(admin)" />
@@ -47,20 +38,22 @@ function RootLayoutNav() {
 }
 
 export default function RootLayout() {
-  const [fontsLoaded, fontError] = useFonts({
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-    Inter_700Bold,
-  });
+  const [fontsLoaded, fontError] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold });
+  const [bootFallbackReady, setBootFallbackReady] = useState(false);
 
   useEffect(() => {
+    const watchdog = setTimeout(() => {
+      setBootFallbackReady(true);
+      void SplashScreen.hideAsync().catch(() => {});
+    }, 5000);
     if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync();
+      clearTimeout(watchdog);
+      void SplashScreen.hideAsync().catch(() => {});
     }
+    return () => clearTimeout(watchdog);
   }, [fontsLoaded, fontError]);
 
-  if (!fontsLoaded && !fontError) return null;
+  if (!fontsLoaded && !fontError && !bootFallbackReady) return null;
 
   return (
     <SafeAreaProvider>
@@ -68,9 +61,7 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
             <GestureHandlerRootView style={{ flex: 1 }}>
-              <KeyboardProvider>
-                <RootLayoutNav />
-              </KeyboardProvider>
+              <KeyboardProvider><RootLayoutNav /></KeyboardProvider>
             </GestureHandlerRootView>
           </AuthProvider>
         </QueryClientProvider>
