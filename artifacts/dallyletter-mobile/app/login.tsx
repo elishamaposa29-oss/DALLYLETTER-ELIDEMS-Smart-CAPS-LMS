@@ -262,21 +262,15 @@ export default function LoginScreen() {
             )}
           </TouchableOpacity>
 
-          <View style={s.divider}>
-            <View style={s.divLine} />
-            <Text style={s.divText}>Demo accounts</Text>
-            <View style={s.divLine} />
-          </View>
-
-          <View style={s.hintBox}>
-            <Text style={s.hintTitle}>Quick Access</Text>
-            <Text style={s.hintRow}>Owner: elishamaposa29@gmail.com</Text>
-            <Text style={s.hintRow}>Teacher: teacher.sarah@dallyletter.com</Text>
-            <Text style={s.hintRow}>Student: student.alice@dallyletter.com</Text>
-            <Text style={[s.hintRow, { marginTop: 4, fontFamily: "Inter_600SemiBold" }]}>
-              Owner pw: Admin@12345 | Others: password123
+          <TouchableOpacity
+            accessibilityRole="button"
+            onPress={() => router.push("/signup")}
+            style={{ alignItems: "center", paddingVertical: 22 }}
+          >
+            <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 14 }}>
+              New to Dallyletter? <Text style={{ color: colors.primary, fontFamily: "Inter_700Bold" }}>Create an account</Text>
             </Text>
-          </View>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
