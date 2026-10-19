@@ -31,10 +31,10 @@ jobs:
       - name: Install emulator image
         run: |
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "emulator" "platforms;android-${{ inputs.api_level }}" "system-images;android-${{ inputs.api_level }};google_apis;x86_64"
+          sdkmanager "platform-tools" "emulator" "platforms;android-${{ inputs.api_level || '34' }}" "system-images;android-${{ inputs.api_level || '34' }};google_apis;x86_64"
       - name: Create isolated AVD
         run: |
-          echo "no" | avdmanager create avd --force --name BootOnly --package "system-images;android-${{ inputs.api_level }};google_apis;x86_64" --device "pixel_2"
+          echo "no" | avdmanager create avd --force --name BootOnly --package "system-images;android-${{ inputs.api_level || '34' }};google_apis;x86_64" --device "pixel_2"
       - name: Launch emulator and verify boot
         shell: bash
         run: |
