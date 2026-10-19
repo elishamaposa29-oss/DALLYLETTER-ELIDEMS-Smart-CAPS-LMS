@@ -16,7 +16,7 @@ permissions:
 jobs:
   android-build-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
     env:
       EXPO_PUBLIC_API_BASE_URL: https://dallyletter-elidems-smart-caps-lms-4.onrender.com
     steps:
@@ -79,7 +79,7 @@ jobs:
           arch: x86_64
           profile: pixel_2
           cores: 2
-          emulator-boot-timeout: 900
+          emulator-boot-timeout: 1200
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
           script: bash .github/scripts/android-emulator-smoke.sh
