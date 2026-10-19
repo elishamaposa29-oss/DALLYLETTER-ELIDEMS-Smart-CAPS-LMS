@@ -1,0 +1,55 @@
+name: Android Emulator Boot Diagnostics
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_level:
+        description: Android API level to boot
+        required: true
+        default: "34"
+        type: choice
+        options:
+          - "34"
+          - "35"
+  pull_request:
+    paths:
+      - ".github/workflows/android-emulator-boot.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  emulator-boot-only:
+    name: Boot emulator only (no app build or install)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools"
+      - name: Install emulator system image
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-${{ inputs.api_level || '34' }}" "emulator" "system-images;android-${{ inputs.api_level || '34' }};google_apis;x86_64"
+      - name: Boot Android and verify readiness without building the app
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ inputs.api_level || '34' }}
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          cores: 2
+          emulator-boot-timeout: 900
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: |
+            set -Eeuo pipefail
+            echo "::group::Standalone emulator readiness"
+            adb devices -l
+            test "$(timeout 20 adb shell getprop sys.boot_completed | tr -d '\r')" = "1"
+            timeout 30 adb shell cmd package list packages >/dev/null
+            echo "PASS: Android boot property and package manager are ready."
+            adb shell getprop ro.build.version.release
+            adb shell getprop ro.build.version.sdk
+            echo "::endgroup::"
