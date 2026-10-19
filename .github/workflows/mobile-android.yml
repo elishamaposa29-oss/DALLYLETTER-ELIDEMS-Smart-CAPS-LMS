@@ -76,11 +76,21 @@ jobs:
   emulator-smoke:
     needs: build-apk
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     env:
       EXPO_PUBLIC_API_BASE_URL: https://dallyletter-elidems-smart-caps-lms-4.onrender.com
     steps:
       - uses: actions/checkout@v4
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools"
+      - name: Install emulator and Android 34 system image
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "emulator" "platforms;android-34" "system-images;android-34;google_apis;x86_64"
+      - name: Create isolated Android virtual device
+        run: |
+          echo "no" | avdmanager create avd --force --name DallyletterSmoke --package "system-images;android-34;google_apis;x86_64" --device "pixel_2"
       - name: Download built APKs
         uses: actions/download-artifact@v4
         with:
@@ -91,15 +101,26 @@ jobs:
           mkdir -p artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug
           cp /tmp/dallyletter-apks/dallyletter-v1.apk /tmp/dallyletter-v1.apk
           cp /tmp/dallyletter-apks/dallyletter-v1.0.1.apk artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk
-      - name: Boot Android emulator
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
-          profile: pixel_2
-          cores: 2
-          emulator-boot-timeout: 1200
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: bash .github/scripts/android-emulator-smoke.sh
+      - name: Launch emulator and run install/launch/upgrade smoke tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          emulator -avd DallyletterSmoke -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -cores 2 -memory 3072 > /tmp/dallyletter-emulator.log 2>&1 &
+          emulator_pid=$!
+          diagnostics() {
+            status=$?
+            if [ "$status" -ne 0 ]; then
+              echo "::group::Emulator process diagnostics"
+              adb devices -l || true
+              adb get-state || true
+              adb shell getprop sys.boot_completed || true
+              adb shell getprop init.svc.bootanim || true
+              tail -n 250 /tmp/dallyletter-emulator.log || true
+              echo "::endgroup::"
+            fi
+            kill "$emulator_pid" 2>/dev/null || true
+            wait "$emulator_pid" 2>/dev/null || true
+            exit "$status"
+          }
+          trap diagnostics EXIT
+          bash .github/scripts/android-emulator-smoke.sh
