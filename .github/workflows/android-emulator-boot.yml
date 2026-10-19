@@ -11,6 +11,9 @@ on:
         options:
           - "34"
           - "35"
+  pull_request:
+    paths:
+      - ".github/workflows/android-emulator-boot.yml"
 
 permissions:
   contents: read
