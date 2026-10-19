@@ -40,7 +40,10 @@ jobs:
       - name: Install Android platform and emulator image
         run: |
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          sdkmanager "platform-tools" "emulator" "platforms;android-34" "platforms;android-35" "build-tools;35.0.0" "system-images;android-34;google_apis;x86_64"
+      - name: Create isolated Android virtual device
+        run: |
+          echo "no" | avdmanager create avd --force --name DallyletterSmoke --package "system-images;android-34;google_apis;x86_64" --device "pixel_2"
       - name: Install locked workspace dependencies
         run: pnpm install --frozen-lockfile
       - name: Build workspace TypeScript references
@@ -71,15 +74,26 @@ jobs:
           path: artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
-      - name: Boot Android emulator
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
-          profile: pixel_2
-          cores: 2
-          emulator-boot-timeout: 1200
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: bash .github/scripts/android-emulator-smoke.sh
+      - name: Launch emulator and run install/launch/upgrade smoke tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          emulator -avd DallyletterSmoke -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -cores 2 -memory 3072 > /tmp/dallyletter-emulator.log 2>&1 &
+          emulator_pid=$!
+          diagnostics() {
+            status=$?
+            if [ "$status" -ne 0 ]; then
+              echo "::group::Emulator process diagnostics"
+              adb devices -l || true
+              adb get-state || true
+              adb shell getprop sys.boot_completed || true
+              adb shell getprop init.svc.bootanim || true
+              tail -n 250 /tmp/dallyletter-emulator.log || true
+              echo "::endgroup::"
+            fi
+            kill "$emulator_pid" 2>/dev/null || true
+            wait "$emulator_pid" 2>/dev/null || true
+            exit "$status"
+          }
+          trap diagnostics EXIT
+          bash .github/scripts/android-emulator-smoke.sh
