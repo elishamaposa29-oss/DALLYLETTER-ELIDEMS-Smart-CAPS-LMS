@@ -38,27 +38,44 @@ if [ "$device_ready" -ne 1 ]; then
   exit 124
 fi
 
-step "verify Android boot completion (bounded to 1200 seconds)"
+step "verify Android boot readiness (bounded to 1200 seconds)"
 boot_deadline=$((SECONDS + 1200))
+boot_started=$SECONDS
 boot_ready=0
 boot_state=""
+bootanim_state=""
 while [ "$SECONDS" -lt "$boot_deadline" ]; do
   boot_state="$(timeout 12 adb shell getprop sys.boot_completed 2>/dev/null | tr -d "\r" || true)"
   if [ "$boot_state" = "1" ]; then
     boot_ready=1
+    echo "Android reports sys.boot_completed=1"
     break
   fi
+
+  # Some hosted x86_64 images start the launcher and package services but never
+  # publish sys.boot_completed. Accept a stopped boot animation only after the
+  # package manager responds, and only after a short stabilization period.
+  elapsed=$((SECONDS - boot_started))
+  if [ "$elapsed" -ge 120 ]; then
+    bootanim_state="$(timeout 8 adb shell getprop init.svc.bootanim 2>/dev/null | tr -d "\r" || true)"
+    if [ "$bootanim_state" = "stopped" ] && timeout 12 adb shell cmd package list packages >/dev/null 2>&1; then
+      boot_ready=1
+      echo "Android readiness confirmed by stopped boot animation and responsive package manager (sys.boot_completed=${boot_state:-blank})"
+      break
+    fi
+  fi
+
   remaining=$((boot_deadline - SECONDS))
   if [ "$remaining" -le 0 ]; then break; fi
-  echo "Android boot not confirmed yet (sys.boot_completed=${boot_state:-unavailable}, ${remaining}s remaining)"
+  echo "Android boot not confirmed yet (sys.boot_completed=${boot_state:-unavailable}, bootanim=${bootanim_state:-unknown}, ${remaining}s remaining)"
   sleep "$((remaining < 5 ? remaining : 5))"
 done
 if [ "$boot_ready" -ne 1 ]; then
-  echo "::error::Android did not report sys.boot_completed=1 within the 1200-second verification window"
+  echo "::error::Android did not become ready within 1200 seconds (sys.boot_completed=${boot_state:-blank}, bootanim=${bootanim_state:-unknown})"
   exit 1
 fi
 
-step "wait for package manager (up to 180 seconds)"
+step "confirm package manager readiness (up to 180 seconds)"
 ready=0
 for attempt in $(seq 1 36); do
   if timeout 12 adb shell cmd package list packages >/dev/null 2>&1; then
