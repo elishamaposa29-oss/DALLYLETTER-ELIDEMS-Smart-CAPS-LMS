@@ -9,7 +9,7 @@ import { setBaseUrl } from "@workspace/api-client-react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -23,7 +23,9 @@ if (apiBaseUrl) {
   setBaseUrl(apiBaseUrl);
 }
 
-SplashScreen.preventAutoHideAsync();
+// The native app must not remain on the operating-system splash screen forever
+// if font asset loading is delayed or broken in a release build.
+void SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -53,14 +55,25 @@ export default function RootLayout() {
     Inter_600SemiBold,
     Inter_700Bold,
   });
+  const [bootFallbackReady, setBootFallbackReady] = useState(false);
 
   useEffect(() => {
+    // Keep the intended splash/font experience briefly, but fail open so a font
+    // problem cannot prevent login and dashboard navigation from ever mounting.
+    const watchdog = setTimeout(() => {
+      setBootFallbackReady(true);
+      void SplashScreen.hideAsync().catch(() => {});
+    }, 5000);
+
     if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync();
+      clearTimeout(watchdog);
+      void SplashScreen.hideAsync().catch(() => {});
     }
+
+    return () => clearTimeout(watchdog);
   }, [fontsLoaded, fontError]);
 
-  if (!fontsLoaded && !fontError) return null;
+  if (!fontsLoaded && !fontError && !bootFallbackReady) return null;
 
   return (
     <SafeAreaProvider>
