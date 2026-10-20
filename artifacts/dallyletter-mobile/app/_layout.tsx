@@ -20,24 +20,19 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider } from "@/contexts/AuthContext";
 
 const DEFAULT_API_BASE_URL = "https://dallyletter-elidems-smart-caps-lms-4.onrender.com";
-
 function resolveApiBaseUrl() {
   const candidates = [
     process.env.EXPO_PUBLIC_API_BASE_URL,
     process.env.EXPO_PUBLIC_API_URL,
     process.env.RENDER_EXTERNAL_URL,
     process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : undefined,
-    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
   ];
-
   for (const candidate of candidates) {
     const value = candidate?.trim();
-    if (!value) continue;
-    return value.replace(/\/+$/, "");
+    if (value) return value.replace(/\/+$/, "");
   }
   return DEFAULT_API_BASE_URL;
 }
-
 const apiBaseUrl = resolveApiBaseUrl();
 
 if (apiBaseUrl) setBaseUrl(apiBaseUrl);
