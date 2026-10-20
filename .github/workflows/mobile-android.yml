@@ -101,7 +101,7 @@ jobs:
           if [ "${#apks[@]}" -gt 0 ]; then
             (
               cd artifacts/dallyletter-mobile/apk-artifacts
-              sha256sum *.apk > checksums.sha256
+              sha256sum dallyletter-v1.apk dallyletter-v1.0.1.apk > checksums.sha256
             )
           fi
           {
