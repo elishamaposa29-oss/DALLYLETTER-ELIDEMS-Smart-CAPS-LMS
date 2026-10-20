@@ -306,6 +306,7 @@ function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean
   const [handReplyFiles, setHandReplyFiles] = useState<Record<number, File | null>>({});
   const [sendingHandReply, setSendingHandReply] = useState<number | null>(null);
   const [loweringId, setLoweringId] = useState<number | null>(null);
+  const [deletingHandId, setDeletingHandId] = useState<number | null>(null);
 
   if (!isLive || !hands) return null;
   const unresolved = hands.filter(h => !h.isResolved);
@@ -339,7 +340,7 @@ function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
         body: JSON.stringify({
-          content: reply || (file ? `Teacher attached: ${file.name}` : ""),
+          content: `[[hand-raise:${handId}]] ${reply || (file ? `Teacher attached: ${file.name}` : "")}`,
           type: mediaUrl ? "media" : "text",
           recipientId: studentId,
           ...(mediaUrl ? { mediaUrl } : {}),
@@ -353,6 +354,21 @@ function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean
     } finally {
       setSendingHandReply(null);
     }
+  };
+
+  const handleDeleteHand = async (handId: number) => {
+    if (!window.confirm("Delete this hand raise and its attached media? This cannot be undone.")) return;
+    setDeletingHandId(handId);
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const response = await fetch(getApiUrl(`/api/raise-hand/${handId}`), { method: "DELETE", headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || `Delete failed (${response.status})`);
+      toast({ title: "Hand raise deleted" });
+      refetch();
+    } catch (error) {
+      toast({ variant: "destructive", title: "Delete failed", description: error instanceof Error ? error.message : "Could not delete hand raise." });
+    } finally { setDeletingHandId(null); }
   };
 
   const handleLowerHand = async (handId: number, studentName: string) => {
@@ -412,6 +428,9 @@ function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean
             >
               {loweringId === hand.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
               <span className="ml-1">Lower</span>
+            </Button>
+            <Button variant="destructive" size="sm" className="h-7 px-2 text-xs shrink-0" disabled={deletingHandId === hand.id} onClick={() => void handleDeleteHand(hand.id)} title="Delete hand raise and attached media">
+              {deletingHandId === hand.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}<span className="ml-1">Delete</span>
             </Button>
           </div>
         ))}

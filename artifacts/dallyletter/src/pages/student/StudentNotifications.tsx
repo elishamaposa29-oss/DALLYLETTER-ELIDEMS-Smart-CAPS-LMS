@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { getApiUrl } from "@workspace/api-client-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useListNotifications, useMarkNotificationRead } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -11,7 +12,65 @@ import { getListNotificationsQueryKey } from "@workspace/api-client-react";
 
 export default function StudentNotifications() {
   const [devicePermission, setDevicePermission] = useState<NotificationPermission>(() => typeof Notification !== "undefined" ? Notification.permission : "default");
-  const enableDeviceNotifications = async () => { if (!("Notification" in window)) return; const permission = await Notification.requestPermission(); setDevicePermission(permission); if (permission === "granted" && "serviceWorker" in navigator) { await navigator.serviceWorker.ready; } };
+  const [pushTesting, setPushTesting] = useState(false);
+  const [pushTestMessage, setPushTestMessage] = useState("");
+  const [pushTestError, setPushTestError] = useState("");
+  const runPushTest = async () => {
+    setPushTesting(true); setPushTestMessage(""); setPushTestError("");
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const response = await fetch(getApiUrl("/api/push/test"), { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || result.message || `Push test could not be queued (HTTP ${response.status})`);
+      setPushTestMessage(result.message || `Push test queued (ID ${result.notificationId}). Delivery is still being processed.`);
+    } catch (error) { setPushTestError(error instanceof Error ? error.message : "Push test failed. Please retry."); }
+    finally { setPushTesting(false); }
+  };
+  const enableDeviceNotifications = async () => {
+    setPushTestError("");
+    setPushTestMessage("");
+    if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setPushTestError("This browser does not support background push. Open Dallyletter in current Chrome on Android.");
+      return;
+    }
+    try {
+      const permission = await Notification.requestPermission();
+      setDevicePermission(permission);
+      if (permission !== "granted") {
+        if (permission === "denied") setPushTestError("Notifications are blocked in browser settings. Allow notifications for Dallyletter, then retry.");
+        return;
+      }
+      const authToken = localStorage.getItem("dallyletter_token") ?? "";
+      const headers = { Authorization: "Bearer " + authToken };
+      const configResponse = await fetch(getApiUrl("/api/push/config"), { headers });
+      const config = await configResponse.json().catch(() => ({})) as { enabled?: boolean; publicKey?: string | null; error?: string };
+      if (!configResponse.ok || !config.enabled || !config.publicKey) {
+        throw new Error(config.error || "Background push is not configured on the server. The platform owner must set VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, and VAPID_SUBJECT on the API service.");
+      }
+      const paddedKey = config.publicKey.replace(/-/g, "+").replace(/_/g, "/");
+      const decodedKey = window.atob(paddedKey + "=".repeat((4 - paddedKey.length % 4) % 4));
+      const applicationServerKey = new Uint8Array(decodedKey.length);
+      for (let index = 0; index < decodedKey.length; index++) applicationServerKey[index] = decodedKey.charCodeAt(index);
+      const registration = await navigator.serviceWorker.ready;
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: applicationServerKey as BufferSource,
+        });
+      }
+      const saveResponse = await fetch(getApiUrl("/api/push/subscriptions"), {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify(subscription),
+      });
+      const saved = await saveResponse.json().catch(() => ({})) as { error?: string };
+      if (!saveResponse.ok) throw new Error(saved.error || "Could not register this device for push notifications.");
+      setPushTestMessage("Device registered for background push. You can now run a delivery test.");
+    } catch (error) {
+      setPushTestError(error instanceof Error ? error.message : "Could not enable push notifications. Please retry.");
+    }
+  };
   const { data: notifications, isLoading } = useListNotifications();
   const [, navigate] = useLocation();
   const markReadMutation = useMarkNotificationRead();
@@ -47,6 +106,7 @@ export default function StudentNotifications() {
           <div>
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-3"><div><p className="font-semibold text-sm">Device notifications</p><p className="text-xs text-muted-foreground">Get clickable DALLYLETTER alerts in your phone notification panel.</p></div><Button size="sm" variant={devicePermission==="granted"?"secondary":"default"} onClick={()=>void enableDeviceNotifications()} disabled={devicePermission==="granted"}>{devicePermission==="granted"?"Enabled":"Enable notifications"}</Button></div>
         <h1 className="text-3xl font-bold tracking-tight">Notifications</h1>
+            <div className="mt-3 rounded-lg border p-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-semibold">Test phone push delivery</p><p className="text-xs text-muted-foreground">Queues a real push test for this signed-in device.</p></div><Button size="sm" variant="outline" disabled={pushTesting || devicePermission !== "granted"} onClick={() => void runPushTest()}>{pushTesting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Test push delivery</Button></div>{devicePermission !== "granted" && <p className="mt-2 text-xs text-muted-foreground">Enable device notifications first, then retry.</p>}{pushTestMessage && <p role="status" className="mt-2 text-sm text-emerald-700">{pushTestMessage}</p>}{pushTestError && <p role="alert" className="mt-2 text-sm text-destructive">{pushTestError}</p>}</div>
             <p className="text-muted-foreground">Updates on your classes, lessons, and account status.</p>
           </div>
           {unreadCount > 0 && (

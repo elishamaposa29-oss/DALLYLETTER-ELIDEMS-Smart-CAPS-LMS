@@ -33,4 +33,29 @@ router.delete("/push/subscriptions", requireAuth, async (req, res): Promise<void
   res.json({ ok: true });
 });
 
+
+router.post("/push/test", requireAuth, async (req, res): Promise<void> => {
+  if (!isPushConfigured()) { res.status(503).json({ error: "Push delivery is not configured on the server" }); return; }
+  const userId = req.currentUser!.id;
+  const subscription = await pool.query("SELECT 1 FROM push_subscriptions WHERE user_id=$1 LIMIT 1", [userId]);
+  if (!subscription.rows.length) { res.status(409).json({ error: "Enable push notifications on this device first, then retry this test" }); return; }
+  const result = await pool.query(
+    "INSERT INTO notifications (recipient_id,title,message,type,is_read,link) VALUES ($1,$2,$3,$4,false,$5) RETURNING id",
+    [userId, "Dallyletter push delivery test", "If this appears as a device notification, push delivery reached your device.", "push_test", "/student/notifications"]
+  );
+  res.status(201).json({ ok: true, notificationId: Number(result.rows[0].id), message: "Test queued. The push dispatcher will send it and retry temporary failures." });
+});
+
+router.get("/push/test/:id", requireAuth, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid test ID" }); return; }
+  const result = await pool.query(
+    "SELECT id,push_sent_at,push_attempts,push_next_attempt_at,push_last_error FROM notifications WHERE id=$1 AND recipient_id=$2 AND type='push_test' LIMIT 1",
+    [id, req.currentUser!.id]
+  );
+  if (!result.rows[0]) { res.status(404).json({ error: "Push test not found" }); return; }
+  const row = result.rows[0];
+  res.json({ id: Number(row.id), acceptedByPushService: Boolean(row.push_sent_at) && !row.push_last_error, dispatchComplete: Boolean(row.push_sent_at), attempts: Number(row.push_attempts || 0), nextAttemptAt: row.push_next_attempt_at, lastError: row.push_last_error ? String(row.push_last_error).slice(0, 180) : null });
+});
+
 export default router;

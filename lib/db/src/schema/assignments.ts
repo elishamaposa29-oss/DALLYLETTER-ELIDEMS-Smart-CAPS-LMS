@@ -13,6 +13,7 @@ export const assignmentsTable = pgTable("assignments", {
   teacherName: text("teacher_name").notNull(),
   status: text("status").notNull().default("active"),
   attachmentUrl: text("attachment_url"),
+  referenceMaterialHidden: boolean("reference_material_hidden").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

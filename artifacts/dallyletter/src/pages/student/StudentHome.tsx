@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { InstallAppCard } from "@/components/InstallAppCard";
 
 export default function StudentHome() {
   const { user } = useAuth();
@@ -98,6 +99,8 @@ export default function StudentHome() {
           <h1 className="text-4xl font-bold tracking-tight font-serif text-foreground">Welcome back</h1>
           <p className="text-muted-foreground mt-2 text-lg">Here's what's happening with your studies today.</p>
         </div>
+
+        <InstallAppCard />
 
         {/* Prefect Panel */}
         {user?.isPrefect && (

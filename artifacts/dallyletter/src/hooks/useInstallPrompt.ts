@@ -5,42 +5,63 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
+let deferredInstallPrompt: BeforeInstallPromptEvent | null = null;
+const promptSubscribers = new Set<(event: BeforeInstallPromptEvent | null) => void>();
+const notifyPromptSubscribers = () => promptSubscribers.forEach(subscriber => subscriber(deferredInstallPrompt));
+
 export function useInstallPrompt() {
-  const [prompt, setPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [prompt, setPrompt] = useState<BeforeInstallPromptEvent | null>(deferredInstallPrompt);
   const [isInstalled, setIsInstalled] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
 
   useEffect(() => {
-    // Detect iOS
     const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
     setIsIOS(ios);
-
-    // Detect if already installed (standalone mode)
-    const standalone = window.matchMedia("(display-mode: standalone)").matches
-      || (navigator as unknown as { standalone?: boolean }).standalone === true;
-    setIsInstalled(standalone);
-
-    const handler = (e: Event) => {
-      e.preventDefault();
-      setPrompt(e as BeforeInstallPromptEvent);
+    const checkInstalled = () => {
+      const standalone = window.matchMedia("(display-mode: standalone)").matches
+        || (navigator as unknown as { standalone?: boolean }).standalone === true;
+      setIsInstalled(standalone);
     };
+    const onPrompt = (event: Event) => {
+      event.preventDefault();
+      deferredInstallPrompt = event as BeforeInstallPromptEvent;
+      notifyPromptSubscribers();
+    };
+    const onInstalled = () => {
+      deferredInstallPrompt = null;
+      setIsInstalled(true);
+      notifyPromptSubscribers();
+    };
+    const onPromptChange = (event: BeforeInstallPromptEvent | null) => setPrompt(event);
 
-    window.addEventListener("beforeinstallprompt", handler);
-    window.addEventListener("appinstalled", () => setIsInstalled(true));
-
+    checkInstalled();
+    setPrompt(deferredInstallPrompt);
+    promptSubscribers.add(onPromptChange);
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    window.addEventListener("pageshow", checkInstalled);
+    window.addEventListener("focus", checkInstalled);
     return () => {
-      window.removeEventListener("beforeinstallprompt", handler);
+      promptSubscribers.delete(onPromptChange);
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+      window.removeEventListener("pageshow", checkInstalled);
+      window.removeEventListener("focus", checkInstalled);
     };
   }, []);
 
   const install = async () => {
-    if (!prompt) return;
-    await prompt.prompt();
-    const result = await prompt.userChoice;
-    if (result.outcome === "accepted") {
-      setPrompt(null);
-      setIsInstalled(true);
+    if (!deferredInstallPrompt) {
+      if ("serviceWorker" in navigator) await navigator.serviceWorker.ready.catch(() => undefined);
+      throw new Error("Chrome has not offered its native install prompt for this visit yet. The browser controls whether installation can be started.");
     }
+    const event = deferredInstallPrompt;
+    await event.prompt();
+    const result = await event.userChoice;
+    deferredInstallPrompt = null;
+    notifyPromptSubscribers();
+    if (result.outcome === "accepted") setIsInstalled(true);
+    return result.outcome;
   };
 
   return { prompt, install, isInstalled, isIOS };

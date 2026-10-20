@@ -63,4 +63,23 @@ router.patch("/content-permissions/:id",requireAuth,async(req,res):Promise<void>
   res.json(decision);
 });
 
+
+router.post("/content-permissions/:id/report",requireAuth,async(req,res):Promise<void>=>{
+  const actor=req.currentUser!;
+  const id=Number(req.params.id);
+  const message=typeof req.body?.message==="string"?req.body.message.trim().slice(0,1000):"";
+  if(!Number.isInteger(id)||id<=0){res.status(400).json({error:"Invalid permission request"});return;}
+  const found=await pool.query("SELECT id,requester_id,owner_id,content_type,content_id,requested_action,status FROM content_permission_requests WHERE id=$1 LIMIT 1",[id]);
+  const item=found.rows[0];
+  if(!item||Number(item.requester_id)!==actor.id){res.status(404).json({error:"Permission request not found"});return;}
+  if(item.status!=="declined"){res.status(409).json({error:"Only declined requests can be reported"});return;}
+  const details={requestId:id,requesterId:actor.id,ownerId:Number(item.owner_id),contentType:item.content_type,contentId:Number(item.content_id),requestedAction:item.requested_action,message};
+  await pool.query("INSERT INTO activity_log(type,description,actor_name) VALUES($1,$2,$3)",["content_permission_reported_to_manager","Manager review requested for declined permission: "+JSON.stringify(details),actor.name]);
+  await pool.query(
+    "INSERT INTO notifications(recipient_id,title,message,type,is_read,link) SELECT id,$1,$2,$3,false,$4 FROM users WHERE role='owner' OR is_manager=true",
+    ["Permission decision needs manager review",actor.name+" reported declined permission request #"+id+". "+(message||"Please review the request."),"content_permission_report","/admin/notifications"]
+  );
+  res.status(201).json({ok:true,reported:true});
+});
+
 export default router;

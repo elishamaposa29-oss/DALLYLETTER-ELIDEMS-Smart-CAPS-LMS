@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { Users, BookOpen, Video, AlertTriangle, TrendingUp, GraduationCap, Shield, BarChart3, Star } from "lucide-react";
 import { ActivityMonitor } from "@/components/ActivityMonitor";
+import { InstallAppCard } from "@/components/InstallAppCard";
 
 const token = () => localStorage.getItem("dallyletter_token") ?? "";
 
@@ -24,6 +25,7 @@ export default function ManagerHome() {
 
   if (loading) return (
     <DashboardLayout>
+      <div className="mx-auto w-full max-w-7xl px-4 pt-4"><InstallAppCard /></div>
       <div className="flex items-center justify-center h-64 text-slate-500">Loading manager dashboard…</div>
     </DashboardLayout>
   );

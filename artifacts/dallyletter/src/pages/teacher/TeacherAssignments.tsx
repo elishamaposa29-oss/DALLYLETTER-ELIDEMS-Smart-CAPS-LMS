@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 import { ClipboardList, Plus, Calendar, BookOpen, Eye, Star, Trash2 } from "lucide-react";
 
 const token = () => localStorage.getItem("dallyletter_token") ?? "";
@@ -21,15 +22,36 @@ export default function TeacherAssignments() {
   const [viewSubs, setViewSubs] = useState<{ assignment: any; submissions: any[] } | null>(null);
   const [grading, setGrading] = useState<{ subId: number; marks: string; feedback: string } | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [learnerPreview, setLearnerPreview] = useState<any | null>(null);
+  const [hiddenReferenceIds, setHiddenReferenceIds] = useState<Set<number>>(new Set());
   const emptyForm = { title: "", description: "", subject: "", grade: "", dueDate: "", totalMarks: "100", attachmentUrl: "" };
   const [form, setForm] = useState(emptyForm);
 
   const load = () => {
     void fetch(getApiUrl("/api/assignments"), { headers: { Authorization: `Bearer ${token()}` } })
-      .then(r => r.json()).then(d => { setAssignments(Array.isArray(d) ? d : []); setLoading(false); })
+      .then(r => r.json()).then(d => { const rows = Array.isArray(d) ? d : []; setAssignments(rows); setHiddenReferenceIds(new Set(rows.filter((row: any) => row.referenceMaterialHidden).map((row: any) => row.id))); setLoading(false); })
       .catch(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
+
+  const toggleReferenceVisibility = async (assignment: any) => {
+    const hidden = !hiddenReferenceIds.has(assignment.id);
+    const sessionToken = token();
+    if (!sessionToken) { toast({ variant: "destructive", title: "Sign-in required", description: "Sign in again to change reference visibility." }); window.location.href = "/login"; return; }
+    try {
+      const response = await fetch(getApiUrl(`/api/assignments/${assignment.id}/reference-visibility`), {
+        method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionToken}` }, body: JSON.stringify({ hidden }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (response.status === 401) { toast({ variant: "destructive", title: "Session expired", description: "Sign in again to change reference visibility." }); window.location.href = "/login"; return; }
+        throw new Error(result.error || `Could not update visibility (HTTP ${response.status})`);
+      }
+      setHiddenReferenceIds(previous => { const next = new Set(previous); hidden ? next.add(assignment.id) : next.delete(assignment.id); return next; });
+      setAssignments(previous => previous.map(row => row.id === assignment.id ? { ...row, referenceMaterialHidden: hidden } : row));
+      toast({ title: hidden ? "Reference material hidden from learners" : "Reference material visible to learners" });
+    } catch (error) { toast({ variant: "destructive", title: "Visibility update failed", description: error instanceof Error ? error.message : "Try again." }); }
+  };
 
   const resetForm = () => {
     setOpen(false);
@@ -113,18 +135,41 @@ export default function TeacherAssignments() {
     }
   };
 
-  const grade = () => {
+  const grade = async () => {
     if (!grading) return;
-    void fetch(getApiUrl(`/api/assignments/submissions/${grading.subId}/grade`), {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
-      body: JSON.stringify({ marks: grading.marks, feedback: grading.feedback }),
-    }).then(r => {
-      if (!r.ok) { toast({ variant: "destructive", title: "Grading failed" }); return; }
-      toast({ title: "✅ Graded successfully" });
+    const sessionToken = token();
+    if (!sessionToken) {
+      toast({ variant: "destructive", title: "Sign-in required", description: "Your session is missing. Sign in again before saving this grade." });
+      window.location.href = "/login";
+      return;
+    }
+    const marks = Number(grading.marks);
+    const totalMarks = Number(viewSubs?.assignment?.totalMarks);
+    if (!Number.isFinite(marks) || marks < 0 || !Number.isFinite(totalMarks) || marks > totalMarks) {
+      toast({ variant: "destructive", title: "Invalid marks", description: `Enter a score between 0 and ${Number.isFinite(totalMarks) ? totalMarks : "the assignment maximum"}.` });
+      return;
+    }
+    try {
+      const response = await fetch(getApiUrl(`/api/assignments/submissions/${grading.subId}/grade`), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionToken}` },
+        body: JSON.stringify({ marks, feedback: grading.feedback }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (response.status === 401) {
+          toast({ variant: "destructive", title: "Session expired", description: "Your grade was not saved. Sign in again, then retry." });
+          window.location.href = "/login";
+          return;
+        }
+        throw new Error(result.error || result.message || `Grading failed (HTTP ${response.status})`);
+      }
+      toast({ title: "Graded successfully" });
       setGrading(null);
-      if (viewSubs) loadSubs(viewSubs.assignment);
-    });
+      if (viewSubs) await loadSubs(viewSubs.assignment);
+    } catch (error) {
+      toast({ variant: "destructive", title: "Grading failed", description: error instanceof Error ? error.message : "Could not save this grade." });
+    }
   };
 
   return (
@@ -179,21 +224,24 @@ export default function TeacherAssignments() {
                         <Badge className={`text-xs ${a.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{a.status}</Badge>
                       </div>
                       {a.description && <p className="text-sm text-slate-500 mb-2 whitespace-pre-wrap">{a.description}</p>}
-                      {a.attachmentUrl && (
-                        <a className="text-sm text-emerald-700 hover:underline block mb-2" href={a.attachmentUrl} target="_blank" rel="noreferrer">
-                          Open reference material
-                        </a>
-                      )}
+                      {a.attachmentUrl && <div className="mt-3 rounded-xl border bg-muted/20 p-3">
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Reference material · visible to learners by default</p><Button type="button" size="sm" variant="ghost" onClick={() => void toggleReferenceVisibility(a)}>{hiddenReferenceIds.has(a.id) ? "Show material" : "Hide material"}</Button></div>
+                        {hiddenReferenceIds.has(a.id) ? <p className="text-sm text-muted-foreground">Hidden from learners until you choose Show material.</p> : <AuthenticatedMedia url={a.attachmentUrl} type="document" title={`${a.title} reference material`} />}
+                      </div>}
                       <div className="flex items-center gap-4 text-xs text-slate-400 mt-1 flex-wrap">
                         <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> Due: {a.dueDate}</span>
                         <span className="flex items-center gap-1"><BookOpen className="h-3 w-3" /> {a.totalMarks} marks</span>
                       </div>
                     </div>
                     <div className="flex flex-col gap-2">
+                      <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { window.location.href = `/student/assignments?assignment=${encodeURIComponent(String(a.id))}`; }}><Eye className="h-3.5 w-3.5" />Preview as learner</Button>
                       <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { setEditingId(a.id); setForm({ title: a.title, description: a.description ?? "", subject: a.subject, grade: a.grade ?? "", dueDate: a.dueDate, totalMarks: String(a.totalMarks), attachmentUrl: a.attachmentUrl ?? "" }); setOpen(true); }}>
                         Edit
                       </Button>
                       <Button size="sm" variant="destructive" className="gap-1.5" disabled={deletingId !== null} onClick={() => void deleteAssignment(a)}><Trash2 className="h-3.5 w-3.5" />{deletingId === Number(a.id) ? "Deleting…" : "Delete"}</Button>
+                      <Button size="sm" variant="outline" className="gap-1.5" onClick={() => window.location.assign(`/student/assignments?assignment=${a.id}`)}>
+                        <Eye className="h-3.5 w-3.5" /> Preview as learner
+                      </Button>
                       <Button size="sm" variant="outline" className="gap-1.5" onClick={() => loadSubs(a)}>
                         <Eye className="h-3.5 w-3.5" /> Submissions
                       </Button>
@@ -206,6 +254,7 @@ export default function TeacherAssignments() {
         )}
       </div>
 
+      {learnerPreview && <Dialog open={!!learnerPreview} onOpenChange={() => setLearnerPreview(null)}><DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl"><DialogHeader><DialogTitle>Learner preview · {learnerPreview.title}</DialogTitle></DialogHeader><div className="space-y-3 rounded-xl border p-4"><div className="flex flex-wrap gap-2"><Badge>{learnerPreview.subject}</Badge>{learnerPreview.grade && <Badge variant="secondary">{learnerPreview.grade}</Badge>}<Badge>Due {learnerPreview.dueDate}</Badge></div><p className="whitespace-pre-wrap text-sm">{learnerPreview.description || "No instructions provided."}</p>{learnerPreview.attachmentUrl && <iframe title="Learner reference material" src={learnerPreview.attachmentUrl} className="h-64 w-full rounded-lg border" />}<p className="text-sm text-muted-foreground">Total marks: {learnerPreview.totalMarks}</p><p className="text-xs text-muted-foreground">Preview only — no submission has been created.</p></div></DialogContent></Dialog>}
       {viewSubs && (
         <Dialog open={!!viewSubs} onOpenChange={() => setViewSubs(null)}>
           <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">

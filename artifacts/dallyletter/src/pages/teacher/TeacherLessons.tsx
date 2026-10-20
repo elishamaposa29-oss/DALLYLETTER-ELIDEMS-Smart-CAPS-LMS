@@ -1,6 +1,6 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
-import { useListLessons, useCreateLesson, useDeleteLesson, getApiUrl } from "@workspace/api-client-react";
+import { useListLessons, useCreateLesson, useUpdateLesson, useDeleteLesson, getApiUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,6 +51,8 @@ export default function TeacherLessons() {
     } catch(e) { toast({variant:"destructive",title:"Permission request failed",description:e instanceof Error?e.message:"Try again"}); }
   };
   const createLessonMutation = useCreateLesson();
+  const updateLessonMutation = useUpdateLesson();
+  const [editingLessonId, setEditingLessonId] = useState<number | null>(null);
   const deleteLessonMutation = useDeleteLesson();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -91,6 +93,17 @@ export default function TeacherLessons() {
   const selectedLessonType = form.watch("type");
 
   const onSubmit = (values: z.infer<typeof createLessonSchema>) => {
+    if (editingLessonId !== null) {
+      updateLessonMutation.mutate({ id: editingLessonId, data: values }, {
+        onSuccess: () => {
+          toast({ title: "Lesson updated", description: "Your permitted changes were saved." });
+          queryClient.invalidateQueries({ queryKey: getListLessonsQueryKey() });
+          setIsDialogOpen(false); setEditingLessonId(null); form.reset();
+        },
+        onError: (error) => toast({ variant: "destructive", title: "Lesson update blocked", description: error.message || "Failed to update lesson" }),
+      });
+      return;
+    }
     createLessonMutation.mutate({ data: values }, {
       onSuccess: () => {
         toast({ title: "Lesson created", description: "Your lesson has been published." });
@@ -103,6 +116,16 @@ export default function TeacherLessons() {
       }
     });
   };
+
+  const openLessonEditor = (lessonId: number) => {
+    const lesson = lessons?.find(item => item.id === lessonId);
+    if (!lesson) { toast({ variant: "destructive", title: "Lesson unavailable", description: "Reload the lesson list and try again." }); return; }
+    setEditingLessonId(lessonId);
+    form.reset({ title: lesson.title ?? "", description: lesson.description ?? "", subject: lesson.subject ?? "", grade: lesson.grade ?? "", type: lesson.type as z.infer<typeof createLessonSchema>["type"], mediaUrl: lesson.mediaUrl ?? "", content: lesson.content ?? "" });
+    setIsDialogOpen(true);
+  };
+
+  const hasApprovedPermission = (lessonId: number, action: string) => myPermissionRequests.some((request:any) => Number(request.content_id ?? request.contentId) === lessonId && String(request.content_type ?? request.contentType ?? "lesson") === "lesson" && String(request.requested_action ?? request.requestedAction) === action && String(request.status).toLowerCase() === "approved");
 
   const handleMediaUpload = (file: File) => {
     const isDocument = selectedLessonType === "notes" && ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"].includes(file.type);
@@ -190,7 +213,15 @@ export default function TeacherLessons() {
                 <p className="text-xs text-muted-foreground">{contentType} #{contentId} · {String(request.requested_action ?? request.requestedAction ?? "permission").replaceAll("_"," ")}</p>
                 {request.owner_name && <p className="text-xs text-muted-foreground">Owner: {request.owner_name}</p>}
               </div>
-              <Badge variant={status==="approved"?"default":status==="declined"?"destructive":"outline"}>{status==="approved"?"Granted":status==="declined"?"Declined":status==="pending"?"Pending":status}</Badge>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant={status==="approved"?"default":status==="declined"?"destructive":"outline"}>{status==="approved"?"Granted":status==="declined"?"Declined":status==="pending"?"Pending":status}</Badge>
+                {status==="approved" && contentType==="lesson" && <Button type="button" size="sm" variant="outline" onClick={() => window.location.assign("/preview/lesson/"+contentId)}>Open lesson</Button>}
+                {status==="approved" && contentType==="lesson" && String(request.requested_action ?? request.requestedAction)==="edit" && <Button type="button" size="sm" onClick={() => openLessonEditor(contentId)}>Edit lesson</Button>}
+                {status==="approved" && contentType==="lesson" && String(request.requested_action ?? request.requestedAction)==="create_exercise" && <Button type="button" size="sm" onClick={() => { const lesson=lessons?.find(item=>item.id===contentId); if(lesson) { setShowAllTeachers(true); setActiveExerciseLessonId(contentId); window.setTimeout(() => document.getElementById("lesson-"+contentId)?.scrollIntoView({behavior:"smooth",block:"center"}), 150); } else toast({variant:"destructive",title:"Lesson unavailable",description:"Reload the lesson list and try again."}); }}>Create exercise</Button>}
+                {status==="approved" && contentType==="lesson" && String(request.requested_action ?? request.requestedAction)==="delete" && <Button type="button" size="sm" variant="destructive" onClick={() => handleDelete(contentId)}>Delete lesson</Button>}
+                {status==="approved" && contentType==="lesson" && String(request.requested_action ?? request.requestedAction)==="notify" && <Button type="button" size="sm" onClick={async () => { try { const response=await fetch(getApiUrl("/api/lessons/"+contentId+"/notify-followers"),{method:"POST",headers:authHeaders()}); const data=await response.json().catch(()=>({})); if(!response.ok) throw new Error(data.error||"Notification failed"); toast({title:"Followers notified"}); } catch(error) { toast({variant:"destructive",title:"Could not notify followers",description:error instanceof Error?error.message:"Try again"}); } }}>Notify followers</Button>}
+                {status==="declined" && <><Button type="button" size="sm" variant="outline" onClick={() => void requestPermission(contentId, String(request.requested_action ?? request.requestedAction ?? "edit") as "edit"|"create_exercise"|"delete"|"notify")}>Request again</Button><Button type="button" size="sm" variant="secondary" onClick={async () => { try { const response=await fetch(getApiUrl(`/api/content-permissions/${Number(request.id)}/report`),{method:"POST",headers:{"Content-Type":"application/json",...authHeaders()},body:JSON.stringify({message:"Please review declined permission request"})}); const data=await response.json().catch(()=>({})); if(!response.ok) throw new Error(data.error||"Report failed"); toast({title:"Report sent to manager"}); } catch(error) { toast({variant:"destructive",title:"Could not report",description:error instanceof Error?error.message:"Try again"}); } }}>Report to manager</Button></>}
+              </div>
             </div>;
           })}</CardContent>
         </Card>}
@@ -211,9 +242,9 @@ export default function TeacherLessons() {
             </DialogTrigger>
             <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Create New Lesson</DialogTitle>
+                <DialogTitle>{editingLessonId !== null ? "Edit permitted lesson" : "Create New Lesson"}</DialogTitle>
                 <DialogDescription>
-                  Upload materials or write notes for your students.
+                  {editingLessonId !== null ? "Update the lesson fields you are authorized to edit." : "Upload materials or write notes for your students."}
                 </DialogDescription>
               </DialogHeader>
               <Form {...form}>
@@ -425,7 +456,7 @@ export default function TeacherLessons() {
               </div>
             ) : (
               visibleLessons.map((lesson) => (
-                <Card key={lesson.id} className="flex flex-col h-full hover:border-primary/50 transition-colors group">
+                <Card key={lesson.id} id={"lesson-"+lesson.id} className="flex flex-col h-full hover:border-primary/50 transition-colors group">
                   <CardHeader className="pb-3">
                     <div className="flex justify-between items-start gap-2">
                       <div className="flex gap-2 flex-wrap">
@@ -452,7 +483,7 @@ export default function TeacherLessons() {
                       Added on {new Date(lesson.createdAt).toLocaleDateString()}
                     </div>
                   </CardContent>
-                  {activeExerciseLessonId === lesson.id && canManageLesson(lesson) && (
+                  {activeExerciseLessonId === lesson.id && (canManageLesson(lesson) || hasApprovedPermission(lesson.id, "create_exercise")) && (
                     <CardContent className="border-t pt-4">
                       <ExerciseBuilderPanel
                         lessonId={lesson.id}
@@ -468,6 +499,7 @@ export default function TeacherLessons() {
                         <Button type="button" variant="outline" size="sm" onClick={() => void requestPermission(lesson.id,"create_exercise")}>Request exercise</Button>
                         <Button type="button" variant="outline" size="sm" onClick={() => void requestPermission(lesson.id,"notify")}>Request notify</Button>
                         <Button type="button" variant="outline" size="sm" onClick={() => void requestPermission(lesson.id,"delete")}>Request delete</Button>
+                        {hasApprovedPermission(lesson.id,"create_exercise") && <Button type="button" size="sm" onClick={() => setActiveExerciseLessonId(lesson.id)}>Open exercise builder</Button>}
                       </>
                     ) : (
                       <>
