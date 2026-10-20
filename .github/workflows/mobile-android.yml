@@ -307,5 +307,7 @@ jobs:
             /tmp/dallyletter-login-error.png
             /tmp/dallyletter-signup.png
             /tmp/dallyletter-v1.0.1.png
+            /tmp/dallyletter-release-upgrade.xml
+            /tmp/dallyletter-release-upgrade.png
           if-no-files-found: warn
           retention-days: 14
