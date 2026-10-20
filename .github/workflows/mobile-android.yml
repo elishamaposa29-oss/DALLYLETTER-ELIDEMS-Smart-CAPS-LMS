@@ -83,14 +83,16 @@ jobs:
           set -Eeuo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          import re
           p = Path("app/build.gradle")
           s = p.read_text()
-          pattern = r"react\\s*\\{"
-          updated, count = re.subn(pattern, "react {\\n    // CI-only debug APK must carry JS so it can run without Metro.\\n    // Android debug remains debuggable; only RN's Metro-dependent bundle skip is disabled.\\n    debuggableVariants = []", s, count=1)
-          if count != 1:
+          needle = "react {"
+          if needle not in s:
               raise SystemExit("Could not locate React Native Gradle react { block; refusing to build a Metro-dependent CI APK")
-          p.write_text(updated)
+          replacement = """react {
+              // CI-only debug APK must carry JS so it can run without Metro.
+              // Keep the debug variant debuggable while disabling Metro-dependent bundle skipping.
+              debuggableVariants = []"""
+          p.write_text(s.replace(needle, replacement, 1))
           PY
           grep -A5 -m1 '^react {' app/build.gradle
       - name: Build standalone release APK
@@ -129,14 +131,16 @@ jobs:
           set -Eeuo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          import re
           p = Path("app/build.gradle")
           s = p.read_text()
-          pattern = r"react\\s*\\{"
-          updated, count = re.subn(pattern, "react {\\n    // CI-only debug APK must carry JS so it can run without Metro.\\n    // Android debug remains debuggable; only RN's Metro-dependent bundle skip is disabled.\\n    debuggableVariants = []", s, count=1)
-          if count != 1:
+          needle = "react {"
+          if needle not in s:
               raise SystemExit("Could not locate React Native Gradle react { block; refusing to build a Metro-dependent CI APK")
-          p.write_text(updated)
+          replacement = """react {
+              // CI-only debug APK must carry JS so it can run without Metro.
+              // Keep the debug variant debuggable while disabling Metro-dependent bundle skipping.
+              debuggableVariants = []"""
+          p.write_text(s.replace(needle, replacement, 1))
           PY
           grep -A5 -m1 '^react {' app/build.gradle
       - name: Build update APK
