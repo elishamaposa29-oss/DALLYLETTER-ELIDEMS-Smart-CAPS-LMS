@@ -208,13 +208,13 @@ timeout 30 adb shell dumpsys package com.dallyletter.elidems | grep -E "versionC
 step "write marker into app-private data using debuggable test build"
 # adb shell argument quoting differs from a local shell: send the compound
 # command as one remote-shell string so the redirect runs inside the app UID.
-timeout 20 adb shell run-as com.dallyletter.elidems mkdir -p files
+timeout 20 adb shell "run-as com.dallyletter.elidems sh -c 'mkdir -p files'"
 timeout 20 adb shell "run-as com.dallyletter.elidems sh -c 'printf preserved-across-upgrade > files/dallyletter-upgrade-marker'"
 step "upgrade CI test build to version 1.0.1 without uninstalling"
 timeout 180 adb install -r /tmp/dallyletter-data-v1.0.1-debug.apk
 timeout 30 adb shell pm path com.dallyletter.elidems | grep -q "package:"
 step "verify app-private data survives in-place install -r upgrade"
-upgrade_marker="$(timeout 20 adb shell run-as com.dallyletter.elidems cat files/dallyletter-upgrade-marker | tr -d "\\r")"
+upgrade_marker="$(timeout 20 adb shell "run-as com.dallyletter.elidems sh -c 'cat files/dallyletter-upgrade-marker'" | tr -d "\\r")"
 if [ "$upgrade_marker" != "preserved-across-upgrade" ]; then
   echo "::error::App-private data marker was not preserved during install -r upgrade"
   exit 1
