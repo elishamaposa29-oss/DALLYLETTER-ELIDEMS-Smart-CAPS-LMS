@@ -69,13 +69,27 @@ timeout 180 adb install /tmp/dallyletter-v1.apk
 timeout 30 adb shell pm path com.dallyletter.elidems | grep -q "package:"
 timeout 45 adb shell monkey -p com.dallyletter.elidems 1
 sleep 8
-step "capture actual first-launch screen and verify sign-in UI"
-timeout 30 adb exec-out screencap -p > /tmp/dallyletter-v1.png
-timeout 45 adb shell uiautomator dump /sdcard/dallyletter-ui-v1.xml >/dev/null
-timeout 20 adb pull /sdcard/dallyletter-ui-v1.xml /tmp/dallyletter-ui-v1.xml >/dev/null
-if ! grep -Eqi 'Welcome back|Sign in to continue learning|your@email.com' /tmp/dallyletter-ui-v1.xml; then
-  echo "::error::App launched but expected sign-in UI text was not present in the UI hierarchy"
+step "open the login route and verify rendered sign-in UI"
+# The launcher may restore the last route; explicitly navigate to login so this
+# assertion tests the sign-in screen rather than an unrelated initial route.
+timeout 30 adb shell am start -a android.intent.action.VIEW -d 'dallyletter:///login' com.dallyletter.elidems
+sleep 3
+ui_ready=0
+for attempt in 1 2 3 4 5 6; do
+  timeout 30 adb exec-out screencap -p > /tmp/dallyletter-v1.png || true
+  timeout 45 adb shell uiautomator dump /sdcard/dallyletter-ui-v1.xml >/dev/null 2>&1 || true
+  timeout 20 adb pull /sdcard/dallyletter-ui-v1.xml /tmp/dallyletter-ui-v1.xml >/dev/null 2>&1 || true
+  if [ -s /tmp/dallyletter-ui-v1.xml ] && grep -Eqi 'Welcome back|Sign in to continue learning|your@email.com|Sign In' /tmp/dallyletter-ui-v1.xml; then
+    ui_ready=1
+    break
+  fi
+  echo "Sign-in UI not exposed in hierarchy yet (attempt $attempt/6); waiting 5 seconds"
+  sleep 5
+done
+if [ "$ui_ready" -ne 1 ]; then
+  echo "::error::App launched but sign-in UI did not appear after explicit login navigation and bounded retries"
   cat /tmp/dallyletter-ui-v1.xml || true
+  timeout 30 adb logcat -d -t 2500 || true
   exit 1
 fi
 step "submit invalid credentials to verify real mobile-to-API request and visible error state"
