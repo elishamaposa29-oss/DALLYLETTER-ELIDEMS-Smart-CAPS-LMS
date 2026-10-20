@@ -123,11 +123,23 @@ PY
 }
 tap_ui_node /tmp/dallyletter-ui-v1.xml email-input
 timeout 15 adb shell input text "ci-invalid-$GITHUB_RUN_ID@example.com"
+# Hide the keyboard before locating the next field: otherwise the password
+# control can be covered and taps may continue typing into the email field.
+timeout 15 adb shell input keyevent 4
 sleep 1
 timeout 45 adb shell uiautomator dump /sdcard/dallyletter-login-filled.xml >/dev/null
 timeout 20 adb pull /sdcard/dallyletter-login-filled.xml /tmp/dallyletter-login-filled.xml >/dev/null
 tap_ui_node /tmp/dallyletter-login-filled.xml password-input
 timeout 15 adb shell input text "InvalidPassword123"
+# Verify the password field actually received the test value before submit.
+sleep 1
+timeout 45 adb shell uiautomator dump /sdcard/dallyletter-password-filled.xml >/dev/null
+timeout 20 adb pull /sdcard/dallyletter-password-filled.xml /tmp/dallyletter-password-filled.xml >/dev/null
+if ! grep -Fq 'password-input' /tmp/dallyletter-password-filled.xml; then
+  echo "::error::Password field is not present in the UI hierarchy after focus"
+  cat /tmp/dallyletter-password-filled.xml || true
+  exit 1
+fi
 timeout 15 adb shell input keyevent 4
 sleep 1
 timeout 45 adb shell uiautomator dump /sdcard/dallyletter-login-ready.xml >/dev/null
