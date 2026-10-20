@@ -122,6 +122,7 @@ jobs:
           adb start-server
           adb_deadline=$((SECONDS + 600))
           until adb get-state 2>/dev/null | grep -qx device; do
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then echo "::error::Emulator process exited before ADB transport became ready"; exit 1; fi
             if [ "$SECONDS" -ge "$adb_deadline" ]; then echo "::error::ADB transport timeout (600s)"; exit 1; fi
             sleep 5
           done
@@ -130,6 +131,7 @@ jobs:
           while [ "$SECONDS" -lt "$boot_deadline" ]; do
             boot="$(timeout 10 adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
             if [ "$boot" = "1" ]; then booted=1; break; fi
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then echo "::error::Emulator process exited before Android completed boot"; exit 1; fi
             echo "Waiting for Android boot completion: sys.boot_completed=${boot:-blank}"
             sleep 5
           done
