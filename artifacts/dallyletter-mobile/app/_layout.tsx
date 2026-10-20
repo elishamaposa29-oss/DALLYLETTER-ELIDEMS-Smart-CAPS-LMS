@@ -10,7 +10,7 @@ import { QueryClient, QueryClientProvider, dehydrate, hydrate } from "@tanstack/
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -19,27 +19,33 @@ import { DeviceEventEmitter } from "react-native";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider } from "@/contexts/AuthContext";
 
-const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim() || process.env.EXPO_PUBLIC_API_URL?.trim() || (process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : "");
+const DEFAULT_API_BASE_URL = "https://dallyletter-elidems-smart-caps-lms-4.onrender.com";
 
-if (apiBaseUrl) {
-  setBaseUrl(apiBaseUrl);
+function resolveApiBaseUrl() {
+  const candidates = [
+    process.env.EXPO_PUBLIC_API_BASE_URL,
+    process.env.EXPO_PUBLIC_API_URL,
+    process.env.RENDER_EXTERNAL_URL,
+    process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : undefined,
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
+  ];
+  for (const candidate of candidates) {
+    const value = candidate?.trim();
+    if (value) return value.replace(/\/+$/, "");
+  }
+  return DEFAULT_API_BASE_URL;
 }
 
-SplashScreen.preventAutoHideAsync();
+const apiBaseUrl = resolveApiBaseUrl();
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 1,
-      staleTime: 5 * 60_000,
-      gcTime: 7 * 24 * 60 * 60_000,
-      networkMode: "offlineFirst",
-    },
-  },
-});
+if (apiBaseUrl) setBaseUrl(apiBaseUrl);
+void SplashScreen.preventAutoHideAsync().catch(() => {});
+
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 5 * 60_000, gcTime: 7 * 24 * 60 * 60_000, networkMode: "offlineFirst" } } });
 
 const QUERY_CACHE_PREFIX = "dallyletter_mobile_query_cache_v1_user_";
 const USER_KEY = "dallyletter_user";
+
 function OfflineQueryCache() {
   useEffect(() => {
     let active = true;
@@ -74,8 +80,11 @@ function OfflineQueryCache() {
           try { hydrate(queryClient, JSON.parse(serializedCache)); }
           catch { await AsyncStorage.removeItem(cacheKey); }
         }
-      } catch { /* Offline cache is best-effort; the app remains usable without it. */ }
-      finally { if (active && sequence === switchSequence) { hydrated = true; persist(); } }
+      } catch {
+        // Offline cache is best-effort; app startup must remain usable without it.
+      } finally {
+        if (active && sequence === switchSequence) { hydrated = true; persist(); }
+      }
     };
     void loadUserCache();
     const authSubscription = DeviceEventEmitter.addListener("dallyletter-auth-changed", () => { void loadUserCache(); });
@@ -94,6 +103,7 @@ function RootLayoutNav() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="login" />
+      <Stack.Screen name="signup" />
       <Stack.Screen name="(student)" />
       <Stack.Screen name="(teacher)" />
       <Stack.Screen name="(admin)" />
@@ -102,20 +112,22 @@ function RootLayoutNav() {
 }
 
 export default function RootLayout() {
-  const [fontsLoaded, fontError] = useFonts({
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-    Inter_700Bold,
-  });
+  const [fontsLoaded, fontError] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold });
+  const [bootFallbackReady, setBootFallbackReady] = useState(false);
 
   useEffect(() => {
+    const watchdog = setTimeout(() => {
+      setBootFallbackReady(true);
+      void SplashScreen.hideAsync().catch(() => {});
+    }, 5000);
     if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync();
+      clearTimeout(watchdog);
+      void SplashScreen.hideAsync().catch(() => {});
     }
+    return () => clearTimeout(watchdog);
   }, [fontsLoaded, fontError]);
 
-  if (!fontsLoaded && !fontError) return null;
+  if (!fontsLoaded && !fontError && !bootFallbackReady) return null;
 
   return (
     <SafeAreaProvider>
@@ -124,9 +136,7 @@ export default function RootLayout() {
           <OfflineQueryCache />
           <AuthProvider>
             <GestureHandlerRootView style={{ flex: 1 }}>
-              <KeyboardProvider>
-                <RootLayoutNav />
-              </KeyboardProvider>
+              <KeyboardProvider><RootLayoutNav /></KeyboardProvider>
             </GestureHandlerRootView>
           </AuthProvider>
         </QueryClientProvider>
