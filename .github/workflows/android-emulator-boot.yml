@@ -28,10 +28,30 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: "platform-tools"
-      - name: Install emulator image
+      - name: Install emulator image with retry for corrupt SDK downloads
+        shell: bash
         run: |
+          set -Eeuo pipefail
+          api_level="${{ inputs.api_level || '34' }}"
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "emulator" "platforms;android-${{ inputs.api_level || '34' }}" "system-images;android-${{ inputs.api_level || '34' }};google_apis;x86_64"
+          installed=0
+          for attempt in 1 2 3; do
+            if sdkmanager --install \\
+              "platform-tools" \\
+              "emulator" \\
+              "platforms;android-${api_level}" \\
+              "system-images;android-${api_level};google_apis;x86_64"; then
+              installed=1
+              break
+            fi
+            echo "::warning::SDK image install failed (attempt ${attempt}/3); removing partial package/cache before retry."
+            rm -rf "$ANDROID_HOME/system-images/android-${api_level}/google_apis/x86_64" "$ANDROID_HOME/.temp" "$HOME/.android/cache" || true
+            sleep "$((attempt * 10))"
+          done
+          if [ "$installed" -ne 1 ]; then
+            echo "::error::Android emulator image installation failed after three attempts."
+            exit 1
+          fi
       - name: Create isolated AVD
         run: |
           echo "no" | avdmanager create avd --force --name BootOnly --package "system-images;android-${{ inputs.api_level || '34' }};google_apis;x86_64" --device "pixel_2"
