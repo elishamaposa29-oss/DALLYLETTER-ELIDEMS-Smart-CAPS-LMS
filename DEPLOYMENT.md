@@ -53,6 +53,14 @@ Required environment variables:
 - CORS_ORIGINS
 - NODE_ENV=production
 
+Optional AI integration (server-side only):
+
+- `AI_PROVIDER=gemini`, `openai`, or `anthropic` selects the provider explicitly.
+- Set the matching `GEMINI_API_KEY`, `OPENAI_API_KEY`, or `ANTHROPIC_API_KEY` in the API service's secret environment.
+- If no provider/key is configured, ELIDEMS AI intentionally stays in mock/development mode.
+- Existing owner-configured AI settings in the database take precedence over environment values.
+- Never put provider keys in Vercel browser variables, `VITE_*`, or `EXPO_PUBLIC_*`; mobile and web clients must call the backend.
+
 `DATABASE_URL` must be the current connection URL for a running PostgreSQL
 instance. If the API logs `getaddrinfo ENOTFOUND`, the hostname in Render's
 environment variable is stale or invalid; update it from the database
