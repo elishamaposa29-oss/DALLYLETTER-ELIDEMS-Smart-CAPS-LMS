@@ -1,0 +1,81 @@
+name: Android Emulator Boot Diagnostics (Isolated)
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_level:
+        description: Android API level
+        required: true
+        default: "34"
+        type: choice
+        options:
+          - "34"
+          - "35"
+  pull_request:
+    paths:
+      - ".github/workflows/android-emulator-boot.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  emulator-boot:
+    name: Boot emulator only (no app build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools"
+      - name: Install emulator image
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "emulator" "platforms;android-${{ inputs.api_level || '34' }}" "system-images;android-${{ inputs.api_level || '34' }};google_apis;x86_64"
+      - name: Create isolated AVD
+        run: |
+          echo "no" | avdmanager create avd --force --name BootOnly --package "system-images;android-${{ inputs.api_level || '34' }};google_apis;x86_64" --device "pixel_2"
+      - name: Launch emulator and verify boot
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          emulator -avd BootOnly -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -cores 2 > /tmp/emulator.log 2>&1 &
+          emulator_pid=$!
+          cleanup() {
+            status=$?
+            if kill -0 "$emulator_pid" 2>/dev/null; then kill "$emulator_pid" || true; fi
+            if [ "$status" -ne 0 ]; then
+              echo "::group::Emulator boot diagnostics"
+              adb devices -l || true
+              adb shell getprop sys.boot_completed || true
+              adb shell getprop init.svc.bootanim || true
+              tail -n 250 /tmp/emulator.log || true
+              echo "::endgroup::"
+            fi
+            exit "$status"
+          }
+          trap cleanup EXIT
+          adb start-server
+          adb_deadline=$((SECONDS + 300))
+          until adb get-state 2>/dev/null | grep -qx device; do
+            if [ "$SECONDS" -ge "$adb_deadline" ]; then echo "::error::ADB transport timeout (300s)"; exit 1; fi
+            sleep 5
+          done
+          boot_deadline=$((SECONDS + 1200))
+          booted=0
+          while [ "$SECONDS" -lt "$boot_deadline" ]; do
+            boot="$(timeout 10 adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+            if [ "$boot" = "1" ]; then booted=1; break; fi
+            echo "Waiting for Android boot completion: sys.boot_completed=${boot:-blank}"
+            sleep 5
+          done
+          if [ "$booted" -ne 1 ]; then echo "::error::Android did not finish booting within 1200s"; exit 1; fi
+          ready=0
+          for attempt in $(seq 1 24); do
+            if timeout 10 adb shell cmd package list packages >/dev/null 2>&1; then ready=1; break; fi
+            sleep 5
+          done
+          if [ "$ready" -ne 1 ]; then echo "::error::Boot property passed but package manager is not ready"; exit 1; fi
+          adb shell getprop ro.build.version.release
+          adb shell getprop ro.build.version.sdk
+          echo "PASS: emulator boot and package manager verified; app was intentionally not built or installed."
