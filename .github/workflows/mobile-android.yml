@@ -34,6 +34,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
       - uses: android-actions/setup-android@v3
         with:
           packages: "platform-tools"
@@ -65,22 +66,103 @@ jobs:
         run: ./gradlew --no-daemon --stacktrace assembleDebug
       - name: Preserve update package
         run: cp artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk artifacts/dallyletter-mobile/apk-artifacts/dallyletter-v1.0.1.apk
+      - name: Generate APK checksums and build metadata
+        if: always()
+        env:
+          SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p artifacts/dallyletter-mobile/apk-artifacts
+          shopt -s nullglob
+          apks=(artifacts/dallyletter-mobile/apk-artifacts/*.apk)
+          if [ "${#apks[@]}" -gt 0 ]; then
+            (
+              cd artifacts/dallyletter-mobile/apk-artifacts
+              sha256sum *.apk > checksums.sha256
+            )
+          fi
+          {
+            echo "source_commit=$SOURCE_COMMIT"
+            echo "workflow_merge_commit=$GITHUB_SHA"
+            echo "application_id=com.dallyletter.elidems"
+            echo "apk_v1_version=1.0.0"
+            echo "apk_v1_versionCode=1"
+            echo "apk_v1.0.1_version=1.0.1"
+            echo "apk_v1.0.1_versionCode=2"
+          } > artifacts/dallyletter-mobile/apk-artifacts/build-metadata.txt
       - name: Upload installable debug APK
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: dallyletter-android-debug-apk
-          path: artifacts/dallyletter-mobile/apk-artifacts/*.apk
+          path: |
+            artifacts/dallyletter-mobile/apk-artifacts/*.apk
+            artifacts/dallyletter-mobile/apk-artifacts/checksums.sha256
+            artifacts/dallyletter-mobile/apk-artifacts/build-metadata.txt
           if-no-files-found: error
           retention-days: 14
   emulator-smoke:
     needs: build-apk
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     env:
       EXPO_PUBLIC_API_BASE_URL: https://dallyletter-elidems-smart-caps-lms-4.onrender.com
     steps:
       - uses: actions/checkout@v4
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools"
+      - name: Install emulator and Android 34 system image
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "emulator" "platforms;android-34" "system-images;android-34;google_apis;x86_64"
+          # Install only the host OS dependency; SDK-bundled libraries must be resolved from the SDK.
+          sudo apt-get update
+          sudo apt-get install --yes libpulse0
+          test -x "$ANDROID_HOME/emulator/emulator"
+          qemu_bin="$ANDROID_HOME/emulator/qemu/linux-x86_64/qemu-system-x86_64"
+          test -x "$qemu_bin"
+          emulator_root="$ANDROID_HOME/emulator"
+          library_dirs=(
+            "$emulator_root/lib64"
+            "$emulator_root/lib64/qt/lib"
+            "$emulator_root/lib64/gles_swiftshader"
+            "$emulator_root/qemu/linux-x86_64"
+            "$emulator_root/qemu/linux-x86_64/lib64"
+          )
+          sdk_library_path="$(IFS=:; echo "${library_dirs[*]}")"
+          echo "$emulator_root" >> "$GITHUB_PATH"
+          echo "LD_LIBRARY_PATH=$sdk_library_path:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+          export LD_LIBRARY_PATH="$sdk_library_path:${LD_LIBRARY_PATH:-}"
+          echo "Android Emulator version:"
+          "$emulator_root/emulator" -version
+          echo "QEMU bundled library resolution with SDK library paths:"
+          ldd "$qemu_bin" | tee /tmp/dallyletter-qemu-ldd.log
+          missing="$(awk '/not found/ { print $1 }' /tmp/dallyletter-qemu-ldd.log)"
+          if [ -n "$missing" ]; then
+            echo "::error::QEMU still has unresolved libraries after adding Android SDK library directories: $missing"
+            echo "SDK emulator directory tree:"
+            find "$emulator_root" -maxdepth 4 -type f \( -name 'libandroid-emu-tracing.so' -o -name 'libQt6CoreAndroidEmu.so*' -o -name 'libc++.so' -o -name 'libprotobuf.so*' -o -name 'libtcmalloc_minimal.so*' \) -print
+            exit 1
+          fi
+          # Exercise the supported launcher too; raw QEMU ldd alone does not validate emulator startup.
+      - name: Create isolated Android virtual device
+        run: |
+          set -Eeuo pipefail
+          export ANDROID_SDK_HOME="$HOME"
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo "ANDROID_SDK_HOME=$ANDROID_SDK_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
+          echo "no" | avdmanager create avd --force --name DallyletterSmoke --package "system-images;android-34;google_apis;x86_64" --device "pixel_2"
+          if [ ! -f "$ANDROID_AVD_HOME/DallyletterSmoke.ini" ]; then
+            echo "::error::AVD creation did not produce $ANDROID_AVD_HOME/DallyletterSmoke.ini"
+            find "$HOME/.android" "$ANDROID_HOME" -maxdepth 5 -iname '*DallyletterSmoke*' -print 2>/dev/null || true
+            avdmanager list avd || true
+            exit 1
+          fi
+          echo "Created AVD at $ANDROID_AVD_HOME/DallyletterSmoke.ini"
+          "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fx "DallyletterSmoke"
       - name: Download built APKs
         uses: actions/download-artifact@v4
         with:
@@ -91,15 +173,96 @@ jobs:
           mkdir -p artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug
           cp /tmp/dallyletter-apks/dallyletter-v1.apk /tmp/dallyletter-v1.apk
           cp /tmp/dallyletter-apks/dallyletter-v1.0.1.apk artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk
-      - name: Boot Android emulator
-        uses: reactivecircus/android-emulator-runner@v2
+      - name: Launch emulator and run install/launch/upgrade smoke tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          emulator_bin="$ANDROID_HOME/emulator/emulator"
+          if [ ! -x "$emulator_bin" ]; then
+            echo "::error::Android emulator binary missing at $emulator_bin"
+            find "$ANDROID_HOME" -maxdepth 3 -type f -name emulator -print || true
+            exit 127
+          fi
+          test -f "$ANDROID_AVD_HOME/DallyletterSmoke.ini" || { echo "::error::Expected AVD file is missing"; find "$HOME/.android" -maxdepth 4 -iname '*DallyletterSmoke*' -print || true; exit 1; }
+          "$emulator_bin" -list-avds | grep -Fx "DallyletterSmoke"
+          # GitHub-hosted Linux runners may expose /dev/kvm without granting the runner
+          # user access. Fix permissions only on this disposable CI runner.
+          if [ -e /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm
+            if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+              echo "::error::/dev/kvm exists but remains inaccessible after permission repair."
+              ls -l /dev/kvm || true
+              exit 1
+            fi
+            echo "KVM device is accessible to the runner."
+          else
+            echo "::error::/dev/kvm is not exposed by this runner; x86_64 Android emulation requires hardware acceleration."
+            echo "Use a GitHub runner with KVM enabled; do not silently skip install/launch/upgrade testing."
+            exit 1
+          fi
+          "$emulator_bin" -avd DallyletterSmoke -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -cores 2 -memory 3072 > /tmp/dallyletter-emulator.log 2>&1 &
+          emulator_pid=$!
+          diagnostics() {
+            status=$?
+            if [ "$status" -ne 0 ]; then
+              echo "::group::Emulator process diagnostics"
+              adb devices -l || true
+              adb get-state || true
+              adb shell getprop sys.boot_completed || true
+              adb shell getprop init.svc.bootanim || true
+              tail -n 250 /tmp/dallyletter-emulator.log || true
+              echo "::endgroup::"
+            fi
+            kill "$emulator_pid" 2>/dev/null || true
+            wait "$emulator_pid" 2>/dev/null || true
+            exit "$status"
+          }
+          trap diagnostics EXIT
+          for attempt in 1 2 3 4 5; do
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then
+              echo "::error::Emulator process exited before ADB startup"
+              tail -n 200 /tmp/dallyletter-emulator.log || true
+              exit 1
+            fi
+            sleep 1
+          done
+          bash .github/scripts/android-emulator-smoke.sh
+      - name: Verify deployed API health
+        if: always()
+        env:
+          API_BASE_URL: ${{ env.EXPO_PUBLIC_API_BASE_URL }}
+        run: |
+          set -Eeuo pipefail
+          api_url="${API_BASE_URL%/}"
+          test -n "$api_url" || { echo "::error::EXPO_PUBLIC_API_BASE_URL is empty"; exit 1; }
+          status="000"
+          for attempt in 1 2 3 4 5 6; do
+            status="$(curl --silent --show-error --max-time 15 --output /tmp/dallyletter-api-health.json --write-out '%{http_code}' "$api_url/api/healthz" || true)"
+            if [ "$status" = "200" ] && grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' /tmp/dallyletter-api-health.json 2>/dev/null; then
+              echo "Deployed API /api/healthz returned HTTP 200 with status=ok (attempt $attempt/6)."
+              exit 0
+            fi
+            echo "API health attempt $attempt/6 returned HTTP $status; retrying to allow a Render cold start."
+            sleep 5
+          done
+          echo "::error::Deployed API health check failed after six bounded attempts (last HTTP $status). Expected /api/healthz to return status=ok."
+          exit 1
+      - name: Preserve emulator screenshots and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
-          profile: pixel_2
-          cores: 2
-          emulator-boot-timeout: 1200
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: bash .github/scripts/android-emulator-smoke.sh
+          name: dallyletter-android-emulator-diagnostics
+          path: |
+            /tmp/dallyletter-emulator.log
+            /tmp/dallyletter-ui-v1.xml
+            /tmp/dallyletter-login-filled.xml
+            /tmp/dallyletter-login-ready.xml
+            /tmp/dallyletter-login-error.xml
+            /tmp/dallyletter-ui-signup.xml
+            /tmp/dallyletter-ui-v1.0.1.xml
+            /tmp/dallyletter-v1.png
+            /tmp/dallyletter-login-error.png
+            /tmp/dallyletter-signup.png
+            /tmp/dallyletter-v1.0.1.png
+          if-no-files-found: warn
+          retention-days: 14

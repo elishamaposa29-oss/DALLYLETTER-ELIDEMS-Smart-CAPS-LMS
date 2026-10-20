@@ -8,6 +8,7 @@ import {
 } from "@workspace/db/schema";
 import { canManageAcademicContent, isOwnerRole, requireAuth } from "../lib/auth-middleware";
 import { getAIProvider } from "../lib/ai-provider";
+import { hasContentPermission } from "../lib/content-permissions";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, removeStoredMedia } from "../lib/media-storage";
 
 const router = Router();
@@ -149,7 +150,7 @@ router.get("/:id",requireAuth,async(req,res):Promise<void>=>{
 router.post("/lessons/:lessonId/exercises",requireAuth,async(req,res):Promise<void>=>{
   const user=req.currentUser!;if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}
   const lessonId=parseId(req.params.lessonId);if(!lessonId){res.status(400).json({error:"Invalid lesson id"});return;}
-  const [lesson]=await db.select({id:lessonsTable.id}).from(lessonsTable).where(eq(lessonsTable.id,lessonId));if(!lesson){res.status(404).json({error:"Lesson not found"});return;}
+  const [lesson]=await db.select({id:lessonsTable.id,teacherId:lessonsTable.teacherId}).from(lessonsTable).where(eq(lessonsTable.id,lessonId));if(!lesson){res.status(404).json({error:"Lesson not found"});return;} const ownerOrSenior=user.role==="owner"||(user.role==="teacher"&&user.isManager===true&&user.managerLevel==="senior")||lesson.teacherId===user.id; if(!ownerOrSenior&&!(await hasContentPermission(user.id,"lesson",lessonId,"create_exercise"))){res.status(403).json({error:"Create-exercise permission has not been granted by the lesson creator"});return;}
   const {title,instructions,grade,stream,layout}=req.body??{};
   if(typeof title!=="string"||!title.trim()||title.length>300){res.status(400).json({error:"title is required"});return;}
   const [exercise]=await db.insert(exercisesTable).values({lessonId,createdBy:user.id,title:title.trim(),instructions:typeof instructions==="string"?instructions:null,grade:typeof grade==="string"&&grade.trim()?grade.trim():null,stream:typeof stream==="string"&&stream.trim()?stream.trim():null,layout:layout&&typeof layout==="object"?layout:{version:1,page:"book"}}).returning();

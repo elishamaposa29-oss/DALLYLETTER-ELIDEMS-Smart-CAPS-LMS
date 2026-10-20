@@ -8,6 +8,7 @@ import { Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { InstallAppCard } from "@/components/InstallAppCard";
 
 export default function TeacherHome() {
   const { user } = useAuth();
@@ -61,6 +62,7 @@ export default function TeacherHome() {
   return (
     <DashboardLayout>
       <div className="space-y-8">
+        <InstallAppCard />
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">

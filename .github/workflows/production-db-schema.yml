@@ -60,7 +60,8 @@ jobs:
             "chat_broadcasts", "chat_broadcast_recipients",
             "chat_communities", "chat_community_groups",
             "content_permission_requests", "message_media",
-            "push_subscriptions", "teacher_documents"
+            "push_subscriptions", "teacher_documents",
+            "assignments", "hand_raises", "study_groups", "media_object_chunks"
           ];
           const client = new Client({
             connectionString: process.env.DATABASE_URL,
@@ -84,6 +85,40 @@ jobs:
             console.log(`Found ${found.length}/${expected.length} required tables.`);
             if (missing.length) {
               console.error("Missing tables:", missing.join(", "));
+              process.exitCode = 1;
+            }
+
+            const expectedColumns = [
+              ["users", "avatar_url"],
+              ["assignments", "reference_material_hidden"],
+              ["hand_raises", "media_url"],
+              ["hand_raises", "media_owned"],
+              ["notifications", "push_sent_at"],
+              ["notifications", "push_attempts"],
+              ["notifications", "push_next_attempt_at"],
+              ["notifications", "push_last_error"],
+              ["media_object_chunks", "storage_key"],
+              ["media_object_chunks", "mime_type"],
+              ["media_object_chunks", "size_bytes"],
+              ["media_object_chunks", "chunk_index"],
+              ["media_object_chunks", "data"],
+              ["media_object_chunks", "created_at"]
+            ];
+            const columnResult = await client.query(
+              `SELECT e.table_name, e.column_name
+               FROM unnest($1::text[], $2::text[]) AS e(table_name, column_name)
+               LEFT JOIN information_schema.columns c
+                 ON c.table_schema = 'public'
+                AND c.table_name = e.table_name
+                AND c.column_name = e.column_name
+               WHERE c.column_name IS NULL
+               ORDER BY e.table_name, e.column_name`,
+              [expectedColumns.map(([table]) => table), expectedColumns.map(([, column]) => column)]
+            );
+            const missingColumns = columnResult.rows.map(row => `${row.table_name}.${row.column_name}`);
+            console.log(`Found ${expectedColumns.length - missingColumns.length}/${expectedColumns.length} required columns.`);
+            if (missingColumns.length) {
+              console.error("Missing columns:", missingColumns.join(", "));
               process.exitCode = 1;
             }
           } finally {

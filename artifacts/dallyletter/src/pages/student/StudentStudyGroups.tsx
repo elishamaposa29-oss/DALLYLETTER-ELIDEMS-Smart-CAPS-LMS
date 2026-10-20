@@ -18,7 +18,19 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+
+function AuthenticatedMemberAvatar({ url, name }: { url: string; name: string }) {
+  const [source, setSource] = useState<string | null>(/^https:\/\//i.test(url) ? url : null);
+  useEffect(() => {
+    if (/^https:\/\//i.test(url)) { setSource(url); return; }
+    let active=true; let objectUrl:string|undefined;
+    const token=localStorage.getItem("dallyletter_token") ?? "";
+    void fetch(getApiUrl(url),{headers:{Authorization:"Bearer "+token}}).then(response=>{if(!response.ok) throw new Error("Avatar unavailable"); return response.blob();}).then(blob=>{objectUrl=URL.createObjectURL(blob);if(active)setSource(objectUrl);}).catch(()=>{if(active)setSource(null);});
+    return ()=>{active=false;if(objectUrl)URL.revokeObjectURL(objectUrl);};
+  },[url]);
+  return source ? <img src={source} alt={name} className="h-full w-full object-cover" loading="lazy" /> : <span>{name.charAt(0).toUpperCase()}</span>;
+}
 
 type GroupSettings = {
   groupId: number;
@@ -75,7 +87,7 @@ function AuthenticatedGroupCover({ url, name }: { url: string; name: string }) {
       .catch(() => { if (active) setSource(null); });
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [url]);
-  return source ? <img src={source} alt={`${name} cover`} className="mb-3 h-32 w-full rounded-lg object-cover" loading="lazy" /> : <div className="mb-3 flex h-32 w-full items-center justify-center rounded-lg bg-muted text-xs text-muted-foreground">Cover image unavailable</div>;
+  return <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-xl">{source ? <img src={source} alt="" className="h-full w-full object-cover" loading="lazy" /> : <div className="h-full w-full bg-gradient-to-br from-sky-900/30 via-indigo-900/20 to-slate-950/50" />}<div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/45 to-black/20" /></div>;
 }
 
 const defaultSettings = (groupId: number): GroupSettings => ({
@@ -110,13 +122,16 @@ export default function StudentStudyGroups() {
   const [profileGrade, setProfileGrade] = useState("");
   const [profileTopic, setProfileTopic] = useState("");
   const [profileCoverFile, setProfileCoverFile] = useState<File | null>(null);
+  const groupCoverInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingCoverGroupId, setUploadingCoverGroupId] = useState<number | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [profileGroupId, setProfileGroupId] = useState<number | null>(null);
   const { data: profileMessages } = useListMessages({ groupId: profileGroupId, recipientId: null }, { query: { enabled: profileGroupId !== null, refetchInterval: 5000 } as any });
 
   const refresh = () => void queryClient.invalidateQueries({ queryKey: getListStudyGroupsQueryKey() });
   const canCreateGroup = user?.role === "owner" || user?.role === "teacher" || user?.isManager === true || user?.isPrefect === true;
-  const isManager = user?.role === "owner" || user?.isManager === true;
+  const isPlatformOwner = user?.role === "owner" || (user?.role as string | undefined) === "admin";
+  const isManager = isPlatformOwner || user?.isManager === true;
   const groupSlides = Array.from(groups.reduce((slides, group) => {
     const key = [group.grade || "All grades", group.subject || "Other subject", group.topic || "General"].join(" · ");
     const existing = slides.get(key) ?? [];
@@ -133,17 +148,18 @@ export default function StudentStudyGroups() {
       {
         onSuccess: async (created) => {
           try {
+            const createdId = Number((created as unknown as { id: number }).id);
+            if (!Number.isInteger(createdId) || createdId <= 0) throw new Error("The group was created but its ID was not returned.");
             let coverImageUrl: string | undefined;
-            if (coverFile && user?.role === "owner") {
+            if (coverFile) {
               const formData = new FormData();
               formData.append("file", coverFile);
               const token = localStorage.getItem("dallyletter_token");
-              const upload = await fetch(getApiUrl("/api/lessons/media"), { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData });
+              const upload = await fetch(getApiUrl(`/api/lessons/media?groupId=${createdId}`), { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData });
               const uploaded = await upload.json().catch(() => null) as { mediaUrl?: string; error?: string } | null;
               if (!upload.ok || !uploaded?.mediaUrl) throw new Error(uploaded?.error ?? "Group cover upload failed.");
               coverImageUrl = uploaded.mediaUrl;
             }
-            const createdId = (created as unknown as { id: number }).id;
             const profile = await apiJson(`/api/study-groups/${createdId}/profile`, { method: "PATCH", body: JSON.stringify({ grade, topic, ...(coverImageUrl ? { coverImageUrl } : {}) }) });
             void profile;
             toast({ title: "Study group created", description: "Your group profile is ready for learners to join." });
@@ -203,10 +219,10 @@ export default function StudentStudyGroups() {
       const canEditProfile = user?.role === "owner" || user?.isManager === true || group?.creatorId === user?.id;
       if (canEditProfile) {
         let coverImageUrl: string | undefined;
-        if (profileCoverFile && user?.role === "owner") {
+        if (profileCoverFile) {
           const formData = new FormData(); formData.append("file", profileCoverFile);
           const token = localStorage.getItem("dallyletter_token");
-          const upload = await fetch(getApiUrl("/api/lessons/media"), { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData });
+          const upload = await fetch(getApiUrl(`/api/lessons/media?groupId=${settings.groupId}`), { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData });
           const uploaded = await upload.json().catch(() => null) as { mediaUrl?: string; error?: string } | null;
           if (!upload.ok || !uploaded?.mediaUrl) throw new Error(uploaded?.error ?? "Group cover upload failed.");
           coverImageUrl = uploaded.mediaUrl;
@@ -221,6 +237,50 @@ export default function StudentStudyGroups() {
       toast({ variant: "destructive", title: "Could not save settings", description: error instanceof Error ? error.message : "Try again." });
     } finally {
       setBusyGroup(null);
+    }
+  };
+
+  const uploadGroupCover = async (groupId: number, file?: File) => {
+    if (!file) return;
+    const targetGroup = groups.find(item => item.id === groupId);
+    const canEditCover = isPlatformOwner || isManager || Number(targetGroup?.creatorId) === Number(user?.id);
+    if (!canEditCover) {
+      toast({ variant: "destructive", title: "Upload not permitted", description: "The group creator or an authorized manager can change this cover." });
+      return;
+    }
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      toast({ variant: "destructive", title: "Unsupported image", description: "Choose a JPG, PNG, or WebP image." });
+      if (groupCoverInputRef.current) groupCoverInputRef.current.value = "";
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      toast({ variant: "destructive", title: "Image is too large", description: "Choose an image smaller than 8 MB." });
+      if (groupCoverInputRef.current) groupCoverInputRef.current.value = "";
+      return;
+    }
+    setUploadingCoverGroupId(groupId);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const token = localStorage.getItem("dallyletter_token");
+      const response = await fetch(getApiUrl("/api/lessons/media"), {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      const uploaded = await response.json().catch(() => null) as { mediaUrl?: string; error?: string } | null;
+      if (!response.ok || !uploaded?.mediaUrl) throw new Error(uploaded?.error ?? `Image upload failed (${response.status}).`);
+      await apiJson(`/api/study-groups/${groupId}/profile`, {
+        method: "PATCH",
+        body: JSON.stringify({ coverImageUrl: uploaded.mediaUrl }),
+      });
+      toast({ title: "Group cover updated", description: "The new image has been saved." });
+      refresh();
+    } catch (error) {
+      toast({ variant: "destructive", title: "Group cover upload failed", description: error instanceof Error ? error.message : "Check your connection and retry." });
+    } finally {
+      setUploadingCoverGroupId(null);
+      if (groupCoverInputRef.current) groupCoverInputRef.current.value = "";
     }
   };
 
@@ -266,10 +326,10 @@ export default function StudentStudyGroups() {
                 <Input placeholder="Subject (e.g. Mathematics)" value={subject} onChange={event => setSubject(event.target.value)} required maxLength={120} />
                 <Input placeholder="Grade / Form (e.g. Form 3)" value={grade} onChange={event => setGrade(event.target.value)} maxLength={80} />
                 <Input placeholder="Topic (e.g. Algebra)" value={topic} onChange={event => setTopic(event.target.value)} maxLength={120} />
-                {user?.role === "owner" && <div className="sm:col-span-2 space-y-2"><label className="text-sm font-medium" htmlFor="group-cover-image">Group cover image (owner upload)</label><Input id="group-cover-image" type="file" accept="image/*" onChange={event => setCoverFile(event.target.files?.[0] ?? null)} /><p className="text-xs text-muted-foreground">Use an image up to the platform's media upload limit. The image is stored through the existing persistent media service.</p>{coverFile && <p className="text-xs text-muted-foreground">Selected: {coverFile.name}</p>}</div>}
+                {<div className="sm:col-span-2 space-y-2"><label className="text-sm font-medium" htmlFor="group-cover-image">Group cover image</label><Input id="group-cover-image" type="file" accept="image/*" onChange={event => setCoverFile(event.target.files?.[0] ?? null)} /><p className="text-xs text-muted-foreground">Use an image up to the platform's media upload limit. The image is stored through the existing persistent media service.</p>{coverFile && <p className="text-xs text-muted-foreground">Selected: {coverFile.name}</p>}</div>}
                 <Textarea className="sm:col-span-2" placeholder="What will this group focus on?" value={description} onChange={event => setDescription(event.target.value)} rows={3} maxLength={1000} />
               </CardContent>
-              <CardFooter className="gap-2">
+              <CardFooter className="relative z-10 gap-2">
                 <Button type="submit" disabled={createGroupMutation.isPending || !name.trim() || !subject.trim()}>
                   {createGroupMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Create Group
                 </Button>
@@ -279,7 +339,7 @@ export default function StudentStudyGroups() {
           </Card>
         )}
 
-        {profileGroupId !== null && (() => { const group = groups.find(item => item.id === profileGroupId); if (!group) return null; const isOwner = group.creatorId === user?.id; const canManage = isOwner || isManager || group.members?.find(member => member.id === user?.id)?.control?.canManageSettings === true; const groupSettings = group.settings ?? defaultSettings(group.id); return <div className="fixed inset-0 z-[60] overflow-y-auto bg-background/95 p-0 sm:p-4" role="dialog" aria-modal="true" aria-label={group.name + " group profile"}><div className="relative mx-auto min-h-dvh w-full max-w-4xl overflow-hidden bg-card shadow-2xl sm:min-h-[calc(100dvh-2rem)] sm:rounded-2xl"><div className="relative min-h-64 bg-slate-900">{group.coverImageUrl ? <div className="absolute inset-0 [&_img]:!mb-0 [&_img]:!h-full [&_img]:!rounded-none [&_img]:!object-cover"><AuthenticatedGroupCover url={group.coverImageUrl} name={group.name} /></div> : <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-blue-950 to-amber-700" />}<div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/25 to-slate-950/10" /><Button type="button" variant="secondary" size="icon" className="absolute right-4 top-4 z-10" aria-label="Close group profile" onClick={() => setProfileGroupId(null)}><X className="h-5 w-5" /></Button><div className="absolute inset-x-5 bottom-5 text-white sm:inset-x-8"><p className="text-xs font-semibold uppercase tracking-[.2em] text-amber-200">{group.subject} · {group.grade || "All grades"}</p><h2 className="mt-2 text-3xl font-bold">{group.name}</h2><p className="mt-1 max-w-2xl text-sm text-white/85">{group.description || "A learning community on Dallyletter."}</p><p className="mt-3 text-xs text-white/80">Created by {group.creatorName} · {group.memberCount} members · {groupSettings.maxMembers} max</p></div></div><div className="grid gap-5 p-4 sm:p-8 md:grid-cols-[1.15fr_.85fr]"><section className="space-y-4"><div className="rounded-xl border p-4"><h3 className="font-semibold">About this group</h3><p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{group.description || "The group owner has not added a description yet."}</p><p className="mt-3 text-xs text-muted-foreground">{group.topic ? "Topic: "+group.topic : "Topic not specified"} · {group.memberCount}/{groupSettings.maxMembers} members</p></div><div className="rounded-xl border p-4"><h3 className="font-semibold">Members and roles</h3><p className="mt-1 text-xs text-muted-foreground">Select a person to preview their group identity and visibility.</p><div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">{[{label:"Teachers",count:(group.members??[]).filter(m=>m.role==="teacher").length},{label:"Learners",count:(group.members??[]).filter(m=>m.role==="student"||m.role==="learner").length},{label:"Prefects",count:(group.members??[]).filter(m=>m.isPrefect).length},{label:"Managers",count:(group.members??[]).filter(m=>m.isManager||m.role==="manager").length}].map(item=><div key={item.label} className="rounded-lg bg-muted/50 p-3"><p className="text-xl font-bold">{item.count}</p><p className="text-xs text-muted-foreground">{item.label}</p></div>)}</div><div className="mt-3 space-y-2">{(group.members ?? []).map(member => <details key={member.id} className="rounded-lg bg-muted/50 p-3"><summary className="flex cursor-pointer list-none items-center gap-3"><span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-primary/10 text-sm font-semibold">{member.avatarUrl ? <img src={member.avatarUrl} alt="" className="h-full w-full object-cover" /> : member.name.charAt(0).toUpperCase()}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{member.name}</span><span className="block text-xs text-muted-foreground">{member.id===group.creatorId?"Group owner":member.isManager||member.role==="manager"?"Manager":member.isPrefect?"Prefect":member.role==="teacher"?"Teacher":member.role==="student"||member.role==="learner"?"Learner":member.role||"Member"}</span></span><span className="text-xs text-muted-foreground">Preview</span></summary><div className="mt-3 border-t pt-3 text-sm"><p><strong>Role:</strong> {member.id===group.creatorId?"Owner":member.isManager||member.role==="manager"?"Manager":member.isPrefect?"Prefect":member.role==="teacher"?"Teacher":member.role==="student"||member.role==="learner"?"Learner":member.role||"Member"}</p><p><strong>Visibility:</strong> Visible in this group member list</p>{member.control && <p className="mt-1 text-xs text-muted-foreground">Controls: {[member.control.muted&&"muted",member.control.suspended&&"suspended",member.control.blocked&&"blocked",member.control.mediaBlocked&&"media blocked"].filter(Boolean).join(", ") || "No restrictions shown"}</p>}</div></details>)}</div>{(!group.members || group.members.length===0) && <p className="mt-2 text-sm text-muted-foreground">Member details are only available when the group API returns them.</p>}</div><div className="rounded-xl border p-4"><h3 className="font-semibold">Group rules</h3><p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{groupSettings.rules || "No group rules have been published yet."}</p></div></section><aside className="space-y-4"><div className="rounded-xl border p-4"><h3 className="flex items-center gap-2 font-semibold"><MessageCircle className="h-4 w-4" />Group activity</h3><p className="mt-2 text-sm text-muted-foreground">Polls {groupSettings.allowPolls?"enabled":"disabled"} · Voice/media {groupSettings.allowMedia?"enabled":"disabled"} · {groupSettings.announcementsOnly?"Announcements only":"Open discussion"}</p><div className="mt-3 space-y-2">{(Array.isArray(profileMessages)?profileMessages:[]).slice(-4).reverse().map((message:any)=><div key={message.id} className="rounded-lg bg-muted/50 p-2"><p className="text-xs font-medium">{message.senderName || message.sender?.name || "Group member"}</p><p className="mt-1 line-clamp-2 break-words text-sm text-muted-foreground">{message.content || (message.mediaUrl ? "Shared media" : "Activity")}</p></div>)}{(!Array.isArray(profileMessages)||profileMessages.length===0)&&<p className="text-sm text-muted-foreground">No recent activity yet.</p>}</div></div><div className="rounded-xl border p-4"><h3 className="font-semibold">Group settings</h3><div className="mt-3 space-y-2 text-sm"><p className="flex justify-between gap-3"><span className="text-muted-foreground">Maximum size</span><strong>{groupSettings.maxMembers}</strong></p><p className="flex justify-between gap-3"><span className="text-muted-foreground">Polls</span><strong>{groupSettings.allowPolls?"On":"Off"}</strong></p><p className="flex justify-between gap-3"><span className="text-muted-foreground">Voice/media</span><strong>{groupSettings.allowMedia?"On":"Off"}</strong></p><p className="flex justify-between gap-3"><span className="text-muted-foreground">Posting</span><strong>{groupSettings.announcementsOnly?"Moderators":"Members"}</strong></p></div>{canManage && <Button type="button" className="mt-4 w-full" onClick={() => {setProfileGroupId(null);void openSettings(group.id);}}><Settings2 className="mr-2 h-4 w-4" />Edit group settings</Button>}</div><div className="grid gap-2"><Button type="button" className="w-full" onClick={() => {setProfileGroupId(null); if(group.isMember || group.members?.some(member=>member.id===user?.id)) window.location.assign("/student/chat?groupId="+group.id); else handleJoinGroup(group.id);}}><MessageCircle className="mr-2 h-4 w-4" />{group.isMember || group.members?.some(member=>member.id===user?.id)?"Open group chat":"Join group to chat"}</Button>{isOwner && <Button type="button" variant="outline" className="w-full" onClick={() => {setProfileGroupId(null);void openSettings(group.id);}}><ImagePlus className="mr-2 h-4 w-4" />Profile and owner settings</Button>}</div></aside></div></div></div>; })()}
+        {profileGroupId !== null && (() => { const group = groups.find(item => item.id === profileGroupId); if (!group) return null; const isOwner = Number(group.creatorId) === Number(user?.id); const canManage = isOwner || isManager || group.members?.find(member => member.id === user?.id)?.control?.canManageSettings === true; const groupSettings = group.settings ?? defaultSettings(group.id); return <div className="fixed inset-0 z-[60] overflow-y-auto bg-background/95 p-0 sm:p-4" role="dialog" aria-modal="true" aria-label={group.name + " group profile"}><div className="relative mx-auto min-h-dvh w-full max-w-4xl overflow-hidden bg-card shadow-2xl sm:min-h-[calc(100dvh-2rem)] sm:rounded-2xl"><div className="relative min-h-64 bg-slate-900">{group.coverImageUrl ? <div className="absolute inset-0 [&_img]:!mb-0 [&_img]:!h-full [&_img]:!rounded-none [&_img]:!object-cover"><AuthenticatedGroupCover url={group.coverImageUrl} name={group.name} /></div> : <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-blue-950 to-amber-700" />}<div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/25 to-slate-950/10" /><Button type="button" variant="secondary" size="icon" className="absolute right-4 top-4 z-10" aria-label="Close group profile" onClick={() => setProfileGroupId(null)}><X className="h-5 w-5" /></Button><div className="absolute inset-x-5 bottom-5 text-white sm:inset-x-8"><p className="text-xs font-semibold uppercase tracking-[.2em] text-amber-200">{group.subject} · {group.grade || "All grades"}</p><h2 className="mt-2 text-3xl font-bold">{group.name}</h2><p className="mt-1 max-w-2xl text-sm text-white/85">{group.description || "A learning community on Dallyletter."}</p><p className="mt-3 text-xs text-white/80">Created by {group.creatorName} · {group.memberCount} members · {groupSettings.maxMembers} max</p></div></div><div className="grid gap-5 p-4 sm:p-8 md:grid-cols-[1.15fr_.85fr]"><section className="space-y-4"><div className="rounded-xl border p-4"><h3 className="font-semibold">About this group</h3><p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{group.description || "The group owner has not added a description yet."}</p><p className="mt-3 text-xs text-muted-foreground">{group.topic ? "Topic: "+group.topic : "Topic not specified"} · {group.memberCount}/{groupSettings.maxMembers} members</p></div><div className="rounded-xl border p-4"><h3 className="font-semibold">Members and roles</h3><p className="mt-1 text-xs text-muted-foreground">Select a person to preview their group identity and visibility.</p><div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">{[{label:"Teachers",count:(group.members??[]).filter(m=>m.role==="teacher").length},{label:"Learners",count:(group.members??[]).filter(m=>m.role==="student"||m.role==="learner").length},{label:"Prefects",count:(group.members??[]).filter(m=>m.isPrefect).length},{label:"Managers",count:(group.members??[]).filter(m=>m.isManager||m.role==="manager").length}].map(item=><div key={item.label} className="rounded-lg bg-muted/50 p-3"><p className="text-xl font-bold">{item.count}</p><p className="text-xs text-muted-foreground">{item.label}</p></div>)}</div><div className="mt-3 space-y-2">{(group.members ?? []).map(member => <details key={member.id} className="rounded-lg bg-muted/50 p-3"><summary className="flex cursor-pointer list-none items-center gap-3"><span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-primary/10 text-sm font-semibold">{member.avatarUrl ? <AuthenticatedMemberAvatar url={member.avatarUrl} name={member.name} /> : member.name.charAt(0).toUpperCase()}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{member.name}</span><span className="block text-xs text-muted-foreground">{member.id===group.creatorId?"Group owner":member.isManager||member.role==="manager"?"Manager":member.isPrefect?"Prefect":member.role==="teacher"?"Teacher":member.role==="student"||member.role==="learner"?"Learner":member.role||"Member"}</span></span><span className="text-xs text-muted-foreground">Preview</span></summary><div className="mt-3 border-t pt-3 text-sm"><p><strong>Role:</strong> {member.id===group.creatorId?"Owner":member.isManager||member.role==="manager"?"Manager":member.isPrefect?"Prefect":member.role==="teacher"?"Teacher":member.role==="student"||member.role==="learner"?"Learner":member.role||"Member"}</p><p><strong>Visibility:</strong> Visible in this group member list</p>{member.control && <p className="mt-1 text-xs text-muted-foreground">Controls: {[member.control.muted&&"muted",member.control.suspended&&"suspended",member.control.blocked&&"blocked",member.control.mediaBlocked&&"media blocked"].filter(Boolean).join(", ") || "No restrictions shown"}</p>}</div></details>)}</div>{(!group.members || group.members.length===0) && <p className="mt-2 text-sm text-muted-foreground">Member details are only available when the group API returns them.</p>}</div><div className="rounded-xl border p-4"><h3 className="font-semibold">Group rules</h3><p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{groupSettings.rules || "No group rules have been published yet."}</p></div></section><aside className="space-y-4"><div className="rounded-xl border p-4"><h3 className="flex items-center gap-2 font-semibold"><MessageCircle className="h-4 w-4" />Group activity</h3><p className="mt-2 text-sm text-muted-foreground">Polls {groupSettings.allowPolls?"enabled":"disabled"} · Voice/media {groupSettings.allowMedia?"enabled":"disabled"} · {groupSettings.announcementsOnly?"Announcements only":"Open discussion"}</p><div className="mt-3 space-y-2">{(Array.isArray(profileMessages)?profileMessages:[]).slice(-4).reverse().map((message:any)=><div key={message.id} className="rounded-lg bg-muted/50 p-2"><p className="text-xs font-medium">{message.senderName || message.sender?.name || "Group member"}</p><p className="mt-1 line-clamp-2 break-words text-sm text-muted-foreground">{message.content || (message.mediaUrl ? "Shared media" : "Activity")}</p></div>)}{(!Array.isArray(profileMessages)||profileMessages.length===0)&&<p className="text-sm text-muted-foreground">No recent activity yet.</p>}</div></div><div className="rounded-xl border p-4"><h3 className="font-semibold">Group cover image</h3><p className="mt-1 text-sm text-muted-foreground">Upload a group image that members will see at the top of this profile.</p>{(isPlatformOwner || isManager || Number(group.creatorId) === Number(user?.id)) ? <><input ref={groupCoverInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" aria-label="Choose group cover image" onChange={event => void uploadGroupCover(group.id, event.target.files?.[0])} /><Button type="button" className="mt-3 w-full" variant="outline" disabled={uploadingCoverGroupId===group.id} onClick={() => groupCoverInputRef.current?.click()}>{uploadingCoverGroupId===group.id ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Uploading cover…</> : <><ImagePlus className="mr-2 h-4 w-4" />{group.coverImageUrl ? "Replace group cover" : "Upload group cover"}</>}</Button></> : <p className="mt-2 text-xs text-muted-foreground">Group creator or authorized manager access is required to change the cover.</p>}</div><div className="rounded-xl border p-4"><h3 className="font-semibold">Group settings</h3><div className="mt-3 space-y-2 text-sm"><p className="flex justify-between gap-3"><span className="text-muted-foreground">Maximum size</span><strong>{groupSettings.maxMembers}</strong></p><p className="flex justify-between gap-3"><span className="text-muted-foreground">Polls</span><strong>{groupSettings.allowPolls?"On":"Off"}</strong></p><p className="flex justify-between gap-3"><span className="text-muted-foreground">Voice/media</span><strong>{groupSettings.allowMedia?"On":"Off"}</strong></p><p className="flex justify-between gap-3"><span className="text-muted-foreground">Posting</span><strong>{groupSettings.announcementsOnly?"Moderators":"Members"}</strong></p></div>{canManage && <Button type="button" className="mt-4 w-full" onClick={() => {setProfileGroupId(null);void openSettings(group.id);}}><Settings2 className="mr-2 h-4 w-4" />Edit group settings</Button>}</div><div className="grid gap-2"><Button type="button" className="w-full" onClick={() => {setProfileGroupId(null); if(group.isMember || group.members?.some(member=>member.id===user?.id)) window.location.assign("/student/chat?groupId="+group.id); else handleJoinGroup(group.id);}}><MessageCircle className="mr-2 h-4 w-4" />{group.isMember || group.members?.some(member=>member.id===user?.id)?"Open group chat":"Join group to chat"}</Button>{(isOwner || isPlatformOwner) && <Button type="button" variant="outline" className="w-full" onClick={() => {setProfileGroupId(null);void openSettings(group.id);}}><ImagePlus className="mr-2 h-4 w-4" />Profile and owner settings</Button>}</div></aside></div></div></div>; })()}
 
         {editingGroupId && settings && (
           <div className="fixed inset-0 z-50 overflow-y-auto bg-background/95 p-3 sm:p-6"><Card className="mx-auto min-h-[calc(100dvh-1.5rem)] w-full max-w-5xl border-primary/30 shadow-2xl">
@@ -289,10 +349,10 @@ export default function StudentStudyGroups() {
             ) : (
               <form onSubmit={saveSettings}>
                 <CardContent className="space-y-4">
-                  {(user?.role === "owner" || user?.isManager === true || groups.find(item => item.id === settings.groupId)?.creatorId === user?.id) && <div className="grid gap-3 sm:grid-cols-2">
+                  {(user?.role === "owner" || user?.isManager === true || Number(groups.find(item => item.id === settings.groupId)?.creatorId) === Number(user?.id)) && <div className="grid gap-3 sm:grid-cols-2">
                     <div><label className="text-sm font-medium" htmlFor="group-grade">Grade / Form</label><Input id="group-grade" className="mt-1" value={profileGrade} onChange={event => setProfileGrade(event.target.value)} maxLength={80} /></div>
                     <div><label className="text-sm font-medium" htmlFor="group-topic">Topic</label><Input id="group-topic" className="mt-1" value={profileTopic} onChange={event => setProfileTopic(event.target.value)} maxLength={120} /></div>
-                    {user?.role === "owner" && <div className="sm:col-span-2"><label className="text-sm font-medium" htmlFor="group-cover-replace">Replace cover image</label><Input id="group-cover-replace" className="mt-1" type="file" accept="image/*" onChange={event => setProfileCoverFile(event.target.files?.[0] ?? null)} /><p className="mt-1 text-xs text-muted-foreground">{profileCoverFile ? profileCoverFile.name : "Only the platform owner can upload or replace group cover images."}</p></div>}
+                    {(isPlatformOwner || isManager || settings.groupId && Number(groups.find(item => item.id === settings.groupId)?.creatorId) === Number(user?.id)) && <div className="sm:col-span-2"><label className="text-sm font-medium" htmlFor="group-cover-replace">Replace cover image</label><Input id="group-cover-replace" className="mt-1" type="file" accept="image/*" onChange={event => setProfileCoverFile(event.target.files?.[0] ?? null)} /><p className="mt-1 text-xs text-muted-foreground">{profileCoverFile ? profileCoverFile.name : "The group creator or authorized manager can replace this cover image."}</p></div>}
                   </div>}
                   <div>
                     <label className="text-sm font-medium" htmlFor="group-rules">Group rules</label>
@@ -315,7 +375,7 @@ export default function StudentStudyGroups() {
                     <Input id="max-members" className="mt-1" type="number" min={2} max={1024} value={settings.maxMembers} onChange={event => setSettings({ ...settings, maxMembers: Math.max(2, Math.min(1024, Number(event.target.value) || 2)) })} />
                   </div>
                 </CardContent>
-                <CardFooter className="gap-2">
+                <CardFooter className="relative z-10 gap-2">
                   <Button type="submit" disabled={busyGroup === settings.groupId}>Save settings</Button>
                   <Button type="button" variant="ghost" onClick={() => { setEditingGroupId(null); setSettings(null); }}>Cancel</Button>
                 </CardFooter>
@@ -348,14 +408,15 @@ export default function StudentStudyGroups() {
                 <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-3">
                   {slideGroups.map(group => {
               const isMember = group.isMember ?? group.members?.some(member => member.id === user?.id) ?? false;
-              const isOwner = group.creatorId === user?.id;
+              const isOwner = Number(group.creatorId) === Number(user?.id);
               const selectedControl = group.members?.find(member => member.id === user?.id)?.control;
               const canManage = isOwner || isManager || selectedControl?.canManageSettings === true;
               const groupSettings = group.settings ?? defaultSettings(group.id);
               return (
-                <Card key={group.id} className="flex h-full w-[min(88vw,360px)] shrink-0 snap-start flex-col transition-shadow hover:shadow-md">
-                  <CardHeader>
-                    {group.coverImageUrl && <AuthenticatedGroupCover url={group.coverImageUrl} name={group.name} />}
+                <Card key={group.id} className="relative flex h-full w-[min(88vw,360px)] shrink-0 snap-start flex-col overflow-hidden transition-shadow hover:shadow-md">
+                  <CardHeader className="relative z-10 text-white">
+                    <AuthenticatedGroupCover url={group.coverImageUrl || ""} name={group.name} />
+                    {(isPlatformOwner || isManager || Number(group.creatorId) === Number(user?.id)) && <div className="flex justify-end"><label className="inline-flex cursor-pointer items-center gap-2 rounded-md border bg-background/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-background"><ImagePlus className="h-3.5 w-3.5" />{group.coverImageUrl ? "Change cover" : "Upload cover"}<input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" aria-label={`Upload cover for ${group.name}`} onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void uploadGroupCover(group.id, file); }} /></label></div>}
                     <div className="flex items-start justify-between gap-2">
                       <Badge variant="secondary">{group.subject}</Badge>
                       <div className="flex items-center gap-1.5 rounded-full bg-muted px-2 py-1 text-sm text-muted-foreground"><Users className="h-3.5 w-3.5" /><span>{group.memberCount}/{groupSettings.maxMembers}</span></div>
@@ -364,7 +425,7 @@ export default function StudentStudyGroups() {
                     <CardDescription>Created by {group.creatorName}{group.grade ? ` · ${group.grade}` : ""}{group.topic ? ` · ${group.topic}` : ""}</CardDescription>
                     {isMember && <Badge className="mt-2 w-fit" variant="outline">Joined</Badge>}
                   </CardHeader>
-                  <CardContent className="flex-1 space-y-4">
+                  <CardContent className="relative z-10 flex-1 space-y-4 text-white">
                     <p className="text-sm text-muted-foreground">{group.description || "No description provided."}</p>
                     {isMember && groupSettings.rules && (
                       <div className="rounded-lg bg-muted/60 p-3">
@@ -414,7 +475,7 @@ export default function StudentStudyGroups() {
                       </div>
                     )}
                   </CardContent>
-                  <CardFooter className="flex flex-wrap gap-2 border-t pt-4">
+                  <CardFooter className="relative z-10 flex flex-wrap gap-2 border-t border-white/20 bg-black/20 pt-4">
                     {user?.role === "owner" && <Button type="button" variant="outline" size="sm" className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/10" disabled={busyGroup === group.id} onClick={() => {
                       if (!window.confirm(`Permanently delete "${group.name}" and its members, messages, polls, settings and moderation records from Dallyletter? This cannot be undone.`)) return;
                       setBusyGroup(group.id);

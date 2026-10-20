@@ -6,21 +6,22 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from "@/components/ui/textarea";
 import { useEffect, useState } from "react";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
-import { Loader2, Video, Hand, HandMetal, Calendar, Clock } from "lucide-react";
+import { Loader2, Video, Hand, HandMetal, Calendar, Clock, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 
 type TeacherReplyMessage = { id: number; senderId: number; senderRole: string; content: string; type: string; mediaUrl?: string | null; createdAt: string };
 
-function TeacherReplyPreview({ teacherId }: { teacherId: number }) {
+function TeacherReplyPreview({ teacherId, handRaiseId }: { teacherId: number; handRaiseId?: number }) {
   const [latest, setLatest] = useState<TeacherReplyMessage | null>(null);
   useEffect(() => {
     let active = true;
     const load = async () => {
       const token = localStorage.getItem("dallyletter_token");
       try {
-        const response = await fetch(getApiUrl(`/api/messages?recipientId=${teacherId}`), { headers: token ? { Authorization: `Bearer ${token}` } : {} , cache: "no-store" });
+        if (!handRaiseId) { if (active) setLatest(null); return; }
+        const response = await fetch(getApiUrl(`/api/messages?recipientId=${teacherId}&handRaiseId=${handRaiseId}`), { headers: token ? { Authorization: `Bearer ${token}` } : {} , cache: "no-store" });
         if (!response.ok) return;
         const messages = await response.json() as TeacherReplyMessage[];
         const reply = messages.filter(message => message.senderId === teacherId && (message.senderRole === "teacher" || message.senderRole === "owner" || message.senderRole === "admin")).at(-1) ?? null;
@@ -30,7 +31,7 @@ function TeacherReplyPreview({ teacherId }: { teacherId: number }) {
     void load();
     const timer = window.setInterval(() => void load(), 10000);
     return () => { active = false; window.clearInterval(timer); };
-  }, [teacherId]);
+  }, [teacherId, handRaiseId]);
   if (!latest) return null;
   return <div className="mt-3 w-full rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-emerald-950">
     <p className="mb-1 text-xs font-semibold uppercase tracking-wide">Teacher reply</p>
@@ -53,6 +54,7 @@ export default function StudentClasses() {
   // Track which classId the student has a raised hand for and the handRaise id
   const [raisedHands, setRaisedHands] = useState<Record<number, number>>({}); // classId -> handRaiseId
   const [loweringHand, setLoweringHand] = useState<number | null>(null);
+  const [deletingHand, setDeletingHand] = useState<number | null>(null);
 
   const handleRaiseHand = async () => {
     if (!selectedClassId || uploadingHandRaise) return;
@@ -127,6 +129,23 @@ export default function StudentClasses() {
     }
   };
 
+  const handleDeleteHand = async (classId: number) => {
+    const handRaiseId = raisedHands[classId];
+    if (!handRaiseId || !window.confirm("Delete your hand raise and its attached media?")) return;
+    setDeletingHand(classId);
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const response = await fetch(getApiUrl(`/api/raise-hand/${handRaiseId}`), { method: "DELETE", headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || `Delete failed (${response.status})`);
+      setRaisedHands(previous => { const next = { ...previous }; delete next[classId]; return next; });
+      queryClient.invalidateQueries();
+      toast({ title: "Hand raise deleted" });
+    } catch (error) {
+      toast({ variant: "destructive", title: "Delete failed", description: error instanceof Error ? error.message : "Could not delete hand raise." });
+    } finally { setDeletingHand(null); }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "live": return "bg-destructive text-destructive-foreground animate-pulse";
@@ -190,7 +209,7 @@ export default function StudentClasses() {
                     )}
                   </CardContent>
                   <CardFooter className="gap-2 pt-4 border-t flex-wrap">
-                    <TeacherReplyPreview teacherId={c.teacherId} />
+                    <TeacherReplyPreview teacherId={c.teacherId} handRaiseId={raisedHands[c.id]} />
                     <Button
                       className="flex-1 gap-2"
                       variant={c.status === "live" ? "default" : "secondary"}
@@ -204,7 +223,8 @@ export default function StudentClasses() {
                     {c.status === "live" && (
                       <>
                         {raisedHands[c.id] ? (
-                          /* Lower Hand button */
+                          <>
+                          {/* Lower Hand button */}
                           <Button
                             variant="outline"
                             className="gap-2 border-amber-400 text-amber-600 hover:bg-amber-50"
@@ -217,6 +237,10 @@ export default function StudentClasses() {
                             }
                             Lower Hand
                           </Button>
+                          <Button variant="destructive" className="gap-2" disabled={deletingHand === c.id} onClick={() => void handleDeleteHand(c.id)} title="Delete hand raise and attached media">
+                            {deletingHand === c.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Delete
+                          </Button>
+                          </>
                         ) : (
                           /* Raise Hand dialog */
                           <Dialog open={isDialogOpen && selectedClassId === c.id} onOpenChange={(open) => {

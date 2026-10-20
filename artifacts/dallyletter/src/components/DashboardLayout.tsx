@@ -2,14 +2,14 @@ import { SystemNotificationBridge } from "@/components/SystemNotificationBridge"
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { useLogoutUser } from "@workspace/api-client-react";
+import { getApiUrl, useLogoutUser } from "@workspace/api-client-react";
 import {
   BookOpen, Users, Video, MessageSquare, CreditCard, Bell, LogOut, Home,
   Shield, Menu, GraduationCap, Settings, Sparkles, ClipboardList, Star,
   ScrollText, Trophy, AlertTriangle, DollarSign, BarChart3, Briefcase,
-  Flame, Send,
+  Flame, Send, ImagePlus,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 interface NavItem {
@@ -31,6 +31,80 @@ const roleLabels: Record<string, string> = {
   teacher: "Educator",
   owner: "Administrator",
 };
+
+function AuthenticatedAvatar({ url, name }: { url: string; name: string }) {
+  const [source, setSource] = useState<string | null>(null);
+  useEffect(() => {
+    if (/^https:\/\//i.test(url)) { setSource(url); return; }
+    let active=true; let objectUrl:string|undefined;
+    const token=localStorage.getItem("dallyletter_token") ?? "";
+    void fetch(getApiUrl(url),{headers:{Authorization:"Bearer "+token}}).then(response=>{if(!response.ok) throw new Error("Avatar fetch failed"); return response.blob();}).then(blob=>{objectUrl=URL.createObjectURL(blob); if(active)setSource(objectUrl);}).catch(()=>{if(active)setSource(null);});
+    return ()=>{active=false;if(objectUrl)URL.revokeObjectURL(objectUrl);};
+  },[url]);
+  return source ? <img src={source} alt={name} className="h-full w-full rounded-xl object-cover" /> : <span>{name.charAt(0).toUpperCase()}</span>;
+}
+
+function ProfileImageUpload() {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const upload = async (file?: File) => {
+    setUploadError("");
+    if (!file) return;
+    if (!["image/jpeg","image/png","image/webp"].includes(file.type)) { window.alert("Choose a JPG, PNG, or WebP image."); return; }
+    if (file.size > 8 * 1024 * 1024) { window.alert("Choose an image smaller than 8 MB."); return; }
+    setBusy(true);
+    try {
+      const image = await new Promise<HTMLImageElement>((resolve,reject) => { const url=URL.createObjectURL(file); const img=new Image(); img.onload=()=>{URL.revokeObjectURL(url);resolve(img)}; img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error("Image could not be read"))}; img.src=url; });
+      const canvas=document.createElement("canvas"); const scale=Math.min(1,320/Math.max(image.naturalWidth,image.naturalHeight)); canvas.width=Math.max(1,Math.round(image.naturalWidth*scale)); canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));
+      const ctx=canvas.getContext("2d"); if(!ctx) throw new Error("Image processing is unavailable"); ctx.drawImage(image,0,0,canvas.width,canvas.height);
+      const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error("Image compression failed")),"image/jpeg",0.78));
+      const token=localStorage.getItem("dallyletter_token");
+      const formData=new FormData(); formData.append("file",blob,"profile.jpg");
+      const response=await fetch(getApiUrl("/api/users/me/avatar"),{method:"POST",headers:token?{Authorization:`Bearer ${token}`}:{},body:formData});
+      const result=await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error(result.error || result.message || `Upload failed (HTTP ${response.status}). ${result.detail || "Check server media storage and retry."}`);
+      window.location.reload();
+    } catch(error) { setUploadError(error instanceof Error ? error.message : "Profile image upload failed. Check your connection and retry."); }
+    finally { setBusy(false); if(inputRef.current) inputRef.current.value=""; }
+  };
+  return <div className="mt-1"><input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" aria-label="Choose profile image" onChange={e=>void upload(e.target.files?.[0])}/><button type="button" disabled={busy} onClick={()=>inputRef.current?.click()} className="inline-flex min-h-8 items-center gap-1 rounded-md border border-amber-400/30 px-2 text-xs font-medium text-amber-200 hover:bg-white/10 disabled:opacity-50"><ImagePlus className="h-3.5 w-3.5"/>{busy?"Saving image…":"Upload profile photo"}</button>{uploadError && <p role="alert" className="mt-1 max-w-56 text-[11px] text-rose-300">{uploadError}</p>}</div>;
+}
+
+function PushDeliveryTest() {
+  const [busy, setBusy] = useState(false);
+  const [testId, setTestId] = useState<number | null>(null);
+  const [status, setStatus] = useState("");
+  const runTest = async () => {
+    setBusy(true);
+    try {
+      const token=localStorage.getItem("dallyletter_token") ?? "";
+      const response=await fetch(getApiUrl("/api/push/test"),{method:"POST",headers:{Authorization:"Bearer "+token}});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error(data.error||"Could not queue push test");
+      setTestId(Number(data.notificationId));
+      setStatus("Test queued. For a true background-push check, close Dallyletter now, then check system notifications. Reopen later to inspect provider status.");
+    } catch(error) { window.alert(error instanceof Error?error.message:"Push test failed"); }
+    finally { setBusy(false); }
+  };
+  const checkStatus = async () => {
+    if(!testId) return;
+    setBusy(true);
+    try {
+      const token=localStorage.getItem("dallyletter_token") ?? "";
+      const response=await fetch(getApiUrl("/api/push/test/"+testId),{headers:{Authorization:"Bearer "+token}});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error(data.error||"Could not read push status");
+      setStatus(data.acceptedByPushService ? "Push service accepted the test. This confirms provider acceptance, not device display; close the app before the next test to avoid in-app polling notifications." : "Not delivered yet. Attempts: "+data.attempts+". "+(data.lastError||"Waiting for the next retry."));
+    } catch(error) { window.alert(error instanceof Error?error.message:"Could not check push status"); }
+    finally { setBusy(false); }
+  };
+  return <div className="mt-2 space-y-1">
+    <button type="button" disabled={busy} onClick={() => void runTest()} className="inline-flex items-center gap-1 text-[11px] text-amber-300 hover:text-white disabled:opacity-50"><Bell className="h-3 w-3"/>{busy?"Working…":"Test push delivery"}</button>
+    {testId !== null && <button type="button" disabled={busy} onClick={() => void checkStatus()} className="block text-[11px] text-white/70 underline disabled:opacity-50">Check test #{testId}</button>}
+    {status && <p className="max-w-[210px] text-[10px] leading-4 text-white/60" aria-live="polite">{status}</p>}
+  </div>;
+}
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
@@ -165,10 +239,11 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       <div className="mx-4 mb-4">
         <div className="bg-white/8 border border-white/10 rounded-xl p-3 flex items-center gap-3">
           <div className={`h-10 w-10 rounded-xl bg-gradient-to-br ${roleColors[user.role] || "from-slate-600 to-slate-800"} flex items-center justify-center text-white font-bold text-base shadow-lg shrink-0`}>
-            {user.avatarUrl ? <img src={user.avatarUrl} alt={user.name} className="h-full w-full object-cover rounded-xl" /> : user.name.charAt(0).toUpperCase()}
+            {user.avatarUrl ? <AuthenticatedAvatar url={user.avatarUrl} name={user.name} /> : user.name.charAt(0).toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-white truncate">{user.name}</p>
+            <p className="text-sm font-semibold text-white truncate">{user.name}</p>\n            <ProfileImageUpload />
+            <PushDeliveryTest />
             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
               <span className="text-xs text-white/50">{roleLabels[user.role] || user.role}</span>
               {user.isPrefect && (

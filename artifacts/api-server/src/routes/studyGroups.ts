@@ -264,7 +264,7 @@ router.patch("/study-groups/:id/profile", requireAuth, async (req, res): Promise
   const topic = typeof req.body?.topic === "string" ? req.body.topic.trim().slice(0, 120) || null : group.topic;
   let coverImageUrl = group.coverImageUrl;
   if (req.body?.coverImageUrl !== undefined) {
-    if (!isPlatformOwner) { res.status(403).json({ error: "Only the platform owner can change a group cover image." }); return; }
+    if (!isPlatformOwner && !canManageGroup(user, group) && !(await canManageGroupSettings(user, groupId, group))) { res.status(403).json({ error: "Group creator or authorized group manager access required to change a cover image." }); return; }
     const next = typeof req.body.coverImageUrl === "string" ? req.body.coverImageUrl.trim() : "";
     if (next && !/^\/api\/lessons\/media\/[a-f0-9-]{36}(?:\?type=image\/[a-z0-9.+-]+)?$/i.test(next)) {
       res.status(400).json({ error: "Cover image must be uploaded through the authenticated media endpoint." }); return;
