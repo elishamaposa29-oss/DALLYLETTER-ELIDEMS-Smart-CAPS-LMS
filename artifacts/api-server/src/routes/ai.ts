@@ -33,13 +33,21 @@ router.get("/ai/status", requireAuth, async (req, res): Promise<void> => {
   const rows = await db.select().from(platformSettingsTable);
   const cfg: Record<string, string> = {};
   for (const r of rows) cfg[r.key] = r.value ?? "";
+  const environmentProvider = process.env.AI_PROVIDER;
+  const inferredProvider = process.env.GEMINI_API_KEY
+    ? "gemini"
+    : process.env.OPENAI_API_KEY
+      ? "openai"
+      : process.env.ANTHROPIC_API_KEY
+        ? "anthropic"
+        : "mock";
   res.json({
     provider: ai.name,
     isLive: ai.name !== "mock",
-    configuredProvider: cfg["ai_provider"] ?? "mock",
-    hasGeminiKey: !!(cfg["gemini_api_key"]),
-    hasOpenAIKey: !!(cfg["openai_api_key"]),
-    hasAnthropicKey: !!(cfg["anthropic_api_key"]),
+    configuredProvider: cfg["ai_provider"] || environmentProvider || inferredProvider,
+    hasGeminiKey: !!(cfg["gemini_api_key"] || process.env.GEMINI_API_KEY),
+    hasOpenAIKey: !!(cfg["openai_api_key"] || process.env.OPENAI_API_KEY),
+    hasAnthropicKey: !!(cfg["anthropic_api_key"] || process.env.ANTHROPIC_API_KEY),
   });
 });
 
