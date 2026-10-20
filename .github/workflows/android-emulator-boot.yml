@@ -36,10 +36,10 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           installed=0
           for attempt in 1 2 3; do
-            if sdkmanager --install \\
-              "platform-tools" \\
-              "emulator" \\
-              "platforms;android-${api_level}" \\
+            if sdkmanager --install \
+              "platform-tools" \
+              "emulator" \
+              "platforms;android-${api_level}" \
               "system-images;android-${api_level};google_apis;x86_64"; then
               installed=1
               break
