@@ -63,6 +63,8 @@ jobs:
           export LD_LIBRARY_PATH="$sdk_library_path:${LD_LIBRARY_PATH:-}"
 
           "$emulator_root/emulator" -version
+          sudo apt-get update
+          sudo apt-get install --yes libpulse0
           echo "::group::Emulator acceleration diagnostics"
           ls -l /dev/kvm || true
           "$emulator_root/emulator" -accel-check 2>&1 || true
