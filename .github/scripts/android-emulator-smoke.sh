@@ -19,10 +19,10 @@ trap diagnostics EXIT
 
 step() { echo "::group::Android smoke: $*"; date -u +%FT%TZ; }
 step "wait for device"
-timeout 60 adb wait-for-device
+timeout 600 adb wait-for-device
 
-step "verify Android boot completion (bounded to 600 seconds)"
-boot_deadline=$((SECONDS + 600))
+step "verify Android boot completion (bounded to 1500 seconds)"
+boot_deadline=$((SECONDS + 1500))
 boot_ready=0
 boot_state=""
 while [ "$SECONDS" -lt "$boot_deadline" ]; do
@@ -37,7 +37,7 @@ while [ "$SECONDS" -lt "$boot_deadline" ]; do
   sleep "$((remaining < 5 ? remaining : 5))"
 done
 if [ "$boot_ready" -ne 1 ]; then
-  echo "::error::Android did not report sys.boot_completed=1 within the 600-second verification window"
+  echo "::error::Android did not report sys.boot_completed=1 within the 1500-second verification window"
   exit 1
 fi
 step "verify Android boot complete"
