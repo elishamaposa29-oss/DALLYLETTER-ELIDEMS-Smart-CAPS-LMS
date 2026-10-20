@@ -54,13 +54,20 @@ jobs:
       - name: Build standalone release APK
         working-directory: artifacts/dallyletter-mobile/android
         run: ./gradlew --no-daemon --stacktrace assembleRelease
-      - name: Verify and preserve first standalone APK
+      - name: Verify and preserve first standalone APK and CI data-test APK
+        working-directory: artifacts/dallyletter-mobile/android
         run: |
           set -Eeuo pipefail
-          apk=artifacts/dallyletter-mobile/android/app/build/outputs/apk/release/app-release.apk
+          apk=app/build/outputs/apk/release/app-release.apk
           unzip -l "$apk" | grep -q 'assets/index.android.bundle' || { echo '::error::Release APK is missing the embedded React Native JavaScript bundle'; exit 1; }
-          mkdir -p artifacts/dallyletter-mobile/apk-artifacts
-          cp "$apk" artifacts/dallyletter-mobile/apk-artifacts/dallyletter-v1.apk
+          mkdir -p ../apk-artifacts
+          cp "$apk" ../apk-artifacts/dallyletter-v1.apk
+          # Debug-only twin exists solely to test app-private-data persistence.
+          # The user-facing release APK remains non-debuggable.
+          ./gradlew --no-daemon --stacktrace assembleDebug
+          debug_apk=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$debug_apk"
+          cp "$debug_apk" ../apk-artifacts/dallyletter-data-v1-debug.apk
       - name: Generate version 1.0.1 for upgrade test
         working-directory: artifacts/dallyletter-mobile
         run: |
@@ -69,12 +76,19 @@ jobs:
       - name: Build update APK
         working-directory: artifacts/dallyletter-mobile/android
         run: ./gradlew --no-daemon --stacktrace assembleRelease
-      - name: Verify and preserve updated standalone APK
+      - name: Verify and preserve updated release APK and CI data-test APK
+        working-directory: artifacts/dallyletter-mobile/android
         run: |
           set -Eeuo pipefail
-          apk=artifacts/dallyletter-mobile/android/app/build/outputs/apk/release/app-release.apk
+          apk=app/build/outputs/apk/release/app-release.apk
           unzip -l "$apk" | grep -q 'assets/index.android.bundle' || { echo '::error::Updated release APK is missing the embedded React Native JavaScript bundle'; exit 1; }
-          cp "$apk" artifacts/dallyletter-mobile/apk-artifacts/dallyletter-v1.0.1.apk
+          cp "$apk" ../apk-artifacts/dallyletter-v1.0.1.apk
+          # Build the matching version 1.0.1 debug APK using the same CI debug
+          # signing key; the upgrade test installs it over the v1.0.0 debug twin.
+          ./gradlew --no-daemon --stacktrace assembleDebug
+          debug_apk=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$debug_apk"
+          cp "$debug_apk" ../apk-artifacts/dallyletter-data-v1.0.1-debug.apk
       - name: Generate APK checksums and build metadata
         if: always()
         env:
@@ -181,6 +195,8 @@ jobs:
         run: |
           mkdir -p artifacts/dallyletter-mobile/android/app/build/outputs/apk/release
           cp /tmp/dallyletter-apks/dallyletter-v1.apk /tmp/dallyletter-v1.apk
+          cp /tmp/dallyletter-apks/dallyletter-data-v1-debug.apk /tmp/dallyletter-data-v1-debug.apk
+          cp /tmp/dallyletter-apks/dallyletter-data-v1.0.1-debug.apk /tmp/dallyletter-data-v1.0.1-debug.apk
           cp /tmp/dallyletter-apks/dallyletter-v1.0.1.apk artifacts/dallyletter-mobile/android/app/build/outputs/apk/release/app-release.apk
       - name: Launch emulator and run install/launch/upgrade smoke tests
         shell: bash
