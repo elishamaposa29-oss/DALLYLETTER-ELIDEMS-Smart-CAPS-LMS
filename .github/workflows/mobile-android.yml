@@ -310,7 +310,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-
   publish-release:
     name: Publish verified standalone release APK
     needs: emulator-smoke
