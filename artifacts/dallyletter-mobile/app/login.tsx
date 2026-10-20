@@ -30,16 +30,27 @@ export default function LoginScreen() {
   const loginMutation = useLoginUser({
     mutation: {
       onSuccess: async (data) => {
+        const rawUser = (data as any)?.user;
+        const rawToken = (data as any)?.token;
+        if (!rawUser || !rawToken) {
+          setError("The server returned an incomplete login response. Please try again.");
+          return;
+        }
+
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        await login(data.user as any, data.token);
-        const role = (data.user as any).role;
+        await login(rawUser, rawToken);
+        const role = rawUser.role;
         if (role === "owner") router.replace("/(admin)/home");
         else if (role === "teacher") router.replace("/(teacher)/home");
         else router.replace("/(student)/home");
       },
-      onError: () => {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        setError("Invalid email or password. Please try again.");
+      onError: (requestError: any) => {
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        const backendMessage =
+          requestError?.response?.data?.message ||
+          requestError?.message ||
+          "Invalid email or password. Please try again.";
+        setError(String(backendMessage));
       },
     },
   });
