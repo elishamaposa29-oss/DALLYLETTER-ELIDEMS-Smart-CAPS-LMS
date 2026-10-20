@@ -160,3 +160,16 @@ jobs:
           }
           trap diagnostics EXIT
           bash .github/scripts/android-emulator-smoke.sh
+      - name: Preserve emulator screenshots and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dallyletter-android-emulator-diagnostics
+          path: |
+            /tmp/dallyletter-emulator.log
+            /tmp/dallyletter-ui-v1.xml
+            /tmp/dallyletter-ui-v1.0.1.xml
+            /tmp/dallyletter-v1.png
+            /tmp/dallyletter-v1.0.1.png
+          if-no-files-found: warn
+          retention-days: 14
