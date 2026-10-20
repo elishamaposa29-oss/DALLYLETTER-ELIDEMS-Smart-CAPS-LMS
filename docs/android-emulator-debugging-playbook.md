@@ -20,6 +20,12 @@ The logged run had already passed: emulator boot completion, package-manager rea
 5. Read the marker back with `run-as`, assert the value exactly, verify versionCode/versionName, relaunch, and assert the UI/process/crash state.
 6. Keep CI-only debug APKs in a separate, one-day artifact. Never include them in the user-facing release APK artifact.
 
+## Standalone APK vs CI debug APK
+
+A separate smoke run exposed another test-design defect: an `assembleDebug` APK launched into React Native's **“Unable to load script”** screen because it had no Metro server. That does not prove the standalone release APK is broken; debug variants can expect Metro. For user-facing verification, install the `assembleRelease` APK and assert its embedded `assets/index.android.bundle` exists before emulator testing. Use the paired debug APKs only for the private-data marker test, never as the release candidate or as a substitute for release UI checks.
+
+When an initial launch does not show the login screen, explicitly open `dallyletter:///login`, capture/retry the UI hierarchy within a bounded deadline, and assert the actual sign-in fields and error state. Do not weaken those assertions to accept the React Native bundle error screen.
+
 Example commands (the workflow must build and verify both APKs with the same CI debug keystore):
 
 ```bash
