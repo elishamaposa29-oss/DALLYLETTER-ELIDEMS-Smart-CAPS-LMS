@@ -25,8 +25,8 @@ concurrency:
 jobs:
   emulator-boot:
     name: Boot Android only (no app build)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
     env:
       API_LEVEL: ${{ inputs.api_level || '34' }}
     steps:
@@ -40,7 +40,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          touch /tmp/dallyletter-emulator.log /tmp/qemu-ldd.log
+          touch /tmp/dallyletter-emulator.log /tmp/qemu-ldd.log /tmp/accel-check.log
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager \
             "platform-tools" \
@@ -65,19 +65,26 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes libpulse0
           "$emulator_root/emulator" -version
-          echo "::group::Emulator acceleration diagnostics"
-          ls -l /dev/kvm || true
-          "$emulator_root/emulator" -accel-check 2>&1 || true
-          echo "::endgroup::"
-          if [ ! -e /dev/kvm ] || [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
-            echo "::error::KVM is not accessible on this runner; x86_64 emulator boot cannot be reliably tested here."
-            exit 1
-          fi
           ldd "$emulator_root/qemu/linux-x86_64/qemu-system-x86_64" | tee /tmp/qemu-ldd.log
           if grep -q "not found" /tmp/qemu-ldd.log; then
             echo "::error::Android emulator QEMU has unresolved shared libraries."
             exit 1
           fi
+
+          echo "::group::Emulator acceleration diagnostics"
+          ls -l /dev/kvm || true
+          "$emulator_root/emulator" -accel-check 2>&1 | tee /tmp/accel-check.log || true
+          echo "::endgroup::"
+          # GitHub-hosted runners do not consistently expose KVM. Missing KVM is
+          # not a reason to skip the boot test: use QEMU TCG software emulation.
+          if [ -e /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ] && grep -qi "usable" /tmp/accel-check.log; then
+            accel_mode=on
+            echo "Hardware virtualization available; using KVM."
+          else
+            accel_mode=off
+            echo "::warning::KVM is unavailable; falling back to slower QEMU software emulation."
+          fi
+          echo "EMULATOR_ACCEL_MODE=$accel_mode" >> "$GITHUB_ENV"
 
       - name: Create a clean isolated AVD
         shell: bash
@@ -103,24 +110,22 @@ jobs:
           "$emulator_bin" -avd DallyletterBootDebug \
             -no-window -gpu swiftshader_indirect -no-snapshot -noaudio \
             -no-boot-anim -camera-back none -camera-front none \
-            -cores 2 -memory 3072 -accel on > /tmp/dallyletter-emulator.log 2>&1 &
+            -cores 2 -memory 3072 "-accel" "$EMULATOR_ACCEL_MODE" \
+            > /tmp/dallyletter-emulator.log 2>&1 &
           emulator_pid=$!
 
           diagnostics() {
             status=$?
             if [ "$status" -ne 0 ]; then
               echo "::group::Failure diagnostics"
-              echo "emulator process:"
+              echo "acceleration mode: $EMULATOR_ACCEL_MODE"
               ps -p "$emulator_pid" -o pid,stat,etime,args || true
-              echo "ADB devices:"
               timeout 15 adb devices -l || true
-              echo "Android boot properties:"
               timeout 15 adb shell getprop sys.boot_completed || true
               timeout 15 adb shell getprop init.svc.bootanim || true
               timeout 15 adb shell getprop ro.build.version.sdk || true
-              echo "QEMU / emulator log:"
               tail -n 300 /tmp/dallyletter-emulator.log || true
-              echo "Kernel acceleration:"
+              cat /tmp/accel-check.log || true
               ls -l /dev/kvm || true
               echo "::endgroup::"
             fi
@@ -131,7 +136,7 @@ jobs:
           trap diagnostics EXIT
 
           adb start-server
-          transport_deadline=$((SECONDS + 300))
+          transport_deadline=$((SECONDS + 600))
           transport_ready=0
           while [ "$SECONDS" -lt "$transport_deadline" ]; do
             state="$(timeout 8 adb get-state 2>/dev/null || true)"
@@ -143,15 +148,15 @@ jobs:
               echo "::error::Emulator process exited before ADB transport became ready"
               exit 1
             fi
-            echo "Waiting for ADB transport (state=${state:-unavailable})"
+            echo "Waiting for ADB transport (state=${state:-unavailable}; acceleration=$EMULATOR_ACCEL_MODE)"
             sleep 5
           done
           if [ "$transport_ready" -ne 1 ]; then
-            echo "::error::ADB transport timed out after 300 seconds"
+            echo "::error::ADB transport timed out after 600 seconds"
             exit 1
           fi
 
-          boot_deadline=$((SECONDS + 900))
+          boot_deadline=$((SECONDS + 1500))
           boot_ready=0
           while [ "$SECONDS" -lt "$boot_deadline" ]; do
             boot="$(timeout 10 adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
@@ -167,17 +172,18 @@ jobs:
             sleep 5
           done
           if [ "$boot_ready" -ne 1 ]; then
-            echo "::error::Android did not report sys.boot_completed=1 within 900 seconds"
+            echo "::error::Android did not report sys.boot_completed=1 within 1500 seconds"
             exit 1
           fi
 
+          package_deadline=$((SECONDS + 240))
           package_ready=0
-          for attempt in $(seq 1 36); do
+          while [ "$SECONDS" -lt "$package_deadline" ]; do
             if timeout 12 adb shell cmd package list packages >/dev/null 2>&1; then
               package_ready=1
               break
             fi
-            echo "Package manager not ready (attempt $attempt/36)"
+            echo "Package manager not ready yet"
             sleep 5
           done
           if [ "$package_ready" -ne 1 ]; then
@@ -188,12 +194,13 @@ jobs:
           echo "Android release: $(adb shell getprop ro.build.version.release | tr -d '\r')"
           echo "Android API: $(adb shell getprop ro.build.version.sdk | tr -d '\r')"
           echo "Boot completed: $(adb shell getprop sys.boot_completed | tr -d '\r')"
+          echo "Acceleration mode: $EMULATOR_ACCEL_MODE"
           echo "PASS: isolated emulator boot and package-manager readiness verified. No application build or app-code changes were performed."
           trap - EXIT
           kill "$emulator_pid" 2>/dev/null || true
           wait "$emulator_pid" 2>/dev/null || true
 
-      - name: Preserve emulator log on failure
+      - name: Preserve emulator diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
@@ -201,5 +208,6 @@ jobs:
           path: |
             /tmp/dallyletter-emulator.log
             /tmp/qemu-ldd.log
+            /tmp/accel-check.log
           if-no-files-found: ignore
           retention-days: 14
