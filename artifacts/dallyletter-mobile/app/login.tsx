@@ -30,16 +30,38 @@ export default function LoginScreen() {
   const loginMutation = useLoginUser({
     mutation: {
       onSuccess: async (data) => {
+        const rawUser = (data as any)?.user;
+        const rawToken = (data as any)?.token;
+        if (!rawUser || !rawToken) {
+          setError("The server returned an incomplete login response. Please try again.");
+          return;
+        }
+
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        await login(data.user as any, data.token);
-        const role = (data.user as any).role;
+        await login(rawUser, rawToken);
+        const role = rawUser.role;
         if (role === "owner") router.replace("/(admin)/home");
         else if (role === "teacher") router.replace("/(teacher)/home");
         else router.replace("/(student)/home");
       },
-      onError: () => {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        setError("Invalid email or password. Please try again.");
+      onError: (requestError: any) => {
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        const status = Number(requestError?.response?.status ?? requestError?.status);
+        const responseData = requestError?.response?.data;
+        // Keep invalid-credential feedback stable even when the API client only
+        // exposes a generic "Request failed with status code 401" message.
+        if (status === 401) {
+          setError("Invalid email or password. Please try again.");
+          return;
+        }
+        const backendMessage = responseData?.message || responseData?.error;
+        const usefulMessage =
+          typeof backendMessage === "string" &&
+          backendMessage.trim() &&
+          !/^request failed with status code\s+\d+$/i.test(backendMessage.trim())
+            ? backendMessage.trim()
+            : "Unable to sign in right now. Check your connection and try again.";
+        setError(String(usefulMessage));
       },
     },
   });
