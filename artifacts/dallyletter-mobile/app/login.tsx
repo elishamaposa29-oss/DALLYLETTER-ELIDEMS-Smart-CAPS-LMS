@@ -46,11 +46,22 @@ export default function LoginScreen() {
       },
       onError: (requestError: any) => {
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        const backendMessage =
-          requestError?.response?.data?.message ||
-          requestError?.message ||
-          "Invalid email or password. Please try again.";
-        setError(String(backendMessage));
+        const status = Number(requestError?.response?.status ?? requestError?.status);
+        const responseData = requestError?.response?.data;
+        // Keep invalid-credential feedback stable even when the API client only
+        // exposes a generic "Request failed with status code 401" message.
+        if (status === 401) {
+          setError("Invalid email or password. Please try again.");
+          return;
+        }
+        const backendMessage = responseData?.message || responseData?.error;
+        const usefulMessage =
+          typeof backendMessage === "string" &&
+          backendMessage.trim() &&
+          !/^request failed with status code\\s+\\d+$/i.test(backendMessage.trim())
+            ? backendMessage.trim()
+            : "Unable to sign in right now. Check your connection and try again.";
+        setError(String(usefulMessage));
       },
     },
   });
