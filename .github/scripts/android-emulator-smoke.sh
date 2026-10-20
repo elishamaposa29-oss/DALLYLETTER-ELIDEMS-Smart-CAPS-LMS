@@ -107,9 +107,17 @@ if timeout 30 adb logcat -d -t 8000 | awk '/FATAL EXCEPTION/ { in_exception=1; c
   exit 1
 fi
 
+step "write marker into app-private data before upgrade"
+timeout 20 adb shell run-as com.dallyletter.elidems sh -c 'mkdir -p files && printf "preserved-across-upgrade" > files/dallyletter-upgrade-marker'
 step "upgrade to version 1.0.1 without uninstalling"
 timeout 180 adb install -r artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk
 timeout 30 adb shell pm path com.dallyletter.elidems | grep -q "package:"
+step "verify app-private data survives in-place upgrade"
+upgrade_marker="$(timeout 20 adb shell run-as com.dallyletter.elidems cat files/dallyletter-upgrade-marker | tr -d "\r")"
+if [ "$upgrade_marker" != "preserved-across-upgrade" ]; then
+  echo "::error::App-private data marker was not preserved during install -r upgrade"
+  exit 1
+fi
 timeout 30 adb shell dumpsys package com.dallyletter.elidems | grep -E "versionCode=2|versionName=1\\.0\\.1"
 timeout 45 adb shell monkey -p com.dallyletter.elidems 1
 sleep 8
