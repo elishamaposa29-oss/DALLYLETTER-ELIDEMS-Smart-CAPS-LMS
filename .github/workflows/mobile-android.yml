@@ -53,7 +53,10 @@ jobs:
         run: pnpm exec expo prebuild --platform android --no-install
       - name: Build standalone release APK
         working-directory: artifacts/dallyletter-mobile/android
-        run: ./gradlew --no-daemon --stacktrace assembleRelease assembleDebug
+        run: ./gradlew --no-daemon --stacktrace assembleRelease
+      - name: Build CI-only debug APK for data-preservation test
+        working-directory: artifacts/dallyletter-mobile/android
+        run: ./gradlew --no-daemon --stacktrace assembleDebug
       - name: Verify and preserve first standalone APK and CI data-test APK
         working-directory: artifacts/dallyletter-mobile/android
         run: |
@@ -75,6 +78,9 @@ jobs:
       - name: Build update APK
         working-directory: artifacts/dallyletter-mobile/android
         run: ./gradlew --no-daemon --stacktrace assembleRelease assembleDebug
+      - name: Build CI-only debug APK for data-preservation upgrade test
+        working-directory: artifacts/dallyletter-mobile/android
+        run: ./gradlew --no-daemon --stacktrace assembleDebug
       - name: Verify and preserve updated release APK and CI data-test APK
         working-directory: artifacts/dallyletter-mobile/android
         run: |
