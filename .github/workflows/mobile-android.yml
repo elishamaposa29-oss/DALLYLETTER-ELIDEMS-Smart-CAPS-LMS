@@ -66,12 +66,33 @@ jobs:
         run: ./gradlew --no-daemon --stacktrace assembleDebug
       - name: Preserve update package
         run: cp artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk artifacts/dallyletter-mobile/apk-artifacts/dallyletter-v1.0.1.apk
+      - name: Generate APK checksums and build metadata
+        if: always()
+        run: |
+          set -Eeuo pipefail
+          mkdir -p artifacts/dallyletter-mobile/apk-artifacts
+          shopt -s nullglob
+          apks=(artifacts/dallyletter-mobile/apk-artifacts/*.apk)
+          if [ "${#apks[@]}" -gt 0 ]; then
+            sha256sum "${apks[@]}" > artifacts/dallyletter-mobile/apk-artifacts/checksums.sha256
+          fi
+          {
+            echo "source_commit=$GITHUB_SHA"
+            echo "application_id=com.dallyletter.elidems"
+            echo "apk_v1_version=1.0.0"
+            echo "apk_v1_versionCode=1"
+            echo "apk_v1.0.1_version=1.0.1"
+            echo "apk_v1.0.1_versionCode=2"
+          } > artifacts/dallyletter-mobile/apk-artifacts/build-metadata.txt
       - name: Upload installable debug APK
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: dallyletter-android-debug-apk
-          path: artifacts/dallyletter-mobile/apk-artifacts/*.apk
+          path: |
+            artifacts/dallyletter-mobile/apk-artifacts/*.apk
+            artifacts/dallyletter-mobile/apk-artifacts/checksums.sha256
+            artifacts/dallyletter-mobile/apk-artifacts/build-metadata.txt
           if-no-files-found: error
           retention-days: 14
   emulator-smoke:
