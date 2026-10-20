@@ -33,7 +33,7 @@ function resolveApiBaseUrl() {
   for (const candidate of candidates) {
     const value = candidate?.trim();
     if (!value) continue;
-    return value.replace(/\\/+$/, "");
+    return value.replace(/\/+$/, "");
   }
   return DEFAULT_API_BASE_URL;
 }
