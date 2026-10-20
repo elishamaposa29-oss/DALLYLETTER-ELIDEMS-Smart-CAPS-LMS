@@ -238,10 +238,23 @@ export async function getAIProvider(): Promise<AIProvider> {
   const rows = await db.select().from(platformSettingsTable);
   const cfg: Record<string, string> = {};
   for (const r of rows) cfg[r.key] = r.value ?? "";
-  const name = cfg["ai_provider"] ?? "mock";
-  if (name === "gemini" && cfg["gemini_api_key"]) _cached = new GeminiProvider(cfg["gemini_api_key"]);
-  else if (name === "openai" && cfg["openai_api_key"]) _cached = new OpenAIProvider(cfg["openai_api_key"]);
-  else if (name === "anthropic" && cfg["anthropic_api_key"]) _cached = new AnthropicProvider(cfg["anthropic_api_key"]);
+
+  // Database settings override deployment environment variables. This keeps
+  // owner-configured settings stable while allowing secure server-side setup
+  // through Render/other secret managers without putting keys in the client.
+  const geminiKey = cfg["gemini_api_key"] || process.env.GEMINI_API_KEY || "";
+  const openaiKey = cfg["openai_api_key"] || process.env.OPENAI_API_KEY || "";
+  const anthropicKey = cfg["anthropic_api_key"] || process.env.ANTHROPIC_API_KEY || "";
+  const configuredName = cfg["ai_provider"] || process.env.AI_PROVIDER;
+  const name = configuredName || (
+    geminiKey ? "gemini" :
+    openaiKey ? "openai" :
+    anthropicKey ? "anthropic" : "mock"
+  );
+
+  if (name === "gemini" && geminiKey) _cached = new GeminiProvider(geminiKey);
+  else if (name === "openai" && openaiKey) _cached = new OpenAIProvider(openaiKey);
+  else if (name === "anthropic" && anthropicKey) _cached = new AnthropicProvider(anthropicKey);
   else _cached = new MockProvider();
   _cacheTs = Date.now();
   return _cached;
