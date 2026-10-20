@@ -68,6 +68,8 @@ jobs:
         run: cp artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk artifacts/dallyletter-mobile/apk-artifacts/dallyletter-v1.0.1.apk
       - name: Generate APK checksums and build metadata
         if: always()
+        env:
+          SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -Eeuo pipefail
           mkdir -p artifacts/dallyletter-mobile/apk-artifacts
@@ -80,7 +82,8 @@ jobs:
             )
           fi
           {
-            echo "source_commit=$GITHUB_SHA"
+            echo "source_commit=$SOURCE_COMMIT"
+            echo "workflow_merge_commit=$GITHUB_SHA"
             echo "application_id=com.dallyletter.elidems"
             echo "apk_v1_version=1.0.0"
             echo "apk_v1_versionCode=1"
