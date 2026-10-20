@@ -78,6 +78,17 @@ if ! grep -Eqi 'Welcome back|Sign in to continue learning|your@email.com' /tmp/d
   cat /tmp/dallyletter-ui-v1.xml || true
   exit 1
 fi
+step "verify signup route opens a real registration form"
+timeout 30 adb shell am start -a android.intent.action.VIEW -d 'dallyletter:///signup' com.dallyletter.elidems
+sleep 4
+timeout 45 adb shell uiautomator dump /sdcard/dallyletter-ui-signup.xml >/dev/null
+timeout 20 adb pull /sdcard/dallyletter-ui-signup.xml /tmp/dallyletter-ui-signup.xml >/dev/null
+if ! grep -Eqi 'Create account' /tmp/dallyletter-ui-signup.xml || ! grep -Eqi 'Full name' /tmp/dallyletter-ui-signup.xml; then
+  echo "::error::Signup route did not display the real registration form"
+  cat /tmp/dallyletter-ui-signup.xml || true
+  exit 1
+fi
+timeout 30 adb exec-out screencap -p > /tmp/dallyletter-signup.png
 step "verify app process and foreground activity"
 app_pid="$(timeout 20 adb shell pidof com.dallyletter.elidems | tr -d "\r" || true)"
 if [ -z "$app_pid" ]; then
