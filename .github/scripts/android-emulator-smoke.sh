@@ -206,7 +206,7 @@ timeout 180 adb uninstall com.dallyletter.elidems
 timeout 180 adb install /tmp/dallyletter-data-v1-debug.apk
 timeout 30 adb shell dumpsys package com.dallyletter.elidems | grep -E "versionCode=1|versionName=1\\.0\\.0"
 step "write marker into app-private data using debuggable test build"
-timeout 20 adb shell run-as com.dallyletter.elidems sh -c 'mkdir -p files && printf "preserved-across-upgrade" > files/dallyletter-upgrade-marker'
+timeout 20 adb shell "run-as com.dallyletter.elidems sh -c 'printf preserved-across-upgrade > files/dallyletter-upgrade-marker'"
 step "upgrade CI test build to version 1.0.1 without uninstalling"
 timeout 180 adb install -r /tmp/dallyletter-data-v1.0.1-debug.apk
 timeout 30 adb shell pm path com.dallyletter.elidems | grep -q "package:"
