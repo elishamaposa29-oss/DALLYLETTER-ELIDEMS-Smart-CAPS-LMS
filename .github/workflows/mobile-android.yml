@@ -88,7 +88,17 @@ jobs:
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "emulator" "platforms;android-34" "system-images;android-34;google_apis;x86_64"
+          # The Android QEMU binary dynamically links libpulse.so.0 on Linux runners.
+          sudo apt-get update
+          sudo apt-get install --yes libpulse0
           test -x "$ANDROID_HOME/emulator/emulator"
+          qemu_bin="$ANDROID_HOME/emulator/qemu/linux-x86_64/qemu-system-x86_64"
+          missing="$(ldd "$qemu_bin" | awk '/not found/ { print $1 }')"
+          if [ -n "$missing" ]; then
+            echo "::error::Android emulator QEMU has unresolved shared libraries: $missing"
+            ldd "$qemu_bin"
+            exit 1
+          fi
           echo "$ANDROID_HOME/emulator" >> "$GITHUB_PATH"
           "$ANDROID_HOME/emulator/emulator" -version
       - name: Create isolated Android virtual device
