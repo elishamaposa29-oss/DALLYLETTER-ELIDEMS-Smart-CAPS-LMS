@@ -61,6 +61,13 @@ jobs:
           set -Eeuo pipefail
           apk=app/build/outputs/apk/release/app-release.apk
           unzip -l "$apk" | grep -q 'assets/index.android.bundle' || { echo '::error::Release APK is missing the embedded React Native JavaScript bundle'; exit 1; }
+          aapt_bin="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          apksigner_bin="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$aapt_bin" && test -x "$apksigner_bin"
+          badging="$("$aapt_bin" dump badging "$apk")"
+          grep -Fq "package: name='com.dallyletter.elidems' versionCode='1' versionName='1.0.0'" <<<"$badging"
+          if grep -q "application-debuggable" <<<"$badging"; then echo "::error::Release APK must not be debuggable"; exit 1; fi
+          "$apksigner_bin" verify --verbose "$apk"
           mkdir -p ../apk-artifacts
           cp "$apk" ../apk-artifacts/dallyletter-v1.apk
           # Debug-only twin exists solely to test app-private-data persistence.
@@ -83,6 +90,13 @@ jobs:
           set -Eeuo pipefail
           apk=app/build/outputs/apk/release/app-release.apk
           unzip -l "$apk" | grep -q 'assets/index.android.bundle' || { echo '::error::Updated release APK is missing the embedded React Native JavaScript bundle'; exit 1; }
+          aapt_bin="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          apksigner_bin="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$aapt_bin" && test -x "$apksigner_bin"
+          badging="$("$aapt_bin" dump badging "$apk")"
+          grep -Fq "package: name='com.dallyletter.elidems' versionCode='2' versionName='1.0.1'" <<<"$badging"
+          if grep -q "application-debuggable" <<<"$badging"; then echo "::error::Updated release APK must not be debuggable"; exit 1; fi
+          "$apksigner_bin" verify --verbose "$apk"
           cp "$apk" ../apk-artifacts/dallyletter-v1.0.1.apk
           # Build the matching version 1.0.1 debug APK using the same CI debug
           # signing key; the upgrade test installs it over the v1.0.0 debug twin.
