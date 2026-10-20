@@ -51,11 +51,16 @@ jobs:
       - name: Generate native Android project
         working-directory: artifacts/dallyletter-mobile
         run: pnpm exec expo prebuild --platform android --no-install
-      - name: Build reproducible debug APK
+      - name: Build standalone release APK
         working-directory: artifacts/dallyletter-mobile/android
-        run: ./gradlew --no-daemon --stacktrace assembleDebug
-      - name: Preserve first install package
-        run: mkdir -p artifacts/dallyletter-mobile/apk-artifacts && cp artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk artifacts/dallyletter-mobile/apk-artifacts/dallyletter-v1.apk
+        run: ./gradlew --no-daemon --stacktrace assembleRelease
+      - name: Verify and preserve first standalone APK
+        run: |
+          set -Eeuo pipefail
+          apk=artifacts/dallyletter-mobile/android/app/build/outputs/apk/release/app-release.apk
+          unzip -l "$apk" | grep -q 'assets/index.android.bundle' || { echo '::error::Release APK is missing the embedded React Native JavaScript bundle'; exit 1; }
+          mkdir -p artifacts/dallyletter-mobile/apk-artifacts
+          cp "$apk" artifacts/dallyletter-mobile/apk-artifacts/dallyletter-v1.apk
       - name: Generate version 1.0.1 for upgrade test
         working-directory: artifacts/dallyletter-mobile
         run: |
@@ -63,9 +68,13 @@ jobs:
           pnpm exec expo prebuild --platform android --no-install
       - name: Build update APK
         working-directory: artifacts/dallyletter-mobile/android
-        run: ./gradlew --no-daemon --stacktrace assembleDebug
-      - name: Preserve update package
-        run: cp artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk artifacts/dallyletter-mobile/apk-artifacts/dallyletter-v1.0.1.apk
+        run: ./gradlew --no-daemon --stacktrace assembleRelease
+      - name: Verify and preserve updated standalone APK
+        run: |
+          set -Eeuo pipefail
+          apk=artifacts/dallyletter-mobile/android/app/build/outputs/apk/release/app-release.apk
+          unzip -l "$apk" | grep -q 'assets/index.android.bundle' || { echo '::error::Updated release APK is missing the embedded React Native JavaScript bundle'; exit 1; }
+          cp "$apk" artifacts/dallyletter-mobile/apk-artifacts/dallyletter-v1.0.1.apk
       - name: Generate APK checksums and build metadata
         if: always()
         env:
@@ -90,11 +99,11 @@ jobs:
             echo "apk_v1.0.1_version=1.0.1"
             echo "apk_v1.0.1_versionCode=2"
           } > artifacts/dallyletter-mobile/apk-artifacts/build-metadata.txt
-      - name: Upload installable debug APK
+      - name: Upload installable standalone release APK
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dallyletter-android-debug-apk
+          name: dallyletter-android-release-apk
           path: |
             artifacts/dallyletter-mobile/apk-artifacts/*.apk
             artifacts/dallyletter-mobile/apk-artifacts/checksums.sha256
@@ -163,16 +172,16 @@ jobs:
           fi
           echo "Created AVD at $ANDROID_AVD_HOME/DallyletterSmoke.ini"
           "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fx "DallyletterSmoke"
-      - name: Download built APKs
+      - name: Download built standalone APKs
         uses: actions/download-artifact@v4
         with:
-          name: dallyletter-android-debug-apk
+          name: dallyletter-android-release-apk
           path: /tmp/dallyletter-apks
-      - name: Place APKs for smoke test
+      - name: Place standalone APKs for smoke test
         run: |
-          mkdir -p artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug
+          mkdir -p artifacts/dallyletter-mobile/android/app/build/outputs/apk/release
           cp /tmp/dallyletter-apks/dallyletter-v1.apk /tmp/dallyletter-v1.apk
-          cp /tmp/dallyletter-apks/dallyletter-v1.0.1.apk artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          cp /tmp/dallyletter-apks/dallyletter-v1.0.1.apk artifacts/dallyletter-mobile/android/app/build/outputs/apk/release/app-release.apk
       - name: Launch emulator and run install/launch/upgrade smoke tests
         shell: bash
         run: |
