@@ -183,6 +183,20 @@ if timeout 30 adb logcat -d -t 8000 | awk '/FATAL EXCEPTION/ { in_exception=1; c
   exit 1
 fi
 
+step "upgrade actual release APK in place to version 1.0.1"
+timeout 180 adb install -r artifacts/dallyletter-mobile/android/app/build/outputs/apk/release/app-release.apk
+timeout 30 adb shell dumpsys package com.dallyletter.elidems | grep -E "versionCode=2|versionName=1\\.0\\.1"
+timeout 45 adb shell monkey -p com.dallyletter.elidems 1
+sleep 8
+step "verify upgraded release APK still renders sign-in UI"
+timeout 30 adb exec-out screencap -p > /tmp/dallyletter-release-upgrade.png
+timeout 45 adb shell uiautomator dump /sdcard/dallyletter-release-upgrade.xml >/dev/null
+timeout 20 adb pull /sdcard/dallyletter-release-upgrade.xml /tmp/dallyletter-release-upgrade.xml >/dev/null
+if ! grep -Eqi 'Welcome back|Sign in to continue learning|your@email.com|Sign In' /tmp/dallyletter-release-upgrade.xml; then
+  echo "::error::Release APK v1.0.1 did not retain a visible sign-in UI after in-place upgrade"
+  cat /tmp/dallyletter-release-upgrade.xml || true
+  exit 1
+fi
 # Release APKs are intentionally non-debuggable, so Android's `run-as` must not be
 # used against them. The release APK has already passed install/launch/login tests.
 # Exercise private-data preservation with two CI-only debuggable builds of the same
