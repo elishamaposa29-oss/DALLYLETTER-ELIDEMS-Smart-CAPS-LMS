@@ -178,7 +178,11 @@ jobs:
           if [ "${#apks[@]}" -gt 0 ]; then
             (
               cd artifacts/dallyletter-mobile/apk-artifacts
-              sha256sum *.apk > checksums.sha256
+              # The public candidate artifact intentionally contains only the
+              # standalone release APKs. Keep its checksum manifest scoped to
+              # those exact files; CI-only debuggable APKs are uploaded separately
+              # and must not make release publication fail with missing-file errors.
+              sha256sum dallyletter-v1.apk dallyletter-v1.0.1.apk > checksums.sha256
             )
           fi
           {
