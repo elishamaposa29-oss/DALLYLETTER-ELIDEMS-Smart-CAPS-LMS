@@ -7,7 +7,7 @@ on:
     branches: [main, staging, production]
 
 jobs:
-  verify:
+  release-safety:
     runs-on: ubuntu-latest
     environment: >-
       ${{ github.ref_name == 'production' && 'production' || github.ref_name == 'staging' && 'staging' || 'development' }}
