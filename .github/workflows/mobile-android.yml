@@ -74,7 +74,10 @@ jobs:
           shopt -s nullglob
           apks=(artifacts/dallyletter-mobile/apk-artifacts/*.apk)
           if [ "${#apks[@]}" -gt 0 ]; then
-            sha256sum "${apks[@]}" > artifacts/dallyletter-mobile/apk-artifacts/checksums.sha256
+            (
+              cd artifacts/dallyletter-mobile/apk-artifacts
+              sha256sum *.apk > checksums.sha256
+            )
           fi
           {
             echo "source_commit=$GITHUB_SHA"
