@@ -69,6 +69,15 @@ timeout 180 adb install /tmp/dallyletter-v1.apk
 timeout 30 adb shell pm path com.dallyletter.elidems | grep -q "package:"
 timeout 45 adb shell monkey -p com.dallyletter.elidems 1
 sleep 8
+step "capture actual first-launch screen and verify sign-in UI"
+timeout 30 adb exec-out screencap -p > /tmp/dallyletter-v1.png
+timeout 45 adb shell uiautomator dump /sdcard/dallyletter-ui-v1.xml >/dev/null
+timeout 20 adb pull /sdcard/dallyletter-ui-v1.xml /tmp/dallyletter-ui-v1.xml >/dev/null
+if ! grep -Eqi 'Welcome back|Sign in to continue learning|your@email.com' /tmp/dallyletter-ui-v1.xml; then
+  echo "::error::App launched but expected sign-in UI text was not present in the UI hierarchy"
+  cat /tmp/dallyletter-ui-v1.xml || true
+  exit 1
+fi
 step "verify app process and foreground activity"
 app_pid="$(timeout 20 adb shell pidof com.dallyletter.elidems | tr -d "\r" || true)"
 if [ -z "$app_pid" ]; then
@@ -93,6 +102,15 @@ timeout 30 adb shell pm path com.dallyletter.elidems | grep -q "package:"
 timeout 30 adb shell dumpsys package com.dallyletter.elidems | grep -E "versionCode=2|versionName=1\\.0\\.1"
 timeout 45 adb shell monkey -p com.dallyletter.elidems 1
 sleep 8
+step "capture upgraded app screen and verify real UI remains visible"
+timeout 30 adb exec-out screencap -p > /tmp/dallyletter-v1.0.1.png
+timeout 45 adb shell uiautomator dump /sdcard/dallyletter-ui-v1.0.1.xml >/dev/null
+timeout 20 adb pull /sdcard/dallyletter-ui-v1.0.1.xml /tmp/dallyletter-ui-v1.0.1.xml >/dev/null
+if ! grep -Eqi 'Welcome back|Sign in to continue learning|your@email.com' /tmp/dallyletter-ui-v1.0.1.xml; then
+  echo "::error::Upgraded app launched but expected sign-in UI text was not present"
+  cat /tmp/dallyletter-ui-v1.0.1.xml || true
+  exit 1
+fi
 step "verify upgraded app process and foreground activity"
 app_pid="$(timeout 20 adb shell pidof com.dallyletter.elidems | tr -d "\r" || true)"
 if [ -z "$app_pid" ]; then
