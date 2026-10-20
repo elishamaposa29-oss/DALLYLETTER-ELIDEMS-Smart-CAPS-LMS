@@ -76,6 +76,23 @@ jobs:
       - name: Generate native Android project
         working-directory: artifacts/dallyletter-mobile
         run: pnpm exec expo prebuild --platform android --no-install
+      - name: Enable embedded JavaScript bundle in CI debug variant
+        working-directory: artifacts/dallyletter-mobile/android
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path("app/build.gradle")
+          s = p.read_text()
+          pattern = r"react\\s*\\{"
+          updated, count = re.subn(pattern, "react {\\n    // CI-only debug APK must carry JS so it can run without Metro.\\n    // Android debug remains debuggable; only RN's Metro-dependent bundle skip is disabled.\\n    debuggableVariants = []", s, count=1)
+          if count != 1:
+              raise SystemExit("Could not locate React Native Gradle react { block; refusing to build a Metro-dependent CI APK")
+          p.write_text(updated)
+          PY
+          grep -A5 -m1 '^react {' app/build.gradle
       - name: Build standalone release APK
         working-directory: artifacts/dallyletter-mobile/android
         run: |
@@ -105,6 +122,23 @@ jobs:
         run: |
           node -e 'const fs=require("fs"); const p="app.json"; const j=JSON.parse(fs.readFileSync(p,"utf8")); j.expo.version="1.0.1"; j.expo.android.versionCode=2; fs.writeFileSync(p, JSON.stringify(j,null,2)+"\n");'
           pnpm exec expo prebuild --platform android --no-install
+      - name: Enable embedded JavaScript bundle in CI debug variant after v1.0.1 prebuild
+        working-directory: artifacts/dallyletter-mobile/android
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path("app/build.gradle")
+          s = p.read_text()
+          pattern = r"react\\s*\\{"
+          updated, count = re.subn(pattern, "react {\\n    // CI-only debug APK must carry JS so it can run without Metro.\\n    // Android debug remains debuggable; only RN's Metro-dependent bundle skip is disabled.\\n    debuggableVariants = []", s, count=1)
+          if count != 1:
+              raise SystemExit("Could not locate React Native Gradle react { block; refusing to build a Metro-dependent CI APK")
+          p.write_text(updated)
+          PY
+          grep -A5 -m1 '^react {' app/build.gradle
       - name: Build update APK
         working-directory: artifacts/dallyletter-mobile/android
         run: |
