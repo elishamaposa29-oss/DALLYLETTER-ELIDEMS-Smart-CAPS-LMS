@@ -189,7 +189,7 @@ step "capture upgraded app screen and verify real UI remains visible"
 timeout 30 adb exec-out screencap -p > /tmp/dallyletter-v1.0.1.png
 timeout 45 adb shell uiautomator dump /sdcard/dallyletter-ui-v1.0.1.xml >/dev/null
 timeout 20 adb pull /sdcard/dallyletter-ui-v1.0.1.xml /tmp/dallyletter-ui-v1.0.1.xml >/dev/null
-if ! grep -Eqi 'Welcome back|Sign in to continue learning|your@email.com' /tmp/dallyletter-ui-v1.0.1.xml; then
+if ! grep -Eqi 'Welcome back|Sign in to continue learning|your@email.com|Sign In' /tmp/dallyletter-ui-v1.0.1.xml; then
   echo "::error::Upgraded app launched but expected sign-in UI text was not present"
   cat /tmp/dallyletter-ui-v1.0.1.xml || true
   exit 1
