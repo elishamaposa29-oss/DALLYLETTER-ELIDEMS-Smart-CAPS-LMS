@@ -53,7 +53,7 @@ jobs:
         run: pnpm exec expo prebuild --platform android --no-install
       - name: Build standalone release APK
         working-directory: artifacts/dallyletter-mobile/android
-        run: ./gradlew --no-daemon --stacktrace assembleRelease
+        run: ./gradlew --no-daemon --stacktrace assembleRelease assembleDebug
       - name: Verify and preserve first standalone APK and CI data-test APK
         working-directory: artifacts/dallyletter-mobile/android
         run: |
@@ -64,7 +64,6 @@ jobs:
           cp "$apk" ../apk-artifacts/dallyletter-v1.apk
           # Debug-only twin exists solely to test app-private-data persistence.
           # The user-facing release APK remains non-debuggable.
-          ./gradlew --no-daemon --stacktrace assembleDebug
           debug_apk=app/build/outputs/apk/debug/app-debug.apk
           test -s "$debug_apk"
           cp "$debug_apk" ../apk-artifacts/dallyletter-data-v1-debug.apk
@@ -85,7 +84,6 @@ jobs:
           cp "$apk" ../apk-artifacts/dallyletter-v1.0.1.apk
           # Build the matching version 1.0.1 debug APK using the same CI debug
           # signing key; the upgrade test installs it over the v1.0.0 debug twin.
-          ./gradlew --no-daemon --stacktrace assembleDebug
           debug_apk=app/build/outputs/apk/debug/app-debug.apk
           test -s "$debug_apk"
           cp "$debug_apk" ../apk-artifacts/dallyletter-data-v1.0.1-debug.apk
