@@ -58,7 +58,7 @@ export default function LoginScreen() {
         const usefulMessage =
           typeof backendMessage === "string" &&
           backendMessage.trim() &&
-          !/^request failed with status code\\s+\\d+$/i.test(backendMessage.trim())
+          !/^request failed with status code\s+\d+$/i.test(backendMessage.trim())
             ? backendMessage.trim()
             : "Unable to sign in right now. Check your connection and try again.";
         setError(String(usefulMessage));
