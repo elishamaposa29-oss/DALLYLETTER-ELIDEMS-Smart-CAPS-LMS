@@ -69,8 +69,20 @@ timeout 180 adb install /tmp/dallyletter-v1.apk
 timeout 30 adb shell pm path com.dallyletter.elidems | grep -q "package:"
 timeout 45 adb shell monkey -p com.dallyletter.elidems 1
 sleep 8
+step "verify app process and foreground activity"
+app_pid="$(timeout 20 adb shell pidof com.dallyletter.elidems | tr -d "\r" || true)"
+if [ -z "$app_pid" ]; then
+  echo "::error::Dallyletter process is not running after launch"
+  timeout 20 adb logcat -d -t 1000 || true
+  exit 1
+fi
+if ! timeout 20 adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | grep -F "com.dallyletter.elidems/" >/dev/null; then
+  echo "::error::Dallyletter is not the resumed foreground activity"
+  timeout 20 adb shell dumpsys activity activities | tail -n 100 || true
+  exit 1
+fi
 step "check launch crash log"
-if timeout 30 adb logcat -d -t 8000 | awk '/FATAL EXCEPTION/ { in_exception=1; count=0 } in_exception { if (/Process: com\\.dallyletter\\.elidems/) found=1; if (++count > 20) in_exception=0 } END { exit !found }'; then
+if timeout 30 adb logcat -d -t 8000 | awk '/FATAL EXCEPTION/ { in_exception=1; count=0 } in_exception { if (/Process: com\.dallyletter\.elidems/) found=1; if (++count > 20) in_exception=0 } END { exit !found }'; then
   echo "Android app crashed after first install"
   exit 1
 fi
@@ -81,7 +93,19 @@ timeout 30 adb shell pm path com.dallyletter.elidems | grep -q "package:"
 timeout 30 adb shell dumpsys package com.dallyletter.elidems | grep -E "versionCode=2|versionName=1\\.0\\.1"
 timeout 45 adb shell monkey -p com.dallyletter.elidems 1
 sleep 8
-if timeout 30 adb logcat -d -t 8000 | awk '/FATAL EXCEPTION/ { in_exception=1; count=0 } in_exception { if (/Process: com\\.dallyletter\\.elidems/) found=1; if (++count > 20) in_exception=0 } END { exit !found }'; then
+step "verify upgraded app process and foreground activity"
+app_pid="$(timeout 20 adb shell pidof com.dallyletter.elidems | tr -d "\r" || true)"
+if [ -z "$app_pid" ]; then
+  echo "::error::Dallyletter process is not running after upgrade launch"
+  timeout 20 adb logcat -d -t 1000 || true
+  exit 1
+fi
+if ! timeout 20 adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | grep -F "com.dallyletter.elidems/" >/dev/null; then
+  echo "::error::Dallyletter is not the resumed foreground activity after upgrade"
+  timeout 20 adb shell dumpsys activity activities | tail -n 100 || true
+  exit 1
+fi
+if timeout 30 adb logcat -d -t 8000 | awk '/FATAL EXCEPTION/ { in_exception=1; count=0 } in_exception { if (/Process: com\.dallyletter\.elidems/) found=1; if (++count > 20) in_exception=0 } END { exit !found }'; then
   echo "Android app crashed during upgrade smoke test"
   exit 1
 fi
