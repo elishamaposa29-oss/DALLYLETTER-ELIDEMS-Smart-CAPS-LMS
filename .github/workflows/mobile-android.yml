@@ -53,10 +53,12 @@ jobs:
         run: pnpm exec expo prebuild --platform android --no-install
       - name: Build standalone release APK
         working-directory: artifacts/dallyletter-mobile/android
-        run: ./gradlew --no-daemon --stacktrace assembleRelease assembleDebug
+        run: |
+          ./gradlew --no-daemon --stacktrace assembleRelease assembleDebug
       - name: Verify and preserve first standalone APK and CI data-test APK
         working-directory: artifacts/dallyletter-mobile/android
         run: |
+          ./gradlew --no-daemon --stacktrace assembleRelease assembleDebug
           set -Eeuo pipefail
           apk=app/build/outputs/apk/release/app-release.apk
           unzip -l "$apk" | grep -q 'assets/index.android.bundle' || { echo '::error::Release APK is missing the embedded React Native JavaScript bundle'; exit 1; }
@@ -74,10 +76,12 @@ jobs:
           pnpm exec expo prebuild --platform android --no-install
       - name: Build update APK
         working-directory: artifacts/dallyletter-mobile/android
-        run: ./gradlew --no-daemon --stacktrace assembleRelease assembleDebug
+        run: |
+          ./gradlew --no-daemon --stacktrace assembleRelease assembleDebug
       - name: Verify and preserve updated release APK and CI data-test APK
         working-directory: artifacts/dallyletter-mobile/android
         run: |
+          ./gradlew --no-daemon --stacktrace assembleRelease assembleDebug
           set -Eeuo pipefail
           apk=app/build/outputs/apk/release/app-release.apk
           unzip -l "$apk" | grep -q 'assets/index.android.bundle' || { echo '::error::Updated release APK is missing the embedded React Native JavaScript bundle'; exit 1; }
