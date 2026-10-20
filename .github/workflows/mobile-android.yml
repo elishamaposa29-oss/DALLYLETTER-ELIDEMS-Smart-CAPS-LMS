@@ -119,11 +119,22 @@ jobs:
         with:
           name: dallyletter-android-release-apk
           path: |
-            artifacts/dallyletter-mobile/apk-artifacts/*.apk
+            artifacts/dallyletter-mobile/apk-artifacts/dallyletter-v1.apk
+            artifacts/dallyletter-mobile/apk-artifacts/dallyletter-v1.0.1.apk
             artifacts/dallyletter-mobile/apk-artifacts/checksums.sha256
             artifacts/dallyletter-mobile/apk-artifacts/build-metadata.txt
           if-no-files-found: error
           retention-days: 14
+      - name: Upload CI-only debug APKs for data-preservation test
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dallyletter-ci-upgrade-test-apks
+          path: |
+            artifacts/dallyletter-mobile/apk-artifacts/dallyletter-data-v1-debug.apk
+            artifacts/dallyletter-mobile/apk-artifacts/dallyletter-data-v1.0.1-debug.apk
+          if-no-files-found: error
+          retention-days: 1
   emulator-smoke:
     needs: build-apk
     runs-on: ubuntu-latest
@@ -191,12 +202,18 @@ jobs:
         with:
           name: dallyletter-android-release-apk
           path: /tmp/dallyletter-apks
+      - name: Download CI-only debug APKs for data-preservation test
+        uses: actions/download-artifact@v4
+        with:
+          name: dallyletter-ci-upgrade-test-apks
+          path: /tmp/dallyletter-data-apks
       - name: Place standalone APKs for smoke test
         run: |
+          set -Eeuo pipefail
           mkdir -p artifacts/dallyletter-mobile/android/app/build/outputs/apk/release
           cp /tmp/dallyletter-apks/dallyletter-v1.apk /tmp/dallyletter-v1.apk
-          cp /tmp/dallyletter-apks/dallyletter-data-v1-debug.apk /tmp/dallyletter-data-v1-debug.apk
-          cp /tmp/dallyletter-apks/dallyletter-data-v1.0.1-debug.apk /tmp/dallyletter-data-v1.0.1-debug.apk
+          cp /tmp/dallyletter-data-apks/dallyletter-data-v1-debug.apk /tmp/dallyletter-data-v1-debug.apk
+          cp /tmp/dallyletter-data-apks/dallyletter-data-v1.0.1-debug.apk /tmp/dallyletter-data-v1.0.1-debug.apk
           cp /tmp/dallyletter-apks/dallyletter-v1.0.1.apk artifacts/dallyletter-mobile/android/app/build/outputs/apk/release/app-release.apk
       - name: Launch emulator and run install/launch/upgrade smoke tests
         shell: bash
