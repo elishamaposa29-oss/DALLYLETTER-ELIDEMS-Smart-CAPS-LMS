@@ -127,6 +127,7 @@ if ! grep -Fqi 'Invalid email or password' /tmp/dallyletter-login-error.xml; the
   cat /tmp/dallyletter-login-error.xml || true
   exit 1
 fi
+timeout 30 adb exec-out screencap -p > /tmp/dallyletter-login-error.png
 step "verify signup route opens a real registration form"
 timeout 30 adb shell am start -a android.intent.action.VIEW -d 'dallyletter:///signup' com.dallyletter.elidems
 sleep 4

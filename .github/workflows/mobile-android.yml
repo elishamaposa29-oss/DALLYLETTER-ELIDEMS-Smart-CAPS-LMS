@@ -204,9 +204,13 @@ jobs:
           path: |
             /tmp/dallyletter-emulator.log
             /tmp/dallyletter-ui-v1.xml
+            /tmp/dallyletter-login-filled.xml
+            /tmp/dallyletter-login-ready.xml
+            /tmp/dallyletter-login-error.xml
             /tmp/dallyletter-ui-signup.xml
             /tmp/dallyletter-ui-v1.0.1.xml
             /tmp/dallyletter-v1.png
+            /tmp/dallyletter-login-error.png
             /tmp/dallyletter-signup.png
             /tmp/dallyletter-v1.0.1.png
           if-no-files-found: warn
