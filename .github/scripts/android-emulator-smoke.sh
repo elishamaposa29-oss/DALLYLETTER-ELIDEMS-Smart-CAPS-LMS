@@ -78,6 +78,55 @@ if ! grep -Eqi 'Welcome back|Sign in to continue learning|your@email.com' /tmp/d
   cat /tmp/dallyletter-ui-v1.xml || true
   exit 1
 fi
+step "submit invalid credentials to verify real mobile-to-API request and visible error state"
+tap_ui_node() {
+  python3 - "$1" "$2" <<'PY'
+import re, subprocess, sys, xml.etree.ElementTree as ET
+path, selector = sys.argv[1], sys.argv[2]
+fallbacks = {
+    "email-input": ("your@email.com",),
+    "password-input": ("••••••••",),
+    "login-btn": ("Sign In",),
+}
+root = ET.parse(path).getroot()
+node = None
+for item in root.iter("node"):
+    rid = item.attrib.get("resource-id", "")
+    text = item.attrib.get("text", "")
+    desc = item.attrib.get("content-desc", "")
+    if selector in rid or selector in desc or text in fallbacks.get(selector, ()):
+        node = item
+        if selector in rid or selector in desc:
+            break
+if node is None:
+    raise SystemExit(f"UI node not found: {selector}")
+bounds = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.attrib.get("bounds", ""))
+if not bounds:
+    raise SystemExit(f"UI node has no usable bounds: {selector}")
+x1, y1, x2, y2 = map(int, bounds.groups())
+subprocess.run(["adb", "shell", "input", "tap", str((x1+x2)//2), str((y1+y2)//2)], check=True)
+PY
+}
+tap_ui_node /tmp/dallyletter-ui-v1.xml email-input
+timeout 15 adb shell input text "ci-invalid-$GITHUB_RUN_ID@example.com"
+sleep 1
+timeout 45 adb shell uiautomator dump /sdcard/dallyletter-login-filled.xml >/dev/null
+timeout 20 adb pull /sdcard/dallyletter-login-filled.xml /tmp/dallyletter-login-filled.xml >/dev/null
+tap_ui_node /tmp/dallyletter-login-filled.xml password-input
+timeout 15 adb shell input text "InvalidPassword123"
+timeout 15 adb shell input keyevent 4
+sleep 1
+timeout 45 adb shell uiautomator dump /sdcard/dallyletter-login-ready.xml >/dev/null
+timeout 20 adb pull /sdcard/dallyletter-login-ready.xml /tmp/dallyletter-login-ready.xml >/dev/null
+tap_ui_node /tmp/dallyletter-login-ready.xml login-btn
+sleep 8
+timeout 45 adb shell uiautomator dump /sdcard/dallyletter-login-error.xml >/dev/null
+timeout 20 adb pull /sdcard/dallyletter-login-error.xml /tmp/dallyletter-login-error.xml >/dev/null
+if ! grep -Fqi 'Invalid email or password' /tmp/dallyletter-login-error.xml; then
+  echo "::error::Invalid login did not render the expected user-visible authentication error"
+  cat /tmp/dallyletter-login-error.xml || true
+  exit 1
+fi
 step "verify signup route opens a real registration form"
 timeout 30 adb shell am start -a android.intent.action.VIEW -d 'dallyletter:///signup' com.dallyletter.elidems
 sleep 4
