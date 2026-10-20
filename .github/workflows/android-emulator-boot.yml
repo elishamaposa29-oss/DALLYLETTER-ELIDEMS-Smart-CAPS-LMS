@@ -52,6 +52,28 @@ jobs:
             echo "::error::Android emulator image installation failed after three attempts."
             exit 1
           fi
+
+          emulator_root="$ANDROID_HOME/emulator"
+          emulator_bin="$emulator_root/emulator"
+          test -x "$emulator_bin" || { echo "::error::SDK emulator executable is missing"; exit 1; }
+          echo "$emulator_root" >> "$GITHUB_PATH"
+          library_dirs=(
+            "$emulator_root/lib64"
+            "$emulator_root/lib64/qt/lib"
+            "$emulator_root/lib64/gles_swiftshader"
+            "$emulator_root/qemu/linux-x86_64"
+            "$emulator_root/qemu/linux-x86_64/lib64"
+          )
+          sdk_library_path="$(IFS=:; echo "${library_dirs[*]}")"
+          echo "LD_LIBRARY_PATH=$sdk_library_path:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+          export LD_LIBRARY_PATH="$sdk_library_path:${LD_LIBRARY_PATH:-}"
+          sudo apt-get update
+          sudo apt-get install --yes libpulse0
+          ldd "$emulator_root/qemu/linux-x86_64/qemu-system-x86_64" | tee /tmp/qemu-ldd.log
+          if grep -q "not found" /tmp/qemu-ldd.log; then
+            echo "::error::QEMU has unresolved shared libraries"
+            exit 1
+          fi
       - name: Create isolated AVD
         run: |
           echo "no" | avdmanager create avd --force --name BootOnly --package "system-images;android-${{ inputs.api_level || '34' }};google_apis;x86_64" --device "pixel_2"
@@ -59,7 +81,15 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          emulator -avd BootOnly -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -cores 2 > /tmp/emulator.log 2>&1 &
+          emulator_bin="$ANDROID_HOME/emulator/emulator"
+          test -x "$emulator_bin" || { echo "::error::SDK emulator executable is missing"; exit 1; }
+          "$emulator_bin" -accel-check > /tmp/accel-check.log 2>&1 || true
+          accel_mode=off
+          if [ -e /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ] && grep -qi "usable" /tmp/accel-check.log; then
+            accel_mode=on
+          fi
+          echo "Emulator acceleration mode: $accel_mode"
+          "$emulator_bin" -avd BootOnly -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -cores 2 -memory 3072 -accel "$accel_mode" > /tmp/emulator.log 2>&1 &
           emulator_pid=$!
           cleanup() {
             status=$?
