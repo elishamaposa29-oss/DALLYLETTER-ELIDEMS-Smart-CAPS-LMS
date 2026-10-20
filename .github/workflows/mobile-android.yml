@@ -115,7 +115,7 @@ jobs:
           if [ "${#apks[@]}" -gt 0 ]; then
             (
               cd artifacts/dallyletter-mobile/apk-artifacts
-              sha256sum dallyletter-v1.apk dallyletter-v1.0.1.apk > checksums.sha256
+              sha256sum *.apk > checksums.sha256
             )
           fi
           {
@@ -128,7 +128,7 @@ jobs:
             echo "apk_v1.0.1_versionCode=2"
           } > artifacts/dallyletter-mobile/apk-artifacts/build-metadata.txt
       - name: Upload candidate APKs for emulator smoke test
-        if: always()
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: dallyletter-android-candidate-apk
@@ -140,7 +140,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
       - name: Upload CI-only debug APKs for data-preservation test
-        if: always()
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: dallyletter-ci-upgrade-test-apks
