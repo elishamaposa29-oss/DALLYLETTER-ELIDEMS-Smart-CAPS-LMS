@@ -185,6 +185,21 @@ jobs:
           fi
           test -f "$ANDROID_AVD_HOME/DallyletterSmoke.ini" || { echo "::error::Expected AVD file is missing"; find "$HOME/.android" -maxdepth 4 -iname '*DallyletterSmoke*' -print || true; exit 1; }
           "$emulator_bin" -list-avds | grep -Fx "DallyletterSmoke"
+          # GitHub-hosted Linux runners may expose /dev/kvm without granting the runner
+          # user access. Fix permissions only on this disposable CI runner.
+          if [ -e /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm
+            if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+              echo "::error::/dev/kvm exists but remains inaccessible after permission repair."
+              ls -l /dev/kvm || true
+              exit 1
+            fi
+            echo "KVM device is accessible to the runner."
+          else
+            echo "::error::/dev/kvm is not exposed by this runner; x86_64 Android emulation requires hardware acceleration."
+            echo "Use a GitHub runner with KVM enabled; do not silently skip install/launch/upgrade testing."
+            exit 1
+          fi
           "$emulator_bin" -avd DallyletterSmoke -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -cores 2 -memory 3072 > /tmp/dallyletter-emulator.log 2>&1 &
           emulator_pid=$!
           diagnostics() {
