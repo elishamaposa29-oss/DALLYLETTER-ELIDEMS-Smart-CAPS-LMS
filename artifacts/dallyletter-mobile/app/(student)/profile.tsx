@@ -6,6 +6,7 @@ import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View }
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { ProfileAvatarEditor } from "@/components/ProfileAvatarEditor";
 
 export default function StudentProfile() {
   const colors = useColors();
@@ -121,9 +122,7 @@ export default function StudentProfile() {
   return (
     <View style={s.container}>
       <View style={s.header}>
-        <View style={s.avatar}>
-          <Feather name="user" size={36} color="#ffffff" />
-        </View>
+        <ProfileAvatarEditor />
         <Text style={s.name}>{user?.name}</Text>
         <Text style={s.email}>{user?.email}</Text>
         <View style={s.roleBadge}>

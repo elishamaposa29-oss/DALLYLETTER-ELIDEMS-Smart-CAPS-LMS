@@ -6,6 +6,7 @@ import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View }
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { ProfileAvatarEditor } from "@/components/ProfileAvatarEditor";
 
 export default function AdminProfile() {
   const colors = useColors();
@@ -70,9 +71,7 @@ export default function AdminProfile() {
   return (
     <View style={s.container}>
       <View style={s.header}>
-        <View style={s.avatar}>
-          <Feather name="shield" size={40} color={colors.primary} />
-        </View>
+        <ProfileAvatarEditor />
         <Text style={s.name}>{user?.name}</Text>
         <Text style={s.email}>{user?.email}</Text>
         <View style={s.ownerBadge}>
