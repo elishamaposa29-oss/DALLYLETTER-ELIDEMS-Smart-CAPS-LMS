@@ -78,8 +78,7 @@ export async function persistUploadedMedia(storageKey: string, mimeType: string,
         await unlink(localPath).catch(() => undefined);
         return "object-storage";
       } catch {
-        // An unavailable or misconfigured object store must not break small uploads.
-        // Fall through to the existing durable PostgreSQL chunk store when within its limit.
+        // An unavailable object store should not break small uploads when PostgreSQL fallback is available.
       }
     }
 
