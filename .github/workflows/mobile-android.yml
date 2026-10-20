@@ -220,12 +220,18 @@ jobs:
           set -Eeuo pipefail
           api_url="${API_BASE_URL%/}"
           test -n "$api_url" || { echo "::error::EXPO_PUBLIC_API_BASE_URL is empty"; exit 1; }
-          status="$(curl --silent --show-error --max-time 20 --output /tmp/dallyletter-api-health.json --write-out '%{http_code}' "$api_url/api/healthz" || true)"
-          if [ "$status" != "200" ] || ! grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' /tmp/dallyletter-api-health.json 2>/dev/null; then
-            echo "::error::Deployed API health check failed (HTTP $status). Expected /api/healthz to return status=ok."
-            exit 1
-          fi
-          echo "Deployed API /api/healthz returned HTTP 200 with status=ok."
+          status="000"
+          for attempt in 1 2 3 4 5 6; do
+            status="$(curl --silent --show-error --max-time 15 --output /tmp/dallyletter-api-health.json --write-out '%{http_code}' "$api_url/api/healthz" || true)"
+            if [ "$status" = "200" ] && grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' /tmp/dallyletter-api-health.json 2>/dev/null; then
+              echo "Deployed API /api/healthz returned HTTP 200 with status=ok (attempt $attempt/6)."
+              exit 0
+            fi
+            echo "API health attempt $attempt/6 returned HTTP $status; retrying to allow a Render cold start."
+            sleep 5
+          done
+          echo "::error::Deployed API health check failed after six bounded attempts (last HTTP $status). Expected /api/healthz to return status=ok."
+          exit 1
       - name: Preserve emulator screenshots and diagnostics
         if: always()
         uses: actions/upload-artifact@v4
