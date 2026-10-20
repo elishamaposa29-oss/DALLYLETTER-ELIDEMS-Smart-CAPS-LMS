@@ -142,7 +142,21 @@ jobs:
           # Exercise the supported launcher too; raw QEMU ldd alone does not validate emulator startup.
       - name: Create isolated Android virtual device
         run: |
+          set -Eeuo pipefail
+          export ANDROID_SDK_HOME="$HOME"
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo "ANDROID_SDK_HOME=$ANDROID_SDK_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
           echo "no" | avdmanager create avd --force --name DallyletterSmoke --package "system-images;android-34;google_apis;x86_64" --device "pixel_2"
+          if [ ! -f "$ANDROID_AVD_HOME/DallyletterSmoke.ini" ]; then
+            echo "::error::AVD creation did not produce $ANDROID_AVD_HOME/DallyletterSmoke.ini"
+            find "$HOME/.android" "$ANDROID_HOME" -maxdepth 5 -iname '*DallyletterSmoke*' -print 2>/dev/null || true
+            avdmanager list avd || true
+            exit 1
+          fi
+          echo "Created AVD at $ANDROID_AVD_HOME/DallyletterSmoke.ini"
+          "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fx "DallyletterSmoke"
       - name: Download built APKs
         uses: actions/download-artifact@v4
         with:
@@ -163,6 +177,8 @@ jobs:
             find "$ANDROID_HOME" -maxdepth 3 -type f -name emulator -print || true
             exit 127
           fi
+          test -f "$ANDROID_AVD_HOME/DallyletterSmoke.ini" || { echo "::error::Expected AVD file is missing"; find "$HOME/.android" -maxdepth 4 -iname '*DallyletterSmoke*' -print || true; exit 1; }
+          "$emulator_bin" -list-avds | grep -Fx "DallyletterSmoke"
           "$emulator_bin" -avd DallyletterSmoke -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -cores 2 -memory 3072 > /tmp/dallyletter-emulator.log 2>&1 &
           emulator_pid=$!
           diagnostics() {
@@ -181,6 +197,14 @@ jobs:
             exit "$status"
           }
           trap diagnostics EXIT
+          for attempt in 1 2 3 4 5; do
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then
+              echo "::error::Emulator process exited before ADB startup"
+              tail -n 200 /tmp/dallyletter-emulator.log || true
+              exit 1
+            fi
+            sleep 1
+          done
           bash .github/scripts/android-emulator-smoke.sh
       - name: Verify deployed API health
         if: always()
