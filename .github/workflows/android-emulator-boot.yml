@@ -106,9 +106,9 @@ jobs:
           }
           trap cleanup EXIT
           adb start-server
-          adb_deadline=$((SECONDS + 300))
+          adb_deadline=$((SECONDS + 600))
           until adb get-state 2>/dev/null | grep -qx device; do
-            if [ "$SECONDS" -ge "$adb_deadline" ]; then echo "::error::ADB transport timeout (300s)"; exit 1; fi
+            if [ "$SECONDS" -ge "$adb_deadline" ]; then echo "::error::ADB transport timeout (600s)"; exit 1; fi
             sleep 5
           done
           boot_deadline=$((SECONDS + 1200))
