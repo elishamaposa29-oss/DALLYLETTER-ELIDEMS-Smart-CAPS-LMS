@@ -113,18 +113,18 @@ jobs:
             echo "apk_v1.0.1_version=1.0.1"
             echo "apk_v1.0.1_versionCode=2"
           } > artifacts/dallyletter-mobile/apk-artifacts/build-metadata.txt
-      - name: Upload installable standalone release APK
+      - name: Upload candidate APKs for emulator smoke test
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dallyletter-android-release-apk
+          name: dallyletter-android-candidate-apk
           path: |
             artifacts/dallyletter-mobile/apk-artifacts/dallyletter-v1.apk
             artifacts/dallyletter-mobile/apk-artifacts/dallyletter-v1.0.1.apk
             artifacts/dallyletter-mobile/apk-artifacts/checksums.sha256
             artifacts/dallyletter-mobile/apk-artifacts/build-metadata.txt
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
       - name: Upload CI-only debug APKs for data-preservation test
         if: always()
         uses: actions/upload-artifact@v4
@@ -200,7 +200,7 @@ jobs:
       - name: Download built standalone APKs
         uses: actions/download-artifact@v4
         with:
-          name: dallyletter-android-release-apk
+          name: dallyletter-android-candidate-apk
           path: /tmp/dallyletter-apks
       - name: Download CI-only debug APKs for data-preservation test
         uses: actions/download-artifact@v4
@@ -310,4 +310,37 @@ jobs:
             /tmp/dallyletter-release-upgrade.xml
             /tmp/dallyletter-release-upgrade.png
           if-no-files-found: warn
+          retention-days: 14
+
+
+  publish-release:
+    name: Publish verified standalone release APK
+    needs: emulator-smoke
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download candidate APKs that passed emulator smoke tests
+        uses: actions/download-artifact@v4
+        with:
+          name: dallyletter-android-candidate-apk
+          path: /tmp/dallyletter-release-candidate
+      - name: Verify release APK files and checksums before publication
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -s /tmp/dallyletter-release-candidate/dallyletter-v1.apk
+          test -s /tmp/dallyletter-release-candidate/dallyletter-v1.0.1.apk
+          test -s /tmp/dallyletter-release-candidate/checksums.sha256
+          test -s /tmp/dallyletter-release-candidate/build-metadata.txt
+          (cd /tmp/dallyletter-release-candidate && sha256sum --check checksums.sha256)
+      - name: Publish verified standalone release APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: dallyletter-android-release-apk
+          path: |
+            /tmp/dallyletter-release-candidate/dallyletter-v1.apk
+            /tmp/dallyletter-release-candidate/dallyletter-v1.0.1.apk
+            /tmp/dallyletter-release-candidate/checksums.sha256
+            /tmp/dallyletter-release-candidate/build-metadata.txt
+          if-no-files-found: error
           retention-days: 14
