@@ -32,10 +32,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools"
+
       - name: Install Android SDK emulator and image
         shell: bash
         run: |
           set -Eeuo pipefail
+          touch /tmp/dallyletter-emulator.log /tmp/qemu-ldd.log
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager \
             "platform-tools" \
