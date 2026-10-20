@@ -75,8 +75,22 @@ jobs:
             exit 1
           fi
       - name: Create isolated AVD
+        shell: bash
         run: |
+          set -Eeuo pipefail
+          export ANDROID_SDK_HOME="$HOME"
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo "ANDROID_SDK_HOME=$ANDROID_SDK_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
           echo "no" | avdmanager create avd --force --name BootOnly --package "system-images;android-${{ inputs.api_level || '34' }};google_apis;x86_64" --device "pixel_2"
+          if [ ! -f "$ANDROID_AVD_HOME/BootOnly.ini" ]; then
+            echo "::error::AVD creation did not produce $ANDROID_AVD_HOME/BootOnly.ini"
+            find "$HOME/.android" "$ANDROID_HOME" -maxdepth 5 -iname '*BootOnly*' -print 2>/dev/null || true
+            avdmanager list avd || true
+            exit 1
+          fi
+          "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fx "BootOnly"
       - name: Launch emulator and verify boot
         shell: bash
         run: |
