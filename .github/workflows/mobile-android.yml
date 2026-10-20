@@ -160,6 +160,20 @@ jobs:
           }
           trap diagnostics EXIT
           bash .github/scripts/android-emulator-smoke.sh
+      - name: Verify deployed API health
+        if: always()
+        env:
+          API_BASE_URL: ${{ env.EXPO_PUBLIC_API_BASE_URL }}
+        run: |
+          set -Eeuo pipefail
+          api_url="${API_BASE_URL%/}"
+          test -n "$api_url" || { echo "::error::EXPO_PUBLIC_API_BASE_URL is empty"; exit 1; }
+          status="$(curl --silent --show-error --max-time 20 --output /tmp/dallyletter-api-health.json --write-out '%{http_code}' "$api_url/api/healthz" || true)"
+          if [ "$status" != "200" ] || ! grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' /tmp/dallyletter-api-health.json 2>/dev/null; then
+            echo "::error::Deployed API health check failed (HTTP $status). Expected /api/healthz to return status=ok."
+            exit 1
+          fi
+          echo "Deployed API /api/healthz returned HTTP 200 with status=ok."
       - name: Preserve emulator screenshots and diagnostics
         if: always()
         uses: actions/upload-artifact@v4
