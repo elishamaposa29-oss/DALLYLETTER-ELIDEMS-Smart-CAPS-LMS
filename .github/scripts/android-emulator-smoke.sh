@@ -174,7 +174,7 @@ fi
 step "write marker into app-private data before upgrade"
 timeout 20 adb shell run-as com.dallyletter.elidems sh -c 'mkdir -p files && printf "preserved-across-upgrade" > files/dallyletter-upgrade-marker'
 step "upgrade to version 1.0.1 without uninstalling"
-timeout 180 adb install -r artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk
+timeout 180 adb install -r artifacts/dallyletter-mobile/android/app/build/outputs/apk/release/app-release.apk
 timeout 30 adb shell pm path com.dallyletter.elidems | grep -q "package:"
 step "verify app-private data survives in-place upgrade"
 upgrade_marker="$(timeout 20 adb shell run-as com.dallyletter.elidems cat files/dallyletter-upgrade-marker | tr -d "\r")"
