@@ -50,12 +50,12 @@ export default function LoginScreen() {
         const status = Number(
           requestError?.response?.status ??
           requestError?.status ??
-          errorMessage.match(/(?:status code|status)\\s*[:=]?\\s*(\\d{3})/i)?.[1]
+          errorMessage.match(/(?:status code|status)\s*[:=]?\s*(\d{3})/i)?.[1]
         );
         const responseData = requestError?.response?.data;
         // Generated API clients may expose only an Error.message rather than
         // Axios response metadata. Preserve the specific 401 feedback in both cases.
-        if (status === 401 || /\\b401\\b/.test(errorMessage)) {
+        if (status === 401 || /\b401\b/.test(errorMessage)) {
           setError("Invalid email or password. Please try again.");
           return;
         }
