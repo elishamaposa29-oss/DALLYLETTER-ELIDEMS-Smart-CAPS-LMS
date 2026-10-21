@@ -39,8 +39,8 @@ export default function LoginScreen() {
 
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         await login(rawUser, rawToken);
-        const role = rawUser.role;
-        if (role === "owner") router.replace("/(admin)/home");
+        const role = String(rawUser.role || "").toLowerCase().replace(/[ -]+/g, "_");
+        if (["owner", "admin", "platform_owner", "manager", "senior_manager"].includes(role)) router.replace("/(admin)/home");
         else if (role === "teacher") router.replace("/(teacher)/home");
         else router.replace("/(student)/home");
       },
