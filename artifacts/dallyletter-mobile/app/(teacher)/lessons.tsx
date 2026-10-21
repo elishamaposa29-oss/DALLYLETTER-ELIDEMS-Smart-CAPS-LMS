@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { getApiUrl, useCreateLesson, useUpdateLesson, useDeleteLesson, useListLessons } from "@workspace/api-client-react";
 import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
 import * as Linking from "expo-linking";
 import * as Haptics from "expo-haptics";
 import { useState } from "react";
@@ -21,8 +22,16 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import AuthenticatedMediaPreview from "@/components/AuthenticatedMediaPreview";
 
-function firstLessonUrl(value: unknown): string | null {
-  return String(value ?? "").match(/https?:\/\/[^\s<>"']+/i)?.[0] ?? null;
+function extractLessonLinks(value: unknown): string[] {
+  const source = String(value ?? "");
+  const candidates: string[] = [];
+  for (const match of source.matchAll(/\b(?:href|src)\s*=\s*["\']([^"\']+)["\']/gi)) candidates.push(match[1]);
+  for (const match of source.matchAll(/https?:\/\/[^\s<>"\']+/gi)) candidates.push(match[0].replace(/[),.;]+$/, ""));
+  return [...new Set(candidates.map(link => link.trim()).filter(link => /^https?:\/\//i.test(link) || link.startsWith("/api/")))];
+}
+function isMediaReference(url: string): boolean {
+  const lower = url.toLowerCase();
+  return /[?&]type=(image|video|audio)\//i.test(lower) || /\.(png|jpe?g|gif|webp|avif|mp4|webm|mov|mp3|m4a|ogg|wav|pdf|docx?)(?:[?#]|$)/i.test(lower);
 }
 
 const lessonTypes = ["video", "image", "audio", "notes", "mixed"] as const;
@@ -72,26 +81,26 @@ export default function TeacherLessons() {
 
   const top = insets.top + (Platform.OS === "web" ? 67 : 0);
 
-  const handleUploadMedia = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert("Media permission needed", "Allow photo/video access to attach lesson media.");
-      return;
+  const handleUploadMedia = async (documentOnly = false) => {
+    let asset: { uri: string; fileName?: string | null; mimeType?: string | null; type?: string | null };
+    if (documentOnly) {
+      const picked = await DocumentPicker.getDocumentAsync({ type: ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"], copyToCacheDirectory: true });
+      if (picked.canceled || !picked.assets[0]) return;
+      asset = { uri: picked.assets[0].uri, fileName: picked.assets[0].name, mimeType: picked.assets[0].mimeType, type: "document" };
+    } else {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) { Alert.alert("Media permission needed", "Allow photo/video access to attach lesson media."); return; }
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images", "videos"], quality: 0.85, allowsEditing: false });
+      if (result.canceled || !result.assets[0]) return;
+      asset = result.assets[0];
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images", "videos"],
-      quality: 0.85,
-      allowsEditing: false,
-    });
-    if (result.canceled || !result.assets[0]) return;
-    const asset = result.assets[0];
     setUploadingMedia(true);
     try {
       const form = new FormData();
       form.append("file", {
         uri: asset.uri,
         name: asset.fileName || (asset.type === "video" ? "lesson-video.mp4" : "lesson-image.jpg"),
-        type: asset.mimeType || (asset.type === "video" ? "video/mp4" : "image/jpeg"),
+        type: asset.mimeType || (asset.type === "document" ? (asset.fileName?.toLowerCase().endsWith(".pdf") ? "application/pdf" : asset.fileName?.toLowerCase().endsWith(".doc") ? "application/msword" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document") : asset.type === "video" ? "video/mp4" : "image/jpeg"),
       } as any);
       const response = await fetch(getApiUrl("/api/lessons/media"), {
         method: "POST",
@@ -102,6 +111,7 @@ export default function TeacherLessons() {
       if (!response.ok || !uploaded.mediaUrl) throw new Error(uploaded.error || "Media upload failed");
       setMediaUrl(String(uploaded.mediaUrl));
       if (asset.type === "video") setType("video");
+      else if (asset.type === "document") setType("mixed");
       else setType("image");
       Alert.alert("Upload complete", "Media is attached to this lesson draft. Save the lesson to publish it.");
     } catch (error) {
@@ -242,8 +252,14 @@ export default function TeacherLessons() {
                 <Text style={s.meta}>{lesson.subject}{lesson.grade ? ` · Grade ${lesson.grade}` : ""}</Text>
                 {lesson.mediaUrl && lesson.type === "image" ? <AuthenticatedMediaPreview url={String(lesson.mediaUrl)} height={140} accessibilityLabel={String(lesson.title || "Lesson image")} /> : null}
                 {lesson.content ? <Text style={s.meta} numberOfLines={3}>{String(lesson.content).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()}</Text> : null}
-                {firstLessonUrl(lesson.content) ? <TouchableOpacity onPress={() => { const url = firstLessonUrl(lesson.content); if (url) void Linking.openURL(url); }}><Text style={[s.meta, { color: colors.primary }]}>Open embedded link</Text></TouchableOpacity> : null}
-                {lesson.mediaUrl ? <TouchableOpacity onPress={() => { const url = /^https?:\/\//i.test(String(lesson.mediaUrl)) ? String(lesson.mediaUrl) : `https://dallyletter-elidems-smart-caps-lms-4.onrender.com${String(lesson.mediaUrl).startsWith("/") ? "" : "/"}${lesson.mediaUrl}`; void Linking.openURL(url); }}><Text style={[s.meta, { color: colors.primary }]}>Open attached media / embedded link</Text></TouchableOpacity> : null}
+                {extractLessonLinks(lesson.content).map((url,index) => <View key={url} style={{marginTop:6}}>
+                  {isMediaReference(url) ? <AuthenticatedMediaPreview url={url} height={120} accessibilityLabel={"Embedded lesson media "+(index+1)} /> : null}
+                  {url.startsWith("/api/") ? <Text style={s.meta}>Protected attachment · download above to save offline</Text> : <TouchableOpacity onPress={() => void Linking.openURL(url)}><Text style={[s.meta,{color:colors.primary}]}>Open embedded link {index+1}: {url}</Text></TouchableOpacity>}
+                </View>)}
+                {lesson.mediaUrl ? <View style={{marginTop:6}}>
+                  {!/^https?:\/\//i.test(String(lesson.mediaUrl)) ? <AuthenticatedMediaPreview url={String(lesson.mediaUrl)} height={120} accessibilityLabel={String(lesson.title || "Lesson media")} /> : null}
+                  {/^https?:\/\//i.test(String(lesson.mediaUrl)) ? <TouchableOpacity onPress={() => void Linking.openURL(String(lesson.mediaUrl))}><Text style={[s.meta,{color:colors.primary}]}>Open external lesson media</Text></TouchableOpacity> : <Text style={s.meta}>Protected lesson media · use the download control to save offline</Text>}
+                </View> : null}
               </View>
               <View style={{ gap: 8 }}>
                 <TouchableOpacity accessibilityRole="button" accessibilityLabel="Edit lesson" onPress={() => { setEditingLessonId(lesson.id); setTitle(String(lesson.title ?? "")); setSubject(String(lesson.subject ?? "")); setType((lesson.type ?? "notes") as typeof lessonTypes[number]); setMediaUrl(String(lesson.mediaUrl ?? "")); setContent(String(lesson.content ?? "")); setGrade(String(lesson.grade ?? "")); setShowModal(true); }}><Feather name="edit-2" size={18} color={colors.primary}/></TouchableOpacity>
@@ -291,6 +307,7 @@ export default function TeacherLessons() {
               <TouchableOpacity style={[s.submitBtn, { marginBottom: 12, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }]} onPress={() => void handleUploadMedia()} disabled={uploadingMedia}>
                 <Text style={[s.submitText, { color: colors.foreground }]}>{uploadingMedia ? "Uploading media…" : mediaUrl ? "Replace uploaded image/video" : "Choose image or video"}</Text>
               </TouchableOpacity>
+              <TouchableOpacity style={[s.submitBtn,{marginBottom:12,backgroundColor:colors.card,borderWidth:1,borderColor:colors.border}]} onPress={() => void handleUploadMedia(true)} disabled={uploadingMedia}><Text style={[s.submitText,{color:colors.foreground}]}>{uploadingMedia?"Uploading media…":"Choose PDF/Word document"}</Text></TouchableOpacity>
               <Text style={s.label}>Media or embedded link</Text>
               <TextInput style={s.input} placeholder="Paste a video, audio, document or web link" placeholderTextColor={colors.mutedForeground} value={mediaUrl} onChangeText={setMediaUrl} autoCapitalize="none" />
               {mediaUrl ? <TouchableOpacity onPress={() => { const url = /^https?:\/\//i.test(mediaUrl) ? mediaUrl : `https://dallyletter-elidems-smart-caps-lms-4.onrender.com${mediaUrl.startsWith("/") ? "" : "/"}${mediaUrl}`; void Linking.openURL(url); }}><Text style={{ color: colors.primary, fontSize: 12, marginBottom: 12 }}>Preview attached media / link</Text></TouchableOpacity> : null}
