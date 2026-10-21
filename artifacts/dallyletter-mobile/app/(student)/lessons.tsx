@@ -149,8 +149,8 @@ export default function StudentLessons() {
               {selectedLesson.mediaUrl ? <AuthenticatedMediaPreview url={String(selectedLesson.mediaUrl)} accessibilityLabel={String(selectedLesson.title || "Lesson image")} /> : null}
               {selectedLesson.content ? <View style={{ borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 16, marginBottom: 16 }}><Text style={{ color: colors.foreground, fontSize: 15, lineHeight: 24 }}>{plainLessonText(selectedLesson.content)}</Text></View> : <Text style={{ color: colors.mutedForeground, marginBottom: 14 }}>No written lesson notes were provided.</Text>}
               {extractLessonLinks(selectedLesson.content).map((url, index) => <View key={url} style={{marginBottom:12,padding:12,borderRadius:10,borderWidth:1,borderColor:colors.border}}>
-                <AuthenticatedMediaPreview url={url} accessibilityLabel={\`Embedded lesson image \${index+1}\`} height={180}/>
-                <TouchableOpacity onPress={() => { const target = url.startsWith("/api/") ? getApiUrl(url) : url; void Linking.openURL(target); }} accessibilityRole="button" accessibilityLabel={\`Open lesson link \${index+1}\`}>
+                <AuthenticatedMediaPreview url={url} accessibilityLabel={`Embedded lesson image ${index+1}`} height={180}/>
+                <TouchableOpacity onPress={() => { const target = url.startsWith("/api/") ? getApiUrl(url) : url; void Linking.openURL(target); }} accessibilityRole="button" accessibilityLabel={`Open lesson link ${index+1}`}>
                   <Text style={{color:colors.primary,fontFamily:"Inter_600SemiBold"}}>Open embedded link or attachment {index+1}</Text>
                   <Text selectable style={{color:colors.mutedForeground,fontSize:12,marginTop:4}}>{url}</Text>
                 </TouchableOpacity>
