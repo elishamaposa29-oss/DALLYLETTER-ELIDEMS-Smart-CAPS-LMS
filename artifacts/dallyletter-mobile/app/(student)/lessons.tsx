@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useListLessons } from "@workspace/api-client-react";
+import { getApiUrl, useListLessons } from "@workspace/api-client-react";
 import * as Linking from "expo-linking";
 import { Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -13,10 +13,13 @@ const LESSON_CACHE_KEY = "dallyletter_cached_lessons_v1";
 const typeIcon: Record<string, any> = { video: "play-circle", image: "image", audio: "headphones", notes: "file-text", mixed: "layers" };
 const typeColor: Record<string, string> = { video: "#8b5cf6", image: "#3b82f6", audio: "#10b981", notes: "#f59e0b", mixed: "#ef4444" };
 
-function firstLessonUrl(value: unknown): string | null {
-  return String(value ?? "").match(/https?:\/\/[^\s<>"']+/i)?.[0] ?? null;
+function extractLessonLinks(value: unknown): string[] {
+  const source = String(value ?? "");
+  const candidates: string[] = [];
+  for (const match of source.matchAll(/\b(?:href|src)\s*=\s*["']([^"']+)["']/gi)) candidates.push(match[1]);
+  for (const match of source.matchAll(/https?:\/\/[^\s<>"']+/gi)) candidates.push(match[0].replace(/[),.;]+$/, ""));
+  return [...new Set(candidates.map(link => link.trim()).filter(link => /^https?:\/\//i.test(link) || link.startsWith("/api/")))];
 }
-
 function plainLessonText(value: unknown): string {
   return String(value ?? "")
     .replace(/<\/?(p|div|br|li|ul|ol|strong|em|h[1-6])[^>]*>/gi, "\n")
@@ -145,7 +148,13 @@ export default function StudentLessons() {
               {selectedLesson.description ? <Text style={{ color: colors.foreground, fontSize: 15, lineHeight: 23, marginBottom: 14 }}>{selectedLesson.description}</Text> : null}
               {selectedLesson.mediaUrl ? <AuthenticatedMediaPreview url={String(selectedLesson.mediaUrl)} accessibilityLabel={String(selectedLesson.title || "Lesson image")} /> : null}
               {selectedLesson.content ? <View style={{ borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 16, marginBottom: 16 }}><Text style={{ color: colors.foreground, fontSize: 15, lineHeight: 24 }}>{plainLessonText(selectedLesson.content)}</Text></View> : <Text style={{ color: colors.mutedForeground, marginBottom: 14 }}>No written lesson notes were provided.</Text>}
-              {firstLessonUrl(selectedLesson.content) ? <TouchableOpacity style={{ marginBottom: 14, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: colors.border }} onPress={() => { const url = firstLessonUrl(selectedLesson.content); if (url) void Linking.openURL(url); }}><Text style={{ color: colors.primary, fontFamily: "Inter_600SemiBold" }}>Open embedded link</Text><Text numberOfLines={2} style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 4 }}>{firstLessonUrl(selectedLesson.content)}</Text></TouchableOpacity> : null}
+              {extractLessonLinks(selectedLesson.content).map((url, index) => <View key={url} style={{marginBottom:12,padding:12,borderRadius:10,borderWidth:1,borderColor:colors.border}}>
+                <AuthenticatedMediaPreview url={url} accessibilityLabel={\`Embedded lesson image \${index+1}\`} height={180}/>
+                <TouchableOpacity onPress={() => { const target = url.startsWith("/api/") ? getApiUrl(url) : url; void Linking.openURL(target); }} accessibilityRole="button" accessibilityLabel={\`Open lesson link \${index+1}\`}>
+                  <Text style={{color:colors.primary,fontFamily:"Inter_600SemiBold"}}>Open embedded link or attachment {index+1}</Text>
+                  <Text selectable style={{color:colors.mutedForeground,fontSize:12,marginTop:4}}>{url}</Text>
+                </TouchableOpacity>
+              </View>)}
               {selectedLesson.mediaUrl ? <TouchableOpacity style={{ backgroundColor: colors.primary, borderRadius: 12, padding: 15, flexDirection: "row", alignItems: "center", gap: 10 }} onPress={() => { const url = String(selectedLesson.mediaUrl); void Linking.openURL(/^https?:\/\//i.test(url) ? url : `https://dallyletter-elidems-smart-caps-lms-4.onrender.com${url.startsWith("/") ? "" : "/"}${url}`); }}><Feather name="play-circle" size={22} color="#fff"/><View style={{ flex: 1 }}><Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold" }}>Open lesson media or embedded link</Text><Text numberOfLines={2} style={{ color: "rgba(255,255,255,.8)", fontSize: 12, marginTop: 3 }}>{selectedLesson.mediaUrl}</Text></View><Feather name="external-link" size={17} color="#fff"/></TouchableOpacity> : null}
               {!isOnline ? <Text style={{ color: "#b45309", marginTop: 14, fontSize: 12 }}>Offline: saved written details are available; media links may need internet.</Text> : null}
             </>}
