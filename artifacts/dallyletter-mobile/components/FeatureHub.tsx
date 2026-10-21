@@ -22,6 +22,31 @@ import NativePushControls from "@/components/NativePushControls";
 type Section = "assignments" | "exercises" | "polls" | "notifications" | "groups" | "messages" | "payments" | "achievements" | "prefect" | "reports" | "audit";
 type Row = Record<string, any> & { id: number; title?: string; name?: string };
 
+function stableValue(value: any): string {
+  if (Array.isArray(value)) return "[" + value.map(stableValue).join(",") + "]";
+  if (value && typeof value === "object") return "{" + Object.keys(value).sort().map(key => JSON.stringify(key) + ":" + stableValue(value[key])).join(",") + "}";
+  return JSON.stringify(value);
+}
+function queuedExerciseAlreadyAccepted(current: any, item: QueuedSubmission): boolean {
+  const status=String(current?.submission?.status||"");
+  if (!["submitted","ai_partial","ai_marked_pending_return"].includes(status)) return false;
+  let body:any;
+  try { body=JSON.parse(item.body); } catch { return false; }
+  if (!body?.newAttempt) return true;
+  const queued=Array.isArray(body.answers)?body.answers:[];
+  const stored=Array.isArray(current?.answers)?current.answers:[];
+  if (queued.length===0 || stored.length!==queued.length) return false;
+  return queued.every((answer:any)=>{
+    const saved=stored.find((row:any)=>Number(row.questionId)===Number(answer.questionId));
+    if (!saved) return false;
+    for (const key of ["textAnswer","selectedValue","mediaReference"]) {
+      if (String(saved[key]??"")!==String(answer[key]??"")) return false;
+    }
+    if (answer.drawData && stableValue(saved.drawData??null)!==stableValue(answer.drawData)) return false;
+    return true;
+  });
+}
+
 const sections: { id: Section; title: string; subtitle: string; icon: string }[] = [
   { id: "assignments", title: "Assignments", subtitle: "Due dates, submissions and feedback", icon: "clipboard" },
   { id: "exercises", title: "Exercises", subtitle: "Practice, submit answers and review results", icon: "edit-3" },
@@ -201,7 +226,7 @@ export default function FeatureHub() {
         try {
           if (item.kind === "exercise") {
             const current = await request(`/api/exercises/${item.targetId}/result`).catch(() => null);
-            if (["submitted","ai_partial","ai_marked_pending_return"].includes(String(current?.submission?.status||""))) {
+            if (queuedExerciseAlreadyAccepted(current,item)) {
               await clearDraft(item);
               await removeQueuedSubmission(user.id,item.id);
               continue;
@@ -214,7 +239,7 @@ export default function FeatureHub() {
           const message=e instanceof Error?e.message:"Retry failed";
           if (item.kind==="exercise" && /already submitted|awaiting marking|previous attempt/i.test(message)) {
             const current=await request(`/api/exercises/${item.targetId}/result`).catch(()=>null);
-            if (["submitted","ai_partial","ai_marked_pending_return"].includes(String(current?.submission?.status||""))) {
+            if (queuedExerciseAlreadyAccepted(current,item)) {
               await clearDraft(item);
               await removeQueuedSubmission(user.id,item.id);
               continue;
