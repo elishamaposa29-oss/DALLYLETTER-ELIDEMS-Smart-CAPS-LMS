@@ -3,6 +3,7 @@ name: Mobile Android Build and Smoke Test
 on:
   workflow_dispatch:
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
     paths:
       - "artifacts/dallyletter-mobile/**"
       - "lib/**"
