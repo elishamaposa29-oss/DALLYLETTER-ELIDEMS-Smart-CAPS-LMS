@@ -6,6 +6,7 @@ import { Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpac
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import AuthenticatedMediaPreview from "@/components/AuthenticatedMediaPreview";
+import OfflineMediaDownload from "@/components/OfflineMediaDownload";
 import { useAuth } from "@/contexts/AuthContext";
 import { useEffect, useState } from "react";
 
@@ -161,8 +162,8 @@ export default function StudentLessons() {
               {selectedLesson.mediaUrl ? <AuthenticatedMediaPreview url={String(selectedLesson.mediaUrl)} accessibilityLabel={String(selectedLesson.title || "Lesson image")} /> : null}
               {selectedLesson.content ? <View style={{ borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 16, marginBottom: 16 }}><Text style={{ color: colors.foreground, fontSize: 15, lineHeight: 24 }}>{plainLessonText(selectedLesson.content)}</Text></View> : <Text style={{ color: colors.mutedForeground, marginBottom: 14 }}>No written lesson notes were provided.</Text>}
               {extractLessonLinks(selectedLesson.content).map((url, index) => <View key={url} style={{marginBottom:12,padding:12,borderRadius:10,borderWidth:1,borderColor:colors.border}}>
-                {isMediaReference(url) ? <AuthenticatedMediaPreview url={url} accessibilityLabel={`Embedded lesson media ${index+1}`} height={180}/> : null}
-                {url.startsWith("/api/") ? <Text style={{color:colors.mutedForeground,fontSize:12,marginTop:4}}>Protected learning attachment · use the download control above to save it for offline use.</Text> : <TouchableOpacity onPress={() => void Linking.openURL(url)} accessibilityRole="button" accessibilityLabel={`Open lesson link ${index+1}`}>
+                {isMediaReference(url) ? <AuthenticatedMediaPreview url={url} accessibilityLabel={`Embedded lesson media ${index+1}`} height={180}/> : url.startsWith("/api/") ? <OfflineMediaDownload url={url} fileName={`Lesson attachment ${index+1}`} accessibilityLabel={`Download lesson attachment ${index+1} for offline use`} /> : null}
+                {url.startsWith("/api/") ? <Text style={{color:colors.mutedForeground,fontSize:12,marginTop:4}}>Protected learning attachment · download it above to open it offline.</Text> : <TouchableOpacity onPress={() => void Linking.openURL(url)} accessibilityRole="button" accessibilityLabel={`Open lesson link ${index+1}`}>
                   <Text style={{color:colors.primary,fontFamily:"Inter_600SemiBold"}}>Open embedded link {index+1}</Text>
                   <Text selectable style={{color:colors.mutedForeground,fontSize:12,marginTop:4}}>{url}</Text>
                 </TouchableOpacity>}
