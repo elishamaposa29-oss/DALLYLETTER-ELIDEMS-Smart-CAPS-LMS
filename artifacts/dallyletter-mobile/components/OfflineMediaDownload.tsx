@@ -73,7 +73,9 @@ export default function OfflineMediaDownload({ url, fileName, accessibilityLabel
       if (!FileSystem.documentDirectory) throw new Error("Offline file storage is unavailable on this device.");
       await FileSystem.makeDirectoryAsync(directory, { intermediates: true }).catch(() => undefined);
       const ext = (url.match(/\.([a-z0-9]{2,5})(?:[?#]|$)/i)?.[1] || (url.match(/[?&]type=([^&]+)/)?.[1] || "").split("/").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g,"").slice(0,5) || "bin";
-      localUri = directory + hash(String(user.id) + ":" + url) + "." + ext;
+      // Use a unique versioned filename so a failed replacement never destroys
+      // a previously saved offline copy of the same media URL.
+      localUri = directory + hash(String(user.id) + ":" + url) + "-" + Date.now().toString(36) + "." + ext;
       const task = FileSystem.createDownloadResumable(resolved, localUri, { headers: !/^https?:\/\//i.test(url) && token ? { Authorization: "Bearer " + token } : {} }, event => {
         if (event.totalBytesExpectedToWrite > 0) setProgress(Math.min(100, Math.round(event.totalBytesWritten / event.totalBytesExpectedToWrite * 100)));
       });
