@@ -1,2 +1,2 @@
-import FeatureHub from "@/components/FeatureHub";
-export default function ManagerHome() { return <FeatureHub />; }
+import ManagerDashboard from "@/components/ManagerDashboard";
+export default function ManagerHome() { return <ManagerDashboard />; }
