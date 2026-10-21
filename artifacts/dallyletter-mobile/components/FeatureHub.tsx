@@ -138,7 +138,7 @@ export default function FeatureHub() {
 
   const role = String(user?.role ?? "guest").toLowerCase();
   const isStudent = role === "student";
-  const visibleSections = sections.filter(item => (item.id !== "achievements" || isStudent) && (item.id !== "prefect" || Boolean((user as any)?.isPrefect)) && (item.id !== "reports" || isStudent) && (item.id !== "audit" || role === "owner" || Boolean((user as any)?.isManager)));
+  const visibleSections = sections.filter(item => (item.id !== "achievements" || isStudent) && (item.id !== "prefect" || Boolean((user as any)?.isPrefect)) && (item.id !== "reports" || isStudent) && (item.id !== "audit" || ["owner","admin","platform_owner"].includes(role) || Boolean((user as any)?.isManager)));
   const isTeacher = role === "teacher";
   const canManageExercises = isTeacher || ["owner","admin","platform_owner"].includes(role) || Boolean((user as any)?.isManager);
   const canCreateGroups = isTeacher || Boolean((user as any)?.isPrefect || (user as any)?.isManager) || ["owner", "admin", "platform_owner"].includes(role);
