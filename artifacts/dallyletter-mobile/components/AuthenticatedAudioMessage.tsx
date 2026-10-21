@@ -30,7 +30,7 @@ export default function AuthenticatedAudioMessage({ url }: { url: string }) {
           await FileSystem.makeDirectoryAsync(directory, { intermediates: true }).catch(() => undefined);
           const name = "voice-" + url.split("/").pop()?.replace(/[^a-z0-9_-]/gi,"").slice(0,80) + ".m4a";
           const destination = directory + name;
-          const result = await FileSystem.downloadAsync(source, destination, { headers: token ? { Authorization: "Bearer " + token } : {} });
+          const result = await FileSystem.downloadAsync(source, destination, { headers: !/^https?:\/\//i.test(url) && token ? { Authorization: "Bearer " + token } : {} });
           audioUri = result.uri;
         }
         if (!active) return;
