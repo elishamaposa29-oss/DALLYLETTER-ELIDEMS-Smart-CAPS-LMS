@@ -2,7 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useListLessons } from "@workspace/api-client-react";
 import * as Linking from "expo-linking";
-import { Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/contexts/AuthContext";
@@ -18,6 +18,7 @@ export default function StudentLessons() {
   const insets = useSafeAreaInsets();
   const { data: lessons, isLoading, refetch } = useListLessons();
   const [search, setSearch] = useState("");
+  const [selectedLesson, setSelectedLesson] = useState<any | null>(null);
   const [cachedLessons, setCachedLessons] = useState<any[] | null>(null);
   const [cacheReady, setCacheReady] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
@@ -48,7 +49,7 @@ export default function StudentLessons() {
     // Cache only non-sensitive listing metadata. Media URLs and content stay out of local storage.
     const safeSnapshot = lessons.map((lesson: any) => ({
       id: lesson.id, title: lesson.title, subject: lesson.subject, grade: lesson.grade,
-      type: lesson.type,
+      type: lesson.type, content: lesson.content, description: lesson.description, mediaUrl: lesson.mediaUrl,
     }));
     setCachedLessons(safeSnapshot);
     AsyncStorage.setItem(lessonCacheKey, JSON.stringify(safeSnapshot)).catch(() => undefined);
@@ -118,6 +119,24 @@ export default function StudentLessons() {
             </TouchableOpacity>;
           })}
       </ScrollView>
+      <Modal visible={Boolean(selectedLesson)} animationType="slide" onRequestClose={() => setSelectedLesson(null)}>
+        <View style={{ flex:  1, backgroundColor: colors.background, paddingTop: insets.top + 12 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 18, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <TouchableOpacity onPress={() => setSelectedLesson(null)} accessibilityRole="button" accessibilityLabel="Close lesson" style={{ padding: 8, marginRight: 8 }}><Feather name="arrow-left" size={22} color={colors.foreground} /></TouchableOpacity>
+            <Text style={{ flex: 1, color: colors.foreground, fontSize: 18, fontFamily: "Inter_700Bold" }}>Lesson details</Text>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 36 }}>
+            {selectedLesson && <>
+              <Text style={{ color: colors.foreground, fontSize: 23, lineHeight: 30, fontFamily: "Inter_700Bold" }}>{selectedLesson.title}</Text>
+              <Text style={{ color: colors.mutedForeground, marginTop: 8, marginBottom: 16 }}>{[selectedLesson.subject, selectedLesson.grade ? `Grade ${selectedLesson.grade}` : null, selectedLesson.type].filter(Boolean).join(" · ")}</Text>
+              {selectedLesson.description ? <Text style={{ color: colors.foreground, fontSize: 15, lineHeight: 23, marginBottom: 14 }}>{selectedLesson.description}</Text> : null}
+              {selectedLesson.content ? <View style={{ borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 16, marginBottom: 16 }}><Text style={{ color: colors.foreground, fontSize: 15, lineHeight: 24 }}>{String(selectedLesson.content).replace(/<\\/?(p|div|br|li|ul|ol|strong|em|h[1-6])[^>]*>/gi, "\\n").replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")}</Text></View> : <Text style={{ color: colors.mutedForeground, marginBottom: 14 }}>No written lesson notes were provided.</Text>}
+              {selectedLesson.mediaUrl ? <TouchableOpacity style={{ backgroundColor: colors.primary, borderRadius: 12, padding: 15, flexDirection: "row", alignItems: "center", gap: 10 }} onPress={() => { const url = String(selectedLesson.mediaUrl); void Linking.openURL(/^https?:\\/\\//i.test(url) ? url : `https://dallyletter-elidems-smart-caps-lms-4.onrender.com${url.startsWith("/") ? "" : "/"}${url}`); }}><Feather name="play-circle" size={22} color="#fff"/><View style={{ flex: 1 }}><Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold" }}>Open lesson media or embedded link</Text><Text numberOfLines={2} style={{ color: "rgba(255,255,255,.8)", fontSize: 12, marginTop: 3 }}>{selectedLesson.mediaUrl}</Text></View><Feather name="external-link" size={17} color="#fff"/></TouchableOpacity> : null}
+              {!isOnline ? <Text style={{ color: "#b45309", marginTop: 14, fontSize: 12 }}>Offline: saved written details are available; media links may need internet.</Text> : null}
+            </>}
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }
