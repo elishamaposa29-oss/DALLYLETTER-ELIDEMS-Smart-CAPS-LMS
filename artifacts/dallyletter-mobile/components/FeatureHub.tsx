@@ -389,7 +389,11 @@ export default function FeatureHub() {
   };
 
   const submitAssignment = async () => {
-    if (!isStudent || !selected || !answerText.trim()) return;
+    if (!isStudent || !selected) return;
+    if (!answerText.trim() && !attachmentUrl.trim()) {
+      Alert.alert("Add your work", "Enter an answer or attach a file before submitting.");
+      return;
+    }
     setBusy(true);
     try {
       await request(`/api/assignments/${selected.id}/submit`, { method: "POST", body: JSON.stringify({ content: answerText.trim(), fileUrl: attachmentUrl || null, fileName: attachmentUrl ? attachmentUrl.split("/").pop() : null }) });
