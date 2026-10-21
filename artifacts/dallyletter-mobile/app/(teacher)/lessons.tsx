@@ -1,5 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import { getApiUrl, useCreateLesson, useListLessons } from "@workspace/api-client-react";
+import { getApiUrl, useCreateLesson, useUpdateLesson, useDeleteLesson, useListLessons } from "@workspace/api-client-react";
 import * as ImagePicker from "expo-image-picker";
 import * as Linking from "expo-linking";
 import * as Haptics from "expo-haptics";
@@ -36,16 +36,33 @@ export default function TeacherLessons() {
   const [content, setContent] = useState("");
   const [grade, setGrade] = useState("");
   const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [editingLessonId, setEditingLessonId] = useState<number | null>(null);
+  const [notifyingLessonId, setNotifyingLessonId] = useState<number | null>(null);
 
+  const resetLessonForm = () => {
+    setShowModal(false); setEditingLessonId(null);
+    setTitle(""); setSubject(""); setMediaUrl(""); setContent(""); setGrade(""); setType("notes");
+  };
   const createMutation = useCreateLesson({
     mutation: {
       onSuccess: () => {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        refetch();
-        setShowModal(false);
-        setTitle(""); setSubject(""); setMediaUrl(""); setContent(""); setGrade("");
+        refetch(); resetLessonForm();
+        Alert.alert("Lesson saved", editingLessonId ? "Lesson changes were saved." : "Your lesson was created.");
       },
-      onError: () => Alert.alert("Error", "Could not create lesson. Please try again."),
+      onError: () => Alert.alert("Error", "Could not save lesson. Please try again."),
+    },
+  });
+  const updateMutation = useUpdateLesson({
+    mutation: {
+      onSuccess: () => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); refetch(); resetLessonForm(); Alert.alert("Lesson updated", "Your changes are saved."); },
+      onError: () => Alert.alert("Update failed", "Could not update this lesson. Please try again."),
+    },
+  });
+  const deleteMutation = useDeleteLesson({
+    mutation: {
+      onSuccess: () => { refetch(); Alert.alert("Lesson deleted", "The lesson was removed."); },
+      onError: () => Alert.alert("Delete failed", "Could not delete this lesson. Please try again."),
     },
   });
 
@@ -95,9 +112,9 @@ export default function TeacherLessons() {
       Alert.alert("Missing fields", "Title and subject are required.");
       return;
     }
-    createMutation.mutate({
-      data: { title: title.trim(), subject: subject.trim(), type, mediaUrl: mediaUrl || undefined, content: content || undefined, grade: grade || undefined },
-    });
+    const data = { title: title.trim(), subject: subject.trim(), type, mediaUrl: mediaUrl || null, content: content || null, grade: grade || null };
+    if (editingLessonId !== null) updateMutation.mutate({ id: editingLessonId, data });
+    else createMutation.mutate({ data });
   };
 
   const typeColor: Record<string, string> = {
@@ -189,7 +206,7 @@ export default function TeacherLessons() {
     <View style={s.container}>
       <View style={s.header}>
         <Text style={s.title}>My Lessons</Text>
-        <TouchableOpacity style={s.addBtn} onPress={() => setShowModal(true)}>
+        <TouchableOpacity style={s.addBtn} onPress={() => { resetLessonForm(); setShowModal(true); }}>
           <Feather name="plus" size={20} color={colors.primary} />
         </TouchableOpacity>
       </View>
@@ -223,6 +240,11 @@ export default function TeacherLessons() {
                 {lesson.content ? <Text style={s.meta} numberOfLines={3}>{String(lesson.content).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()}</Text> : null}
                 {lesson.mediaUrl ? <TouchableOpacity onPress={() => { const url = /^https?:\/\//i.test(String(lesson.mediaUrl)) ? String(lesson.mediaUrl) : `https://dallyletter-elidems-smart-caps-lms-4.onrender.com${String(lesson.mediaUrl).startsWith("/") ? "" : "/"}${lesson.mediaUrl}`; void Linking.openURL(url); }}><Text style={[s.meta, { color: colors.primary }]}>Open attached media / embedded link</Text></TouchableOpacity> : null}
               </View>
+              <View style={{ gap: 8 }}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Edit lesson" onPress={() => { setEditingLessonId(lesson.id); setTitle(String(lesson.title ?? "")); setSubject(String(lesson.subject ?? "")); setType((lesson.type ?? "notes") as typeof lessonTypes[number]); setMediaUrl(String(lesson.mediaUrl ?? "")); setContent(String(lesson.content ?? "")); setGrade(String(lesson.grade ?? "")); setShowModal(true); }}><Feather name="edit-2" size={18} color={colors.primary}/></TouchableOpacity>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Notify lesson followers" disabled={notifyingLessonId===lesson.id} onPress={async () => { setNotifyingLessonId(lesson.id); try { const response=await fetch(getApiUrl(`/api/lessons/${lesson.id}/notify-followers`),{method:"POST",headers:token?{Authorization:"Bearer "+token}:{}}); const payload=await response.json().catch(()=>({})); if(!response.ok) throw new Error(payload.error||"Notification request failed"); Alert.alert("Followers notified",payload.message||"Lesson notification was queued."); } catch(error) { Alert.alert("Could not notify followers",error instanceof Error?error.message:"Please retry."); } finally { setNotifyingLessonId(null); } }}><Feather name="bell" size={18} color={colors.primary}/></TouchableOpacity>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Delete lesson" onPress={() => Alert.alert("Delete lesson?", "This removes the lesson from your teaching list. This action cannot be undone.", [{text:"Cancel",style:"cancel"},{text:"Delete",style:"destructive",onPress:()=>deleteMutation.mutate({id:lesson.id})}])}><Feather name="trash-2" size={18} color="#dc2626"/></TouchableOpacity>
+              </View>
             </View>
           );
         }}
@@ -232,7 +254,7 @@ export default function TeacherLessons() {
         <View style={s.overlay}>
           <ScrollView>
             <View style={s.modal}>
-              <Text style={s.modalTitle}>New Lesson</Text>
+              <Text style={s.modalTitle}>{editingLessonId !== null ? "Edit Lesson" : "New Lesson"}</Text>
 
               <Text style={s.label}>Title *</Text>
               <TextInput style={s.input} placeholder="Lesson title" placeholderTextColor={colors.mutedForeground} value={title} onChangeText={setTitle} />
@@ -278,10 +300,10 @@ export default function TeacherLessons() {
                 multiline
               />
 
-              <TouchableOpacity style={s.submitBtn} onPress={handleCreate} disabled={createMutation.isPending}>
-                <Text style={s.submitText}>{createMutation.isPending ? "Saving..." : "Create Lesson"}</Text>
+              <TouchableOpacity style={s.submitBtn} onPress={handleCreate} disabled={createMutation.isPending || updateMutation.isPending}>
+                <Text style={s.submitText}>{createMutation.isPending || updateMutation.isPending ? "Saving..." : editingLessonId !== null ? "Save Changes" : "Create Lesson"}</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setShowModal(false)}>
+              <TouchableOpacity onPress={resetLessonForm}>
                 <Text style={s.cancelText}>Cancel</Text>
               </TouchableOpacity>
             </View>
