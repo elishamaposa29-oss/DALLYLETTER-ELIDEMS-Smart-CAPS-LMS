@@ -127,7 +127,7 @@ export default function FeatureHub() {
   const [allAchievements, setAllAchievements] = useState<Row[]>([]);
   const [achievementTab, setAchievementTab] = useState<"badges" | "leaderboard" | "all">("badges");
   const queryClient = useQueryClient();
-  const { data: notifications, refetch: refetchNotifications } = useListNotifications({ query: { refetchInterval: section === "notifications" ? 30000 : false, refetchOnWindowFocus: true } });
+  const { data: notifications, refetch: refetchNotifications } = useListNotifications({ query: { queryKey: getListNotificationsQueryKey(), refetchInterval: section === "notifications" ? 30000 : false, refetchOnWindowFocus: true } });
   const markRead = useMarkNotificationRead();
   const { data: studyGroups, refetch: refetchGroups } = useListStudyGroups();
 
