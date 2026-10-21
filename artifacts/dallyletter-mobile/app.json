@@ -43,6 +43,14 @@
         {
           "microphonePermission": "Allow DallyLetter Elidems to record voice messages."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#0d0d73",
+          "defaultChannel": "dallyletter-updates"
+        }
       ]
     ],
     "experiments": {
