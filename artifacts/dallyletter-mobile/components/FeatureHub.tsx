@@ -99,6 +99,7 @@ export default function FeatureHub() {
 
   const role = String(user?.role ?? "guest").toLowerCase();
   const isStudent = role === "student";
+  const visibleSections = sections.filter(item => item.id !== "achievements" || isStudent);
   const isTeacher = role === "teacher";
   const canCreateGroups = isTeacher || Boolean((user as any)?.isPrefect || (user as any)?.isManager) || ["owner", "admin", "platform_owner"].includes(role);
   const exerciseLocked = Boolean(exerciseResult?.submission?.status) && !newAttempt;
@@ -166,6 +167,7 @@ export default function FeatureHub() {
       if (target === "notifications") { await refetchNotifications(); setRows([]); }
       else if (target === "groups") { await refetchGroups(); setRows([]); }
       else if (target === "achievements") {
+        if (!isStudent) throw new Error("Learner access is required to view achievements.");
         const [mine, leaderboard, all] = await Promise.all([request("/api/achievements/my"), request("/api/achievements/leaderboard"), request("/api/achievements")]);
         setMyBadges(Array.isArray(mine) ? mine : []);
         setAchievementLeaderboard(Array.isArray(leaderboard) ? leaderboard : []);
@@ -213,7 +215,7 @@ export default function FeatureHub() {
       }
       setError(e instanceof Error ? e.message : "Could not load content. Retry when connected.");
     } finally { setLoading(false); }
-  }, [request, refetchNotifications, refetchGroups, user?.id, role]);
+  }, [request, refetchNotifications, refetchGroups, user?.id, role, isStudent]);
 
   useEffect(() => {
     if (routeParams.section === "payments" && section !== "payments") void loadSection("payments");
@@ -598,7 +600,7 @@ export default function FeatureHub() {
         <Text style={styles.subheading}>{section ? "Your role controls which actions are available." : "More of Dallyletter, without changing your familiar home screen."}</Text>
       </View>
       {!section ? <ScrollView contentContainerStyle={styles.content}>
-        {sections.map(item => (
+        {visibleSections.map(item => (
           <TouchableOpacity key={item.id} style={styles.card} onPress={() => void loadSection(item.id)} accessibilityRole="button">
             <View style={styles.icon}><Feather name={item.icon as any} size={21} color={colors.primary} /></View>
             <View style={styles.grow}><Text style={styles.cardTitle}>{item.title}{item.id === "notifications" && unreadCount ? ` · ${unreadCount} unread` : ""}</Text><Text style={styles.muted}>{item.subtitle}</Text></View>
