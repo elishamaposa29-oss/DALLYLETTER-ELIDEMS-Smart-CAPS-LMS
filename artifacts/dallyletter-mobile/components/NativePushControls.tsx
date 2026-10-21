@@ -178,7 +178,27 @@ export default function NativePushControls() {
       });
       const result = await response.json().catch(() => ({})) as { error?: string; notificationId?: number; message?: string };
       if (!response.ok) throw new Error(result.error || `Push test failed (HTTP ${response.status}).`);
-      setStatus(result.message || `Push test ${result.notificationId ?? ""} queued. Check the Android notification shade.`);
+      if (!result.notificationId) throw new Error("The server did not return a push-test notification ID.");
+      setStatus("Test queued. Waiting for the push dispatcher…");
+      // A queue response alone does not prove the Expo ticket was accepted.
+      // Poll the authenticated per-user status endpoint, but never claim the OS displayed it.
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const statusResponse = await fetch(getApiUrl(`/api/push/test/${result.notificationId}`), {
+          headers: { Authorization: "Bearer " + token },
+        });
+        const dispatch = await statusResponse.json().catch(() => ({})) as { acceptedByPushService?: boolean; dispatchComplete?: boolean; attempts?: number; lastError?: string | null };
+        if (!statusResponse.ok) throw new Error("Push test was queued, but its dispatch status could not be checked.");
+        if (dispatch.acceptedByPushService) {
+          setStatus("Expo accepted the push ticket. Check the Android notification shade; only the device can confirm display.");
+          return;
+        }
+        if (dispatch.dispatchComplete && dispatch.lastError) {
+          throw new Error("Push dispatch finished without a successful delivery: " + dispatch.lastError);
+        }
+        if (dispatch.lastError && attempt === 7) throw new Error("Push dispatch is retrying: " + dispatch.lastError);
+      }
+      setStatus("Push test is still pending. Reopen this panel to check dispatch status and verify the Android notification shade.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not queue a push test.");
     } finally {
