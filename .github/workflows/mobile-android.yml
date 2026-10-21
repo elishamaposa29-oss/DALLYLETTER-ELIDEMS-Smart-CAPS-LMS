@@ -7,6 +7,15 @@ concurrency:
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "artifacts/dallyletter-mobile/**"
+      - "lib/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/mobile-android.yml"
+      - ".github/scripts/android-emulator-smoke.sh"
   pull_request:
     types: [opened, synchronize, reopened, labeled]
     paths:
