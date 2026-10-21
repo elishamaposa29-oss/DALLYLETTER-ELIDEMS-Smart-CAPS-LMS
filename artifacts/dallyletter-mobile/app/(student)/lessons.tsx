@@ -22,12 +22,20 @@ function extractLessonLinks(value: unknown): string[] {
 }
 function plainLessonText(value: unknown): string {
   return String(value ?? "")
-    .replace(/<\/?(p|div|br|li|ul|ol|strong|em|h[1-6])[^>]*>/gi, "\n")
+    .replace(/<br\s*\/?\s*>/gi, "\n")
+    .replace(/<li\b[^>]*>/gi, "\n• ")
+    .replace(/<\/(?:li)\s*>/gi, "\n")
+    .replace(/<\/(?:p|div|h[1-6]|ul|ol|section|blockquote)\s*>/gi, "\n\n")
     .replace(/<[^>]*>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "‹")
-    .replace(/&gt;/g, "›");
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 export default function StudentLessons() {
@@ -64,7 +72,7 @@ export default function StudentLessons() {
 
   useEffect(() => {
     if (!lessonCacheKey || !lessons || lessons.length === 0) return;
-    // Cache only non-sensitive listing metadata. Media URLs and content stay out of local storage.
+    // Cache account-scoped lesson text and media references so notes remain readable offline; downloaded bytes are stored separately.
     const safeSnapshot = lessons.map((lesson: any) => ({
       id: lesson.id, title: lesson.title, subject: lesson.subject, grade: lesson.grade,
       type: lesson.type, content: lesson.content, description: lesson.description, mediaUrl: lesson.mediaUrl,
@@ -113,7 +121,7 @@ export default function StudentLessons() {
         </View>
       </View>
       <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
-        {usingCache && <View style={s.offlineNotice}><Text style={s.offlineText}>Offline mode: showing saved lesson details. Opened media and new content may require internet.</Text></View>}
+        {usingCache && <View style={s.offlineNotice}><Text style={s.offlineText}>Offline mode: saved lesson notes are available. Download direct media before going offline; external links and new content need internet.</Text></View>}
         {!usingCache && !isOnline && <View style={s.offlineNotice}><Text style={s.offlineText}>You are offline. Saved lesson details remain available.</Text></View>}
         {isLoading && filtered.length === 0 && !cacheReady ? <Text style={s.loadText}>Loading saved lessons...</Text> :
           filtered.length === 0 ? <View style={s.emptyWrap}>
@@ -156,7 +164,7 @@ export default function StudentLessons() {
                 </TouchableOpacity>
               </View>)}
               {selectedLesson.mediaUrl ? <TouchableOpacity style={{ backgroundColor: colors.primary, borderRadius: 12, padding: 15, flexDirection: "row", alignItems: "center", gap: 10 }} onPress={() => { const url = String(selectedLesson.mediaUrl); void Linking.openURL(/^https?:\/\//i.test(url) ? url : `https://dallyletter-elidems-smart-caps-lms-4.onrender.com${url.startsWith("/") ? "" : "/"}${url}`); }}><Feather name="play-circle" size={22} color="#fff"/><View style={{ flex: 1 }}><Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold" }}>Open lesson media or embedded link</Text><Text numberOfLines={2} style={{ color: "rgba(255,255,255,.8)", fontSize: 12, marginTop: 3 }}>{selectedLesson.mediaUrl}</Text></View><Feather name="external-link" size={17} color="#fff"/></TouchableOpacity> : null}
-              {!isOnline ? <Text style={{ color: "#b45309", marginTop: 14, fontSize: 12 }}>Offline: saved written details are available; media links may need internet.</Text> : null}
+              {!isOnline ? <Text style={{ color: "#b45309", marginTop: 14, fontSize: 12 }}>Offline: saved written details remain available. Downloaded media opens locally; external links need internet.</Text> : null}
             </>}
           </ScrollView>
         </View>
