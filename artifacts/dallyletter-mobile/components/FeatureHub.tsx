@@ -23,9 +23,11 @@ type Section = "assignments" | "exercises" | "polls" | "notifications" | "groups
 type Row = Record<string, any> & { id: number; title?: string; name?: string };
 
 function stableValue(value: any): string {
+  if (value === undefined) return "undefined";
+  if (value === null) return "null";
   if (Array.isArray(value)) return "[" + value.map(stableValue).join(",") + "]";
-  if (value && typeof value === "object") return "{" + Object.keys(value).sort().map(key => JSON.stringify(key) + ":" + stableValue(value[key])).join(",") + "}";
-  return JSON.stringify(value);
+  if (typeof value === "object") return "{" + Object.keys(value).sort().map(key => JSON.stringify(key) + ":" + stableValue(value[key])).join(",") + "}";
+  return String(JSON.stringify(value));
 }
 function queuedExerciseAlreadyAccepted(current: any, item: QueuedSubmission): boolean {
   const status=String(current?.submission?.status||"");
