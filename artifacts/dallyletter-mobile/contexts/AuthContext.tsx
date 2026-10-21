@@ -10,7 +10,7 @@ interface User {
   id: number;
   email: string;
   name: string;
-  role: "student" | "teacher" | "owner";
+  role: string;
   isPrefect: boolean;
   isBlocked: boolean;
   phone?: string | null;
