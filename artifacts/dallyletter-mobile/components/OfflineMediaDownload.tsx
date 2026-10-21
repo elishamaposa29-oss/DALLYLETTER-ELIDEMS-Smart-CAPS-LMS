@@ -9,6 +9,19 @@ import { useColors } from "@/hooks/useColors";
 
 type SavedMedia = Record<string, { localUri: string; fileName: string; downloadedAt: string; bytes?: number }>;
 const keyFor = (userId: number) => "dallyletter_offline_media_v1_user_" + userId;
+const MAX_OFFLINE_MEDIA_BYTES = 512 * 1024 * 1024;
+const MAX_OFFLINE_MEDIA_ITEMS = 250;
+export async function getOfflineMediaUsage(userId: number): Promise<{items:number;bytes:number;maxItems:number;maxBytes:number}> {
+  const raw = await AsyncStorage.getItem(keyFor(userId));
+  const saved = raw ? JSON.parse(raw) as SavedMedia : {};
+  let bytes = 0;
+  let items = 0;
+  for (const entry of Object.values(saved)) {
+    const info = await FileSystem.getInfoAsync(entry.localUri).catch(() => null);
+    if (info?.exists) { items += 1; bytes += info && "size" in info ? Number(info.size || entry.bytes || 0) : Number(entry.bytes || 0); }
+  }
+  return {items,bytes,maxItems:MAX_OFFLINE_MEDIA_ITEMS,maxBytes:MAX_OFFLINE_MEDIA_BYTES};
+}
 function hash(value: string) { let h = 2166136261; for (let i=0;i<value.length;i++) { h ^= value.charCodeAt(i); h = Math.imul(h,16777619); } return (h>>>0).toString(16); }
 export function resolveMediaUrl(url: string) { return /^https?:\/\//i.test(url) ? url : getApiUrl(url); }
 export async function getOfflineMediaUri(userId: number | undefined, url: string): Promise<string | null> {
@@ -70,6 +83,12 @@ export default function OfflineMediaDownload({ url, fileName, accessibilityLabel
       const raw = await AsyncStorage.getItem(keyFor(user.id));
       const entries = raw ? JSON.parse(raw) as SavedMedia : {};
       const record = { localUri: result.uri, fileName: fileName || url.split("/").pop()?.split("?")[0] || "Learning media", downloadedAt: new Date().toISOString(), bytes: info.exists && "size" in info ? info.size : undefined };
+      const newBytes = Number(record.bytes || 0);
+      const previousBytes = Number(entries[url]?.bytes || 0);
+      const currentUsage = await getOfflineMediaUsage(user.id);
+      if (!entries[url] && currentUsage.items >= MAX_OFFLINE_MEDIA_ITEMS) throw new Error("Offline download limit reached (250 files). Remove an older download before saving another.");
+      if (currentUsage.bytes - previousBytes + newBytes > MAX_OFFLINE_MEDIA_BYTES) throw new Error("Offline storage limit reached (512 MB). Remove older downloads or choose a smaller file.");
+      if (newBytes <= 0) throw new Error("The downloaded file size could not be verified; it was not saved to the offline library.");
       entries[url] = record;
       await AsyncStorage.setItem(keyFor(user.id), JSON.stringify(entries));
       setSaved(record);
