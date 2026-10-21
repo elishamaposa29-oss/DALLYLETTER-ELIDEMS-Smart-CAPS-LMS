@@ -13,6 +13,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import AuthenticatedMediaPreview from "@/components/AuthenticatedMediaPreview";
 import MobileDrawAnswer from "@/components/MobileDrawAnswer";
+import VoiceMessageComposer, { type VoiceRecordingFile } from "@/components/VoiceMessageComposer";
+import AuthenticatedAudioMessage from "@/components/AuthenticatedAudioMessage";
 
 type Section = "assignments" | "exercises" | "polls" | "notifications" | "groups" | "messages" | "payments" | "achievements" | "prefect" | "reports";
 type Row = Record<string, any> & { id: number; title?: string; name?: string };
@@ -493,6 +495,21 @@ export default function FeatureHub() {
     finally{setPrivateMediaBusy(false);}
   };
 
+  const sendPrivateVoiceMessage = async (file: VoiceRecordingFile) => {
+    if (!privateRecipient || privateMediaBusy) throw new Error("Choose a conversation before recording a voice message.");
+    setPrivateMediaBusy(true);
+    try {
+      const form = new FormData();
+      form.append("recipientId", String(privateRecipient.id));
+      form.append("file", { uri: file.uri, name: file.fileName, type: file.mimeType } as any);
+      const uploaded = await request("/api/messages/media", { method: "POST", body: form });
+      if (!uploaded.mediaUrl) throw new Error("Voice upload did not return a media URL.");
+      await request("/api/messages", { method: "POST", body: JSON.stringify({ recipientId: Number(privateRecipient.id), content: "Voice message", type: "voice", mediaUrl: uploaded.mediaUrl }) });
+      const messages = await request("/api/messages?recipientId=" + encodeURIComponent(String(privateRecipient.id)));
+      setPrivateMessages(Array.isArray(messages) ? messages : []);
+    } finally { setPrivateMediaBusy(false); }
+  };
+
   const submitSafetyReport = async () => {
     if (!isStudent || reportBusy || !reportCategory || !reportTitle.trim() || !reportDescription.trim()) { Alert.alert("Complete your report", "Choose a category and enter a title and description."); return; }
     setReportBusy(true);
@@ -822,10 +839,11 @@ export default function FeatureHub() {
             <Text style={styles.sectionTitle}>Chat with {privateRecipient.name||"User"}</Text>
             {privateBusy && <ActivityIndicator color={colors.primary}/>}
             {!privateBusy && privateMessages.length===0 && <Text style={styles.muted}>No messages yet. Start a private conversation.</Text>}
-            {privateMessages.map(message=><View key={message.id} style={{padding:10,borderRadius:10,marginTop:8,backgroundColor:Number(message.senderId)===Number(user?.id)?colors.primary+"18":colors.background,alignSelf:Number(message.senderId)===Number(user?.id)?"flex-end":"stretch",maxWidth:"100%"}}><Text style={styles.muted}>{Number(message.senderId)===Number(user?.id)?"You":privateRecipient.name} · {message.createdAt?new Date(message.createdAt).toLocaleString():""}</Text><Text style={styles.body}>{message.type==="voice"?"Voice message":message.type==="media"?"Shared media":message.content}</Text>{message.mediaUrl&&<><AuthenticatedMediaPreview url={String(message.mediaUrl)} height={170} accessibilityLabel="Private message attachment"/><TouchableOpacity onPress={()=>openUrl(message.mediaUrl)}><Text style={{color:colors.primary,marginTop:5}}>Open attachment</Text></TouchableOpacity></>}</View>)}
+            {privateMessages.map(message=><View key={message.id} style={{padding:10,borderRadius:10,marginTop:8,backgroundColor:Number(message.senderId)===Number(user?.id)?colors.primary+"18":colors.background,alignSelf:Number(message.senderId)===Number(user?.id)?"flex-end":"stretch",maxWidth:"100%"}}><Text style={styles.muted}>{Number(message.senderId)===Number(user?.id)?"You":privateRecipient.name} · {message.createdAt?new Date(message.createdAt).toLocaleString():""}</Text><Text style={styles.body}>{message.type==="voice"?"Voice message":message.type==="media"?"Shared media":message.content}</Text>{message.type==="voice"&&message.mediaUrl?<AuthenticatedAudioMessage url={String(message.mediaUrl)}/>:message.type==="media"&&message.mediaUrl?<><AuthenticatedMediaPreview url={String(message.mediaUrl)} height={170} accessibilityLabel="Private message attachment"/><TouchableOpacity onPress={()=>openUrl(message.mediaUrl)}><Text style={{color:colors.primary,marginTop:5}}>Open attachment</Text></TouchableOpacity></>:null}</View>)}
             {error ? <Text style={{color:"#dc2626",marginTop:8}}>{error}</Text>:null}
             <TextInput style={[styles.input,styles.textArea,{marginTop:12}]} value={privateDraft} onChangeText={setPrivateDraft} multiline placeholder="Write a private message…" placeholderTextColor={colors.mutedForeground}/>
             <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void uploadPrivateMedia()} disabled={privateMediaBusy}><Text style={[styles.buttonText,styles.secondaryText]}>{privateMediaBusy?"Uploading and sending…":"Attach image/video"}</Text></TouchableOpacity>
+            <VoiceMessageComposer disabled={privateBusy||privateMediaBusy} onSend={sendPrivateVoiceMessage}/>
             <TouchableOpacity style={styles.button} onPress={()=>void sendPrivateMessage()} disabled={privateBusy||!privateDraft.trim()}><Text style={styles.buttonText}>{privateBusy?"Sending…":"Send private message"}</Text></TouchableOpacity>
             <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void openPrivateConversation(privateRecipient)} disabled={privateBusy}><Text style={[styles.buttonText,styles.secondaryText]}>Refresh conversation</Text></TouchableOpacity>
           </View>}
