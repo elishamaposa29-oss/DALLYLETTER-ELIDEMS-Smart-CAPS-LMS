@@ -296,6 +296,26 @@ jobs:
           cp /tmp/dallyletter-data-apks/dallyletter-data-v1-debug.apk /tmp/dallyletter-data-v1-debug.apk
           cp /tmp/dallyletter-data-apks/dallyletter-data-v1.0.1-debug.apk /tmp/dallyletter-data-v1.0.1-debug.apk
           cp /tmp/dallyletter-apks/dallyletter-v1.0.1.apk artifacts/dallyletter-mobile/android/app/build/outputs/apk/release/app-release.apk
+      - name: Warm deployed API before authenticated emulator smoke tests
+        env:
+          API_BASE_URL: ${{ env.EXPO_PUBLIC_API_BASE_URL }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          api_url="${API_BASE_URL%/}"
+          test -n "$api_url" || { echo "::error::EXPO_PUBLIC_API_BASE_URL is empty"; exit 1; }
+          status="000"
+          for attempt in 1 2 3 4 5 6; do
+            status="$(curl --silent --show-error --max-time 15 --output /tmp/dallyletter-api-warmup.json --write-out '%{http_code}' "$api_url/api/healthz" || true)"
+            if [ "$status" = "200" ] && grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' /tmp/dallyletter-api-warmup.json 2>/dev/null; then
+              echo "Deployed API is warm and healthy before login smoke test (attempt $attempt/6)."
+              exit 0
+            fi
+            echo "API warmup attempt $attempt/6 returned HTTP $status; retrying after cold start."
+            sleep 5
+          done
+          echo "::error::API did not become healthy before mobile login smoke tests (last HTTP $status)."
+          exit 1
       - name: Launch emulator and run install/launch/upgrade smoke tests
         shell: bash
         run: |
