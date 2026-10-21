@@ -108,6 +108,27 @@ async function encryptPayload(payload: string, p256dh: string, auth: string): Pr
 }
 
 async function sendOne(endpoint: string, p256dh: string, auth: string, payload: string): Promise<"ok" | "gone"> {
+  if (p256dh === "expo" && auth === "expo") {
+    const message = JSON.parse(payload) as { id?: number; title?: string; body?: string; url?: string };
+    const response = await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json", "Accept-encoding": "gzip, deflate" },
+      body: JSON.stringify({
+        to: endpoint,
+        title: message.title || "Dallyletter",
+        body: message.body || "",
+        sound: "default",
+        priority: "high",
+        data: { notificationId: message.id, url: message.url || "/student/notifications" },
+      }),
+    });
+    if (!response.ok) throw new Error(`Expo push service returned HTTP ${response.status}`);
+    const result = await response.json() as { data?: { status?: string; message?: string; details?: { error?: string } } | Array<{ status?: string; message?: string; details?: { error?: string } }> };
+    const ticket = Array.isArray(result.data) ? result.data[0] : result.data;
+    if (ticket?.status === "ok") return "ok";
+    if (ticket?.details?.error === "DeviceNotRegistered") return "gone";
+    throw new Error(String(ticket?.message || ticket?.details?.error || "Expo push ticket was not accepted"));
+  }
   const cfg = vapidConfig();
   if (!cfg) throw new Error("VAPID is not configured");
   const body = await encryptPayload(payload, p256dh, auth);
@@ -128,7 +149,6 @@ async function sendOne(endpoint: string, p256dh: string, auth: string, payload: 
 }
 
 export async function dispatchPendingPushNotifications(): Promise<void> {
-  if (!isPushConfigured()) return;
 
   // Cap each recipient to ten newest notifications per dispatch, not ten
   // globally. Broadcast notifications are fanned out to each subscribed user.
@@ -212,8 +232,7 @@ export function startPushDispatcher(): void {
       publicKeyConfigured: Boolean(process.env.VAPID_PUBLIC_KEY?.trim()),
       privateKeyConfigured: Boolean(process.env.VAPID_PRIVATE_KEY?.trim()),
       subjectConfigured: Boolean(process.env.VAPID_SUBJECT?.trim()),
-    }, "Web push is disabled because VAPID configuration is missing or invalid");
-    return;
+    }, "Web Push is disabled; native Expo push tokens can still be dispatched");
   }
   const run = () => dispatchPendingPushNotifications().catch((error) => {
     logger.error({
