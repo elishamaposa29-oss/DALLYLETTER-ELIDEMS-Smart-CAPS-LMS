@@ -16,7 +16,13 @@ export async function getOfflineMediaUri(userId: number | undefined, url: string
   try {
     const raw = await AsyncStorage.getItem(keyFor(userId));
     const saved = raw ? JSON.parse(raw) as SavedMedia : {};
-    return saved[url]?.localUri ?? null;
+    const localUri = saved[url]?.localUri;
+    if (!localUri) return null;
+    const info = await FileSystem.getInfoAsync(localUri);
+    if (info.exists) return localUri;
+    delete saved[url];
+    await AsyncStorage.setItem(keyFor(userId), JSON.stringify(saved));
+    return null;
   } catch { return null; }
 }
 export async function removeOfflineMedia(userId: number, url: string): Promise<void> {
