@@ -61,7 +61,7 @@ export default function OfflineMediaDownload({ url, fileName, accessibilityLabel
       await FileSystem.makeDirectoryAsync(directory, { intermediates: true }).catch(() => undefined);
       const ext = (url.match(/\.([a-z0-9]{2,5})(?:[?#]|$)/i)?.[1] || (url.match(/[?&]type=([^&]+)/)?.[1] || "").split("/").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g,"").slice(0,5) || "bin";
       localUri = directory + hash(String(user.id) + ":" + url) + "." + ext;
-      const task = FileSystem.createDownloadResumable(resolved, localUri, { headers: token ? { Authorization: "Bearer " + token } : {} }, event => {
+      const task = FileSystem.createDownloadResumable(resolved, localUri, { headers: !/^https?:\/\//i.test(url) && token ? { Authorization: "Bearer " + token } : {} }, event => {
         if (event.totalBytesExpectedToWrite > 0) setProgress(Math.min(100, Math.round(event.totalBytesWritten / event.totalBytesExpectedToWrite * 100)));
       });
       const result = await task.downloadAsync();
