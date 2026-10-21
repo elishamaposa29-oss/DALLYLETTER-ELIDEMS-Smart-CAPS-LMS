@@ -310,7 +310,7 @@ export default function TeacherLessons() {
               <TouchableOpacity style={[s.submitBtn,{marginBottom:12,backgroundColor:colors.card,borderWidth:1,borderColor:colors.border}]} onPress={() => void handleUploadMedia(true)} disabled={uploadingMedia}><Text style={[s.submitText,{color:colors.foreground}]}>{uploadingMedia?"Uploading media…":"Choose PDF/Word document"}</Text></TouchableOpacity>
               <Text style={s.label}>Media or embedded link</Text>
               <TextInput style={s.input} placeholder="Paste a video, audio, document or web link" placeholderTextColor={colors.mutedForeground} value={mediaUrl} onChangeText={setMediaUrl} autoCapitalize="none" />
-              {mediaUrl ? <TouchableOpacity onPress={() => { const url = /^https?:\/\//i.test(mediaUrl) ? mediaUrl : `https://dallyletter-elidems-smart-caps-lms-4.onrender.com${mediaUrl.startsWith("/") ? "" : "/"}${mediaUrl}`; void Linking.openURL(url); }}><Text style={{ color: colors.primary, fontSize: 12, marginBottom: 12 }}>Preview attached media / link</Text></TouchableOpacity> : null}
+              {mediaUrl && /^https?:\/\//i.test(mediaUrl) ? <TouchableOpacity onPress={() => void Linking.openURL(mediaUrl)}><Text style={{ color: colors.primary, fontSize: 12, marginBottom: 12 }}>Preview external media / link</Text></TouchableOpacity> : mediaUrl ? <View style={{marginBottom:12}}><AuthenticatedMediaPreview url={mediaUrl} height={140} accessibilityLabel="Lesson attachment"/><Text style={s.meta}>Protected media · download to save offline before sharing with learners.</Text></View> : null}
 
               <Text style={s.label}>Notes / Content</Text>
               <TextInput
