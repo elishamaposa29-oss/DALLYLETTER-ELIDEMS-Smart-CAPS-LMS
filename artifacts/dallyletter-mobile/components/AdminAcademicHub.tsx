@@ -2,6 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import { getListClassesQueryKey, getListLessonsQueryKey, useDeleteClass, useDeleteLesson, useListClasses, useListLessons } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import * as Linking from "expo-linking";
+import { router } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Alert, FlatList, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -41,7 +42,7 @@ export default function AdminAcademicHub(){
  if(!allowed)return <View style={s.root}><Text style={s.body}>Owner/admin access required. The server enforces delete permissions.</Text></View>;
  const busy=tab==="lessons"?lessonsLoading:classesLoading;
  return <View style={s.root}>
-  <View style={s.header}><TouchableOpacity onPress={()=>Linking.openURL("dallyletter://")} style={[s.row,{marginBottom:8}]}><Feather name="book-open" size={18} color="#fff"/><Text style={{color:"#fff"}}>Academic administration</Text></TouchableOpacity><Text style={s.title}>Lessons & classes</Text><Text style={s.subtitle}>Search and review platform-wide learning content and class sessions</Text></View>
+  <View style={s.header}><TouchableOpacity onPress={()=>router.back()} style={[s.row,{marginBottom:8}]}><Feather name="book-open" size={18} color="#fff"/><Text style={{color:"#fff"}}>Academic administration</Text></TouchableOpacity><Text style={s.title}>Lessons & classes</Text><Text style={s.subtitle}>Search and review platform-wide learning content and class sessions</Text></View>
   <View style={{padding:14,gap:10}}>
    <View style={[s.row,{gap:8}]}>{(["lessons","classes"] as const).map(v=><TouchableOpacity key={v} style={[s.chip,{flex:1,backgroundColor:tab===v?colors.primary:colors.card}]} onPress={()=>{setTab(v);setSearch("");}}><Text style={{textAlign:"center",color:tab===v?"#fff":colors.foreground,fontWeight:"600"}}>{v==="lessons"?"Lessons":"Classes"}</Text></TouchableOpacity>)}</View>
    <TextInput style={s.input} value={search} onChangeText={setSearch} placeholder={tab==="lessons"?"Search title, teacher or subject":"Search class, teacher or subject"} placeholderTextColor={colors.mutedForeground}/>
