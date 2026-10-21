@@ -2,12 +2,13 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Linking from "expo-linking";
 import { getApiUrl } from "@workspace/api-client-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Text, TouchableOpacity, View } from "react-native";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
 type SavedMedia = Record<string, { localUri: string; fileName: string; downloadedAt: string; bytes?: number }>;
+type OfflineUsage = {items:number;bytes:number;maxItems:number;maxBytes:number};
 const keyFor = (userId: number) => "dallyletter_offline_media_v1_user_" + userId;
 const MAX_OFFLINE_MEDIA_BYTES = 512 * 1024 * 1024;
 const MAX_OFFLINE_MEDIA_ITEMS = 250;
@@ -50,10 +51,16 @@ export default function OfflineMediaDownload({ url, fileName, accessibilityLabel
   const { user, token } = useAuth();
   const colors = useColors();
   const [saved, setSaved] = useState<SavedMedia[string] | null>(null);
+  const [usage, setUsage] = useState<OfflineUsage | null>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
+  const refreshUsage = useCallback(async () => {
+    if (!user?.id) { setUsage(null); return; }
+    try { setUsage(await getOfflineMediaUsage(user.id)); } catch { setUsage(null); }
+  }, [user?.id]);
   const resolved = resolveMediaUrl(url);
   const directMedia = /^\/api\/(?:lessons|messages|assignments|exercises)\/media\//i.test(url) || /\.(?:png|jpe?g|gif|webp|avif|mp4|m4v|mov|webm|mp3|m4a|aac|ogg|wav|pdf|docx?|pptx?|xlsx?)(?:[?#].*)?$/i.test(url) || /[?&]type=(?:image|video|audio|application%2Fpdf|application\/pdf)\//i.test(url);
+  useEffect(() => { void refreshUsage(); }, [refreshUsage]);
   useEffect(() => {
     let active = true;
     void getOfflineMediaUri(user?.id, url).then(async localUri => {
@@ -94,6 +101,7 @@ export default function OfflineMediaDownload({ url, fileName, accessibilityLabel
       entries[url] = record;
       await AsyncStorage.setItem(keyFor(user.id), JSON.stringify(entries));
       setSaved(record);
+      await refreshUsage();
       Alert.alert("Saved for offline use", "This file is stored on this device for this account. Open it from the lesson even without internet.");
     } catch (error) {
       if (localUri) await FileSystem.deleteAsync(localUri, { idempotent: true }).catch(() => undefined);
@@ -107,11 +115,12 @@ export default function OfflineMediaDownload({ url, fileName, accessibilityLabel
   };
   const remove = async () => {
     if (!user?.id) return;
-    try { await removeOfflineMedia(user.id, url); setSaved(null); }
+    try { await removeOfflineMedia(user.id, url); setSaved(null); await refreshUsage(); }
     catch (error) { Alert.alert("Could not remove download", error instanceof Error ? error.message : "Please retry."); }
   };
   if (!directMedia && !saved) return <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 6 }}>External link · Internet required</Text>;
   return <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 8 }}>
+    {usage ? <Text style={{width:"100%",color:colors.mutedForeground,fontSize:11}}>Offline storage: {(usage.bytes/1024/1024).toFixed(1)} / {(usage.maxBytes/1024/1024).toFixed(0)} MB · {usage.items} / {usage.maxItems} files</Text> : null}
     <TouchableOpacity accessibilityRole="button" accessibilityLabel={accessibilityLabel || (saved ? "Open saved offline media" : "Download media for offline use")} disabled={busy} onPress={saved ? () => void openSaved() : () => void download} style={{ paddingHorizontal: 12, paddingVertical: 9, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, flexDirection: "row", alignItems: "center", gap: 7, opacity: busy ? 0.7 : 1 }}>
       {busy ? <ActivityIndicator size="small" color={colors.primary}/> : null}
       <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "600" }}>{busy ? "Downloading " + progress + "%" : saved ? "Available offline · Open" : "Download for offline"}</Text>
