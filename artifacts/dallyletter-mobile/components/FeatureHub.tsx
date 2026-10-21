@@ -44,7 +44,7 @@ function queuedExerciseAlreadyAccepted(current: any, item: QueuedSubmission): bo
     for (const key of ["textAnswer","selectedValue","mediaReference"]) {
       if (String(saved[key]??"")!==String(answer[key]??"")) return false;
     }
-    if (answer.drawData && stableValue(saved.drawData??null)!==stableValue(answer.drawData)) return false;
+    if ((answer.drawData || saved.drawData) && stableValue(saved.drawData??null)!==stableValue(answer.drawData??null)) return false;
     return true;
   });
 }
