@@ -51,7 +51,10 @@ export default function NativePushControls() {
     let active = true;
     const sync = async () => {
       const previous = previousSession.current;
-      if (!user?.id || !token || isLoading) {
+      // Auth restoration is asynchronous. Do not delete a saved device token
+      // while the provider is still loading the existing account session.
+      if (isLoading) return;
+      if (!user?.id || !token) {
         if (previous) {
           await unregister(previous);
           previousSession.current = null;
@@ -89,9 +92,23 @@ export default function NativePushControls() {
       if (!response) return;
       const data = response.notification.request.content.data as { url?: unknown };
       const url = typeof data.url === "string" ? data.url : "";
-      if (url.startsWith("/teacher/") && String(user.role).toLowerCase() === "teacher") router.push({ pathname: "/(teacher)/more", params: { section: "notifications" } } as any);
-      else if (url.startsWith("/admin/") && ["owner", "admin", "manager", "senior_manager"].includes(String(user.role).toLowerCase())) router.push({ pathname: "/(admin)/more", params: { section: "notifications" } } as any);
-      else router.push({ pathname: String(user.role).toLowerCase() === "teacher" ? "/(teacher)/more" : ["owner", "admin", "manager", "senior_manager"].includes(String(user.role).toLowerCase()) ? "/(admin)/more" : "/(student)/more", params: { section: "notifications" } } as any);
+      const role = String(user.role).toLowerCase().replace(/[ -]+/g, "_");
+      if (url.startsWith("/teacher/") && role === "teacher") {
+        router.push({ pathname: "/(teacher)/more", params: { section: "notifications" } } as any);
+      } else if (url.startsWith("/manager/") && ["manager", "senior_manager"].includes(role)) {
+        router.push({ pathname: "/(manager)/more", params: { section: "notifications" } } as any);
+      } else if (url.startsWith("/admin/") && ["owner", "admin"].includes(role)) {
+        router.push({ pathname: "/(admin)/more", params: { section: "notifications" } } as any);
+      } else {
+        const destination = role === "teacher"
+          ? "/(teacher)/more"
+          : ["manager", "senior_manager"].includes(role)
+            ? "/(manager)/more"
+            : ["owner", "admin"].includes(role)
+              ? "/(admin)/more"
+              : "/(student)/more";
+        router.push({ pathname: destination, params: { section: "notifications" } } as any);
+      }
     };
     const subscription = Notifications.addNotificationResponseReceivedListener(openNotification);
     void Notifications.getLastNotificationResponseAsync().then(openNotification).catch(() => {});
