@@ -267,7 +267,9 @@ router.post("/:id/submit",requireAuth,async(req,res):Promise<void>=>{
   const answers=Array.isArray(req.body?.answers)?req.body.answers:[];
   const startNewAttempt=Boolean(req.body?.newAttempt);
   const [existing]=await db.select().from(exerciseSubmissionsTable).where(and(eq(exerciseSubmissionsTable.exerciseId,exercise.id),eq(exerciseSubmissionsTable.learnerId,user.id))).orderBy(desc(exerciseSubmissionsTable.attemptNumber)).limit(1);
-  if(existing && !startNewAttempt && ["submitted","ai_partial","ai_marked_pending_return"].includes(existing.status)){res.status(409).json({error:"This attempt is already submitted and is awaiting marking"});return;}
+  if(existing && ["submitted","ai_partial","ai_marked_pending_return"].includes(existing.status)){res.status(409).json({error:"This attempt is already submitted and is awaiting marking. A retry is available after the teacher returns the result."});return;}
+  if(existing?.status==="marked" && !startNewAttempt){res.status(409).json({error:"Your previous attempt has been returned. Set newAttempt=true to start a separate retry so your marked result is preserved."});return;}
+  if(startNewAttempt && existing && existing.status!=="marked"){res.status(409).json({error:"A new attempt is only available after the previous result has been returned."});return;}
   const nextAttempt=(existing?.attemptNumber??0)+1;
   const createNew=Boolean(startNewAttempt||!existing);
   const [submission]=createNew?await db.insert(exerciseSubmissionsTable).values({exerciseId:exercise.id,learnerId:user.id,attemptNumber:nextAttempt,status:"submitted"}).returning():await db.update(exerciseSubmissionsTable).set({status:"submitted",submittedAt:new Date(),markedAt:null,returnedAt:null,totalScore:"0",percentage:null}).where(eq(exerciseSubmissionsTable.id,existing!.id)).returning();
