@@ -17,7 +17,7 @@ import MobileDrawAnswer from "@/components/MobileDrawAnswer";
 import VoiceMessageComposer, { type VoiceRecordingFile } from "@/components/VoiceMessageComposer";
 import AuthenticatedAudioMessage from "@/components/AuthenticatedAudioMessage";
 
-type Section = "assignments" | "exercises" | "polls" | "notifications" | "groups" | "messages" | "payments" | "achievements" | "prefect" | "reports";
+type Section = "assignments" | "exercises" | "polls" | "notifications" | "groups" | "messages" | "payments" | "achievements" | "prefect" | "reports" | "audit";
 type Row = Record<string, any> & { id: number; title?: string; name?: string };
 
 const sections: { id: Section; title: string; subtitle: string; icon: string }[] = [
@@ -31,6 +31,7 @@ const sections: { id: Section; title: string; subtitle: string; icon: string }[]
   { id: "achievements", title: "Achievements", subtitle: "Earned badges, points and learner leaderboard", icon: "award" },
   { id: "prefect", title: "Prefect dashboard", subtitle: "Request lessons and follow teachers or prefects", icon: "star" },
   { id: "reports", title: "Safety reports", subtitle: "Confidentially report a concern to the owner", icon: "shield" },
+  { id: "audit", title: "Activity audit", subtitle: "Role-scoped academic activity and owner audit history", icon: "activity" },
 ];
 
 export default function FeatureHub() {
@@ -133,7 +134,7 @@ export default function FeatureHub() {
 
   const role = String(user?.role ?? "guest").toLowerCase();
   const isStudent = role === "student";
-  const visibleSections = sections.filter(item => (item.id !== "achievements" || isStudent) && (item.id !== "prefect" || Boolean((user as any)?.isPrefect)) && (item.id !== "reports" || isStudent));
+  const visibleSections = sections.filter(item => (item.id !== "achievements" || isStudent) && (item.id !== "prefect" || Boolean((user as any)?.isPrefect)) && (item.id !== "reports" || isStudent) && (item.id !== "audit" || role === "owner" || Boolean((user as any)?.isManager)));
   const isTeacher = role === "teacher";
   const canManageExercises = isTeacher || ["owner","admin","platform_owner"].includes(role) || Boolean((user as any)?.isManager);
   const canCreateGroups = isTeacher || Boolean((user as any)?.isPrefect || (user as any)?.isManager) || ["owner", "admin", "platform_owner"].includes(role);
@@ -208,6 +209,11 @@ export default function FeatureHub() {
         setMessageContacts(allowed);
         setPrivateRecipient(null); setPrivateMessages([]); setRows(allowed);
       }
+      else if (target === "audit") {
+        if (!(role === "owner" || Boolean((user as any)?.isManager))) throw new Error("Only the owner or authorized managers can view activity audit records.");
+        const logs = await request("/api/audit-logs?limit=200");
+        setRows(Array.isArray(logs) ? logs : []);
+      }
       else if (target === "reports") {
         if (!isStudent) throw new Error("Learner access is required to submit safety reports.");
         const reports = await request("/api/owner-alerts");
@@ -274,7 +280,7 @@ export default function FeatureHub() {
   }, [request, refetchNotifications, refetchGroups, user?.id, role, isStudent]);
 
   useEffect(() => {
-    if ((routeParams.section === "payments" || routeParams.section === "achievements" || routeParams.section === "prefect" || routeParams.section === "reports" || routeParams.section === "messages") && section !== routeParams.section) void loadSection(routeParams.section as Section);
+    if ((routeParams.section === "payments" || routeParams.section === "achievements" || routeParams.section === "prefect" || routeParams.section === "reports" || routeParams.section === "messages" || routeParams.section === "audit") && section !== routeParams.section) void loadSection(routeParams.section as Section);
   }, [routeParams.section, section, loadSection]);
 
   const openRow = async (row: Row) => {
@@ -900,6 +906,12 @@ export default function FeatureHub() {
             <TouchableOpacity style={styles.button} onPress={()=>void sendPrivateMessage()} disabled={privateBusy||!privateDraft.trim()}><Text style={styles.buttonText}>{privateBusy?"Sending…":"Send private message"}</Text></TouchableOpacity>
             <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void openPrivateConversation(privateRecipient)} disabled={privateBusy}><Text style={[styles.buttonText,styles.secondaryText]}>Refresh conversation</Text></TouchableOpacity>
           </View>}
+        </View>}
+        {section === "audit" && <View style={{gap:10}}>
+          <View style={styles.card}><View style={styles.grow}><Text style={styles.sectionTitle}>Activity audit</Text><Text style={styles.muted}>{role === "owner" ? "Owner view: authorized audit details are visible." : "Manager view: only allowed academic/activity categories are shown; sensitive operational, owner/admin, payment, app/system, authentication, security and data-management logs are excluded by the API."}</Text></View></View>
+          {rows.map((log:any)=><View key={log.id} style={styles.card}><View style={styles.grow}><Text style={styles.cardTitle}>{log.action || "Activity"} · {log.category || "uncategorized"}</Text><Text style={styles.muted}>{log.createdAt ? new Date(log.createdAt).toLocaleString() : ""}{log.performerName ? " · "+log.performerName : ""}{log.performerRole ? " ("+log.performerRole+")" : ""}</Text>{log.targetType ? <Text style={styles.muted}>Target: {log.targetType}{log.targetId ? " #"+log.targetId : ""}</Text> : null}{role === "owner" && log.details ? <Text selectable style={styles.body}>{String(log.details)}</Text> : null}</View></View>)}
+          {!loading && rows.length===0 ? <Text style={styles.muted}>No audit records are available to this account.</Text> : null}
+          <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void loadSection("audit")} disabled={loading}><Text style={[styles.buttonText,styles.secondaryText]}>{loading?"Refreshing…":"Refresh audit history"}</Text></TouchableOpacity>
         </View>}
         {section === "reports" && isStudent && <View style={{gap:12}}>
           <View style={[styles.card,{alignItems:"stretch"}]}>
