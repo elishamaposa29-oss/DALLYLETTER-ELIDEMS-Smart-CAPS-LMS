@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
 const TOKEN_KEY = "dallyletter_native_expo_push_token_v1";
+type StoredToken = { userId: number; token: string };
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -65,8 +66,18 @@ export default function NativePushControls() {
         await AsyncStorage.removeItem(TOKEN_KEY).catch(() => {});
         if (active) setPushToken("");
       }
-      const stored = await AsyncStorage.getItem(TOKEN_KEY).catch(() => null);
-      if (active) setPushToken(stored || "");
+      const rawStored = await AsyncStorage.getItem(TOKEN_KEY).catch(() => null);
+      let stored: StoredToken | null = null;
+      try { stored = rawStored ? JSON.parse(rawStored) as StoredToken : null; } catch { stored = null; }
+      if (stored && stored.userId === user.id && typeof stored.token === "string") {
+        if (active) {
+          setPushToken(stored.token);
+          previousSession.current = { userId: user.id, authToken: token, pushToken: stored.token };
+        }
+      } else {
+        await AsyncStorage.removeItem(TOKEN_KEY).catch(() => {});
+        if (active) setPushToken("");
+      }
     };
     void sync();
     return () => { active = false; };
@@ -121,7 +132,7 @@ export default function NativePushControls() {
       });
       const body = await response.json().catch(() => ({})) as { error?: string };
       if (!response.ok) throw new Error(body.error || `Could not register this device (HTTP ${response.status}).`);
-      await AsyncStorage.setItem(TOKEN_KEY, nativeToken);
+      await AsyncStorage.setItem(TOKEN_KEY, JSON.stringify({ userId: user.id, token: nativeToken } satisfies StoredToken));
       previousSession.current = { userId: user.id, authToken: token, pushToken: nativeToken };
       setPushToken(nativeToken);
       setStatus("Device registered. Tap “Send test notification” and check the Android notification shade.");
