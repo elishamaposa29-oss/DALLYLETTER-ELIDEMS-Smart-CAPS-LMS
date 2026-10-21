@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import { Text, TouchableOpacity, View } from "react-native";
 import { useColors } from "@/hooks/useColors";
 import FeatureHub from "@/components/FeatureHub";
+import BreakElidemsShortcut from "@/components/BreakElidemsShortcut";
 
 export default function ManagerMore(){
  const colors=useColors();
@@ -11,6 +12,7 @@ export default function ManagerMore(){
    <View style={{width:42,height:42,borderRadius:10,alignItems:"center",justifyContent:"center",backgroundColor:colors.primary+"18"}}><Feather name="bar-chart-2" size={21} color={colors.primary}/></View>
    <View style={{flex:1}}><Text style={{fontSize:15,fontWeight:"700",color:colors.foreground}}>Manager dashboard</Text><Text style={{fontSize:12,color:colors.mutedForeground,marginTop:3}}>Teachers, learners, prefects, alerts and reports</Text></View><Feather name="chevron-right" size={18} color={colors.mutedForeground}/>
   </TouchableOpacity>
+  <BreakElidemsShortcut />
   <View style={{flex:1}}><FeatureHub /></View>
  </View>;
 }
