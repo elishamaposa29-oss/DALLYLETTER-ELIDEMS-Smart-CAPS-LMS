@@ -21,6 +21,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import AuthenticatedMediaPreview from "@/components/AuthenticatedMediaPreview";
 
+function firstLessonUrl(value: unknown): string | null {
+  return String(value ?? "").match(/https?:\/\/[^\s<>"']+/i)?.[0] ?? null;
+}
+
 const lessonTypes = ["video", "image", "audio", "notes", "mixed"] as const;
 
 export default function TeacherLessons() {
@@ -238,6 +242,7 @@ export default function TeacherLessons() {
                 <Text style={s.meta}>{lesson.subject}{lesson.grade ? ` · Grade ${lesson.grade}` : ""}</Text>
                 {lesson.mediaUrl && lesson.type === "image" ? <AuthenticatedMediaPreview url={String(lesson.mediaUrl)} height={140} accessibilityLabel={String(lesson.title || "Lesson image")} /> : null}
                 {lesson.content ? <Text style={s.meta} numberOfLines={3}>{String(lesson.content).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()}</Text> : null}
+                {firstLessonUrl(lesson.content) ? <TouchableOpacity onPress={() => { const url = firstLessonUrl(lesson.content); if (url) void Linking.openURL(url); }}><Text style={[s.meta, { color: colors.primary }]}>Open embedded link</Text></TouchableOpacity> : null}
                 {lesson.mediaUrl ? <TouchableOpacity onPress={() => { const url = /^https?:\/\//i.test(String(lesson.mediaUrl)) ? String(lesson.mediaUrl) : `https://dallyletter-elidems-smart-caps-lms-4.onrender.com${String(lesson.mediaUrl).startsWith("/") ? "" : "/"}${lesson.mediaUrl}`; void Linking.openURL(url); }}><Text style={[s.meta, { color: colors.primary }]}>Open attached media / embedded link</Text></TouchableOpacity> : null}
               </View>
               <View style={{ gap: 8 }}>
