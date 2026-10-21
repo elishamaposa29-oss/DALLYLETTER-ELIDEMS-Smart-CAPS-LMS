@@ -38,7 +38,7 @@ export default function AdminHome() {
     greeting: { fontSize: 13, color: "rgba(255,255,255,0.7)", fontFamily: "Inter_400Regular" },
     name: { fontSize: 22, color: "#ffffff", fontFamily: "Inter_700Bold", marginTop: 2 },
     scroll: { flex: 1 },
-    content: { padding: 16, paddingBottom: 100 },
+    content: { padding: 16, paddingBottom: 100, width: "100%", maxWidth: 1180, alignSelf: "center" },
     sectionTitle: { fontSize: 16, fontFamily: "Inter_700Bold", color: colors.foreground, marginBottom: 12 },
     statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 24 },
     statCard: {
