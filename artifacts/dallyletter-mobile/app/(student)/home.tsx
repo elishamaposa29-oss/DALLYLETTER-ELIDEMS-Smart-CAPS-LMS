@@ -55,7 +55,7 @@ export default function StudentHome() {
       backgroundColor: colors.accent,
     },
     scroll: { flex: 1 },
-    content: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 100 },
+    content: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 100, width: "100%", maxWidth: 1180, alignSelf: "center" },
     sectionTitle: { fontSize: 16, fontFamily: "Inter_700Bold", color: colors.foreground, marginBottom: 12 },
     grid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 24 },
     actionCard: {
