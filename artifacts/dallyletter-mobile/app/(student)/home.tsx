@@ -21,6 +21,7 @@ export default function StudentHome() {
     { icon: "video" as const, label: "Classes", route: "/(student)/classes" as const, color: "#8b5cf6" },
     { icon: "message-circle" as const, label: "Chat", route: "/(student)/chat" as const, color: "#10b981" },
     { icon: "credit-card" as const, label: "Payments", route: "/(student)/more?section=payments" as const, color: "#f59e0b" },
+    { icon: "award" as const, label: "Achievements", route: "/(student)/more?section=achievements" as const, color: "#d97706" },
   ];
 
   const s = StyleSheet.create({
