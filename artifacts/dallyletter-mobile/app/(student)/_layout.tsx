@@ -84,6 +84,7 @@ export default function StudentTabLayout() {
           tabBarIcon: ({ color, size }) => <Feather name="user" size={size} color={color} />,
         }}
       />
+      <Tabs.Screen name="break" options={{ href: null }} />
     </Tabs>
   );
 }
