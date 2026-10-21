@@ -15,7 +15,7 @@ const typeColor: Record<string, string> = { video: "#8b5cf6", image: "#3b82f6", 
 
 function plainLessonText(value: unknown): string {
   return String(value ?? "")
-    .replace(/<\\/?(p|div|br|li|ul|ol|strong|em|h[1-6])[^>]*>/gi, "\\n")
+    .replace(/<\/?(p|div|br|li|ul|ol|strong|em|h[1-6])[^>]*>/gi, "\n")
     .replace(/<[^>]*>/g, "")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
