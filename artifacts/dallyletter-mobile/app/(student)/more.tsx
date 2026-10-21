@@ -1,2 +1,4 @@
 import FeatureHub from "@/components/FeatureHub";
-export default function StudentMore() { return <FeatureHub />; }
+import BreakElidemsShortcut from "@/components/BreakElidemsShortcut";
+import { View } from "react-native";
+export default function StudentMore() { return <View style={{flex:1}}><BreakElidemsShortcut /><View style={{flex:1}}><FeatureHub /></View></View>; }
