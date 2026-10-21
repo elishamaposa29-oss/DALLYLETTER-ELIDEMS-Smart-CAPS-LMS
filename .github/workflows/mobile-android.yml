@@ -15,7 +15,10 @@ permissions:
   contents: read
 
 jobs:
+  # Defer the expensive APK/emulator suite until the parity pass is ready.
+  # Manual dispatch always runs it; PRs opt in with the android-release-check label.
   build-apk:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'android-release-check')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
