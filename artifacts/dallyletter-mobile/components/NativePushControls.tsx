@@ -3,6 +3,7 @@ import * as Notifications from "expo-notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getApiUrl } from "@workspace/api-client-react";
 import { useEffect, useRef, useState } from "react";
+import { router } from "expo-router";
 import { ActivityIndicator, Alert, Platform, Text, TouchableOpacity, View } from "react-native";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
@@ -54,18 +55,34 @@ export default function NativePushControls() {
           await unregister(previous);
           previousSession.current = null;
         }
+        await AsyncStorage.removeItem(TOKEN_KEY).catch(() => {});
+        if (active) setPushToken("");
         return;
       }
       if (previous && (previous.userId !== user.id || previous.authToken !== token)) {
         await unregister(previous);
         previousSession.current = null;
+        await AsyncStorage.removeItem(TOKEN_KEY).catch(() => {});
+        if (active) setPushToken("");
       }
       const stored = await AsyncStorage.getItem(TOKEN_KEY).catch(() => null);
-      if (active && stored) setPushToken(stored);
+      if (active) setPushToken(stored || "");
     };
     void sync();
     return () => { active = false; };
   }, [user?.id, token, isLoading]);
+
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+      const data = response.notification.request.content.data as { url?: unknown };
+      const url = typeof data.url === "string" ? data.url : "";
+      if (!url || !user) return;
+      if (url.startsWith("/student/")) router.push("/(student)/more" as any);
+      else if (url.startsWith("/teacher/")) router.push("/(teacher)/more" as any);
+      else if (url.startsWith("/admin/")) router.push("/(admin)/more" as any);
+    });
+    return () => subscription.remove();
+  }, [user?.id]);
 
   const enable = async () => {
     if (!user?.id || !token) {
