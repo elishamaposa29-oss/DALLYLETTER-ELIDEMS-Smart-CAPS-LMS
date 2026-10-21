@@ -12,6 +12,16 @@ const LESSON_CACHE_KEY = "dallyletter_cached_lessons_v1";
 const typeIcon: Record<string, any> = { video: "play-circle", image: "image", audio: "headphones", notes: "file-text", mixed: "layers" };
 const typeColor: Record<string, string> = { video: "#8b5cf6", image: "#3b82f6", audio: "#10b981", notes: "#f59e0b", mixed: "#ef4444" };
 
+function plainLessonText(value: unknown): string {
+  return String(value ?? "")
+    .replace(/<\\/?(p|div|br|li|ul|ol|strong|em|h[1-6])[^>]*>/gi, "\\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "‹")
+    .replace(/&gt;/g, "›");
+}
+
 export default function StudentLessons() {
   const colors = useColors();
   const { user } = useAuth();
@@ -128,7 +138,7 @@ export default function StudentLessons() {
               <Text style={{ color: colors.foreground, fontSize: 23, lineHeight: 30, fontFamily: "Inter_700Bold" }}>{selectedLesson.title}</Text>
               <Text style={{ color: colors.mutedForeground, marginTop: 8, marginBottom: 16 }}>{[selectedLesson.subject, selectedLesson.grade ? `Grade ${selectedLesson.grade}` : null, selectedLesson.type].filter(Boolean).join(" · ")}</Text>
               {selectedLesson.description ? <Text style={{ color: colors.foreground, fontSize: 15, lineHeight: 23, marginBottom: 14 }}>{selectedLesson.description}</Text> : null}
-              {selectedLesson.content ? <View style={{ borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 16, marginBottom: 16 }}><Text style={{ color: colors.foreground, fontSize: 15, lineHeight: 24 }}>{String(selectedLesson.content).replace(/<\/?(p|div|br|li|ul|ol|strong|em|h[1-6])[^>]*>/gi, "\n").replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")}</Text></View> : <Text style={{ color: colors.mutedForeground, marginBottom: 14 }}>No written lesson notes were provided.</Text>}
+              {selectedLesson.content ? <View style={{ borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 16, marginBottom: 16 }}><Text style={{ color: colors.foreground, fontSize: 15, lineHeight: 24 }}>{plainLessonText(selectedLesson.content)}</Text></View> : <Text style={{ color: colors.mutedForeground, marginBottom: 14 }}>No written lesson notes were provided.</Text>}
               {selectedLesson.mediaUrl ? <TouchableOpacity style={{ backgroundColor: colors.primary, borderRadius: 12, padding: 15, flexDirection: "row", alignItems: "center", gap: 10 }} onPress={() => { const url = String(selectedLesson.mediaUrl); void Linking.openURL(/^https?:\/\//i.test(url) ? url : `https://dallyletter-elidems-smart-caps-lms-4.onrender.com${url.startsWith("/") ? "" : "/"}${url}`); }}><Feather name="play-circle" size={22} color="#fff"/><View style={{ flex: 1 }}><Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold" }}>Open lesson media or embedded link</Text><Text numberOfLines={2} style={{ color: "rgba(255,255,255,.8)", fontSize: 12, marginTop: 3 }}>{selectedLesson.mediaUrl}</Text></View><Feather name="external-link" size={17} color="#fff"/></TouchableOpacity> : null}
               {!isOnline ? <Text style={{ color: "#b45309", marginTop: 14, fontSize: 12 }}>Offline: saved written details are available; media links may need internet.</Text> : null}
             </>}
