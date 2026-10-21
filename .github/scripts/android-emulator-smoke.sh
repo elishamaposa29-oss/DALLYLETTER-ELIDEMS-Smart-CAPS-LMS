@@ -145,11 +145,21 @@ sleep 1
 timeout 45 adb shell uiautomator dump /sdcard/dallyletter-login-ready.xml >/dev/null
 timeout 20 adb pull /sdcard/dallyletter-login-ready.xml /tmp/dallyletter-login-ready.xml >/dev/null
 tap_ui_node /tmp/dallyletter-login-ready.xml login-btn
-sleep 8
-timeout 45 adb shell uiautomator dump /sdcard/dallyletter-login-error.xml >/dev/null
-timeout 20 adb pull /sdcard/dallyletter-login-error.xml /tmp/dallyletter-login-error.xml >/dev/null
-if ! grep -Fqi 'Invalid email or password' /tmp/dallyletter-login-error.xml; then
-  echo "::error::Invalid login did not render the expected user-visible authentication error"
+# The hosted API can cold-start; wait for the actual authentication response,
+# but keep the assertion strict and bounded rather than accepting a missing error.
+login_error_ready=0
+for attempt in 1 2 3 4 5 6; do
+  sleep 5
+  timeout 45 adb shell uiautomator dump /sdcard/dallyletter-login-error.xml >/dev/null
+  timeout 20 adb pull /sdcard/dallyletter-login-error.xml /tmp/dallyletter-login-error.xml >/dev/null
+  if grep -Fqi 'Invalid email or password' /tmp/dallyletter-login-error.xml; then
+    login_error_ready=1
+    break
+  fi
+  echo "Authentication error not rendered yet (attempt $attempt/6); waiting for API response."
+done
+if [ "$login_error_ready" -ne 1 ]; then
+  echo "::error::Invalid login did not render the expected user-visible authentication error within 30 seconds"
   cat /tmp/dallyletter-login-error.xml || true
   exit 1
 fi
