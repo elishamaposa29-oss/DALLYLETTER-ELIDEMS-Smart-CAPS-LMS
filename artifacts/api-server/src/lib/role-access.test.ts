@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canAccessManager, canManageAcademicContent, canUseStaffAI, isOwnerRole, normalizeRole } from "./role-access.js";
+import { canAccessManager, canManageAcademicContent, canUseStaffAI, enforceAcademicStaffAccess, enforceAuthenticated, enforceOwnerAccess, isOwnerRole, normalizeRole } from "./role-access.js";
 
 test("normalizes legacy role casing and separators",()=>{
  assert.equal(normalizeRole(" Senior Manager "), "senior_manager");
@@ -39,5 +39,40 @@ test("owner and admin have owner-class access",()=>{
   assert.equal(canUseStaffAI({role}),true);
   assert.equal(canManageAcademicContent({role}),true);
   assert.equal(canAccessManager({role}),true);
+ }
+});
+
+function mockResponse(){
+ let statusCode=200; let payload:unknown=null;
+ const res={status(code:number){statusCode=code;return res;},json(value:unknown){payload=value;return res;}};
+ return {res,status:()=>statusCode,payload:()=>payload};
+}
+test("authentication guard returns 401 without a session and never calls next",()=>{
+ const response=mockResponse();let nextCalls=0;
+ enforceAuthenticated({},response.res,()=>{nextCalls+=1;});
+ assert.equal(response.status(),401);assert.equal(nextCalls,0);
+});
+test("owner guard denies students and managers but permits owner-class roles",()=>{
+ for(const user of [{role:"student"},{role:"teacher",isManager:true},{role:"senior_manager"}]){
+  const response=mockResponse();let nextCalls=0;
+  enforceOwnerAccess({currentUser:user},response.res,()=>{nextCalls+=1;});
+  assert.equal(response.status(),403,String(user.role));assert.equal(nextCalls,0);
+ }
+ for(const user of [{role:"owner"},{role:"admin"},{role:"platform_owner"}]){
+  const response=mockResponse();let nextCalls=0;
+  enforceOwnerAccess({currentUser:user},response.res,()=>{nextCalls+=1;});
+  assert.equal(response.status(),200,String(user.role));assert.equal(nextCalls,1);
+ }
+});
+test("academic staff guard denies learners and allows teacher and explicit manager",()=>{
+ for(const user of [{role:"student"},{role:"prefect"},{role:"unknown"}]){
+  const response=mockResponse();let nextCalls=0;
+  enforceAcademicStaffAccess({currentUser:user},response.res,()=>{nextCalls+=1;});
+  assert.equal(response.status(),403,String(user.role));assert.equal(nextCalls,0);
+ }
+ for(const user of [{role:"teacher"},{role:"teacher",isManager:true},{role:"owner"}]){
+  const response=mockResponse();let nextCalls=0;
+  enforceAcademicStaffAccess({currentUser:user},response.res,()=>{nextCalls+=1;});
+  assert.equal(response.status(),200,String(user.role));assert.equal(nextCalls,1);
  }
 });
