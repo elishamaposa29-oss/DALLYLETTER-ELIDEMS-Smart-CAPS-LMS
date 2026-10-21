@@ -296,7 +296,7 @@ export default function FeatureHub() {
   }, [request, refetchNotifications, refetchGroups, user?.id, role, isStudent]);
 
   useEffect(() => {
-    if ((routeParams.section === "payments" || routeParams.section === "achievements" || routeParams.section === "prefect" || routeParams.section === "reports" || routeParams.section === "messages" || routeParams.section === "audit") && section !== routeParams.section) void loadSection(routeParams.section as Section);
+    if ((routeParams.section === "notifications" || routeParams.section === "payments" || routeParams.section === "achievements" || routeParams.section === "prefect" || routeParams.section === "reports" || routeParams.section === "messages" || routeParams.section === "audit") && section !== routeParams.section) void loadSection(routeParams.section as Section);
   }, [routeParams.section, section, loadSection]);
 
   const openRow = async (row: Row) => {
