@@ -3,7 +3,7 @@ import { type Request, type Response, type NextFunction } from "express";
 import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { parseToken } from "../routes/auth";
-import { normalizeRole, isOwnerRole, canManageAcademicContent, canAccessManager } from "./role-access";
+import { normalizeRole, isOwnerRole, canManageAcademicContent, canAccessManager, enforceAuthenticated, enforceOwnerAccess, enforceAcademicStaffAccess } from "./role-access";
 export { normalizeRole, isOwnerRole, canManageAcademicContent, canAccessManager } from "./role-access";
 
 // Extend Express Request to include user
@@ -46,31 +46,19 @@ export async function extractUser(req: Request, _res: Response, next: NextFuncti
 
 // Middleware that requires authentication
 export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
-  if (!req.currentUser) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
-  next();
+  enforceAuthenticated(req, res, next);
 }
 
 // Middleware that requires owner role
 export async function requireOwner(req: Request, res: Response, next: NextFunction): Promise<void> {
-  if (!req.currentUser || !isOwnerRole(req.currentUser.role)) {
-    res.status(403).json({ error: "Owner access required" });
-    return;
-  }
-  next();
+  enforceOwnerAccess(req, res, next);
 }
 
 // Middleware that requires teacher, manager, or owner role.
 // Student/payment-health rules are deliberately not applied here: they belong
 // to product-specific access decisions, not generic staff authorization.
 export async function requireTeacherOrOwner(req: Request, res: Response, next: NextFunction): Promise<void> {
-  if (!req.currentUser || !canManageAcademicContent(req.currentUser)) {
-    res.status(403).json({ error: "Teacher or manager access required" });
-    return;
-  }
-  next();
+  enforceAcademicStaffAccess(req, res, next);
 }
 
 
