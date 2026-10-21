@@ -3,6 +3,8 @@ import { type Request, type Response, type NextFunction } from "express";
 import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { parseToken } from "../routes/auth";
+import { normalizeRole, isOwnerRole, canManageAcademicContent, canAccessManager } from "./role-access";
+export { normalizeRole, isOwnerRole, canManageAcademicContent, canAccessManager } from "./role-access";
 
 // Extend Express Request to include user
 declare global {
@@ -11,25 +13,6 @@ declare global {
       currentUser?: typeof usersTable.$inferSelect;
     }
   }
-}
-
-/** Normalize role values at the authentication boundary so legacy/case-variant
- * database values cannot silently disagree with route authorization checks. */
-export function normalizeRole(role: unknown): string {
-  return typeof role === "string" ? role.trim().toLowerCase() : "";
-}
-
-/** Roles that have platform-owner privileges. */
-export function isOwnerRole(role: unknown): boolean {
-  return ["owner", "admin"].includes(normalizeRole(role));
-}
-
-/** Academic-content staff. Manager is an explicit staff flag in the existing
- * user model; it grants the same content-management capability as teacher,
- * but does not grant owner-only administration. */
-export function canManageAcademicContent(user: NonNullable<Express.Request["currentUser"]>): boolean {
-  const role = normalizeRole(user.role);
-  return role === "teacher" || isOwnerRole(role) || user.isManager === true;
 }
 
 // Middleware that extracts user from token (non-blocking — user may be null)
@@ -91,7 +74,3 @@ export async function requireTeacherOrOwner(req: Request, res: Response, next: N
 }
 
 
-/** Manager dashboard access: owner or users explicitly promoted to manager. */
-export function canAccessManager(user: NonNullable<Express.Request["currentUser"]>): boolean {
-  return isOwnerRole(user.role) || user.isManager === true;
-}
