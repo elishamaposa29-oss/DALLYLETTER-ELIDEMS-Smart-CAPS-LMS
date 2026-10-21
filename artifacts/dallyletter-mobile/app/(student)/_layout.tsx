@@ -1,13 +1,21 @@
 import { Feather } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
-import { Tabs } from "expo-router";
-import { Platform, StyleSheet, View } from "react-native";
+import { Redirect, Tabs } from "expo-router";
+import { ActivityIndicator, Platform, StyleSheet, View } from "react-native";
+import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
 export default function StudentTabLayout() {
   const colors = useColors();
+  const { user, isLoading } = useAuth();
+  const role = String(user?.role || "").toLowerCase();
+  const allowed = role === "student" || role === "prefect";
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
+
+  if (isLoading) return <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background }}><ActivityIndicator color={colors.primary} /></View>;
+  if (!user) return <Redirect href="/login" />;
+  if (!allowed) return <Redirect href="/" />;
 
   return (
     <Tabs
