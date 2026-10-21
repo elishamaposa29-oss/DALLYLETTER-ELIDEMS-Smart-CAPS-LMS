@@ -28,7 +28,7 @@ router.post("/push/subscriptions", requireAuth, async (req, res): Promise<void> 
 
 router.post("/push/expo-subscriptions", requireAuth, async (req, res): Promise<void> => {
   const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
-  if (!/^(?:ExponentPushToken|ExpoPushToken)\\[[^\\]\\s]{8,256}\\]$/.test(token)) {
+  if (!/^(?:ExponentPushToken|ExpoPushToken)\[[^\]\s]{8,256}\]$/.test(token)) {
     res.status(400).json({ error: "A valid Expo push token is required" });
     return;
   }
