@@ -1,5 +1,10 @@
 name: Mobile Android Build and Smoke Test
 
+# Keep one expensive APK/emulator run per PR/branch; newer revisions supersede older ones.
+concurrency:
+  group: mobile-android-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 on:
   workflow_dispatch:
   pull_request:
