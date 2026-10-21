@@ -161,7 +161,7 @@ export default function TeacherLessons() {
       justifyContent: "center",
     },
     list: { flex: 1 },
-    listContent: { padding: 16, paddingBottom: 100 },
+    listContent: { padding: 16, paddingBottom: 100 , width: "100%", maxWidth: 1180, alignSelf: "center" },
     card: {
       backgroundColor: colors.card,
       borderRadius: colors.radius,
