@@ -34,6 +34,7 @@ export default function OfflineMediaDownload({ url, fileName, accessibilityLabel
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const resolved = resolveMediaUrl(url);
+  const directMedia = /^\/api\/(?:lessons|messages|assignments|exercises)\/media\//i.test(url) || /\.(?:png|jpe?g|gif|webp|avif|mp4|m4v|mov|webm|mp3|m4a|aac|ogg|wav|pdf|docx?|pptx?|xlsx?)(?:[?#].*)?$/i.test(url) || /[?&]type=(?:image|video|audio|application%2Fpdf|application\/pdf)\//i.test(url);
   useEffect(() => {
     let active = true;
     void getOfflineMediaUri(user?.id, url).then(async localUri => {
@@ -82,6 +83,7 @@ export default function OfflineMediaDownload({ url, fileName, accessibilityLabel
     try { await removeOfflineMedia(user.id, url); setSaved(null); }
     catch (error) { Alert.alert("Could not remove download", error instanceof Error ? error.message : "Please retry."); }
   };
+  if (!directMedia && !saved) return <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 6 }}>External link · Internet required</Text>;
   return <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 8 }}>
     <TouchableOpacity accessibilityRole="button" accessibilityLabel={accessibilityLabel || (saved ? "Open saved offline media" : "Download media for offline use")} disabled={busy} onPress={saved ? () => void openSaved() : () => void download} style={{ paddingHorizontal: 12, paddingVertical: 9, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, flexDirection: "row", alignItems: "center", gap: 7, opacity: busy ? 0.7 : 1 }}>
       {busy ? <ActivityIndicator size="small" color={colors.primary}/> : null}
