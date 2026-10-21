@@ -40,6 +40,11 @@ export default function FeatureHub() {
   const [attachmentUrl, setAttachmentUrl] = useState("");
   const [uploading, setUploading] = useState(false);
   const [submissionMap, setSubmissionMap] = useState<Record<number, Row[]>>({});
+  const [selectedSubmission, setSelectedSubmission] = useState<Row | null>(null);
+  const [submissionDetail, setSubmissionDetail] = useState<any>(null);
+  const [exerciseMarks, setExerciseMarks] = useState<Record<number, string>>({});
+  const [exerciseNotes, setExerciseNotes] = useState<Record<number, string>>({});
+  const [overallComment, setOverallComment] = useState("");
   const { data: notifications, refetch: refetchNotifications } = useListNotifications();
   const markRead = useMarkNotificationRead();
   const { data: studyGroups, refetch: refetchGroups } = useListStudyGroups();
@@ -85,7 +90,7 @@ export default function FeatureHub() {
   }, [token]);
 
   const loadSection = useCallback(async (target: Section) => {
-    setSection(target); setSelected(null); setDetail(null); setError(""); setLoading(true); setRows([]);
+    setSection(target); setSelected(null); setDetail(null); setSelectedSubmission(null); setSubmissionDetail(null); setError(""); setLoading(true); setRows([]);
     try {
       if (target === "notifications") { await refetchNotifications(); setRows([]); }
       else if (target === "groups") { await refetchGroups(); setRows([]); }
@@ -99,7 +104,7 @@ export default function FeatureHub() {
   }, [request, refetchNotifications, refetchGroups]);
 
   const openRow = async (row: Row) => {
-    setSelected(row); setDetail(null); setAnswers({}); setAnswerText(""); setError("");
+    setSelected(row); setDetail(null); setSelectedSubmission(null); setSubmissionDetail(null); setAnswers({}); setAnswerText(""); setError("");
     if (section === "assignments" && isTeacher) {
       try { const data = await request(`/api/assignments/${row.id}/submissions`); setSubmissionMap(old => ({ ...old, [row.id]: Array.isArray(data) ? data : [] })); }
       catch (e) { setError(e instanceof Error ? e.message : "Submissions unavailable"); }
@@ -107,6 +112,10 @@ export default function FeatureHub() {
       try {
         const path = section === "exercises" ? `/api/exercises/${row.id}` : `/api/polls/${row.id}`;
         setDetail(await request(path));
+        if (section === "exercises" && isTeacher) {
+          const submissions = await request(`/api/exercises/${row.id}/submissions`);
+          setSubmissionMap(old => ({ ...old, [row.id]: Array.isArray(submissions) ? submissions : [] }));
+        }
       } catch (e) { setError(e instanceof Error ? e.message : "Could not open this item"); }
     }
   };
@@ -122,9 +131,9 @@ export default function FeatureHub() {
     try {
       const form = new FormData();
       form.append("file", { uri: asset.uri, name: asset.fileName || "lesson-media", type: asset.mimeType || (asset.type === "video" ? "video/mp4" : "image/jpeg") } as any);
-      const result = await request("/api/lessons/media", { method: "POST", body: form });
-      if (!result.mediaUrl) throw new Error("Upload completed without a media link");
-      setAttachmentUrl(result.mediaUrl);
+      const result = await request("/api/assignments/material", { method: "POST", body: form });
+      if (!result.attachmentUrl) throw new Error("Upload completed without an attachment link");
+      setAttachmentUrl(result.attachmentUrl);
       Alert.alert("Uploaded", "Media is ready to attach to your assignment.");
     } catch (e) { Alert.alert("Upload failed", e instanceof Error ? e.message : "Please retry."); }
     finally { setUploading(false); }
@@ -196,6 +205,35 @@ export default function FeatureHub() {
     } catch (e) { Alert.alert("Marking failed", e instanceof Error ? e.message : "Retry."); }
   };
 
+  const loadExerciseSubmission = async (submission: Row) => {
+    if (!isTeacher || !selected) return;
+    setSelectedSubmission(submission); setSubmissionDetail(null); setExerciseMarks({}); setExerciseNotes({}); setOverallComment("");
+    try {
+      const data = await request(`/api/exercises/${selected.id}/submissions/${submission.id}`);
+      setSubmissionDetail(data);
+      const answerRows = Array.isArray(data?.answers) ? data.answers : [];
+      setExerciseMarks(Object.fromEntries(answerRows.map((a: any) => [a.id, String(a.awardedMarks ?? 0)])));
+      setExerciseNotes(Object.fromEntries(answerRows.map((a: any) => [a.id, String(a.correctionNotes ?? "")])));
+      setOverallComment(String(data?.submission?.overallComment ?? ""));
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not load submission"); }
+  };
+
+  const returnExerciseMarking = async () => {
+    if (!isTeacher || !selected || !selectedSubmission || !submissionDetail) return;
+    const answerRows = Array.isArray(submissionDetail.answers) ? submissionDetail.answers : [];
+    const marks = answerRows.map((a: any) => ({ answerId: a.id, awardedMarks: Number(exerciseMarks[a.id] ?? 0), correctionNotes: exerciseNotes[a.id] ?? "", markingData: a.markingData ?? { ticks: [] } }));
+    if (marks.some((m: any) => !Number.isFinite(m.awardedMarks) || m.awardedMarks < 0)) { Alert.alert("Check marks", "Marks must be zero or greater."); return; }
+    setBusy(true);
+    try {
+      await request(`/api/exercises/${selected.id}/submissions/${selectedSubmission.id}/mark`, { method: "POST", body: JSON.stringify({ marks, overallComment }) });
+      Alert.alert("Marked", "The result and feedback were returned to the learner.");
+      const fresh = await request(`/api/exercises/${selected.id}/submissions`);
+      setSubmissionMap(old => ({ ...old, [selected.id]: Array.isArray(fresh) ? fresh : [] }));
+      await loadExerciseSubmission(selectedSubmission);
+    } catch (e) { Alert.alert("Marking failed", e instanceof Error ? e.message : "Could not save marking."); }
+    finally { setBusy(false); }
+  };
+
   const uploadAssignmentAttachment = async () => {
     if (!isStudent) return;
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -251,6 +289,7 @@ export default function FeatureHub() {
         {section === "notifications" && activeNotifications.map((n: any) => <TouchableOpacity key={n.id} style={styles.card} onPress={() => { if (!n.isRead) markRead.mutate({ id: n.id } as any); if (n.actionUrl) openUrl(n.actionUrl); }}><View style={styles.icon}><Feather name={"bell"} size={20} color={colors.primary}/></View><View style={styles.grow}><Text style={styles.cardTitle}>{n.title || n.message || "Notification"}</Text><Text style={styles.muted}>{n.body || n.description || n.createdAt || ""}</Text></View>{!n.isRead && <View style={{width:8,height:8,borderRadius:4,backgroundColor:colors.accent}}/>}</TouchableOpacity>)}
         {section === "groups" && (Array.isArray(groups) ? groups : []).map((g: any) => <View key={g.id} style={styles.card}><View style={styles.icon}><Feather name="users" size={20} color={colors.primary}/></View><View style={styles.grow}><Text style={styles.cardTitle}>{g.name}</Text><Text style={styles.muted}>{g.subject || "Study group"} · {g.memberCount ?? g.members?.length ?? 0} members</Text><Text style={styles.muted}>{g.description || ""}</Text></View>{!g.isMember && isStudent && <TouchableOpacity onPress={() => joinGroup.mutate({ id: g.id } as any)}><Text style={{color:colors.primary,fontFamily:"Inter_600SemiBold"}}>Join</Text></TouchableOpacity>}</View>)}
         {["assignments", "exercises", "polls"].includes(section) && rows.map(row => <TouchableOpacity key={row.id} style={styles.card} onPress={() => void openRow(row)}><View style={styles.icon}><Feather name={section === "assignments" ? "clipboard" : section === "exercises" ? "edit-3" : "check-square"} size={20} color={colors.primary}/></View><View style={styles.grow}><Text style={styles.cardTitle}>{row.title || row.name || "Untitled"}</Text><Text style={styles.muted}>{[row.subject, row.grade, row.dueDate ? `Due ${String(row.dueDate).slice(0,10)}` : null, row.status].filter(Boolean).join(" · ")}</Text>{row.description ? <Text numberOfLines={3} style={styles.muted}>{row.description}</Text> : null}{row.attachmentUrl ? <Text style={{color:colors.primary,fontSize:12,marginTop:5}}>Attachment available</Text> : null}</View><Feather name="chevron-right" size={18} color={colors.mutedForeground}/></TouchableOpacity>)}
+        {section === "exercises" && isTeacher && selected && <View style={styles.card}><View style={styles.grow}><Text style={styles.sectionTitle}>Exercise submissions · {selected.title}</Text>{(submissionMap[selected.id] || []).map(sub => <TouchableOpacity key={sub.id} onPress={() => void loadExerciseSubmission(sub)} style={{paddingVertical:10,borderBottomWidth:1,borderBottomColor:colors.border}}><Text style={styles.cardTitle}>{sub.studentName || sub.student?.name || `Learner #${sub.studentId ?? "?"}`}</Text><Text style={styles.muted}>{sub.status || "Submitted"} · {sub.totalScore != null ? `Score ${sub.totalScore}` : "Awaiting marking"}</Text></TouchableOpacity>)}{selectedSubmission && submissionDetail && <View style={{marginTop:14}}><Text style={styles.cardTitle}>Marking · {selectedSubmission.studentName || selectedSubmission.student?.name || "Learner"}</Text>{(submissionDetail.answers || []).map((a:any,index:number)=><View key={a.id} style={{paddingVertical:12,borderBottomWidth:1,borderBottomColor:colors.border}}><Text style={styles.cardTitle}>Question {index+1}</Text><Text style={styles.body}>{a.textAnswer || a.selectedValue || (a.mediaReference ? "Learner attached media" : a.drawData ? "Learner submitted a drawing" : "No written answer")}</Text>{a.mediaReference ? <TouchableOpacity onPress={() => openUrl(a.mediaReference)}><Text style={{color:colors.primary,marginTop:5}}>Open answer media</Text></TouchableOpacity> : null}<TextInput style={styles.input} keyboardType="numeric" value={exerciseMarks[a.id] ?? "0"} onChangeText={v=>setExerciseMarks(old=>({...old,[a.id]:v}))} placeholder="Marks awarded" placeholderTextColor={colors.mutedForeground}/><TextInput style={[styles.input,styles.textArea]} multiline value={exerciseNotes[a.id] ?? ""} onChangeText={v=>setExerciseNotes(old=>({...old,[a.id]:v}))} placeholder="Correction / feedback" placeholderTextColor={colors.mutedForeground}/></View>)}<TextInput style={[styles.input,styles.textArea]} multiline value={overallComment} onChangeText={setOverallComment} placeholder="Overall feedback to learner" placeholderTextColor={colors.mutedForeground}/><TouchableOpacity style={styles.button} onPress={() => void returnExerciseMarking()} disabled={busy}><Text style={styles.buttonText}>{busy?"Saving marks…":"Save marks and return result"}</Text></TouchableOpacity></View>}</View></View>}
         {section === "assignments" && isStudent && selected && <View style={styles.card}><View style={styles.grow}><Text style={styles.sectionTitle}>Submit: {selected.title}</Text><TextInput style={[styles.input,styles.textArea]} multiline value={answerText} onChangeText={setAnswerText} placeholder="Write your answer or submission notes" placeholderTextColor={colors.mutedForeground}/><TouchableOpacity style={[styles.button,styles.secondary]} onPress={() => void uploadAssignmentAttachment()} disabled={uploading}><Text style={[styles.buttonText,styles.secondaryText]}>{uploading ? "Uploading…" : attachmentUrl ? "Replace attachment" : "Attach image/video"}</Text></TouchableOpacity><TouchableOpacity style={styles.button} onPress={() => void submitAssignment()} disabled={busy}><Text style={styles.buttonText}>{busy ? "Submitting…" : "Submit assignment"}</Text></TouchableOpacity></View></View>}
         {section === "assignments" && isTeacher && selected && <View style={styles.card}><View style={styles.grow}><Text style={styles.sectionTitle}>Submissions · {selected.title}</Text>{(submissionMap[selected.id] || []).map(sub => <View key={sub.id} style={{paddingVertical:10,borderBottomWidth:1,borderBottomColor:colors.border}}><Text style={styles.cardTitle}>{sub.studentName || sub.student?.name || `Learner #${sub.studentId ?? "?"}`}</Text><Text style={styles.muted}>{sub.content || sub.fileName || "No written response"} · {sub.status || "Submitted"}</Text>{sub.fileUrl && <TouchableOpacity onPress={() => openUrl(sub.fileUrl)}><Text style={{color:colors.primary,marginTop:5}}>Open attachment</Text></TouchableOpacity>}<TextInput style={styles.input} keyboardType="numeric" placeholder={`Marks / ${selected.totalMarks || 100}`} placeholderTextColor={colors.mutedForeground} onSubmitEditing={e => void markAssignment(sub,e.nativeEvent.text)}/></View>)}</View></View>}
         {(section === "exercises" || section === "polls") && selected && detail && <View style={styles.card}><View style={styles.grow}><Text style={styles.sectionTitle}>{detail.exercise?.title || detail.poll?.title || selected.title}</Text><Text style={styles.body}>{detail.exercise?.description || detail.description || ""}</Text>{(detail.questions || []).map((q: any, index: number) => <View key={q.id} style={{marginTop:16,paddingTop:12,borderTopWidth:1,borderTopColor:colors.border}}><Text style={styles.cardTitle}>{index+1}. {q.question || q.prompt || "Question"}</Text>{q.imageUrl && <TouchableOpacity onPress={() => openUrl(q.imageUrl)}><Text style={{color:colors.primary,marginTop:5}}>Open question image</Text></TouchableOpacity>}{section === "polls" ? (q.options || []).map((o:any) => <TouchableOpacity key={o.id} style={[styles.card,{marginTop:8,borderColor:answers[String(q.id)]===o.id?colors.primary:colors.border}]} onPress={() => setAnswers(a=>({...a,[String(q.id)]:o.id}))}><Feather name={answers[String(q.id)]===o.id?"check-circle":"circle"} size={18} color={colors.primary}/><Text style={[styles.body,{flex:1}]}>{o.text}</Text></TouchableOpacity>) : <TextInput style={[styles.input,styles.textArea,{marginTop:8}]} multiline value={answers[String(q.id)]?.textAnswer || ""} onChangeText={v=>setAnswers(a=>({...a,[String(q.id)]:{textAnswer:v}}))} placeholder="Your answer" placeholderTextColor={colors.mutedForeground}/>}</View>)}{isStudent && <TouchableOpacity style={styles.button} onPress={() => section==="polls"?void submitPoll():void submitExercise()} disabled={busy}><Text style={styles.buttonText}>{busy?"Submitting…":section==="polls"?"Submit quiz":"Submit exercise"}</Text></TouchableOpacity>}{!isStudent && <Text style={styles.muted}>Preview only: staff can inspect content but cannot submit as a learner.</Text>}</View></View>}
