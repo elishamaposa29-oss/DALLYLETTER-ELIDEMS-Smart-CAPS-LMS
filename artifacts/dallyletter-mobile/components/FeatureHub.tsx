@@ -67,7 +67,7 @@ export default function FeatureHub() {
   const [exerciseLessonId, setExerciseLessonId] = useState("");
   const [exerciseTitle, setExerciseTitle] = useState("");
   const [exerciseInstructions, setExerciseInstructions] = useState("");
-  const [exerciseDraftQuestions, setExerciseDraftQuestions] = useState<Array<{prompt:string;type:"input"|"poll"|"drawbox";marks:string;options:string[];correct:number}>>([{prompt:"",type:"input",marks:"1",options:["Option A","Option B"],correct:0}]);
+  const [exerciseDraftQuestions, setExerciseDraftQuestions] = useState<Array<{prompt:string;type:"input"|"poll"|"drawbox";marks:string;options:string[];correct:number;drawData?:Record<string,any>}>>([{prompt:"",type:"input",marks:"1",options:["Option A","Option B"],correct:0,drawData:{}}]);
   const [exerciseBuilderBusy, setExerciseBuilderBusy] = useState(false);
   const [exerciseDraftId, setExerciseDraftId] = useState<number | null>(null);
   const [exerciseQuestionsSaved, setExerciseQuestionsSaved] = useState(0);
@@ -403,8 +403,8 @@ export default function FeatureHub() {
     finally { setUploadingAnswerId(null); }
   };
 
-  const addExerciseQuestion = () => setExerciseDraftQuestions(old => [...old, { prompt:"", type:"input", marks:"1", options:["Option A","Option B"], correct:0 }]);
-  const updateExerciseQuestion = (index:number, patch:Partial<{prompt:string;type:"input"|"poll"|"drawbox";marks:string;options:string[];correct:number}>) => setExerciseDraftQuestions(old => old.map((q,i)=>i===index?{...q,...patch}:q));
+  const addExerciseQuestion = () => setExerciseDraftQuestions(old => [...old, { prompt:"", type:"input", marks:"1", options:["Option A","Option B"], correct:0, drawData:{} }]);
+  const updateExerciseQuestion = (index:number, patch:Partial<{prompt:string;type:"input"|"poll"|"drawbox";marks:string;options:string[];correct:number;drawData?:Record<string,any>}>) => setExerciseDraftQuestions(old => old.map((q,i)=>i===index?{...q,...patch}:q));
   const createMobileExercise = async () => {
     if (!(isTeacher || ["owner","admin","platform_owner"].includes(role) || Boolean((user as any)?.isManager))) { Alert.alert("Preview only","Your role cannot create exercises."); return; }
     if (!exerciseLessonId || !exerciseTitle.trim() || !exerciseDraftQuestions.length || exerciseDraftQuestions.some(q=>!q.prompt.trim() || !Number.isFinite(Number(q.marks)) || Number(q.marks)<0 || Math.round(Number(q.marks)*2)!==Number(q.marks)*2)) { Alert.alert("Complete exercise","Choose a lesson, enter a title, and give every question a prompt and marks in 0.5 increments."); return; }
@@ -420,13 +420,13 @@ export default function FeatureHub() {
       }
       for (let index=exerciseQuestionsSaved; index<exerciseDraftQuestions.length; index++) {
         const q=exerciseDraftQuestions[index];
-        const payload:any={prompt:q.prompt.trim(),type:q.type,marksAllocated:Number(q.marks),position:index,config:{}};
+        const payload:any={prompt:q.prompt.trim(),type:q.type,marksAllocated:Number(q.marks),position:index,config:q.type==="drawbox"?{teacherDrawing:q.drawData||{}}:{}};
         if(q.type==="poll") payload.options=q.options.filter(o=>o.trim()).map((label,i)=>({label:label.trim(),value:label.trim(),isCorrect:i===q.correct}));
         await request(`/api/exercises/${exerciseId}/questions`,{method:"POST",body:JSON.stringify(payload)});
         setExerciseQuestionsSaved(index+1);
       }
       await request(`/api/exercises/${exerciseId}/publish`,{method:"POST",body:JSON.stringify({})});
-      setExerciseBuilderOpen(false); setExerciseTitle(""); setExerciseInstructions(""); setExerciseLessonId(""); setExerciseDraftId(null); setExerciseQuestionsSaved(0); setExerciseDraftQuestions([{prompt:"",type:"input",marks:"1",options:["Option A","Option B"],correct:0}]);
+      setExerciseBuilderOpen(false); setExerciseTitle(""); setExerciseInstructions(""); setExerciseLessonId(""); setExerciseDraftId(null); setExerciseQuestionsSaved(0); setExerciseDraftQuestions([{prompt:"",type:"input",marks:"1",options:["Option A","Option B"],correct:0,drawData:{}}]);
       await loadSection("exercises");
       Alert.alert("Exercise published","Your exercise and questions are published for eligible learners.");
     } catch(e) { Alert.alert(exerciseId?`Draft #${exerciseId} preserved`:"Exercise not created",e instanceof Error?e.message:"Reconnect and retry. Saved questions are tracked so retrying this builder does not intentionally recreate them."); }
@@ -799,6 +799,7 @@ export default function FeatureHub() {
                 <TextInput style={[styles.input,styles.textArea]} value={q.prompt} onChangeText={v=>updateExerciseQuestion(index,{prompt:v})} multiline placeholder="Question prompt" placeholderTextColor={colors.mutedForeground}/>
                 <View style={{flexDirection:"row",flexWrap:"wrap",gap:8}}>{([{value:"input",label:"Written"},{value:"poll",label:"Multiple choice"},{value:"drawbox",label:"Drawing"}] as const).map(t=><TouchableOpacity key={t.value} style={[styles.button,{marginTop:0,backgroundColor:q.type===t.value?colors.primary:colors.card,borderWidth:q.type===t.value?0:1,borderColor:colors.border}]} onPress={()=>updateExerciseQuestion(index,{type:t.value})}><Text style={[styles.buttonText,q.type!==t.value&&styles.secondaryText]}>{t.label}</Text></TouchableOpacity>)}</View>
                 <TextInput style={styles.input} value={q.marks} onChangeText={v=>updateExerciseQuestion(index,{marks:v})} keyboardType="decimal-pad" placeholder="Marks (e.g. 2 or 0.5)" placeholderTextColor={colors.mutedForeground}/>
+                {q.type==="drawbox" && <View style={{marginTop:8}}><Text style={styles.muted}>Optional teacher diagram / drawing template</Text><MobileDrawAnswer value={q.drawData||{}} onChange={drawData=>updateExerciseQuestion(index,{drawData})}/></View>}
                 {q.type==="poll" && <View style={{gap:8}}><Text style={styles.muted}>Options — select the correct answer</Text>{q.options.map((option,oi)=><View key={oi} style={{flexDirection:"row",alignItems:"center",gap:8}}><TouchableOpacity onPress={()=>updateExerciseQuestion(index,{correct:oi})}><Feather name={q.correct===oi?"check-circle":"circle"} size={20} color={colors.primary}/></TouchableOpacity><TextInput style={[styles.input,{flex:1,marginBottom:0}]} value={option} onChangeText={v=>updateExerciseQuestion(index,{options:q.options.map((old,j)=>j===oi?v:old)})} placeholder={`Option ${oi+1}`} placeholderTextColor={colors.mutedForeground}/><TouchableOpacity onPress={()=>updateExerciseQuestion(index,{options:q.options.filter((_,j)=>j!==oi),correct:Math.max(0,Math.min(q.correct,q.options.length-2))})} disabled={q.options.length<=2}><Feather name="trash-2" size={18} color={q.options.length<=2?colors.mutedForeground:"#dc2626"}/></TouchableOpacity></View>)}<TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>updateExerciseQuestion(index,{options:[...q.options,""]})}><Text style={[styles.buttonText,styles.secondaryText]}>Add option</Text></TouchableOpacity></View>}
                 {exerciseDraftQuestions.length>1 && <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>setExerciseDraftQuestions(old=>old.filter((_,i)=>i!==index))}><Text style={[styles.buttonText,styles.secondaryText]}>Remove question</Text></TouchableOpacity>}
               </View>)}
