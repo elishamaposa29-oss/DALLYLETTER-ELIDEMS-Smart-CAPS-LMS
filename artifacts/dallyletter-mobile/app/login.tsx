@@ -46,11 +46,16 @@ export default function LoginScreen() {
       },
       onError: (requestError: any) => {
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        const status = Number(requestError?.response?.status ?? requestError?.status);
+        const errorMessage = String(requestError?.message ?? "");
+        const status = Number(
+          requestError?.response?.status ??
+          requestError?.status ??
+          errorMessage.match(/(?:status code|status)\\s*[:=]?\\s*(\\d{3})/i)?.[1]
+        );
         const responseData = requestError?.response?.data;
-        // Keep invalid-credential feedback stable even when the API client only
-        // exposes a generic "Request failed with status code 401" message.
-        if (status === 401) {
+        // Generated API clients may expose only an Error.message rather than
+        // Axios response metadata. Preserve the specific 401 feedback in both cases.
+        if (status === 401 || /\\b401\\b/.test(errorMessage)) {
           setError("Invalid email or password. Please try again.");
           return;
         }
