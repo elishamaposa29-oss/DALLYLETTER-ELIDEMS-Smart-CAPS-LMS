@@ -14,7 +14,7 @@ import { useColors } from "@/hooks/useColors";
 import AuthenticatedMediaPreview from "@/components/AuthenticatedMediaPreview";
 import MobileDrawAnswer from "@/components/MobileDrawAnswer";
 
-type Section = "assignments" | "exercises" | "polls" | "notifications" | "groups" | "payments" | "achievements";
+type Section = "assignments" | "exercises" | "polls" | "notifications" | "groups" | "payments" | "achievements" | "prefect";
 type Row = Record<string, any> & { id: number; title?: string; name?: string };
 
 const sections: { id: Section; title: string; subtitle: string; icon: string }[] = [
@@ -25,6 +25,7 @@ const sections: { id: Section; title: string; subtitle: string; icon: string }[]
   { id: "groups", title: "Study groups", subtitle: "Groups, membership and learning communities", icon: "users" },
   { id: "payments", title: "School fees", subtitle: "Payment history and available payment methods", icon: "credit-card" },
   { id: "achievements", title: "Achievements", subtitle: "Earned badges, points and learner leaderboard", icon: "award" },
+  { id: "prefect", title: "Prefect dashboard", subtitle: "Request lessons and follow teachers or prefects", icon: "star" },
 ];
 
 export default function FeatureHub() {
@@ -87,6 +88,14 @@ export default function FeatureHub() {
   const [paymentSettings, setPaymentSettings] = useState<any>({});
   const [paymentBusy, setPaymentBusy] = useState(false);
   const [paymentReported, setPaymentReported] = useState(false);
+  const [prefectTeachers, setPrefectTeachers] = useState<Row[]>([]);
+  const [prefectLeaderboard, setPrefectLeaderboard] = useState<Row[]>([]);
+  const [prefectFollows, setPrefectFollows] = useState<Row[]>([]);
+  const [prefectTeacherId, setPrefectTeacherId] = useState("");
+  const [prefectTopic, setPrefectTopic] = useState("");
+  const [prefectDate, setPrefectDate] = useState("");
+  const [prefectNotes, setPrefectNotes] = useState("");
+  const [prefectBusy, setPrefectBusy] = useState(false);
   const [myBadges, setMyBadges] = useState<Row[]>([]);
   const [achievementLeaderboard, setAchievementLeaderboard] = useState<Row[]>([]);
   const [allAchievements, setAllAchievements] = useState<Row[]>([]);
@@ -99,7 +108,7 @@ export default function FeatureHub() {
 
   const role = String(user?.role ?? "guest").toLowerCase();
   const isStudent = role === "student";
-  const visibleSections = sections.filter(item => item.id !== "achievements" || isStudent);
+  const visibleSections = sections.filter(item => (item.id !== "achievements" || isStudent) && (item.id !== "prefect" || Boolean((user as any)?.isPrefect));
   const isTeacher = role === "teacher";
   const canCreateGroups = isTeacher || Boolean((user as any)?.isPrefect || (user as any)?.isManager) || ["owner", "admin", "platform_owner"].includes(role);
   const exerciseLocked = Boolean(exerciseResult?.submission?.status) && !newAttempt;
@@ -166,6 +175,14 @@ export default function FeatureHub() {
     try {
       if (target === "notifications") { await refetchNotifications(); setRows([]); }
       else if (target === "groups") { await refetchGroups(); setRows([]); }
+      else if (target === "prefect") {
+        if (!(user as any)?.isPrefect) throw new Error("Prefect access is required.");
+        const [teachers, leaderboard, requests, follows] = await Promise.all([request("/api/achievements/prefect-teachers"), request("/api/achievements/prefect-leaderboard"), request("/api/achievements/lesson-requests"), request("/api/follows")]);
+        setPrefectTeachers(Array.isArray(teachers) ? teachers : []);
+        setPrefectLeaderboard(Array.isArray(leaderboard) ? leaderboard : []);
+        setRows(Array.isArray(requests) ? requests : []);
+        setPrefectFollows(Array.isArray(follows) ? follows : []);
+      }
       else if (target === "achievements") {
         if (!isStudent) throw new Error("Learner access is required to view achievements.");
         const [mine, leaderboard, all] = await Promise.all([request("/api/achievements/my"), request("/api/achievements/leaderboard"), request("/api/achievements")]);
@@ -218,7 +235,7 @@ export default function FeatureHub() {
   }, [request, refetchNotifications, refetchGroups, user?.id, role, isStudent]);
 
   useEffect(() => {
-    if ((routeParams.section === "payments" || routeParams.section === "achievements") && section !== routeParams.section) void loadSection(routeParams.section as Section);
+    if ((routeParams.section === "payments" || routeParams.section === "achievements" || routeParams.section === "prefect") && section !== routeParams.section) void loadSection(routeParams.section as Section);
   }, [routeParams.section, section, loadSection]);
 
   const openRow = async (row: Row) => {
@@ -384,7 +401,44 @@ export default function FeatureHub() {
     finally { setBusy(false); }
   };
 
-  const paymentTotalOwed = rows.filter((p: any) => p.status !== "paid").reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+  const submitPrefectRequest = async () => {
+    if (!(user as any)?.isPrefect || !prefectTeacherId || !prefectTopic.trim() || prefectBusy) { Alert.alert("Teacher and topic required", "Choose a teacher and enter a lesson topic."); return; }
+    setPrefectBusy(true);
+    try {
+      await request("/api/achievements/lesson-requests", { method: "POST", body: JSON.stringify({ teacherId: Number(prefectTeacherId), topic: prefectTopic.trim(), preferredDate: prefectDate || null, notes: prefectNotes.trim() || null }) });
+      setPrefectTopic(""); setPrefectDate(""); setPrefectNotes("");
+      const requests = await request("/api/achievements/lesson-requests"); setRows(Array.isArray(requests) ? requests : []);
+      Alert.alert("Lesson request sent", "Your teacher has received the request.");
+    } catch (e) { Alert.alert("Request failed", e instanceof Error ? e.message : "Please retry when connected."); }
+    finally { setPrefectBusy(false); }
+  };
+
+  const togglePrefectFollow = async (targetType: "teacher" | "prefect", targetUserId: number, targetName: string) => {
+    if (!(user as any)?.isPrefect || prefectBusy) return;
+    setPrefectBusy(true);
+    try {
+      const existing = prefectFollows.find((item: any) => item.targetType === targetType && Number(item.targetUserId) === targetUserId);
+      if (existing) await request("/api/follows/" + existing.id, { method: "DELETE" });
+      else await request("/api/follows", { method: "POST", body: JSON.stringify({ targetType, targetUserId, targetName }) });
+      const follows = await request("/api/follows"); setPrefectFollows(Array.isArray(follows) ? follows : []);
+    } catch (e) { Alert.alert("Follow update failed", e instanceof Error ? e.message : "Please retry."); }
+    finally { setPrefectBusy(false); }
+  };
+
+  const deletePrefectRequest = async (id: number) => {
+    if (!(user as any)?.isPrefect || prefectBusy) return;
+    Alert.alert("Delete lesson request?", "This removes your request.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete", style: "destructive", onPress: async () => {
+        setPrefectBusy(true);
+        try { await request("/api/achievements/lesson-requests/" + id, { method: "DELETE" }); setRows(old => old.filter(item => item.id !== id)); }
+        catch (e) { Alert.alert("Could not delete request", e instanceof Error ? e.message : "Please retry."); }
+        finally { setPrefectBusy(false); }
+      } },
+    ]);
+  };
+
+  const paymentTotalOwed = rows.filter((p: any) => p.status !== "paid").reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);  const paymentTotalOwed = rows.filter((p: any) => p.status !== "paid").reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
   const startPaynow = async () => {
     if (!isStudent || paymentBusy || paymentTotalOwed <= 0) return;
     setPaymentBusy(true);
@@ -630,7 +684,24 @@ export default function FeatureHub() {
         {section === "assignments" && isStudent && selected && <View style={styles.card}><View style={styles.grow}><Text style={styles.sectionTitle}>Submit: {selected.title}</Text>{selected.description ? <Text style={styles.body}>{selected.description}</Text> : <Text style={styles.muted}>No additional instructions were provided.</Text>}{(submissionMap[selected.id] || []).slice(0,1).map(sub=><View key={sub.id} style={{backgroundColor:colors.background,borderRadius:10,padding:10,marginVertical:8}}><Text style={styles.cardTitle}>Previous submission: {sub.status || "Submitted"}</Text>{sub.marks != null ? <Text style={styles.muted}>Marks: {sub.marks}/{selected.totalMarks || "—"}</Text> : null}{sub.feedback ? <Text style={styles.muted}>Teacher feedback: {sub.feedback}</Text> : null}</View>)}{selected.attachmentUrl && !selected.referenceMaterialHidden ? <View style={{marginBottom:10}}><AuthenticatedMediaPreview url={String(selected.attachmentUrl)} height={180} accessibilityLabel="Assignment reference material"/><TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>openUrl(selected.attachmentUrl)}><Text style={[styles.buttonText,styles.secondaryText]}>Open reference material</Text></TouchableOpacity></View> : selected.referenceMaterialHidden ? <Text style={styles.muted}>Reference material is hidden by the teacher.</Text> : null}<TextInput style={[styles.input,styles.textArea]} multiline value={answerText} onChangeText={value=>{setAnswerText(value);if(user?.id&&selected?.id)void AsyncStorage.setItem("dallyletter_assignment_draft_"+user.id+"_"+selected.id,value).catch(()=>undefined);}} placeholder="Write your answer or submission notes" placeholderTextColor={colors.mutedForeground}/><TouchableOpacity style={[styles.button,styles.secondary]} onPress={() => void uploadAssignmentAttachment()} disabled={uploading}><Text style={[styles.buttonText,styles.secondaryText]}>{uploading ? "Uploading…" : attachmentUrl ? "Replace attachment" : "Attach image/video"}</Text></TouchableOpacity><TouchableOpacity style={styles.button} onPress={() => void submitAssignment()} disabled={busy}><Text style={styles.buttonText}>{busy ? "Submitting…" : "Submit assignment"}</Text></TouchableOpacity></View></View>}
         {section === "assignments" && isTeacher && selected && <View style={styles.card}><View style={styles.grow}><Text style={styles.sectionTitle}>Submissions · {selected.title}</Text>{(submissionMap[selected.id] || []).map(sub => <View key={sub.id} style={{paddingVertical:10,borderBottomWidth:1,borderBottomColor:colors.border}}><Text style={styles.cardTitle}>{sub.studentName || sub.student?.name || `Learner #${sub.studentId ?? "?"}`}</Text><Text style={styles.muted}>{sub.content || sub.fileName || "No written response"} · {sub.status || "Submitted"}</Text>{sub.fileUrl && <TouchableOpacity onPress={() => openUrl(sub.fileUrl)}><Text style={{color:colors.primary,marginTop:5}}>Open attachment</Text></TouchableOpacity>}<TextInput style={styles.input} keyboardType="numeric" value={assignmentMarks[sub.id] ?? String(sub.marks ?? "")} onChangeText={v=>setAssignmentMarks(old=>({...old,[sub.id]:v}))} placeholder={`Marks / ${selected.totalMarks || 100}`} placeholderTextColor={colors.mutedForeground}/><TextInput style={[styles.input,styles.textArea]} multiline value={assignmentFeedback[sub.id] ?? String(sub.feedback ?? "")} onChangeText={v=>setAssignmentFeedback(old=>({...old,[sub.id]:v}))} placeholder="Feedback for learner" placeholderTextColor={colors.mutedForeground}/><TouchableOpacity style={styles.button} onPress={()=>void markAssignment(sub,assignmentMarks[sub.id] ?? String(sub.marks ?? ""),assignmentFeedback[sub.id] ?? String(sub.feedback ?? ""))}><Text style={styles.buttonText}>Save marks and feedback</Text></TouchableOpacity></View>)}</View></View>}
         {(section === "exercises" || section === "polls") && selected && detail && <View style={styles.card}><View style={styles.grow}><Text style={styles.sectionTitle}>{detail.exercise?.title || detail.poll?.title || selected.title}</Text><Text style={styles.body}>{detail.exercise?.description || detail.description || ""}</Text>{section === "exercises" && isStudent && exerciseLocked && <View style={{marginTop:12,padding:12,borderRadius:10,backgroundColor:colors.background,borderWidth:1,borderColor:colors.border}}><Text style={styles.cardTitle}>Previous attempt: {exerciseResult?.submission?.status || "Submitted"}</Text>{exerciseResult?.submission?.totalScore != null ? <Text style={styles.muted}>Score: {exerciseResult.submission.totalScore}/{detail.exercise?.totalMarks ?? "—"}</Text> : <Text style={styles.muted}>Your attempt is saved. Start a new attempt if retries are available.</Text>}<TouchableOpacity style={[styles.button,styles.secondary]} onPress={async()=>{if(draftKey) await AsyncStorage.removeItem(draftKey).catch(()=>undefined);setAnswers({});setNewAttempt(true);setExerciseResult(null);setDraftKey(user?.id&&detail?.exercise?.id?`dallyletter_exercise_draft_${user.id}_${detail.exercise.id}`:null);}}><Text style={[styles.buttonText,styles.secondaryText]}>Start new attempt</Text></TouchableOpacity></View>}{section === "polls" && isStudent && !pollResult && <View style={{marginTop:12,padding:12,borderRadius:10,backgroundColor:colors.background}}><Text style={styles.cardTitle}>Result privacy</Text><Text style={styles.muted}>Choose who can see your poll results.</Text><View style={{flexDirection:"row",gap:8,marginTop:8}}>{(["private","public"] as const).map(option=><TouchableOpacity key={option} onPress={()=>setPollPrivacy(option)} style={{flex:1,padding:10,borderRadius:8,borderWidth:1,borderColor:pollPrivacy===option?colors.primary:colors.border,backgroundColor:pollPrivacy===option?colors.primary+"18":colors.card}}><Text style={{color:colors.foreground,textAlign:"center",fontWeight:"600"}}>{option==="private"?"Private":"Public"}</Text></TouchableOpacity>)}</View></View>}{(detail.questions || []).map((q: any, index: number) => <View key={q.id} style={{marginTop:16,paddingTop:12,borderTopWidth:1,borderTopColor:colors.border}}><Text style={styles.cardTitle}>{index+1}. {q.question || q.prompt || "Question"}</Text>{q.imageUrl && <View style={{ marginTop: 8 }}><AuthenticatedMediaPreview url={String(q.imageUrl)} height={180} accessibilityLabel={String(q.question || "Question image")} /><TouchableOpacity onPress={() => openUrl(q.imageUrl)}><Text style={{color:colors.primary,marginTop:5}}>Open question media</Text></TouchableOpacity></View>}{q.config?.attachment?.url ? <View style={{marginTop:8,padding:10,borderRadius:10,borderWidth:1,borderColor:colors.border}}><AuthenticatedMediaPreview url={String(q.config.attachment.url)} height={160} accessibilityLabel={String(q.config.attachment.fileName || q.question || "Question attachment")}/><Text style={styles.muted}>{q.config.attachment.fileName || "Question attachment"}</Text><TouchableOpacity onPress={()=>openUrl(String(q.config.attachment.url))}><Text style={{color:colors.primary,marginTop:5}}>Open question attachment</Text></TouchableOpacity></View> : null}{section === "polls" ? (q.options || []).map((o:any) => <TouchableOpacity key={o.id} disabled={Boolean(pollResult)} style={[styles.card,{marginTop:8,borderColor:answers[String(q.id)]===o.id?colors.primary:colors.border,opacity:pollResult?0.65:1}]} onPress={() => setAnswers(a=>({...a,[String(q.id)]:o.id}))}><Feather name={answers[String(q.id)]===o.id?"check-circle":"circle"} size={18} color={colors.primary}/><Text style={[styles.body,{flex:1}]}>{o.text}</Text></TouchableOpacity>) : q.type === "poll" ? ((detail.options || []).filter((o:any)=>Number(o.questionId)===Number(q.id))).map((o:any)=><TouchableOpacity key={o.id} disabled={exerciseLocked} style={[styles.card,{marginTop:8,borderColor:answers[String(q.id)]?.selectedValue===o.value?colors.primary:colors.border,opacity:exerciseLocked?0.65:1}]} onPress={()=>setAnswers(a=>({...a,[String(q.id)]:{...a[String(q.id)],selectedValue:o.value}}))}><Feather name={answers[String(q.id)]?.selectedValue===o.value?"check-circle":"circle"} size={18} color={colors.primary}/><Text style={[styles.body,{flex:1}]}>{o.label || o.value}</Text></TouchableOpacity>) : q.type === "drawbox" ? <MobileDrawAnswer value={{...(answers[String(q.id)]?.drawData || {}), teacherDrawing: q.config?.teacherDrawing}} disabled={!isStudent || exerciseLocked} onChange={drawData=>setAnswers(a=>({...a,[String(q.id)]:{...a[String(q.id)],drawData}}))} /> : <><TextInput style={[styles.input,styles.textArea,{marginTop:8}]} multiline value={answers[String(q.id)]?.textAnswer || ""} editable={!exerciseLocked} onChangeText={v=>setAnswers(a=>({...a,[String(q.id)]:{...a[String(q.id)],textAnswer:v}}))} placeholder="Your answer" placeholderTextColor={colors.mutedForeground}/>{isStudent && <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void uploadExerciseAnswerMedia(q.id)} disabled={exerciseLocked || uploadingAnswerId===q.id}><Text style={[styles.buttonText,styles.secondaryText]}>{uploadingAnswerId===q.id?"Uploading answer…":answers[String(q.id)]?.mediaReference?"Replace attached media":"Attach image/video answer"}</Text></TouchableOpacity>}{answers[String(q.id)]?.mediaReference ? <Text style={styles.muted}>Answer media attached.</Text> : null}</>}</View>)}{isStudent && (section === "polls" ? !pollResult : !exerciseLocked) && <TouchableOpacity style={styles.button} onPress={() => section==="polls"?void submitPoll():void submitExercise()} disabled={busy}><Text style={styles.buttonText}>{busy?"Submitting…":section==="polls"?"Submit quiz":"Submit exercise"}</Text></TouchableOpacity>}{section === "polls" && pollResult && <View style={{marginTop:16,padding:14,borderRadius:12,backgroundColor:colors.background,borderWidth:1,borderColor:colors.border}}><Text style={styles.sectionTitle}>Your result</Text><Text style={styles.body}>{pollResult.score != null ? `Score: ${pollResult.score}/${pollResult.totalQuestions ?? "—"}` : "Your submission was recorded."}</Text>{pollResult.percentage != null ? <Text style={styles.cardTitle}>{pollResult.percentage}%</Text> : null}</View>}{!isStudent && <Text style={styles.muted}>Preview only: staff can inspect content but cannot submit as a learner.</Text>}</View></View>}
-        {section === "achievements" && <View style={{gap:12}}>
+        {section === "prefect" && Boolean((user as any)?.isPrefect) && <View style={{gap:12}}>
+          <View style={[styles.card,{alignItems:"stretch"}]}>
+            <Text style={styles.sectionTitle}>Request a lesson</Text>
+            <Text style={styles.muted}>Choose a teacher and suggest a topic. Date and notes are optional.</Text>
+            {prefectTeachers.map((teacher:any)=><TouchableOpacity key={teacher.id} style={[styles.card,{borderColor:String(teacher.id)===prefectTeacherId?colors.primary:colors.border}]} onPress={()=>setPrefectTeacherId(String(teacher.id))}><View style={styles.grow}><Text style={styles.cardTitle}>{teacher.name}</Text><Text style={styles.muted}>{teacher.subject||"Teacher"}</Text></View><Feather name={String(teacher.id)===prefectTeacherId?"check-circle":"circle"} size={18} color={colors.primary}/></TouchableOpacity>)}
+            <TextInput style={styles.input} value={prefectTopic} onChangeText={setPrefectTopic} placeholder="Lesson topic" placeholderTextColor={colors.mutedForeground}/>
+            <TextInput style={styles.input} value={prefectDate} onChangeText={setPrefectDate} placeholder="Preferred date (YYYY-MM-DD)" placeholderTextColor={colors.mutedForeground}/>
+            <TextInput style={[styles.input,styles.textArea]} multiline value={prefectNotes} onChangeText={setPrefectNotes} placeholder="Notes for the teacher (optional)" placeholderTextColor={colors.mutedForeground}/>
+            <TouchableOpacity style={styles.button} onPress={()=>void submitPrefectRequest()} disabled={prefectBusy||prefectTeachers.length===0}><Text style={styles.buttonText}>{prefectBusy?"Sending…":"Send lesson request"}</Text></TouchableOpacity>
+          </View>
+          <Text style={styles.sectionTitle}>My lesson requests</Text>
+          {rows.length===0?<Text style={styles.muted}>No lesson requests yet.</Text>:rows.map((item:any)=><View key={item.id} style={styles.card}><View style={styles.grow}><Text style={styles.cardTitle}>{item.topic}</Text><Text style={styles.muted}>Status: {item.status}{item.preferredDate?" · Preferred "+item.preferredDate:""}</Text>{item.teacherReply?<Text style={styles.body}>Teacher reply: {item.teacherReply}</Text>:null}</View><TouchableOpacity onPress={()=>void deletePrefectRequest(Number(item.id))} disabled={prefectBusy}><Feather name="trash-2" size={18} color="#dc2626"/></TouchableOpacity></View>)}
+          <Text style={styles.sectionTitle}>Teachers to follow</Text>
+          {prefectTeachers.map((person:any)=>{const following=prefectFollows.some((item:any)=>item.targetType==="teacher"&&Number(item.targetUserId)===Number(person.id));return <View key={"teacher-"+person.id} style={styles.card}><View style={styles.grow}><Text style={styles.cardTitle}>{person.name}</Text><Text style={styles.muted}>{person.subject||"Teacher"}</Text></View><TouchableOpacity style={[styles.button,{marginTop:0}]} onPress={()=>void togglePrefectFollow("teacher",Number(person.id),String(person.name))} disabled={prefectBusy}><Text style={styles.buttonText}>{following?"Unfollow":"Follow"}</Text></TouchableOpacity></View>;})}
+          <Text style={styles.sectionTitle}>Other prefects</Text>
+          {prefectLeaderboard.map((person:any)=>{const following=prefectFollows.some((item:any)=>item.targetType==="prefect"&&Number(item.targetUserId)===Number(person.id));return <View key={"prefect-"+person.id} style={styles.card}><View style={styles.grow}><Text style={styles.cardTitle}>{person.name}{Number(person.id)===Number(user?.id)?" (You)":""}</Text><Text style={styles.muted}>{person.grade||"Learner"} · {person.badgeCount??0} badges</Text></View>{Number(person.id)!==Number(user?.id)&&<TouchableOpacity style={[styles.button,{marginTop:0}]} onPress={()=>void togglePrefectFollow("prefect",Number(person.id),String(person.name))} disabled={prefectBusy}><Text style={styles.buttonText}>{following?"Unfollow":"Follow"}</Text></TouchableOpacity>}</View>;})}
+        </View>}
+        {section === "achievements" && <View style={{gap:12}}>        {section === "achievements" && <View style={{gap:12}}>
           <View style={styles.card}><View style={styles.grow}><Text style={styles.cardTitle}>Badges earned</Text><Text style={styles.sectionTitle}>{myBadges.length}</Text><Text style={styles.muted}>Performance points: {Number((user as any)?.performanceScore ?? 0)}</Text></View></View>
           <View style={{flexDirection:"row",gap:8}}>{(["badges","leaderboard","all"] as const).map(tab=><TouchableOpacity key={tab} style={[styles.button,{flex:1,marginTop:0,backgroundColor:achievementTab===tab?colors.primary:colors.card,borderWidth:achievementTab===tab?0:1,borderColor:colors.border}]} onPress={()=>setAchievementTab(tab)}><Text style={[styles.buttonText,achievementTab!==tab&&styles.secondaryText]}>{tab==="badges"?"My badges":tab==="leaderboard"?"Leaderboard":"All badges"}</Text></TouchableOpacity>)}</View>
           {achievementTab==="badges" && (myBadges.length===0?<Text style={styles.muted}>No badges earned yet. Keep learning to unlock achievements.</Text>:myBadges.map((item:any)=><View key={item.id} style={styles.card}><Text style={{fontSize:30}}>{item.achievement?.icon||"🏆"}</Text><View style={styles.grow}><Text style={styles.cardTitle}>{item.achievement?.name||"Badge"}</Text><Text style={styles.muted}>{item.achievement?.description||""}</Text><Text style={styles.muted}>+{item.achievement?.pointsValue??0} points · {item.earnedAt?new Date(item.earnedAt).toLocaleDateString():""}</Text></View></View>))}
