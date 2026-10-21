@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import AuthenticatedMediaPreview from "@/components/AuthenticatedMediaPreview";
+import OfflineMediaDownload from "@/components/OfflineMediaDownload";
 
 function extractLessonLinks(value: unknown): string[] {
   const source = String(value ?? "");
@@ -253,7 +254,7 @@ export default function TeacherLessons() {
                 {lesson.mediaUrl && lesson.type === "image" ? <AuthenticatedMediaPreview url={String(lesson.mediaUrl)} height={140} accessibilityLabel={String(lesson.title || "Lesson image")} /> : null}
                 {lesson.content ? <Text style={s.meta} numberOfLines={3}>{String(lesson.content).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()}</Text> : null}
                 {extractLessonLinks(lesson.content).map((url,index) => <View key={url} style={{marginTop:6}}>
-                  {isMediaReference(url) ? <AuthenticatedMediaPreview url={url} height={120} accessibilityLabel={"Embedded lesson media "+(index+1)} /> : null}
+                  {isMediaReference(url) ? <AuthenticatedMediaPreview url={url} height={120} accessibilityLabel={"Embedded lesson media "+(index+1)} /> : url.startsWith("/api/") ? <OfflineMediaDownload url={url} fileName={"Lesson attachment "+(index+1)} accessibilityLabel={"Download lesson attachment "+(index+1)+" for offline use"} /> : null}
                   {url.startsWith("/api/") ? <Text style={s.meta}>Protected attachment · download above to save offline</Text> : <TouchableOpacity onPress={() => void Linking.openURL(url)}><Text style={[s.meta,{color:colors.primary}]}>Open embedded link {index+1}: {url}</Text></TouchableOpacity>}
                 </View>)}
                 {lesson.mediaUrl ? <View style={{marginTop:6}}>
