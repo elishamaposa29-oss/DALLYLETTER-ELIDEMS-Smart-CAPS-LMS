@@ -68,6 +68,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: mobile-v1.0.1
+          target_commitish: ${{ github.event.workflow_run.head_sha }}
           name: Dallyletter Elidems Android v1.0.1
           body: |
             Verified Android release for Dallyletter Elidems.
