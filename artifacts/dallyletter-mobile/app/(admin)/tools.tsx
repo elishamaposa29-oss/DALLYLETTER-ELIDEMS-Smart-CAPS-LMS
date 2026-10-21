@@ -133,6 +133,7 @@ export default function OwnerTools() {
   const sectionTitle=choices.find(x=>x.id===section)?.title||"Owner tools";
 
   if(!user) return <View style={s.root}><Text style={s.body}>Sign in to continue.</Text></View>;
+  if(!["owner","platform_owner"].includes(String(user.role||"").toLowerCase().replace(/[ -]+/g,"_"))) return <View style={s.root}><View style={s.header}><Text style={s.title}>Owner tools restricted</Text><Text style={s.subtitle}>Owner authorization is required. API permissions remain authoritative.</Text></View><View style={s.content}><Text style={s.body}>This screen is reserved for the platform owner.</Text><TouchableOpacity style={s.button} onPress={()=>router.replace("/(admin)/home" as any)}><Text style={s.buttonText}>Return to dashboard</Text></TouchableOpacity></View></View>;
   return <View style={s.root}>
     <View style={s.header}>
       <TouchableOpacity onPress={()=>router.back()} style={[s.row,{marginBottom:10}]}><Feather name="arrow-left" size={18} color="#fff"/><Text style={{color:"#fff"}}>Back</Text></TouchableOpacity>
