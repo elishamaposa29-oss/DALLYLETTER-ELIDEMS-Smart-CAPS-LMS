@@ -4,6 +4,7 @@ import { Text, TouchableOpacity, View } from "react-native";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import FeatureHub from "@/components/FeatureHub";
+import BreakElidemsShortcut from "@/components/BreakElidemsShortcut";
 
 export default function AdminMore() {
   const colors = useColors();
@@ -15,6 +16,7 @@ export default function AdminMore() {
       <View style={{flex:1}}><Text style={{fontSize:15,fontWeight:"700",color:colors.foreground}}>Owner Command Centre</Text><Text style={{fontSize:12,color:colors.mutedForeground,marginTop:3}}>Health, alerts, settings, AI, safety and finance</Text></View>
       <Feather name="chevron-right" size={18} color={colors.mutedForeground}/>
     </TouchableOpacity> : null}
+    <BreakElidemsShortcut />
     <View style={{flex:1}}><FeatureHub /></View>
   </View>;
 }
