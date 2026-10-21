@@ -145,7 +145,7 @@ export default function FeatureHub() {
     header: { backgroundColor: colors.primary, paddingTop: insets.top + (Platform.OS === "web" ? 67 : 12) + 12, paddingHorizontal: 20, paddingBottom: 18 },
     heading: { color: "#fff", fontSize: 23, fontFamily: "Inter_700Bold" },
     subheading: { color: "rgba(255,255,255,.78)", fontSize: 13, marginTop: 5, fontFamily: "Inter_400Regular" },
-    content: { padding: 16, paddingBottom: 120, gap: 10 },
+    content: { padding: 16, paddingBottom: 120, gap: 10, width: "100%", maxWidth: 1180, alignSelf: "center" },
     card: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: colors.radius, padding: 15, flexDirection: "row", alignItems: "center", gap: 12 },
     icon: { width: 44, height: 44, borderRadius: 12, backgroundColor: colors.primary + "18", alignItems: "center", justifyContent: "center" },
     grow: { flex: 1 },
