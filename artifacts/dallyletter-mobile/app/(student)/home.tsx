@@ -22,6 +22,7 @@ export default function StudentHome() {
     { icon: "message-circle" as const, label: "Chat", route: "/(student)/chat" as const, color: "#10b981" },
     { icon: "credit-card" as const, label: "Payments", route: "/(student)/more?section=payments" as const, color: "#f59e0b" },
     { icon: "award" as const, label: "Achievements", route: "/(student)/more?section=achievements" as const, color: "#d97706" },
+    ...(user?.isPrefect ? [{ icon: "star" as const, label: "Prefect", route: "/(student)/more?section=prefect" as const, color: "#b45309" }] : []),
   ];
 
   const s = StyleSheet.create({
