@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useInstallPrompt } from "@/hooks/useInstallPrompt";
 import { GraduationCap, X, Share, PlusSquare, Smartphone, Download } from "lucide-react";
 
-const ANDROID_APK_URL = "https://github.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/releases/latest/download/dallyletter-v1.0.1.apk";
+const ANDROID_APK_URL = "https://github.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/releases/download/mobile-v1.0.1/dallyletter-v1.0.1.apk";
 
 export function InstallBanner() {
   const { prompt, install, isInstalled, isIOS } = useInstallPrompt();
