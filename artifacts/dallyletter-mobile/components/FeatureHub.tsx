@@ -90,7 +90,7 @@ export default function FeatureHub() {
   const role = String(user?.role ?? "guest").toLowerCase();
   const isStudent = role === "student";
   const isTeacher = role === "teacher";
-  const canCreateGroups = isTeacher || Boolean(user?.isPrefect || user?.isManager) || ["owner", "admin", "platform_owner"].includes(role);
+  const canCreateGroups = isTeacher || Boolean((user as any)?.isPrefect || (user as any)?.isManager) || ["owner", "admin", "platform_owner"].includes(role);
   const exerciseLocked = Boolean(exerciseResult?.submission?.status) && !newAttempt;
 
   const styles = StyleSheet.create({
@@ -358,7 +358,7 @@ export default function FeatureHub() {
     finally { setChatLoading(false); }
   };
 
-  const canManageSelectedGroup = Boolean(selectedChatGroup && (selectedChatGroup.creatorId === user?.id || user?.isManager || ["owner", "admin", "platform_owner"].includes(role)));
+  const canManageSelectedGroup = Boolean(selectedChatGroup && (selectedChatGroup.creatorId === user?.id || (user as any)?.isManager || ["owner", "admin", "platform_owner"].includes(role)));
 
   const loadGroupSettings = async () => {
     if (!selectedChatGroup || !canManageSelectedGroup) return;
