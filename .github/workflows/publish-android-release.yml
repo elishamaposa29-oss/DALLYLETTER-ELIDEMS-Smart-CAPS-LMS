@@ -1,0 +1,56 @@
+name: Publish verified Dallyletter Android APK
+
+on:
+  workflow_run:
+    workflows: ["Mobile Android Build and Smoke Test"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    # Only publish a fully green, manually dispatched main-branch release build.
+    # PR builds never publish installable binaries.
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == 'main' &&
+          github.event.workflow_run.event == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the APKs verified by the completed build and emulator smoke tests
+        uses: actions/download-artifact@v4
+        with:
+          name: dallyletter-android-candidate-apk
+          path: release-assets
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Verify release candidate files before publication
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -s release-assets/dallyletter-v1.0.1.apk
+          test -s release-assets/checksums.sha256
+          (cd release-assets && sha256sum --check checksums.sha256)
+          # Release publication must never include CI-only debug APKs.
+          if find release-assets -maxdepth 1 -name '*debug*.apk' | grep -q .; then
+            echo "::error::Refusing to publish a debug APK"
+            exit 1
+          fi
+
+      - name: Publish verified APK as the latest stable release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: mobile-v1.0.1
+          name: Dallyletter Elidems Android v1.0.1
+          body: |
+            Verified Android release for Dallyletter Elidems.
+
+            Built and passed the repository's Android build and emulator smoke-test workflow.
+            Download the APK below and follow Android's confirmation prompts to install it.
+          files: release-assets/dallyletter-v1.0.1.apk
+          make_latest: true
+          overwrite_files: true
