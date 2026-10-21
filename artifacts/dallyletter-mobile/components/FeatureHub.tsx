@@ -289,7 +289,7 @@ export default function FeatureHub() {
   const openUrl = (url: string) => { if (/^https?:\/\//i.test(url)) void Linking.openURL(url); };
 
   const activeNotifications = notifications || [];
-  const groups = studyGroups?.items || studyGroups || [];
+  const groups = studyGroups || [];
   const unreadCount = activeNotifications.filter((n: any) => !n.isRead).length;
   const currentTitle = sections.find(s => s.id === section)?.title || "Learning tools";
 
