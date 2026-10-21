@@ -1,2 +1,2 @@
-import FeatureHub from "@/components/FeatureHub";
-export default function ManagerMore() { return <FeatureHub />; }
+import ManagerMore from "@/components/ManagerMore";
+export default function ManagerMoreScreen() { return <ManagerMore />; }
