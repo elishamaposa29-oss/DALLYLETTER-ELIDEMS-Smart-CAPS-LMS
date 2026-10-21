@@ -22,7 +22,7 @@ function extractLessonLinks(value: unknown): string[] {
 }
 function isMediaReference(url: string): boolean {
   const lower = url.toLowerCase();
-  return /[?&]type=(image|video|audio)\//i.test(lower) || /\.(png|jpe?g|gif|webp|avif|mp4|webm|mov|mp3|m4a|ogg|wav|pdf|docx?)(?:[?#]|$)/i.test(lower);
+  return /[?&]type=(image|video|audio|application)\//i.test(lower) || /\.(png|jpe?g|gif|webp|avif|mp4|webm|mov|mp3|m4a|ogg|wav|pdf|docx?)(?:[?#]|$)/i.test(lower);
 }
 function plainLessonText(value: unknown): string {
   return String(value ?? "")
