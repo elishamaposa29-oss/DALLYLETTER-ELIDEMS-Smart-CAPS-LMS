@@ -4,6 +4,7 @@ import { getApiUrl } from "@workspace/api-client-react";
 import { getListNotificationsQueryKey, useListNotifications, useMarkNotificationRead, useListStudyGroups } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
 import * as Linking from "expo-linking";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
@@ -304,13 +305,20 @@ export default function FeatureHub() {
     }
   };
 
-  const uploadMedia = async () => {
+  const uploadMedia = async (documentOnly = false) => {
     if (!isTeacher) return;
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) { Alert.alert("Permission needed", "Allow media access to attach a file."); return; }
-    const pick = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images", "videos"], quality: 0.85 });
-    if (pick.canceled || !pick.assets[0]) return;
-    const asset = pick.assets[0];
+    let asset: { uri: string; fileName?: string | null; mimeType?: string | null; type?: string | null };
+    if (documentOnly) {
+      const picked = await DocumentPicker.getDocumentAsync({ type: ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"], copyToCacheDirectory: true });
+      if (picked.canceled || !picked.assets[0]) return;
+      asset = { uri: picked.assets[0].uri, fileName: picked.assets[0].name, mimeType: picked.assets[0].mimeType, type: "document" };
+    } else {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) { Alert.alert("Permission needed", "Allow media access to attach a file."); return; }
+      const pick = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images", "videos"], quality: 0.85 });
+      if (pick.canceled || !pick.assets[0]) return;
+      asset = pick.assets[0];
+    }
     setUploading(true);
     try {
       const form = new FormData();
@@ -483,13 +491,21 @@ export default function FeatureHub() {
     catch(e) { Alert.alert("Message not sent",e instanceof Error?e.message:"Reconnect and retry."); }
     finally { setPrivateBusy(false); }
   };
-  const uploadPrivateMedia = async () => {
+  const uploadPrivateMedia = async (documentOnly = false) => {
     if (!privateRecipient || privateMediaBusy) return;
-    const permission=await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if(!permission.granted){Alert.alert("Permission needed","Allow photo/video access to attach learning media.");return;}
-    const picked=await ImagePicker.launchImageLibraryAsync({mediaTypes:["images","videos"],quality:0.82});
-    if(picked.canceled||!picked.assets[0])return;
-    const asset=picked.assets[0]; setPrivateMediaBusy(true);
+    let asset: { uri: string; fileName?: string | null; mimeType?: string | null; type?: string | null };
+    if (documentOnly) {
+      const picked = await DocumentPicker.getDocumentAsync({ type: ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"], copyToCacheDirectory: true });
+      if (picked.canceled || !picked.assets[0]) return;
+      asset = { uri: picked.assets[0].uri, fileName: picked.assets[0].name, mimeType: picked.assets[0].mimeType, type: "document" };
+    } else {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) { Alert.alert("Permission needed", "Allow photo/video access to attach learning media."); return; }
+      const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images", "videos"], quality: 0.82 });
+      if (picked.canceled || !picked.assets[0]) return;
+      asset = picked.assets[0];
+    }
+    setPrivateMediaBusy(true);
     try { const form=new FormData(); form.append("recipientId",String(privateRecipient.id)); form.append("file",{uri:asset.uri,name:asset.fileName||"private-learning-media",type:asset.mimeType||(asset.type==="video"?"video/mp4":"image/jpeg")} as any); const uploaded=await request("/api/messages/media",{method:"POST",body:form}); if(!uploaded.mediaUrl)throw new Error("Upload did not return a media URL."); await request("/api/messages",{method:"POST",body:JSON.stringify({recipientId:Number(privateRecipient.id),content:asset.fileName||"Shared learning media",type:"media",mediaUrl:uploaded.mediaUrl})}); const messages=await request("/api/messages?recipientId="+encodeURIComponent(String(privateRecipient.id))); setPrivateMessages(Array.isArray(messages)?messages:[]); }
     catch(e){Alert.alert("Media not sent",e instanceof Error?e.message:"Reconnect and retry.");}
     finally{setPrivateMediaBusy(false);}
@@ -636,13 +652,21 @@ export default function FeatureHub() {
     finally { setChatSending(false); }
   };
 
-  const uploadGroupMessageMedia = async () => {
+  const uploadGroupMessageMedia = async (documentOnly = false) => {
     if (!selectedChatGroup) return;
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) { Alert.alert("Permission needed", "Allow media access to attach a group message."); return; }
-    const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images", "videos"], quality: 0.85 });
-    if (picked.canceled || !picked.assets[0]) return;
-    const asset = picked.assets[0]; setChatMediaBusy(true);
+    let asset: { uri: string; fileName?: string | null; mimeType?: string | null; type?: string | null };
+    if (documentOnly) {
+      const picked = await DocumentPicker.getDocumentAsync({ type: ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"], copyToCacheDirectory: true });
+      if (picked.canceled || !picked.assets[0]) return;
+      asset = { uri: picked.assets[0].uri, fileName: picked.assets[0].name, mimeType: picked.assets[0].mimeType, type: "document" };
+    } else {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) { Alert.alert("Permission needed", "Allow media access to attach a group message."); return; }
+      const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images", "videos"], quality: 0.85 });
+      if (picked.canceled || !picked.assets[0]) return;
+      asset = picked.assets[0];
+    }
+    setChatMediaBusy(true);
     try {
       const form = new FormData();
       form.append("file", { uri: asset.uri, name: asset.fileName || "group-media", type: asset.mimeType || (asset.type === "video" ? "video/mp4" : "image/jpeg") } as any);
@@ -750,13 +774,21 @@ export default function FeatureHub() {
     finally { setBusy(false); }
   };
 
-  const uploadAssignmentAttachment = async () => {
+  const uploadAssignmentAttachment = async (documentOnly = false) => {
     if (!isStudent) return;
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) { Alert.alert("Permission needed", "Allow media access to attach a file."); return; }
-    const pick = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images", "videos"], quality: 0.85 });
-    if (pick.canceled || !pick.assets[0]) return;
-    const asset = pick.assets[0]; setUploading(true);
+    let asset: { uri: string; fileName?: string | null; mimeType?: string | null; type?: string | null };
+    if (documentOnly) {
+      const picked = await DocumentPicker.getDocumentAsync({ type: ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"], copyToCacheDirectory: true });
+      if (picked.canceled || !picked.assets[0]) return;
+      asset = { uri: picked.assets[0].uri, fileName: picked.assets[0].name, mimeType: picked.assets[0].mimeType, type: "document" };
+    } else {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) { Alert.alert("Permission needed", "Allow media access to attach a file."); return; }
+      const pick = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images", "videos"], quality: 0.85 });
+      if (pick.canceled || !pick.assets[0]) return;
+      asset = pick.assets[0];
+    }
+    setUploading(true);
     try {
       const form = new FormData();
       form.append("file", { uri: asset.uri, name: asset.fileName || "submission-media", type: asset.mimeType || (asset.type === "video" ? "video/mp4" : "image/jpeg") } as any);
