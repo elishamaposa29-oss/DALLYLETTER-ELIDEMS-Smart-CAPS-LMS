@@ -38,10 +38,35 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: "platform-tools"
-      - name: Install Android platform and emulator image
+      - name: Install Android platform, build tools, and pinned NDK with retry
+        shell: bash
         run: |
+          set -Eeuo pipefail
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
+
+          # Gradle previously received a corrupt NDK archive (ZipFile unknown archive)
+          # and failed before JavaScript bundling. Install the exact NDK version
+          # required by Expo/React Native explicitly, retrying cleanly on bad downloads.
+          ndk_package="ndk;27.1.12297006"
+          installed=0
+          for attempt in 1 2 3; do
+            if sdkmanager --install "$ndk_package" &&
+               [ -f "$ANDROID_HOME/ndk/27.1.12297006/source.properties" ]; then
+              installed=1
+              break
+            fi
+            echo "::warning::NDK installation failed or was incomplete (attempt $attempt/3); clearing partial SDK download before retry."
+            rm -rf "$ANDROID_HOME/ndk/27.1.12297006" "$ANDROID_HOME/.temp" "$HOME/.android/cache" || true
+            sleep "$((attempt * 10))"
+          done
+          if [ "$installed" -ne 1 ]; then
+            echo "::error::Pinned NDK 27.1.12297006 could not be installed cleanly after three attempts."
+            find "$ANDROID_HOME/ndk" -maxdepth 3 -name source.properties -print 2>/dev/null || true
+            exit 1
+          fi
+          echo "Verified NDK installation:"
+          cat "$ANDROID_HOME/ndk/27.1.12297006/source.properties"
       - name: Install locked workspace dependencies
         run: pnpm install --frozen-lockfile
       - name: Build workspace TypeScript references
@@ -51,21 +76,96 @@ jobs:
       - name: Generate native Android project
         working-directory: artifacts/dallyletter-mobile
         run: pnpm exec expo prebuild --platform android --no-install
-      - name: Build reproducible debug APK
+      - name: Enable embedded JavaScript bundle in CI debug variant
         working-directory: artifacts/dallyletter-mobile/android
-        run: ./gradlew --no-daemon --stacktrace assembleDebug
-      - name: Preserve first install package
-        run: mkdir -p artifacts/dallyletter-mobile/apk-artifacts && cp artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk artifacts/dallyletter-mobile/apk-artifacts/dallyletter-v1.apk
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("app/build.gradle")
+          s = p.read_text()
+          needle = "react {"
+          if needle not in s:
+              raise SystemExit("Could not locate React Native Gradle react { block; refusing to build a Metro-dependent CI APK")
+          replacement = """react {
+              // CI-only debug APK must carry JS so it can run without Metro.
+              // Keep the debug variant debuggable while disabling Metro-dependent bundle skipping.
+              debuggableVariants = []"""
+          p.write_text(s.replace(needle, replacement, 1))
+          PY
+          grep -A5 -m1 '^react {' app/build.gradle
+      - name: Build standalone release APK
+        working-directory: artifacts/dallyletter-mobile/android
+        run: |
+          ./gradlew --no-daemon --stacktrace assembleRelease assembleDebug
+      - name: Verify and preserve first standalone APK and CI data-test APK
+        working-directory: artifacts/dallyletter-mobile/android
+        run: |
+          set -Eeuo pipefail
+          apk=app/build/outputs/apk/release/app-release.apk
+          unzip -l "$apk" | grep -q 'assets/index.android.bundle' || { echo '::error::Release APK is missing the embedded React Native JavaScript bundle'; exit 1; }
+          aapt_bin="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          apksigner_bin="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$aapt_bin" && test -x "$apksigner_bin"
+          badging="$("$aapt_bin" dump badging "$apk")"
+          grep -Fq "package: name='com.dallyletter.elidems' versionCode='1' versionName='1.0.0'" <<<"$badging"
+          if grep -q "application-debuggable" <<<"$badging"; then echo "::error::Release APK must not be debuggable"; exit 1; fi
+          "$apksigner_bin" verify --verbose "$apk"
+          mkdir -p ../apk-artifacts
+          cp "$apk" ../apk-artifacts/dallyletter-v1.apk
+          # Debug-only twin exists solely to test app-private-data persistence.
+          # The user-facing release APK remains non-debuggable.
+          debug_apk=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$debug_apk"
+          cp "$debug_apk" ../apk-artifacts/dallyletter-data-v1-debug.apk
       - name: Generate version 1.0.1 for upgrade test
         working-directory: artifacts/dallyletter-mobile
         run: |
           node -e 'const fs=require("fs"); const p="app.json"; const j=JSON.parse(fs.readFileSync(p,"utf8")); j.expo.version="1.0.1"; j.expo.android.versionCode=2; fs.writeFileSync(p, JSON.stringify(j,null,2)+"\n");'
           pnpm exec expo prebuild --platform android --no-install
+      - name: Enable embedded JavaScript bundle in CI debug variant after v1.0.1 prebuild
+        working-directory: artifacts/dallyletter-mobile/android
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("app/build.gradle")
+          s = p.read_text()
+          needle = "react {"
+          if needle not in s:
+              raise SystemExit("Could not locate React Native Gradle react { block; refusing to build a Metro-dependent CI APK")
+          replacement = """react {
+              // CI-only debug APK must carry JS so it can run without Metro.
+              // Keep the debug variant debuggable while disabling Metro-dependent bundle skipping.
+              debuggableVariants = []"""
+          p.write_text(s.replace(needle, replacement, 1))
+          PY
+          grep -A5 -m1 '^react {' app/build.gradle
       - name: Build update APK
         working-directory: artifacts/dallyletter-mobile/android
-        run: ./gradlew --no-daemon --stacktrace assembleDebug
-      - name: Preserve update package
-        run: cp artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk artifacts/dallyletter-mobile/apk-artifacts/dallyletter-v1.0.1.apk
+        run: |
+          ./gradlew --no-daemon --stacktrace assembleRelease assembleDebug
+      - name: Verify and preserve updated release APK and CI data-test APK
+        working-directory: artifacts/dallyletter-mobile/android
+        run: |
+          set -Eeuo pipefail
+          apk=app/build/outputs/apk/release/app-release.apk
+          unzip -l "$apk" | grep -q 'assets/index.android.bundle' || { echo '::error::Updated release APK is missing the embedded React Native JavaScript bundle'; exit 1; }
+          aapt_bin="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          apksigner_bin="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$aapt_bin" && test -x "$apksigner_bin"
+          badging="$("$aapt_bin" dump badging "$apk")"
+          grep -Fq "package: name='com.dallyletter.elidems' versionCode='2' versionName='1.0.1'" <<<"$badging"
+          if grep -q "application-debuggable" <<<"$badging"; then echo "::error::Updated release APK must not be debuggable"; exit 1; fi
+          "$apksigner_bin" verify --verbose "$apk"
+          cp "$apk" ../apk-artifacts/dallyletter-v1.0.1.apk
+          # Build the matching version 1.0.1 debug APK using the same CI debug
+          # signing key; the upgrade test installs it over the v1.0.0 debug twin.
+          debug_apk=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$debug_apk"
+          cp "$debug_apk" ../apk-artifacts/dallyletter-data-v1.0.1-debug.apk
       - name: Generate APK checksums and build metadata
         if: always()
         env:
@@ -78,7 +178,11 @@ jobs:
           if [ "${#apks[@]}" -gt 0 ]; then
             (
               cd artifacts/dallyletter-mobile/apk-artifacts
-              sha256sum *.apk > checksums.sha256
+              # The public candidate artifact intentionally contains only the
+              # standalone release APKs. Keep its checksum manifest scoped to
+              # those exact files; CI-only debuggable APKs are uploaded separately
+              # and must not make release publication fail with missing-file errors.
+              sha256sum dallyletter-v1.apk dallyletter-v1.0.1.apk > checksums.sha256
             )
           fi
           {
@@ -90,17 +194,28 @@ jobs:
             echo "apk_v1.0.1_version=1.0.1"
             echo "apk_v1.0.1_versionCode=2"
           } > artifacts/dallyletter-mobile/apk-artifacts/build-metadata.txt
-      - name: Upload installable debug APK
-        if: always()
+      - name: Upload candidate APKs for emulator smoke test
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: dallyletter-android-debug-apk
+          name: dallyletter-android-candidate-apk
           path: |
-            artifacts/dallyletter-mobile/apk-artifacts/*.apk
+            artifacts/dallyletter-mobile/apk-artifacts/dallyletter-v1.apk
+            artifacts/dallyletter-mobile/apk-artifacts/dallyletter-v1.0.1.apk
             artifacts/dallyletter-mobile/apk-artifacts/checksums.sha256
             artifacts/dallyletter-mobile/apk-artifacts/build-metadata.txt
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
+      - name: Upload CI-only debug APKs for data-preservation test
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dallyletter-ci-upgrade-test-apks
+          path: |
+            artifacts/dallyletter-mobile/apk-artifacts/dallyletter-data-v1-debug.apk
+            artifacts/dallyletter-mobile/apk-artifacts/dallyletter-data-v1.0.1-debug.apk
+          if-no-files-found: error
+          retention-days: 1
   emulator-smoke:
     needs: build-apk
     runs-on: ubuntu-latest
@@ -163,16 +278,24 @@ jobs:
           fi
           echo "Created AVD at $ANDROID_AVD_HOME/DallyletterSmoke.ini"
           "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fx "DallyletterSmoke"
-      - name: Download built APKs
+      - name: Download built standalone APKs
         uses: actions/download-artifact@v4
         with:
-          name: dallyletter-android-debug-apk
+          name: dallyletter-android-candidate-apk
           path: /tmp/dallyletter-apks
-      - name: Place APKs for smoke test
+      - name: Download CI-only debug APKs for data-preservation test
+        uses: actions/download-artifact@v4
+        with:
+          name: dallyletter-ci-upgrade-test-apks
+          path: /tmp/dallyletter-data-apks
+      - name: Place standalone APKs for smoke test
         run: |
-          mkdir -p artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug
+          set -Eeuo pipefail
+          mkdir -p artifacts/dallyletter-mobile/android/app/build/outputs/apk/release
           cp /tmp/dallyletter-apks/dallyletter-v1.apk /tmp/dallyletter-v1.apk
-          cp /tmp/dallyletter-apks/dallyletter-v1.0.1.apk artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          cp /tmp/dallyletter-data-apks/dallyletter-data-v1-debug.apk /tmp/dallyletter-data-v1-debug.apk
+          cp /tmp/dallyletter-data-apks/dallyletter-data-v1.0.1-debug.apk /tmp/dallyletter-data-v1.0.1-debug.apk
+          cp /tmp/dallyletter-apks/dallyletter-v1.0.1.apk artifacts/dallyletter-mobile/android/app/build/outputs/apk/release/app-release.apk
       - name: Launch emulator and run install/launch/upgrade smoke tests
         shell: bash
         run: |
@@ -185,22 +308,23 @@ jobs:
           fi
           test -f "$ANDROID_AVD_HOME/DallyletterSmoke.ini" || { echo "::error::Expected AVD file is missing"; find "$HOME/.android" -maxdepth 4 -iname '*DallyletterSmoke*' -print || true; exit 1; }
           "$emulator_bin" -list-avds | grep -Fx "DallyletterSmoke"
-          # GitHub-hosted Linux runners may expose /dev/kvm without granting the runner
-          # user access. Fix permissions only on this disposable CI runner.
+          # Start ADB before the emulator so QEMU cannot race the daemon on
+          # localhost:5037. Prefer KVM when genuinely usable; otherwise keep
+          # the real install/launch/upgrade checks running under TCG software emulation.
+          adb start-server
+          accel_mode=off
           if [ -e /dev/kvm ]; then
-            sudo chmod 666 /dev/kvm
-            if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
-              echo "::error::/dev/kvm exists but remains inaccessible after permission repair."
-              ls -l /dev/kvm || true
-              exit 1
+            sudo chmod 666 /dev/kvm || true
+            if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+              "$emulator_bin" -accel-check > /tmp/dallyletter-accel-check.log 2>&1 || true
+              if grep -qi "usable" /tmp/dallyletter-accel-check.log; then
+                accel_mode=on
+              fi
             fi
-            echo "KVM device is accessible to the runner."
-          else
-            echo "::error::/dev/kvm is not exposed by this runner; x86_64 Android emulation requires hardware acceleration."
-            echo "Use a GitHub runner with KVM enabled; do not silently skip install/launch/upgrade testing."
-            exit 1
           fi
-          "$emulator_bin" -avd DallyletterSmoke -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -cores 2 -memory 3072 > /tmp/dallyletter-emulator.log 2>&1 &
+          echo "Android emulator acceleration mode: $accel_mode"
+          cat /tmp/dallyletter-accel-check.log 2>/dev/null || true
+          "$emulator_bin" -avd DallyletterSmoke -no-window -gpu swiftshader_indirect -no-snapshot -no-snapshot-save -noaudio -no-boot-anim -no-metrics -camera-back none -camera-front none -cores 2 -memory 3072 -accel "$accel_mode" > /tmp/dallyletter-emulator.log 2>&1 &
           emulator_pid=$!
           diagnostics() {
             status=$?
@@ -264,5 +388,39 @@ jobs:
             /tmp/dallyletter-login-error.png
             /tmp/dallyletter-signup.png
             /tmp/dallyletter-v1.0.1.png
+            /tmp/dallyletter-release-upgrade.xml
+            /tmp/dallyletter-release-upgrade.png
           if-no-files-found: warn
+          retention-days: 14
+
+  publish-release:
+    name: Publish verified standalone release APK
+    needs: emulator-smoke
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download candidate APKs that passed emulator smoke tests
+        uses: actions/download-artifact@v4
+        with:
+          name: dallyletter-android-candidate-apk
+          path: /tmp/dallyletter-release-candidate
+      - name: Verify release APK files and checksums before publication
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -s /tmp/dallyletter-release-candidate/dallyletter-v1.apk
+          test -s /tmp/dallyletter-release-candidate/dallyletter-v1.0.1.apk
+          test -s /tmp/dallyletter-release-candidate/checksums.sha256
+          test -s /tmp/dallyletter-release-candidate/build-metadata.txt
+          (cd /tmp/dallyletter-release-candidate && sha256sum --check checksums.sha256)
+      - name: Publish verified standalone release APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: dallyletter-android-release-apk
+          path: |
+            /tmp/dallyletter-release-candidate/dallyletter-v1.apk
+            /tmp/dallyletter-release-candidate/dallyletter-v1.0.1.apk
+            /tmp/dallyletter-release-candidate/checksums.sha256
+            /tmp/dallyletter-release-candidate/build-metadata.txt
+          if-no-files-found: error
           retention-days: 14

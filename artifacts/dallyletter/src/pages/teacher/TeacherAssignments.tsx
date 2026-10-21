@@ -239,9 +239,6 @@ export default function TeacherAssignments() {
                         Edit
                       </Button>
                       <Button size="sm" variant="destructive" className="gap-1.5" disabled={deletingId !== null} onClick={() => void deleteAssignment(a)}><Trash2 className="h-3.5 w-3.5" />{deletingId === Number(a.id) ? "Deleting…" : "Delete"}</Button>
-                      <Button size="sm" variant="outline" className="gap-1.5" onClick={() => window.location.assign(`/student/assignments?assignment=${a.id}`)}>
-                        <Eye className="h-3.5 w-3.5" /> Preview as learner
-                      </Button>
                       <Button size="sm" variant="outline" className="gap-1.5" onClick={() => loadSubs(a)}>
                         <Eye className="h-3.5 w-3.5" /> Submissions
                       </Button>

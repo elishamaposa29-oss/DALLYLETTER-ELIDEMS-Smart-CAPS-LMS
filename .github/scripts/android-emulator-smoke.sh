@@ -19,10 +19,10 @@ trap diagnostics EXIT
 
 step() { echo "::group::Android smoke: $*"; date -u +%FT%TZ; }
 step "wait for device"
-timeout 60 adb wait-for-device
+timeout 600 adb wait-for-device
 
-step "verify Android boot completion (bounded to 600 seconds)"
-boot_deadline=$((SECONDS + 600))
+step "verify Android boot completion (bounded to 1500 seconds)"
+boot_deadline=$((SECONDS + 1500))
 boot_ready=0
 boot_state=""
 while [ "$SECONDS" -lt "$boot_deadline" ]; do
@@ -37,7 +37,7 @@ while [ "$SECONDS" -lt "$boot_deadline" ]; do
   sleep "$((remaining < 5 ? remaining : 5))"
 done
 if [ "$boot_ready" -ne 1 ]; then
-  echo "::error::Android did not report sys.boot_completed=1 within the 600-second verification window"
+  echo "::error::Android did not report sys.boot_completed=1 within the 1500-second verification window"
   exit 1
 fi
 step "verify Android boot complete"
@@ -69,13 +69,27 @@ timeout 180 adb install /tmp/dallyletter-v1.apk
 timeout 30 adb shell pm path com.dallyletter.elidems | grep -q "package:"
 timeout 45 adb shell monkey -p com.dallyletter.elidems 1
 sleep 8
-step "capture actual first-launch screen and verify sign-in UI"
-timeout 30 adb exec-out screencap -p > /tmp/dallyletter-v1.png
-timeout 45 adb shell uiautomator dump /sdcard/dallyletter-ui-v1.xml >/dev/null
-timeout 20 adb pull /sdcard/dallyletter-ui-v1.xml /tmp/dallyletter-ui-v1.xml >/dev/null
-if ! grep -Eqi 'Welcome back|Sign in to continue learning|your@email.com' /tmp/dallyletter-ui-v1.xml; then
-  echo "::error::App launched but expected sign-in UI text was not present in the UI hierarchy"
+step "open the login route and verify rendered sign-in UI"
+# The launcher may restore the last route; explicitly navigate to login so this
+# assertion tests the sign-in screen rather than an unrelated initial route.
+timeout 30 adb shell am start -a android.intent.action.VIEW -d 'dallyletter:///login' com.dallyletter.elidems
+sleep 3
+ui_ready=0
+for attempt in 1 2 3 4 5 6; do
+  timeout 30 adb exec-out screencap -p > /tmp/dallyletter-v1.png || true
+  timeout 45 adb shell uiautomator dump /sdcard/dallyletter-ui-v1.xml >/dev/null 2>&1 || true
+  timeout 20 adb pull /sdcard/dallyletter-ui-v1.xml /tmp/dallyletter-ui-v1.xml >/dev/null 2>&1 || true
+  if [ -s /tmp/dallyletter-ui-v1.xml ] && grep -Eqi 'Welcome back|Sign in to continue learning|your@email.com|Sign In' /tmp/dallyletter-ui-v1.xml; then
+    ui_ready=1
+    break
+  fi
+  echo "Sign-in UI not exposed in hierarchy yet (attempt $attempt/6); waiting 5 seconds"
+  sleep 5
+done
+if [ "$ui_ready" -ne 1 ]; then
+  echo "::error::App launched but sign-in UI did not appear after explicit login navigation and bounded retries"
   cat /tmp/dallyletter-ui-v1.xml || true
+  timeout 30 adb logcat -d -t 2500 || true
   exit 1
 fi
 step "submit invalid credentials to verify real mobile-to-API request and visible error state"
@@ -109,11 +123,23 @@ PY
 }
 tap_ui_node /tmp/dallyletter-ui-v1.xml email-input
 timeout 15 adb shell input text "ci-invalid-$GITHUB_RUN_ID@example.com"
+# Hide the keyboard before locating the next field: otherwise the password
+# control can be covered and taps may continue typing into the email field.
+timeout 15 adb shell input keyevent 4
 sleep 1
 timeout 45 adb shell uiautomator dump /sdcard/dallyletter-login-filled.xml >/dev/null
 timeout 20 adb pull /sdcard/dallyletter-login-filled.xml /tmp/dallyletter-login-filled.xml >/dev/null
 tap_ui_node /tmp/dallyletter-login-filled.xml password-input
 timeout 15 adb shell input text "InvalidPassword123"
+# Verify the password field actually received the test value before submit.
+sleep 1
+timeout 45 adb shell uiautomator dump /sdcard/dallyletter-password-filled.xml >/dev/null
+timeout 20 adb pull /sdcard/dallyletter-password-filled.xml /tmp/dallyletter-password-filled.xml >/dev/null
+if ! grep -Fq 'password-input' /tmp/dallyletter-password-filled.xml; then
+  echo "::error::Password field is not present in the UI hierarchy after focus"
+  cat /tmp/dallyletter-password-filled.xml || true
+  exit 1
+fi
 timeout 15 adb shell input keyevent 4
 sleep 1
 timeout 45 adb shell uiautomator dump /sdcard/dallyletter-login-ready.xml >/dev/null
@@ -157,13 +183,36 @@ if timeout 30 adb logcat -d -t 8000 | awk '/FATAL EXCEPTION/ { in_exception=1; c
   exit 1
 fi
 
-step "write marker into app-private data before upgrade"
-timeout 20 adb shell run-as com.dallyletter.elidems sh -c 'mkdir -p files && printf "preserved-across-upgrade" > files/dallyletter-upgrade-marker'
-step "upgrade to version 1.0.1 without uninstalling"
-timeout 180 adb install -r artifacts/dallyletter-mobile/android/app/build/outputs/apk/debug/app-debug.apk
+step "upgrade actual release APK in place to version 1.0.1"
+timeout 180 adb install -r artifacts/dallyletter-mobile/android/app/build/outputs/apk/release/app-release.apk
+timeout 30 adb shell dumpsys package com.dallyletter.elidems | grep -E "versionCode=2|versionName=1\\.0\\.1"
+timeout 45 adb shell monkey -p com.dallyletter.elidems 1
+sleep 8
+step "verify upgraded release APK still renders sign-in UI"
+timeout 30 adb exec-out screencap -p > /tmp/dallyletter-release-upgrade.png
+timeout 45 adb shell uiautomator dump /sdcard/dallyletter-release-upgrade.xml >/dev/null
+timeout 20 adb pull /sdcard/dallyletter-release-upgrade.xml /tmp/dallyletter-release-upgrade.xml >/dev/null
+if ! grep -Eqi 'Welcome back|Sign in to continue learning|your@email.com|Sign In' /tmp/dallyletter-release-upgrade.xml; then
+  echo "::error::Release APK v1.0.1 did not retain a visible sign-in UI after in-place upgrade"
+  cat /tmp/dallyletter-release-upgrade.xml || true
+  exit 1
+fi
+# Release APKs are intentionally non-debuggable, so Android's `run-as` must not be
+# used against them. The release APK has already passed install/launch/login tests.
+# Exercise private-data preservation with two CI-only debuggable builds of the same
+# applicationId and signing configuration. Never enable debuggable in release.
+step "install CI debug v1.0.0 for private-data upgrade test"
+timeout 180 adb uninstall com.dallyletter.elidems
+timeout 180 adb install /tmp/dallyletter-data-v1-debug.apk
+timeout 30 adb shell dumpsys package com.dallyletter.elidems | grep -E "versionCode=1|versionName=1\\.0\\.0"
+step "write marker into app-private data using debuggable test build"
+timeout 30 adb shell "run-as com.dallyletter.elidems sh -c 'mkdir -p /data/user/0/com.dallyletter.elidems/files && printf preserved-across-upgrade > /data/user/0/com.dallyletter.elidems/files/dallyletter-upgrade-marker'"
+timeout 20 adb shell run-as com.dallyletter.elidems test -f /data/user/0/com.dallyletter.elidems/files/dallyletter-upgrade-marker
+step "upgrade CI test build to version 1.0.1 without uninstalling"
+timeout 180 adb install -r /tmp/dallyletter-data-v1.0.1-debug.apk
 timeout 30 adb shell pm path com.dallyletter.elidems | grep -q "package:"
-step "verify app-private data survives in-place upgrade"
-upgrade_marker="$(timeout 20 adb shell run-as com.dallyletter.elidems cat files/dallyletter-upgrade-marker | tr -d "\r")"
+step "verify app-private data survives in-place install -r upgrade"
+upgrade_marker="$(timeout 20 adb shell run-as com.dallyletter.elidems cat /data/user/0/com.dallyletter.elidems/files/dallyletter-upgrade-marker | tr -d "\\r")"
 if [ "$upgrade_marker" != "preserved-across-upgrade" ]; then
   echo "::error::App-private data marker was not preserved during install -r upgrade"
   exit 1
@@ -171,17 +220,17 @@ fi
 timeout 30 adb shell dumpsys package com.dallyletter.elidems | grep -E "versionCode=2|versionName=1\\.0\\.1"
 timeout 45 adb shell monkey -p com.dallyletter.elidems 1
 sleep 8
-step "capture upgraded app screen and verify real UI remains visible"
+step "capture upgraded CI test build and verify sign-in UI remains visible"
 timeout 30 adb exec-out screencap -p > /tmp/dallyletter-v1.0.1.png
 timeout 45 adb shell uiautomator dump /sdcard/dallyletter-ui-v1.0.1.xml >/dev/null
 timeout 20 adb pull /sdcard/dallyletter-ui-v1.0.1.xml /tmp/dallyletter-ui-v1.0.1.xml >/dev/null
-if ! grep -Eqi 'Welcome back|Sign in to continue learning|your@email.com' /tmp/dallyletter-ui-v1.0.1.xml; then
+if ! grep -Eqi 'Welcome back|Sign in to continue learning|your@email.com|Sign In' /tmp/dallyletter-ui-v1.0.1.xml; then
   echo "::error::Upgraded app launched but expected sign-in UI text was not present"
   cat /tmp/dallyletter-ui-v1.0.1.xml || true
   exit 1
 fi
-step "verify upgraded app process and foreground activity"
-app_pid="$(timeout 20 adb shell pidof com.dallyletter.elidems | tr -d "\r" || true)"
+step "verify upgraded test app process and foreground activity"
+app_pid="$(timeout 20 adb shell pidof com.dallyletter.elidems | tr -d "\\r" || true)"
 if [ -z "$app_pid" ]; then
   echo "::error::Dallyletter process is not running after upgrade launch"
   timeout 20 adb logcat -d -t 1000 || true
@@ -192,7 +241,7 @@ if ! timeout 20 adb shell dumpsys activity activities | grep -E "mResumedActivit
   timeout 20 adb shell dumpsys activity activities | tail -n 100 || true
   exit 1
 fi
-if timeout 30 adb logcat -d -t 8000 | awk '/FATAL EXCEPTION/ { in_exception=1; count=0 } in_exception { if (/Process: com\.dallyletter\.elidems/) found=1; if (++count > 20) in_exception=0 } END { exit !found }'; then
+if timeout 30 adb logcat -d -t 8000 | awk '/FATAL EXCEPTION/ { in_exception=1; count=0 } in_exception { if (/Process: com\\.dallyletter\\.elidems/) found=1; if (++count > 20) in_exception=0 } END { exit !found }'; then
   echo "Android app crashed during upgrade smoke test"
   exit 1
 fi

@@ -53,6 +53,7 @@
     "react-native-worklets": "0.5.1",
     "typescript": "~5.9.2",
     "zod": "catalog:",
-    "zod-validation-error": "^3.4.0"
+    "zod-validation-error": "^3.4.0",
+    "babel-preset-expo": "~54.0.10"
   }
 }
