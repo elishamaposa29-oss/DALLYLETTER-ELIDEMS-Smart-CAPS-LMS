@@ -349,7 +349,16 @@ export default function FeatureHub() {
     finally { setUploading(false); }
   };
 
-  const openUrl = (url: string) => { if (/^https?:\/\//i.test(url)) void Linking.openURL(url); };
+  const openUrl = (url: string) => {
+    if (!url) return;
+    if (/^https?:\/\//i.test(url)) { void Linking.openURL(url); return; }
+    if (/^\/(student|teacher|admin)\//i.test(url)) {
+      router.push((role === "teacher" ? "/(teacher)/more" : role === "student" ? "/(student)/more" : "/(admin)/more") as any);
+      return;
+    }
+    const absolute = \`https://dallyletter-elidems-smart-caps-lms-4.onrender.com\${url.startsWith("/") ? "" : "/"}\${url}\`;
+    void Linking.openURL(absolute);
+  };
 
   const activeNotifications = notifications || [];
   const groups = studyGroups || [];
