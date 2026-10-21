@@ -41,7 +41,7 @@ export default function StudentClasses() {
     title: { fontSize: 22, fontFamily: "Inter_700Bold", color: "#ffffff" },
     subtitle: { fontSize: 13, color: "rgba(255,255,255,0.7)", fontFamily: "Inter_400Regular", marginTop: 4 },
     scroll: { flex: 1 },
-    content: { padding: 16, paddingBottom: 100 },
+    content: { padding: 16, paddingBottom: 100, width: "100%", maxWidth: 1180, alignSelf: "center" },
     card: {
       backgroundColor: colors.card,
       borderRadius: colors.radius,

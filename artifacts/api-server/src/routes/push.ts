@@ -26,6 +26,22 @@ router.post("/push/subscriptions", requireAuth, async (req, res): Promise<void> 
   res.status(201).json({ ok: true });
 });
 
+router.post("/push/expo-subscriptions", requireAuth, async (req, res): Promise<void> => {
+  const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
+  if (!/^(?:ExponentPushToken|ExpoPushToken)\[[^\]\s]{8,256}\]$/.test(token)) {
+    res.status(400).json({ error: "A valid Expo push token is required" });
+    return;
+  }
+  // Native Expo tokens share the durable subscription table but are explicitly
+  // tagged so the dispatcher never attempts Web Push encryption on them.
+  await pool.query(`
+    INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+    VALUES ($1,$2,'expo','expo')
+    ON CONFLICT (endpoint) DO UPDATE SET user_id = EXCLUDED.user_id, p256dh = 'expo', auth = 'expo', updated_at = now()
+  `, [req.currentUser!.id, token]);
+  res.status(201).json({ ok: true });
+});
+
 router.delete("/push/subscriptions", requireAuth, async (req, res): Promise<void> => {
   const endpoint = typeof req.body?.endpoint === "string" ? req.body.endpoint.trim() : "";
   if (!endpoint) { res.status(400).json({ error: "Endpoint required" }); return; }
@@ -35,10 +51,13 @@ router.delete("/push/subscriptions", requireAuth, async (req, res): Promise<void
 
 
 router.post("/push/test", requireAuth, async (req, res): Promise<void> => {
-  if (!isPushConfigured()) { res.status(503).json({ error: "Push delivery is not configured on the server" }); return; }
   const userId = req.currentUser!.id;
   const subscription = await pool.query("SELECT 1 FROM push_subscriptions WHERE user_id=$1 LIMIT 1", [userId]);
   if (!subscription.rows.length) { res.status(409).json({ error: "Enable push notifications on this device first, then retry this test" }); return; }
+  if (!isPushConfigured()) {
+    const native = await pool.query("SELECT 1 FROM push_subscriptions WHERE user_id=$1 AND p256dh='expo' AND auth='expo' LIMIT 1", [userId]);
+    if (!native.rows.length) { res.status(503).json({ error: "Web Push is not configured and no native Expo push subscription is registered" }); return; }
+  }
   const result = await pool.query(
     "INSERT INTO notifications (recipient_id,title,message,type,is_read,link) VALUES ($1,$2,$3,$4,false,$5) RETURNING id",
     [userId, "Dallyletter push delivery test", "If this appears as a device notification, push delivery reached your device.", "push_test", "/student/notifications"]

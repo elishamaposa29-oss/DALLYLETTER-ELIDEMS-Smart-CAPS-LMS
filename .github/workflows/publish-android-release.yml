@@ -1,0 +1,80 @@
+name: Publish verified Dallyletter Android APK
+
+on:
+  workflow_run:
+    workflows: ["Mobile Android Build and Smoke Test"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    # Serialize stable publication so two manual runs cannot race the fixed release tag.
+    concurrency:
+      group: dallyletter-android-stable-release
+      cancel-in-progress: false
+    # Only publish a fully green, manually dispatched main-branch release build.
+    # Pull-request builds never publish binaries.
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == 'main' &&
+          github.event.workflow_run.event == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the APKs verified by the completed build and emulator smoke tests
+        uses: actions/download-artifact@v4
+        with:
+          name: dallyletter-android-candidate-apk
+          path: release-assets
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Verify release candidate files before publication
+        shell: bash
+        env:
+          SOURCE_COMMIT: ${{ github.event.workflow_run.head_sha }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+          test -s release-assets/dallyletter-v1.apk
+          test -s release-assets/dallyletter-v1.0.1.apk
+          test -s release-assets/checksums.sha256
+          test -s release-assets/build-metadata.txt
+          (cd release-assets && sha256sum --check checksums.sha256)
+          # Bind the published APK to the exact successful workflow_run commit.
+          grep -Fxq "source_commit=$SOURCE_COMMIT" release-assets/build-metadata.txt
+          # Never replace a stable release tag with an artifact from another commit.
+          tag_status="$(curl -sS -o /tmp/mobile-release-tag.json -w '%{http_code}' \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/git/ref/tags/mobile-v1.0.1")"
+          if [ "$tag_status" = "200" ]; then
+            echo "::error::Release tag mobile-v1.0.1 already exists. Bump the app version and release tag before publishing another stable APK."
+            exit 1
+          elif [ "$tag_status" != "404" ]; then
+            echo "::error::Could not verify release-tag state (GitHub API HTTP $tag_status); refusing publication."
+            exit 1
+          fi
+          # Release publication must never include CI-only debug APKs.
+          if find release-assets -maxdepth 1 -name '*debug*.apk' | grep -q .; then
+            echo "::error::Refusing to publish a debug APK"
+            exit 1
+          fi
+
+      - name: Publish verified APK as the latest stable release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: mobile-v1.0.1
+          target_commitish: ${{ github.event.workflow_run.head_sha }}
+          name: Dallyletter Elidems Android v1.0.1
+          body: |
+            Verified Android release for Dallyletter Elidems.
+
+            Built and passed the repository's Android build and emulator smoke-test workflow.
+            Download the APK below and follow Android's confirmation prompts to install it.
+          files: release-assets/dallyletter-v1.0.1.apk
+          make_latest: true
+          overwrite_files: true

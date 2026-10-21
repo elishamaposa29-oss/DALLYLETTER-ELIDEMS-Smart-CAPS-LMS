@@ -34,7 +34,7 @@ export default function TeacherHome() {
     },
     badgeText: { color: colors.accent, fontSize: 12, fontFamily: "Inter_600SemiBold" },
     scroll: { flex: 1 },
-    content: { padding: 16, paddingBottom: 100 },
+    content: { padding: 16, paddingBottom: 100, width: "100%", maxWidth: 1180, alignSelf: "center" },
     sectionTitle: { fontSize: 16, fontFamily: "Inter_700Bold", color: colors.foreground, marginBottom: 12 },
     statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 24 },
     statCard: {

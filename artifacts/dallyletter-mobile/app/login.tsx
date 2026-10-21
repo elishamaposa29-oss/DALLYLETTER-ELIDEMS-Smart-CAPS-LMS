@@ -39,18 +39,25 @@ export default function LoginScreen() {
 
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         await login(rawUser, rawToken);
-        const role = rawUser.role;
-        if (role === "owner") router.replace("/(admin)/home");
+        const role = String(rawUser.role || "").toLowerCase().replace(/[ -]+/g, "_");
+        if (["owner", "admin"].includes(role)) router.replace("/(admin)/home");
+        else if (["manager", "senior_manager"].includes(role) || Boolean(rawUser.isManager)) router.replace("/(manager)/home");
         else if (role === "teacher") router.replace("/(teacher)/home");
-        else router.replace("/(student)/home");
+        else if (role === "student" || role === "prefect") router.replace("/(student)/home");
+        else router.replace("/login");
       },
       onError: (requestError: any) => {
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        const status = Number(requestError?.response?.status ?? requestError?.status);
+        const errorMessage = String(requestError?.message ?? "");
+        const status = Number(
+          requestError?.response?.status ??
+          requestError?.status ??
+          errorMessage.match(/(?:status code|status)\s*[:=]?\s*(\d{3})/i)?.[1]
+        );
         const responseData = requestError?.response?.data;
-        // Keep invalid-credential feedback stable even when the API client only
-        // exposes a generic "Request failed with status code 401" message.
-        if (status === 401) {
+        // Generated API clients may expose only an Error.message rather than
+        // Axios response metadata. Preserve the specific 401 feedback in both cases.
+        if (status === 401 || /\b401\b/.test(errorMessage)) {
           setError("Invalid email or password. Please try again.");
           return;
         }

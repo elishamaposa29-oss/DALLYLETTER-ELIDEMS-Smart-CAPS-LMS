@@ -68,7 +68,7 @@ export default function TeacherClasses() {
     title: { fontSize: 22, fontFamily: "Inter_700Bold", color: "#ffffff" },
     addBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.accent, alignItems: "center", justifyContent: "center" },
     list: { flex: 1 },
-    listContent: { padding: 16, paddingBottom: 100 },
+    listContent: { padding: 16, paddingBottom: 100, width: "100%", maxWidth: 1180, alignSelf: "center" },
     card: {
       backgroundColor: colors.card,
       borderRadius: colors.radius,

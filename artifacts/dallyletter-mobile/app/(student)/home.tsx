@@ -20,7 +20,10 @@ export default function StudentHome() {
     { icon: "book" as const, label: "Lessons", route: "/(student)/lessons" as const, color: "#3b82f6" },
     { icon: "video" as const, label: "Classes", route: "/(student)/classes" as const, color: "#8b5cf6" },
     { icon: "message-circle" as const, label: "Chat", route: "/(student)/chat" as const, color: "#10b981" },
-    { icon: "credit-card" as const, label: "Payments", route: "/(student)/profile" as const, color: "#f59e0b" },
+    { icon: "credit-card" as const, label: "Payments", route: "/(student)/more?section=payments" as const, color: "#f59e0b" },
+    { icon: "award" as const, label: "Achievements", route: "/(student)/more?section=achievements" as const, color: "#d97706" },
+    { icon: "shield" as const, label: "Safety report", route: "/(student)/more?section=reports" as const, color: "#dc2626" },
+    ...(user?.isPrefect ? [{ icon: "star" as const, label: "Prefect", route: "/(student)/more?section=prefect" as const, color: "#b45309" }] : []),
   ];
 
   const s = StyleSheet.create({
@@ -52,7 +55,7 @@ export default function StudentHome() {
       backgroundColor: colors.accent,
     },
     scroll: { flex: 1 },
-    content: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 100 },
+    content: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 100, width: "100%", maxWidth: 1180, alignSelf: "center" },
     sectionTitle: { fontSize: 16, fontFamily: "Inter_700Bold", color: colors.foreground, marginBottom: 12 },
     grid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 24 },
     actionCard: {

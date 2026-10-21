@@ -2,11 +2,11 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { ownerAlertsTable } from "@workspace/db/schema";
 import { eq, desc } from "drizzle-orm";
-import { requireAuth } from "../lib/auth-middleware";
+import { requireAuth, isOwnerRole } from "../lib/auth-middleware";
 
 const router = Router();
 
-const isOwnerOrAdmin = (role: string): boolean => role === "owner" || role === "admin";
+const isOwnerOrAdmin = (role: string): boolean => isOwnerRole(role);
 
 router.get("/owner-alerts", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;

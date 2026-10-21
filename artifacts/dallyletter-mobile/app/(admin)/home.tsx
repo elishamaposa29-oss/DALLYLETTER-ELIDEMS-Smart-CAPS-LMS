@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { useGetDashboardStats, useGetPaymentSummary, useGetRecentActivity } from "@workspace/api-client-react";
-import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
@@ -38,7 +39,7 @@ export default function AdminHome() {
     greeting: { fontSize: 13, color: "rgba(255,255,255,0.7)", fontFamily: "Inter_400Regular" },
     name: { fontSize: 22, color: "#ffffff", fontFamily: "Inter_700Bold", marginTop: 2 },
     scroll: { flex: 1 },
-    content: { padding: 16, paddingBottom: 100 },
+    content: { padding: 16, paddingBottom: 100, width: "100%", maxWidth: 1180, alignSelf: "center" },
     sectionTitle: { fontSize: 16, fontFamily: "Inter_700Bold", color: colors.foreground, marginBottom: 12 },
     statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 24 },
     statCard: {
@@ -101,6 +102,8 @@ export default function AdminHome() {
       </View>
 
       <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+        {["owner","platform_owner"].includes(String(user?.role||"").toLowerCase().replace(/[ -]+/g,"_")) ? <TouchableOpacity onPress={()=>router.push({pathname:"/(admin)/tools",params:{section:"command-center"}} as any)} style={{padding:14,marginBottom:18,borderRadius:12,borderWidth:1,borderColor:colors.border,backgroundColor:colors.card,flexDirection:"row",alignItems:"center",gap:12}}><Feather name="activity" size={22} color={colors.primary}/><View style={{flex:1}}><Text style={{fontSize:15,fontFamily:"Inter_700Bold",color:colors.foreground}}>Open Owner Command Centre</Text><Text style={{fontSize:12,color:colors.mutedForeground,marginTop:3}}>Live service health, safety alerts, AI and financial controls</Text></View><Feather name="chevron-right" size={18} color={colors.mutedForeground}/></TouchableOpacity> : null}
+        <TouchableOpacity onPress={()=>router.push("/(admin)/academic" as any)} style={{padding:14,marginBottom:18,borderRadius:12,borderWidth:1,borderColor:colors.border,backgroundColor:colors.card,flexDirection:"row",alignItems:"center",gap:12}}><Feather name="book-open" size={22} color={colors.primary}/><View style={{flex:1}}><Text style={{fontSize:15,fontFamily:"Inter_700Bold",color:colors.foreground}}>Manage lessons & classes</Text><Text style={{fontSize:12,color:colors.mutedForeground,marginTop:3}}>Search, preview, download or remove academic content</Text></View><Feather name="chevron-right" size={18} color={colors.mutedForeground}/></TouchableOpacity>
         <Text style={s.sectionTitle}>Platform Stats</Text>
         <View style={s.statsGrid}>
           {statsData.map((item) => (
