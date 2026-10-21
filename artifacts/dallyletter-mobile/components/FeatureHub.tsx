@@ -189,6 +189,12 @@ export default function FeatureHub() {
   const retryQueuedSubmissions = useCallback(async () => {
     if (!user?.id || queueBusy) return;
     setQueueBusy(true);
+    const clearDraft = async (item:QueuedSubmission) => {
+      const key = item.kind === "assignment"
+        ? `dallyletter_assignment_draft_${user.id}_${item.targetId}`
+        : `dallyletter_exercise_draft_${user.id}_${item.targetId}`;
+      await AsyncStorage.removeItem(key).catch(() => undefined);
+    };
     try {
       const pending = await listQueuedSubmissions(user.id);
       for (const item of pending) {
@@ -196,17 +202,20 @@ export default function FeatureHub() {
           if (item.kind === "exercise") {
             const current = await request(`/api/exercises/${item.targetId}/result`).catch(() => null);
             if (["submitted","ai_partial","ai_marked_pending_return"].includes(String(current?.submission?.status||""))) {
+              await clearDraft(item);
               await removeQueuedSubmission(user.id,item.id);
               continue;
             }
           }
           await request(item.path,{method:"POST",body:item.body});
+          await clearDraft(item);
           await removeQueuedSubmission(user.id,item.id);
         } catch (e) {
           const message=e instanceof Error?e.message:"Retry failed";
           if (item.kind==="exercise" && /already submitted|awaiting marking|previous attempt/i.test(message)) {
             const current=await request(`/api/exercises/${item.targetId}/result`).catch(()=>null);
             if (["submitted","ai_partial","ai_marked_pending_return"].includes(String(current?.submission?.status||""))) {
+              await clearDraft(item);
               await removeQueuedSubmission(user.id,item.id);
               continue;
             }
