@@ -1,0 +1,151 @@
+import Constants from "expo-constants";
+import * as Notifications from "expo-notifications";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getApiUrl } from "@workspace/api-client-react";
+import { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Alert, Platform, Text, TouchableOpacity, View } from "react-native";
+import { useAuth } from "@/contexts/AuthContext";
+import { useColors } from "@/hooks/useColors";
+
+const TOKEN_KEY = "dallyletter_native_expo_push_token_v1";
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
+});
+
+type Session = { userId: number; authToken: string; pushToken: string };
+
+export default function NativePushControls() {
+  const { user, token, isLoading } = useAuth();
+  const colors = useColors();
+  const [working, setWorking] = useState(false);
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
+  const [pushToken, setPushToken] = useState("");
+  const previousSession = useRef<Session | null>(null);
+  const projectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID?.trim()
+    || Constants.easConfig?.projectId
+    || Constants.expoConfig?.extra?.eas?.projectId
+    || "";
+
+  const unregister = async (session: Session) => {
+    try {
+      await fetch(getApiUrl("/api/push/subscriptions"), {
+        method: "DELETE",
+        headers: { Authorization: "Bearer " + session.authToken, "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: session.pushToken }),
+      });
+    } catch {
+      // Server-side tokens expire or are reassigned; logout must not be blocked by push cleanup.
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    const sync = async () => {
+      const previous = previousSession.current;
+      if (!user?.id || !token || isLoading) {
+        if (previous) {
+          await unregister(previous);
+          previousSession.current = null;
+        }
+        return;
+      }
+      if (previous && (previous.userId !== user.id || previous.authToken !== token)) {
+        await unregister(previous);
+        previousSession.current = null;
+      }
+      const stored = await AsyncStorage.getItem(TOKEN_KEY).catch(() => null);
+      if (active && stored) setPushToken(stored);
+    };
+    void sync();
+    return () => { active = false; };
+  }, [user?.id, token, isLoading]);
+
+  const enable = async () => {
+    if (!user?.id || !token) {
+      setError("Sign in before enabling push notifications.");
+      return;
+    }
+    if (Platform.OS === "web") {
+      setError("This control registers native app push. For browser push, use the Dallyletter website.");
+      return;
+    }
+    if (!projectId) {
+      setError("Native push is not configured for this build: set EXPO_PUBLIC_EAS_PROJECT_ID to the Dallyletter Expo EAS project ID, then rebuild the app.");
+      return;
+    }
+    setWorking(true);
+    setError("");
+    setStatus("");
+    try {
+      if (Platform.OS === "android") {
+        await Notifications.setNotificationChannelAsync("dallyletter-updates", {
+          name: "Dallyletter updates",
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: "#0d0d73",
+        });
+      }
+      const existing = await Notifications.getPermissionsAsync();
+      const permission = existing.granted ? existing : await Notifications.requestPermissionsAsync();
+      if (!permission.granted) throw new Error("Notification permission was not granted. Enable notifications in Android Settings to continue.");
+      const result = await Notifications.getExpoPushTokenAsync({ projectId });
+      const nativeToken = result.data;
+      const response = await fetch(getApiUrl("/api/push/expo-subscriptions"), {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify({ token: nativeToken }),
+      });
+      const body = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(body.error || `Could not register this device (HTTP ${response.status}).`);
+      await AsyncStorage.setItem(TOKEN_KEY, nativeToken);
+      previousSession.current = { userId: user.id, authToken: token, pushToken: nativeToken };
+      setPushToken(nativeToken);
+      setStatus("Device registered. Tap “Send test notification” and check the Android notification shade.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not register native push on this device.");
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const sendTest = async () => {
+    if (!token || !pushToken) {
+      setError("Register this device first.");
+      return;
+    }
+    setWorking(true);
+    setError("");
+    setStatus("");
+    try {
+      const response = await fetch(getApiUrl("/api/push/test"), {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      });
+      const result = await response.json().catch(() => ({})) as { error?: string; notificationId?: number; message?: string };
+      if (!response.ok) throw new Error(result.error || `Push test failed (HTTP ${response.status}).`);
+      setStatus(result.message || `Push test ${result.notificationId ?? ""} queued. Check the Android notification shade.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not queue a push test.");
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  return <View style={{ padding: 14, borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.card, gap: 8, marginBottom: 12 }}>
+    <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 15 }}>Native device notifications</Text>
+    <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Register this Android device for push alerts, then test delivery. A queued test is not proof of device delivery.</Text>
+    <TouchableOpacity accessibilityRole="button" disabled={working || isLoading} onPress={() => void enable()} style={{ padding: 12, borderRadius: 8, backgroundColor: colors.primary, alignItems: "center", opacity: working ? 0.7 : 1 }}>
+      {working ? <ActivityIndicator color="#fff" /> : <Text style={{ color: "#fff", fontWeight: "700" }}>{pushToken ? "Refresh device registration" : "Enable device push"}</Text>}
+    </TouchableOpacity>
+    {pushToken ? <TouchableOpacity accessibilityRole="button" disabled={working} onPress={() => void sendTest()} style={{ padding: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.border, alignItems: "center" }}><Text style={{ color: colors.foreground, fontWeight: "700" }}>Send test notification</Text></TouchableOpacity> : null}
+    {status ? <Text accessibilityRole="text" style={{ color: colors.primary, fontSize: 12 }}>{status}</Text> : null}
+    {error ? <Text accessibilityRole="alert" style={{ color: "#b91c1c", fontSize: 12 }}>{error}</Text> : null}
+  </View>;
+}
