@@ -30,12 +30,30 @@ jobs:
 
       - name: Verify release candidate files before publication
         shell: bash
+        env:
+          SOURCE_COMMIT: ${{ github.event.workflow_run.head_sha }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -Eeuo pipefail
           test -s release-assets/dallyletter-v1.apk
           test -s release-assets/dallyletter-v1.0.1.apk
           test -s release-assets/checksums.sha256
+          test -s release-assets/build-metadata.txt
           (cd release-assets && sha256sum --check checksums.sha256)
+          # Bind the published APK to the exact successful workflow_run commit.
+          grep -Fxq "source_commit=$SOURCE_COMMIT" release-assets/build-metadata.txt
+          # Never replace a stable release tag with an artifact from another commit.
+          tag_status="$(curl -sS -o /tmp/mobile-release-tag.json -w '%{http_code}' \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/git/ref/tags/mobile-v1.0.1")"
+          if [ "$tag_status" = "200" ]; then
+            echo "::error::Release tag mobile-v1.0.1 already exists. Bump the app version and release tag before publishing another stable APK."
+            exit 1
+          elif [ "$tag_status" != "404" ]; then
+            echo "::error::Could not verify release-tag state (GitHub API HTTP $tag_status); refusing publication."
+            exit 1
+          fi
           # Release publication must never include CI-only debug APKs.
           if find release-assets -maxdepth 1 -name '*debug*.apk' | grep -q .; then
             echo "::error::Refusing to publish a debug APK"
