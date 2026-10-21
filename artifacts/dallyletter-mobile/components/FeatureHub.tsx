@@ -69,6 +69,8 @@ export default function FeatureHub() {
   const [exerciseInstructions, setExerciseInstructions] = useState("");
   const [exerciseDraftQuestions, setExerciseDraftQuestions] = useState<Array<{prompt:string;type:"input"|"poll"|"drawbox";marks:string;options:string[];correct:number}>>([{prompt:"",type:"input",marks:"1",options:["Option A","Option B"],correct:0}]);
   const [exerciseBuilderBusy, setExerciseBuilderBusy] = useState(false);
+  const [exerciseDraftId, setExerciseDraftId] = useState<number | null>(null);
+  const [exerciseQuestionsSaved, setExerciseQuestionsSaved] = useState(0);
   const [overallComment, setOverallComment] = useState("");
   const [pollTitle, setPollTitle] = useState("");
   const [pollQuestion, setPollQuestion] = useState("");
@@ -408,22 +410,26 @@ export default function FeatureHub() {
     if (!exerciseLessonId || !exerciseTitle.trim() || !exerciseDraftQuestions.length || exerciseDraftQuestions.some(q=>!q.prompt.trim() || !Number.isFinite(Number(q.marks)) || Number(q.marks)<0 || Math.round(Number(q.marks)*2)!==Number(q.marks)*2)) { Alert.alert("Complete exercise","Choose a lesson, enter a title, and give every question a prompt and marks in 0.5 increments."); return; }
     if (exerciseDraftQuestions.some(q=>q.type==="poll" && (q.options.filter(o=>o.trim()).length<2 || !q.options[q.correct]?.trim()))) { Alert.alert("Complete poll options","Each choice question needs at least two options and a correct option."); return; }
     setExerciseBuilderBusy(true);
-    let exerciseId:number|undefined;
+    let exerciseId:number|undefined = exerciseDraftId ?? undefined;
     try {
-      const created = await request(`/api/exercises/lessons/${exerciseLessonId}/exercises`, { method:"POST", body:JSON.stringify({title:exerciseTitle.trim(),instructions:exerciseInstructions.trim()||null,layout:{version:1,page:"book"}}) });
-      exerciseId = Number(created?.id);
-      if (!Number.isInteger(exerciseId) || exerciseId<=0) throw new Error("The server did not return the created exercise ID.");
-      for (let index=0; index<exerciseDraftQuestions.length; index++) {
+      if (!exerciseId) {
+        const created = await request(`/api/exercises/lessons/${exerciseLessonId}/exercises`, { method:"POST", body:JSON.stringify({title:exerciseTitle.trim(),instructions:exerciseInstructions.trim()||null,layout:{version:1,page:"book"}}) });
+        exerciseId = Number(created?.id);
+        if (!Number.isInteger(exerciseId) || exerciseId<=0) throw new Error("The server did not return the created exercise ID.");
+        setExerciseDraftId(exerciseId); setExerciseQuestionsSaved(0);
+      }
+      for (let index=exerciseQuestionsSaved; index<exerciseDraftQuestions.length; index++) {
         const q=exerciseDraftQuestions[index];
         const payload:any={prompt:q.prompt.trim(),type:q.type,marksAllocated:Number(q.marks),position:index,config:{}};
         if(q.type==="poll") payload.options=q.options.filter(o=>o.trim()).map((label,i)=>({label:label.trim(),value:label.trim(),isCorrect:i===q.correct}));
         await request(`/api/exercises/${exerciseId}/questions`,{method:"POST",body:JSON.stringify(payload)});
+        setExerciseQuestionsSaved(index+1);
       }
       await request(`/api/exercises/${exerciseId}/publish`,{method:"POST",body:JSON.stringify({})});
-      setExerciseBuilderOpen(false); setExerciseTitle(""); setExerciseInstructions(""); setExerciseLessonId(""); setExerciseDraftQuestions([{prompt:"",type:"input",marks:"1",options:["Option A","Option B"],correct:0}]);
+      setExerciseBuilderOpen(false); setExerciseTitle(""); setExerciseInstructions(""); setExerciseLessonId(""); setExerciseDraftId(null); setExerciseQuestionsSaved(0); setExerciseDraftQuestions([{prompt:"",type:"input",marks:"1",options:["Option A","Option B"],correct:0}]);
       await loadSection("exercises");
       Alert.alert("Exercise published","Your exercise and questions are published for eligible learners.");
-    } catch(e) { Alert.alert(exerciseId?"Exercise saved as draft":"Exercise not created",e instanceof Error?e.message:"Please retry when connected. If creation succeeded, reopen the exercise list and finish the draft rather than creating a duplicate."); }
+    } catch(e) { Alert.alert(exerciseId?`Draft #${exerciseId} preserved`:"Exercise not created",e instanceof Error?e.message:"Reconnect and retry. Saved questions are tracked so retrying this builder does not intentionally recreate them."); }
     finally { setExerciseBuilderBusy(false); }
   };
 
