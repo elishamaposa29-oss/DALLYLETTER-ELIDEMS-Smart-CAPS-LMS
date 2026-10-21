@@ -1,14 +1,17 @@
 import { Feather } from "@expo/vector-icons";
-import { useBlockUser, useListUsers, usePromoteUser } from "@workspace/api-client-react";
+import { getApiUrl, useBlockUser, useListUsers, usePromoteUser } from "@workspace/api-client-react";
 import * as Haptics from "expo-haptics";
 import { useState } from "react";
 import { Alert, FlatList, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function AdminUsers() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { token } = useAuth();
+  const [adminActionUserId, setAdminActionUserId] = useState<number | null>(null);
   const { data: users, isLoading, refetch } = useListUsers();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "student" | "teacher">("all");
@@ -37,6 +40,34 @@ export default function AdminUsers() {
 
   const handleTogglePrefect = (userId: number, isPrefect: boolean) => {
     promoteMutation.mutate({ id: userId, data: { isPrefect: !isPrefect } });
+  };
+
+  const ownerAction = async (userId:number, path:string, body:Record<string,unknown>, successMessage:string) => {
+    setAdminActionUserId(userId);
+    try {
+      const response=await fetch(getApiUrl(path),{method:"PATCH",headers:{"Content-Type":"application/json",...(token?{Authorization:"Bearer "+token}:{})},body:JSON.stringify(body)});
+      const result=await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error(result?.error||`Request failed (${response.status})`);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await refetch();
+      Alert.alert("User updated",successMessage);
+    } catch(e) {
+      Alert.alert("Could not update user",e instanceof Error?e.message:"Please retry.");
+    } finally { setAdminActionUserId(null); }
+  };
+
+  const handleToggleSuspend = (userId:number,isSuspended:boolean) => {
+    Alert.alert(isSuspended?"Lift suspension":"Suspend user",isSuspended?"Restore normal access for this account?":"Suspension allows login but limits access. Continue?",[
+      {text:"Cancel",style:"cancel"},
+      {text:isSuspended?"Lift suspension":"Suspend",style:isSuspended?"default":"destructive",onPress:()=>void ownerAction(userId,`/api/users/${userId}/suspend`,{isSuspended:!isSuspended},isSuspended?"Suspension lifted.":"User suspended.")},
+    ]);
+  };
+
+  const handleToggleManager = (userId:number,isManager:boolean) => {
+    Alert.alert(isManager?"Remove manager status":"Promote to manager",isManager?"Remove manager dashboard access?":"Grant this account manager dashboard access?",[
+      {text:"Cancel",style:"cancel"},
+      {text:isManager?"Remove":"Promote",style:isManager?"destructive":"default",onPress:()=>void ownerAction(userId,`/api/users/${userId}/promote-manager`,{isManager:!isManager},isManager?"Manager access removed.":"Manager access granted.")},
+    ]);
   };
 
   const roleColor: Record<string, string> = { student: "#3b82f6", teacher: "#8b5cf6", owner: "#D4AF37" };
@@ -129,6 +160,7 @@ export default function AdminUsers() {
                   <Text style={s.blockedText}>BLOCKED</Text>
                 </View>
               )}
+              {u.isSuspended && !u.isBlocked ? <View style={[s.blockedBanner,{backgroundColor:"#fffbeb"}]}><Feather name="pause-circle" size={11} color="#a16207"/><Text style={[s.blockedText,{color:"#a16207"}]}>SUSPENDED · LIMITED ACCESS</Text></View>:null}
               <View style={s.cardTop}>
                 <View style={[s.avatar, { backgroundColor: col + "20" }]}>
                   <Feather name="user" size={20} color={col} />
@@ -163,6 +195,12 @@ export default function AdminUsers() {
                     </Text>
                   </TouchableOpacity>
                 )}
+                <TouchableOpacity style={[s.actionBtn,{borderColor:"#a16207",backgroundColor:u.isSuspended?"#fffbeb":colors.secondary}]} disabled={adminActionUserId===u.id} onPress={()=>handleToggleSuspend(u.id,Boolean(u.isSuspended))}>
+                  <Text style={[s.actionText,{color:u.isSuspended?"#a16207":colors.foreground}]}>{adminActionUserId===u.id?"Saving…":u.isSuspended?"Unsuspend":"Suspend"}</Text>
+                </TouchableOpacity>
+                {u.role==="teacher" && <TouchableOpacity style={[s.actionBtn,{borderColor:"#7c3aed",backgroundColor:u.isManager?"#f3e8ff":colors.secondary}]} disabled={adminActionUserId===u.id} onPress={()=>handleToggleManager(u.id,Boolean(u.isManager))}>
+                  <Text style={[s.actionText,{color:u.isManager?"#7c3aed":colors.foreground}]}>{u.isManager?"Remove manager":"Make manager"}</Text>
+                </TouchableOpacity>}
               </View>
             </View>
           );
