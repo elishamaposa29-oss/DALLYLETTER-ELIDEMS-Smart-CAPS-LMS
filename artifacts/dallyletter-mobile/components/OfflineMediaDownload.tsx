@@ -91,6 +91,7 @@ export default function OfflineMediaDownload({ url, fileName, accessibilityLabel
       const info = await FileSystem.getInfoAsync(result.uri);
       const raw = await AsyncStorage.getItem(keyFor(user.id));
       const entries = raw ? JSON.parse(raw) as SavedMedia : {};
+      const previousLocalUri = entries[url]?.localUri;
       const record = { localUri: result.uri, fileName: fileName || url.split("/").pop()?.split("?")[0] || "Learning media", downloadedAt: new Date().toISOString(), bytes: info.exists && "size" in info ? info.size : undefined };
       const newBytes = Number(record.bytes || 0);
       const previousBytes = Number(entries[url]?.bytes || 0);
@@ -100,6 +101,10 @@ export default function OfflineMediaDownload({ url, fileName, accessibilityLabel
       if (newBytes <= 0) throw new Error("The downloaded file size could not be verified; it was not saved to the offline library.");
       entries[url] = record;
       await AsyncStorage.setItem(keyFor(user.id), JSON.stringify(entries));
+      // Remove the replaced copy only after the new copy and registry are safely saved.
+      if (previousLocalUri && previousLocalUri !== record.localUri) {
+        await FileSystem.deleteAsync(previousLocalUri, { idempotent: true }).catch(() => undefined);
+      }
       setSaved(record);
       await refreshUsage();
       Alert.alert("Saved for offline use", "This file is stored on this device for this account. Open it from the lesson even without internet.");
