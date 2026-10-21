@@ -48,6 +48,7 @@ export default function AdminTabLayout() {
       <Tabs.Screen name="profile" options={{ title: "Profile", tabBarIcon: ({ color, size }) => <Feather name="settings" size={size} color={color} /> }} />
       <Tabs.Screen name="tools" options={{ href: null }} />
       <Tabs.Screen name="academic" options={{ href: null }} />
+      <Tabs.Screen name="break" options={{ href: null }} />
     </Tabs>
   );
 }
