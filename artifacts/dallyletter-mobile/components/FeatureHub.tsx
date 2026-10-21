@@ -464,7 +464,7 @@ export default function FeatureHub() {
     }
     setBusy(true);
     try {
-      await request(`/api/assignments/${selected.id}/submit`, { method: "POST", body: JSON.stringify({ content: answerText.trim(), fileUrl: attachmentUrl || null, fileName: attachmentUrl ? attachmentUrl.split("/").pop() : null }) });
+      await request(`/api/assignments/${selected.id}/submit`, { method: "POST", body: JSON.stringify({ content: answerText.trim() || (attachmentUrl ? "See attached submission file." : ""), fileUrl: attachmentUrl || null, fileName: attachmentUrl ? attachmentUrl.split("/").pop() : null }) });
       setAnswerText(""); setAttachmentUrl("");
       if (user?.id) await AsyncStorage.removeItem("dallyletter_assignment_draft_" + user.id + "_" + selected.id).catch(() => undefined);
       Alert.alert("Submitted", "Your work was submitted successfully.");
@@ -473,7 +473,7 @@ export default function FeatureHub() {
       const message=e instanceof Error?e.message:"Please retry.";
       if (/network request failed|failed to fetch|network error|offline|timed? ?out|connection lost/i.test(message)) {
         try {
-          await enqueueSubmission({userId:Number(user?.id),kind:"assignment",targetId:Number(selected.id),path:`/api/assignments/${selected.id}/submit`,body:JSON.stringify({content:answerText.trim(),fileUrl:attachmentUrl||null,fileName:attachmentUrl?attachmentUrl.split("/").pop():null})});
+          await enqueueSubmission({userId:Number(user?.id),kind:"assignment",targetId:Number(selected.id),path:`/api/assignments/${selected.id}/submit`,body:JSON.stringify({content:answerText.trim()||(attachmentUrl?"See attached submission file.":""),fileUrl:attachmentUrl||null,fileName:attachmentUrl?attachmentUrl.split("/").pop():null})});
           await refreshQueuedSubmissions();
           Alert.alert("Saved for retry","You appear to be offline. Your assignment is stored on this device and will retry when the app becomes active again.");
         } catch { Alert.alert("Submission failed",message); }
