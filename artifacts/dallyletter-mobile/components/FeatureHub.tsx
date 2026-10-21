@@ -461,7 +461,7 @@ export default function FeatureHub() {
     ]);
   };
 
-  const paymentTotalOwed = rows.filter((p: any) => p.status !== "paid").reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);  const paymentTotalOwed = rows.filter((p: any) => p.status !== "paid").reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+  const paymentTotalOwed = rows.filter((p: any) => p.status !== "paid").reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
   const startPaynow = async () => {
     if (!isStudent || paymentBusy || paymentTotalOwed <= 0) return;
     setPaymentBusy(true);
