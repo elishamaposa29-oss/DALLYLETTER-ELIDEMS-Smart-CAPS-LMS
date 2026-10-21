@@ -8,7 +8,8 @@ import * as DocumentPicker from "expo-document-picker";
 import * as Linking from "expo-linking";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, AppState, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { enqueueSubmission, listQueuedSubmissions, removeQueuedSubmission, updateQueuedSubmission, type QueuedSubmission } from "@/components/QueuedSubmissionStore";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
@@ -127,6 +128,8 @@ export default function FeatureHub() {
   const [achievementLeaderboard, setAchievementLeaderboard] = useState<Row[]>([]);
   const [allAchievements, setAllAchievements] = useState<Row[]>([]);
   const [achievementTab, setAchievementTab] = useState<"badges" | "leaderboard" | "all">("badges");
+  const [queuedSubmissions, setQueuedSubmissions] = useState<QueuedSubmission[]>([]);
+  const [queueBusy, setQueueBusy] = useState(false);
   const queryClient = useQueryClient();
   const { data: notifications, refetch: refetchNotifications } = useListNotifications({ query: { queryKey: getListNotificationsQueryKey(), refetchInterval: section === "notifications" ? 30000 : false, refetchOnWindowFocus: true } });
   const markRead = useMarkNotificationRead();
@@ -175,6 +178,55 @@ export default function FeatureHub() {
     if (!response.ok) throw new Error(payload?.error || payload?.message || `Request failed (${response.status})`);
     return payload;
   }, [token]);
+
+  const refreshQueuedSubmissions = useCallback(async () => {
+    if (!user?.id) { setQueuedSubmissions([]); return []; }
+    const items = await listQueuedSubmissions(user.id);
+    setQueuedSubmissions(items);
+    return items;
+  }, [user?.id]);
+
+  const retryQueuedSubmissions = useCallback(async () => {
+    if (!user?.id || queueBusy) return;
+    setQueueBusy(true);
+    try {
+      const pending = await listQueuedSubmissions(user.id);
+      for (const item of pending) {
+        try {
+          if (item.kind === "exercise") {
+            const current = await request(`/api/exercises/${item.targetId}/result`).catch(() => null);
+            if (["submitted","ai_partial","ai_marked_pending_return"].includes(String(current?.submission?.status||""))) {
+              await removeQueuedSubmission(user.id,item.id);
+              continue;
+            }
+          }
+          await request(item.path,{method:"POST",body:item.body});
+          await removeQueuedSubmission(user.id,item.id);
+        } catch (e) {
+          const message=e instanceof Error?e.message:"Retry failed";
+          if (item.kind==="exercise" && /already submitted|awaiting marking|previous attempt/i.test(message)) {
+            const current=await request(`/api/exercises/${item.targetId}/result`).catch(()=>null);
+            if (["submitted","ai_partial","ai_marked_pending_return"].includes(String(current?.submission?.status||""))) {
+              await removeQueuedSubmission(user.id,item.id);
+              continue;
+            }
+          }
+          await updateQueuedSubmission(user.id,item.id,message);
+        }
+      }
+    } finally {
+      await refreshQueuedSubmissions();
+      setQueueBusy(false);
+    }
+  }, [user?.id, queueBusy, request, refreshQueuedSubmissions]);
+
+  useEffect(() => {
+    void refreshQueuedSubmissions();
+    const subscription = AppState.addEventListener("change", state => {
+      if (state === "active" && user?.id) void retryQueuedSubmissions();
+    });
+    return () => subscription.remove();
+  }, [refreshQueuedSubmissions, retryQueuedSubmissions, user?.id]);
 
   useEffect(() => {
     if (section !== "exercises" || !isStudent || !selected || !detail?.exercise?.id || !user?.id) return;
@@ -417,7 +469,16 @@ export default function FeatureHub() {
       if (user?.id) await AsyncStorage.removeItem("dallyletter_assignment_draft_" + user.id + "_" + selected.id).catch(() => undefined);
       Alert.alert("Submitted", "Your work was submitted successfully.");
       await loadSection("assignments");
-    } catch (e) { Alert.alert("Submission failed", e instanceof Error ? e.message : "Please retry."); }
+    } catch (e) {
+      const message=e instanceof Error?e.message:"Please retry.";
+      if (/network request failed|failed to fetch|network error|offline|timed? ?out|connection lost/i.test(message)) {
+        try {
+          await enqueueSubmission({userId:Number(user?.id),kind:"assignment",targetId:Number(selected.id),path:`/api/assignments/${selected.id}/submit`,body:JSON.stringify({content:answerText.trim(),fileUrl:attachmentUrl||null,fileName:attachmentUrl?attachmentUrl.split("/").pop():null})});
+          await refreshQueuedSubmissions();
+          Alert.alert("Saved for retry","You appear to be offline. Your assignment is stored on this device and will retry when the app becomes active again.");
+        } catch { Alert.alert("Submission failed",message); }
+      } else Alert.alert("Submission failed",message);
+    }
     finally { setBusy(false); }
   };
 
@@ -484,7 +545,17 @@ export default function FeatureHub() {
       const result = await request(`/api/exercises/${detail.exercise.id}/result`).catch(() => null);
       setExerciseResult(result || { submission: { status: "submitted" } });
       Alert.alert("Submitted", "Exercise attempt submitted.");
-    } catch (e) { Alert.alert("Submission failed", e instanceof Error ? e.message : "Please retry."); }
+    } catch (e) {
+      const message=e instanceof Error?e.message:"Please retry.";
+      if (/network request failed|failed to fetch|network error|offline|timed? ?out|connection lost/i.test(message)) {
+        try {
+          const packedAnswers = (detail.questions || []).map((q:any) => { const answer=answers[String(q.id)]||{}; return {questionId:q.id,...answer,...(answer.textAnswer?{}:{textAnswer:""}),...(answer.drawData?{drawData:{...(answer.drawData as any),teacherDrawing:q.config?.teacherDrawing??null,learnerDrawing:answer.drawData}}:{})}; });
+          await enqueueSubmission({userId:Number(user?.id),kind:"exercise",targetId:Number(detail.exercise.id),path:`/api/exercises/${detail.exercise.id}/submit`,body:JSON.stringify({newAttempt,answers:packedAnswers})});
+          await refreshQueuedSubmissions();
+          Alert.alert("Saved for retry","You appear to be offline. Your exercise attempt is stored on this device and will retry when the app becomes active again. Your draft remains available.");
+        } catch { Alert.alert("Submission failed",message); }
+      } else Alert.alert("Submission failed",message);
+    }
     finally { setBusy(false); }
   };
 
@@ -857,6 +928,8 @@ export default function FeatureHub() {
       <View style={styles.header}>
         <Text style={styles.heading}>{section ? currentTitle : "Learning tools"}</Text>
         <Text style={styles.subheading}>{section ? "Your role controls which actions are available." : "More of Dallyletter, without changing your familiar home screen."}</Text>
+        {queuedSubmissions.length>0 ? <Text style={{color:"#fde68a",fontSize:12,marginTop:6}}>{queuedSubmissions.length} submission(s) saved for offline retry · {queueBusy?"syncing…":"will retry when app is active"}</Text> : null}
+        {queuedSubmissions.length>0 ? <TouchableOpacity onPress={()=>void retryQueuedSubmissions()} disabled={queueBusy} style={{alignSelf:"flex-start",marginTop:6,paddingHorizontal:10,paddingVertical:6,borderRadius:7,backgroundColor:"#ffffff20"}}><Text style={{color:"#fff",fontSize:12,fontWeight:"600"}}>{queueBusy?"Retrying…":"Retry pending submissions"}</Text></TouchableOpacity> : null}
       </View>
       {!section ? <ScrollView contentContainerStyle={styles.content}>
         {visibleSections.map(item => (
