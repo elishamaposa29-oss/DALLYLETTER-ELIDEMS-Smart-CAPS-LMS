@@ -128,10 +128,14 @@ export default function FeatureHub() {
 
   const loadSection = useCallback(async (target: Section) => {
     setSection(target); setSelected(null); setDetail(null); setSelectedSubmission(null); setSubmissionDetail(null); setError(""); setLoading(true); setRows([]);
+    const cacheKey = user?.id && ["assignments", "exercises", "polls"].includes(target)
+      ? `dallyletter_mobile_list_${user.id}_${role}_${target}_v1`
+      : null;
     try {
       if (target === "notifications") { await refetchNotifications(); setRows([]); }
       else if (target === "groups") { await refetchGroups(); setRows([]); }
       else {
+        let loadedRows: Row[] = [];
         if (target === "exercises") {
           const lessons = await request("/api/lessons");
           const lessonRows = Array.isArray(lessons) ? lessons : [];
@@ -141,16 +145,32 @@ export default function FeatureHub() {
               return (Array.isArray(items) ? items : []).map((item: any) => ({ ...item, lessonTitle: lesson.title, lessonId: lesson.id }));
             } catch { return []; }
           }));
-          setRows(perLesson.flat());
+          loadedRows = perLesson.flat();
         } else {
           const endpoint = target === "assignments" ? "/api/assignments" : "/api/polls";
           const data = await request(endpoint);
-          setRows(Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : []);
+          loadedRows = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
+        }
+        setRows(loadedRows);
+        if (cacheKey) await AsyncStorage.setItem(cacheKey, JSON.stringify(loadedRows)).catch(() => undefined);
+      }
+    } catch (e) {
+      if (cacheKey) {
+        const cached = await AsyncStorage.getItem(cacheKey).catch(() => null);
+        if (cached) {
+          try {
+            const saved = JSON.parse(cached);
+            if (Array.isArray(saved)) {
+              setRows(saved);
+              setError("Offline mode: showing this account's saved list. Reconnect to refresh details and submit changes.");
+              return;
+            }
+          } catch { /* Ignore invalid cached data and show the real load error. */ }
         }
       }
-    } catch (e) { setError(e instanceof Error ? e.message : "Could not load content. Retry when connected."); }
-    finally { setLoading(false); }
-  }, [request, refetchNotifications, refetchGroups]);
+      setError(e instanceof Error ? e.message : "Could not load content. Retry when connected.");
+    } finally { setLoading(false); }
+  }, [request, refetchNotifications, refetchGroups, user?.id, role]);
 
   const openRow = async (row: Row) => {
     setSelected(row); setDetail(null); setSelectedSubmission(null); setSubmissionDetail(null); setAnswers({}); setAnswerText(""); setError("");
