@@ -268,7 +268,7 @@ export default function FeatureHub() {
   }, [request, refetchNotifications, refetchGroups, user?.id, role, isStudent]);
 
   useEffect(() => {
-    if ((routeParams.section === "payments" || routeParams.section === "achievements" || routeParams.section === "prefect" || routeParams.section === "reports") && section !== routeParams.section) void loadSection(routeParams.section as Section);
+    if ((routeParams.section === "payments" || routeParams.section === "achievements" || routeParams.section === "prefect" || routeParams.section === "reports" || routeParams.section === "messages") && section !== routeParams.section) void loadSection(routeParams.section as Section);
   }, [routeParams.section, section, loadSection]);
 
   const openRow = async (row: Row) => {
@@ -822,7 +822,7 @@ export default function FeatureHub() {
             <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void openPrivateConversation(privateRecipient)} disabled={privateBusy}><Text style={[styles.buttonText,styles.secondaryText]}>Refresh conversation</Text></TouchableOpacity>
           </View>}
         </View>}
-        {section === "reports" && isStudent && <View style={{gap:12}}>        {section === "reports" && isStudent && <View style={{gap:12}}>
+        {section === "reports" && isStudent && <View style={{gap:12}}>
           <View style={[styles.card,{alignItems:"stretch"}]}>
             <Text style={styles.sectionTitle}>Report to the owner</Text>
             <Text style={styles.muted}>Use this for cyberbullying, threats, abuse, fraud, teacher concerns or other serious platform issues. Share only the details needed to explain what happened.</Text>
