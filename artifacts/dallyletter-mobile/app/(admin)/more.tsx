@@ -1,2 +1,2 @@
-import FeatureHub from "@/components/FeatureHub";
-export default function AdminMore() { return <FeatureHub />; }
+import AdminMore from "@/components/AdminMore";
+export default function AdminMoreScreen() { return <AdminMore />; }
