@@ -160,7 +160,7 @@ export default function AdminUsers() {
                   <Text style={s.blockedText}>BLOCKED</Text>
                 </View>
               )}
-              {u.isSuspended && !u.isBlocked ? <View style={[s.blockedBanner,{backgroundColor:"#fffbeb"}]}><Feather name="pause-circle" size={11} color="#a16207"/><Text style={[s.blockedText,{color:"#a16207"}]}>SUSPENDED · LIMITED ACCESS</Text></View>:null}
+              {(u as any).isSuspended && !u.isBlocked ? <View style={[s.blockedBanner,{backgroundColor:"#fffbeb"}]}><Feather name="pause-circle" size={11} color="#a16207"/><Text style={[s.blockedText,{color:"#a16207"}]}>SUSPENDED · LIMITED ACCESS</Text></View>:null}
               <View style={s.cardTop}>
                 <View style={[s.avatar, { backgroundColor: col + "20" }]}>
                   <Feather name="user" size={20} color={col} />
@@ -195,8 +195,8 @@ export default function AdminUsers() {
                     </Text>
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity style={[s.actionBtn,{borderColor:"#a16207",backgroundColor:u.isSuspended?"#fffbeb":colors.secondary}]} disabled={adminActionUserId===u.id} onPress={()=>handleToggleSuspend(u.id,Boolean(u.isSuspended))}>
-                  <Text style={[s.actionText,{color:u.isSuspended?"#a16207":colors.foreground}]}>{adminActionUserId===u.id?"Saving…":u.isSuspended?"Unsuspend":"Suspend"}</Text>
+                <TouchableOpacity style={[s.actionBtn,{borderColor:"#a16207",backgroundColor:(u as any).isSuspended?"#fffbeb":colors.secondary}]} disabled={adminActionUserId===u.id} onPress={()=>handleToggleSuspend(u.id,Boolean((u as any).isSuspended))}>
+                  <Text style={[s.actionText,{color:(u as any).isSuspended?"#a16207":colors.foreground}]}>{adminActionUserId===u.id?"Saving…":(u as any).isSuspended?"Unsuspend":"Suspend"}</Text>
                 </TouchableOpacity>
                 {u.role==="teacher" && <TouchableOpacity style={[s.actionBtn,{borderColor:"#7c3aed",backgroundColor:u.isManager?"#f3e8ff":colors.secondary}]} disabled={adminActionUserId===u.id} onPress={()=>handleToggleManager(u.id,Boolean(u.isManager))}>
                   <Text style={[s.actionText,{color:u.isManager?"#7c3aed":colors.foreground}]}>{u.isManager?"Remove manager":"Make manager"}</Text>
