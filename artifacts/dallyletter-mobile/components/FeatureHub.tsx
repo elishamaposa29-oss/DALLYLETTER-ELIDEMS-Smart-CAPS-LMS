@@ -722,7 +722,7 @@ export default function FeatureHub() {
           <Text style={styles.sectionTitle}>My reports and owner responses</Text>
           {rows.length===0?<Text style={styles.muted}>No reports are available yet.</Text>:rows.map((item:any)=><View key={item.id} style={styles.card}><View style={styles.grow}><Text style={styles.cardTitle}>{item.title}</Text><Text style={styles.muted}>{item.category||"Report"} · {item.severity||"medium"} · {item.status||"submitted"}</Text><Text style={styles.body}>{item.description}</Text>{item.resolution?<Text style={[styles.muted,{marginTop:6}]}>Owner response: {item.resolution}</Text>:null}</View></View>)}
         </View>}
-        {section === "prefect" && Boolean((user as any)?.isPrefect) && <View style={{gap:12}}>        {section === "prefect" && Boolean((user as any)?.isPrefect) && <View style={{gap:12}}>
+        {section === "prefect" && Boolean((user as any)?.isPrefect) && <View style={{gap:12}}>
           <View style={[styles.card,{alignItems:"stretch"}]}>
             <Text style={styles.sectionTitle}>Request a lesson</Text>
             <Text style={styles.muted}>Choose a teacher and suggest a topic. Date and notes are optional.</Text>
