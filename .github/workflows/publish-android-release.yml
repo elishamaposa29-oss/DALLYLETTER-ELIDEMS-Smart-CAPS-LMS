@@ -11,6 +11,10 @@ permissions:
 
 jobs:
   publish:
+    # Serialize stable publication so two manual runs cannot race the fixed release tag.
+    concurrency:
+      group: dallyletter-android-stable-release
+      cancel-in-progress: false
     # Only publish a fully green, manually dispatched main-branch release build.
     # Pull-request builds never publish binaries.
     if: >-
