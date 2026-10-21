@@ -54,7 +54,9 @@ router.get("/ai/status", requireAuth, async (req, res): Promise<void> => {
 // POST /ai/chat — ELIDEMS AI command center
 router.post("/ai/chat", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (user.role === "student") { res.status(403).json({ error: "Access denied. ELIDEMS AI is for authorized staff." }); return; }
+  const role = String(user.role || "").trim().toLowerCase().replace(/[ -]+/g, "_");
+  const authorizedStaff = ["owner", "platform_owner", "admin", "teacher"].includes(role) || user.isManager === true;
+  if (!authorizedStaff) { res.status(403).json({ error: "Access denied. ELIDEMS AI is for authorized staff." }); return; }
 
   const { messages, sessionId } = req.body as { messages: AIMessage[]; sessionId?: string };
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -76,7 +78,9 @@ router.post("/ai/chat", requireAuth, async (req, res): Promise<void> => {
     });
 
     // Auto-detect and execute actions if in live mode
-    if (ai.name !== "mock") {
+    // Chat is available to authorized staff, but privileged automatic side effects
+    // (including broadcast notifications) are owner-only.
+    if (ai.name !== "mock" && ["owner", "platform_owner"].includes(role)) {
       await autoExecuteActions(lastUserMsg, response, user.id);
     }
 
@@ -136,7 +140,7 @@ router.post("/ai/test-connection", requireAuth, async (req, res): Promise<void> 
 // GET /ai/actions — list AI action log
 router.get("/ai/actions", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (user.role === "student") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!["owner", "platform_owner"].includes(String(user.role || "").trim().toLowerCase().replace(/[ -]+/g, "_"))) { res.status(403).json({ error: "Owner access required" }); return; }
   const actions = await db.select({
     id: aiActionsTable.id, command: aiActionsTable.command, action: aiActionsTable.action,
     targetType: aiActionsTable.targetType, targetId: aiActionsTable.targetId,
@@ -152,7 +156,7 @@ router.get("/ai/actions", requireAuth, async (req, res): Promise<void> => {
 // PATCH /ai/actions/:id/reverse — reverse an AI action
 router.patch("/ai/actions/:id/reverse", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (user.role === "student") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!["owner", "platform_owner"].includes(String(user.role || "").trim().toLowerCase().replace(/[ -]+/g, "_"))) { res.status(403).json({ error: "Owner access required" }); return; }
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const [action] = await db.select().from(aiActionsTable).where(eq(aiActionsTable.id, id));
