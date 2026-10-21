@@ -9,7 +9,7 @@ export default function AdminTabLayout() {
   const colors = useColors();
   const { user, isLoading } = useAuth();
   const role = String(user?.role || "").toLowerCase().replace(/[ -]+/g, "_");
-  const allowed = ["owner", "admin"].includes(role);
+  const allowed = ["owner", "admin", "platform_owner"].includes(role);
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
 
