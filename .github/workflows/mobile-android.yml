@@ -453,3 +453,18 @@ jobs:
             /tmp/dallyletter-release-candidate/build-metadata.txt
           if-no-files-found: error
           retention-days: 14
+      - name: Publish installable APKs as public GitHub Release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: mobile-v1.0.1
+          name: Dallyletter Elidems Android v1.0.1
+          body: |
+            Standalone Android APK published only after signature, embedded-bundle, emulator install, launch, sign-in, and upgrade checks pass.
+            Includes SHA-256 checksums and build metadata.
+          files: |
+            /tmp/dallyletter-release-candidate/dallyletter-v1.apk
+            /tmp/dallyletter-release-candidate/dallyletter-v1.0.1.apk
+            /tmp/dallyletter-release-candidate/checksums.sha256
+            /tmp/dallyletter-release-candidate/build-metadata.txt
+          fail_on_unmatched_files: true
+          overwrite_files: true
