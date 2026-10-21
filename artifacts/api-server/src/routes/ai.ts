@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, aiActionsTable, auditLogsTable, usersTable, platformSettingsTable, notificationsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { requireAuth } from "../lib/auth-middleware";
+import { normalizeRole, canUseStaffAI } from "../lib/role-access";
 import { getAIProvider, invalidateAICache, type AIMessage } from "../lib/ai-provider";
 
 const router = Router();
@@ -28,7 +29,7 @@ Platform context: Role-based system with Students, Teachers, and Owner/Admin.`;
 // GET /ai/status — check AI provider status
 router.get("/ai/status", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (user.role !== "owner") { res.status(403).json({ error: "Owner only" }); return; }
+  if (!["owner", "platform_owner"].includes(normalizeRole(user.role))) { res.status(403).json({ error: "Owner only" }); return; }
   const ai = await getAIProvider();
   const rows = await db.select().from(platformSettingsTable);
   const cfg: Record<string, string> = {};
@@ -54,9 +55,8 @@ router.get("/ai/status", requireAuth, async (req, res): Promise<void> => {
 // POST /ai/chat — ELIDEMS AI command center
 router.post("/ai/chat", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  const role = String(user.role || "").trim().toLowerCase().replace(/[ -]+/g, "_");
-  const authorizedStaff = ["owner", "platform_owner", "admin", "teacher"].includes(role) || user.isManager === true;
-  if (!authorizedStaff) { res.status(403).json({ error: "Access denied. ELIDEMS AI is for authorized staff." }); return; }
+  const role = normalizeRole(user.role);
+  if (!canUseStaffAI(user)) { res.status(403).json({ error: "Access denied. ELIDEMS AI is for authorized staff." }); return; }
 
   const { messages, sessionId } = req.body as { messages: AIMessage[]; sessionId?: string };
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -170,7 +170,7 @@ router.patch("/ai/actions/:id/reverse", requireAuth, async (req, res): Promise<v
 // POST /ai/analyze — AI data analysis
 router.post("/ai/analyze", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (user.role === "student") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!canUseStaffAI(user)) { res.status(403).json({ error: "Authorized staff access required" }); return; }
   const { data, prompt } = req.body as { data: object; prompt: string };
   if (!prompt) { res.status(400).json({ error: "prompt required" }); return; }
   try {
