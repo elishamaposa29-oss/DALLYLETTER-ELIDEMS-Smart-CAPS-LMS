@@ -16,7 +16,8 @@ export default function Index() {
   }
 
   if (!user) return <Redirect href="/login" />;
-  if (user.role === "owner") return <Redirect href="/(admin)/home" />;
-  if (user.role === "teacher") return <Redirect href="/(teacher)/home" />;
+  const role = String(user.role || "").toLowerCase().replace(/[ -]+/g, "_");
+  if (["owner", "admin", "platform_owner", "manager", "senior_manager"].includes(role)) return <Redirect href="/(admin)/home" />;
+  if (role === "teacher") return <Redirect href="/(teacher)/home" />;
   return <Redirect href="/(student)/home" />;
 }
