@@ -3,8 +3,8 @@ import { getApiUrl } from "@workspace/api-client-react";
 import { useListNotifications, useMarkNotificationRead, useListStudyGroups, useJoinStudyGroup } from "@workspace/api-client-react";
 import * as ImagePicker from "expo-image-picker";
 import * as Linking from "expo-linking";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, Image, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useCallback, useState } from "react";
+import { ActivityIndicator, Alert, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
@@ -48,7 +48,6 @@ export default function FeatureHub() {
   const role = String(user?.role ?? "guest").toLowerCase();
   const isStudent = role === "student";
   const isTeacher = role === "teacher";
-  const isStaff = isTeacher || role === "owner" || role === "admin" || role === "manager";
 
   const styles = StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.background },
@@ -249,7 +248,7 @@ export default function FeatureHub() {
           <View style={styles.separator}/>
         </>}
         {loading ? <ActivityIndicator color={colors.primary} size="large"/> : error ? <View style={styles.empty}><Text style={styles.body}>{error}</Text><TouchableOpacity style={styles.button} onPress={() => section && void loadSection(section)}><Text style={styles.buttonText}>Retry</Text></TouchableOpacity></View> : null}
-        {section === "notifications" && activeNotifications.map((n: any) => <TouchableOpacity key={n.id} style={styles.card} onPress={() => { if (!n.isRead) markRead.mutate({ id: n.id } as any); if (n.actionUrl) openUrl(n.actionUrl); }}><View style={styles.icon}><Feather name={n.isRead ? "bell" : "bell-ring"} size={20} color={colors.primary}/></View><View style={styles.grow}><Text style={styles.cardTitle}>{n.title || n.message || "Notification"}</Text><Text style={styles.muted}>{n.body || n.description || n.createdAt || ""}</Text></View>{!n.isRead && <View style={{width:8,height:8,borderRadius:4,backgroundColor:colors.accent}}/>}</TouchableOpacity>)}
+        {section === "notifications" && activeNotifications.map((n: any) => <TouchableOpacity key={n.id} style={styles.card} onPress={() => { if (!n.isRead) markRead.mutate({ id: n.id } as any); if (n.actionUrl) openUrl(n.actionUrl); }}><View style={styles.icon}><Feather name={"bell"} size={20} color={colors.primary}/></View><View style={styles.grow}><Text style={styles.cardTitle}>{n.title || n.message || "Notification"}</Text><Text style={styles.muted}>{n.body || n.description || n.createdAt || ""}</Text></View>{!n.isRead && <View style={{width:8,height:8,borderRadius:4,backgroundColor:colors.accent}}/>}</TouchableOpacity>)}
         {section === "groups" && (Array.isArray(groups) ? groups : []).map((g: any) => <View key={g.id} style={styles.card}><View style={styles.icon}><Feather name="users" size={20} color={colors.primary}/></View><View style={styles.grow}><Text style={styles.cardTitle}>{g.name}</Text><Text style={styles.muted}>{g.subject || "Study group"} · {g.memberCount ?? g.members?.length ?? 0} members</Text><Text style={styles.muted}>{g.description || ""}</Text></View>{!g.isMember && isStudent && <TouchableOpacity onPress={() => joinGroup.mutate({ id: g.id } as any)}><Text style={{color:colors.primary,fontFamily:"Inter_600SemiBold"}}>Join</Text></TouchableOpacity>}</View>)}
         {["assignments", "exercises", "polls"].includes(section) && rows.map(row => <TouchableOpacity key={row.id} style={styles.card} onPress={() => void openRow(row)}><View style={styles.icon}><Feather name={section === "assignments" ? "clipboard" : section === "exercises" ? "edit-3" : "check-square"} size={20} color={colors.primary}/></View><View style={styles.grow}><Text style={styles.cardTitle}>{row.title || row.name || "Untitled"}</Text><Text style={styles.muted}>{[row.subject, row.grade, row.dueDate ? `Due ${String(row.dueDate).slice(0,10)}` : null, row.status].filter(Boolean).join(" · ")}</Text>{row.description ? <Text numberOfLines={3} style={styles.muted}>{row.description}</Text> : null}{row.attachmentUrl ? <Text style={{color:colors.primary,fontSize:12,marginTop:5}}>Attachment available</Text> : null}</View><Feather name="chevron-right" size={18} color={colors.mutedForeground}/></TouchableOpacity>)}
         {section === "assignments" && isStudent && selected && <View style={styles.card}><View style={styles.grow}><Text style={styles.sectionTitle}>Submit: {selected.title}</Text><TextInput style={[styles.input,styles.textArea]} multiline value={answerText} onChangeText={setAnswerText} placeholder="Write your answer or submission notes" placeholderTextColor={colors.mutedForeground}/><TouchableOpacity style={[styles.button,styles.secondary]} onPress={() => void uploadAssignmentAttachment()} disabled={uploading}><Text style={[styles.buttonText,styles.secondaryText]}>{uploading ? "Uploading…" : attachmentUrl ? "Replace attachment" : "Attach image/video"}</Text></TouchableOpacity><TouchableOpacity style={styles.button} onPress={() => void submitAssignment()} disabled={busy}><Text style={styles.buttonText}>{busy ? "Submitting…" : "Submit assignment"}</Text></TouchableOpacity></View></View>}
