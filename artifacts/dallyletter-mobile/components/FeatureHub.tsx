@@ -5,7 +5,7 @@ import { getListNotificationsQueryKey, useListNotifications, useMarkNotification
 import { useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
 import * as Linking from "expo-linking";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -30,6 +30,7 @@ export default function FeatureHub() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, token } = useAuth();
+  const routeParams = useLocalSearchParams<{ section?: string }>();
   const [section, setSection] = useState<Section | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
@@ -160,6 +161,7 @@ export default function FeatureHub() {
       if (target === "notifications") { await refetchNotifications(); setRows([]); }
       else if (target === "groups") { await refetchGroups(); setRows([]); }
       else if (target === "payments") {
+        setPaymentReported(false);
         const [paymentRows, settings] = await Promise.all([request("/api/payments"), request("/api/settings")]);
         setRows(Array.isArray(paymentRows) ? paymentRows : []);
         setPaymentSettings(settings && typeof settings === "object" ? settings : {});
@@ -201,6 +203,10 @@ export default function FeatureHub() {
       setError(e instanceof Error ? e.message : "Could not load content. Retry when connected.");
     } finally { setLoading(false); }
   }, [request, refetchNotifications, refetchGroups, user?.id, role]);
+
+  useEffect(() => {
+    if (routeParams.section === "payments" && section !== "payments") void loadSection("payments");
+  }, [routeParams.section, section, loadSection]);
 
   const openRow = async (row: Row) => {
     setSelected(row); setDetail(null); setSelectedSubmission(null); setSubmissionDetail(null); setAnswers({}); setAnswerText(""); setPollResult(null); setExerciseResult(null); setNewAttempt(false); setError("");
