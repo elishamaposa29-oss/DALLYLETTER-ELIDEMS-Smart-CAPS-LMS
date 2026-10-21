@@ -84,16 +84,19 @@ export default function NativePushControls() {
   }, [user?.id, token, isLoading]);
 
   useEffect(() => {
-    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+    if (!user) return;
+    const openNotification = (response: Notifications.NotificationResponse | null) => {
+      if (!response) return;
       const data = response.notification.request.content.data as { url?: unknown };
       const url = typeof data.url === "string" ? data.url : "";
-      if (!url || !user) return;
-      if (url.startsWith("/student/")) router.push("/(student)/more" as any);
-      else if (url.startsWith("/teacher/")) router.push("/(teacher)/more" as any);
-      else if (url.startsWith("/admin/")) router.push("/(admin)/more" as any);
-    });
+      if (url.startsWith("/teacher/") && String(user.role).toLowerCase() === "teacher") router.push({ pathname: "/(teacher)/more", params: { section: "notifications" } } as any);
+      else if (url.startsWith("/admin/") && ["owner", "admin", "manager", "senior_manager"].includes(String(user.role).toLowerCase())) router.push({ pathname: "/(admin)/more", params: { section: "notifications" } } as any);
+      else router.push({ pathname: String(user.role).toLowerCase() === "teacher" ? "/(teacher)/more" : ["owner", "admin", "manager", "senior_manager"].includes(String(user.role).toLowerCase()) ? "/(admin)/more" : "/(student)/more", params: { section: "notifications" } } as any);
+    };
+    const subscription = Notifications.addNotificationResponseReceivedListener(openNotification);
+    void Notifications.getLastNotificationResponseAsync().then(openNotification).catch(() => {});
     return () => subscription.remove();
-  }, [user?.id]);
+  }, [user?.id, user?.role]);
 
   const enable = async () => {
     if (!user?.id || !token) {
