@@ -194,6 +194,21 @@ export default function FeatureHub() {
     if (draftKey) void AsyncStorage.setItem(draftKey, JSON.stringify(answers)).catch(() => undefined);
   }, [answers, draftKey]);
 
+  useEffect(() => {
+    if (section !== "messages" || !privateRecipient?.id) return;
+    let active = true;
+    const refreshConversation = async () => {
+      try {
+        const messages = await request("/api/messages?recipientId=" + encodeURIComponent(String(privateRecipient.id)));
+        if (active) setPrivateMessages(Array.isArray(messages) ? messages : []);
+      } catch {
+        // Keep the last visible messages when the connection is temporarily unavailable.
+      }
+    };
+    const interval = setInterval(() => { void refreshConversation(); }, 10000);
+    return () => { active = false; clearInterval(interval); };
+  }, [section, privateRecipient?.id, request]);
+
   const loadSection = useCallback(async (target: Section) => {
     setSection(target); setSelected(null); setDetail(null); setSelectedSubmission(null); setSubmissionDetail(null); setError(""); setLoading(true); setRows([]);
     const cacheKey = user?.id && ["assignments", "exercises", "polls"].includes(target)
