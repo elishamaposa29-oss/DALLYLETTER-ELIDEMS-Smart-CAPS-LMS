@@ -218,7 +218,7 @@ export default function FeatureHub() {
   }, [request, refetchNotifications, refetchGroups, user?.id, role, isStudent]);
 
   useEffect(() => {
-    if (routeParams.section === "payments" && section !== "payments") void loadSection("payments");
+    if ((routeParams.section === "payments" || routeParams.section === "achievements") && section !== routeParams.section) void loadSection(routeParams.section as Section);
   }, [routeParams.section, section, loadSection]);
 
   const openRow = async (row: Row) => {
