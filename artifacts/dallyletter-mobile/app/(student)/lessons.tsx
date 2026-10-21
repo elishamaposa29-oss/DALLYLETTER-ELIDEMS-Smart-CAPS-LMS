@@ -106,9 +106,7 @@ export default function StudentLessons() {
           </View> : filtered.map((lesson: any) => {
             const col = typeColor[lesson.type] ?? "#6b7280";
             const canOpenMedia = Boolean(lesson.mediaUrl) && !usingCache;
-            return <TouchableOpacity key={lesson.id} style={s.card} onPress={() => {
-              if (canOpenMedia && isOnline) void Linking.openURL(lesson.mediaUrl);
-            }} accessibilityRole="button" accessibilityLabel={lesson.title}>
+            return <TouchableOpacity key={lesson.id} style={s.card} onPress={() => setSelectedLesson(lesson)} accessibilityRole="button" accessibilityLabel={lesson.title}>
               <View style={[s.iconWrap, { backgroundColor: col + "20" }]}><Feather name={typeIcon[lesson.type] ?? "file"} size={22} color={col} /></View>
               <View style={s.info}>
                 <Text style={s.lessonTitle} numberOfLines={2}>{lesson.title}</Text>
