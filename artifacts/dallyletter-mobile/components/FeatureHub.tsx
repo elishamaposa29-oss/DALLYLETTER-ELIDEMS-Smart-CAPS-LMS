@@ -356,7 +356,7 @@ export default function FeatureHub() {
       router.push((role === "teacher" ? "/(teacher)/more" : role === "student" ? "/(student)/more" : "/(admin)/more") as any);
       return;
     }
-    const absolute = \`https://dallyletter-elidems-smart-caps-lms-4.onrender.com\${url.startsWith("/") ? "" : "/"}\${url}\`;
+    const absolute = "https://dallyletter-elidems-smart-caps-lms-4.onrender.com" + (url.startsWith("/") ? "" : "/") + url;
     void Linking.openURL(absolute);
   };
 
