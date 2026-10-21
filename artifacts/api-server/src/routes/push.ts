@@ -26,6 +26,22 @@ router.post("/push/subscriptions", requireAuth, async (req, res): Promise<void> 
   res.status(201).json({ ok: true });
 });
 
+router.post("/push/expo-subscriptions", requireAuth, async (req, res): Promise<void> => {
+  const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
+  if (!/^(?:ExponentPushToken|ExpoPushToken)\\[[^\\]\\s]{8,256}\\]$/.test(token)) {
+    res.status(400).json({ error: "A valid Expo push token is required" });
+    return;
+  }
+  // Native Expo tokens share the durable subscription table but are explicitly
+  // tagged so the dispatcher never attempts Web Push encryption on them.
+  await pool.query(`
+    INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+    VALUES ($1,$2,'expo','expo')
+    ON CONFLICT (endpoint) DO UPDATE SET user_id = EXCLUDED.user_id, p256dh = 'expo', auth = 'expo', updated_at = now()
+  `, [req.currentUser!.id, token]);
+  res.status(201).json({ ok: true });
+});
+
 router.delete("/push/subscriptions", requireAuth, async (req, res): Promise<void> => {
   const endpoint = typeof req.body?.endpoint === "string" ? req.body.endpoint.trim() : "";
   if (!endpoint) { res.status(400).json({ error: "Endpoint required" }); return; }
