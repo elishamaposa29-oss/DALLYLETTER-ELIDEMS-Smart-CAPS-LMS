@@ -7,7 +7,7 @@ import {
   DeleteUserParams, BlockUserParams, BlockUserBody,
   PromoteUserParams, PromoteUserBody,
 } from "@workspace/api-zod";
-import { requireAuth, requireOwner, canAccessManager } from "../lib/auth-middleware";
+import { requireAuth, requireOwner, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, persistUploadedMedia, removeStoredMedia } from "../lib/media-storage";
 
 const router: IRouter = Router();
@@ -55,7 +55,7 @@ const directoryUserFields = {
 };
 
 router.get("/users", requireAuth, async (req, res): Promise<void> => {
-  const fields = req.currentUser!.role === "owner" ? safeUserFields : directoryUserFields;
+  const fields = isOwnerRole(req.currentUser!.role) ? safeUserFields : directoryUserFields;
   const users = await db.select(fields).from(usersTable).orderBy(usersTable.createdAt);
   res.json(users.map(u => ({ ...u, createdAt: u.createdAt.toISOString() })));
 });
@@ -74,7 +74,7 @@ router.patch("/users/:id", requireAuth, async (req, res): Promise<void> => {
   const body = UpdateUserBody.safeParse(req.body);
   if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
   const currentUser = req.currentUser!;
-  if (currentUser.role !== "owner" && currentUser.id !== params.data.id) {
+  if (!isOwnerRole(currentUser.role) && currentUser.id !== params.data.id) {
     res.status(403).json({ error: "Cannot update another user's profile" }); return;
   }
   const updates: Record<string, unknown> = {};
