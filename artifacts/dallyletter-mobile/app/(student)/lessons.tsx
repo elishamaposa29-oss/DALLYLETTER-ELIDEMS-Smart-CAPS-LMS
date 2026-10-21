@@ -99,7 +99,7 @@ export default function StudentLessons() {
     title: { fontSize: 22, fontFamily: "Inter_700Bold", color: "#ffffff", marginBottom: 14 },
     searchWrap: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 12, paddingHorizontal: 12, height: 42 },
     searchInput: { flex: 1, fontSize: 14, color: "#ffffff", fontFamily: "Inter_400Regular", marginLeft: 8 },
-    scroll: { flex: 1 }, content: { padding: 16, paddingBottom: 100 },
+    scroll: { flex: 1 }, content: { padding: 16, paddingBottom: 100, width: "100%", maxWidth: 1180, alignSelf: "center" },
     offlineNotice: { backgroundColor: usingCache ? "#fff7ed" : "#ecfdf5", borderRadius: 10, padding: 11, marginBottom: 12 },
     offlineText: { fontSize: 12, color: usingCache ? "#9a3412" : "#166534", fontFamily: "Inter_500Medium" },
     card: { backgroundColor: colors.card, borderRadius: colors.radius, padding: 16, marginBottom: 12, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: colors.border, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1 },
