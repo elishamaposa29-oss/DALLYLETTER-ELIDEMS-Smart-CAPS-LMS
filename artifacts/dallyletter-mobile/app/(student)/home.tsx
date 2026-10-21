@@ -20,7 +20,7 @@ export default function StudentHome() {
     { icon: "book" as const, label: "Lessons", route: "/(student)/lessons" as const, color: "#3b82f6" },
     { icon: "video" as const, label: "Classes", route: "/(student)/classes" as const, color: "#8b5cf6" },
     { icon: "message-circle" as const, label: "Chat", route: "/(student)/chat" as const, color: "#10b981" },
-    { icon: "credit-card" as const, label: "Payments", route: "/(student)/profile" as const, color: "#f59e0b" },
+    { icon: "credit-card" as const, label: "Payments", route: "/(student)/more?section=payments" as const, color: "#f59e0b" },
   ];
 
   const s = StyleSheet.create({
