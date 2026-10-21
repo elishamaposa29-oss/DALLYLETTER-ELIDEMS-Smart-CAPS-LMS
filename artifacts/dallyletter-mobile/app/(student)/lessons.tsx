@@ -5,6 +5,7 @@ import * as Linking from "expo-linking";
 import { Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
+import { useAuth } from "@/contexts/AuthContext";
 import { useEffect, useState } from "react";
 
 const LESSON_CACHE_KEY = "dallyletter_cached_lessons_v1";
@@ -13,16 +14,21 @@ const typeColor: Record<string, string> = { video: "#8b5cf6", image: "#3b82f6", 
 
 export default function StudentLessons() {
   const colors = useColors();
+  const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const { data: lessons, isLoading, refetch } = useListLessons();
   const [search, setSearch] = useState("");
   const [cachedLessons, setCachedLessons] = useState<any[] | null>(null);
   const [cacheReady, setCacheReady] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
+  const lessonCacheKey = user ? `${LESSON_CACHE_KEY}_${user.id}_${user.role}` : null;
 
   useEffect(() => {
     let active = true;
-    AsyncStorage.getItem(LESSON_CACHE_KEY).then(raw => {
+    setCachedLessons(null);
+    setCacheReady(false);
+    if (!lessonCacheKey) { setCacheReady(true); return () => { active = false; }; }
+    AsyncStorage.getItem(lessonCacheKey).then(raw => {
       if (active && raw) {
         try { setCachedLessons(JSON.parse(raw)); } catch { /* Ignore corrupt cache and keep network results usable. */ }
       }
@@ -35,17 +41,18 @@ export default function StudentLessons() {
       return () => { active = false; window.removeEventListener("online", update); window.removeEventListener("offline", update); };
     }
     return () => { active = false; };
-  }, []);
+  }, [lessonCacheKey]);
 
   useEffect(() => {
-    if (!lessons || lessons.length === 0) return;
+    if (!lessonCacheKey || !lessons || lessons.length === 0) return;
+    // Cache only non-sensitive listing metadata. Media URLs and content stay out of local storage.
     const safeSnapshot = lessons.map((lesson: any) => ({
       id: lesson.id, title: lesson.title, subject: lesson.subject, grade: lesson.grade,
-      type: lesson.type, mediaUrl: lesson.mediaUrl, description: lesson.description,
+      type: lesson.type,
     }));
     setCachedLessons(safeSnapshot);
-    AsyncStorage.setItem(LESSON_CACHE_KEY, JSON.stringify(safeSnapshot)).catch(() => undefined);
-  }, [lessons]);
+    AsyncStorage.setItem(lessonCacheKey, JSON.stringify(safeSnapshot)).catch(() => undefined);
+  }, [lessons, lessonCacheKey]);
 
   const displayedLessons = lessons?.length ? lessons : cachedLessons ?? [];
   const filtered = displayedLessons.filter((l: any) =>
@@ -97,7 +104,7 @@ export default function StudentLessons() {
             <TouchableOpacity style={s.retry} onPress={() => { void refetch(); }}><Text style={s.retryText}>Try again</Text></TouchableOpacity>
           </View> : filtered.map((lesson: any) => {
             const col = typeColor[lesson.type] ?? "#6b7280";
-            const canOpenMedia = Boolean(lesson.mediaUrl);
+            const canOpenMedia = Boolean(lesson.mediaUrl) && !usingCache;
             return <TouchableOpacity key={lesson.id} style={s.card} onPress={() => {
               if (canOpenMedia && isOnline) void Linking.openURL(lesson.mediaUrl);
             }} accessibilityRole="button" accessibilityLabel={lesson.title}>
