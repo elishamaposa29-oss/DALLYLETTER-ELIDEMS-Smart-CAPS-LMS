@@ -57,5 +57,6 @@ For every feature, record:
 - Existing verification matrix: `docs/feature-verification-matrix-2026-10-14.md`.
 - Mobile has role-specific home/tab routes and a shared FeatureHub for assignments, exercises, polls, notifications and study groups.
 - Lesson screen caches text/list metadata per user, but explicitly warns that media/new content may need internet. That is not full offline media support.
-- A recent mobile change saves assignment answer text locally per user and assignment, restores it when opening the assignment, and clears it only after successful server submission. This still needs typecheck and focused regression verification.
-- Android build/emulator verification is intentionally deferred until the requested feature-parity pass is complete; no APK is represented as parity-complete.
+- Mobile now has incremental School Fees/payment-history UI, learner achievements/badges/leaderboard, direct learner shortcuts to those sections, per-user assignment drafts, per-user/per-group chat drafts, and display of all embedded lesson links/API media references with supported image previews. These changes still need typecheck and focused role/data-flow regression verification.
+- Payment UI reuses existing authenticated API endpoints and configured payment settings; it must not imply a reported payment is confirmed/cleared.
+- Android build/emulator verification is intended to be the final release gate after the requested feature-parity pass; current PR workflows may still run automatically because of the repository workflow triggers. No APK is represented as parity-complete.
