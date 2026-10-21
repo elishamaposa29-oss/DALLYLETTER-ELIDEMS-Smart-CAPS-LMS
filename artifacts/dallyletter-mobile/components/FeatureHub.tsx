@@ -806,8 +806,11 @@ export default function FeatureHub() {
       router.push((role === "teacher" ? "/(teacher)/more" : role === "student" ? "/(student)/more" : "/(admin)/more") as any);
       return;
     }
-    const absolute = "https://dallyletter-elidems-smart-caps-lms-4.onrender.com" + (url.startsWith("/") ? "" : "/") + url;
-    void Linking.openURL(absolute);
+    if (/^\/api\/(?:lessons|messages|assignments)\/.*media/i.test(url)) {
+      Alert.alert("Protected learning media", "Use the Download for offline control beside this attachment. It downloads with your signed-in access and can then be opened locally.");
+      return;
+    }
+    void Linking.openURL(getApiUrl(url));
   };
 
   const activeNotifications = notifications || [];
