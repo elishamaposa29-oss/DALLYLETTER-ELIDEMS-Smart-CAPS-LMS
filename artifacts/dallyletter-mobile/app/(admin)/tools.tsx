@@ -2,7 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import { getApiUrl } from "@workspace/api-client-react";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
@@ -46,7 +46,7 @@ export default function OwnerTools() {
   },[token]);
 
   const load = useCallback(async()=>{
-    setLoading(true); setError(""); setNotice("");
+    setLoading(true); setError("");
     try {
       if(section==="command-center") {
         const [health,snapshot,events]=await Promise.all([
