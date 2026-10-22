@@ -42,6 +42,42 @@ function plainLessonText(value: unknown): string {
     .trim();
 }
 
+function RichLessonText({ value, colors }: { value: unknown; colors: any }) {
+  const source = String(value ?? "");
+  const tokens = source.match(/<[^>]*>|[^<]+/g) ?? [source];
+  const nodes: any[] = [];
+  let bold = 0, italic = 0, underline = 0, heading = 0, link: string | null = null;
+  const decode = (text: string) => text.replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, "\"").replace(/&#39;|&apos;/gi, "\'");
+  tokens.forEach((token, index) => {
+    if (token.startsWith("<")) {
+      const closing = /^<\s*\//.test(token);
+      const name = (token.match(/^<\s*\/?\s*([a-z0-9]+)/i)?.[1] ?? "").toLowerCase();
+      if (["p", "div", "section", "blockquote", "ul", "ol", "h1", "h2", "h3", "h4", "h5", "h6", "li"].includes(name)) nodes.push("\n");
+      if (name === "br") nodes.push("\n");
+      if (name === "li" && !closing) nodes.push("• ");
+      if (name === "strong" || name === "b") bold = Math.max(0, bold + (closing ? -1 : 1));
+      if (name === "em" || name === "i") italic = Math.max(0, italic + (closing ? -1 : 1));
+      if (name === "u") underline = Math.max(0, underline + (closing ? -1 : 1));
+      if (/^h[1-6]$/.test(name)) heading = closing ? 0 : Math.max(1, 7 - Number(name.slice(1)));
+      if (name === "a") {
+        if (closing) link = null;
+        else link = token.match(/href\s*=\s*["\']([^"\']+)["\']/i)?.[1] ?? null;
+      }
+      continue;
+    }
+    const text = decode(token);
+    if (!text) return;
+    const style: any = {};
+    if (bold) style.fontWeight = "700";
+    if (italic) style.fontStyle = "italic";
+    if (underline) style.textDecorationLine = "underline";
+    if (heading) { style.fontSize = 14 + heading; style.fontWeight = "700"; }
+    if (link) { style.color = colors.primary; style.textDecorationLine = "underline"; }
+    nodes.push(<Text key={"rich-" + index} style={style} onPress={link ? () => void Linking.openURL(link as string) : undefined}>{text}</Text>);
+  });
+  return <Text style={{ color: colors.foreground, fontSize: 15, lineHeight: 24 }}>{nodes}</Text>;
+}
+
 export default function StudentLessons() {
   const colors = useColors();
   const { user, token } = useAuth();
@@ -236,7 +272,7 @@ export default function StudentLessons() {
               <Text style={{ color: colors.mutedForeground, marginTop: 8, marginBottom: 16 }}>{[selectedLesson.subject, selectedLesson.grade ? `Grade ${selectedLesson.grade}` : null, selectedLesson.type].filter(Boolean).join(" · ")}</Text>
               {selectedLesson.description ? <Text style={{ color: colors.foreground, fontSize: 15, lineHeight: 23, marginBottom: 14 }}>{selectedLesson.description}</Text> : null}
               {selectedLesson.mediaUrl ? <AuthenticatedMediaPreview url={String(selectedLesson.mediaUrl)} accessibilityLabel={String(selectedLesson.title || "Lesson image")} /> : null}
-              {selectedLesson.content ? <View style={{ borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 16, marginBottom: 16 }}><Text style={{ color: colors.foreground, fontSize: 15, lineHeight: 24 }}>{plainLessonText(selectedLesson.content)}</Text></View> : <Text style={{ color: colors.mutedForeground, marginBottom: 14 }}>No written lesson notes were provided.</Text>}
+              {selectedLesson.content ? <View style={{ borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 16, marginBottom: 16 }}><RichLessonText value={selectedLesson.content} colors={colors} /></View> : <Text style={{ color: colors.mutedForeground, marginBottom: 14 }}>No written lesson notes were provided.</Text>}
               {extractLessonLinks(selectedLesson.content).map((url, index) => <View key={url} style={{marginBottom:12,padding:12,borderRadius:10,borderWidth:1,borderColor:colors.border}}>
                 {isMediaReference(url) ? <AuthenticatedMediaPreview url={url} accessibilityLabel={`Embedded lesson media ${index+1}`} height={180}/> : null}
                 {url.startsWith("/api/") ? <Text style={{color:colors.mutedForeground,fontSize:12,marginTop:4}}>Protected learning content is included in the saved lesson record where available. Linked media may require an online connection unless the app has already cached it.</Text> : <TouchableOpacity onPress={() => void Linking.openURL(url)} accessibilityRole="button" accessibilityLabel={`Open lesson link ${index+1}`}>
