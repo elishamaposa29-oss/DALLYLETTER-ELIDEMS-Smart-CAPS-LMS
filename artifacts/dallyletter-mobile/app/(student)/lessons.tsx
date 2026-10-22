@@ -348,7 +348,7 @@ export default function StudentLessons() {
                 <TouchableOpacity accessibilityRole="button" onPress={() => void saveLessonBundleForOffline(lesson)} style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, borderRadius: 9, paddingVertical: 11, borderWidth: 1, borderColor: colors.primary + "55", backgroundColor: colors.primary + "0D" }}><Feather name={savedForOffline[String(lesson.id)] ? "check-circle" : "bookmark"} size={15} color={colors.primary} /><Text style={{ color: colors.primary, fontFamily: "Inter_600SemiBold", fontSize: 12 }}>{savedForOffline[String(lesson.id)] ? "Saved offline" : "Save lesson"}</Text></TouchableOpacity>
               </View>
             </View>;
-          })})}
+          })}
       </ScrollView>
       <Modal visible={Boolean(selectedLesson)} animationType="slide" onRequestClose={() => setSelectedLesson(null)}>
         <View style={{ flex:  1, backgroundColor: colors.background, paddingTop: insets.top + 12 }}>
