@@ -53,10 +53,22 @@ export default function StudentLessons() {
   const [cachedLessons, setCachedLessons] = useState<any[] | null>(null);
   const [cacheReady, setCacheReady] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
+  const [unfinishedLessons, setUnfinishedLessons] = useState<Record<string, number>>({});
   const lessonCacheKey = user ? `${LESSON_CACHE_KEY}_${user.id}_${user.role}` : null;
+  const progressKey = user ? `dallyletter_unfinished_lessons_v1_${user.id}_${user.role}` : null;
 
   useEffect(() => {
     let active = true;
+    setUnfinishedLessons({});
+    if (progressKey) {
+      void AsyncStorage.getItem(progressKey).then(raw => {
+        if (!active || !raw) return;
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) setUnfinishedLessons(parsed);
+        } catch { /* Recover from invalid progress data without blocking lessons. */ }
+      }).catch(() => undefined);
+    }
     setCachedLessons(null);
     setCacheReady(false);
     if (!lessonCacheKey) { setCacheReady(true); return () => { active = false; }; }
@@ -73,7 +85,7 @@ export default function StudentLessons() {
       return () => { active = false; window.removeEventListener("online", update); window.removeEventListener("offline", update); };
     }
     return () => { active = false; };
-  }, [lessonCacheKey]);
+  }, [lessonCacheKey, progressKey]);
 
   useEffect(() => {
     if (!lessonCacheKey || !lessons || lessons.length === 0) return;
@@ -90,7 +102,21 @@ export default function StudentLessons() {
   const filtered = displayedLessons.filter((l: any) =>
     String(l.title ?? "").toLowerCase().includes(search.toLowerCase()) ||
     String(l.subject ?? "").toLowerCase().includes(search.toLowerCase())
-  );
+  ).sort((a: any, b: any) => {
+    const aTouched = Number(unfinishedLessons[String(a.id)] || 0);
+    const bTouched = Number(unfinishedLessons[String(b.id)] || 0);
+    if (aTouched && bTouched) return bTouched - aTouched;
+    if (aTouched) return -1;
+    if (bTouched) return 1;
+    return String(a.subject ?? "").localeCompare(String(b.subject ?? "")) || String(a.title ?? "").localeCompare(String(b.title ?? ""));
+  });
+  const openLesson = (lesson: any) => {
+    setSelectedLesson(lesson);
+    if (!user?.id || !progressKey) return;
+    const next = { ...unfinishedLessons, [String(lesson.id)]: Date.now() };
+    setUnfinishedLessons(next);
+    void AsyncStorage.setItem(progressKey, JSON.stringify(next)).catch(() => undefined);
+  };
   const usingCache = !lessons?.length && cachedLessons !== null;
   const top = insets.top + (Platform.OS === "web" ? 67 : 0);
 
@@ -137,11 +163,12 @@ export default function StudentLessons() {
           </View> : filtered.map((lesson: any) => {
             const col = typeColor[lesson.type] ?? "#6b7280";
             const canOpenMedia = Boolean(lesson.mediaUrl) && !usingCache;
-            return <TouchableOpacity key={lesson.id} style={s.card} onPress={() => setSelectedLesson(lesson)} accessibilityRole="button" accessibilityLabel={lesson.title}>
+            return <TouchableOpacity key={lesson.id} style={s.card} onPress={() => openLesson(lesson)} accessibilityRole="button" accessibilityLabel={lesson.title}>
               <View style={[s.iconWrap, { backgroundColor: col + "20" }]}><Feather name={typeIcon[lesson.type] ?? "file"} size={22} color={col} /></View>
               <View style={s.info}>
                 <Text style={s.lessonTitle} numberOfLines={2}>{lesson.title}</Text>
                 <Text style={s.meta}>{lesson.subject}{lesson.grade ? ` · Grade ${lesson.grade}` : ""}</Text>
+                {unfinishedLessons[String(lesson.id)] ? <Text style={{ color: colors.primary, fontSize: 11, fontFamily: "Inter_600SemiBold", marginTop: 5 }}>Continue learning · saved automatically</Text> : null}
                 <View style={[s.tag, { backgroundColor: col + "18" }]}><Text style={[s.tagText, { color: col }]}>{String(lesson.type ?? "lesson").toUpperCase()}</Text></View>
               </View>
               <Feather name={canOpenMedia && isOnline ? "chevron-right" : "download-cloud"} size={18} color={colors.mutedForeground} />
