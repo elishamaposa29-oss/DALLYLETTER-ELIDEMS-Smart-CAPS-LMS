@@ -67,7 +67,7 @@ export default function FeatureHub() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, token } = useAuth();
-  const routeParams = useLocalSearchParams<{ section?: string }>();
+  const routeParams = useLocalSearchParams<{ section?: string; itemId?: string }>();
   const [section, setSection] = useState<Section | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
@@ -469,7 +469,7 @@ export default function FeatureHub() {
   }, [request, refetchNotifications, refetchGroups, user?.id, role, isStudent]);
 
   useEffect(() => {
-    if ((routeParams.section === "notifications" || routeParams.section === "payments" || routeParams.section === "achievements" || routeParams.section === "prefect" || routeParams.section === "reports" || routeParams.section === "messages" || routeParams.section === "audit") && section !== routeParams.section) void loadSection(routeParams.section as Section);
+    if ((routeParams.section === "notifications" || routeParams.section === "payments" || routeParams.section === "achievements" || routeParams.section === "prefect" || routeParams.section === "reports" || routeParams.section === "messages" || routeParams.section === "audit" || routeParams.section === "assignments" || routeParams.section === "exercises" || routeParams.section === "polls") && section !== routeParams.section) void loadSection(routeParams.section as Section);
   }, [routeParams.section, section, loadSection]);
 
   const openRow = async (row: Row) => {
@@ -520,6 +520,13 @@ export default function FeatureHub() {
       }
     }
   };
+
+  useEffect(() => {
+    const itemId = routeParams.itemId;
+    if (!itemId || !routeParams.section || section !== routeParams.section || loading || selected?.id != null) return;
+    const match = rows.find(row => String(row.id) === String(itemId));
+    if (match) void openRow(match);
+  }, [routeParams.itemId, routeParams.section, section, rows, loading, selected?.id]);
 
   const uploadMedia = async (documentOnly = false) => {
     if (!isTeacher) return;
