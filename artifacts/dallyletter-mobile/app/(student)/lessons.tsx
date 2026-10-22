@@ -62,6 +62,18 @@ export default function StudentLessons() {
   useEffect(() => {
     let active = true;
     setUnfinishedLessons({});
+    setSavedForOffline({});
+    if (savedOfflineKey) {
+      void AsyncStorage.getItem(savedOfflineKey).then(raw => {
+        if (!active || !raw) return;
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            setSavedForOffline(Object.fromEntries(Object.entries(parsed).map(([id, value]: [string, any]) => [id, Number(value && typeof value === "object" ? value.savedAt : value || 0)])));
+          }
+        } catch { /* Ignore invalid local bundle index. */ }
+      }).catch(() => undefined);
+    }
     if (progressKey) {
       void AsyncStorage.getItem(progressKey).then(raw => {
         if (!active || !raw) return;
@@ -87,7 +99,7 @@ export default function StudentLessons() {
       return () => { active = false; window.removeEventListener("online", update); window.removeEventListener("offline", update); };
     }
     return () => { active = false; };
-  }, [lessonCacheKey, progressKey]);
+  }, [lessonCacheKey, progressKey, savedOfflineKey]);
 
   useEffect(() => {
     if (!lessonCacheKey || !lessons || lessons.length === 0) return;
