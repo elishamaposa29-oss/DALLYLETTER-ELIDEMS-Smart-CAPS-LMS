@@ -84,6 +84,7 @@ export default function StudentLessons() {
   const [search, setSearch] = useState("");
   const [showSavedOnly, setShowSavedOnly] = useState(false);
   const [savedBundles, setSavedBundles] = useState<Record<string, any>>({});
+  const [lessonExerciseMap, setLessonExerciseMap] = useState<Record<string, any[]>>({});
   const [selectedLesson, setSelectedLesson] = useState<any | null>(null);
   const [cachedLessons, setCachedLessons] = useState<any[] | null>(null);
   const [cacheReady, setCacheReady] = useState(false);
@@ -235,6 +236,25 @@ export default function StudentLessons() {
     }
   };
 
+  useEffect(() => {
+    let active = true;
+    const lessonRows = Array.isArray(lessons) && lessons.length ? lessons : cachedLessons || [];
+    const fromBundles: Record<string, any[]> = {};
+    Object.entries(savedBundles).forEach(([id, bundle]: [string, any]) => { fromBundles[id] = Array.isArray(bundle?.exercises) ? bundle.exercises : []; });
+    setLessonExerciseMap(previous => ({ ...fromBundles, ...previous }));
+    if (!isOnline || !lessonRows.length) return () => { active = false; };
+    const headers: Record<string, string> = token ? { Authorization: "Bearer " + token } : {};
+    void Promise.all(lessonRows.map(async (lesson: any) => {
+      try {
+        const response = await fetch(getApiUrl("/api/exercises/lessons/" + encodeURIComponent(String(lesson.id)) + "/exercises"), { headers });
+        if (!response.ok) return [String(lesson.id), fromBundles[String(lesson.id)] || []] as const;
+        const data = await response.json();
+        return [String(lesson.id), Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : []] as const;
+      } catch { return [String(lesson.id), fromBundles[String(lesson.id)] || []] as const; }
+    })).then(entries => { if (active) setLessonExerciseMap(previous => ({ ...previous, ...Object.fromEntries(entries) })); });
+    return () => { active = false; };
+  }, [lessons, cachedLessons, savedBundles, isOnline, token]);
+
   const markLessonComplete = (lessonId: string | number) => {
     const next = { ...unfinishedLessons };
     delete next[String(lessonId)];
@@ -254,7 +274,7 @@ export default function StudentLessons() {
     scroll: { flex: 1 }, content: { padding: 16, paddingBottom: 100, width: "100%", maxWidth: 1180, alignSelf: "center" },
     offlineNotice: { backgroundColor: usingCache ? "#fff7ed" : "#ecfdf5", borderRadius: 10, padding: 11, marginBottom: 12 },
     offlineText: { fontSize: 12, color: usingCache ? "#9a3412" : "#166534", fontFamily: "Inter_500Medium" },
-    card: { backgroundColor: colors.card, borderRadius: colors.radius, padding: 16, marginBottom: 12, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: colors.border, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1 },
+    card: { backgroundColor: colors.card, borderRadius: 16, padding: 16, marginBottom: 14, flexDirection: "column", alignItems: "stretch", borderWidth: 1, borderColor: "#D4AF3745", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 5, elevation: 2 },
     iconWrap: { width: 44, height: 44, borderRadius: 10, alignItems: "center", justifyContent: "center", marginRight: 14 },
     info: { flex: 1 }, lessonTitle: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: colors.foreground },
     meta: { fontSize: 12, fontFamily: "Inter_400Regular", color: colors.mutedForeground, marginTop: 3 },
@@ -286,8 +306,8 @@ export default function StudentLessons() {
         </View>
       </View>
       <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
-        {usingCache && <View style={s.offlineNotice}><Text style={s.offlineText}>Offline mode: saved lesson notes are available. Download direct media before going offline; external links and new content need internet.</Text></View>}
-        {!usingCache && !isOnline && <View style={s.offlineNotice}><Text style={s.offlineText}>You are offline. Saved lesson details remain available.</Text></View>}
+        {usingCache && <View style={s.offlineNotice}><Text style={s.offlineText}>Offline mode: saved lesson content and cached media are available. New content and external links may need internet.</Text></View>}
+        {!usingCache && !isOnline && <View style={s.offlineNotice}><Text style={s.offlineText}>You are offline. Open saved lessons to continue learning; new submissions remain drafts until the server confirms them.</Text></View>}
         {isLoading && filtered.length === 0 && !cacheReady ? <Text style={s.loadText}>Loading saved lessons...</Text> :
           filtered.length === 0 ? <View style={s.emptyWrap}>
             <Feather name="book-open" size={48} color={colors.border} style={s.emptyIcon} />
@@ -296,19 +316,38 @@ export default function StudentLessons() {
             <TouchableOpacity style={s.retry} onPress={() => { void refetch(); }}><Text style={s.retryText}>Try again</Text></TouchableOpacity>
           </View> : filtered.map((lesson: any) => {
             const col = typeColor[lesson.type] ?? "#6b7280";
-            const canOpenMedia = Boolean(lesson.mediaUrl) && !usingCache;
-            return <TouchableOpacity key={lesson.id} style={s.card} onPress={() => openLesson(lesson)} accessibilityRole="button" accessibilityLabel={lesson.title}>
-              <View style={[s.iconWrap, { backgroundColor: col + "20" }]}><Feather name={typeIcon[lesson.type] ?? "file"} size={22} color={col} /></View>
-              <View style={s.info}>
-                <Text style={s.lessonTitle} numberOfLines={2}>{lesson.title}</Text>
-                <Text style={s.meta}>{lesson.subject}{lesson.grade ? ` · Grade ${lesson.grade}` : ""}</Text>
-                {unfinishedLessons[String(lesson.id)] ? <Text style={{ color: colors.primary, fontSize: 11, fontFamily: "Inter_600SemiBold", marginTop: 5 }}>Continue learning · saved automatically</Text> : null}
-                {savedForOffline[String(lesson.id)] ? <Text style={{ color: colors.primary, fontSize: 11, fontFamily: "Inter_600SemiBold", marginTop: 3 }}>Saved for offline access</Text> : null}
-                <View style={[s.tag, { backgroundColor: col + "18" }]}><Text style={[s.tagText, { color: col }]}>{String(lesson.type ?? "lesson").toUpperCase()}</Text></View>
+            const exercises = lessonExerciseMap[String(lesson.id)] || [];
+            const bundle = savedBundles[String(lesson.id)];
+            const hasMedia = Boolean(lesson.mediaUrl);
+            return <View key={lesson.id} style={s.card}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
+                <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: colors.primary + "35", backgroundColor: colors.primary + "10" }}><Text style={{ color: colors.primary, fontSize: 12, fontFamily: "Inter_600SemiBold" }}>{lesson.subject || "General"}</Text></View>
+                <View style={{ paddingHorizontal: 9, paddingVertical: 5, borderRadius: 20, backgroundColor: col + "18", borderWidth: 1, borderColor: col + "45" }}><Text style={{ color: col, fontSize: 11, fontFamily: "Inter_600SemiBold" }}>{String(lesson.type || "lesson").toUpperCase()}</Text></View>
               </View>
-              <Feather name={savedForOffline[String(lesson.id)] ? "bookmark" : "chevron-right"} size={18} color={savedForOffline[String(lesson.id)] ? colors.primary : colors.mutedForeground} />
-            </TouchableOpacity>;
-          })}
+              <TouchableOpacity accessibilityRole="button" onPress={() => openLesson(lesson)} style={{ marginBottom: 10 }}>
+                <Text style={{ color: colors.primary, fontSize: 19, lineHeight: 25, fontFamily: "Inter_700Bold" }}>{lesson.title}</Text>
+                <Text style={s.meta}>{lesson.teacherName ? "by " + lesson.teacherName + " · " : ""}{lesson.grade ? "Grade " + lesson.grade : ""}{lesson.createdAt ? " · " + new Date(lesson.createdAt).toLocaleDateString("en-ZA", { day: "numeric", month: "short", year: "numeric" }) : ""}</Text>
+              </TouchableOpacity>
+              {hasMedia ? <View style={{ marginBottom: 12 }}><AuthenticatedMediaPreview url={String(lesson.mediaUrl)} height={210} accessibilityLabel={String(lesson.title || "Lesson media")} /></View> : null}
+              {lesson.content ? <View style={{ borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.background, padding: 13, marginBottom: 10 }}>
+                <Text style={{ color: colors.mutedForeground, fontSize: 10, letterSpacing: 1, fontFamily: "Inter_700Bold", marginBottom: 7 }}>LESSON NOTES</Text>
+                <RichLessonText value={lesson.content} colors={colors} />
+              </View> : null}
+              <View style={{ borderRadius: 10, backgroundColor: colors.background, padding: 12, marginBottom: exercises.length ? 12 : 0 }}>
+                <Text style={{ color: colors.mutedForeground, fontSize: 13, lineHeight: 20 }}>{lesson.description || "No description provided."}</Text>
+              </View>
+              {exercises.length ? <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12, marginTop: 2, gap: 8 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}><Feather name="clipboard" size={16} color={colors.primary} /><Text style={{ color: colors.foreground, fontSize: 14, fontFamily: "Inter_700Bold" }}>Exercises ({exercises.length})</Text></View>
+                {exercises.map((exercise: any) => <TouchableOpacity key={exercise.id} accessibilityRole="button" onPress={() => { void openLesson(lesson); }} style={{ flexDirection: "row", alignItems: "center", gap: 10, padding: 11, borderRadius: 10, borderWidth: 1, borderColor: exercise.submissionStatus === "marked" ? "#D4AF37" : "#a78bfa", backgroundColor: exercise.submissionStatus === "marked" ? "#D4AF3718" : "#8b5cf618" }}>
+                  <Feather name="file-text" size={16} color={exercise.submissionStatus === "marked" ? "#9a7400" : "#7c3aed"} /><View style={{ flex: 1 }}><Text numberOfLines={2} style={{ color: colors.foreground, fontSize: 13, fontFamily: "Inter_600SemiBold" }}>{exercise.title || "Exercise"}</Text><Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 3 }}>{exercise.totalMarks ?? exercise.total_marks ?? "—"} marks · {exercise.submissionStatus === "marked" ? "Marked" : exercise.submissionStatus === "submitted" ? "Awaiting marking" : "Not submitted"}</Text></View><Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+                </TouchableOpacity>)}
+              </View> : null}
+              <View style={{ flexDirection: "row", gap: 9, marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
+                <TouchableOpacity accessibilityRole="button" onPress={() => openLesson(lesson)} style={{ flex: 1, alignItems: "center", justifyContent: "center", borderRadius: 9, paddingVertical: 11, backgroundColor: colors.primary }}><Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 12 }}>Open lesson</Text></TouchableOpacity>
+                <TouchableOpacity accessibilityRole="button" onPress={() => void saveLessonBundleForOffline(lesson)} style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, borderRadius: 9, paddingVertical: 11, borderWidth: 1, borderColor: colors.primary + "55", backgroundColor: colors.primary + "0D" }}><Feather name={savedForOffline[String(lesson.id)] ? "check-circle" : "bookmark"} size={15} color={colors.primary} /><Text style={{ color: colors.primary, fontFamily: "Inter_600SemiBold", fontSize: 12 }}>{savedForOffline[String(lesson.id)] ? "Saved offline" : "Save lesson"}</Text></TouchableOpacity>
+              </View>
+            </View>;
+          })})}
       </ScrollView>
       <Modal visible={Boolean(selectedLesson)} animationType="slide" onRequestClose={() => setSelectedLesson(null)}>
         <View style={{ flex:  1, backgroundColor: colors.background, paddingTop: insets.top + 12 }}>
