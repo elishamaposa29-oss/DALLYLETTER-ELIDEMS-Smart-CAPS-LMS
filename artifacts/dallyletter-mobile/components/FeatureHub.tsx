@@ -222,6 +222,26 @@ export default function FeatureHub() {
     }
   }, [user?.id, role, section, selected, detail]);
 
+  useEffect(() => {
+    if (!user?.id || !isStudent) return;
+    const markedExercise = section === "exercises" && selected && exerciseResult?.submission?.status === "marked";
+    const markedAssignment = section === "assignments" && selected && (submissionMap[selected.id] || []).some((item: any) => item.status === "marked" || item.marks != null || Boolean(item.feedback));
+    if (!markedExercise && !markedAssignment) return;
+    let active = true;
+    const persist = async () => {
+      const key = "dallyletter_teacher_marked_activity_v1_" + user.id + "_" + role;
+      const raw = await AsyncStorage.getItem(key).catch(() => null);
+      let saved: Record<string, any> = {};
+      try { saved = raw ? JSON.parse(raw) : {}; } catch { saved = {}; }
+      if (!active) return;
+      if (markedExercise) saved["exercise:" + String(selected.id)] = { item: selected, detail, result: exerciseResult, savedAt: Date.now() };
+      if (markedAssignment) saved["assignment:" + String(selected.id)] = { item: selected, submissions: submissionMap[selected.id], savedAt: Date.now() };
+      await AsyncStorage.setItem(key, JSON.stringify(saved)).catch(() => undefined);
+    };
+    void persist();
+    return () => { active = false; };
+  }, [user?.id, isStudent, role, section, selected?.id, detail, exerciseResult, submissionMap]);
+
   const refreshQueuedSubmissions = useCallback(async () => {
     if (!user?.id) { setQueuedSubmissions([]); return []; }
     const items = await listQueuedSubmissions(user.id);
