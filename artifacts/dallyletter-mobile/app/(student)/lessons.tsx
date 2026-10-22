@@ -129,6 +129,22 @@ export default function StudentLessons() {
     setUnfinishedLessons(next);
     void AsyncStorage.setItem(progressKey, JSON.stringify(next)).catch(() => undefined);
   };
+  const saveLessonBundleForOffline = async (lesson: any) => {
+    if (!user || !savedOfflineKey || !lesson?.id) return;
+    try {
+      const raw = await AsyncStorage.getItem(savedOfflineKey);
+      let bundles: Record<string, any> = {};
+      try { bundles = raw ? JSON.parse(raw) : {}; } catch { bundles = {}; }
+      const savedAt = Date.now();
+      bundles[String(lesson.id)] = { lesson: { ...lesson }, savedAt, accountId: user.id, role: user.role };
+      await AsyncStorage.setItem(savedOfflineKey, JSON.stringify(bundles));
+      setSavedForOffline(previous => ({ ...previous, [String(lesson.id)]: savedAt }));
+      setSaveFeedback("Saved on this device for offline preview. Answers and submissions remain drafts until the server confirms them.");
+    } catch {
+      setSaveFeedback("Could not save this lesson. Check device storage and try again.");
+    }
+  };
+
   const markLessonComplete = (lessonId: string | number) => {
     const next = { ...unfinishedLessons };
     delete next[String(lessonId)];
