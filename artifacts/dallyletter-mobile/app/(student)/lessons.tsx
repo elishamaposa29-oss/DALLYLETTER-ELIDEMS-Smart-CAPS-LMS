@@ -44,7 +44,7 @@ function plainLessonText(value: unknown): string {
 
 export default function StudentLessons() {
   const colors = useColors();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const insets = useSafeAreaInsets();
   const { data: lessons, isLoading, refetch } = useListLessons();
   const [search, setSearch] = useState("");
@@ -136,7 +136,20 @@ export default function StudentLessons() {
       let bundles: Record<string, any> = {};
       try { bundles = raw ? JSON.parse(raw) : {}; } catch { bundles = {}; }
       const savedAt = Date.now();
-      bundles[String(lesson.id)] = { lesson: { ...lesson }, savedAt, accountId: user.id, role: user.role };
+      const headers: Record<string, string> = token ? { Authorization: "Bearer " + token } : {};
+      const readList = async (path: string) => {
+        const response = await fetch(getApiUrl(path), { headers });
+        if (!response.ok) throw new Error("Could not cache attached learning activities.");
+        const payload = await response.json();
+        return Array.isArray(payload) ? payload : Array.isArray(payload?.items) ? payload.items : [];
+      };
+      const [exercises, assignments, polls] = await Promise.all([
+        readList("/api/exercises/lessons/" + encodeURIComponent(String(lesson.id)) + "/exercises").catch(() => []),
+        readList("/api/assignments").catch(() => []),
+        readList("/api/polls").catch(() => []),
+      ]);
+      const belongsToLesson = (item: any) => String(item.lessonId ?? item.lesson_id ?? item.lesson?.id ?? "") === String(lesson.id);
+      bundles[String(lesson.id)] = { lesson: { ...lesson }, exercises, assignments: assignments.filter(belongsToLesson), polls: polls.filter(belongsToLesson), savedAt, accountId: user.id, role: user.role };
       await AsyncStorage.setItem(savedOfflineKey, JSON.stringify(bundles));
       setSavedForOffline(previous => ({ ...previous, [String(lesson.id)]: savedAt }));
       setSaveFeedback("Saved on this device for offline preview. Answers and submissions remain drafts until the server confirms them.");
