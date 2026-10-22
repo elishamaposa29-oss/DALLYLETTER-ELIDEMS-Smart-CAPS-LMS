@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 export type QueuedSubmission = {
   id: string;
   userId: number;
-  kind: "assignment" | "exercise";
+  kind: "assignment" | "exercise" | "poll";
   targetId: number;
   path: string;
   body: string;
@@ -20,7 +20,7 @@ export async function enqueueSubmission(item:Omit<QueuedSubmission,"id"|"created
   const current=await listQueuedSubmissions(item.userId);
   const id=`${item.kind}:${item.targetId}`;
   const next:QueuedSubmission={...item,id,createdAt:new Date().toISOString(),attempts:0};
-  // Keep one latest pending payload per exercise/assignment; never create duplicate queue entries.
+  // Keep one latest pending payload per learning item; never create duplicate queue entries.
   const rows=[...current.filter(x=>x.id!==id),next].sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
   await AsyncStorage.setItem(queueKey(item.userId),JSON.stringify(rows));
   return rows;
