@@ -477,7 +477,28 @@ export default function FeatureHub() {
           const submissions = await request(`/api/exercises/${row.id}/submissions`);
           setSubmissionMap(old => ({ ...old, [row.id]: Array.isArray(submissions) ? submissions : [] }));
         }
-      } catch (e) { setError(e instanceof Error ? e.message : "Could not open this item"); }
+      } catch (e) {
+        const savedKey = user?.id ? "dallyletter_saved_learning_items_v1_" + user.id + "_" + role : null;
+        const markedKey = user?.id ? "dallyletter_teacher_marked_activity_v1_" + user.id + "_" + role : null;
+        let restored = false;
+        if (savedKey) {
+          const raw = await AsyncStorage.getItem(savedKey).catch(() => null);
+          try {
+            const registry = raw ? JSON.parse(raw) : {};
+            const entry = registry[section + ":" + String(row.id)];
+            if (entry?.detail) { setDetail(entry.detail); restored = true; }
+          } catch { /* Ignore corrupt offline item snapshots. */ }
+        }
+        if (section === "exercises" && markedKey && isStudent) {
+          const raw = await AsyncStorage.getItem(markedKey).catch(() => null);
+          try {
+            const registry = raw ? JSON.parse(raw) : {};
+            const marked = registry["exercise:" + String(row.id)];
+            if (marked?.result) setExerciseResult(marked.result);
+          } catch { /* Ignore corrupt marked-result snapshots. */ }
+        }
+        if (!restored) setError(e instanceof Error ? e.message : "Could not open this item online or from its saved offline copy.");
+      }
     }
   };
 
