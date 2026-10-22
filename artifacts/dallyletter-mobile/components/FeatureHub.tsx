@@ -436,6 +436,17 @@ export default function FeatureHub() {
           const data = await request(endpoint);
           loadedRows = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
         }
+        if (cacheKey && user?.id) {
+          const bundleKey = "dallyletter_saved_learning_bundle_v1_" + user.id + "_" + role;
+          const bundleRaw = await AsyncStorage.getItem(bundleKey).catch(() => null);
+          try {
+            const bundles = bundleRaw ? JSON.parse(bundleRaw) : {};
+            const savedRows = Object.values(bundles).flatMap((bundle: any) => Array.isArray(bundle?.[target]) ? bundle[target] : []);
+            const merged = new Map<string, any>();
+            [...savedRows, ...loadedRows].forEach(item => { if (item?.id != null) merged.set(String(item.id), item); });
+            loadedRows = [...merged.values()];
+          } catch { /* Ignore a damaged bundle and keep server results. */ }
+        }
         setRows(loadedRows);
         if (cacheKey) await AsyncStorage.setItem(cacheKey, JSON.stringify(loadedRows)).catch(() => undefined);
       }
