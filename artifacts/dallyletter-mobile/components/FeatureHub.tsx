@@ -206,6 +206,22 @@ export default function FeatureHub() {
     return payload;
   }, [token]);
 
+  const saveLearningItemOffline = useCallback(async () => {
+    if (!user?.id || !section || !selected || !["assignments", "exercises", "polls"].includes(section)) return;
+    const key = "dallyletter_saved_learning_items_v1_" + user.id + "_" + role;
+    try {
+      const raw = await AsyncStorage.getItem(key);
+      let saved: Record<string, any> = {};
+      try { saved = raw ? JSON.parse(raw) : {}; } catch { saved = {}; }
+      const itemKey = section + ":" + String(selected.id);
+      saved[itemKey] = { section, item: { ...selected }, detail: detail ? { ...detail } : null, savedAt: Date.now(), accountId: user.id, role };
+      await AsyncStorage.setItem(key, JSON.stringify(saved));
+      Alert.alert("Saved for offline access", "This learning item and the details currently available are saved on this device. Submissions stay drafts until the server confirms them.");
+    } catch {
+      Alert.alert("Could not save", "Check available device storage and try again.");
+    }
+  }, [user?.id, role, section, selected, detail]);
+
   const refreshQueuedSubmissions = useCallback(async () => {
     if (!user?.id) { setQueuedSubmissions([]); return []; }
     const items = await listQueuedSubmissions(user.id);
