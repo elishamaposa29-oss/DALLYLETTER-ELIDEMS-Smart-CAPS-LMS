@@ -89,10 +89,8 @@ export default function StudentLessons() {
   useEffect(() => {
     if (!lessonCacheKey || !lessons || lessons.length === 0) return;
     // Cache account-scoped lesson text and media references so notes remain readable offline; downloaded bytes are stored separately.
-    const safeSnapshot = lessons.map((lesson: any) => ({
-      id: lesson.id, title: lesson.title, subject: lesson.subject, grade: lesson.grade,
-      type: lesson.type, content: lesson.content, description: lesson.description, mediaUrl: lesson.mediaUrl,
-    }));
+    // Preserve the full authorized lesson payload, including available attached activity and teacher feedback metadata.
+    const safeSnapshot = lessons.map((lesson: any) => ({ ...lesson }));
     setCachedLessons(safeSnapshot);
     AsyncStorage.setItem(lessonCacheKey, JSON.stringify(safeSnapshot)).catch(() => undefined);
   }, [lessons, lessonCacheKey]);
