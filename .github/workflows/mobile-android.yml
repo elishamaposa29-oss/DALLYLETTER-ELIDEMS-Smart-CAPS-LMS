@@ -7,6 +7,15 @@ concurrency:
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "artifacts/dallyletter-mobile/**"
+      - "lib/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/mobile-android.yml"
+      - ".github/scripts/android-emulator-smoke.sh"
   pull_request:
     types: [opened, synchronize, reopened, labeled]
     paths:
@@ -18,7 +27,7 @@ on:
       - ".github/scripts/android-emulator-smoke.sh"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   # Defer the expensive APK/emulator suite until the parity pass is ready.
@@ -176,7 +185,7 @@ jobs:
           test -s "$debug_apk"
           cp "$debug_apk" ../apk-artifacts/dallyletter-data-v1.0.1-debug.apk
       - name: Generate APK checksums and build metadata
-        if: always()
+        if: success()
         env:
           SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
@@ -453,3 +462,18 @@ jobs:
             /tmp/dallyletter-release-candidate/build-metadata.txt
           if-no-files-found: error
           retention-days: 14
+      - name: Publish verified APKs as public GitHub Release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: mobile-v1.0.1
+          name: Dallyletter Elidems Android v1.0.1
+          body: |
+            Standalone Android APKs built from the merged Dallyletter Elidems mobile app and published only after Android emulator smoke tests pass.
+            Verify checksums.sha256 before installation.
+          files: |
+            /tmp/dallyletter-release-candidate/dallyletter-v1.apk
+            /tmp/dallyletter-release-candidate/dallyletter-v1.0.1.apk
+            /tmp/dallyletter-release-candidate/checksums.sha256
+            /tmp/dallyletter-release-candidate/build-metadata.txt
+          fail_on_unmatched_files: true
+          make_latest: true
