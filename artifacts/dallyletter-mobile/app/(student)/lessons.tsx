@@ -2,7 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getApiUrl, useListLessons } from "@workspace/api-client-react";
 import * as Linking from "expo-linking";
-import { Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Modal, Platform, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import AuthenticatedMediaPreview from "@/components/AuthenticatedMediaPreview";
@@ -66,6 +66,8 @@ export default function StudentLessons() {
   const insets = useSafeAreaInsets();
   const { data: lessons, isLoading, refetch } = useListLessons();
   const [search, setSearch] = useState("");
+  const [showSavedOnly, setShowSavedOnly] = useState(false);
+  const [savedBundles, setSavedBundles] = useState<Record<string, any>>({});
   const [selectedLesson, setSelectedLesson] = useState<any | null>(null);
   const [cachedLessons, setCachedLessons] = useState<any[] | null>(null);
   const [cacheReady, setCacheReady] = useState(false);
@@ -87,6 +89,7 @@ export default function StudentLessons() {
         try {
           const parsed = JSON.parse(raw);
           if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            setSavedBundles(parsed);
             setSavedForOffline(Object.fromEntries(Object.entries(parsed).map(([id, value]: [string, any]) => [id, Number(value && typeof value === "object" ? value.savedAt : value || 0)])));
           }
         } catch { /* Ignore invalid local bundle index. */ }
@@ -130,8 +133,9 @@ export default function StudentLessons() {
 
   const displayedLessons = lessons?.length ? lessons : cachedLessons ?? [];
   const filtered = displayedLessons.filter((l: any) =>
-    String(l.title ?? "").toLowerCase().includes(search.toLowerCase()) ||
-    String(l.subject ?? "").toLowerCase().includes(search.toLowerCase())
+    (!showSavedOnly || Boolean(savedForOffline[String(l.id)])) &&
+    (String(l.title ?? "").toLowerCase().includes(search.toLowerCase()) ||
+    String(l.subject ?? "").toLowerCase().includes(search.toLowerCase()))
   ).sort((a: any, b: any) => {
     const aTouched = Number(unfinishedLessons[String(a.id)] || 0);
     const bTouched = Number(unfinishedLessons[String(b.id)] || 0);
@@ -169,6 +173,7 @@ export default function StudentLessons() {
       const belongsToLesson = (item: any) => String(item.lessonId ?? item.lesson_id ?? item.lesson?.id ?? "") === String(lesson.id);
       bundles[String(lesson.id)] = { lesson: { ...lesson }, exercises, assignments: assignments.filter(belongsToLesson), polls: polls.filter(belongsToLesson), savedAt, accountId: user.id, role: user.role };
       await AsyncStorage.setItem(savedOfflineKey, JSON.stringify(bundles));
+      setSavedBundles(previous => ({ ...previous, [String(lesson.id)]: bundles[String(lesson.id)] }));
       setSavedForOffline(previous => ({ ...previous, [String(lesson.id)]: savedAt }));
       setSaveFeedback("Saved on this device for offline preview. Answers and submissions remain drafts until the server confirms them.");
     } catch {
@@ -216,6 +221,15 @@ export default function StudentLessons() {
           <Feather name="search" size={16} color="rgba(255,255,255,0.7)" />
           <TextInput style={s.searchInput} placeholder="Search lessons..." placeholderTextColor="rgba(255,255,255,0.5)" value={search} onChangeText={setSearch} />
         </View>
+        <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+          <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: !showSavedOnly }} onPress={() => setShowSavedOnly(false)} style={{ paddingHorizontal: 13, paddingVertical: 8, borderRadius: 9, backgroundColor: !showSavedOnly ? "#FFC72C" : "rgba(255,255,255,0.12)" }}>
+            <Text style={{ color: !showSavedOnly ? "#0A1931" : "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" }}>All lessons</Text>
+          </TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: showSavedOnly }} onPress={() => setShowSavedOnly(true)} style={{ paddingHorizontal: 13, paddingVertical: 8, borderRadius: 9, backgroundColor: showSavedOnly ? "#FFC72C" : "rgba(255,255,255,0.12)", flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Feather name="bookmark" size={13} color={showSavedOnly ? "#0A1931" : "#fff"} />
+            <Text style={{ color: showSavedOnly ? "#0A1931" : "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" }}>Saved offline ({Object.keys(savedForOffline).length})</Text>
+          </TouchableOpacity>
+        </View>
       </View>
       <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
         {usingCache && <View style={s.offlineNotice}><Text style={s.offlineText}>Offline mode: saved lesson notes are available. Download direct media before going offline; external links and new content need internet.</Text></View>}
@@ -238,7 +252,7 @@ export default function StudentLessons() {
                 {savedForOffline[String(lesson.id)] ? <Text style={{ color: colors.primary, fontSize: 11, fontFamily: "Inter_600SemiBold", marginTop: 3 }}>Saved for offline access</Text> : null}
                 <View style={[s.tag, { backgroundColor: col + "18" }]}><Text style={[s.tagText, { color: col }]}>{String(lesson.type ?? "lesson").toUpperCase()}</Text></View>
               </View>
-              <Feather name={canOpenMedia && isOnline ? "chevron-right" : "download-cloud"} size={18} color={colors.mutedForeground} />
+              <Feather name={savedForOffline[String(lesson.id)] ? "bookmark" : "chevron-right"} size={18} color={savedForOffline[String(lesson.id)] ? colors.primary : colors.mutedForeground} />
             </TouchableOpacity>;
           })}
       </ScrollView>
