@@ -323,7 +323,7 @@ export default function FeatureHub() {
   }, [answers, draftKey]);
 
   useEffect(() => {
-    if (section !== "polls" || !isStudent || !selected || !detail || !user?.id || !pollDraftReady) return;
+    if (section !== "polls" || !isStudent || !selected || !detail || !user?.id) return;
     let active = true;
     setPollDraftReady(false);
     const key = `dallyletter_poll_draft_${user.id}_${selected.id}`;
@@ -343,7 +343,7 @@ export default function FeatureHub() {
   }, [section, isStudent, selected?.id, detail?.poll?.id, user?.id]);
 
   useEffect(() => {
-    if (section !== "polls" || !isStudent || !selected || !detail || !user?.id) return;
+    if (section !== "polls" || !isStudent || !selected || !detail || !user?.id || !pollDraftReady) return;
     const packedAnswers = (detail.questions || []).map((q: any) => ({ questionId: q.id, selectedOptionId: answers[String(q.id)] })).filter((answer: any) => answer.selectedOptionId);
     const key = `dallyletter_poll_draft_${user.id}_${selected.id}`;
     void AsyncStorage.setItem(key, JSON.stringify({ item: selected, detail, answers: packedAnswers, resultPrivacy: pollPrivacy, savedAt: Date.now() })).catch(() => undefined);
