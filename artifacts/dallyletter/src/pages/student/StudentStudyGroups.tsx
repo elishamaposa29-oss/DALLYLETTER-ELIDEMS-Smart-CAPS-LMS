@@ -263,7 +263,7 @@ export default function StudentStudyGroups() {
       const formData = new FormData();
       formData.append("file", file);
       const token = localStorage.getItem("dallyletter_token");
-      const response = await fetch(getApiUrl("/api/lessons/media"), {
+      const response = await fetch(getApiUrl(`/api/lessons/media?groupId=${groupId}`), {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
