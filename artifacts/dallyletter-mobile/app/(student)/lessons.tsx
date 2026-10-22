@@ -6,7 +6,6 @@ import { Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpac
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import AuthenticatedMediaPreview from "@/components/AuthenticatedMediaPreview";
-import OfflineMediaDownload from "@/components/OfflineMediaDownload";
 import { useAuth } from "@/contexts/AuthContext";
 import { useEffect, useState } from "react";
 
