@@ -53,8 +53,11 @@ export default function StudentLessons() {
   const [cacheReady, setCacheReady] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const [unfinishedLessons, setUnfinishedLessons] = useState<Record<string, number>>({});
+  const [savedForOffline, setSavedForOffline] = useState<Record<string, number>>({});
+  const [saveFeedback, setSaveFeedback] = useState("");
   const lessonCacheKey = user ? `${LESSON_CACHE_KEY}_${user.id}_${user.role}` : null;
   const progressKey = user ? `dallyletter_unfinished_lessons_v1_${user.id}_${user.role}` : null;
+  const savedOfflineKey = user ? `dallyletter_saved_learning_bundle_v1_${user.id}_${user.role}` : null;
 
   useEffect(() => {
     let active = true;
