@@ -25,6 +25,35 @@ export async function getOfflineMediaUsage(userId: number): Promise<{items:numbe
 }
 function hash(value: string) { let h = 2166136261; for (let i=0;i<value.length;i++) { h ^= value.charCodeAt(i); h = Math.imul(h,16777619); } return (h>>>0).toString(16); }
 export function resolveMediaUrl(url: string) { return /^https?:\/\//i.test(url) ? url : getApiUrl(url); }
+export async function saveOfflineMediaForAccount(userId: number, token: string | undefined, url: string, fileName?: string): Promise<string> {
+  if (!url || /^https?:\/\//i.test(url) && !/^https?:\/\//i.test(url)) throw new Error("Invalid media URL.");
+  const existingUri = await getOfflineMediaUri(userId, url);
+  if (existingUri) return existingUri;
+  if (!FileSystem.documentDirectory) throw new Error("Offline file storage is unavailable on this device.");
+  const directory = FileSystem.documentDirectory + "dallyletter-offline/";
+  await FileSystem.makeDirectoryAsync(directory, { intermediates: true }).catch(() => undefined);
+  const ext = (url.match(/\.([a-z0-9]{2,5})(?:[?#]|$)/i)?.[1] || (url.match(/[?&]type=([^&]+)/)?.[1] || "").split("/").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 5) || "bin";
+  const localUri = directory + hash(String(userId) + ":" + url) + "-" + Date.now().toString(36) + "." + ext;
+  try {
+    const result = await FileSystem.downloadAsync(resolveMediaUrl(url), localUri, { headers: !/^https?:\/\//i.test(url) && token ? { Authorization: "Bearer " + token } : {} });
+    if (result.status < 200 || result.status >= 300) throw new Error("Media server returned HTTP " + result.status + ".");
+    const info = await FileSystem.getInfoAsync(result.uri);
+    const bytes = info.exists && "size" in info ? Number(info.size || 0) : 0;
+    if (!info.exists || bytes <= 0) throw new Error("Downloaded media could not be verified.");
+    const raw = await AsyncStorage.getItem(keyFor(userId));
+    const entries = raw ? JSON.parse(raw) as SavedMedia : {};
+    const current = await getOfflineMediaUsage(userId);
+    if (!entries[url] && current.items >= MAX_OFFLINE_MEDIA_ITEMS) throw new Error("Offline storage item limit reached (250 files).");
+    if (current.bytes + bytes > MAX_OFFLINE_MEDIA_BYTES) throw new Error("Offline storage limit reached (512 MB).");
+    entries[url] = { localUri: result.uri, fileName: fileName || url.split("/").pop()?.split("?")[0] || "Learning media", downloadedAt: new Date().toISOString(), bytes };
+    await AsyncStorage.setItem(keyFor(userId), JSON.stringify(entries));
+    return result.uri;
+  } catch (error) {
+    await FileSystem.deleteAsync(localUri, { idempotent: true }).catch(() => undefined);
+    throw error;
+  }
+}
+
 export async function getOfflineMediaUri(userId: number | undefined, url: string): Promise<string | null> {
   if (!userId || !url) return null;
   try {
