@@ -322,6 +322,29 @@ export default function FeatureHub() {
   }, [answers, draftKey]);
 
   useEffect(() => {
+    if (section !== "polls" || !isStudent || !selected || !detail || !user?.id) return;
+    let active = true;
+    const key = `dallyletter_poll_draft_${user.id}_${selected.id}`;
+    void AsyncStorage.getItem(key).then(raw => {
+      if (!active || !raw) return;
+      try {
+        const saved = JSON.parse(raw);
+        const savedAnswers = Array.isArray(saved.answers) ? Object.fromEntries(saved.answers.map((answer: any) => [String(answer.questionId), answer.selectedOptionId])) : null;
+        if (savedAnswers) setAnswers(current => Object.keys(current).length ? current : savedAnswers);
+        if (saved.resultPrivacy === "private" || saved.resultPrivacy === "public") setPollPrivacy(saved.resultPrivacy);
+      } catch { /* Ignore an invalid poll draft and keep the live poll usable. */ }
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [section, isStudent, selected?.id, detail?.poll?.id, user?.id]);
+
+  useEffect(() => {
+    if (section !== "polls" || !isStudent || !selected || !detail || !user?.id) return;
+    const packedAnswers = (detail.questions || []).map((q: any) => ({ questionId: q.id, selectedOptionId: answers[String(q.id)] })).filter((answer: any) => answer.selectedOptionId);
+    const key = `dallyletter_poll_draft_${user.id}_${selected.id}`;
+    void AsyncStorage.setItem(key, JSON.stringify({ item: selected, detail, answers: packedAnswers, resultPrivacy: pollPrivacy, savedAt: Date.now() })).catch(() => undefined);
+  }, [section, isStudent, selected?.id, detail?.poll?.id, answers, pollPrivacy, user?.id]);
+
+  useEffect(() => {
     if (section !== "messages" || !privateRecipient?.id) return;
     let active = true;
     const refreshConversation = async () => {
