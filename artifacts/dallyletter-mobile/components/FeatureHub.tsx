@@ -255,7 +255,9 @@ export default function FeatureHub() {
     const clearDraft = async (item:QueuedSubmission) => {
       const key = item.kind === "assignment"
         ? `dallyletter_assignment_draft_${user.id}_${item.targetId}`
-        : `dallyletter_exercise_draft_${user.id}_${item.targetId}`;
+        : item.kind === "poll"
+          ? `dallyletter_poll_draft_${user.id}_${item.targetId}`
+          : `dallyletter_exercise_draft_${user.id}_${item.targetId}`;
       await AsyncStorage.removeItem(key).catch(() => undefined);
     };
     try {
@@ -632,18 +634,34 @@ export default function FeatureHub() {
   };
 
   const submitPoll = async () => {
-    if (!isStudent || !selected || !detail) return;
+    if (!isStudent || !selected || !detail || busy) return;
     setBusy(true);
+    const pollQuestions = detail.questions || [];
+    const packed = pollQuestions.map((q: any) => ({ questionId: q.id, selectedOptionId: answers[String(q.id)] }));
     try {
-      const pollQuestions = detail.questions || [];
-      const packed = pollQuestions.map((q: any) => ({ questionId: q.id, selectedOptionId: answers[String(q.id)] }));
       if (packed.some((a: any) => !a.selectedOptionId)) throw new Error("Answer every question before submitting.");
-      await request(`/api/polls/${selected.id}/submit`, { method: "POST", body: JSON.stringify({ answers: packed, resultPrivacy: pollPrivacy, selectedFriendIds: [] }) });
+      const body = { answers: packed, resultPrivacy: pollPrivacy, selectedFriendIds: [] };
+      await request(`/api/polls/${selected.id}/submit`, { method: "POST", body: JSON.stringify(body) });
+      if (user?.id) await AsyncStorage.removeItem(`dallyletter_poll_draft_${user.id}_${selected.id}`).catch(() => undefined);
       const result = await request(`/api/polls/${selected.id}/my-results`);
       setPollResult(result);
-      Alert.alert("Submitted", "Your poll answers were submitted. Results are shown below.");
-    } catch (e) { Alert.alert("Submission failed", e instanceof Error ? e.message : "Please retry."); }
-    finally { setBusy(false); }
+      Alert.alert("Submitted", "Your poll answers were submitted successfully.");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Please retry.";
+      if (/network request failed|failed to fetch|network error|offline|timed? ?out|connection lost/i.test(message) && user?.id) {
+        try {
+          const body = { answers: packed, resultPrivacy: pollPrivacy, selectedFriendIds: [] };
+          await AsyncStorage.setItem(`dallyletter_poll_draft_${user.id}_${selected.id}`, JSON.stringify({ item: selected, detail, answers: packed, resultPrivacy: pollPrivacy, savedAt: Date.now() }));
+          await enqueueSubmission({ userId: Number(user.id), kind: "poll", targetId: Number(selected.id), path: `/api/polls/${selected.id}/submit`, body: JSON.stringify(body) });
+          await refreshQueuedSubmissions();
+          Alert.alert("Saved as draft", "Your poll answers are saved on this device and will be submitted when the app reconnects. They are not published yet.");
+        } catch {
+          Alert.alert("Draft not saved", "Could not store this poll submission. Check device storage and try again.");
+        }
+      } else {
+        Alert.alert("Submission failed", message);
+      }
+    } finally { setBusy(false); }
   };
 
   const openPrivateConversation = async (person:Row) => {
