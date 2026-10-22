@@ -33,8 +33,8 @@ export default function AuthenticatedMediaPreview({ url, height = 220, accessibi
   }, [url, user?.id]);
   const imageSource = { uri: offlineUri || resolved, headers: !offlineUri && needsAuth && token ? { Authorization: "Bearer " + token } : undefined };
   const label = accessibilityLabel || (isImage ? "Attached image" : "Attached media");
-  const looksVideo = /video|\\.(mp4|m4v|mov|webm|ogv)(?:[?#].*)?$/i.test(url);
-  const looksAudio = /audio|\\.(mp3|m4a|aac|ogg|wav)(?:[?#].*)?$/i.test(url);
+  const looksVideo = /video|\.(mp4|m4v|mov|webm|ogv)(?:[?#].*)?$/i.test(url);
+  const looksAudio = /audio|\.(mp3|m4a|aac|ogg|wav)(?:[?#].*)?$/i.test(url);
   const videoPlayer = useVideoPlayer(looksVideo ? { uri: resolved, headers: needsAuth && token ? { Authorization: "Bearer " + token } : undefined } : null, player => { player.loop = false; });
   useEffect(() => {
     if (!looksVideo || !offlineUri) return;
