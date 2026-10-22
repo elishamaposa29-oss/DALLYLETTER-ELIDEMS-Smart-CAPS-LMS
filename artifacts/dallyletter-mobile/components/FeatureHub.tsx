@@ -304,6 +304,14 @@ export default function FeatureHub() {
   }, [refreshQueuedSubmissions, retryQueuedSubmissions, user?.id]);
 
   useEffect(() => {
+    if (!user?.id || queuedSubmissions.length === 0 || queueBusy) return;
+    const interval = setInterval(() => {
+      void request("/api/healthz").then(() => retryQueuedSubmissions()).catch(() => undefined);
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [user?.id, queuedSubmissions.length, queueBusy, request, retryQueuedSubmissions]);
+
+  useEffect(() => {
     if (section !== "exercises" || !isStudent || !selected || !detail?.exercise?.id || !user?.id) return;
     let active = true;
     const key = `dallyletter_exercise_draft_${user.id}_${detail.exercise.id}`;
