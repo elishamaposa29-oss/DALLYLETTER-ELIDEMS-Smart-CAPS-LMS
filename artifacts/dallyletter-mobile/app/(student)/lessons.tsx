@@ -183,6 +183,19 @@ export default function StudentLessons() {
         [...existing, ...incoming].forEach(item => { if (item?.id != null) merged.set(String(item.id), item); });
         await AsyncStorage.setItem(cacheKey, JSON.stringify([...merged.values()]));
       }
+      const activityDetailKey = "dallyletter_saved_learning_items_v1_" + user.id + "_" + user.role;
+      const activityDetailRaw = await AsyncStorage.getItem(activityDetailKey).catch(() => null);
+      let activityDetails: Record<string, any> = {};
+      try { const parsed = activityDetailRaw ? JSON.parse(activityDetailRaw) : {}; if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) activityDetails = parsed; } catch { activityDetails = {}; }
+      for (const [activitySection, activityItems] of [["exercises", exercises], ["polls", lessonPolls]] as const) {
+        for (const activity of activityItems) {
+          try {
+            const response = await fetch(getApiUrl("/api/" + activitySection + "/" + encodeURIComponent(String(activity.id))), { headers });
+            if (response.ok) activityDetails[activitySection + ":" + String(activity.id)] = { detail: await response.json(), savedAt, accountId: user.id, role: user.role };
+          } catch { /* The list snapshot remains available; detail refreshes when online. */ }
+        }
+      }
+      await AsyncStorage.setItem(activityDetailKey, JSON.stringify(activityDetails));
       await AsyncStorage.setItem(savedOfflineKey, JSON.stringify(bundles));
       setSavedBundles(previous => ({ ...previous, [String(lesson.id)]: bundles[String(lesson.id)] }));
       setSavedForOffline(previous => ({ ...previous, [String(lesson.id)]: savedAt }));
