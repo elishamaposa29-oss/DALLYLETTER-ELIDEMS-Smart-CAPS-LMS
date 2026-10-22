@@ -171,7 +171,18 @@ export default function StudentLessons() {
         readList("/api/polls").catch(() => []),
       ]);
       const belongsToLesson = (item: any) => String(item.lessonId ?? item.lesson_id ?? item.lesson?.id ?? "") === String(lesson.id);
-      bundles[String(lesson.id)] = { lesson: { ...lesson }, exercises, assignments: assignments.filter(belongsToLesson), polls: polls.filter(belongsToLesson), savedAt, accountId: user.id, role: user.role };
+      const lessonAssignments = assignments.filter(belongsToLesson);
+      const lessonPolls = polls.filter(belongsToLesson);
+      bundles[String(lesson.id)] = { lesson: { ...lesson }, exercises, assignments: lessonAssignments, polls: lessonPolls, savedAt, accountId: user.id, role: user.role };
+      for (const [section, incoming] of [["exercises", exercises], ["assignments", lessonAssignments], ["polls", lessonPolls]] as const) {
+        const cacheKey = "dallyletter_mobile_list_" + user.id + "_" + user.role + "_" + section + "_v1";
+        const existingRaw = await AsyncStorage.getItem(cacheKey).catch(() => null);
+        let existing: any[] = [];
+        try { const parsed = existingRaw ? JSON.parse(existingRaw) : []; existing = Array.isArray(parsed) ? parsed : []; } catch { existing = []; }
+        const merged = new Map<string, any>();
+        [...existing, ...incoming].forEach(item => { if (item?.id != null) merged.set(String(item.id), item); });
+        await AsyncStorage.setItem(cacheKey, JSON.stringify([...merged.values()]));
+      }
       await AsyncStorage.setItem(savedOfflineKey, JSON.stringify(bundles));
       setSavedBundles(previous => ({ ...previous, [String(lesson.id)]: bundles[String(lesson.id)] }));
       setSavedForOffline(previous => ({ ...previous, [String(lesson.id)]: savedAt }));
