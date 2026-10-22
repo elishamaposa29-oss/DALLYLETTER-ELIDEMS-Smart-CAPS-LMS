@@ -217,7 +217,7 @@ export default function StudentLessons() {
       const failedMedia: string[] = [];
       for (const mediaUrl of mediaReferences) {
         try {
-          await saveOfflineMediaForAccount(Number(user.id), token, mediaUrl, mediaUrl.split("/").pop()?.split("?")[0] || "Learning media");
+          await saveOfflineMediaForAccount(Number(user.id), token ?? undefined, mediaUrl, mediaUrl.split("/").pop()?.split("?")[0] || "Learning media");
           cachedMedia += 1;
         } catch {
           failedMedia.push(mediaUrl);
