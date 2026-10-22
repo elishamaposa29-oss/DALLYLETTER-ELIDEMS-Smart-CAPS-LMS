@@ -30,7 +30,7 @@ function RichLessonText({ value, colors }: { value: unknown; colors: any }) {
   const nodes: any[] = [];
   let bold = 0, italic = 0, underline = 0, heading = 0, link: string | null = null;
   const decode = (text: string) => text.replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, "\"").replace(/&#39;|&apos;/gi, "\'");
-  tokens.forEach((token, index) => {
+  for (const [index, token] of tokens.entries()) {
     if (token.startsWith("<")) {
       const closing = /^<\s*\//.test(token);
       const name = (token.match(/^<\s*\/?\s*([a-z0-9]+)/i)?.[1] ?? "").toLowerCase();
@@ -56,7 +56,7 @@ function RichLessonText({ value, colors }: { value: unknown; colors: any }) {
     if (heading) { style.fontSize = 14 + heading; style.fontWeight = "700"; }
     if (link) { style.color = colors.primary; style.textDecorationLine = "underline"; }
     nodes.push(<Text key={"rich-" + index} style={style} onPress={link ? () => void Linking.openURL(link as string) : undefined}>{text}</Text>);
-  });
+  }
   return <Text style={{ color: colors.foreground, fontSize: 15, lineHeight: 24 }}>{nodes}</Text>;
 }
 
