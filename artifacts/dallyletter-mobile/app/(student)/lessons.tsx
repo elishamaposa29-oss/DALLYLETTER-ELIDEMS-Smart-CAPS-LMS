@@ -24,24 +24,6 @@ function isMediaReference(url: string): boolean {
   const lower = url.toLowerCase();
   return /[?&]type=(image|video|audio|application)\//i.test(lower) || /\.(png|jpe?g|gif|webp|avif|mp4|webm|mov|mp3|m4a|ogg|wav|pdf|docx?)(?:[?#]|$)/i.test(lower);
 }
-function plainLessonText(value: unknown): string {
-  return String(value ?? "")
-    .replace(/<br\s*\/?\s*>/gi, "\n")
-    .replace(/<li\b[^>]*>/gi, "\n• ")
-    .replace(/<\/(?:li)\s*>/gi, "\n")
-    .replace(/<\/(?:p|div|h[1-6]|ul|ol|section|blockquote)\s*>/gi, "\n\n")
-    .replace(/<[^>]*>/g, "")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/\n[ \t]+/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
 function RichLessonText({ value, colors }: { value: unknown; colors: any }) {
   const source = String(value ?? "");
   const tokens = source.match(/<[^>]*>|[^<]+/g) ?? [source];
