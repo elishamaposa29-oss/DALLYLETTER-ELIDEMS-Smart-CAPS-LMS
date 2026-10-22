@@ -242,7 +242,7 @@ export default function StudentLessons() {
     const lessonRows = Array.isArray(lessons) && lessons.length ? lessons : cachedLessons || [];
     const fromBundles: Record<string, any[]> = {};
     Object.entries(savedBundles).forEach(([id, bundle]: [string, any]) => { fromBundles[id] = Array.isArray(bundle?.exercises) ? bundle.exercises : []; });
-    setLessonExerciseMap(previous => ({ ...fromBundles, ...previous }));
+    setLessonExerciseMap(previous => ({ ...previous, ...fromBundles }));
     if (!isOnline || !lessonRows.length) return () => { active = false; };
     const headers: Record<string, string> = token ? { Authorization: "Bearer " + token } : {};
     void Promise.all(lessonRows.map(async (lesson: any) => {
@@ -250,7 +250,8 @@ export default function StudentLessons() {
         const response = await fetch(getApiUrl("/api/exercises/lessons/" + encodeURIComponent(String(lesson.id)) + "/exercises"), { headers });
         if (!response.ok) return [String(lesson.id), fromBundles[String(lesson.id)] || []] as const;
         const data = await response.json();
-        return [String(lesson.id), Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : []] as const;
+        const onlineItems = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
+        return [String(lesson.id), onlineItems.length ? onlineItems : (fromBundles[String(lesson.id)] || [])] as const;
       } catch { return [String(lesson.id), fromBundles[String(lesson.id)] || []] as const; }
     })).then(entries => { if (active) setLessonExerciseMap(previous => ({ ...previous, ...Object.fromEntries(entries) })); });
     return () => { active = false; };
@@ -318,7 +319,6 @@ export default function StudentLessons() {
           </View> : filtered.map((lesson: any) => {
             const col = typeColor[lesson.type] ?? "#6b7280";
             const exercises = lessonExerciseMap[String(lesson.id)] || [];
-            const bundle = savedBundles[String(lesson.id)];
             const hasMedia = Boolean(lesson.mediaUrl);
             return <View key={lesson.id} style={s.card}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
