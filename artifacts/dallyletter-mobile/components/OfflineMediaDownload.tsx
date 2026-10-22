@@ -27,7 +27,7 @@ function hash(value: string) { let h = 2166136261; for (let i=0;i<value.length;i
 export function resolveMediaUrl(url: string) { return /^https?:\/\//i.test(url) ? url : getApiUrl(url); }
 function needsMediaAuth(url: string) { return /\/api\/(?:lessons|messages|assignments|exercises)\/media\//i.test(url); }
 export async function saveOfflineMediaForAccount(userId: number, token: string | undefined, url: string, fileName?: string): Promise<string> {
-  if (!url || /^https?:\/\//i.test(url) && !/^https?:\/\//i.test(url)) throw new Error("Invalid media URL.");
+  if (!url.trim()) throw new Error("Invalid media URL.");
   const existingUri = await getOfflineMediaUri(userId, url);
   if (existingUri) return existingUri;
   if (!FileSystem.documentDirectory) throw new Error("Offline file storage is unavailable on this device.");
@@ -89,7 +89,7 @@ export default function OfflineMediaDownload({ url, fileName, accessibilityLabel
     try { setUsage(await getOfflineMediaUsage(user.id)); } catch { setUsage(null); }
   }, [user?.id]);
   const resolved = resolveMediaUrl(url);
-  const directMedia = /^\/api\/(?:lessons|messages|assignments|exercises)\/media\//i.test(url) || /\.(?:png|jpe?g|gif|webp|avif|mp4|m4v|mov|webm|mp3|m4a|aac|ogg|wav|pdf|docx?|pptx?|xlsx?)(?:[?#].*)?$/i.test(url) || /[?&]type=(?:image|video|audio|application%2Fpdf|application\/pdf)\//i.test(url);
+  const directMedia = /\/api\/(?:lessons|messages|assignments|exercises)\/media\//i.test(url) || /\.(?:png|jpe?g|gif|webp|avif|mp4|m4v|mov|webm|mp3|m4a|aac|ogg|wav|pdf|docx?|pptx?|xlsx?)(?:[?#].*)?$/i.test(url) || /[?&]type=(?:image|video|audio|application%2Fpdf|application\/pdf)\//i.test(url);
   useEffect(() => { void refreshUsage(); }, [refreshUsage]);
   useEffect(() => {
     let active = true;
