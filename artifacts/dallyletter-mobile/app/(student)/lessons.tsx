@@ -117,6 +117,13 @@ export default function StudentLessons() {
     setUnfinishedLessons(next);
     void AsyncStorage.setItem(progressKey, JSON.stringify(next)).catch(() => undefined);
   };
+  const markLessonComplete = (lessonId: string | number) => {
+    const next = { ...unfinishedLessons };
+    delete next[String(lessonId)];
+    setUnfinishedLessons(next);
+    if (progressKey) void AsyncStorage.setItem(progressKey, JSON.stringify(next)).catch(() => undefined);
+    setSelectedLesson(null);
+  };
   const usingCache = !lessons?.length && cachedLessons !== null;
   const top = insets.top + (Platform.OS === "web" ? 67 : 0);
 
@@ -196,6 +203,7 @@ export default function StudentLessons() {
                 </TouchableOpacity>}
               </View>)}
               {selectedLesson.mediaUrl && /^https?:\/\//i.test(String(selectedLesson.mediaUrl)) ? <TouchableOpacity style={{ backgroundColor: colors.primary, borderRadius: 12, padding: 15, flexDirection: "row", alignItems: "center", gap: 10 }} onPress={() => void Linking.openURL(String(selectedLesson.mediaUrl))}><Feather name="play-circle" size={22} color="#fff"/><View style={{ flex: 1 }}><Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold" }}>Open external lesson media</Text><Text numberOfLines={2} style={{ color: "rgba(255,255,255,.8)", fontSize: 12, marginTop: 3 }}>{selectedLesson.mediaUrl}</Text></View><Feather name="external-link" size={17} color="#fff"/></TouchableOpacity> : null}
+              <TouchableOpacity accessibilityRole="button" onPress={() => markLessonComplete(selectedLesson.id)} style={{ backgroundColor: colors.primary, borderRadius: 12, padding: 14, marginTop: 18, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }}><Feather name="check-circle" size={18} color="#fff" /><Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold" }}>Mark lesson complete</Text></TouchableOpacity>
               {!isOnline ? <Text style={{ color: "#b45309", marginTop: 14, fontSize: 12 }}>Offline: saved written details remain available. Downloaded media opens locally; external links need internet.</Text> : null}
             </>}
           </ScrollView>
