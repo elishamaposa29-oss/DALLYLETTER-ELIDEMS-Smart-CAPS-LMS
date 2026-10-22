@@ -6,6 +6,7 @@ import { Modal, Platform, ScrollView, Share, StyleSheet, Text, TextInput, Toucha
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import AuthenticatedMediaPreview from "@/components/AuthenticatedMediaPreview";
+import { saveOfflineMediaForAccount } from "@/components/OfflineMediaDownload";
 import { useAuth } from "@/contexts/AuthContext";
 import { useEffect, useState } from "react";
 
@@ -22,8 +23,23 @@ function extractLessonLinks(value: unknown): string[] {
 }
 function isMediaReference(url: string): boolean {
   const lower = url.toLowerCase();
-  return /[?&]type=(image|video|audio|application)\//i.test(lower) || /\.(png|jpe?g|gif|webp|avif|mp4|webm|mov|mp3|m4a|ogg|wav|pdf|docx?)(?:[?#]|$)/i.test(lower);
+  return /\/api\/(?:lessons|messages|assignments|exercises)\/media\/[a-f0-9-]{36}/i.test(lower) || /[?&]type=(image|video|audio|application)\//i.test(lower) || /\.(png|jpe?g|gif|webp|avif|mp4|webm|mov|mp3|m4a|ogg|wav|pdf|docx?)(?:[?#]|$)/i.test(lower);
 }
+function collectMediaReferences(value: unknown, out = new Set<string>(), depth = 0): string[] {
+  if (depth > 7 || value == null) return [...out];
+  if (typeof value === "string") {
+    for (const link of extractLessonLinks(value)) if (isMediaReference(link)) out.add(link);
+    if (/^https?:\/\/|^\/api\//i.test(value.trim()) && isMediaReference(value.trim())) out.add(value.trim());
+  } else if (Array.isArray(value)) {
+    for (const item of value) collectMediaReferences(item, out, depth + 1);
+  } else if (typeof value === "object") {
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      if (/url|uri|media|attachment|file|image|video|audio|content|html|src|href/i.test(key)) collectMediaReferences(item, out, depth + 1);
+    }
+  }
+  return [...out];
+}
+
 function RichLessonText({ value, colors }: { value: unknown; colors: any }) {
   const source = String(value ?? "");
   const tokens = source.match(/<[^>]*>|[^<]+/g) ?? [source];
@@ -196,10 +212,24 @@ export default function StudentLessons() {
         }
       }
       await AsyncStorage.setItem(activityDetailKey, JSON.stringify(activityDetails));
+      const mediaReferences = collectMediaReferences([lesson, exercises, lessonAssignments, lessonPolls]);
+      let cachedMedia = 0;
+      const failedMedia: string[] = [];
+      for (const mediaUrl of mediaReferences) {
+        try {
+          await saveOfflineMediaForAccount(Number(user.id), token, mediaUrl, mediaUrl.split("/").pop()?.split("?")[0] || "Learning media");
+          cachedMedia += 1;
+        } catch {
+          failedMedia.push(mediaUrl);
+        }
+      }
+      bundles[String(lesson.id)].mediaReferences = mediaReferences;
+      bundles[String(lesson.id)].cachedMediaCount = cachedMedia;
+      bundles[String(lesson.id)].mediaCacheIncomplete = failedMedia.length > 0;
       await AsyncStorage.setItem(savedOfflineKey, JSON.stringify(bundles));
       setSavedBundles(previous => ({ ...previous, [String(lesson.id)]: bundles[String(lesson.id)] }));
       setSavedForOffline(previous => ({ ...previous, [String(lesson.id)]: savedAt }));
-      setSaveFeedback("Saved on this device for offline preview. Answers and submissions remain drafts until the server confirms them.");
+      setSaveFeedback(failedMedia.length ? "Lesson and activities saved. " + cachedMedia + " media file(s) cached; " + failedMedia.length + " could not be saved and will need internet. Responses stay drafts until the server confirms submission." : "Lesson, activities and " + cachedMedia + " media file(s) saved on this device. Responses stay drafts until the server confirms submission.");
     } catch {
       setSaveFeedback("Could not save this lesson. Check device storage and try again.");
     }
