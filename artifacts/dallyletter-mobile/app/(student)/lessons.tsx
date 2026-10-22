@@ -207,7 +207,7 @@ export default function StudentLessons() {
         for (const activity of activityItems) {
           try {
             const response = await fetch(getApiUrl("/api/" + activitySection + "/" + encodeURIComponent(String(activity.id))), { headers });
-            if (response.ok) activityDetails[activitySection + ":" + String(activity.id)] = { detail: await response.json(), savedAt, accountId: user.id, role: user.role };
+            if (response.ok) activityDetails[activitySection + ":" + String(activity.id)] = { section: activitySection, item: { ...activity }, detail: await response.json(), savedAt, accountId: user.id, role: user.role };
           } catch { /* The list snapshot remains available; detail refreshes when online. */ }
         }
       }
