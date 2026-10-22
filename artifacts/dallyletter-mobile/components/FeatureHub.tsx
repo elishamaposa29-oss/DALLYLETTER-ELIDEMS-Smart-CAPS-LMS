@@ -113,6 +113,7 @@ export default function FeatureHub() {
   const [pollCorrect, setPollCorrect] = useState(0);
   const [pollBusy, setPollBusy] = useState(false);
   const [pollResult, setPollResult] = useState<any>(null);
+  const [pollDraftReady, setPollDraftReady] = useState(false);
   const [pollPrivacy, setPollPrivacy] = useState<"private" | "public">("private");
   const [groupName, setGroupName] = useState("");
   const [groupSubject, setGroupSubject] = useState("");
@@ -322,18 +323,22 @@ export default function FeatureHub() {
   }, [answers, draftKey]);
 
   useEffect(() => {
-    if (section !== "polls" || !isStudent || !selected || !detail || !user?.id) return;
+    if (section !== "polls" || !isStudent || !selected || !detail || !user?.id || !pollDraftReady) return;
     let active = true;
+    setPollDraftReady(false);
     const key = `dallyletter_poll_draft_${user.id}_${selected.id}`;
     void AsyncStorage.getItem(key).then(raw => {
-      if (!active || !raw) return;
-      try {
-        const saved = JSON.parse(raw);
-        const savedAnswers = Array.isArray(saved.answers) ? Object.fromEntries(saved.answers.map((answer: any) => [String(answer.questionId), answer.selectedOptionId])) : null;
-        if (savedAnswers) setAnswers(current => Object.keys(current).length ? current : savedAnswers);
-        if (saved.resultPrivacy === "private" || saved.resultPrivacy === "public") setPollPrivacy(saved.resultPrivacy);
-      } catch { /* Ignore an invalid poll draft and keep the live poll usable. */ }
-    }).catch(() => undefined);
+      if (!active) return;
+      if (raw) {
+        try {
+          const saved = JSON.parse(raw);
+          const savedAnswers = Array.isArray(saved.answers) ? Object.fromEntries(saved.answers.map((answer: any) => [String(answer.questionId), answer.selectedOptionId])) : null;
+          if (savedAnswers) setAnswers(current => Object.keys(current).length ? current : savedAnswers);
+          if (saved.resultPrivacy === "private" || saved.resultPrivacy === "public") setPollPrivacy(saved.resultPrivacy);
+        } catch { /* Ignore an invalid poll draft and keep the live poll usable. */ }
+      }
+      setPollDraftReady(true);
+    }).catch(() => { if (active) setPollDraftReady(true); });
     return () => { active = false; };
   }, [section, isStudent, selected?.id, detail?.poll?.id, user?.id]);
 
@@ -342,7 +347,7 @@ export default function FeatureHub() {
     const packedAnswers = (detail.questions || []).map((q: any) => ({ questionId: q.id, selectedOptionId: answers[String(q.id)] })).filter((answer: any) => answer.selectedOptionId);
     const key = `dallyletter_poll_draft_${user.id}_${selected.id}`;
     void AsyncStorage.setItem(key, JSON.stringify({ item: selected, detail, answers: packedAnswers, resultPrivacy: pollPrivacy, savedAt: Date.now() })).catch(() => undefined);
-  }, [section, isStudent, selected?.id, detail?.poll?.id, answers, pollPrivacy, user?.id]);
+  }, [section, isStudent, selected?.id, detail?.poll?.id, answers, pollPrivacy, user?.id, pollDraftReady]);
 
   useEffect(() => {
     if (section !== "messages" || !privateRecipient?.id) return;
