@@ -2,6 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getApiUrl, useListLessons } from "@workspace/api-client-react";
 import * as Linking from "expo-linking";
+import { router } from "expo-router";
 import { Modal, Platform, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
@@ -338,7 +339,7 @@ export default function StudentLessons() {
               </View>
               {exercises.length ? <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12, marginTop: 2, gap: 8 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}><Feather name="clipboard" size={16} color={colors.primary} /><Text style={{ color: colors.foreground, fontSize: 14, fontFamily: "Inter_700Bold" }}>Exercises ({exercises.length})</Text></View>
-                {exercises.map((exercise: any) => <TouchableOpacity key={exercise.id} accessibilityRole="button" onPress={() => { void openLesson(lesson); }} style={{ flexDirection: "row", alignItems: "center", gap: 10, padding: 11, borderRadius: 10, borderWidth: 1, borderColor: exercise.submissionStatus === "marked" ? "#D4AF37" : "#a78bfa", backgroundColor: exercise.submissionStatus === "marked" ? "#D4AF3718" : "#8b5cf618" }}>
+                {exercises.map((exercise: any) => <TouchableOpacity key={exercise.id} accessibilityRole="button" onPress={() => router.push({ pathname: "/(student)/more", params: { section: "exercises", itemId: String(exercise.id) } })} style={{ flexDirection: "row", alignItems: "center", gap: 10, padding: 11, borderRadius: 10, borderWidth: 1, borderColor: exercise.submissionStatus === "marked" ? "#D4AF37" : "#a78bfa", backgroundColor: exercise.submissionStatus === "marked" ? "#D4AF3718" : "#8b5cf618" }}>
                   <Feather name="file-text" size={16} color={exercise.submissionStatus === "marked" ? "#9a7400" : "#7c3aed"} /><View style={{ flex: 1 }}><Text numberOfLines={2} style={{ color: colors.foreground, fontSize: 13, fontFamily: "Inter_600SemiBold" }}>{exercise.title || "Exercise"}</Text><Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 3 }}>{exercise.totalMarks ?? exercise.total_marks ?? "—"} marks · {exercise.submissionStatus === "marked" ? "Marked" : exercise.submissionStatus === "submitted" ? "Awaiting marking" : "Not submitted"}</Text></View><Feather name="chevron-right" size={16} color={colors.mutedForeground} />
                 </TouchableOpacity>)}
               </View> : null}
