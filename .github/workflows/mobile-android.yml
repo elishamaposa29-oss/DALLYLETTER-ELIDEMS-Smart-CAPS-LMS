@@ -236,10 +236,37 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: "platform-tools"
-      - name: Install emulator and Android 34 system image
+      - name: Install emulator and Android 34 system image with clean-download retry
+        shell: bash
         run: |
+          set -Eeuo pipefail
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "emulator" "platforms;android-34" "system-images;android-34;google_apis;x86_64"
+
+          # SDK Manager occasionally receives a truncated/corrupt system-image ZIP
+          # ("ZipFile unknown archive"). Retry the package install after clearing
+          # only SDK download/temp caches and the incomplete system-image directory.
+          sdk_packages=("platform-tools" "emulator" "platforms;android-34" "system-images;android-34;google_apis;x86_64")
+          system_image="$ANDROID_HOME/system-images/android-34/google_apis/x86_64"
+          installed=0
+          for attempt in 1 2 3; do
+            if sdkmanager --install "${sdk_packages[@]}" &&
+               test -s "$system_image/source.properties" &&
+               test -x "$ANDROID_HOME/emulator/emulator"; then
+              installed=1
+              break
+            fi
+            echo "::warning::Android emulator/system-image install failed or was incomplete (attempt $attempt/3); clearing partial downloads before retry."
+            rm -rf "$HOME/.android/cache" "$ANDROID_HOME/.temp" "$system_image"
+            sleep "$((attempt * 10))"
+          done
+          if [ "$installed" -ne 1 ]; then
+            echo "::error::Android 34 emulator/system image did not install cleanly after three attempts."
+            find "$ANDROID_HOME/system-images/android-34" -maxdepth 4 -name source.properties -print 2>/dev/null || true
+            exit 1
+          fi
+          echo "Verified Android 34 system image:"
+          grep -E '^(Pkg.Desc|Pkg.Revision)=' "$system_image/source.properties" || true
+
           # Install only the host OS dependency; SDK-bundled libraries must be resolved from the SDK.
           sudo apt-get update
           sudo apt-get install --yes libpulse0
