@@ -57,6 +57,10 @@ export default function StudentTabLayout() {
         }}
       />
       <Tabs.Screen
+        name="work"
+        options={{ title: "Work", tabBarIcon: ({ color, size }) => <Feather name="clipboard" size={size} color={color} /> }}
+      />
+      <Tabs.Screen
         name="classes"
         options={{
           title: "Classes",
