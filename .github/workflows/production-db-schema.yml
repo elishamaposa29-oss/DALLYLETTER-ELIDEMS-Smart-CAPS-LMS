@@ -21,7 +21,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          health_url="https://dallyletter-elidems-smart-caps-lms-4.onrender.com/api/healthz"
+          health_url="https://dallyletter-elidems-smart-caps-lms-4.onrender.com/api/healthz/schema"
           response_file="$(mktemp)"
           trap 'rm -f "$response_file"' EXIT
           # Render auto-deploy follows the main push; allow the new service version to start.
