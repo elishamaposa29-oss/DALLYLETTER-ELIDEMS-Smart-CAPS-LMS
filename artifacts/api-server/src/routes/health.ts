@@ -4,8 +4,9 @@ import { pool } from "@workspace/db";
 
 const router: IRouter = Router();
 
-// Keep this list aligned with the production schema required by the mobile and web
-// clients. This endpoint returns only a pass/fail state, never schema details.
+// Detailed schema verification is deliberately separate from basic liveness.
+// CI, local development, and platform health probes use /healthz and should
+// only require a reachable database. Production verification uses /healthz/schema.
 const requiredTables = [
   "users", "lessons", "exercises", "submissions", "messages",
   "lesson_requests", "group_member_controls", "group_settings",
@@ -37,6 +38,18 @@ const requiredColumns: Array<[string, string]> = [
 router.get("/healthz", async (_req, res): Promise<void> => {
   try {
     await pool.query("SELECT 1");
+    res.json(HealthCheckResponse.parse({ status: "ok" }));
+  } catch {
+    res.status(503).json({
+      status: "error",
+      error: "Database connection unavailable"
+    });
+  }
+});
+
+router.get("/healthz/schema", async (_req, res): Promise<void> => {
+  try {
+    await pool.query("SELECT 1");
     const tables = await pool.query(
       `SELECT table_name
        FROM information_schema.tables
@@ -60,12 +73,15 @@ router.get("/healthz", async (_req, res): Promise<void> => {
     );
 
     if (missingTables || columns.rows.length > 0) {
-      res.status(503).json({ status: "error", schema: "incomplete", error: "Production database schema verification failed" });
+      res.status(503).json({
+        status: "error",
+        schema: "incomplete",
+        error: "Production database schema verification failed"
+      });
       return;
     }
 
-    const data = HealthCheckResponse.parse({ status: "ok" });
-    res.json({ ...data, schema: "ok" });
+    res.json({ status: "ok", schema: "ok" });
   } catch {
     res.status(503).json({
       status: "error",
