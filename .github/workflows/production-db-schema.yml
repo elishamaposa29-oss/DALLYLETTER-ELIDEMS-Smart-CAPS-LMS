@@ -66,6 +66,9 @@ jobs:
           ];
           const client = new Client({
             connectionString: process.env.DATABASE_URL,
+            // Render PostgreSQL requires TLS for external connections.
+            // Keep traffic encrypted; this external endpoint uses Render-managed TLS.
+            ssl: { rejectUnauthorized: false },
             connectionTimeoutMillis: 10000,
             query_timeout: 15000,
             statement_timeout: 15000
