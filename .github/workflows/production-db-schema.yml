@@ -47,7 +47,7 @@ jobs:
           }
 
       - name: Read-only schema verification
-        working-directory: artifacts/api-server
+        working-directory: lib/db
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
