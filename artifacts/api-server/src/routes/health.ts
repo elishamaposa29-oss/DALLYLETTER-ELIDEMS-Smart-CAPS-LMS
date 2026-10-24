@@ -8,7 +8,7 @@ const router: IRouter = Router();
 // CI, local development, and platform health probes use /healthz and should
 // only require a reachable database. Production verification uses /healthz/schema.
 const requiredTables = [
-  "users", "lessons", "exercises", "submissions", "messages",
+  "users", "lessons", "exercises", "exercise_questions", "exercise_options", "exercise_submissions", "exercise_answers", "exercise_media", "assignment_submissions", "messages",
   "lesson_requests", "group_member_controls", "group_settings",
   "chat_polls", "chat_poll_options", "chat_poll_votes",
   "chat_broadcasts", "chat_broadcast_recipients",
