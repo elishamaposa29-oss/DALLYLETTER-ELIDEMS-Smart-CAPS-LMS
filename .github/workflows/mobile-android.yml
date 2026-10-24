@@ -94,7 +94,7 @@ jobs:
         run: pnpm --filter @workspace/dallyletter-mobile typecheck
       - name: Set baseline version 1.0.0 for upgrade smoke test
         working-directory: artifacts/dallyletter-mobile
-        run: node -e 'const fs=require("fs"); const p="app.json"; const j=JSON.parse(fs.readFileSync(p,"utf8")); j.expo.version="1.0.0"; j.expo.android.versionCode=1; fs.writeFileSync(p, JSON.stringify(j,null,2)+"\\n");'
+        run: node -e 'const fs=require("fs"); const p="app.json"; const j=JSON.parse(fs.readFileSync(p,"utf8")); j.expo.version="1.0.0"; j.expo.android.versionCode=1; fs.writeFileSync(p, JSON.stringify(j,null,2)+"\n");'
       - name: Generate native Android project
         working-directory: artifacts/dallyletter-mobile
         run: pnpm exec expo prebuild --platform android --no-install
