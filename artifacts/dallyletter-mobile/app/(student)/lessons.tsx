@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getApiUrl, useListLessons } from "@workspace/api-client-react";
 import * as Linking from "expo-linking";
 import { router } from "expo-router";
-import { Modal, Platform, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { AppState, Modal, Platform, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import AuthenticatedMediaPreview from "@/components/AuthenticatedMediaPreview";
@@ -90,6 +90,44 @@ export default function StudentLessons() {
   const [cachedLessons, setCachedLessons] = useState<any[] | null>(null);
   const [cacheReady, setCacheReady] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
+
+  // Native React Native does not expose window online/offline events. Probe the
+  // public health endpoint on-device so saved lessons and queued retries can
+  // reflect real connectivity instead of remaining permanently "online".
+  useEffect(() => {
+    let active = true;
+    let checking = false;
+    const checkConnectivity = async () => {
+      if (checking) return;
+      checking = true;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      try {
+        const response = await fetch(getApiUrl("/api/healthz"), { signal: controller.signal });
+        if (!response.ok) throw new Error("API health check failed");
+        const payload = await response.json();
+        if (active) setIsOnline(payload?.status === "ok");
+      } catch {
+        if (active) setIsOnline(false);
+      } finally {
+        clearTimeout(timeout);
+        checking = false;
+      }
+    };
+    if (Platform.OS !== "web") {
+      void checkConnectivity();
+      const interval = setInterval(() => void checkConnectivity(), 15000);
+      const subscription = AppState.addEventListener("change", state => {
+        if (state === "active") void checkConnectivity();
+      });
+      return () => {
+        active = false;
+        clearInterval(interval);
+        subscription.remove();
+      };
+    }
+    return () => { active = false; };
+  }, []);
   const [unfinishedLessons, setUnfinishedLessons] = useState<Record<string, number>>({});
   const [savedForOffline, setSavedForOffline] = useState<Record<string, number>>({});
   const [saveFeedback, setSaveFeedback] = useState("");

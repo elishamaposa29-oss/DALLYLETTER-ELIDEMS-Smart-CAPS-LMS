@@ -193,9 +193,9 @@ if timeout 30 adb logcat -d -t 8000 | awk '/FATAL EXCEPTION/ { in_exception=1; c
   exit 1
 fi
 
-step "upgrade actual release APK in place to version 1.0.1"
+step "upgrade actual release APK in place to version 1.0.2"
 timeout 180 adb install -r artifacts/dallyletter-mobile/android/app/build/outputs/apk/release/app-release.apk
-timeout 30 adb shell dumpsys package com.dallyletter.elidems | grep -E "versionCode=2|versionName=1\\.0\\.1"
+timeout 30 adb shell dumpsys package com.dallyletter.elidems | grep -E "versionCode=3|versionName=1\\.0\\.2"
 timeout 45 adb shell monkey -p com.dallyletter.elidems 1
 sleep 8
 step "verify upgraded release APK still renders sign-in UI"
@@ -203,7 +203,7 @@ timeout 30 adb exec-out screencap -p > /tmp/dallyletter-release-upgrade.png
 timeout 45 adb shell uiautomator dump /sdcard/dallyletter-release-upgrade.xml >/dev/null
 timeout 20 adb pull /sdcard/dallyletter-release-upgrade.xml /tmp/dallyletter-release-upgrade.xml >/dev/null
 if ! grep -Eqi 'Welcome back|Sign in to continue learning|your@email.com|Sign In' /tmp/dallyletter-release-upgrade.xml; then
-  echo "::error::Release APK v1.0.1 did not retain a visible sign-in UI after in-place upgrade"
+  echo "::error::Release APK v1.0.2 did not retain a visible sign-in UI after in-place upgrade"
   cat /tmp/dallyletter-release-upgrade.xml || true
   exit 1
 fi
@@ -218,8 +218,8 @@ timeout 30 adb shell dumpsys package com.dallyletter.elidems | grep -E "versionC
 step "write marker into app-private data using debuggable test build"
 timeout 30 adb shell "run-as com.dallyletter.elidems sh -c 'mkdir -p /data/user/0/com.dallyletter.elidems/files && printf preserved-across-upgrade > /data/user/0/com.dallyletter.elidems/files/dallyletter-upgrade-marker'"
 timeout 20 adb shell run-as com.dallyletter.elidems test -f /data/user/0/com.dallyletter.elidems/files/dallyletter-upgrade-marker
-step "upgrade CI test build to version 1.0.1 without uninstalling"
-timeout 180 adb install -r /tmp/dallyletter-data-v1.0.1-debug.apk
+step "upgrade CI test build to version 1.0.2 without uninstalling"
+timeout 180 adb install -r /tmp/dallyletter-data-v1.0.2-debug.apk
 timeout 30 adb shell pm path com.dallyletter.elidems | grep -q "package:"
 step "verify app-private data survives in-place install -r upgrade"
 upgrade_marker="$(timeout 20 adb shell run-as com.dallyletter.elidems cat /data/user/0/com.dallyletter.elidems/files/dallyletter-upgrade-marker | tr -d "\\r")"
@@ -227,16 +227,16 @@ if [ "$upgrade_marker" != "preserved-across-upgrade" ]; then
   echo "::error::App-private data marker was not preserved during install -r upgrade"
   exit 1
 fi
-timeout 30 adb shell dumpsys package com.dallyletter.elidems | grep -E "versionCode=2|versionName=1\\.0\\.1"
+timeout 30 adb shell dumpsys package com.dallyletter.elidems | grep -E "versionCode=3|versionName=1\\.0\\.2"
 timeout 45 adb shell monkey -p com.dallyletter.elidems 1
 sleep 8
 step "capture upgraded CI test build and verify sign-in UI remains visible"
-timeout 30 adb exec-out screencap -p > /tmp/dallyletter-v1.0.1.png
-timeout 45 adb shell uiautomator dump /sdcard/dallyletter-ui-v1.0.1.xml >/dev/null
-timeout 20 adb pull /sdcard/dallyletter-ui-v1.0.1.xml /tmp/dallyletter-ui-v1.0.1.xml >/dev/null
-if ! grep -Eqi 'Welcome back|Sign in to continue learning|your@email.com|Sign In' /tmp/dallyletter-ui-v1.0.1.xml; then
+timeout 30 adb exec-out screencap -p > /tmp/dallyletter-v1.0.2.png
+timeout 45 adb shell uiautomator dump /sdcard/dallyletter-ui-v1.0.2.xml >/dev/null
+timeout 20 adb pull /sdcard/dallyletter-ui-v1.0.2.xml /tmp/dallyletter-ui-v1.0.2.xml >/dev/null
+if ! grep -Eqi 'Welcome back|Sign in to continue learning|your@email.com|Sign In' /tmp/dallyletter-ui-v1.0.2.xml; then
   echo "::error::Upgraded app launched but expected sign-in UI text was not present"
-  cat /tmp/dallyletter-ui-v1.0.1.xml || true
+  cat /tmp/dallyletter-ui-v1.0.2.xml || true
   exit 1
 fi
 step "verify upgraded test app process and foreground activity"
