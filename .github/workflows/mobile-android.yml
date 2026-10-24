@@ -33,7 +33,10 @@ jobs:
   # Defer the expensive APK/emulator suite until the parity pass is ready.
   # Manual dispatch always runs it; PRs opt in with the android-release-check label.
   build-apk:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') || contains(github.event.pull_request.labels.*.name, 'android-release-check')
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      contains(github.event.pull_request.labels.*.name, 'android-release-check')
     runs-on: ubuntu-latest
     # Release and upgrade APK builds take ~43 minutes on hosted runners; leave time for artifact checks.
     timeout-minutes: 75
@@ -452,11 +455,11 @@ jobs:
             /tmp/dallyletter-login-ready.xml
             /tmp/dallyletter-login-error.xml
             /tmp/dallyletter-ui-signup.xml
-            /tmp/dallyletter-ui-v1.0.1.xml
+            /tmp/dallyletter-ui-v1.0.2.xml
             /tmp/dallyletter-v1.png
             /tmp/dallyletter-login-error.png
             /tmp/dallyletter-signup.png
-            /tmp/dallyletter-v1.0.1.png
+            /tmp/dallyletter-v1.0.2.png
             /tmp/dallyletter-release-upgrade.xml
             /tmp/dallyletter-release-upgrade.png
           if-no-files-found: warn
