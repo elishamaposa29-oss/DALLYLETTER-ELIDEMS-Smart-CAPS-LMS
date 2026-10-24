@@ -2,7 +2,7 @@
   "expo": {
     "name": "DallyLetter Elidems",
     "slug": "dallyletter-mobile",
-    "version": "1.0.0",
+    "version": "1.0.2",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "dallyletter",
@@ -19,7 +19,7 @@
     },
     "android": {
       "package": "com.dallyletter.elidems",
-      "versionCode": 1,
+      "versionCode": 3,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#0d0d73"
