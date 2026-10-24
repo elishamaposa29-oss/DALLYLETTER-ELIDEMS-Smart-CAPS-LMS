@@ -35,7 +35,8 @@ jobs:
   build-apk:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'android-release-check')
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Release and upgrade APK builds take ~43 minutes on hosted runners; leave time for artifact checks.
+    timeout-minutes: 75
     env:
       EXPO_PUBLIC_API_BASE_URL: https://dallyletter-elidems-smart-caps-lms-4.onrender.com
     steps:
