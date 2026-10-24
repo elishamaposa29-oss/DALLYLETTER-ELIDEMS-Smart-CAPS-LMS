@@ -11,7 +11,7 @@
     "db:push:force": "pnpm --filter @workspace/db run push-force",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
-    "lint:release": "pnpm exec prettier .github/workflows/mobile-android.yml | diff -u .github/workflows/mobile-android.yml - || true; pnpm exec prettier --check .github/workflows/*.yml render.yaml DEPLOYMENT.md INSTALL.md README.md RELEASE-WORKFLOW.md package.json",
+    "lint:release": "pnpm exec prettier --check .github/workflows/*.yml render.yaml DEPLOYMENT.md INSTALL.md README.md RELEASE-WORKFLOW.md package.json",
     "ci:verify": "pnpm run typecheck && pnpm --dir artifacts/api-server run test:authorization && pnpm --dir artifacts/api-server run test:offline-queue && pnpm build && pnpm run lint:release"
   },
   "private": true,
