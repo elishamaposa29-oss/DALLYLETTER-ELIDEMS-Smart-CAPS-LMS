@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useInstallPrompt } from "@/hooks/useInstallPrompt";
 
 // This stable GitHub Releases URL is populated by the release workflow.
-const ANDROID_APK_URL = "https://github.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/releases/latest/download/dallyletter-v1.0.1.apk";
+const ANDROID_APK_URL = "https://github.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/releases/download/mobile-v1.0.1/dallyletter-v1.0.1.apk";
 
 export function InstallAppCard() {
   const { prompt, install, isInstalled, isIOS } = useInstallPrompt();
