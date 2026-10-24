@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useInstallPrompt } from "@/hooks/useInstallPrompt";
 
 // This stable GitHub Releases URL is populated by the release workflow.
-const ANDROID_APK_URL = "https://github.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/releases/download/mobile-v1.0.1/dallyletter-v1.0.1.apk";
+const ANDROID_APK_URL = "https://github.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/releases/download/mobile-v1.0.2/dallyletter-v1.0.2.apk";
 
 export function InstallAppCard() {
   const { prompt, install, isInstalled, isIOS } = useInstallPrompt();
@@ -36,7 +36,7 @@ export function InstallAppCard() {
             <Button type="button" variant="outline" onClick={() => { window.location.href = "/"; }}><ExternalLink className="mr-2 h-4 w-4" />Open app</Button>
           </> : <>
             {prompt && <Button type="button" onClick={() => { setInstallError(""); void install().catch(error => setInstallError(error instanceof Error ? error.message : "Browser installation could not be started.")); }}><Smartphone className="mr-2 h-4 w-4" />Install app</Button>}
-            {isAndroid && <Button asChild variant={prompt ? "outline" : "default"}><a href={ANDROID_APK_URL} download="dallyletter-v1.0.1.apk"><Download className="mr-2 h-4 w-4" />Download Android APK</a></Button>}
+            {isAndroid && <Button asChild variant={prompt ? "outline" : "default"}><a href={ANDROID_APK_URL} download="dallyletter-v1.0.2.apk"><Download className="mr-2 h-4 w-4" />Download Android APK</a></Button>}
             {!prompt && !isAndroid && <Button type="button" onClick={() => setShowHelp(true)}><Download className="mr-2 h-4 w-4" />Install app</Button>}
           </>}
         </div>
