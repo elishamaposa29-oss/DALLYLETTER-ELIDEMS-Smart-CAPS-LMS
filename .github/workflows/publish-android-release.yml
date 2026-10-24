@@ -15,12 +15,14 @@ jobs:
     concurrency:
       group: dallyletter-android-stable-release
       cancel-in-progress: false
-    # Only publish a fully green, manually dispatched main-branch release build.
-    # Pull-request builds never publish binaries.
+    # Publish only a fully green main-branch build (manual dispatch or the
+    # release-version bump merged to main). Pull-request builds never publish.
+    # The tag preflight refuses an existing tag, so a routine mobile change
+    # cannot overwrite a release; it must bump app version/versionCode first.
     if: >-
       ${{ github.event.workflow_run.conclusion == 'success' &&
           github.event.workflow_run.head_branch == 'main' &&
-          github.event.workflow_run.event == 'workflow_dispatch' }}
+          (github.event.workflow_run.event == 'workflow_dispatch' || github.event.workflow_run.event == 'push') }}
     runs-on: ubuntu-latest
     steps:
       - name: Download the APKs verified by the completed build and emulator smoke tests
