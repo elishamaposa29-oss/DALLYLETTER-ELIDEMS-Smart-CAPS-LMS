@@ -15,12 +15,14 @@ jobs:
     concurrency:
       group: dallyletter-android-stable-release
       cancel-in-progress: false
-    # Only publish a fully green, manually dispatched main-branch release build.
-    # Pull-request builds never publish binaries.
+    # Publish only a fully green main-branch build (manual dispatch or the
+    # release-version bump merged to main). Pull-request builds never publish.
+    # The tag preflight refuses an existing tag, so a routine mobile change
+    # cannot overwrite a release; it must bump app version/versionCode first.
     if: >-
       ${{ github.event.workflow_run.conclusion == 'success' &&
           github.event.workflow_run.head_branch == 'main' &&
-          github.event.workflow_run.event == 'workflow_dispatch' }}
+          (github.event.workflow_run.event == 'workflow_dispatch' || github.event.workflow_run.event == 'push') }}
     runs-on: ubuntu-latest
     steps:
       - name: Download the APKs verified by the completed build and emulator smoke tests
@@ -40,7 +42,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           test -s release-assets/dallyletter-v1.apk
-          test -s release-assets/dallyletter-v1.0.1.apk
+          test -s release-assets/dallyletter-v1.0.2.apk
           test -s release-assets/checksums.sha256
           test -s release-assets/build-metadata.txt
           (cd release-assets && sha256sum --check checksums.sha256)
@@ -50,9 +52,9 @@ jobs:
           tag_status="$(curl -sS -o /tmp/mobile-release-tag.json -w '%{http_code}' \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
             -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/git/ref/tags/mobile-v1.0.1")"
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/git/ref/tags/mobile-v1.0.2")"
           if [ "$tag_status" = "200" ]; then
-            echo "::error::Release tag mobile-v1.0.1 already exists. Bump the app version and release tag before publishing another stable APK."
+            echo "::error::Release tag mobile-v1.0.2 already exists. Bump the app version and release tag before publishing another stable APK."
             exit 1
           elif [ "$tag_status" != "404" ]; then
             echo "::error::Could not verify release-tag state (GitHub API HTTP $tag_status); refusing publication."
@@ -67,14 +69,14 @@ jobs:
       - name: Publish verified APK as the latest stable release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: mobile-v1.0.1
+          tag_name: mobile-v1.0.2
           target_commitish: ${{ github.event.workflow_run.head_sha }}
-          name: Dallyletter Elidems Android v1.0.1
+          name: Dallyletter Elidems Android v1.0.2
           body: |
             Verified Android release for Dallyletter Elidems.
 
             Built and passed the repository's Android build and emulator smoke-test workflow.
             Download the APK below and follow Android's confirmation prompts to install it.
-          files: release-assets/dallyletter-v1.0.1.apk
+          files: release-assets/dallyletter-v1.0.2.apk
           make_latest: true
           overwrite_files: true

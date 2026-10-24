@@ -8,7 +8,8 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:authorization": "node ./scripts/test-authorization.mjs"
+    "test:authorization": "node ./scripts/test-authorization.mjs",
+    "test:offline-queue": "node ./scripts/test-offline-queue.mjs"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",

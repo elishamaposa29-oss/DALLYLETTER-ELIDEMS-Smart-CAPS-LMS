@@ -33,7 +33,7 @@ jobs:
   # Defer the expensive APK/emulator suite until the parity pass is ready.
   # Manual dispatch always runs it; PRs opt in with the android-release-check label.
   build-apk:
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'android-release-check')
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'android-release-check')
     runs-on: ubuntu-latest
     # Release and upgrade APK builds take ~43 minutes on hosted runners; leave time for artifact checks.
     timeout-minutes: 75
@@ -92,6 +92,17 @@ jobs:
         run: pnpm run typecheck:libs
       - name: Typecheck mobile app
         run: pnpm --filter @workspace/dallyletter-mobile typecheck
+      - name: Set baseline version 1.0.0 for upgrade smoke test
+        working-directory: artifacts/dallyletter-mobile
+        run: |
+          node - <<'NODE'
+          const fs = require("node:fs");
+          const path = "app.json";
+          const app = JSON.parse(fs.readFileSync(path, "utf8"));
+          app.expo.version = "1.0.0";
+          app.expo.android.versionCode = 1;
+          fs.writeFileSync(path, JSON.stringify(app, null, 2) + String.fromCharCode(10));
+          NODE
       - name: Generate native Android project
         working-directory: artifacts/dallyletter-mobile
         run: pnpm exec expo prebuild --platform android --no-install
@@ -138,12 +149,12 @@ jobs:
           debug_apk=app/build/outputs/apk/debug/app-debug.apk
           test -s "$debug_apk"
           cp "$debug_apk" ../apk-artifacts/dallyletter-data-v1-debug.apk
-      - name: Generate version 1.0.1 for upgrade test
+      - name: Generate version 1.0.2 for upgrade test
         working-directory: artifacts/dallyletter-mobile
         run: |
-          node -e 'const fs=require("fs"); const p="app.json"; const j=JSON.parse(fs.readFileSync(p,"utf8")); j.expo.version="1.0.1"; j.expo.android.versionCode=2; fs.writeFileSync(p, JSON.stringify(j,null,2)+"\n");'
+          node -e 'const fs=require("fs"); const p="app.json"; const j=JSON.parse(fs.readFileSync(p,"utf8")); j.expo.version="1.0.2"; j.expo.android.versionCode=3; fs.writeFileSync(p, JSON.stringify(j,null,2)+"\n");'
           pnpm exec expo prebuild --platform android --no-install
-      - name: Enable embedded JavaScript bundle in CI debug variant after v1.0.1 prebuild
+      - name: Enable embedded JavaScript bundle in CI debug variant after v1.0.2 prebuild
         working-directory: artifacts/dallyletter-mobile/android
         shell: bash
         run: |
@@ -176,15 +187,15 @@ jobs:
           apksigner_bin="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           test -x "$aapt_bin" && test -x "$apksigner_bin"
           badging="$("$aapt_bin" dump badging "$apk")"
-          grep -Fq "package: name='com.dallyletter.elidems' versionCode='2' versionName='1.0.1'" <<<"$badging"
+          grep -Fq "package: name='com.dallyletter.elidems' versionCode='3' versionName='1.0.2'" <<<"$badging"
           if grep -q "application-debuggable" <<<"$badging"; then echo "::error::Updated release APK must not be debuggable"; exit 1; fi
           "$apksigner_bin" verify --verbose "$apk"
-          cp "$apk" ../apk-artifacts/dallyletter-v1.0.1.apk
-          # Build the matching version 1.0.1 debug APK using the same CI debug
+          cp "$apk" ../apk-artifacts/dallyletter-v1.0.2.apk
+          # Build the matching version 1.0.2 debug APK using the same CI debug
           # signing key; the upgrade test installs it over the v1.0.0 debug twin.
           debug_apk=app/build/outputs/apk/debug/app-debug.apk
           test -s "$debug_apk"
-          cp "$debug_apk" ../apk-artifacts/dallyletter-data-v1.0.1-debug.apk
+          cp "$debug_apk" ../apk-artifacts/dallyletter-data-v1.0.2-debug.apk
       - name: Generate APK checksums and build metadata
         if: success()
         env:
@@ -201,7 +212,7 @@ jobs:
               # standalone release APKs. Keep its checksum manifest scoped to
               # those exact files; CI-only debuggable APKs are uploaded separately
               # and must not make release publication fail with missing-file errors.
-              sha256sum dallyletter-v1.apk dallyletter-v1.0.1.apk > checksums.sha256
+              sha256sum dallyletter-v1.apk dallyletter-v1.0.2.apk > checksums.sha256
             )
           fi
           {
@@ -210,8 +221,8 @@ jobs:
             echo "application_id=com.dallyletter.elidems"
             echo "apk_v1_version=1.0.0"
             echo "apk_v1_versionCode=1"
-            echo "apk_v1.0.1_version=1.0.1"
-            echo "apk_v1.0.1_versionCode=2"
+            echo "apk_v1.0.2_version=1.0.2"
+            echo "apk_v1.0.2_versionCode=3"
           } > artifacts/dallyletter-mobile/apk-artifacts/build-metadata.txt
       - name: Upload candidate APKs for emulator smoke test
         if: success()
@@ -220,7 +231,7 @@ jobs:
           name: dallyletter-android-candidate-apk
           path: |
             artifacts/dallyletter-mobile/apk-artifacts/dallyletter-v1.apk
-            artifacts/dallyletter-mobile/apk-artifacts/dallyletter-v1.0.1.apk
+            artifacts/dallyletter-mobile/apk-artifacts/dallyletter-v1.0.2.apk
             artifacts/dallyletter-mobile/apk-artifacts/checksums.sha256
             artifacts/dallyletter-mobile/apk-artifacts/build-metadata.txt
           if-no-files-found: error
@@ -232,7 +243,7 @@ jobs:
           name: dallyletter-ci-upgrade-test-apks
           path: |
             artifacts/dallyletter-mobile/apk-artifacts/dallyletter-data-v1-debug.apk
-            artifacts/dallyletter-mobile/apk-artifacts/dallyletter-data-v1.0.1-debug.apk
+            artifacts/dallyletter-mobile/apk-artifacts/dallyletter-data-v1.0.2-debug.apk
           if-no-files-found: error
           retention-days: 1
   emulator-smoke:
@@ -340,8 +351,8 @@ jobs:
           mkdir -p artifacts/dallyletter-mobile/android/app/build/outputs/apk/release
           cp /tmp/dallyletter-apks/dallyletter-v1.apk /tmp/dallyletter-v1.apk
           cp /tmp/dallyletter-data-apks/dallyletter-data-v1-debug.apk /tmp/dallyletter-data-v1-debug.apk
-          cp /tmp/dallyletter-data-apks/dallyletter-data-v1.0.1-debug.apk /tmp/dallyletter-data-v1.0.1-debug.apk
-          cp /tmp/dallyletter-apks/dallyletter-v1.0.1.apk artifacts/dallyletter-mobile/android/app/build/outputs/apk/release/app-release.apk
+          cp /tmp/dallyletter-data-apks/dallyletter-data-v1.0.2-debug.apk /tmp/dallyletter-data-v1.0.2-debug.apk
+          cp /tmp/dallyletter-apks/dallyletter-v1.0.2.apk artifacts/dallyletter-mobile/android/app/build/outputs/apk/release/app-release.apk
       - name: Warm deployed API before authenticated emulator smoke tests
         env:
           API_BASE_URL: ${{ env.EXPO_PUBLIC_API_BASE_URL }}
@@ -449,59 +460,12 @@ jobs:
             /tmp/dallyletter-login-ready.xml
             /tmp/dallyletter-login-error.xml
             /tmp/dallyletter-ui-signup.xml
-            /tmp/dallyletter-ui-v1.0.1.xml
+            /tmp/dallyletter-ui-v1.0.2.xml
             /tmp/dallyletter-v1.png
             /tmp/dallyletter-login-error.png
             /tmp/dallyletter-signup.png
-            /tmp/dallyletter-v1.0.1.png
+            /tmp/dallyletter-v1.0.2.png
             /tmp/dallyletter-release-upgrade.xml
             /tmp/dallyletter-release-upgrade.png
           if-no-files-found: warn
           retention-days: 14
-
-  publish-release:
-    name: Publish verified standalone release APK
-    needs: emulator-smoke
-    if: success()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download candidate APKs that passed emulator smoke tests
-        uses: actions/download-artifact@v4
-        with:
-          name: dallyletter-android-candidate-apk
-          path: /tmp/dallyletter-release-candidate
-      - name: Verify release APK files and checksums before publication
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          test -s /tmp/dallyletter-release-candidate/dallyletter-v1.apk
-          test -s /tmp/dallyletter-release-candidate/dallyletter-v1.0.1.apk
-          test -s /tmp/dallyletter-release-candidate/checksums.sha256
-          test -s /tmp/dallyletter-release-candidate/build-metadata.txt
-          (cd /tmp/dallyletter-release-candidate && sha256sum --check checksums.sha256)
-      - name: Publish verified standalone release APKs
-        uses: actions/upload-artifact@v4
-        with:
-          name: dallyletter-android-release-apk
-          path: |
-            /tmp/dallyletter-release-candidate/dallyletter-v1.apk
-            /tmp/dallyletter-release-candidate/dallyletter-v1.0.1.apk
-            /tmp/dallyletter-release-candidate/checksums.sha256
-            /tmp/dallyletter-release-candidate/build-metadata.txt
-          if-no-files-found: error
-          retention-days: 14
-      - name: Publish verified APKs as public GitHub Release assets
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: mobile-v1.0.1
-          name: Dallyletter Elidems Android v1.0.1
-          body: |
-            Standalone Android APKs built from the merged Dallyletter Elidems mobile app and published only after Android emulator smoke tests pass.
-            Verify checksums.sha256 before installation.
-          files: |
-            /tmp/dallyletter-release-candidate/dallyletter-v1.apk
-            /tmp/dallyletter-release-candidate/dallyletter-v1.0.1.apk
-            /tmp/dallyletter-release-candidate/checksums.sha256
-            /tmp/dallyletter-release-candidate/build-metadata.txt
-          fail_on_unmatched_files: true
-          make_latest: true
