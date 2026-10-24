@@ -67,7 +67,7 @@ export default function FeatureHub() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, token } = useAuth();
-  const routeParams = useLocalSearchParams<{ section?: string }>();
+  const routeParams = useLocalSearchParams<{ section?: string; itemId?: string }>();
   const [section, setSection] = useState<Section | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
@@ -113,6 +113,7 @@ export default function FeatureHub() {
   const [pollCorrect, setPollCorrect] = useState(0);
   const [pollBusy, setPollBusy] = useState(false);
   const [pollResult, setPollResult] = useState<any>(null);
+  const [pollDraftReady, setPollDraftReady] = useState(false);
   const [pollPrivacy, setPollPrivacy] = useState<"private" | "public">("private");
   const [groupName, setGroupName] = useState("");
   const [groupSubject, setGroupSubject] = useState("");
@@ -206,6 +207,42 @@ export default function FeatureHub() {
     return payload;
   }, [token]);
 
+  const saveLearningItemOffline = useCallback(async () => {
+    if (!user?.id || !section || !selected || !["assignments", "exercises", "polls"].includes(section)) return;
+    const key = "dallyletter_saved_learning_items_v1_" + user.id + "_" + role;
+    try {
+      const raw = await AsyncStorage.getItem(key);
+      let saved: Record<string, any> = {};
+      try { saved = raw ? JSON.parse(raw) : {}; } catch { saved = {}; }
+      const itemKey = section + ":" + String(selected.id);
+      saved[itemKey] = { section, item: { ...selected }, detail: detail ? { ...detail } : null, savedAt: Date.now(), accountId: user.id, role };
+      await AsyncStorage.setItem(key, JSON.stringify(saved));
+      Alert.alert("Saved for offline access", "This learning item and the details currently available are saved on this device. Submissions stay drafts until the server confirms them.");
+    } catch {
+      Alert.alert("Could not save", "Check available device storage and try again.");
+    }
+  }, [user?.id, role, section, selected, detail]);
+
+  useEffect(() => {
+    if (!user?.id || !isStudent) return;
+    const markedExercise = section === "exercises" && selected && exerciseResult?.submission?.status === "marked";
+    const markedAssignment = section === "assignments" && selected && (submissionMap[selected.id] || []).some((item: any) => item.status === "marked" || item.marks != null || Boolean(item.feedback));
+    if (!markedExercise && !markedAssignment) return;
+    let active = true;
+    const persist = async () => {
+      const key = "dallyletter_teacher_marked_activity_v1_" + user.id + "_" + role;
+      const raw = await AsyncStorage.getItem(key).catch(() => null);
+      let saved: Record<string, any> = {};
+      try { saved = raw ? JSON.parse(raw) : {}; } catch { saved = {}; }
+      if (!active) return;
+      if (markedExercise) saved["exercise:" + String(selected.id)] = { item: selected, detail, result: exerciseResult, savedAt: Date.now() };
+      if (markedAssignment) saved["assignment:" + String(selected.id)] = { item: selected, submissions: submissionMap[selected.id], savedAt: Date.now() };
+      await AsyncStorage.setItem(key, JSON.stringify(saved)).catch(() => undefined);
+    };
+    void persist();
+    return () => { active = false; };
+  }, [user?.id, isStudent, role, section, selected?.id, detail, exerciseResult, submissionMap]);
+
   const refreshQueuedSubmissions = useCallback(async () => {
     if (!user?.id) { setQueuedSubmissions([]); return []; }
     const items = await listQueuedSubmissions(user.id);
@@ -219,7 +256,9 @@ export default function FeatureHub() {
     const clearDraft = async (item:QueuedSubmission) => {
       const key = item.kind === "assignment"
         ? `dallyletter_assignment_draft_${user.id}_${item.targetId}`
-        : `dallyletter_exercise_draft_${user.id}_${item.targetId}`;
+        : item.kind === "poll"
+          ? `dallyletter_poll_draft_${user.id}_${item.targetId}`
+          : `dallyletter_exercise_draft_${user.id}_${item.targetId}`;
       await AsyncStorage.removeItem(key).catch(() => undefined);
     };
     try {
@@ -265,6 +304,14 @@ export default function FeatureHub() {
   }, [refreshQueuedSubmissions, retryQueuedSubmissions, user?.id]);
 
   useEffect(() => {
+    if (!user?.id || queuedSubmissions.length === 0 || queueBusy) return;
+    const interval = setInterval(() => {
+      void request("/api/healthz").then(() => retryQueuedSubmissions()).catch(() => undefined);
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [user?.id, queuedSubmissions.length, queueBusy, request, retryQueuedSubmissions]);
+
+  useEffect(() => {
     if (section !== "exercises" || !isStudent || !selected || !detail?.exercise?.id || !user?.id) return;
     let active = true;
     const key = `dallyletter_exercise_draft_${user.id}_${detail.exercise.id}`;
@@ -282,6 +329,33 @@ export default function FeatureHub() {
   useEffect(() => {
     if (draftKey) void AsyncStorage.setItem(draftKey, JSON.stringify(answers)).catch(() => undefined);
   }, [answers, draftKey]);
+
+  useEffect(() => {
+    if (section !== "polls" || !isStudent || !selected || !detail || !user?.id) return;
+    let active = true;
+    setPollDraftReady(false);
+    const key = `dallyletter_poll_draft_${user.id}_${selected.id}`;
+    void AsyncStorage.getItem(key).then(raw => {
+      if (!active) return;
+      if (raw) {
+        try {
+          const saved = JSON.parse(raw);
+          const savedAnswers = Array.isArray(saved.answers) ? Object.fromEntries(saved.answers.map((answer: any) => [String(answer.questionId), answer.selectedOptionId])) : null;
+          if (savedAnswers) setAnswers(current => Object.keys(current).length ? current : savedAnswers);
+          if (saved.resultPrivacy === "private" || saved.resultPrivacy === "public") setPollPrivacy(saved.resultPrivacy);
+        } catch { /* Ignore an invalid poll draft and keep the live poll usable. */ }
+      }
+      setPollDraftReady(true);
+    }).catch(() => { if (active) setPollDraftReady(true); });
+    return () => { active = false; };
+  }, [section, isStudent, selected?.id, detail?.poll?.id, user?.id]);
+
+  useEffect(() => {
+    if (section !== "polls" || !isStudent || !selected || !detail || !user?.id || !pollDraftReady) return;
+    const packedAnswers = (detail.questions || []).map((q: any) => ({ questionId: q.id, selectedOptionId: answers[String(q.id)] })).filter((answer: any) => answer.selectedOptionId);
+    const key = `dallyletter_poll_draft_${user.id}_${selected.id}`;
+    void AsyncStorage.setItem(key, JSON.stringify({ item: selected, detail, answers: packedAnswers, resultPrivacy: pollPrivacy, savedAt: Date.now() })).catch(() => undefined);
+  }, [section, isStudent, selected?.id, detail?.poll?.id, answers, pollPrivacy, user?.id, pollDraftReady]);
 
   useEffect(() => {
     if (section !== "messages" || !privateRecipient?.id) return;
@@ -362,6 +436,17 @@ export default function FeatureHub() {
           const data = await request(endpoint);
           loadedRows = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
         }
+        if (cacheKey && user?.id) {
+          const bundleKey = "dallyletter_saved_learning_bundle_v1_" + user.id + "_" + role;
+          const bundleRaw = await AsyncStorage.getItem(bundleKey).catch(() => null);
+          try {
+            const bundles = bundleRaw ? JSON.parse(bundleRaw) : {};
+            const savedRows = Object.values(bundles).flatMap((bundle: any) => Array.isArray(bundle?.[target]) ? bundle[target] : []);
+            const merged = new Map<string, any>();
+            [...savedRows, ...loadedRows].forEach(item => { if (item?.id != null) merged.set(String(item.id), item); });
+            loadedRows = [...merged.values()];
+          } catch { /* Ignore a damaged bundle and keep server results. */ }
+        }
         setRows(loadedRows);
         if (cacheKey) await AsyncStorage.setItem(cacheKey, JSON.stringify(loadedRows)).catch(() => undefined);
       }
@@ -384,7 +469,7 @@ export default function FeatureHub() {
   }, [request, refetchNotifications, refetchGroups, user?.id, role, isStudent]);
 
   useEffect(() => {
-    if ((routeParams.section === "notifications" || routeParams.section === "payments" || routeParams.section === "achievements" || routeParams.section === "prefect" || routeParams.section === "reports" || routeParams.section === "messages" || routeParams.section === "audit") && section !== routeParams.section) void loadSection(routeParams.section as Section);
+    if ((routeParams.section === "notifications" || routeParams.section === "payments" || routeParams.section === "achievements" || routeParams.section === "prefect" || routeParams.section === "reports" || routeParams.section === "messages" || routeParams.section === "audit" || routeParams.section === "assignments" || routeParams.section === "exercises" || routeParams.section === "polls") && section !== routeParams.section) void loadSection(routeParams.section as Section);
   }, [routeParams.section, section, loadSection]);
 
   const openRow = async (row: Row) => {
@@ -411,9 +496,37 @@ export default function FeatureHub() {
           const submissions = await request(`/api/exercises/${row.id}/submissions`);
           setSubmissionMap(old => ({ ...old, [row.id]: Array.isArray(submissions) ? submissions : [] }));
         }
-      } catch (e) { setError(e instanceof Error ? e.message : "Could not open this item"); }
+      } catch (e) {
+        const savedKey = user?.id ? "dallyletter_saved_learning_items_v1_" + user.id + "_" + role : null;
+        const markedKey = user?.id ? "dallyletter_teacher_marked_activity_v1_" + user.id + "_" + role : null;
+        let restored = false;
+        if (savedKey) {
+          const raw = await AsyncStorage.getItem(savedKey).catch(() => null);
+          try {
+            const registry = raw ? JSON.parse(raw) : {};
+            const entry = registry[section + ":" + String(row.id)];
+            if (entry?.detail) { setDetail(entry.detail); restored = true; }
+          } catch { /* Ignore corrupt offline item snapshots. */ }
+        }
+        if (section === "exercises" && markedKey && isStudent) {
+          const raw = await AsyncStorage.getItem(markedKey).catch(() => null);
+          try {
+            const registry = raw ? JSON.parse(raw) : {};
+            const marked = registry["exercise:" + String(row.id)];
+            if (marked?.result) setExerciseResult(marked.result);
+          } catch { /* Ignore corrupt marked-result snapshots. */ }
+        }
+        if (!restored) setError(e instanceof Error ? e.message : "Could not open this item online or from its saved offline copy.");
+      }
     }
   };
+
+  useEffect(() => {
+    const itemId = routeParams.itemId;
+    if (!itemId || !routeParams.section || section !== routeParams.section || loading || selected?.id != null) return;
+    const match = rows.find(row => String(row.id) === String(itemId));
+    if (match) void openRow(match);
+  }, [routeParams.itemId, routeParams.section, section, rows, loading, selected?.id]);
 
   const uploadMedia = async (documentOnly = false) => {
     if (!isTeacher) return;
@@ -596,18 +709,34 @@ export default function FeatureHub() {
   };
 
   const submitPoll = async () => {
-    if (!isStudent || !selected || !detail) return;
+    if (!isStudent || !selected || !detail || busy) return;
     setBusy(true);
+    const pollQuestions = detail.questions || [];
+    const packed = pollQuestions.map((q: any) => ({ questionId: q.id, selectedOptionId: answers[String(q.id)] }));
     try {
-      const pollQuestions = detail.questions || [];
-      const packed = pollQuestions.map((q: any) => ({ questionId: q.id, selectedOptionId: answers[String(q.id)] }));
       if (packed.some((a: any) => !a.selectedOptionId)) throw new Error("Answer every question before submitting.");
-      await request(`/api/polls/${selected.id}/submit`, { method: "POST", body: JSON.stringify({ answers: packed, resultPrivacy: pollPrivacy, selectedFriendIds: [] }) });
+      const body = { answers: packed, resultPrivacy: pollPrivacy, selectedFriendIds: [] };
+      await request(`/api/polls/${selected.id}/submit`, { method: "POST", body: JSON.stringify(body) });
+      if (user?.id) await AsyncStorage.removeItem(`dallyletter_poll_draft_${user.id}_${selected.id}`).catch(() => undefined);
       const result = await request(`/api/polls/${selected.id}/my-results`);
       setPollResult(result);
-      Alert.alert("Submitted", "Your poll answers were submitted. Results are shown below.");
-    } catch (e) { Alert.alert("Submission failed", e instanceof Error ? e.message : "Please retry."); }
-    finally { setBusy(false); }
+      Alert.alert("Submitted", "Your poll answers were submitted successfully.");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Please retry.";
+      if (/network request failed|failed to fetch|network error|offline|timed? ?out|connection lost/i.test(message) && user?.id) {
+        try {
+          const body = { answers: packed, resultPrivacy: pollPrivacy, selectedFriendIds: [] };
+          await AsyncStorage.setItem(`dallyletter_poll_draft_${user.id}_${selected.id}`, JSON.stringify({ item: selected, detail, answers: packed, resultPrivacy: pollPrivacy, savedAt: Date.now() }));
+          await enqueueSubmission({ userId: Number(user.id), kind: "poll", targetId: Number(selected.id), path: `/api/polls/${selected.id}/submit`, body: JSON.stringify(body) });
+          await refreshQueuedSubmissions();
+          Alert.alert("Saved as draft", "Your poll answers are saved on this device and will be submitted when the app reconnects. They are not published yet.");
+        } catch {
+          Alert.alert("Draft not saved", "Could not store this poll submission. Check device storage and try again.");
+        }
+      } else {
+        Alert.alert("Submission failed", message);
+      }
+    } finally { setBusy(false); }
   };
 
   const openPrivateConversation = async (person:Row) => {
@@ -1022,10 +1151,10 @@ export default function FeatureHub() {
         </View>}
         {["assignments", "exercises", "polls"].includes(section) && rows.map(row => <View key={row.id} style={styles.card}><TouchableOpacity style={{flex:1,flexDirection:"row",alignItems:"center",gap:12}} onPress={() => void openRow(row)}><View style={styles.icon}><Feather name={section === "assignments" ? "clipboard" : section === "exercises" ? "edit-3" : "check-square"} size={20} color={colors.primary}/></View><View style={styles.grow}><Text style={styles.cardTitle}>{row.title || row.name || "Untitled"}</Text><Text style={styles.muted}>{[row.subject, row.grade, row.dueDate ? `Due ${String(row.dueDate).slice(0,10)}` : null, row.status].filter(Boolean).join(" · ")}</Text>{row.description ? <Text numberOfLines={3} style={styles.muted}>{row.description}</Text> : null}{row.attachmentUrl ? <Text style={{color:colors.primary,fontSize:12,marginTop:5}}>Attachment available</Text> : null}</View><Feather name="chevron-right" size={18} color={colors.mutedForeground}/></TouchableOpacity>{section === "assignments" && isTeacher && <View style={{gap:10,justifyContent:"center"}}><TouchableOpacity accessibilityRole="button" accessibilityLabel="Edit assignment" onPress={()=>editAssignment(row)}><Feather name="edit-2" size={18} color={colors.primary}/></TouchableOpacity><TouchableOpacity accessibilityRole="button" accessibilityLabel="Toggle reference material visibility" onPress={()=>void toggleAssignmentReference(row)}><Feather name={row.referenceMaterialHidden?"eye":"eye-off"} size={18} color={colors.primary}/></TouchableOpacity><TouchableOpacity accessibilityRole="button" accessibilityLabel="Delete assignment" onPress={()=>deleteAssignment(row)}><Feather name="trash-2" size={18} color="#dc2626"/></TouchableOpacity></View>}</View>)}
         {section === "exercises" && canManageExercises && selected && <View style={styles.card}><View style={styles.grow}><Text style={styles.sectionTitle}>Exercise submissions · {selected.title}</Text>{(submissionMap[selected.id] || []).map(sub => <TouchableOpacity key={sub.id} onPress={() => void loadExerciseSubmission(sub)} style={{paddingVertical:10,borderBottomWidth:1,borderBottomColor:colors.border}}><Text style={styles.cardTitle}>{sub.studentName || sub.student?.name || `Learner #${sub.studentId ?? "?"}`}</Text><Text style={styles.muted}>{sub.status || "Submitted"} · {sub.totalScore != null ? `Score ${sub.totalScore}` : "Awaiting marking"}</Text></TouchableOpacity>)}{selectedSubmission && submissionDetail && <View style={{marginTop:14}}><Text style={styles.cardTitle}>Marking · {selectedSubmission.studentName || selectedSubmission.student?.name || "Learner"}</Text>{(submissionDetail.answers || []).map((a:any,index:number)=><View key={a.id} style={{paddingVertical:12,borderBottomWidth:1,borderBottomColor:colors.border}}><Text style={styles.cardTitle}>Question {index+1}</Text><Text style={styles.body}>{a.textAnswer || a.selectedValue || (a.mediaReference ? "Learner attached media" : a.drawData ? "Learner submitted a drawing" : "No written answer")}</Text>{a.drawData ? <MobileDrawAnswer value={a.drawData} disabled onChange={() => undefined}/> : null}{a.mediaReference ? <View style={{marginTop:8}}><AuthenticatedMediaPreview url={String(a.mediaReference)} height={160} accessibilityLabel="Learner answer media"/><TouchableOpacity onPress={() => openUrl(a.mediaReference)}><Text style={{color:colors.primary,marginTop:5}}>Open answer media</Text></TouchableOpacity></View> : null}<TextInput style={styles.input} keyboardType="numeric" value={exerciseMarks[a.id] ?? "0"} onChangeText={v=>setExerciseMarks(old=>({...old,[a.id]:v}))} placeholder="Marks awarded" placeholderTextColor={colors.mutedForeground}/><TextInput style={[styles.input,styles.textArea]} multiline value={exerciseNotes[a.id] ?? ""} onChangeText={v=>setExerciseNotes(old=>({...old,[a.id]:v}))} placeholder="Correction / feedback" placeholderTextColor={colors.mutedForeground}/></View>)}<TextInput style={[styles.input,styles.textArea]} multiline value={overallComment} onChangeText={setOverallComment} placeholder="Overall feedback to learner" placeholderTextColor={colors.mutedForeground}/><TouchableOpacity style={styles.button} onPress={() => void returnExerciseMarking()} disabled={busy}><Text style={styles.buttonText}>{busy?"Saving marks…":"Save marks and return result"}</Text></TouchableOpacity></View>}</View></View>}
-        {section === "assignments" && isStudent && selected && <View style={styles.card}><View style={styles.grow}><Text style={styles.sectionTitle}>Submit: {selected.title}</Text>{selected.description ? <Text style={styles.body}>{selected.description}</Text> : <Text style={styles.muted}>No additional instructions were provided.</Text>}{(submissionMap[selected.id] || []).slice(0,1).map(sub=><View key={sub.id} style={{backgroundColor:colors.background,borderRadius:10,padding:10,marginVertical:8}}><Text style={styles.cardTitle}>Previous submission: {sub.status || "Submitted"}</Text>{sub.marks != null ? <Text style={styles.muted}>Marks: {sub.marks}/{selected.totalMarks || "—"}</Text> : null}{sub.feedback ? <Text style={styles.muted}>Teacher feedback: {sub.feedback}</Text> : null}</View>)}{selected.attachmentUrl && !selected.referenceMaterialHidden ? <View style={{marginBottom:10}}><AuthenticatedMediaPreview url={String(selected.attachmentUrl)} height={180} accessibilityLabel="Assignment reference material"/><TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>openUrl(selected.attachmentUrl)}><Text style={[styles.buttonText,styles.secondaryText]}>Open reference material</Text></TouchableOpacity></View> : selected.referenceMaterialHidden ? <Text style={styles.muted}>Reference material is hidden by the teacher.</Text> : null}<TextInput style={[styles.input,styles.textArea]} multiline value={answerText} onChangeText={value=>{setAnswerText(value);if(user?.id&&selected?.id)void AsyncStorage.setItem("dallyletter_assignment_draft_"+user.id+"_"+selected.id,value).catch(()=>undefined);}} placeholder="Write your answer or submission notes" placeholderTextColor={colors.mutedForeground}/><TouchableOpacity style={[styles.button,styles.secondary]} onPress={() => void uploadAssignmentAttachment()} disabled={uploading}><Text style={[styles.buttonText,styles.secondaryText]}>{uploading ? "Uploading…" : attachmentUrl ? "Replace attachment" : "Attach image/video"}</Text></TouchableOpacity>
+        {section === "assignments" && isStudent && selected && <View style={styles.card}><View style={styles.grow}><Text style={styles.sectionTitle}>Submit: {selected.title}</Text><TouchableOpacity style={[styles.button,styles.secondary]} onPress={() => void saveLearningItemOffline()}><Text style={[styles.buttonText,styles.secondaryText]}>Save assignment for offline access</Text></TouchableOpacity>{selected.description ? <Text style={styles.body}>{selected.description}</Text> : <Text style={styles.muted}>No additional instructions were provided.</Text>}{(submissionMap[selected.id] || []).slice(0,1).map(sub=><View key={sub.id} style={{backgroundColor:colors.background,borderRadius:10,padding:10,marginVertical:8}}><Text style={styles.cardTitle}>Previous submission: {sub.status || "Submitted"}</Text>{sub.marks != null ? <Text style={styles.muted}>Marks: {sub.marks}/{selected.totalMarks || "—"}</Text> : null}{sub.feedback ? <Text style={styles.muted}>Teacher feedback: {sub.feedback}</Text> : null}</View>)}{selected.attachmentUrl && !selected.referenceMaterialHidden ? <View style={{marginBottom:10}}><AuthenticatedMediaPreview url={String(selected.attachmentUrl)} height={180} accessibilityLabel="Assignment reference material"/><TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>openUrl(selected.attachmentUrl)}><Text style={[styles.buttonText,styles.secondaryText]}>Open reference material</Text></TouchableOpacity></View> : selected.referenceMaterialHidden ? <Text style={styles.muted}>Reference material is hidden by the teacher.</Text> : null}<TextInput style={[styles.input,styles.textArea]} multiline value={answerText} onChangeText={value=>{setAnswerText(value);if(user?.id&&selected?.id)void AsyncStorage.setItem("dallyletter_assignment_draft_"+user.id+"_"+selected.id,value).catch(()=>undefined);}} placeholder="Write your answer or submission notes" placeholderTextColor={colors.mutedForeground}/><TouchableOpacity style={[styles.button,styles.secondary]} onPress={() => void uploadAssignmentAttachment()} disabled={uploading}><Text style={[styles.buttonText,styles.secondaryText]}>{uploading ? "Uploading…" : attachmentUrl ? "Replace attachment" : "Attach image/video"}</Text></TouchableOpacity>
             <TouchableOpacity style={[styles.button,styles.secondary]} onPress={() => void uploadAssignmentAttachment(true)} disabled={uploading}><Text style={[styles.buttonText,styles.secondaryText]}>{uploading ? "Uploading…" : "Attach PDF/Word document"}</Text></TouchableOpacity><TouchableOpacity style={styles.button} onPress={() => void submitAssignment()} disabled={busy}><Text style={styles.buttonText}>{busy ? "Submitting…" : "Submit assignment"}</Text></TouchableOpacity></View></View>}
         {section === "assignments" && isTeacher && selected && <View style={styles.card}><View style={styles.grow}><Text style={styles.sectionTitle}>Submissions · {selected.title}</Text>{(submissionMap[selected.id] || []).map(sub => <View key={sub.id} style={{paddingVertical:10,borderBottomWidth:1,borderBottomColor:colors.border}}><Text style={styles.cardTitle}>{sub.studentName || sub.student?.name || `Learner #${sub.studentId ?? "?"}`}</Text><Text style={styles.muted}>{sub.content || sub.fileName || "No written response"} · {sub.status || "Submitted"}</Text>{sub.fileUrl && <TouchableOpacity onPress={() => openUrl(sub.fileUrl)}><Text style={{color:colors.primary,marginTop:5}}>Open attachment</Text></TouchableOpacity>}<TextInput style={styles.input} keyboardType="numeric" value={assignmentMarks[sub.id] ?? String(sub.marks ?? "")} onChangeText={v=>setAssignmentMarks(old=>({...old,[sub.id]:v}))} placeholder={`Marks / ${selected.totalMarks || 100}`} placeholderTextColor={colors.mutedForeground}/><TextInput style={[styles.input,styles.textArea]} multiline value={assignmentFeedback[sub.id] ?? String(sub.feedback ?? "")} onChangeText={v=>setAssignmentFeedback(old=>({...old,[sub.id]:v}))} placeholder="Feedback for learner" placeholderTextColor={colors.mutedForeground}/><TouchableOpacity style={styles.button} onPress={()=>void markAssignment(sub,assignmentMarks[sub.id] ?? String(sub.marks ?? ""),assignmentFeedback[sub.id] ?? String(sub.feedback ?? ""))}><Text style={styles.buttonText}>Save marks and feedback</Text></TouchableOpacity></View>)}</View></View>}
-        {(section === "exercises" || section === "polls") && selected && detail && <View style={styles.card}><View style={styles.grow}><Text style={styles.sectionTitle}>{detail.exercise?.title || detail.poll?.title || selected.title}</Text><Text style={styles.body}>{detail.exercise?.description || detail.description || ""}</Text>{section === "exercises" && isStudent && exerciseLocked && <View style={{marginTop:12,padding:12,borderRadius:10,backgroundColor:colors.background,borderWidth:1,borderColor:colors.border}}><Text style={styles.cardTitle}>Previous attempt: {exerciseResult?.submission?.status || "Submitted"}</Text>{exerciseResult?.submission?.totalScore != null ? <Text style={styles.muted}>Score: {exerciseResult.submission.totalScore}/{detail.exercise?.totalMarks ?? "—"}</Text> : <Text style={styles.muted}>Your attempt is saved. Start a new attempt if retries are available.</Text>}{exerciseResult?.submission?.status === "marked" && <View style={{marginTop:10,gap:8}}><Text style={styles.cardTitle}>Teacher feedback</Text>{exerciseResult.submission.overallComment ? <Text style={styles.body}>{exerciseResult.submission.overallComment}</Text> : <Text style={styles.muted}>No overall comment was provided.</Text>}{(exerciseResult.answers || []).map((answer:any,index:number)=><View key={answer.id} style={{padding:10,borderRadius:8,backgroundColor:colors.card,borderWidth:1,borderColor:colors.border}}><Text style={styles.cardTitle}>Question {index+1}: {answer.awardedMarks ?? 0}/{detail.questions?.find((q:any)=>Number(q.id)===Number(answer.questionId))?.marksAllocated ?? "—"}</Text>{answer.correctionNotes ? <Text style={styles.body}>{answer.correctionNotes}</Text> : <Text style={styles.muted}>No per-question comment.</Text>}</View>)}</View>}{exerciseResult?.submission?.status === "marked" ? <TouchableOpacity style={[styles.button,styles.secondary]} onPress={async()=>{if(draftKey) await AsyncStorage.removeItem(draftKey).catch(()=>undefined);setAnswers({});setNewAttempt(true);setExerciseResult(null);setDraftKey(user?.id&&detail?.exercise?.id?`dallyletter_exercise_draft_${user.id}_${detail.exercise.id}`:null);}}><Text style={[styles.buttonText,styles.secondaryText]}>Start new attempt</Text></TouchableOpacity> : <Text style={styles.muted}>Your attempt is awaiting teacher marking. A new attempt will be available after the result is returned.</Text>}</View>}{section === "polls" && isStudent && !pollResult && <View style={{marginTop:12,padding:12,borderRadius:10,backgroundColor:colors.background}}><Text style={styles.cardTitle}>Result privacy</Text><Text style={styles.muted}>Choose who can see your poll results.</Text><View style={{flexDirection:"row",gap:8,marginTop:8}}>{(["private","public"] as const).map(option=><TouchableOpacity key={option} onPress={()=>setPollPrivacy(option)} style={{flex:1,padding:10,borderRadius:8,borderWidth:1,borderColor:pollPrivacy===option?colors.primary:colors.border,backgroundColor:pollPrivacy===option?colors.primary+"18":colors.card}}><Text style={{color:colors.foreground,textAlign:"center",fontWeight:"600"}}>{option==="private"?"Private":"Public"}</Text></TouchableOpacity>)}</View></View>}{(detail.questions || []).map((q: any, index: number) => <View key={q.id} style={{marginTop:16,paddingTop:12,borderTopWidth:1,borderTopColor:colors.border}}><Text style={styles.cardTitle}>{index+1}. {q.question || q.prompt || "Question"}</Text>{q.imageUrl && <View style={{ marginTop: 8 }}><AuthenticatedMediaPreview url={String(q.imageUrl)} height={180} accessibilityLabel={String(q.question || "Question image")} /><TouchableOpacity onPress={() => openUrl(q.imageUrl)}><Text style={{color:colors.primary,marginTop:5}}>Open question media</Text></TouchableOpacity></View>}{q.config?.attachment?.url ? <View style={{marginTop:8,padding:10,borderRadius:10,borderWidth:1,borderColor:colors.border}}><AuthenticatedMediaPreview url={String(q.config.attachment.url)} height={160} accessibilityLabel={String(q.config.attachment.fileName || q.question || "Question attachment")}/><Text style={styles.muted}>{q.config.attachment.fileName || "Question attachment"}</Text><TouchableOpacity onPress={()=>openUrl(String(q.config.attachment.url))}><Text style={{color:colors.primary,marginTop:5}}>Open question attachment</Text></TouchableOpacity></View> : null}{section === "polls" ? (q.options || []).map((o:any) => <TouchableOpacity key={o.id} disabled={Boolean(pollResult)} style={[styles.card,{marginTop:8,borderColor:answers[String(q.id)]===o.id?colors.primary:colors.border,opacity:pollResult?0.65:1}]} onPress={() => setAnswers(a=>({...a,[String(q.id)]:o.id}))}><Feather name={answers[String(q.id)]===o.id?"check-circle":"circle"} size={18} color={colors.primary}/><Text style={[styles.body,{flex:1}]}>{o.text}</Text></TouchableOpacity>) : q.type === "poll" ? ((detail.options || []).filter((o:any)=>Number(o.questionId)===Number(q.id))).map((o:any)=><TouchableOpacity key={o.id} disabled={exerciseLocked} style={[styles.card,{marginTop:8,borderColor:answers[String(q.id)]?.selectedValue===o.value?colors.primary:colors.border,opacity:exerciseLocked?0.65:1}]} onPress={()=>setAnswers(a=>({...a,[String(q.id)]:{...a[String(q.id)],selectedValue:o.value}}))}><Feather name={answers[String(q.id)]?.selectedValue===o.value?"check-circle":"circle"} size={18} color={colors.primary}/><Text style={[styles.body,{flex:1}]}>{o.label || o.value}</Text></TouchableOpacity>) : q.type === "drawbox" ? <MobileDrawAnswer value={{...(answers[String(q.id)]?.drawData || {}), teacherDrawing: q.config?.teacherDrawing}} disabled={!isStudent || exerciseLocked} onChange={drawData=>setAnswers(a=>({...a,[String(q.id)]:{...a[String(q.id)],drawData}}))} /> : <><TextInput style={[styles.input,styles.textArea,{marginTop:8}]} multiline value={answers[String(q.id)]?.textAnswer || ""} editable={!exerciseLocked} onChangeText={v=>setAnswers(a=>({...a,[String(q.id)]:{...a[String(q.id)],textAnswer:v}}))} placeholder="Your answer" placeholderTextColor={colors.mutedForeground}/>{isStudent && <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void uploadExerciseAnswerMedia(q.id)} disabled={exerciseLocked || uploadingAnswerId===q.id}><Text style={[styles.buttonText,styles.secondaryText]}>{uploadingAnswerId===q.id?"Uploading answer…":answers[String(q.id)]?.mediaReference?"Replace attached media":"Attach image/video answer"}</Text></TouchableOpacity>}{answers[String(q.id)]?.mediaReference ? <Text style={styles.muted}>Answer media attached.</Text> : null}</>}</View>)}{isStudent && (section === "polls" ? !pollResult : !exerciseLocked) && <TouchableOpacity style={styles.button} onPress={() => section==="polls"?void submitPoll():void submitExercise()} disabled={busy}><Text style={styles.buttonText}>{busy?"Submitting…":section==="polls"?"Submit quiz":"Submit exercise"}</Text></TouchableOpacity>}{section === "polls" && pollResult && <View style={{marginTop:16,padding:14,borderRadius:12,backgroundColor:colors.background,borderWidth:1,borderColor:colors.border}}><Text style={styles.sectionTitle}>Your result</Text><Text style={styles.body}>{pollResult.score != null ? `Score: ${pollResult.score}/${pollResult.totalQuestions ?? "—"}` : "Your submission was recorded."}</Text>{pollResult.percentage != null ? <Text style={styles.cardTitle}>{pollResult.percentage}%</Text> : null}</View>}{!isStudent && <Text style={styles.muted}>Preview only: staff can inspect content but cannot submit as a learner.</Text>}</View></View>}
+        {(section === "exercises" || section === "polls") && selected && detail && <View style={styles.card}><View style={styles.grow}><Text style={styles.sectionTitle}>{detail.exercise?.title || detail.poll?.title || selected.title}</Text><TouchableOpacity style={[styles.button,styles.secondary]} onPress={() => void saveLearningItemOffline()}><Text style={[styles.buttonText,styles.secondaryText]}>Save {section === "exercises" ? "exercise" : "poll"} for offline access</Text></TouchableOpacity><Text style={styles.body}>{detail.exercise?.description || detail.description || ""}</Text>{section === "exercises" && isStudent && exerciseLocked && <View style={{marginTop:12,padding:12,borderRadius:10,backgroundColor:colors.background,borderWidth:1,borderColor:colors.border}}><Text style={styles.cardTitle}>Previous attempt: {exerciseResult?.submission?.status || "Submitted"}</Text>{exerciseResult?.submission?.totalScore != null ? <Text style={styles.muted}>Score: {exerciseResult.submission.totalScore}/{detail.exercise?.totalMarks ?? "—"}</Text> : <Text style={styles.muted}>Your attempt is saved. Start a new attempt if retries are available.</Text>}{exerciseResult?.submission?.status === "marked" && <View style={{marginTop:10,gap:8}}><Text style={styles.cardTitle}>Teacher feedback</Text>{exerciseResult.submission.overallComment ? <Text style={styles.body}>{exerciseResult.submission.overallComment}</Text> : <Text style={styles.muted}>No overall comment was provided.</Text>}{(exerciseResult.answers || []).map((answer:any,index:number)=><View key={answer.id} style={{padding:10,borderRadius:8,backgroundColor:colors.card,borderWidth:1,borderColor:colors.border}}><Text style={styles.cardTitle}>Question {index+1}: {answer.awardedMarks ?? 0}/{detail.questions?.find((q:any)=>Number(q.id)===Number(answer.questionId))?.marksAllocated ?? "—"}</Text>{answer.correctionNotes ? <Text style={styles.body}>{answer.correctionNotes}</Text> : <Text style={styles.muted}>No per-question comment.</Text>}</View>)}</View>}{exerciseResult?.submission?.status === "marked" ? <TouchableOpacity style={[styles.button,styles.secondary]} onPress={async()=>{if(draftKey) await AsyncStorage.removeItem(draftKey).catch(()=>undefined);setAnswers({});setNewAttempt(true);setExerciseResult(null);setDraftKey(user?.id&&detail?.exercise?.id?`dallyletter_exercise_draft_${user.id}_${detail.exercise.id}`:null);}}><Text style={[styles.buttonText,styles.secondaryText]}>Start new attempt</Text></TouchableOpacity> : <Text style={styles.muted}>Your attempt is awaiting teacher marking. A new attempt will be available after the result is returned.</Text>}</View>}{section === "polls" && isStudent && !pollResult && <View style={{marginTop:12,padding:12,borderRadius:10,backgroundColor:colors.background}}><Text style={styles.cardTitle}>Result privacy</Text><Text style={styles.muted}>Choose who can see your poll results.</Text><View style={{flexDirection:"row",gap:8,marginTop:8}}>{(["private","public"] as const).map(option=><TouchableOpacity key={option} onPress={()=>setPollPrivacy(option)} style={{flex:1,padding:10,borderRadius:8,borderWidth:1,borderColor:pollPrivacy===option?colors.primary:colors.border,backgroundColor:pollPrivacy===option?colors.primary+"18":colors.card}}><Text style={{color:colors.foreground,textAlign:"center",fontWeight:"600"}}>{option==="private"?"Private":"Public"}</Text></TouchableOpacity>)}</View></View>}{(detail.questions || []).map((q: any, index: number) => <View key={q.id} style={{marginTop:16,paddingTop:12,borderTopWidth:1,borderTopColor:colors.border}}><Text style={styles.cardTitle}>{index+1}. {q.question || q.prompt || "Question"}</Text>{q.imageUrl && <View style={{ marginTop: 8 }}><AuthenticatedMediaPreview url={String(q.imageUrl)} height={180} accessibilityLabel={String(q.question || "Question image")} /><TouchableOpacity onPress={() => openUrl(q.imageUrl)}><Text style={{color:colors.primary,marginTop:5}}>Open question media</Text></TouchableOpacity></View>}{q.config?.attachment?.url ? <View style={{marginTop:8,padding:10,borderRadius:10,borderWidth:1,borderColor:colors.border}}><AuthenticatedMediaPreview url={String(q.config.attachment.url)} height={160} accessibilityLabel={String(q.config.attachment.fileName || q.question || "Question attachment")}/><Text style={styles.muted}>{q.config.attachment.fileName || "Question attachment"}</Text><TouchableOpacity onPress={()=>openUrl(String(q.config.attachment.url))}><Text style={{color:colors.primary,marginTop:5}}>Open question attachment</Text></TouchableOpacity></View> : null}{section === "polls" ? (q.options || []).map((o:any) => <TouchableOpacity key={o.id} disabled={Boolean(pollResult)} style={[styles.card,{marginTop:8,borderColor:answers[String(q.id)]===o.id?colors.primary:colors.border,opacity:pollResult?0.65:1}]} onPress={() => setAnswers(a=>({...a,[String(q.id)]:o.id}))}><Feather name={answers[String(q.id)]===o.id?"check-circle":"circle"} size={18} color={colors.primary}/><Text style={[styles.body,{flex:1}]}>{o.text}</Text></TouchableOpacity>) : q.type === "poll" ? ((detail.options || []).filter((o:any)=>Number(o.questionId)===Number(q.id))).map((o:any)=><TouchableOpacity key={o.id} disabled={exerciseLocked} style={[styles.card,{marginTop:8,borderColor:answers[String(q.id)]?.selectedValue===o.value?colors.primary:colors.border,opacity:exerciseLocked?0.65:1}]} onPress={()=>setAnswers(a=>({...a,[String(q.id)]:{...a[String(q.id)],selectedValue:o.value}}))}><Feather name={answers[String(q.id)]?.selectedValue===o.value?"check-circle":"circle"} size={18} color={colors.primary}/><Text style={[styles.body,{flex:1}]}>{o.label || o.value}</Text></TouchableOpacity>) : q.type === "drawbox" ? <MobileDrawAnswer value={{...(answers[String(q.id)]?.drawData || {}), teacherDrawing: q.config?.teacherDrawing}} disabled={!isStudent || exerciseLocked} onChange={drawData=>setAnswers(a=>({...a,[String(q.id)]:{...a[String(q.id)],drawData}}))} /> : <><TextInput style={[styles.input,styles.textArea,{marginTop:8}]} multiline value={answers[String(q.id)]?.textAnswer || ""} editable={!exerciseLocked} onChangeText={v=>setAnswers(a=>({...a,[String(q.id)]:{...a[String(q.id)],textAnswer:v}}))} placeholder="Your answer" placeholderTextColor={colors.mutedForeground}/>{isStudent && <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void uploadExerciseAnswerMedia(q.id)} disabled={exerciseLocked || uploadingAnswerId===q.id}><Text style={[styles.buttonText,styles.secondaryText]}>{uploadingAnswerId===q.id?"Uploading answer…":answers[String(q.id)]?.mediaReference?"Replace attached media":"Attach image/video answer"}</Text></TouchableOpacity>}{answers[String(q.id)]?.mediaReference ? <Text style={styles.muted}>Answer media attached.</Text> : null}</>}</View>)}{isStudent && (section === "polls" ? !pollResult : !exerciseLocked) && <TouchableOpacity style={styles.button} onPress={() => section==="polls"?void submitPoll():void submitExercise()} disabled={busy}><Text style={styles.buttonText}>{busy?"Submitting…":section==="polls"?"Submit quiz":"Submit exercise"}</Text></TouchableOpacity>}{section === "polls" && pollResult && <View style={{marginTop:16,padding:14,borderRadius:12,backgroundColor:colors.background,borderWidth:1,borderColor:colors.border}}><Text style={styles.sectionTitle}>Your result</Text><Text style={styles.body}>{pollResult.score != null ? `Score: ${pollResult.score}/${pollResult.totalQuestions ?? "—"}` : "Your submission was recorded."}</Text>{pollResult.percentage != null ? <Text style={styles.cardTitle}>{pollResult.percentage}%</Text> : null}</View>}{!isStudent && <Text style={styles.muted}>Preview only: staff can inspect content but cannot submit as a learner.</Text>}</View></View>}
         {section === "messages" && <View style={{gap:12}}>
           <View style={styles.card}><View style={styles.grow}><Text style={styles.sectionTitle}>Private conversations</Text><Text style={styles.muted}>Conversations are fetched from the authenticated API. The server enforces who can message whom and who can read each conversation.</Text></View></View>
           {!privateRecipient && messageContacts.map(person=><TouchableOpacity key={person.id} style={styles.card} onPress={()=>void openPrivateConversation(person)}><View style={styles.icon}><Feather name="user" size={18} color={colors.primary}/></View><View style={styles.grow}><Text style={styles.cardTitle}>{person.name||"User"}</Text><Text style={styles.muted}>{person.role||"Member"}{person.subject?" · "+person.subject:""}{person.grade?" · "+person.grade:""}</Text></View><Feather name="chevron-right" size={18} color={colors.mutedForeground}/></TouchableOpacity>)}
