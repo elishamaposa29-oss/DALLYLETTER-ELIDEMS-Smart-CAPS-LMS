@@ -33,10 +33,7 @@ jobs:
   # Defer the expensive APK/emulator suite until the parity pass is ready.
   # Manual dispatch always runs it; PRs opt in with the android-release-check label.
   build-apk:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      contains(github.event.pull_request.labels.*.name, 'android-release-check')
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'android-release-check')
     runs-on: ubuntu-latest
     # Release and upgrade APK builds take ~43 minutes on hosted runners; leave time for artifact checks.
     timeout-minutes: 75
