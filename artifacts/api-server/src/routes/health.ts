@@ -59,7 +59,7 @@ router.get("/healthz/schema", async (_req, res): Promise<void> => {
       [requiredTables]
     );
     const foundTables = new Set(tables.rows.map((row: { table_name: string }) => row.table_name));
-    const missingTables = requiredTables.some((name) => !foundTables.has(name));
+    const missingTables = requiredTables.filter((name) => !foundTables.has(name));
 
     const columns = await pool.query(
       `SELECT e.table_name, e.column_name
@@ -72,10 +72,17 @@ router.get("/healthz/schema", async (_req, res): Promise<void> => {
       [requiredColumns.map(([table]) => table), requiredColumns.map(([, column]) => column)]
     );
 
-    if (missingTables || columns.rows.length > 0) {
+    if (missingTables.length > 0 || columns.rows.length > 0) {
+      // Table/column identifiers are safe diagnostics; never include database
+      // hostnames, credentials, or query values in this public health response.
       res.status(503).json({
         status: "error",
         schema: "incomplete",
+        missingTables,
+        missingColumns: columns.rows.map((row: { table_name: string; column_name: string }) => ({
+          table: row.table_name,
+          column: row.column_name
+        })),
         error: "Production database schema verification failed"
       });
       return;

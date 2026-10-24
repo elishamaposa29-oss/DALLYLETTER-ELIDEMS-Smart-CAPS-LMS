@@ -232,8 +232,24 @@ timeout 45 adb shell monkey -p com.dallyletter.elidems 1
 sleep 8
 step "capture upgraded CI test build and verify sign-in UI remains visible"
 timeout 30 adb exec-out screencap -p > /tmp/dallyletter-v1.0.2.png
-timeout 45 adb shell uiautomator dump /sdcard/dallyletter-ui-v1.0.2.xml >/dev/null
-timeout 20 adb pull /sdcard/dallyletter-ui-v1.0.2.xml /tmp/dallyletter-ui-v1.0.2.xml >/dev/null
+# UIAutomator can intermittently fail to write its remote hierarchy just after
+# a fresh install/launch on a cold emulator. Retry the capture, not the build.
+ui_dump_ready=0
+for attempt in 1 2 3 4 5 6; do
+  if timeout 45 adb shell uiautomator dump /sdcard/dallyletter-ui-v1.0.2.xml >/dev/null 2>&1 &&
+     timeout 20 adb pull /sdcard/dallyletter-ui-v1.0.2.xml /tmp/dallyletter-ui-v1.0.2.xml >/dev/null 2>&1 &&
+     [ -s /tmp/dallyletter-ui-v1.0.2.xml ]; then
+    ui_dump_ready=1
+    break
+  fi
+  echo "Upgraded-app UI hierarchy not available yet (attempt $attempt/6); retrying."
+  sleep 3
+done
+if [ "$ui_dump_ready" -ne 1 ]; then
+  echo "::error::UIAutomator did not produce the upgraded-app hierarchy after six attempts"
+  timeout 30 adb logcat -d -t 1200 || true
+  exit 1
+fi
 if ! grep -Eqi 'Welcome back|Sign in to continue learning|your@email.com|Sign In' /tmp/dallyletter-ui-v1.0.2.xml; then
   echo "::error::Upgraded app launched but expected sign-in UI text was not present"
   cat /tmp/dallyletter-ui-v1.0.2.xml || true
