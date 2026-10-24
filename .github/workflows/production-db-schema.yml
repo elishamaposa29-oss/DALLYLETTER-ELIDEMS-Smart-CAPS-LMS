@@ -2,7 +2,6 @@ name: Production DB Schema Verification
 
 on:
   workflow_dispatch:
-  # Verify schema compatibility on main; never mutate production schema during a build.
   push:
     branches:
       - main
@@ -13,119 +12,34 @@ concurrency:
 
 jobs:
   verify:
-    name: Verify production schema without mutation
+    name: Verify deployed production database schema
     runs-on: ubuntu-latest
-    environment: production
     permissions:
       contents: read
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Enable pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.12.1
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Verify production database secret exists
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - name: Verify live API database connection and schema
+        shell: bash
         run: |
-          test -n "$DATABASE_URL" || {
-            echo "DATABASE_URL is not configured in the protected production environment."
-            echo "No database connection or schema mutation was attempted."
-            exit 1
-          }
-
-      - name: Read-only schema verification
-        working-directory: lib/db
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: |
-          node --input-type=module <<'NODE'
-          import pg from "pg";
-          const { Client } = pg;
-          const expected = [
-            "users", "lessons", "exercises", "submissions", "messages",
-            "lesson_requests", "group_member_controls", "group_settings",
-            "chat_polls", "chat_poll_options", "chat_poll_votes",
-            "chat_broadcasts", "chat_broadcast_recipients",
-            "chat_communities", "chat_community_groups",
-            "content_permission_requests", "message_media",
-            "push_subscriptions", "teacher_documents",
-            "assignments", "hand_raises", "study_groups", "media_object_chunks"
-          ];
-          const client = new Client({
-            connectionString: process.env.DATABASE_URL,
-            // Render PostgreSQL requires TLS for external connections.
-            // Keep traffic encrypted; this external endpoint uses Render-managed TLS.
-            ssl: { rejectUnauthorized: false },
-            connectionTimeoutMillis: 10000,
-            query_timeout: 15000,
-            statement_timeout: 15000
-          });
-          try {
-            await client.connect();
-            const result = await client.query(
-              `select table_name
-               from information_schema.tables
-               where table_schema = 'public'
-                 and table_type = 'BASE TABLE'
-                 and table_name = any($1::text[])
-               order by table_name`,
-              [expected]
-            );
-            const found = result.rows.map(row => row.table_name);
-            const missing = expected.filter(name => !found.includes(name));
-            console.log(`Found ${found.length}/${expected.length} required tables.`);
-            if (missing.length) {
-              console.error("Missing tables:", missing.join(", "));
-              process.exitCode = 1;
-            }
-
-            const expectedColumns = [
-              ["users", "avatar_url"],
-              ["assignments", "reference_material_hidden"],
-              ["hand_raises", "media_url"],
-              ["hand_raises", "media_owned"],
-              ["notifications", "push_sent_at"],
-              ["notifications", "push_attempts"],
-              ["notifications", "push_next_attempt_at"],
-              ["notifications", "push_last_error"],
-              ["media_object_chunks", "storage_key"],
-              ["media_object_chunks", "mime_type"],
-              ["media_object_chunks", "size_bytes"],
-              ["media_object_chunks", "chunk_index"],
-              ["media_object_chunks", "data"],
-              ["media_object_chunks", "created_at"]
-            ];
-            const columnResult = await client.query(
-              `SELECT e.table_name, e.column_name
-               FROM unnest($1::text[], $2::text[]) AS e(table_name, column_name)
-               LEFT JOIN information_schema.columns c
-                 ON c.table_schema = 'public'
-                AND c.table_name = e.table_name
-                AND c.column_name = e.column_name
-               WHERE c.column_name IS NULL
-               ORDER BY e.table_name, e.column_name`,
-              [expectedColumns.map(([table]) => table), expectedColumns.map(([, column]) => column)]
-            );
-            const missingColumns = columnResult.rows.map(row => `${row.table_name}.${row.column_name}`);
-            console.log(`Found ${expectedColumns.length - missingColumns.length}/${expectedColumns.length} required columns.`);
-            if (missingColumns.length) {
-              console.error("Missing columns:", missingColumns.join(", "));
-              process.exitCode = 1;
-            }
-          } finally {
-            await client.end();
-          }
-          NODE
+          set -Eeuo pipefail
+          health_url="https://dallyletter-elidems-smart-caps-lms-4.onrender.com/api/healthz"
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+          # Render auto-deploy follows the main push; allow the new service version to start.
+          for attempt in $(seq 1 18); do
+            status="$(curl --silent --show-error --max-time 12 -o "$response_file" -w '%{http_code}' "$health_url" || true)"
+            if [ "$status" = "200" ] && node -e '
+              const fs = require("node:fs");
+              try {
+                const body = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+                process.exit(body.status === "ok" && body.schema === "ok" ? 0 : 1);
+              } catch { process.exit(1); }
+            ' "$response_file"; then
+              echo "Live production API database connection and required schema verified."
+              exit 0
+            fi
+            echo "Production schema endpoint not ready or schema check failed (attempt $attempt/18, HTTP ${status:-no-response})."
+            sleep 10
+          done
+          echo "::error::Live production database connection/schema verification did not pass."
+          cat "$response_file"
+          exit 1
