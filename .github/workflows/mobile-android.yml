@@ -469,4 +469,3 @@ jobs:
             /tmp/dallyletter-release-upgrade.png
           if-no-files-found: warn
           retention-days: 14
-
