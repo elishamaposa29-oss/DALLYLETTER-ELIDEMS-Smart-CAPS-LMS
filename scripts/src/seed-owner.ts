@@ -62,6 +62,8 @@ async function seedOwner(): Promise<void> {
             updatedAt: new Date(),
           }).where(eq(usersTable.id, existingPrivileged.id))
             .returning({ email: usersTable.email, role: usersTable.role });
+          await tx.execute(sql`UPDATE auth_sessions SET revoked_at = COALESCE(revoked_at, now()) WHERE user_id = ${existingPrivileged.id}`);
+          await tx.execute(sql`UPDATE password_reset_tokens SET used_at = COALESCE(used_at, now()) WHERE user_id = ${existingPrivileged.id} AND used_at IS NULL`);
           return { outcome: "reset" as const, user };
         }
       }
