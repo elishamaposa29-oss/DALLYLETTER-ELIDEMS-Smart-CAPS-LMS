@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { ProfileAvatarEditor } from "@/components/ProfileAvatarEditor";
+import { ProfileDetailsEditor } from "@/components/ProfileDetailsEditor";
 
 export default function StudentProfile() {
   const colors = useColors();
@@ -123,6 +124,7 @@ export default function StudentProfile() {
     <View style={s.container}>
       <View style={s.header}>
         <ProfileAvatarEditor />
+        <ProfileDetailsEditor />
         <Text style={s.name}>{user?.name}</Text>
         <Text style={s.email}>{user?.email}</Text>
         <View style={s.roleBadge}>
