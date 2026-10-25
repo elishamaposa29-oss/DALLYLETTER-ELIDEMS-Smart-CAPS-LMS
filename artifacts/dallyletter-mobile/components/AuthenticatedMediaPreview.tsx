@@ -8,6 +8,7 @@ import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
 import { getOfflineMediaUri } from "@/components/OfflineMediaDownload";
 import OfflineMediaDownload from "@/components/OfflineMediaDownload";
+import { getApiMediaAuthHeaders, requiresApiMediaAuth } from "@/components/media-auth";
 
 export default function AuthenticatedMediaPreview({ url, height = 220, accessibilityLabel }: { url: string; height?: number; accessibilityLabel?: string }) {
   const { token, user } = useAuth();
@@ -16,7 +17,7 @@ export default function AuthenticatedMediaPreview({ url, height = 220, accessibi
   const [fullScreen, setFullScreen] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
   const isRemote = /^https?:\/\//i.test(url);
-  const needsAuth = /\/api\/(?:lessons|messages|assignments|exercises)\/media\//i.test(url);
+  const needsAuth = requiresApiMediaAuth(url, getApiUrl("/"));
   const resolved = isRemote ? url : getApiUrl(url);
   const mediaType = (() => {
     try {
@@ -31,11 +32,11 @@ export default function AuthenticatedMediaPreview({ url, height = 220, accessibi
     void getOfflineMediaUri(user?.id, url).then(uri => { if (active) setOfflineUri(uri); });
     return () => { active = false; };
   }, [url, user?.id]);
-  const imageSource = { uri: offlineUri || resolved, headers: !offlineUri && needsAuth && token ? { Authorization: "Bearer " + token } : undefined };
+  const imageSource = { uri: offlineUri || resolved, headers: !offlineUri && needsAuth ? getApiMediaAuthHeaders(url, token, getApiUrl("/")) : undefined };
   const label = accessibilityLabel || (isImage ? "Attached image" : "Attached media");
   const looksVideo = /video|\.(mp4|m4v|mov|webm|ogv)(?:[?#].*)?$/i.test(url);
   const looksAudio = /audio|\.(mp3|m4a|aac|ogg|wav)(?:[?#].*)?$/i.test(url);
-  const videoPlayer = useVideoPlayer(looksVideo ? { uri: resolved, headers: needsAuth && token ? { Authorization: "Bearer " + token } : undefined } : null, player => { player.loop = false; });
+  const videoPlayer = useVideoPlayer(looksVideo ? { uri: resolved, headers: needsAuth ? getApiMediaAuthHeaders(url, token, getApiUrl("/")) : undefined } : null, player => { player.loop = false; });
   useEffect(() => {
     if (!looksVideo || !offlineUri) return;
     void videoPlayer.replaceAsync({ uri: offlineUri }).catch(() => undefined);
