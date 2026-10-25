@@ -140,7 +140,6 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     }).returning();
 
     await clearAuthAttempts("register", email, ipAddress);
-    await clearAuthAttempts("register-ip", "all-accounts", ipAddress);
     const token = generateToken(user.id);
     await createAuthSession(token, user.id);
     const { passwordHash: _, ...safeUser } = user;
@@ -201,7 +200,6 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     }
 
     await clearAuthAttempts("login", email, ipAddress);
-    await clearAuthAttempts("login-ip", "all-accounts", ipAddress);
     const token = generateToken(user.id);
     await createAuthSession(token, user.id);
     const { passwordHash: _, ...safeUser } = user;
