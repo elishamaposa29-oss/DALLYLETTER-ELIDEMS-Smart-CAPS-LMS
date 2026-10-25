@@ -3,7 +3,8 @@ import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { RegisterUserBody, LoginUserBody } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth-middleware";
-import crypto from "crypto";
+import { hashPassword, verifyPassword } from "../lib/password-hash";
+import { generateSignedToken, parseSignedToken } from "../lib/signed-token";
 
 const router: IRouter = Router();
 
@@ -18,31 +19,13 @@ function getAuthSecret(): string {
   return secret;
 }
 
-function hashPassword(password: string): string {
-  return crypto.createHash("sha256").update(password + "dallyletter_salt_2024").digest("hex");
-}
-
 function generateToken(userId: number): string {
-  const payload = JSON.stringify({ userId, ts: Date.now() });
-  const encodedPayload = Buffer.from(payload).toString("base64url");
-  const signature = crypto.createHmac("sha256", getAuthSecret()).update(encodedPayload).digest("hex");
-  return `${encodedPayload}.${signature}`;
+  return generateSignedToken(userId, getAuthSecret());
 }
 
 function parseToken(token: string): { userId: number } | null {
   try {
-    const [encodedPayload, signature] = token.split(".");
-    if (!encodedPayload || !signature) {
-      return null;
-    }
-
-    const expectedSignature = crypto.createHmac("sha256", getAuthSecret()).update(encodedPayload).digest("hex");
-    if (expectedSignature !== signature) {
-      return null;
-    }
-
-    const payload = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8"));
-    return { userId: payload.userId };
+    return parseSignedToken(token, getAuthSecret());
   } catch {
     return null;
   }
@@ -139,7 +122,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     if (existing.length > 0) { res.status(400).json({ error: "Email already registered" }); return; }
 
     const [user] = await db.insert(usersTable).values({
-      email, passwordHash: hashPassword(password), name, role,
+      email, passwordHash: await hashPassword(password), name, role,
       grade: grade ?? null, subject: subject ?? null, phone: phone ?? null,
       isPrefect: false, isBlocked: false, isSuspended: false,
       teacherApplicationStatus: role === "teacher" ? "pending_review" : "not_applicable",
@@ -175,12 +158,27 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   try {
     const { email, password } = parsed.data;
     const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
-    if (!user || user.passwordHash !== hashPassword(password)) {
+    if (!user) {
       res.status(401).json({ error: "Invalid email or password" }); return;
     }
-
+    const passwordVerification = await verifyPassword(password, user.passwordHash);
+    if (!passwordVerification.valid) {
+      res.status(401).json({ error: "Invalid email or password" }); return;
+    }
     if (user.isBlocked) {
       res.status(403).json({ error: "Your account has been blocked. Please contact the school administrator." }); return;
+    }
+
+    if (passwordVerification.needsRehash) {
+      // Upgrade legacy fixed-salt hashes after a successful login. Do not block
+      // a valid login if a transient rehash write fails; retry on the next login.
+      const upgradedHash = await hashPassword(password);
+      try {
+        await db.update(usersTable).set({ passwordHash: upgradedHash }).where(eq(usersTable.id, user.id));
+      } catch (upgradeError) {
+        const { logger } = await import("../lib/logger");
+        logger.warn({ userId: user.id, error: upgradeError instanceof Error ? upgradeError.message.slice(0, 200) : "Unknown rehash error" }, "Legacy password hash upgrade failed; will retry on next login");
+      }
     }
 
     const token = generateToken(user.id);
@@ -241,11 +239,12 @@ router.post("/auth/change-password", requireAuth, async (req, res): Promise<void
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, currentUser.id));
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
 
-  if (user.passwordHash !== hashPassword(currentPassword)) {
+  const passwordVerification = await verifyPassword(currentPassword, user.passwordHash);
+  if (!passwordVerification.valid) {
     res.status(400).json({ error: "Current password is incorrect" }); return;
   }
 
-  await db.update(usersTable).set({ passwordHash: hashPassword(newPassword) }).where(eq(usersTable.id, currentUser.id));
+  await db.update(usersTable).set({ passwordHash: await hashPassword(newPassword) }).where(eq(usersTable.id, currentUser.id));
   res.json({ message: "Password changed successfully" });
 });
 
