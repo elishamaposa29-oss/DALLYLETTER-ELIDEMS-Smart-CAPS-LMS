@@ -10,6 +10,6 @@ export function requiresApiMediaAuth(url: string, apiBaseUrl: string): boolean {
   }
 }
 
-export function getApiMediaAuthHeaders(url: string, token: string | undefined, apiBaseUrl: string): Record<string, string> {
+export function getApiMediaAuthHeaders(url: string, token: string | null | undefined, apiBaseUrl: string): Record<string, string> {
   return token && requiresApiMediaAuth(url, apiBaseUrl) ? { Authorization: "Bearer " + token } : {};
 }
