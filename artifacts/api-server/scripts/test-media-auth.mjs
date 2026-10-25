@@ -8,7 +8,7 @@ const dir = await mkdtemp(join(tmpdir(), "dallyletter-media-auth-tests-"));
 try {
   const outfile = join(dir, "media-auth.test.mjs");
   await build({
-    entryPoints: ["../dallyletter-mobile/components/media-auth.test.ts"],
+    entryPoints: ["src/lib/media-auth.test.ts"],
     outfile,
     bundle: true,
     platform: "node",
