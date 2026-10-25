@@ -52,7 +52,7 @@ export default function StudentChat() {
       while (remaining.length && !cancelled) {
         const item = remaining[0];
         try {
-          if (!Number.isSafeInteger(item.groupId) || item.groupId <= 0) { remaining.shift(); continue; }
+          if (!Number.isSafeInteger(item.groupId) || item.groupId <= 0) { if (!cancelled) setNotice("An older offline message has no saved group destination. It was not sent to the wrong conversation."); break; }
           await sendMutation.mutateAsync({ data: { content: item.content, type: "text", groupId: item.groupId } });
           remaining.shift();
           if (!cancelled) await persistQueue([...remaining]);
