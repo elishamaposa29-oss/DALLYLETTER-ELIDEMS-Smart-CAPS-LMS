@@ -96,6 +96,7 @@ router.patch("/users/:id", requireAuth, async (req, res): Promise<void> => {
     updates.avatarUrl = avatarUrl;
   }
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, params.data.id)).returning(safeUserFields);
+  if (body.data.email != null) await revokeUserSessions(params.data.id);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   res.json({ ...user, createdAt: user.createdAt.toISOString() });
 });
@@ -245,6 +246,7 @@ router.patch("/users/:id/teacher-review", requireAuth, async (req, res): Promise
       ? { role: "teacher", teacherApplicationStatus: "approved", teacherReviewDeadline: null }
       : { role: "student", teacherApplicationStatus: action === "reject" ? "rejected" : "manual_conversion", teacherReviewDeadline: null, subject: null, isManager: false, isPrefect: false },
   ).where(eq(usersTable.id, id)).returning(safeUserFields);
+  await revokeUserSessions(id);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   res.json({ ...user, createdAt: user.createdAt.toISOString() });
 });
