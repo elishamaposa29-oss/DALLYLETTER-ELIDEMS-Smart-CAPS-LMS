@@ -1,9 +1,16 @@
 import crypto from "node:crypto";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { db, pool, usersTable } from "@workspace/db";
 
 function hashPassword(value: string): string {
-  return crypto.createHash("sha256").update(value + "dallyletter_salt_2024").digest("hex");
+  const salt = crypto.randomBytes(16);
+  const derived = crypto.scryptSync(value, salt, 64, {
+    N: 16384,
+    r: 8,
+    p: 1,
+    maxmem: 64 * 1024 * 1024,
+  });
+  return `scrypt$16384$8$1$${salt.toString("hex")}$${derived.toString("hex")}`;
 }
 
 async function seedOwner(): Promise<void> {
@@ -11,33 +18,71 @@ async function seedOwner(): Promise<void> {
   const password = process.env.OWNER_BOOTSTRAP_PASSWORD;
   const name = process.env.OWNER_BOOTSTRAP_NAME?.trim() || "Platform Owner";
 
-  // No hard-coded credentials. If bootstrap secrets are absent, skip this
-  // optional step; never block regular student/teacher registration.
+  // This is an explicit, operator-run recovery task, never a public signup route.
+  // Without both protected secrets, do nothing.
   if (!email || !password) {
     console.log("Owner bootstrap skipped: OWNER_BOOTSTRAP_EMAIL/PASSWORD are not configured.");
     return;
   }
-  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) throw new Error("OWNER_BOOTSTRAP_EMAIL must be a valid email.");
-  if (password.length < 12) throw new Error("OWNER_BOOTSTRAP_PASSWORD must contain at least 12 characters.");
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error("OWNER_BOOTSTRAP_EMAIL must be a valid email.");
+  }
+  if (password.length < 12 || password.length > 256) {
+    throw new Error("OWNER_BOOTSTRAP_PASSWORD must contain 12–256 characters.");
+  }
 
   const result = await db.transaction(async (tx) => {
+    // Serialize concurrent bootstrap attempts so two jobs cannot both observe
+    // an empty privileged-account set and create competing owners.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('dallyletter-owner-bootstrap'))`);
+
     const [existingPrivileged] = await tx.select({ email: usersTable.email, role: usersTable.role })
       .from(usersTable).where(inArray(usersTable.role, ["owner", "admin"])).limit(1);
-    if (existingPrivileged) return { created: false, user: existingPrivileged };
+    if (existingPrivileged) {
+      return { outcome: "unchanged" as const, user: existingPrivileged };
+    }
 
-    const [existingEmail] = await tx.select({ role: usersTable.role }).from(usersTable)
-      .where(eq(usersTable.email, email)).limit(1);
-    if (existingEmail) throw new Error("Configured owner email already exists without owner privileges; no role was changed.");
+    const [existingEmail] = await tx.select({ id: usersTable.id, email: usersTable.email, role: usersTable.role })
+      .from(usersTable).where(eq(usersTable.email, email)).limit(1);
+
+    if (existingEmail) {
+      const [user] = await tx.update(usersTable).set({
+        passwordHash: hashPassword(password),
+        role: "owner",
+        isPrefect: false,
+        isManager: false,
+        isBlocked: false,
+        isSuspended: false,
+        updatedAt: new Date(),
+      }).where(eq(usersTable.id, existingEmail.id))
+        .returning({ email: usersTable.email, role: usersTable.role });
+      return { outcome: "promoted" as const, user };
+    }
 
     const [user] = await tx.insert(usersTable).values({
-      email, passwordHash: hashPassword(password), name, role: "owner",
-      isPrefect: false, isManager: false, isBlocked: false, isSuspended: false,
+      email,
+      passwordHash: hashPassword(password),
+      name,
+      role: "owner",
+      isPrefect: false,
+      isManager: false,
+      isBlocked: false,
+      isSuspended: false,
     }).returning({ email: usersTable.email, role: usersTable.role });
-    return { created: true, user };
+    return { outcome: "created" as const, user };
   });
 
-  console.log(result.created ? "Owner bootstrap account created from configured environment secrets."
-    : `Privileged account already exists: ${result.user.email} (${result.user.role}); no account changed.`);
+  if (result.outcome === "unchanged") {
+    console.log("Owner bootstrap made no changes because a privileged account already exists.");
+  } else if (result.outcome === "promoted") {
+    console.log("Existing account promoted to owner using configured bootstrap secrets.");
+  } else {
+    console.log("Owner bootstrap account created using configured bootstrap secrets.");
+  }
 }
 
-try { await seedOwner(); } finally { await pool.end(); }
+try {
+  await seedOwner();
+} finally {
+  await pool.end();
+}
