@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { getApiUrl } from "@workspace/api-client-react";
 
@@ -10,7 +10,7 @@ export default function ResetPassword() {
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState("");
   const [error,setError]=useState("");
-  async function submit(event:React.FormEvent<HTMLFormElement>) {
+  async function submit(event:FormEvent<HTMLFormElement>) {
     event.preventDefault();setMessage("");setError("");
     if(!/^[a-f0-9]{64}$/i.test(token)){setError("This reset link is missing or invalid. Request a new link.");return;}
     if(password.length<8){setError("Use at least 8 characters for your new password.");return;}

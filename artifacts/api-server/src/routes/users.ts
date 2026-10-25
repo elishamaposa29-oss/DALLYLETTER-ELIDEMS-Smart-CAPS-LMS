@@ -85,9 +85,9 @@ router.patch("/users/:id", requireAuth, async (req, res): Promise<void> => {
   if (body.data.email != null && !isOwnerRole(currentUser.role)) { res.status(403).json({ error: "Email changes require a verified email-change process." }); return; }
   if (body.data.name != null) updates.name = body.data.name;
   if (body.data.email != null) updates.email = body.data.email;
-  if (body.data.phone != null) updates.phone = body.data.phone;
-  if (body.data.grade != null) updates.grade = body.data.grade;
-  if (body.data.subject != null) updates.subject = body.data.subject;
+  if (body.data.phone !== undefined) updates.phone = body.data.phone;
+  if (body.data.grade !== undefined) updates.grade = body.data.grade;
+  if (body.data.subject !== undefined) updates.subject = body.data.subject;
   if (body.data.avatarUrl != null) {
     const avatarUrl = body.data.avatarUrl.trim();
     const isMediaPath = avatarUrl.length <= 2048 && /^\/api\/lessons\/media\/[a-f0-9-]{36}\?type=image\/(?:jpeg|png|webp)$/i.test(avatarUrl);

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { Link } from "wouter";
 import { getApiUrl } from "@workspace/api-client-react";
 
@@ -7,7 +7,7 @@ export default function ForgotPassword() {
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState("");
   const [error,setError]=useState("");
-  async function submit(event:React.FormEvent<HTMLFormElement>) {
+  async function submit(event:FormEvent<HTMLFormElement>) {
     event.preventDefault();setMessage("");setError("");
     const normalized=email.trim().toLowerCase();
     if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized)){setError("Enter a valid email address.");return;}

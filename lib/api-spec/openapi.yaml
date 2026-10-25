@@ -85,6 +85,56 @@ paths:
         "401":
           description: Unauthorized
 
+  /auth/password-reset/request:
+    post:
+      operationId: requestPasswordReset
+      tags: [auth]
+      summary: Request password recovery instructions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        "202":
+          description: Generic response to avoid account enumeration
+        "400":
+          description: Invalid email
+        "503":
+          description: Recovery service unavailable
+
+  /auth/password-reset/confirm:
+    post:
+      operationId: confirmPasswordReset
+      tags: [auth]
+      summary: Set a new password using a one-time reset token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, newPassword]
+              properties:
+                token:
+                  type: string
+                  pattern: "^[a-fA-F0-9]{64}$"
+                newPassword:
+                  type: string
+                  minLength: 8
+                  maxLength: 256
+      responses:
+        "200":
+          description: Password reset successfully; existing sessions are revoked
+        "400":
+          description: Invalid, expired, or already used reset token
+
   /auth/logout:
     post:
       operationId: logoutUser
