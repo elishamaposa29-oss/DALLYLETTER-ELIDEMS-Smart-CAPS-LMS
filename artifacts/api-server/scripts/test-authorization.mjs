@@ -6,9 +6,9 @@ import { spawnSync } from "node:child_process";
 
 const dir = await mkdtemp(join(tmpdir(), "dallyletter-auth-tests-"));
 try {
-  const outfile = join(dir, "role-access.test.mjs");
+  const outfile = join(dir, "authorization.test.mjs");
   await build({
-    entryPoints: ["src/lib/role-access.test.ts"],
+    entryPoints: ["src/lib/role-access.test.ts", "src/lib/signed-token.test.ts"],
     outfile,
     bundle: true,
     platform: "node",
