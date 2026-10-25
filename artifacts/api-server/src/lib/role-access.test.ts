@@ -100,3 +100,18 @@ test("manager access requires both a manager flag and an authorized staff role",
   assert.equal(canUseStaffAI(user),false,role);
  }
 });
+
+test("pending teacher applicants cannot access academic staff tools or staff AI",()=>{
+ const pending={role:"teacher",isManager:true,teacherApplicationStatus:"pending_review"};
+ assert.equal(canManageAcademicContent(pending),false);
+ assert.equal(canUseStaffAI(pending),false);
+ assert.equal(canAccessManager(pending),false);
+ const response=mockResponse();let nextCalls=0;
+ enforceAcademicStaffAccess({currentUser:pending},response.res,()=>{nextCalls+=1;});
+ assert.equal(response.status(),403);assert.equal(nextCalls,0);
+});
+test("approved teachers and owners retain academic staff access",()=>{
+ assert.equal(canManageAcademicContent({role:"teacher",teacherApplicationStatus:"approved"}),true);
+ assert.equal(canUseStaffAI({role:"teacher",teacherApplicationStatus:"approved"}),true);
+ assert.equal(canManageAcademicContent({role:"owner",teacherApplicationStatus:"pending_review"}),true);
+});

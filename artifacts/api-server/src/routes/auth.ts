@@ -1,12 +1,12 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
-import { db, usersTable } from "@workspace/db";
+import { db, usersTable, pool } from "@workspace/db";
 import { RegisterUserBody, LoginUserBody } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth-middleware";
 import { hashPassword, verifyPassword } from "../lib/password-hash";
 import { generateSignedToken, parseSignedToken } from "../lib/signed-token";
 import { isAllowedPublicRegistrationRole } from "../lib/registration-policy";
-import { createAuthSession, revokeAuthSession, revokeUserSessions, createPasswordResetToken, consumePasswordResetToken } from "../lib/auth-session-store";
+import { createAuthSession, revokeAuthSession, revokeUserSessions, createPasswordResetToken, consumePasswordResetToken, consumeAuthAttempt, clearAuthAttempts, updatePasswordAndRevokeSessions } from "../lib/auth-session-store";
 import { sendEmail, isEmailConfigured } from "../lib/email-service";
 
 const router: IRouter = Router();
@@ -113,7 +113,13 @@ router.post("/auth/register", async (req, res): Promise<void> => {
   const parsed = RegisterUserBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
-  const { email, password, name, role, grade, subject, phone } = parsed.data;
+  const { password, name, role, grade, subject, phone } = parsed.data;
+  const email = parsed.data.email.trim().toLowerCase();
+  const ipAddress = req.ip || "unknown";
+  if (await consumeAuthAttempt("register", email, ipAddress, 5, 60 * 60 * 1000, 60 * 60 * 1000)
+      || await consumeAuthAttempt("register-ip", "all-accounts", ipAddress, 20, 60 * 60 * 1000, 60 * 60 * 1000)) {
+    res.status(429).json({ error: "Too many registration attempts. Please try again later." }); return;
+  }
   // Public registration cannot create privileged accounts. Staff roles require an
   // explicit owner-controlled promotion/review workflow after signup.
   if (!isAllowedPublicRegistrationRole(role)) {
@@ -133,6 +139,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
       teacherReviewDeadline: role === "teacher" ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) : null,
     }).returning();
 
+    await clearAuthAttempts("register", email, ipAddress);
     const token = generateToken(user.id);
     await createAuthSession(token, user.id);
     const { passwordHash: _, ...safeUser } = user;
@@ -161,7 +168,13 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
   try {
-    const { email, password } = parsed.data;
+    const email = parsed.data.email.trim().toLowerCase();
+    const password = parsed.data.password;
+    const ipAddress = req.ip || "unknown";
+    if (await consumeAuthAttempt("login", email, ipAddress, 8, 15 * 60 * 1000, 15 * 60 * 1000)
+      || await consumeAuthAttempt("login-ip", "all-accounts", ipAddress, 40, 15 * 60 * 1000, 15 * 60 * 1000)) {
+      res.status(429).json({ error: "Too many sign-in attempts. Please wait 15 minutes and try again." }); return;
+    }
     const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
     if (!user) {
       res.status(401).json({ error: "Invalid email or password" }); return;
@@ -186,6 +199,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
       }
     }
 
+    await clearAuthAttempts("login", email, ipAddress);
     const token = generateToken(user.id);
     await createAuthSession(token, user.id);
     const { passwordHash: _, ...safeUser } = user;
@@ -243,8 +257,7 @@ router.post("/auth/change-password", requireAuth, async (req, res): Promise<void
     res.status(400).json({ error: "Current password is incorrect" }); return;
   }
 
-  await db.update(usersTable).set({ passwordHash: await hashPassword(newPassword) }).where(eq(usersTable.id, currentUser.id));
-  await revokeUserSessions(currentUser.id);
+  await updatePasswordAndRevokeSessions(currentUser.id, await hashPassword(newPassword));
   res.json({ message: "Password changed successfully. Please sign in again on your devices." });
 });
 
@@ -255,6 +268,11 @@ router.post("/auth/password-reset/request", async (req, res): Promise<void> => {
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || email.length > 254) {
     res.status(400).json({ error: "Enter a valid email address." }); return;
   }
+  const ipAddress = req.ip || "unknown";
+  if (await consumeAuthAttempt("password-reset", email, ipAddress, 5, 60 * 60 * 1000, 60 * 60 * 1000)
+      || await consumeAuthAttempt("password-reset-ip", "all-accounts", ipAddress, 20, 60 * 60 * 1000, 60 * 60 * 1000)) {
+    res.status(429).json({ error: "Too many password recovery requests. Please try again later." }); return;
+  }
   if (!isEmailConfigured()) {
     res.status(503).json({ error: "Password recovery is temporarily unavailable. Please contact support." }); return;
   }
@@ -262,9 +280,13 @@ router.post("/auth/password-reset/request", async (req, res): Promise<void> => {
     const [user] = await db.select({ id: usersTable.id, email: usersTable.email }).from(usersTable).where(eq(usersTable.email, email));
     if (user) {
       const resetToken = await createPasswordResetToken(user.id);
+      await pool.query("CREATE TABLE IF NOT EXISTS account_recovery_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, recovery_email text, recovery_email_verified_at timestamptz, recovery_phone text, recovery_phone_verified_at timestamptz, security_question text, security_answer_hash text, verification_code_hash text, verification_expires_at timestamptz, updated_at timestamptz NOT NULL DEFAULT now())");
+      const recovery = await pool.query("SELECT recovery_email FROM account_recovery_profiles WHERE user_id = $1 AND recovery_email_verified_at IS NOT NULL", [user.id]);
+      const recoveryEmail = recovery.rows[0]?.recovery_email as string | undefined;
+      const recipients = [...new Set([user.email, ...(recoveryEmail ? [recoveryEmail] : [])])];
       const baseUrl = (process.env.PUBLIC_APP_URL ?? process.env.APP_BASE_URL ?? "https://dallyletterelidemslearningplatforme-six.vercel.app").replace(/\/$/, "");
       await sendEmail({
-        to: [user.email],
+        to: recipients,
         subject: "Reset your Dallyletter Elidems password",
         text: "A password reset was requested for your Dallyletter Elidems account. Open this link within 30 minutes to choose a new password: " + baseUrl + "/reset-password?token=" + encodeURIComponent(resetToken) + "\n\nIf you did not request this, you can ignore this email.",
       });
@@ -283,6 +305,10 @@ router.post("/auth/password-reset/confirm", async (req, res): Promise<void> => {
   const newPassword = typeof req.body?.newPassword === "string" ? req.body.newPassword : "";
   if (!/^[a-f0-9]{64}$/i.test(token) || newPassword.length < 8 || newPassword.length > 256) {
     res.status(400).json({ error: "A valid reset token and a password of at least 8 characters are required." }); return;
+  }
+  const ipAddress = req.ip || "unknown";
+  if (await consumeAuthAttempt("password-reset-confirm", "all-tokens", ipAddress, 10, 15 * 60 * 1000, 15 * 60 * 1000)) {
+    res.status(429).json({ error: "Too many password reset attempts. Please try again later." }); return;
   }
   const changed = await consumePasswordResetToken(token, await hashPassword(newPassword));
   if (!changed) { res.status(400).json({ error: "This password reset link is invalid or expired. Request a new one." }); return; }

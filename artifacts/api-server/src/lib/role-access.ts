@@ -1,4 +1,8 @@
-export type RoleLikeUser = { role: unknown; isManager?: unknown };
+export type RoleLikeUser = {
+  role: unknown;
+  isManager?: unknown;
+  teacherApplicationStatus?: unknown;
+};
 
 export function normalizeRole(role: unknown): string {
   return typeof role === "string" ? role.trim().toLowerCase().replace(/[ -]+/g, "_") : "";
@@ -9,14 +13,22 @@ export function isOwnerRole(role: unknown): boolean {
   return ["owner", "admin", "platform_owner"].includes(normalizeRole(role));
 }
 
+function isTeacherPendingReview(user: RoleLikeUser): boolean {
+  return normalizeRole(user.role) === "teacher" && user.teacherApplicationStatus === "pending_review";
+}
+
 function hasManagerStaffRole(user: RoleLikeUser): boolean {
   const role = normalizeRole(user.role);
-  return user.isManager === true && ["teacher", "manager", "senior_manager"].includes(role);
+  return user.isManager === true
+    && !isTeacherPendingReview(user)
+    && ["teacher", "manager", "senior_manager"].includes(role);
 }
 
 export function canManageAcademicContent(user: RoleLikeUser): boolean {
   const role = normalizeRole(user.role);
-  return role === "teacher" || isOwnerRole(role) || hasManagerStaffRole(user);
+  if (isOwnerRole(role)) return true;
+  if (role === "teacher") return !isTeacherPendingReview(user);
+  return hasManagerStaffRole(user);
 }
 
 export function canAccessManager(user: RoleLikeUser): boolean {
@@ -25,7 +37,9 @@ export function canAccessManager(user: RoleLikeUser): boolean {
 
 export function canUseStaffAI(user: RoleLikeUser): boolean {
   const role = normalizeRole(user.role);
-  return ["owner", "admin", "platform_owner", "teacher"].includes(role) || hasManagerStaffRole(user);
+  if (isOwnerRole(role)) return true;
+  if (role === "teacher") return !isTeacherPendingReview(user);
+  return hasManagerStaffRole(user);
 }
 
 export type AuthRequestLike = { currentUser?: RoleLikeUser | null };

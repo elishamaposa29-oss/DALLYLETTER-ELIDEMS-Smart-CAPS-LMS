@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { getApiUrl } from "@workspace/api-client-react";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
@@ -14,6 +14,25 @@ export function ProfileDetailsEditor() {
   const [grade,setGrade]=useState(user?.grade||"");
   const [subject,setSubject]=useState(user?.subject||"");
   const [busy,setBusy]=useState(false);
+  const [recoveryEmail,setRecoveryEmail]=useState("");
+  const [recoveryPhone,setRecoveryPhone]=useState("");
+  const [securityQuestion,setSecurityQuestion]=useState("");
+  const [securityAnswer,setSecurityAnswer]=useState("");
+  const [recoveryCode,setRecoveryCode]=useState("");
+  const [recoveryVerified,setRecoveryVerified]=useState(false);
+  const [recoveryBusy,setRecoveryBusy]=useState(false);
+  const isPrivileged=["owner","admin","platform_owner"].includes(String(user?.role||"").trim().toLowerCase());
+
+  useEffect(()=>{
+    let active=true;
+    if(!user||!token||isPrivileged)return;
+    fetch(getApiUrl("/api/users/me/recovery-profile"),{headers:{Authorization:"Bearer "+token}})
+      .then(async r=>{if(!r.ok)throw new Error("Could not load recovery profile");return r.json();})
+      .then(d=>{if(!active)return;setRecoveryEmail(d.recovery_email||"");setRecoveryPhone(d.recovery_phone||"");setSecurityQuestion(d.security_question||"");setRecoveryVerified(Boolean(d.recovery_email_verified_at));})
+      .catch(()=>undefined);
+    return()=>{active=false;};
+  },[user?.id,token,isPrivileged]);
+
   const save=async()=>{
     if(!user||!token||busy)return;
     if(!name.trim()){Alert.alert("Name required","Enter your name before saving.");return;}
@@ -28,7 +47,48 @@ export function ProfileDetailsEditor() {
     }catch(e){Alert.alert("Update failed",e instanceof Error?e.message:"Please try again.");}
     finally{setBusy(false);}
   };
-  const field=(label:string,value:string,set:(v:string)=>void,placeholder:string)=> <View style={{marginTop:12}}><Text style={{color:colors.foreground,fontSize:13,fontWeight:"700",marginBottom:6}}>{label}</Text><TextInput value={value} onChangeText={set} placeholder={placeholder} placeholderTextColor={colors.mutedForeground} style={{height:46,borderWidth:1,borderColor:colors.border,borderRadius:10,paddingHorizontal:12,color:colors.foreground,backgroundColor:colors.card}}/></View>;
+
+  const saveRecovery=async()=>{
+    if(!token||recoveryBusy)return;
+    setRecoveryBusy(true);
+    try{
+      const r=await fetch(getApiUrl("/api/users/me/recovery-profile"),{method:"PATCH",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({recoveryEmail,recoveryPhone,securityQuestion,securityAnswer})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.error||"Could not save recovery options.");
+      setSecurityAnswer("");
+      setRecoveryVerified(Boolean(d.recoveryEmailVerified));
+      Alert.alert("Recovery options saved",d.message||"Verify your alternate email before it can be used for password recovery.");
+    }catch(e){Alert.alert("Recovery options failed",e instanceof Error?e.message:"Please try again.");}
+    finally{setRecoveryBusy(false);}
+  };
+
+  const requestCode=async()=>{
+    if(!token)return;
+    setRecoveryBusy(true);
+    try{
+      const r=await fetch(getApiUrl("/api/users/me/recovery-email/request-verification"),{method:"POST",headers:{Authorization:"Bearer "+token}});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.error||"Could not send verification code.");
+      Alert.alert("Check your alternate email",d.message||"A verification code was sent.");
+    }catch(e){Alert.alert("Verification unavailable",e instanceof Error?e.message:"Please try again.");}
+    finally{setRecoveryBusy(false);}
+  };
+
+  const confirmCode=async()=>{
+    if(!token||!recoveryCode.trim())return;
+    setRecoveryBusy(true);
+    try{
+      const r=await fetch(getApiUrl("/api/users/me/recovery-email/confirm"),{method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({code:recoveryCode.trim()})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.error||"Could not verify email.");
+      setRecoveryVerified(true);setRecoveryCode("");
+      Alert.alert("Recovery email verified","Password recovery links can now also be sent to this address.");
+    }catch(e){Alert.alert("Verification failed",e instanceof Error?e.message:"Please try again.");}
+    finally{setRecoveryBusy(false);}
+  };
+
+  const field=(label:string,value:string,set:(v:string)=>void,placeholder:string,multiline=false)=><View style={{marginTop:12}}><Text style={{color:colors.foreground,fontSize:13,fontWeight:"700",marginBottom:6}}>{label}</Text><TextInput value={value} onChangeText={set} placeholder={placeholder} placeholderTextColor={colors.mutedForeground} multiline={multiline} textAlignVertical={multiline?"top":"center"} style={{minHeight:multiline?64:46,borderWidth:1,borderColor:colors.border,borderRadius:10,paddingHorizontal:12,paddingVertical:multiline?10:0,color:colors.foreground,backgroundColor:colors.card}}/></View>;
+
   return <View style={{marginHorizontal:16,marginBottom:18,borderWidth:1,borderColor:colors.border,borderRadius:14,padding:14,backgroundColor:colors.card}}>
     <TouchableOpacity onPress={()=>{setName(user?.name||"");setPhone(user?.phone||"");setGrade(user?.grade||"");setSubject(user?.subject||"");setOpen(!open);}} accessibilityRole="button" style={{flexDirection:"row",alignItems:"center",gap:10}}>
       <Feather name="edit-3" size={17} color={colors.primary}/><Text style={{flex:1,color:colors.foreground,fontWeight:"700"}}>Edit profile details</Text><Feather name={open?"chevron-up":"chevron-down"} size={18} color={colors.mutedForeground}/>
@@ -41,6 +101,21 @@ export function ProfileDetailsEditor() {
       <TouchableOpacity onPress={()=>void save()} disabled={busy} style={{height:46,borderRadius:10,marginTop:16,backgroundColor:colors.primary,alignItems:"center",justifyContent:"center",flexDirection:"row",gap:8}}>
         {busy?<ActivityIndicator color="#fff"/>:null}<Text style={{color:"#fff",fontWeight:"700"}}>{busy?"Saving…":"Save changes"}</Text>
       </TouchableOpacity>
+    </View>:null}
+    {!isPrivileged?<View style={{marginTop:18,paddingTop:16,borderTopWidth:1,borderTopColor:colors.border}}>
+      <Text style={{fontSize:16,fontWeight:"700",color:colors.foreground}}>Account recovery options</Text>
+      <Text style={{fontSize:12,color:colors.mutedForeground,marginTop:4}}>Add a second email and a security question. Security answers are stored as hashes; alternate email must be verified before it receives recovery links. Phone verification requires an SMS provider and is not yet enabled.</Text>
+      {field("Alternate Google/email address",recoveryEmail,setRecoveryEmail,"you@example.com")}
+      {field("Recovery phone number",recoveryPhone,setRecoveryPhone,"Include country code")}
+      {field("Security question",securityQuestion,setSecurityQuestion,"Choose a question only you can answer")}
+      {field("Security answer",securityAnswer,setSecurityAnswer,"Answer (saved as a hash)")}
+      <TouchableOpacity onPress={()=>void saveRecovery()} disabled={recoveryBusy} style={{height:44,borderRadius:10,marginTop:14,backgroundColor:colors.primary,alignItems:"center",justifyContent:"center",flexDirection:"row",gap:8}}>
+        {recoveryBusy?<ActivityIndicator color="#fff"/>:null}<Text style={{color:"#fff",fontWeight:"700"}}>{recoveryBusy?"Saving…":"Save recovery options"}</Text>
+      </TouchableOpacity>
+      <Text style={{fontSize:12,color:recoveryVerified?"#15803d":colors.mutedForeground,marginTop:10}}>{recoveryVerified?"Alternate email verified":"Alternate email not verified"}</Text>
+      <TouchableOpacity onPress={()=>void requestCode()} disabled={recoveryBusy||!recoveryEmail.trim()} style={{paddingVertical:10}}><Text style={{color:colors.primary,fontWeight:"700"}}>Send email verification code</Text></TouchableOpacity>
+      {field("6-digit email verification code",recoveryCode,setRecoveryCode,"123456")}
+      <TouchableOpacity onPress={()=>void confirmCode()} disabled={recoveryBusy||recoveryCode.trim().length!==6} style={{paddingVertical:10}}><Text style={{color:colors.primary,fontWeight:"700"}}>Verify alternate email</Text></TouchableOpacity>
     </View>:null}
   </View>;
 }

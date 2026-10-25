@@ -8,6 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { ProfileAvatarEditor } from "@/components/ProfileAvatarEditor";
 import { ProfileDetailsEditor } from "@/components/ProfileDetailsEditor";
+import { TeacherCvEditor } from "@/components/TeacherCvEditor";
 
 export default function TeacherProfile() {
   const colors = useColors();
@@ -74,6 +75,7 @@ export default function TeacherProfile() {
       </View>
 
       <ProfileDetailsEditor />
+      <TeacherCvEditor />
 
       <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
         <Text style={s.sectionTitle}>My Stats</Text>

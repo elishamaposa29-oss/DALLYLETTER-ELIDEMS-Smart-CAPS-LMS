@@ -42,6 +42,9 @@ const isTrustedVercelOrigin = (origin: string) => {
 };
 
 app.disable("x-powered-by");
+// Render terminates TLS at its reverse proxy; trust only the nearest proxy hop
+// so IP-based authentication throttles use the client address rather than a shared proxy address.
+app.set("trust proxy", 1);
 
 app.use(
   pinoHttp({

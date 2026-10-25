@@ -27,6 +27,8 @@ export async function ensureAuthSessionSchema(): Promise<void> {
   )`);
   await pool.query("CREATE INDEX IF NOT EXISTS password_reset_tokens_user_idx ON password_reset_tokens(user_id)");
   await pool.query("CREATE INDEX IF NOT EXISTS password_reset_tokens_expiry_idx ON password_reset_tokens(expires_at)");
+  await pool.query(`CREATE TABLE IF NOT EXISTS auth_rate_limits (bucket_key text PRIMARY KEY, window_started_at timestamptz NOT NULL, attempts integer NOT NULL DEFAULT 0, blocked_until timestamptz)`);
+  await pool.query("CREATE INDEX IF NOT EXISTS auth_rate_limits_blocked_idx ON auth_rate_limits(blocked_until)");
 }
 
 export async function createAuthSession(token: string, userId: number): Promise<void> {
@@ -81,6 +83,84 @@ export async function consumePasswordResetToken(token: string, passwordHash: str
     await client.query("UPDATE auth_sessions SET revoked_at = COALESCE(revoked_at, now()) WHERE user_id = $1", [userId]);
     await client.query("COMMIT");
     return true;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
+const AUTH_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
+const AUTH_ATTEMPT_BLOCK_MS = 15 * 60 * 1000;
+
+/** Store only a digest of the scope, IP and account identifier; never persist raw credentials or email/IP. */
+function authAttemptKey(scope: string, identity: string, ipAddress: string): string {
+  return crypto.createHash("sha256")
+    .update([scope, identity.trim().toLowerCase(), ipAddress.trim()].join("\0"))
+    .digest("hex");
+}
+
+export async function consumeAuthAttempt(
+  scope: string,
+  identity: string,
+  ipAddress: string,
+  maxAttempts = 10,
+  windowMs = AUTH_ATTEMPT_WINDOW_MS,
+  blockMs = AUTH_ATTEMPT_BLOCK_MS,
+): Promise<boolean> {
+  const key = authAttemptKey(scope, identity, ipAddress);
+  const result = await pool.query(
+    `INSERT INTO auth_rate_limits (bucket_key, window_started_at, attempts, blocked_until)
+     VALUES ($1, now(), 1, NULL)
+     ON CONFLICT (bucket_key) DO UPDATE SET
+       window_started_at = CASE
+         WHEN auth_rate_limits.window_started_at <= now() - ($2 * interval '1 millisecond') THEN now()
+         ELSE auth_rate_limits.window_started_at
+       END,
+       attempts = CASE
+         WHEN auth_rate_limits.window_started_at <= now() - ($2 * interval '1 millisecond') THEN 1
+         ELSE auth_rate_limits.attempts + 1
+       END,
+       blocked_until = CASE
+         WHEN auth_rate_limits.blocked_until > now() THEN auth_rate_limits.blocked_until
+         WHEN auth_rate_limits.window_started_at <= now() - ($2 * interval '1 millisecond') THEN NULL
+         WHEN auth_rate_limits.attempts + 1 >= $3 THEN now() + ($4 * interval '1 millisecond')
+         ELSE auth_rate_limits.blocked_until
+       END
+     RETURNING blocked_until`,
+    [key, windowMs, maxAttempts, blockMs],
+  );
+  return result.rows[0]?.blocked_until != null
+    && new Date(result.rows[0].blocked_until).getTime() > Date.now();
+}
+
+export async function clearAuthAttempts(scope: string, identity: string, ipAddress: string): Promise<void> {
+  await pool.query(
+    "DELETE FROM auth_rate_limits WHERE bucket_key = $1",
+    [authAttemptKey(scope, identity, ipAddress)],
+  );
+}
+
+
+/** Change a password and revoke every session atomically. */
+export async function updatePasswordAndRevokeSessions(userId: number, passwordHash: string): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const updated = await client.query(
+      "UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2",
+      [passwordHash, userId],
+    );
+    if (updated.rowCount !== 1) {
+      throw new Error("User no longer exists while changing password");
+    }
+    await client.query(
+      "UPDATE auth_sessions SET revoked_at = COALESCE(revoked_at, now()) WHERE user_id = $1",
+      [userId],
+    );
+    await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
     throw error;
