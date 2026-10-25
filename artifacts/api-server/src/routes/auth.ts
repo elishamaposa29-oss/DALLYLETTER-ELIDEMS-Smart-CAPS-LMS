@@ -165,6 +165,10 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     if (!passwordVerification.valid) {
       res.status(401).json({ error: "Invalid email or password" }); return;
     }
+    if (user.isBlocked) {
+      res.status(403).json({ error: "Your account has been blocked. Please contact the school administrator." }); return;
+    }
+
     if (passwordVerification.needsRehash) {
       // Upgrade legacy fixed-salt hashes after a successful login. Do not block
       // a valid login if a transient rehash write fails; retry on the next login.
@@ -175,10 +179,6 @@ router.post("/auth/login", async (req, res): Promise<void> => {
         const { logger } = await import("../lib/logger");
         logger.warn({ userId: user.id, error: upgradeError instanceof Error ? upgradeError.message.slice(0, 200) : "Unknown rehash error" }, "Legacy password hash upgrade failed; will retry on next login");
       }
-    }
-
-    if (user.isBlocked) {
-      res.status(403).json({ error: "Your account has been blocked. Please contact the school administrator." }); return;
     }
 
     const token = generateToken(user.id);
