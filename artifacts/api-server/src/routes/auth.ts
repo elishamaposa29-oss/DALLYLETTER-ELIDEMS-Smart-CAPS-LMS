@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { RegisterUserBody, LoginUserBody } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth-middleware";
+import crypto from "crypto";
 import { generateSignedToken, parseSignedToken } from "../lib/signed-token";
 
 const router: IRouter = Router();
