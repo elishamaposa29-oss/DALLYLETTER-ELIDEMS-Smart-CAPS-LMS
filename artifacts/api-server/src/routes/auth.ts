@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { RegisterUserBody, LoginUserBody } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth-middleware";
-import crypto from "crypto";
+import { generateSignedToken, parseSignedToken } from "../lib/signed-token";
 
 const router: IRouter = Router();
 
@@ -23,26 +23,12 @@ function hashPassword(password: string): string {
 }
 
 function generateToken(userId: number): string {
-  const payload = JSON.stringify({ userId, ts: Date.now() });
-  const encodedPayload = Buffer.from(payload).toString("base64url");
-  const signature = crypto.createHmac("sha256", getAuthSecret()).update(encodedPayload).digest("hex");
-  return `${encodedPayload}.${signature}`;
+  return generateSignedToken(userId, getAuthSecret());
 }
 
 function parseToken(token: string): { userId: number } | null {
   try {
-    const [encodedPayload, signature] = token.split(".");
-    if (!encodedPayload || !signature) {
-      return null;
-    }
-
-    const expectedSignature = crypto.createHmac("sha256", getAuthSecret()).update(encodedPayload).digest("hex");
-    if (expectedSignature !== signature) {
-      return null;
-    }
-
-    const payload = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8"));
-    return { userId: payload.userId };
+    return parseSignedToken(token, getAuthSecret());
   } catch {
     return null;
   }
