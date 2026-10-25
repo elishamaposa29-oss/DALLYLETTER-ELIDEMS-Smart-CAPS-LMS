@@ -278,6 +278,17 @@ router.get("/users/me/teacher-cv", requireAuth, async (req, res): Promise<void> 
   res.json(result.rows[0] ?? { cv: {}, updated_at: null });
 });
 
+router.get("/users/:id/teacher-cv", requireAuth, async (req, res): Promise<void> => {
+  const actor = req.currentUser!;
+  if (!isOwnerRole(actor.role)) { res.status(403).json({ error: "Only the owner may review teacher CVs." }); return; }
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid user id." }); return; }
+  await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, cv jsonb NOT NULL DEFAULT '{}'::jsonb, updated_at timestamptz NOT NULL DEFAULT now())");
+  const result = await pool.query("SELECT cv, updated_at FROM teacher_profiles WHERE user_id = $1", [id]);
+  if (!result.rows.length) { res.status(404).json({ error: "Teacher CV not found." }); return; }
+  res.json(result.rows[0]);
+});
+
 router.patch("/users/me/teacher-cv", requireAuth, async (req, res): Promise<void> => {
   const actor = req.currentUser!;
   if (actor.role !== "teacher") { res.status(403).json({ error: "Teacher account required" }); return; }
