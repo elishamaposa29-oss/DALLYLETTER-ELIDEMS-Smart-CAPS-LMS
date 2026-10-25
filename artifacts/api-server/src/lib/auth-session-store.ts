@@ -142,3 +142,29 @@ export async function clearAuthAttempts(scope: string, identity: string, ipAddre
     [authAttemptKey(scope, identity, ipAddress)],
   );
 }
+
+
+/** Change a password and revoke every session atomically. */
+export async function updatePasswordAndRevokeSessions(userId: number, passwordHash: string): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const updated = await client.query(
+      "UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2",
+      [passwordHash, userId],
+    );
+    if (updated.rowCount !== 1) {
+      throw new Error("User no longer exists while changing password");
+    }
+    await client.query(
+      "UPDATE auth_sessions SET revoked_at = COALESCE(revoked_at, now()) WHERE user_id = $1",
+      [userId],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
