@@ -165,7 +165,8 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     const email = parsed.data.email.trim().toLowerCase();
     const password = parsed.data.password;
     const ipAddress = req.ip || "unknown";
-    if (await consumeAuthAttempt("login", email, ipAddress, 8, 15 * 60 * 1000, 15 * 60 * 1000)) {
+    if (await consumeAuthAttempt("login", email, ipAddress, 8, 15 * 60 * 1000, 15 * 60 * 1000)
+      || await consumeAuthAttempt("login-ip", "all-accounts", ipAddress, 40, 15 * 60 * 1000, 15 * 60 * 1000)) {
       res.status(429).json({ error: "Too many sign-in attempts. Please wait 15 minutes and try again." }); return;
     }
     const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
@@ -193,6 +194,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     }
 
     await clearAuthAttempts("login", email, ipAddress);
+    await clearAuthAttempts("login-ip", "all-accounts", ipAddress);
     const token = generateToken(user.id);
     await createAuthSession(token, user.id);
     const { passwordHash: _, ...safeUser } = user;
@@ -263,7 +265,8 @@ router.post("/auth/password-reset/request", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Enter a valid email address." }); return;
   }
   const ipAddress = req.ip || "unknown";
-  if (await consumeAuthAttempt("password-reset", email, ipAddress, 5, 60 * 60 * 1000, 60 * 60 * 1000)) {
+  if (await consumeAuthAttempt("password-reset", email, ipAddress, 5, 60 * 60 * 1000, 60 * 60 * 1000)
+      || await consumeAuthAttempt("password-reset-ip", "all-accounts", ipAddress, 20, 60 * 60 * 1000, 60 * 60 * 1000)) {
     res.status(429).json({ error: "Too many password recovery requests. Please try again later." }); return;
   }
   if (!isEmailConfigured()) {
