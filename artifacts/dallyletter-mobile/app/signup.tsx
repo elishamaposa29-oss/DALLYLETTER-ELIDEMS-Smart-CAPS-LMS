@@ -46,8 +46,8 @@ export default function SignupScreen() {
       setError("Enter your name, email and password.");
       return;
     }
-    if (password.length < 6) {
-      setError("Use a password with at least 6 characters.");
+    if (password.length < 8 || password.length > 256) {
+      setError("Use a password between 8 and 256 characters.");
       return;
     }
     registerMutation.mutate({ data: { name: name.trim(), email: email.trim().toLowerCase(), password, role } });
@@ -100,7 +100,7 @@ export default function SignupScreen() {
           <Text style={s.label}>Email</Text>
           <TextInput style={s.input} value={email} onChangeText={setEmail} placeholder="you@example.com" placeholderTextColor={colors.mutedForeground} keyboardType="email-address" autoCapitalize="none" autoComplete="email" />
           <Text style={s.label}>Password</Text>
-          <TextInput style={s.input} value={password} onChangeText={setPassword} placeholder="At least 6 characters" placeholderTextColor={colors.mutedForeground} secureTextEntry autoComplete="new-password" />
+          <TextInput style={s.input} value={password} onChangeText={setPassword} placeholder="At least 8 characters" placeholderTextColor={colors.mutedForeground} secureTextEntry autoComplete="new-password" />
           {role === "teacher" ? <Text style={s.hint}>Teacher accounts may require approval before teaching features are enabled.</Text> : null}
           {error ? <Text accessibilityRole="alert" style={s.error}>{error}</Text> : null}
           <TouchableOpacity accessibilityRole="button" style={[s.primaryButton, registerMutation.isPending && { opacity: 0.7 }]} onPress={submit} disabled={registerMutation.isPending}>

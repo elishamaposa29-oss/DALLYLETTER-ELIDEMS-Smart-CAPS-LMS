@@ -15,7 +15,7 @@ import { RegisterUserBodyRole } from "@workspace/api-client-react";
 const registerSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters" }),
   email: z.string().email({ message: "Invalid email address" }),
-  password: z.string().min(6, { message: "Password must be at least 6 characters" }),
+  password: z.string().min(8, { message: "Password must be at least 8 characters" }).max(256, { message: "Password cannot exceed 256 characters" }),
   role: z.enum([RegisterUserBodyRole.student, RegisterUserBodyRole.teacher]),
   grade: z.string().optional(),
   subject: z.string().optional(),
@@ -179,7 +179,7 @@ export default function Register() {
                       <FormItem>
                         <FormLabel className="text-gray-700 font-medium">Password</FormLabel>
                         <FormControl>
-                          <Input type="password" placeholder="Min. 6 characters" className="h-11 border-gray-200 bg-gray-50 focus:bg-white transition-colors" {...field} />
+                          <Input type="password" placeholder="Min. 8 characters" className="h-11 border-gray-200 bg-gray-50 focus:bg-white transition-colors" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

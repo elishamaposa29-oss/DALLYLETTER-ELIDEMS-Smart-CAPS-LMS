@@ -230,8 +230,8 @@ router.post("/auth/change-password", requireAuth, async (req, res): Promise<void
   if (!currentPassword || !newPassword) {
     res.status(400).json({ error: "currentPassword and newPassword are required" }); return;
   }
-  if (newPassword.length < 6) {
-    res.status(400).json({ error: "New password must be at least 6 characters" }); return;
+  if (newPassword.length < 8 || newPassword.length > 256) {
+    res.status(400).json({ error: "New password must be between 8 and 256 characters" }); return;
   }
 
   // Re-fetch user with password hash

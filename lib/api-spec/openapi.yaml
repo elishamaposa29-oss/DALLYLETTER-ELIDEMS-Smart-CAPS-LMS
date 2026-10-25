@@ -881,6 +881,8 @@ components:
           type: string
         password:
           type: string
+          minLength: 8
+          maxLength: 256
         name:
           type: string
         role:
@@ -905,6 +907,7 @@ components:
           type: string
         password:
           type: string
+          maxLength: 256
       required:
         - email
         - password
