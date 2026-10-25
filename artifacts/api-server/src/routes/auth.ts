@@ -115,6 +115,11 @@ router.post("/auth/register", async (req, res): Promise<void> => {
 
   const { password, name, role, grade, subject, phone } = parsed.data;
   const email = parsed.data.email.trim().toLowerCase();
+  const ipAddress = req.ip || "unknown";
+  if (await consumeAuthAttempt("register", email, ipAddress, 5, 60 * 60 * 1000, 60 * 60 * 1000)
+      || await consumeAuthAttempt("register-ip", "all-accounts", ipAddress, 20, 60 * 60 * 1000, 60 * 60 * 1000)) {
+    res.status(429).json({ error: "Too many registration attempts. Please try again later." }); return;
+  }
   // Public registration cannot create privileged accounts. Staff roles require an
   // explicit owner-controlled promotion/review workflow after signup.
   if (!isAllowedPublicRegistrationRole(role)) {
@@ -134,6 +139,8 @@ router.post("/auth/register", async (req, res): Promise<void> => {
       teacherReviewDeadline: role === "teacher" ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) : null,
     }).returning();
 
+    await clearAuthAttempts("register", email, ipAddress);
+    await clearAuthAttempts("register-ip", "all-accounts", ipAddress);
     const token = generateToken(user.id);
     await createAuthSession(token, user.id);
     const { passwordHash: _, ...safeUser } = user;
