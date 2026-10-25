@@ -131,8 +131,13 @@ router.get("/:id", requireAuth, async (req, res): Promise<void> => {
   if (user.role !== "student" && !canManageAcademicContent(user)) { res.status(403).json({ error: "Assignment access required" }); return; }
   const [assignment] = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, parseInt(String(req.params.id))));
   if (!assignment) { res.status(404).json({ error: "Not found" }); return; }
+  // Do not expose another teacher's assignment or learner submissions through the detail endpoint.
+  // The list screen filters client-side, but this API check is the actual authorization boundary.
+  if (canManageAcademicContent(user) && !isOwnerRole(user.role) && !user.isManager && assignment.teacherId !== user.id) {
+    res.status(403).json({ error: "You can only access your own assignments" }); return;
+  }
   if (user.role === "student" && !isVisibleToStudent(assignment, user.grade)) { res.status(404).json({ error: "Not found" }); return; }
-    const submissions = user.role === "student"
+  const submissions = user.role === "student"
     ? await db.select().from(assignmentSubmissionsTable).where(and(eq(assignmentSubmissionsTable.assignmentId, assignment.id), eq(assignmentSubmissionsTable.studentId, user.id)))
     : await db.select().from(assignmentSubmissionsTable).where(eq(assignmentSubmissionsTable.assignmentId, assignment.id));
   res.json({ ...assignment, ...(user.role === "student" && assignment.referenceMaterialHidden ? { attachmentUrl: null } : {}), submissions });
@@ -252,6 +257,9 @@ router.get("/:id/submissions", requireAuth, async (req, res): Promise<void> => {
   }
   const [assignment] = await db.select({ teacherId: assignmentsTable.teacherId }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
   if (!assignment) { res.status(404).json({ error: "Not found" }); return; }
+  if (!isOwnerRole(user.role) && !user.isManager && assignment.teacherId !== user.id) {
+    res.status(403).json({ error: "You can only view submissions for your own assignments" }); return;
+  }
   const subs = await db.select().from(assignmentSubmissionsTable).where(eq(assignmentSubmissionsTable.assignmentId, assignmentId));
   res.json(subs);
 });
