@@ -5,6 +5,7 @@ import { RegisterUserBody, LoginUserBody } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth-middleware";
 import { hashPassword, verifyPassword } from "../lib/password-hash";
 import { generateSignedToken, parseSignedToken } from "../lib/signed-token";
+import { isAllowedPublicRegistrationRole } from "../lib/registration-policy";
 
 const router: IRouter = Router();
 
@@ -113,7 +114,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
   const { email, password, name, role, grade, subject, phone } = parsed.data;
   // Public registration cannot create privileged accounts. Staff roles require an
   // explicit owner-controlled promotion/review workflow after signup.
-  if (typeof role !== "string" || !["student", "teacher"].includes(role.trim().toLowerCase())) {
+  if (!isAllowedPublicRegistrationRole(role)) {
     res.status(403).json({ error: "This role cannot be created through public registration." });
     return;
   }
