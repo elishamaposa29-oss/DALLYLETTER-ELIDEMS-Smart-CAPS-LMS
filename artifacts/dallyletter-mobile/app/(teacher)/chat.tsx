@@ -24,7 +24,7 @@ export default function TeacherChat() {
   const sendMutation = useSendMessage({
     mutation: {
       onSuccess: () => { setText(""); setNotice(""); refetch(); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); },
-      onError: (error: Error) => { setNotice(error.message || "Message could not be sent."); },
+      onError: (error: unknown) => { setNotice(error instanceof Error ? error.message : "Message could not be sent."); },
     },
   });
 
