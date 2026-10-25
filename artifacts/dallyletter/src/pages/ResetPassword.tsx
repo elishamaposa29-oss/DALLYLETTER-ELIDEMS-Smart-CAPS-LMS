@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { getApiUrl } from "@workspace/api-client-react";
 
 export default function ResetPassword() {
-  const [location,setLocation]=useLocation();
+  const [,setLocation]=useLocation();
   const token=typeof window!=="undefined"?new URLSearchParams(window.location.search).get("token")||"":"";
   const [password,setPassword]=useState("");
   const [confirm,setConfirm]=useState("");
