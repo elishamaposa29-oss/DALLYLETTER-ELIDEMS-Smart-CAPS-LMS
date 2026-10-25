@@ -6,7 +6,7 @@ import { generateSignedToken, parseSignedToken } from "./signed-token.js";
 const secret = "unit-test-secret-that-is-not-used-in-production";
 
 test("signed token round-trips a positive user id", () => {
-  const token = generateSignedToken(42, secret, 1700000000000);
+  const token = generateSignedToken(42, secret, Date.now() - 1000);
   assert.deepEqual(parseSignedToken(token, secret), { userId: 42 });
 });
 
@@ -36,4 +36,12 @@ test("rejects missing or invalid timestamp even when correctly signed", () => {
     const signature = crypto.createHmac("sha256", secret).update(payload).digest("hex");
     assert.equal(parseSignedToken(`${payload}.${signature}`, secret), null);
   }
+});
+
+test("rejects expired tokens and timestamps too far in the future", () => {
+  const now = Date.now();
+  const expired = generateSignedToken(42, secret, now - 90 * 24 * 60 * 60 * 1000 - 1);
+  const future = generateSignedToken(42, secret, now + 5 * 60 * 1000 + 1);
+  assert.equal(parseSignedToken(expired, secret, now), null);
+  assert.equal(parseSignedToken(future, secret, now), null);
 });
