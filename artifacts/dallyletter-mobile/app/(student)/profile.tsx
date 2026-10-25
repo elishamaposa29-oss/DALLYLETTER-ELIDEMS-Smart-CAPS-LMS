@@ -124,7 +124,6 @@ export default function StudentProfile() {
     <View style={s.container}>
       <View style={s.header}>
         <ProfileAvatarEditor />
-        <ProfileDetailsEditor />
         <Text style={s.name}>{user?.name}</Text>
         <Text style={s.email}>{user?.email}</Text>
         <View style={s.roleBadge}>
@@ -132,6 +131,8 @@ export default function StudentProfile() {
           <Text style={s.roleText}>{user?.isPrefect ? "Prefect Student" : "Student"}</Text>
         </View>
       </View>
+
+      <ProfileDetailsEditor />
 
       <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
         <View style={s.section}>

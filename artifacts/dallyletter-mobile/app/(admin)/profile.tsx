@@ -73,7 +73,6 @@ export default function AdminProfile() {
     <View style={s.container}>
       <View style={s.header}>
         <ProfileAvatarEditor />
-        <ProfileDetailsEditor />
         <Text style={s.name}>{user?.name}</Text>
         <Text style={s.email}>{user?.email}</Text>
         <View style={s.ownerBadge}>
@@ -81,6 +80,8 @@ export default function AdminProfile() {
           <Text style={s.ownerText}>Platform Owner</Text>
         </View>
       </View>
+
+      <ProfileDetailsEditor />
 
       <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
         <Text style={s.sectionTitle}>Platform Overview</Text>

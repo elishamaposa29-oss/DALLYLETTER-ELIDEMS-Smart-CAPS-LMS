@@ -175,6 +175,9 @@ export default function Login() {
                       </FormItem>
                     )}
                   />
+                  <div className="flex justify-end -mt-2">
+                    <Link href="/forgot-password" className="text-sm font-semibold text-[#0a1628] hover:underline">Forgot password?</Link>
+                  </div>
                   <Button
                     type="submit"
                     className="w-full h-12 text-base font-semibold bg-[#0a1628] hover:bg-[#0d1e38] text-white rounded-xl shadow-lg shadow-[#0a1628]/20 mt-2"
