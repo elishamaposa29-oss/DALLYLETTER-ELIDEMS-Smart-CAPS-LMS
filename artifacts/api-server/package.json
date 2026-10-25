@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:authorization": "node ./scripts/test-authorization.mjs",
     "test:offline-queue": "node ./scripts/test-offline-queue.mjs",
-    "test:assignment-submission": "node ./scripts/test-assignment-submission.mjs"
+    "test:assignment-submission": "node ./scripts/test-assignment-submission.mjs",
+    "test:media-auth": "node ./scripts/test-media-auth.mjs"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",
