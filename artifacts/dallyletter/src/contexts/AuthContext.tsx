@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 import { useGetCurrentUser } from "@workspace/api-client-react";
 import type { User } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
+import { getApiUrl } from "@workspace/api-client-react";
 
 interface AuthContextType {
   user: User | null | undefined;
@@ -40,6 +41,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [token]);
 
   const login = (newToken: string, authenticatedUser: User) => {
+    const previousToken = token;
+    if (previousToken && previousToken !== newToken) {
+      void fetch(getApiUrl("/api/auth/logout"), { method: "POST", headers: { Authorization: "Bearer " + previousToken } }).catch(() => undefined);
+    }
     // Persist the credential synchronously before triggering any authenticated query.
     // The login response already contains the trusted user record; use it immediately
     // so route guards do not redirect during the first /auth/me request.
@@ -55,6 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    if (token) void fetch(getApiUrl("/api/auth/logout"), { method: "POST", headers: { Authorization: "Bearer " + token } }).catch(() => undefined);
     setSessionUser(null);
     setToken(null);
     setLocation("/login");
