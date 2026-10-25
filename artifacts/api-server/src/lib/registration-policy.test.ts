@@ -8,7 +8,7 @@ test("public signup allows learner accounts and teacher applications only", () =
 });
 
 test("public signup rejects privileged, prefect, malformed, and unknown roles", () => {
-  for (const role of ["owner", "admin", "platform_owner", "manager", "senior_manager", "prefect", "student_manager", "", " Student ", null, 1, {}, true]) {
+  for (const role of ["owner", "admin", "platform_owner", "manager", "senior_manager", "prefect", "student_manager", "", " Student ", "student ", " teacher", "Teacher", null, 1, {}, true]) {
     assert.equal(isAllowedPublicRegistrationRole(role), false, String(role));
   }
 });
