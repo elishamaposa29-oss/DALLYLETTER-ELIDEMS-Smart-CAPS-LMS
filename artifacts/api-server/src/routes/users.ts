@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import crypto from "node:crypto";
 import { eq } from "drizzle-orm";
 import multer from "multer";
 import { db, usersTable, pool } from "@workspace/db";
@@ -10,7 +11,9 @@ import {
 import { requireAuth, requireOwner, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, persistUploadedMedia, removeStoredMedia } from "../lib/media-storage";
 import { canReadPrivateUserProfile } from "../lib/profile-access-policy";
-import { revokeUserSessions } from "../lib/auth-session-store";
+import { revokeUserSessions, consumeAuthAttempt } from "../lib/auth-session-store";
+import { hashPassword } from "../lib/password-hash";
+import { sendEmail, isEmailConfigured } from "../lib/email-service";
 
 const router: IRouter = Router();
 
@@ -99,6 +102,78 @@ router.patch("/users/:id", requireAuth, async (req, res): Promise<void> => {
   if (body.data.email != null) await revokeUserSessions(params.data.id);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   res.json({ ...user, createdAt: user.createdAt.toISOString() });
+});
+
+// Recovery contacts are private. Only verified alternate email may receive recovery links.
+async function ensureRecoveryProfileSchema(): Promise<void> {
+  await pool.query("CREATE TABLE IF NOT EXISTS account_recovery_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, recovery_email text, recovery_email_verified_at timestamptz, recovery_phone text, recovery_phone_verified_at timestamptz, security_question text, security_answer_hash text, verification_code_hash text, verification_expires_at timestamptz, updated_at timestamptz NOT NULL DEFAULT now())");
+}
+
+function canManageOwnRecoveryProfile(role: unknown): boolean {
+  return !isOwnerRole(role);
+}
+
+router.get("/users/me/recovery-profile", requireAuth, async (req, res): Promise<void> => {
+  if (!canManageOwnRecoveryProfile(req.currentUser!.role)) { res.status(403).json({ error: "Owner/admin recovery profile is managed through protected bootstrap." }); return; }
+  await ensureRecoveryProfileSchema();
+  const result = await pool.query("SELECT recovery_email, recovery_email_verified_at, recovery_phone, recovery_phone_verified_at, security_question, updated_at FROM account_recovery_profiles WHERE user_id = $1", [req.currentUser!.id]);
+  res.json(result.rows[0] ?? { recovery_email: null, recovery_email_verified_at: null, recovery_phone: null, recovery_phone_verified_at: null, security_question: null });
+});
+
+router.patch("/users/me/recovery-profile", requireAuth, async (req, res): Promise<void> => {
+  const actor = req.currentUser!;
+  if (!canManageOwnRecoveryProfile(actor.role)) { res.status(403).json({ error: "Owner/admin recovery profile is managed through protected bootstrap." }); return; }
+  const recoveryEmail = typeof req.body?.recoveryEmail === "string" ? req.body.recoveryEmail.trim().toLowerCase() : null;
+  const recoveryPhone = typeof req.body?.recoveryPhone === "string" ? req.body.recoveryPhone.trim() : null;
+  const securityQuestion = typeof req.body?.securityQuestion === "string" ? req.body.securityQuestion.trim() : null;
+  const securityAnswer = typeof req.body?.securityAnswer === "string" ? req.body.securityAnswer.trim() : null;
+  if (recoveryEmail !== null && recoveryEmail && (!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(recoveryEmail) || recoveryEmail.length > 254)) { res.status(400).json({ error: "Enter a valid alternate email address." }); return; }
+  if (recoveryPhone !== null && recoveryPhone.length > 40) { res.status(400).json({ error: "Phone number is too long." }); return; }
+  if (securityQuestion !== null && securityQuestion.length > 200) { res.status(400).json({ error: "Security question is too long." }); return; }
+  if (securityAnswer !== null && securityAnswer.length > 200) { res.status(400).json({ error: "Security answer is too long." }); return; }
+  if ((securityQuestion && !securityAnswer) || (!securityQuestion && securityAnswer)) { res.status(400).json({ error: "Provide both a security question and answer, or clear both." }); return; }
+  await ensureRecoveryProfileSchema();
+  const prior = await pool.query("SELECT recovery_email, recovery_email_verified_at FROM account_recovery_profiles WHERE user_id = $1", [actor.id]);
+  const previous = prior.rows[0];
+  const nextEmail = recoveryEmail === null ? previous?.recovery_email ?? null : recoveryEmail || null;
+  const emailChanged = nextEmail !== (previous?.recovery_email ?? null);
+  const answerHash = securityAnswer ? await hashPassword(securityAnswer.toLowerCase()) : null;
+  await pool.query(
+    "INSERT INTO account_recovery_profiles (user_id, recovery_email, recovery_email_verified_at, recovery_phone, recovery_phone_verified_at, security_question, security_answer_hash, verification_code_hash, verification_expires_at, updated_at) VALUES ($1,$2,$3,$4,NULL,$5,$6,NULL,NULL,now()) ON CONFLICT (user_id) DO UPDATE SET recovery_email = EXCLUDED.recovery_email, recovery_email_verified_at = CASE WHEN $7 THEN NULL ELSE account_recovery_profiles.recovery_email_verified_at END, recovery_phone = EXCLUDED.recovery_phone, recovery_phone_verified_at = CASE WHEN $8 THEN NULL ELSE account_recovery_profiles.recovery_phone_verified_at END, security_question = EXCLUDED.security_question, security_answer_hash = COALESCE(EXCLUDED.security_answer_hash, account_recovery_profiles.security_answer_hash), verification_code_hash = CASE WHEN $7 THEN NULL ELSE account_recovery_profiles.verification_code_hash END, verification_expires_at = CASE WHEN $7 THEN NULL ELSE account_recovery_profiles.verification_expires_at END, updated_at = now()",
+    [actor.id, nextEmail, emailChanged ? null : previous?.recovery_email_verified_at ?? null, recoveryPhone === null ? null : recoveryPhone || null, securityQuestion || null, answerHash, emailChanged, recoveryPhone !== null],
+  );
+  res.json({ message: "Recovery profile saved. Alternate email must be verified before it can be used for password recovery; phone verification requires an enabled SMS provider.", recoveryEmail: nextEmail, recoveryEmailVerified: !emailChanged && Boolean(previous?.recovery_email_verified_at), recoveryPhone: recoveryPhone, phoneVerified: false, securityQuestion: securityQuestion || null });
+});
+
+router.post("/users/me/recovery-email/request-verification", requireAuth, async (req, res): Promise<void> => {
+  const actor = req.currentUser!;
+  if (!canManageOwnRecoveryProfile(actor.role)) { res.status(403).json({ error: "Not available for owner/admin accounts." }); return; }
+  if (!isEmailConfigured()) { res.status(503).json({ error: "Email verification is temporarily unavailable." }); return; }
+  const ip = req.ip || "unknown";
+  if (await consumeAuthAttempt("recovery-email-verify", String(actor.id), ip, 5, 60 * 60 * 1000, 60 * 60 * 1000)) { res.status(429).json({ error: "Too many verification attempts. Try later." }); return; }
+  await ensureRecoveryProfileSchema();
+  const found = await pool.query("SELECT recovery_email FROM account_recovery_profiles WHERE user_id = $1", [actor.id]);
+  const email = found.rows[0]?.recovery_email as string | undefined;
+  if (!email) { res.status(400).json({ error: "Add an alternate email address first." }); return; }
+  const code = String(crypto.randomInt(100000, 1000000));
+  const digest = crypto.createHash("sha256").update(code).digest("hex");
+  await pool.query("UPDATE account_recovery_profiles SET verification_code_hash = $2, verification_expires_at = now() + interval '10 minutes', updated_at = now() WHERE user_id = $1", [actor.id, digest]);
+  await sendEmail({ to: [email], subject: "Verify your Dallyletter Elidems recovery email", text: "Your recovery email verification code is " + code + ". It expires in 10 minutes. If you did not request this, ignore this message." });
+  res.json({ message: "Verification code sent to your alternate email. It expires in 10 minutes." });
+});
+
+router.post("/users/me/recovery-email/confirm", requireAuth, async (req, res): Promise<void> => {
+  const actor = req.currentUser!;
+  if (!canManageOwnRecoveryProfile(actor.role)) { res.status(403).json({ error: "Not available for owner/admin accounts." }); return; }
+  const code = typeof req.body?.code === "string" ? req.body.code.trim() : "";
+  if (!/^\\d{6}$/.test(code)) { res.status(400).json({ error: "Enter the six-digit verification code." }); return; }
+  const ip = req.ip || "unknown";
+  if (await consumeAuthAttempt("recovery-email-confirm", String(actor.id), ip, 8, 15 * 60 * 1000, 15 * 60 * 1000)) { res.status(429).json({ error: "Too many verification attempts. Try later." }); return; }
+  await ensureRecoveryProfileSchema();
+  const digest = crypto.createHash("sha256").update(code).digest("hex");
+  const result = await pool.query("UPDATE account_recovery_profiles SET recovery_email_verified_at = now(), verification_code_hash = NULL, verification_expires_at = NULL, updated_at = now() WHERE user_id = $1 AND verification_code_hash = $2 AND verification_expires_at > now() RETURNING recovery_email", [actor.id, digest]);
+  if (!result.rows.length) { res.status(400).json({ error: "Verification code is invalid or expired." }); return; }
+  res.json({ message: "Alternate recovery email verified.", recoveryEmail: result.rows[0].recovery_email, recoveryEmailVerified: true });
 });
 
 router.delete("/users/:id", requireAuth, requireOwner, async (req, res): Promise<void> => {
