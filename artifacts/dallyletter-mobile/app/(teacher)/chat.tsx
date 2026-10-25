@@ -1,10 +1,11 @@
 import { Feather } from "@expo/vector-icons";
-import { useListMessages, useSendMessage } from "@workspace/api-client-react";
+import { useListMessages, useSendMessage, useListStudyGroups } from "@workspace/api-client-react";
 import * as Haptics from "expo-haptics";
-import { Platform, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Platform, FlatList, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+type ChatGroup = { id: number; name: string; isMember?: boolean; members?: Array<{ id: number }> };
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
@@ -13,19 +14,30 @@ export default function TeacherChat() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [text, setText] = useState("");
-  const { data: messages, refetch } = useListMessages({});
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+  const [notice, setNotice] = useState("");
+  const { data: groupData, isLoading: groupsLoading } = useListStudyGroups();
+  const groups = (groupData ?? []) as unknown as ChatGroup[];
+  const joinedGroups = groups.filter(group => group.isMember ?? group.members?.some(member => member.id === user?.id));
+  const selectedGroup = joinedGroups.find(group => group.id === selectedGroupId);
+  const { data: messages, refetch } = useListMessages({ groupId: selectedGroupId }, { query: { enabled: selectedGroupId != null, refetchInterval: 5000 } as any });
   const sendMutation = useSendMessage({
     mutation: {
-      onSuccess: () => { setText(""); refetch(); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); },
+      onSuccess: () => { setText(""); setNotice(""); refetch(); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); },
+      onError: (error: Error) => { setNotice(error.message || "Message could not be sent."); },
     },
   });
+
+  useEffect(() => { if (joinedGroups.length > 0 && !joinedGroups.some(group => group.id === selectedGroupId)) setSelectedGroupId(joinedGroups[0].id); }, [joinedGroups, selectedGroupId]);
 
   const top = insets.top + (Platform.OS === "web" ? 67 : 0);
   const bottom = insets.bottom + (Platform.OS === "web" ? 34 : 0);
 
   const handleSend = () => {
     if (!text.trim()) return;
-    sendMutation.mutate({ data: { content: text.trim(), type: "text" } });
+    if (selectedGroupId == null) { setNotice("Join a study group before sending a group message."); return; }
+    setNotice("");
+    sendMutation.mutate({ data: { content: text.trim(), type: "text", groupId: selectedGroupId } });
   };
 
   const s = StyleSheet.create({
@@ -80,6 +92,8 @@ export default function TeacherChat() {
     sendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
     emptyWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8 },
     emptyText: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: colors.mutedForeground },
+    groupStrip: { paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
+    groupChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18, borderWidth: 1, marginRight: 8 },
   });
 
   const msgs = messages ?? [];
@@ -93,14 +107,16 @@ export default function TeacherChat() {
         </View>
         <View>
           <Text style={s.headerTitle}>Class Chat</Text>
-          <Text style={s.headerSub}>All students</Text>
+          <Text style={s.headerSub}>{selectedGroup?.name || (groupsLoading ? "Loading groups…" : "Select a joined group")}</Text>
         </View>
       </View>
 
+      <View style={s.groupStrip}><ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">{joinedGroups.map(group => <TouchableOpacity key={group.id} onPress={() => { setSelectedGroupId(group.id); setNotice(""); }} style={[s.groupChip,{borderColor:selectedGroupId===group.id?colors.primary:colors.border,backgroundColor:selectedGroupId===group.id?colors.primary:colors.card}]}><Text style={{color:selectedGroupId===group.id?"#fff":colors.foreground,fontWeight:"700",fontSize:12}}>{group.name}</Text></TouchableOpacity>)}{!groupsLoading&&joinedGroups.length===0?<Text style={{color:colors.mutedForeground,fontSize:12}}>No joined study groups. Join a group first.</Text>:null}</ScrollView></View>
+      {notice ? <Text accessibilityRole="alert" style={{paddingHorizontal:14,paddingVertical:6,color:colors.primary,fontSize:12}}>{notice}</Text> : null}
       {msgs.length === 0 ? (
         <View style={s.emptyWrap}>
           <Feather name="message-circle" size={48} color={colors.border} />
-          <Text style={s.emptyText}>No messages yet</Text>
+          <Text style={s.emptyText}>{selectedGroupId == null ? "Choose a group to chat" : "No messages yet"}</Text>
         </View>
       ) : (
         <FlatList
