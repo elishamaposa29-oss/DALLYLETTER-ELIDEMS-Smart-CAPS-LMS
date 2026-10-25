@@ -6,17 +6,17 @@ import { spawnSync } from "node:child_process";
 
 const dir = await mkdtemp(join(tmpdir(), "dallyletter-auth-tests-"));
 try {
-  const outfile = join(dir, "authorization.test.mjs");
   await build({
     entryPoints: ["src/lib/role-access.test.ts", "src/lib/signed-token.test.ts"],
-    outfile,
+    outdir: dir,
+    outExtension: { ".js": ".mjs" },
     bundle: true,
     platform: "node",
     format: "esm",
     packages: "external",
     sourcemap: "inline",
   });
-  const result = spawnSync(process.execPath, ["--test", outfile], { stdio: "inherit" });
+  const result = spawnSync(process.execPath, ["--test", join(dir, "role-access.test.mjs"), join(dir, "signed-token.test.mjs")], { stdio: "inherit" });
   if (result.error) throw result.error;
   process.exitCode = result.status ?? 1;
 } finally {
