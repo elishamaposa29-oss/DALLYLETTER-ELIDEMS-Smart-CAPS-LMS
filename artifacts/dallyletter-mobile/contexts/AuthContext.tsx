@@ -69,8 +69,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           AsyncStorage.getItem(USER_KEY),
         ]);
         if (storedToken && storedUser) {
-          setToken(storedToken);
-          setUser(JSON.parse(storedUser));
+          // Revalidate cached credentials on every cold start so expired/revoked
+          // sessions cannot restore a stale account into the app.
+          try {
+            const response = await fetch(getApiUrl("/api/auth/me"), { headers: { Authorization: "Bearer " + storedToken } });
+            if (response.ok) {
+              const currentUser = await response.json();
+              await AsyncStorage.setItem(USER_KEY, JSON.stringify(currentUser));
+              setToken(storedToken);
+              setUser(currentUser);
+            } else if (response.status === 401 || response.status === 403) {
+              await Promise.all([AsyncStorage.removeItem(TOKEN_KEY), AsyncStorage.removeItem(USER_KEY)]);
+            } else {
+              setToken(storedToken);
+              setUser(JSON.parse(storedUser));
+            }
+          } catch {
+            // Keep cached state during a temporary network outage; next API call revalidates it.
+            setToken(storedToken);
+            setUser(JSON.parse(storedUser));
+          }
         }
       } catch (_) {
       } finally {
@@ -81,7 +99,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback(async (newUser: User, newToken: string) => {
-    if (user && user.id !== newUser.id) await unregisterNativePushForAccount(token, user.id);
+    if (user && token && (user.id !== newUser.id || token !== newToken)) {
+      await fetch(getApiUrl("/api/auth/logout"), { method: "POST", headers: { Authorization: "Bearer " + token } }).catch(() => undefined);
+      await unregisterNativePushForAccount(token, user.id);
+    }
     await Promise.all([
       AsyncStorage.setItem(TOKEN_KEY, newToken),
       AsyncStorage.setItem(USER_KEY, JSON.stringify(newUser)),
@@ -92,6 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [token, user]);
 
   const logout = useCallback(async () => {
+    if (token) await fetch(getApiUrl("/api/auth/logout"), { method: "POST", headers: { Authorization: "Bearer " + token } }).catch(() => undefined);
     await unregisterNativePushForAccount(token, user?.id);
     await Promise.all([
       AsyncStorage.removeItem(TOKEN_KEY),

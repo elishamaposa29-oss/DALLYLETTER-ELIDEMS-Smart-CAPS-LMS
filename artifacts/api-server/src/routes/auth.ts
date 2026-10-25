@@ -6,6 +6,8 @@ import { requireAuth } from "../lib/auth-middleware";
 import { hashPassword, verifyPassword } from "../lib/password-hash";
 import { generateSignedToken, parseSignedToken } from "../lib/signed-token";
 import { isAllowedPublicRegistrationRole } from "../lib/registration-policy";
+import { createAuthSession, revokeAuthSession, revokeUserSessions, createPasswordResetToken, consumePasswordResetToken } from "../lib/auth-session-store";
+import { sendEmail, isEmailConfigured } from "../lib/email-service";
 
 const router: IRouter = Router();
 
@@ -132,6 +134,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     }).returning();
 
     const token = generateToken(user.id);
+    await createAuthSession(token, user.id);
     const { passwordHash: _, ...safeUser } = user;
     res.status(201).json({ user: safeUser, token });
   } catch (error) {
@@ -167,8 +170,8 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     if (!passwordVerification.valid) {
       res.status(401).json({ error: "Invalid email or password" }); return;
     }
-    if (user.isBlocked) {
-      res.status(403).json({ error: "Your account has been blocked. Please contact the school administrator." }); return;
+    if (user.isBlocked || user.isSuspended) {
+      res.status(403).json({ error: "Your account is unavailable. Please contact the school administrator." }); return;
     }
 
     if (passwordVerification.needsRehash) {
@@ -184,6 +187,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     }
 
     const token = generateToken(user.id);
+    await createAuthSession(token, user.id);
     const { passwordHash: _, ...safeUser } = user;
     res.json({ user: safeUser, token });
   } catch (error) {
@@ -205,23 +209,16 @@ router.post("/auth/login", async (req, res): Promise<void> => {
 });
 
 // POST /auth/logout
-router.post("/auth/logout", async (_req, res): Promise<void> => {
+router.post("/auth/logout", async (req, res): Promise<void> => {
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith("Bearer ")) await revokeAuthSession(authHeader.slice(7));
   res.json({ message: "Logged out successfully" });
 });
 
 // GET /auth/me
-router.get("/auth/me", async (req, res): Promise<void> => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) { res.status(401).json({ error: "Not authenticated" }); return; }
-
-  const token = authHeader.slice(7);
-  const parsed = parseToken(token);
-  if (!parsed) { res.status(401).json({ error: "Invalid token" }); return; }
-
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, parsed.userId));
-  if (!user) { res.status(401).json({ error: "User not found" }); return; }
-
-  const { passwordHash: _, ...safeUser } = user;
+router.get("/auth/me", requireAuth, async (req, res): Promise<void> => {
+  const currentUser = req.currentUser!;
+  const { passwordHash: _, ...safeUser } = currentUser;
   res.json(safeUser);
 });
 
@@ -247,7 +244,49 @@ router.post("/auth/change-password", requireAuth, async (req, res): Promise<void
   }
 
   await db.update(usersTable).set({ passwordHash: await hashPassword(newPassword) }).where(eq(usersTable.id, currentUser.id));
-  res.json({ message: "Password changed successfully" });
+  await revokeUserSessions(currentUser.id);
+  res.json({ message: "Password changed successfully. Please sign in again on your devices." });
+});
+
+
+// POST /auth/password-reset/request — generic response prevents account enumeration.
+router.post("/auth/password-reset/request", async (req, res): Promise<void> => {
+  const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || email.length > 254) {
+    res.status(400).json({ error: "Enter a valid email address." }); return;
+  }
+  if (!isEmailConfigured()) {
+    res.status(503).json({ error: "Password recovery is temporarily unavailable. Please contact support." }); return;
+  }
+  try {
+    const [user] = await db.select({ id: usersTable.id, email: usersTable.email }).from(usersTable).where(eq(usersTable.email, email));
+    if (user) {
+      const resetToken = await createPasswordResetToken(user.id);
+      const baseUrl = (process.env.PUBLIC_APP_URL ?? process.env.APP_BASE_URL ?? "https://dallyletterelidemslearningplatforme-six.vercel.app").replace(/\/$/, "");
+      await sendEmail({
+        to: [user.email],
+        subject: "Reset your Dallyletter Elidems password",
+        text: "A password reset was requested for your Dallyletter Elidems account. Open this link within 30 minutes to choose a new password: " + baseUrl + "/reset-password?token=" + encodeURIComponent(resetToken) + "\n\nIf you did not request this, you can ignore this email.",
+      });
+    }
+    res.status(202).json({ message: "If an account matches that email, password recovery instructions will be sent." });
+  } catch (error) {
+    const { logger } = await import("../lib/logger");
+    logger.error({ event: "auth.password_reset.request_failed", err: error instanceof Error ? error.message : "unknown" }, "Password recovery request failed");
+    res.status(503).json({ error: "Password recovery is temporarily unavailable. Please try again later." });
+  }
+});
+
+// POST /auth/password-reset/confirm — one-use, expiring token; revoke every existing session.
+router.post("/auth/password-reset/confirm", async (req, res): Promise<void> => {
+  const token = typeof req.body?.token === "string" ? req.body.token : "";
+  const newPassword = typeof req.body?.newPassword === "string" ? req.body.newPassword : "";
+  if (!/^[a-f0-9]{64}$/i.test(token) || newPassword.length < 8 || newPassword.length > 256) {
+    res.status(400).json({ error: "A valid reset token and a password of at least 8 characters are required." }); return;
+  }
+  const changed = await consumePasswordResetToken(token, await hashPassword(newPassword));
+  if (!changed) { res.status(400).json({ error: "This password reset link is invalid or expired. Request a new one." }); return; }
+  res.json({ message: "Password reset successfully. Sign in with your new password." });
 });
 
 export default router;
