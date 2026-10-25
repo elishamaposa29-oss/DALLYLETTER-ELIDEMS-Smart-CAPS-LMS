@@ -31,14 +31,40 @@ async function seedOwner(): Promise<void> {
     throw new Error("OWNER_BOOTSTRAP_PASSWORD must contain 12–256 characters.");
   }
 
+  const resetId = process.env.OWNER_BOOTSTRAP_RESET_ID?.trim();
+  if (resetId && !/^[A-Za-z0-9_-]{16,128}$/.test(resetId)) {
+    throw new Error("OWNER_BOOTSTRAP_RESET_ID must be 16–128 letters, numbers, underscores, or hyphens.");
+  }
+
   const result = await db.transaction(async (tx) => {
     // Serialize concurrent bootstrap attempts so two jobs cannot both observe
     // an empty privileged-account set and create competing owners.
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('dallyletter-owner-bootstrap'))`);
 
-    const [existingPrivileged] = await tx.select({ email: usersTable.email, role: usersTable.role })
+    const [existingPrivileged] = await tx.select({ id: usersTable.id, email: usersTable.email, role: usersTable.role })
       .from(usersTable).where(inArray(usersTable.role, ["owner", "admin"])).limit(1);
     if (existingPrivileged) {
+      // Explicit, one-time recovery for the configured owner only. The reset ID
+      // is recorded in the same database so a later deploy cannot replay it.
+      if (resetId && existingPrivileged.role === "owner"
+          && existingPrivileged.email.trim().toLowerCase() === email) {
+        await tx.execute(sql`CREATE TABLE IF NOT EXISTS owner_bootstrap_reset_runs (
+          reset_id text PRIMARY KEY,
+          applied_at timestamptz NOT NULL DEFAULT now()
+        )`);
+        const marker = await tx.execute(sql`INSERT INTO owner_bootstrap_reset_runs (reset_id)
+          VALUES (${resetId}) ON CONFLICT (reset_id) DO NOTHING RETURNING reset_id`) as unknown as { rows?: unknown[] };
+        if (marker.rows?.length) {
+          const [user] = await tx.update(usersTable).set({
+            passwordHash: hashPassword(password),
+            isBlocked: false,
+            isSuspended: false,
+            updatedAt: new Date(),
+          }).where(eq(usersTable.id, existingPrivileged.id))
+            .returning({ email: usersTable.email, role: usersTable.role });
+          return { outcome: "reset" as const, user };
+        }
+      }
       return { outcome: "unchanged" as const, user: existingPrivileged };
     }
 
@@ -73,7 +99,9 @@ async function seedOwner(): Promise<void> {
   });
 
   if (result.outcome === "unchanged") {
-    console.log("Owner bootstrap made no changes because a privileged account already exists.");
+    console.log("Owner bootstrap made no changes because a privileged account already exists or the one-time reset was already consumed.");
+  } else if (result.outcome === "reset") {
+    console.log("Configured owner password reset applied once; existing sessions must be revoked by the owner.");
   } else if (result.outcome === "promoted") {
     console.log("Existing account promoted to owner using configured bootstrap secrets.");
   } else {
