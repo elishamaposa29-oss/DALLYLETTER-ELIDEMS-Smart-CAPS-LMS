@@ -302,6 +302,10 @@ router.post("/auth/password-reset/confirm", async (req, res): Promise<void> => {
   if (!/^[a-f0-9]{64}$/i.test(token) || newPassword.length < 8 || newPassword.length > 256) {
     res.status(400).json({ error: "A valid reset token and a password of at least 8 characters are required." }); return;
   }
+  const ipAddress = req.ip || "unknown";
+  if (await consumeAuthAttempt("password-reset-confirm", "all-tokens", ipAddress, 10, 15 * 60 * 1000, 15 * 60 * 1000)) {
+    res.status(429).json({ error: "Too many password reset attempts. Please try again later." }); return;
+  }
   const changed = await consumePasswordResetToken(token, await hashPassword(newPassword));
   if (!changed) { res.status(400).json({ error: "This password reset link is invalid or expired. Request a new one." }); return; }
   res.json({ message: "Password reset successfully. Sign in with your new password." });
