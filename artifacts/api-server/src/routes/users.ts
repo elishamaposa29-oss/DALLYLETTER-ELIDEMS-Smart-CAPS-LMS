@@ -194,6 +194,33 @@ router.post("/users/me/avatar", requireAuth, (req, res, next): void => {
   });
 });
 
+// Structured CV fields for teacher applications. Only the teacher can edit their own CV.
+router.get("/users/me/teacher-cv", requireAuth, async (req, res): Promise<void> => {
+  if (req.currentUser!.role !== "teacher") { res.status(403).json({ error: "Teacher account required" }); return; }
+  await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, cv jsonb NOT NULL DEFAULT '{}'::jsonb, updated_at timestamptz NOT NULL DEFAULT now())");
+  const result = await pool.query("SELECT cv, updated_at FROM teacher_profiles WHERE user_id = $1", [req.currentUser!.id]);
+  res.json(result.rows[0] ?? { cv: {}, updated_at: null });
+});
+
+router.patch("/users/me/teacher-cv", requireAuth, async (req, res): Promise<void> => {
+  const actor = req.currentUser!;
+  if (actor.role !== "teacher") { res.status(403).json({ error: "Teacher account required" }); return; }
+  const body = req.body?.cv;
+  if (!body || typeof body !== "object" || Array.isArray(body)) { res.status(400).json({ error: "Provide a CV object." }); return; }
+  const allowed = ["professionalSummary", "education", "experience", "subjects", "address", "certifications", "languages", "references"];
+  const cv: Record<string, string> = {};
+  for (const key of allowed) {
+    const value = body[key];
+    if (value !== undefined) {
+      if (typeof value !== "string" || value.length > 8000) { res.status(400).json({ error: "CV fields must be text up to 8000 characters." }); return; }
+      cv[key] = value.trim();
+    }
+  }
+  await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, cv jsonb NOT NULL DEFAULT '{}'::jsonb, updated_at timestamptz NOT NULL DEFAULT now())");
+  const result = await pool.query("INSERT INTO teacher_profiles (user_id, cv) VALUES ($1, $2::jsonb) ON CONFLICT (user_id) DO UPDATE SET cv = teacher_profiles.cv || EXCLUDED.cv, updated_at = now() RETURNING cv, updated_at", [actor.id, JSON.stringify(cv)]);
+  res.json(result.rows[0]);
+});
+
 const teacherDocumentUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 router.post("/users/me/teacher-documents", requireAuth, (req, res): void => {
