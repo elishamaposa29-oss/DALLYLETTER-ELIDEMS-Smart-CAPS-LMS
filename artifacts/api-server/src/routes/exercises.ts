@@ -126,7 +126,11 @@ router.get("/lessons/:lessonId/exercises", requireAuth, async (req,res):Promise<
   if(!lessonId){res.status(400).json({error:"Invalid lesson id"});return;}
   const published=await db.select().from(exercisesTable).where(and(eq(exercisesTable.lessonId,lessonId),eq(exercisesTable.status,"published"))).orderBy(desc(exercisesTable.createdAt));
   if(req.currentUser && canManageAcademicContent(req.currentUser)){
-    const own=await db.select().from(exercisesTable).where(eq(exercisesTable.lessonId,lessonId)).orderBy(desc(exercisesTable.createdAt));res.json(own);return;
+    const user=req.currentUser;
+    const rows = isOwnerRole(user.role) || user.isManager === true
+      ? await db.select().from(exercisesTable).where(eq(exercisesTable.lessonId,lessonId)).orderBy(desc(exercisesTable.createdAt))
+      : await db.select().from(exercisesTable).where(and(eq(exercisesTable.lessonId,lessonId),eq(exercisesTable.createdBy,user.id))).orderBy(desc(exercisesTable.createdAt));
+    res.json(rows);return;
   }
   const learnerId=req.currentUser?.role===learnerRole ? req.currentUser.id : null;
   if(!learnerId){res.json(published);return;}
@@ -139,9 +143,13 @@ router.get("/lessons/:lessonId/exercises", requireAuth, async (req,res):Promise<
 
 router.get("/:id",requireAuth,async(req,res):Promise<void>=>{
   const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}
+  const user=req.currentUser!;
   const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));
   if(!exercise){res.status(404).json({error:"Exercise not found"});return;}
-  if(exercise.status!=="published"&&!canManageAcademicContent(req.currentUser!)){res.status(404).json({error:"Exercise not found"});return;}
+  if(exercise.status!=="published"){
+    if(!canManageAcademicContent(user)){res.status(404).json({error:"Exercise not found"});return;}
+    if(!canEditExercise(user,exercise.createdBy)){res.status(404).json({error:"Exercise not found"});return;}
+  }
   const questions=await db.select().from(exerciseQuestionsTable).where(eq(exerciseQuestionsTable.exerciseId,exercise.id)).orderBy(asc(exerciseQuestionsTable.position));
   const allOptionRows=questions.length?(await Promise.all(questions.map(q=>db.select().from(exerciseOptionsTable).where(eq(exerciseOptionsTable.questionId,q.id))))).flat():[];
   res.json({exercise,questions,options:allOptionRows.map(({isCorrect:_isCorrect,...option})=>option)});

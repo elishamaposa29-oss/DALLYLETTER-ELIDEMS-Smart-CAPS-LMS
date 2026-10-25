@@ -41,6 +41,7 @@ export default function TeacherTabLayout() {
     >
       <Tabs.Screen name="home" options={{ title: "Home", tabBarIcon: ({ color, size }) => <Feather name="home" size={size} color={color} /> }} />
       <Tabs.Screen name="lessons" options={{ title: "Lessons", tabBarIcon: ({ color, size }) => <Feather name="book" size={size} color={color} /> }} />
+      <Tabs.Screen name="work" options={{ title: "Marking", tabBarIcon: ({ color, size }) => <Feather name="clipboard" size={size} color={color} /> }} />
       <Tabs.Screen name="classes" options={{ title: "Classes", tabBarIcon: ({ color, size }) => <Feather name="video" size={size} color={color} /> }} />
       <Tabs.Screen name="chat" options={{ title: "Chat", tabBarIcon: ({ color, size }) => <Feather name="message-circle" size={size} color={color} /> }} />
       <Tabs.Screen name="more" options={{ title: "More", tabBarIcon: ({ color, size }) => <Feather name="grid" size={size} color={color} /> }} />
