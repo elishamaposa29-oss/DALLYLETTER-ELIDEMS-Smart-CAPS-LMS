@@ -291,6 +291,10 @@ export default function LoginScreen() {
             )}
           </TouchableOpacity>
 
+          <TouchableOpacity accessibilityRole="button" onPress={() => router.push("/forgot-password")} style={{ alignItems: "flex-end", paddingVertical: 6, marginTop: -6 }}>
+            <Text style={{ color: colors.primary, fontFamily: "Inter_700Bold", fontSize: 13 }}>Forgot password?</Text>
+          </TouchableOpacity>
+
           <TouchableOpacity accessibilityRole="button" onPress={() => router.push("/signup")} style={{ alignItems: "center", paddingVertical: 22 }}>
             <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 14 }}>
               New to Dallyletter? <Text style={{ color: colors.primary, fontFamily: "Inter_700Bold" }}>Create an account</Text>

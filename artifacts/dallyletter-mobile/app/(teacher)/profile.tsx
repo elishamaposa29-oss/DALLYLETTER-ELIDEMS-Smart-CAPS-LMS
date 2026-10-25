@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { ProfileAvatarEditor } from "@/components/ProfileAvatarEditor";
+import { ProfileDetailsEditor } from "@/components/ProfileDetailsEditor";
 
 export default function TeacherProfile() {
   const colors = useColors();
@@ -71,6 +72,8 @@ export default function TeacherProfile() {
           <Text style={s.badgeText}>Teacher</Text>
         </View>
       </View>
+
+      <ProfileDetailsEditor />
 
       <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
         <Text style={s.sectionTitle}>My Stats</Text>

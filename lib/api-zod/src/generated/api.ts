@@ -19,7 +19,7 @@ export const HealthCheckResponse = zod.object({
  */
 export const RegisterUserBody = zod.object({
   email: zod.string(),
-  password: zod.string(),
+  password: zod.string().min(8).max(256),
   name: zod.string(),
   role: zod.enum(["student", "teacher"]),
   grade: zod.string().nullish(),
@@ -32,7 +32,7 @@ export const RegisterUserBody = zod.object({
  */
 export const LoginUserBody = zod.object({
   email: zod.string(),
-  password: zod.string(),
+  password: zod.string().max(256),
 });
 
 export const LoginUserResponse = zod.object({

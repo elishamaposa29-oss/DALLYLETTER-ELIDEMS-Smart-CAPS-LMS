@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { parseToken } from "../routes/auth";
 import { normalizeRole, isOwnerRole, canManageAcademicContent, canAccessManager, enforceAuthenticated, enforceOwnerAccess, enforceAcademicStaffAccess } from "./role-access";
+import { isAuthSessionActive } from "./auth-session-store";
 export { normalizeRole, isOwnerRole, canManageAcademicContent, canAccessManager } from "./role-access";
 
 // Extend Express Request to include user
@@ -21,7 +22,7 @@ export async function extractUser(req: Request, _res: Response, next: NextFuncti
   if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.slice(7);
     const parsed = parseToken(token);
-    if (parsed) {
+    if (parsed && await isAuthSessionActive(token)) {
       const [user] = await db.select().from(usersTable).where(eq(usersTable.id, parsed.userId));
       if (user) {
         let effectiveUser = user;
@@ -37,7 +38,7 @@ export async function extractUser(req: Request, _res: Response, next: NextFuncti
           if (converted) effectiveUser = converted;
         }
         // Keep one canonical role representation throughout the request.
-        req.currentUser = { ...effectiveUser, role: normalizeRole(effectiveUser.role) };
+        if (!effectiveUser.isBlocked && !effectiveUser.isSuspended) req.currentUser = { ...effectiveUser, role: normalizeRole(effectiveUser.role) };
       }
     }
   }

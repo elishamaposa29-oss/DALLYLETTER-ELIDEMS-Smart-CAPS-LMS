@@ -9,6 +9,8 @@ import {
 } from "@workspace/api-zod";
 import { requireAuth, requireOwner, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, persistUploadedMedia, removeStoredMedia } from "../lib/media-storage";
+import { canReadPrivateUserProfile } from "../lib/profile-access-policy";
+import { revokeUserSessions } from "../lib/auth-session-store";
 
 const router: IRouter = Router();
 
@@ -63,6 +65,8 @@ router.get("/users", requireAuth, async (req, res): Promise<void> => {
 router.get("/users/:id", requireAuth, async (req, res): Promise<void> => {
   const params = GetUserParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const actor = req.currentUser!;
+  if (!canReadPrivateUserProfile(actor.id, params.data.id, canAccessManager(actor))) { res.status(403).json({ error: "You cannot access this private profile." }); return; }
   const [user] = await db.select(safeUserFields).from(usersTable).where(eq(usersTable.id, params.data.id));
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   res.json({ ...user, createdAt: user.createdAt.toISOString() });
@@ -78,11 +82,12 @@ router.patch("/users/:id", requireAuth, async (req, res): Promise<void> => {
     res.status(403).json({ error: "Cannot update another user's profile" }); return;
   }
   const updates: Record<string, unknown> = {};
+  if (body.data.email != null && !isOwnerRole(currentUser.role)) { res.status(403).json({ error: "Email changes require a verified email-change process." }); return; }
   if (body.data.name != null) updates.name = body.data.name;
   if (body.data.email != null) updates.email = body.data.email;
-  if (body.data.phone != null) updates.phone = body.data.phone;
-  if (body.data.grade != null) updates.grade = body.data.grade;
-  if (body.data.subject != null) updates.subject = body.data.subject;
+  if (body.data.phone !== undefined) updates.phone = body.data.phone;
+  if (body.data.grade !== undefined) updates.grade = body.data.grade;
+  if (body.data.subject !== undefined) updates.subject = body.data.subject;
   if (body.data.avatarUrl != null) {
     const avatarUrl = body.data.avatarUrl.trim();
     const isMediaPath = avatarUrl.length <= 2048 && /^\/api\/lessons\/media\/[a-f0-9-]{36}\?type=image\/(?:jpeg|png|webp)$/i.test(avatarUrl);
@@ -91,6 +96,7 @@ router.patch("/users/:id", requireAuth, async (req, res): Promise<void> => {
     updates.avatarUrl = avatarUrl;
   }
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, params.data.id)).returning(safeUserFields);
+  if (body.data.email != null) await revokeUserSessions(params.data.id);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   res.json({ ...user, createdAt: user.createdAt.toISOString() });
 });
@@ -108,6 +114,7 @@ router.patch("/users/:id/block", requireAuth, requireOwner, async (req, res): Pr
   const body = BlockUserBody.safeParse(req.body);
   if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
   const [user] = await db.update(usersTable).set({ isBlocked: body.data.isBlocked }).where(eq(usersTable.id, params.data.id)).returning(safeUserFields);
+  if (body.data.isBlocked) await revokeUserSessions(params.data.id);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   res.json({ ...user, createdAt: user.createdAt.toISOString() });
 });
@@ -118,6 +125,7 @@ router.patch("/users/:id/suspend", requireAuth, requireOwner, async (req, res): 
   const { isSuspended } = req.body as { isSuspended: boolean };
   if (typeof isSuspended !== "boolean") { res.status(400).json({ error: "isSuspended must be boolean" }); return; }
   const [user] = await db.update(usersTable).set({ isSuspended }).where(eq(usersTable.id, id)).returning(safeUserFields);
+  if (isSuspended) await revokeUserSessions(id);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   res.json({ ...user, createdAt: user.createdAt.toISOString() });
 });
@@ -131,6 +139,7 @@ router.patch("/users/:id/promote", requireAuth, requireOwner, async (req, res): 
   if (body.data.role != null) updates.role = body.data.role;
   if (body.data.isPrefect != null) updates.isPrefect = body.data.isPrefect;
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, params.data.id)).returning(safeUserFields);
+  if (body.data.role != null) await revokeUserSessions(params.data.id);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   res.json({ ...user, createdAt: user.createdAt.toISOString() });
 });
@@ -144,6 +153,7 @@ router.patch("/users/:id/promote-manager", requireAuth, requireOwner, async (req
   if (typeof isManager === "boolean") updates.isManager = isManager;
   if (managerLevel != null) { if (!["junior","senior"].includes(managerLevel)) { res.status(400).json({ error: "managerLevel must be junior or senior" }); return; } updates.managerLevel = managerLevel; }
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, id)).returning(safeUserFields);
+  await revokeUserSessions(id);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   res.json({ ...user, createdAt: user.createdAt.toISOString() });
 });
@@ -236,6 +246,7 @@ router.patch("/users/:id/teacher-review", requireAuth, async (req, res): Promise
       ? { role: "teacher", teacherApplicationStatus: "approved", teacherReviewDeadline: null }
       : { role: "student", teacherApplicationStatus: action === "reject" ? "rejected" : "manual_conversion", teacherReviewDeadline: null, subject: null, isManager: false, isPrefect: false },
   ).where(eq(usersTable.id, id)).returning(safeUserFields);
+  await revokeUserSessions(id);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   res.json({ ...user, createdAt: user.createdAt.toISOString() });
 });
