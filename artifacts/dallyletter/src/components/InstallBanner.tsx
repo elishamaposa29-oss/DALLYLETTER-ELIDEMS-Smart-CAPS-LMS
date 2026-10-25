@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useInstallPrompt } from "@/hooks/useInstallPrompt";
 import { GraduationCap, X, Share, PlusSquare, Smartphone, Download } from "lucide-react";
 
-const ANDROID_APK_URL = "https://github.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/releases/download/mobile-v1.0.1/dallyletter-v1.0.1.apk";
+const ANDROID_APK_URL = "https://github.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/releases/download/mobile-v1.0.2/dallyletter-v1.0.2.apk";
 
 export function InstallBanner() {
   const { prompt, install, isInstalled, isIOS } = useInstallPrompt();
@@ -29,7 +29,7 @@ export function InstallBanner() {
         <div className="px-4 pb-4 flex flex-wrap gap-2">
           {isIOS ? <button onClick={() => setShowIOSGuide(true)} className="flex-1 bg-amber-500 hover:bg-amber-400 text-white font-semibold text-sm py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"><Smartphone className="h-4 w-4" />How to Install</button> :
             <button onClick={() => { if (manualInstall) setShowAndroidGuide(true); else void install().catch(() => setShowAndroidGuide(true)); }} className="flex-1 bg-amber-500 hover:bg-amber-400 text-white font-semibold text-sm py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"><PlusSquare className="h-4 w-4" />{manualInstall ? "Web App Install" : "Install Web App"}</button>}
-          {isAndroid && <a href={ANDROID_APK_URL} download="dallyletter-v1.0.1.apk" className="flex-1 bg-white/10 hover:bg-white/15 text-white font-semibold text-sm py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"><Download className="h-4 w-4" />Download APK</a>}
+          {isAndroid && <a href={ANDROID_APK_URL} download="dallyletter-v1.0.2.apk" className="flex-1 bg-white/10 hover:bg-white/15 text-white font-semibold text-sm py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"><Download className="h-4 w-4" />Download APK</a>}
           <button onClick={dismiss} className="px-4 bg-white/10 hover:bg-white/15 text-white/70 font-medium text-sm py-2.5 rounded-xl transition-colors">Not now</button>
         </div>
       </div>
