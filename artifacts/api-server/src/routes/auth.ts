@@ -6,7 +6,7 @@ import { requireAuth } from "../lib/auth-middleware";
 import { hashPassword, verifyPassword } from "../lib/password-hash";
 import { generateSignedToken, parseSignedToken } from "../lib/signed-token";
 import { isAllowedPublicRegistrationRole } from "../lib/registration-policy";
-import { createAuthSession, revokeAuthSession, revokeUserSessions, createPasswordResetToken, consumePasswordResetToken } from "../lib/auth-session-store";
+import { createAuthSession, revokeAuthSession, revokeUserSessions, createPasswordResetToken, consumePasswordResetToken, consumeAuthAttempt, clearAuthAttempts } from "../lib/auth-session-store";
 import { sendEmail, isEmailConfigured } from "../lib/email-service";
 
 const router: IRouter = Router();
@@ -113,7 +113,8 @@ router.post("/auth/register", async (req, res): Promise<void> => {
   const parsed = RegisterUserBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
-  const { email, password, name, role, grade, subject, phone } = parsed.data;
+  const { password, name, role, grade, subject, phone } = parsed.data;
+  const email = parsed.data.email.trim().toLowerCase();
   // Public registration cannot create privileged accounts. Staff roles require an
   // explicit owner-controlled promotion/review workflow after signup.
   if (!isAllowedPublicRegistrationRole(role)) {
@@ -161,7 +162,12 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
   try {
-    const { email, password } = parsed.data;
+    const email = parsed.data.email.trim().toLowerCase();
+    const password = parsed.data.password;
+    const ipAddress = req.ip || "unknown";
+    if (await consumeAuthAttempt("login", email, ipAddress, 8, 15 * 60 * 1000, 15 * 60 * 1000)) {
+      res.status(429).json({ error: "Too many sign-in attempts. Please wait 15 minutes and try again." }); return;
+    }
     const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
     if (!user) {
       res.status(401).json({ error: "Invalid email or password" }); return;
@@ -186,6 +192,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
       }
     }
 
+    await clearAuthAttempts("login", email, ipAddress);
     const token = generateToken(user.id);
     await createAuthSession(token, user.id);
     const { passwordHash: _, ...safeUser } = user;
@@ -254,6 +261,10 @@ router.post("/auth/password-reset/request", async (req, res): Promise<void> => {
   const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || email.length > 254) {
     res.status(400).json({ error: "Enter a valid email address." }); return;
+  }
+  const ipAddress = req.ip || "unknown";
+  if (await consumeAuthAttempt("password-reset", email, ipAddress, 5, 60 * 60 * 1000, 60 * 60 * 1000)) {
+    res.status(429).json({ error: "Too many password recovery requests. Please try again later." }); return;
   }
   if (!isEmailConfigured()) {
     res.status(503).json({ error: "Password recovery is temporarily unavailable. Please contact support." }); return;
