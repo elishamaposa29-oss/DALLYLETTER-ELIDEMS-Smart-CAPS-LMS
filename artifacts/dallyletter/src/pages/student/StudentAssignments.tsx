@@ -83,7 +83,7 @@ export default function StudentAssignments() {
   };
 
   const submit = () => {
-    if (!selected || !content.trim()) { toast({ variant: "destructive", title: "Write your answer first" }); return; }
+    if (!selected || (!content.trim() && !submissionFile)) { toast({ variant: "destructive", title: "Write an answer or attach a file first" }); return; }
     if (isOverdue(selected.dueDate)) { toast({ variant: "destructive", title: "This assignment is past its due date" }); return; }
     setSubmitting(true);
     void fetch(getApiUrl(`/api/assignments/${selected.id}/submit`), {
@@ -209,7 +209,7 @@ export default function StudentAssignments() {
               <div className="bg-slate-50 rounded-lg p-3 text-sm text-slate-600 whitespace-pre-wrap">{selected.description || "No description provided."}</div>
               {selected.attachmentUrl && <div className="rounded-xl border p-3 space-y-2"><p className="text-sm font-semibold">Reference material</p><AuthenticatedMedia url={selected.attachmentUrl} type={referenceMediaType(selected.attachmentUrl)} title={`${selected.title} reference material`} /><Button type="button" variant="outline" size="sm" onClick={() => void openReference(selected.attachmentUrl, selected.title)}>Open in new tab</Button></div>}
               <div>
-                <label className="text-sm font-medium text-slate-700 mb-1 block">Your Answer</label>
+                <label className="text-sm font-medium text-slate-700 mb-1 block">Your Answer (or submit an attachment)</label>
                 <textarea
                   className="w-full border rounded-lg px-3 py-2 text-sm min-h-[140px] resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Write your answer here…"
