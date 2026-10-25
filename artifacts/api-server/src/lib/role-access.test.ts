@@ -76,3 +76,27 @@ test("academic staff guard denies learners and allows teacher and explicit manag
   assert.equal(response.status(),200,String(user.role));assert.equal(nextCalls,1);
  }
 });
+
+test("learner, prefect, and unknown roles cannot gain staff privileges from a stale manager flag",()=>{
+ for(const role of ["student","prefect","unknown",""]){
+  const user={role,isManager:true};
+  assert.equal(canAccessManager(user),false,role);
+  assert.equal(canManageAcademicContent(user),false,role);
+  assert.equal(canUseStaffAI(user),false,role);
+ }
+});
+
+test("manager access requires both a manager flag and an authorized staff role",()=>{
+ for(const role of ["teacher","manager","senior_manager"]){
+  const user={role,isManager:true};
+  assert.equal(canAccessManager(user),true,role);
+  assert.equal(canManageAcademicContent(user),true,role);
+  assert.equal(canUseStaffAI(user),true,role);
+ }
+ for(const role of ["manager","senior_manager"]){
+  const user={role,isManager:false};
+  assert.equal(canAccessManager(user),false,role);
+  assert.equal(canManageAcademicContent(user),false,role);
+  assert.equal(canUseStaffAI(user),false,role);
+ }
+});
