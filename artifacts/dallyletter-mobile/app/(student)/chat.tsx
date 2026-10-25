@@ -1,11 +1,12 @@
 import { Feather } from "@expo/vector-icons";
-import { useListMessages, useSendMessage } from "@workspace/api-client-react";
+import { useListMessages, useSendMessage, useListStudyGroups } from "@workspace/api-client-react";
 import * as Haptics from "expo-haptics";
-import { AppState, Platform, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { AppState, Platform, FlatList, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useEffect, useState } from "react";
+type ChatGroup = { id: number; name: string; isMember?: boolean; members?: Array<{ id: number }> };
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
@@ -14,22 +15,29 @@ export default function StudentChat() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [text, setText] = useState("");
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+  const [notice, setNotice] = useState("");
+  const { data: groupData, isLoading: groupsLoading } = useListStudyGroups();
+  const groups = (groupData ?? []) as unknown as ChatGroup[];
+  const joinedGroups = groups.filter(group => group.isMember ?? group.members?.some(member => member.id === user?.id));
+  const selectedGroup = joinedGroups.find(group => group.id === selectedGroupId);
   const [queuedMessages, setQueuedMessages] = useState<any[]>([]);
   const [retrySignal, setRetrySignal] = useState(0);
   const queueKey = user?.id ? "dallyletter_mobile_chat_outbox_user_" + user.id : null;
   useEffect(() => { let active=true; if (!queueKey) { setQueuedMessages([]); return; } void AsyncStorage.getItem(queueKey).then(raw => { if(active && raw) setQueuedMessages(JSON.parse(raw)); }).catch(() => {}); return () => { active=false; }; }, [queueKey]);
   useEffect(() => { const sub=AppState.addEventListener("change", state => { if(state==="active") setRetrySignal(v=>v+1); }); return () => sub.remove(); }, []);
   useEffect(() => { if (queuedMessages.length === 0) return; const timer=setInterval(() => { if(AppState.currentState==="active") setRetrySignal(v=>v+1); }, 30000); return () => clearInterval(timer); }, [queuedMessages.length]);
-  const { data: messages, refetch } = useListMessages({});
+  const { data: messages, refetch } = useListMessages({ groupId: selectedGroupId }, { query: { enabled: selectedGroupId != null, refetchInterval: 5000 } as any });
   const sendMutation = useSendMessage({
     mutation: {
       onSuccess: () => {
-        setText("");
         refetch();
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       },
     },
   });
+
+  useEffect(() => { if (joinedGroups.length > 0 && !joinedGroups.some(group => group.id === selectedGroupId)) setSelectedGroupId(joinedGroups[0].id); }, [joinedGroups, selectedGroupId]);
 
   const persistQueue = async (next: any[]) => {
     setQueuedMessages(next);
@@ -44,7 +52,8 @@ export default function StudentChat() {
       while (remaining.length && !cancelled) {
         const item = remaining[0];
         try {
-          await sendMutation.mutateAsync({ data: { content: item.content, type: "text" } });
+          if (!Number.isSafeInteger(item.groupId) || item.groupId <= 0) { if (!cancelled) setNotice("An older offline message has no saved group destination. It was not sent to the wrong conversation."); break; }
+          await sendMutation.mutateAsync({ data: { content: item.content, type: "text", groupId: item.groupId } });
           remaining.shift();
           if (!cancelled) await persistQueue([...remaining]);
         } catch {
@@ -61,14 +70,20 @@ export default function StudentChat() {
   const handleSend = async () => {
     const content = text.trim();
     if (!content || !user) return;
+    if (selectedGroupId == null) { setNotice("Join a study group before sending a group message."); return; }
+    setNotice("");
     try {
-      await sendMutation.mutateAsync({ data: { content, type: "text" } });
+      await sendMutation.mutateAsync({ data: { content, type: "text", groupId: selectedGroupId } });
+      setText("");
     } catch (error) {
       const status = (error as { status?: number })?.status;
       if (!status && queueKey) {
-        const item = { id: "queued-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8), content, createdAt: new Date().toISOString(), senderId: user.id, senderName: user.name, queued: true };
+        const item = { id: "queued-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8), content, groupId: selectedGroupId, createdAt: new Date().toISOString(), senderId: user.id, senderName: user.name, queued: true };
         await persistQueue([...queuedMessages, item]);
         setText("");
+        setNotice("Message saved offline. It will retry for the selected group when the connection returns.");
+      } else {
+        setNotice(error instanceof Error ? error.message : "Message could not be sent.");
       }
     }
   };
@@ -156,9 +171,11 @@ export default function StudentChat() {
     emptyWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8 },
     emptyText: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: colors.mutedForeground },
     emptySubtext: { fontSize: 13, fontFamily: "Inter_400Regular", color: colors.mutedForeground },
+    groupStrip: { paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
+    groupChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18, borderWidth: 1, marginRight: 8 },
   });
 
-  const grouped = [...(messages ?? []), ...queuedMessages];
+  const grouped = [...(messages ?? []), ...queuedMessages.filter(item => item.groupId === selectedGroupId)];
   const isMe = (msg: any) => msg.senderId === user?.id;
 
   return (
@@ -169,10 +186,12 @@ export default function StudentChat() {
         </View>
         <View style={s.headerText}>
           <Text style={s.headerTitle}>Class Chat</Text>
-          <Text style={s.headerSub}>Group conversation</Text>
+          <Text style={s.headerSub}>{selectedGroup?.name || (groupsLoading ? "Loading groups…" : "Select a joined group")}</Text>
         </View>
       </View>
 
+      <View style={s.groupStrip}><ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">{joinedGroups.map(group => <TouchableOpacity key={group.id} onPress={() => { setSelectedGroupId(group.id); setNotice(""); }} style={[s.groupChip,{borderColor:selectedGroupId===group.id?colors.primary:colors.border,backgroundColor:selectedGroupId===group.id?colors.primary:colors.card}]}><Text style={{color:selectedGroupId===group.id?"#fff":colors.foreground,fontWeight:"700",fontSize:12}}>{group.name}</Text></TouchableOpacity>)}{!groupsLoading&&joinedGroups.length===0?<Text style={s.emptySubtext}>No joined study groups. Join a group first.</Text>:null}</ScrollView></View>
+      {notice ? <Text accessibilityRole="alert" style={{paddingHorizontal:14,paddingVertical:6,color:colors.primary,fontSize:12}}>{notice}</Text> : null}
       {grouped.length === 0 ? (
         <View style={s.emptyWrap}>
           <Feather name="message-circle" size={48} color={colors.border} />
@@ -216,7 +235,7 @@ export default function StudentChat() {
           returnKeyType="send"
           onSubmitEditing={Platform.OS !== "web" ? handleSend : undefined}
         />
-        <TouchableOpacity style={s.sendBtn} onPress={handleSend} disabled={!text.trim()}>
+        <TouchableOpacity style={s.sendBtn} onPress={handleSend} disabled={!text.trim() || selectedGroupId == null}>
           <Feather name="send" size={18} color="#ffffff" />
         </TouchableOpacity>
       </View>
