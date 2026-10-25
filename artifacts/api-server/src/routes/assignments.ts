@@ -268,22 +268,24 @@ router.post("/:id/submit", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (user.role !== "student") { res.status(403).json({ error: "Forbidden" }); return; }
   const assignmentId = parseInt(String(req.params.id));
-  const { content, fileUrl, fileName } = req.body;
-  if (typeof content !== "string" || !content.trim() || content.length > 100000) { res.status(400).json({ error: "content is required and must be at most 100000 characters" }); return; }
+  const { content: rawContent, fileUrl, fileName: rawFileName } = req.body ?? {};
+  const content = typeof rawContent === "string" ? rawContent.trim() : "";
   const normalizedFileUrl = normalizeAttachmentUrl(fileUrl);
   if (fileUrl != null && normalizedFileUrl == null) { res.status(400).json({ error: "fileUrl must be a valid internal media or http(s) URL" }); return; }
+  if (content.length > 100000 || (!content && !normalizedFileUrl)) { res.status(400).json({ error: "Provide text or an uploaded attachment; text must be at most 100000 characters" }); return; }
+  const fileName = typeof rawFileName === "string" ? rawFileName.trim().slice(0, 255) || null : null;
   const [assignment] = await db.select({ status: assignmentsTable.status, grade: assignmentsTable.grade, dueDate: assignmentsTable.dueDate }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
   if (!assignment || !isVisibleToStudent(assignment, user.grade)) { res.status(404).json({ error: "Not found" }); return; }
   if (new Date(`${assignment.dueDate}T23:59:59Z`) < new Date()) { res.status(409).json({ error: "This assignment is past its due date" }); return; }
   const [existing] = await db.select().from(assignmentSubmissionsTable)
     .where(and(eq(assignmentSubmissionsTable.assignmentId, assignmentId), eq(assignmentSubmissionsTable.studentId, user.id)));
   if (existing) {
-    const [updated] = await db.update(assignmentSubmissionsTable).set({ content, fileUrl: normalizedFileUrl, fileName, status: "submitted" })
+    const [updated] = await db.update(assignmentSubmissionsTable).set({ content, fileUrl: normalizedFileUrl, fileName, status: "submitted", submittedAt: new Date() })
       .where(eq(assignmentSubmissionsTable.id, existing.id)).returning();
     res.json(updated); return;
   }
   const [row] = await db.insert(assignmentSubmissionsTable).values({
-    assignmentId, studentId: user.id, studentName: user.name, content: content.trim(), fileUrl: normalizedFileUrl, fileName,
+    assignmentId, studentId: user.id, studentName: user.name, content, fileUrl: normalizedFileUrl, fileName,
   }).returning();
   res.status(201).json(row);
 });
