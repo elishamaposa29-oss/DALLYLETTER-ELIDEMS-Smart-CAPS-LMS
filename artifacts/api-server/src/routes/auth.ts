@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { RegisterUserBody, LoginUserBody } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth-middleware";
-import crypto from "crypto";
+import { hashPassword, verifyPassword } from "../lib/password-hash";
 import { generateSignedToken, parseSignedToken } from "../lib/signed-token";
 
 const router: IRouter = Router();
@@ -17,10 +17,6 @@ function getAuthSecret(): string {
   }
 
   return secret;
-}
-
-function hashPassword(password: string): string {
-  return crypto.createHash("sha256").update(password + "dallyletter_salt_2024").digest("hex");
 }
 
 function generateToken(userId: number): string {
@@ -126,7 +122,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     if (existing.length > 0) { res.status(400).json({ error: "Email already registered" }); return; }
 
     const [user] = await db.insert(usersTable).values({
-      email, passwordHash: hashPassword(password), name, role,
+      email, passwordHash: await hashPassword(password), name, role,
       grade: grade ?? null, subject: subject ?? null, phone: phone ?? null,
       isPrefect: false, isBlocked: false, isSuspended: false,
       teacherApplicationStatus: role === "teacher" ? "pending_review" : "not_applicable",
@@ -162,8 +158,23 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   try {
     const { email, password } = parsed.data;
     const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
-    if (!user || user.passwordHash !== hashPassword(password)) {
+    if (!user) {
       res.status(401).json({ error: "Invalid email or password" }); return;
+    }
+    const passwordVerification = await verifyPassword(password, user.passwordHash);
+    if (!passwordVerification.valid) {
+      res.status(401).json({ error: "Invalid email or password" }); return;
+    }
+    if (passwordVerification.needsRehash) {
+      // Upgrade legacy fixed-salt hashes after a successful login. Do not block
+      // a valid login if a transient rehash write fails; retry on the next login.
+      const upgradedHash = await hashPassword(password);
+      try {
+        await db.update(usersTable).set({ passwordHash: upgradedHash }).where(eq(usersTable.id, user.id));
+      } catch (upgradeError) {
+        const { logger } = await import("../lib/logger");
+        logger.warn({ userId: user.id, error: upgradeError instanceof Error ? upgradeError.message.slice(0, 200) : "Unknown rehash error" }, "Legacy password hash upgrade failed; will retry on next login");
+      }
     }
 
     if (user.isBlocked) {
@@ -228,11 +239,12 @@ router.post("/auth/change-password", requireAuth, async (req, res): Promise<void
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, currentUser.id));
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
 
-  if (user.passwordHash !== hashPassword(currentPassword)) {
+  const passwordVerification = await verifyPassword(currentPassword, user.passwordHash);
+  if (!passwordVerification.valid) {
     res.status(400).json({ error: "Current password is incorrect" }); return;
   }
 
-  await db.update(usersTable).set({ passwordHash: hashPassword(newPassword) }).where(eq(usersTable.id, currentUser.id));
+  await db.update(usersTable).set({ passwordHash: await hashPassword(newPassword) }).where(eq(usersTable.id, currentUser.id));
   res.json({ message: "Password changed successfully" });
 });
 
