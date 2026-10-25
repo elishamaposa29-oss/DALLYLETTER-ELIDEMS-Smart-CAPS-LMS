@@ -6,7 +6,7 @@ import { requireAuth } from "../lib/auth-middleware";
 import { hashPassword, verifyPassword } from "../lib/password-hash";
 import { generateSignedToken, parseSignedToken } from "../lib/signed-token";
 import { isAllowedPublicRegistrationRole } from "../lib/registration-policy";
-import { createAuthSession, revokeAuthSession, revokeUserSessions, createPasswordResetToken, consumePasswordResetToken, consumeAuthAttempt, clearAuthAttempts } from "../lib/auth-session-store";
+import { createAuthSession, revokeAuthSession, revokeUserSessions, createPasswordResetToken, consumePasswordResetToken, consumeAuthAttempt, clearAuthAttempts, updatePasswordAndRevokeSessions } from "../lib/auth-session-store";
 import { sendEmail, isEmailConfigured } from "../lib/email-service";
 
 const router: IRouter = Router();
@@ -252,8 +252,7 @@ router.post("/auth/change-password", requireAuth, async (req, res): Promise<void
     res.status(400).json({ error: "Current password is incorrect" }); return;
   }
 
-  await db.update(usersTable).set({ passwordHash: await hashPassword(newPassword) }).where(eq(usersTable.id, currentUser.id));
-  await revokeUserSessions(currentUser.id);
+  await updatePasswordAndRevokeSessions(currentUser.id, await hashPassword(newPassword));
   res.json({ message: "Password changed successfully. Please sign in again on your devices." });
 });
 
