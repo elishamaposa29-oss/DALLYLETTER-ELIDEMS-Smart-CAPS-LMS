@@ -263,10 +263,27 @@ router.patch("/users/:id/teacher-review", requireAuth, async (req, res): Promise
   const id = Number(req.params.id);
   const action = req.body?.action;
   if (!Number.isInteger(id) || !["approve", "reject", "convert_to_learner"].includes(action)) { res.status(400).json({ error: "Invalid teacher review action" }); return; }
-  const [target] = await db.select({ id: usersTable.id, role: usersTable.role, teacherApplicationStatus: usersTable.teacherApplicationStatus })
+  const [target] = await db.select({ id: usersTable.id, role: usersTable.role, teacherApplicationStatus: usersTable.teacherApplicationStatus, paymentInfo: usersTable.paymentInfo })
     .from(usersTable).where(eq(usersTable.id, id));
   if (!target || target.role !== "teacher" || target.teacherApplicationStatus !== "pending_review") {
     res.status(409).json({ error: "Only pending teacher applications can be reviewed" }); return;
+  }
+  if (action === "approve") {
+    await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, cv jsonb NOT NULL DEFAULT '{}'::jsonb, updated_at timestamptz NOT NULL DEFAULT now())");
+    const cvResult = await pool.query("SELECT cv FROM teacher_profiles WHERE user_id = $1", [id]);
+    const cv = (cvResult.rows[0]?.cv ?? {}) as Record<string, unknown>;
+    const requiredFields = ["professionalSummary", "education", "experience", "subjects", "address"];
+    const missingFields = requiredFields.filter((key) => typeof cv[key] !== "string" || (cv[key] as string).trim().length < 2);
+    const docs = await pool.query("SELECT 1 FROM teacher_documents WHERE user_id = $1 AND document_type IN ('resume','certificate') LIMIT 1", [id]);
+    if (missingFields.length || !target.paymentInfo || !docs.rows.length) {
+      res.status(409).json({
+        error: "Teacher application is incomplete. Complete the CV, add payment information, and upload a resume or certificate before owner approval.",
+        missingFields,
+        paymentInformationComplete: Boolean(target.paymentInfo),
+        qualificationDocumentUploaded: Boolean(docs.rows.length),
+      });
+      return;
+    }
   }
   const [user] = await db.update(usersTable).set(
     action === "approve"
