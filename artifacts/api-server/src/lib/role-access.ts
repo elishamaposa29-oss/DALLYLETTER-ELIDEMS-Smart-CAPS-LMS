@@ -9,18 +9,23 @@ export function isOwnerRole(role: unknown): boolean {
   return ["owner", "admin", "platform_owner"].includes(normalizeRole(role));
 }
 
+function hasManagerStaffRole(user: RoleLikeUser): boolean {
+  const role = normalizeRole(user.role);
+  return user.isManager === true && ["teacher", "manager", "senior_manager"].includes(role);
+}
+
 export function canManageAcademicContent(user: RoleLikeUser): boolean {
   const role = normalizeRole(user.role);
-  return role === "teacher" || isOwnerRole(role) || user.isManager === true;
+  return role === "teacher" || isOwnerRole(role) || hasManagerStaffRole(user);
 }
 
 export function canAccessManager(user: RoleLikeUser): boolean {
-  return isOwnerRole(user.role) || user.isManager === true;
+  return isOwnerRole(user.role) || hasManagerStaffRole(user);
 }
 
 export function canUseStaffAI(user: RoleLikeUser): boolean {
   const role = normalizeRole(user.role);
-  return ["owner", "admin", "platform_owner", "teacher"].includes(role) || user.isManager === true;
+  return ["owner", "admin", "platform_owner", "teacher"].includes(role) || hasManagerStaffRole(user);
 }
 
 export type AuthRequestLike = { currentUser?: RoleLikeUser | null };
