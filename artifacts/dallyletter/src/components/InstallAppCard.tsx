@@ -25,9 +25,9 @@ export function InstallAppCard() {
   const installed = isInstalled || standalone;
   return (
     <Card className="overflow-hidden border-primary/20 bg-gradient-to-r from-primary/5 via-card to-amber-500/10">
-      <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+      <CardContent className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground"><Smartphone className="h-6 w-6" /></div>
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground"><Smartphone className="h-5 w-5" /></div>
           <div><h2 className="font-semibold">Dallyletter Elidems mobile app</h2><p className="text-sm text-muted-foreground">{installed ? "Installed on this device." : "Install the app or download the Android installer directly."}</p></div>
         </div>
         <div className="flex flex-wrap gap-2">

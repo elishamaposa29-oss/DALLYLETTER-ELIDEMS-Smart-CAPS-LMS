@@ -18,6 +18,7 @@ import MobileDrawAnswer from "@/components/MobileDrawAnswer";
 import VoiceMessageComposer, { type VoiceRecordingFile } from "@/components/VoiceMessageComposer";
 import AuthenticatedAudioMessage from "@/components/AuthenticatedAudioMessage";
 import NativePushControls from "@/components/NativePushControls";
+import BreakElidemsShortcut from "@/components/BreakElidemsShortcut";
 
 type Section = "assignments" | "exercises" | "polls" | "notifications" | "groups" | "messages" | "payments" | "achievements" | "prefect" | "reports" | "audit";
 type Row = Record<string, any> & { id: number; title?: string; name?: string };
@@ -1097,6 +1098,7 @@ export default function FeatureHub() {
         {queuedSubmissions.length>0 ? <TouchableOpacity onPress={()=>void retryQueuedSubmissions()} disabled={queueBusy} style={{alignSelf:"flex-start",marginTop:6,paddingHorizontal:10,paddingVertical:6,borderRadius:7,backgroundColor:"#ffffff20"}}><Text style={{color:"#fff",fontSize:12,fontWeight:"600"}}>{queueBusy?"Retrying…":"Retry pending submissions"}</Text></TouchableOpacity> : null}
       </View>
       {!section ? <ScrollView contentContainerStyle={styles.content}>
+        <BreakElidemsShortcut />
         {visibleSections.map(item => (
           <TouchableOpacity key={item.id} style={styles.card} onPress={() => void loadSection(item.id)} accessibilityRole="button">
             <View style={styles.icon}><Feather name={item.icon as any} size={21} color={colors.primary} /></View>
