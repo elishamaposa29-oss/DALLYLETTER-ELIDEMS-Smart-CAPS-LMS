@@ -100,14 +100,9 @@ function extractPostgresError(value: unknown, seen = new Set<unknown>()): Record
   return undefined;
 }
 
-function databaseFailureResponse(error: unknown): { error: string; code: string; reason: string } {
-  const details = extractPostgresError(error);
-  const code = typeof details?.code === "string" ? details.code : "DATABASE_CONNECTION_FAILED";
-  const reason = typeof details?.message === "string"
-    ? details.message
-    : "The API could not connect to PostgreSQL.";
-
-  return { error: "Database unavailable", code, reason };
+function databaseFailureResponse(_error: unknown): { error: string; code: string; reason: string } {
+  // Never expose SQL, schema, table, constraint, or infrastructure details to clients.
+  return { error: "Database unavailable", code: "DATABASE_CONNECTION_FAILED", reason: "Please try again later." };
 }
 
 // POST /auth/register
@@ -116,6 +111,12 @@ router.post("/auth/register", async (req, res): Promise<void> => {
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
   const { email, password, name, role, grade, subject, phone } = parsed.data;
+  // Public registration cannot create privileged accounts. Staff roles require an
+  // explicit owner-controlled promotion/review workflow after signup.
+  if (typeof role !== "string" || !["student", "teacher"].includes(role.trim().toLowerCase())) {
+    res.status(403).json({ error: "This role cannot be created through public registration." });
+    return;
+  }
 
   try {
     const existing = await db.select().from(usersTable).where(eq(usersTable.email, email));
