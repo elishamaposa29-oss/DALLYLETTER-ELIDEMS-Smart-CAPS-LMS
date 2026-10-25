@@ -112,7 +112,7 @@ export async function consumeAuthAttempt(
 ): Promise<boolean> {
   const key = authAttemptKey(scope, identity, ipAddress);
   const result = await pool.query(
-    \`INSERT INTO auth_rate_limits (bucket_key, window_started_at, attempts, blocked_until)
+    `INSERT INTO auth_rate_limits (bucket_key, window_started_at, attempts, blocked_until)
      VALUES ($1, now(), 1, NULL)
      ON CONFLICT (bucket_key) DO UPDATE SET
        window_started_at = CASE
@@ -129,7 +129,7 @@ export async function consumeAuthAttempt(
          WHEN auth_rate_limits.attempts + 1 >= $3 THEN now() + ($4 * interval '1 millisecond')
          ELSE auth_rate_limits.blocked_until
        END
-     RETURNING blocked_until\`,
+     RETURNING blocked_until`,
     [key, windowMs, maxAttempts, blockMs],
   );
   return result.rows[0]?.blocked_until != null
