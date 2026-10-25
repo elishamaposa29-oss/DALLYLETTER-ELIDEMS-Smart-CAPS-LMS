@@ -1,4 +1,4 @@
-/** Public signup may create learner accounts or submit teacher applications only. */
+/** Public signup accepts only canonical roles permitted by the request schema. */
 export function isAllowedPublicRegistrationRole(role: unknown): boolean {
-  return typeof role === "string" && ["student", "teacher"].includes(role.trim().toLowerCase());
+  return role === "student" || role === "teacher";
 }
