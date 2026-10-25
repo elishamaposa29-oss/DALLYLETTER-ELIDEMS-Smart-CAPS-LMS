@@ -5,6 +5,7 @@ import { Loader2, Users, BookOpen, Video, Activity, DollarSign, AlertTriangle, T
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { useState } from "react";
+import { InstallAppCard } from "@/components/InstallAppCard";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export default function AdminHome() {
@@ -85,6 +86,8 @@ export default function AdminHome() {
             <div className={"flex items-center gap-2 px-4 py-2 rounded-full border " + (hasError ? "bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800" : "bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800")}><div className={"h-2 w-2 rounded-full " + (hasError ? "bg-red-500" : "bg-emerald-500") + " animate-pulse"} /><span className={"text-sm font-medium " + (hasError ? "text-red-700 dark:text-red-400" : "text-emerald-700 dark:text-emerald-400")}>{hasError ? "Dashboard needs attention" : "Platform Online"}</span></div>
           </div>
         </div>
+
+        <InstallAppCard />
 
         {isLoading ? (
           <div className="flex justify-center items-center p-20">
