@@ -27,7 +27,7 @@ router.get("/my", requireAuth, async (req, res): Promise<void> => {
 
 router.get("/leaderboard", requireAuth, async (_req, res): Promise<void> => {
   const users = await db.select({
-    id: usersTable.id, name: usersTable.name, role: usersTable.role,
+    id: usersTable.id, name: usersTable.name, role: usersTable.role, avatarUrl: usersTable.avatarUrl,
     grade: usersTable.grade, performanceScore: usersTable.performanceScore,
     badgeCount: usersTable.badgeCount, streakDays: usersTable.streakDays,
     isPrefect: usersTable.isPrefect,
@@ -154,7 +154,7 @@ router.patch("/lesson-requests/:id", requireAuth, async (req, res): Promise<void
 
 router.get("/prefect-leaderboard", requireAuth, async (_req, res): Promise<void> => {
   const prefects = await db.select({
-    id: usersTable.id, name: usersTable.name, grade: usersTable.grade,
+    id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl, grade: usersTable.grade,
     performanceScore: usersTable.performanceScore, badgeCount: usersTable.badgeCount,
     streakDays: usersTable.streakDays,
   }).from(usersTable).where(and(eq(usersTable.isPrefect, true), eq(usersTable.role, "student")));
