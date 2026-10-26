@@ -19,9 +19,9 @@ declare global {
 
 export default function GoogleSignInButton() {
   const buttonRef = useRef<HTMLDivElement>(null);
-  const handlers = useRef({ login: useAuth, toast: useToast });
   const auth = useAuth();
   const { toast } = useToast();
+  const handlers = useRef({ login: auth.login, toast });
   const [, setLocation] = useLocation();
   const clientId = String(import.meta.env.VITE_GOOGLE_CLIENT_ID || "").trim();
   handlers.current = { login: auth.login, toast };
