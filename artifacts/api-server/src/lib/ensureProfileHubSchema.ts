@@ -64,17 +64,19 @@ export async function ensureProfileHubSchema(): Promise<void> {
       updated_at timestamptz NOT NULL DEFAULT now()
     )`);
     await client.query("CREATE UNIQUE INDEX IF NOT EXISTS payout_history_provider_reference_idx ON payout_history(provider_reference) WHERE provider_reference IS NOT NULL");
-    await client.query(`DO $
-      BEGIN
-        IF to_regclass('public.teacher_profiles') IS NOT NULL THEN
-          INSERT INTO teacher_qualifications (user_id, title, source, verification_status)
-          SELECT tp.user_id, left(trim(tp.cv->>'education'), 500), 'legacy_migration', 'pending'
-          FROM teacher_profiles tp
-          WHERE jsonb_typeof(tp.cv) = 'object'
-            AND nullif(trim(tp.cv->>'education'), '') IS NOT NULL
-            AND NOT EXISTS (SELECT 1 FROM teacher_qualifications q WHERE q.user_id=tp.user_id AND q.source='legacy_migration' AND q.title=left(trim(tp.cv->>'education'),500));
-        END IF;
-      END $`);
+    await client.query(`CREATE TABLE IF NOT EXISTS email_notification_queue (
+      id bigserial PRIMARY KEY,
+      recipient_user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      subject text NOT NULL,
+      body_text text NOT NULL,
+      status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','processing','sent','failed')),
+      attempts integer NOT NULL DEFAULT 0,
+      available_at timestamptz NOT NULL DEFAULT now(),
+      sent_at timestamptz,
+      last_error text,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query("CREATE INDEX IF NOT EXISTS email_notification_queue_pending_idx ON email_notification_queue(status,available_at)");
     await client.query(`CREATE TABLE IF NOT EXISTS teacher_subjects (
       user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
       teaching_subjects text[] NOT NULL DEFAULT '{}',
