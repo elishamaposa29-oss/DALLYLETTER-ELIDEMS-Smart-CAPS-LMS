@@ -37,15 +37,26 @@ router.get("/leaderboard", requireAuth, async (_req, res): Promise<void> => {
 });
 
 router.get("/user/:userId", requireAuth, async (req, res): Promise<void> => {
-  const userId = parseInt(String(req.params.userId));
+  const userId = Number(req.params.userId);
+  if (!Number.isSafeInteger(userId) || userId <= 0) { res.status(400).json({ error: "Invalid user id." }); return; }
   const rows = await db.select().from(userAchievementsTable)
     .where(eq(userAchievementsTable.userId, userId))
     .orderBy(desc(userAchievementsTable.earnedAt));
   const achievements = await db.select().from(achievementsTable);
-  const result = rows.map((ua: any) => ({
-    ...ua,
-    achievement: achievements.find((a: any) => a.id === ua.achievementId),
-  }));
+  const isOwn = req.currentUser!.id === userId;
+  const result = rows.map((ua: any) => {
+    const achievement = achievements.find((a: any) => a.id === ua.achievementId);
+    if (isOwn) return { ...ua, achievement };
+    return {
+      id: ua.id,
+      earnedAt: ua.earnedAt,
+      achievementId: ua.achievementId,
+      achievement: achievement ? {
+        id: achievement.id, name: achievement.name, description: achievement.description,
+        icon: achievement.icon, pointsValue: achievement.pointsValue, category: achievement.category,
+      } : null,
+    };
+  });
   res.json(result);
 });
 
