@@ -20,6 +20,7 @@ export default function ProfileHub() {
   const [qualifications,setQualifications] = useState<any[]>([]);
   const [subjects,setSubjects] = useState<{teaching_subjects:string[];subjects_to_teach:string[]}>({teaching_subjects:[],subjects_to_teach:[]});
   const [summary,setSummary] = useState<any>(null);
+  const [achievements,setAchievements] = useState<any[]>([]);
   const [title,setTitle] = useState("");
   const [institution,setInstitution] = useState("");
   const [year,setYear] = useState("");
@@ -38,14 +39,15 @@ export default function ProfileHub() {
     if(!profileId || !Number.isSafeInteger(profileId)) return;
     try {
       if(isOwner) {
-        const [me, q, s, academic] = await Promise.all([
+        const [me, q, s, academic, earned] = await Promise.all([
           request("/api/users/"+profileId),
           request("/api/users/me/qualifications"),
           request("/api/users/me/subjects"),
-          request("/api/users/me/enrollments-summary").catch(()=>null)
+          request("/api/users/me/enrollments-summary").catch(()=>null),
+          request("/api/achievements/my").catch(()=>[])
         ]);
         setProfile({id:me.id,display_name:me.name,avatar:me.avatarUrl,bio:me.bio,role:me.role,verified_qualifications:(q||[]).filter((v:any)=>v.verification_status==="verified").map((v:any)=>({title:v.title,verified:true})),subjects_to_teach:s.subjects_to_teach||[]});
-        setQualifications(q||[]); setSubjects(s||{teaching_subjects:[],subjects_to_teach:[]}); setSummary(academic);
+        setQualifications(q||[]); setSubjects(s||{teaching_subjects:[],subjects_to_teach:[]}); setSubjectInput((s?.subjects_to_teach||[]).join(", ")); setSummary(academic); setAchievements(Array.isArray(earned)?earned:[]);
       } else {
         const p = await request("/api/users/"+profileId+"/public-profile");
         setProfile(p);
@@ -81,7 +83,7 @@ export default function ProfileHub() {
     {tab==="Overview"&&<div className="grid gap-4 md:grid-cols-2"><Card><CardHeader><CardTitle>Profile overview</CardTitle></CardHeader><CardContent className="space-y-2 text-sm"><p><strong>Name:</strong> {profile?.display_name||"Loading…"}</p><p><strong>Role:</strong> {profile?.role||"—"}</p><p><strong>Verified qualifications:</strong> {profile?.verified_qualifications?.length||0}</p><p><strong>Subjects:</strong> {profile?.subjects_to_teach?.join(", ")||"Not listed"}</p></CardContent></Card>{isOwner&&<Card><CardHeader><CardTitle>Profile completion</CardTitle></CardHeader><CardContent className="text-sm text-muted-foreground">Keep your qualifications and teaching subjects current. Academic records are read from the platform's authoritative records, not editable profile copies.</CardContent></Card>}</div>}
     {tab==="Qualifications"&&<Card><CardHeader><CardTitle>Qualifications</CardTitle></CardHeader><CardContent className="space-y-4">{(isOwner?qualifications:profile?.verified_qualifications||[]).map((q:any)=><div key={q.id||q.title} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"><div><p className="font-semibold">{q.title}</p><p className="text-sm text-muted-foreground">{q.institution||""}{q.year?" · "+q.year:""}</p></div><span className="rounded-full bg-muted px-3 py-1 text-xs">{q.verification_status||"verified"}</span></div>)}{!qualifications.length&&!profile?.verified_qualifications?.length&&<p className="text-sm text-muted-foreground">No qualifications have been added yet.</p>}{isOwner&&profile?.role==="teacher"&&<div className="grid gap-3 border-t pt-4 md:grid-cols-3"><input className="rounded-md border bg-background p-2 text-sm" placeholder="Qualification title *" value={title} onChange={e=>setTitle(e.target.value)}/><input className="rounded-md border bg-background p-2 text-sm" placeholder="Institution" value={institution} onChange={e=>setInstitution(e.target.value)}/><input className="rounded-md border bg-background p-2 text-sm" placeholder="Year" value={year} onChange={e=>setYear(e.target.value)}/><Button disabled={busy||!title.trim()} onClick={()=>void addQualification()}>Add qualification</Button></div>}</CardContent></Card>}
     {tab==="Subjects"&&<Card><CardHeader><CardTitle>Teaching subjects</CardTitle></CardHeader><CardContent className="space-y-3">{(profile?.subjects_to_teach||[]).map(s=><span key={s} className="mr-2 inline-block rounded-full bg-muted px-3 py-1 text-sm">{s}</span>)}{!profile?.subjects_to_teach?.length&&<p className="text-sm text-muted-foreground">No subjects listed.</p>}{isOwner&&profile?.role==="teacher"&&<div className="flex flex-col gap-2 sm:flex-row"><input className="min-w-0 flex-1 rounded-md border bg-background p-2 text-sm" placeholder="Comma-separated subjects" value={subjectInput} onChange={e=>setSubjectInput(e.target.value)}/><Button disabled={busy} onClick={()=>void saveSubjects()}>Save subjects</Button></div>}</CardContent></Card>}
-    {tab==="Enrollments"&&<Card><CardHeader><CardTitle>Enrollments</CardTitle></CardHeader><CardContent>{isOwner?<p className="text-sm">Active enrollment records: {summary?.enrollment_count??"Unavailable"}</p>:<p className="text-sm text-muted-foreground">Enrollment details are private.</p>}</CardContent></Card>}
-    {tab==="Achievements"&&<Card><CardHeader><CardTitle>Achievements</CardTitle></CardHeader><CardContent>{isOwner?<p className="text-sm">Recorded achievements: {summary?.achievement_count??"Unavailable"}</p>:<p className="text-sm text-muted-foreground">Only publicly approved profile details are shown here.</p>}</CardContent></Card>}
+    {tab==="Enrollments"&&<Card><CardHeader><CardTitle>Enrollments</CardTitle></CardHeader><CardContent>{isOwner?<div className="space-y-2 text-sm"><p>Active enrollment records: {summary?.enrollment_count??"Not available from an authoritative enrollment source in this deployment."}</p><p className="text-muted-foreground">No enrollment count is inferred from class attendance or lesson activity.</p></div>:<p className="text-sm text-muted-foreground">Enrollment details are private.</p>}</CardContent></Card>}
+    {tab==="Achievements"&&<Card><CardHeader><CardTitle>Achievements</CardTitle></CardHeader><CardContent className="space-y-3">{isOwner?<>{achievements.length?achievements.map((entry:any)=><div key={entry.id} className="flex items-start gap-3 rounded-lg border p-3"><span className="text-2xl" aria-hidden="true">{entry.achievement?.icon||"🏆"}</span><div className="min-w-0 flex-1"><p className="font-semibold">{entry.achievement?.name||"Achievement"}</p><p className="text-sm text-muted-foreground">{entry.achievement?.description||"Achievement awarded on the platform."}</p>{entry.note&&<p className="mt-1 text-sm">{entry.note}</p>}<p className="mt-1 text-xs text-muted-foreground">{entry.earnedAt?new Date(entry.earnedAt).toLocaleDateString(): "Award date unavailable"} · {entry.achievement?.pointsValue??0} points</p></div></div>):<p className="text-sm text-muted-foreground">No achievements recorded yet.</p>}</>:<p className="text-sm text-muted-foreground">Achievement details are not shown on public profiles until their visibility and approval rules are defined.</p>}</CardContent></Card>}
   </main></DashboardLayout>;
 }
