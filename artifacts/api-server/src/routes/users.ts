@@ -82,10 +82,6 @@ router.get("/users/:id", requireAuth, async (req, res): Promise<void> => {
   if (!canReadPrivateProfileByRole(actor.id, params.data.id, actor.role)) { res.status(403).json({ error: "You cannot access this private profile." }); return; }
   const [user] = await db.select(safeUserFields).from(usersTable).where(eq(usersTable.id, params.data.id));
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
-  if (body.data.phone !== undefined) {
-    await ensureRecoveryProfileSchema();
-    await pool.query("UPDATE account_recovery_profiles SET recovery_phone=$2,recovery_phone_verified_at=NULL,phone_verification_code_hash=NULL,phone_verification_expires_at=NULL,updated_at=now() WHERE user_id=$1", [params.data.id, user.phone ?? null]);
-  }
   res.json({ ...user, createdAt: user.createdAt.toISOString() });
 });
 
@@ -115,6 +111,10 @@ router.patch("/users/:id", requireAuth, async (req, res): Promise<void> => {
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, params.data.id)).returning(safeUserFields);
   if (body.data.email != null) await revokeUserSessions(params.data.id);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  if (body.data.phone !== undefined) {
+    await ensureRecoveryProfileSchema();
+    await pool.query("UPDATE account_recovery_profiles SET recovery_phone=$2,recovery_phone_verified_at=NULL,phone_verification_code_hash=NULL,phone_verification_expires_at=NULL,updated_at=now() WHERE user_id=$1", [params.data.id, user.phone ?? null]);
+  }
   res.json({ ...user, createdAt: user.createdAt.toISOString() });
 });
 
