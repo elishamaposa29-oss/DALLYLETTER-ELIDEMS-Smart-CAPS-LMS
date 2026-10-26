@@ -15,6 +15,7 @@ import { canReadPrivateProfileByRole, serializePublicProfile, maskPayoutDestinat
 import { revokeUserSessions, consumeAuthAttempt } from "../lib/auth-session-store";
 import { hashPassword, verifyPassword } from "../lib/password-hash";
 import { sendEmail, isEmailConfigured } from "../lib/email-service";
+import { isSmsConfigured, sendSms } from "../lib/sms-service";
 import { enqueueEmailNotification } from "../lib/email-notification-queue";
 
 const router: IRouter = Router();
@@ -81,6 +82,10 @@ router.get("/users/:id", requireAuth, async (req, res): Promise<void> => {
   if (!canReadPrivateProfileByRole(actor.id, params.data.id, actor.role)) { res.status(403).json({ error: "You cannot access this private profile." }); return; }
   const [user] = await db.select(safeUserFields).from(usersTable).where(eq(usersTable.id, params.data.id));
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  if (body.data.phone !== undefined) {
+    await ensureRecoveryProfileSchema();
+    await pool.query("UPDATE account_recovery_profiles SET recovery_phone=$2,recovery_phone_verified_at=NULL,phone_verification_code_hash=NULL,phone_verification_expires_at=NULL,updated_at=now() WHERE user_id=$1", [params.data.id, user.phone ?? null]);
+  }
   res.json({ ...user, createdAt: user.createdAt.toISOString() });
 });
 
@@ -116,11 +121,52 @@ router.patch("/users/:id", requireAuth, async (req, res): Promise<void> => {
 // Recovery contacts are private. Only verified alternate email may receive recovery links.
 async function ensureRecoveryProfileSchema(): Promise<void> {
   await pool.query("CREATE TABLE IF NOT EXISTS account_recovery_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, recovery_email text, recovery_email_verified_at timestamptz, recovery_phone text, recovery_phone_verified_at timestamptz, security_question text, security_answer_hash text, verification_code_hash text, verification_expires_at timestamptz, updated_at timestamptz NOT NULL DEFAULT now())");
+  await pool.query("ALTER TABLE account_recovery_profiles ADD COLUMN IF NOT EXISTS phone_verification_code_hash text");
+  await pool.query("ALTER TABLE account_recovery_profiles ADD COLUMN IF NOT EXISTS phone_verification_expires_at timestamptz");
 }
 
 function canManageOwnRecoveryProfile(role: unknown): boolean {
   return !isOwnerRole(role);
 }
+
+router.post("/users/me/phone/request-verification", requireAuth, async (req, res): Promise<void> => {
+  const phone = typeof req.body?.phone === "string" ? req.body.phone.trim() : "";
+  if (!/^\+[1-9]\d{7,14}$/.test(phone)) { res.status(400).json({ error: "Enter a valid international phone number, including country code (for example +263…)."}); return; }
+  if (!isSmsConfigured()) { res.status(503).json({ error: "Phone verification is not available because SMS delivery is not configured. Your saved phone number remains unverified." }); return; }
+  await ensureRecoveryProfileSchema();
+  const code = String(crypto.randomInt(100000, 1000000));
+  const codeHash = crypto.createHash("sha256").update(String(req.currentUser!.id) + ":" + code + ":" + String(process.env.JWT_SECRET || "")).digest("hex");
+  await pool.query(`INSERT INTO account_recovery_profiles (user_id,recovery_phone,recovery_phone_verified_at,phone_verification_code_hash,phone_verification_expires_at,updated_at)
+    VALUES ($1,$2,NULL,$3,now()+interval '10 minutes',now())
+    ON CONFLICT (user_id) DO UPDATE SET recovery_phone=EXCLUDED.recovery_phone,recovery_phone_verified_at=NULL,phone_verification_code_hash=EXCLUDED.phone_verification_code_hash,phone_verification_expires_at=EXCLUDED.phone_verification_expires_at,updated_at=now()`,
+    [req.currentUser!.id, phone, codeHash]);
+  try {
+    await sendSms(phone, "Your Dallyletter Elidems verification code is " + code + ". It expires in 10 minutes. Do not share this code.");
+    res.json({ message: "Verification code sent.", expiresInSeconds: 600 });
+  } catch {
+    await pool.query("UPDATE account_recovery_profiles SET phone_verification_code_hash=NULL,phone_verification_expires_at=NULL,updated_at=now() WHERE user_id=$1", [req.currentUser!.id]);
+    res.status(503).json({ error: "The SMS provider could not send your verification code. Please try again later." });
+  }
+});
+
+router.post("/users/me/phone/confirm", requireAuth, async (req, res): Promise<void> => {
+  const code = typeof req.body?.code === "string" ? req.body.code.trim() : "";
+  if (!/^\d{6}$/.test(code)) { res.status(400).json({ error: "Enter the six-digit verification code." }); return; }
+  await ensureRecoveryProfileSchema();
+  const result = await pool.query("SELECT recovery_phone,phone_verification_code_hash,phone_verification_expires_at FROM account_recovery_profiles WHERE user_id=$1", [req.currentUser!.id]);
+  const row = result.rows[0] as {recovery_phone:string|null;phone_verification_code_hash:string|null;phone_verification_expires_at:Date|null}|undefined;
+  if (!row?.recovery_phone || !row.phone_verification_code_hash || !row.phone_verification_expires_at || new Date(row.phone_verification_expires_at).getTime() <= Date.now()) {
+    res.status(400).json({ error: "No active phone verification request exists. Request a new code." }); return;
+  }
+  const expected = crypto.createHash("sha256").update(String(req.currentUser!.id) + ":" + code + ":" + String(process.env.JWT_SECRET || "")).digest("hex");
+  const expectedBytes = Buffer.from(expected, "hex");
+  const actualBytes = Buffer.from(row.phone_verification_code_hash, "hex");
+  if (expectedBytes.length !== actualBytes.length || !crypto.timingSafeEqual(expectedBytes, actualBytes)) {
+    res.status(400).json({ error: "The verification code is incorrect or expired." }); return;
+  }
+  await pool.query("UPDATE account_recovery_profiles SET recovery_phone_verified_at=now(),phone_verification_code_hash=NULL,phone_verification_expires_at=NULL,updated_at=now() WHERE user_id=$1", [req.currentUser!.id]);
+  res.json({ verified: true, phone: row.recovery_phone });
+});
 
 router.get("/users/me/recovery-profile", requireAuth, async (req, res): Promise<void> => {
   if (!canManageOwnRecoveryProfile(req.currentUser!.role)) { res.status(403).json({ error: "Owner/admin recovery profile is managed through protected bootstrap." }); return; }
