@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { eq } from "drizzle-orm";
 import multer from "multer";
-import { db, usersTable, pool } from "@workspace/db";
+import { db, usersTable, classesTable, pool } from "@workspace/db";
 import {
   GetUserParams, UpdateUserParams, UpdateUserBody,
   DeleteUserParams, BlockUserParams, BlockUserBody,
