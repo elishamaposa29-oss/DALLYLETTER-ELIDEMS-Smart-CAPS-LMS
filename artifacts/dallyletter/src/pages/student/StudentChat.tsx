@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
+import UserProfileLink from "@/components/UserProfileLink";
 import { apiJson, authenticatedFetch } from "@/lib/api";
 import {
   useListMessages,
@@ -370,9 +371,8 @@ export default function StudentChat() {
                       return (
                         <div key={currentMessage.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
                           <div className="flex max-w-[90%] items-end gap-2" style={{ marginLeft: isMe ? 0 : `${Math.min(depth, 4) * 1.5}rem` }}>
-                            {!isMe && <div className="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-bold text-primary">{currentMessage.senderName.charAt(0)}</div>}
                             <div className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
-                              {!isMe && <span className="mb-1 ml-1 text-xs text-muted-foreground">{currentMessage.senderName} · {currentMessage.senderRole}</span>}
+                              {!isMe && <UserProfileLink userId={currentMessage.senderId} name={currentMessage.senderName + " · " + currentMessage.senderRole} className="mb-1 ml-1 text-xs text-muted-foreground" />}
                               <div className={`rounded-2xl px-4 py-2.5 ${isMe ? "rounded-tr-sm bg-primary text-primary-foreground" : "rounded-tl-sm border bg-card shadow-sm"}`}>
                                 {currentMessage.type === "voice" && currentMessage.mediaUrl ? <AuthenticatedAudio className="h-10 max-w-[250px]" src={currentMessage.mediaUrl} /> : currentMessage.type === "media" && currentMessage.mediaUrl ? (
   <div className="space-y-2">
