@@ -18,6 +18,14 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: PUBLIC_APP_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
       - key: CORS_ORIGINS
         value: https://dallyletter-web.onrender.com
   - type: web
