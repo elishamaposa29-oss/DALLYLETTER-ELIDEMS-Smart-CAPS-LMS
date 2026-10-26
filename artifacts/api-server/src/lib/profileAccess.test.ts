@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canReadPrivateProfileByRole, maskPayoutDestination } from "./profile-access-policy.js";
+import { canReadPrivateProfileByRole, maskPayoutDestination, serializePublicProfile } from "./profile-access-policy.js";
 
 test("learners cannot read another teacher's private profile or payout fields", () => {
   assert.equal(canReadPrivateProfileByRole(21, 31, "student"), false);
@@ -23,4 +23,19 @@ test("owner payout previews mask phone and email destinations", () => {
 
 test("teachers cannot read another teacher's payout profile", () => {
   assert.equal(canReadPrivateProfileByRole(31, 32, "teacher"), false);
+});
+
+test("public teacher profiles exclude email, phone and payout details", () => {
+  const result = serializePublicProfile(
+    { id: 31, name: "Teacher", avatarUrl: null, bio: "Math teacher", role: "teacher" },
+    [{ title: "BSc Mathematics", verification_status: "verified" }, { title: "Unverified record", verification_status: "pending" }],
+    ["Mathematics"],
+  );
+  assert.equal(result.display_name, "Teacher");
+  assert.deepEqual(result.verified_qualifications, [{ title: "BSc Mathematics", verified: true }]);
+  assert.deepEqual(result.subjects_to_teach, ["Mathematics"]);
+  assert.equal("email" in result, false);
+  assert.equal("phone" in result, false);
+  assert.equal("payout_preferences" in result, false);
+  assert.equal("paypal_email" in result, false);
 });
