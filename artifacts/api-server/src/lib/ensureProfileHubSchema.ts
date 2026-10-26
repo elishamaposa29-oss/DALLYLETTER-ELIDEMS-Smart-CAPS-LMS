@@ -10,7 +10,13 @@ export async function ensureProfileHubSchema(): Promise<void> {
     await client.query("BEGIN");
     await client.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_email text");
     await client.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_email_verified_at timestamptz");
-    await client.query(`CREATE TABLE IF NOT EXISTS teacher_documents (\n      id serial PRIMARY KEY, user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n      document_type text NOT NULL, file_name text NOT NULL, mime_type text NOT NULL,\n      size_bytes integer NOT NULL, data bytea NOT NULL, created_at timestamptz NOT NULL DEFAULT now()\n    )`);\n    await client.query("CREATE INDEX IF NOT EXISTS teacher_documents_user_idx ON teacher_documents(user_id)");\n    await client.query(`CREATE TABLE IF NOT EXISTS teacher_qualifications (
+    await client.query(`CREATE TABLE IF NOT EXISTS teacher_documents (
+      id serial PRIMARY KEY, user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      document_type text NOT NULL, file_name text NOT NULL, mime_type text NOT NULL,
+      size_bytes integer NOT NULL, data bytea NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query("CREATE INDEX IF NOT EXISTS teacher_documents_user_idx ON teacher_documents(user_id)");
+    await client.query(`CREATE TABLE IF NOT EXISTS teacher_qualifications (
       id serial PRIMARY KEY,
       user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       title text NOT NULL,
