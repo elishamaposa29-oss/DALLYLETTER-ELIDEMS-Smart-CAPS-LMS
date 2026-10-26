@@ -279,7 +279,8 @@ router.post("/auth/password-reset/request", async (req, res): Promise<void> => {
   try {
     // Always prefer an exact primary-email match. Otherwise allow a unique,
     // previously verified recovery email; never let an unverified address claim an account.
-    const primary = await db.select({ id: usersTable.id, email: usersTable.email }).from(usersTable).where(eq(usersTable.email, email));
+    const primaryResult = await pool.query("SELECT id, email FROM users WHERE lower(email) = $1 LIMIT 1", [email]);
+    const primary = primaryResult.rows.map((row: { id: number | string; email: string }) => ({ id: Number(row.id), email: row.email }));
     await pool.query("CREATE TABLE IF NOT EXISTS account_recovery_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, recovery_email text, recovery_email_verified_at timestamptz, recovery_phone text, recovery_phone_verified_at timestamptz, security_question text, security_answer_hash text, verification_code_hash text, verification_expires_at timestamptz, updated_at timestamptz NOT NULL DEFAULT now())");
     let user = primary[0];
     if (!user) {
