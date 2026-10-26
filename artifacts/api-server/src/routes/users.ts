@@ -395,4 +395,77 @@ router.patch("/users/:id/payment-info", requireAuth, async (req, res): Promise<v
   res.json({ ...user, createdAt: user.createdAt.toISOString() });
 });
 
+
+const publicProfileSerializer = (user: { id: number; name: string; avatarUrl: string | null; bio: string | null; role: string }, qualifications: Array<{ title: string; verification_status: string }>, subjects: string[]) => ({
+  id: user.id,
+  display_name: user.name,
+  avatar: user.avatarUrl,
+  bio: user.bio,
+  role: user.role,
+  verified_qualifications: qualifications.filter(item => item.verification_status === "verified").map(item => ({ title: item.title, verified: true })),
+  subjects_to_teach: subjects,
+});
+
+function maskPayoutDestination(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.includes("@")) {
+    const [name, domain] = trimmed.split("@");
+    return (name.length > 1 ? name.slice(0, 1) : "") + "••••@" + domain;
+  }
+  return trimmed.length > 4 ? trimmed.slice(0, 3) + "••••" + trimmed.slice(-2) : "••••";
+}
+
+// Public profile is intentionally separate from /users/:id (private profile).
+router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid user id." }); return; }
+  const [user] = await db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl, bio: usersTable.bio, role: usersTable.role })
+    .from(usersTable).where(eq(usersTable.id, id));
+  if (!user) { res.status(404).json({ error: "User not found." }); return; }
+  const [qualifications, subjectRows] = await Promise.all([
+    pool.query("SELECT title, verification_status FROM teacher_qualifications WHERE user_id = $1 AND verification_status = 'verified' ORDER BY created_at DESC", [id]),
+    pool.query("SELECT subjects_to_teach FROM teacher_subjects WHERE user_id = $1", [id]),
+  ]);
+  const subjects = Array.isArray(subjectRows.rows[0]?.subjects_to_teach) ? subjectRows.rows[0].subjects_to_teach.filter((v: unknown) => typeof v === "string") : (user.role === "teacher" ? [] : []);
+  res.json(publicProfileSerializer(user, qualifications.rows, subjects));
+});
+
+router.get("/users/:id/payout-preview", requireAuth, async (req, res): Promise<void> => {
+  const actor = req.currentUser!;
+  if (!isOwnerRole(actor.role)) { res.status(403).json({ error: "Owner access required." }); return; }
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid user id." }); return; }
+  const result = await pool.query(`SELECT u.id, u.name, u.role, COALESCE(s.subjects_to_teach, '{}') AS subjects,
+    p.method, p.ecocash_phone, p.paypal_email
+    FROM users u LEFT JOIN teacher_subjects s ON s.user_id = u.id
+    LEFT JOIN payout_preferences p ON p.user_id = u.id WHERE u.id = $1`, [id]);
+  const row = result.rows[0];
+  if (!row) { res.status(404).json({ error: "User not found." }); return; }
+  if (row.role !== "teacher") { res.status(400).json({ error: "Payout preview is only available for teacher accounts." }); return; }
+  const destination = row.method === "ecocash" ? row.ecocash_phone : row.method === "paypal" ? row.paypal_email : null;
+  res.json({
+    teacher_id: row.id,
+    legal_names: row.name,
+    subjects: Array.isArray(row.subjects) ? row.subjects : [],
+    method: row.method ?? null,
+    destination_masked: destination ? maskPayoutDestination(destination) : null,
+    payout_ready: Boolean(row.method && destination),
+    message: destination ? `Pay ${row.name} via ${row.method}; destination ${maskPayoutDestination(destination)}` : "Teacher payout details are not configured.",
+  });
+});
+
+router.get("/users/me/enrollments-summary", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.currentUser!.id;
+  // Query only authoritative tables that exist in this deployment; fail closed if the schema is incomplete.
+  try {
+    const result = await pool.query(`SELECT
+      (SELECT count(*)::int FROM enrollments e WHERE e.user_id = $1) AS enrollment_count,
+      (SELECT count(*)::int FROM learner_achievements a WHERE a.user_id = $1) AS achievement_count,
+      (SELECT count(*)::int FROM course_progress cp WHERE cp.user_id = $1) AS progress_count`, [userId]);
+    res.json(result.rows[0] ?? { enrollment_count: 0, achievement_count: 0, progress_count: 0 });
+  } catch {
+    res.status(503).json({ error: "Academic summary tables are not available in this deployment yet." });
+  }
+});
+
 export default router;
