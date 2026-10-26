@@ -18,3 +18,19 @@ export function maskPayoutDestination(value: string): string {
   if (trimmed.length >= 7) return trimmed.slice(0, 3) + "****" + trimmed.slice(-3);
   return "****";
 }
+
+export function serializePublicProfile(
+  user: { id: number; name: string; avatarUrl: string | null; bio: string | null; role: string },
+  qualifications: Array<{ title: string; verification_status: string }>,
+  subjects: string[],
+) {
+  return {
+    id: user.id,
+    display_name: user.name,
+    avatar: user.avatarUrl,
+    bio: user.bio,
+    role: user.role,
+    verified_qualifications: qualifications.filter(item => item.verification_status === "verified").map(item => ({ title: item.title, verified: true })),
+    subjects_to_teach: subjects,
+  };
+}
