@@ -13,7 +13,7 @@ export async function ensureProfileHubSchema(): Promise<void> {
     await client.query(`CREATE TABLE IF NOT EXISTS teacher_documents (
       id serial PRIMARY KEY, user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       document_type text NOT NULL, file_name text NOT NULL, mime_type text NOT NULL,
-      size_bytes integer NOT NULL, data bytea NOT NULL DEFAULT '\\x'::bytea, storage_key text, created_at timestamptz NOT NULL DEFAULT now()
+      size_bytes integer NOT NULL, data bytea NOT NULL DEFAULT decode('', 'hex'), storage_key text, created_at timestamptz NOT NULL DEFAULT now()
     )`);
     await client.query("CREATE INDEX IF NOT EXISTS teacher_documents_user_idx ON teacher_documents(user_id)");
     await client.query("ALTER TABLE teacher_documents ADD COLUMN IF NOT EXISTS storage_key text");
