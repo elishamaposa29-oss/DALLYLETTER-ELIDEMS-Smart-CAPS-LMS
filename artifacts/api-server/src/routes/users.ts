@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import crypto from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { eq } from "drizzle-orm";
 import multer from "multer";
 import { db, usersTable, pool } from "@workspace/db";
@@ -9,7 +10,7 @@ import {
   PromoteUserParams, PromoteUserBody,
 } from "@workspace/api-zod";
 import { requireAuth, requireOwner, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, persistUploadedMedia, removeStoredMedia } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, persistUploadedMedia, removeStoredMedia, streamStoredMedia } from "../lib/media-storage";
 import { canReadPrivateUserProfile } from "../lib/profile-access-policy";
 import { revokeUserSessions, consumeAuthAttempt } from "../lib/auth-session-store";
 import { hashPassword } from "../lib/password-hash";
@@ -492,6 +493,188 @@ router.post("/users/me/qualifications", requireAuth, async (req, res): Promise<v
     RETURNING id,title,institution,year,verification_status,document_id,source,created_at`,
     [req.currentUser!.id, title.trim(), typeof institution === "string" ? institution.trim() || null : null, parsedYear, verifiedDocumentId]);
   res.status(201).json(result.rows[0]);
+});
+
+
+// Public list is intentionally minimal; only verified qualifications are public.
+router.get("/qualifications/:userId", requireAuth, async (req, res): Promise<void> => {
+  const id = Number(req.params.userId);
+  if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid user id." }); return; }
+  const result = await pool.query("SELECT id,title,institution,year,verification_status,created_at FROM teacher_qualifications WHERE user_id=$1 AND verification_status='verified' ORDER BY created_at DESC", [id]);
+  res.json(result.rows);
+});
+
+router.post("/qualifications", requireAuth, async (req, res): Promise<void> => {
+  const actor = req.currentUser!;
+  if (actor.role !== "teacher") { res.status(403).json({ error: "Teacher account required." }); return; }
+  const { title, institution, year } = req.body ?? {};
+  if (typeof title !== "string" || !title.trim() || title.trim().length > 500) { res.status(400).json({ error: "Qualification title is required (maximum 500 characters)." }); return; }
+  if (institution != null && (typeof institution !== "string" || institution.trim().length > 300)) { res.status(400).json({ error: "Institution must be text up to 300 characters." }); return; }
+  const parsedYear = year == null || year === "" ? null : Number(year);
+  if (parsedYear !== null && (!Number.isInteger(parsedYear) || parsedYear < 1900 || parsedYear > new Date().getFullYear()+5)) { res.status(400).json({ error: "Enter a valid qualification year." }); return; }
+  const result = await pool.query("INSERT INTO teacher_qualifications(user_id,title,institution,year,verification_status,source) VALUES($1,$2,$3,$4,'pending','user') RETURNING id,title,institution,year,verification_status,document_id,created_at", [actor.id,title.trim(),typeof institution==="string"?institution.trim()||null:null,parsedYear]);
+  res.status(201).json(result.rows[0]);
+});
+
+const qualificationUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, callback) => { void ensureMediaDirectory().then(()=>callback(null,getMediaDirectory())).catch(error=>callback(error as Error,"")); },
+    filename: (_req, _file, callback) => callback(null,createMediaStorageKey()),
+  }),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  fileFilter: (_req,file,callback) => callback(null,["application/pdf","image/jpeg","image/png"].includes(file.mimetype)),
+});
+
+router.post("/qualifications/:id/document", requireAuth, (req,res,next):void => {
+  qualificationUpload.single("file")(req,res,error=>{
+    void (async()=>{
+      if(error instanceof multer.MulterError){res.status(400).json({error:"Choose a PDF, JPG, or PNG file up to 10 MB."});return;}
+      if(error){next(error);return;}
+      const file=req.file;
+      if(!file){res.status(415).json({error:"Choose a PDF, JPG, or PNG file."});return;}
+      const actor=req.currentUser!;
+      try{
+        const id=Number(req.params.id);
+        if(!Number.isSafeInteger(id)||id<=0){res.status(400).json({error:"Invalid qualification id."});return;}
+        const q=await pool.query("SELECT id,user_id FROM teacher_qualifications WHERE id=$1",[id]);
+        if(!q.rows.length){res.status(404).json({error:"Qualification not found."});return;}
+        if(q.rows[0].user_id!==actor.id&&!isOwnerRole(actor.role)){res.status(403).json({error:"You cannot upload documents for this qualification."});return;}
+        if(q.rows[0].user_id!==actor.id&&isOwnerRole(actor.role)){res.status(403).json({error:"Upload documents from the qualification owner's account."});return;}
+        const bytes=await readFile(file.path);
+        const validPdf=file.mimetype==="application/pdf"&&bytes.subarray(0,5).toString()==="%PDF-";
+        const validJpeg=file.mimetype==="image/jpeg"&&bytes[0]===0xff&&bytes[1]===0xd8&&bytes[2]===0xff;
+        const validPng=file.mimetype==="image/png"&&bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
+        if(!validPdf&&!validJpeg&&!validPng){await import("node:fs/promises").then(fs=>fs.unlink(file.path).catch(()=>undefined));res.status(415).json({error:"The file content does not match a supported PDF/JPG/PNG type."});return;}
+        const storageKey=createMediaStorageKey();
+        await persistUploadedMedia(storageKey,file.mimetype,file.path);
+        const result=await pool.query("INSERT INTO teacher_documents(user_id,document_type,file_name,mime_type,size_bytes,data,storage_key) VALUES($1,'certificate',$2,$3,$4,'\\x'::bytea,$5) RETURNING id,file_name,mime_type,size_bytes,created_at",[actor.id,file.originalname.replace(/[\\r\\n]/g,"").slice(0,255)||"qualification-document",file.mimetype,bytes.length,storageKey]);
+        await pool.query("UPDATE teacher_qualifications SET document_id=$1 WHERE id=$2 AND user_id=$3",[result.rows[0].id,id,actor.id]);
+        res.status(201).json({document:result.rows[0],message:"Document uploaded; qualification remains pending verification."});
+      }catch(error){next(error);}
+    })();
+  });
+});
+
+router.patch("/qualifications/:id/verify", requireAuth, async(req,res):Promise<void>=>{
+  if(!isOwnerRole(req.currentUser!.role)){res.status(403).json({error:"Owner/admin access required."});return;}
+  const id=Number(req.params.id);
+  const status=req.body?.status;
+  if(!Number.isSafeInteger(id)||id<=0){res.status(400).json({error:"Invalid qualification id."});return;}
+  if(!["verified","rejected"].includes(status)){res.status(400).json({error:"status must be verified or rejected."});return;}
+  const result=await pool.query("UPDATE teacher_qualifications SET verification_status=$1 WHERE id=$2 RETURNING id,user_id,title,institution,year,verification_status,document_id,created_at",[status,id]);
+  if(!result.rows.length){res.status(404).json({error:"Qualification not found."});return;}
+  res.json(result.rows[0]);
+});
+
+router.get("/qualifications/:id/document", requireAuth, async(req,res):Promise<void>=>{
+  const id=Number(req.params.id), actor=req.currentUser!;
+  if(!Number.isSafeInteger(id)||id<=0){res.status(400).json({error:"Invalid document id."});return;}
+  const result=await pool.query("SELECT d.id,d.user_id,d.file_name,d.mime_type,d.storage_key,q.verification_status FROM teacher_documents d LEFT JOIN teacher_qualifications q ON q.document_id=d.id WHERE d.id=$1",[id]);
+  const doc=result.rows[0];
+  if(!doc){res.status(404).json({error:"Document not found."});return;}
+  if(doc.user_id!==actor.id&&!isOwnerRole(actor.role)){res.status(403).json({error:"Document access denied."});return;}
+  if(!doc.storage_key){res.status(503).json({error:"Document storage key unavailable for this legacy record."});return;}
+  const media=await streamStoredMedia(doc.storage_key);
+  if(!media){res.status(404).json({error:"Stored document not found."});return;}
+  res.setHeader("Content-Type",doc.mime_type);
+  res.setHeader("Content-Disposition",`inline; filename="${String(doc.file_name).replace(/["\\r\\n]/g,"")}"`);
+  res.setHeader("Cache-Control","private, no-store");
+  res.status(media.status);
+  const bytes=Buffer.from(await media.arrayBuffer());
+  res.send(bytes);
+});
+
+router.post("/users/me/notification-email/request", requireAuth, async(req,res):Promise<void>=>{
+  const email=typeof req.body?.email==="string"?req.body.email.trim().toLowerCase():"";
+  if(!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(email)||email.length>254){res.status(400).json({error:"Enter a valid notification email address."});return;}
+  if(!isEmailConfigured()){res.status(503).json({error:"Email delivery is not configured; notification email was not changed."});return;}
+  if(await consumeAuthAttempt("notification-email-request",String(req.currentUser!.id),req.ip||"unknown",5,60*60*1000,60*60*1000)){res.status(429).json({error:"Too many OTP requests. Try again later."});return;}
+  const otp=String(crypto.randomInt(100000,1000000));
+  const digest=crypto.createHash("sha256").update(String(req.currentUser!.id)+":"+email+":"+otp).digest("hex");
+  await pool.query("INSERT INTO notification_email_verifications(user_id,email,otp_hash,expires_at,attempts,created_at) VALUES($1,$2,$3,now()+interval '10 minutes',0,now()) ON CONFLICT(user_id) DO UPDATE SET email=EXCLUDED.email,otp_hash=EXCLUDED.otp_hash,expires_at=EXCLUDED.expires_at,attempts=0,created_at=now()",[req.currentUser!.id,email,digest]);
+  try{await sendEmail({to:[email],subject:"Verify your Dallyletter notification email",text:"Your verification code is "+otp+". It expires in 10 minutes. If you did not request this, ignore this message."});}
+  catch{await pool.query("DELETE FROM notification_email_verifications WHERE user_id=$1",[req.currentUser!.id]);res.status(503).json({error:"Email provider could not send the code. Try again later."});return;}
+  res.json({message:"Verification code sent. It expires in 10 minutes."});
+});
+
+router.post("/users/me/notification-email/verify", requireAuth, async(req,res):Promise<void>=>{
+  const email=typeof req.body?.email==="string"?req.body.email.trim().toLowerCase():"";
+  const otp=typeof req.body?.otp==="string"?req.body.otp.trim():"";
+  if(!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(email)||!/^[0-9]{6}$/.test(otp)){res.status(400).json({error:"Valid email and six-digit OTP are required."});return;}
+  if(await consumeAuthAttempt("notification-email-verify",String(req.currentUser!.id),req.ip||"unknown",8,15*60*1000,15*60*1000)){res.status(429).json({error:"Too many verification attempts. Try again later."});return;}
+  const digest=crypto.createHash("sha256").update(String(req.currentUser!.id)+":"+email+":"+otp).digest("hex");
+  const result=await pool.query("DELETE FROM notification_email_verifications WHERE user_id=$1 AND email=$2 AND otp_hash=$3 AND expires_at>now() AND attempts<8 RETURNING email",[req.currentUser!.id,email,digest]);
+  if(!result.rows.length){await pool.query("UPDATE notification_email_verifications SET attempts=attempts+1 WHERE user_id=$1",[req.currentUser!.id]);res.status(400).json({error:"Verification code is invalid or expired."});return;}
+  await pool.query("UPDATE users SET notification_email=$2,notification_email_verified_at=now() WHERE id=$1",[req.currentUser!.id,email]);
+  res.json({message:"Notification email verified.",notification_email:email,verified:true});
+});
+
+router.get("/users/me/notification-email", requireAuth, async(req,res):Promise<void>=>{
+  const result=await pool.query("SELECT notification_email,notification_email_verified_at FROM users WHERE id=$1",[req.currentUser!.id]);
+  res.json(result.rows[0]??{notification_email:null,notification_email_verified_at:null});
+});
+
+router.get("/users/me/enrollments", requireAuth, async(req,res):Promise<void>=>{
+  const actor=req.currentUser!;
+  const learnerId=actor.id;
+  const result=await pool.query(`SELECT e.id,e.class_id,e.enrolled_at,e.progress_percent,e.status,c.title,c.subject,c.grade,c.scheduled_at,c.teacher_id,c.teacher_name
+    FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 AND e.status='active' ORDER BY e.enrolled_at DESC`,[learnerId]);
+  res.json(result.rows);
+});
+
+router.get("/users/me/enrollments-summary", requireAuth, async(req,res,next):Promise<void>=>{
+  try{
+    const [enrollments,achievements]=await Promise.all([
+      pool.query("SELECT count(*)::int AS enrollment_count, COALESCE(avg(progress_percent),0)::int AS progress_percent FROM enrollments WHERE learner_id=$1 AND status='active'",[req.currentUser!.id]),
+      pool.query("SELECT count(*)::int AS achievement_count FROM user_achievements WHERE user_id=$1",[req.currentUser!.id]),
+    ]);
+    res.json({enrollment_count:enrollments.rows[0]?.enrollment_count??0,progress_percent:enrollments.rows[0]?.progress_percent??0,achievement_count:achievements.rows[0]?.achievement_count??0,completeness:"complete",unavailable_sources:[]});
+  }catch(error){next(error);}
+});
+
+router.post("/payouts/execute", requireAuth, async(req,res):Promise<void>=>{
+  if(!isOwnerRole(req.currentUser!.role)){res.status(403).json({error:"Owner/admin access required."});return;}
+  const {teacherId,amount,note}=req.body??{};
+  const id=Number(teacherId), value=Number(amount);
+  if(!Number.isSafeInteger(id)||id<=0||!Number.isFinite(value)||value<=0||value>10000000){res.status(400).json({error:"Valid teacherId and positive amount are required."});return;}
+  if(typeof req.body?.card_number!=="undefined"||typeof req.body?.cvv!=="undefined"||typeof req.body?.pin!=="undefined"||typeof req.body?.password!=="undefined"){res.status(400).json({error:"Card details, PINs and passwords are never accepted."});return;}
+  const prefs=await pool.query("SELECT p.method,p.paypal_email,p.ecocash_phone,u.role FROM payout_preferences p JOIN users u ON u.id=p.user_id WHERE p.user_id=$1",[id]);
+  if(!prefs.rows.length||prefs.rows[0].role!=="teacher"){res.status(404).json({error:"Teacher payout preferences not found."});return;}
+  const p=prefs.rows[0];
+  if(p.method==="ecocash"){res.status(503).json({error:"EcoCash payout provider is not configured for server-to-server disbursement. No payment was sent.",provider:"ecocash"});return;}
+  if(p.method!=="paypal"||!p.paypal_email){res.status(400).json({error:"A verified PayPal payout email is required for this payout route."});return;}
+  const clientId=process.env.PAYPAL_CLIENT_ID?.trim(), secret=process.env.PAYPAL_CLIENT_SECRET?.trim();
+  if(!clientId||!secret){res.status(503).json({error:"PayPal Payouts credentials are not configured. No payment was sent.",provider:"paypal"});return;}
+  const base=(process.env.PAYPAL_API_BASE?.trim()||(process.env.NODE_ENV==="production"?"https://api-m.paypal.com":"https://api-m.sandbox.paypal.com")).replace(/\\/$/,"");
+  const tokenResponse=await fetch(base+"/v1/oauth2/token",{method:"POST",headers:{Authorization:"Basic "+Buffer.from(clientId+":"+secret).toString("base64"),"Content-Type":"application/x-www-form-urlencoded"},body:"grant_type=client_credentials"});
+  if(!tokenResponse.ok){res.status(502).json({error:"PayPal authentication failed; no payout was created."});return;}
+  const tokenData=await tokenResponse.json() as {access_token?:string};
+  if(!tokenData.access_token){res.status(502).json({error:"PayPal did not return an access token."});return;}
+  const reference="TEACHER_"+id+"_"+Date.now();
+  const payoutResponse=await fetch(base+"/v1/payments/payouts",{method:"POST",headers:{Authorization:"Bearer "+tokenData.access_token,"Content-Type":"application/json","PayPal-Request-Id":reference},body:JSON.stringify({sender_batch_header:{sender_batch_id:reference,email_subject:"Your Dallyletter teacher payout",email_message:"A teacher payout has been initiated."},items:[{recipient_type:"EMAIL",amount:{value:value.toFixed(2),currency:process.env.PAYOUT_CURRENCY||"USD"},receiver:p.paypal_email,note:typeof note==="string"?note.slice(0,500):"Teacher payout"}]})});
+  const payoutBody=await payoutResponse.json().catch(()=>({})) as {batch_header?:{payout_batch_id?:string;batch_status?:string};message?:string};
+  if(!payoutResponse.ok){res.status(502).json({error:"PayPal rejected the payout request.",provider_message:payoutBody.message??null});return;}
+  const providerReference=payoutBody.batch_header?.payout_batch_id??reference;
+  const saved=await pool.query("INSERT INTO payout_history(teacher_id,amount,currency,method,provider_reference,status,note) VALUES($1,$2,$3,'paypal',$4,'pending',$5) RETURNING id,teacher_id,amount,currency,method,provider_reference,status,created_at",[id,value,process.env.PAYOUT_CURRENCY||"USD",providerReference,typeof note==="string"?note.slice(0,500):null]);
+  res.status(202).json({message:"Payout submitted to PayPal; final settlement awaits provider confirmation.",payout:saved.rows[0]});
+});
+
+router.post("/webhooks/paynow", async(req,res):Promise<void>=>{
+  // Do not trust unsigned payment callbacks. Configure a provider-supported signature verifier before enabling state transitions.
+  const key=process.env.PAYNOW_KEY?.trim();
+  if(!key){res.status(503).json({error:"Paynow webhook verification is not configured."});return;}
+  const signature=req.header("x-paynow-signature");
+  if(!signature||typeof req.body?.reference!=="string"||typeof req.body?.status!=="string"){res.status(400).json({error:"Signed Paynow reference and status are required."});return;}
+  const raw=JSON.stringify(req.body);
+  const expected=crypto.createHmac("sha256",key).update(raw).digest("hex");
+  const supplied=signature.replace(/^sha256=/,"");
+  const a=Buffer.from(expected,"hex"),b=Buffer.from(supplied,"hex");
+  if(a.length!==b.length||!crypto.timingSafeEqual(a,b)){res.status(401).json({error:"Invalid Paynow webhook signature."});return;}
+  const reference=req.body.reference;
+  const status=String(req.body.status).toLowerCase();
+  if(!["paid","failed","pending"].includes(status)){res.status(400).json({error:"Unsupported payment status."});return;}
+  await pool.query("UPDATE payout_history SET status=$1,webhook_verified=true,updated_at=now() WHERE provider_reference=$2 AND webhook_verified=false",[status,reference]);
+  res.json({received:true});
 });
 
 router.get("/users/me/subjects", requireAuth, async (req, res): Promise<void> => {
