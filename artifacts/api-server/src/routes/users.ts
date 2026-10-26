@@ -654,6 +654,16 @@ router.get("/users/me/enrollments-summary", requireAuth, async(req,res,next):Pro
   }catch(error){next(error);}
 });
 
+router.get("/payouts/history", requireAuth, async(req,res):Promise<void>=>{
+  if(!isOwnerRole(req.currentUser!.role)){res.status(403).json({error:"Owner/admin access required."});return;}
+  const teacherId=req.query.teacherId==null?null:Number(req.query.teacherId);
+  if(teacherId!==null&&(!Number.isSafeInteger(teacherId)||teacherId<=0)){res.status(400).json({error:"Invalid teacherId."});return;}
+  const result=teacherId===null
+    ? await pool.query("SELECT h.id,h.teacher_id,u.name AS teacher_name,h.amount,h.currency,h.method,h.provider_reference,h.status,h.webhook_verified,h.note,h.created_at,h.updated_at FROM payout_history h JOIN users u ON u.id=h.teacher_id ORDER BY h.created_at DESC LIMIT 200")
+    : await pool.query("SELECT h.id,h.teacher_id,u.name AS teacher_name,h.amount,h.currency,h.method,h.provider_reference,h.status,h.webhook_verified,h.note,h.created_at,h.updated_at FROM payout_history h JOIN users u ON u.id=h.teacher_id WHERE h.teacher_id=$1 ORDER BY h.created_at DESC LIMIT 200",[teacherId]);
+  res.json(result.rows);
+});
+
 router.post("/payouts/execute", requireAuth, async(req,res):Promise<void>=>{
   if(!isOwnerRole(req.currentUser!.role)){res.status(403).json({error:"Owner/admin access required."});return;}
   const {teacherId,amount,note}=req.body??{};
