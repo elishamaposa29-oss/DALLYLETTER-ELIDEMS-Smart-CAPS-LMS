@@ -24,7 +24,7 @@ export default function ManagerProfile() {
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <View style={{alignItems:"center",padding:18,borderRadius:14,backgroundColor:colors.card,borderWidth:1,borderColor:colors.border,marginBottom:16}}>
         <ProfileAvatarEditor />
-        <Text style={{fontSize:19,fontWeight:"800",color:colors.foreground,marginTop:10}}>{user?.name||"Manager"}</Text>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Open your Profile Hub" onPress={()=>router.push("/profile-hub" as any)}><Text style={{fontSize:19,fontWeight:"800",color:colors.foreground,marginTop:10}}>{user?.name||"Manager"}</Text></TouchableOpacity>
         <Text style={{fontSize:13,color:colors.mutedForeground,marginTop:3}}>{user?.email}</Text>
         <Text style={{fontSize:12,fontWeight:"700",color:colors.primary,marginTop:8}}>Manager account</Text>
       </View>
