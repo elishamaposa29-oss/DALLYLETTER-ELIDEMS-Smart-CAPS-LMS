@@ -12,10 +12,12 @@ CREATE TABLE IF NOT EXISTS public.teacher_documents (
   file_name text NOT NULL,
   mime_type text NOT NULL,
   size_bytes integer NOT NULL,
-  data bytea NOT NULL,
+  data bytea NOT NULL DEFAULT '\\x'::bytea,
+  storage_key text,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS teacher_documents_user_idx ON public.teacher_documents(user_id);
+ALTER TABLE public.teacher_documents ADD COLUMN IF NOT EXISTS storage_key text;
 
 CREATE TABLE IF NOT EXISTS public.teacher_qualifications (
   id serial PRIMARY KEY,
