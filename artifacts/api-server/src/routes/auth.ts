@@ -342,7 +342,9 @@ router.post("/auth/password-reset/request", async (req, res): Promise<void> => {
     res.status(429).json({ error: "Too many password recovery requests. Please try again later." }); return;
   }
   if (!isEmailConfigured()) {
-    res.status(503).json({ error: "Password recovery is temporarily unavailable. Please contact support." }); return;
+    const { logger } = await import("../lib/logger");
+    logger.error({ event: "auth.password_reset.delivery_unavailable", reason: "resend_not_configured" }, "Password recovery email was not sent because Resend is not configured");
+    res.status(503).json({ error: "Password recovery email delivery is not configured on the server yet. No email has been sent." }); return;
   }
   try {
     // Always prefer an exact primary-email match. Otherwise allow a unique,
@@ -365,7 +367,7 @@ router.post("/auth/password-reset/request", async (req, res): Promise<void> => {
       const recovery = await pool.query("SELECT recovery_email FROM account_recovery_profiles WHERE user_id = $1 AND recovery_email_verified_at IS NOT NULL", [user.id]);
       const recoveryEmail = recovery.rows[0]?.recovery_email as string | undefined;
       const recipients = [...new Set([user.email, ...(recoveryEmail ? [recoveryEmail] : [])])];
-      const baseUrl = (process.env.PUBLIC_APP_URL ?? process.env.APP_BASE_URL ?? "https://dallyletterelidemslearningplatforme-six.vercel.app").replace(/\/$/, "");
+      const baseUrl = (process.env.PUBLIC_APP_URL ?? process.env.APP_BASE_URL ?? "https://dallyletterelidemslearningplatformelishamaposa1-otbtqe1pf.vercel.app").replace(/\/$/, "");
       await sendEmail({
         to: recipients,
         subject: "Reset your Dallyletter Elidems password",
