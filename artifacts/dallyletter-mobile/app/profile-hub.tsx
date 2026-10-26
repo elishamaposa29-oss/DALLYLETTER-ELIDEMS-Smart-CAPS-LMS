@@ -26,6 +26,7 @@ export default function MobileProfileHub() {
   const [qualifications,setQualifications] = useState<Row[]>([]);
   const [queue,setQueue] = useState<Row[]>([]);
   const [subjects,setSubjects] = useState<string[]>([]);
+  const [subjectInput,setSubjectInput] = useState("");
   const [enrollments,setEnrollments] = useState<Row[]>([]);
   const [achievements,setAchievements] = useState<Row[]>([]);
   const [email,setEmail] = useState("");
@@ -58,7 +59,7 @@ export default function MobileProfileHub() {
           api("/api/users/me/payout-preferences").catch(()=>({}))
         ]);
         setProfile({id:me.id,display_name:me.name,avatar:me.avatarUrl,bio:me.bio,role:me.role,verified_qualifications:(q||[]).filter((x:Row)=>x.verification_status==="verified"),subjects_to_teach:s?.subjects_to_teach||[],grade:me.grade});
-        setQualifications(Array.isArray(q)?q:[]);setSubjects(Array.isArray(s?.subjects_to_teach)?s.subjects_to_teach:[]);
+        setQualifications(Array.isArray(q)?q:[]);setSubjects(Array.isArray(s?.subjects_to_teach)?s.subjects_to_teach:[]);setSubjectInput(Array.isArray(s?.subjects_to_teach)?s.subjects_to_teach.join(", "):"");
         setEnrollments(Array.isArray(en)?en:[]);setAchievements(Array.isArray(a)?a:[]);
         setEmail(n.notification_email||"");setEmailVerified(Boolean(n.notification_email_verified_at));setPayoutMethod(p.method||"ecocash");setPayoutDestinationMasked(p.destination_masked||"");setBankName(p.bank_name||"");setAccountHolder(p.account_name_holder||"");
         if(isOwner){const pending=await api("/api/qualifications/pending").catch(()=>[]);setQueue(Array.isArray(pending)?pending:[]);}
@@ -98,6 +99,11 @@ export default function MobileProfileHub() {
     const openUri=Platform.OS==="android"?await FileSystem.getContentUriAsync(result.uri):result.uri;
     await Linking.openURL(openUri);
   });
+  const saveSubjects=async()=>act(async()=>{
+    const list=[...new Set(subjectInput.split(",").map(v=>v.trim()).filter(Boolean))];
+    await api("/api/users/me/subjects",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({teaching_subjects:list,subjects_to_teach:list})});
+    setSubjects(list);setMessage("Teaching subjects saved.");
+  });
   const savePayout=async()=>act(async()=>{
     const body:Row={method:payoutMethod};
     if(payoutMethod==="ecocash")body.ecocash_phone=payoutDestination.trim();
@@ -136,7 +142,7 @@ export default function MobileProfileHub() {
         {isOwn&&String(user.role).toLowerCase()==="teacher"&&<View style={card}><Text style={{fontWeight:"800",color:colors.foreground,marginBottom:8}}>Add qualification</Text><TextInput accessibilityLabel="Qualification title" value={newQualificationTitle} onChangeText={setNewQualificationTitle} placeholder="Qualification title" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground}}/>{button("Save qualification",()=>void addQualification(),!newQualificationTitle.trim())}</View>}
         {isOwner&&<View style={card}><Text style={{fontSize:16,fontWeight:"800",color:colors.foreground,marginBottom:8}}>Pending verification</Text>{queue.map((q:Row)=><View key={q.id} style={{borderTopWidth:1,borderTopColor:colors.border,paddingVertical:10}}>{line("Teacher",q.teacher_name)}{line("Qualification",q.title)}{line("Institution",q.institution)}{q.document_id&&button("Review document",()=>void openDocument(q.document_id,q.document_file_name,q.document_mime_type))}{button("Verify",()=>void verify(q.id,"verified"))}{button("Reject",()=>void verify(q.id,"rejected"))}</View>)}{!queue.length&&<Text style={{color:colors.mutedForeground}}>No pending qualifications.</Text>}</View>}
       </View>}
-      {tab==="Subjects"&&<View style={card}>{subjects.map(s=><Text key={s} style={{color:colors.foreground,paddingVertical:7}}>• {s}</Text>)}{!subjects.length&&<Text style={{color:colors.mutedForeground}}>No subjects listed.</Text>}</View>}
+      {tab==="Subjects"&&<View style={card}>{subjects.map(s=><Text key={s} style={{color:colors.foreground,paddingVertical:7}}>• {s}</Text>)}{!subjects.length&&<Text style={{color:colors.mutedForeground}}>No subjects listed.</Text>}{isOwn&&String(user.role).toLowerCase()==="teacher"&&<><TextInput accessibilityLabel="Comma-separated teaching subjects" value={subjectInput} onChangeText={setSubjectInput} placeholder="Mathematics, English" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground,marginTop:10}}/>{button("Save subjects",()=>void saveSubjects())}</>}</View>}
       {tab==="Enrollments"&&<View>{isOwn?enrollments.map((e:Row)=><View key={e.id} style={card}>{line("Class",e.title)}{line("Subject",e.subject)}{line("Teacher",e.teacher_name)}{line("Enrolled",e.enrolled_at?new Date(e.enrolled_at).toLocaleDateString():"—")}{line("Progress",String(e.progress_percent??0)+"%")}</View>):<View style={card}><Text style={{color:colors.mutedForeground}}>Enrollment details are private.</Text></View>}{isOwn&&!enrollments.length&&<View style={card}><Text style={{color:colors.mutedForeground}}>No active class enrollments recorded.</Text></View>}</View>}
       {tab==="Achievements"&&<View>{achievements.map((a:Row)=><View key={a.id} style={card}><Text style={{fontSize:16,fontWeight:"800",color:colors.foreground}}>{a.achievement?.icon||"🏆"} {a.achievement?.name||"Achievement"}</Text><Text style={{color:colors.mutedForeground,marginTop:5}}>{a.achievement?.description||"Achievement earned on the platform."}</Text>{line("Points",a.achievement?.pointsValue??0)}{line("Earned",a.earnedAt?new Date(a.earnedAt).toLocaleDateString():"—")}</View>)}{!achievements.length&&<View style={card}><Text style={{color:colors.mutedForeground}}>No achievements recorded.</Text></View>}</View>}
     </ScrollView>
