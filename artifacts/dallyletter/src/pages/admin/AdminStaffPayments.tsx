@@ -19,6 +19,12 @@ export default function AdminStaffPayments() {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState({ recipientId: "", amount: "", reason: "salary", description: "", paymentMethod: "bank_transfer", period: "", referenceNumber: "" });
+  const [payoutTeacherId,setPayoutTeacherId] = useState("");
+  const [payoutAmount,setPayoutAmount] = useState("");
+  const [payoutNote,setPayoutNote] = useState("");
+  const [payoutPreview,setPayoutPreview] = useState<any>(null);
+  const [payoutResult,setPayoutResult] = useState<any>(null);
+  const [payoutBusy,setPayoutBusy] = useState(false);
 
   const load = () => {
     void Promise.all([
@@ -45,6 +51,24 @@ export default function AdminStaffPayments() {
       setForm({ recipientId: "", amount: "", reason: "salary", description: "", paymentMethod: "bank_transfer", period: "", referenceNumber: "" });
       load();
     });
+  };
+
+  const loadPayoutPreview = async (id:string) => {
+    setPayoutTeacherId(id);setPayoutPreview(null);setPayoutResult(null);
+    if(!id)return;
+    try{const r=await fetch(getApiUrl("/api/users/"+id+"/payout-preview"),{headers:{Authorization:"Bearer "+token()}});const data=await r.json();if(!r.ok)throw new Error(data.error||"Could not load payout preview.");setPayoutPreview(data);}
+    catch(e){toast({variant:"destructive",title:"Payout preview unavailable",description:e instanceof Error?e.message:"Please retry."});}
+  };
+  const executeTeacherPayout = async () => {
+    if(!payoutTeacherId||!payoutAmount||Number(payoutAmount)<=0){toast({variant:"destructive",title:"Choose a teacher and valid amount"});return;}
+    setPayoutBusy(true);setPayoutResult(null);
+    try{
+      const r=await fetch(getApiUrl("/api/payouts/execute"),{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+token()},body:JSON.stringify({teacherId:Number(payoutTeacherId),amount:Number(payoutAmount),note:payoutNote})});
+      const data=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(data.error||"Payout could not be submitted.");
+      setPayoutResult(data);toast({title:"Payout submitted",description:"Provider confirmation is still pending."});
+    }catch(e){toast({variant:"destructive",title:"Payout not submitted",description:e instanceof Error?e.message:"Please retry."});}
+    finally{setPayoutBusy(false);}
   };
 
   const totalPaid = payments.reduce((s, p) => s + parseFloat(p.amount ?? "0"), 0);
