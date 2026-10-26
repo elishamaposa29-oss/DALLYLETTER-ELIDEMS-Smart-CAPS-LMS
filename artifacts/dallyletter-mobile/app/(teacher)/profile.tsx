@@ -67,7 +67,7 @@ export default function TeacherProfile() {
     <View style={s.container}>
       <View style={s.header}>
         <ProfileAvatarEditor />
-        <Text style={s.name}>{user?.name}</Text>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Open your Profile Hub" onPress={()=>router.push("/profile-hub" as any)}><Text style={s.name}>{user?.name}</Text></TouchableOpacity>
         <Text style={s.email}>{user?.email}</Text>
         <View style={s.badge}>
           <Text style={s.badgeText}>Teacher</Text>
