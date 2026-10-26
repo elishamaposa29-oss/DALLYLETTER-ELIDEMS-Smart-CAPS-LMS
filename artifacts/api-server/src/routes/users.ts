@@ -434,21 +434,26 @@ router.get("/users/:id/payout-preview", requireAuth, async (req, res): Promise<v
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid user id." }); return; }
   const result = await pool.query(`SELECT u.id, u.name, u.role, COALESCE(s.subjects_to_teach, '{}') AS subjects,
-    p.method, p.ecocash_phone, p.paypal_email
+    p.method, p.ecocash_phone, p.paypal_email, p.bank_name, p.account_name_holder
     FROM users u LEFT JOIN teacher_subjects s ON s.user_id = u.id
     LEFT JOIN payout_preferences p ON p.user_id = u.id WHERE u.id = $1`, [id]);
   const row = result.rows[0];
   if (!row) { res.status(404).json({ error: "User not found." }); return; }
   if (row.role !== "teacher") { res.status(400).json({ error: "Payout preview is only available for teacher accounts." }); return; }
   const destination = row.method === "ecocash" ? row.ecocash_phone : row.method === "paypal" ? row.paypal_email : null;
+  const providerReady = row.method === "paypal" && Boolean(destination) && Boolean(process.env.PAYPAL_CLIENT_ID?.trim() && process.env.PAYPAL_CLIENT_SECRET?.trim());
+  const maskedDestination = row.method === "bank" ? row.bank_name : destination ? maskPayoutDestination(destination) : null;
   res.json({
     teacher_id: row.id,
     legal_names: row.name,
     subjects: Array.isArray(row.subjects) ? row.subjects : [],
     method: row.method ?? null,
-    destination_masked: destination ? maskPayoutDestination(destination) : null,
-    payout_ready: Boolean(row.method && destination),
-    message: destination ? `Pay ${row.name} via ${row.method}; destination ${maskPayoutDestination(destination)}` : "Teacher payout details are not configured.",
+    destination_masked: maskedDestination,
+    payout_ready: providerReady,
+    message: providerReady ? `Pay ${row.name} via PayPal; destination ${maskedDestination}` :
+      row.method === "paypal" && destination ? "PayPal Payouts credentials are not configured." :
+      row.method === "ecocash" ? "EcoCash server-to-server payout provider is not configured." :
+      row.method === "bank" ? "Bank payout execution is not configured." : "Teacher payout details are not configured.",
   });
 });
 
