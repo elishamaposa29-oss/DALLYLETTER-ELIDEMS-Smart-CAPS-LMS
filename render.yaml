@@ -26,6 +26,12 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM_NUMBER
+        sync: false
       - key: CORS_ORIGINS
         value: https://dallyletter-web.onrender.com
   - type: web
