@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db, usersTable, pool } from "@workspace/db";
 import { RegisterUserBody, LoginUserBody } from "@workspace/api-zod";
@@ -234,6 +235,73 @@ router.get("/auth/me", requireAuth, async (req, res): Promise<void> => {
   const currentUser = req.currentUser!;
   const { passwordHash: _, ...safeUser } = currentUser;
   res.json(safeUser);
+});
+
+// POST /auth/google — verify a Google Identity Services ID token and link/sign in safely.
+router.post("/auth/google", async (req, res): Promise<void> => {
+  const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
+  const credential = typeof req.body?.credential === "string" ? req.body.credential : "";
+  if (!clientId) { res.status(503).json({ error: "Google sign-in is not configured for this application yet." }); return; }
+  if (!credential || credential.length > 12000) { res.status(400).json({ error: "A valid Google credential is required." }); return; }
+  try {
+    const verify = await fetch("https://oauth2.googleapis.com/tokeninfo?id_token=" + encodeURIComponent(credential));
+    if (!verify.ok) { res.status(401).json({ error: "Google sign-in could not verify this account. Please try again." }); return; }
+    const claims = await verify.json() as { aud?: string; iss?: string; sub?: string; email?: string; email_verified?: string | boolean; name?: string; exp?: string | number };
+    const expiresAt = Number(claims.exp);
+    if (claims.aud !== clientId || !["accounts.google.com", "https://accounts.google.com"].includes(String(claims.iss))
+      || typeof claims.sub !== "string" || !claims.sub || typeof claims.email !== "string"
+      || String(claims.email_verified).toLowerCase() !== "true" || !Number.isFinite(expiresAt) || expiresAt <= Math.floor(Date.now() / 1000)) {
+      res.status(401).json({ error: "Google identity token is invalid or its email is not verified." }); return;
+    }
+    const email = claims.email.trim().toLowerCase();
+    const linked = await pool.query("SELECT user_id FROM google_account_links WHERE google_sub = $1 LIMIT 1", [claims.sub]);
+    let userId = linked.rows[0]?.user_id ? Number(linked.rows[0].user_id) : 0;
+    if (!userId) {
+      const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, email));
+      let user = existing;
+      if (user && (user.isBlocked || user.isSuspended)) {
+        res.status(403).json({ error: "This account is unavailable. Please contact the school administrator." }); return;
+      }
+      if (user) {
+        const currentLink = await pool.query("SELECT google_sub FROM google_account_links WHERE user_id = $1 LIMIT 1", [user.id]);
+        if (currentLink.rows.length && currentLink.rows[0].google_sub !== claims.sub) {
+          res.status(409).json({ error: "This Dallyletter account is already linked to a different Google account." }); return;
+        }
+      } else {
+        const [created] = await db.insert(usersTable).values({
+          email,
+          passwordHash: await hashPassword(randomBytes(32).toString("hex")),
+          name: (claims.name?.trim() || email.split("@")[0]).slice(0, 200),
+          role: "student",
+          grade: null,
+          subject: null,
+          phone: null,
+          isPrefect: false,
+          isBlocked: false,
+          isSuspended: false,
+          teacherApplicationStatus: "not_applicable",
+          teacherReviewDeadline: null,
+        }).returning();
+        user = created;
+      }
+      userId = user.id;
+      await pool.query("INSERT INTO google_account_links (user_id, google_sub, email, updated_at) VALUES ($1,$2,$3,now()) ON CONFLICT (google_sub) DO NOTHING", [userId, claims.sub, email]);
+      const verifyLink = await pool.query("SELECT user_id FROM google_account_links WHERE google_sub = $1", [claims.sub]);
+      if (!verifyLink.rows[0] || Number(verifyLink.rows[0].user_id) !== userId) {
+        res.status(409).json({ error: "Google account linking conflicted with an existing account. Sign in with your original method." }); return;
+      }
+    }
+    const [signedIn] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+    if (!signedIn || signedIn.isBlocked || signedIn.isSuspended) { res.status(403).json({ error: "This account is unavailable." }); return; }
+    const token = generateToken(signedIn.id);
+    await createAuthSession(token, signedIn.id);
+    const { passwordHash: _passwordHash, ...safeUser } = signedIn;
+    res.json({ user: safeUser, token });
+  } catch (error) {
+    const { logger } = await import("../lib/logger");
+    logger.error({ event: "auth.google.sign_in_failed", reason: error instanceof Error ? error.message.slice(0, 200) : "unknown" }, "Google sign-in failed");
+    res.status(503).json({ error: "Google sign-in could not be completed. Please try again." });
+  }
 });
 
 // POST /auth/change-password — Change own password (any authenticated user)
