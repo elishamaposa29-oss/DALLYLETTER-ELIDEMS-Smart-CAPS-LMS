@@ -8,8 +8,8 @@ const apply = process.argv.includes("--apply");
 if (apply && process.env.ALLOW_ENROLLMENT_BACKFILL !== "true") {
   throw new Error("Refusing writes: set ALLOW_ENROLLMENT_BACKFILL=true only after reviewing the staging dry-run.");
 }
-if (process.env.NODE_ENV === "production" && apply) {
-  throw new Error("Refusing enrollment backfill with NODE_ENV=production.");
+if (apply && process.env.ENROLLMENT_BACKFILL_ENV !== "staging") {
+  throw new Error("Refusing writes: set ENROLLMENT_BACKFILL_ENV=staging only for an explicitly designated staging database.");
 }
 
 const pool = new Pool({ connectionString: databaseUrl, ssl: process.env.PGSSLMODE === "require" ? { rejectUnauthorized: false } : undefined });
@@ -18,6 +18,9 @@ try {
   const identity = await pool.query("SELECT current_database() AS database_name, current_setting('transaction_read_only') AS read_only");
   console.log("Database target:", identity.rows[0].database_name, "read_only:", identity.rows[0].read_only);
   if (identity.rows[0].read_only === "on") throw new Error("Database connection is read-only.");
+  if (apply && /production|recovery/i.test(identity.rows[0].database_name)) {
+    throw new Error("Refusing enrollment backfill: database name indicates production or recovery.");
+  }
 
   const schema = await pool.query(
     "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = ANY($1::text[]) ORDER BY table_name, ordinal_position",
