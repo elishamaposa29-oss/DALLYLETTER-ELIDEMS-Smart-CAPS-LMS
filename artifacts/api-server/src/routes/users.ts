@@ -15,6 +15,7 @@ import { canReadPrivateProfileByRole, serializePublicProfile } from "../lib/prof
 import { revokeUserSessions, consumeAuthAttempt } from "../lib/auth-session-store";
 import { hashPassword, verifyPassword } from "../lib/password-hash";
 import { sendEmail, isEmailConfigured } from "../lib/email-service";
+import { enqueueEmailNotification } from "../lib/email-notification-queue";
 
 const router: IRouter = Router();
 
@@ -622,6 +623,7 @@ router.post("/classes/:classId/enroll", requireAuth, async(req,res):Promise<void
   const [klass]=await db.select({id:classesTable.id}).from(classesTable).where(eq(classesTable.id,classId));
   if(!klass){res.status(404).json({error:"Class not found."});return;}
   const result=await pool.query("INSERT INTO enrollments(learner_id,class_id,status) VALUES($1,$2,'active') ON CONFLICT(learner_id,class_id) DO UPDATE SET status='active' RETURNING id,learner_id,class_id,enrolled_at,progress_percent,status",[requestedLearnerId,classId]);
+  await enqueueEmailNotification(requestedLearnerId,"Class enrollment confirmed","You have been enrolled in a Dallyletter class. Open your Profile Hub to review your enrollment and progress.");
   res.status(201).json(result.rows[0]);
 });
 
@@ -688,6 +690,7 @@ router.post("/payouts/execute", requireAuth, async(req,res):Promise<void>=>{
   if(!payoutResponse.ok){res.status(502).json({error:"PayPal rejected the payout request.",provider_message:payoutBody.message??null});return;}
   const providerReference=payoutBody.batch_header?.payout_batch_id??reference;
   const saved=await pool.query("INSERT INTO payout_history(teacher_id,amount,currency,method,provider_reference,status,note) VALUES($1,$2,$3,'paypal',$4,'pending',$5) RETURNING id,teacher_id,amount,currency,method,provider_reference,status,created_at",[id,value,process.env.PAYOUT_CURRENCY||"USD",providerReference,typeof note==="string"?note.slice(0,500):null]);
+  await enqueueEmailNotification(id,"Teacher payout submitted","A teacher payout request was submitted to PayPal. Reference: "+providerReference+". Settlement is pending provider confirmation.");
   res.status(202).json({message:"Payout submitted to PayPal; final settlement awaits provider confirmation.",payout:saved.rows[0]});
 });
 
