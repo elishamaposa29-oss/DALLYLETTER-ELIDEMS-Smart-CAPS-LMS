@@ -150,7 +150,8 @@ export default function MobileProfileHub() {
   const verifyPhone=async()=>act(async()=>{
     if(!/^\d{6}$/.test(phoneOtp))throw new Error("Enter the six-digit SMS code.");
     await api("/api/users/me/phone/confirm",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:phoneOtp})});
-    await login({...user,phone:phoneInput.trim()},token!);
+    if(!user||!token)throw new Error("Please sign in again before verifying your phone number.");
+    await login({...user,phone:phoneInput.trim()},token);
     setPhoneVerified(true);setPhoneOtp("");setMessage("Phone number verified.");
   });
   const saveSubjects=async()=>act(async()=>{
