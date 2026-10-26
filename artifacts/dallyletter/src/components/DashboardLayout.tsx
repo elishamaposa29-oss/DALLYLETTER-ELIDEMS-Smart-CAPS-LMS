@@ -215,7 +215,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     ];
   }
 
-  navItems.unshift({ label: "Profile Hub", href: "/profile-hub", icon: Users, section: "Account" });
+  navItems.push({ label: "Profile Hub", href: "/profile-hub", icon: Users, section: "Account" });
 
   const homeHref = ["student","prefect"].includes(normalizedRole) ? "/" : normalizedRole === "teacher" ? "/teacher" : ["manager","senior_manager"].includes(normalizedRole) ? "/manager" : "/admin";
 
