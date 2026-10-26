@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
+import UserProfileLink from "@/components/UserProfileLink";
 import { getApiUrl } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -263,7 +264,7 @@ export default function TeacherAssignments() {
                 {viewSubs.submissions.map(sub => (
                   <div key={sub.id} className="border rounded-xl p-3">
                     <div className="flex items-center justify-between mb-2">
-                      <p className="font-medium text-slate-800 text-sm">{sub.studentName}</p>
+                      <UserProfileLink userId={sub.studentId ?? sub.student_id} name={sub.studentName || "Learner"} className="font-medium text-slate-800 text-sm" showAvatar={false} />
                       <Badge className={`text-xs ${sub.status === "graded" ? "bg-purple-100 text-purple-700" : "bg-emerald-100 text-emerald-700"}`}>
                         {sub.status === "graded" ? `${sub.marks}/${viewSubs.assignment.totalMarks}` : "Submitted"}
                       </Badge>
