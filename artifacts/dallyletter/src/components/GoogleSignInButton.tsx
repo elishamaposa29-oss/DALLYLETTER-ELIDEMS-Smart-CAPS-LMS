@@ -17,7 +17,7 @@ declare global {
   }
 }
 
-export default function GoogleSignInButton() {
+export default function GoogleSignInButton({ mode = "signin" }: { mode?: "signin" | "signup" }) {
   const buttonRef = useRef<HTMLDivElement>(null);
   const auth = useAuth();
   const { toast } = useToast();
@@ -63,7 +63,7 @@ export default function GoogleSignInButton() {
         type: "standard",
         theme: "outline",
         size: "large",
-        text: "continue_with",
+        text: mode === "signup" ? "signup_with" : "signin_with",
         shape: "rectangular",
         width: Math.min(360, Math.max(260, buttonRef.current.clientWidth || 320)),
         logo_alignment: "left",
@@ -87,10 +87,10 @@ export default function GoogleSignInButton() {
       document.head.appendChild(script);
     }
     return () => { mounted = false; };
-  }, [clientId, setLocation]);
+  }, [clientId, mode, setLocation]);
 
   if (!clientId) {
-    return <div className="space-y-2"><button type="button" disabled className="h-11 w-full rounded-lg border border-slate-300 bg-white font-semibold text-slate-500 opacity-80">Continue with Google</button><p role="status" className="text-xs text-slate-500">Google sign-in needs VITE_GOOGLE_CLIENT_ID on the web deployment and GOOGLE_CLIENT_ID on the API.</p></div>;
+    return <div className="space-y-2"><button type="button" disabled className="h-11 w-full rounded-lg border border-slate-300 bg-white font-semibold text-slate-500 opacity-80">{mode === "signup" ? "Sign up with Google" : "Sign in with Google"}</button><p role="status" className="text-xs text-slate-500">Google sign-in needs VITE_GOOGLE_CLIENT_ID on the web deployment and GOOGLE_CLIENT_ID on the API.</p></div>;
   }
   return <div ref={buttonRef} className="flex min-h-11 w-full justify-center" aria-label="Continue with Google" />;
 }
