@@ -456,15 +456,13 @@ router.get("/users/:id/payout-preview", requireAuth, async (req, res): Promise<v
 
 router.get("/users/me/enrollments-summary", requireAuth, async (req, res): Promise<void> => {
   const userId = req.currentUser!.id;
-  // Query only authoritative tables that exist in this deployment; fail closed if the schema is incomplete.
+  // This repository currently defines user_achievements, but no authoritative enrollments/course_progress tables.
+  // Report unsupported counts as null rather than inventing or duplicating academic records.
   try {
-    const result = await pool.query(`SELECT
-      (SELECT count(*)::int FROM enrollments e WHERE e.user_id = $1) AS enrollment_count,
-      (SELECT count(*)::int FROM learner_achievements a WHERE a.user_id = $1) AS achievement_count,
-      (SELECT count(*)::int FROM course_progress cp WHERE cp.user_id = $1) AS progress_count`, [userId]);
-    res.json(result.rows[0] ?? { enrollment_count: 0, achievement_count: 0, progress_count: 0 });
+    const result = await pool.query("SELECT count(*)::int AS achievement_count FROM user_achievements WHERE user_id = $1", [userId]);
+    res.json({ enrollment_count: null, achievement_count: result.rows[0]?.achievement_count ?? 0, progress_count: null, completeness: "partial", unavailable_sources: ["enrollments", "course_progress"] });
   } catch {
-    res.status(503).json({ error: "Academic summary tables are not available in this deployment yet." });
+    res.status(503).json({ error: "Achievement records are not available in this deployment yet." });
   }
 });
 
