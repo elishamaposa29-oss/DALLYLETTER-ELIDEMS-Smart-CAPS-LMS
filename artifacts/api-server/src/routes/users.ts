@@ -468,4 +468,69 @@ router.get("/users/me/enrollments-summary", requireAuth, async (req, res): Promi
   }
 });
 
+
+router.get("/users/me/qualifications", requireAuth, async (req, res): Promise<void> => {
+  const result = await pool.query("SELECT id, title, institution, year, verification_status, document_id, source, created_at FROM teacher_qualifications WHERE user_id = $1 ORDER BY created_at DESC", [req.currentUser!.id]);
+  res.json(result.rows);
+});
+
+router.post("/users/me/qualifications", requireAuth, async (req, res): Promise<void> => {
+  if (req.currentUser!.role !== "teacher") { res.status(403).json({ error: "Teacher account required." }); return; }
+  const { title, institution, year, documentId } = req.body ?? {};
+  if (typeof title !== "string" || !title.trim() || title.trim().length > 500) { res.status(400).json({ error: "Qualification title is required (maximum 500 characters)." }); return; }
+  if (institution != null && (typeof institution !== "string" || institution.length > 300)) { res.status(400).json({ error: "Institution must be text up to 300 characters." }); return; }
+  const parsedYear = year == null || year === "" ? null : Number(year);
+  if (parsedYear !== null && (!Number.isInteger(parsedYear) || parsedYear < 1900 || parsedYear > new Date().getFullYear() + 5)) { res.status(400).json({ error: "Enter a valid qualification year." }); return; }
+  let verifiedDocumentId: number | null = null;
+  if (documentId != null) {
+    const docId = Number(documentId);
+    if (!Number.isSafeInteger(docId) || docId <= 0) { res.status(400).json({ error: "Invalid document id." }); return; }
+    const doc = await pool.query("SELECT id FROM teacher_documents WHERE id = $1 AND user_id = $2 AND document_type IN ('certificate','proof')", [docId, req.currentUser!.id]);
+    if (!doc.rows.length) { res.status(400).json({ error: "Document must be a certificate or proof uploaded by this account." }); return; }
+    verifiedDocumentId = docId;
+  }
+  const result = await pool.query(`INSERT INTO teacher_qualifications (user_id,title,institution,year,document_id,verification_status,source)
+    VALUES ($1,$2,$3,$4,$5,'pending','user')
+    RETURNING id,title,institution,year,verification_status,document_id,source,created_at`,
+    [req.currentUser!.id, title.trim(), typeof institution === "string" ? institution.trim() || null : null, parsedYear, verifiedDocumentId]);
+  res.status(201).json(result.rows[0]);
+});
+
+router.get("/users/me/subjects", requireAuth, async (req, res): Promise<void> => {
+  const result = await pool.query("SELECT teaching_subjects, subjects_to_teach FROM teacher_subjects WHERE user_id = $1", [req.currentUser!.id]);
+  res.json(result.rows[0] ?? { teaching_subjects: [], subjects_to_teach: [] });
+});
+
+router.put("/users/me/subjects", requireAuth, async (req, res): Promise<void> => {
+  if (req.currentUser!.role !== "teacher") { res.status(403).json({ error: "Teacher account required." }); return; }
+  const parseSubjects = (value: unknown): string[] | null => {
+    if (!Array.isArray(value) || value.length > 50 || value.some(v => typeof v !== "string" || !v.trim() || v.trim().length > 100)) return null;
+    return [...new Set(value.map(v => (v as string).trim()))];
+  };
+  const teaching = parseSubjects(req.body?.teaching_subjects);
+  const toTeach = parseSubjects(req.body?.subjects_to_teach);
+  if (!teaching || !toTeach) { res.status(400).json({ error: "Provide teaching_subjects and subjects_to_teach arrays (up to 50 short text items each)." }); return; }
+  const result = await pool.query(`INSERT INTO teacher_subjects (user_id, teaching_subjects, subjects_to_teach, updated_at)
+    VALUES ($1,$2,$3,now()) ON CONFLICT (user_id) DO UPDATE SET teaching_subjects=EXCLUDED.teaching_subjects, subjects_to_teach=EXCLUDED.subjects_to_teach, updated_at=now()
+    RETURNING teaching_subjects, subjects_to_teach, updated_at`, [req.currentUser!.id, teaching, toTeach]);
+  res.json(result.rows[0]);
+});
+
+router.put("/users/me/payout-preferences", requireAuth, async (req, res): Promise<void> => {
+  if (req.currentUser!.role !== "teacher") { res.status(403).json({ error: "Teacher account required." }); return; }
+  const body = req.body ?? {};
+  const forbidden = ["card_number","card_cvv","card_expiry","cvv","expiry","pin","ecocash_pin","paypal_password","google_password","password","saved_login_password"];
+  if (Object.keys(body).some(key => forbidden.includes(key.toLowerCase()))) { res.status(400).json({ error: "Payment credentials and card security data must never be submitted or stored." }); return; }
+  const { method, ecocash_phone, paypal_email, bank_name, account_name_holder } = body;
+  if (!["ecocash","paypal","bank"].includes(method)) { res.status(400).json({ error: "Choose ecocash, paypal, or bank." }); return; }
+  if (method === "ecocash" && (typeof ecocash_phone !== "string" || ecocash_phone.trim().length < 7 || ecocash_phone.trim().length > 40)) { res.status(400).json({ error: "Enter a valid EcoCash phone number." }); return; }
+  if (method === "paypal" && (typeof paypal_email !== "string" || !/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(paypal_email) || paypal_email.length > 254)) { res.status(400).json({ error: "Enter a valid PayPal email address." }); return; }
+  if (method === "bank" && (![bank_name, account_name_holder].every(v => typeof v === "string" && v.trim().length > 0 && v.length <= 200))) { res.status(400).json({ error: "Bank name and account holder are required." }); return; }
+  const result = await pool.query(`INSERT INTO payout_preferences (user_id,method,ecocash_phone,paypal_email,bank_name,account_name_holder,updated_at)
+    VALUES ($1,$2,$3,$4,$5,$6,now()) ON CONFLICT (user_id) DO UPDATE SET method=EXCLUDED.method, ecocash_phone=EXCLUDED.ecocash_phone,
+    paypal_email=EXCLUDED.paypal_email, bank_name=EXCLUDED.bank_name, account_name_holder=EXCLUDED.account_name_holder, updated_at=now()
+    RETURNING user_id,method,updated_at`, [req.currentUser!.id, method, method === "ecocash" ? ecocash_phone.trim() : null, method === "paypal" ? paypal_email.trim().toLowerCase() : null, method === "bank" ? bank_name.trim() : null, method === "bank" ? account_name_holder.trim() : null]);
+  res.json(result.rows[0]);
+});
+
 export default router;
