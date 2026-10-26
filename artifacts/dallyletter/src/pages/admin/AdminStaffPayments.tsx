@@ -140,6 +140,18 @@ export default function AdminStaffPayments() {
           ))}
         </div>
 
+        <Card className="border border-amber-200 shadow-sm">
+          <CardHeader><CardTitle className="text-base">Teacher payout execution</CardTitle><p className="text-sm text-slate-500">Destinations are masked. Real provider credentials are required; no mock success is reported.</p></CardHeader>
+          <CardContent className="space-y-3">
+            <label className="block text-sm font-medium">Teacher</label>
+            <select className="w-full rounded-lg border px-3 py-2 text-sm" value={payoutTeacherId} onChange={e=>void loadPayoutPreview(e.target.value)}><option value="">Choose a teacher</option>{staff.filter((s:any)=>s.role==="teacher").map((s:any)=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
+            {payoutPreview&&<div className="rounded-lg bg-slate-50 p-3 text-sm"><p><strong>Method:</strong> {payoutPreview.method||"Not configured"}</p><p><strong>Destination:</strong> {payoutPreview.destination_masked||"Not configured"}</p><p><strong>Status:</strong> {payoutPreview.payout_ready?"Ready to submit":"Needs payout setup"}</p></div>}
+            <div className="grid gap-3 sm:grid-cols-2"><div><label className="block text-sm font-medium mb-1">Amount</label><Input type="number" min="0.01" step="0.01" value={payoutAmount} onChange={e=>setPayoutAmount(e.target.value)} placeholder="0.00"/></div><div><label className="block text-sm font-medium mb-1">Note</label><Input value={payoutNote} onChange={e=>setPayoutNote(e.target.value)} placeholder="Optional payout note"/></div></div>
+            <Button disabled={payoutBusy||!payoutPreview?.payout_ready||!payoutAmount||Number(payoutAmount)<=0} onClick={()=>void executeTeacherPayout()}>{payoutBusy?"Submitting…":"Submit real payout"}</Button>
+            {payoutResult&&<div className="rounded-lg border p-3 text-sm"><p className="font-semibold">{payoutResult.message}</p><p>Reference: {payoutResult.payout?.provider_reference||"Pending provider reference"}</p><Badge>{payoutResult.payout?.status||"pending"}</Badge></div>}
+          </CardContent>
+        </Card>
+
         <Card className="border-0 shadow-sm">
           <CardHeader>
             <div className="flex items-center gap-3">
