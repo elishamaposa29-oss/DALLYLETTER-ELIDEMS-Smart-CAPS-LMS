@@ -3,6 +3,20 @@ BEGIN;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS notification_email text;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS notification_email_verified_at timestamptz;
 
+-- Keep the document table ahead of its qualification foreign key so this migration
+-- can run independently on databases that have not provisioned teacher documents yet.
+CREATE TABLE IF NOT EXISTS public.teacher_documents (
+  id serial PRIMARY KEY,
+  user_id integer NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  document_type text NOT NULL,
+  file_name text NOT NULL,
+  mime_type text NOT NULL,
+  size_bytes integer NOT NULL,
+  data bytea NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS teacher_documents_user_idx ON public.teacher_documents(user_id);
+
 CREATE TABLE IF NOT EXISTS public.teacher_qualifications (
   id serial PRIMARY KEY,
   user_id integer NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
