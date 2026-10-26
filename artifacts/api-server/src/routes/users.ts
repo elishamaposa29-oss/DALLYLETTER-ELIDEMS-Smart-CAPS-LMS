@@ -18,6 +18,13 @@ import { sendEmail, isEmailConfigured } from "../lib/email-service";
 
 const router: IRouter = Router();
 
+function hasForbiddenPaymentCredentials(body: unknown): boolean {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return false;
+  const forbidden = new Set(["cardnumber","cardcvv","cardcvc","cardexpiry","cvv","cvc","expiry","pin","ecocashpin","paypalpassword","googlepassword","password","savedloginpassword","securitycode"]);
+  return Object.keys(body).some(key => forbidden.has(key.toLowerCase().replace(/[^a-z]/g, "")));
+}
+
+
 const safeUserFields = {
   id: usersTable.id,
   email: usersTable.email,
@@ -662,7 +669,7 @@ router.post("/payouts/execute", requireAuth, async(req,res):Promise<void>=>{
   const {teacherId,amount,note}=req.body??{};
   const id=Number(teacherId), value=Number(amount);
   if(!Number.isSafeInteger(id)||id<=0||!Number.isFinite(value)||value<=0||value>10000000){res.status(400).json({error:"Valid teacherId and positive amount are required."});return;}
-  if(typeof req.body?.card_number!=="undefined"||typeof req.body?.cvv!=="undefined"||typeof req.body?.pin!=="undefined"||typeof req.body?.password!=="undefined"){res.status(400).json({error:"Card details, PINs and passwords are never accepted."});return;}
+  if(hasForbiddenPaymentCredentials(req.body)){res.status(400).json({error:"Card details, PINs and passwords are never accepted."});return;}
   const prefs=await pool.query("SELECT p.method,p.paypal_email,p.ecocash_phone,u.role FROM payout_preferences p JOIN users u ON u.id=p.user_id WHERE p.user_id=$1",[id]);
   if(!prefs.rows.length||prefs.rows[0].role!=="teacher"){res.status(404).json({error:"Teacher payout preferences not found."});return;}
   const p=prefs.rows[0];
@@ -722,11 +729,19 @@ router.put("/users/me/subjects", requireAuth, async (req, res): Promise<void> =>
   res.json(result.rows[0]);
 });
 
+router.get("/users/me/payout-preferences", requireAuth, async(req,res):Promise<void>=>{
+  if(req.currentUser!.role!=="teacher"){res.status(403).json({error:"Teacher account required."});return;}
+  const result=await pool.query("SELECT method,ecocash_phone,paypal_email,bank_name,account_name_holder,updated_at FROM payout_preferences WHERE user_id=$1",[req.currentUser!.id]);
+  const row=result.rows[0];
+  if(!row){res.json({method:null,destination_masked:null,bank_name:null,account_name_holder:null,payout_ready:false});return;}
+  const destination=row.method==="ecocash"?row.ecocash_phone:row.method==="paypal"?row.paypal_email:null;
+  res.json({method:row.method,destination_masked:destination?maskPayoutDestination(destination):null,bank_name:row.bank_name,account_name_holder:row.account_name_holder,payout_ready:Boolean(row.method&&destination),updated_at:row.updated_at});
+});
+
 router.put("/users/me/payout-preferences", requireAuth, async (req, res): Promise<void> => {
   if (req.currentUser!.role !== "teacher") { res.status(403).json({ error: "Teacher account required." }); return; }
   const body = req.body ?? {};
-  const forbidden = ["card_number","card_cvv","card_expiry","cvv","expiry","pin","ecocash_pin","paypal_password","google_password","password","saved_login_password"];
-  if (Object.keys(body).some(key => forbidden.includes(key.toLowerCase()))) { res.status(400).json({ error: "Payment credentials and card security data must never be submitted or stored." }); return; }
+  if (hasForbiddenPaymentCredentials(body)) { res.status(400).json({ error: "Payment credentials and card security data must never be submitted or stored." }); return; }
   const { method, ecocash_phone, paypal_email, bank_name, account_name_holder } = body;
   if (!["ecocash","paypal","bank"].includes(method)) { res.status(400).json({ error: "Choose ecocash, paypal, or bank." }); return; }
   if (method === "ecocash" && (typeof ecocash_phone !== "string" || ecocash_phone.trim().length < 7 || ecocash_phone.trim().length > 40)) { res.status(400).json({ error: "Enter a valid EcoCash phone number." }); return; }
