@@ -65,7 +65,7 @@ export default function ProfileHub() {
         const [me, q, s, academic, earned, enrolled, notification, payout, recovery, catalog, docs, publicSummary] = await Promise.all([
           request("/api/users/"+profileId),
           request("/api/users/me/qualifications").catch(()=>[]),
-          request("/api/users/me/subjects"),
+          request("/api/users/me/subjects").catch(()=>({subjects:[],teaching_subjects:[],subjects_to_teach:[],primary_subject:null})),
           
           request("/api/users/me/enrollments-summary").catch(()=>null),
           request("/api/achievements/my").catch(()=>[]),
