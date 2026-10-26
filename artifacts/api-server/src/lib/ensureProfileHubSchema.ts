@@ -1,0 +1,65 @@
+import { pool } from "@workspace/db";
+
+let ensured = false;
+
+/** Additive, idempotent Profile Hub schema. Does not modify or delete users. */
+export async function ensureProfileHubSchema(): Promise<void> {
+  if (ensured) return;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_email text");
+    await client.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_email_verified_at timestamptz");
+    await client.query(`CREATE TABLE IF NOT EXISTS teacher_qualifications (
+      id serial PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title text NOT NULL,
+      institution text,
+      year integer CHECK (year IS NULL OR year BETWEEN 1900 AND 2200),
+      verification_status text NOT NULL DEFAULT 'pending' CHECK (verification_status IN ('pending','verified')),
+      document_id integer REFERENCES teacher_documents(id) ON DELETE SET NULL,
+      source text NOT NULL DEFAULT 'user',
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query("CREATE INDEX IF NOT EXISTS teacher_qualifications_user_idx ON teacher_qualifications(user_id)");
+    await client.query(`CREATE TABLE IF NOT EXISTS teacher_subjects (
+      user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      teaching_subjects text[] NOT NULL DEFAULT '{}',
+      subjects_to_teach text[] NOT NULL DEFAULT '{}',
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query(`CREATE TABLE IF NOT EXISTS payout_preferences (
+      user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      method text NOT NULL CHECK (method IN ('ecocash','paypal','bank')),
+      ecocash_phone text, paypal_email text, bank_name text, account_name_holder text,
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      CHECK (
+        (method = 'ecocash' AND ecocash_phone IS NOT NULL AND length(trim(ecocash_phone)) BETWEEN 7 AND 40)
+        OR (method = 'paypal' AND paypal_email IS NOT NULL AND length(trim(paypal_email)) <= 254)
+        OR (method = 'bank' AND bank_name IS NOT NULL AND account_name_holder IS NOT NULL)
+      )
+    )`);
+    await client.query(`DO $$
+      BEGIN
+        IF to_regclass('public.teacher_profiles') IS NOT NULL THEN
+          INSERT INTO teacher_qualifications (user_id, title, source, verification_status)
+          SELECT tp.user_id, left(trim(tp.cv->>'education'), 500), 'legacy_migration', 'pending'
+          FROM teacher_profiles tp
+          WHERE jsonb_typeof(tp.cv) = 'object'
+            AND nullif(trim(tp.cv->>'education'), '') IS NOT NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM teacher_qualifications q
+              WHERE q.user_id = tp.user_id AND q.source = 'legacy_migration'
+                AND q.title = left(trim(tp.cv->>'education'), 500)
+            );
+        END IF;
+      END $$`);
+    await client.query("COMMIT");
+    ensured = true;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
