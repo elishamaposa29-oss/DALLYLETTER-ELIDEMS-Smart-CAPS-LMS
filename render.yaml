@@ -1,9 +1,9 @@
 services:
   - type: web
-    name: dallyletter-api-staging
+    name: DALLYLETTER-ELIDEMS-STAGING-PR84
     env: node
-    plan: starter
-    branch: staging
+    plan: free
+    branch: feat/profile-hub-secure-foundation
     autoDeploy: false
     rootDir: artifacts/api-server
     buildCommand: pnpm install --frozen-lockfile && pnpm build
@@ -19,7 +19,7 @@ services:
       - key: JWT_SECRET
         sync: false
       - key: CORS_ORIGINS
-        value: https://dallyletter-web.onrender.com,https://your-frontend-domain.com
+        value: https://dallyletter-web.onrender.com
   - type: web
     name: dallyletter-api-production
     env: node
