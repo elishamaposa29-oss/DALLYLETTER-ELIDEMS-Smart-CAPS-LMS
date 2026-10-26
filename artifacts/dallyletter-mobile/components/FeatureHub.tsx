@@ -1099,6 +1099,7 @@ export default function FeatureHub() {
         {queuedSubmissions.length>0 ? <TouchableOpacity onPress={()=>void retryQueuedSubmissions()} disabled={queueBusy} style={{alignSelf:"flex-start",marginTop:6,paddingHorizontal:10,paddingVertical:6,borderRadius:7,backgroundColor:"#ffffff20"}}><Text style={{color:"#fff",fontSize:12,fontWeight:"600"}}>{queueBusy?"Retrying…":"Retry pending submissions"}</Text></TouchableOpacity> : null}
       </View>
       {!section ? <ScrollView contentContainerStyle={styles.content}>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Open your Profile Hub" style={[styles.card,{flexDirection:"row",alignItems:"center",gap:12,borderColor:colors.primary}]} onPress={()=>router.push("/profile-hub" as any)}><View style={styles.icon}><Feather name="user" size={21} color={colors.primary}/></View><View style={styles.grow}><Text style={styles.cardTitle}>Profile Hub</Text><Text style={styles.muted}>Your profile, qualifications, subjects, enrollments and achievements</Text></View><Feather name="chevron-right" size={18} color={colors.mutedForeground}/></TouchableOpacity>
         <BreakElidemsShortcut />
         {visibleSections.map(item => (
           <TouchableOpacity key={item.id} style={styles.card} onPress={() => void loadSection(item.id)} accessibilityRole="button">
