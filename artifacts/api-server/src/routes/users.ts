@@ -420,12 +420,29 @@ router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<v
   const [user] = await db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl, bio: usersTable.bio, role: usersTable.role })
     .from(usersTable).where(eq(usersTable.id, id));
   if (!user) { res.status(404).json({ error: "User not found." }); return; }
-  const [qualifications, subjectRows] = await Promise.all([
-    pool.query("SELECT title, verification_status FROM teacher_qualifications WHERE user_id = $1 AND verification_status = 'verified' ORDER BY created_at DESC", [id]),
-    pool.query("SELECT subjects_to_teach FROM teacher_subjects WHERE user_id = $1", [id]),
+  const isProfessional = ["teacher", "manager", "senior_manager"].includes(String(user.role).toLowerCase());
+  const [qualifications, teacherSubjectRows, learnerSubjectRows] = await Promise.all([
+    isProfessional
+      ? pool.query("SELECT title, verification_status FROM teacher_qualifications WHERE user_id = $1 AND verification_status = 'verified' ORDER BY created_at DESC", [id])
+      : Promise.resolve({ rows: [] as Array<{ title: string; verification_status: string }> }),
+    isProfessional
+      ? pool.query("SELECT subjects_to_teach, primary_subject FROM teacher_subjects WHERE user_id = $1", [id])
+      : Promise.resolve({ rows: [] as Array<{ subjects_to_teach: string[]; primary_subject: string | null }> }),
+    isProfessional
+      ? Promise.resolve({ rows: [] as Array<{ subjects: string[] }> })
+      : pool.query("SELECT subjects FROM learner_subjects WHERE user_id = $1", [id]),
   ]);
-  const subjects = Array.isArray(subjectRows.rows[0]?.subjects_to_teach) ? subjectRows.rows[0].subjects_to_teach.filter((v: unknown) => typeof v === "string") : (user.role === "teacher" ? [] : []);
-  res.json(serializePublicProfile(user, qualifications.rows, subjects));
+  const teachingSubjects = Array.isArray(teacherSubjectRows.rows[0]?.subjects_to_teach)
+    ? teacherSubjectRows.rows[0].subjects_to_teach.filter((v: unknown) => typeof v === "string")
+    : [];
+  const learningSubjects = Array.isArray(learnerSubjectRows.rows[0]?.subjects)
+    ? learnerSubjectRows.rows[0].subjects.filter((v: unknown) => typeof v === "string")
+    : [];
+  res.json({
+    ...serializePublicProfile(user, qualifications.rows, teachingSubjects),
+    subjects: isProfessional ? teachingSubjects : learningSubjects,
+    primary_subject: teacherSubjectRows.rows[0]?.primary_subject ?? null,
+  });
 });
 
 router.get("/users/:id/payout-preview", requireAuth, async (req, res): Promise<void> => {
@@ -753,23 +770,51 @@ router.post("/webhooks/paynow", async(req,res):Promise<void>=>{
   res.json({received:true});
 });
 
+router.get("/subjects/catalog", requireAuth, async (_req, res): Promise<void> => {
+  const [lessonRows, classRows] = await Promise.all([
+    pool.query("SELECT DISTINCT trim(subject) AS subject FROM lessons WHERE subject IS NOT NULL AND trim(subject) <> ''").catch(() => ({ rows: [] as Array<{ subject: string }> })),
+    pool.query("SELECT DISTINCT trim(subject) AS subject FROM classes WHERE subject IS NOT NULL AND trim(subject) <> ''").catch(() => ({ rows: [] as Array<{ subject: string }> })),
+  ]);
+  const subjects = [...new Set([...lessonRows.rows, ...classRows.rows].map((row: { subject: string }) => row.subject).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  res.json({ subjects });
+});
+
 router.get("/users/me/subjects", requireAuth, async (req, res): Promise<void> => {
-  const result = await pool.query("SELECT teaching_subjects, subjects_to_teach FROM teacher_subjects WHERE user_id = $1", [req.currentUser!.id]);
-  res.json(result.rows[0] ?? { teaching_subjects: [], subjects_to_teach: [] });
+  const role = String(req.currentUser!.role).toLowerCase();
+  if (["teacher", "manager", "senior_manager"].includes(role)) {
+    const result = await pool.query("SELECT teaching_subjects, subjects_to_teach, primary_subject FROM teacher_subjects WHERE user_id = $1", [req.currentUser!.id]);
+    res.json(result.rows[0] ?? { teaching_subjects: [], subjects_to_teach: [], primary_subject: null });
+    return;
+  }
+  const result = await pool.query("SELECT subjects FROM learner_subjects WHERE user_id = $1", [req.currentUser!.id]);
+  res.json({ subjects: result.rows[0]?.subjects ?? [], teaching_subjects: [], subjects_to_teach: [] });
 });
 
 router.put("/users/me/subjects", requireAuth, async (req, res): Promise<void> => {
-  if (req.currentUser!.role !== "teacher") { res.status(403).json({ error: "Teacher account required." }); return; }
+  const role = String(req.currentUser!.role).toLowerCase();
   const parseSubjects = (value: unknown): string[] | null => {
     if (!Array.isArray(value) || value.length > 50 || value.some(v => typeof v !== "string" || !v.trim() || v.trim().length > 100)) return null;
     return [...new Set(value.map(v => (v as string).trim()))];
   };
-  const teaching = parseSubjects(req.body?.teaching_subjects);
-  const toTeach = parseSubjects(req.body?.subjects_to_teach);
-  if (!teaching || !toTeach) { res.status(400).json({ error: "Provide teaching_subjects and subjects_to_teach arrays (up to 50 short text items each)." }); return; }
-  const result = await pool.query(`INSERT INTO teacher_subjects (user_id, teaching_subjects, subjects_to_teach, updated_at)
-    VALUES ($1,$2,$3,now()) ON CONFLICT (user_id) DO UPDATE SET teaching_subjects=EXCLUDED.teaching_subjects, subjects_to_teach=EXCLUDED.subjects_to_teach, updated_at=now()
-    RETURNING teaching_subjects, subjects_to_teach, updated_at`, [req.currentUser!.id, teaching, toTeach]);
+  if (["teacher", "manager", "senior_manager"].includes(role)) {
+    if (!["teacher", "manager", "senior_manager"].includes(role)) { res.status(403).json({ error: "Teacher or manager account required." }); return; }
+    const teaching = parseSubjects(req.body?.teaching_subjects);
+    const toTeach = parseSubjects(req.body?.subjects_to_teach);
+    const primary = typeof req.body?.primary_subject === "string" ? req.body.primary_subject.trim() : "";
+    if (!teaching || !toTeach || (primary && !toTeach.includes(primary))) {
+      res.status(400).json({ error: "Provide valid subject arrays and choose the primary specialization from your teaching subjects." }); return;
+    }
+    const result = await pool.query(`INSERT INTO teacher_subjects (user_id, teaching_subjects, subjects_to_teach, primary_subject, updated_at)
+      VALUES ($1,$2,$3,$4,now()) ON CONFLICT (user_id) DO UPDATE SET teaching_subjects=EXCLUDED.teaching_subjects, subjects_to_teach=EXCLUDED.subjects_to_teach, primary_subject=EXCLUDED.primary_subject, updated_at=now()
+      RETURNING teaching_subjects, subjects_to_teach, primary_subject, updated_at`, [req.currentUser!.id, teaching, toTeach, primary || null]);
+    res.json(result.rows[0]);
+    return;
+  }
+  if (!["student", "learner", "prefect"].includes(role)) { res.status(403).json({ error: "This account cannot edit learning subjects." }); return; }
+  const subjects = parseSubjects(req.body?.subjects ?? req.body?.subjects_to_learn);
+  if (!subjects) { res.status(400).json({ error: "Choose up to 50 valid learning subjects." }); return; }
+  const result = await pool.query(`INSERT INTO learner_subjects (user_id, subjects, updated_at) VALUES ($1,$2,now())
+    ON CONFLICT (user_id) DO UPDATE SET subjects=EXCLUDED.subjects, updated_at=now() RETURNING subjects, updated_at`, [req.currentUser!.id, subjects]);
   res.json(result.rows[0]);
 });
 
