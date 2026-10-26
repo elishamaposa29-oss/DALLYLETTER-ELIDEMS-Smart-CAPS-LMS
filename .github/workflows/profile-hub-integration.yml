@@ -49,6 +49,7 @@ jobs:
       PAYPAL_CLIENT_SECRET: pr84-ci-mock-secret
       PAYPAL_WEBHOOK_ID: pr84-ci-mock-webhook
       PAYPAL_API_BASE: http://paypal.test
+      GOOGLE_CLIENT_ID: pr84-ci-google-client-id
     steps:
       - name: Checkout PR branch
         uses: actions/checkout@v4
