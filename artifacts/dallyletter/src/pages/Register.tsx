@@ -143,7 +143,7 @@ export default function Register() {
             </div>
 
             <div className="bg-white rounded-2xl shadow-xl shadow-gray-200/60 border border-gray-100 p-8">
-              <div className="mb-5 space-y-3"><GoogleSignInButton /><div className="flex items-center gap-3 text-xs text-gray-400"><span className="h-px flex-1 bg-gray-200" /><span>OR CONTINUE WITH EMAIL</span><span className="h-px flex-1 bg-gray-200" /></div></div>
+              <div className="mb-5 space-y-3"><GoogleSignInButton mode="signup" /><div className="flex items-center gap-3 text-xs text-gray-400"><span className="h-px flex-1 bg-gray-200" /><span>OR CONTINUE WITH EMAIL</span><span className="h-px flex-1 bg-gray-200" /></div></div>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                   <FormField
