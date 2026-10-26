@@ -25,14 +25,17 @@ export default function AdminStaffPayments() {
   const [payoutPreview,setPayoutPreview] = useState<any>(null);
   const [payoutResult,setPayoutResult] = useState<any>(null);
   const [payoutBusy,setPayoutBusy] = useState(false);
+  const [payoutHistory,setPayoutHistory] = useState<any[]>([]);
 
   const load = () => {
     void Promise.all([
       fetch(getApiUrl("/api/staff-payments"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
       fetch(getApiUrl("/api/users"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
-    ]).then(([p, u]) => {
+      fetch(getApiUrl("/api/payouts/history"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.ok ? r.json() : []),
+    ]).then(([p, u, history]) => {
       setPayments(Array.isArray(p) ? p : []);
       setStaff(Array.isArray(u) ? u.filter((x: any) => x.role === "teacher" || x.isManager || x.isPrefect) : []);
+      setPayoutHistory(Array.isArray(history) ? history : []);
       setLoading(false);
     }).catch(() => setLoading(false));
   };
@@ -150,6 +153,11 @@ export default function AdminStaffPayments() {
             <Button disabled={payoutBusy||!payoutPreview?.payout_ready||!payoutAmount||Number(payoutAmount)<=0} onClick={()=>void executeTeacherPayout()}>{payoutBusy?"Submitting…":"Submit real payout"}</Button>
             {payoutResult&&<div className="rounded-lg border p-3 text-sm"><p className="font-semibold">{payoutResult.message}</p><p>Reference: {payoutResult.payout?.provider_reference||"Pending provider reference"}</p><Badge>{payoutResult.payout?.status||"pending"}</Badge></div>}
           </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-sm">
+          <CardHeader><CardTitle className="text-base">Provider payout history</CardTitle><p className="text-sm text-slate-500">Pending means the provider has accepted the request but settlement has not been confirmed.</p></CardHeader>
+          <CardContent>{payoutHistory.length===0?<p className="text-sm text-slate-400">No provider payouts recorded.</p>:<div className="space-y-2">{payoutHistory.map((p:any)=><div key={p.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3"><div><p className="font-semibold">{p.teacher_name}</p><p className="text-xs text-slate-500">{p.method} · {p.provider_reference||"No provider reference"} · {p.webhook_verified?"Provider callback verified":"Awaiting provider confirmation"}</p></div><div className="text-right"><p className="font-bold">{p.currency} {Number(p.amount).toFixed(2)}</p><Badge>{p.status}</Badge></div></div>)}</div>}</CardContent>
         </Card>
 
         <Card className="border-0 shadow-sm">
