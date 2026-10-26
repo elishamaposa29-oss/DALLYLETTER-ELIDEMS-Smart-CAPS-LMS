@@ -31,7 +31,7 @@ export default function PublicProfilePreview() {
     const load = async () => {
       setLoading(true); setError("");
       try {
-        const headers = token ? { Authorization: "Bearer " + token } : {};
+        const headers: Record<string, string> = token ? { Authorization: "Bearer " + token } : {};
         const [p, a, d] = await Promise.all([
           fetch(getApiUrl("/api/users/"+encodeURIComponent(String(id))+"/public-profile"),{headers}).then(async r=>{const x=await r.json().catch(()=>({}));if(!r.ok)throw new Error(x.error||"Could not load this profile.");return x;}),
           fetch(getApiUrl("/api/achievements/user/"+encodeURIComponent(String(id)),),{headers}).then(r=>r.ok?r.json():[]).catch(()=>[]),
