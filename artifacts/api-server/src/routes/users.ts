@@ -621,6 +621,33 @@ router.get("/users/me/notification-email", requireAuth, async(req,res):Promise<v
   res.json(result.rows[0]??{notification_email:null,notification_email_verified_at:null});
 });
 
+router.post("/classes/:classId/enroll", requireAuth, async(req,res):Promise<void>=>{
+  const actor=req.currentUser!;
+  const classId=Number(req.params.classId);
+  const requestedLearnerId=req.body?.learnerId==null?actor.id:Number(req.body.learnerId);
+  if(!Number.isSafeInteger(classId)||classId<=0||!Number.isSafeInteger(requestedLearnerId)||requestedLearnerId<=0){res.status(400).json({error:"Valid class id and learner id are required."});return;}
+  const selfEnrollment=requestedLearnerId===actor.id;
+  if(!selfEnrollment&&!isOwnerRole(actor.role)&&!canAccessManager(actor)){res.status(403).json({error:"Only the learner or authorized staff may create an enrollment."});return;}
+  if(selfEnrollment&&!["student","prefect","learner"].includes(String(actor.role).toLowerCase())){res.status(403).json({error:"Learner account required to self-enroll."});return;}
+  const [target]=await db.select({id:usersTable.id,role:usersTable.role}).from(usersTable).where(eq(usersTable.id,requestedLearnerId));
+  if(!target||!["student","prefect","learner"].includes(String(target.role).toLowerCase())){res.status(400).json({error:"Enrollment target must be a learner account."});return;}
+  const [klass]=await db.select({id:classesTable.id}).from(classesTable).where(eq(classesTable.id,classId));
+  if(!klass){res.status(404).json({error:"Class not found."});return;}
+  const result=await pool.query("INSERT INTO enrollments(learner_id,class_id,status) VALUES($1,$2,'active') ON CONFLICT(learner_id,class_id) DO UPDATE SET status='active' RETURNING id,learner_id,class_id,enrolled_at,progress_percent,status",[requestedLearnerId,classId]);
+  res.status(201).json(result.rows[0]);
+});
+
+router.patch("/enrollments/:id/progress", requireAuth, async(req,res):Promise<void>=>{
+  const actor=req.currentUser!, id=Number(req.params.id), progress=Number(req.body?.progress_percent);
+  if(!Number.isSafeInteger(id)||id<=0||!Number.isInteger(progress)||progress<0||progress>100){res.status(400).json({error:"Valid enrollment id and progress_percent between 0 and 100 are required."});return;}
+  const found=await pool.query("SELECT e.id,e.learner_id,e.class_id,c.teacher_id FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.id=$1",[id]);
+  const row=found.rows[0];
+  if(!row){res.status(404).json({error:"Enrollment not found."});return;}
+  if(actor.id!==row.learner_id&&actor.id!==row.teacher_id&&!isOwnerRole(actor.role)&&!canAccessManager(actor)){res.status(403).json({error:"Enrollment progress update denied."});return;}
+  const result=await pool.query("UPDATE enrollments SET progress_percent=$1,status=CASE WHEN $1=100 THEN 'completed' ELSE 'active' END WHERE id=$2 RETURNING id,learner_id,class_id,enrolled_at,progress_percent,status",[progress,id]);
+  res.json(result.rows[0]);
+});
+
 router.get("/users/me/enrollments", requireAuth, async(req,res):Promise<void>=>{
   const actor=req.currentUser!;
   const learnerId=actor.id;
