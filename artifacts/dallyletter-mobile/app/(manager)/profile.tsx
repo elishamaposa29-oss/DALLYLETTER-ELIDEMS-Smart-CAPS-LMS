@@ -29,6 +29,7 @@ export default function ManagerProfile() {
         <Text style={{fontSize:12,fontWeight:"700",color:colors.primary,marginTop:8}}>Manager account</Text>
       </View>
       <ProfileDetailsEditor />
+      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Open Profile Hub" onPress={()=>router.push("/profile-hub" as any)} style={{marginHorizontal:16,marginTop:12,marginBottom:8,padding:13,borderRadius:12,backgroundColor:colors.secondary,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:8}}><Feather name="user" size={17} color={colors.primary}/><Text style={{color:colors.primary,fontWeight:"700"}}>Open Profile Hub</Text></TouchableOpacity>
       <TouchableOpacity accessibilityRole="button" onPress={signOut} style={{marginHorizontal:16,marginBottom:24,padding:14,borderRadius:12,borderWidth:1,borderColor:"#fecaca",backgroundColor:"#fef2f2",flexDirection:"row",justifyContent:"center",alignItems:"center",gap:8}}>
         <Feather name="log-out" size={18} color="#dc2626"/><Text style={{fontSize:14,fontWeight:"700",color:"#dc2626"}}>Sign out</Text>
       </TouchableOpacity>
