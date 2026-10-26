@@ -30,6 +30,7 @@ export default function MobileProfileHub() {
   const [email,setEmail] = useState("");
   const [otp,setOtp] = useState("");
   const [emailVerified,setEmailVerified] = useState(false);
+  const [newQualificationTitle,setNewQualificationTitle] = useState("");
   const [message,setMessage] = useState("");
   const [loading,setLoading] = useState(false);
   const api = useCallback(async(path:string,init:RequestInit={})=>{
