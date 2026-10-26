@@ -24,7 +24,7 @@ export default function ForgotPassword() {
     <Link href="/login" className="text-sm font-semibold text-slate-700 hover:underline">← Back to sign in</Link>
     <div className="mt-8 mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 text-xl">🔐</div>
     <h1 className="text-2xl font-bold text-slate-900">Reset your password</h1>
-    <p className="mt-2 mb-6 text-sm leading-6 text-slate-600">Enter the email address on your account. If it matches an account, we’ll send a secure reset link.</p>
+    <p className="mt-2 mb-6 text-sm leading-6 text-slate-600">Enter the email address on your account or a previously verified recovery email. If it matches an account, we’ll send a secure reset link.</p>
     <form onSubmit={submit} className="space-y-4">
       <label className="block text-sm font-semibold text-slate-700">Email address<input type="email" required autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} className="mt-2 h-11 w-full rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-slate-700" placeholder="you@example.com"/></label>
       {message?<p role="status" className="rounded-lg bg-green-50 p-3 text-sm text-green-800">{message}</p>:null}
