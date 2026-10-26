@@ -244,9 +244,22 @@ router.get("/lessons/media/:storageKey", mediaAccess, async (req, res): Promise<
 });
 
 // GET /lessons — List all lessons
-router.get("/lessons", requireAuth, async (_req, res): Promise<void> => {
+router.get("/lessons", requireAuth, async (req, res): Promise<void> => {
   const lessons = await db.select().from(lessonsTable).orderBy(lessonsTable.createdAt);
-  res.json(lessons.map(l => ({ ...l, createdAt: l.createdAt.toISOString() })));
+  const role = String(req.currentUser!.role).toLowerCase();
+  let preferred = new Set<string>();
+  if (["student", "learner", "prefect"].includes(role)) {
+    const result = await db.execute({ sql: "SELECT subjects FROM learner_subjects WHERE user_id = $1", params: [req.currentUser!.id] } as never).catch(() => null);
+    const rows = (result as any)?.rows ?? [];
+    const selected = rows[0]?.subjects;
+    if (Array.isArray(selected)) preferred = new Set(selected.map((v: unknown) => String(v).trim().toLowerCase()));
+  }
+  const ordered = [...lessons].sort((a, b) => {
+    const aPreferred = preferred.has(String(a.subject || "").trim().toLowerCase());
+    const bPreferred = preferred.has(String(b.subject || "").trim().toLowerCase());
+    return Number(bPreferred) - Number(aPreferred) || b.createdAt.getTime() - a.createdAt.getTime();
+  });
+  res.json(ordered.map(l => ({ ...l, createdAt: l.createdAt.toISOString() })));
 });
 
 // POST /lessons — Create lesson (teacher, prefect student, or owner)
