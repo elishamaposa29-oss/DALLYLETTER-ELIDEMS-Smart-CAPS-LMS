@@ -50,6 +50,9 @@ jobs:
       PAYPAL_WEBHOOK_ID: pr84-ci-mock-webhook
       PAYPAL_API_BASE: http://paypal.test
       GOOGLE_CLIENT_ID: pr84-ci-google-client-id
+      TWILIO_ACCOUNT_SID: ACpr84ci
+      TWILIO_AUTH_TOKEN: pr84-ci-mock-twilio-token
+      TWILIO_FROM_NUMBER: "+15005550006"
     steps:
       - name: Checkout PR branch
         uses: actions/checkout@v4
