@@ -692,6 +692,42 @@ router.post("/payouts/execute", requireAuth, async(req,res):Promise<void>=>{
   res.status(202).json({message:"Payout submitted to PayPal; final settlement awaits provider confirmation.",payout:saved.rows[0]});
 });
 
+router.post("/webhooks/paypal", async(req,res):Promise<void>=>{
+  const clientId=process.env.PAYPAL_CLIENT_ID?.trim(), secret=process.env.PAYPAL_CLIENT_SECRET?.trim(), webhookId=process.env.PAYPAL_WEBHOOK_ID?.trim();
+  if(!clientId||!secret||!webhookId){res.status(503).json({error:"PayPal webhook verification is not configured."});return;}
+  const headers={
+    auth_algo:req.header("paypal-auth-algo")||"",
+    cert_url:req.header("paypal-cert-url")||"",
+    transmission_id:req.header("paypal-transmission-id")||"",
+    transmission_sig:req.header("paypal-transmission-sig")||"",
+    transmission_time:req.header("paypal-transmission-time")||"",
+  };
+  if(Object.values(headers).some(v=>!v)){res.status(400).json({error:"PayPal signature headers are required."});return;}
+  const base=(process.env.PAYPAL_API_BASE?.trim()||(process.env.NODE_ENV==="production"?"https://api-m.paypal.com":"https://api-m.sandbox.paypal.com")).replace(/\/$/,"");
+  try{
+    const auth=await fetch(base+"/v1/oauth2/token",{method:"POST",headers:{Authorization:"Basic "+Buffer.from(clientId+":"+secret).toString("base64"),"Content-Type":"application/x-www-form-urlencoded"},body:"grant_type=client_credentials"});
+    if(!auth.ok){res.status(502).json({error:"PayPal webhook verification authentication failed."});return;}
+    const authData=await auth.json() as {access_token?:string};
+    if(!authData.access_token){res.status(502).json({error:"PayPal access token unavailable."});return;}
+    const verification=await fetch(base+"/v1/notifications/verify-webhook-signature",{method:"POST",headers:{Authorization:"Bearer "+authData.access_token,"Content-Type":"application/json"},body:JSON.stringify({...headers,webhook_id:webhookId,webhook_event:req.body})});
+    const verificationData=await verification.json().catch(()=>({})) as {verification_status?:string};
+    if(!verification.ok||verificationData.verification_status!=="SUCCESS"){res.status(401).json({error:"PayPal webhook signature is invalid."});return;}
+    const eventType=String(req.body?.event_type||"");
+    const resource=req.body?.resource||{};
+    const batchId=String(resource?.batch_header?.payout_batch_id||resource?.payout_batch_id||resource?.batch_id||"");
+    if(!batchId){res.json({received:true,updated:false});return;}
+    const normalized=eventType==="PAYMENT.PAYOUTSBATCH.SUCCESS"||eventType==="PAYMENT.PAYOUTS-ITEM.SUCCEEDED"?"paid":
+      eventType==="PAYMENT.PAYOUTSBATCH.DENIED"||eventType==="PAYMENT.PAYOUTS-ITEM.FAILED"?"failed":null;
+    if(!normalized){res.json({received:true,updated:false});return;}
+    const updated=await pool.query("UPDATE payout_history SET status=$1,webhook_verified=true,updated_at=now() WHERE provider_reference=$2 AND method='paypal' AND (webhook_verified=false OR status='pending') RETURNING teacher_id,status,provider_reference",[normalized,batchId]);
+    if(updated.rows.length){
+      const row=updated.rows[0];
+      void enqueueEmailNotification(Number(row.teacher_id),"Teacher payout "+normalized,"Your PayPal payout reference "+row.provider_reference+" is now "+normalized+".").catch(error=>console.error("Could not queue payout status email",error));
+    }
+    res.json({received:true,updated:updated.rows.length>0});
+  }catch(error){res.status(502).json({error:"PayPal webhook verification could not be completed."});}
+});
+
 router.post("/webhooks/paynow", async(req,res):Promise<void>=>{
   // This HMAC format is supported only when a trusted integration proxy explicitly signs callbacks this way.
   // Native Paynow callbacks must use the provider's documented hash verifier; never enable this flag by guesswork.
