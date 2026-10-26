@@ -145,7 +145,7 @@ export default function ProfileHub() {
   };
   const requestRecoveryCode = async () => {
     setBusy(true);setMessage("");
-    try { const result=await request("/api/users/me/recovery-email/request-verification",{method:"POST"});setMessage(result.message||"Verification code sent."); }
+    try { await request("/api/users/me/recovery-profile",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({recoveryEmail})});const result=await request("/api/users/me/recovery-email/request-verification",{method:"POST"});setMessage(result.message||"Verification code sent."); }
     catch(e) {setMessage(e instanceof Error?e.message:"Could not send recovery verification code.");}
     finally {setBusy(false);}
   };
