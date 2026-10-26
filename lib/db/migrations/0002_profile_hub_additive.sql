@@ -31,6 +31,45 @@ CREATE TABLE IF NOT EXISTS public.teacher_qualifications (
 );
 CREATE INDEX IF NOT EXISTS teacher_qualifications_user_idx ON public.teacher_qualifications(user_id);
 
+-- Additive enrollment source for the existing class-based learning model.
+CREATE TABLE IF NOT EXISTS public.enrollments (
+  id serial PRIMARY KEY,
+  learner_id integer NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  class_id integer NOT NULL REFERENCES public.classes(id) ON DELETE CASCADE,
+  enrolled_at timestamptz NOT NULL DEFAULT now(),
+  progress_percent integer NOT NULL DEFAULT 0 CHECK (progress_percent BETWEEN 0 AND 100),
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active','completed','cancelled')),
+  UNIQUE (learner_id, class_id)
+);
+CREATE INDEX IF NOT EXISTS enrollments_learner_idx ON public.enrollments(learner_id, enrolled_at DESC);
+
+CREATE TABLE IF NOT EXISTS public.notification_email_verifications (
+  user_id integer PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
+  email text NOT NULL,
+  otp_hash text NOT NULL,
+  expires_at timestamptz NOT NULL,
+  attempts integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.payout_history (
+  id serial PRIMARY KEY,
+  teacher_id integer NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  amount numeric(12,2) NOT NULL CHECK (amount > 0),
+  currency text NOT NULL DEFAULT 'USD',
+  method text NOT NULL,
+  provider_reference text,
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','paid','failed')),
+  webhook_verified boolean NOT NULL DEFAULT false,
+  note text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS payout_history_provider_reference_idx ON public.payout_history(provider_reference) WHERE provider_reference IS NOT NULL;
+
+ALTER TABLE public.teacher_qualifications DROP CONSTRAINT IF EXISTS teacher_qualifications_verification_status_check;
+ALTER TABLE public.teacher_qualifications ADD CONSTRAINT teacher_qualifications_verification_status_check CHECK (verification_status IN ('pending','verified','rejected'));
+
 CREATE TABLE IF NOT EXISTS public.teacher_subjects (
   user_id integer PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
   teaching_subjects text[] NOT NULL DEFAULT '{}',
