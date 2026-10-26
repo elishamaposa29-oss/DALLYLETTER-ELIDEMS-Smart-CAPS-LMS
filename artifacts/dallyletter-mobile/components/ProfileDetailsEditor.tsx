@@ -134,7 +134,7 @@ export function ProfileDetailsEditor() {
     </View>
     {!isPrivileged?<View style={{marginTop:18,paddingTop:16,borderTopWidth:1,borderTopColor:colors.border}}>
       <Text style={{fontSize:16,fontWeight:"700",color:colors.foreground}}>Account recovery options</Text>
-      <Text style={{fontSize:12,color:colors.mutedForeground,marginTop:4}}>Add a second email and a security question. Security answers are stored as hashes; alternate email must be verified before it receives recovery links. Phone verification requires an SMS provider and is not yet enabled.</Text>
+      <Text style={{fontSize:12,color:colors.mutedForeground,marginTop:4}}>Add a backup email and verify it before it can receive password-reset links. Security answers are stored as hashes but are not used to reset passwords on their own. Phone verification requires an SMS provider and is not yet enabled.</Text>
       {field("Alternate Google/email address",recoveryEmail,setRecoveryEmail,"you@example.com")}
       {field("Recovery phone number",recoveryPhone,setRecoveryPhone,"Include country code")}
       {field("Security question",securityQuestion,setSecurityQuestion,"Choose a question only you can answer")}
