@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { getListUsersQueryKey } from "@workspace/api-client-react";
+import { Link } from "wouter";
 
 export default function AdminUsers() {
   const { data: users, isLoading } = useListUsers();
@@ -160,11 +161,11 @@ export default function AdminUsers() {
                       <tr key={user.id} className="hover:bg-muted/30 transition-colors">
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+                            <Link href={`/profile/${user.id}`} aria-label={`Open ${user.name} profile`} className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                               {user.name.charAt(0)}
-                            </div>
+                            </Link>
                             <div>
-                              <div className="font-medium text-foreground">{user.name}</div>
+                              <Link href={`/profile/${user.id}`} className="font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-sm">{user.name}</Link>
                               <div className="text-xs text-muted-foreground">{user.email}</div>
                             </div>
                           </div>
