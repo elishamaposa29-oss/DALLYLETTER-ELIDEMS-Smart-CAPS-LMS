@@ -28,6 +28,52 @@ export async function ensureProfileHubSchema(): Promise<void> {
       created_at timestamptz NOT NULL DEFAULT now()
     )`);
     await client.query("CREATE INDEX IF NOT EXISTS teacher_qualifications_user_idx ON teacher_qualifications(user_id)");
+    await client.query("ALTER TABLE teacher_qualifications ADD COLUMN IF NOT EXISTS verification_status text NOT NULL DEFAULT 'pending'");
+    await client.query("ALTER TABLE teacher_qualifications DROP CONSTRAINT IF EXISTS teacher_qualifications_verification_status_check");
+    await client.query("ALTER TABLE teacher_qualifications ADD CONSTRAINT teacher_qualifications_verification_status_check CHECK (verification_status IN ('pending','verified','rejected'))");
+    await client.query(`CREATE TABLE IF NOT EXISTS enrollments (
+      id serial PRIMARY KEY,
+      learner_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      class_id integer NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+      enrolled_at timestamptz NOT NULL DEFAULT now(),
+      progress_percent integer NOT NULL DEFAULT 0 CHECK (progress_percent BETWEEN 0 AND 100),
+      status text NOT NULL DEFAULT 'active' CHECK (status IN ('active','completed','cancelled')),
+      UNIQUE (learner_id, class_id)
+    )`);
+    await client.query("CREATE INDEX IF NOT EXISTS enrollments_learner_idx ON enrollments(learner_id, enrolled_at DESC)");
+    await client.query(`CREATE TABLE IF NOT EXISTS notification_email_verifications (
+      user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      email text NOT NULL,
+      otp_hash text NOT NULL,
+      expires_at timestamptz NOT NULL,
+      attempts integer NOT NULL DEFAULT 0,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query(`CREATE TABLE IF NOT EXISTS payout_history (
+      id serial PRIMARY KEY,
+      teacher_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      amount numeric(12,2) NOT NULL CHECK (amount > 0),
+      currency text NOT NULL DEFAULT 'USD',
+      method text NOT NULL,
+      provider_reference text,
+      status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','paid','failed')),
+      webhook_verified boolean NOT NULL DEFAULT false,
+      note text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query("CREATE UNIQUE INDEX IF NOT EXISTS payout_history_provider_reference_idx ON payout_history(provider_reference) WHERE provider_reference IS NOT NULL");
+    await client.query(`DO $
+      BEGIN
+        IF to_regclass('public.teacher_profiles') IS NOT NULL THEN
+          INSERT INTO teacher_qualifications (user_id, title, source, verification_status)
+          SELECT tp.user_id, left(trim(tp.cv->>'education'), 500), 'legacy_migration', 'pending'
+          FROM teacher_profiles tp
+          WHERE jsonb_typeof(tp.cv) = 'object'
+            AND nullif(trim(tp.cv->>'education'), '') IS NOT NULL
+            AND NOT EXISTS (SELECT 1 FROM teacher_qualifications q WHERE q.user_id=tp.user_id AND q.source='legacy_migration' AND q.title=left(trim(tp.cv->>'education'),500));
+        END IF;
+      END $`);
     await client.query(`CREATE TABLE IF NOT EXISTS teacher_subjects (
       user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
       teaching_subjects text[] NOT NULL DEFAULT '{}',
