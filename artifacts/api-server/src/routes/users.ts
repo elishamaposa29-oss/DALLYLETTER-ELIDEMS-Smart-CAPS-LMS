@@ -325,7 +325,7 @@ router.post("/users/me/teacher-documents", requireAuth, (req, res): void => {
       if (error || !req.file) { res.status(400).json({ error: "Upload a PDF, image or document up to 10 MB" }); return; }
       if (!["teacher", "manager", "senior_manager"].includes(String(req.currentUser!.role).toLowerCase())) { res.status(403).json({ error: "Teacher or manager account required" }); return; }
       const documentType = typeof req.body?.documentType === "string" ? req.body.documentType.trim() : "";
-      if (!["resume", "certificate", "proof"].includes(documentType)) { res.status(400).json({ error: "Choose resume, certificate or proof" }); return; }
+      if (!["cv", "resume", "certificate", "proof"].includes(documentType)) { res.status(400).json({ error: "Choose CV, resume, certificate or proof" }); return; }
       const allowed = ["application/pdf","image/jpeg","image/png","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
       if (!allowed.includes(req.file.mimetype)) { res.status(415).json({ error: "Unsupported document type" }); return; }
       const result = await pool.query(
@@ -364,8 +364,19 @@ router.get("/users/:id/teacher-documents/:docId", requireAuth, async (req, res):
       ? await pool.query("SELECT file_name, mime_type, size_bytes, data FROM teacher_documents WHERE id = $1 AND user_id = $2 AND document_type = 'certificate' LIMIT 1", [docId, id])
       : { rows: [] as Array<{ file_name:string; mime_type:string; size_bytes:number; data:Buffer }> };
   if (!result.rows[0]) { res.status(404).json({ error: "Document not found." }); return; }
-  const row = result.rows[0] as { file_name:string; mime_type:string; size_bytes:number; data:Buffer };
-  res.setHeader("Content-Type", row.mime_type); res.setHeader("Content-Length", row.size_bytes); res.setHeader("Content-Disposition", "inline; filename*=UTF-8''" + encodeURIComponent(row.file_name)); res.end(row.data);
+  const row = result.rows[0] as { file_name:string; mime_type:string; size_bytes:number; data:Buffer; storage_key?:string|null };
+  res.setHeader("Content-Type", row.mime_type);
+  res.setHeader("Content-Disposition", "inline; filename*=UTF-8''" + encodeURIComponent(row.file_name));
+  res.setHeader("Cache-Control", "private, no-store");
+  if (row.storage_key) {
+    const media = await streamStoredMedia(row.storage_key);
+    if (!media) { res.status(404).json({ error: "Stored document not found." }); return; }
+    const bytes = Buffer.from(await media.arrayBuffer());
+    res.setHeader("Content-Length", bytes.length);
+    res.end(bytes);
+    return;
+  }
+  res.setHeader("Content-Length", row.size_bytes); res.end(row.data);
 });
 
 router.patch("/users/:id/teacher-review", requireAuth, async (req, res): Promise<void> => {
