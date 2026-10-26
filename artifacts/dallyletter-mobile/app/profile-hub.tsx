@@ -31,6 +31,11 @@ export default function MobileProfileHub() {
   const [otp,setOtp] = useState("");
   const [emailVerified,setEmailVerified] = useState(false);
   const [newQualificationTitle,setNewQualificationTitle] = useState("");
+  const [payoutMethod,setPayoutMethod] = useState("ecocash");
+  const [payoutDestination,setPayoutDestination] = useState("");
+  const [payoutDestinationMasked,setPayoutDestinationMasked] = useState("");
+  const [bankName,setBankName] = useState("");
+  const [accountHolder,setAccountHolder] = useState("");
   const [message,setMessage] = useState("");
   const [loading,setLoading] = useState(false);
   const api = useCallback(async(path:string,init:RequestInit={})=>{
@@ -45,15 +50,16 @@ export default function MobileProfileHub() {
     setLoading(true);
     try{
       if(isOwn){
-        const [me,q,s,e,a,en,n]=await Promise.all([
+        const [me,q,s,e,a,en,n,p]=await Promise.all([
           api("/api/users/"+targetId),api("/api/users/me/qualifications"),api("/api/users/me/subjects"),
           api("/api/users/me/enrollments-summary").catch(()=>({})),api("/api/achievements/my").catch(()=>[]),
-          api("/api/users/me/enrollments").catch(()=>[]),api("/api/users/me/notification-email").catch(()=>({}))
+          api("/api/users/me/enrollments").catch(()=>[]),api("/api/users/me/notification-email").catch(()=>({})),
+          api("/api/users/me/payout-preferences").catch(()=>({}))
         ]);
         setProfile({id:me.id,display_name:me.name,avatar:me.avatarUrl,bio:me.bio,role:me.role,verified_qualifications:(q||[]).filter((x:Row)=>x.verification_status==="verified"),subjects_to_teach:s?.subjects_to_teach||[],grade:me.grade});
         setQualifications(Array.isArray(q)?q:[]);setSubjects(Array.isArray(s?.subjects_to_teach)?s.subjects_to_teach:[]);
         setEnrollments(Array.isArray(en)?en:[]);setAchievements(Array.isArray(a)?a:[]);
-        setEmail(n.notification_email||"");setEmailVerified(Boolean(n.notification_email_verified_at));
+        setEmail(n.notification_email||"");setEmailVerified(Boolean(n.notification_email_verified_at));setPayoutMethod(p.method||"ecocash");setPayoutDestinationMasked(p.destination_masked||"");setBankName(p.bank_name||"");setAccountHolder(p.account_name_holder||"");
         if(isOwner){const pending=await api("/api/qualifications/pending").catch(()=>[]);setQueue(Array.isArray(pending)?pending:[]);}
       }else{
         const [p,a]=await Promise.all([api("/api/users/"+targetId+"/public-profile"),api("/api/achievements/user/"+targetId).catch(()=>[])]);
@@ -84,6 +90,14 @@ export default function MobileProfileHub() {
     await act(async()=>{await api("/api/qualifications",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:newQualificationTitle.trim()})});setNewQualificationTitle("");await load();setMessage("Qualification saved as pending verification.");});
   };
   const verify=async(id:number,status:"verified"|"rejected")=>act(async()=>{await api("/api/qualifications/"+id+"/verify",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status})});await load();setMessage("Qualification "+status+".");});
+  const savePayout=async()=>act(async()=>{
+    const body:Row={method:payoutMethod};
+    if(payoutMethod==="ecocash")body.ecocash_phone=payoutDestination.trim();
+    if(payoutMethod==="paypal")body.paypal_email=payoutDestination.trim();
+    if(payoutMethod==="bank"){body.bank_name=bankName.trim();body.account_name_holder=accountHolder.trim();}
+    await api("/api/users/me/payout-preferences",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    setPayoutDestination("");const fresh=await api("/api/users/me/payout-preferences");setPayoutDestinationMasked(fresh.destination_masked||"");setMessage("Payout preferences saved. Destination stays masked.");
+  });
   const requestOtp=async()=>act(async()=>{const r=await api("/api/users/me/notification-email/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email})});setMessage(r.message||"Verification code sent.");});
   const verifyOtp=async()=>act(async()=>{const r=await api("/api/users/me/notification-email/verify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,otp})});setEmailVerified(Boolean(r.verified));setOtp("");setMessage(r.message||"Email verified.");});
 
@@ -105,6 +119,7 @@ export default function MobileProfileHub() {
       {!!message&&<Text accessibilityRole="alert" style={{...card,color:colors.foreground}}>{message}</Text>}
       {tab==="Overview"&&<View style={card}>
         {line("Name",profile?.display_name)}{line("Role",profile?.role)}{line("Grade",profile?.grade)}{line("Verified qualifications",profile?.verified_qualifications?.length||0)}{line("Subjects",subjects.join(", "))}
+        {isOwn&&String(user.role).toLowerCase()==="teacher"&&<View style={{borderTopWidth:1,borderTopColor:colors.border,marginTop:10,paddingTop:10}}><Text style={{fontWeight:"800",color:colors.foreground,marginBottom:6}}>Private payout preferences</Text><Text style={{fontSize:12,color:colors.mutedForeground,marginBottom:8}}>Never enter a card number, CVV, PIN, or password.</Text><View style={{flexDirection:"row",gap:6}}>{(["ecocash","paypal","bank"] as const).map(m=><TouchableOpacity key={m} onPress={()=>{setPayoutMethod(m);setPayoutDestination("");}} style={{padding:8,borderRadius:8,backgroundColor:payoutMethod===m?colors.primary:colors.background,borderWidth:1,borderColor:colors.border}}><Text style={{color:payoutMethod===m?"#fff":colors.foreground,fontWeight:"700"}}>{m==="ecocash"?"EcoCash":m==="paypal"?"PayPal":"Bank"}</Text></TouchableOpacity>)}</View>{!!payoutDestinationMasked&&<Text style={{color:colors.mutedForeground,marginTop:8}}>Saved destination: {payoutDestinationMasked}</Text>}{payoutMethod!=="bank"?<TextInput accessibilityLabel={payoutMethod==="paypal"?"PayPal email":"EcoCash phone"} value={payoutDestination} onChangeText={setPayoutDestination} placeholder={payoutMethod==="paypal"?"PayPal email":"EcoCash phone"} placeholderTextColor={colors.mutedForeground} autoCapitalize="none" style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground,marginTop:8}}/>:<><TextInput accessibilityLabel="Bank name" value={bankName} onChangeText={setBankName} placeholder="Bank name" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground,marginTop:8}}/><TextInput accessibilityLabel="Account holder" value={accountHolder} onChangeText={setAccountHolder} placeholder="Account holder name" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground,marginTop:8}}/></>}{button("Save payout preferences",()=>void savePayout(),payoutMethod==="bank"?(!bankName.trim()||!accountHolder.trim()):!payoutDestination.trim())}</View>}
         {isOwn&&<><Text style={{fontWeight:"800",color:colors.foreground,marginTop:8,marginBottom:6}}>Notification email</Text><TextInput accessibilityLabel="Notification email" autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={v=>{setEmail(v);setEmailVerified(false);}} placeholder="you@example.com" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground}}/><Text style={{color:emailVerified?"#16a34a":colors.mutedForeground,marginTop:6}}>{emailVerified?"Verified":"Not verified"}</Text>{!emailVerified&&button("Send OTP",()=>void requestOtp())}<TextInput accessibilityLabel="Six digit OTP" keyboardType="number-pad" maxLength={6} value={otp} onChangeText={v=>setOtp(v.replace(/\D/g,"").slice(0,6))} placeholder="6-digit code" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground,marginTop:8}}/>{button("Verify email",()=>void verifyOtp(),otp.length!==6)}</>}
       </View>}
       {tab==="Qualifications"&&<View>
