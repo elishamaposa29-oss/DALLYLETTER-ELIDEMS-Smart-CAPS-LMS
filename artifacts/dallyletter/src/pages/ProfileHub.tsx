@@ -21,6 +21,11 @@ export default function ProfileHub() {
   const [subjects,setSubjects] = useState<{teaching_subjects:string[];subjects_to_teach:string[]}>({teaching_subjects:[],subjects_to_teach:[]});
   const [summary,setSummary] = useState<any>(null);
   const [achievements,setAchievements] = useState<any[]>([]);
+  const [moderationQueue,setModerationQueue] = useState<any[]>([]);
+  const [enrollments,setEnrollments] = useState<any[]>([]);
+  const [notificationEmail,setNotificationEmail] = useState("");
+  const [notificationOtp,setNotificationOtp] = useState("");
+  const [notificationEmailVerified,setNotificationEmailVerified] = useState(false);
   const [title,setTitle] = useState("");
   const [institution,setInstitution] = useState("");
   const [year,setYear] = useState("");
@@ -39,15 +44,17 @@ export default function ProfileHub() {
     if(!profileId || !Number.isSafeInteger(profileId)) return;
     try {
       if(isOwner) {
-        const [me, q, s, academic, earned] = await Promise.all([
+        const [me, q, s, academic, earned, enrolled, notification] = await Promise.all([
           request("/api/users/"+profileId),
           request("/api/users/me/qualifications"),
           request("/api/users/me/subjects"),
           request("/api/users/me/enrollments-summary").catch(()=>null),
-          request("/api/achievements/my").catch(()=>[])
+          request("/api/achievements/my").catch(()=>[]),
+          request("/api/users/me/enrollments").catch(()=>[]),
+          request("/api/users/me/notification-email").catch(()=>({notification_email:null,notification_email_verified_at:null}))
         ]);
         setProfile({id:me.id,display_name:me.name,avatar:me.avatarUrl,bio:me.bio,role:me.role,verified_qualifications:(q||[]).filter((v:any)=>v.verification_status==="verified").map((v:any)=>({title:v.title,verified:true})),subjects_to_teach:s.subjects_to_teach||[]});
-        setQualifications(q||[]); setSubjects(s||{teaching_subjects:[],subjects_to_teach:[]}); setSubjectInput((s?.subjects_to_teach||[]).join(", ")); setSummary(academic); setAchievements(Array.isArray(earned)?earned:[]);
+        setQualifications(q||[]); setSubjects(s||{teaching_subjects:[],subjects_to_teach:[]}); setSubjectInput((s?.subjects_to_teach||[]).join(", ")); setSummary(academic); setAchievements(Array.isArray(earned)?earned:[]); setEnrollments(Array.isArray(enrolled)?enrolled:[]); setNotificationEmail(notification.notification_email||""); setNotificationEmailVerified(Boolean(notification.notification_email_verified_at)); if(["owner","admin","platform_owner"].includes(String(me.role).toLowerCase())) request("/api/qualifications/pending").then((rows:any)=>setModerationQueue(Array.isArray(rows)?rows:[])).catch(()=>setModerationQueue([]));
       } else {
         const [p, earned] = await Promise.all([
           request("/api/users/"+profileId+"/public-profile"),
@@ -66,6 +73,32 @@ export default function ProfileHub() {
       setTitle("");setInstitution("");setYear("");setMessage("Qualification saved for verification.");await load();
     } catch(e) {setMessage(e instanceof Error?e.message:"Could not save qualification.");}
     finally {setBusy(false);}
+  };
+  const uploadDocument = async (qualificationId:number,file?:File) => {
+    if(!file)return;
+    const data=new FormData();data.append("file",file);
+    setBusy(true);setMessage("");
+    try{await request("/api/qualifications/"+qualificationId+"/document",{method:"POST",body:data});setMessage("Document uploaded. Qualification remains pending verification.");await load();}
+    catch(e){setMessage(e instanceof Error?e.message:"Could not upload document.");}
+    finally{setBusy(false);}
+  };
+  const verifyQualification = async (id:number,status:"verified"|"rejected") => {
+    setBusy(true);setMessage("");
+    try{await request("/api/qualifications/"+id+"/verify",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status})});setMessage("Qualification "+status+".");await load();}
+    catch(e){setMessage(e instanceof Error?e.message:"Could not update verification status.");}
+    finally{setBusy(false);}
+  };
+  const requestNotificationOtp = async () => {
+    setBusy(true);setMessage("");
+    try{const result=await request("/api/users/me/notification-email/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:notificationEmail})});setMessage(result.message||"Verification code sent.");}
+    catch(e){setMessage(e instanceof Error?e.message:"Could not send verification code.");}
+    finally{setBusy(false);}
+  };
+  const verifyNotificationOtp = async () => {
+    setBusy(true);setMessage("");
+    try{const result=await request("/api/users/me/notification-email/verify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:notificationEmail,otp:notificationOtp})});setNotificationEmailVerified(Boolean(result.verified));setNotificationOtp("");setMessage(result.message||"Notification email verified.");}
+    catch(e){setMessage(e instanceof Error?e.message:"Could not verify notification email.");}
+    finally{setBusy(false);}
   };
   const saveSubjects = async () => {
     setBusy(true);setMessage("");
