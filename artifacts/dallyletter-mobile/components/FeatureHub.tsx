@@ -165,9 +165,10 @@ export default function FeatureHub() {
   const { data: studyGroups, refetch: refetchGroups } = useListStudyGroups();
 
 
-  const role = String(user?.role ?? "guest").toLowerCase();
-  const isStudent = role === "student";
-  const visibleSections = sections.filter(item => (item.id !== "achievements" || isStudent) && (item.id !== "prefect" || Boolean((user as any)?.isPrefect)) && (item.id !== "reports" || isStudent) && (item.id !== "audit" || ["owner","admin","platform_owner"].includes(role) || Boolean((user as any)?.isManager)));
+  const role = String(user?.role ?? "guest").toLowerCase().replace(/[ -]+/g, "_");
+  const isStudent = role === "student" || role === "prefect";
+  const managerRole = ["manager", "senior_manager"].includes(role) || Boolean((user as any)?.isManager);
+  const visibleSections = sections.filter(item => (item.id !== "achievements" || isStudent) && (item.id !== "prefect" || Boolean((user as any)?.isPrefect)) && (item.id !== "reports" || isStudent) && (item.id !== "audit" || ["owner","admin","platform_owner"].includes(role) || managerRole));
   const isTeacher = role === "teacher";
   const canManageExercises = isTeacher || ["owner","admin","platform_owner"].includes(role) || Boolean((user as any)?.isManager);
   const canCreateGroups = isTeacher || Boolean((user as any)?.isPrefect || (user as any)?.isManager) || ["owner", "admin", "platform_owner"].includes(role);
@@ -389,7 +390,7 @@ export default function FeatureHub() {
         setPrivateRecipient(null); setPrivateMessages([]); setRows(allowed);
       }
       else if (target === "audit") {
-        if (!(role === "owner" || Boolean((user as any)?.isManager))) throw new Error("Only the owner or authorized managers can view activity audit records.");
+        if (!(["owner","platform_owner"].includes(role) || managerRole)) throw new Error("Only the owner or authorized managers can view activity audit records.");
         const logs = await request("/api/audit-logs?limit=200");
         setRows(Array.isArray(logs) ? logs : []);
       }
@@ -1074,7 +1075,7 @@ export default function FeatureHub() {
     if (!url) return;
     if (/^https?:\/\//i.test(url)) { void Linking.openURL(url); return; }
     if (/^\/(student|teacher|admin)\//i.test(url)) {
-      router.push((role === "teacher" ? "/(teacher)/more" : role === "student" ? "/(student)/more" : "/(admin)/more") as any);
+      router.push((["manager","senior_manager"].includes(role) || Boolean((user as any)?.isManager) ? "/(manager)/more" : role === "teacher" ? "/(teacher)/more" : ["student","prefect"].includes(role) ? "/(student)/more" : "/(admin)/more") as any);
       return;
     }
     if (/^\/api\/(?:lessons|messages|assignments)\/.*media/i.test(url)) {

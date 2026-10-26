@@ -22,14 +22,24 @@ interface NavItem {
 
 const roleColors: Record<string, string> = {
   student: "from-blue-600 to-blue-800",
+  prefect: "from-blue-600 to-blue-800",
   teacher: "from-emerald-600 to-emerald-800",
   owner: "from-amber-600 to-amber-800",
+  admin: "from-amber-600 to-amber-800",
+  platform_owner: "from-amber-600 to-amber-800",
+  manager: "from-purple-600 to-purple-800",
+  senior_manager: "from-purple-600 to-purple-800",
 };
 
 const roleLabels: Record<string, string> = {
   student: "Learner",
+  prefect: "Prefect learner",
   teacher: "Educator",
   owner: "Administrator",
+  admin: "Administrator",
+  platform_owner: "Platform owner",
+  manager: "Manager",
+  senior_manager: "Senior manager",
 };
 
 function AuthenticatedAvatar({ url, name }: { url: string; name: string }) {
@@ -118,13 +128,16 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     logoutMutation.mutate(undefined, { onSettled: () => logout() });
   };
 
+  const normalizedRole = String(user.role||"").toLowerCase().replace(/[ -]+/g,"_");
+
   let navItems: NavItem[] = [];
 
-  if (user.role === "student") {
+  if (["student","prefect"].includes(normalizedRole)) {
     navItems = [
       { label: "Dashboard", href: "/", icon: Home, section: "Main" },
       { label: "Feature Preview Center", href: "/features", icon: Sparkles },
       { label: "Lessons", href: "/student/lessons", icon: BookOpen },
+      { label: "Exercises & Drawing", href: "/student/exercises", icon: ClipboardList },
       { label: "Live Classes", href: "/student/classes", icon: Video },
       { label: "Assignments", href: "/student/assignments", icon: ClipboardList },
       { label: "Study Groups", href: "/student/study-groups", icon: Users },
@@ -141,11 +154,12 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         { label: "Prefect Panel", href: "/student/prefect", icon: Shield, accent: "text-amber-400" }
       );
     }
-  } else if (user.role === "teacher") {
+  } else if (normalizedRole === "teacher") {
     navItems = [
       { label: "Dashboard", href: "/teacher", icon: Home, section: "Main" },
       { label: "Feature Preview Center", href: "/features", icon: Sparkles },
       { label: "My Lessons", href: "/teacher/lessons", icon: BookOpen },
+      { label: "Qualifications & CV", href: "/teacher/qualifications", icon: GraduationCap },
       { label: "My Classes", href: "/teacher/classes", icon: Video },
       { label: "Assignments", href: "/teacher/assignments", icon: ClipboardList },
       { label: "Study Groups", href: "/student/study-groups", icon: Users },
@@ -159,12 +173,27 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         { label: "Assignments", href: "/manager/assignments", icon: ClipboardList },
         { label: "Connect", href: "/manager/chat", icon: MessageSquare },
         { label: "Reports", href: "/manager/reports", icon: ScrollText },
+        { label: "Notifications", href: "/manager/notifications", icon: Bell },
+        { label: "Prefect Management", href: "/manager/prefects", icon: Shield },
       ] : []),
     ];
-  } else if (user.role === "owner") {
+  } else if (["manager","senior_manager"].includes(normalizedRole)) {
+    navItems = [
+      { label: "Manager Dashboard", href: "/manager", icon: Home, section: "Management" },
+      { label: "Feature Preview Center", href: "/features", icon: Sparkles },
+      { label: "Monitor Teachers", href: "/manager/teachers", icon: GraduationCap },
+      { label: "Monitor Students", href: "/manager/students", icon: Users },
+      { label: "Assignments", href: "/manager/assignments", icon: ClipboardList },
+      { label: "Connect", href: "/manager/chat", icon: MessageSquare },
+      { label: "Reports", href: "/manager/reports", icon: ScrollText },
+      { label: "Notifications", href: "/manager/notifications", icon: Bell },
+      { label: "Prefect Management", href: "/manager/prefects", icon: Shield },
+    ];
+  } else if (["owner","admin","platform_owner"].includes(normalizedRole)) {
     navItems = [
       { label: "Overview", href: "/admin", icon: Home, section: "Platform" },
       { label: "Feature Preview Center", href: "/features", icon: Sparkles },
+      { label: "Owner Command Center", href: "/admin/command-center", icon: Briefcase },
       { label: "Users", href: "/admin/users", icon: Users },
       { label: "All Lessons", href: "/admin/lessons", icon: BookOpen },
       { label: "All Classes", href: "/admin/classes", icon: Video },
@@ -187,7 +216,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     ];
   }
 
-  const homeHref = user.role === "student" ? "/" : user.role === "teacher" ? "/teacher" : "/admin";
+  const homeHref = ["student","prefect"].includes(normalizedRole) ? "/" : normalizedRole === "teacher" ? "/teacher" : ["manager","senior_manager"].includes(normalizedRole) ? "/manager" : "/admin";
 
   const NavLinks = ({ onNav }: { onNav?: () => void }) => {
     let lastSection: string | undefined;
@@ -241,14 +270,14 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
       <div className="mx-4 mb-4">
         <div className="bg-white/8 border border-white/10 rounded-xl p-3 flex items-center gap-3">
-          <div className={`h-10 w-10 rounded-xl bg-gradient-to-br ${roleColors[user.role] || "from-slate-600 to-slate-800"} flex items-center justify-center text-white font-bold text-base shadow-lg shrink-0`}>
+          <div className={`h-10 w-10 rounded-xl bg-gradient-to-br ${roleColors[normalizedRole] || "from-slate-600 to-slate-800"} flex items-center justify-center text-white font-bold text-base shadow-lg shrink-0`}>
             {user.avatarUrl ? <AuthenticatedAvatar url={user.avatarUrl} name={user.name} /> : user.name.charAt(0).toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-white truncate">{user.name}</p>\n            <ProfileImageUpload />
             <PushDeliveryTest />
             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-              <span className="text-xs text-white/50">{roleLabels[user.role] || user.role}</span>
+              <span className="text-xs text-white/50">{roleLabels[normalizedRole] || user.role}</span>
               {user.isPrefect && (
                 <span className="inline-flex items-center text-[9px] font-bold bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full border border-amber-500/30">
                   <Shield className="w-2.5 h-2.5 mr-0.5" />PREFECT
@@ -260,7 +289,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                 </span>
               )}
             </div>
-            {user.role === "student" && (user as any).performanceScore != null && (
+            {["student","prefect"].includes(String(user.role||"").toLowerCase().replace(/[ -]+/g,"_")) && (user as any).performanceScore != null && (
               <div className="flex items-center gap-1 mt-1">
                 <Flame className="h-2.5 w-2.5 text-orange-400" />
                 <span className="text-[9px] text-white/40">{(user as any).streakDays ?? 0}d · </span>

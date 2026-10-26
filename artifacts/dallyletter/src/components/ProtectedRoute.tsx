@@ -21,12 +21,13 @@ export function ProtectedRoute({
         // The generated API role model is student/teacher/owner.
         // Keep the existing legacy "admin" compatibility at the runtime boundary
         // without adding an unsupported role to the generated frontend type.
-        const role = String(user.role);
+        const role = String(user.role).toLowerCase().replace(/[ -]+/g, "_");
 
-        if (allowedRoles && !allowedRoles.includes(role) && !(role === "admin" && allowedRoles.includes("owner"))) {
-          if (role === "student") setLocation("/");
+        if (allowedRoles && !allowedRoles.includes(role) && !((["admin","platform_owner"].includes(role)) && allowedRoles.includes("owner"))) {
+          if (role === "student" || role === "prefect") setLocation("/");
           else if (role === "teacher") setLocation("/teacher");
-          else if (role === "owner" || role === "admin") setLocation("/admin");
+          else if (["manager","senior_manager"].includes(role)) setLocation("/manager");
+          else if (["owner","admin","platform_owner"].includes(role)) setLocation("/admin");
         } else if (user.isBlocked) {
           setLocation("/suspended");
         }
@@ -34,11 +35,11 @@ export function ProtectedRoute({
     }
   }, [user, isLoading, allowedRoles, setLocation]);
 
-  const role = user ? String(user.role) : undefined;
+  const role = user ? String(user.role).toLowerCase().replace(/[ -]+/g, "_") : undefined;
   const hasAllowedRole =
     !allowedRoles ||
     (role !== undefined &&
-      (allowedRoles.includes(role) || (role === "admin" && allowedRoles.includes("owner"))));
+      (allowedRoles.includes(role) || (["admin","platform_owner"].includes(role) && allowedRoles.includes("owner"))));
 
   if (isLoading || !user || !hasAllowedRole || user.isBlocked) {
     return (

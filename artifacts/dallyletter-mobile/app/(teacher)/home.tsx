@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { useGetDashboardStats, useGetRecentActivity } from "@workspace/api-client-react";
-import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
@@ -89,6 +90,11 @@ export default function TeacherHome() {
       </View>
 
       <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Explore all features" onPress={() => router.push("/(teacher)/more" as any)} style={{ padding: 14, marginBottom: 18, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <Feather name="grid" size={22} color={colors.primary} />
+          <View style={{ flex: 1 }}><Text style={{ fontSize: 15, fontFamily: "Inter_700Bold", color: colors.foreground }}>Explore all features</Text><Text style={{ fontSize: 12, color: colors.mutedForeground, marginTop: 3 }}>Assignments, exercises, polls, groups, messages, payments and more</Text></View>
+          <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+        </TouchableOpacity>
         <Text style={s.sectionTitle}>Overview</Text>
         <View style={s.statsGrid}>
           {statsData.map((item) => (

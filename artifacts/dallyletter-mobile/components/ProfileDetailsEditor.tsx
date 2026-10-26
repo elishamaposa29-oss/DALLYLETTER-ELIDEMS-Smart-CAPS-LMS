@@ -1,12 +1,13 @@
 import { Feather } from "@expo/vector-icons";
 import { getApiUrl } from "@workspace/api-client-react";
 import React, { useEffect, useState } from "react";
+import { router } from "expo-router";
 import { ActivityIndicator, Alert, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
 export function ProfileDetailsEditor() {
-  const {user,token,login}=useAuth();
+  const {user,token,login,logout}=useAuth();
   const colors=useColors();
   const [open,setOpen]=useState(false);
   const [name,setName]=useState(user?.name||"");
@@ -14,6 +15,10 @@ export function ProfileDetailsEditor() {
   const [grade,setGrade]=useState(user?.grade||"");
   const [subject,setSubject]=useState(user?.subject||"");
   const [busy,setBusy]=useState(false);
+  const [currentPassword,setCurrentPassword]=useState("");
+  const [newPassword,setNewPassword]=useState("");
+  const [confirmPassword,setConfirmPassword]=useState("");
+  const [passwordBusy,setPasswordBusy]=useState(false);
   const [recoveryEmail,setRecoveryEmail]=useState("");
   const [recoveryPhone,setRecoveryPhone]=useState("");
   const [securityQuestion,setSecurityQuestion]=useState("");
@@ -87,7 +92,22 @@ export function ProfileDetailsEditor() {
     finally{setRecoveryBusy(false);}
   };
 
-  const field=(label:string,value:string,set:(v:string)=>void,placeholder:string,multiline=false)=><View style={{marginTop:12}}><Text style={{color:colors.foreground,fontSize:13,fontWeight:"700",marginBottom:6}}>{label}</Text><TextInput value={value} onChangeText={set} placeholder={placeholder} placeholderTextColor={colors.mutedForeground} multiline={multiline} textAlignVertical={multiline?"top":"center"} style={{minHeight:multiline?64:46,borderWidth:1,borderColor:colors.border,borderRadius:10,paddingHorizontal:12,paddingVertical:multiline?10:0,color:colors.foreground,backgroundColor:colors.card}}/></View>;
+  const changePassword=async()=>{
+    if(!token||passwordBusy)return;
+    if(newPassword.length<8||newPassword.length>256){Alert.alert("Password requirements","Use a new password between 8 and 256 characters.");return;}
+    if(newPassword!==confirmPassword){Alert.alert("Passwords do not match","Enter the same new password twice.");return;}
+    setPasswordBusy(true);
+    try{
+      const r=await fetch(getApiUrl("/api/auth/change-password"),{method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({currentPassword,newPassword})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.error||"Could not change password.");
+      setCurrentPassword("");setNewPassword("");setConfirmPassword("");
+      Alert.alert("Password changed","All active sessions have been revoked. Sign in again using your new password.",[{text:"Sign in",onPress:()=>{void logout().finally(()=>router.replace("/login"));}}]);
+    }catch(e){Alert.alert("Password change failed",e instanceof Error?e.message:"Please try again.");}
+    finally{setPasswordBusy(false);}
+  };
+
+  const field=(label:string,value:string,set:(v:string)=>void,placeholder:string,multiline=false,secure=false)=><View style={{marginTop:12}}><Text style={{color:colors.foreground,fontSize:13,fontWeight:"700",marginBottom:6}}>{label}</Text><TextInput value={value} onChangeText={set} placeholder={placeholder} placeholderTextColor={colors.mutedForeground} multiline={multiline} secureTextEntry={secure} textAlignVertical={multiline?"top":"center"} style={{minHeight:multiline?64:46,borderWidth:1,borderColor:colors.border,borderRadius:10,paddingHorizontal:12,paddingVertical:multiline?10:0,color:colors.foreground,backgroundColor:colors.card}}/></View>;
 
   return <View style={{marginHorizontal:16,marginBottom:18,borderWidth:1,borderColor:colors.border,borderRadius:14,padding:14,backgroundColor:colors.card}}>
     <TouchableOpacity onPress={()=>{setName(user?.name||"");setPhone(user?.phone||"");setGrade(user?.grade||"");setSubject(user?.subject||"");setOpen(!open);}} accessibilityRole="button" style={{flexDirection:"row",alignItems:"center",gap:10}}>
@@ -102,6 +122,16 @@ export function ProfileDetailsEditor() {
         {busy?<ActivityIndicator color="#fff"/>:null}<Text style={{color:"#fff",fontWeight:"700"}}>{busy?"Saving…":"Save changes"}</Text>
       </TouchableOpacity>
     </View>:null}
+    <View style={{marginTop:18,paddingTop:16,borderTopWidth:1,borderTopColor:colors.border}}>
+      <Text style={{fontSize:16,fontWeight:"700",color:colors.foreground}}>Change password</Text>
+      <Text style={{fontSize:12,color:colors.mutedForeground,marginTop:4}}>Changing your password revokes active sessions. You will need to sign in again on this device and your other devices.</Text>
+      {field("Current password",currentPassword,setCurrentPassword,"Enter current password",false,true)}
+      {field("New password",newPassword,setNewPassword,"Use at least 8 characters",false,true)}
+      {field("Confirm new password",confirmPassword,setConfirmPassword,"Re-enter new password",false,true)}
+      <TouchableOpacity onPress={()=>void changePassword()} disabled={passwordBusy||!currentPassword||!newPassword||!confirmPassword} style={{height:46,borderRadius:10,marginTop:14,backgroundColor:colors.primary,alignItems:"center",justifyContent:"center",flexDirection:"row",gap:8,opacity:passwordBusy||!currentPassword||!newPassword||!confirmPassword?0.55:1}}>
+        {passwordBusy?<ActivityIndicator color="#fff"/>:null}<Text style={{color:"#fff",fontWeight:"700"}}>{passwordBusy?"Changing password…":"Change password"}</Text>
+      </TouchableOpacity>
+    </View>
     {!isPrivileged?<View style={{marginTop:18,paddingTop:16,borderTopWidth:1,borderTopColor:colors.border}}>
       <Text style={{fontSize:16,fontWeight:"700",color:colors.foreground}}>Account recovery options</Text>
       <Text style={{fontSize:12,color:colors.mutedForeground,marginTop:4}}>Add a second email and a security question. Security answers are stored as hashes; alternate email must be verified before it receives recovery links. Phone verification requires an SMS provider and is not yet enabled.</Text>

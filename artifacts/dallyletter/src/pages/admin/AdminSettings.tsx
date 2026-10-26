@@ -67,8 +67,8 @@ export default function AdminSettings() {
       toast({ variant: "destructive", title: "Passwords don't match", description: "New password and confirmation must match." });
       return;
     }
-    if (passwordForm.newPassword.length < 6) {
-      toast({ variant: "destructive", title: "Password too short", description: "New password must be at least 6 characters." });
+    if (passwordForm.newPassword.length < 8 || passwordForm.newPassword.length > 256) {
+      toast({ variant: "destructive", title: "Password length invalid", description: "New password must be between 8 and 256 characters." });
       return;
     }
     setChangingPassword(true);
@@ -84,8 +84,8 @@ export default function AdminSettings() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
-      toast({ title: "Password changed", description: "Your password has been updated successfully." });
       setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      window.location.assign("/login?passwordChanged=1");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to change password.";
       toast({ variant: "destructive", title: "Error", description: msg });
