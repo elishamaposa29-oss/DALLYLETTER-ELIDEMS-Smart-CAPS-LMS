@@ -1,5 +1,6 @@
 import { getApiUrl } from "@workspace/api-client-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
+import UserProfileLink from "@/components/UserProfileLink";
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -85,7 +86,7 @@ export default function ManagerPrefects() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="font-semibold text-foreground">{p.name}</h3>
+                          <UserProfileLink userId={p.id} name={p.name} className="font-semibold text-foreground" showAvatar={false} />
                           <Badge className="bg-amber-500/10 text-amber-700 border border-amber-300 text-xs">
                             <Shield className="h-3 w-3 mr-1" />PREFECT
                           </Badge>
