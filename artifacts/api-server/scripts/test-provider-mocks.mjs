@@ -21,7 +21,7 @@ if (enabled) {
       response = { status: 200, body: { verification_status: sig === "mock-valid-signature" ? "SUCCESS" : "FAILURE" } };
     } else if (url.hostname === "api.twilio.com" && /^\/2010-04-01\/Accounts\/[^/]+\/Messages\.json$/.test(url.pathname) && method === "POST") {
       const params = new URLSearchParams(bodyText);
-      appendFileSync(capturePath, JSON.stringify({ provider: "twilio", body: { to: params.get("To"), from: params.get("From"), text: params.get("Body") } }) + "\\n");
+      appendFileSync(capturePath, JSON.stringify({ provider: "twilio", body: { to: params.get("To"), from: params.get("From"), text: params.get("Body") } }) + "\n");
       response = { status: 201, body: { sid: "SM_mock_" + Date.now(), status: "queued" } };
     } else if (url.hostname === "oauth2.googleapis.com" && url.pathname === "/tokeninfo" && method === "GET") {
       const idToken = url.searchParams.get("id_token");
