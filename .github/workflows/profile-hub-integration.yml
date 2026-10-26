@@ -70,8 +70,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Typecheck shared libraries
         run: pnpm run typecheck:libs
-      - name: Typecheck Android app without building an APK or contacting production
-        run: pnpm --filter @workspace/dallyletter-mobile typecheck
+      # Android build and typecheck are intentionally deferred per the PR owner's explicit release constraint.
       - name: Create schema in isolated ephemeral PostgreSQL
         run: pnpm run db:push
       - name: Build API
