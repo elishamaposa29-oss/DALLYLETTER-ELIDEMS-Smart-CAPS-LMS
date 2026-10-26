@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
+import UserProfileLink from "@/components/UserProfileLink";
 import { apiJson } from "@/lib/api";
 import {
   useListStudyGroups,
@@ -444,10 +445,7 @@ export default function StudentStudyGroups() {
                         <div className="space-y-2">
                           {group.members.map(member => (
                             <div key={member.id} className="flex items-center gap-2">
-                              <div className="flex h-7 w-7 items-center justify-center rounded-full border bg-primary/10 text-xs font-bold text-primary">
-                                {member.avatarUrl ? <img src={member.avatarUrl} alt="" className="h-full w-full rounded-full object-cover" /> : member.name.charAt(0).toUpperCase()}
-                              </div>
-                              <span className="min-w-0 flex-1 truncate text-xs">{member.name}{member.id === group.creatorId ? " · owner" : ""}</span>
+                              <UserProfileLink userId={member.id} name={member.name + (member.id === group.creatorId ? " · owner" : "")} avatarUrl={member.avatarUrl} className="min-w-0 flex-1 text-xs" />
                               {member.control && <span className="text-[10px] text-muted-foreground">{[member.control.muted && "muted",member.control.suspended && "suspended",member.control.blocked && "blocked",member.control.mediaBlocked && "voice blocked"].filter(Boolean).join(" · ")}</span>}
                             </div>
                           ))}
