@@ -69,6 +69,20 @@ CREATE TABLE IF NOT EXISTS public.payout_history (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS payout_history_provider_reference_idx ON public.payout_history(provider_reference) WHERE provider_reference IS NOT NULL;
 
+CREATE TABLE IF NOT EXISTS public.email_notification_queue (
+  id bigserial PRIMARY KEY,
+  recipient_user_id integer NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  subject text NOT NULL,
+  body_text text NOT NULL,
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','processing','sent','failed')),
+  attempts integer NOT NULL DEFAULT 0,
+  available_at timestamptz NOT NULL DEFAULT now(),
+  sent_at timestamptz,
+  last_error text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS email_notification_queue_pending_idx ON public.email_notification_queue(status,available_at);
+
 ALTER TABLE public.teacher_qualifications DROP CONSTRAINT IF EXISTS teacher_qualifications_verification_status_check;
 ALTER TABLE public.teacher_qualifications ADD CONSTRAINT teacher_qualifications_verification_status_check CHECK (verification_status IN ('pending','verified','rejected'));
 
