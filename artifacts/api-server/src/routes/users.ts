@@ -399,6 +399,12 @@ router.patch("/users/:id/payment-info", requireAuth, async (req, res): Promise<v
     res.status(403).json({ error: "Forbidden" }); return;
   }
   const { paymentInfo } = req.body as { paymentInfo: string };
+  if (typeof paymentInfo !== "string" || paymentInfo.length > 4000) { res.status(400).json({ error: "Payment information must be a short text value." }); return; }
+  let parsedPaymentInfo: unknown = null;
+  try { parsedPaymentInfo = JSON.parse(paymentInfo); } catch { /* Legacy free-text values remain supported after sensitive-data checks. */ }
+  if (hasForbiddenPaymentCredentials(parsedPaymentInfo) || /\b(card[_ -]?number|cvv|cvc|security code|ecocash pin|paypal password|google password|password|pin)\b/i.test(paymentInfo) || /\d{13,19}/.test(paymentInfo.replace(/[ -]/g, ""))) {
+    res.status(400).json({ error: "Card numbers, CVV/CVC, PINs and passwords must never be collected or stored." }); return;
+  }
   const [user] = await db.update(usersTable).set({ paymentInfo: JSON.stringify(paymentInfo) }).where(eq(usersTable.id, id)).returning(safeUserFields);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   res.json({ ...user, createdAt: user.createdAt.toISOString() });
