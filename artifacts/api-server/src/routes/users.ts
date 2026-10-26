@@ -13,7 +13,7 @@ import { requireAuth, requireOwner, canAccessManager, isOwnerRole } from "../lib
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, persistUploadedMedia, removeStoredMedia, streamStoredMedia } from "../lib/media-storage";
 import { canReadPrivateProfileByRole, serializePublicProfile } from "../lib/profile-access-policy";
 import { revokeUserSessions, consumeAuthAttempt } from "../lib/auth-session-store";
-import { hashPassword } from "../lib/password-hash";
+import { hashPassword, verifyPassword } from "../lib/password-hash";
 import { sendEmail, isEmailConfigured } from "../lib/email-service";
 
 const router: IRouter = Router();
@@ -595,7 +595,7 @@ router.post("/users/me/notification-email/request", requireAuth, async(req,res):
   if(!isEmailConfigured()){res.status(503).json({error:"Email delivery is not configured; notification email was not changed."});return;}
   if(await consumeAuthAttempt("notification-email-request",String(req.currentUser!.id),req.ip||"unknown",5,60*60*1000,60*60*1000)){res.status(429).json({error:"Too many OTP requests. Try again later."});return;}
   const otp=String(crypto.randomInt(100000,1000000));
-  const digest=crypto.createHash("sha256").update(String(req.currentUser!.id)+":"+email+":"+otp).digest("hex");
+  const digest=await hashPassword(String(req.currentUser!.id)+":"+email+":"+otp);
   await pool.query("INSERT INTO notification_email_verifications(user_id,email,otp_hash,expires_at,attempts,created_at) VALUES($1,$2,$3,now()+interval '10 minutes',0,now()) ON CONFLICT(user_id) DO UPDATE SET email=EXCLUDED.email,otp_hash=EXCLUDED.otp_hash,expires_at=EXCLUDED.expires_at,attempts=0,created_at=now()",[req.currentUser!.id,email,digest]);
   try{await sendEmail({to:[email],subject:"Verify your Dallyletter notification email",text:"Your verification code is "+otp+". It expires in 10 minutes. If you did not request this, ignore this message."});}
   catch{await pool.query("DELETE FROM notification_email_verifications WHERE user_id=$1",[req.currentUser!.id]);res.status(503).json({error:"Email provider could not send the code. Try again later."});return;}
@@ -607,9 +607,12 @@ router.post("/users/me/notification-email/verify", requireAuth, async(req,res):P
   const otp=typeof req.body?.otp==="string"?req.body.otp.trim():"";
   if(!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(email)||!/^[0-9]{6}$/.test(otp)){res.status(400).json({error:"Valid email and six-digit OTP are required."});return;}
   if(await consumeAuthAttempt("notification-email-verify",String(req.currentUser!.id),req.ip||"unknown",8,15*60*1000,15*60*1000)){res.status(429).json({error:"Too many verification attempts. Try again later."});return;}
-  const digest=crypto.createHash("sha256").update(String(req.currentUser!.id)+":"+email+":"+otp).digest("hex");
-  const result=await pool.query("DELETE FROM notification_email_verifications WHERE user_id=$1 AND email=$2 AND otp_hash=$3 AND expires_at>now() AND attempts<8 RETURNING email",[req.currentUser!.id,email,digest]);
-  if(!result.rows.length){await pool.query("UPDATE notification_email_verifications SET attempts=attempts+1 WHERE user_id=$1",[req.currentUser!.id]);res.status(400).json({error:"Verification code is invalid or expired."});return;}
+  const found=await pool.query("SELECT email,otp_hash,expires_at,attempts FROM notification_email_verifications WHERE user_id=$1",[req.currentUser!.id]);
+  const saved=found.rows[0];
+  const valid=Boolean(saved&&saved.email===email&&saved.attempts<8&&new Date(saved.expires_at).getTime()>Date.now()&&await verifyPassword(String(req.currentUser!.id)+":"+email+":"+otp,String(saved.otp_hash)).then(v=>v.valid).catch(()=>false));
+  if(!valid){await pool.query("UPDATE notification_email_verifications SET attempts=attempts+1 WHERE user_id=$1",[req.currentUser!.id]);res.status(400).json({error:"Verification code is invalid or expired."});return;}
+  const consumed=await pool.query("DELETE FROM notification_email_verifications WHERE user_id=$1 AND email=$2 AND otp_hash=$3 AND expires_at>now() AND attempts<8 RETURNING email",[req.currentUser!.id,email,saved.otp_hash]);
+  if(!consumed.rows.length){res.status(400).json({error:"Verification code has already been used or expired."});return;}
   await pool.query("UPDATE users SET notification_email=$2,notification_email_verified_at=now() WHERE id=$1",[req.currentUser!.id,email]);
   res.json({message:"Notification email verified.",notification_email:email,verified:true});
 });
