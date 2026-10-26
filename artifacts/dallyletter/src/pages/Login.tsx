@@ -27,6 +27,7 @@ export default function Login() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const loginMutation = useLoginUser();
+  const passwordChanged = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("passwordChanged") === "1";
 
   const form = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
@@ -39,6 +40,7 @@ export default function Login() {
         login(data.token, data.user);
         if (data.user.role === "owner") setLocation("/admin");
         else if (data.user.role === "teacher") setLocation("/teacher");
+        else if (["manager","senior_manager"].includes(String(data.user.role||"").toLowerCase().replace(/[ -]+/g,"_"))) setLocation("/manager");
         else setLocation("/");
       },
       onError: (error) => {
@@ -135,6 +137,7 @@ export default function Login() {
             <div className="mb-8">
               <h2 className="text-3xl font-bold text-gray-900 tracking-tight">Welcome back</h2>
               <p className="text-gray-500 mt-1.5">Sign in to access your dashboard</p>
+              {passwordChanged && <div role="status" aria-live="polite" className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">Password changed successfully. Your previous sessions were revoked. Sign in with your new password.</div>}
             </div>
 
             <div className="bg-white rounded-2xl shadow-xl shadow-gray-200/60 border border-gray-100 p-8">

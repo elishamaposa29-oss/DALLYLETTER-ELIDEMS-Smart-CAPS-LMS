@@ -40,7 +40,16 @@ export default function ManagerDashboard(){
  const metric=(label:string,value:any)=><View key={label} style={s.metric}><Text style={{fontSize:22,fontWeight:"700",color:colors.primary}}>{value??"—"}</Text><Text style={s.muted}>{label}</Text></View>;
  if(!allowed)return <View style={s.root}><Text style={s.body}>Manager access required. The server enforces this permission.</Text></View>;
  return <View style={s.root}>
-  <View style={s.header}><TouchableOpacity onPress={()=>router.back()} style={[s.row,{marginBottom:9}]}><Feather name="arrow-left" size={18} color="#fff"/><Text style={{color:"#fff"}}>Back</Text></TouchableOpacity><Text style={s.title}>Manager dashboard</Text><Text style={s.subtitle}>Scoped school oversight · access remains server-authorized</Text></View>
+  <View style={s.header}>
+   <View style={{flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+    <TouchableOpacity onPress={()=>router.back()} style={[s.row,{paddingVertical:6}]}><Feather name="arrow-left" size={18} color="#fff"/><Text style={{color:"#fff"}}>Back</Text></TouchableOpacity>
+    <View style={{flexDirection:"row",alignItems:"center",gap:8}}>
+     <TouchableOpacity accessibilityRole="button" accessibilityLabel="Open manager tools" onPress={()=>router.push("/(manager)/more" as any)} style={{paddingHorizontal:11,paddingVertical:8,borderRadius:9,backgroundColor:"rgba(255,255,255,0.16)",flexDirection:"row",alignItems:"center",gap:6}}><Feather name="grid" size={15} color="#fff"/><Text style={{color:"#fff",fontSize:12,fontWeight:"700"}}>More tools</Text></TouchableOpacity>
+     <TouchableOpacity accessibilityRole="button" accessibilityLabel="Open manager account settings" onPress={()=>router.push("/(manager)/profile" as any)} style={{paddingHorizontal:11,paddingVertical:8,borderRadius:9,backgroundColor:"rgba(255,255,255,0.16)",flexDirection:"row",alignItems:"center",gap:6}}><Feather name="user" size={15} color="#fff"/><Text style={{color:"#fff",fontSize:12,fontWeight:"700"}}>Account</Text></TouchableOpacity>
+    </View>
+   </View>
+   <Text style={s.title}>Manager dashboard</Text><Text style={s.subtitle}>Scoped school oversight · access remains server-authorized</Text>
+  </View>
   <ScrollView contentContainerStyle={s.content}>
    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:7}}>{panels.map(p=><TouchableOpacity key={p.id} style={[s.chip,{backgroundColor:panel===p.id?colors.primary:colors.card}]} onPress={()=>setPanel(p.id)}><Text style={{color:panel===p.id?"#fff":colors.foreground}}>{p.title}</Text></TouchableOpacity>)}</ScrollView>
    <TouchableOpacity style={[s.card,s.row]} onPress={()=>void load()}><Feather name="refresh-cw" size={16} color={colors.primary}/><Text style={s.body}>Refresh live data</Text></TouchableOpacity>

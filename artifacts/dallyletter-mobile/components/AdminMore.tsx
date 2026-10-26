@@ -16,6 +16,11 @@ export default function AdminMore() {
       <View style={{flex:1}}><Text style={{fontSize:15,fontWeight:"700",color:colors.foreground}}>Owner Command Centre</Text><Text style={{fontSize:12,color:colors.mutedForeground,marginTop:3}}>Health, alerts, settings, AI, safety and finance</Text></View>
       <Feather name="chevron-right" size={18} color={colors.mutedForeground}/>
     </TouchableOpacity> : null}
+    {isOwner ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Achievements and badges" onPress={()=>router.push({pathname:"/(admin)/tools",params:{section:"achievements"}} as any)} style={{marginHorizontal:14,marginTop:8,marginBottom:2,padding:13,borderRadius:12,backgroundColor:colors.card,borderWidth:1,borderColor:colors.border,flexDirection:"row",alignItems:"center",gap:12}}>
+      <View style={{width:42,height:42,borderRadius:10,alignItems:"center",justifyContent:"center",backgroundColor:"#f59e0b20"}}><Feather name="award" size={21} color="#d97706"/></View>
+      <View style={{flex:1}}><Text style={{fontSize:15,fontWeight:"700",color:colors.foreground}}>Achievements & Badges</Text><Text style={{fontSize:12,color:colors.mutedForeground,marginTop:3}}>Create learner badges and award achievements</Text></View>
+      <Feather name="chevron-right" size={18} color={colors.mutedForeground}/>
+    </TouchableOpacity> : null}
     <BreakElidemsShortcut />
     <View style={{flex:1}}><FeatureHub /></View>
   </View>;

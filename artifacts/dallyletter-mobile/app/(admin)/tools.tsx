@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
-type ToolSection = "command-center" | "alerts" | "settings" | "ai" | "safety" | "financial";
+type ToolSection = "command-center" | "alerts" | "settings" | "ai" | "safety" | "financial" | "achievements";
 type Row = Record<string, any> & { id?: number };
 const choices: {id: ToolSection; title: string; description: string; icon: string}[] = [
   {id:"command-center",title:"Command Centre",description:"Platform health, service checks, metrics and audit events",icon:"activity"},
@@ -16,6 +16,7 @@ const choices: {id: ToolSection; title: string; description: string; icon: strin
   {id:"ai",title:"ELIDEMS AI",description:"Provider status and safe connection checks",icon:"cpu"},
   {id:"safety",title:"Safety administration",description:"Review content flags and record moderation decisions",icon:"shield"},
   {id:"financial",title:"Financial tools",description:"Payment summary and staff-payment records",icon:"dollar-sign"},
+  {id:"achievements",title:"Achievements & badges",description:"Create learner badges and award them to students",icon:"award"},
 ];
 
 export default function OwnerTools() {
@@ -35,6 +36,10 @@ export default function OwnerTools() {
   const [aiReply,setAiReply] = useState("");
   const [provider,setProvider] = useState("mock");
   const [notice,setNotice] = useState("");
+  const [achievementForm,setAchievementForm] = useState({name:"",description:"",icon:"🏆",category:"learning",pointsValue:"10"});
+  const [awardAchievementId,setAwardAchievementId] = useState("");
+  const [awardUserId,setAwardUserId] = useState("");
+  const [awardNote,setAwardNote] = useState("");
   const request = useCallback(async(path:string, init:RequestInit={})=>{
     const headers = new Headers(init.headers);
     if(token) headers.set("Authorization","Bearer "+token);
@@ -63,6 +68,9 @@ export default function OwnerTools() {
         const result=await request("/api/ai/status"); setData(result); setProvider(String(result.configuredProvider||result.provider||"mock"));
       } else if(section==="safety") {
         const result=await request("/api/content-flags"); setData(Array.isArray(result)?result:[]);
+      } else if(section==="achievements") {
+        const [achievements,users]=await Promise.all([request("/api/achievements"),request("/api/users")]);
+        setData({achievements:Array.isArray(achievements)?achievements:[],students:Array.isArray(users)?users.filter((item:Row)=>["student","prefect"].includes(String(item.role||"").toLowerCase())):[]});
       } else {
         const [summary,staff,payments]=await Promise.all([
           request("/api/staff-payments/summary"),
@@ -83,6 +91,19 @@ export default function OwnerTools() {
     catch(e){setError(e instanceof Error?e.message:"Action failed.");}
     finally{setBusy(false);}
   };
+  const createAchievement=()=>act("Achievement created.",async()=>{
+    if(!achievementForm.name.trim()||!achievementForm.description.trim()) throw new Error("Name and description are required.");
+    const pointsValue=Number.parseInt(achievementForm.pointsValue,10);
+    if(!Number.isFinite(pointsValue)||pointsValue<0) throw new Error("Enter a valid non-negative points value.");
+    await request("/api/achievements",{method:"POST",body:JSON.stringify({...achievementForm,name:achievementForm.name.trim(),description:achievementForm.description.trim(),pointsValue})});
+    setAchievementForm({name:"",description:"",icon:"🏆",category:"learning",pointsValue:"10"});
+  });
+  const awardAchievement=()=>act("Achievement awarded.",async()=>{
+    const achievementId=Number(awardAchievementId), userId=Number(awardUserId);
+    if(!achievementId||!userId) throw new Error("Select an achievement and a learner.");
+    await request("/api/achievements/award",{method:"POST",body:JSON.stringify({userId,achievementId,note:awardNote.trim()})});
+    setAwardAchievementId("");setAwardUserId("");setAwardNote("");
+  });
   const patchSettings=()=>act("Settings saved.",async()=>{
     const safe:Record<string,string>={};
     for(const k of ["paynow_url","paypal_url","trust_wallet","ecocash_number","payment_instructions","docs_url"]) if(typeof settings[k]==="string") safe[k]=settings[k];
@@ -160,6 +181,21 @@ export default function OwnerTools() {
       {section==="settings" && <View style={s.card}><Text style={s.heading}>Learner payment settings</Text><Text style={s.muted}>Only the public payment settings supported by the existing API are editable here. Secret credentials are not exposed.</Text>{field("Paynow checkout URL","paynow_url")}{field("PayPal URL or handle","paypal_url")}{field("EcoCash number","ecocash_number")}{field("Trust Wallet address","trust_wallet")}{field("Payment instructions","payment_instructions",true)}{field("Documentation URL","docs_url")}<TouchableOpacity style={s.button} onPress={()=>void patchSettings()} disabled={busy}><Text style={s.buttonText}>{busy?"Saving…":"Save settings"}</Text></TouchableOpacity></View>}
       {section==="ai" && <View style={s.card}><Text style={s.heading}>Provider status</Text><Text style={s.body}>Provider: {data?.provider||"unknown"} · {data?.isLive?"live provider":"mock/fallback"}</Text><Text style={s.muted}>Configured: {data?.configuredProvider||"unknown"} · Gemini key: {data?.hasGeminiKey?"configured":"not configured"} · OpenAI key: {data?.hasOpenAIKey?"configured":"not configured"} · Anthropic key: {data?.hasAnthropicKey?"configured":"not configured"}</Text><Text style={s.muted}>Choose a provider only when its server-side credentials are configured.</Text><View style={[s.row,{flexWrap:"wrap"}]}>{["mock","gemini","openai","anthropic"].map(p=><TouchableOpacity key={p} style={[s.chip,{backgroundColor:provider===p?colors.primary:colors.card}]} onPress={()=>setProvider(p)}><Text style={{color:provider===p?"#fff":colors.foreground}}>{p}</Text></TouchableOpacity>)}</View><TouchableOpacity style={s.button} onPress={()=>void saveProvider()} disabled={busy}><Text style={s.buttonText}>Save provider</Text></TouchableOpacity><TouchableOpacity style={[s.button,{backgroundColor:colors.card,borderWidth:1,borderColor:colors.border}]} onPress={()=>void testAI()} disabled={busy}><Text style={[s.buttonText,{color:colors.foreground}]}>Test connection</Text></TouchableOpacity><Text style={s.heading}>ELIDEMS AI assistant</Text><TextInput style={[s.input,{minHeight:75,textAlignVertical:"top"}]} multiline value={aiPrompt} onChangeText={setAiPrompt} placeholder="Ask an authorized staff question…" placeholderTextColor={colors.mutedForeground}/><TouchableOpacity style={s.button} onPress={()=>void askAI()} disabled={busy}><Text style={s.buttonText}>{busy?"Working…":"Ask AI"}</Text></TouchableOpacity>{aiReply?<Text style={s.body}>{aiReply}</Text>:null}</View>}
       {section==="safety" && <>{(Array.isArray(data)?data:[]).length===0?<View style={s.card}><Text style={s.body}>No content flags found.</Text></View>:(data as Row[]).map(f=><View key={f.id} style={s.card}><Text style={s.heading}>{f.contentType||"Content"} #{f.contentId}</Text><Text style={s.muted}>{f.severity||"medium"} · {f.status||"pending"} · {f.createdAt?new Date(f.createdAt).toLocaleString():""}</Text><Text style={s.body}>{f.reason}</Text>{f.contentText?<Text style={s.muted}>{f.contentText}</Text>:null}<TextInput style={[s.input,{minHeight:60}]} value={reviewNote} onChangeText={setReviewNote} placeholder="Review note (optional)" placeholderTextColor={colors.mutedForeground}/><View style={[s.row,{flexWrap:"wrap"}]}>{(["reviewed","dismissed","actioned"] as const).map(st=><TouchableOpacity key={st} style={[s.button,{flex:1,backgroundColor:st==="actioned"?"#b91c1c":colors.primary}]} onPress={()=>void reviewFlag(Number(f.id),st)} disabled={busy}><Text style={s.buttonText}>{st}</Text></TouchableOpacity>)}</View></View>)}</>}
+      {section==="achievements" && data && <><View style={s.card}><Text style={s.heading}>Create achievement</Text>
+        <TextInput style={s.input} value={achievementForm.name} onChangeText={name=>setAchievementForm(old=>({...old,name}))} placeholder="Achievement name" placeholderTextColor={colors.mutedForeground}/>
+        <TextInput style={[s.input,{minHeight:70,textAlignVertical:"top"}]} multiline value={achievementForm.description} onChangeText={description=>setAchievementForm(old=>({...old,description}))} placeholder="Description" placeholderTextColor={colors.mutedForeground}/>
+        <View style={[s.row,{flexWrap:"wrap"}]}>{["learning","attendance","participation","leadership","academic","social"].map(category=><TouchableOpacity key={category} style={[s.chip,{backgroundColor:achievementForm.category===category?colors.primary:colors.card}]} onPress={()=>setAchievementForm(old=>({...old,category}))}><Text style={{color:achievementForm.category===category?"#fff":colors.foreground,fontSize:12}}>{category}</Text></TouchableOpacity>)}</View>
+        <View style={[s.row,{flexWrap:"wrap"}]}><TextInput style={[s.input,{width:70}]} value={achievementForm.icon} onChangeText={icon=>setAchievementForm(old=>({...old,icon:icon.slice(0,4)}))} placeholder="🏆" placeholderTextColor={colors.mutedForeground}/><TextInput style={[s.input,{width:110}]} keyboardType="number-pad" value={achievementForm.pointsValue} onChangeText={pointsValue=>setAchievementForm(old=>({...old,pointsValue}))} placeholder="Points" placeholderTextColor={colors.mutedForeground}/></View>
+        <TouchableOpacity style={s.button} onPress={()=>void createAchievement()} disabled={busy}><Text style={s.buttonText}>{busy?"Saving…":"Create badge"}</Text></TouchableOpacity>
+      </View>
+      <View style={s.card}><Text style={s.heading}>Award an achievement</Text>
+        <Text style={s.muted}>Choose a badge and a learner. Duplicate awards are rejected by the API.</Text>
+        {(data.achievements||[]).map((item:Row)=><TouchableOpacity key={item.id} onPress={()=>setAwardAchievementId(String(item.id))} style={[s.row,{borderWidth:1,borderColor:awardAchievementId===String(item.id)?colors.primary:colors.border,borderRadius:9,marginTop:6}]}><Text style={s.body}>{item.icon||"🏆"} {item.name} · {item.pointsValue??0} points</Text></TouchableOpacity>)}
+        <Text style={[s.muted,{marginTop:12}]}>Learner</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:7}}>{(data.students||[]).map((item:Row)=><TouchableOpacity key={item.id} onPress={()=>setAwardUserId(String(item.id))} style={[s.chip,{backgroundColor:awardUserId===String(item.id)?colors.primary:colors.card}]}><Text style={{color:awardUserId===String(item.id)?"#fff":colors.foreground,fontSize:12}}>{item.name||item.email||("Learner #"+item.id)}</Text></TouchableOpacity>)}</ScrollView>
+        <TextInput style={s.input} value={awardNote} onChangeText={setAwardNote} placeholder="Award note (optional)" placeholderTextColor={colors.mutedForeground}/>
+        <TouchableOpacity style={s.button} onPress={()=>void awardAchievement()} disabled={busy||!awardAchievementId||!awardUserId}><Text style={s.buttonText}>{busy?"Working…":"Award selected badge"}</Text></TouchableOpacity>
+      </View></>}
       {section==="financial" && data && <><View style={s.card}><Text style={s.heading}>Staff payment summary</Text><View style={{flexDirection:"row",flexWrap:"wrap",gap:8}}>{metric("Total paid",data.summary?.total)}{metric("Payment records",data.summary?.count)}{Object.entries(data.summary?.byRole||{}).map(([k,v])=>metric(k,v))}</View></View><View style={s.card}><Text style={s.heading}>Staff payments</Text>{(data.staff||[]).length===0?<Text style={s.muted}>No staff payment records.</Text>:(data.staff||[]).map((p:Row)=><View key={p.id} style={{paddingVertical:8,borderBottomWidth:1,borderBottomColor:colors.border}}><Text style={s.body}>{p.recipientName||p.name||("Staff #"+p.recipientId)} · {p.amount}</Text><Text style={s.muted}>{p.status||"recorded"} · {p.createdAt?new Date(p.createdAt).toLocaleDateString():""} · {p.notes||""}</Text></View>)}</View><View style={s.card}><Text style={s.heading}>School fee records</Text>{(data.payments||[]).length===0?<Text style={s.muted}>No payment records.</Text>:(data.payments||[]).slice(0,100).map((p:Row)=><View key={p.id} style={{paddingVertical:8,borderBottomWidth:1,borderBottomColor:colors.border}}><Text style={s.body}>{p.studentName||("Learner #"+p.studentId)} · {p.amount}</Text><Text style={s.muted}>{p.month||""} {p.year||""} · {p.status||"unknown"}</Text></View>)}</View></>}
     </ScrollView>
   </View>;

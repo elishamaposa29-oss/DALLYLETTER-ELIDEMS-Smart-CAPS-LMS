@@ -10,23 +10,34 @@ import { Bell, BookOpen, ClipboardList, CreditCard, FileCheck2, FileText, Headph
 type Feature = { title:string; description:string; href:string; icon:LucideIcon; tone:string; tag:string; roles?:string[] };
 
 const features:Feature[] = [
- {title:"Clickable notifications",description:"Recent alerts route to the exact lesson, assignment, class, poll or activity instead of a dead end.",href:"/student/notifications",icon:Bell,tone:"bg-amber-50 text-amber-700",tag:"Interactive",roles:["student"]},
- {title:"Voice & media",description:"Open the authenticated chat/media experience and test playback without replacing the existing message flow.",href:"/student/chat",icon:Headphones,tone:"bg-indigo-50 text-indigo-700",tag:"Media",roles:["student"]},
+ {title:"Clickable notifications",description:"Recent alerts route to the exact lesson, assignment, class, poll or activity instead of a dead end.",href:"/student/notifications",icon:Bell,tone:"bg-amber-50 text-amber-700",tag:"Interactive",roles:["student","prefect"]},
+ {title:"Voice & media",description:"Open the authenticated chat/media experience and test playback without replacing the existing message flow.",href:"/student/chat",icon:Headphones,tone:"bg-indigo-50 text-indigo-700",tag:"Media",roles:["student","prefect"]},
  {title:"Lessons & preview",description:"Preview current lessons, video, audio, images and notes before publishing or sharing.",href:"/teacher/lessons",icon:Video,tone:"bg-blue-50 text-blue-700",tag:"Preview",roles:["teacher","owner"]},
  {title:"Missing resource recovery + Docs",description:"Broken lesson links land on a friendly recovery page with read-only documentation access.",href:"/docs",icon:FileText,tone:"bg-slate-50 text-slate-700",tag:"Recovery"},
  {title:"Interactive assignments",description:"Create assignments, attach reference media, collect submissions and grade returned work.",href:"/teacher/assignments",icon:ClipboardList,tone:"bg-emerald-50 text-emerald-700",tag:"Live UI",roles:["teacher"]},
  {title:"Exercise marking",description:"Open exercise marking, learner results, per-question marks and correction feedback.",href:"/teacher/exercises/1/mark",icon:FileCheck2,tone:"bg-purple-50 text-purple-700",tag:"Marking",roles:["teacher","owner"]},
  {title:"Teacher qualifications",description:"Submit CV/resume, certificates and supporting proof for the approval workflow.",href:"/teacher/qualifications",icon:ShieldCheck,tone:"bg-cyan-50 text-cyan-700",tag:"Verification",roles:["teacher"]},
- {title:"Drawing / answer workspace",description:"Open the learner exercise workspace with touch drawing and media answers. Existing drawing data is preserved.",href:"/student/lessons",icon:PenTool,tone:"bg-rose-50 text-rose-700",tag:"Touch",roles:["student"]},
- {title:"Study groups & Connect",description:"Use group permissions, member previews and the Connect communication experience.",href:"/student/study-groups",icon:Users,tone:"bg-orange-50 text-orange-700",tag:"Social",roles:["student"]},
- {title:"Payments",description:"Open the learner payment flow or staff financial dashboard. Provider-backed payouts remain gated until credentials are configured.",href:"/student/payments",icon:CreditCard,tone:"bg-green-50 text-green-700",tag:"Provider-ready",roles:["student"]},
+ {title:"Drawing / answer workspace",description:"Open published exercises, answer drawing questions with the native canvas, and review returned marks.",href:"/student/exercises",icon:PenTool,tone:"bg-rose-50 text-rose-700",tag:"Touch",roles:["student","prefect"]},
+ {title:"Study groups & Connect",description:"Use group permissions, member previews and the Connect communication experience.",href:"/student/study-groups",icon:Users,tone:"bg-orange-50 text-orange-700",tag:"Social",roles:["student","prefect"]},
+ {title:"Payments",description:"Open the learner payment flow or staff financial dashboard. Provider-backed payouts remain gated until credentials are configured.",href:"/student/payments",icon:CreditCard,tone:"bg-green-50 text-green-700",tag:"Provider-ready",roles:["student","prefect"]},
  {title:"PWA / install",description:"Use the install experience and test the app shell across supported mobile and desktop browsers.",href:"/docs",icon:Smartphone,tone:"bg-sky-50 text-sky-700",tag:"PWA"},
  {title:"Email notifications",description:"Managers and owners can opt an in-app notification into server-side email delivery.",href:"/admin/notifications",icon:Mail,tone:"bg-violet-50 text-violet-700",tag:"Manager / Owner",roles:["teacher","owner"]},
+ {title:"Manager dashboard",description:"Monitor school activity, teachers, learners, prefects and reports.",href:"/manager",icon:BookOpen,tone:"bg-violet-50 text-violet-700",tag:"Management",roles:["manager","senior_manager"]},
+ {title:"Monitor teachers",description:"Open the authorized teacher monitoring view.",href:"/manager/teachers",icon:Users,tone:"bg-blue-50 text-blue-700",tag:"Management",roles:["manager","senior_manager"]},
+ {title:"Monitor learners",description:"Open the authorized learner monitoring view.",href:"/manager/students",icon:Users,tone:"bg-cyan-50 text-cyan-700",tag:"Management",roles:["manager","senior_manager"]},
+ {title:"Manager reports",description:"View school-level reporting summaries.",href:"/manager/reports",icon:FileText,tone:"bg-emerald-50 text-emerald-700",tag:"Management",roles:["manager","senior_manager"]},
+ {title:"Manager notifications",description:"Review and manage role-authorized notifications.",href:"/manager/notifications",icon:Bell,tone:"bg-amber-50 text-amber-700",tag:"Management",roles:["manager","senior_manager"]},
+ {title:"Manager assignments",description:"Open assignment oversight tools.",href:"/manager/assignments",icon:ClipboardList,tone:"bg-indigo-50 text-indigo-700",tag:"Management",roles:["manager","senior_manager"]},
+ {title:"Connect",description:"Open manager-authorized school communication.",href:"/manager/chat",icon:MessageSquare,tone:"bg-rose-50 text-rose-700",tag:"Management",roles:["manager","senior_manager"]},
+ {title:"Prefect management",description:"Review and manage prefect assignments.",href:"/manager/prefects",icon:ShieldCheck,tone:"bg-orange-50 text-orange-700",tag:"Management",roles:["manager","senior_manager"]},
 ];
 
 export default function FeatureCenter(){
  const {user}=useAuth();
- const visible=features.filter(f=>!f.roles || (user && f.roles.includes(user.role)));
+ const normalizedRole=String(user?.role||"").toLowerCase().replace(/[ -]+/g,"_");
+ const isManager=Boolean((user as any)?.isManager)||["manager","senior_manager"].includes(normalizedRole);
+ const isOwner=["owner","admin","platform_owner"].includes(normalizedRole);
+ const visible=features.filter(f=>!f.roles || (user && (f.roles.includes(normalizedRole)||(isOwner&&f.roles.includes("owner"))||(isManager&&f.roles.some(role=>["manager","senior_manager"].includes(role))))));
  return <DashboardLayout>
   <div className="space-y-6">
    <div className="rounded-3xl bg-gradient-to-br from-[#0a1628] via-[#10294a] to-[#0a1628] p-6 md:p-8 text-white shadow-xl">
