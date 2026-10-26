@@ -11,7 +11,7 @@ import {
 } from "@workspace/api-zod";
 import { requireAuth, requireOwner, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, persistUploadedMedia, removeStoredMedia, streamStoredMedia } from "../lib/media-storage";
-import { canReadPrivateProfileByRole } from "../lib/profile-access-policy";
+import { canReadPrivateProfileByRole, serializePublicProfile } from "../lib/profile-access-policy";
 import { revokeUserSessions, consumeAuthAttempt } from "../lib/auth-session-store";
 import { hashPassword } from "../lib/password-hash";
 import { sendEmail, isEmailConfigured } from "../lib/email-service";
@@ -397,15 +397,6 @@ router.patch("/users/:id/payment-info", requireAuth, async (req, res): Promise<v
 });
 
 
-const publicProfileSerializer = (user: { id: number; name: string; avatarUrl: string | null; bio: string | null; role: string }, qualifications: Array<{ title: string; verification_status: string }>, subjects: string[]) => ({
-  id: user.id,
-  display_name: user.name,
-  avatar: user.avatarUrl,
-  bio: user.bio,
-  role: user.role,
-  verified_qualifications: qualifications.filter(item => item.verification_status === "verified").map(item => ({ title: item.title, verified: true })),
-  subjects_to_teach: subjects,
-});
 
 function maskPayoutDestination(value: string): string {
   const trimmed = value.trim();
@@ -428,7 +419,7 @@ router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<v
     pool.query("SELECT subjects_to_teach FROM teacher_subjects WHERE user_id = $1", [id]),
   ]);
   const subjects = Array.isArray(subjectRows.rows[0]?.subjects_to_teach) ? subjectRows.rows[0].subjects_to_teach.filter((v: unknown) => typeof v === "string") : (user.role === "teacher" ? [] : []);
-  res.json(publicProfileSerializer(user, qualifications.rows, subjects));
+  res.json(serializePublicProfile(user, qualifications.rows, subjects));
 });
 
 router.get("/users/:id/payout-preview", requireAuth, async (req, res): Promise<void> => {
