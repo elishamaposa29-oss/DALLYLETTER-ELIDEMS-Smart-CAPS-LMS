@@ -159,7 +159,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Dashboard", href: "/teacher", icon: Home, section: "Main" },
       { label: "Feature Preview Center", href: "/features", icon: Sparkles },
       { label: "My Lessons", href: "/teacher/lessons", icon: BookOpen },
-      { label: "Qualifications & CV", href: "/teacher/qualifications", icon: GraduationCap },
       { label: "My Classes", href: "/teacher/classes", icon: Video },
       { label: "Assignments", href: "/teacher/assignments", icon: ClipboardList },
       { label: "Study Groups", href: "/student/study-groups", icon: Users },
@@ -215,6 +214,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "AI Settings", href: "/admin/ai/settings", icon: Sparkles },
     ];
   }
+
+  navItems.unshift({ label: "Profile Hub", href: "/profile-hub", icon: Users, section: "Account" });
 
   const homeHref = ["student","prefect"].includes(normalizedRole) ? "/" : normalizedRole === "teacher" ? "/teacher" : ["manager","senior_manager"].includes(normalizedRole) ? "/manager" : "/admin";
 
