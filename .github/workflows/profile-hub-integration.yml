@@ -5,6 +5,8 @@ on:
     branches: [main, staging, production]
     paths:
       - "artifacts/api-server/**"
+      - "artifacts/dallyletter/**"
+      - "artifacts/dallyletter-mobile/**"
       - "lib/db/**"
       - "lib/api-zod/**"
       - "pnpm-lock.yaml"
@@ -62,6 +64,10 @@ jobs:
           cache: pnpm
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
+      - name: Typecheck shared libraries
+        run: pnpm run typecheck:libs
+      - name: Typecheck Android app without building an APK or contacting production
+        run: pnpm --filter @workspace/dallyletter-mobile typecheck
       - name: Create schema in isolated ephemeral PostgreSQL
         run: pnpm run db:push
       - name: Build API
