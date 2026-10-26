@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS public.teacher_documents (
   file_name text NOT NULL,
   mime_type text NOT NULL,
   size_bytes integer NOT NULL,
-  data bytea NOT NULL DEFAULT '\\x'::bytea,
+  data bytea NOT NULL DEFAULT decode('', 'hex'),
   storage_key text,
   created_at timestamptz NOT NULL DEFAULT now()
 );
