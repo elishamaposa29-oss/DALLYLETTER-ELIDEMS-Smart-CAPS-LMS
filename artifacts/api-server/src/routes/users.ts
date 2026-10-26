@@ -323,7 +323,7 @@ router.post("/users/me/teacher-documents", requireAuth, (req, res): void => {
   teacherDocumentUpload.single("file")(req, res, (error) => {
     void (async () => {
       if (error || !req.file) { res.status(400).json({ error: "Upload a PDF, image or document up to 10 MB" }); return; }
-      if (req.currentUser!.role !== "teacher") { res.status(403).json({ error: "Teacher account required" }); return; }
+      if (!["teacher", "manager", "senior_manager"].includes(String(req.currentUser!.role).toLowerCase())) { res.status(403).json({ error: "Teacher or manager account required" }); return; }
       const documentType = typeof req.body?.documentType === "string" ? req.body.documentType.trim() : "";
       if (!["resume", "certificate", "proof"].includes(documentType)) { res.status(400).json({ error: "Choose resume, certificate or proof" }); return; }
       const allowed = ["application/pdf","image/jpeg","image/png","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
@@ -339,16 +339,31 @@ router.post("/users/me/teacher-documents", requireAuth, (req, res): void => {
 
 router.get("/users/:id/teacher-documents", requireAuth, async (req, res): Promise<void> => {
   const id = Number(req.params.id); const actor = req.currentUser!;
-  if (!Number.isInteger(id) || (!canAccessManager(actor) && actor.id !== id)) { res.status(403).json({ error: "Access denied" }); return; }
-  const result = await pool.query("SELECT id, document_type, file_name, mime_type, size_bytes, created_at FROM teacher_documents WHERE user_id = $1 ORDER BY created_at DESC", [id]);
+  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid user id." }); return; }
+  const [target] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, id));
+  if (!target) { res.status(404).json({ error: "User not found." }); return; }
+  const selfOrManager = actor.id === id || canAccessManager(actor);
+  const professional = ["teacher", "manager", "senior_manager"].includes(String(target.role).toLowerCase());
+  if (!selfOrManager && !professional) { res.status(403).json({ error: "Access denied" }); return; }
+  const result = selfOrManager
+    ? await pool.query("SELECT id, document_type, file_name, mime_type, size_bytes, created_at FROM teacher_documents WHERE user_id = $1 ORDER BY created_at DESC", [id])
+    : await pool.query("SELECT id, document_type, file_name, mime_type, size_bytes, created_at FROM teacher_documents WHERE user_id = $1 AND document_type = 'certificate' ORDER BY created_at DESC", [id]);
   res.json(result.rows);
 });
 
 router.get("/users/:id/teacher-documents/:docId", requireAuth, async (req, res): Promise<void> => {
   const id = Number(req.params.id); const docId = Number(req.params.docId); const actor = req.currentUser!;
-  if (!Number.isInteger(id) || !Number.isInteger(docId) || (!canAccessManager(actor) && actor.id !== id)) { res.status(403).json({ error: "Access denied" }); return; }
-  const result = await pool.query("SELECT file_name, mime_type, size_bytes, data FROM teacher_documents WHERE id = $1 AND user_id = $2 LIMIT 1", [docId, id]);
-  if (!result.rows[0]) { res.status(404).json({ error: "Document not found" }); return; }
+  if (!Number.isInteger(id) || id <= 0 || !Number.isInteger(docId) || docId <= 0) { res.status(400).json({ error: "Invalid document reference." }); return; }
+  const [target] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, id));
+  if (!target) { res.status(404).json({ error: "User not found." }); return; }
+  const selfOrManager = actor.id === id || canAccessManager(actor);
+  const professional = ["teacher", "manager", "senior_manager"].includes(String(target.role).toLowerCase());
+  const result = selfOrManager
+    ? await pool.query("SELECT file_name, mime_type, size_bytes, data FROM teacher_documents WHERE id = $1 AND user_id = $2 LIMIT 1", [docId, id])
+    : professional
+      ? await pool.query("SELECT file_name, mime_type, size_bytes, data FROM teacher_documents WHERE id = $1 AND user_id = $2 AND document_type = 'certificate' LIMIT 1", [docId, id])
+      : { rows: [] as Array<{ file_name:string; mime_type:string; size_bytes:number; data:Buffer }> };
+  if (!result.rows[0]) { res.status(404).json({ error: "Document not found." }); return; }
   const row = result.rows[0] as { file_name:string; mime_type:string; size_bytes:number; data:Buffer };
   res.setHeader("Content-Type", row.mime_type); res.setHeader("Content-Length", row.size_bytes); res.setHeader("Content-Disposition", "inline; filename*=UTF-8''" + encodeURIComponent(row.file_name)); res.end(row.data);
 });
@@ -480,7 +495,7 @@ router.get("/users/me/qualifications", requireAuth, async (req, res): Promise<vo
 });
 
 router.post("/users/me/qualifications", requireAuth, async (req, res): Promise<void> => {
-  if (req.currentUser!.role !== "teacher") { res.status(403).json({ error: "Teacher account required." }); return; }
+  if (!["teacher", "manager", "senior_manager"].includes(String(req.currentUser!.role).toLowerCase())) { res.status(403).json({ error: "Teacher or manager account required." }); return; }
   const { title, institution, year, documentId } = req.body ?? {};
   if (typeof title !== "string" || !title.trim() || title.trim().length > 500) { res.status(400).json({ error: "Qualification title is required (maximum 500 characters)." }); return; }
   if (institution != null && (typeof institution !== "string" || institution.length > 300)) { res.status(400).json({ error: "Institution must be text up to 300 characters." }); return; }
@@ -519,7 +534,7 @@ router.get("/qualifications/:userId", requireAuth, async (req, res): Promise<voi
 
 router.post("/qualifications", requireAuth, async (req, res): Promise<void> => {
   const actor = req.currentUser!;
-  if (actor.role !== "teacher") { res.status(403).json({ error: "Teacher account required." }); return; }
+  if (!["teacher", "manager", "senior_manager"].includes(String(actor.role).toLowerCase())) { res.status(403).json({ error: "Teacher or manager account required." }); return; }
   const { title, institution, year } = req.body ?? {};
   if (typeof title !== "string" || !title.trim() || title.trim().length > 500) { res.status(400).json({ error: "Qualification title is required (maximum 500 characters)." }); return; }
   if (institution != null && (typeof institution !== "string" || institution.trim().length > 300)) { res.status(400).json({ error: "Institution must be text up to 300 characters." }); return; }
