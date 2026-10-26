@@ -19,6 +19,21 @@ if (enabled) {
       const request = JSON.parse(bodyText || "{}");
       const sig = String(request.webhook_event?.id || "");
       response = { status: 200, body: { verification_status: sig === "mock-valid-signature" ? "SUCCESS" : "FAILURE" } };
+    } else if (url.hostname === "oauth2.googleapis.com" && url.pathname === "/tokeninfo" && method === "GET") {
+      const idToken = url.searchParams.get("id_token");
+      if (idToken === "mock-google-valid") {
+        response = { status: 200, body: {
+          aud: process.env.GOOGLE_CLIENT_ID || "pr84-ci-google-client-id",
+          iss: "https://accounts.google.com",
+          sub: "pr84-google-subject",
+          email: "pr84-google-user@example.test",
+          email_verified: "true",
+          exp: String(Math.floor(Date.now() / 1000) + 300),
+          name: "PR84 Google User",
+        } };
+      } else {
+        response = { status: 400, body: { error: "invalid_token" } };
+      }
     } else {
       throw new Error("Test provider guard blocked unexpected network request: " + method + " " + url.origin + url.pathname);
     }
