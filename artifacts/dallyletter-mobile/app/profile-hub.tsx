@@ -104,13 +104,20 @@ export default function MobileProfileHub() {
   };
   const addQualification=async()=>{
     if(!newQualificationTitle.trim())return;
-    await act(async()=>{await api("/api/qualifications",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:newQualificationTitle.trim()})});setNewQualificationTitle("");await load();setMessage("Qualification saved as pending verification.");});
+    await act(async()=>{await api("/api/users/me/qualifications",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:newQualificationTitle.trim()})});setNewQualificationTitle("");await load();setMessage("Qualification saved as pending verification.");});
   };
   const verify=async(id:number,status:"verified"|"rejected")=>act(async()=>{await api("/api/qualifications/"+id+"/verify",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status})});await load();setMessage("Qualification "+status+".");});
   const openDocument=async(id:number,fileName?:string,mimeType?:string)=>act(async()=>{
     const ext=(fileName?.split(".").pop()|| (mimeType==="image/jpeg"?"jpg":mimeType==="image/png"?"png":"pdf")).replace(/[^a-z0-9]/gi,"").slice(0,8)||"pdf";
     const target=(FileSystem.documentDirectory||FileSystem.cacheDirectory||"")+"qualification-document-"+id+"."+ext;
     const result=await FileSystem.downloadAsync(getApiUrl("/api/qualifications/"+id+"/document"),target,{headers:token?{Authorization:"Bearer "+token}:{}});
+    const openUri=Platform.OS==="android"?await FileSystem.getContentUriAsync(result.uri):result.uri;
+    await Linking.openURL(openUri);
+  });
+  const openProfileDocument=async(doc:Row)=>act(async()=>{
+    const ext=(String(doc.file_name||"pdf").split(".").pop()||"pdf").replace(/[^a-z0-9]/gi,"").slice(0,8)||"pdf";
+    const target=(FileSystem.documentDirectory||FileSystem.cacheDirectory||"")+"profile-document-"+doc.id+"."+ext;
+    const result=await FileSystem.downloadAsync(getApiUrl("/api/users/"+targetId+"/teacher-documents/"+doc.id),target,{headers:token?{Authorization:"Bearer "+token}:{}});
     const openUri=Platform.OS==="android"?await FileSystem.getContentUriAsync(result.uri):result.uri;
     await Linking.openURL(openUri);
   });
