@@ -12,7 +12,8 @@
     "test:offline-queue": "node ./scripts/test-offline-queue.mjs",
     "test:assignment-submission": "node ./scripts/test-assignment-submission.mjs",
     "test:media-auth": "node ./scripts/test-media-auth.mjs",
-    "test:profile-access": "node ./scripts/test-authorization.mjs"
+    "test:profile-access": "node ./scripts/test-authorization.mjs",
+    "start:api": "pnpm run start"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",
