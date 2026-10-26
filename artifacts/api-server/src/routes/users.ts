@@ -695,7 +695,9 @@ router.post("/payouts/execute", requireAuth, async(req,res):Promise<void>=>{
 });
 
 router.post("/webhooks/paynow", async(req,res):Promise<void>=>{
-  // Do not trust unsigned payment callbacks. Configure a provider-supported signature verifier before enabling state transitions.
+  // This HMAC format is supported only when a trusted integration proxy explicitly signs callbacks this way.
+  // Native Paynow callbacks must use the provider's documented hash verifier; never enable this flag by guesswork.
+  if(process.env.PAYNOW_WEBHOOK_HMAC_SHA256!=="true"){res.status(503).json({error:"Paynow webhook state changes are disabled until the provider-specific signature verifier is configured."});return;}
   const key=process.env.PAYNOW_KEY?.trim();
   if(!key){res.status(503).json({error:"Paynow webhook verification is not configured."});return;}
   const signature=req.header("x-paynow-signature");
