@@ -5,7 +5,7 @@ export function canReadPrivateUserProfile(actorId: number, targetId: number, can
 /** Public/private profile boundary. Only the account owner/admin role family may inspect another user's private fields. */
 export function canReadPrivateProfileByRole(actorId: number, targetId: number, actorRole: unknown): boolean {
   const role = typeof actorRole === "string" ? actorRole.trim().toLowerCase() : "";
-  return actorId === targetId || role === "owner" || role === "admin";
+  return actorId === targetId || role === "owner" || role === "admin" || role === "platform_owner";
 }
 
 /** Mask a payout destination before it crosses an owner-only preview response. */
