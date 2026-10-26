@@ -359,9 +359,9 @@ router.get("/users/:id/teacher-documents/:docId", requireAuth, async (req, res):
   const selfOrManager = actor.id === id || canAccessManager(actor);
   const professional = ["teacher", "manager", "senior_manager"].includes(String(target.role).toLowerCase());
   const result = selfOrManager
-    ? await pool.query("SELECT file_name, mime_type, size_bytes, data FROM teacher_documents WHERE id = $1 AND user_id = $2 LIMIT 1", [docId, id])
+    ? await pool.query("SELECT file_name, mime_type, size_bytes, data, storage_key FROM teacher_documents WHERE id = $1 AND user_id = $2 LIMIT 1", [docId, id])
     : professional
-      ? await pool.query("SELECT file_name, mime_type, size_bytes, data FROM teacher_documents WHERE id = $1 AND user_id = $2 AND document_type = 'certificate' LIMIT 1", [docId, id])
+      ? await pool.query("SELECT file_name, mime_type, size_bytes, data, storage_key FROM teacher_documents WHERE id = $1 AND user_id = $2 AND document_type = 'certificate' LIMIT 1", [docId, id])
       : { rows: [] as Array<{ file_name:string; mime_type:string; size_bytes:number; data:Buffer }> };
   if (!result.rows[0]) { res.status(404).json({ error: "Document not found." }); return; }
   const row = result.rows[0] as { file_name:string; mime_type:string; size_bytes:number; data:Buffer; storage_key?:string|null };
