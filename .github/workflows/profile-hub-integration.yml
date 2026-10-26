@@ -41,6 +41,8 @@ jobs:
       API_BASE_URL: http://127.0.0.1:4000
       MOCK_PROVIDER_MODE: test
       MOCK_PROVIDER_CAPTURE: /tmp/dallyletter-provider-capture.jsonl
+      RESEND_API_KEY: pr84-ci-mock-key
+      EMAIL_FROM: "Dallyletter CI <test@example.test>"
       PAYPAL_CLIENT_ID: pr84-ci-mock-client
       PAYPAL_CLIENT_SECRET: pr84-ci-mock-secret
       PAYPAL_WEBHOOK_ID: pr84-ci-mock-webhook
