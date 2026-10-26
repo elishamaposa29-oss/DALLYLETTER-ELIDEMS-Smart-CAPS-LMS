@@ -94,21 +94,8 @@ export async function ensureProfileHubSchema(): Promise<void> {
         OR (method = 'bank' AND bank_name IS NOT NULL AND account_name_holder IS NOT NULL)
       )
     )`);
-    await client.query(`DO $$
-      BEGIN
-        IF to_regclass('public.teacher_profiles') IS NOT NULL THEN
-          INSERT INTO teacher_qualifications (user_id, title, source, verification_status)
-          SELECT tp.user_id, left(trim(tp.cv->>'education'), 500), 'legacy_migration', 'pending'
-          FROM teacher_profiles tp
-          WHERE jsonb_typeof(tp.cv) = 'object'
-            AND nullif(trim(tp.cv->>'education'), '') IS NOT NULL
-            AND NOT EXISTS (
-              SELECT 1 FROM teacher_qualifications q
-              WHERE q.user_id = tp.user_id AND q.source = 'legacy_migration'
-                AND q.title = left(trim(tp.cv->>'education'), 500)
-            );
-        END IF;
-      END $$`);
+    // Legacy CV-to-qualification reconciliation is deliberately NOT run during server startup.
+    // It requires a verified staging schema mapping and a separately approved, idempotent job.
     await client.query("COMMIT");
     ensured = true;
   } catch (error) {
