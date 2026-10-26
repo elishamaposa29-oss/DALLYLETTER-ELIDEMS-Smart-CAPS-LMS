@@ -176,7 +176,7 @@ router.post("/users/me/recovery-email/confirm", requireAuth, async (req, res): P
   const actor = req.currentUser!;
   if (!canManageOwnRecoveryProfile(actor.role)) { res.status(403).json({ error: "Not available for owner/admin accounts." }); return; }
   const code = typeof req.body?.code === "string" ? req.body.code.trim() : "";
-  if (!/^\\d{6}$/.test(code)) { res.status(400).json({ error: "Enter the six-digit verification code." }); return; }
+  if (!/^\d{6}$/.test(code)) { res.status(400).json({ error: "Enter the six-digit verification code." }); return; }
   const ip = req.ip || "unknown";
   if (await consumeAuthAttempt("recovery-email-confirm", String(actor.id), ip, 8, 15 * 60 * 1000, 15 * 60 * 1000)) { res.status(429).json({ error: "Too many verification attempts. Try later." }); return; }
   await ensureRecoveryProfileSchema();
