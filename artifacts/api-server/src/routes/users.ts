@@ -443,8 +443,11 @@ router.patch("/users/:id/payment-info", requireAuth, async (req, res): Promise<v
 router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid user id." }); return; }
-  const [user] = await db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl, bio: usersTable.bio, role: usersTable.role })
-    .from(usersTable).where(eq(usersTable.id, id));
+  const [user] = await db.select({
+    id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl, bio: usersTable.bio,
+    role: usersTable.role, grade: usersTable.grade, isPrefect: usersTable.isPrefect, isManager: usersTable.isManager,
+    performanceScore: usersTable.performanceScore, badgeCount: usersTable.badgeCount, streakDays: usersTable.streakDays,
+  }).from(usersTable).where(eq(usersTable.id, id));
   if (!user) { res.status(404).json({ error: "User not found." }); return; }
   const isProfessional = ["teacher", "manager", "senior_manager"].includes(String(user.role).toLowerCase());
   const [qualifications, teacherSubjectRows, learnerSubjectRows] = await Promise.all([
@@ -464,10 +467,32 @@ router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<v
   const learningSubjects = Array.isArray(learnerSubjectRows.rows[0]?.subjects)
     ? learnerSubjectRows.rows[0].subjects.filter((v: unknown) => typeof v === "string")
     : [];
+  const [groupRows, ownedGroupRows, permissionRows, feeRows, rankRows, achievementRows, lessonRequestRows] = await Promise.all([
+    pool.query("SELECT g.id, g.name, g.subject FROM study_group_members m JOIN study_groups g ON g.id=m.group_id WHERE m.user_id=$1 ORDER BY g.name", [id]).catch(() => ({ rows: [] as Array<{id:number;name:string;subject:string}> })),
+    pool.query("SELECT id, name, subject FROM study_groups WHERE creator_id=$1 ORDER BY name", [id]).catch(() => ({ rows: [] as Array<{id:number;name:string;subject:string}> })),
+    pool.query("SELECT g.id, g.name, g.subject FROM group_member_controls c JOIN study_groups g ON g.id=c.group_id WHERE c.user_id=$1 AND c.can_manage_settings=true ORDER BY g.name", [id]).catch(() => ({ rows: [] as Array<{id:number;name:string;subject:string}> })),
+    pool.query("SELECT CASE WHEN bool_or(lower(status)='overdue') THEN 'overdue' WHEN count(*)>0 AND bool_and(lower(status)='paid') THEN 'paid' WHEN count(*)>0 THEN 'pending' ELSE 'not_recorded' END AS status FROM payments WHERE student_id=$1", [id]).catch(() => ({ rows: [{status:"not_recorded"}] })),
+    pool.query("SELECT 1 + count(*)::int AS position FROM users WHERE role='student' AND performance_score > (SELECT performance_score FROM users WHERE id=$1)", [id]).catch(() => ({ rows: [] as Array<{position:number}> })),
+    pool.query("SELECT count(*)::int AS count FROM user_achievements WHERE user_id=$1", [id]).catch(() => ({ rows: [{count:0}] })),
+    user.isPrefect ? pool.query("SELECT count(*)::int AS count FROM lesson_requests WHERE prefect_id=$1", [id]).catch(() => ({ rows: [{count:0}] })) : Promise.resolve({ rows: [{count:0}] }),
+  ]);
   res.json({
     ...serializePublicProfile(user, qualifications.rows, teachingSubjects),
     subjects: isProfessional ? teachingSubjects : learningSubjects,
     primary_subject: teacherSubjectRows.rows[0]?.primary_subject ?? null,
+    grade: user.grade,
+    is_prefect: Boolean(user.isPrefect),
+    is_manager: Boolean(user.isManager),
+    performance_score: Number(user.performanceScore ?? 0),
+    leaderboard_position: Number(rankRows.rows[0]?.position ?? 0) || null,
+    badge_count: Number(user.badgeCount ?? 0),
+    streak_days: Number(user.streakDays ?? 0),
+    groups_joined: groupRows.rows,
+    groups_owned: ownedGroupRows.rows,
+    groups_with_settings_permission: permissionRows.rows,
+    fees_status: feeRows.rows[0]?.status ?? "not_recorded",
+    achievement_count: Number(achievementRows.rows[0]?.count ?? 0),
+    lesson_requests_count: Number(lessonRequestRows.rows[0]?.count ?? 0),
   });
 });
 
