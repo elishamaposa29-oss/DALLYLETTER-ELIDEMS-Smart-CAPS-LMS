@@ -62,7 +62,7 @@ export default function MobileProfileHub() {
     try{
       if(isOwn){
         const [me,q,s,e,a,en,n,p,publicSummary,docs,catalog,recovery]=await Promise.all([
-          api("/api/users/"+targetId),api("/api/users/me/qualifications").catch(()=>[]),api("/api/users/me/subjects"),
+          api("/api/users/"+targetId),api("/api/users/me/qualifications").catch(()=>[]),api("/api/users/me/subjects").catch(()=>({subjects:[],teaching_subjects:[],subjects_to_teach:[],primary_subject:null})),
           api("/api/users/me/enrollments-summary").catch(()=>({})),api("/api/achievements/my").catch(()=>[]),
           api("/api/users/me/enrollments").catch(()=>[]),api("/api/users/me/notification-email").catch(()=>({})),
           api("/api/users/me/payout-preferences").catch(()=>({})),api("/api/users/"+targetId+"/public-profile").catch(()=>({})),
