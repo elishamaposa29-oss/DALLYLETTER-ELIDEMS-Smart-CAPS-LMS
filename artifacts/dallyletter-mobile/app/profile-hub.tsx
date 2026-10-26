@@ -1,9 +1,10 @@
 import { Feather } from "@expo/vector-icons";
 import { getApiUrl } from "@workspace/api-client-react";
 import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system";
 import { useLocalSearchParams, router } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
@@ -90,6 +91,13 @@ export default function MobileProfileHub() {
     await act(async()=>{await api("/api/qualifications",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:newQualificationTitle.trim()})});setNewQualificationTitle("");await load();setMessage("Qualification saved as pending verification.");});
   };
   const verify=async(id:number,status:"verified"|"rejected")=>act(async()=>{await api("/api/qualifications/"+id+"/verify",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status})});await load();setMessage("Qualification "+status+".");});
+  const openDocument=async(id:number,fileName?:string,mimeType?:string)=>act(async()=>{
+    const ext=(fileName?.split(".").pop()|| (mimeType==="image/jpeg"?"jpg":mimeType==="image/png"?"png":"pdf")).replace(/[^a-z0-9]/gi,"").slice(0,8)||"pdf";
+    const target=(FileSystem.documentDirectory||FileSystem.cacheDirectory||"")+"qualification-document-"+id+"."+ext;
+    const result=await FileSystem.downloadAsync(getApiUrl("/api/qualifications/"+id+"/document"),target,{headers:token?{Authorization:"Bearer "+token}:{}});
+    const openUri=Platform.OS==="android"?await FileSystem.getContentUriAsync(result.uri):result.uri;
+    await Linking.openURL(openUri);
+  });
   const savePayout=async()=>act(async()=>{
     const body:Row={method:payoutMethod};
     if(payoutMethod==="ecocash")body.ecocash_phone=payoutDestination.trim();
@@ -126,7 +134,7 @@ export default function MobileProfileHub() {
         {(qualifications||[]).map((q:Row)=><View key={q.id||q.title} style={card}>{line("Qualification",q.title)}{line("Institution",q.institution)}{line("Year",q.year)}{line("Status",q.verification_status||"verified")}{isOwn&&q.id&&button("Upload PDF/JPG/PNG",()=>void upload(q.id))}</View>)}
         {!qualifications.length&&<View style={card}><Text style={{color:colors.mutedForeground}}>No qualifications listed yet.</Text></View>}
         {isOwn&&String(user.role).toLowerCase()==="teacher"&&<View style={card}><Text style={{fontWeight:"800",color:colors.foreground,marginBottom:8}}>Add qualification</Text><TextInput accessibilityLabel="Qualification title" value={newQualificationTitle} onChangeText={setNewQualificationTitle} placeholder="Qualification title" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground}}/>{button("Save qualification",()=>void addQualification(),!newQualificationTitle.trim())}</View>}
-        {isOwner&&<View style={card}><Text style={{fontSize:16,fontWeight:"800",color:colors.foreground,marginBottom:8}}>Pending verification</Text>{queue.map((q:Row)=><View key={q.id} style={{borderTopWidth:1,borderTopColor:colors.border,paddingVertical:10}}>{line("Teacher",q.teacher_name)}{line("Qualification",q.title)}{line("Institution",q.institution)}{q.document_id&&button("Review document",()=>void act(async()=>{const r=await api("/api/qualifications/"+q.document_id+"/document");setMessage(r.message||"Document is available through the authenticated document endpoint.");}))}{button("Verify",()=>void verify(q.id,"verified"))}{button("Reject",()=>void verify(q.id,"rejected"))}</View>)}{!queue.length&&<Text style={{color:colors.mutedForeground}}>No pending qualifications.</Text>}</View>}
+        {isOwner&&<View style={card}><Text style={{fontSize:16,fontWeight:"800",color:colors.foreground,marginBottom:8}}>Pending verification</Text>{queue.map((q:Row)=><View key={q.id} style={{borderTopWidth:1,borderTopColor:colors.border,paddingVertical:10}}>{line("Teacher",q.teacher_name)}{line("Qualification",q.title)}{line("Institution",q.institution)}{q.document_id&&button("Review document",()=>void openDocument(q.document_id,q.document_file_name,q.document_mime_type))}{button("Verify",()=>void verify(q.id,"verified"))}{button("Reject",()=>void verify(q.id,"rejected"))}</View>)}{!queue.length&&<Text style={{color:colors.mutedForeground}}>No pending qualifications.</Text>}</View>}
       </View>}
       {tab==="Subjects"&&<View style={card}>{subjects.map(s=><Text key={s} style={{color:colors.foreground,paddingVertical:7}}>• {s}</Text>)}{!subjects.length&&<Text style={{color:colors.mutedForeground}}>No subjects listed.</Text>}</View>}
       {tab==="Enrollments"&&<View>{isOwn?enrollments.map((e:Row)=><View key={e.id} style={card}>{line("Class",e.title)}{line("Subject",e.subject)}{line("Teacher",e.teacher_name)}{line("Enrolled",e.enrolled_at?new Date(e.enrolled_at).toLocaleDateString():"—")}{line("Progress",String(e.progress_percent??0)+"%")}</View>):<View style={card}><Text style={{color:colors.mutedForeground}}>Enrollment details are private.</Text></View>}{isOwn&&!enrollments.length&&<View style={card}><Text style={{color:colors.mutedForeground}}>No active class enrollments recorded.</Text></View>}</View>}
