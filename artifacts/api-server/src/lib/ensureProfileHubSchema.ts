@@ -83,6 +83,13 @@ export async function ensureProfileHubSchema(): Promise<void> {
       subjects_to_teach text[] NOT NULL DEFAULT '{}',
       updated_at timestamptz NOT NULL DEFAULT now()
     )`);
+    await client.query("ALTER TABLE teacher_subjects ADD COLUMN IF NOT EXISTS primary_subject text");
+    await client.query(`CREATE TABLE IF NOT EXISTS learner_subjects (
+      user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      subjects text[] NOT NULL DEFAULT '{}',
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query("CREATE INDEX IF NOT EXISTS learner_subjects_gin_idx ON learner_subjects USING gin(subjects)");
     await client.query(`CREATE TABLE IF NOT EXISTS payout_preferences (
       user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
       method text NOT NULL CHECK (method IN ('ecocash','paypal','bank')),
