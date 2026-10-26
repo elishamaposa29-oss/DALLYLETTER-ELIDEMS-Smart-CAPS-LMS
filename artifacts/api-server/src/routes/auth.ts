@@ -277,10 +277,22 @@ router.post("/auth/password-reset/request", async (req, res): Promise<void> => {
     res.status(503).json({ error: "Password recovery is temporarily unavailable. Please contact support." }); return;
   }
   try {
-    const [user] = await db.select({ id: usersTable.id, email: usersTable.email }).from(usersTable).where(eq(usersTable.email, email));
+    // Always prefer an exact primary-email match. Otherwise allow a unique,
+    // previously verified recovery email; never let an unverified address claim an account.
+    const primary = await db.select({ id: usersTable.id, email: usersTable.email }).from(usersTable).where(eq(usersTable.email, email));
+    await pool.query("CREATE TABLE IF NOT EXISTS account_recovery_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, recovery_email text, recovery_email_verified_at timestamptz, recovery_phone text, recovery_phone_verified_at timestamptz, security_question text, security_answer_hash text, verification_code_hash text, verification_expires_at timestamptz, updated_at timestamptz NOT NULL DEFAULT now())");
+    let user = primary[0];
+    if (!user) {
+      const recoveryMatches = await pool.query(
+        "SELECT u.id, u.email FROM users u JOIN account_recovery_profiles r ON r.user_id = u.id WHERE lower(r.recovery_email) = $1 AND r.recovery_email_verified_at IS NOT NULL AND u.is_blocked = false AND u.is_suspended = false LIMIT 2",
+        [email],
+      );
+      if (recoveryMatches.rows.length === 1) {
+        user = { id: Number(recoveryMatches.rows[0].id), email: String(recoveryMatches.rows[0].email) };
+      }
+    }
     if (user) {
       const resetToken = await createPasswordResetToken(user.id);
-      await pool.query("CREATE TABLE IF NOT EXISTS account_recovery_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, recovery_email text, recovery_email_verified_at timestamptz, recovery_phone text, recovery_phone_verified_at timestamptz, security_question text, security_answer_hash text, verification_code_hash text, verification_expires_at timestamptz, updated_at timestamptz NOT NULL DEFAULT now())");
       const recovery = await pool.query("SELECT recovery_email FROM account_recovery_profiles WHERE user_id = $1 AND recovery_email_verified_at IS NOT NULL", [user.id]);
       const recoveryEmail = recovery.rows[0]?.recovery_email as string | undefined;
       const recipients = [...new Set([user.email, ...(recoveryEmail ? [recoveryEmail] : [])])];
