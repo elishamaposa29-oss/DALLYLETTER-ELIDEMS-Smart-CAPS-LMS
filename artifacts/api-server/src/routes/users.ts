@@ -485,7 +485,7 @@ router.post("/users/me/qualifications", requireAuth, async (req, res): Promise<v
 // Owner-only moderation queue for qualifications awaiting verification.
 router.get("/qualifications/pending", requireAuth, async(req,res):Promise<void>=>{
   if(!isOwnerRole(req.currentUser!.role)){res.status(403).json({error:"Owner/admin access required."});return;}
-  const result=await pool.query("SELECT q.id,q.user_id,u.name AS teacher_name,q.title,q.institution,q.year,q.verification_status,q.document_id,q.created_at FROM teacher_qualifications q JOIN users u ON u.id=q.user_id WHERE q.verification_status='pending' ORDER BY q.created_at ASC");
+  const result=await pool.query("SELECT q.id,q.user_id,u.name AS teacher_name,q.title,q.institution,q.year,q.verification_status,q.document_id,d.file_name AS document_file_name,d.mime_type AS document_mime_type,q.created_at FROM teacher_qualifications q JOIN users u ON u.id=q.user_id LEFT JOIN teacher_documents d ON d.id=q.document_id WHERE q.verification_status='pending' ORDER BY q.created_at ASC");
   res.json(result.rows);
 });
 
