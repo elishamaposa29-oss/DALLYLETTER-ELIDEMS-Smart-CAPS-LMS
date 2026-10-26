@@ -530,6 +530,42 @@ router.get("/users/me/qualifications", requireAuth, async (req, res): Promise<vo
   res.json(result.rows);
 });
 
+router.post("/users/me/qualifications/bulk", requireAuth, async (req, res): Promise<void> => {
+  if (!["teacher", "manager", "senior_manager"].includes(String(req.currentUser!.role).toLowerCase())) { res.status(403).json({ error: "Teacher or manager account required." }); return; }
+  const raw = req.body?.qualifications;
+  if (!Array.isArray(raw) || raw.length < 1 || raw.length > 50) { res.status(400).json({ error: "Provide between 1 and 50 qualifications to save together." }); return; }
+  const items: Array<{title:string;institution:string|null;year:number|null}> = [];
+  for (const item of raw) {
+    const title = typeof item === "string" ? item.trim() : typeof item?.title === "string" ? item.title.trim() : "";
+    const institution = typeof item === "object" && typeof item?.institution === "string" ? item.institution.trim() : "";
+    const yearValue = typeof item === "object" ? item?.year : null;
+    const year = yearValue == null || yearValue === "" ? null : Number(yearValue);
+    if (!title || title.length > 500 || institution.length > 300 || (year !== null && (!Number.isInteger(year) || year < 1900 || year > new Date().getFullYear() + 5))) {
+      res.status(400).json({ error: "Each qualification needs a title up to 500 characters, an institution up to 300 characters, and an optional valid year." }); return;
+    }
+    items.push({ title, institution: institution || null, year });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const saved = [];
+    for (const item of items) {
+      const result = await client.query(
+        "INSERT INTO teacher_qualifications (user_id,title,institution,year,verification_status,source) VALUES ($1,$2,$3,$4,'pending','user') RETURNING id,title,institution,year,verification_status,created_at",
+        [req.currentUser!.id, item.title, item.institution, item.year],
+      );
+      saved.push(result.rows[0]);
+    }
+    await client.query("COMMIT");
+    res.status(201).json({ saved: saved.length, qualifications: saved });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+});
+
 router.post("/users/me/qualifications", requireAuth, async (req, res): Promise<void> => {
   if (!["teacher", "manager", "senior_manager"].includes(String(req.currentUser!.role).toLowerCase())) { res.status(403).json({ error: "Teacher or manager account required." }); return; }
   const { title, institution, year, documentId } = req.body ?? {};
