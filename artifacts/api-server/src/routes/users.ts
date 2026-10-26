@@ -680,7 +680,7 @@ router.post("/payouts/execute", requireAuth, async(req,res):Promise<void>=>{
   if(p.method!=="paypal"||!p.paypal_email){res.status(400).json({error:"A verified PayPal payout email is required for this payout route."});return;}
   const clientId=process.env.PAYPAL_CLIENT_ID?.trim(), secret=process.env.PAYPAL_CLIENT_SECRET?.trim();
   if(!clientId||!secret){res.status(503).json({error:"PayPal Payouts credentials are not configured. No payment was sent.",provider:"paypal"});return;}
-  const base=(process.env.PAYPAL_API_BASE?.trim()||(process.env.NODE_ENV==="production"?"https://api-m.paypal.com":"https://api-m.sandbox.paypal.com")).replace(/\\/$/,"");
+  const base=(process.env.PAYPAL_API_BASE?.trim()||(process.env.NODE_ENV==="production"?"https://api-m.paypal.com":"https://api-m.sandbox.paypal.com")).replace(/\/$/, "");
   const tokenResponse=await fetch(base+"/v1/oauth2/token",{method:"POST",headers:{Authorization:"Basic "+Buffer.from(clientId+":"+secret).toString("base64"),"Content-Type":"application/x-www-form-urlencoded"},body:"grant_type=client_credentials"});
   if(!tokenResponse.ok){res.status(502).json({error:"PayPal authentication failed; no payout was created."});return;}
   const tokenData=await tokenResponse.json() as {access_token?:string};
