@@ -6,7 +6,7 @@ import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import multer from "multer";
-import { db, lessonsTable, activityLogTable, followsTable, notificationPreferencesTable, notificationsTable, studyGroupsTable } from "@workspace/db";
+import { db, pool, lessonsTable, activityLogTable, followsTable, notificationPreferencesTable, notificationsTable, studyGroupsTable } from "@workspace/db";
 import {
   CreateLessonBody,
   GetLessonParams,
@@ -249,9 +249,8 @@ router.get("/lessons", requireAuth, async (req, res): Promise<void> => {
   const role = String(req.currentUser!.role).toLowerCase();
   let preferred = new Set<string>();
   if (["student", "learner", "prefect"].includes(role)) {
-    const result = await db.execute({ sql: "SELECT subjects FROM learner_subjects WHERE user_id = $1", params: [req.currentUser!.id] } as never).catch(() => null);
-    const rows = (result as any)?.rows ?? [];
-    const selected = rows[0]?.subjects;
+    const result = await pool.query("SELECT subjects FROM learner_subjects WHERE user_id = $1", [req.currentUser!.id]).catch(() => ({ rows: [] as Array<{ subjects: string[] }> }));
+    const selected = result.rows[0]?.subjects;
     if (Array.isArray(selected)) preferred = new Set(selected.map((v: unknown) => String(v).trim().toLowerCase()));
   }
   const ordered = [...lessons].sort((a, b) => {
