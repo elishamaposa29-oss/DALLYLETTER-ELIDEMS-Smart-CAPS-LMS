@@ -11,6 +11,9 @@ on:
     branches: [main]
     paths:
       - "artifacts/dallyletter-mobile/**"
+      - "artifacts/api-server/**"
+      - "package.json"
+      - "render.yaml"
       - "lib/**"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
