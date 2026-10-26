@@ -136,7 +136,7 @@ router.patch("/users/me/recovery-profile", requireAuth, async (req, res): Promis
   const recoveryPhone = typeof req.body?.recoveryPhone === "string" ? req.body.recoveryPhone.trim() : null;
   const securityQuestion = typeof req.body?.securityQuestion === "string" ? req.body.securityQuestion.trim() : null;
   const securityAnswer = typeof req.body?.securityAnswer === "string" ? req.body.securityAnswer.trim() : null;
-  if (recoveryEmail !== null && recoveryEmail && (!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(recoveryEmail) || recoveryEmail.length > 254)) { res.status(400).json({ error: "Enter a valid alternate email address." }); return; }
+  if (recoveryEmail !== null && recoveryEmail && (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(recoveryEmail) || recoveryEmail.length > 254)) { res.status(400).json({ error: "Enter a valid alternate email address." }); return; }
   if (recoveryPhone !== null && recoveryPhone.length > 40) { res.status(400).json({ error: "Phone number is too long." }); return; }
   if (securityQuestion !== null && securityQuestion.length > 200) { res.status(400).json({ error: "Security question is too long." }); return; }
   if (securityAnswer !== null && securityAnswer.length > 200) { res.status(400).json({ error: "Security answer is too long." }); return; }
@@ -582,7 +582,7 @@ router.get("/qualifications/:id/document", requireAuth, async(req,res):Promise<v
 
 router.post("/users/me/notification-email/request", requireAuth, async(req,res):Promise<void>=>{
   const email=typeof req.body?.email==="string"?req.body.email.trim().toLowerCase():"";
-  if(!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(email)||email.length>254){res.status(400).json({error:"Enter a valid notification email address."});return;}
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)||email.length>254){res.status(400).json({error:"Enter a valid notification email address."});return;}
   if(!isEmailConfigured()){res.status(503).json({error:"Email delivery is not configured; notification email was not changed."});return;}
   if(await consumeAuthAttempt("notification-email-request",String(req.currentUser!.id),req.ip||"unknown",5,60*60*1000,60*60*1000)){res.status(429).json({error:"Too many OTP requests. Try again later."});return;}
   const otp=String(crypto.randomInt(100000,1000000));
@@ -596,7 +596,7 @@ router.post("/users/me/notification-email/request", requireAuth, async(req,res):
 router.post("/users/me/notification-email/verify", requireAuth, async(req,res):Promise<void>=>{
   const email=typeof req.body?.email==="string"?req.body.email.trim().toLowerCase():"";
   const otp=typeof req.body?.otp==="string"?req.body.otp.trim():"";
-  if(!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(email)||!/^[0-9]{6}$/.test(otp)){res.status(400).json({error:"Valid email and six-digit OTP are required."});return;}
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)||!/^[0-9]{6}$/.test(otp)){res.status(400).json({error:"Valid email and six-digit OTP are required."});return;}
   if(await consumeAuthAttempt("notification-email-verify",String(req.currentUser!.id),req.ip||"unknown",8,15*60*1000,15*60*1000)){res.status(429).json({error:"Too many verification attempts. Try again later."});return;}
   const found=await pool.query("SELECT email,otp_hash,expires_at,attempts FROM notification_email_verifications WHERE user_id=$1",[req.currentUser!.id]);
   const saved=found.rows[0];
@@ -789,7 +789,7 @@ router.put("/users/me/payout-preferences", requireAuth, async (req, res): Promis
   const { method, ecocash_phone, paypal_email, bank_name, account_name_holder } = body;
   if (!["ecocash","paypal","bank"].includes(method)) { res.status(400).json({ error: "Choose ecocash, paypal, or bank." }); return; }
   if (method === "ecocash" && (typeof ecocash_phone !== "string" || ecocash_phone.trim().length < 7 || ecocash_phone.trim().length > 40)) { res.status(400).json({ error: "Enter a valid EcoCash phone number." }); return; }
-  if (method === "paypal" && (typeof paypal_email !== "string" || !/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(paypal_email) || paypal_email.length > 254)) { res.status(400).json({ error: "Enter a valid PayPal email address." }); return; }
+  if (method === "paypal" && (typeof paypal_email !== "string" || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(paypal_email) || paypal_email.length > 254)) { res.status(400).json({ error: "Enter a valid PayPal email address." }); return; }
   if (method === "bank" && (![bank_name, account_name_holder].every(v => typeof v === "string" && v.trim().length > 0 && v.length <= 200))) { res.status(400).json({ error: "Bank name and account holder are required." }); return; }
   const result = await pool.query(`INSERT INTO payout_preferences (user_id,method,ecocash_phone,paypal_email,bank_name,account_name_holder,updated_at)
     VALUES ($1,$2,$3,$4,$5,$6,now()) ON CONFLICT (user_id) DO UPDATE SET method=EXCLUDED.method, ecocash_phone=EXCLUDED.ecocash_phone,
