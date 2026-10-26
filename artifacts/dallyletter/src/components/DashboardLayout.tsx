@@ -271,11 +271,15 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
       <div className="mx-4 mb-4">
         <div className="bg-white/8 border border-white/10 rounded-xl p-3 flex items-center gap-3">
-          <div className={`h-10 w-10 rounded-xl bg-gradient-to-br ${roleColors[normalizedRole] || "from-slate-600 to-slate-800"} flex items-center justify-center text-white font-bold text-base shadow-lg shrink-0`}>
-            {user.avatarUrl ? <AuthenticatedAvatar url={user.avatarUrl} name={user.name} /> : user.name.charAt(0).toUpperCase()}
-          </div>
+          <Link href="/profile-hub" onClick={onNav} aria-label="Open your Profile Hub" className="shrink-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
+            <div className={`h-10 w-10 rounded-xl bg-gradient-to-br ${roleColors[normalizedRole] || "from-slate-600 to-slate-800"} flex items-center justify-center text-white font-bold text-base shadow-lg shrink-0`}>
+              {user.avatarUrl ? <AuthenticatedAvatar url={user.avatarUrl} name={user.name} /> : user.name.charAt(0).toUpperCase()}
+            </div>
+          </Link>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-white truncate">{user.name}</p>\n            <ProfileImageUpload />
+            <Link href="/profile-hub" onClick={onNav} className="block rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
+              <p className="text-sm font-semibold text-white truncate hover:text-amber-300">{user.name}</p>
+            </Link>\n            <ProfileImageUpload />
             <PushDeliveryTest />
             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
               <span className="text-xs text-white/50">{roleLabels[normalizedRole] || user.role}</span>
