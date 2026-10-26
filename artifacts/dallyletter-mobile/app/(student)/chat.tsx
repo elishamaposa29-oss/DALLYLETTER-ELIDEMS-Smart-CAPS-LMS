@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useEffect, useState } from "react";
 type ChatGroup = { id: number; name: string; isMember?: boolean; members?: Array<{ id: number }> };
 import { useAuth } from "@/contexts/AuthContext";
+import { UserProfileLink } from "@/components/UserProfileLink";
 import { useColors } from "@/hooks/useColors";
 
 export default function StudentChat() {
@@ -210,7 +211,7 @@ export default function StudentChat() {
             const mine = isMe(msg);
             return (
               <View style={{ alignItems: mine ? "flex-end" : "flex-start" }}>
-                {!mine && <Text style={s.sender}>{msg.senderName ?? "Unknown"}</Text>}
+                {!mine && <View style={{marginBottom:4}}><UserProfileLink userId={msg.senderId} name={msg.senderName ?? "Unknown"} /></View>}
                 <View style={[s.bubble, mine ? s.myBubble : s.theirBubble]}>
                   <Text style={mine ? s.myText : s.theirText}>{msg.content}</Text>
                   {msg.queued && <Text style={{ color: "#fde68a", fontSize: 10, marginTop: 3 }}>Saved offline · waiting to send</Text>}
