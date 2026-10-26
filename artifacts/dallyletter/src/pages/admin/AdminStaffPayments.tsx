@@ -69,7 +69,7 @@ export default function AdminStaffPayments() {
       const r=await fetch(getApiUrl("/api/payouts/execute"),{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+token()},body:JSON.stringify({teacherId:Number(payoutTeacherId),amount:Number(payoutAmount),note:payoutNote})});
       const data=await r.json().catch(()=>({}));
       if(!r.ok)throw new Error(data.error||"Payout could not be submitted.");
-      setPayoutResult(data);toast({title:"Payout submitted",description:"Provider confirmation is still pending."});
+      setPayoutResult(data);toast({title:"Payout submitted",description:"Provider confirmation is still pending."});load();
     }catch(e){toast({variant:"destructive",title:"Payout not submitted",description:e instanceof Error?e.message:"Please retry."});}
     finally{setPayoutBusy(false);}
   };
