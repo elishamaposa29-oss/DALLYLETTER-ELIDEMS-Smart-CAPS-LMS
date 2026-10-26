@@ -4,7 +4,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { useLocalSearchParams, router } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Linking, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Linking, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
@@ -27,6 +27,12 @@ export default function MobileProfileHub() {
   const [queue,setQueue] = useState<Row[]>([]);
   const [subjects,setSubjects] = useState<string[]>([]);
   const [subjectInput,setSubjectInput] = useState("");
+  const [subjectCatalog,setSubjectCatalog] = useState<string[]>([]);
+  const [primarySubject,setPrimarySubject] = useState("");
+  const [nameInput,setNameInput] = useState(user?.name||"");
+  const [phoneInput,setPhoneInput] = useState(user?.phone||"");
+  const [documents,setDocuments] = useState<Row[]>([]);
+  const [documentType,setDocumentType] = useState("certificate");
   const [enrollments,setEnrollments] = useState<Row[]>([]);
   const [achievements,setAchievements] = useState<Row[]>([]);
   const [email,setEmail] = useState("");
@@ -52,22 +58,31 @@ export default function MobileProfileHub() {
     setLoading(true);
     try{
       if(isOwn){
-        const [me,q,s,e,a,en,n,p]=await Promise.all([
-          api("/api/users/"+targetId),api("/api/users/me/qualifications"),api("/api/users/me/subjects"),
+        const [me,q,s,e,a,en,n,p,publicSummary,docs,catalog]=await Promise.all([
+          api("/api/users/"+targetId),api("/api/users/me/qualifications").catch(()=>[]),api("/api/users/me/subjects"),
           api("/api/users/me/enrollments-summary").catch(()=>({})),api("/api/achievements/my").catch(()=>[]),
           api("/api/users/me/enrollments").catch(()=>[]),api("/api/users/me/notification-email").catch(()=>({})),
-          api("/api/users/me/payout-preferences").catch(()=>({}))
+          api("/api/users/me/payout-preferences").catch(()=>({})),api("/api/users/"+targetId+"/public-profile").catch(()=>({})),
+          api("/api/users/"+targetId+"/teacher-documents").catch(()=>[]),api("/api/subjects/catalog").catch(()=>({subjects:[]}))
         ]);
-        setProfile({id:me.id,display_name:me.name,avatar:me.avatarUrl,bio:me.bio,role:me.role,verified_qualifications:(q||[]).filter((x:Row)=>x.verification_status==="verified"),subjects_to_teach:s?.subjects_to_teach||[],grade:me.grade});
-        setQualifications(Array.isArray(q)?q:[]);setSubjects(Array.isArray(s?.subjects_to_teach)?s.subjects_to_teach:[]);setSubjectInput(Array.isArray(s?.subjects_to_teach)?s.subjects_to_teach.join(", "):"");
+        const professional=["teacher","manager","senior_manager"].includes(String(me.role).toLowerCase());
+        const savedSubjects=professional?(s?.subjects_to_teach||[]):(s?.subjects||[]);
+        setProfile({...publicSummary,id:me.id,display_name:me.name,avatar:me.avatarUrl,bio:me.bio,role:me.role,verified_qualifications:professional?(q||[]).filter((x:Row)=>x.verification_status==="verified"):[],subjects_to_teach:savedSubjects,subjects:savedSubjects,primary_subject:s?.primary_subject||null,grade:me.grade,is_prefect:Boolean(me.isPrefect),is_manager:Boolean(me.isManager)});
+        setNameInput(me.name||"");setPhoneInput(me.phone||"");
+        setQualifications(professional&&Array.isArray(q)?q:[]);setDocuments(professional&&Array.isArray(docs)?docs:[]);
+        setSubjects(Array.isArray(savedSubjects)?savedSubjects:[]);setSubjectInput(Array.isArray(savedSubjects)?savedSubjects.join(", "):"");setPrimarySubject(s?.primary_subject||savedSubjects[0]||"");
+        setSubjectCatalog(Array.isArray(catalog?.subjects)?catalog.subjects:[]);
         setEnrollments(Array.isArray(en)?en:[]);setAchievements(Array.isArray(a)?a:[]);
         setEmail(n.notification_email||"");setEmailVerified(Boolean(n.notification_email_verified_at));setPayoutMethod(p.method||"ecocash");setPayoutDestinationMasked(p.destination_masked||"");setBankName(p.bank_name||"");setAccountHolder(p.account_name_holder||"");
         if(isOwner){const pending=await api("/api/qualifications/pending").catch(()=>[]);setQueue(Array.isArray(pending)?pending:[]);}
       }else{
-        const [p,a]=await Promise.all([api("/api/users/"+targetId+"/public-profile"),api("/api/achievements/user/"+targetId).catch(()=>[])]);
+        const [p,a,d]=await Promise.all([api("/api/users/"+targetId+"/public-profile"),api("/api/achievements/user/"+targetId).catch(()=>[]),api("/api/users/"+targetId+"/teacher-documents").catch(()=>[])]);
         setProfile(p);setAchievements(Array.isArray(a)?a:[]);
-        setQualifications(Array.isArray(p.verified_qualifications)?p.verified_qualifications:[]);
-        setSubjects(Array.isArray(p.subjects_to_teach)?p.subjects_to_teach:[]);
+        const professional=["teacher","manager","senior_manager"].includes(String(p.role).toLowerCase());
+        setQualifications(professional&&Array.isArray(p.verified_qualifications)?p.verified_qualifications:[]);
+        setDocuments(professional&&Array.isArray(d)?d:[]);
+        const selected=Array.isArray(p.subjects)?p.subjects:(Array.isArray(p.subjects_to_teach)?p.subjects_to_teach:[]);
+        setSubjects(selected);setSubjectInput(selected.join(", "));setPrimarySubject(p.primary_subject||"");
       }
     }catch(e){setMessage(e instanceof Error?e.message:"Could not load profile.");}
     finally{setLoading(false);}
@@ -99,10 +114,28 @@ export default function MobileProfileHub() {
     const openUri=Platform.OS==="android"?await FileSystem.getContentUriAsync(result.uri):result.uri;
     await Linking.openURL(openUri);
   });
+  const saveProfile=async()=>act(async()=>{
+    if(!nameInput.trim()||nameInput.trim().length>200)throw new Error("Enter a legal name up to 200 characters.");
+    const updated=await api("/api/users/"+user!.id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:nameInput.trim(),phone:phoneInput.trim()||null})});
+    await login({...user,...updated},token!);
+    setProfile((old:Row|null)=>old?{...old,display_name:updated.name||nameInput.trim()}:old);
+    setMessage("Profile details saved.");
+  });
   const saveSubjects=async()=>act(async()=>{
     const list=[...new Set(subjectInput.split(",").map(v=>v.trim()).filter(Boolean))];
-    await api("/api/users/me/subjects",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({teaching_subjects:list,subjects_to_teach:list})});
-    setSubjects(list);setMessage("Teaching subjects saved.");
+    const professional=["teacher","manager","senior_manager"].includes(String(profile?.role||user?.role).toLowerCase());
+    const primary=list.includes(primarySubject)?primarySubject:(list[0]||"");
+    await api("/api/users/me/subjects",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(professional?{teaching_subjects:list,subjects_to_teach:list,primary_subject:primary}:{subjects:list})});
+    setSubjects(list);setPrimarySubject(professional?primary:"");setMessage(professional?"Teaching subjects saved.":"Learning subjects saved; recommendations use these preferences.");
+  });
+  const uploadProfileDocument=async()=>act(async()=>{
+    const picked=await DocumentPicker.getDocumentAsync({type:["application/pdf","image/jpeg","image/png","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document"],copyToCacheDirectory:true});
+    if(picked.canceled||!picked.assets?.[0])return;
+    const asset=picked.assets[0];
+    if(asset.size&&asset.size>10*1024*1024)throw new Error("Documents must be 10 MB or smaller.");
+    const form=new FormData();form.append("file",{uri:asset.uri,name:asset.name||"profile-document.pdf",type:asset.mimeType||"application/pdf"} as any);form.append("documentType",documentType);
+    await api("/api/users/me/teacher-documents",{method:"POST",body:form});
+    const fresh=await api("/api/users/"+user!.id+"/teacher-documents");setDocuments(Array.isArray(fresh)?fresh:[]);setMessage(documentType.toUpperCase()+" uploaded and saved.");
   });
   const savePayout=async()=>act(async()=>{
     const body:Row={method:payoutMethod};
@@ -123,16 +156,16 @@ export default function MobileProfileHub() {
   return <View style={{flex:1,backgroundColor:colors.background,paddingTop:insets.top}}>
     <View style={{backgroundColor:colors.primary,padding:18,flexDirection:"row",alignItems:"center",gap:12}}>
       <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={()=>router.back()}><Feather name="arrow-left" size={22} color="#fff"/></TouchableOpacity>
-      <View style={{flex:1}}><Text style={{fontSize:21,fontWeight:"800",color:"#fff"}}>Profile Hub</Text><Text style={{fontSize:12,color:"#dce7f6",marginTop:3}}>{profile?.display_name||user.name} · {profile?.role||user.role}</Text></View>
+      {profile?.avatar?<Image source={{uri:/^https:\/\//i.test(profile.avatar)?profile.avatar:getApiUrl(profile.avatar),headers:token?{Authorization:"Bearer "+token}:{}}} style={{width:64,height:64,borderRadius:32,borderWidth:2,borderColor:"#ffffff88"}}/>:<View style={{width:64,height:64,borderRadius:32,alignItems:"center",justifyContent:"center",backgroundColor:"#ffffff22"}}><Feather name="user" size={30} color="#fff"/></View>}<View style={{flex:1}}><Text style={{fontSize:21,fontWeight:"800",color:"#fff"}}>Profile Hub</Text><Text style={{fontSize:12,color:"#dce7f6",marginTop:3}}>{profile?.display_name||user.name} · {profile?.is_prefect?"Prefect":String(profile?.role||user.role).toLowerCase()==="student"?"Learner":profile?.role||user.role}</Text></View>
       {loading&&<ActivityIndicator color="#fff"/>}
     </View>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{padding:10,gap:6,backgroundColor:colors.card}}>
-      {TABS.map(t=><TouchableOpacity key={t} accessibilityRole="tab" accessibilityState={{selected:tab===t}} onPress={()=>setTab(t)} style={{paddingHorizontal:12,paddingVertical:9,borderRadius:10,backgroundColor:tab===t?colors.primary:colors.background,borderColor:colors.border,borderWidth:1}}><Text style={{fontWeight:"700",color:tab===t?"#fff":colors.foreground}}>{t}</Text></TouchableOpacity>)}
+      {TABS.filter(t=>t!=="Qualifications"||["teacher","manager","senior_manager"].includes(String(profile?.role||user.role).toLowerCase())).filter(t=>t!=="Enrollments"||isOwn).map(t=><TouchableOpacity key={t} accessibilityRole="tab" accessibilityState={{selected:tab===t}} onPress={()=>setTab(t)} style={{paddingHorizontal:12,paddingVertical:9,borderRadius:10,backgroundColor:tab===t?colors.primary:colors.background,borderColor:colors.border,borderWidth:1}}><Text style={{fontWeight:"700",color:tab===t?"#fff":colors.foreground}}>{t}</Text></TouchableOpacity>)}
     </ScrollView>
     <ScrollView contentContainerStyle={{padding:14,paddingBottom:50}} keyboardShouldPersistTaps="handled">
       {!!message&&<Text accessibilityRole="alert" style={{...card,color:colors.foreground}}>{message}</Text>}
       {tab==="Overview"&&<View style={card}>
-        {line("Name",profile?.display_name)}{line("Role",profile?.role)}{line("Grade",profile?.grade)}{line("Verified qualifications",profile?.verified_qualifications?.length||0)}{line("Subjects",subjects.join(", "))}
+        {isOwn?<><Text style={{fontWeight:"700",color:colors.foreground,marginBottom:5}}>Legal name</Text><TextInput accessibilityLabel="Legal name" value={nameInput} onChangeText={setNameInput} maxLength={200} placeholder="Enter your legal name" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground,marginBottom:8}}/><Text style={{fontWeight:"700",color:colors.foreground,marginBottom:5}}>Mobile phone number</Text><TextInput accessibilityLabel="Mobile phone number" value={phoneInput} onChangeText={setPhoneInput} maxLength={40} keyboardType="phone-pad" placeholder="+263…" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground,marginBottom:8}}/>{button("Save profile details",()=>void saveProfile(),!nameInput.trim())}</>:line("Name",profile?.display_name)}{line("Role",profile?.is_prefect?"Prefect":String(profile?.role||"").toLowerCase()==="student"?"Learner":profile?.role)}{line("Grade",profile?.grade)}{["teacher","manager","senior_manager"].includes(String(profile?.role||user.role).toLowerCase())&&line("Verified qualifications",profile?.verified_qualifications?.length||0)}{line("Subjects",subjects.join(", "))}{!["teacher","manager","senior_manager"].includes(String(profile?.role||user.role).toLowerCase())&&<>{line("School fees",profile?.fees_status==="paid"?"Paid":profile?.fees_status==="overdue"?"Overdue":profile?.fees_status==="pending"?"Pending":"Not recorded")}{line("Leaderboard position",profile?.leaderboard_position?"#"+profile.leaderboard_position:"Not ranked")}{line("Achievements awarded",profile?.achievement_count??achievements.length)}{line("Groups joined",(profile?.groups_joined||[]).map((g:Row)=>g.name).join(", ")||"None recorded")}{profile?.is_prefect&&<>{line("Groups owned",(profile.groups_owned||[]).map((g:Row)=>g.name).join(", ")||"None recorded")}{line("Groups with settings permission",(profile.groups_with_settings_permission||[]).map((g:Row)=>g.name).join(", ")||"None recorded")}{line("Lesson requests",profile.lesson_requests_count??0)}</>}</>}
         {isOwn&&String(user.role).toLowerCase()==="teacher"&&<View style={{borderTopWidth:1,borderTopColor:colors.border,marginTop:10,paddingTop:10}}><Text style={{fontWeight:"800",color:colors.foreground,marginBottom:6}}>Private payout preferences</Text><Text style={{fontSize:12,color:colors.mutedForeground,marginBottom:8}}>Never enter a card number, CVV, PIN, or password.</Text><View style={{flexDirection:"row",gap:6}}>{(["ecocash","paypal","bank"] as const).map(m=><TouchableOpacity key={m} onPress={()=>{setPayoutMethod(m);setPayoutDestination("");}} style={{padding:8,borderRadius:8,backgroundColor:payoutMethod===m?colors.primary:colors.background,borderWidth:1,borderColor:colors.border}}><Text style={{color:payoutMethod===m?"#fff":colors.foreground,fontWeight:"700"}}>{m==="ecocash"?"EcoCash":m==="paypal"?"PayPal":"Bank"}</Text></TouchableOpacity>)}</View>{!!payoutDestinationMasked&&<Text style={{color:colors.mutedForeground,marginTop:8}}>Saved destination: {payoutDestinationMasked}</Text>}{payoutMethod!=="bank"?<TextInput accessibilityLabel={payoutMethod==="paypal"?"PayPal email":"EcoCash phone"} value={payoutDestination} onChangeText={setPayoutDestination} placeholder={payoutMethod==="paypal"?"PayPal email":"EcoCash phone"} placeholderTextColor={colors.mutedForeground} autoCapitalize="none" style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground,marginTop:8}}/>:<><TextInput accessibilityLabel="Bank name" value={bankName} onChangeText={setBankName} placeholder="Bank name" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground,marginTop:8}}/><TextInput accessibilityLabel="Account holder" value={accountHolder} onChangeText={setAccountHolder} placeholder="Account holder name" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground,marginTop:8}}/></>}{button("Save payout preferences",()=>void savePayout(),payoutMethod==="bank"?(!bankName.trim()||!accountHolder.trim()):!payoutDestination.trim())}</View>}
         {isOwn&&<><Text style={{fontWeight:"800",color:colors.foreground,marginTop:8,marginBottom:6}}>Notification email</Text><TextInput accessibilityLabel="Notification email" autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={v=>{setEmail(v);setEmailVerified(false);}} placeholder="you@example.com" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground}}/><Text style={{color:emailVerified?"#16a34a":colors.mutedForeground,marginTop:6}}>{emailVerified?"Verified":"Not verified"}</Text>{!emailVerified&&button("Send OTP",()=>void requestOtp())}<TextInput accessibilityLabel="Six digit OTP" keyboardType="number-pad" maxLength={6} value={otp} onChangeText={v=>setOtp(v.replace(/\D/g,"").slice(0,6))} placeholder="6-digit code" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground,marginTop:8}}/>{button("Verify email",()=>void verifyOtp(),otp.length!==6)}</>}
       </View>}
