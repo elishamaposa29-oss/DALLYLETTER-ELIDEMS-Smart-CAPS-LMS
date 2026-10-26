@@ -11,7 +11,7 @@ import {
 } from "@workspace/api-zod";
 import { requireAuth, requireOwner, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, persistUploadedMedia, removeStoredMedia, streamStoredMedia } from "../lib/media-storage";
-import { canReadPrivateProfileByRole, serializePublicProfile } from "../lib/profile-access-policy";
+import { canReadPrivateProfileByRole, serializePublicProfile, maskPayoutDestination } from "../lib/profile-access-policy";
 import { revokeUserSessions, consumeAuthAttempt } from "../lib/auth-session-store";
 import { hashPassword, verifyPassword } from "../lib/password-hash";
 import { sendEmail, isEmailConfigured } from "../lib/email-service";
@@ -406,14 +406,6 @@ router.patch("/users/:id/payment-info", requireAuth, async (req, res): Promise<v
 
 
 
-function maskPayoutDestination(value: string): string {
-  const trimmed = value.trim();
-  if (trimmed.includes("@")) {
-    const [name, domain] = trimmed.split("@");
-    return (name.length > 1 ? name.slice(0, 1) : "") + "••••@" + domain;
-  }
-  return trimmed.length > 4 ? trimmed.slice(0, 3) + "••••" + trimmed.slice(-2) : "••••";
-}
 
 // Public profile is intentionally separate from /users/:id (private profile).
 router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<void> => {
