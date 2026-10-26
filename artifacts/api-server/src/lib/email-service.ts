@@ -33,9 +33,9 @@ export async function sendEmail(input: EmailInput): Promise<{ sent: number; fail
 
 export async function resolveNotificationRecipients(recipientId: number | null): Promise<string[]> {
   if (recipientId !== null) {
-    const { rows } = await pool.query("SELECT email FROM users WHERE id = $1 AND is_blocked = false", [recipientId]);
+    const { rows } = await pool.query("SELECT COALESCE(notification_email, email) AS email FROM users WHERE id = $1 AND is_blocked = false AND (notification_email IS NULL OR notification_email_verified_at IS NOT NULL)", [recipientId]);
     return rows.map((r: { email: string }) => r.email);
   }
-  const { rows } = await pool.query("SELECT email FROM users WHERE is_blocked = false AND email IS NOT NULL");
+  const { rows } = await pool.query("SELECT COALESCE(notification_email, email) AS email FROM users WHERE is_blocked = false AND email IS NOT NULL AND (notification_email IS NULL OR notification_email_verified_at IS NOT NULL)");
   return rows.map((r: { email: string }) => r.email);
 }
