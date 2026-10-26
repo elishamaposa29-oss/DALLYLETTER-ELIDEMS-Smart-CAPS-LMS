@@ -165,6 +165,7 @@ router.post("/users/me/phone/confirm", requireAuth, async (req, res): Promise<vo
     res.status(400).json({ error: "The verification code is incorrect or expired." }); return;
   }
   await pool.query("UPDATE account_recovery_profiles SET recovery_phone_verified_at=now(),phone_verification_code_hash=NULL,phone_verification_expires_at=NULL,updated_at=now() WHERE user_id=$1", [req.currentUser!.id]);
+  await db.update(usersTable).set({ phone: row.recovery_phone }).where(eq(usersTable.id, req.currentUser!.id));
   res.json({ verified: true, phone: row.recovery_phone });
 });
 
