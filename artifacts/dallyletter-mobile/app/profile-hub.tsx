@@ -79,9 +79,8 @@ export default function MobileProfileHub() {
     });
   };
   const addQualification=async()=>{
-    const title=await new Promise<string|undefined>(resolve=>Alert.prompt?.("Add qualification","Enter the qualification title",resolve));
-    if(!title?.trim())return;
-    await act(async()=>{await api("/api/qualifications",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:title.trim()})});await load();setMessage("Qualification saved as pending verification.");});
+    if(!newQualificationTitle.trim())return;
+    await act(async()=>{await api("/api/qualifications",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:newQualificationTitle.trim()})});setNewQualificationTitle("");await load();setMessage("Qualification saved as pending verification.");});
   };
   const verify=async(id:number,status:"verified"|"rejected")=>act(async()=>{await api("/api/qualifications/"+id+"/verify",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status})});await load();setMessage("Qualification "+status+".");});
   const requestOtp=async()=>act(async()=>{const r=await api("/api/users/me/notification-email/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email})});setMessage(r.message||"Verification code sent.");});
@@ -110,7 +109,7 @@ export default function MobileProfileHub() {
       {tab==="Qualifications"&&<View>
         {(qualifications||[]).map((q:Row)=><View key={q.id||q.title} style={card}>{line("Qualification",q.title)}{line("Institution",q.institution)}{line("Year",q.year)}{line("Status",q.verification_status||"verified")}{isOwn&&q.id&&button("Upload PDF/JPG/PNG",()=>void upload(q.id))}</View>)}
         {!qualifications.length&&<View style={card}><Text style={{color:colors.mutedForeground}}>No qualifications listed yet.</Text></View>}
-        {isOwn&&String(user.role).toLowerCase()==="teacher"&&button("Add qualification",()=>void addQualification())}
+        {isOwn&&String(user.role).toLowerCase()==="teacher"&&<View style={card}><Text style={{fontWeight:"800",color:colors.foreground,marginBottom:8}}>Add qualification</Text><TextInput accessibilityLabel="Qualification title" value={newQualificationTitle} onChangeText={setNewQualificationTitle} placeholder="Qualification title" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground}}/>{button("Save qualification",()=>void addQualification(),!newQualificationTitle.trim())}</View>}
         {isOwner&&<View style={card}><Text style={{fontSize:16,fontWeight:"800",color:colors.foreground,marginBottom:8}}>Pending verification</Text>{queue.map((q:Row)=><View key={q.id} style={{borderTopWidth:1,borderTopColor:colors.border,paddingVertical:10}}>{line("Teacher",q.teacher_name)}{line("Qualification",q.title)}{line("Institution",q.institution)}{q.document_id&&button("Review document",()=>void act(async()=>{const r=await api("/api/qualifications/"+q.document_id+"/document");setMessage(r.message||"Document is available through the authenticated document endpoint.");}))}{button("Verify",()=>void verify(q.id,"verified"))}{button("Reject",()=>void verify(q.id,"rejected"))}</View>)}{!queue.length&&<Text style={{color:colors.mutedForeground}}>No pending qualifications.</Text>}</View>}
       </View>}
       {tab==="Subjects"&&<View style={card}>{subjects.map(s=><Text key={s} style={{color:colors.foreground,paddingVertical:7}}>• {s}</Text>)}{!subjects.length&&<Text style={{color:colors.mutedForeground}}>No subjects listed.</Text>}</View>}
