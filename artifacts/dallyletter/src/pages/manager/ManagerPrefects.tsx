@@ -86,7 +86,7 @@ export default function ManagerPrefects() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <UserProfileLink userId={p.id} name={p.name} className="font-semibold text-foreground" showAvatar={false} />
+                          <UserProfileLink userId={p.id} name={p.name} className="font-semibold text-foreground" />
                           <Badge className="bg-amber-500/10 text-amber-700 border border-amber-300 text-xs">
                             <Shield className="h-3 w-3 mr-1" />PREFECT
                           </Badge>
