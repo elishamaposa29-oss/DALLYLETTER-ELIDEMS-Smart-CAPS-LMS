@@ -52,6 +52,7 @@ export default function MobileProfileHub() {
   const [message,setMessage] = useState("");
   const [loading,setLoading] = useState(false);
   const [coverBusy,setCoverBusy] = useState(false);
+  const [mediaRevision,setMediaRevision] = useState(0);
   const [fullscreenMedia,setFullscreenMedia] = useState<Row|null>(null);
   const fullscreenPlayer = useVideoPlayer(null, player => { player.loop = false; });
   useEffect(()=>{ if(fullscreenMedia?.type?.startsWith("video/")){ void fullscreenPlayer.replaceAsync({uri:fullscreenMedia.url,headers:token?{Authorization:"Bearer "+token}:{}}).then(()=>fullscreenPlayer.play()).catch(()=>setMessage("This video could not be played on this device.")); } else { fullscreenPlayer.pause(); } },[fullscreenMedia?.url,fullscreenMedia?.type,fullscreenPlayer]);
@@ -135,8 +136,8 @@ export default function MobileProfileHub() {
     }catch(e){Alert.alert("Cover upload failed",e instanceof Error?e.message:"Please try again.");}
     finally{setCoverBusy(false);}
   };
-  const profileMediaUrl=(value:string)=>/^https:\/\//i.test(value)?value:getApiUrl(value);
-  const refreshMediaProfile=async()=>{const fresh=await api("/api/users/"+targetId+"/public-profile");setProfile(prev=>({...prev,...fresh,avatar:fresh.avatar??prev?.avatar}));};
+  const profileMediaUrl=(value:string)=>{const url=/^https:\/\//i.test(value)?value:getApiUrl(value);return /\/api\//i.test(url)?url+(url.includes("?")?"&":"?")+"profile_media_v="+mediaRevision:url;};
+  const refreshMediaProfile=async()=>{const fresh=await api("/api/users/"+targetId+"/public-profile");setProfile(prev=>({...prev,...fresh,avatar:fresh.avatar??prev?.avatar}));setMediaRevision(v=>v+1);};
   const act=async(fn:()=>Promise<void>)=>{setLoading(true);setMessage("");try{await fn();}catch(e){setMessage(e instanceof Error?e.message:"Action failed.");}finally{setLoading(false);}};
   const upload=async(id:number)=>{
     const picked=await DocumentPicker.getDocumentAsync({type:["application/pdf","image/jpeg","image/png"],copyToCacheDirectory:true});
@@ -232,19 +233,35 @@ export default function MobileProfileHub() {
 
   if(!user)return <View style={{flex:1,justifyContent:"center",alignItems:"center",backgroundColor:colors.background}}><Text style={{color:colors.foreground}}>Sign in to view profiles.</Text></View>;
   return <View style={{flex:1,backgroundColor:colors.background,paddingTop:insets.top}}>
-    <View style={{backgroundColor:colors.primary}}>
-      <TouchableOpacity activeOpacity={0.92} onPress={()=>profile?.cover_url&&setFullscreenMedia({url:profileMediaUrl(profile.cover_url),type:profile.cover_type||"image/*"})} style={{minHeight:150,justifyContent:"flex-end",padding:16,backgroundColor:colors.primary}}>
-        {profile?.cover_url&&(String(profile.cover_type||"").startsWith("video/")?<View style={{position:"absolute",top:0,left:0,right:0,bottom:0,justifyContent:"center",alignItems:"center",backgroundColor:"#111"}}><Feather name="play-circle" size={48} color="#fff"/><Text style={{color:"#fff",marginTop:6}}>Tap to play cover video</Text></View>:<Image source={{uri:profileMediaUrl(profile.cover_url),headers:token?{Authorization:"Bearer "+token}:{}}} style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",height:"100%"}} resizeMode="cover"/> )}
-        <View style={{backgroundColor:"#0009",padding:10,borderRadius:12,alignSelf:"flex-start"}}><Text style={{fontSize:20,fontWeight:"800",color:"#fff"}}>Profile Hub</Text><Text style={{fontSize:12,color:"#fff"}}>{profile?.display_name||user.name}</Text></View>
-      </TouchableOpacity>
-      <View style={{padding:14,flexDirection:"row",alignItems:"center",gap:12}}>
-        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={()=>router.back()}><Feather name="arrow-left" size={22} color="#fff"/></TouchableOpacity>
-        <TouchableOpacity onPress={()=>profile?.avatar&&setFullscreenMedia({url:profileMediaUrl(profile.avatar),type:"image"})} accessibilityLabel="Open profile avatar fullscreen">
-          {profile?.avatar?<Image source={{uri:profileMediaUrl(profile.avatar),headers:token?{Authorization:"Bearer "+token}:{}}} style={{width:88,height:88,borderRadius:44,borderWidth:3,borderColor:"#ffffff88"}}/>:<View style={{width:88,height:88,borderRadius:44,alignItems:"center",justifyContent:"center",backgroundColor:"#ffffff22"}}><Feather name="user" size={38} color="#fff"/></View>}
-        </TouchableOpacity>
-        <View style={{flex:1}}><Text style={{fontSize:12,color:"#dce7f6",marginTop:3}}>{profile?.is_prefect?"Prefect":String(profile?.role||user.role).toLowerCase()==="student"?"Learner":profile?.role||user.role}</Text>
-        {isOwn&&<View style={{flexDirection:"row",flexWrap:"wrap",gap:6,marginTop:8}}><TouchableOpacity onPress={()=>void pickAvatar("library")} disabled={coverBusy} style={{backgroundColor:"#ffffff22",paddingHorizontal:10,paddingVertical:7,borderRadius:8}}><Text style={{color:"#fff",fontWeight:"700"}}>Profile photo</Text></TouchableOpacity><TouchableOpacity onPress={()=>void pickAvatar("camera")} disabled={coverBusy} style={{backgroundColor:"#ffffff22",paddingHorizontal:10,paddingVertical:7,borderRadius:8}}><Text style={{color:"#fff",fontWeight:"700"}}>Take photo</Text></TouchableOpacity><TouchableOpacity onPress={()=>void pickCover("library")} disabled={coverBusy} style={{backgroundColor:"#ffffff22",paddingHorizontal:10,paddingVertical:7,borderRadius:8}}><Text style={{color:"#fff",fontWeight:"700"}}>{coverBusy?"Uploading…":"Cover: gallery / video"}</Text></TouchableOpacity><TouchableOpacity onPress={()=>void pickCover("camera")} disabled={coverBusy} style={{backgroundColor:"#ffffff22",paddingHorizontal:10,paddingVertical:7,borderRadius:8}}><Text style={{color:"#fff",fontWeight:"700"}}>Capture cover</Text></TouchableOpacity></View>}</View>
-        {loading&&<ActivityIndicator color="#fff"/>}
+    <View style={{paddingHorizontal:12,paddingTop:8,paddingBottom:10,backgroundColor:colors.background}}>
+      <View style={{minHeight:290,borderRadius:24,overflow:"hidden",backgroundColor:colors.primary,justifyContent:"flex-end",borderWidth:1,borderColor:colors.border}}>
+        {profile?.cover_url&&(String(profile.cover_type||"").startsWith("video/")?<View style={{position:"absolute",top:0,left:0,right:0,bottom:0,justifyContent:"center",alignItems:"center",backgroundColor:"#111"}}><Feather name="play-circle" size={52} color="#fff"/><Text style={{color:"#fff",marginTop:6,fontWeight:"600"}}>Cover video · tap View cover</Text></View>:<Image key={"cover-"+mediaRevision+profile.cover_url} source={{uri:profileMediaUrl(profile.cover_url),headers:token?{Authorization:"Bearer "+token}:{}}} style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",height:"100%"}} resizeMode="cover"/> )}
+        {!profile?.cover_url&&profile?.avatar&&<Image key={"fallback-"+mediaRevision+profile.avatar} source={{uri:profileMediaUrl(profile.avatar),headers:token?{Authorization:"Bearer "+token}:{}}} style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",height:"100%",opacity:0.45}} resizeMode="cover" blurRadius={2}/>}
+        <TouchableOpacity activeOpacity={0.9} onPress={()=>profile?.cover_url&&setFullscreenMedia({url:profileMediaUrl(profile.cover_url),type:profile.cover_type||"image/*"})} style={{position:"absolute",top:0,left:0,right:0,bottom:0,backgroundColor:"#06122555"}} accessibilityLabel="Open profile cover fullscreen"/>
+        <View style={{position:"absolute",top:12,left:12,right:12,flexDirection:"row",alignItems:"center",justifyContent:"space-between",zIndex:2}}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={()=>router.back()} style={{width:40,height:40,borderRadius:20,alignItems:"center",justifyContent:"center",backgroundColor:"#ffffff24",borderWidth:1,borderColor:"#ffffff55"}}><Feather name="arrow-left" size={21} color="#fff"/></TouchableOpacity>
+          {profile?.cover_url&&<TouchableOpacity accessibilityRole="button" onPress={()=>setFullscreenMedia({url:profileMediaUrl(profile.cover_url!),type:profile.cover_type||"image/*"})} style={{borderRadius:18,borderWidth:1,borderColor:"#ffffff66",backgroundColor:"#07111dbb",paddingHorizontal:12,paddingVertical:8}}><Text style={{fontSize:12,color:"#fff",fontWeight:"700"}}>View cover ⤢</Text></TouchableOpacity>}
+        </View>
+        <View pointerEvents="box-none" style={{padding:12,zIndex:2}}>
+          <View style={{flexDirection:"row",alignItems:"center",gap:12,borderRadius:22,borderWidth:1,borderColor:"#ffffff66",backgroundColor:"#ffffff24",padding:12}}>
+            <TouchableOpacity onPress={()=>profile?.avatar&&setFullscreenMedia({url:profileMediaUrl(profile.avatar),type:"image"})} accessibilityLabel="Open profile avatar fullscreen" style={{borderRadius:48,borderWidth:3,borderColor:"#ffffffcc",backgroundColor:"#ffffff22"}}>
+              {profile?.avatar?<Image key={"avatar-"+mediaRevision+profile.avatar} source={{uri:profileMediaUrl(profile.avatar),headers:token?{Authorization:"Bearer "+token}:{}}} style={{width:84,height:84,borderRadius:42}} resizeMode="cover"/>:<View style={{width:84,height:84,borderRadius:42,alignItems:"center",justifyContent:"center"}}><Feather name="user" size={38} color="#fff"/></View>}
+            </TouchableOpacity>
+            <View style={{flex:1,minWidth:0}}>
+              <Text style={{fontSize:10,fontWeight:"800",letterSpacing:1.5,color:"#ffe6a1",textTransform:"uppercase"}}>Dallyletter · Profile Hub</Text>
+              <Text numberOfLines={2} style={{fontSize:21,fontWeight:"800",color:"#fff",marginTop:3}}>{profile?.display_name||user.name}</Text>
+              <Text style={{fontSize:12,color:"#ffffffdd",marginTop:3}}>{profile?.is_prefect?"Prefect":String(profile?.role||user.role).toLowerCase()==="student"?"Learner":profile?.role||user.role}</Text>
+              {profile?.bio&&<Text numberOfLines={3} style={{fontSize:12,color:"#ffffffed",marginTop:5}}>{profile.bio}</Text>}
+            </View>
+            {loading&&<ActivityIndicator color="#fff"/>}
+          </View>
+          {isOwn&&<View style={{flexDirection:"row",flexWrap:"wrap",gap:7,marginTop:10,padding:10,borderRadius:18,borderWidth:1,borderColor:"#ffffff44",backgroundColor:"#07111d99"}}>
+            <TouchableOpacity onPress={()=>void pickAvatar("library")} disabled={coverBusy} style={{backgroundColor:"#ffffff22",paddingHorizontal:11,paddingVertical:8,borderRadius:10,borderWidth:1,borderColor:"#ffffff44"}}><Text style={{color:"#fff",fontWeight:"700",fontSize:12}}>Profile photo</Text></TouchableOpacity>
+            <TouchableOpacity onPress={()=>void pickAvatar("camera")} disabled={coverBusy} style={{backgroundColor:"#ffffff22",paddingHorizontal:11,paddingVertical:8,borderRadius:10,borderWidth:1,borderColor:"#ffffff44"}}><Text style={{color:"#fff",fontWeight:"700",fontSize:12}}>Take photo</Text></TouchableOpacity>
+            <TouchableOpacity onPress={()=>void pickCover("library")} disabled={coverBusy} style={{backgroundColor:"#ffffff22",paddingHorizontal:11,paddingVertical:8,borderRadius:10,borderWidth:1,borderColor:"#ffffff44"}}><Text style={{color:"#fff",fontWeight:"700",fontSize:12}}>{coverBusy?"Uploading…":"Cover image/video"}</Text></TouchableOpacity>
+            <TouchableOpacity onPress={()=>void pickCover("camera")} disabled={coverBusy} style={{backgroundColor:"#ffffff22",paddingHorizontal:11,paddingVertical:8,borderRadius:10,borderWidth:1,borderColor:"#ffffff44"}}><Text style={{color:"#fff",fontWeight:"700",fontSize:12}}>Capture cover</Text></TouchableOpacity>
+          </View>}
+        </View>
       </View>
     </View>
     <Modal visible={Boolean(fullscreenMedia)} transparent animationType="fade" onRequestClose={()=>setFullscreenMedia(null)}><View style={{flex:1,backgroundColor:"#000",justifyContent:"center",alignItems:"center",padding:12}}><TouchableOpacity onPress={()=>setFullscreenMedia(null)} style={{position:"absolute",top:48,right:18,zIndex:2,padding:12,backgroundColor:"#333",borderRadius:20}}><Text style={{color:"#fff"}}>Close ✕</Text></TouchableOpacity>{fullscreenMedia?.type?.startsWith("video/")?<VideoView player={fullscreenPlayer} style={{width:"100%",height:"75%"}} nativeControls contentFit="contain"/>:fullscreenMedia?.url?<Image source={{uri:fullscreenMedia.url,headers:token?{Authorization:"Bearer "+token}:{}}} style={{width:"100%",height:"80%"}} resizeMode="contain"/>:null}</View></Modal>
