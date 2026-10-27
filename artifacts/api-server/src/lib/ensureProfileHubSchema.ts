@@ -126,6 +126,38 @@ export async function ensureProfileHubSchema(): Promise<void> {
     )`);
     await client.query("CREATE INDEX IF NOT EXISTS account_email_tokens_user_idx ON account_email_tokens(user_id, purpose)");
     await client.query("CREATE INDEX IF NOT EXISTS account_email_tokens_expiry_idx ON account_email_tokens(expires_at)");
+    await client.query(`CREATE TABLE IF NOT EXISTS academic_transfer_requests (
+      id bigserial PRIMARY KEY,
+      learner_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      requested_by integer NOT NULL REFERENCES users(id),
+      reason text NOT NULL CHECK (length(trim(reason)) BETWEEN 3 AND 2000),
+      status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
+      reviewed_by integer REFERENCES users(id),
+      review_note text,
+      reviewed_at timestamptz,
+      approved_document text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query("CREATE INDEX IF NOT EXISTS academic_transfer_requests_learner_idx ON academic_transfer_requests(learner_id, created_at DESC)");
+    await client.query("CREATE INDEX IF NOT EXISTS academic_transfer_requests_status_idx ON academic_transfer_requests(status, created_at DESC)");
+    await client.query(`CREATE TABLE IF NOT EXISTS academic_report_drafts (
+      id bigserial PRIMARY KEY,
+      learner_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_by integer NOT NULL REFERENCES users(id),
+      report_type text NOT NULL CHECK (report_type IN ('attendance_register','term_performance')),
+      term_label text NOT NULL CHECK (length(trim(term_label)) BETWEEN 1 AND 80),
+      source_snapshot jsonb NOT NULL,
+      draft_content jsonb NOT NULL,
+      status text NOT NULL DEFAULT 'pending_review' CHECK (status IN ('pending_review','approved','rejected')),
+      reviewed_by integer REFERENCES users(id),
+      review_note text,
+      reviewed_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query("CREATE INDEX IF NOT EXISTS academic_report_drafts_learner_idx ON academic_report_drafts(learner_id, created_at DESC)");
+    await client.query("CREATE INDEX IF NOT EXISTS academic_report_drafts_review_idx ON academic_report_drafts(status, created_at DESC)");
 
     // Legacy CV-to-qualification reconciliation is deliberately NOT run during server startup.
     // It requires a verified staging schema mapping and a separately approved, idempotent job.
