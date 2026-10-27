@@ -107,7 +107,7 @@ export default function MobileProfileHub() {
       if(picked.canceled||!picked.assets?.[0]?.uri)return;
       const asset=picked.assets[0];const mime=asset.mimeType||"image/jpeg";
       if(!["image/jpeg","image/png","image/webp"].includes(mime)){Alert.alert("Unsupported image","Choose a JPG, PNG or WebP image.");return;}
-      if(asset.fileSize&&asset.fileSize>10*1024*1024){Alert.alert("File too large","Profile photos must be 10 MB or smaller.");return;}
+      if(asset.fileSize&&asset.fileSize>8*1024*1024){Alert.alert("File too large","Profile photos must be 8 MB or smaller.");return;}
       setCoverBusy(true);const form=new FormData();form.append("file",{uri:asset.uri,name:asset.fileName||"profile-avatar.jpg",type:mime} as any);
       const result=await api("/api/users/me/avatar",{method:"POST",body:form});
       await refreshMediaProfile();
@@ -135,7 +135,8 @@ export default function MobileProfileHub() {
     }catch(e){Alert.alert("Cover upload failed",e instanceof Error?e.message:"Please try again.");}
     finally{setCoverBusy(false);}
   };
-  const profileMediaUrl=(value:string)=>/^https:\/\//i.test(value)?value:getApiUrl(value);\n  const refreshMediaProfile=async()=>{const fresh=await api("/api/users/"+targetId+"/public-profile");setProfile(prev=>({...prev,...fresh,avatar:fresh.avatar??prev?.avatar}));};
+  const profileMediaUrl=(value:string)=>/^https:\/\//i.test(value)?value:getApiUrl(value);
+  const refreshMediaProfile=async()=>{const fresh=await api("/api/users/"+targetId+"/public-profile");setProfile(prev=>({...prev,...fresh,avatar:fresh.avatar??prev?.avatar}));};
   const act=async(fn:()=>Promise<void>)=>{setLoading(true);setMessage("");try{await fn();}catch(e){setMessage(e instanceof Error?e.message:"Action failed.");}finally{setLoading(false);}};
   const upload=async(id:number)=>{
     const picked=await DocumentPicker.getDocumentAsync({type:["application/pdf","image/jpeg","image/png"],copyToCacheDirectory:true});
