@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
+import UserProfileLink from "@/components/UserProfileLink";
 import { useListClasses, useRaiseHand, getApiUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -186,7 +187,7 @@ export default function StudentClasses() {
                           {c.subject}
                         </Badge>
                         <CardTitle className="text-xl">{c.title}</CardTitle>
-                        <CardDescription className="mt-1">Teacher: {c.teacherName}</CardDescription>
+                        <CardDescription className="mt-1 flex flex-wrap items-center gap-1">Teacher: <UserProfileLink userId={c.teacherId} name={c.teacherName} className="text-sm" /></CardDescription>
                       </div>
                       <Badge className={getStatusColor(c.status)}>
                         {c.status.toUpperCase()}
