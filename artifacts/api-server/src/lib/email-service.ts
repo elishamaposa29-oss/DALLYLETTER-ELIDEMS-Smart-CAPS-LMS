@@ -32,12 +32,36 @@ export async function sendEmail(input: EmailInput): Promise<{ sent: number; fail
         headers: { Authorization: `Bearer ${cfg.apiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({ from: cfg.from, to: [recipient], subject: input.subject, text: input.text, html: input.html ?? undefined }),
       });
+      const providerBody = await response.json().catch(() => ({})) as {
+        id?: unknown;
+        name?: unknown;
+        message?: unknown;
+        error?: unknown;
+      };
       if (response.ok) {
         sent++;
-        logger.info({ event: "email.delivery.succeeded", provider: "resend", status: response.status, subject: input.subject }, "Email accepted by provider");
+        logger.info({
+          event: "email.delivery.accepted",
+          provider: "resend",
+          status: response.status,
+          messageId: typeof providerBody.id === "string" ? providerBody.id : undefined,
+          subject: input.subject,
+        }, "Email accepted by provider; inbox delivery must be confirmed separately");
       } else {
         failed++;
-        logger.error({ event: "email.delivery.failed", provider: "resend", status: response.status, subject: input.subject }, "Email provider rejected delivery request");
+        const providerError = typeof providerBody.message === "string"
+          ? providerBody.message
+          : typeof providerBody.error === "string" ? providerBody.error : "provider_rejected";
+        // Resend errors explain common setup failures (e.g. testing sender recipient restrictions).
+        // Never log API credentials, recipient addresses, or message contents.
+        logger.error({
+          event: "email.delivery.failed",
+          provider: "resend",
+          status: response.status,
+          providerError: providerError.slice(0, 240),
+          providerErrorName: typeof providerBody.name === "string" ? providerBody.name.slice(0, 80) : undefined,
+          subject: input.subject,
+        }, "Email provider rejected delivery request");
       }
     } catch (error) {
       failed++;
