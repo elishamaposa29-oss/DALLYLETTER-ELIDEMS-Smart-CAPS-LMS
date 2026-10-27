@@ -130,6 +130,7 @@ function canManageOwnRecoveryProfile(role: unknown): boolean {
 }
 
 router.post("/users/me/phone/request-verification", requireAuth, async (req, res): Promise<void> => {
+  if (!canManageOwnRecoveryProfile(req.currentUser!.role)) { res.status(403).json({ error: "Owner/admin recovery profile is managed through protected bootstrap." }); return; }
   const phone = typeof req.body?.phone === "string" ? req.body.phone.trim() : "";
   if (!/^\+[1-9]\d{7,14}$/.test(phone)) { res.status(400).json({ error: "Enter a valid international phone number, including country code (for example +263…)."}); return; }
   if (!isSmsConfigured()) { res.status(503).json({ error: "Phone verification is not available because SMS delivery is not configured. Your saved phone number remains unverified." }); return; }
@@ -150,6 +151,7 @@ router.post("/users/me/phone/request-verification", requireAuth, async (req, res
 });
 
 router.post("/users/me/phone/confirm", requireAuth, async (req, res): Promise<void> => {
+  if (!canManageOwnRecoveryProfile(req.currentUser!.role)) { res.status(403).json({ error: "Owner/admin recovery profile is managed through protected bootstrap." }); return; }
   const code = typeof req.body?.code === "string" ? req.body.code.trim() : "";
   if (!/^\d{6}$/.test(code)) { res.status(400).json({ error: "Enter the six-digit verification code." }); return; }
   await ensureRecoveryProfileSchema();
