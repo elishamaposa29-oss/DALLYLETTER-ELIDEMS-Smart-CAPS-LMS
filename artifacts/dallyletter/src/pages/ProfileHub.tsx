@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type MouseEventHandler } from "react";
 import { useRoute } from "wouter";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
@@ -10,7 +10,7 @@ type Tab = "Overview" | "Qualifications" | "Subjects" | "Enrollments" | "Achieve
 type PublicProfile = { id: number; display_name: string; avatar: string | null; cover_url?: string | null; cover_type?: string | null; bio: string | null; role: string; verified_qualifications: Array<{title:string;verified:boolean}>; subjects_to_teach: string[]; subjects?: string[]; primary_subject?: string | null; grade?: string | null; is_prefect?: boolean; is_manager?: boolean; performance_score?: number; leaderboard_position?: number | null; badge_count?: number; streak_days?: number; groups_joined?: Array<{id:number;name:string;subject:string}>; groups_owned?: Array<{id:number;name:string;subject:string}>; groups_with_settings_permission?: Array<{id:number;name:string;subject:string}>; fees_status?: string; achievement_count?: number; lesson_requests_count?: number };
 const tabs: Tab[] = ["Overview","Qualifications","Subjects","Enrollments","Achievements"];
 
-type AuthenticatedProfileMediaProps = { url: string; type?: string; alt?: string; className?: string; decorative?: boolean; controls?: boolean; autoPlay?: boolean; muted?: boolean; loop?: boolean; onClick?: React.MouseEventHandler<HTMLMediaElement | HTMLImageElement> };
+type AuthenticatedProfileMediaProps = { url: string; type?: string; alt?: string; className?: string; decorative?: boolean; controls?: boolean; autoPlay?: boolean; muted?: boolean; loop?: boolean; onClick?: MouseEventHandler<any> };
 function AuthenticatedProfileMedia({url,type="image",alt="",className="",decorative=false,controls=false,autoPlay=false,muted=false,loop=false,onClick}:AuthenticatedProfileMediaProps) {
   const [source,setSource]=useState<string|null>(null);
   useEffect(()=>{
@@ -28,7 +28,7 @@ function AuthenticatedProfileMedia({url,type="image",alt="",className="",decorat
   },[url]);
   if(!source)return <div aria-hidden="true" className={className}/>;
   if(type.startsWith("video/"))return <video src={source} aria-hidden={decorative||undefined} controls={controls} autoPlay={autoPlay} muted={muted} loop={loop} playsInline className={className} onClick={onClick}/>;
-  return <img src={source} alt={decorative?"":alt} aria-hidden={decorative||undefined} className={className} onClick={onClick as React.MouseEventHandler<HTMLImageElement>|undefined}/>;
+  return <img src={source} alt={decorative?"":alt} aria-hidden={decorative||undefined} className={className} onClick={onClick}/>;
 }
 
 export default function ProfileHub() {
