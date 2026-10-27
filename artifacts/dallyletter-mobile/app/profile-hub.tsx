@@ -1,10 +1,12 @@
 import { Feather } from "@expo/vector-icons";
 import { getApiUrl } from "@workspace/api-client-react";
 import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
+import { VideoView, useVideoPlayer } from "expo-video";
 import * as FileSystem from "expo-file-system/legacy";
 import { useLocalSearchParams, router } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Image, Linking, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Linking, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
@@ -49,6 +51,9 @@ export default function MobileProfileHub() {
   const [accountHolder,setAccountHolder] = useState("");
   const [message,setMessage] = useState("");
   const [loading,setLoading] = useState(false);
+  const [coverBusy,setCoverBusy] = useState(false);
+  const [fullscreenMedia,setFullscreenMedia] = useState<Row|null>(null);
+  const fullscreenPlayer = useVideoPlayer(fullscreenMedia?.type?.startsWith("video/") ? fullscreenMedia.url : null, player => { player.loop = false; });
   const api = useCallback(async(path:string,init:RequestInit={})=>{
     const response=await fetch(getApiUrl(path),{...init,headers:{...(token?{Authorization:"Bearer "+token}:{}),...(init.headers as Record<string,string>||{})}});
     const data=await response.json().catch(()=>({}));
@@ -92,6 +97,25 @@ export default function MobileProfileHub() {
   },[api,targetId,user,isOwn,isOwner]);
   useEffect(()=>{void load();},[load]);
 
+  const pickCover=async()=>{
+    if(!isOwn||coverBusy)return;
+    try{
+      const picked=await ImagePicker.launchImageLibraryAsync({mediaTypes:["images","videos"],allowsEditing:false,quality:0.85,videoMaxDuration:120});
+      if(picked.canceled||!picked.assets?.[0]?.uri)return;
+      const asset=picked.assets[0];
+      const mime=asset.mimeType||(asset.type==="video"?"video/mp4":"image/jpeg");
+      if(!["image/jpeg","image/png","image/webp","video/mp4","video/webm","video/quicktime"].includes(mime)){Alert.alert("Unsupported media","Choose a JPG, PNG, WebP, MP4, WebM or MOV file.");return;}
+      if(asset.fileSize&&asset.fileSize>50*1024*1024){Alert.alert("File too large","Cover media must be 50 MB or smaller.");return;}
+      setCoverBusy(true);
+      const form=new FormData();
+      form.append("file",{uri:asset.uri,name:asset.fileName||(mime.startsWith("video/")?"profile-cover.mp4":"profile-cover.jpg"),type:mime} as any);
+      const result=await api("/api/users/me/cover",{method:"POST",body:form});
+      setProfile(prev=>prev?{...prev,cover_url:result.coverUrl,cover_type:result.coverType}:prev);
+      setMessage("Profile cover saved.");
+    }catch(e){Alert.alert("Cover upload failed",e instanceof Error?e.message:"Please try again.");}
+    finally{setCoverBusy(false);}
+  };
+  const profileMediaUrl=(value:string)=>/^https:\/\//i.test(value)?value:getApiUrl(value);
   const act=async(fn:()=>Promise<void>)=>{setLoading(true);setMessage("");try{await fn();}catch(e){setMessage(e instanceof Error?e.message:"Action failed.");}finally{setLoading(false);}};
   const upload=async(id:number)=>{
     const picked=await DocumentPicker.getDocumentAsync({type:["application/pdf","image/jpeg","image/png"],copyToCacheDirectory:true});
@@ -187,11 +211,22 @@ export default function MobileProfileHub() {
 
   if(!user)return <View style={{flex:1,justifyContent:"center",alignItems:"center",backgroundColor:colors.background}}><Text style={{color:colors.foreground}}>Sign in to view profiles.</Text></View>;
   return <View style={{flex:1,backgroundColor:colors.background,paddingTop:insets.top}}>
-    <View style={{backgroundColor:colors.primary,padding:18,flexDirection:"row",alignItems:"center",gap:12}}>
-      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={()=>router.back()}><Feather name="arrow-left" size={22} color="#fff"/></TouchableOpacity>
-      {profile?.avatar?<Image source={{uri:/^https:\/\//i.test(profile.avatar)?profile.avatar:getApiUrl(profile.avatar),headers:token?{Authorization:"Bearer "+token}:{}}} style={{width:104,height:104,borderRadius:52,borderWidth:3,borderColor:"#ffffff88"}}/>:<View style={{width:104,height:104,borderRadius:52,alignItems:"center",justifyContent:"center",backgroundColor:"#ffffff22"}}><Feather name="user" size={44} color="#fff"/></View>}<View style={{flex:1}}><Text style={{fontSize:21,fontWeight:"800",color:"#fff"}}>Profile Hub</Text><Text style={{fontSize:12,color:"#dce7f6",marginTop:3}}>{profile?.display_name||user.name} · {profile?.is_prefect?"Prefect":String(profile?.role||user.role).toLowerCase()==="student"?"Learner":profile?.role||user.role}</Text></View>
-      {loading&&<ActivityIndicator color="#fff"/>}
+    <View style={{backgroundColor:colors.primary}}>
+      <TouchableOpacity activeOpacity={0.92} onPress={()=>profile?.cover_url&&setFullscreenMedia({url:profileMediaUrl(profile.cover_url),type:profile.cover_type||"image/*"})} style={{minHeight:150,justifyContent:"flex-end",padding:16,backgroundColor:colors.primary}}>
+        {profile?.cover_url&&(String(profile.cover_type||"").startsWith("video/")?<VideoView player={useVideoPlayer(profileMediaUrl(profile.cover_url),player=>{player.loop=true;player.muted=true;player.play();})} style={{position:"absolute",top:0,left:0,right:0,bottom:0}} contentFit="cover" nativeControls={false}/>:<Image source={{uri:profileMediaUrl(profile.cover_url)}} style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",height:"100%"}} resizeMode="cover"/> )}
+        <View style={{backgroundColor:"#0009",padding:10,borderRadius:12,alignSelf:"flex-start"}}><Text style={{fontSize:20,fontWeight:"800",color:"#fff"}}>Profile Hub</Text><Text style={{fontSize:12,color:"#fff"}}>{profile?.display_name||user.name}</Text></View>
+      </TouchableOpacity>
+      <View style={{padding:14,flexDirection:"row",alignItems:"center",gap:12}}>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={()=>router.back()}><Feather name="arrow-left" size={22} color="#fff"/></TouchableOpacity>
+        <TouchableOpacity onPress={()=>profile?.avatar&&setFullscreenMedia({url:profileMediaUrl(profile.avatar),type:"image"})} accessibilityLabel="Open profile avatar fullscreen">
+          {profile?.avatar?<Image source={{uri:profileMediaUrl(profile.avatar),headers:token?{Authorization:"Bearer "+token}:{}}} style={{width:88,height:88,borderRadius:44,borderWidth:3,borderColor:"#ffffff88"}}/>:<View style={{width:88,height:88,borderRadius:44,alignItems:"center",justifyContent:"center",backgroundColor:"#ffffff22"}}><Feather name="user" size={38} color="#fff"/></View>}
+        </TouchableOpacity>
+        <View style={{flex:1}}><Text style={{fontSize:12,color:"#dce7f6",marginTop:3}}>{profile?.is_prefect?"Prefect":String(profile?.role||user.role).toLowerCase()==="student"?"Learner":profile?.role||user.role}</Text>
+        {isOwn&&<TouchableOpacity onPress={()=>void pickCover()} disabled={coverBusy} style={{marginTop:8,backgroundColor:"#ffffff22",paddingHorizontal:10,paddingVertical:7,borderRadius:8}}><Text style={{color:"#fff",fontWeight:"700"}}>{coverBusy?"Uploading cover…":"Change cover media"}</Text></TouchableOpacity>}</View>
+        {loading&&<ActivityIndicator color="#fff"/>}
+      </View>
     </View>
+    <Modal visible={Boolean(fullscreenMedia)} transparent animationType="fade" onRequestClose={()=>setFullscreenMedia(null)}><View style={{flex:1,backgroundColor:"#000",justifyContent:"center",alignItems:"center",padding:12}}><TouchableOpacity onPress={()=>setFullscreenMedia(null)} style={{position:"absolute",top:48,right:18,zIndex:2,padding:12,backgroundColor:"#333",borderRadius:20}}><Text style={{color:"#fff"}}>Close ✕</Text></TouchableOpacity>{fullscreenMedia?.type?.startsWith("video/")?<VideoView player={fullscreenPlayer} style={{width:"100%",height:"75%"}} nativeControls contentFit="contain"/>:fullscreenMedia?.url?<Image source={{uri:fullscreenMedia.url}} style={{width:"100%",height:"80%"}} resizeMode="contain"/>:null}</View></Modal>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{padding:10,gap:6,backgroundColor:colors.card}}>
       {TABS.filter(t=>t!=="Qualifications"||["teacher","manager","senior_manager"].includes(String(profile?.role||user.role).toLowerCase())).filter(t=>t!=="Enrollments"||isOwn).map(t=><TouchableOpacity key={t} accessibilityRole="tab" accessibilityState={{selected:tab===t}} onPress={()=>setTab(t)} style={{paddingHorizontal:12,paddingVertical:9,borderRadius:10,backgroundColor:tab===t?colors.primary:colors.background,borderColor:colors.border,borderWidth:1}}><Text style={{fontWeight:"700",color:tab===t?"#fff":colors.foreground}}>{t}</Text></TouchableOpacity>)}
     </ScrollView>
