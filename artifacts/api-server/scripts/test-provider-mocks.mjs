@@ -10,8 +10,8 @@ if (enabled) {
     const bodyText = typeof init.body === "string" ? init.body : "";
     let response;
     if (url.hostname === "www.googleapis.com" && url.pathname === "/oauth2/v3/certs" && method === "GET") {
-      const keys = JSON.parse((await import("node:fs")).readFileSync("/tmp/pr84-google-jwks.json", "utf8"));
-      response = { status: 200, body: { keys } };
+      const jwks = JSON.parse((await import("node:fs")).readFileSync("/tmp/pr84-google-jwks.json", "utf8"));
+      response = { status: 200, body: { keys: jwks.keys } };
     } else if (url.hostname === "api.resend.com" && url.pathname === "/emails" && method === "POST") {
       const body = JSON.parse(bodyText || "{}");
       appendFileSync(capturePath, JSON.stringify({ provider: "resend", body }) + "\n");
