@@ -215,8 +215,16 @@ router.post("/users/me/recovery-email/request-verification", requireAuth, async 
   const code = String(crypto.randomInt(100000, 1000000));
   const digest = crypto.createHash("sha256").update(code).digest("hex");
   await pool.query("UPDATE account_recovery_profiles SET verification_code_hash = $2, verification_expires_at = now() + interval '10 minutes', updated_at = now() WHERE user_id = $1", [actor.id, digest]);
-  await sendEmail({ to: [email], subject: "Verify your Dallyletter Elidems recovery email", text: "Your recovery email verification code is " + code + ". It expires in 10 minutes. If you did not request this, ignore this message." });
-  res.json({ message: "Verification code sent to your alternate email. It expires in 10 minutes." });
+  try {
+    const delivery = await sendEmail({ to: [email], subject: "Verify your Dallyletter Elidems recovery email", text: "Your recovery email verification code is " + code + ". It expires in 10 minutes. If you did not request this, ignore this message." });
+    if (delivery.sent !== 1 || delivery.failed !== 0) throw new Error("Email provider did not confirm delivery acceptance.");
+    res.json({ message: "Verification code sent to your alternate email. It expires in 10 minutes." });
+  } catch (error) {
+    await pool.query("UPDATE account_recovery_profiles SET verification_code_hash = NULL, verification_expires_at = NULL, updated_at = now() WHERE user_id = $1", [actor.id]);
+    const { logger } = await import("../lib/logger");
+    logger.error({ event: "users.recovery_email.delivery_failed", userId: actor.id, reason: error instanceof Error ? error.message.slice(0, 200) : "unknown" }, "Recovery email verification code was not sent");
+    res.status(503).json({ error: "We could not send the verification code. No active code was created; check your email configuration and try again." });
+  }
 });
 
 router.post("/users/me/recovery-email/confirm", requireAuth, async (req, res): Promise<void> => {
