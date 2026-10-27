@@ -10,9 +10,9 @@ type Tab = "Overview" | "Qualifications" | "Subjects" | "Enrollments" | "Achieve
 type PublicProfile = { id: number; display_name: string; avatar: string | null; cover_url?: string | null; cover_type?: string | null; bio: string | null; role: string; verified_qualifications: Array<{title:string;verified:boolean}>; subjects_to_teach: string[]; subjects?: string[]; primary_subject?: string | null; grade?: string | null; is_prefect?: boolean; is_manager?: boolean; performance_score?: number; leaderboard_position?: number | null; badge_count?: number; streak_days?: number; groups_joined?: Array<{id:number;name:string;subject:string}>; groups_owned?: Array<{id:number;name:string;subject:string}>; groups_with_settings_permission?: Array<{id:number;name:string;subject:string}>; fees_status?: string; achievement_count?: number; lesson_requests_count?: number };
 const tabs: Tab[] = ["Overview","Qualifications","Subjects","Enrollments","Achievements"];
 
-type AuthenticatedProfileMediaProps = { url: string; type?: string; alt?: string; className?: string; decorative?: boolean; controls?: boolean; autoPlay?: boolean; muted?: boolean; loop?: boolean; onClick?: MouseEventHandler<any> };
-function AuthenticatedProfileMedia({url,type="image",alt="",className="",decorative=false,controls=false,autoPlay=false,muted=false,loop=false,onClick}:AuthenticatedProfileMediaProps) {
-  const [source,setSource]=useState<string|null>(null);
+type AuthenticatedProfileMediaProps = { url: string; type?: string; alt?: string; className?: string; decorative?: boolean; controls?: boolean; autoPlay?: boolean; muted?: boolean; loop?: boolean; onClick?: MouseEventHandler<any>; onError?: () => void };
+function AuthenticatedProfileMedia({url,type="image",alt="",className="",decorative=false,controls=false,autoPlay=false,muted=false,loop=false,onClick,onError}:AuthenticatedProfileMediaProps) {
+  const [source,setSource]=useState<string|null>(null);\n  const [failed,setFailed]=useState(false);
   useEffect(()=>{
     let active=true;let objectUrl:string|undefined;
     const load=async()=>{
@@ -23,12 +23,12 @@ function AuthenticatedProfileMedia({url,type="image",alt="",className="",decorat
       const blob=await response.blob();objectUrl=URL.createObjectURL(blob);
       if(active)setSource(objectUrl);else URL.revokeObjectURL(objectUrl);
     };
-    setSource(null);void load().catch(()=>{if(active)setSource(null);});
+    setSource(null);setFailed(false);void load().catch(()=>{if(active){setSource(null);setFailed(true);onError?.();}});
     return()=>{active=false;if(objectUrl)URL.revokeObjectURL(objectUrl);};
   },[url]);
-  if(!source)return <div aria-hidden="true" className={className}/>;
-  if(type.startsWith("video/"))return <video src={source} aria-hidden={decorative||undefined} controls={controls} autoPlay={autoPlay} muted={muted} loop={loop} playsInline className={className} onClick={onClick}/>;
-  return <img src={source} alt={decorative?"":alt} aria-hidden={decorative||undefined} className={className} onClick={onClick}/>;
+  if(!source)return <div aria-hidden={!failed||decorative||undefined} role={failed&&!decorative?"status":undefined} className={className}>{failed&&!decorative?<span className="sr-only">Profile media could not be loaded. Check your connection and try again.</span>:null}</div>;
+  if(type.startsWith("video/"))return <video src={source} aria-hidden={decorative||undefined} controls={controls} autoPlay={autoPlay} muted={muted} loop={loop} playsInline className={className} onClick={onClick} onError={()=>{setFailed(true);onError?.();}}/>;
+  return <img src={source} alt={decorative?"":alt} aria-hidden={decorative||undefined} className={className} onClick={onClick} onError={()=>{setFailed(true);onError?.();}}/>;
 }
 
 export default function ProfileHub() {
@@ -72,7 +72,7 @@ export default function ProfileHub() {
   const [phoneVerified,setPhoneVerified] = useState(false);
   const [avatarBusy,setAvatarBusy] = useState(false);
   const [coverBusy,setCoverBusy] = useState(false);
-  const [fullscreenMedia,setFullscreenMedia] = useState<{url:string;type:string}|null>(null);
+  const [fullscreenMedia,setFullscreenMedia] = useState<{url:string;type:string}|null>(null);\n  const [fullscreenMediaError,setFullscreenMediaError] = useState(false);
   const [mediaRefreshKey,setMediaRefreshKey] = useState(0);
   const [message,setMessage] = useState("");
   const [busy,setBusy] = useState(false);
@@ -312,7 +312,7 @@ export default function ProfileHub() {
           ) : null}
         </div>
         <div aria-hidden="true" className="absolute inset-0 z-[1] bg-gradient-to-t from-slate-950/90 via-slate-950/35 to-slate-950/10"/>
-        {profile?.cover_url&&<button type="button" onClick={()=>setFullscreenMedia({url:profile.cover_url!,type:String(profile.cover_type||"")})} aria-label="Open profile cover fullscreen" className="absolute inset-0 z-[2] cursor-zoom-in"/>}
+        {profile?.cover_url&&<button type="button" onClick={()=>{setFullscreenMediaError(false);setFullscreenMedia({url:profile.cover_url!,type:String(profile.cover_type||"")});}} aria-label="Open profile cover fullscreen" className="absolute inset-0 z-[2] cursor-zoom-in"/>}
         <div className="relative z-10 flex min-h-[340px] flex-col justify-end p-4 sm:min-h-[380px] sm:p-7 md:p-9">
           <div className="mb-4 flex items-center justify-between gap-3">
             <span className="inline-flex items-center rounded-full border border-white/30 bg-white/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-white/95 shadow-lg backdrop-blur-xl">Dallyletter · Profile Hub</span>
@@ -321,7 +321,7 @@ export default function ProfileHub() {
           <div className="relative z-10 flex flex-col gap-4 rounded-[1.75rem] border border-white/30 bg-white/[0.14] p-4 shadow-[0_12px_48px_rgba(0,0,0,0.18)] backdrop-blur-2xl sm:flex-row sm:items-center sm:gap-5 sm:p-5">
             <div className="flex shrink-0 items-center gap-4">
               {profile?.avatar ? (
-                <button type="button" aria-label="Open profile avatar fullscreen" onClick={()=>setFullscreenMedia({url:profile.avatar!,type:"image"})} className="rounded-full focus:outline-none focus:ring-4 focus:ring-white/70">
+                <button type="button" aria-label="Open profile avatar fullscreen" onClick={()=>{setFullscreenMediaError(false);setFullscreenMedia({url:profile.avatar!,type:"image"});}}} className="rounded-full focus:outline-none focus:ring-4 focus:ring-white/70">
                   <AuthenticatedProfileMedia key={"avatar-"+mediaRefreshKey+profile.avatar} url={profile.avatar} alt={"Profile avatar for "+(profile.display_name||"user")} className="h-24 w-24 rounded-full border-[5px] border-white/80 bg-white/20 object-cover shadow-[0_8px_32px_rgba(0,0,0,0.4)] ring-2 ring-white/30 sm:h-28 sm:w-28 md:h-32 md:w-32"/>
                 </button>
               ) : (
@@ -356,6 +356,6 @@ export default function ProfileHub() {
     {tab==="Subjects"&&<Card><CardHeader><CardTitle>{["teacher","manager","senior_manager"].includes(String(profile?.role||(user?.role||"")).toLowerCase())?"Teaching subjects & specialization":"Learning subjects"}</CardTitle></CardHeader><CardContent className="space-y-3">{(profile?.subjects_to_teach||[]).map(s=><span key={s} className="mr-2 inline-block rounded-full bg-muted px-3 py-1 text-sm">{s}{profile?.primary_subject===s?" · Primary":""}</span>)}{!profile?.subjects_to_teach?.length&&<p className="text-sm text-muted-foreground">No subjects selected yet.</p>}{isOwner&&<div className="space-y-3 border-t pt-3"><p className="text-sm text-muted-foreground">Choose from subjects currently found in lessons and live classes, or add a subject by typing it below.</p><div className="flex flex-wrap gap-2">{subjectCatalog.map(s=><Button key={s} type="button" size="sm" variant={subjectInput.split(",").map(v=>v.trim()).includes(s)?"default":"outline"} onClick={()=>{const current=subjectInput.split(",").map(v=>v.trim()).filter(Boolean);setSubjectInput((current.includes(s)?current.filter(v=>v!==s):[...current,s]).join(", "));}}>{s}</Button>)}</div><label className="block text-sm font-medium">Selected subjects (comma-separated; editable)<input className="mt-1 w-full rounded-md border bg-background p-2 text-foreground" placeholder="Add or edit subjects" value={subjectInput} onChange={e=>setSubjectInput(e.target.value)}/></label>{["teacher","manager","senior_manager"].includes(String(profile?.role||(user?.role||"")).toLowerCase())&&<label className="block text-sm font-medium">Primary specialization<select className="mt-1 w-full rounded-md border bg-background p-2 text-foreground" value={primarySubject} onChange={e=>setPrimarySubject(e.target.value)}><option value="">Choose primary subject</option>{subjectInput.split(",").map(v=>v.trim()).filter(Boolean).map(s=><option key={s} value={s}>{s}</option>)}</select></label>}<Button disabled={busy} onClick={()=>void saveSubjects()}>Save subjects</Button></div>}</CardContent></Card>}
     {tab==="Enrollments"&&<Card><CardHeader><CardTitle>Enrollments</CardTitle></CardHeader><CardContent className="space-y-3">{isOwner?<>{enrollments.length?enrollments.map((entry:any)=><div key={entry.id} className="rounded-lg border p-3"><p className="font-semibold">{entry.title}</p><p className="text-sm text-muted-foreground">{entry.subject}{entry.grade?" · Grade "+entry.grade:""}{entry.teacher_name?" · "+entry.teacher_name:""}</p><div className="mt-2 h-2 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary" style={{width:Math.max(0,Math.min(100,Number(entry.progress_percent)||0))+"%"}}/></div><p className="mt-1 text-xs text-muted-foreground">{entry.progress_percent}% complete · Enrolled {entry.enrolled_at?new Date(entry.enrolled_at).toLocaleDateString():"date unavailable"}</p></div>):<p className="text-sm text-muted-foreground">No active class enrollments recorded.</p>}</>:<p className="text-sm text-muted-foreground">Enrollment details are private.</p>}</CardContent></Card>}
     {tab==="Achievements"&&<Card><CardHeader><CardTitle>Achievements</CardTitle></CardHeader><CardContent className="space-y-3">{achievements.length?achievements.map((entry:any)=><div key={entry.id} className="flex items-start gap-3 rounded-lg border p-3"><span className="text-2xl" aria-hidden="true">{entry.achievement?.icon||"🏆"}</span><div className="min-w-0 flex-1"><p className="font-semibold">{entry.achievement?.name||"Achievement"}</p><p className="text-sm text-muted-foreground">{entry.achievement?.description||"Achievement awarded on the platform."}</p>{isOwner&&entry.note&&<p className="mt-1 text-sm">{entry.note}</p>}<p className="mt-1 text-xs text-muted-foreground">{entry.earnedAt?new Date(entry.earnedAt).toLocaleDateString(): "Award date unavailable"} · {entry.achievement?.pointsValue??0} points</p></div></div>):<p className="text-sm text-muted-foreground">No achievements recorded yet.</p>}</CardContent></Card>}
-    {fullscreenMedia&&<div role="dialog" aria-modal="true" aria-label="Fullscreen profile media" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-3" onClick={()=>setFullscreenMedia(null)}><button type="button" aria-label="Close fullscreen media" className="absolute right-4 top-4 z-10 rounded-full bg-white/15 px-4 py-2 text-white" onClick={()=>setFullscreenMedia(null)}>Close ✕</button><AuthenticatedProfileMedia url={fullscreenMedia.url} type={fullscreenMedia.type} alt="Fullscreen profile media" controls autoPlay className="max-h-[90vh] max-w-full object-contain" onClick={e=>e.stopPropagation()}/></div>}
+    {fullscreenMedia&&<div role="dialog" aria-modal="true" aria-label="Fullscreen profile media" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-3" onClick={()=>setFullscreenMedia(null)}><button type="button" aria-label="Close fullscreen media" className="absolute right-4 top-4 z-10 rounded-full bg-white/15 px-4 py-2 text-white" onClick={()=>setFullscreenMedia(null)}>Close ✕</button><AuthenticatedProfileMedia url={fullscreenMedia.url} type={fullscreenMedia.type} alt="Fullscreen profile media" controls autoPlay className="max-h-[90vh] max-w-full object-contain" onError={()=>setFullscreenMediaError(true)} onClick={e=>e.stopPropagation()}/>{fullscreenMediaError&&<p role="alert" className="absolute bottom-6 left-4 right-4 rounded-lg bg-white/10 p-4 text-center text-sm text-white">This media could not be loaded from the API. The file may be missing or the current server may not support this profile-media route.</p>}</div>}
   </main></DashboardLayout>;
 }
