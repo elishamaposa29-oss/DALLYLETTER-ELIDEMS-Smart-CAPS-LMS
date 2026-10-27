@@ -98,11 +98,28 @@ export default function MobileProfileHub() {
   },[api,targetId,user,isOwn,isOwner]);
   useEffect(()=>{void load();},[load]);
 
+  const pickAvatar=async(source:"library"|"camera"="library")=>{
+    if(!isOwn||coverBusy)return;
+    try{
+      if(source==="camera"){const permission=await ImagePicker.requestCameraPermissionsAsync();if(!permission.granted){Alert.alert("Camera permission needed","Allow camera access to take a profile photo.");return;}}
+      const options={mediaTypes:["images"] as ImagePicker.ImagePickerOptions["mediaTypes"],allowsEditing:true,aspect:[1,1] as [number,number],quality:0.85};
+      const picked=source==="camera"?await ImagePicker.launchCameraAsync(options):await ImagePicker.launchImageLibraryAsync(options);
+      if(picked.canceled||!picked.assets?.[0]?.uri)return;
+      const asset=picked.assets[0];const mime=asset.mimeType||"image/jpeg";
+      if(!["image/jpeg","image/png","image/webp"].includes(mime)){Alert.alert("Unsupported image","Choose a JPG, PNG or WebP image.");return;}
+      if(asset.fileSize&&asset.fileSize>10*1024*1024){Alert.alert("File too large","Profile photos must be 10 MB or smaller.");return;}
+      setCoverBusy(true);const form=new FormData();form.append("file",{uri:asset.uri,name:asset.fileName||"profile-avatar.jpg",type:mime} as any);
+      const result=await api("/api/users/me/avatar",{method:"POST",body:form});
+      setProfile(prev=>prev?{...prev,avatar:result.avatarUrl||result.avatar||prev.avatar}:prev);
+      setMessage("Profile photo saved.");
+    }catch(e){Alert.alert("Profile photo upload failed",e instanceof Error?e.message:"Please try again.");}
+    finally{setCoverBusy(false);}
+  };
   const pickCover=async(source:"library"|"camera"="library")=>{
     if(!isOwn||coverBusy)return;
     try{
       if(source==="camera"){const permission=await ImagePicker.requestCameraPermissionsAsync();if(!permission.granted){Alert.alert("Camera permission needed","Allow camera access to capture profile media.");return;}}
-      const options={mediaTypes:["images","videos"] as const,allowsEditing:false,quality:0.85,videoMaxDuration:120};
+      const options:ImagePicker.ImagePickerOptions={mediaTypes:["images","videos"],allowsEditing:false,quality:0.85,videoMaxDuration:120};
       const picked=source==="camera"?await ImagePicker.launchCameraAsync(options):await ImagePicker.launchImageLibraryAsync(options);
       if(picked.canceled||!picked.assets?.[0]?.uri)return;
       const asset=picked.assets[0];
@@ -225,7 +242,7 @@ export default function MobileProfileHub() {
           {profile?.avatar?<Image source={{uri:profileMediaUrl(profile.avatar),headers:token?{Authorization:"Bearer "+token}:{}}} style={{width:88,height:88,borderRadius:44,borderWidth:3,borderColor:"#ffffff88"}}/>:<View style={{width:88,height:88,borderRadius:44,alignItems:"center",justifyContent:"center",backgroundColor:"#ffffff22"}}><Feather name="user" size={38} color="#fff"/></View>}
         </TouchableOpacity>
         <View style={{flex:1}}><Text style={{fontSize:12,color:"#dce7f6",marginTop:3}}>{profile?.is_prefect?"Prefect":String(profile?.role||user.role).toLowerCase()==="student"?"Learner":profile?.role||user.role}</Text>
-        {isOwn&&<View style={{flexDirection:"row",flexWrap:"wrap",gap:6,marginTop:8}}><TouchableOpacity onPress={()=>void pickCover("library")} disabled={coverBusy} style={{backgroundColor:"#ffffff22",paddingHorizontal:10,paddingVertical:7,borderRadius:8}}><Text style={{color:"#fff",fontWeight:"700"}}>{coverBusy?"Uploading…":"Gallery / videos"}</Text></TouchableOpacity><TouchableOpacity onPress={()=>void pickCover("camera")} disabled={coverBusy} style={{backgroundColor:"#ffffff22",paddingHorizontal:10,paddingVertical:7,borderRadius:8}}><Text style={{color:"#fff",fontWeight:"700"}}>Camera</Text></TouchableOpacity></View>}</View>
+        {isOwn&&<View style={{flexDirection:"row",flexWrap:"wrap",gap:6,marginTop:8}}><TouchableOpacity onPress={()=>void pickAvatar("library")} disabled={coverBusy} style={{backgroundColor:"#ffffff22",paddingHorizontal:10,paddingVertical:7,borderRadius:8}}><Text style={{color:"#fff",fontWeight:"700"}}>Profile photo</Text></TouchableOpacity><TouchableOpacity onPress={()=>void pickAvatar("camera")} disabled={coverBusy} style={{backgroundColor:"#ffffff22",paddingHorizontal:10,paddingVertical:7,borderRadius:8}}><Text style={{color:"#fff",fontWeight:"700"}}>Take photo</Text></TouchableOpacity><TouchableOpacity onPress={()=>void pickCover("library")} disabled={coverBusy} style={{backgroundColor:"#ffffff22",paddingHorizontal:10,paddingVertical:7,borderRadius:8}}><Text style={{color:"#fff",fontWeight:"700"}}>{coverBusy?"Uploading…":"Cover: gallery / video"}</Text></TouchableOpacity><TouchableOpacity onPress={()=>void pickCover("camera")} disabled={coverBusy} style={{backgroundColor:"#ffffff22",paddingHorizontal:10,paddingVertical:7,borderRadius:8}}><Text style={{color:"#fff",fontWeight:"700"}}>Capture cover</Text></TouchableOpacity></View>}</View>
         {loading&&<ActivityIndicator color="#fff"/>}
       </View>
     </View>
