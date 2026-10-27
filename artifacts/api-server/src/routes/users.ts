@@ -342,6 +342,47 @@ router.post("/users/me/avatar", requireAuth, (req, res, next): void => {
   });
 });
 
+// Profile cover media is stored separately from the circular avatar; uploads are owner-only.
+const coverUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, callback) => {
+      void ensureMediaDirectory().then(() => callback(null, getMediaDirectory())).catch(error => callback(error as Error, ""));
+    },
+    filename: (_req, _file, callback) => callback(null, createMediaStorageKey()),
+  }),
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (_req, file, callback) => callback(null, ["image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm", "video/quicktime"].includes(file.mimetype)),
+});
+
+async function ensureProfileCoverSchema(): Promise<void> {
+  await pool.query("CREATE TABLE IF NOT EXISTS user_profile_covers (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, media_url text NOT NULL, media_type text NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())");
+}
+
+router.post("/users/me/cover", requireAuth, (req, res, next): void => {
+  coverUpload.single("file")(req, res, error => {
+    void (async () => {
+      if (error instanceof multer.MulterError) { res.status(400).json({ error: "Choose an image or video up to 50 MB." }); return; }
+      if (error) { next(error); return; }
+      const file = req.file;
+      if (!file) { res.status(415).json({ error: "Choose a JPG, PNG, WebP image or MP4, WebM, MOV video." }); return; }
+      try {
+        await ensureProfileCoverSchema();
+        const actor = req.currentUser!;
+        const prior = await pool.query("SELECT media_url FROM user_profile_covers WHERE user_id=$1", [actor.id]);
+        await persistUploadedMedia(file.filename, file.mimetype, file.path);
+        const mediaUrl = "/api/lessons/media/" + file.filename + "?type=" + file.mimetype;
+        await pool.query("INSERT INTO user_profile_covers(user_id,media_url,media_type,updated_at) VALUES($1,$2,$3,now()) ON CONFLICT(user_id) DO UPDATE SET media_url=EXCLUDED.media_url,media_type=EXCLUDED.media_type,updated_at=now()", [actor.id, mediaUrl, file.mimetype]);
+        const oldKey = typeof prior.rows[0]?.media_url === "string" ? prior.rows[0].media_url.match(/^\/api\/lessons\/media\/([a-f0-9-]{36})\?type=/i)?.[1] : null;
+        if (oldKey && oldKey !== file.filename) await removeStoredMedia(oldKey).catch(() => undefined);
+        res.status(200).json({ coverUrl: mediaUrl, coverType: file.mimetype });
+      } catch {
+        await removeStoredMedia(file.filename).catch(() => undefined);
+        if (!res.headersSent) res.status(503).json({ error: "Persistent cover media storage is unavailable. Please retry." });
+      }
+    })().catch(() => { if (!res.headersSent) res.status(500).json({ error: "Cover media upload failed." }); });
+  });
+});
+
 // Structured CV fields for teacher applications. Only the teacher can edit their own CV.
 router.get("/users/me/teacher-cv", requireAuth, async (req, res): Promise<void> => {
   if (req.currentUser!.role !== "teacher") { res.status(403).json({ error: "Teacher account required" }); return; }
