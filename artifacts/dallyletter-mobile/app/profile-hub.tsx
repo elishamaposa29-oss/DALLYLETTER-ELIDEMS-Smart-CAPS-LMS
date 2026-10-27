@@ -54,7 +54,7 @@ export default function MobileProfileHub() {
   const [coverBusy,setCoverBusy] = useState(false);
   const [fullscreenMedia,setFullscreenMedia] = useState<Row|null>(null);
   const fullscreenPlayer = useVideoPlayer(null, player => { player.loop = false; });
-  useEffect(()=>{ if(fullscreenMedia?.type?.startsWith("video/")){ void fullscreenPlayer.replaceAsync(fullscreenMedia.url).then(()=>fullscreenPlayer.play()).catch(()=>setMessage("This video could not be played on this device.")); } else { fullscreenPlayer.pause(); } },[fullscreenMedia?.url,fullscreenMedia?.type,fullscreenPlayer]);
+  useEffect(()=>{ if(fullscreenMedia?.type?.startsWith("video/")){ void fullscreenPlayer.replaceAsync({uri:fullscreenMedia.url,headers:token?{Authorization:"Bearer "+token}:{}}).then(()=>fullscreenPlayer.play()).catch(()=>setMessage("This video could not be played on this device.")); } else { fullscreenPlayer.pause(); } },[fullscreenMedia?.url,fullscreenMedia?.type,fullscreenPlayer]);
   const api = useCallback(async(path:string,init:RequestInit={})=>{
     const response=await fetch(getApiUrl(path),{...init,headers:{...(token?{Authorization:"Bearer "+token}:{}),...(init.headers as Record<string,string>||{})}});
     const data=await response.json().catch(()=>({}));
@@ -110,8 +110,8 @@ export default function MobileProfileHub() {
       if(asset.fileSize&&asset.fileSize>10*1024*1024){Alert.alert("File too large","Profile photos must be 10 MB or smaller.");return;}
       setCoverBusy(true);const form=new FormData();form.append("file",{uri:asset.uri,name:asset.fileName||"profile-avatar.jpg",type:mime} as any);
       const result=await api("/api/users/me/avatar",{method:"POST",body:form});
-      setProfile(prev=>prev?{...prev,avatar:result.avatarUrl||result.avatar||prev.avatar}:prev);
-      setMessage("Profile photo saved.");
+      await refreshMediaProfile();
+      setMessage("Profile photo saved and reloaded from your account.");
     }catch(e){Alert.alert("Profile photo upload failed",e instanceof Error?e.message:"Please try again.");}
     finally{setCoverBusy(false);}
   };
@@ -125,17 +125,17 @@ export default function MobileProfileHub() {
       const asset=picked.assets[0];
       const mime=asset.mimeType||(asset.type==="video"?"video/mp4":"image/jpeg");
       if(!["image/jpeg","image/png","image/webp","video/mp4","video/webm","video/quicktime"].includes(mime)){Alert.alert("Unsupported media","Choose a JPG, PNG, WebP, MP4, WebM or MOV file.");return;}
-      if(asset.fileSize&&asset.fileSize>50*1024*1024){Alert.alert("File too large","Cover media must be 50 MB or smaller.");return;}
+      if(asset.fileSize&&asset.fileSize>20*1024*1024){Alert.alert("File too large","Cover media must be 20 MB or smaller on the current storage configuration.");return;}
       setCoverBusy(true);
       const form=new FormData();
       form.append("file",{uri:asset.uri,name:asset.fileName||(mime.startsWith("video/")?"profile-cover.mp4":"profile-cover.jpg"),type:mime} as any);
       const result=await api("/api/users/me/cover",{method:"POST",body:form});
-      setProfile(prev=>prev?{...prev,cover_url:result.coverUrl,cover_type:result.coverType}:prev);
-      setMessage("Profile cover saved.");
+      await refreshMediaProfile();
+      setMessage("Profile cover saved and reloaded from your account.");
     }catch(e){Alert.alert("Cover upload failed",e instanceof Error?e.message:"Please try again.");}
     finally{setCoverBusy(false);}
   };
-  const profileMediaUrl=(value:string)=>/^https:\/\//i.test(value)?value:getApiUrl(value);
+  const profileMediaUrl=(value:string)=>/^https:\/\//i.test(value)?value:getApiUrl(value);\n  const refreshMediaProfile=async()=>{const fresh=await api("/api/users/"+targetId+"/public-profile");setProfile(prev=>({...prev,...fresh,avatar:fresh.avatar??prev?.avatar}));};
   const act=async(fn:()=>Promise<void>)=>{setLoading(true);setMessage("");try{await fn();}catch(e){setMessage(e instanceof Error?e.message:"Action failed.");}finally{setLoading(false);}};
   const upload=async(id:number)=>{
     const picked=await DocumentPicker.getDocumentAsync({type:["application/pdf","image/jpeg","image/png"],copyToCacheDirectory:true});
@@ -233,7 +233,7 @@ export default function MobileProfileHub() {
   return <View style={{flex:1,backgroundColor:colors.background,paddingTop:insets.top}}>
     <View style={{backgroundColor:colors.primary}}>
       <TouchableOpacity activeOpacity={0.92} onPress={()=>profile?.cover_url&&setFullscreenMedia({url:profileMediaUrl(profile.cover_url),type:profile.cover_type||"image/*"})} style={{minHeight:150,justifyContent:"flex-end",padding:16,backgroundColor:colors.primary}}>
-        {profile?.cover_url&&(String(profile.cover_type||"").startsWith("video/")?<View style={{position:"absolute",top:0,left:0,right:0,bottom:0,justifyContent:"center",alignItems:"center",backgroundColor:"#111"}}><Feather name="play-circle" size={48} color="#fff"/><Text style={{color:"#fff",marginTop:6}}>Tap to play cover video</Text></View>:<Image source={{uri:profileMediaUrl(profile.cover_url)}} style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",height:"100%"}} resizeMode="cover"/> )}
+        {profile?.cover_url&&(String(profile.cover_type||"").startsWith("video/")?<View style={{position:"absolute",top:0,left:0,right:0,bottom:0,justifyContent:"center",alignItems:"center",backgroundColor:"#111"}}><Feather name="play-circle" size={48} color="#fff"/><Text style={{color:"#fff",marginTop:6}}>Tap to play cover video</Text></View>:<Image source={{uri:profileMediaUrl(profile.cover_url),headers:token?{Authorization:"Bearer "+token}:{}}} style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",height:"100%"}} resizeMode="cover"/> )}
         <View style={{backgroundColor:"#0009",padding:10,borderRadius:12,alignSelf:"flex-start"}}><Text style={{fontSize:20,fontWeight:"800",color:"#fff"}}>Profile Hub</Text><Text style={{fontSize:12,color:"#fff"}}>{profile?.display_name||user.name}</Text></View>
       </TouchableOpacity>
       <View style={{padding:14,flexDirection:"row",alignItems:"center",gap:12}}>
@@ -246,7 +246,7 @@ export default function MobileProfileHub() {
         {loading&&<ActivityIndicator color="#fff"/>}
       </View>
     </View>
-    <Modal visible={Boolean(fullscreenMedia)} transparent animationType="fade" onRequestClose={()=>setFullscreenMedia(null)}><View style={{flex:1,backgroundColor:"#000",justifyContent:"center",alignItems:"center",padding:12}}><TouchableOpacity onPress={()=>setFullscreenMedia(null)} style={{position:"absolute",top:48,right:18,zIndex:2,padding:12,backgroundColor:"#333",borderRadius:20}}><Text style={{color:"#fff"}}>Close ✕</Text></TouchableOpacity>{fullscreenMedia?.type?.startsWith("video/")?<VideoView player={fullscreenPlayer} style={{width:"100%",height:"75%"}} nativeControls contentFit="contain"/>:fullscreenMedia?.url?<Image source={{uri:fullscreenMedia.url}} style={{width:"100%",height:"80%"}} resizeMode="contain"/>:null}</View></Modal>
+    <Modal visible={Boolean(fullscreenMedia)} transparent animationType="fade" onRequestClose={()=>setFullscreenMedia(null)}><View style={{flex:1,backgroundColor:"#000",justifyContent:"center",alignItems:"center",padding:12}}><TouchableOpacity onPress={()=>setFullscreenMedia(null)} style={{position:"absolute",top:48,right:18,zIndex:2,padding:12,backgroundColor:"#333",borderRadius:20}}><Text style={{color:"#fff"}}>Close ✕</Text></TouchableOpacity>{fullscreenMedia?.type?.startsWith("video/")?<VideoView player={fullscreenPlayer} style={{width:"100%",height:"75%"}} nativeControls contentFit="contain"/>:fullscreenMedia?.url?<Image source={{uri:fullscreenMedia.url,headers:token?{Authorization:"Bearer "+token}:{}}} style={{width:"100%",height:"80%"}} resizeMode="contain"/>:null}</View></Modal>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{padding:10,gap:6,backgroundColor:colors.card}}>
       {TABS.filter(t=>t!=="Qualifications"||["teacher","manager","senior_manager"].includes(String(profile?.role||user.role).toLowerCase())).filter(t=>t!=="Enrollments"||isOwn).map(t=><TouchableOpacity key={t} accessibilityRole="tab" accessibilityState={{selected:tab===t}} onPress={()=>setTab(t)} style={{paddingHorizontal:12,paddingVertical:9,borderRadius:10,backgroundColor:tab===t?colors.primary:colors.background,borderColor:colors.border,borderWidth:1}}><Text style={{fontWeight:"700",color:tab===t?"#fff":colors.foreground}}>{t}</Text></TouchableOpacity>)}
     </ScrollView>
