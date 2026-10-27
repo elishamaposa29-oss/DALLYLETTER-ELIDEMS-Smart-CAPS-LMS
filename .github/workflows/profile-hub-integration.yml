@@ -41,6 +41,7 @@ jobs:
       JWT_SECRET: pr84-ci-only-secret-not-for-deployment
       PORT: "4000"
       API_BASE_URL: http://127.0.0.1:4000
+      PUBLIC_APP_URL: http://127.0.0.1:5173
       MOCK_PROVIDER_MODE: test
       MOCK_PROVIDER_CAPTURE: /tmp/dallyletter-provider-capture.jsonl
       RESEND_API_KEY: pr84-ci-mock-key
