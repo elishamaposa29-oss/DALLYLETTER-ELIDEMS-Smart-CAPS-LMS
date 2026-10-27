@@ -7,7 +7,7 @@ import {
   BookOpen, Users, Video, MessageSquare, CreditCard, Bell, LogOut, Home,
   Shield, Menu, GraduationCap, Settings, Sparkles, ClipboardList, Star,
   ScrollText, Trophy, AlertTriangle, DollarSign, BarChart3, Briefcase,
-  Flame, Send, ImagePlus,
+  Flame, Send, ImagePlus, Search,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -121,6 +121,21 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const logoutMutation = useLogoutUser();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [isCommandOpen, setIsCommandOpen] = useState(false);
+  const [commandQuery, setCommandQuery] = useState("");
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setIsCommandOpen(open => !open);
+        setCommandQuery("");
+      }
+      if (event.key === "Escape") setIsCommandOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   if (!user) return null;
 
@@ -306,6 +321,11 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         </div>
       </div>
 
+      <div className="px-4 pb-3">
+        <button type="button" onClick={() => { setCommandQuery(""); setIsCommandOpen(true); }} className="flex w-full items-center gap-2 rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2.5 text-left text-xs text-white/60 transition-colors hover:border-white/20 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400" aria-keyshortcuts="Control+K Meta+K">
+          <Search aria-hidden="true" className="h-4 w-4" /><span className="flex-1">Search navigation…</span><kbd className="rounded border border-white/15 px-1.5 py-0.5 text-[10px]">⌘K</kbd>
+        </button>
+      </div>
       <nav className="flex-1 overflow-y-auto px-4 scrollbar-none">
         <NavLinks onNav={onNav} />
       </nav>
@@ -321,9 +341,38 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     </div>
   );
 
+  const commandItems = navItems.filter(item =>
+    (item.label + " " + item.href).toLowerCase().includes(commandQuery.trim().toLowerCase())
+  ).slice(0, 8);
+
   return (
     <div className="min-h-screen bg-background flex flex-col md:flex-row">
       <SystemNotificationBridge />
+      {isCommandOpen && (
+        <div className="fixed inset-0 z-[100] flex items-start justify-center bg-slate-950/55 px-4 pt-[12vh] backdrop-blur-sm" onMouseDown={event => { if (event.target === event.currentTarget) setIsCommandOpen(false); }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="dashboard-command-title" className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+            <h2 id="dashboard-command-title" className="sr-only">Search dashboard pages</h2>
+            <div className="flex items-center gap-3 border-b border-slate-200 px-4 dark:border-slate-700">
+              <Search aria-hidden="true" className="h-5 w-5 shrink-0 text-slate-500" />
+              <input autoFocus value={commandQuery} onChange={event => setCommandQuery(event.target.value)} placeholder="Search pages and actions…" aria-label="Search dashboard pages" className="h-14 min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400 dark:text-white" />
+              <kbd className="rounded-md border border-slate-200 px-2 py-1 text-[10px] text-slate-500 dark:border-slate-700">ESC</kbd>
+            </div>
+            <div className="max-h-[55vh] overflow-y-auto p-2" role="listbox" aria-label="Matching dashboard pages">
+              {commandItems.length ? commandItems.map(item => {
+                const Icon = item.icon;
+                return <Link key={item.href} href={item.href} onClick={() => setIsCommandOpen(false)}>
+                  <div role="option" aria-selected="false" className="flex cursor-pointer items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-700 transition-colors hover:bg-slate-100 focus-within:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"><Icon aria-hidden="true" className="h-4 w-4" /></span>
+                    <span className="min-w-0 flex-1"><span className="block font-medium">{item.label}</span><span className="block truncate text-xs text-slate-500">{item.href}</span></span>
+                    <span aria-hidden="true" className="text-slate-400">↵</span>
+                  </div>
+                </Link>;
+              }) : <p className="px-4 py-8 text-center text-sm text-slate-500">No matching pages. Try another search.</p>}
+            </div>
+            <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-[11px] text-slate-500 dark:border-slate-700"><span>Navigate to a page</span><span><kbd className="rounded border px-1.5 py-0.5">Ctrl</kbd> + <kbd className="rounded border px-1.5 py-0.5">K</kbd> to search</span></div>
+          </section>
+        </div>
+      )}
       <header className="md:hidden flex items-center justify-between px-4 py-3 border-b bg-[#0a1628] sticky top-0 z-30">
         <div className="flex items-center gap-2">
           <div className="bg-gradient-to-br from-amber-400 to-amber-600 p-1.5 rounded-lg">
