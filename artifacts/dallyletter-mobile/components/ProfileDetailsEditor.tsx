@@ -15,6 +15,9 @@ export function ProfileDetailsEditor() {
   const [grade,setGrade]=useState(user?.grade||"");
   const [subject,setSubject]=useState(user?.subject||"");
   const [busy,setBusy]=useState(false);
+  const [primaryEmail,setPrimaryEmail]=useState("");
+  const [emailChangePassword,setEmailChangePassword]=useState("");
+  const [emailChangeBusy,setEmailChangeBusy]=useState(false);
   const [currentPassword,setCurrentPassword]=useState("");
   const [newPassword,setNewPassword]=useState("");
   const [confirmPassword,setConfirmPassword]=useState("");
@@ -92,6 +95,21 @@ export function ProfileDetailsEditor() {
     finally{setRecoveryBusy(false);}
   };
 
+  const requestEmailChange=async()=>{
+    if(!token||emailChangeBusy)return;
+    if(!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(primaryEmail.trim())){Alert.alert("Check email address","Enter a valid new email address.");return;}
+    if(!emailChangePassword){Alert.alert("Confirm your identity","Enter your current password before changing your email.");return;}
+    setEmailChangeBusy(true);
+    try{
+      const r=await fetch(getApiUrl("/api/auth/email-change/request"),{method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({email:primaryEmail.trim(),currentPassword:emailChangePassword})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.error||"Could not request an email change.");
+      setEmailChangePassword("");
+      Alert.alert("Check the new inbox",d.message||"Your current email stays active until you confirm the new address.");
+    }catch(e){Alert.alert("Email change unavailable",e instanceof Error?e.message:"Please try again.");}
+    finally{setEmailChangeBusy(false);}
+  };
+
   const changePassword=async()=>{
     if(!token||passwordBusy)return;
     if(newPassword.length<8||newPassword.length>256){Alert.alert("Password requirements","Use a new password between 8 and 256 characters.");return;}
@@ -122,6 +140,15 @@ export function ProfileDetailsEditor() {
         {busy?<ActivityIndicator color="#fff"/>:null}<Text style={{color:"#fff",fontWeight:"700"}}>{busy?"Saving…":"Save changes"}</Text>
       </TouchableOpacity>
     </View>:null}
+    <View style={{marginTop:18,paddingTop:16,borderTopWidth:1,borderTopColor:colors.border}}>
+      <Text style={{fontSize:16,fontWeight:"700",color:colors.foreground}}>Change account email</Text>
+      <Text style={{fontSize:12,color:colors.mutedForeground,marginTop:4}}>Current email: {user?.email||"Not available"}. Confirm the new address from its inbox. Your current email stays active until then.</Text>
+      {field("New email address",primaryEmail,setPrimaryEmail,"you@example.com")}
+      {field("Current password",emailChangePassword,setEmailChangePassword,"Confirm it is you",false,true)}
+      <TouchableOpacity onPress={()=>void requestEmailChange()} disabled={emailChangeBusy||!primaryEmail.trim()||!emailChangePassword} style={{height:44,borderRadius:10,marginTop:14,backgroundColor:colors.primary,alignItems:"center",justifyContent:"center",flexDirection:"row",gap:8,opacity:emailChangeBusy||!primaryEmail.trim()||!emailChangePassword?0.55:1}}>
+        {emailChangeBusy?<ActivityIndicator color="#fff"/>:null}<Text style={{color:"#fff",fontWeight:"700"}}>{emailChangeBusy?"Sending…":"Send confirmation email"}</Text>
+      </TouchableOpacity>
+    </View>
     <View style={{marginTop:18,paddingTop:16,borderTopWidth:1,borderTopColor:colors.border}}>
       <Text style={{fontSize:16,fontWeight:"700",color:colors.foreground}}>Change password</Text>
       <Text style={{fontSize:12,color:colors.mutedForeground,marginTop:4}}>Changing your password revokes active sessions. You will need to sign in again on this device and your other devices.</Text>
