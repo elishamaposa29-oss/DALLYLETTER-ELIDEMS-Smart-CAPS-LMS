@@ -553,6 +553,9 @@ router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<v
     performanceScore: usersTable.performanceScore, badgeCount: usersTable.badgeCount, streakDays: usersTable.streakDays,
   }).from(usersTable).where(eq(usersTable.id, id));
   if (!user) { res.status(404).json({ error: "User not found." }); return; }
+  await ensureProfileCoverSchema();
+  const coverResult = await pool.query("SELECT media_url AS cover_url, media_type AS cover_type FROM user_profile_covers WHERE user_id=$1", [id]).catch(() => ({ rows: [] as Array<{cover_url:string;cover_type:string}> }));
+  const coverMedia = coverResult.rows[0] ?? { cover_url: null, cover_type: null };
   const canViewPrivateSummary = req.currentUser!.id === id || canAccessManager(req.currentUser!);
   const isProfessional = ["teacher", "manager", "senior_manager"].includes(String(user.role).toLowerCase());
   const [qualifications, teacherSubjectRows, learnerSubjectRows] = await Promise.all([
@@ -583,6 +586,8 @@ router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<v
   ]);
   res.json({
     ...serializePublicProfile(user, qualifications.rows, teachingSubjects),
+    cover_url: coverMedia.cover_url,
+    cover_type: coverMedia.cover_type,
     subjects: isProfessional ? teachingSubjects : learningSubjects,
     primary_subject: teacherSubjectRows.rows[0]?.primary_subject ?? null,
     grade: user.grade,
