@@ -141,7 +141,7 @@ export default function StudentAchievements() {
                       <div key={u.id} className={`flex items-center gap-3 p-3 rounded-xl ${u.id === (user as any)?.id ? "bg-blue-50 border border-blue-200" : "bg-slate-50"}`}>
                         <div className="w-8 flex items-center justify-center">{rankIcon(i + 1)}</div>
                         <div className="flex-1">
-                          <UserProfileLink userId={u.id} name={u.name + (u.id === (user as any)?.id ? " (You)" : "") + (u.isPrefect ? " ⭐" : "")} avatarUrl={u.avatarUrl} className={`text-sm font-semibold ${u.id === (user as any)?.id ? "text-blue-700" : "text-slate-800"}`} showAvatar={false} />
+                          <UserProfileLink userId={u.id} name={u.name + (u.id === (user as any)?.id ? " (You)" : "") + (u.isPrefect ? " ⭐" : "")} avatarUrl={u.avatarUrl} className={`text-sm font-semibold ${u.id === (user as any)?.id ? "text-blue-700" : "text-slate-800"}`} showAvatar />
                           <p className="text-xs text-slate-400">{u.grade ?? "General"} · {u.streakDays ?? 0} day streak 🔥</p>
                         </div>
                         <div className="text-right">
