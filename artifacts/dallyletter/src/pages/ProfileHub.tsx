@@ -274,7 +274,6 @@ export default function ProfileHub() {
     catch(e){setMessage(e instanceof Error?e.message:"Could not upload profile cover.");}
     finally{setCoverBusy(false);}
   };
-  const mediaUrl = (value:string) => value.startsWith("/api/")?getApiUrl(value):value;
   const saveSubjects = async () => {
     setBusy(true);setMessage("");
     try {
