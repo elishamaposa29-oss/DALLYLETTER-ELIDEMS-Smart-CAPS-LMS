@@ -199,6 +199,12 @@ router.post("/academic-records/reports/drafts", requireAuth, async (req, res): P
   res.status(201).json(saved.rows[0]);
 });
 
+router.get("/academic-records/reports/me", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  const result = await pool.query("SELECT id,report_type,term_label,draft_content,reviewed_at,created_at FROM academic_report_drafts WHERE learner_id=$1 AND status='approved' ORDER BY reviewed_at DESC NULLS LAST,created_at DESC LIMIT 100", [user.id]);
+  res.json(result.rows);
+});
+
 router.get("/academic-records/reports/drafts", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canAccessManager(user)) { res.status(403).json({ error: "Manager review access is required." }); return; }
