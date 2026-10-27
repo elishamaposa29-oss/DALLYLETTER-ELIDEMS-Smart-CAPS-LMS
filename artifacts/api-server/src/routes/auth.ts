@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { randomBytes } from "node:crypto";
+import { createPublicKey, randomBytes, verify as verifySignature } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db, usersTable, pool } from "@workspace/db";
 import { RegisterUserBody, LoginUserBody } from "@workspace/api-zod";
@@ -9,6 +9,54 @@ import { generateSignedToken, parseSignedToken } from "../lib/signed-token";
 import { isAllowedPublicRegistrationRole } from "../lib/registration-policy";
 import { createAuthSession, revokeAuthSession, revokeUserSessions, createPasswordResetToken, consumePasswordResetToken, consumeAuthAttempt, clearAuthAttempts, updatePasswordAndRevokeSessions } from "../lib/auth-session-store";
 import { sendEmail, isEmailConfigured } from "../lib/email-service";
+
+
+type GoogleJwtHeader = { alg?: string; kid?: string; typ?: string };
+type GoogleJwtClaims = { aud?: string | string[]; iss?: string; sub?: string; email?: string; email_verified?: string | boolean; name?: string; exp?: number; iat?: number };
+type GoogleJwk = { kid: string; kty: string; alg?: string; use?: string; n: string; e: string };
+let googleJwksCache: { keys: GoogleJwk[]; expiresAt: number } | undefined;
+
+async function getGoogleJwks(forceRefresh = false): Promise<GoogleJwk[]> {
+  if (!forceRefresh && googleJwksCache && googleJwksCache.expiresAt > Date.now()) return googleJwksCache.keys;
+  const response = await fetch("https://www.googleapis.com/oauth2/v3/certs", { signal: AbortSignal.timeout(5000) });
+  if (!response.ok) throw new Error("Google signing keys could not be fetched");
+  const body = await response.json() as { keys?: GoogleJwk[] };
+  if (!Array.isArray(body.keys) || body.keys.length === 0) throw new Error("Google signing keys response was invalid");
+  const cacheControl = response.headers.get("cache-control") || "";
+  const maxAge = Number(cacheControl.match(/max-age=(\d+)/i)?.[1] || 300);
+  googleJwksCache = { keys: body.keys, expiresAt: Date.now() + Math.max(60, Math.min(maxAge, 3600)) * 1000 };
+  return body.keys;
+}
+
+async function verifyGoogleIdToken(credential: string, expectedClientId: string): Promise<GoogleJwtClaims | null> {
+  const parts = credential.split(".");
+  if (parts.length !== 3 || parts.some(part => !part)) return null;
+  let header: GoogleJwtHeader;
+  let claims: GoogleJwtClaims;
+  try {
+    header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8")) as GoogleJwtHeader;
+    claims = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as GoogleJwtClaims;
+  } catch { return null; }
+  if (header.alg !== "RS256" || typeof header.kid !== "string" || !header.kid) return null;
+  const now = Math.floor(Date.now() / 1000);
+  const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+  if (!audiences.includes(expectedClientId)
+      || !["accounts.google.com", "https://accounts.google.com"].includes(String(claims.iss))
+      || typeof claims.sub !== "string" || claims.sub.length === 0 || claims.sub.length > 255
+      || typeof claims.email !== "string" || claims.email.length > 254
+      || String(claims.email_verified).toLowerCase() !== "true"
+      || !Number.isFinite(claims.exp) || Number(claims.exp) <= now
+      || !Number.isFinite(claims.iat) || Number(claims.iat) > now + 60 || Number(claims.iat) <= now - 86400) return null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const keys = await getGoogleJwks(attempt === 1);
+    const jwk = keys.find(key => key.kid === header.kid && key.kty === "RSA" && (!key.alg || key.alg === "RS256") && (!key.use || key.use === "sig"));
+    if (!jwk) continue;
+    const publicKey = createPublicKey({ key: jwk, format: "jwk" });
+    const signatureIsValid = verifySignature("RSA-SHA256", Buffer.from(parts[0] + "." + parts[1], "utf8"), publicKey, Buffer.from(parts[2], "base64url"));
+    return signatureIsValid ? claims : null;
+  }
+  return null;
+}
 
 const router: IRouter = Router();
 
@@ -244,16 +292,9 @@ router.post("/auth/google", async (req, res): Promise<void> => {
   if (!clientId) { res.status(503).json({ error: "Google sign-in is not configured for this application yet." }); return; }
   if (!credential || credential.length > 12000) { res.status(400).json({ error: "A valid Google credential is required." }); return; }
   try {
-    const verify = await fetch("https://oauth2.googleapis.com/tokeninfo?id_token=" + encodeURIComponent(credential));
-    if (!verify.ok) { res.status(401).json({ error: "Google sign-in could not verify this account. Please try again." }); return; }
-    const claims = await verify.json() as { aud?: string; iss?: string; sub?: string; email?: string; email_verified?: string | boolean; name?: string; exp?: string | number };
-    const expiresAt = Number(claims.exp);
-    if (claims.aud !== clientId || !["accounts.google.com", "https://accounts.google.com"].includes(String(claims.iss))
-      || typeof claims.sub !== "string" || !claims.sub || typeof claims.email !== "string"
-      || String(claims.email_verified).toLowerCase() !== "true" || !Number.isFinite(expiresAt) || expiresAt <= Math.floor(Date.now() / 1000)) {
-      res.status(401).json({ error: "Google identity token is invalid or its email is not verified." }); return;
-    }
-    const email = claims.email.trim().toLowerCase();
+    const claims = await verifyGoogleIdToken(credential, clientId);
+    if (!claims) { res.status(401).json({ error: "Google identity token is invalid or its email is not verified." }); return; }
+    const email = claims.email!.trim().toLowerCase();
     const linked = await pool.query("SELECT user_id FROM google_account_links WHERE google_sub = $1 LIMIT 1", [claims.sub]);
     let userId = linked.rows[0]?.user_id ? Number(linked.rows[0].user_id) : 0;
     if (!userId) {
