@@ -20,8 +20,8 @@ export async function sendEmail(input: EmailInput): Promise<{ sent: number; fail
   }
   const recipients = [...new Set(input.to.map(v => v.trim().toLowerCase()).filter(v => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)))];
   if (!recipients.length) {
-    logger.warn({ event: "email.delivery.skipped", provider: "resend", reason: "no_valid_recipients", subject: input.subject }, "Email delivery skipped because there are no valid recipients");
-    return { sent: 0, failed: 0 };
+    logger.error({ event: "email.delivery.failed", provider: "resend", reason: "no_valid_recipients", subject: input.subject }, "Email delivery failed because there are no valid recipients");
+    throw new Error("Email delivery failed: no valid recipient address was provided.");
   }
   let sent = 0;
   let failed = 0;
@@ -44,7 +44,11 @@ export async function sendEmail(input: EmailInput): Promise<{ sent: number; fail
       logger.error({ event: "email.delivery.failed", provider: "resend", reason: error instanceof Error ? error.message.slice(0, 200) : "network_error", subject: input.subject }, "Email provider request failed");
     }
   }
-  if (sent === 0 && failed > 0) throw new Error("Email provider rejected every recipient");
+  if (failed > 0) {
+    logger.error({ event: "email.delivery.incomplete", provider: "resend", sent, failed, subject: input.subject }, "Email delivery was incomplete; at least one recipient did not receive provider acceptance");
+    throw new Error(sent === 0 ? "Email provider rejected every recipient." : "Email delivery was incomplete. Please retry; some recipients may not have received the message.");
+  }
+  if (sent !== recipients.length) throw new Error("Email delivery could not be confirmed for every recipient.");
   return { sent, failed };
 }
 
