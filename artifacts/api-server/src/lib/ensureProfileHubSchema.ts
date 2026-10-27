@@ -108,6 +108,25 @@ export async function ensureProfileHubSchema(): Promise<void> {
         OR (method = 'bank' AND bank_name IS NOT NULL AND account_name_holder IS NOT NULL)
       )
     )`);
+    await client.query(`CREATE TABLE IF NOT EXISTS account_email_status (
+      user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      email text NOT NULL,
+      verified_at timestamptz,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query("CREATE INDEX IF NOT EXISTS account_email_status_email_idx ON account_email_status(lower(email))");
+    await client.query(`CREATE TABLE IF NOT EXISTS account_email_tokens (
+      token_hash text PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      purpose text NOT NULL CHECK (purpose IN ('signup','email_change')),
+      email text NOT NULL,
+      expires_at timestamptz NOT NULL,
+      used_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query("CREATE INDEX IF NOT EXISTS account_email_tokens_user_idx ON account_email_tokens(user_id, purpose)");
+    await client.query("CREATE INDEX IF NOT EXISTS account_email_tokens_expiry_idx ON account_email_tokens(expires_at)");
+
     // Legacy CV-to-qualification reconciliation is deliberately NOT run during server startup.
     // It requires a verified staging schema mapping and a separately approved, idempotent job.
     await client.query("COMMIT");
