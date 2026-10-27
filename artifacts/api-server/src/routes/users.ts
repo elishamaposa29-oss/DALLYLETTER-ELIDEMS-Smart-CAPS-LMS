@@ -512,6 +512,7 @@ router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<v
     performanceScore: usersTable.performanceScore, badgeCount: usersTable.badgeCount, streakDays: usersTable.streakDays,
   }).from(usersTable).where(eq(usersTable.id, id));
   if (!user) { res.status(404).json({ error: "User not found." }); return; }
+  const canViewPrivateSummary = req.currentUser!.id === id || canAccessManager(req.currentUser!);
   const isProfessional = ["teacher", "manager", "senior_manager"].includes(String(user.role).toLowerCase());
   const [qualifications, teacherSubjectRows, learnerSubjectRows] = await Promise.all([
     isProfessional
@@ -550,12 +551,12 @@ router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<v
     leaderboard_position: Number(rankRows.rows[0]?.position ?? 0) || null,
     badge_count: Number(user.badgeCount ?? 0),
     streak_days: Number(user.streakDays ?? 0),
-    groups_joined: groupRows.rows,
-    groups_owned: ownedGroupRows.rows,
-    groups_with_settings_permission: permissionRows.rows,
-    fees_status: feeRows.rows[0]?.status ?? "not_recorded",
+    groups_joined: canViewPrivateSummary ? groupRows.rows : [],
+    groups_owned: canViewPrivateSummary ? ownedGroupRows.rows : [],
+    groups_with_settings_permission: canViewPrivateSummary ? permissionRows.rows : [],
+    fees_status: canViewPrivateSummary ? feeRows.rows[0]?.status ?? "not_recorded" : null,
     achievement_count: Number(achievementRows.rows[0]?.count ?? 0),
-    lesson_requests_count: Number(lessonRequestRows.rows[0]?.count ?? 0),
+    lesson_requests_count: canViewPrivateSummary ? Number(lessonRequestRows.rows[0]?.count ?? 0) : null,
   });
 });
 
