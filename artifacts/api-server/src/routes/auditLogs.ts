@@ -92,7 +92,7 @@ router.post("/academic-records/transfer-requests", requireAuth, async (req, res)
     "INSERT INTO academic_transfer_requests (learner_id, requested_by, reason) VALUES ($1,$1,$2) RETURNING id, learner_id, reason, status, created_at",
     [user.id, reason],
   );
-  await db.insert(auditLogsTable).values({ performedBy: user.id, action: "transfer_letter.requested", category: "academic", targetType: "transfer_request", targetId: String(result.rows[0].id), details: { status: "pending" } });
+  await db.insert(auditLogsTable).values({ performedBy: user.id, action: "transfer_letter.requested", category: "academic", targetType: "transfer_request", targetId: Number(result.rows[0].id), details: JSON.stringify({ status: "pending" }) });
   res.status(201).json(result.rows[0]);
 });
 
@@ -114,7 +114,7 @@ router.post("/academic-records/transfer-requests/:id/review", requireAuth, async
   if (!Number.isSafeInteger(id) || id < 1 || !["approved","rejected"].includes(status)) { res.status(400).json({ error: "A valid request ID and approved/rejected decision are required." }); return; }
   const result = await pool.query("UPDATE academic_transfer_requests SET status=$1,reviewed_by=$2,review_note=$3,reviewed_at=now(),updated_at=now() WHERE id=$4 AND status='pending' RETURNING id,learner_id,status,review_note,reviewed_by,reviewed_at", [status, reviewer.id, note, id]);
   if (!result.rowCount) { res.status(404).json({ error: "Pending transfer request not found or already reviewed." }); return; }
-  await db.insert(auditLogsTable).values({ performedBy: reviewer.id, action: "transfer_letter.reviewed", category: "academic", targetType: "transfer_request", targetId: String(id), details: { status, note } });
+  await db.insert(auditLogsTable).values({ performedBy: reviewer.id, action: "transfer_letter.reviewed", category: "academic", targetType: "transfer_request", targetId: id, details: JSON.stringify({ status, note }) });
   res.json(result.rows[0]);
 });
 
@@ -195,7 +195,7 @@ router.post("/academic-records/reports/drafts", requireAuth, async (req, res): P
     } catch (error) { res.status(503).json({ error: error instanceof Error ? error.message : "Live AI report drafting unavailable." }); return; }
   }
   const saved = await pool.query("INSERT INTO academic_report_drafts (learner_id,created_by,report_type,term_label,source_snapshot,draft_content) VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb) RETURNING id,learner_id,created_by,report_type,term_label,draft_content,status,created_at", [learnerId, creator.id, reportType, termLabel, JSON.stringify(sourceSnapshot), JSON.stringify(draftContent)]);
-  await db.insert(auditLogsTable).values({ performedBy: creator.id, action: "academic_report.draft_created", category: "academic", targetType: "academic_report_draft", targetId: String(saved.rows[0].id), details: { learnerId, reportType, termLabel, provider } });
+  await db.insert(auditLogsTable).values({ performedBy: creator.id, action: "academic_report.draft_created", category: "academic", targetType: "academic_report_draft", targetId: Number(saved.rows[0].id), details: JSON.stringify({ learnerId, reportType, termLabel, provider }) });
   res.status(201).json(saved.rows[0]);
 });
 
@@ -215,7 +215,7 @@ router.post("/academic-records/reports/drafts/:id/review", requireAuth, async (r
   if (!Number.isSafeInteger(id) || id < 1 || !["approved","rejected"].includes(status)) { res.status(400).json({ error: "A valid draft ID and approved/rejected decision are required." }); return; }
   const result = await pool.query("UPDATE academic_report_drafts SET status=$1,reviewed_by=$2,review_note=$3,reviewed_at=now(),updated_at=now() WHERE id=$4 AND status='pending_review' RETURNING id,learner_id,report_type,term_label,status,reviewed_by,review_note,reviewed_at", [status, reviewer.id, note, id]);
   if (!result.rowCount) { res.status(404).json({ error: "Pending report draft not found or already reviewed." }); return; }
-  await db.insert(auditLogsTable).values({ performedBy: reviewer.id, action: "academic_report.reviewed", category: "academic", targetType: "academic_report_draft", targetId: String(id), details: { status, note } });
+  await db.insert(auditLogsTable).values({ performedBy: reviewer.id, action: "academic_report.reviewed", category: "academic", targetType: "academic_report_draft", targetId: id, details: JSON.stringify({ status, note }) });
   res.json(result.rows[0]);
 });
 
