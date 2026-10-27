@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useRoute } from "wouter";
 import { getApiUrl } from "@workspace/api-client-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
+import UserProfileLink from "@/components/UserProfileLink";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, BookOpen, Video, Headphones, Image as ImageIcon, FileText } from "lucide-react";
