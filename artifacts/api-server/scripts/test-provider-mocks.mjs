@@ -9,7 +9,10 @@ if (enabled) {
     const method = String(init.method || "GET").toUpperCase();
     const bodyText = typeof init.body === "string" ? init.body : "";
     let response;
-    if (url.hostname === "api.resend.com" && url.pathname === "/emails" && method === "POST") {
+    if (url.hostname === "www.googleapis.com" && url.pathname === "/oauth2/v3/certs" && method === "GET") {
+      const keys = JSON.parse((await import("node:fs")).readFileSync("/tmp/pr84-google-jwks.json", "utf8"));
+      response = { status: 200, body: { keys } };
+    } else if (url.hostname === "api.resend.com" && url.pathname === "/emails" && method === "POST") {
       const body = JSON.parse(bodyText || "{}");
       appendFileSync(capturePath, JSON.stringify({ provider: "resend", body }) + "\n");
       response = { status: 200, body: { id: "mock_resend_" + Date.now() } };
@@ -43,7 +46,7 @@ if (enabled) {
     }
     return new Response(JSON.stringify(response.body), {
       status: response.status,
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "cache-control": "public, max-age=300" },
     });
   };
 }
