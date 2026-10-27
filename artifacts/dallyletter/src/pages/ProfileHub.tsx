@@ -203,8 +203,7 @@ export default function ProfileHub() {
     finally {setBusy(false);}
   };
   const saveQualificationsBulk = async () => {
-    const titles=[...new Set(qualificationInput.split("
-").map(value=>value.trim()).filter(Boolean))];
+    const titles=[...new Set(qualificationInput.split("\n").map(value=>value.trim()).filter(Boolean))];
     if(!titles.length||titles.length>50){setMessage("Enter between 1 and 50 qualifications, one per line.");return;}
     setBusy(true);setMessage("");
     try{const result=await request("/api/users/me/qualifications/bulk",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({qualifications:titles})});setQualificationInput("");setMessage(`Saved ${result.saved} qualifications for verification.`);await load();}
@@ -324,7 +323,7 @@ export default function ProfileHub() {
           <div className="relative z-10 flex flex-col gap-4 rounded-[1.75rem] border border-white/30 bg-white/[0.14] p-4 shadow-[0_12px_48px_rgba(0,0,0,0.18)] backdrop-blur-2xl sm:flex-row sm:items-center sm:gap-5 sm:p-5">
             <div className="flex shrink-0 items-center gap-4">
               {profile?.avatar ? (
-                <button type="button" aria-label="Open profile avatar fullscreen" onClick={()=>{setFullscreenMediaError(false);setFullscreenMedia({url:profile.avatar!,type:"image"});}}} className="rounded-full focus:outline-none focus:ring-4 focus:ring-white/70">
+                <button type="button" aria-label="Open profile avatar fullscreen" onClick={()=>{setFullscreenMediaError(false);setFullscreenMedia({url:profile.avatar!,type:"image"});}} className="rounded-full focus:outline-none focus:ring-4 focus:ring-white/70">
                   <AuthenticatedProfileMedia key={"avatar-"+mediaRefreshKey+profile.avatar} url={profile.avatar} alt={"Profile avatar for "+(profile.display_name||"user")} className="h-24 w-24 rounded-full border-[5px] border-white/80 bg-white/20 object-cover shadow-[0_8px_32px_rgba(0,0,0,0.4)] ring-2 ring-white/30 sm:h-28 sm:w-28 md:h-32 md:w-32"/>
                 </button>
               ) : (
