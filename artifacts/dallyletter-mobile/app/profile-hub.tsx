@@ -53,7 +53,8 @@ export default function MobileProfileHub() {
   const [loading,setLoading] = useState(false);
   const [coverBusy,setCoverBusy] = useState(false);
   const [fullscreenMedia,setFullscreenMedia] = useState<Row|null>(null);
-  const fullscreenPlayer = useVideoPlayer(fullscreenMedia?.type?.startsWith("video/") ? fullscreenMedia.url : null, player => { player.loop = false; });
+  const fullscreenPlayer = useVideoPlayer(null, player => { player.loop = false; });
+  useEffect(()=>{ if(fullscreenMedia?.type?.startsWith("video/")){ void fullscreenPlayer.replaceAsync(fullscreenMedia.url).then(()=>fullscreenPlayer.play()).catch(()=>setMessage("This video could not be played on this device.")); } else { fullscreenPlayer.pause(); } },[fullscreenMedia?.url,fullscreenMedia?.type,fullscreenPlayer]);
   const api = useCallback(async(path:string,init:RequestInit={})=>{
     const response=await fetch(getApiUrl(path),{...init,headers:{...(token?{Authorization:"Bearer "+token}:{}),...(init.headers as Record<string,string>||{})}});
     const data=await response.json().catch(()=>({}));
@@ -213,7 +214,7 @@ export default function MobileProfileHub() {
   return <View style={{flex:1,backgroundColor:colors.background,paddingTop:insets.top}}>
     <View style={{backgroundColor:colors.primary}}>
       <TouchableOpacity activeOpacity={0.92} onPress={()=>profile?.cover_url&&setFullscreenMedia({url:profileMediaUrl(profile.cover_url),type:profile.cover_type||"image/*"})} style={{minHeight:150,justifyContent:"flex-end",padding:16,backgroundColor:colors.primary}}>
-        {profile?.cover_url&&(String(profile.cover_type||"").startsWith("video/")?<VideoView player={useVideoPlayer(profileMediaUrl(profile.cover_url),player=>{player.loop=true;player.muted=true;player.play();})} style={{position:"absolute",top:0,left:0,right:0,bottom:0}} contentFit="cover" nativeControls={false}/>:<Image source={{uri:profileMediaUrl(profile.cover_url)}} style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",height:"100%"}} resizeMode="cover"/> )}
+        {profile?.cover_url&&(String(profile.cover_type||"").startsWith("video/")?<View style={{position:"absolute",top:0,left:0,right:0,bottom:0,justifyContent:"center",alignItems:"center",backgroundColor:"#111"}}><Feather name="play-circle" size={48} color="#fff"/><Text style={{color:"#fff",marginTop:6}}>Tap to play cover video</Text></View>:<Image source={{uri:profileMediaUrl(profile.cover_url)}} style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",height:"100%"}} resizeMode="cover"/> )}
         <View style={{backgroundColor:"#0009",padding:10,borderRadius:12,alignSelf:"flex-start"}}><Text style={{fontSize:20,fontWeight:"800",color:"#fff"}}>Profile Hub</Text><Text style={{fontSize:12,color:"#fff"}}>{profile?.display_name||user.name}</Text></View>
       </TouchableOpacity>
       <View style={{padding:14,flexDirection:"row",alignItems:"center",gap:12}}>
