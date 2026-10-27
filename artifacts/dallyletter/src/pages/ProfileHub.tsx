@@ -257,7 +257,8 @@ export default function ProfileHub() {
   };
   const uploadAvatar = async (file?:File) => {
     if(!file)return;
-    if(!["image/jpeg","image/png","image/webp"].includes(file.type)){setMessage("Choose a JPG, PNG or WebP image.");return;}\n    if(file.size>8*1024*1024){setMessage("Profile photos must be 8 MB or smaller.");return;}
+    if(!["image/jpeg","image/png","image/webp"].includes(file.type)){setMessage("Choose a JPG, PNG or WebP image.");return;}
+    if(file.size>8*1024*1024){setMessage("Profile photos must be 8 MB or smaller.");return;}
     const form=new FormData();form.append("file",file);setAvatarBusy(true);setMessage("");
     try{await request("/api/users/me/avatar",{method:"POST",body:form});const fresh=await request("/api/users/"+profileId+"/public-profile");setProfile(p=>p?{...p,...fresh}:fresh);setMessage("Profile photo saved and reloaded from your account.");}
     catch(e){setMessage(e instanceof Error?e.message:"Could not upload profile image.");}
