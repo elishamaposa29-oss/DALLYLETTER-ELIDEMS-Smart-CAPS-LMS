@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
+import UserProfileLink from "@/components/UserProfileLink";
 import { useListClasses, useCreateClass, useUpdateClass, useDeleteClass, useListHandRaises, getApiUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -400,7 +401,7 @@ function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean
         {unresolved.map(hand => (
           <div key={hand.id} className="bg-destructive/5 border border-destructive/20 rounded p-2 text-sm flex items-start gap-2">
             <div className="flex-1">
-              <p className="font-medium">{hand.studentName}</p>
+              <UserProfileLink userId={hand.studentId} name={hand.studentName} className="font-medium" />
               {hand.question && <p className="text-muted-foreground mt-0.5">{hand.question}</p>}
               {hand.mediaUrl && <div className="mt-2"><AuthenticatedMedia
                 url={hand.mediaUrl}
