@@ -133,6 +133,7 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <OfflineQueryCache />
           <AuthProvider>
+            <DailyAttendanceTracker />
             <GestureHandlerRootView style={{ flex: 1 }}>
               <KeyboardProvider><RootLayoutNav /></KeyboardProvider>
             </GestureHandlerRootView>
