@@ -151,7 +151,8 @@ export default function ProfileHub() {
           
           request("/api/users/me/enrollments-summary").catch(()=>null),
           request("/api/achievements/my").catch(()=>[]),
-          request("/api/users/me/enrollments").catch(()=>[]),\n          request("/api/attendance/my").catch(()=>[]),
+          request("/api/users/me/enrollments").catch(()=>[]),
+          request("/api/attendance/my").catch(()=>[]),
           request("/api/users/me/notification-email").catch(()=>({notification_email:null,notification_email_verified_at:null})),
           request("/api/users/me/payout-preferences").catch(()=>({})),
           request("/api/users/me/recovery-profile").catch(()=>({recovery_email:null,recovery_email_verified_at:null})),
