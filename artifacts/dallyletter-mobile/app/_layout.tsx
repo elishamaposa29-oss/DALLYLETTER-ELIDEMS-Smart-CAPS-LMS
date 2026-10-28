@@ -18,6 +18,7 @@ import { DeviceEventEmitter } from "react-native";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { DailyAttendanceTracker } from "@/components/DailyAttendanceTracker";
 
 const DEFAULT_API_BASE_URL = "https://dallyletter-elidems-smart-caps-lms-4.onrender.com";
 function resolveApiBaseUrl() {
