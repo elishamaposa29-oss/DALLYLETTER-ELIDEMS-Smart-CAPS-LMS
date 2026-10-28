@@ -72,7 +72,7 @@ router.post("/open", requireAuth, async (req, res): Promise<void> => {
       [user.id, attendanceDate, label],
     );
     await client.query("COMMIT");
-    res.status(200).json({ ...row, activity_label: label, average_daily_opens: average, attendance_date: String(row.attendance_date).slice(0, 10) });
+    res.status(200).json({ ...row, activity_label: label, average_daily_opens: average, attendance_date: attendanceDate });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
     throw error;
