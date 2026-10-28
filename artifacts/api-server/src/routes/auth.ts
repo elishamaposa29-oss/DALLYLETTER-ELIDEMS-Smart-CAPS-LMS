@@ -408,7 +408,7 @@ router.post("/auth/email-change/request", requireAuth, async (req, res): Promise
   const tokenHash = createHash("sha256").update(token).digest("hex");
   await pool.query("INSERT INTO email_change_requests(user_id,new_email,token_hash,expires_at,created_at) VALUES($1,$2,$3,now()+interval '30 minutes',now()) ON CONFLICT(user_id) DO UPDATE SET new_email=EXCLUDED.new_email,token_hash=EXCLUDED.token_hash,expires_at=EXCLUDED.expires_at,created_at=now()", [actor.id, email, tokenHash]);
   const apiBase = (process.env.PUBLIC_API_URL || process.env.API_BASE_URL || "https://dallyletter-elidems-smart-caps-lms-4.onrender.com").replace(/\/+$/, "");
-  const confirmUrl = apiBase + "/api/auth/email-change/confirm?token=" + encodeURIComponent(token);
+  const confirmUrl = apiBase + "/api/auth/confirm-email-change?token=" + encodeURIComponent(token);
   try {
     await sendEmail({
       to: [email],
@@ -426,11 +426,11 @@ router.post("/auth/email-change/request", requireAuth, async (req, res): Promise
 });
 
 // Opening the email link shows a confirmation page; the account changes only after the user presses Confirm.
-router.get("/auth/email-change/confirm", async (req, res): Promise<void> => {
+router.get("/auth/confirm-email-change", async (req, res): Promise<void> => {
   const token = typeof req.query.token === "string" ? req.query.token : "";
   if (!/^[a-f0-9]{64}$/i.test(token)) { res.status(400).type("html").send("<!doctype html><title>Invalid link</title><p>This email-change link is invalid. Request a new one from Profile Hub.</p>"); return; }
   res.setHeader("Cache-Control", "no-store");
-  res.type("html").send("<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Confirm email change</title></head><body style=\"font-family:system-ui;max-width:34rem;margin:12vh auto;padding:1.5rem\"><h1>Confirm your Dallyletter email change</h1><p>Your current email stays active until you confirm.</p><button id=\"confirm\" style=\"padding:.8rem 1.2rem;font-size:1rem\">Confirm new email</button><p id=\"result\" role=\"status\"></p><script>document.getElementById('confirm').addEventListener('click',async()=>{const b=document.getElementById('confirm'),r=document.getElementById('result');b.disabled=true;r.textContent='Confirming…';try{const response=await fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:new URLSearchParams(location.search).get('token')})});const data=await response.json();r.textContent=data.message||data.error||'Unable to confirm this email change.';if(!response.ok)b.disabled=false;}catch{r.textContent='Could not contact Dallyletter. Please try again.';b.disabled=false;}});</script></body></html>");
+  res.type("html").send("<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Confirm email change</title></head><body style=\"font-family:system-ui;max-width:34rem;margin:12vh auto;padding:1.5rem\"><h1>Confirm your Dallyletter email change</h1><p>Your current email stays active until you confirm.</p><button id=\"confirm\" style=\"padding:.8rem 1.2rem;font-size:1rem\">Confirm new email</button><p id=\"result\" role=\"status\"></p><script>document.getElementById('confirm').addEventListener('click',async()=>{const b=document.getElementById('confirm'),r=document.getElementById('result');b.disabled=true;r.textContent='Confirming…';try{const response=await fetch('/api/auth/email-change/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:new URLSearchParams(location.search).get('token')})});const data=await response.json();r.textContent=data.message||data.error||'Unable to confirm this email change.';if(!response.ok)b.disabled=false;}catch{r.textContent='Could not contact Dallyletter. Please try again.';b.disabled=false;}});</script></body></html>");
 });
 
 router.post("/auth/email-change/confirm", async (req, res): Promise<void> => {
@@ -450,7 +450,7 @@ router.post("/auth/email-change/confirm", async (req, res): Promise<void> => {
   if (!changed.rows.length) { res.status(400).json({ error: "This confirmation link has already been used or expired." }); return; }
   await pool.query("DELETE FROM email_change_requests WHERE user_id=$1 AND token_hash=$2", [request.user_id, tokenHash]);
   await revokeUserSessions(request.user_id);
-  res.json({ message: "Email address confirmed and updated. Please sign in again with your new email address." });
+  res.json({ message: "Email address confirmed and updated. Please sign in again with your new email address.", email: request.new_email });
 });
 
 // POST /auth/password-reset/request — generic response prevents account enumeration.
