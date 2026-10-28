@@ -26,6 +26,7 @@ function safeSystemTimeZone(): string {
 router.post("/open", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser;
   if (!user) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!user) { res.status(401).json({ error: "Authentication required" }); return; }
   const requestedTimeZone = req.body?.timeZone;
   const timeZone = requestedTimeZone === undefined ? safeSystemTimeZone() : requestedTimeZone;
   if (!validTimeZone(timeZone)) {
@@ -82,7 +83,8 @@ router.post("/open", requireAuth, async (req, res): Promise<void> => {
 });
 
 router.get("/me", requireAuth, async (req, res): Promise<void> => {
-  const user = (req as any).user;
+  const user = req.currentUser;
+  if (!user) { res.status(401).json({ error: "Authentication required" }); return; }
   const result = await pool.query(
     `SELECT attendance_date, time_zone, status, open_count, first_open_at, last_open_at, last_source, activity_label
      FROM daily_app_attendance WHERE user_id = $1 ORDER BY attendance_date DESC LIMIT 120`,
@@ -94,7 +96,8 @@ router.get("/me", requireAuth, async (req, res): Promise<void> => {
 // Staff can review daily access for all account roles. A missing record for the
 // current local date is "pending", never falsely presented as confirmed absence.
 router.get("/today", requireAuth, async (req, res): Promise<void> => {
-  const user = (req as any).user;
+  const user = req.currentUser;
+  if (!user) { res.status(401).json({ error: "Authentication required" }); return; }
   if (!canManageAcademicContent(user)) {
     res.status(403).json({ error: "Academic staff access required" });
     return;
