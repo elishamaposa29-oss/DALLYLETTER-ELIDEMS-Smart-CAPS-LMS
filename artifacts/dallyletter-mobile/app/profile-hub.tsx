@@ -38,8 +38,8 @@ export default function MobileProfileHub() {
   const [documents,setDocuments] = useState<Row[]>([]);
   const [documentType,setDocumentType] = useState("certificate");
   const [enrollments,setEnrollments] = useState<Row[]>([]);
-  const [attendance,setAttendance = useState<Row[]>([]);
-  const [attendanceMonth,setAttendanceMonth = useState(()=>new Date(new Date().getFullYear(),new Date().getMonth(),1));
+  const [attendance,setAttendance] = useState<Row[]>([]);
+  const [attendanceMonth,setAttendanceMonth] = useState(()=>new Date(new Date().getFullYear(),new Date().getMonth(),1));
   const [achievements,setAchievements] = useState<Row[]>([]);
   const [email,setEmail] = useState("");
   const [otp,setOtp] = useState("");
