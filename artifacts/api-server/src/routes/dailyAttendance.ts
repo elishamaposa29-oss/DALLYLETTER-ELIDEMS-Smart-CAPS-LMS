@@ -61,7 +61,7 @@ router.post("/open", requireAuth, async (req, res): Promise<void> => {
     const row = result.rows[0];
     const averageResult = await client.query(
       "SELECT COALESCE(AVG(open_count), 1)::numeric AS average_opens FROM daily_app_attendance WHERE attendance_date = $1::date AND status = 'present' AND user_id <> $2",
-      [attendanceDate],
+      [attendanceDate, user.id],
     );
     const average = Number(averageResult.rows[0]?.average_opens ?? 1);
     const highlyActive = Number(row.open_count) >= Math.max(5, Math.ceil(average * 1.5));
