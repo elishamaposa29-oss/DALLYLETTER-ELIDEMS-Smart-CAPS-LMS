@@ -52,6 +52,7 @@ export default function MobileProfileHub() {
   const [message,setMessage] = useState("");
   const [loading,setLoading] = useState(false);
   const [coverBusy,setCoverBusy] = useState(false);
+  const [mediaMenuOpen,setMediaMenuOpen] = useState(false);
   const [mediaRevision,setMediaRevision] = useState(0);
   const [fullscreenMedia,setFullscreenMedia] = useState<Row|null>(null);
   const fullscreenPlayer = useVideoPlayer(null, player => { player.loop = false; });
@@ -237,13 +238,13 @@ export default function MobileProfileHub() {
       <View style={{minHeight:290,borderRadius:24,overflow:"hidden",backgroundColor:colors.primary,justifyContent:"flex-end",borderWidth:1,borderColor:colors.border}}>
         {profile?.cover_url&&(String(profile.cover_type||"").startsWith("video/")?<View style={{position:"absolute",top:0,left:0,right:0,bottom:0,justifyContent:"center",alignItems:"center",backgroundColor:"#111"}}><Feather name="play-circle" size={52} color="#fff"/><Text style={{color:"#fff",marginTop:6,fontWeight:"600"}}>Cover video · tap View cover</Text></View>:<Image key={"cover-"+mediaRevision+profile.cover_url} source={{uri:profileMediaUrl(profile.cover_url),headers:token?{Authorization:"Bearer "+token}:{}}} style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",height:"100%"}} resizeMode="cover"/> )}
         {!profile?.cover_url&&profile?.avatar&&<Image key={"fallback-"+mediaRevision+profile.avatar} source={{uri:profileMediaUrl(profile.avatar),headers:token?{Authorization:"Bearer "+token}:{}}} style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",height:"100%",opacity:0.45}} resizeMode="cover" blurRadius={2}/>}
-        <TouchableOpacity activeOpacity={0.9} onPress={()=>profile?.cover_url&&setFullscreenMedia({url:profileMediaUrl(profile.cover_url),type:profile.cover_type||"image/*"})} style={{position:"absolute",top:0,left:0,right:0,bottom:0,backgroundColor:"#06122555"}} accessibilityLabel="Open profile cover fullscreen"/>
+        <TouchableOpacity activeOpacity={0.9} onPress={()=>profile?.cover_url&&setFullscreenMedia({url:profileMediaUrl(profile.cover_url),type:profile.cover_type||"image/*"})} style={{position:"absolute",top:0,left:0,right:0,bottom:0,backgroundColor:"#06122518"}} accessibilityLabel="Open profile cover fullscreen"/>
         <View style={{position:"absolute",top:12,left:12,right:12,flexDirection:"row",alignItems:"center",justifyContent:"space-between",zIndex:2}}>
           <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={()=>router.back()} style={{width:40,height:40,borderRadius:20,alignItems:"center",justifyContent:"center",backgroundColor:"#ffffff24",borderWidth:1,borderColor:"#ffffff55"}}><Feather name="arrow-left" size={21} color="#fff"/></TouchableOpacity>
           {profile?.cover_url&&<TouchableOpacity accessibilityRole="button" onPress={()=>setFullscreenMedia({url:profileMediaUrl(profile.cover_url!),type:profile.cover_type||"image/*"})} style={{borderRadius:18,borderWidth:1,borderColor:"#ffffff66",backgroundColor:"#07111dbb",paddingHorizontal:12,paddingVertical:8}}><Text style={{fontSize:12,color:"#fff",fontWeight:"700"}}>View cover ⤢</Text></TouchableOpacity>}
         </View>
         <View pointerEvents="box-none" style={{padding:12,zIndex:2}}>
-          <View style={{flexDirection:"row",alignItems:"center",gap:12,borderRadius:22,borderWidth:1,borderColor:"#ffffff66",backgroundColor:"#ffffff24",padding:12}}>
+          <View style={{flexDirection:"row",alignItems:"center",gap:12,borderRadius:22,borderWidth:1,borderColor:"#ffffff40",backgroundColor:"#ffffff0D",padding:12}}>
             <TouchableOpacity onPress={()=>profile?.avatar&&setFullscreenMedia({url:profileMediaUrl(profile.avatar),type:"image"})} accessibilityLabel="Open profile avatar fullscreen" style={{borderRadius:48,borderWidth:3,borderColor:"#ffffffcc",backgroundColor:"#ffffff22"}}>
               {profile?.avatar?<Image key={"avatar-"+mediaRevision+profile.avatar} source={{uri:profileMediaUrl(profile.avatar),headers:token?{Authorization:"Bearer "+token}:{}}} style={{width:84,height:84,borderRadius:42}} resizeMode="cover"/>:<View style={{width:84,height:84,borderRadius:42,alignItems:"center",justifyContent:"center"}}><Feather name="user" size={38} color="#fff"/></View>}
             </TouchableOpacity>
@@ -255,15 +256,23 @@ export default function MobileProfileHub() {
             </View>
             {loading&&<ActivityIndicator color="#fff"/>}
           </View>
-          {isOwn&&<View style={{flexDirection:"row",flexWrap:"wrap",gap:7,marginTop:10,padding:10,borderRadius:18,borderWidth:1,borderColor:"#ffffff44",backgroundColor:"#07111d99"}}>
-            <TouchableOpacity onPress={()=>void pickAvatar("library")} disabled={coverBusy} style={{backgroundColor:"#ffffff22",paddingHorizontal:11,paddingVertical:8,borderRadius:10,borderWidth:1,borderColor:"#ffffff44"}}><Text style={{color:"#fff",fontWeight:"700",fontSize:12}}>Profile photo</Text></TouchableOpacity>
-            <TouchableOpacity onPress={()=>void pickAvatar("camera")} disabled={coverBusy} style={{backgroundColor:"#ffffff22",paddingHorizontal:11,paddingVertical:8,borderRadius:10,borderWidth:1,borderColor:"#ffffff44"}}><Text style={{color:"#fff",fontWeight:"700",fontSize:12}}>Take photo</Text></TouchableOpacity>
-            <TouchableOpacity onPress={()=>void pickCover("library")} disabled={coverBusy} style={{backgroundColor:"#ffffff22",paddingHorizontal:11,paddingVertical:8,borderRadius:10,borderWidth:1,borderColor:"#ffffff44"}}><Text style={{color:"#fff",fontWeight:"700",fontSize:12}}>{coverBusy?"Uploading…":"Cover image/video"}</Text></TouchableOpacity>
-            <TouchableOpacity onPress={()=>void pickCover("camera")} disabled={coverBusy} style={{backgroundColor:"#ffffff22",paddingHorizontal:11,paddingVertical:8,borderRadius:10,borderWidth:1,borderColor:"#ffffff44"}}><Text style={{color:"#fff",fontWeight:"700",fontSize:12}}>Capture cover</Text></TouchableOpacity>
+          {isOwn&&<View style={{position:"absolute",top:12,right:12,zIndex:5}}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Profile media options" onPress={()=>setMediaMenuOpen(true)} style={{width:42,height:42,borderRadius:21,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:"#ffffff66",backgroundColor:"#07111d55"}}><Feather name="more-vertical" size={23} color="#fff"/></TouchableOpacity>
           </View>}
         </View>
       </View>
     </View>
+    <Modal visible={mediaMenuOpen} transparent animationType="fade" onRequestClose={()=>setMediaMenuOpen(false)}>
+      <TouchableOpacity activeOpacity={1} onPress={()=>setMediaMenuOpen(false)} style={{flex:1,backgroundColor:"#00000066",justifyContent:"flex-start",alignItems:"flex-end",paddingTop:insets.top+56,paddingRight:18}}>
+        <View style={{width:250,borderRadius:18,borderWidth:1,borderColor:"#ffffff44",backgroundColor:"#101827F2",padding:8}}>
+          <Text style={{color:"#ffffff99",fontSize:11,fontWeight:"800",letterSpacing:1,paddingHorizontal:12,paddingTop:8,paddingBottom:4}}>PROFILE MEDIA</Text>
+          <TouchableOpacity accessibilityRole="button" onPress={()=>{setMediaMenuOpen(false);void pickAvatar("library");}} disabled={coverBusy} style={{paddingHorizontal:12,paddingVertical:14,borderRadius:12}}><Text style={{color:"#fff",fontSize:15,fontWeight:"600"}}>Change Avatar</Text></TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" onPress={()=>{setMediaMenuOpen(false);void pickAvatar("camera");}} disabled={coverBusy} style={{paddingHorizontal:12,paddingVertical:14,borderRadius:12}}><Text style={{color:"#fff",fontSize:15,fontWeight:"600"}}>Take Photo</Text></TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" onPress={()=>{setMediaMenuOpen(false);void pickCover("library");}} disabled={coverBusy} style={{paddingHorizontal:12,paddingVertical:14,borderRadius:12}}><Text style={{color:"#fff",fontSize:15,fontWeight:"600"}}>Change Cover Image/Video</Text></TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" onPress={()=>{setMediaMenuOpen(false);void pickCover("camera");}} disabled={coverBusy} style={{paddingHorizontal:12,paddingVertical:14,borderRadius:12}}><Text style={{color:"#fff",fontSize:15,fontWeight:"600"}}>Capture Cover Media</Text></TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </Modal>
     <Modal visible={Boolean(fullscreenMedia)} transparent={false} presentationStyle="fullScreen" statusBarTranslucent animationType="fade" onRequestClose={()=>setFullscreenMedia(null)}><View style={{flex:1,width:"100%",height:"100%",backgroundColor:"#000",justifyContent:"center",alignItems:"center",padding:0,margin:0}}><StatusBar hidden backgroundColor="#000"/><TouchableOpacity accessibilityRole="button" accessibilityLabel="Close fullscreen media" onPress={()=>setFullscreenMedia(null)} style={{position:"absolute",top:Platform.OS==="ios"?48:18,right:18,zIndex:10,paddingHorizontal:16,paddingVertical:10,backgroundColor:"#333333bb",borderRadius:24}}><Text style={{color:"#fff",fontWeight:"700"}}>Close ✕</Text></TouchableOpacity>{fullscreenMedia?.type?.startsWith("video/")?<VideoView player={fullscreenPlayer} style={{width:"100%",height:"100%"}} nativeControls contentFit="contain"/>:fullscreenMedia?.url?<TouchableOpacity activeOpacity={1} onPress={()=>setFullscreenMedia(null)} style={{width:"100%",height:"100%",justifyContent:"center",alignItems:"center"}}><Image source={{uri:fullscreenMedia.url,headers:token?{Authorization:"Bearer "+token}:{}}} style={{width:"100%",height:"100%"}} resizeMode="contain"/></TouchableOpacity>:null}</View></Modal>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{padding:10,gap:6,backgroundColor:colors.card}}>
       {TABS.filter(t=>t!=="Qualifications"||["teacher","manager","senior_manager"].includes(String(profile?.role||user.role).toLowerCase())).filter(t=>t!=="Enrollments"||isOwn).map(t=><TouchableOpacity key={t} accessibilityRole="tab" accessibilityState={{selected:tab===t}} onPress={()=>setTab(t)} style={{paddingHorizontal:12,paddingVertical:9,borderRadius:10,backgroundColor:tab===t?colors.primary:colors.background,borderColor:colors.border,borderWidth:1}}><Text style={{fontWeight:"700",color:tab===t?"#fff":colors.foreground}}>{t}</Text></TouchableOpacity>)}
