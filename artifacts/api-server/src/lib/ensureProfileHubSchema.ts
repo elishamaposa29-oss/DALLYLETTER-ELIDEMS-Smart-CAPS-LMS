@@ -182,6 +182,11 @@ export async function ensureProfileHubSchema(): Promise<void> {
     )`);
     await client.query("CREATE INDEX IF NOT EXISTS daily_app_attendance_date_idx ON daily_app_attendance(attendance_date DESC, status)");
     await client.query("CREATE INDEX IF NOT EXISTS daily_app_attendance_user_idx ON daily_app_attendance(user_id, attendance_date DESC)");
+    await client.query(`CREATE TABLE IF NOT EXISTS daily_attendance_feature_state (
+      singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton = true),
+      enabled_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query("INSERT INTO daily_attendance_feature_state (singleton) VALUES (true) ON CONFLICT (singleton) DO NOTHING");
 
     // Legacy CV-to-qualification reconciliation is deliberately NOT run during server startup.
     // It requires a verified staging schema mapping and a separately approved, idempotent job.
