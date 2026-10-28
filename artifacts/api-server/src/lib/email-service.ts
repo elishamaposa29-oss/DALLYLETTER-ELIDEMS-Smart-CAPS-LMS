@@ -25,6 +25,7 @@ export async function sendEmail(input: EmailInput): Promise<{ sent: number; fail
   }
   let sent = 0;
   let failed = 0;
+  let senderDomainUnverified = false;
   for (const recipient of recipients) {
     try {
       const response = await fetch("https://api.resend.com/emails", {
@@ -52,6 +53,9 @@ export async function sendEmail(input: EmailInput): Promise<{ sent: number; fail
         const providerError = typeof providerBody.message === "string"
           ? providerBody.message
           : typeof providerBody.error === "string" ? providerBody.error : "provider_rejected";
+        if (/only send testing emails to your own email address|verify a domain/i.test(providerError)) {
+          senderDomainUnverified = true;
+        }
         // Resend errors explain common setup failures (e.g. testing sender recipient restrictions).
         // Never log API credentials, recipient addresses, or message contents.
         logger.error({
@@ -70,6 +74,9 @@ export async function sendEmail(input: EmailInput): Promise<{ sent: number; fail
   }
   if (failed > 0) {
     logger.error({ event: "email.delivery.incomplete", provider: "resend", sent, failed, subject: input.subject }, "Email delivery was incomplete; at least one recipient did not receive provider acceptance");
+    if (senderDomainUnverified) {
+      throw new Error("Resend is in testing mode. Verify a sending domain in Resend and set EMAIL_FROM to an address on that domain before sending to other recipients.");
+    }
     throw new Error(sent === 0 ? "Email provider rejected every recipient." : "Email delivery was incomplete. Please retry; some recipients may not have received the message.");
   }
   if (sent !== recipients.length) throw new Error("Email delivery could not be confirmed for every recipient.");
