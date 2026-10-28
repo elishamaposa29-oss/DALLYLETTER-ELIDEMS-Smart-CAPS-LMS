@@ -18,9 +18,11 @@ export async function closePreviousAttendanceDay(): Promise<number> {
        SELECT u.id AS user_id,
               COALESCE(p.time_zone, $1) AS time_zone,
               (now() AT TIME ZONE COALESCE(p.time_zone, $1))::date AS today_local,
-              (u.created_at AT TIME ZONE COALESCE(p.time_zone, $1))::date AS created_local
+              (u.created_at AT TIME ZONE COALESCE(p.time_zone, $1))::date AS created_local,
+              (s.enabled_at AT TIME ZONE COALESCE(p.time_zone, $1))::date AS feature_start_local
          FROM users u
          LEFT JOIN user_attendance_preferences p ON p.user_id = u.id
+         CROSS JOIN daily_attendance_feature_state s
         WHERE COALESCE(u.is_blocked, false) = false
      ), absent_days AS (
        INSERT INTO daily_app_attendance
@@ -28,6 +30,7 @@ export async function closePreviousAttendanceDay(): Promise<number> {
        SELECT ld.user_id, ld.today_local - 1, ld.time_zone, 'absent', 0, 'system', 'Absent', now(), now()
          FROM local_days ld
         WHERE ld.created_local < ld.today_local
+          AND ld.today_local - 1 >= ld.feature_start_local
           AND NOT EXISTS (
             SELECT 1 FROM daily_app_attendance d
              WHERE d.user_id = ld.user_id AND d.attendance_date = ld.today_local - 1
