@@ -360,3 +360,79 @@
     inset: -1px;
   }
 }
+
+/* Dallyletter Profile Hub — scoped premium polish; preserves existing workflows. */
+@keyframes dally-profile-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+main:has([aria-label="Profile identity card"]) {
+  --dally-navy: #041b3d;
+  --dally-gold: #f4b400;
+  --dally-green: #22c55e;
+  --dally-red: #ef4444;
+  color: #10213b;
+}
+main:has([aria-label="Profile identity card"]) > * {
+  animation: dally-profile-rise .32s ease-out both;
+}
+main:has([aria-label="Profile identity card"]) > *:nth-child(2) { animation-delay: 35ms; }
+main:has([aria-label="Profile identity card"]) > *:nth-child(3) { animation-delay: 65ms; }
+main:has([aria-label="Profile identity card"]) [aria-label="Profile identity card"] {
+  background-color: var(--dally-navy);
+}
+main:has([aria-label="Profile identity card"]) > div > [data-slot="card"],
+main:has([aria-label="Profile identity card"]) > [data-slot="card"] {
+  border: 1px solid #e4eaf3;
+  border-radius: 1.15rem;
+  box-shadow: 0 8px 28px rgb(4 27 61 / 7%);
+  transition: box-shadow .2s ease, transform .2s ease, border-color .2s ease;
+}
+main:has([aria-label="Profile identity card"]) > div > [data-slot="card"]:hover,
+main:has([aria-label="Profile identity card"]) > [data-slot="card"]:hover {
+  border-color: rgb(244 180 0 / 55%);
+  box-shadow: 0 14px 34px rgb(4 27 61 / 12%);
+}
+main:has([aria-label="Profile identity card"]) [role="tablist"] {
+  padding: .25rem;
+  border-radius: 1rem;
+  background: #f3f6fb;
+}
+main:has([aria-label="Profile identity card"]) [role="tablist"] button[aria-selected="true"] {
+  box-shadow: 0 3px 10px rgb(4 27 61 / 14%);
+}
+main:has([aria-label="Profile identity card"]) input:not([type="file"]),
+main:has([aria-label="Profile identity card"]) select,
+main:has([aria-label="Profile identity card"]) textarea {
+  min-height: 2.65rem;
+  border-color: #d9e1ed;
+  border-radius: .7rem;
+  transition: border-color .18s ease, box-shadow .18s ease;
+}
+main:has([aria-label="Profile identity card"]) input:focus-visible,
+main:has([aria-label="Profile identity card"]) select:focus-visible,
+main:has([aria-label="Profile identity card"]) textarea:focus-visible {
+  outline: 2px solid rgb(244 180 0 / 75%);
+  outline-offset: 1px;
+  border-color: #d39a00;
+  box-shadow: 0 0 0 3px rgb(244 180 0 / 14%);
+}
+main:has([aria-label="Profile identity card"]) button {
+  transition: transform .16s ease, box-shadow .16s ease, background-color .16s ease;
+}
+main:has([aria-label="Profile identity card"]) button:hover:not(:disabled) { transform: translateY(-1px); }
+main:has([aria-label="Profile identity card"]) button:disabled { cursor: not-allowed; opacity: .58; }
+@media (prefers-reduced-motion: reduce) {
+  main:has([aria-label="Profile identity card"]) > * { animation: none !important; }
+  main:has([aria-label="Profile identity card"]) *,
+  main:has([aria-label="Profile identity card"]) *::before,
+  main:has([aria-label="Profile identity card"]) *::after {
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+@media (max-width: 640px) {
+  main:has([aria-label="Profile identity card"]) { padding-left: .75rem; padding-right: .75rem; gap: .85rem; }
+  main:has([aria-label="Profile identity card"]) [aria-label="Profile identity card"] { min-height: 300px; }
+  main:has([aria-label="Profile identity card"]) [aria-label="Profile identity card"] > div:last-child { padding: 1rem; }
+}
