@@ -421,7 +421,7 @@ router.post("/auth/email-change/request", requireAuth, async (req, res): Promise
     await pool.query("DELETE FROM email_change_requests WHERE user_id=$1 AND token_hash=$2", [actor.id, tokenHash]);
     const { logger } = await import("../lib/logger");
     logger.error({ event: "auth.email_change.delivery_failed", userId: actor.id, reason: error instanceof Error ? error.message.slice(0, 200) : "unknown" }, "Email-change confirmation was not sent");
-    res.status(503).json({ error: "The email provider could not send the confirmation. Your current email remains unchanged; verify the sender/domain and recipient permissions, then try again." });
+    res.status(503).json({ error: error instanceof Error && /Resend is in testing mode/i.test(error.message) ? "Email provider setup is blocking delivery: verify a sending domain in Resend and set EMAIL_FROM to an address on that domain. Your current email remains unchanged." : "The email provider could not send the confirmation. Your current email remains unchanged; verify the sender/domain and recipient permissions, then try again." });
   }
 });
 
