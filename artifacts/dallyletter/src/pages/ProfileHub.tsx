@@ -347,7 +347,7 @@ export default function ProfileHub() {
   };
   if(!user) return <DashboardLayout><div className="p-6">Sign in to view profiles.</div></DashboardLayout>;
   return <DashboardLayout><main className="mx-auto max-w-5xl space-y-5 p-4 md:p-6">
-    <Card className="overflow-hidden rounded-3xl border border-white/40 bg-white/70 shadow-[0_24px_80px_rgba(15,23,42,0.16)] backdrop-blur-xl dark:bg-slate-950/60">
+    <Card className="overflow-hidden rounded-3xl border border-white/30 bg-transparent shadow-[0_24px_80px_rgba(15,23,42,0.16)] backdrop-blur-none">
       <section aria-label="Profile identity card" className="relative isolate min-h-[340px] overflow-hidden bg-gradient-to-br from-slate-800 via-indigo-900 to-slate-950 text-white sm:min-h-[380px]">
         <div className="absolute inset-0 z-0">
           {profile?.cover_url ? (
@@ -360,7 +360,7 @@ export default function ProfileHub() {
             <AuthenticatedProfileMedia key={"cover-fallback-"+mediaRefreshKey+profile.avatar} url={profile.avatar} decorative className="h-full w-full scale-105 object-cover opacity-50 blur-sm"/>
           ) : null}
         </div>
-        <div aria-hidden="true" className="absolute inset-0 z-[1] bg-gradient-to-t from-slate-950/55 via-slate-950/15 to-transparent"/>
+        <div aria-hidden="true" className="absolute inset-0 z-[1] bg-gradient-to-t from-slate-950/20 via-slate-950/5 to-transparent"/>
         {profile?.cover_url&&<button type="button" onClick={()=>openFullscreenMedia({url:profile.cover_url!,type:String(profile.cover_type||"image")})} aria-label="Open profile cover fullscreen" className="absolute inset-0 z-[2] cursor-zoom-in"/>}
         <div className="relative z-10 flex min-h-[340px] flex-col justify-end p-4 sm:min-h-[380px] sm:p-7 md:p-9">
           <div className="mb-4 flex items-center justify-between gap-3">
@@ -382,12 +382,12 @@ export default function ProfileHub() {
               <h1 className="mt-1 break-words text-2xl font-bold leading-tight tracking-tight text-white drop-shadow sm:text-3xl">{profile?.display_name||"Profile Hub"}</h1>
               <p className="mt-2 text-sm text-white/85">{isOwner?"Manage your profile and professional records":"Public profile"}</p>
               {profile?.bio&&<p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/90">{profile.bio}</p>}
-              {isOwner&&<div className="mt-4 flex flex-wrap gap-2 border-t border-white/20 pt-4">
+              {isOwner&&<div className="mt-4 grid grid-cols-2 gap-2 border-t border-white/20 pt-4 sm:flex sm:flex-wrap">
                 <button type="button" disabled={avatarBusy} onClick={()=>avatarFileRef.current?.click()} className="inline-flex min-h-10 w-full items-center justify-center whitespace-normal rounded-xl border border-white/45 bg-slate-900/35 px-3 py-2 text-center text-sm font-semibold leading-tight text-white shadow-sm transition hover:bg-slate-900/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 sm:w-auto">{avatarBusy?"Uploading photo…":"Change avatar"}</button>
                 <input ref={avatarFileRef} className="hidden" type="file" accept="image/jpeg,image/png,image/webp" disabled={avatarBusy} onChange={e=>void uploadAvatar(e.target.files?.[0])}/>
                 <button type="button" disabled={avatarBusy} onClick={()=>avatarCameraRef.current?.click()} className="inline-flex min-h-10 w-full items-center justify-center whitespace-normal rounded-xl border border-white/45 bg-slate-900/35 px-3 py-2 text-center text-sm font-semibold leading-tight text-white shadow-sm transition hover:bg-slate-900/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 sm:w-auto">{avatarBusy?"Camera busy":"Take photo"}</button>
                 <input ref={avatarCameraRef} className="hidden" type="file" accept="image/*" capture="user" disabled={avatarBusy} onChange={e=>void uploadAvatar(e.target.files?.[0])}/>
-                <button type="button" disabled={coverBusy} onClick={()=>coverFileRef.current?.click()} className="inline-flex min-h-10 items-center justify-center rounded-xl border border-white/35 bg-white/10 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80">{coverBusy?"Uploading cover…":"Change cover image/video"}</button>
+                <button type="button" disabled={coverBusy} onClick={()=>coverFileRef.current?.click()} className="inline-flex min-h-10 w-full items-center justify-center whitespace-normal rounded-xl border border-white/45 bg-slate-900/35 px-3 py-2 text-center text-sm font-semibold leading-tight text-white shadow-sm transition hover:bg-slate-900/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 sm:w-auto">{coverBusy?"Uploading cover…":"Change cover image/video"}</button>
                 <input ref={coverFileRef} className="hidden" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" disabled={coverBusy} onChange={e=>void uploadCover(e.target.files?.[0])}/>
                 <button type="button" disabled={coverBusy} onClick={()=>coverCameraRef.current?.click()} className="inline-flex min-h-10 items-center justify-center rounded-xl border border-white/35 bg-white/10 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80">{coverBusy?"Camera busy":"Capture cover media"}</button>
                 <input ref={coverCameraRef} className="hidden" type="file" accept="image/*,video/*" capture="environment" disabled={coverBusy} onChange={e=>void uploadCover(e.target.files?.[0])}/>
