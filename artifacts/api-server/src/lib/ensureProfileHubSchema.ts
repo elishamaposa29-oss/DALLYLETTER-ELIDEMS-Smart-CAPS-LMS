@@ -159,6 +159,35 @@ export async function ensureProfileHubSchema(): Promise<void> {
     await client.query("CREATE INDEX IF NOT EXISTS academic_report_drafts_learner_idx ON academic_report_drafts(learner_id, created_at DESC)");
     await client.query("CREATE INDEX IF NOT EXISTS academic_report_drafts_review_idx ON academic_report_drafts(status, created_at DESC)");
 
+    // Additive daily app-access attendance. Separate from class-session attendance.
+    await client.query(`CREATE TABLE IF NOT EXISTS user_attendance_preferences (
+      user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      time_zone text NOT NULL,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query(`CREATE TABLE IF NOT EXISTS daily_app_attendance (
+      user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      attendance_date date NOT NULL,
+      time_zone text NOT NULL,
+      status text NOT NULL CHECK (status IN ('present','absent')),
+      open_count integer NOT NULL DEFAULT 0 CHECK (open_count >= 0),
+      first_open_at timestamptz,
+      last_open_at timestamptz,
+      last_source text NOT NULL DEFAULT 'web' CHECK (last_source IN ('web','android','other','system')),
+      activity_label text NOT NULL DEFAULT 'Absent',
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (user_id, attendance_date),
+      CHECK ((status = 'present' AND open_count >= 1 AND first_open_at IS NOT NULL) OR status = 'absent')
+    )`);
+    await client.query("CREATE INDEX IF NOT EXISTS daily_app_attendance_date_idx ON daily_app_attendance(attendance_date DESC, status)");
+    await client.query("CREATE INDEX IF NOT EXISTS daily_app_attendance_user_idx ON daily_app_attendance(user_id, attendance_date DESC)");
+    await client.query(`CREATE TABLE IF NOT EXISTS daily_attendance_feature_state (
+      singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton = true),
+      enabled_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query("INSERT INTO daily_attendance_feature_state (singleton) VALUES (true) ON CONFLICT (singleton) DO NOTHING");
+
     // Legacy CV-to-qualification reconciliation is deliberately NOT run during server startup.
     // It requires a verified staging schema mapping and a separately approved, idempotent job.
     await client.query("COMMIT");
