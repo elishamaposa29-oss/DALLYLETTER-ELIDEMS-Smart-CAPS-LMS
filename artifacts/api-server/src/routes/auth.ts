@@ -12,7 +12,7 @@ import { sendEmail, isEmailConfigured } from "../lib/email-service";
 
 
 type GoogleJwtHeader = { alg?: string; kid?: string; typ?: string };
-type GoogleJwtClaims = { aud?: string | string[]; iss?: string; sub?: string; email?: string; email_verified?: string | boolean; name?: string; exp?: number; iat?: number };
+type GoogleJwtClaims = { aud?: string | string[]; azp?: string; iss?: string; sub?: string; email?: string; email_verified?: string | boolean; name?: string; exp?: number; iat?: number };
 type GoogleJwk = { kid: string; kty: string; alg?: string; use?: string; n: string; e: string };
 let googleJwksCache: { keys: GoogleJwk[]; expiresAt: number } | undefined;
 
@@ -41,6 +41,8 @@ async function verifyGoogleIdToken(credential: string, expectedClientId: string)
   const now = Math.floor(Date.now() / 1000);
   const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
   if (!audiences.includes(expectedClientId)
+      || (claims.azp !== undefined && claims.azp !== expectedClientId)
+      || (audiences.length > 1 && claims.azp !== expectedClientId)
       || !["accounts.google.com", "https://accounts.google.com"].includes(String(claims.iss))
       || typeof claims.sub !== "string" || claims.sub.length === 0 || claims.sub.length > 255
       || typeof claims.email !== "string" || claims.email.length > 254
