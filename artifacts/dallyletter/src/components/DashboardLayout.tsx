@@ -216,6 +216,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     ];
   }
 
+  // Keep Profile Hub visible in every role menu; avatar is a second shortcut.
+  navItems.splice(Math.min(1, navItems.length), 0, { label: "Profile Hub", href: "/profile-hub", icon: Users });
+
   const homeHref = ["student","prefect"].includes(normalizedRole) ? "/" : normalizedRole === "teacher" ? "/teacher" : ["manager","senior_manager"].includes(normalizedRole) ? "/manager" : "/admin";
 
   const NavLinks = ({ onNav }: { onNav?: () => void }) => {
@@ -269,10 +272,11 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       </div>
 
       <div className="mx-4 mb-4">
-        <div className="bg-white/8 border border-white/10 rounded-xl p-3 flex items-center gap-3">
-          <div className={`h-10 w-10 rounded-xl bg-gradient-to-br ${roleColors[normalizedRole] || "from-slate-600 to-slate-800"} flex items-center justify-center text-white font-bold text-base shadow-lg shrink-0`}>
-            {user.avatarUrl ? <AuthenticatedAvatar url={user.avatarUrl} name={user.name} /> : user.name.charAt(0).toUpperCase()}
-          </div>
+          <Link href="/profile-hub" aria-label="Open your Profile Hub" className="block h-10 w-10 shrink-0 rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-400">
+            <div className={`h-10 w-10 rounded-xl bg-gradient-to-br ${roleColors[normalizedRole] || "from-slate-600 to-slate-800"} flex items-center justify-center text-white font-bold text-base shadow-lg`}>
+              {user.avatarUrl ? <AuthenticatedAvatar url={user.avatarUrl} name={user.name} /> : user.name.charAt(0).toUpperCase()}
+            </div>
+          </Link>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-white truncate">{user.name}</p>\n            <ProfileImageUpload />
             <PushDeliveryTest />
