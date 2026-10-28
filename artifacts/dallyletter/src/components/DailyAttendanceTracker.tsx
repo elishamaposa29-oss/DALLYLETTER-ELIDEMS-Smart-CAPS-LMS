@@ -1,33 +1,41 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { getApiUrl } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 
-/** Records one authenticated app-open event per browser app mount, not per route/API call. */
+/** Record a signed-in app-open and count returning to a visible browser tab as another open. */
 export function DailyAttendanceTracker() {
   const { user } = useAuth();
-  const sentForUser = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!user?.id) {
-      sentForUser.current = null;
-      return;
-    }
-    if (sentForUser.current === user.id) return;
+    if (!user?.id) return;
     const token = localStorage.getItem("dallyletter_token");
     if (!token) return;
-    sentForUser.current = user.id;
-    let timeZone = "UTC";
-    try { timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch { /* use UTC */ }
-    void fetch(getApiUrl("/api/daily-attendance/open"), {
-      method: "POST",
-      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-      body: JSON.stringify({ timeZone, source: "web" }),
-    }).then(response => {
-      if (!response.ok) sentForUser.current = null;
-    }).catch(() => {
-      // Attendance is best-effort during a network outage; a later app remount retries.
-      sentForUser.current = null;
-    });
+
+    let disposed = false;
+    let requestInFlight = false;
+    const recordOpen = () => {
+      if (disposed || requestInFlight) return;
+      requestInFlight = true;
+      let timeZone = "UTC";
+      try { timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch { /* use UTC */ }
+      void fetch(getApiUrl("/api/daily-attendance/open"), {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify({ timeZone, source: "web" }),
+      }).catch(() => {
+        // Attendance is best-effort during a network outage; the next foreground open retries.
+      }).finally(() => { requestInFlight = false; });
+    };
+
+    recordOpen();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") recordOpen();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      disposed = true;
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [user?.id]);
 
   return null;
