@@ -7,8 +7,18 @@ import { canManageAcademicContent, requireAuth } from "../lib/auth-middleware";
 const router = Router();
 
 router.get("/class/:classId", requireAuth, async (req, res): Promise<void> => {
+  const user = (req as any).user;
+  if (!canManageAcademicContent(user)) {
+    res.status(403).json({ error: "Academic staff access required" });
+    return;
+  }
+  const classId = Number(req.params.classId);
+  if (!Number.isSafeInteger(classId) || classId <= 0) {
+    res.status(400).json({ error: "Invalid class ID" });
+    return;
+  }
   const rows = await db.select().from(attendanceTable)
-    .where(eq(attendanceTable.classId, parseInt(String(req.params.classId))))
+    .where(eq(attendanceTable.classId, classId))
     .orderBy(desc(attendanceTable.joinedAt));
   res.json(rows);
 });
@@ -23,8 +33,15 @@ router.get("/my", requireAuth, async (req, res): Promise<void> => {
 
 router.get("/student/:studentId", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
-  const studentId = parseInt(String(req.params.studentId));
-  if (user.role === "student" && user.id !== studentId) { res.status(403).json({ error: "Forbidden" }); return; }
+  const studentId = Number(req.params.studentId);
+  if (!Number.isSafeInteger(studentId) || studentId <= 0) {
+    res.status(400).json({ error: "Invalid student ID" });
+    return;
+  }
+  if (user.id !== studentId && !canManageAcademicContent(user)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
   const rows = await db.select().from(attendanceTable)
     .where(eq(attendanceTable.studentId, studentId))
     .orderBy(desc(attendanceTable.joinedAt));
@@ -59,13 +76,23 @@ router.put("/:id/status", requireAuth, async (req, res): Promise<void> => {
 });
 
 router.put("/:id/leave", requireAuth, async (req, res): Promise<void> => {
-  const leftAt = new Date();
-  const [row] = await db.select().from(attendanceTable).where(eq(attendanceTable.id, parseInt(String(req.params.id))));
+  const user = (req as any).user;
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    res.status(400).json({ error: "Invalid attendance ID" });
+    return;
+  }
+  const [row] = await db.select().from(attendanceTable).where(eq(attendanceTable.id, id));
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
-  const durationMs = leftAt.getTime() - new Date(row.joinedAt).getTime();
+  if (user.id !== row.studentId && !canManageAcademicContent(user)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const leftAt = new Date();
+  const durationMs = Math.max(0, leftAt.getTime() - new Date(row.joinedAt).getTime());
   const durationMinutes = Math.round(durationMs / 60000);
   const [updated] = await db.update(attendanceTable)
-    .set({ leftAt, durationMinutes }).where(eq(attendanceTable.id, parseInt(String(req.params.id)))).returning();
+    .set({ leftAt, durationMinutes }).where(eq(attendanceTable.id, id)).returning();
   res.json(updated);
 });
 
