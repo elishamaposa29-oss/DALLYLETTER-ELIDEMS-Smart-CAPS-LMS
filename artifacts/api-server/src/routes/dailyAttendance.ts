@@ -24,7 +24,8 @@ function safeSystemTimeZone(): string {
 }
 
 router.post("/open", requireAuth, async (req, res): Promise<void> => {
-  const user = (req as any).user;
+  const user = req.currentUser;
+  if (!user) { res.status(401).json({ error: "Authentication required" }); return; }
   const requestedTimeZone = req.body?.timeZone;
   const timeZone = requestedTimeZone === undefined ? safeSystemTimeZone() : requestedTimeZone;
   if (!validTimeZone(timeZone)) {
