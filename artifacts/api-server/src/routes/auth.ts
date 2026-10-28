@@ -410,7 +410,7 @@ router.post("/auth/password-reset/request", async (req, res): Promise<void> => {
       const recovery = await pool.query("SELECT recovery_email FROM account_recovery_profiles WHERE user_id = $1 AND recovery_email_verified_at IS NOT NULL", [user.id]);
       const recoveryEmail = recovery.rows[0]?.recovery_email as string | undefined;
       const recipients = [...new Set([user.email, ...(recoveryEmail ? [recoveryEmail] : [])])];
-      const baseUrl = (process.env.PUBLIC_APP_URL ?? process.env.APP_BASE_URL ?? "https://dallyletterelidemslearningplatformelishamaposa1-otbtqe1pf.vercel.app").replace(/\/$/, "");
+      const baseUrl = (process.env.PUBLIC_APP_URL ?? process.env.APP_BASE_URL ?? "https://dallyletter-elidems-onlineschoolbye.vercel.app").replace(/\/$/, "");
       await sendEmail({
         to: recipients,
         subject: "Reset your Dallyletter Elidems password",
