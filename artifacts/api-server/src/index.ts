@@ -6,6 +6,7 @@ import { startTeacherLifecycle } from "./lib/teacher-lifecycle";
 import { ensureAuthSessionSchema } from "./lib/auth-session-store";
 import { ensureProfileHubSchema } from "./lib/ensureProfileHubSchema";
 import { startEmailNotificationDispatcher } from "./lib/email-notification-queue";
+import { startDailyAttendanceLifecycle } from "./lib/daily-attendance-lifecycle";
 
 const rawPort = process.env["PORT"] ?? process.env["API_PORT"] ?? "4000";
 
@@ -27,6 +28,7 @@ async function startServer(): Promise<void> {
     logger.info("Connect/social schema verified");
     startPushDispatcher();
     startTeacherLifecycle();
+    startDailyAttendanceLifecycle();
   } catch (error) {
     logger.error({ err: error }, "Database schema verification failed; refusing to serve traffic");
     process.exit(1);

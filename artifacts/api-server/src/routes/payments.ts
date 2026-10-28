@@ -200,7 +200,8 @@ router.get("/payments/:id", requireAuth, async (req, res): Promise<void> => {
   }
 
   const [payment] = await db.select().from(paymentsTable).where(eq(paymentsTable.id, params.data.id));
-  if (!payment) {
+  if (!payment || (!["owner", "teacher"].includes(String(req.currentUser!.role).toLowerCase()) && Number(payment.studentId) !== Number(req.currentUser!.id))) {
+    // Do not reveal whether another learner's payment ID exists.
     res.status(404).json({ error: "Payment not found" });
     return;
   }
