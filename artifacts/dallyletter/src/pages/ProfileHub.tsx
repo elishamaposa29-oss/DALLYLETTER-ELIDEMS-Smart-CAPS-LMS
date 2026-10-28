@@ -67,7 +67,9 @@ export default function ProfileHub() {
   const [summary,setSummary] = useState<any>(null);
   const [achievements,setAchievements] = useState<any[]>([]);
   const [moderationQueue,setModerationQueue] = useState<any[]>([]);
-  const [enrollments,setEnrollments] = useState<any[]>([]);\n  const [attendance,setAttendance] = useState<any[]>([]);\n  const [attendanceMonth,setAttendanceMonth] = useState(()=>new Date(new Date().getFullYear(),new Date().getMonth(),1));
+  const [enrollments,setEnrollments] = useState<any[]>([]);
+  const [attendance,setAttendance] = useState<any[]>([]);
+  const [attendanceMonth,setAttendanceMonth] = useState(()=>new Date(new Date().getFullYear(),new Date().getMonth(),1));
   const [notificationEmail,setNotificationEmail] = useState("");
   const [primaryEmailInput,setPrimaryEmailInput] = useState("");
   const [emailChangePassword,setEmailChangePassword] = useState("");
