@@ -272,39 +272,25 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       </div>
 
       <div className="mx-4 mb-4">
+        <div className="bg-white/8 border border-white/10 rounded-xl p-3 flex items-center gap-3">
           <Link href="/profile-hub" aria-label="Open your Profile Hub" className="block h-10 w-10 shrink-0 rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-400">
             <div className={`h-10 w-10 rounded-xl bg-gradient-to-br ${roleColors[normalizedRole] || "from-slate-600 to-slate-800"} flex items-center justify-center text-white font-bold text-base shadow-lg`}>
               {user.avatarUrl ? <AuthenticatedAvatar url={user.avatarUrl} name={user.name} /> : user.name.charAt(0).toUpperCase()}
             </div>
           </Link>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-white truncate">{user.name}</p>\n            <ProfileImageUpload />
+            <Link href="/profile-hub" className="block text-sm font-semibold text-white truncate hover:text-amber-300" aria-label="Open your Profile Hub">{user.name}</Link>
+            <ProfileImageUpload />
             <PushDeliveryTest />
             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
               <span className="text-xs text-white/50">{roleLabels[normalizedRole] || user.role}</span>
-              {user.isPrefect && (
-                <span className="inline-flex items-center text-[9px] font-bold bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full border border-amber-500/30">
-                  <Shield className="w-2.5 h-2.5 mr-0.5" />PREFECT
-                </span>
-              )}
-              {(user as any).isManager && (
-                <span className="inline-flex items-center text-[9px] font-bold bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded-full border border-purple-500/30">
-                  <Briefcase className="w-2.5 h-2.5 mr-0.5" />MGR
-                </span>
-              )}
+              {user.isPrefect && <span className="inline-flex items-center text-[9px] font-bold bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full border border-amber-500/30"><Shield className="w-2.5 h-2.5 mr-0.5" />PREFECT</span>}
+              {(user as any).isManager && <span className="inline-flex items-center text-[9px] font-bold bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded-full border border-purple-500/30"><Briefcase className="w-2.5 h-2.5 mr-0.5" />MGR</span>}
             </div>
-            {["student","prefect"].includes(String(user.role||"").toLowerCase().replace(/[ -]+/g,"_")) && (user as any).performanceScore != null && (
-              <div className="flex items-center gap-1 mt-1">
-                <Flame className="h-2.5 w-2.5 text-orange-400" />
-                <span className="text-[9px] text-white/40">{(user as any).streakDays ?? 0}d · </span>
-                <Star className="h-2.5 w-2.5 text-amber-400" />
-                <span className="text-[9px] text-white/40">{(user as any).performanceScore ?? 0} pts</span>
-              </div>
-            )}
+            {["student","prefect"].includes(String(user.role||"").toLowerCase().replace(/[ -]+/g,"_")) && (user as any).performanceScore != null && <div className="flex items-center gap-1 mt-1"><Flame className="h-2.5 w-2.5 text-orange-400" /><span className="text-[9px] text-white/40">{(user as any).streakDays ?? 0}d · </span><Star className="h-2.5 w-2.5 text-amber-400" /><span className="text-[9px] text-white/40">{(user as any).performanceScore ?? 0} pts</span></div>}
           </div>
         </div>
       </div>
-
       <nav className="flex-1 overflow-y-auto px-4 scrollbar-none">
         <NavLinks onNav={onNav} />
       </nav>
