@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { getApiUrl, useLogoutUser } from "@workspace/api-client-react";
 import {
   BookOpen, Users, Video, MessageSquare, CreditCard, Bell, LogOut, Home,
-  Shield, Menu, GraduationCap, Settings, Sparkles, ClipboardList, Star,
+  Shield, Menu, GraduationCap, Settings, Sparkles, ClipboardList, Star, EllipsisVertical,
   ScrollText, Trophy, AlertTriangle, DollarSign, BarChart3, Briefcase,
   Flame, Send, ImagePlus,
 } from "lucide-react";
@@ -135,6 +135,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   if (["student","prefect"].includes(normalizedRole)) {
     navItems = [
       { label: "Dashboard", href: "/", icon: Home, section: "Main" },
+      { label: "Profile Hub", href: "/profile-hub", icon: Users },
       { label: "Feature Preview Center", href: "/features", icon: Sparkles },
       { label: "Lessons", href: "/student/lessons", icon: BookOpen },
       { label: "Exercises & Drawing", href: "/student/exercises", icon: ClipboardList },
@@ -157,6 +158,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   } else if (normalizedRole === "teacher") {
     navItems = [
       { label: "Dashboard", href: "/teacher", icon: Home, section: "Main" },
+      { label: "Profile Hub", href: "/profile-hub", icon: Users },
       { label: "Feature Preview Center", href: "/features", icon: Sparkles },
       { label: "My Lessons", href: "/teacher/lessons", icon: BookOpen },
       { label: "Qualifications & CV", href: "/teacher/qualifications", icon: GraduationCap },
@@ -180,6 +182,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   } else if (["manager","senior_manager"].includes(normalizedRole)) {
     navItems = [
       { label: "Manager Dashboard", href: "/manager", icon: Home, section: "Management" },
+      { label: "Profile Hub", href: "/profile-hub", icon: Users },
       { label: "Feature Preview Center", href: "/features", icon: Sparkles },
       { label: "Monitor Teachers", href: "/manager/teachers", icon: GraduationCap },
       { label: "Monitor Students", href: "/manager/students", icon: Users },
@@ -192,6 +195,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   } else if (["owner","admin","platform_owner"].includes(normalizedRole)) {
     navItems = [
       { label: "Overview", href: "/admin", icon: Home, section: "Platform" },
+      { label: "Profile Hub", href: "/profile-hub", icon: Users },
       { label: "Feature Preview Center", href: "/features", icon: Sparkles },
       { label: "Owner Command Center", href: "/admin/command-center", icon: Briefcase },
       { label: "Users", href: "/admin/users", icon: Users },
@@ -270,11 +274,12 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
       <div className="mx-4 mb-4">
         <div className="bg-white/8 border border-white/10 rounded-xl p-3 flex items-center gap-3">
-          <div className={`h-10 w-10 rounded-xl bg-gradient-to-br ${roleColors[normalizedRole] || "from-slate-600 to-slate-800"} flex items-center justify-center text-white font-bold text-base shadow-lg shrink-0`}>
+          <Link href="/profile-hub" aria-label="Open your Profile Hub" title="Open your Profile Hub" className={`h-10 w-10 overflow-hidden rounded-xl bg-gradient-to-br ${roleColors[normalizedRole] || "from-slate-600 to-slate-800"} flex items-center justify-center text-white font-bold text-base shadow-lg shrink-0 ring-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300`}>
             {user.avatarUrl ? <AuthenticatedAvatar url={user.avatarUrl} name={user.name} /> : user.name.charAt(0).toUpperCase()}
-          </div>
+          </Link>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-white truncate">{user.name}</p>\n            <ProfileImageUpload />
+            <Link href="/profile-hub" className="block text-sm font-semibold text-white truncate hover:text-amber-200 focus-visible:underline">{user.name}</Link>
+            <div className="flex items-center justify-between gap-2"><ProfileImageUpload /><Link href="/profile-hub" aria-label="More profile actions" title="Open Profile Hub" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white/75 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"><EllipsisVertical className="h-5 w-5" /></Link></div>
             <PushDeliveryTest />
             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
               <span className="text-xs text-white/50">{roleLabels[normalizedRole] || user.role}</span>
