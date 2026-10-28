@@ -278,7 +278,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             {user.avatarUrl ? <AuthenticatedAvatar url={user.avatarUrl} name={user.name} /> : user.name.charAt(0).toUpperCase()}
           </Link>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-white truncate">{user.name}</p>\n            <ProfileImageUpload />
+            <Link href="/profile-hub" className="block text-sm font-semibold text-white truncate hover:text-amber-200 focus-visible:underline">{user.name}</Link>
+            <div className="flex items-center justify-between gap-2"><ProfileImageUpload /><Link href="/profile-hub" aria-label="More profile actions" title="Open Profile Hub" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white/75 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"><EllipsisVertical className="h-5 w-5" /></Link></div>
             <PushDeliveryTest />
             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
               <span className="text-xs text-white/50">{roleLabels[normalizedRole] || user.role}</span>
