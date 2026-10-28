@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { db, usersTable, pool } from "@workspace/db";
 import { requireAuth } from "../lib/auth-middleware";
 import { verifyPassword } from "../lib/password-hash";
-import { consumeAuthAttempt, revokeUserSessions } from "../lib/auth-session-store";
+import { consumeAuthAttempt } from "../lib/auth-session-store";
 import { isEmailConfigured, sendEmail } from "../lib/email-service";
 
 const router: IRouter = Router();
@@ -98,8 +98,10 @@ router.post("/auth/email-change/request", requireAuth, async (req, res): Promise
   if (!current || !(await verifyPassword(currentPassword, current.passwordHash)).valid) {
     res.status(401).json({ error: "Current password is incorrect." }); return;
   }
-  const duplicate = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, email));
-  if (duplicate.length) { res.status(409).json({ error: "That email address is already associated with an account." }); return; }
+  // Enforce case-insensitive uniqueness here even if the legacy database has a
+  // case-sensitive unique constraint on users.email.
+  const duplicate = await pool.query("SELECT id FROM users WHERE lower(email)=lower($1) LIMIT 1", [email]);
+  if (duplicate.rows.length) { res.status(409).json({ error: "That email address is already associated with an account." }); return; }
   const baseUrl = appUrl();
   if (!baseUrl) { res.status(503).json({ error: "PUBLIC_APP_URL must be configured before email changes can be confirmed." }); return; }
   const raw = await issueToken(actor.id, "email_change", email);
@@ -144,8 +146,10 @@ router.post("/auth/email-change/confirm", async (req, res): Promise<void> => {
       "INSERT INTO account_email_status (user_id,email,verified_at,updated_at) VALUES ($1,$2,now(),now()) ON CONFLICT (user_id) DO UPDATE SET email=EXCLUDED.email,verified_at=now(),updated_at=now()",
       [userId, row.email],
     );
+    // Revoke every active session in the same transaction as the email change.
+    // If either write fails, both the email update and revocation roll back together.
+    await client.query("UPDATE auth_sessions SET revoked_at=COALESCE(revoked_at,now()) WHERE user_id=$1", [userId]);
     await client.query("COMMIT");
-    await revokeUserSessions(userId);
     res.json({ changed: true, email: row.email, message: "Email address changed and verified. Sign in again with the new address." });
   } catch {
     await client.query("ROLLBACK").catch(() => undefined);
