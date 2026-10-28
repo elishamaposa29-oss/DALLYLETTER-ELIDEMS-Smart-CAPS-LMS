@@ -1,9 +1,9 @@
 services:
   - type: web
-    name: dallyletter-api-staging
+    name: DALLYLETTER-ELIDEMS-STAGING-PR84
     env: node
-    plan: starter
-    branch: staging
+    plan: free
+    branch: feat/profile-hub-secure-foundation
     autoDeploy: false
     rootDir: artifacts/api-server
     buildCommand: pnpm install --frozen-lockfile && pnpm build
@@ -18,8 +18,22 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: PUBLIC_APP_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM_NUMBER
+        sync: false
       - key: CORS_ORIGINS
-        value: https://dallyletter-web.onrender.com,https://your-frontend-domain.com
+        value: https://dallyletter-web.onrender.com
   - type: web
     name: dallyletter-api-production
     env: node

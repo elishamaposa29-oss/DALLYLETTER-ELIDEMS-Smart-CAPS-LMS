@@ -1,4 +1,5 @@
 import { getApiUrl } from "@workspace/api-client-react";
+import { Link } from "wouter";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -76,13 +77,13 @@ export default function ManagerTeachers() {
               <Card key={t.id} className="border-0 shadow-sm" onClick={() => void openMonitor(t)}>
                 <CardContent className="p-4">
                   <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center text-white font-bold text-lg shrink-0">
+                    <Link href={`/profile/${t.id}`} onClick={e=>e.stopPropagation()} aria-label={`Open ${t.name} profile`} className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center text-white font-bold text-lg shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                       {t.name.charAt(0)}
-                    </div>
+                    </Link>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         {i < 3 && <Star className="h-3.5 w-3.5 text-amber-500" />}
-                        <h3 className="font-semibold text-slate-800">{t.name}</h3>
+                        <Link href={`/profile/${t.id}`} onClick={e=>e.stopPropagation()} className="font-semibold text-slate-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-sm">{t.name}</Link>
                         {t.subject && <Badge variant="outline" className="text-xs">{t.subject}</Badge>}
                       </div>
                       <p className="text-xs text-slate-500 mb-2">{t.email}</p>

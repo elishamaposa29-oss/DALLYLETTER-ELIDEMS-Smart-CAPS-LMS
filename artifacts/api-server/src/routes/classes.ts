@@ -1,7 +1,7 @@
 // Live classes routes — manage Google Meet classes
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
-import { db, classesTable, handRaisesTable, attendanceTable, activityLogTable } from "@workspace/db";
+import { db, pool, classesTable, handRaisesTable, attendanceTable, activityLogTable } from "@workspace/db";
 import {
   CreateClassBody,
   GetClassParams,
@@ -16,9 +16,21 @@ import { logger } from "../lib/logger";
 const router: IRouter = Router();
 
 // GET /classes — List all live classes
-router.get("/classes", requireAuth, async (_req, res): Promise<void> => {
+router.get("/classes", requireAuth, async (req, res): Promise<void> => {
   const classes = await db.select().from(classesTable).orderBy(classesTable.createdAt);
-  res.json(classes.map(c => ({ ...c, createdAt: c.createdAt.toISOString() })));
+  const role = String(req.currentUser!.role).toLowerCase();
+  let preferred = new Set<string>();
+  if (["student", "learner", "prefect"].includes(role)) {
+    const result = await pool.query("SELECT subjects FROM learner_subjects WHERE user_id = $1", [req.currentUser!.id]).catch(() => ({ rows: [] as Array<{ subjects: string[] }> }));
+    const selected = result.rows[0]?.subjects;
+    if (Array.isArray(selected)) preferred = new Set(selected.map((v: unknown) => String(v).trim().toLowerCase()));
+  }
+  const ordered = [...classes].sort((a, b) => {
+    const aPreferred = preferred.has(String(a.subject || "").trim().toLowerCase());
+    const bPreferred = preferred.has(String(b.subject || "").trim().toLowerCase());
+    return Number(bPreferred) - Number(aPreferred) || b.createdAt.getTime() - a.createdAt.getTime();
+  });
+  res.json(ordered.map(c => ({ ...c, createdAt: c.createdAt.toISOString() })));
 });
 
 // POST /classes — Create a live class (teacher/owner only)

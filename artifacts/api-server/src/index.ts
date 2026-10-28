@@ -4,6 +4,8 @@ import { ensureConnectSchema } from "./lib/ensureConnectSchema";
 import { startPushDispatcher } from "./lib/push-service";
 import { startTeacherLifecycle } from "./lib/teacher-lifecycle";
 import { ensureAuthSessionSchema } from "./lib/auth-session-store";
+import { ensureProfileHubSchema } from "./lib/ensureProfileHubSchema";
+import { startEmailNotificationDispatcher } from "./lib/email-notification-queue";
 
 const rawPort = process.env["PORT"] ?? process.env["API_PORT"] ?? "4000";
 
@@ -20,6 +22,8 @@ async function startServer(): Promise<void> {
     // so feature routes never fail because a required table was not provisioned.
     await ensureConnectSchema();
     await ensureAuthSessionSchema();
+    await ensureProfileHubSchema();
+    startEmailNotificationDispatcher();
     logger.info("Connect/social schema verified");
     startPushDispatcher();
     startTeacherLifecycle();

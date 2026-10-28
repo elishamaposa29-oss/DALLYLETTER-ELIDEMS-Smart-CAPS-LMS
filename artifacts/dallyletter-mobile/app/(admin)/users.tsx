@@ -2,6 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import { getApiUrl, useBlockUser, useListUsers, usePromoteUser } from "@workspace/api-client-react";
 import * as Haptics from "expo-haptics";
 import { useState } from "react";
+import { router } from "expo-router";
 import { Alert, FlatList, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
@@ -162,14 +163,11 @@ export default function AdminUsers() {
               )}
               {(u as any).isSuspended && !u.isBlocked ? <View style={[s.blockedBanner,{backgroundColor:"#fffbeb"}]}><Feather name="pause-circle" size={11} color="#a16207"/><Text style={[s.blockedText,{color:"#a16207"}]}>SUSPENDED · LIMITED ACCESS</Text></View>:null}
               <View style={s.cardTop}>
-                <View style={[s.avatar, { backgroundColor: col + "20" }]}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Open ${u.name} profile`} onPress={()=>router.push({pathname:"/profile-hub",params:{userId:String(u.id)}} as any)} style={[s.avatar, { backgroundColor: col + "20" }]}>
                   <Feather name="user" size={20} color={col} />
-                </View>
+                </TouchableOpacity>
                 <View style={s.info}>
-                  <Text style={s.userName} numberOfLines={1}>
-                    {u.name}
-                    {u.isPrefect ? " ⭐" : ""}
-                  </Text>
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Open ${u.name} profile`} onPress={()=>router.push({pathname:"/profile-hub",params:{userId:String(u.id)}} as any)}><Text style={s.userName} numberOfLines={1}>{u.name}{u.isPrefect ? " ⭐" : ""}</Text></TouchableOpacity>
                   <Text style={s.userEmail} numberOfLines={1}>{u.email}</Text>
                 </View>
                 <View style={[s.roleBadge, { backgroundColor: col + "20" }]}>

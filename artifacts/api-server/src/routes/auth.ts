@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { createPublicKey, randomBytes, verify as verifySignature } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db, usersTable, pool } from "@workspace/db";
 import { RegisterUserBody, LoginUserBody } from "@workspace/api-zod";
@@ -8,6 +9,54 @@ import { generateSignedToken, parseSignedToken } from "../lib/signed-token";
 import { isAllowedPublicRegistrationRole } from "../lib/registration-policy";
 import { createAuthSession, revokeAuthSession, revokeUserSessions, createPasswordResetToken, consumePasswordResetToken, consumeAuthAttempt, clearAuthAttempts, updatePasswordAndRevokeSessions } from "../lib/auth-session-store";
 import { sendEmail, isEmailConfigured } from "../lib/email-service";
+
+
+type GoogleJwtHeader = { alg?: string; kid?: string; typ?: string };
+type GoogleJwtClaims = { aud?: string | string[]; iss?: string; sub?: string; email?: string; email_verified?: string | boolean; name?: string; exp?: number; iat?: number };
+type GoogleJwk = { kid: string; kty: string; alg?: string; use?: string; n: string; e: string };
+let googleJwksCache: { keys: GoogleJwk[]; expiresAt: number } | undefined;
+
+async function getGoogleJwks(forceRefresh = false): Promise<GoogleJwk[]> {
+  if (!forceRefresh && googleJwksCache && googleJwksCache.expiresAt > Date.now()) return googleJwksCache.keys;
+  const response = await fetch("https://www.googleapis.com/oauth2/v3/certs", { signal: AbortSignal.timeout(5000) });
+  if (!response.ok) throw new Error("Google signing keys could not be fetched");
+  const body = await response.json() as { keys?: GoogleJwk[] };
+  if (!Array.isArray(body.keys) || body.keys.length === 0) throw new Error("Google signing keys response was invalid");
+  const cacheControl = response.headers.get("cache-control") || "";
+  const maxAge = Number(cacheControl.match(/max-age=(\d+)/i)?.[1] || 300);
+  googleJwksCache = { keys: body.keys, expiresAt: Date.now() + Math.max(60, Math.min(maxAge, 3600)) * 1000 };
+  return body.keys;
+}
+
+async function verifyGoogleIdToken(credential: string, expectedClientId: string): Promise<GoogleJwtClaims | null> {
+  const parts = credential.split(".");
+  if (parts.length !== 3 || parts.some(part => !part)) return null;
+  let header: GoogleJwtHeader;
+  let claims: GoogleJwtClaims;
+  try {
+    header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8")) as GoogleJwtHeader;
+    claims = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as GoogleJwtClaims;
+  } catch { return null; }
+  if (header.alg !== "RS256" || typeof header.kid !== "string" || !header.kid) return null;
+  const now = Math.floor(Date.now() / 1000);
+  const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+  if (!audiences.includes(expectedClientId)
+      || !["accounts.google.com", "https://accounts.google.com"].includes(String(claims.iss))
+      || typeof claims.sub !== "string" || claims.sub.length === 0 || claims.sub.length > 255
+      || typeof claims.email !== "string" || claims.email.length > 254
+      || String(claims.email_verified).toLowerCase() !== "true"
+      || !Number.isFinite(claims.exp) || Number(claims.exp) <= now
+      || !Number.isFinite(claims.iat) || Number(claims.iat) > now + 60 || Number(claims.iat) <= now - 86400) return null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const keys = await getGoogleJwks(attempt === 1);
+    const jwk = keys.find(key => key.kid === header.kid && key.kty === "RSA" && (!key.alg || key.alg === "RS256") && (!key.use || key.use === "sig"));
+    if (!jwk) continue;
+    const publicKey = createPublicKey({ key: jwk, format: "jwk" });
+    const signatureIsValid = verifySignature("RSA-SHA256", Buffer.from(parts[0] + "." + parts[1], "utf8"), publicKey, Buffer.from(parts[2], "base64url"));
+    return signatureIsValid ? claims : null;
+  }
+  return null;
+}
 
 const router: IRouter = Router();
 
@@ -236,6 +285,66 @@ router.get("/auth/me", requireAuth, async (req, res): Promise<void> => {
   res.json(safeUser);
 });
 
+// POST /auth/google — verify a Google Identity Services ID token and link/sign in safely.
+router.post("/auth/google", async (req, res): Promise<void> => {
+  const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
+  const credential = typeof req.body?.credential === "string" ? req.body.credential : "";
+  if (!clientId) { res.status(503).json({ error: "Google sign-in is not configured for this application yet." }); return; }
+  if (!credential || credential.length > 12000) { res.status(400).json({ error: "A valid Google credential is required." }); return; }
+  try {
+    const claims = await verifyGoogleIdToken(credential, clientId);
+    if (!claims) { res.status(401).json({ error: "Google identity token is invalid or its email is not verified." }); return; }
+    const email = claims.email!.trim().toLowerCase();
+    const linked = await pool.query("SELECT user_id FROM google_account_links WHERE google_sub = $1 LIMIT 1", [claims.sub]);
+    let userId = linked.rows[0]?.user_id ? Number(linked.rows[0].user_id) : 0;
+    if (!userId) {
+      const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, email));
+      let user = existing;
+      if (user && (user.isBlocked || user.isSuspended)) {
+        res.status(403).json({ error: "This account is unavailable. Please contact the school administrator." }); return;
+      }
+      if (user) {
+        const currentLink = await pool.query("SELECT google_sub FROM google_account_links WHERE user_id = $1 LIMIT 1", [user.id]);
+        if (currentLink.rows.length && currentLink.rows[0].google_sub !== claims.sub) {
+          res.status(409).json({ error: "This Dallyletter account is already linked to a different Google account." }); return;
+        }
+      } else {
+        const [created] = await db.insert(usersTable).values({
+          email,
+          passwordHash: await hashPassword(randomBytes(32).toString("hex")),
+          name: (claims.name?.trim() || email.split("@")[0]).slice(0, 200),
+          role: "student",
+          grade: null,
+          subject: null,
+          phone: null,
+          isPrefect: false,
+          isBlocked: false,
+          isSuspended: false,
+          teacherApplicationStatus: "not_applicable",
+          teacherReviewDeadline: null,
+        }).returning();
+        user = created;
+      }
+      userId = user.id;
+      await pool.query("INSERT INTO google_account_links (user_id, google_sub, email, updated_at) VALUES ($1,$2,$3,now()) ON CONFLICT (google_sub) DO NOTHING", [userId, claims.sub, email]);
+      const verifyLink = await pool.query("SELECT user_id FROM google_account_links WHERE google_sub = $1", [claims.sub]);
+      if (!verifyLink.rows[0] || Number(verifyLink.rows[0].user_id) !== userId) {
+        res.status(409).json({ error: "Google account linking conflicted with an existing account. Sign in with your original method." }); return;
+      }
+    }
+    const [signedIn] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+    if (!signedIn || signedIn.isBlocked || signedIn.isSuspended) { res.status(403).json({ error: "This account is unavailable." }); return; }
+    const token = generateToken(signedIn.id);
+    await createAuthSession(token, signedIn.id);
+    const { passwordHash: _passwordHash, ...safeUser } = signedIn;
+    res.json({ user: safeUser, token });
+  } catch (error) {
+    const { logger } = await import("../lib/logger");
+    logger.error({ event: "auth.google.sign_in_failed", reason: error instanceof Error ? error.message.slice(0, 200) : "unknown" }, "Google sign-in failed");
+    res.status(503).json({ error: "Google sign-in could not be completed. Please try again." });
+  }
+});
+
 // POST /auth/change-password — Change own password (any authenticated user)
 router.post("/auth/change-password", requireAuth, async (req, res): Promise<void> => {
   const currentUser = req.currentUser!;
@@ -274,17 +383,32 @@ router.post("/auth/password-reset/request", async (req, res): Promise<void> => {
     res.status(429).json({ error: "Too many password recovery requests. Please try again later." }); return;
   }
   if (!isEmailConfigured()) {
-    res.status(503).json({ error: "Password recovery is temporarily unavailable. Please contact support." }); return;
+    const { logger } = await import("../lib/logger");
+    logger.error({ event: "auth.password_reset.delivery_unavailable", reason: "resend_not_configured" }, "Password recovery email was not sent because Resend is not configured");
+    res.status(503).json({ error: "Password recovery email delivery is not configured on the server yet. No email has been sent." }); return;
   }
   try {
-    const [user] = await db.select({ id: usersTable.id, email: usersTable.email }).from(usersTable).where(eq(usersTable.email, email));
+    // Always prefer an exact primary-email match. Otherwise allow a unique,
+    // previously verified recovery email; never let an unverified address claim an account.
+    const primaryResult = await pool.query("SELECT id, email FROM users WHERE lower(email) = $1 LIMIT 1", [email]);
+    const primary = primaryResult.rows.map((row: { id: number | string; email: string }) => ({ id: Number(row.id), email: row.email }));
+    await pool.query("CREATE TABLE IF NOT EXISTS account_recovery_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, recovery_email text, recovery_email_verified_at timestamptz, recovery_phone text, recovery_phone_verified_at timestamptz, security_question text, security_answer_hash text, verification_code_hash text, verification_expires_at timestamptz, updated_at timestamptz NOT NULL DEFAULT now())");
+    let user = primary[0];
+    if (!user) {
+      const recoveryMatches = await pool.query(
+        "SELECT u.id, u.email FROM users u JOIN account_recovery_profiles r ON r.user_id = u.id WHERE lower(r.recovery_email) = $1 AND r.recovery_email_verified_at IS NOT NULL AND u.is_blocked = false AND u.is_suspended = false LIMIT 2",
+        [email],
+      );
+      if (recoveryMatches.rows.length === 1) {
+        user = { id: Number(recoveryMatches.rows[0].id), email: String(recoveryMatches.rows[0].email) };
+      }
+    }
     if (user) {
       const resetToken = await createPasswordResetToken(user.id);
-      await pool.query("CREATE TABLE IF NOT EXISTS account_recovery_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, recovery_email text, recovery_email_verified_at timestamptz, recovery_phone text, recovery_phone_verified_at timestamptz, security_question text, security_answer_hash text, verification_code_hash text, verification_expires_at timestamptz, updated_at timestamptz NOT NULL DEFAULT now())");
       const recovery = await pool.query("SELECT recovery_email FROM account_recovery_profiles WHERE user_id = $1 AND recovery_email_verified_at IS NOT NULL", [user.id]);
       const recoveryEmail = recovery.rows[0]?.recovery_email as string | undefined;
       const recipients = [...new Set([user.email, ...(recoveryEmail ? [recoveryEmail] : [])])];
-      const baseUrl = (process.env.PUBLIC_APP_URL ?? process.env.APP_BASE_URL ?? "https://dallyletterelidemslearningplatforme-six.vercel.app").replace(/\/$/, "");
+      const baseUrl = (process.env.PUBLIC_APP_URL ?? process.env.APP_BASE_URL ?? "https://dallyletterelidemslearningplatformelishamaposa1-otbtqe1pf.vercel.app").replace(/\/$/, "");
       await sendEmail({
         to: recipients,
         subject: "Reset your Dallyletter Elidems password",

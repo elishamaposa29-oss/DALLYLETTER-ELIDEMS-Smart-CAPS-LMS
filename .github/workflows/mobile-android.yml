@@ -7,10 +7,19 @@ concurrency:
 
 on:
   workflow_dispatch:
+    inputs:
+      run_emulator_smoke:
+        description: "Run device smoke tests against the configured API (explicit opt-in; may generate API traffic)"
+        required: false
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
       - "artifacts/dallyletter-mobile/**"
+      - "artifacts/api-server/**"
+      - "package.json"
+      - "render.yaml"
       - "lib/**"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
@@ -20,6 +29,9 @@ on:
     types: [opened, synchronize, reopened, labeled]
     paths:
       - "artifacts/dallyletter-mobile/**"
+      - "artifacts/api-server/**"
+      - "package.json"
+      - "render.yaml"
       - "lib/**"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
@@ -33,7 +45,7 @@ jobs:
   # Defer the expensive APK/emulator suite until the parity pass is ready.
   # Manual dispatch always runs it; PRs opt in with the android-release-check label.
   build-apk:
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'android-release-check')
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'android-release-check') || contains(github.event.pull_request.labels.*.name, 'android-device-smoke')
     runs-on: ubuntu-latest
     # Release and upgrade APK builds take ~43 minutes on hosted runners; leave time for artifact checks.
     timeout-minutes: 75
@@ -247,6 +259,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
   emulator-smoke:
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'android-device-smoke')) || (github.event_name == 'workflow_dispatch' && inputs.run_emulator_smoke == true)
     needs: build-apk
     runs-on: ubuntu-latest
     timeout-minutes: 45

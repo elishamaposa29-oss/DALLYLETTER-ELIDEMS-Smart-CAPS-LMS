@@ -31,7 +31,7 @@ export default function ForgotPasswordScreen() {
     <View style={s.card}>
       <View style={[s.icon,{backgroundColor:colors.secondary}]}><Feather name="key" size={28} color={colors.primary}/></View>
       <Text style={[s.title,{color:colors.foreground}]}>Reset your password</Text>
-      <Text style={[s.copy,{color:colors.mutedForeground}]}>Enter the email address on your account. If it matches an account, we’ll send a secure reset link.</Text>
+      <Text style={[s.copy,{color:colors.mutedForeground}]}>Enter the email address on your account or a previously verified recovery email. If it matches an account, we’ll send a secure reset link.</Text>
       <Text style={[s.label,{color:colors.foreground}]}>Email address</Text>
       <TextInput value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" placeholder="you@example.com" placeholderTextColor={colors.mutedForeground} style={[s.input,{color:colors.foreground,borderColor:colors.border,backgroundColor:colors.card}]}/>
       {message ? <Text accessibilityRole="text" style={s.success}>{message}</Text> : null}

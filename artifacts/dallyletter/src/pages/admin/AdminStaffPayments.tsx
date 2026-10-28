@@ -19,14 +19,23 @@ export default function AdminStaffPayments() {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState({ recipientId: "", amount: "", reason: "salary", description: "", paymentMethod: "bank_transfer", period: "", referenceNumber: "" });
+  const [payoutTeacherId,setPayoutTeacherId] = useState("");
+  const [payoutAmount,setPayoutAmount] = useState("");
+  const [payoutNote,setPayoutNote] = useState("");
+  const [payoutPreview,setPayoutPreview] = useState<any>(null);
+  const [payoutResult,setPayoutResult] = useState<any>(null);
+  const [payoutBusy,setPayoutBusy] = useState(false);
+  const [payoutHistory,setPayoutHistory] = useState<any[]>([]);
 
   const load = () => {
     void Promise.all([
       fetch(getApiUrl("/api/staff-payments"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
       fetch(getApiUrl("/api/users"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
-    ]).then(([p, u]) => {
+      fetch(getApiUrl("/api/payouts/history"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.ok ? r.json() : []),
+    ]).then(([p, u, history]) => {
       setPayments(Array.isArray(p) ? p : []);
       setStaff(Array.isArray(u) ? u.filter((x: any) => x.role === "teacher" || x.isManager || x.isPrefect) : []);
+      setPayoutHistory(Array.isArray(history) ? history : []);
       setLoading(false);
     }).catch(() => setLoading(false));
   };
@@ -45,6 +54,24 @@ export default function AdminStaffPayments() {
       setForm({ recipientId: "", amount: "", reason: "salary", description: "", paymentMethod: "bank_transfer", period: "", referenceNumber: "" });
       load();
     });
+  };
+
+  const loadPayoutPreview = async (id:string) => {
+    setPayoutTeacherId(id);setPayoutPreview(null);setPayoutResult(null);
+    if(!id)return;
+    try{const r=await fetch(getApiUrl("/api/users/"+id+"/payout-preview"),{headers:{Authorization:"Bearer "+token()}});const data=await r.json();if(!r.ok)throw new Error(data.error||"Could not load payout preview.");setPayoutPreview(data);}
+    catch(e){toast({variant:"destructive",title:"Payout preview unavailable",description:e instanceof Error?e.message:"Please retry."});}
+  };
+  const executeTeacherPayout = async () => {
+    if(!payoutTeacherId||!payoutAmount||Number(payoutAmount)<=0){toast({variant:"destructive",title:"Choose a teacher and valid amount"});return;}
+    setPayoutBusy(true);setPayoutResult(null);
+    try{
+      const r=await fetch(getApiUrl("/api/payouts/execute"),{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+token()},body:JSON.stringify({teacherId:Number(payoutTeacherId),amount:Number(payoutAmount),note:payoutNote})});
+      const data=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(data.error||"Payout could not be submitted.");
+      setPayoutResult(data);toast({title:"Payout submitted",description:"Provider confirmation is still pending."});load();
+    }catch(e){toast({variant:"destructive",title:"Payout not submitted",description:e instanceof Error?e.message:"Please retry."});}
+    finally{setPayoutBusy(false);}
   };
 
   const totalPaid = payments.reduce((s, p) => s + parseFloat(p.amount ?? "0"), 0);
@@ -115,6 +142,23 @@ export default function AdminStaffPayments() {
             </CardContent></Card>
           ))}
         </div>
+
+        <Card className="border border-amber-200 shadow-sm">
+          <CardHeader><CardTitle className="text-base">Teacher payout execution</CardTitle><p className="text-sm text-slate-500">Destinations are masked. Real provider credentials are required; no mock success is reported.</p></CardHeader>
+          <CardContent className="space-y-3">
+            <label className="block text-sm font-medium">Teacher</label>
+            <select className="w-full rounded-lg border px-3 py-2 text-sm" value={payoutTeacherId} onChange={e=>void loadPayoutPreview(e.target.value)}><option value="">Choose a teacher</option>{staff.filter((s:any)=>s.role==="teacher").map((s:any)=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
+            {payoutPreview&&<div className="rounded-lg bg-slate-50 p-3 text-sm"><p><strong>Method:</strong> {payoutPreview.method||"Not configured"}</p><p><strong>Destination:</strong> {payoutPreview.destination_masked||"Not configured"}</p><p><strong>Status:</strong> {payoutPreview.payout_ready?"Ready to submit":"Needs payout setup"}</p></div>}
+            <div className="grid gap-3 sm:grid-cols-2"><div><label className="block text-sm font-medium mb-1">Amount</label><Input type="number" min="0.01" step="0.01" value={payoutAmount} onChange={e=>setPayoutAmount(e.target.value)} placeholder="0.00"/></div><div><label className="block text-sm font-medium mb-1">Note</label><Input value={payoutNote} onChange={e=>setPayoutNote(e.target.value)} placeholder="Optional payout note"/></div></div>
+            <Button disabled={payoutBusy||!payoutPreview?.payout_ready||!payoutAmount||Number(payoutAmount)<=0} onClick={()=>void executeTeacherPayout()}>{payoutBusy?"Submitting…":"Submit real payout"}</Button>
+            {payoutResult&&<div className="rounded-lg border p-3 text-sm"><p className="font-semibold">{payoutResult.message}</p><p>Reference: {payoutResult.payout?.provider_reference||"Pending provider reference"}</p><Badge>{payoutResult.payout?.status||"pending"}</Badge></div>}
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-sm">
+          <CardHeader><CardTitle className="text-base">Provider payout history</CardTitle><p className="text-sm text-slate-500">Pending means the provider has accepted the request but settlement has not been confirmed.</p></CardHeader>
+          <CardContent>{payoutHistory.length===0?<p className="text-sm text-slate-400">No provider payouts recorded.</p>:<div className="space-y-2">{payoutHistory.map((p:any)=><div key={p.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3"><div><p className="font-semibold">{p.teacher_name}</p><p className="text-xs text-slate-500">{p.method} · {p.provider_reference||"No provider reference"} · {p.webhook_verified?"Provider callback verified":"Awaiting provider confirmation"}</p></div><div className="text-right"><p className="font-bold">{p.currency} {Number(p.amount).toFixed(2)}</p><Badge>{p.status}</Badge></div></div>)}</div>}</CardContent>
+        </Card>
 
         <Card className="border-0 shadow-sm">
           <CardHeader>

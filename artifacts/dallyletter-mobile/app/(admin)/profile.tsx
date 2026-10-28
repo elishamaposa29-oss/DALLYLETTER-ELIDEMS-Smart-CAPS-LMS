@@ -73,7 +73,7 @@ export default function AdminProfile() {
     <View style={s.container}>
       <View style={s.header}>
         <ProfileAvatarEditor />
-        <Text style={s.name}>{user?.name}</Text>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Open your Profile Hub" onPress={()=>router.push("/profile-hub" as any)}><Text style={s.name}>{user?.name}</Text></TouchableOpacity>
         <Text style={s.email}>{user?.email}</Text>
         <View style={s.ownerBadge}>
           <Feather name="shield" size={13} color={colors.primary} />
@@ -82,6 +82,7 @@ export default function AdminProfile() {
       </View>
 
       <ProfileDetailsEditor />
+      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Open Profile Hub" onPress={()=>router.push("/profile-hub" as any)} style={{marginHorizontal:16,marginTop:12,marginBottom:8,padding:13,borderRadius:12,backgroundColor:colors.secondary,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:8}}><Feather name="user" size={17} color={colors.primary}/><Text style={{color:colors.primary,fontWeight:"700"}}>Open Profile Hub</Text></TouchableOpacity>
 
       <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
         <Text style={s.sectionTitle}>Platform Overview</Text>

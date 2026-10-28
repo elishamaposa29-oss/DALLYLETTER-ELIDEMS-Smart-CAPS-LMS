@@ -1,8 +1,9 @@
-import { useRegisterUser } from "@workspace/api-client-react";
+import { getApiUrl, useRegisterUser } from "@workspace/api-client-react";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -29,9 +30,25 @@ export default function SignupScreen() {
   const registerMutation = useRegisterUser({
     mutation: {
       onSuccess: async (data) => {
+        let verificationMessage = "Your account is ready.";
+        try {
+          const response = await fetch(getApiUrl("/api/auth/email-verification/request"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: "Bearer " + data.token },
+            body: JSON.stringify({}),
+          });
+          const result = await response.json().catch(() => ({}));
+          if (response.ok && result.sent) verificationMessage = "Account created. Check your inbox for the verification link.";
+          else if (response.ok && result.verified) verificationMessage = "Account created. Your email is already verified.";
+          else verificationMessage = "Account created, but the verification email could not be sent. Request a new link from your profile.";
+        } catch {
+          verificationMessage = "Account created. Email verification could not be reached just now; request a new link from your profile.";
+        }
         await login(data.user as any, data.token);
-        if (data.user.role === "teacher") router.replace("/(teacher)/home");
-        else router.replace("/(student)/home");
+        Alert.alert("Account created", verificationMessage, [{ text: "Continue", onPress: () => {
+          if (data.user.role === "teacher") router.replace("/(teacher)/home");
+          else router.replace("/(student)/home");
+        }}]);
       },
       onError: (err: any) => {
         const message = err?.message || err?.response?.data?.error;

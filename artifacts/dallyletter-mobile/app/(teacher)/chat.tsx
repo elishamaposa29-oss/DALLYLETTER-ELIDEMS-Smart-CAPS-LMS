@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 type ChatGroup = { id: number; name: string; isMember?: boolean; members?: Array<{ id: number }> };
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { UserProfileLink } from "@/components/UserProfileLink";
 
 export default function TeacherChat() {
   const colors = useColors();
@@ -130,7 +131,7 @@ export default function TeacherChat() {
             const mine = isMe(msg);
             return (
               <View style={{ alignItems: mine ? "flex-end" : "flex-start" }}>
-                {!mine && <Text style={s.sender}>{msg.senderName ?? "Student"}</Text>}
+                {!mine && <UserProfileLink userId={msg.senderId} name={msg.senderName ?? "Student"} compact />}
                 <View style={[s.bubble, mine ? s.myBubble : s.theirBubble]}>
                   <Text style={mine ? s.myText : s.theirText}>{msg.content}</Text>
                   <Text style={mine ? s.time : s.theirTime}>

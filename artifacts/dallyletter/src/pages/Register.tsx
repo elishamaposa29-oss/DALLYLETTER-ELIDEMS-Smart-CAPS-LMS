@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRegisterUser } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
+import GoogleSignInButton from "@/components/GoogleSignInButton";
 import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +11,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, GraduationCap, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { RegisterUserBodyRole } from "@workspace/api-client-react";
+import { RegisterUserBodyRole, getApiUrl } from "@workspace/api-client-react";
 
 const registerSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters" }),
@@ -56,8 +57,23 @@ export default function Register() {
     const phone = values.phone?.trim() ? (values.country === "ZW" ? "+263" : "+27") + values.phone.trim().replace(/^0/, "") : undefined;
     const { country: _country, phone: _localPhone, ...registrationData } = values;
     registerMutation.mutate({ data: { ...registrationData, phone } }, {
-      onSuccess: (data) => {
+      onSuccess: async (data) => {
+        let verificationMessage = "Your account is ready.";
+        try {
+          const verification = await fetch(getApiUrl("/api/auth/email-verification/request"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: "Bearer " + data.token },
+            body: JSON.stringify({}),
+          });
+          const verificationData = await verification.json().catch(() => ({}));
+          if (verification.ok && verificationData.sent) verificationMessage = "Account created. Check your inbox for the email verification link.";
+          else if (verification.ok && verificationData.verified) verificationMessage = "Account created. Your email is already verified.";
+          else verificationMessage = "Account created, but the verification email could not be sent. You can request a new link from your profile.";
+        } catch {
+          verificationMessage = "Account created. Email verification could not be reached just now; request a new link from your profile.";
+        }
         login(data.token, data.user);
+        toast({ title: "Account created", description: verificationMessage });
         if (data.user.role === "teacher") setLocation("/teacher");
         else setLocation("/");
       },
@@ -142,6 +158,7 @@ export default function Register() {
             </div>
 
             <div className="bg-white rounded-2xl shadow-xl shadow-gray-200/60 border border-gray-100 p-8">
+              <div className="mb-5 space-y-3"><GoogleSignInButton mode="signup" /><div className="flex items-center gap-3 text-xs text-gray-400"><span className="h-px flex-1 bg-gray-200" /><span>OR CONTINUE WITH EMAIL</span><span className="h-px flex-1 bg-gray-200" /></div></div>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                   <FormField

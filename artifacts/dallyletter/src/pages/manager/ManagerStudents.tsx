@@ -1,4 +1,5 @@
 import { getApiUrl } from "@workspace/api-client-react";
+import { Link } from "wouter";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -76,12 +77,12 @@ export default function ManagerStudents() {
               <Card key={s.id} onClick={()=>toggleSelect(s.id)} className={`cursor-pointer border-0 shadow-sm ${selected.includes(s.id)?"ring-2 ring-primary":""} ${s.isSuspended || s.isBlocked ? "border-l-4 border-l-red-400" : ""}`}>
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold shrink-0">
+                    <Link href={`/profile/${s.id}`} onClick={e=>e.stopPropagation()} aria-label={`Open ${s.name} profile`} className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                       {s.name.charAt(0)}
-                    </div>
+                    </Link>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                        <p className="font-semibold text-slate-800 text-sm">{s.name}</p>
+                        <Link href={`/profile/${s.id}`} onClick={e=>e.stopPropagation()} className="font-semibold text-slate-800 text-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-sm">{s.name}</Link>
                         {s.isPrefect && <Badge className="bg-amber-100 text-amber-700 text-[10px]"><Shield className="h-2.5 w-2.5 mr-0.5" />Prefect</Badge>}
                         {s.isSuspended && <Badge className="bg-red-100 text-red-700 text-[10px]"><AlertTriangle className="h-2.5 w-2.5 mr-0.5" />Suspended</Badge>}
                         {s.isBlocked && <Badge className="bg-red-100 text-red-700 text-[10px]">Blocked</Badge>}

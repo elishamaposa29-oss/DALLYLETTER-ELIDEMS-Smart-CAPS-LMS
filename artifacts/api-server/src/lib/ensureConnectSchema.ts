@@ -1,4 +1,5 @@
 import { pool } from "@workspace/db";
+import { ensureProfileHubSchema } from "./ensureProfileHubSchema.js";
 
 let ensured = false;
 
@@ -192,6 +193,7 @@ export async function ensureConnectSchema(): Promise<void> {
     )`);
     await client.query("COMMIT");
     ensured = true;
+    await ensureProfileHubSchema();
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
