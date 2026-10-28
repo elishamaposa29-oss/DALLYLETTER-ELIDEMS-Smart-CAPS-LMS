@@ -263,15 +263,16 @@ export default function MobileProfileHub() {
       </View>
     </View>
     <Modal visible={mediaMenuOpen} transparent animationType="fade" onRequestClose={()=>setMediaMenuOpen(false)}>
-      <TouchableOpacity activeOpacity={1} onPress={()=>setMediaMenuOpen(false)} style={{flex:1,backgroundColor:"#00000066",justifyContent:"flex-start",alignItems:"flex-end",paddingTop:insets.top+56,paddingRight:18}}>
-        <View style={{width:250,borderRadius:18,borderWidth:1,borderColor:"#ffffff44",backgroundColor:"#101827F2",padding:8}}>
+      <View style={{flex:1,backgroundColor:"#00000066"}}>
+        <TouchableOpacity activeOpacity={1} accessibilityLabel="Close profile media options" onPress={()=>setMediaMenuOpen(false)} style={{position:"absolute",top:0,left:0,right:0,bottom:0}}/>
+        <View style={{position:"absolute",top:insets.top+56,right:18,width:250,borderRadius:18,borderWidth:1,borderColor:"#ffffff44",backgroundColor:"#101827F2",padding:8}}>
           <Text style={{color:"#ffffff99",fontSize:11,fontWeight:"800",letterSpacing:1,paddingHorizontal:12,paddingTop:8,paddingBottom:4}}>PROFILE MEDIA</Text>
           <TouchableOpacity accessibilityRole="button" onPress={()=>{setMediaMenuOpen(false);void pickAvatar("library");}} disabled={coverBusy} style={{paddingHorizontal:12,paddingVertical:14,borderRadius:12}}><Text style={{color:"#fff",fontSize:15,fontWeight:"600"}}>Change Avatar</Text></TouchableOpacity>
           <TouchableOpacity accessibilityRole="button" onPress={()=>{setMediaMenuOpen(false);void pickAvatar("camera");}} disabled={coverBusy} style={{paddingHorizontal:12,paddingVertical:14,borderRadius:12}}><Text style={{color:"#fff",fontSize:15,fontWeight:"600"}}>Take Photo</Text></TouchableOpacity>
           <TouchableOpacity accessibilityRole="button" onPress={()=>{setMediaMenuOpen(false);void pickCover("library");}} disabled={coverBusy} style={{paddingHorizontal:12,paddingVertical:14,borderRadius:12}}><Text style={{color:"#fff",fontSize:15,fontWeight:"600"}}>Change Cover Image/Video</Text></TouchableOpacity>
           <TouchableOpacity accessibilityRole="button" onPress={()=>{setMediaMenuOpen(false);void pickCover("camera");}} disabled={coverBusy} style={{paddingHorizontal:12,paddingVertical:14,borderRadius:12}}><Text style={{color:"#fff",fontSize:15,fontWeight:"600"}}>Capture Cover Media</Text></TouchableOpacity>
         </View>
-      </TouchableOpacity>
+      </View>
     </Modal>
     <Modal visible={Boolean(fullscreenMedia)} transparent={false} presentationStyle="fullScreen" statusBarTranslucent animationType="fade" onRequestClose={()=>setFullscreenMedia(null)}><View style={{flex:1,width:"100%",height:"100%",backgroundColor:"#000",justifyContent:"center",alignItems:"center",padding:0,margin:0}}><StatusBar hidden backgroundColor="#000"/><TouchableOpacity accessibilityRole="button" accessibilityLabel="Close fullscreen media" onPress={()=>setFullscreenMedia(null)} style={{position:"absolute",top:Platform.OS==="ios"?48:18,right:18,zIndex:10,paddingHorizontal:16,paddingVertical:10,backgroundColor:"#333333bb",borderRadius:24}}><Text style={{color:"#fff",fontWeight:"700"}}>Close ✕</Text></TouchableOpacity>{fullscreenMedia?.type?.startsWith("video/")?<VideoView player={fullscreenPlayer} style={{width:"100%",height:"100%"}} nativeControls contentFit="contain"/>:fullscreenMedia?.url?<TouchableOpacity activeOpacity={1} onPress={()=>setFullscreenMedia(null)} style={{width:"100%",height:"100%",justifyContent:"center",alignItems:"center"}}><Image source={{uri:fullscreenMedia.url,headers:token?{Authorization:"Bearer "+token}:{}}} style={{width:"100%",height:"100%"}} resizeMode="contain"/></TouchableOpacity>:null}</View></Modal>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{padding:10,gap:6,backgroundColor:colors.card}}>
