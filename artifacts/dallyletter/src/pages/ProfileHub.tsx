@@ -344,14 +344,14 @@ export default function ProfileHub() {
             <AuthenticatedProfileMedia key={"cover-fallback-"+mediaRefreshKey+profile.avatar} url={profile.avatar} decorative className="h-full w-full scale-105 object-cover opacity-50 blur-sm"/>
           ) : null}
         </div>
-        <div aria-hidden="true" className="absolute inset-0 z-[1] bg-gradient-to-t from-slate-950/90 via-slate-950/35 to-slate-950/10"/>
+        <div aria-hidden="true" className="absolute inset-0 z-[1] bg-gradient-to-t from-slate-950/45 via-slate-950/12 to-transparent"/>
         {profile?.cover_url&&<button type="button" onClick={()=>openFullscreenMedia({url:profile.cover_url!,type:String(profile.cover_type||"image")})} aria-label="Open profile cover fullscreen" className="absolute inset-0 z-[2] cursor-zoom-in"/>}
         <div className="relative z-10 flex min-h-[340px] flex-col justify-end p-4 sm:min-h-[380px] sm:p-7 md:p-9">
           <div className="mb-4 flex items-center justify-between gap-3">
             <span className="inline-flex items-center rounded-full border border-white/30 bg-white/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-white/95 shadow-lg backdrop-blur-xl">Dallyletter · Profile Hub</span>
             {profile?.cover_url&&<span className="rounded-full border border-white/25 bg-black/20 px-3 py-1 text-xs text-white/90 backdrop-blur-md">Tap cover to view</span>}
           </div>
-          <div className="relative z-10 flex flex-col gap-4 rounded-[1.75rem] border border-white/30 bg-white/[0.14] p-4 shadow-[0_12px_48px_rgba(0,0,0,0.18)] backdrop-blur-2xl sm:flex-row sm:items-center sm:gap-5 sm:p-5">
+          <div className="relative z-10 flex flex-col gap-4 rounded-[1.75rem] border border-white/25 bg-white/[0.055] p-4 shadow-[0_12px_48px_rgba(0,0,0,0.12)] backdrop-blur-md sm:flex-row sm:items-center sm:gap-5 sm:p-5">
             <div className="flex shrink-0 items-center gap-4">
               {profile?.avatar ? (
                 <button type="button" aria-label="Open profile avatar fullscreen" onClick={()=>openFullscreenMedia({url:profile.avatar!,type:"image"})} className="rounded-full focus:outline-none focus:ring-4 focus:ring-white/70">
@@ -366,12 +366,15 @@ export default function ProfileHub() {
               <h1 className="mt-1 break-words text-2xl font-bold leading-tight tracking-tight text-white drop-shadow sm:text-3xl">{profile?.display_name||"Profile Hub"}</h1>
               <p className="mt-2 text-sm text-white/85">{isOwner?"Manage your profile and professional records":"Public profile"}</p>
               {profile?.bio&&<p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/90">{profile.bio}</p>}
-              {isOwner&&<div className="mt-4 flex flex-wrap gap-2 border-t border-white/20 pt-4">
-                <label className="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-xl border border-white/35 bg-white/15 px-3 py-2 text-sm font-semibold text-white shadow-sm backdrop-blur-xl transition hover:bg-white/25 focus-within:ring-2 focus-within:ring-white/70">{avatarBusy?"Uploading photo…":"Change avatar"}<input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" disabled={avatarBusy} onChange={e=>void uploadAvatar(e.target.files?.[0])}/></label>
-                <label className="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-xl border border-white/35 bg-white/10 px-3 py-2 text-sm font-semibold text-white shadow-sm backdrop-blur-xl transition hover:bg-white/25 focus-within:ring-2 focus-within:ring-white/70">{avatarBusy?"Camera busy":"Take photo"}<input className="sr-only" type="file" accept="image/*" capture="user" disabled={avatarBusy} onChange={e=>void uploadAvatar(e.target.files?.[0])}/></label>
-                <label className="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-xl border border-white/35 bg-white/15 px-3 py-2 text-sm font-semibold text-white shadow-sm backdrop-blur-xl transition hover:bg-white/25 focus-within:ring-2 focus-within:ring-white/70">{coverBusy?"Uploading cover…":"Change cover image/video"}<input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" disabled={coverBusy} onChange={e=>void uploadCover(e.target.files?.[0])}/></label>
-                <label className="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-xl border border-white/35 bg-white/10 px-3 py-2 text-sm font-semibold text-white shadow-sm backdrop-blur-xl transition hover:bg-white/25 focus-within:ring-2 focus-within:ring-white/70">{coverBusy?"Camera busy":"Capture cover media"}<input className="sr-only" type="file" accept="image/*,video/*" capture="environment" disabled={coverBusy} onChange={e=>void uploadCover(e.target.files?.[0])}/></label>
-              </div>}
+              {isOwner&&<details className="relative z-30 mt-3 self-start sm:mt-0 sm:ml-auto sm:self-center">
+                <summary aria-label="Profile media options" title="Profile media options" className="flex h-11 w-11 cursor-pointer list-none items-center justify-center rounded-full border border-white/45 bg-slate-950/25 text-2xl font-bold leading-none text-white shadow-lg backdrop-blur-md transition hover:bg-white/15 focus:outline-none focus:ring-2 focus:ring-white/80 [&::-webkit-details-marker]:hidden">⋮</summary>
+                <div className="absolute right-0 top-12 z-50 flex w-60 flex-col gap-1 rounded-2xl border border-white/35 bg-slate-950/80 p-2 text-sm text-white shadow-2xl backdrop-blur-xl">
+                  <label className="cursor-pointer rounded-xl px-3 py-3 font-semibold transition hover:bg-white/15">{avatarBusy?"Uploading avatar…":"Change Avatar"}<input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" disabled={avatarBusy} onChange={e=>void uploadAvatar(e.target.files?.[0])}/></label>
+                  <label className="cursor-pointer rounded-xl px-3 py-3 font-semibold transition hover:bg-white/15">{avatarBusy?"Camera busy":"Take Photo"}<input className="sr-only" type="file" accept="image/*" capture="user" disabled={avatarBusy} onChange={e=>void uploadAvatar(e.target.files?.[0])}/></label>
+                  <label className="cursor-pointer rounded-xl px-3 py-3 font-semibold transition hover:bg-white/15">{coverBusy?"Uploading cover…":"Change Cover Image/Video"}<input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" disabled={coverBusy} onChange={e=>void uploadCover(e.target.files?.[0])}/></label>
+                  <label className="cursor-pointer rounded-xl px-3 py-3 font-semibold transition hover:bg-white/15">{coverBusy?"Camera busy":"Capture Cover Media"}<input className="sr-only" type="file" accept="image/*,video/*" capture="environment" disabled={coverBusy} onChange={e=>void uploadCover(e.target.files?.[0])}/></label>
+                </div>
+              </details>}
             </div>
           </div>
         </div>
