@@ -407,9 +407,11 @@ router.post("/auth/password-reset/request", async (req, res): Promise<void> => {
     }
     if (user) {
       const resetToken = await createPasswordResetToken(user.id);
-      const recovery = await pool.query("SELECT recovery_email FROM account_recovery_profiles WHERE user_id = $1 AND recovery_email_verified_at IS NOT NULL", [user.id]);
-      const recoveryEmail = recovery.rows[0]?.recovery_email as string | undefined;
-      const recipients = [...new Set([user.email, ...(recoveryEmail ? [recoveryEmail] : [])])];
+      // Send only to the exact address the requester supplied: either the account's
+      // primary email or a uniquely matched, previously verified recovery email.
+      // Sending to both addresses can make Resend test-mode delivery fail for all
+      // recipients and unnecessarily exposes a password-reset event to another inbox.
+      const recipients = [email];
       const baseUrl = (process.env.PUBLIC_APP_URL ?? process.env.APP_BASE_URL ?? "https://dallyletter-elidems-onlineschoolbye.vercel.app").replace(/\/$/, "");
       await sendEmail({
         to: recipients,
