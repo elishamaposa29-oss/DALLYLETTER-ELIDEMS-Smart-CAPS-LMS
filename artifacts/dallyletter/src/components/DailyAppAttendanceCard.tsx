@@ -120,7 +120,7 @@ export function DailyAppAttendanceCard() {
   const dayStatus = useMemo(() => {
     const grouped = new Map<string, { present: number; absent: number }>();
     classRecords.forEach(record => {
-      const key = localDateKey(record.joinedAt);
+      const key = localDateKey(record.joinedAt ?? record.joined_at ?? "");
       if (!key) return;
       const value = grouped.get(key) ?? { present: 0, absent: 0 };
       if (record.status?.toLowerCase() === "present") value.present += 1;
