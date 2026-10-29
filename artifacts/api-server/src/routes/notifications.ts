@@ -14,7 +14,7 @@ router.get("/notifications", requireAuth, async (req, res): Promise<void> => {
   const currentUser = req.currentUser!;
   const notifications = await db.select().from(notificationsTable)
     .where(or(eq(notificationsTable.recipientId, currentUser.id), isNull(notificationsTable.recipientId)))
-    .orderBy(desc(notificationsTable.createdAt));
+    .orderBy(desc(notificationsTable.createdAt), desc(notificationsTable.id));
   res.json(notifications.map(n => ({ ...n, createdAt: n.createdAt.toISOString() })));
 });
 
