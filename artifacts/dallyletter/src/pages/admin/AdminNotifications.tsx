@@ -24,7 +24,7 @@ const createNotificationSchema = z.object({
   message: z.string().min(5, "Message is required"),
   type: z.enum([CreateNotificationBodyType.payment_overdue, CreateNotificationBodyType.new_lesson, CreateNotificationBodyType.class_starting, CreateNotificationBodyType.system, CreateNotificationBodyType.general]),
   recipientType: z.enum(["all", "specific", "role"]),
-  recipientRole: z.enum(["student", "teacher", "prefect", "manager", "senior_manager", "owner"]),
+  recipientRole: z.enum(["student", "learner", "teacher", "prefect", "manager", "senior_manager", "owner", "admin"]),
   sendEmail: z.boolean(),
   sendSms: z.boolean(),
   sendWhatsApp: z.boolean(),
@@ -208,11 +208,13 @@ export default function AdminNotifications() {
                           <FormControl><SelectTrigger><SelectValue placeholder="Choose a role" /></SelectTrigger></FormControl>
                           <SelectContent>
                             <SelectItem value="student">Learners</SelectItem>
+                            <SelectItem value="learner">Learners (legacy role)</SelectItem>
                             <SelectItem value="teacher">Teachers</SelectItem>
                             <SelectItem value="prefect">Prefects</SelectItem>
                             <SelectItem value="manager">Managers</SelectItem>
                             <SelectItem value="senior_manager">Senior managers</SelectItem>
                             <SelectItem value="owner">Owners</SelectItem>
+                            <SelectItem value="admin">Administrators</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />
@@ -255,7 +257,7 @@ export default function AdminNotifications() {
                       <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
                       <div>
                         <FormLabel>Also send by email</FormLabel>
-                        <p className="text-xs text-muted-foreground">Uses each recipient's verified notification email when available, otherwise their account email. Role selection is resolved on the server; delivery errors are reported.</p>
+                        <p className="text-xs text-muted-foreground">Uses only verified notification emails saved in Profile Hub. If a selected user has no verified notification email, Dallyletter reports and skips that user rather than silently using the account email.</p>
                       </div>
                     </FormItem>
                   )} />
