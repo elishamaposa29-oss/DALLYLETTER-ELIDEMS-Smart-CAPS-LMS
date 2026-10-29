@@ -26,6 +26,8 @@ const createNotificationSchema = z.object({
   recipientType: z.enum(["all", "specific", "role"]),
   recipientRole: z.enum(["student", "teacher", "manager", "prefect"]),
   sendEmail: z.boolean(),
+  sendSms: z.boolean(),
+  sendWhatsApp: z.boolean(),
 });
 
 export default function AdminNotifications() {
@@ -38,7 +40,7 @@ export default function AdminNotifications() {
 
   const form = useForm<z.infer<typeof createNotificationSchema>>({
     resolver: zodResolver(createNotificationSchema),
-    defaultValues: { title: "", message: "", type: CreateNotificationBodyType.general, recipientType: "all", recipientRole: "student", recipientId: null, sendEmail: false },
+    defaultValues: { title: "", message: "", type: CreateNotificationBodyType.general, recipientType: "all", recipientRole: "student", recipientId: null, sendEmail: false, sendSms: false, sendWhatsApp: false },
   });
 
   const recipientType = form.watch("recipientType");
@@ -55,19 +57,24 @@ export default function AdminNotifications() {
     createNotificationMutation.mutate({ data: data as any }, {
 
       onSuccess: async () => {
-        if (values.sendEmail) {
+        if (values.sendEmail || values.sendSms || values.sendWhatsApp) {
           try {
             const token = localStorage.getItem("dallyletter_token");
-            const emailRes = await fetch(getApiUrl("/api/email/send"), { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ subject: values.title, text: values.message, recipientId: values.recipientType === "specific" ? values.recipientId : null, recipientRole: values.recipientType === "role" ? values.recipientRole : undefined }) });
-            if (!emailRes.ok) throw new Error((await emailRes.json()).error || "Email delivery failed");
-            toast({ title: "Notification and email sent" });
+            const deliveryRes = await fetch(getApiUrl("/api/email/send"), { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ subject: values.title, text: values.message, recipientId: values.recipientType === "specific" ? values.recipientId : null, recipientRole: values.recipientType === "role" ? values.recipientRole : undefined, sendEmail: values.sendEmail, sendSms: values.sendSms, sendWhatsApp: values.sendWhatsApp }) });
+            const deliveryData = await deliveryRes.json().catch(() => ({}));
+            if (!deliveryRes.ok) throw new Error(deliveryData.error || "Selected notification delivery failed");
+            const report = deliveryData.delivery || {};
+            const summary = ["email", "sms", "whatsapp"].filter(channel => report[channel]).map(channel => channel + ": " + (report[channel].sent ?? 0) + " sent").join("; ");
+            toast({ title: "Delivery results", description: summary || "Provider accepted the selected notifications." });
+            if (deliveryData.warning) toast({ variant: "destructive", title: "Partial delivery", description: deliveryData.warning });
           } catch (e) {
-            toast({ variant: "destructive", title: "In-app notification sent; email failed", description: e instanceof Error ? e.message : "Email provider is unavailable." });
+            toast({ variant: "destructive", title: "In-app notification created; external delivery failed", description: e instanceof Error ? e.message : "Selected providers are unavailable." });
           }
+        } else {
+          toast({ title: "In-app notification sent successfully" });
         }
-        toast({ title: "Notification sent successfully" });
         queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() });
-        form.reset({ title: "", message: "", type: CreateNotificationBodyType.general, recipientType: "all", recipientRole: "student", recipientId: null, sendEmail: false });
+        form.reset({ title: "", message: "", type: CreateNotificationBodyType.general, recipientType: "all", recipientRole: "student", recipientId: null, sendEmail: false, sendSms: false, sendWhatsApp: false });
       },
       onError: (error) => {
         toast({ variant: "destructive", title: "Error", description: error.message });
@@ -228,6 +235,20 @@ export default function AdminNotifications() {
                         <FormLabel>Also send by email</FormLabel>
                         <p className="text-xs text-muted-foreground">Sends only to active recipients with a verified notification email. Missing or unverified addresses are not silently replaced with another address.</p>
                       </div>
+                    </FormItem>
+                  )} />
+
+                  <FormField control={form.control} name="sendSms" render={({ field }) => (
+                    <FormItem className="flex items-start gap-3 rounded-xl border p-3">
+                      <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                      <div><FormLabel>Also send by SMS</FormLabel><p className="text-xs text-muted-foreground">Requires Twilio SMS configuration and a verified phone contact.</p></div>
+                    </FormItem>
+                  )} />
+
+                  <FormField control={form.control} name="sendWhatsApp" render={({ field }) => (
+                    <FormItem className="flex items-start gap-3 rounded-xl border p-3">
+                      <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                      <div><FormLabel>Also send by WhatsApp</FormLabel><p className="text-xs text-muted-foreground">Requires an approved Twilio WhatsApp sender and a verified phone contact.</p></div>
                     </FormItem>
                   )} />
 
