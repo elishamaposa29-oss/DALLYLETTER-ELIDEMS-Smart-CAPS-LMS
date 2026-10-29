@@ -56,7 +56,7 @@ export function isWhatsAppConfigured(): boolean {
 export async function sendWhatsApp(to: string, body: string): Promise<void> {
   const cfg = whatsAppConfig();
   if (!cfg) throw new Error("WhatsApp delivery is not configured. Set TWILIO_WHATSAPP_FROM with an approved WhatsApp sender.");
-  if (!/^\\+[1-9]\\d{7,14}$/.test(to)) throw new Error("Phone number must be in international E.164 format.");
+  if (!/^\+[1-9]\d{7,14}$/.test(to)) throw new Error("Phone number must be in international E.164 format.");
   const url = "https://api.twilio.com/2010-04-01/Accounts/" + encodeURIComponent(cfg.accountSid) + "/Messages.json";
   const response = await fetch(url, {
     method: "POST",
@@ -98,7 +98,7 @@ export async function resolveVerifiedPhoneRecipients(recipientId: number | null,
     );
     rows = result.rows;
   }
-  const valid = rows.filter(row => row.recovery_phone_verified_at && typeof row.recovery_phone === "string" && /^\\+[1-9]\\d{7,14}$/.test(row.recovery_phone));
+  const valid = rows.filter(row => row.recovery_phone_verified_at && typeof row.recovery_phone === "string" && /^\+[1-9]\d{7,14}$/.test(row.recovery_phone));
   const phones = [...new Set(valid.map(row => row.recovery_phone as string))];
   return { phones, skippedUnverified: Math.max(0, rows.length - valid.length) };
 }
