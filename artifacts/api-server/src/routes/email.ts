@@ -20,13 +20,18 @@ router.post("/email/send", requireAuth, async (req, res): Promise<void> => {
     res.status(400).json({ error: "Provide a valid subject, message, and one recipient target (user, role, or all users)." }); return;
   }
   try {
-    const recipients = await resolveNotificationRecipients(recipientId, recipientRole);
-    if (!recipients.length) {
-      res.status(404).json({ error: recipientRole ? "No active users with a deliverable email address were found for that role." : "No deliverable email recipients were found." });
+    const resolution = await resolveNotificationRecipients(recipientId, recipientRole);
+    if (!resolution.emails.length) {
+      const error = recipientId !== null
+        ? "This user has no verified notification email. Ask them to set and verify it in Profile Hub."
+        : recipientRole
+          ? "No users in this selection have a verified notification email."
+          : "No users have a verified notification email yet.";
+      res.status(404).json({ error, skippedMissingNotificationEmail: resolution.skippedMissingNotificationEmail });
       return;
     }
-    const result = await sendEmail({ to: recipients, subject, text, html });
-    res.json({ ok: true, recipientCount: recipients.length, recipientRole, recipientId, ...result });
+    const result = await sendEmail({ to: resolution.emails, subject, text, html });
+    res.json({ ok: true, recipientCount: resolution.emails.length, skippedMissingNotificationEmail: resolution.skippedMissingNotificationEmail, recipientRole, recipientId, ...result });
   } catch (error) {
     res.status(503).json({ error: error instanceof Error ? error.message : "Email delivery unavailable" });
   }
