@@ -77,7 +77,19 @@ export async function consumePasswordResetToken(token: string, passwordHash: str
       return false;
     }
     const userId = Number(found.rows[0].user_id);
-    await client.query("UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2", [passwordHash, userId]);
+    const passwordUpdate = await client.query(
+      "UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2 RETURNING id, password_hash",
+      [passwordHash, userId],
+    );
+    if (passwordUpdate.rowCount !== 1 || passwordUpdate.rows[0]?.password_hash !== passwordHash) {
+      throw new Error("Password reset update could not be verified in the database");
+    }
+    // Read the stored value back inside the same transaction before returning success.
+    // A reset must never report success merely because a token was consumed.
+    const persisted = await client.query("SELECT password_hash FROM users WHERE id = $1", [userId]);
+    if (persisted.rows[0]?.password_hash !== passwordHash) {
+      throw new Error("Password reset persistence verification failed");
+    }
     await client.query("UPDATE password_reset_tokens SET used_at = now() WHERE token_hash = $1", [digest(token)]);
     await client.query("UPDATE password_reset_tokens SET used_at = COALESCE(used_at, now()) WHERE user_id = $1 AND used_at IS NULL", [userId]);
     await client.query("UPDATE auth_sessions SET revoked_at = COALESCE(revoked_at, now()) WHERE user_id = $1", [userId]);
