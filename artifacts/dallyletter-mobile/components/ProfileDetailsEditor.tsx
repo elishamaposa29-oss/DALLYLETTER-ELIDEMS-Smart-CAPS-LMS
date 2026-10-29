@@ -102,7 +102,7 @@ export function ProfileDetailsEditor() {
 
   const requestEmailChange=async()=>{
     if(!token||emailChangeBusy)return;
-    if(!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(primaryEmail.trim())){Alert.alert("Check email address","Enter a valid new email address.");return;}
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(primaryEmail.trim())){Alert.alert("Check email address","Enter a valid new email address.");return;}
     if(!emailChangePassword){Alert.alert("Confirm your identity","Enter your current password before changing your email.");return;}
     setEmailChangeBusy(true);
     try{
