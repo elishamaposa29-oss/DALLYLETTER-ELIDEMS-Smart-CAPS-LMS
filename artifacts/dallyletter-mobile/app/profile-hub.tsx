@@ -203,7 +203,7 @@ export default function MobileProfileHub() {
     const updated=await api("/api/users/"+user!.id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone})});
     await login({...user,...updated},token!);
     await api("/api/users/me/phone/request-verification",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone})});
-    setPhoneVerified(false);setMessage("A six-digit verification code was sent by SMS.");
+    setPhoneVerified(false);setMessage("SMS provider accepted the verification message. Check your messages; carrier delivery can take a little time.");
   });
   const requestWhatsAppPhoneCode=async()=>act(async()=>{
     const phone=phoneInput.trim();
