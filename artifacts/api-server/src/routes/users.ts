@@ -15,7 +15,7 @@ import { canReadPrivateProfileByRole, serializePublicProfile, maskPayoutDestinat
 import { revokeUserSessions, consumeAuthAttempt } from "../lib/auth-session-store";
 import { hashPassword, verifyPassword } from "../lib/password-hash";
 import { sendEmail, isEmailConfigured } from "../lib/email-service";
-import { isSmsConfigured, sendSms } from "../lib/sms-service";
+import { isSmsConfigured, isWhatsAppConfigured, sendSms, sendWhatsApp } from "../lib/sms-service";
 import { enqueueEmailNotification } from "../lib/email-notification-queue";
 
 const router: IRouter = Router();
@@ -148,6 +148,27 @@ router.post("/users/me/phone/request-verification", requireAuth, async (req, res
   } catch {
     await pool.query("UPDATE account_recovery_profiles SET phone_verification_code_hash=NULL,phone_verification_expires_at=NULL,updated_at=now() WHERE user_id=$1", [req.currentUser!.id]);
     res.status(503).json({ error: "The SMS provider could not send your verification code. Please try again later." });
+  }
+});
+
+router.post("/users/me/phone/request-whatsapp-verification", requireAuth, async (req, res): Promise<void> => {
+  if (!canManageOwnRecoveryProfile(req.currentUser!.role)) { res.status(403).json({ error: "Owner/admin recovery profile is managed through protected bootstrap." }); return; }
+  const phone = typeof req.body?.phone === "string" ? req.body.phone.trim() : "";
+  if (!/^\\+[1-9]\\d{7,14}$/.test(phone)) { res.status(400).json({ error: "Enter a valid international phone number, including country code." }); return; }
+  if (!isWhatsAppConfigured()) { res.status(503).json({ error: "WhatsApp verification is not configured. Your saved phone number remains unverified." }); return; }
+  await ensureRecoveryProfileSchema();
+  const code = String(crypto.randomInt(100000, 1000000));
+  const codeHash = crypto.createHash("sha256").update(String(req.currentUser!.id) + ":" + code + ":" + String(process.env.JWT_SECRET || "")).digest("hex");
+  await pool.query(`INSERT INTO account_recovery_profiles (user_id,recovery_phone,recovery_phone_verified_at,phone_verification_code_hash,phone_verification_expires_at,phone_verification_attempts,updated_at)
+    VALUES ($1,$2,NULL,$3,now()+interval '10 minutes',0,now())
+    ON CONFLICT (user_id) DO UPDATE SET recovery_phone=EXCLUDED.recovery_phone,recovery_phone_verified_at=NULL,phone_verification_code_hash=EXCLUDED.phone_verification_code_hash,phone_verification_expires_at=EXCLUDED.phone_verification_expires_at,phone_verification_attempts=0,updated_at=now()`,
+    [req.currentUser!.id, phone, codeHash]);
+  try {
+    await sendWhatsApp(phone, "Your Dallyletter Elidems phone verification code is " + code + ". It expires in 10 minutes. Do not share this code.");
+    res.json({ message: "WhatsApp verification code accepted by provider.", expiresInSeconds: 600 });
+  } catch {
+    await pool.query("UPDATE account_recovery_profiles SET phone_verification_code_hash=NULL,phone_verification_expires_at=NULL,updated_at=now() WHERE user_id=$1", [req.currentUser!.id]);
+    res.status(503).json({ error: "WhatsApp could not send your verification code. Check provider configuration and try again." });
   }
 });
 
