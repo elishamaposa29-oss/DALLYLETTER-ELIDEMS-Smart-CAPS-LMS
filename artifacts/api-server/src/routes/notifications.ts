@@ -25,8 +25,8 @@ async function sendPhoneNotification(req: any, res: any, channel: "sms" | "whats
       res.status(404).json({ error: "No active verified phone numbers were found for this recipient selection.", skippedUnverified: recipients.skippedUnverified }); return;
     }
     const outcomes = await Promise.allSettled(recipients.phones.map(phone => channel === "sms"
-      ? sendSms(phone, subject + "\\n\\n" + text)
-      : sendWhatsApp(phone, subject + "\\n\\n" + text)));
+      ? sendSms(phone, subject + "\n\n" + text)
+      : sendWhatsApp(phone, subject + "\n\n" + text)));
     const accepted = outcomes.filter(outcome => outcome.status === "fulfilled").length;
     const failed = outcomes.length - accepted;
     if (failed) {
