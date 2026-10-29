@@ -60,6 +60,7 @@ export default function AdminNotifications() {
       toast({ variant: "destructive", title: "No recipients found", description: "There are no users currently assigned to that role." });
       return;
     }
+    let inAppCreated = false;
     try {
       const targets = values.recipientType === "role"
         ? targetUsers.map(u => u.id)
@@ -71,6 +72,7 @@ export default function AdminNotifications() {
           type: values.type,
           recipientId,
         } });
+        inAppCreated = true;
       }
       const token = localStorage.getItem("dallyletter_token");
       const recipientBody = {
@@ -97,7 +99,7 @@ export default function AdminNotifications() {
       queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() });
       form.reset({ title: "", message: "", type: CreateNotificationBodyType.general, recipientType: "all", recipientId: null, recipientRole: "student", sendEmail: false, sendSms: false, sendWhatsApp: false });
     } catch (error) {
-      toast({ variant: "destructive", title: "Notification delivery incomplete", description: error instanceof Error ? error.message : "The notification could not be completed." });
+      toast({ variant: "destructive", title: inAppCreated ? "In-app notification created; external delivery incomplete" : "Notification delivery incomplete", description: (error instanceof Error ? error.message : "The notification could not be completed.") + (inAppCreated ? " The in-app alert was already saved; check the selected email/SMS/WhatsApp channel before retrying to avoid duplicate messages." : "") });
     }
   };
 
@@ -208,7 +210,6 @@ export default function AdminNotifications() {
                           <FormControl><SelectTrigger><SelectValue placeholder="Choose a role" /></SelectTrigger></FormControl>
                           <SelectContent>
                             <SelectItem value="student">Learners</SelectItem>
-                            <SelectItem value="learner">Learners (legacy role)</SelectItem>
                             <SelectItem value="teacher">Teachers</SelectItem>
                             <SelectItem value="prefect">Prefects</SelectItem>
                             <SelectItem value="manager">Managers</SelectItem>
