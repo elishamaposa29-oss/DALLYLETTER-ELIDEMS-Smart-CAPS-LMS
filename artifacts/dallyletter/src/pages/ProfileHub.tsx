@@ -304,7 +304,7 @@ export default function ProfileHub() {
     const phone=phoneInput.trim();
     if(!/^\+[1-9]\d{7,14}$/.test(phone)){setMessage("Use international phone format, including country code (for example +263…).");return;}
     setBusy(true);setMessage("");
-    try{await request("/api/users/"+user!.id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone})});await request("/api/users/me/phone/request-verification",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone})});setPhoneVerified(false);setMessage("A six-digit verification code was sent by SMS.");}
+    try{await request("/api/users/"+user!.id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone})});await request("/api/users/me/phone/request-verification",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone})});setPhoneVerified(false);setMessage("SMS provider accepted the verification message. Check your messages; carrier delivery can take a little time.");}
     catch(e){setMessage(e instanceof Error?e.message:"Could not send phone verification code.");}
     finally{setBusy(false);}
   };
