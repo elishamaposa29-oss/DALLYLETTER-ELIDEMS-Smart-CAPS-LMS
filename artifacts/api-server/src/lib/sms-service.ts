@@ -49,7 +49,7 @@ export async function sendWhatsApp(to: string, body: string): Promise<void> {
     logger.error({ event: "whatsapp.delivery.failed", provider: "twilio", reason: "not_configured" }, "WhatsApp delivery is not configured");
     throw new Error("WhatsApp delivery is not configured. Set TWILIO_WHATSAPP_FROM with the approved WhatsApp sender.");
   }
-  if (!/^\\+[1-9]\\d{7,14}$/.test(to)) throw new Error("Phone number must be in international E.164 format.");
+  if (!/^\+[1-9]\d{7,14}$/.test(to)) throw new Error("Phone number must be in international E.164 format.");
   const normalizedFrom = from.startsWith("whatsapp:") ? from : "whatsapp:" + from;
   const normalizedTo = "whatsapp:" + to;
   const url = "https://api.twilio.com/2010-04-01/Accounts/" + encodeURIComponent(accountSid) + "/Messages.json";
