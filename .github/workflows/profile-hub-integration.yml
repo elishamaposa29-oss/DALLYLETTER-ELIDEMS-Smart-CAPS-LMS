@@ -99,6 +99,8 @@ jobs:
           node -e 'const fs=require("fs");const v=JSON.parse(fs.readFileSync("/tmp/pr84-health.json","utf8"));if(v.status!=="ok")process.exit(1)'
       - name: Test schema discovery, authenticated enrollment, progress, OTP, queue and webhook signatures
         run: pnpm --dir lib/db run test:profile-hub-integration
+      - name: Verify password reset end to end against isolated PostgreSQL
+        run: node artifacts/api-server/scripts/test-password-reset-e2e.mjs
       - name: Upload diagnostic logs
         if: always()
         uses: actions/upload-artifact@v4

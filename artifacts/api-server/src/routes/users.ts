@@ -130,6 +130,10 @@ function canManageOwnRecoveryProfile(role: unknown): boolean {
   return !isOwnerRole(role);
 }
 
+function normalizeSecurityAnswer(answer: string): string {
+  return answer.normalize("NFKC").toLowerCase().replace(/\s+/g, "");
+}
+
 router.post("/users/me/phone/request-verification", requireAuth, async (req, res): Promise<void> => {
   if (!canManageOwnRecoveryProfile(req.currentUser!.role)) { res.status(403).json({ error: "Owner/admin recovery profile is managed through protected bootstrap." }); return; }
   const phone = typeof req.body?.phone === "string" ? req.body.phone.trim() : "";
@@ -202,12 +206,29 @@ router.patch("/users/me/recovery-profile", requireAuth, async (req, res): Promis
   const nextEmail = recoveryEmail === null ? previous?.recovery_email ?? null : recoveryEmail || null;
   const emailChanged = nextEmail !== (previous?.recovery_email ?? null);
   if (securityQuestion && !securityAnswer && securityQuestion !== (previous?.security_question ?? null)) { res.status(400).json({ error: "Enter an answer when changing your security question." }); return; }
-  const answerHash = securityAnswer ? await hashPassword(securityAnswer.toLowerCase()) : null;
+  const answerHash = securityAnswer ? await hashPassword(normalizeSecurityAnswer(securityAnswer)) : null;
   await pool.query(
     "INSERT INTO account_recovery_profiles (user_id, recovery_email, recovery_email_verified_at, recovery_phone, recovery_phone_verified_at, security_question, security_answer_hash, verification_code_hash, verification_expires_at, updated_at) VALUES ($1,$2,$3,$4,NULL,$5,$6,NULL,NULL,now()) ON CONFLICT (user_id) DO UPDATE SET recovery_email = EXCLUDED.recovery_email, recovery_email_verified_at = CASE WHEN $7 THEN NULL ELSE account_recovery_profiles.recovery_email_verified_at END, recovery_phone = EXCLUDED.recovery_phone, recovery_phone_verified_at = CASE WHEN $8 THEN NULL ELSE account_recovery_profiles.recovery_phone_verified_at END, security_question = EXCLUDED.security_question, security_answer_hash = CASE WHEN $9 THEN NULL WHEN EXCLUDED.security_answer_hash IS NOT NULL THEN EXCLUDED.security_answer_hash ELSE account_recovery_profiles.security_answer_hash END, verification_code_hash = CASE WHEN $7 THEN NULL ELSE account_recovery_profiles.verification_code_hash END, verification_expires_at = CASE WHEN $7 THEN NULL ELSE account_recovery_profiles.verification_expires_at END, updated_at = now()",
     [actor.id, nextEmail, emailChanged ? null : previous?.recovery_email_verified_at ?? null, recoveryPhone === null ? null : recoveryPhone || null, securityQuestion || null, answerHash, emailChanged, recoveryPhone !== null, !securityQuestion],
   );
   res.json({ message: "Recovery profile saved. Alternate email must be verified before it can be used for password recovery; phone verification requires an enabled SMS provider.", recoveryEmail: nextEmail, recoveryEmailVerified: !emailChanged && Boolean(previous?.recovery_email_verified_at), recoveryPhone: recoveryPhone, phoneVerified: false, securityQuestion: securityQuestion || null });
+});
+
+
+router.post("/users/me/recovery-question/verify", requireAuth, async (req, res): Promise<void> => {
+  const actor = req.currentUser!;
+  if (!canManageOwnRecoveryProfile(actor.role)) { res.status(403).json({ error: "Owner/admin recovery is managed through protected bootstrap." }); return; }
+  const answer = typeof req.body?.answer === "string" ? req.body.answer : "";
+  if (!answer.trim() || answer.length > 200) { res.status(400).json({ error: "Enter the saved security answer." }); return; }
+  const ip = req.ip || "unknown";
+  if (await consumeAuthAttempt("recovery-question-verify", String(actor.id), ip, 5, 60 * 60 * 1000, 60 * 60 * 1000)) { res.status(429).json({ error: "Too many security-answer attempts. Try again later." }); return; }
+  await ensureRecoveryProfileSchema();
+  const found = await pool.query("SELECT security_question,security_answer_hash FROM account_recovery_profiles WHERE user_id=$1", [actor.id]);
+  const row = found.rows[0] as { security_question: string | null; security_answer_hash: string | null } | undefined;
+  if (!row?.security_question || !row.security_answer_hash) { res.status(404).json({ error: "Set and save a custom security question and answer first." }); return; }
+  const verified = await verifyPassword(normalizeSecurityAnswer(answer), row.security_answer_hash);
+  if (!verified) { res.status(400).json({ verified: false, error: "That answer does not match. Capitalization and spacing are ignored." }); return; }
+  res.json({ verified: true, message: "Security answer verified. This check alone cannot reset your password; a verified recovery channel is still required." });
 });
 
 router.post("/users/me/recovery-email/request-verification", requireAuth, async (req, res): Promise<void> => {

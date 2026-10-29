@@ -1,6 +1,6 @@
 // Messages routes — group and private chat, including voice notes
 import { Router, type IRouter } from "express";
-import { eq, and, isNull, or, inArray } from "drizzle-orm";
+import { eq, and, isNull, or, inArray, desc } from "drizzle-orm";
 import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -181,7 +181,7 @@ router.get("/messages", requireAuth, async (req, res): Promise<void> => {
     // Group messages
     messages = await db.select().from(messagesTable)
       .where(eq(messagesTable.groupId, groupId))
-      .orderBy(messagesTable.createdAt);
+      .orderBy(desc(messagesTable.createdAt), desc(messagesTable.id));
   } else if (recipientId != null) {
     if (!(await canViewPrivateConversation(currentUser, recipientId))) {
       res.status(403).json({ error: "Private conversations are restricted to the participants and owner" });
@@ -195,7 +195,7 @@ router.get("/messages", requireAuth, async (req, res): Promise<void> => {
           and(eq(messagesTable.senderId, recipientId), eq(messagesTable.recipientId, currentUser.id))
         )
       )
-      .orderBy(messagesTable.createdAt);
+      .orderBy(desc(messagesTable.createdAt), desc(messagesTable.id));
   } else {
     const memberships = await db.select({ groupId: studyGroupMembersTable.groupId })
       .from(studyGroupMembersTable)
@@ -205,7 +205,7 @@ router.get("/messages", requireAuth, async (req, res): Promise<void> => {
       ? []
       : await db.select().from(messagesTable)
         .where(and(isNull(messagesTable.recipientId), inArray(messagesTable.groupId, groupIds)))
-        .orderBy(messagesTable.createdAt);
+        .orderBy(desc(messagesTable.createdAt), desc(messagesTable.id));
   }
 
   const handRaiseMarker = /^\[\[hand-raise:(\d+)\]\]\s*/;
