@@ -80,7 +80,7 @@ export async function consumePasswordResetToken(token: string, passwordHash: str
     }
     const userId = Number(found.rows[0].user_id);
     if (found.rows[0].requires_security_answer) {
-      const normalizedAnswer = securityAnswer.toLowerCase().replace(/\\s+/g, " ").trim();
+      const normalizedAnswer = securityAnswer.toLowerCase().replace(/\s+/g, " ").trim();
       if (!normalizedAnswer || normalizedAnswer.length > 200) {
         await client.query("ROLLBACK");
         return false;
