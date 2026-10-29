@@ -23,7 +23,8 @@ const createNotificationSchema = z.object({
   title: z.string().min(2, "Title is required"),
   message: z.string().min(5, "Message is required"),
   type: z.enum([CreateNotificationBodyType.payment_overdue, CreateNotificationBodyType.new_lesson, CreateNotificationBodyType.class_starting, CreateNotificationBodyType.system, CreateNotificationBodyType.general]),
-  recipientType: z.enum(["all", "specific"]),
+  recipientType: z.enum(["all", "specific", "role"]),
+  recipientRole: z.enum(["student", "teacher", "prefect", "manager", "senior_manager", "owner"]),
   sendEmail: z.boolean(),
 });
 
@@ -37,39 +38,58 @@ export default function AdminNotifications() {
 
   const form = useForm<z.infer<typeof createNotificationSchema>>({
     resolver: zodResolver(createNotificationSchema),
-    defaultValues: { title: "", message: "", type: CreateNotificationBodyType.general, recipientType: "all", recipientId: null, sendEmail: false },
+    defaultValues: { title: "", message: "", type: CreateNotificationBodyType.general, recipientType: "all", recipientId: null, recipientRole: "student", sendEmail: false },
   });
 
   const recipientType = form.watch("recipientType");
 
-  const onSubmit = (values: z.infer<typeof createNotificationSchema>) => {
-    const data = {
-      title: values.title,
-      message: values.message,
-      type: values.type,
-      recipientId: values.recipientType === "specific" ? values.recipientId : null
-    };
-    createNotificationMutation.mutate({ data }, {
-
-      onSuccess: async () => {
-        if (values.sendEmail) {
-          try {
-            const token = localStorage.getItem("dallyletter_token");
-            const emailRes = await fetch(getApiUrl("/api/email/send"), { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ subject: values.title, text: values.message, recipientId: values.recipientType === "specific" ? values.recipientId : null }) });
-            if (!emailRes.ok) throw new Error((await emailRes.json()).error || "Email delivery failed");
-            toast({ title: "Notification and email sent" });
-          } catch (e) {
-            toast({ variant: "destructive", title: "In-app notification sent; email failed", description: e instanceof Error ? e.message : "Email provider is unavailable." });
-          }
-        }
-        toast({ title: "Notification sent successfully" });
-        queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() });
-        form.reset({ title: "", message: "", type: CreateNotificationBodyType.general, recipientType: "all", recipientId: null, sendEmail: false });
-      },
-      onError: (error) => {
-        toast({ variant: "destructive", title: "Error", description: error.message });
+  const onSubmit = async (values: z.infer<typeof createNotificationSchema>) => {
+    const targetUsers = values.recipientType === "role"
+      ? (users || []).filter(u => {
+          const role = String(u.role || "").toLowerCase();
+          return values.recipientRole === "student" ? ["student", "learner"].includes(role) : role === values.recipientRole;
+        })
+      : [];
+    if (values.recipientType === "specific" && !values.recipientId) {
+      toast({ variant: "destructive", title: "Choose a recipient", description: "Select the user who should receive this notification." });
+      return;
+    }
+    if (values.recipientType === "role" && targetUsers.length === 0) {
+      toast({ variant: "destructive", title: "No recipients found", description: "There are no users currently assigned to that role." });
+      return;
+    }
+    try {
+      const targets = values.recipientType === "role"
+        ? targetUsers.map(u => u.id)
+        : [values.recipientType === "specific" ? values.recipientId! : null];
+      for (const recipientId of targets) {
+        await createNotificationMutation.mutateAsync({ data: {
+          title: values.title,
+          message: values.message,
+          type: values.type,
+          recipientId,
+        } });
       }
-    });
+      if (values.sendEmail) {
+        const token = localStorage.getItem("dallyletter_token");
+        const body = {
+          subject: values.title,
+          text: values.message,
+          recipientId: values.recipientType === "specific" ? values.recipientId : null,
+          recipientRole: values.recipientType === "role" ? values.recipientRole : null,
+        };
+        const emailRes = await fetch(getApiUrl("/api/email/send"), { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+        const emailData = await emailRes.json().catch(() => ({}));
+        if (!emailRes.ok) throw new Error(emailData.error || "Email delivery failed");
+        toast({ title: "Notification and email sent", description: `Email provider accepted delivery for ${emailData.recipientCount ?? emailData.sent ?? "the selected"} recipient(s).` });
+      } else {
+        toast({ title: "Notification sent successfully", description: values.recipientType === "role" ? `Sent to ${targetUsers.length} users in the selected role.` : undefined });
+      }
+      queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() });
+      form.reset({ title: "", message: "", type: CreateNotificationBodyType.general, recipientType: "all", recipientId: null, recipientRole: "student", sendEmail: false });
+    } catch (error) {
+      toast({ variant: "destructive", title: "Notification delivery incomplete", description: error instanceof Error ? error.message : "The notification could not be completed." });
+    }
   };
 
   const handleDelete = async (id: number) => {
@@ -163,12 +183,33 @@ export default function AdminNotifications() {
                         </FormControl>
                         <SelectContent>
                           <SelectItem value="all">All Users</SelectItem>
+                          <SelectItem value="role">All Users by Role</SelectItem>
                           <SelectItem value="specific">Specific User</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />
                     </FormItem>
                   )} />
+
+                  {recipientType === "role" && (
+                    <FormField control={form.control} name="recipientRole" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Role recipients</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl><SelectTrigger><SelectValue placeholder="Choose a role" /></SelectTrigger></FormControl>
+                          <SelectContent>
+                            <SelectItem value="student">Learners</SelectItem>
+                            <SelectItem value="teacher">Teachers</SelectItem>
+                            <SelectItem value="prefect">Prefects</SelectItem>
+                            <SelectItem value="manager">Managers</SelectItem>
+                            <SelectItem value="senior_manager">Senior managers</SelectItem>
+                            <SelectItem value="owner">Owners</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                  )}
 
                   {recipientType === "specific" && (
                     <FormField control={form.control} name="recipientId" render={({ field }) => (
@@ -180,7 +221,7 @@ export default function AdminNotifications() {
                           </FormControl>
                           <SelectContent>
                             {users?.map(u => (
-                              <SelectItem key={u.id} value={u.id.toString()}>{u.name} ({u.role})</SelectItem>
+                              <SelectItem key={u.id} value={u.id.toString()}>{u.name} ({u.role}) — {(u as any).email || "no primary email"}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
@@ -204,7 +245,7 @@ export default function AdminNotifications() {
                       <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
                       <div>
                         <FormLabel>Also send by email</FormLabel>
-                        <p className="text-xs text-muted-foreground">Uses the server email provider. No email is sent unless this is enabled and provider credentials are configured.</p>
+                        <p className="text-xs text-muted-foreground">Uses each recipient's verified notification email when available, otherwise their account email. Role selection is resolved on the server; delivery errors are reported.</p>
                       </div>
                     </FormItem>
                   )} />
