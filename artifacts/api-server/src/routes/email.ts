@@ -25,6 +25,7 @@ router.post("/email/send", requireAuth, async (req, res): Promise<void> => {
     res.status(400).json({ error: "Valid subject, message, recipient and at least one delivery channel are required" }); return;
   }
   try {
+    await pool.query("CREATE TABLE IF NOT EXISTS account_recovery_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, recovery_email text, recovery_email_verified_at timestamptz, recovery_phone text, recovery_phone_verified_at timestamptz, security_question text, security_answer_hash text, verification_code_hash text, verification_expires_at timestamptz, updated_at timestamptz NOT NULL DEFAULT now())");
     let where = "u.is_blocked=false AND u.is_suspended=false";
     const params: unknown[] = [];
     if (recipientId !== null) { params.push(recipientId); where += " AND u.id=$" + params.length; }
