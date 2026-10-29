@@ -86,14 +86,20 @@ export async function consumePasswordResetToken(token: string, passwordHash: str
 
     const userId = Number(found.rows[0].user_id);
     if (found.rows[0].requires_security_answer) {
-      const normalizedAnswer = securityAnswer.normalize("NFKC").toLowerCase().replace(/\s+/g, "");
+      const normalizedAnswer = securityAnswer.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+      const compactAnswer = normalizedAnswer.replace(/\s+/g, "");
       if (!normalizedAnswer || normalizedAnswer.length > 200) {
         await client.query("ROLLBACK");
         return false;
       }
       const recovery = await client.query("SELECT security_answer_hash FROM account_recovery_profiles WHERE user_id=$1 AND recovery_email_verified_at IS NOT NULL", [userId]);
       const answerHash = recovery.rows[0]?.security_answer_hash;
-      const valid = typeof answerHash === "string" && (await verifyPassword(normalizedAnswer, answerHash)).valid;
+      let valid = false;
+      if (typeof answerHash === "string") {
+        for (const candidate of [...new Set([normalizedAnswer, compactAnswer])]) {
+          if ((await verifyPassword(candidate, answerHash)).valid) { valid = true; break; }
+        }
+      }
       if (!valid) {
         await client.query("ROLLBACK");
         return false;
