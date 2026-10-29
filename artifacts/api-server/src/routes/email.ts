@@ -21,7 +21,7 @@ router.post("/email/send", requireAuth, async (req, res): Promise<void> => {
   const wantsEmail = req.body?.sendEmail === true || (!("sendEmail" in (req.body ?? {})) && req.body?.sendSms !== true && req.body?.sendWhatsApp !== true);
   const wantsSms = req.body?.sendSms === true;
   const wantsWhatsApp = req.body?.sendWhatsApp === true;
-  if (!subject || subject.length > 200 || !text || text.length > 20000 || (recipientId !== null && !Number.isInteger(recipientId)) || (recipientRole && !["student","teacher","manager","prefect"].includes(recipientRole)) || (!wantsEmail && !wantsSms && !wantsWhatsApp)) {
+  if (!subject || subject.length > 200 || !text || text.length > 20000 || (recipientId !== null && !Number.isInteger(recipientId)) || (recipientRole && !["student","learner","teacher","manager","prefect"].includes(recipientRole)) || (!wantsEmail && !wantsSms && !wantsWhatsApp)) {
     res.status(400).json({ error: "Valid subject, message, recipient and at least one delivery channel are required" }); return;
   }
   try {
@@ -30,6 +30,7 @@ router.post("/email/send", requireAuth, async (req, res): Promise<void> => {
     const params: unknown[] = [];
     if (recipientId !== null) { params.push(recipientId); where += " AND u.id=$" + params.length; }
     else if (recipientRole === "prefect") where += " AND u.is_prefect=true";
+    else if (recipientRole === "student" || recipientRole === "learner") where += " AND lower(u.role) IN ('student','learner')";
     else if (recipientRole === "manager") where += " AND (u.is_manager=true OR lower(u.role) IN ('manager','senior_manager'))";
     else if (recipientRole) { params.push(recipientRole); where += " AND lower(u.role)=$" + params.length; }
     const result = await pool.query(
