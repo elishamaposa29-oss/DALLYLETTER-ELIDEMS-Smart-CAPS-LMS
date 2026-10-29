@@ -40,7 +40,8 @@ async function sendPhoneNotification(req: any, res: any, channel: "sms" | "whats
 
 router.post("/notifications/send-sms", requireAuth, async (req, res): Promise<void> => sendPhoneNotification(req, res, "sms"));
 router.post("/notifications/send-whatsapp", requireAuth, async (req, res): Promise<void> => sendPhoneNotification(req, res, "whatsapp"));
-\n// GET /notifications — List notifications for current user (includes broadcasts)
+
+// GET /notifications — List notifications for current user (includes broadcasts)
 router.get("/notifications", requireAuth, async (req, res): Promise<void> => {
   // Authenticated notification lists are private and must never be served from a stale cache.
   res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
