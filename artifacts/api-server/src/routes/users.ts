@@ -154,7 +154,7 @@ router.post("/users/me/phone/request-verification", requireAuth, async (req, res
 router.post("/users/me/phone/request-whatsapp-verification", requireAuth, async (req, res): Promise<void> => {
   if (!canManageOwnRecoveryProfile(req.currentUser!.role)) { res.status(403).json({ error: "Owner/admin recovery profile is managed through protected bootstrap." }); return; }
   const phone = typeof req.body?.phone === "string" ? req.body.phone.trim() : "";
-  if (!/^\\+[1-9]\\d{7,14}$/.test(phone)) { res.status(400).json({ error: "Enter a valid international phone number, including country code." }); return; }
+  if (!/^\+[1-9]\d{7,14}$/.test(phone)) { res.status(400).json({ error: "Enter a valid international phone number, including country code." }); return; }
   if (!isWhatsAppConfigured()) { res.status(503).json({ error: "WhatsApp verification is not configured. Your saved phone number remains unverified." }); return; }
   await ensureRecoveryProfileSchema();
   const code = String(crypto.randomInt(100000, 1000000));
