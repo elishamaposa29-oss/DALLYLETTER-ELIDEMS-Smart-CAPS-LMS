@@ -73,9 +73,20 @@ export async function sendWhatsApp(to: string, body: string): Promise<void> {
   logger.info({ event: "whatsapp.delivery.accepted", provider: "twilio", status: response.status }, "WhatsApp message accepted by provider; recipient delivery must be confirmed separately");
 }
 
+let recoveryPhoneSchemaReady = false;
+async function ensureRecoveryPhoneSchema(): Promise<void> {
+  if (recoveryPhoneSchemaReady) return;
+  await pool.query("CREATE TABLE IF NOT EXISTS account_recovery_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, recovery_email text, recovery_email_verified_at timestamptz, recovery_phone text, recovery_phone_verified_at timestamptz, security_question text, security_answer_hash text, verification_code_hash text, verification_expires_at timestamptz, updated_at timestamptz NOT NULL DEFAULT now())");
+  await pool.query("ALTER TABLE account_recovery_profiles ADD COLUMN IF NOT EXISTS phone_verification_code_hash text");
+  await pool.query("ALTER TABLE account_recovery_profiles ADD COLUMN IF NOT EXISTS phone_verification_expires_at timestamptz");
+  await pool.query("ALTER TABLE account_recovery_profiles ADD COLUMN IF NOT EXISTS phone_verification_attempts integer NOT NULL DEFAULT 0");
+  recoveryPhoneSchemaReady = true;
+}
+
 const PHONE_ROLE_ALLOWLIST = new Set(["student", "learner", "teacher", "prefect", "manager", "senior_manager", "owner", "admin"]);
 
 export async function resolveVerifiedPhoneRecipients(recipientId: number | null, recipientRole: string | null = null): Promise<{ phones: string[]; skippedUnverified: number }> {
+  await ensureRecoveryPhoneSchema();
   let rows: Array<{ recovery_phone: string | null; recovery_phone_verified_at: Date | string | null }>;
   if (recipientId !== null) {
     const result = await pool.query(
