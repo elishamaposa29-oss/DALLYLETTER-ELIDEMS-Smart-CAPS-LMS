@@ -522,6 +522,20 @@ router.post("/auth/password-reset/request", async (req, res): Promise<void> => {
   }
 });
 
+// GET /auth/password-reset/details — disclose only the saved question for a valid reset token.
+router.get("/auth/password-reset/details", async (req, res): Promise<void> => {
+  const token = typeof req.query.token === "string" ? req.query.token : "";
+  if (!/^[a-f0-9]{64}$/i.test(token)) { res.status(400).json({ error: "This reset link is invalid or expired. Request a new one." }); return; }
+  const found = await pool.query("SELECT user_id,requires_security_answer FROM password_reset_tokens WHERE token_hash=$1 AND expires_at>now() AND used_at IS NULL", [createHash("sha256").update(token).digest("hex")]);
+  if (!found.rows.length) { res.status(400).json({ error: "This reset link is invalid, expired, or already used. Request a new one." }); return; }
+  const requiresSecurityAnswer = Boolean(found.rows[0].requires_security_answer);
+  if (!requiresSecurityAnswer) { res.json({ requiresSecurityAnswer: false, securityQuestion: null }); return; }
+  const question = await pool.query("SELECT security_question FROM account_recovery_profiles WHERE user_id=$1 AND recovery_email_verified_at IS NOT NULL", [Number(found.rows[0].user_id)]);
+  const securityQuestion = String(question.rows[0]?.security_question || "").trim();
+  if (!securityQuestion) { res.status(400).json({ error: "This backup-email recovery is missing its security question. Contact support or use your primary email recovery path." }); return; }
+  res.json({ requiresSecurityAnswer: true, securityQuestion });
+});
+
 // POST /auth/password-reset/confirm — one-use, expiring token; revoke every existing session.
 router.post("/auth/password-reset/confirm", async (req, res): Promise<void> => {
   const token = typeof req.body?.token === "string" ? req.body.token : "";
