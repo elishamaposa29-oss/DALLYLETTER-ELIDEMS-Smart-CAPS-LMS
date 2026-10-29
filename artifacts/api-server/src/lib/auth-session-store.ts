@@ -64,6 +64,11 @@ export async function createPasswordResetToken(userId: number): Promise<string> 
   return token;
 }
 
+/**
+ * Atomically consume a reset token, persist the new hash, and revoke sessions.
+ * The transaction fails closed if the target account disappeared or PostgreSQL
+ * did not confirm that the new hash was stored.
+ */
 export async function consumePasswordResetToken(token: string, passwordHash: string): Promise<boolean> {
   const client = await pool.connect();
   try {
@@ -76,9 +81,23 @@ export async function consumePasswordResetToken(token: string, passwordHash: str
       await client.query("ROLLBACK");
       return false;
     }
+
     const userId = Number(found.rows[0].user_id);
-    await client.query("UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2", [passwordHash, userId]);
-    await client.query("UPDATE password_reset_tokens SET used_at = now() WHERE token_hash = $1", [digest(token)]);
+    const updated = await client.query(
+      "UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2 RETURNING id, password_hash",
+      [passwordHash, userId],
+    );
+    if (updated.rowCount !== 1 || updated.rows[0]?.password_hash !== passwordHash) {
+      throw new Error("Password reset did not persist the new credential");
+    }
+
+    const consumed = await client.query(
+      "UPDATE password_reset_tokens SET used_at = now() WHERE token_hash = $1 AND used_at IS NULL RETURNING token_hash",
+      [digest(token)],
+    );
+    if (consumed.rowCount !== 1) {
+      throw new Error("Password reset token could not be consumed atomically");
+    }
     await client.query("UPDATE password_reset_tokens SET used_at = COALESCE(used_at, now()) WHERE user_id = $1 AND used_at IS NULL", [userId]);
     await client.query("UPDATE auth_sessions SET revoked_at = COALESCE(revoked_at, now()) WHERE user_id = $1", [userId]);
     await client.query("COMMIT");
@@ -90,7 +109,6 @@ export async function consumePasswordResetToken(token: string, passwordHash: str
     client.release();
   }
 }
-
 
 const AUTH_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_ATTEMPT_BLOCK_MS = 15 * 60 * 1000;
@@ -143,18 +161,17 @@ export async function clearAuthAttempts(scope: string, identity: string, ipAddre
   );
 }
 
-
 /** Change a password and revoke every session atomically. */
 export async function updatePasswordAndRevokeSessions(userId: number, passwordHash: string): Promise<void> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
     const updated = await client.query(
-      "UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2",
+      "UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2 RETURNING id, password_hash",
       [passwordHash, userId],
     );
-    if (updated.rowCount !== 1) {
-      throw new Error("User no longer exists while changing password");
+    if (updated.rowCount !== 1 || updated.rows[0]?.password_hash !== passwordHash) {
+      throw new Error("User no longer exists or password change did not persist");
     }
     await client.query(
       "UPDATE auth_sessions SET revoked_at = COALESCE(revoked_at, now()) WHERE user_id = $1",
