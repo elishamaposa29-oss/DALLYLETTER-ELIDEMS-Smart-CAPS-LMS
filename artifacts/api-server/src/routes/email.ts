@@ -15,13 +15,18 @@ router.post("/email/send", requireAuth, async (req, res): Promise<void> => {
   const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
   const html = typeof req.body?.html === "string" ? req.body.html : undefined;
   const recipientId = req.body?.recipientId == null ? null : Number(req.body.recipientId);
-  if (!subject || subject.length > 200 || !text || text.length > 20000 || (recipientId !== null && !Number.isInteger(recipientId))) {
-    res.status(400).json({ error: "Valid subject, message and recipient are required" }); return;
+  const recipientRole = req.body?.recipientRole == null ? null : String(req.body.recipientRole).trim().toLowerCase();
+  if (!subject || subject.length > 200 || !text || text.length > 20000 || (recipientId !== null && !Number.isInteger(recipientId)) || (recipientRole !== null && !/^(student|learner|teacher|prefect|manager|senior_manager|owner|admin)$/.test(recipientRole)) || (recipientId !== null && recipientRole !== null)) {
+    res.status(400).json({ error: "Provide a valid subject, message, and one recipient target (user, role, or all users)." }); return;
   }
   try {
-    const recipients = await resolveNotificationRecipients(recipientId);
+    const recipients = await resolveNotificationRecipients(recipientId, recipientRole);
+    if (!recipients.length) {
+      res.status(404).json({ error: recipientRole ? "No active users with a deliverable email address were found for that role." : "No deliverable email recipients were found." });
+      return;
+    }
     const result = await sendEmail({ to: recipients, subject, text, html });
-    res.json({ ok: true, ...result });
+    res.json({ ok: true, recipientCount: recipients.length, recipientRole, recipientId, ...result });
   } catch (error) {
     res.status(503).json({ error: error instanceof Error ? error.message : "Email delivery unavailable" });
   }
