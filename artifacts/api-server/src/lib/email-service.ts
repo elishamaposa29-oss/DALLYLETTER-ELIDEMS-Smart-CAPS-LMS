@@ -98,7 +98,7 @@ export async function resolveNotificationRecipients(recipientId: number | null, 
     if (!users.length) return { emails: [], skippedMissingNotificationEmail: 0 };
     totalUsers = 1;
     rows = users.filter((row: { notification_email: string | null; notification_email_verified_at: Date | string | null }) =>
-      row.notification_email_verified_at && typeof row.notification_email === "string" && /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(row.notification_email)
+      row.notification_email_verified_at && typeof row.notification_email === "string" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(row.notification_email)
     );
   } else if (recipientRole !== null) {
     const role = recipientRole.trim().toLowerCase();
@@ -119,6 +119,6 @@ export async function resolveNotificationRecipients(recipientId: number | null, 
     );
     rows = result.rows;
   }
-  const emails = [...new Set(rows.map((row: { notification_email: string | null }) => row.notification_email?.trim().toLowerCase()).filter((email): email is string => Boolean(email && /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(email)))];
+  const emails = [...new Set(rows.map((row: { notification_email: string | null }) => row.notification_email?.trim().toLowerCase()).filter((email): email is string => Boolean(email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)))];
   return { emails, skippedMissingNotificationEmail: Math.max(0, totalUsers - rows.length) };
 }
