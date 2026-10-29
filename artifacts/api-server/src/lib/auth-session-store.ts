@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { pool } from "@workspace/db";
+import { verifyPassword } from "./password-hash";
 
 const SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const RESET_TTL_MS = 30 * 60 * 1000;
@@ -27,6 +28,7 @@ export async function ensureAuthSessionSchema(): Promise<void> {
   )`);
   await pool.query("CREATE INDEX IF NOT EXISTS password_reset_tokens_user_idx ON password_reset_tokens(user_id)");
   await pool.query("CREATE INDEX IF NOT EXISTS password_reset_tokens_expiry_idx ON password_reset_tokens(expires_at)");
+  await pool.query("ALTER TABLE password_reset_tokens ADD COLUMN IF NOT EXISTS requires_security_answer boolean NOT NULL DEFAULT false");
   await pool.query(`CREATE TABLE IF NOT EXISTS auth_rate_limits (bucket_key text PRIMARY KEY, window_started_at timestamptz NOT NULL, attempts integer NOT NULL DEFAULT 0, blocked_until timestamptz)`);
   await pool.query("CREATE INDEX IF NOT EXISTS auth_rate_limits_blocked_idx ON auth_rate_limits(blocked_until)");
 }
@@ -54,12 +56,12 @@ export async function revokeUserSessions(userId: number): Promise<void> {
   await pool.query("UPDATE auth_sessions SET revoked_at = COALESCE(revoked_at, now()) WHERE user_id = $1", [userId]);
 }
 
-export async function createPasswordResetToken(userId: number): Promise<string> {
+export async function createPasswordResetToken(userId: number, requiresSecurityAnswer = false): Promise<string> {
   const token = crypto.randomBytes(32).toString("hex");
   await pool.query("UPDATE password_reset_tokens SET used_at = COALESCE(used_at, now()) WHERE user_id = $1 AND used_at IS NULL", [userId]);
   await pool.query(
-    "INSERT INTO password_reset_tokens (token_hash, user_id, expires_at) VALUES ($1, $2, $3)",
-    [digest(token), userId, new Date(Date.now() + RESET_TTL_MS)],
+    "INSERT INTO password_reset_tokens (token_hash, user_id, expires_at, requires_security_answer) VALUES ($1, $2, $3, $4)",
+    [digest(token), userId, new Date(Date.now() + RESET_TTL_MS), requiresSecurityAnswer],
   );
   return token;
 }
@@ -69,12 +71,12 @@ export async function createPasswordResetToken(userId: number): Promise<string> 
  * The transaction fails closed if the target account disappeared or PostgreSQL
  * did not confirm that the new hash was stored.
  */
-export async function consumePasswordResetToken(token: string, passwordHash: string): Promise<boolean> {
+export async function consumePasswordResetToken(token: string, passwordHash: string, securityAnswer = ""): Promise<boolean> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
     const found = await client.query(
-      "SELECT user_id FROM password_reset_tokens WHERE token_hash = $1 AND expires_at > now() AND used_at IS NULL FOR UPDATE",
+      "SELECT user_id, requires_security_answer FROM password_reset_tokens WHERE token_hash = $1 AND expires_at > now() AND used_at IS NULL FOR UPDATE",
       [digest(token)],
     );
     if (!found.rows[0]) {
@@ -83,6 +85,26 @@ export async function consumePasswordResetToken(token: string, passwordHash: str
     }
 
     const userId = Number(found.rows[0].user_id);
+    if (found.rows[0].requires_security_answer) {
+      const normalizedAnswer = securityAnswer.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+      const compactAnswer = normalizedAnswer.replace(/\s+/g, "");
+      if (!normalizedAnswer || normalizedAnswer.length > 200) {
+        await client.query("ROLLBACK");
+        return false;
+      }
+      const recovery = await client.query("SELECT security_answer_hash FROM account_recovery_profiles WHERE user_id=$1 AND recovery_email_verified_at IS NOT NULL", [userId]);
+      const answerHash = recovery.rows[0]?.security_answer_hash;
+      let valid = false;
+      if (typeof answerHash === "string") {
+        for (const candidate of [...new Set([normalizedAnswer, compactAnswer])]) {
+          if ((await verifyPassword(candidate, answerHash)).valid) { valid = true; break; }
+        }
+      }
+      if (!valid) {
+        await client.query("ROLLBACK");
+        return false;
+      }
+    }
     const updated = await client.query(
       "UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2 RETURNING id, password_hash",
       [passwordHash, userId],

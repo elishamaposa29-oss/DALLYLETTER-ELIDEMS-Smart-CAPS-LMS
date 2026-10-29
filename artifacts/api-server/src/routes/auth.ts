@@ -481,14 +481,16 @@ router.post("/auth/password-reset/request", async (req, res): Promise<void> => {
     const primaryResult = await pool.query("SELECT id, email, role FROM users WHERE lower(email) = $1 LIMIT 1", [email]);
     const primary = primaryResult.rows.map((row: { id: number | string; email: string; role: string }) => ({ id: Number(row.id), email: row.email, role: row.role }));
     await pool.query("CREATE TABLE IF NOT EXISTS account_recovery_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, recovery_email text, recovery_email_verified_at timestamptz, recovery_phone text, recovery_phone_verified_at timestamptz, security_question text, security_answer_hash text, verification_code_hash text, verification_expires_at timestamptz, updated_at timestamptz NOT NULL DEFAULT now())");
-    let user: { id: number; email: string; role: string } | undefined = primary[0];
+    let user: { id: number; email: string; role: string; securityQuestion?: string | null } | undefined = primary[0];
+    let isRecoveryEmail = false;
     if (!user) {
       const recoveryMatches = await pool.query(
-        "SELECT u.id, u.email, u.role FROM users u JOIN account_recovery_profiles r ON r.user_id = u.id WHERE lower(r.recovery_email) = $1 AND r.recovery_email_verified_at IS NOT NULL AND u.is_blocked = false AND u.is_suspended = false LIMIT 2",
+        "SELECT u.id, u.email, u.role, r.security_question FROM users u JOIN account_recovery_profiles r ON r.user_id = u.id WHERE lower(r.recovery_email) = $1 AND r.recovery_email_verified_at IS NOT NULL AND u.is_blocked = false AND u.is_suspended = false AND lower(u.role) NOT IN ('owner','admin','platform_owner') LIMIT 2",
         [email],
       );
       if (recoveryMatches.rows.length === 1) {
-        user = { id: Number(recoveryMatches.rows[0].id), email: String(recoveryMatches.rows[0].email), role: String(recoveryMatches.rows[0].role) };
+        user = { id: Number(recoveryMatches.rows[0].id), email: String(recoveryMatches.rows[0].email), role: String(recoveryMatches.rows[0].role), securityQuestion: recoveryMatches.rows[0].security_question ? String(recoveryMatches.rows[0].security_question) : null };
+        isRecoveryEmail = true;
       }
     }
     // Owners use their separately configured owner-recovery process. This public
@@ -496,8 +498,8 @@ router.post("/auth/password-reset/request", async (req, res): Promise<void> => {
     if (user && ["owner", "admin", "platform_owner"].includes(String(user.role || "").trim().toLowerCase())) {
       user = undefined;
     }
-    if (user) {
-      const resetToken = await createPasswordResetToken(user.id);
+    if (user && !["owner", "admin", "platform_owner"].includes(String(user.role || "").trim().toLowerCase()) && (!isRecoveryEmail || Boolean(user.securityQuestion?.trim()))) {
+      const resetToken = await createPasswordResetToken(user.id, isRecoveryEmail);
       // Send only to the exact address the requester supplied: either the account's
       // primary email or a uniquely matched, previously verified recovery email.
       // Sending to both addresses can make Resend test-mode delivery fail for all
@@ -507,7 +509,7 @@ router.post("/auth/password-reset/request", async (req, res): Promise<void> => {
       await sendEmail({
         to: recipients,
         subject: "Reset your Dallyletter Elidems password",
-        text: "A password reset was requested for your Dallyletter Elidems account. Open this link within 30 minutes to choose a new password: " + baseUrl + "/reset-password?token=" + encodeURIComponent(resetToken) + "\n\nIf you did not request this, you can ignore this email.",
+        text: "A password reset was requested for your Dallyletter Elidems account. Open this link within 30 minutes to choose a new password: " + baseUrl + "/reset-password?token=" + encodeURIComponent(resetToken) + (isRecoveryEmail ? "&recovery=1" : "") + "\n\nIf this is a backup-email recovery, you will also need to answer the security question saved in Profile Hub. If you did not request this, you can ignore this email.",
       });
     }
     res.status(202).json({ message: "If an account matches that email, password recovery instructions will be sent." });
@@ -518,10 +520,24 @@ router.post("/auth/password-reset/request", async (req, res): Promise<void> => {
   }
 });
 
+// GET /auth/password-reset/details — reveal only the saved question for a valid, unused reset token.
+router.get("/auth/password-reset/details", async (req, res): Promise<void> => {
+  const token = typeof req.query.token === "string" ? req.query.token : "";
+  if (!/^[a-f0-9]{64}$/i.test(token)) { res.status(400).json({ error: "This reset link is invalid or expired. Request a new one." }); return; }
+  const found = await pool.query("SELECT user_id, requires_security_answer FROM password_reset_tokens WHERE token_hash=$1 AND expires_at>now() AND used_at IS NULL", [createHash("sha256").update(token).digest("hex")]);
+  if (!found.rows.length) { res.status(400).json({ error: "This reset link is invalid, expired, or already used. Request a new one." }); return; }
+  if (!found.rows[0].requires_security_answer) { res.json({ requiresSecurityAnswer: false, securityQuestion: null }); return; }
+  const question = await pool.query("SELECT security_question FROM account_recovery_profiles WHERE user_id=$1 AND recovery_email_verified_at IS NOT NULL", [Number(found.rows[0].user_id)]);
+  const securityQuestion = String(question.rows[0]?.security_question || "").trim();
+  if (!securityQuestion) { res.status(400).json({ error: "This backup-email recovery is missing its security question. Contact support or use your primary email recovery path." }); return; }
+  res.json({ requiresSecurityAnswer: true, securityQuestion });
+});
+
 // POST /auth/password-reset/confirm — one-use, expiring token; revoke every existing session.
 router.post("/auth/password-reset/confirm", async (req, res): Promise<void> => {
   const token = typeof req.body?.token === "string" ? req.body.token : "";
   const newPassword = typeof req.body?.newPassword === "string" ? req.body.newPassword : "";
+  const securityAnswer = typeof req.body?.securityAnswer === "string" ? req.body.securityAnswer : "";
   if (!/^[a-f0-9]{64}$/i.test(token) || newPassword.length < 8 || newPassword.length > 256) {
     res.status(400).json({ error: "A valid reset token and a password of at least 8 characters are required." }); return;
   }
@@ -529,8 +545,8 @@ router.post("/auth/password-reset/confirm", async (req, res): Promise<void> => {
   if (await consumeAuthAttempt("password-reset-confirm", "all-tokens", ipAddress, 10, 15 * 60 * 1000, 15 * 60 * 1000)) {
     res.status(429).json({ error: "Too many password reset attempts. Please try again later." }); return;
   }
-  const changed = await consumePasswordResetToken(token, await hashPassword(newPassword));
-  if (!changed) { res.status(400).json({ error: "This password reset link is invalid or expired. Request a new one." }); return; }
+  const changed = await consumePasswordResetToken(token, await hashPassword(newPassword), securityAnswer);
+  if (!changed) { res.status(400).json({ error: "This reset link is invalid or expired, or the security answer is incorrect. Your password has not been changed." }); return; }
   res.json({ message: "Password reset successfully. Sign in with your new password." });
 });
 

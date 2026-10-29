@@ -83,11 +83,47 @@ export async function sendEmail(input: EmailInput): Promise<{ sent: number; fail
   return { sent, failed };
 }
 
-export async function resolveNotificationRecipients(recipientId: number | null): Promise<string[]> {
+const NOTIFICATION_ROLE_ALLOWLIST = new Set(["student", "learner", "teacher", "prefect", "manager", "senior_manager", "owner", "admin"]);
+
+type NotificationRecipientResolution = { emails: string[]; skippedMissingNotificationEmail: number };
+
+export async function resolveNotificationRecipients(recipientId: number | null, recipientRole: string | null = null): Promise<NotificationRecipientResolution> {
+  let totalUsers = 0;
+  let rows: Array<{ notification_email: string | null }> = [];
   if (recipientId !== null) {
-    const { rows } = await pool.query("SELECT CASE WHEN notification_email_verified_at IS NOT NULL THEN notification_email ELSE email END AS email FROM users WHERE id = $1 AND is_blocked = false", [recipientId]);
-    return rows.map((r: { email: string }) => r.email);
+    const { rows: users } = await pool.query(
+      "SELECT notification_email, notification_email_verified_at FROM users WHERE id=$1 AND is_blocked=false AND is_suspended=false",
+      [recipientId],
+    );
+    if (!users.length) return { emails: [], skippedMissingNotificationEmail: 0 };
+    totalUsers = 1;
+    rows = users.filter((row: { notification_email: string | null; notification_email_verified_at: Date | string | null }) =>
+      row.notification_email_verified_at && typeof row.notification_email === "string" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(row.notification_email)
+    );
+  } else if (recipientRole !== null) {
+    const role = recipientRole.trim().toLowerCase();
+    if (!NOTIFICATION_ROLE_ALLOWLIST.has(role)) throw new Error("Choose a supported recipient role.");
+    const roles = role === "learner" || role === "student" ? ["learner", "student"] : [role];
+    const count = await pool.query("SELECT count(*)::int AS total FROM users WHERE lower(role)=ANY($1::text[]) AND is_blocked=false AND is_suspended=false", [roles]);
+    totalUsers = Number(count.rows[0]?.total || 0);
+    const result = await pool.query(
+      "SELECT notification_email, notification_email_verified_at FROM users WHERE lower(role)=ANY($1::text[]) AND is_blocked=false AND is_suspended=false AND notification_email_verified_at IS NOT NULL AND notification_email IS NOT NULL AND btrim(notification_email)<>'' ORDER BY id",
+      [roles],
+    );
+    rows = result.rows;
+  } else {
+    const count = await pool.query("SELECT count(*)::int AS total FROM users WHERE is_blocked=false AND is_suspended=false");
+    totalUsers = Number(count.rows[0]?.total || 0);
+    const result = await pool.query(
+      "SELECT notification_email, notification_email_verified_at FROM users WHERE is_blocked=false AND is_suspended=false AND notification_email_verified_at IS NOT NULL AND notification_email IS NOT NULL AND btrim(notification_email)<>'' ORDER BY id",
+    );
+    rows = result.rows;
   }
-  const { rows } = await pool.query("SELECT CASE WHEN notification_email_verified_at IS NOT NULL THEN notification_email ELSE email END AS email FROM users WHERE is_blocked = false AND email IS NOT NULL");
-  return rows.map((r: { email: string }) => r.email);
+  const eligibleRows = rows.filter((row: { notification_email: string | null; notification_email_verified_at?: Date | string | null }) => {
+    const email = row.notification_email?.trim() || "";
+    return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)
+      && (recipientId === null || row.notification_email_verified_at);
+  });
+  const emails = [...new Set(eligibleRows.map((row: { notification_email: string | null }) => row.notification_email!.trim().toLowerCase()))];
+  return { emails, skippedMissingNotificationEmail: Math.max(0, totalUsers - eligibleRows.length) };
 }
