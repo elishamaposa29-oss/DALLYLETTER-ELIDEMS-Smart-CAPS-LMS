@@ -339,7 +339,8 @@ router.post("/auth/google", async (req, res): Promise<void> => {
     // Google's ID token proves control of this verified address. Use it as the
     // default notification destination only when the user has not already chosen one.
     // Never overwrite a notification address that the user deliberately changed.
-    if (!signedIn.notificationEmail?.trim()) {
+    const notificationState = await pool.query("SELECT notification_email FROM users WHERE id=$1", [signedIn.id]);
+    if (!String(notificationState.rows[0]?.notification_email || "").trim()) {
       await pool.query(
         "UPDATE users SET notification_email=$2, notification_email_verified_at=COALESCE(notification_email_verified_at, now()), updated_at=now() WHERE id=$1 AND (notification_email IS NULL OR btrim(notification_email)='')",
         [signedIn.id, email],
