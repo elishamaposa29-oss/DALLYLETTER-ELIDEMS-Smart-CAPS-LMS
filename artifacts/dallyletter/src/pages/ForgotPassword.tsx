@@ -11,7 +11,7 @@ export default function ForgotPassword() {
   async function submit(event:FormEvent<HTMLFormElement>) {
     event.preventDefault();setMessage("");setError("");setElapsed(0);
     const normalized=email.trim().toLowerCase();
-    if(!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(normalized)){setError("Enter an email address in the correct format.");return;}
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized)){setError("Enter an email address in the correct format.");return;}
     setBusy(true);
     const started=Date.now();
     const timer=window.setInterval(()=>setElapsed(Math.floor((Date.now()-started)/1000)),250);
