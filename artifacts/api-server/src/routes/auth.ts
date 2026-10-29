@@ -336,6 +336,12 @@ router.post("/auth/google", async (req, res): Promise<void> => {
     }
     const [signedIn] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
     if (!signedIn || signedIn.isBlocked || signedIn.isSuspended) { res.status(403).json({ error: "This account is unavailable." }); return; }
+    // A verified Google address becomes the default notification email only when
+    // the user has not already chosen a notification address. Never overwrite a preference.
+    await pool.query(
+      "UPDATE users SET notification_email = $1, notification_email_verified_at = COALESCE(notification_email_verified_at, now()) WHERE id = $2 AND (notification_email IS NULL OR btrim(notification_email) = '')",
+      [email, signedIn.id],
+    );
     const token = generateToken(signedIn.id);
     await createAuthSession(token, signedIn.id);
     const { passwordHash: _passwordHash, ...safeUser } = signedIn;
