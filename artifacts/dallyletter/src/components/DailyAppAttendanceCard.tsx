@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { CalendarDays, Clock3, Activity, ChevronRight, X, BookOpenCheck } from "lucide-react";
+import { CalendarDays, Activity, ChevronRight, BookOpenCheck } from "lucide-react";
 
 type ClassAttendance = {
   id: number;
@@ -59,7 +59,6 @@ export function DailyAppAttendanceCard() {
   const [classError, setClassError] = useState("");
   const [dailyError, setDailyError] = useState("");
   const [dailyOpen, setDailyOpen] = useState(false);
-  const [registerOpen, setRegisterOpen] = useState(false);
   const today = todayInLocalZone();
   const monthDate = new Date();
   const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
