@@ -107,7 +107,7 @@ export async function resolveNotificationRecipients(recipientId: number | null, 
     const count = await pool.query("SELECT count(*)::int AS total FROM users WHERE lower(role)=ANY($1::text[]) AND is_blocked=false AND is_suspended=false", [roles]);
     totalUsers = Number(count.rows[0]?.total || 0);
     const result = await pool.query(
-      "SELECT DISTINCT notification_email FROM users WHERE lower(role)=ANY($1::text[]) AND is_blocked=false AND is_suspended=false AND notification_email_verified_at IS NOT NULL AND notification_email IS NOT NULL AND btrim(notification_email)<>'' ORDER BY notification_email",
+      "SELECT notification_email FROM users WHERE lower(role)=ANY($1::text[]) AND is_blocked=false AND is_suspended=false AND notification_email_verified_at IS NOT NULL AND notification_email IS NOT NULL AND btrim(notification_email)<>'' ORDER BY id",
       [roles],
     );
     rows = result.rows;
@@ -115,7 +115,7 @@ export async function resolveNotificationRecipients(recipientId: number | null, 
     const count = await pool.query("SELECT count(*)::int AS total FROM users WHERE is_blocked=false AND is_suspended=false");
     totalUsers = Number(count.rows[0]?.total || 0);
     const result = await pool.query(
-      "SELECT DISTINCT notification_email FROM users WHERE is_blocked=false AND is_suspended=false AND notification_email_verified_at IS NOT NULL AND notification_email IS NOT NULL AND btrim(notification_email)<>'' ORDER BY notification_email",
+      "SELECT notification_email FROM users WHERE is_blocked=false AND is_suspended=false AND notification_email_verified_at IS NOT NULL AND notification_email IS NOT NULL AND btrim(notification_email)<>'' ORDER BY id",
     );
     rows = result.rows;
   }
