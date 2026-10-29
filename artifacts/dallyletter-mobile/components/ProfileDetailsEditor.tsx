@@ -26,6 +26,7 @@ export function ProfileDetailsEditor() {
   const [recoveryPhone,setRecoveryPhone]=useState("");
   const [securityQuestion,setSecurityQuestion]=useState("");
   const [securityAnswer,setSecurityAnswer]=useState("");
+  const [verifyAnswer,setVerifyAnswer]=useState("");
   const [recoveryCode,setRecoveryCode]=useState("");
   const [recoveryVerified,setRecoveryVerified]=useState(false);
   const [recoveryBusy,setRecoveryBusy]=useState(false);
@@ -67,6 +68,19 @@ export function ProfileDetailsEditor() {
       setRecoveryVerified(Boolean(d.recoveryEmailVerified));
       Alert.alert("Recovery options saved",d.message||"Verify your alternate email before it can be used for password recovery.");
     }catch(e){Alert.alert("Recovery options failed",e instanceof Error?e.message:"Please try again.");}
+    finally{setRecoveryBusy(false);}
+  };
+
+  const verifySecurityAnswer=async()=>{
+    if(!token||!verifyAnswer.trim()||recoveryBusy)return;
+    setRecoveryBusy(true);
+    try{
+      const r=await fetch(getApiUrl("/api/users/me/recovery-question/verify"),{method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({answer:verifyAnswer})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.error||"Security answer did not match.");
+      Alert.alert("Security answer verified",d.message||"Your answer matched. A verified recovery channel is still required to reset your password.");
+      setVerifyAnswer("");
+    }catch(e){Alert.alert("Answer not verified",e instanceof Error?e.message:"Please try again.");}
     finally{setRecoveryBusy(false);}
   };
 
@@ -161,11 +175,13 @@ export function ProfileDetailsEditor() {
     </View>
     {!isPrivileged?<View style={{marginTop:18,paddingTop:16,borderTopWidth:1,borderTopColor:colors.border}}>
       <Text style={{fontSize:16,fontWeight:"700",color:colors.foreground}}>Account recovery options</Text>
-      <Text style={{fontSize:12,color:colors.mutedForeground,marginTop:4}}>Add a backup email and verify it before it can receive password-reset links. Security answers are stored as hashes but are not used to reset passwords on their own. Phone verification requires an SMS provider and is not yet enabled.</Text>
+      <Text style={{fontSize:12,color:colors.mutedForeground,marginTop:4}}>Add a backup email and verify it before it can receive password-reset links. Security answers are stored as hashes but are not used to reset passwords on their own. Phone verification works only when the server has an SMS provider configured.</Text>
       {field("Alternate Google/email address",recoveryEmail,setRecoveryEmail,"you@example.com")}
       {field("Recovery phone number",recoveryPhone,setRecoveryPhone,"Include country code")}
       {field("Security question",securityQuestion,setSecurityQuestion,"Choose a question only you can answer")}
       {field("Security answer",securityAnswer,setSecurityAnswer,"Answer (saved as a hash)")}
+      {field("Verify saved answer",verifyAnswer,setVerifyAnswer,"Enter answer to test it (case/spacing ignored)")}
+      <TouchableOpacity onPress={()=>void verifySecurityAnswer()} disabled={recoveryBusy||!verifyAnswer.trim()} style={{paddingVertical:10}}><Text style={{color:colors.primary,fontWeight:"700"}}>Verify security answer</Text></TouchableOpacity>
       <TouchableOpacity onPress={()=>void saveRecovery()} disabled={recoveryBusy} style={{height:44,borderRadius:10,marginTop:14,backgroundColor:colors.primary,alignItems:"center",justifyContent:"center",flexDirection:"row",gap:8}}>
         {recoveryBusy?<ActivityIndicator color="#fff"/>:null}<Text style={{color:"#fff",fontWeight:"700"}}>{recoveryBusy?"Saving…":"Save recovery options"}</Text>
       </TouchableOpacity>
