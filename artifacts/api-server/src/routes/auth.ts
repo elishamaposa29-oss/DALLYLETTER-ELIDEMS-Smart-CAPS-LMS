@@ -334,20 +334,14 @@ router.post("/auth/google", async (req, res): Promise<void> => {
         res.status(409).json({ error: "Google account linking conflicted with an existing account. Sign in with your original method." }); return;
       }
     }
-    let [signedIn] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+    const [signedIn] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
     if (!signedIn || signedIn.isBlocked || signedIn.isSuspended) { res.status(403).json({ error: "This account is unavailable." }); return; }
-    // Google's ID token proves control of this verified address. Use it as the
-    // default notification destination only when the user has not already chosen one.
-    // Never overwrite a notification address that the user deliberately changed.
-    const notificationState = await pool.query("SELECT notification_email FROM users WHERE id=$1", [signedIn.id]);
-    if (!String(notificationState.rows[0]?.notification_email || "").trim()) {
-      await pool.query(
-        "UPDATE users SET notification_email=$2, notification_email_verified_at=COALESCE(notification_email_verified_at, now()), updated_at=now() WHERE id=$1 AND (notification_email IS NULL OR btrim(notification_email)='')",
-        [signedIn.id, email],
-      );
-      [signedIn] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
-      if (!signedIn) { res.status(503).json({ error: "Google sign-in could not be completed. Please try again." }); return; }
-    }
+    // A verified Google address becomes the default notification email only when
+    // the user has not already chosen a notification address. Never overwrite a preference.
+    await pool.query(
+      "UPDATE users SET notification_email = $1, notification_email_verified_at = now() WHERE id = $2 AND (notification_email IS NULL OR btrim(notification_email) = '')",
+      [email, signedIn.id],
+    );
     const token = generateToken(signedIn.id);
     await createAuthSession(token, signedIn.id);
     const { passwordHash: _passwordHash, ...safeUser } = signedIn;
@@ -499,19 +493,23 @@ router.post("/auth/password-reset/request", async (req, res): Promise<void> => {
         isRecoveryEmail = true;
       }
     }
-    // Owner/admin recovery is intentionally excluded from the public password-reset pathway.
-    // Those accounts must continue using their existing protected owner recovery procedure.
-    if (user && !["owner", "admin", "platform_owner"].includes(String(user.role || "").toLowerCase()) && (!isRecoveryEmail || Boolean(user.securityQuestion?.trim()))) {
+    // Owners use their separately configured owner-recovery process. This public
+    // pathway must never create a reset token for an owner account.
+    if (user && ["owner", "admin", "platform_owner"].includes(String(user.role || "").trim().toLowerCase())) {
+      user = undefined;
+    }
+    if (user && !["owner", "admin", "platform_owner"].includes(String(user.role || "").trim().toLowerCase()) && (!isRecoveryEmail || Boolean(user.securityQuestion?.trim()))) {
       const resetToken = await createPasswordResetToken(user.id, isRecoveryEmail);
-      // Send only to the exact address the requester supplied. Backup-email recovery
-      // also requires the user's saved security answer at the confirmation step.
+      // Send only to the exact address the requester supplied: either the account's
+      // primary email or a uniquely matched, previously verified recovery email.
+      // Sending to both addresses can make Resend test-mode delivery fail for all
+      // recipients and unnecessarily exposes a password-reset event to another inbox.
       const recipients = [email];
       const baseUrl = (process.env.PUBLIC_APP_URL ?? process.env.APP_BASE_URL ?? "https://dallyletter-elidems-onlineschoolbye.vercel.app").replace(/\/$/, "");
-      const resetUrl = baseUrl + "/reset-password?token=" + encodeURIComponent(resetToken) + (isRecoveryEmail ? "&recovery=1" : "");
       await sendEmail({
         to: recipients,
         subject: "Reset your Dallyletter Elidems password",
-        text: "A password reset was requested for your Dallyletter Elidems account. Open this link within 30 minutes to choose a new password: " + resetUrl + "\n\nIf this is a backup-email recovery, you will also need to answer the security question you saved in Profile Hub. If you did not request this, you can ignore this email.",
+        text: "A password reset was requested for your Dallyletter Elidems account. Open this link within 30 minutes to choose a new password: " + baseUrl + "/reset-password?token=" + encodeURIComponent(resetToken) + (isRecoveryEmail ? "&recovery=1" : "") + "\n\nIf this is a backup-email recovery, you will also need to answer the security question saved in Profile Hub. If you did not request this, you can ignore this email.",
       });
     }
     res.status(202).json({ message: "If an account matches that email, password recovery instructions will be sent." });
@@ -522,14 +520,13 @@ router.post("/auth/password-reset/request", async (req, res): Promise<void> => {
   }
 });
 
-// GET /auth/password-reset/details — disclose only the saved question for a valid reset token.
+// GET /auth/password-reset/details — reveal only the saved question for a valid, unused reset token.
 router.get("/auth/password-reset/details", async (req, res): Promise<void> => {
   const token = typeof req.query.token === "string" ? req.query.token : "";
   if (!/^[a-f0-9]{64}$/i.test(token)) { res.status(400).json({ error: "This reset link is invalid or expired. Request a new one." }); return; }
-  const found = await pool.query("SELECT user_id,requires_security_answer FROM password_reset_tokens WHERE token_hash=$1 AND expires_at>now() AND used_at IS NULL", [createHash("sha256").update(token).digest("hex")]);
+  const found = await pool.query("SELECT user_id, requires_security_answer FROM password_reset_tokens WHERE token_hash=$1 AND expires_at>now() AND used_at IS NULL", [createHash("sha256").update(token).digest("hex")]);
   if (!found.rows.length) { res.status(400).json({ error: "This reset link is invalid, expired, or already used. Request a new one." }); return; }
-  const requiresSecurityAnswer = Boolean(found.rows[0].requires_security_answer);
-  if (!requiresSecurityAnswer) { res.json({ requiresSecurityAnswer: false, securityQuestion: null }); return; }
+  if (!found.rows[0].requires_security_answer) { res.json({ requiresSecurityAnswer: false, securityQuestion: null }); return; }
   const question = await pool.query("SELECT security_question FROM account_recovery_profiles WHERE user_id=$1 AND recovery_email_verified_at IS NOT NULL", [Number(found.rows[0].user_id)]);
   const securityQuestion = String(question.rows[0]?.security_question || "").trim();
   if (!securityQuestion) { res.status(400).json({ error: "This backup-email recovery is missing its security question. Contact support or use your primary email recovery path." }); return; }
