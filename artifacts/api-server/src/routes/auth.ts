@@ -481,7 +481,7 @@ router.post("/auth/password-reset/request", async (req, res): Promise<void> => {
     const primaryResult = await pool.query("SELECT id, email, role FROM users WHERE lower(email) = $1 LIMIT 1", [email]);
     const primary = primaryResult.rows.map((row: { id: number | string; email: string; role: string }) => ({ id: Number(row.id), email: row.email, role: row.role }));
     await pool.query("CREATE TABLE IF NOT EXISTS account_recovery_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, recovery_email text, recovery_email_verified_at timestamptz, recovery_phone text, recovery_phone_verified_at timestamptz, security_question text, security_answer_hash text, verification_code_hash text, verification_expires_at timestamptz, updated_at timestamptz NOT NULL DEFAULT now())");
-    let user = primary[0];
+    let user: { id: number; email: string; role: string } | undefined = primary[0];
     if (!user) {
       const recoveryMatches = await pool.query(
         "SELECT u.id, u.email, u.role FROM users u JOIN account_recovery_profiles r ON r.user_id = u.id WHERE lower(r.recovery_email) = $1 AND r.recovery_email_verified_at IS NOT NULL AND u.is_blocked = false AND u.is_suspended = false LIMIT 2",
