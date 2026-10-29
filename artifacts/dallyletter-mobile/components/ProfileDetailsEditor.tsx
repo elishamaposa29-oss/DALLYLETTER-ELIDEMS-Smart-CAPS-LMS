@@ -72,12 +72,17 @@ export function ProfileDetailsEditor() {
 
   const requestCode=async()=>{
     if(!token)return;
+    if(!securityQuestion.trim()||!securityAnswer.trim()){Alert.alert("Recovery question required","Save your own security question and answer before enabling backup-email recovery.");return;}
     setRecoveryBusy(true);
     try{
+      const saveResponse=await fetch(getApiUrl("/api/users/me/recovery-profile"),{method:"PATCH",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({recoveryEmail,recoveryPhone,securityQuestion,securityAnswer})});
+      const saved=await saveResponse.json().catch(()=>({}));
+      if(!saveResponse.ok)throw new Error(saved.error||"Could not save your recovery question.");
+      setSecurityAnswer("");
       const r=await fetch(getApiUrl("/api/users/me/recovery-email/request-verification"),{method:"POST",headers:{Authorization:"Bearer "+token}});
       const d=await r.json().catch(()=>({}));
       if(!r.ok)throw new Error(d.error||"Could not send verification code.");
-      Alert.alert("Check your alternate email",d.message||"A verification code was sent.");
+      Alert.alert("Check your alternate email", (d.message||"A verification code was sent.")+" Check your inbox and spam/junk folder.");
     }catch(e){Alert.alert("Verification unavailable",e instanceof Error?e.message:"Please try again.");}
     finally{setRecoveryBusy(false);}
   };
