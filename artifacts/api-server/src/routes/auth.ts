@@ -334,8 +334,19 @@ router.post("/auth/google", async (req, res): Promise<void> => {
         res.status(409).json({ error: "Google account linking conflicted with an existing account. Sign in with your original method." }); return;
       }
     }
-    const [signedIn] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+    let [signedIn] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
     if (!signedIn || signedIn.isBlocked || signedIn.isSuspended) { res.status(403).json({ error: "This account is unavailable." }); return; }
+    // Google's ID token proves control of this verified address. Use it as the
+    // default notification destination only when the user has not already chosen one.
+    // Never overwrite a notification address that the user deliberately changed.
+    if (!signedIn.notificationEmail?.trim()) {
+      await pool.query(
+        "UPDATE users SET notification_email=$2, notification_email_verified_at=COALESCE(notification_email_verified_at, now()), updated_at=now() WHERE id=$1 AND (notification_email IS NULL OR btrim(notification_email)='')",
+        [signedIn.id, email],
+      );
+      [signedIn] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+      if (!signedIn) { res.status(503).json({ error: "Google sign-in could not be completed. Please try again." }); return; }
+    }
     const token = generateToken(signedIn.id);
     await createAuthSession(token, signedIn.id);
     const { passwordHash: _passwordHash, ...safeUser } = signedIn;
@@ -472,20 +483,22 @@ router.post("/auth/password-reset/request", async (req, res): Promise<void> => {
   try {
     // Always prefer an exact primary-email match. Otherwise allow a unique,
     // previously verified recovery email; never let an unverified address claim an account.
-    const primaryResult = await pool.query("SELECT id, email FROM users WHERE lower(email) = $1 LIMIT 1", [email]);
-    const primary = primaryResult.rows.map((row: { id: number | string; email: string }) => ({ id: Number(row.id), email: row.email }));
+    const primaryResult = await pool.query("SELECT id, email, role FROM users WHERE lower(email) = $1 LIMIT 1", [email]);
+    const primary = primaryResult.rows.map((row: { id: number | string; email: string; role: string }) => ({ id: Number(row.id), email: row.email, role: row.role }));
     await pool.query("CREATE TABLE IF NOT EXISTS account_recovery_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, recovery_email text, recovery_email_verified_at timestamptz, recovery_phone text, recovery_phone_verified_at timestamptz, security_question text, security_answer_hash text, verification_code_hash text, verification_expires_at timestamptz, updated_at timestamptz NOT NULL DEFAULT now())");
     let user = primary[0];
     if (!user) {
       const recoveryMatches = await pool.query(
-        "SELECT u.id, u.email FROM users u JOIN account_recovery_profiles r ON r.user_id = u.id WHERE lower(r.recovery_email) = $1 AND r.recovery_email_verified_at IS NOT NULL AND u.is_blocked = false AND u.is_suspended = false LIMIT 2",
+        "SELECT u.id, u.email, u.role FROM users u JOIN account_recovery_profiles r ON r.user_id = u.id WHERE lower(r.recovery_email) = $1 AND r.recovery_email_verified_at IS NOT NULL AND u.is_blocked = false AND u.is_suspended = false AND lower(u.role) NOT IN ('owner','admin','platform_owner') LIMIT 2",
         [email],
       );
       if (recoveryMatches.rows.length === 1) {
-        user = { id: Number(recoveryMatches.rows[0].id), email: String(recoveryMatches.rows[0].email) };
+        user = { id: Number(recoveryMatches.rows[0].id), email: String(recoveryMatches.rows[0].email), role: String(recoveryMatches.rows[0].role) };
       }
     }
-    if (user) {
+    // Owner/admin recovery is intentionally excluded from the public password-reset pathway.
+    // Those accounts must continue using their existing protected owner recovery procedure.
+    if (user && !["owner", "admin", "platform_owner"].includes(String(user.role || "").toLowerCase())) {
       const resetToken = await createPasswordResetToken(user.id);
       // Send only to the exact address the requester supplied: either the account's
       // primary email or a uniquely matched, previously verified recovery email.
