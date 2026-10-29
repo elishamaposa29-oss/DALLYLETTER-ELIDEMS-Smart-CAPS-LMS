@@ -107,7 +107,7 @@ export async function resolveNotificationRecipients(recipientId: number | null, 
     const count = await pool.query("SELECT count(*)::int AS total FROM users WHERE lower(role)=ANY($1::text[]) AND is_blocked=false AND is_suspended=false", [roles]);
     totalUsers = Number(count.rows[0]?.total || 0);
     const result = await pool.query(
-      "SELECT notification_email FROM users WHERE lower(role)=ANY($1::text[]) AND is_blocked=false AND is_suspended=false AND notification_email_verified_at IS NOT NULL AND notification_email IS NOT NULL AND btrim(notification_email)<>'' ORDER BY id",
+      "SELECT notification_email, notification_email_verified_at FROM users WHERE lower(role)=ANY($1::text[]) AND is_blocked=false AND is_suspended=false AND notification_email_verified_at IS NOT NULL AND notification_email IS NOT NULL AND btrim(notification_email)<>'' ORDER BY id",
       [roles],
     );
     rows = result.rows;
@@ -115,10 +115,15 @@ export async function resolveNotificationRecipients(recipientId: number | null, 
     const count = await pool.query("SELECT count(*)::int AS total FROM users WHERE is_blocked=false AND is_suspended=false");
     totalUsers = Number(count.rows[0]?.total || 0);
     const result = await pool.query(
-      "SELECT notification_email FROM users WHERE is_blocked=false AND is_suspended=false AND notification_email_verified_at IS NOT NULL AND notification_email IS NOT NULL AND btrim(notification_email)<>'' ORDER BY id",
+      "SELECT notification_email, notification_email_verified_at FROM users WHERE is_blocked=false AND is_suspended=false AND notification_email_verified_at IS NOT NULL AND notification_email IS NOT NULL AND btrim(notification_email)<>'' ORDER BY id",
     );
     rows = result.rows;
   }
-  const emails = [...new Set(rows.map((row: { notification_email: string | null }) => row.notification_email?.trim().toLowerCase()).filter((email): email is string => Boolean(email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))))];
-  return { emails, skippedMissingNotificationEmail: Math.max(0, totalUsers - rows.length) };
+  const eligibleRows = rows.filter((row: { notification_email: string | null; notification_email_verified_at?: Date | string | null }) => {
+    const email = row.notification_email?.trim() || "";
+    return /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(email)
+      && (recipientId === null || row.notification_email_verified_at);
+  });
+  const emails = [...new Set(eligibleRows.map((row: { notification_email: string | null }) => row.notification_email!.trim().toLowerCase()))];
+  return { emails, skippedMissingNotificationEmail: Math.max(0, totalUsers - eligibleRows.length) };
 }
