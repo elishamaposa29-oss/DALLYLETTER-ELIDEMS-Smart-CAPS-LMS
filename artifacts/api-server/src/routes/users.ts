@@ -131,7 +131,7 @@ function canManageOwnRecoveryProfile(role: unknown): boolean {
 }
 
 function normalizeSecurityAnswer(answer: string): string {
-  return answer.normalize("NFKC").toLowerCase().replace(/\\s+/g, "");
+  return answer.normalize("NFKC").toLowerCase().replace(/\s+/g, "");
 }
 
 router.post("/users/me/phone/request-verification", requireAuth, async (req, res): Promise<void> => {
