@@ -121,7 +121,7 @@ export async function resolveNotificationRecipients(recipientId: number | null, 
   }
   const eligibleRows = rows.filter((row: { notification_email: string | null; notification_email_verified_at?: Date | string | null }) => {
     const email = row.notification_email?.trim() || "";
-    return /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(email)
+    return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)
       && (recipientId === null || row.notification_email_verified_at);
   });
   const emails = [...new Set(eligibleRows.map((row: { notification_email: string | null }) => row.notification_email!.trim().toLowerCase()))];
