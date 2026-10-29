@@ -119,6 +119,6 @@ export async function resolveNotificationRecipients(recipientId: number | null, 
     );
     rows = result.rows;
   }
-  const emails = [...new Set(rows.map((row: { notification_email: string | null }) => row.notification_email?.trim().toLowerCase()).filter((email): email is string => Boolean(email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)))];
+  const emails = [...new Set(rows.map((row: { notification_email: string | null }) => row.notification_email?.trim().toLowerCase()).filter((email): email is string => Boolean(email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))))];
   return { emails, skippedMissingNotificationEmail: Math.max(0, totalUsers - rows.length) };
 }
