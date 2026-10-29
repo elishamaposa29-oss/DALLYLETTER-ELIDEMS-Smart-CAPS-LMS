@@ -808,7 +808,7 @@ router.get("/qualifications/:id/document", requireAuth, async(req,res):Promise<v
   const media=await streamStoredMedia(doc.storage_key);
   if(!media){res.status(404).json({error:"Stored document not found."});return;}
   res.setHeader("Content-Type",doc.mime_type);
-  res.setHeader("Content-Disposition",`inline; filename="${String(doc.file_name).replace(/["\\r\\n]/g,"")}"`);
+  res.setHeader("Content-Disposition",`inline; filename="${String(doc.file_name).replace(/["\r\n]/g,"")}"`);
   res.setHeader("Cache-Control","private, no-store");
   res.status(media.status);
   const bytes=Buffer.from(await media.arrayBuffer());
