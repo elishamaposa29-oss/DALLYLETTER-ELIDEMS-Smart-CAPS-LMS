@@ -49,7 +49,7 @@ export default function AdminNotifications() {
     const targetUsers = values.recipientType === "role"
       ? (users || []).filter(u => {
           const role = String(u.role || "").toLowerCase();
-          return values.recipientRole === "student" ? ["student", "learner"].includes(role) : role === values.recipientRole;
+          return values.recipientRole === "student" || values.recipientRole === "learner" ? ["student", "learner"].includes(role) : role === values.recipientRole;
         })
       : [];
     if (values.recipientType === "specific" && !values.recipientId) {
