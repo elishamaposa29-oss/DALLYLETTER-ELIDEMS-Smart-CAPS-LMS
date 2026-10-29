@@ -52,14 +52,14 @@ router.post("/email/send", requireAuth, async (req, res): Promise<void> => {
     if (wantsSms) {
       const phones = [...new Set(rows.filter(row => row.recovery_phone_verified_at && row.recovery_phone).map(row => row.recovery_phone!))];
       let sent = 0; const errors: string[] = [];
-      for (const phone of phones) { try { await sendSms(phone, subject + "\\n\\n" + text); sent++; } catch (error) { errors.push(error instanceof Error ? error.message : "SMS delivery failed"); } }
+      for (const phone of phones) { try { await sendSms(phone, subject + "\n\n" + text); sent++; } catch (error) { errors.push(error instanceof Error ? error.message : "SMS delivery failed"); } }
       report.sms = { sent, failed: rows.length - sent, skipped: rows.length - phones.length, error: errors[0] ?? null, status: sent ? "provider_accepted" : "failed" };
       successes += sent; if (!sent) failures.push("sms");
     }
     if (wantsWhatsApp) {
       const phones = [...new Set(rows.filter(row => row.recovery_phone_verified_at && row.recovery_phone).map(row => row.recovery_phone!))];
       let sent = 0; const errors: string[] = [];
-      for (const phone of phones) { try { await sendWhatsApp(phone, subject + "\\n\\n" + text); sent++; } catch (error) { errors.push(error instanceof Error ? error.message : "WhatsApp delivery failed"); } }
+      for (const phone of phones) { try { await sendWhatsApp(phone, subject + "\n\n" + text); sent++; } catch (error) { errors.push(error instanceof Error ? error.message : "WhatsApp delivery failed"); } }
       report.whatsapp = { sent, failed: rows.length - sent, skipped: rows.length - phones.length, error: errors[0] ?? null, status: sent ? "provider_accepted" : "failed" };
       successes += sent; if (!sent) failures.push("whatsapp");
     }
