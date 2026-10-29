@@ -230,11 +230,12 @@ export default function AdminNotifications() {
                           </FormControl>
                           <SelectContent>
                             {users?.map(u => (
-                              <SelectItem key={u.id} value={u.id.toString()}>{u.name} ({u.role}) — {(u as any).email || "no primary email"}</SelectItem>
+                              <SelectItem key={u.id} value={u.id.toString()}>{u.name} ({u.role})</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                         <FormMessage />
+                        <p className="text-xs text-muted-foreground">At send time, Dallyletter uses this user's verified notification email. If none is verified, delivery is stopped and the missing address is reported.</p>
                       </FormItem>
                     )} />
                   )}
