@@ -30,7 +30,9 @@ async function drainQueue(): Promise<void> {
     RETURNING q.id,q.recipient_user_id,q.subject,q.body_text,q.attempts`);
     for (const item of rows) {
       try {
-        const recipients = await resolveNotificationRecipients(Number(item.recipient_user_id));
+        const resolution = await resolveNotificationRecipients(Number(item.recipient_user_id));
+        const recipients = resolution.emails;
+        if (!recipients.length) throw new Error("Recipient has no verified notification email configured in Profile Hub.");
         const result = await sendEmail({ to: recipients, subject: String(item.subject), text: String(item.body_text) });
         if (result.sent < 1) throw new Error("No notification recipient accepted the message.");
         const subject = String(item.subject);
