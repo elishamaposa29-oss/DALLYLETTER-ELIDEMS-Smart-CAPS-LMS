@@ -59,14 +59,11 @@ export default function ProfileHub() {
   const [subjects,setSubjects] = useState<{teaching_subjects:string[];subjects_to_teach:string[]}>({teaching_subjects:[],subjects_to_teach:[]});
   const [summary,setSummary] = useState<any>(null);
   const [achievements,setAchievements] = useState<any[]>([]);
-  const [academicAttendance,setAcademicAttendance] = useState<any[]>([]);
   const [approvedReports,setApprovedReports] = useState<any[]>([]);
   const [transferRequests,setTransferRequests] = useState<any[]>([]);
   const [paymentRecords,setPaymentRecords] = useState<any[]>([]);
   const [termStart,setTermStart] = useState(new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().slice(0,10));
   const [termEnd,setTermEnd] = useState(new Date().toISOString().slice(0,10));
-  const [attendancePeriod,setAttendancePeriod] = useState<"Daily"|"Weekly"|"Monthly"|"Termly">("Weekly");
-  const [attendanceMonth,setAttendanceMonth] = useState(()=>new Date(new Date().getFullYear(),new Date().getMonth(),1));
   const [transferReason,setTransferReason] = useState("");
   const [moderationQueue,setModerationQueue] = useState<any[]>([]);
   const [enrollments,setEnrollments] = useState<any[]>([]);
@@ -148,7 +145,7 @@ export default function ProfileHub() {
     if(!profileId || !Number.isSafeInteger(profileId)) return;
     try {
       if(isOwner) {
-        const [me, q, s, academic, earned, enrolled, notification, payout, recovery, catalog, docs, publicSummary, academicRecords, reports, transfers, payments] = await Promise.all([
+        const [me, q, s, academic, earned, enrolled, notification, payout, recovery, catalog, docs, publicSummary, reports, transfers, payments] = await Promise.all([
           request("/api/users/"+profileId),
           request("/api/users/me/qualifications").catch(()=>[]),
           request("/api/users/me/subjects").catch((error)=>{setMessage("Could not load saved subjects from the server. Your saved choices have not been changed. "+(error instanceof Error?error.message:"Please retry."));return {subjects:[],teaching_subjects:[],subjects_to_teach:[],primary_subject:null};}),
@@ -162,7 +159,6 @@ export default function ProfileHub() {
           request("/api/subjects/catalog").catch(()=>({subjects:[]})),
           request("/api/users/"+profileId+"/teacher-documents").catch(()=>[]),
           request("/api/users/"+profileId+"/public-profile").catch(()=>({})),
-          request("/api/academic-records/me").catch(()=>({attendance:[]})),
           request("/api/academic-records/reports/me").catch(()=>[]),
           request("/api/academic-records/transfer-requests").catch(()=>[]),
           (["student","prefect","learner"].includes(String(user?.role||"").toLowerCase())?request("/api/payments").catch(()=>[]):Promise.resolve([]))
@@ -171,7 +167,7 @@ export default function ProfileHub() {
         const savedSubjects = professional ? (s.subjects_to_teach||[]) : (s.subjects||[]);
         setProfile({...publicSummary,id:me.id,display_name:me.name,avatar:me.avatarUrl,bio:me.bio,role:me.role,verified_qualifications:professional?(q||[]).filter((v:any)=>v.verification_status==="verified").map((v:any)=>({title:v.title,verified:true})):[],subjects_to_teach:savedSubjects,subjects:savedSubjects,primary_subject:s.primary_subject||null,grade:me.grade,is_prefect:Boolean(me.isPrefect),is_manager:Boolean(me.isManager)});
         setNameInput(me.name||""); setPhoneInput(me.phone||""); setPhoneVerified(Boolean(recovery.recovery_phone_verified_at&&recovery.recovery_phone===me.phone)); setSubjectCatalog(Array.isArray(catalog.subjects)?catalog.subjects:[]);
-        setQualifications(professional?(q||[]):[]); setDocuments(professional&&Array.isArray(docs)?docs:[]); setSubjects(s||{teaching_subjects:[],subjects_to_teach:[]}); setSubjectInput(savedSubjects.join(", ")); setPrimarySubject(s.primary_subject||savedSubjects[0]||""); setSummary(academic); setAchievements(Array.isArray(earned)?earned:[]); setEnrollments(Array.isArray(enrolled)?enrolled:[]); setAcademicAttendance(Array.isArray(academicRecords?.attendance)?academicRecords.attendance:[]); setApprovedReports(Array.isArray(reports)?reports:[]); setTransferRequests(Array.isArray(transfers)?transfers:[]); setPaymentRecords(Array.isArray(payments)?payments:[]); setNotificationEmail(notification.notification_email||""); setNotificationEmailVerified(Boolean(notification.notification_email_verified_at)); setPayoutMethod(payout.method||"ecocash"); setPayoutDestinationMasked(payout.destination_masked||""); setBankName(payout.bank_name||""); setAccountHolder(payout.account_name_holder||""); setRecoveryEmail(recovery.recovery_email||""); setRecoveryEmailVerified(Boolean(recovery.recovery_email_verified_at)); if(["owner","admin","platform_owner"].includes(String(me.role).toLowerCase())) request("/api/qualifications/pending").then((rows:any)=>setModerationQueue(Array.isArray(rows)?rows:[])).catch(()=>setModerationQueue([]));
+        setQualifications(professional?(q||[]):[]); setDocuments(professional&&Array.isArray(docs)?docs:[]); setSubjects(s||{teaching_subjects:[],subjects_to_teach:[]}); setSubjectInput(savedSubjects.join(", ")); setPrimarySubject(s.primary_subject||savedSubjects[0]||""); setSummary(academic); setAchievements(Array.isArray(earned)?earned:[]); setEnrollments(Array.isArray(enrolled)?enrolled:[]); setApprovedReports(Array.isArray(reports)?reports:[]); setTransferRequests(Array.isArray(transfers)?transfers:[]); setPaymentRecords(Array.isArray(payments)?payments:[]); setNotificationEmail(notification.notification_email||""); setNotificationEmailVerified(Boolean(notification.notification_email_verified_at)); setPayoutMethod(payout.method||"ecocash"); setPayoutDestinationMasked(payout.destination_masked||""); setBankName(payout.bank_name||""); setAccountHolder(payout.account_name_holder||""); setRecoveryEmail(recovery.recovery_email||""); setRecoveryEmailVerified(Boolean(recovery.recovery_email_verified_at)); if(["owner","admin","platform_owner"].includes(String(me.role).toLowerCase())) request("/api/qualifications/pending").then((rows:any)=>setModerationQueue(Array.isArray(rows)?rows:[])).catch(()=>setModerationQueue([]));
       } else {
         const [p, earned, docs] = await Promise.all([
           request("/api/users/"+profileId+"/public-profile"),
