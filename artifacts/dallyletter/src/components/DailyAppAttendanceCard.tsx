@@ -9,7 +9,8 @@ import { CalendarDays, Activity, ChevronRight, BookOpenCheck } from "lucide-reac
 type ClassAttendance = {
   id: number;
   classId: number;
-  joinedAt: string;
+  joinedAt?: string;
+  joined_at?: string;
   status: string;
   durationMinutes?: number | null;
 };
@@ -78,11 +79,11 @@ export function DailyAppAttendanceCard() {
     const headers = { Authorization: "Bearer " + token };
     const loadClassAttendance = async () => {
       try {
-        const response = await fetch(getApiUrl("/api/attendance/my"), { headers, cache: "no-store" });
+        const response = await fetch(getApiUrl("/api/academic-records/me"), { headers, cache: "no-store" });
         if (!response.ok) throw new Error("Your class attendance could not be loaded.");
         const payload = await response.json();
         if (active) {
-          setClassRecords(Array.isArray(payload) ? payload : []);
+          setClassRecords(Array.isArray(payload.attendance) ? payload.attendance.map((record: any) => ({ ...record, joinedAt: record.joinedAt ?? record.joined_at })) : []);
           setClassError("");
         }
       } catch (error) {
@@ -156,15 +157,18 @@ export function DailyAppAttendanceCard() {
           const isSpecialDay = key === "2026-10-25";
           const isAbsent = !!status && status.absent > 0;
           const isPresent = !!status && status.present > 0 && !isAbsent;
+          const isPastUnrecorded = key < today && !status;
           const colorClass = isFuture
             ? "bg-muted/40 text-muted-foreground border-border"
-            : isAbsent
+            : isPastUnrecorded
+              ? "bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-950/40 dark:text-orange-200 dark:border-orange-800"
+              : isAbsent
               ? "bg-red-100 text-red-800 border-red-300 dark:bg-red-950/50 dark:text-red-200 dark:border-red-800"
               : isPresent
                 ? "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/50 dark:text-emerald-200 dark:border-emerald-800"
                 : "bg-card text-foreground border-border";
           return (
-            <div key={key} title={isSpecialDay ? "Dallyletter special-day marker" : undefined} aria-label={`${formatDate(key)}: ${isAbsent ? "absence recorded" : isPresent ? "present" : isFuture ? "not reached" : "no record"}`} className={`relative flex min-h-[42px] flex-col items-center justify-center rounded-lg border text-sm font-semibold sm:min-h-[54px] ${colorClass} ${isWeekend ? "ring-1 ring-inset ring-violet-300 dark:ring-violet-700" : ""} ${isToday ? "outline outline-2 outline-offset-1 outline-primary" : ""}`}>
+            <div key={key} title={isSpecialDay ? "Dallyletter special-day marker" : undefined} aria-label={`${formatDate(key)}: ${isAbsent ? "absence recorded" : isPresent ? "present" : isFuture ? "not reached" : isPastUnrecorded ? "past day with no record" : "no record"}`} className={`relative flex min-h-[42px] flex-col items-center justify-center rounded-lg border text-sm font-semibold sm:min-h-[54px] ${colorClass} ${isWeekend ? "ring-1 ring-inset ring-violet-300 dark:ring-violet-700" : ""} ${isToday ? "outline outline-2 outline-offset-1 outline-primary" : ""}`}>
               {isSpecialDay && <span aria-hidden="true" className="pointer-events-none absolute right-1 top-0 text-[9px] font-black leading-none text-amber-500/45">D</span>}
               <span>{day}</span>
               {status && <span className="text-[9px] font-medium leading-3">{status.present + status.absent} {status.present + status.absent === 1 ? "session" : "sessions"}</span>}
@@ -176,7 +180,8 @@ export function DailyAppAttendanceCard() {
       <div className="flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-muted-foreground">
         <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-emerald-400 bg-emerald-100" /> Present record</span>
         <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-red-400 bg-red-100" /> Absence recorded</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-border bg-muted/40" /> No record / future</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-orange-400 bg-orange-100" /> Past day / no record</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-border bg-muted/40" /> Future date</span>
         <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-violet-400 bg-card" /> Weekend</span>
         <span className="inline-flex items-center gap-1.5"><span className="text-xs font-black text-amber-500/70">D</span> Special-day marker</span>
       </div>
