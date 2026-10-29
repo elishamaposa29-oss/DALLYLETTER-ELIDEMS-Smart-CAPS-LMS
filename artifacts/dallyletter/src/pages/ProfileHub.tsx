@@ -310,7 +310,7 @@ export default function ProfileHub() {
   };
   const requestWhatsAppPhoneCode = async () => {
     const phone=phoneInput.trim();
-    if(!/^\\+[1-9]\\d{7,14}$/.test(phone)){setMessage("Use international phone format, including country code (for example +263…).");return;}
+    if(!/^\+[1-9]\d{7,14}$/.test(phone)){setMessage("Use international phone format, including country code (for example +263…).");return;}
     setBusy(true);setMessage("");
     try {
       await request("/api/users/"+user!.id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone})});
