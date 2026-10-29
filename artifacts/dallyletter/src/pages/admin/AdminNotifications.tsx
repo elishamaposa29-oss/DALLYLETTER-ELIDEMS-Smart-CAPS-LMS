@@ -81,7 +81,7 @@ export default function AdminNotifications() {
         const emailRes = await fetch(getApiUrl("/api/email/send"), { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ subject: values.title, text: values.message, ...recipientBody }) });
         const emailData = await emailRes.json().catch(() => ({}));
         if (!emailRes.ok) throw new Error(emailData.error || "Email delivery failed");
-        toast({ title: "Email accepted", description: `Provider accepted delivery for ${emailData.recipientCount ?? emailData.sent ?? "the selected"} recipient(s).` });
+        toast({ title: "Email accepted", description: `Provider accepted delivery for ${emailData.recipientCount ?? emailData.sent ?? "the selected"} verified notification email(s). ${emailData.skippedMissingNotificationEmail ?? 0} selected user(s) had no verified notification email and were skipped.` });
       }
       for (const channel of (["sendSms", "sendWhatsApp"] as const)) {
         if (!values[channel]) continue;
