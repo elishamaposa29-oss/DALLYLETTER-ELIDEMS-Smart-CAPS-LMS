@@ -83,11 +83,21 @@ export async function sendEmail(input: EmailInput): Promise<{ sent: number; fail
   return { sent, failed };
 }
 
-export async function resolveNotificationRecipients(recipientId: number | null): Promise<string[]> {
+const NOTIFICATION_ROLE_ALLOWLIST = new Set(["student", "learner", "teacher", "prefect", "manager", "senior_manager", "owner", "admin"]);
+
+export async function resolveNotificationRecipients(recipientId: number | null, recipientRole: string | null = null): Promise<string[]> {
+  const selectEmail = "CASE WHEN notification_email_verified_at IS NOT NULL AND NULLIF(btrim(notification_email),'') IS NOT NULL THEN notification_email ELSE email END AS email";
   if (recipientId !== null) {
-    const { rows } = await pool.query("SELECT CASE WHEN notification_email_verified_at IS NOT NULL THEN notification_email ELSE email END AS email FROM users WHERE id = $1 AND is_blocked = false", [recipientId]);
-    return rows.map((r: { email: string }) => r.email);
+    const { rows } = await pool.query(`SELECT ${selectEmail} FROM users WHERE id = $1 AND is_blocked = false AND is_suspended = false`, [recipientId]);
+    return rows.map((r: { email: string }) => r.email).filter(Boolean);
   }
-  const { rows } = await pool.query("SELECT CASE WHEN notification_email_verified_at IS NOT NULL THEN notification_email ELSE email END AS email FROM users WHERE is_blocked = false AND email IS NOT NULL");
-  return rows.map((r: { email: string }) => r.email);
+  if (recipientRole !== null) {
+    const role = recipientRole.trim().toLowerCase();
+    if (!NOTIFICATION_ROLE_ALLOWLIST.has(role)) throw new Error("Choose a supported recipient role.");
+    const roles = role === "learner" || role === "student" ? ["learner", "student"] : [role];
+    const { rows } = await pool.query(`SELECT ${selectEmail} FROM users WHERE lower(role) = ANY($1::text[]) AND is_blocked = false AND is_suspended = false AND email IS NOT NULL ORDER BY id ASC`, [roles]);
+    return [...new Set(rows.map((r: { email: string }) => r.email).filter(Boolean))];
+  }
+  const { rows } = await pool.query(`SELECT ${selectEmail} FROM users WHERE is_blocked = false AND is_suspended = false AND email IS NOT NULL ORDER BY id ASC`);
+  return [...new Set(rows.map((r: { email: string }) => r.email).filter(Boolean))];
 }
