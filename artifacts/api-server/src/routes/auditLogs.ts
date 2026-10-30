@@ -145,11 +145,12 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, asyn
   const row = result.rows[0];
   if (!row || (Number(row.learner_id) !== Number(user.id) && !canAccessManager(user))) { res.status(404).json({ error: "Approved transfer letter not found." }); return; }
   if (row.status !== "approved") { res.status(403).json({ error: "The transfer letter cannot be downloaded until an authorized manager approves the request." }); return; }
-  const [enrollmentRows, attendanceRows, awardRows, subjectRows] = await Promise.all([
+  const [enrollmentRows, attendanceRows, awardRows, subjectRows, reportRows] = await Promise.all([
     pool.query("SELECT c.title,c.subject,c.grade,e.enrolled_at,e.progress_percent,e.status FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 ORDER BY e.enrolled_at DESC LIMIT 12", [row.learner_id]),
     pool.query("SELECT count(*)::int AS sessions,count(*) FILTER (WHERE lower(status)='present')::int AS present,count(*) FILTER (WHERE lower(status)='absent')::int AS absent FROM attendance WHERE student_id=$1", [row.learner_id]),
     pool.query("SELECT a.name,ua.earned_at FROM user_achievements ua JOIN achievements a ON a.id=ua.achievement_id WHERE ua.user_id=$1 ORDER BY ua.earned_at DESC LIMIT 8", [row.learner_id]),
     pool.query("SELECT subjects FROM learner_subjects WHERE user_id=$1", [row.learner_id]),
+    pool.query("SELECT report_type,term_label,reviewed_at,draft_content FROM academic_report_drafts WHERE learner_id=$1 AND status='approved' ORDER BY reviewed_at DESC NULLS LAST,created_at DESC LIMIT 1", [row.learner_id]),
   ]);
   const fmt = (value: unknown) => value == null || value === "" ? "Not recorded" : String(value);
   const lines = [
@@ -167,6 +168,8 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, asyn
     "",
     "ACADEMIC RECORD SUMMARY",
     "Subjects: " + fmt((subjectRows.rows[0]?.subjects || []).join(", ")),
+    "Latest approved report: " + (reportRows.rows[0] ? String(reportRows.rows[0].term_label) + " (" + String(reportRows.rows[0].report_type) + ", " + (reportRows.rows[0].reviewed_at ? new Date(reportRows.rows[0].reviewed_at).toISOString().slice(0,10) : "approval date unavailable") + ")" : "No approved report recorded"),
+    "Performance/marks: Included only where available in an approved report; no marks are inferred.",
     "Attendance sessions recorded: " + String(attendanceRows.rows[0]?.sessions ?? 0),
     "Present sessions: " + String(attendanceRows.rows[0]?.present ?? 0),
     "Absent sessions recorded: " + String(attendanceRows.rows[0]?.absent ?? 0),
