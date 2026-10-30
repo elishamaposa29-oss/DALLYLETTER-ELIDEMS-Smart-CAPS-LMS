@@ -178,6 +178,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         { label: "Notifications", href: "/manager/notifications", icon: Bell },
         { label: "Prefect Management", href: "/manager/prefects", icon: Shield },
       { label: "Transfer Requests", href: "/manager/transfer-requests", icon: FileCheck2, section: "Approvals", accent: "text-amber-300" },
+      { label: "Report Review", href: "/manager/reports/review", icon: FileCheck2, section: "Approvals", accent: "text-violet-300" },
+      { label: "Report Review", href: "/manager/reports/review", icon: FileCheck2, section: "Approvals", accent: "text-violet-300" },
       ] : []),
     ];
   } else if (["manager","senior_manager"].includes(normalizedRole)) {
