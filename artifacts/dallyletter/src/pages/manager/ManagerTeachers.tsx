@@ -73,7 +73,7 @@ export default function ManagerTeachers() {
           <div className="space-y-3">
             {teachers.length === 0 ? (
               <div className="text-center py-16 text-slate-400"><GraduationCap className="h-12 w-12 mx-auto mb-3 opacity-20" /><p>No teachers found</p></div>
-            ) : teachers.sort((a: any, b: any) => (b.performanceScore ?? 0) - (a.performanceScore ?? 0)).map((t, i) => (
+            ) : teachers.sort((a: any, b: any) => (b.activityScore ?? 0) - (a.activityScore ?? 0)).map((t, i) => (
               <Card key={t.id} className="border-0 shadow-sm" onClick={() => void openMonitor(t)}>
                 <CardContent className="p-4">
                   <div className="flex items-start gap-4">
@@ -91,7 +91,8 @@ export default function ManagerTeachers() {
                       <div className="flex items-center gap-4 text-xs text-slate-400">
                         <span className="flex items-center gap-1"><BookOpen className="h-3 w-3" /> {t.lessonsCount ?? 0} lessons</span>
                         <span className="flex items-center gap-1"><Video className="h-3 w-3" /> {t.classesCount ?? 0} classes</span>
-                        <span className="flex items-center gap-1"><TrendingUp className="h-3 w-3" /> {t.performanceScore ?? 0} pts</span>
+                        <span className="flex items-center gap-1"><TrendingUp className="h-3 w-3" /> {t.activityScore ?? 0} activity</span>
+                        <span>{t.exercisesCount ?? 0} exercises</span><span>{t.assignmentsCount ?? 0} assignments</span><span>{t.markedCount ?? 0} marked</span><span>{t.learnersJoined ?? 0} learners</span>
                       </div>
                     </div>
                   </div>
