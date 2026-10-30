@@ -149,7 +149,7 @@ export default function ManagerHome() {
           <CardContent>
             {!data?.topLearners?.length ? <p className="py-4 text-center text-sm text-slate-400">No learner activity recorded yet.</p> :
               <div className="space-y-2">{data.topLearners.map((learner:any,index:number)=><div key={learner.id} className="flex items-center gap-3 rounded-lg bg-slate-50 p-3">
-                <span className="w-6 text-xs font-bold text-slate-400">#{index+1}</span><div className="min-w-0 flex-1"><p className="text-sm font-semibold text-slate-800">{learner.name}</p><p className="text-xs text-slate-500">{learner.grade || "Grade not set"} · {learner.exerciseSubmissions} exercise submissions · {learner.assignmentSubmissions} assignment submissions</p></div><Badge variant="secondary">{learner.badgeCount} awards</Badge><Link href="/manager/students"><Button size="sm" variant="outline">Monitor</Button></Link>
+                <span className="w-6 text-xs font-bold text-slate-400">#{index+1}</span><div className="min-w-0 flex-1"><p className="text-sm font-semibold text-slate-800">{learner.name}</p><p className="text-xs text-slate-500">{learner.grade || "Grade not set"} · {learner.exerciseSubmissions} exercise submissions · {learner.assignmentSubmissions} assignment submissions · {learner.averageMarkPercentage == null ? "marks pending" : learner.averageMarkPercentage + "% average"}</p></div><Badge variant="secondary">{learner.badgeCount} awards</Badge><Link href="/manager/students"><Button size="sm" variant="outline">Monitor</Button></Link>
               </div>)}</div>}
           </CardContent>
         </Card>
