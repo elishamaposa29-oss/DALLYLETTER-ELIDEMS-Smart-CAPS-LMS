@@ -15,7 +15,7 @@ function requireManager(req: any, res: any, next: any) {
 }
 
 router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
-  const [teachers, students, classes, lessons, alerts, assignments, exercises, exerciseSubmissions, assignmentSubmissions, pollSubmissions, allClasses, learnerAwards] = await Promise.all([
+  const [teachers, students, classes, lessons, alerts, assignments, exercises, exerciseSubmissions, assignmentSubmissions, allClasses, learnerAwards] = await Promise.all([
     db.select({ id: usersTable.id, name: usersTable.name, subject: usersTable.subject, performanceScore: usersTable.performanceScore, isManager: usersTable.isManager, isBlocked: usersTable.isBlocked, isSuspended: usersTable.isSuspended })
       .from(usersTable).where(eq(usersTable.role, "teacher")),
     db.select({ id: usersTable.id, name: usersTable.name, grade: usersTable.grade, performanceScore: usersTable.performanceScore, badgeCount: usersTable.badgeCount })
@@ -27,7 +27,6 @@ router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
     db.select().from(exercisesTable),
     db.select().from(exerciseSubmissionsTable),
     db.select().from(assignmentSubmissionsTable),
-    db.select().from(pollSubmissionsTable),
     db.select().from(classesTable),
     db.select({ userId: userAchievementsTable.userId }).from(userAchievementsTable),
   ]);
@@ -36,14 +35,15 @@ router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
   const [transferRows, reportRows, qualificationRows, enrollmentRows] = await Promise.all([
     pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,r.reason,r.status,r.created_at FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id WHERE r.status='pending' ORDER BY r.created_at ASC LIMIT 100"),
     pool.query("SELECT d.id,d.learner_id,u.name AS learner_name,d.report_type,d.term_label,d.status,d.created_at FROM academic_report_drafts d JOIN users u ON u.id=d.learner_id WHERE d.status='pending_review' ORDER BY d.created_at ASC LIMIT 100"),
-    pool.query("SELECT q.id,q.user_id,u.name AS teacher_name,q.title,q.institution,q.created_at FROM teacher_qualifications q JOIN users u ON u.id=q.user_id WHERE q.verification_status='pending' ORDER BY q.created_at ASC LIMIT 100"),
+    String(req.currentUser!.role).toLowerCase() === "owner"
+      ? pool.query("SELECT q.id,q.user_id,u.name AS teacher_name,q.title,q.institution,q.created_at FROM teacher_qualifications q JOIN users u ON u.id=q.user_id WHERE q.verification_status='pending' ORDER BY q.created_at ASC LIMIT 100")
+      : Promise.resolve({ rows: [] as any[] }),
     pool.query("SELECT c.teacher_id, COUNT(DISTINCT e.learner_id)::int AS learners_joined FROM classes c LEFT JOIN enrollments e ON e.class_id=c.id GROUP BY c.teacher_id"),
   ]);
 
   const activeTeachers = teachers.filter((t: any) => !t.isManager && !t.isBlocked && !t.isSuspended);
   const teacherRanks = activeTeachers.map((teacher: any) => {
     const teacherLessons = lessons.filter((x: any) => x.teacherId === teacher.id);
-    const teacherClasses = allClasses.filter((x: any) => x.teacherId === teacher.id);
     const teacherAssignments = assignments.filter((x: any) => x.teacherId === teacher.id);
     const teacherExercises = exercises.filter((x: any) => x.createdBy === teacher.id);
     const assignmentIds = new Set(teacherAssignments.map((x: any) => x.id));
