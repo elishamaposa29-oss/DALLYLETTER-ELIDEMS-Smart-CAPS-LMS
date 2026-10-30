@@ -88,10 +88,11 @@ router.post("/audit-logs/summarize", requireAuth, async (req, res): Promise<void
 router.post("/academic-records/transfer-requests", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+  const formData = req.body?.formData && typeof req.body.formData === "object" && !Array.isArray(req.body.formData) ? req.body.formData : {};
   if (reason.length < 3 || reason.length > 2000) { res.status(400).json({ error: "Provide a transfer reason between 3 and 2000 characters." }); return; }
   const result = await pool.query(
-    "INSERT INTO academic_transfer_requests (learner_id, requested_by, reason) VALUES ($1,$1,$2) RETURNING id, learner_id, reason, status, created_at",
-    [user.id, reason],
+    "INSERT INTO academic_transfer_requests (learner_id, requested_by, reason, form_data) VALUES ($1,$1,$2,$3::jsonb) RETURNING id, learner_id, reason, status, created_at",
+    [user.id, reason, JSON.stringify(formData)],
   );
   const requestRow = result.rows[0];
   await db.insert(auditLogsTable).values({ performedBy: user.id, action: "transfer_letter.requested", category: "academic", targetType: "transfer_request", targetId: Number(requestRow.id), details: JSON.stringify({ status: "pending" }) });
@@ -114,7 +115,7 @@ router.post("/academic-records/transfer-requests", requireAuth, async (req, res)
 
 router.get("/academic-records/transfer-requests", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  const manager = canAccessManager(user);
+  const manager = ["manager","senior_manager","owner"].includes(String(user.role||"").toLowerCase());
   const result = manager
     ? await pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,r.requested_by,r.reason,r.status,r.review_note,r.reviewed_by,r.reviewed_at,r.created_at FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id ORDER BY r.created_at DESC LIMIT 200")
     : await pool.query("SELECT id,learner_id,reason,status,review_note,reviewed_at,created_at FROM academic_transfer_requests WHERE learner_id=$1 ORDER BY created_at DESC LIMIT 100", [user.id]);
@@ -123,7 +124,7 @@ router.get("/academic-records/transfer-requests", requireAuth, async (req, res):
 
 router.post("/academic-records/transfer-requests/:id/review", requireAuth, async (req, res): Promise<void> => {
   const reviewer = req.currentUser!;
-  if (!canAccessManager(reviewer)) { res.status(403).json({ error: "Authorized manager review is required." }); return; }
+  if (!["manager","senior_manager","owner"].includes(String(reviewer.role||"").toLowerCase())) { res.status(403).json({ error: "Only managers and owners can review transfer requests." }); return; }
   const id = Number(req.params.id);
   const status = req.body?.status;
   const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 2000) : null;
@@ -143,7 +144,7 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, asyn
     [id],
   );
   const row = result.rows[0];
-  if (!row || (Number(row.learner_id) !== Number(user.id) && !canAccessManager(user))) { res.status(404).json({ error: "Approved transfer letter not found." }); return; }
+  if (!row || (Number(row.learner_id) !== Number(user.id) && !["manager","senior_manager","owner"].includes(String(user.role||"").toLowerCase()))) { res.status(404).json({ error: "Approved transfer letter not found." }); return; }
   if (row.status !== "approved") { res.status(403).json({ error: "The transfer letter cannot be downloaded until an authorized manager approves the request." }); return; }
   const [enrollmentRows, attendanceRows, awardRows, subjectRows, reportRows] = await Promise.all([
     pool.query("SELECT c.title,c.subject,c.grade,e.enrolled_at,e.progress_percent,e.status FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 ORDER BY e.enrolled_at DESC LIMIT 12", [row.learner_id]),
@@ -164,6 +165,22 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, asyn
     "Request date: " + new Date(row.created_at).toISOString().slice(0,10),
     "Approval date: " + (row.reviewed_at ? new Date(row.reviewed_at).toISOString().slice(0,10) : "Not recorded"),
     "Transfer reason: " + fmt(row.reason),
+    "Receiving school: " + fmt(row.form_data?.receivingSchool),
+    "Learner full name: " + fmt(row.form_data?.learnerName || row.learner_name),
+    "Date of birth: " + fmt(row.form_data?.dob),
+    "Gender: " + fmt(row.form_data?.gender),
+    "Admission number: " + fmt(row.form_data?.admissionNo),
+    "EMIS number: " + fmt(row.form_data?.emisNo),
+    "Academic year: " + fmt(row.form_data?.academicYear),
+    "Last term average: " + fmt(row.form_data?.average),
+    "Conduct: " + fmt(row.form_data?.conduct),
+    "Parent/guardian: " + fmt(row.form_data?.guardianName) + " (" + fmt(row.form_data?.relationship) + ")",
+    "Guardian ID: " + fmt(row.form_data?.guardianId),
+    "Guardian phone: " + fmt(row.form_data?.guardianPhone),
+    "Guardian email: " + fmt(row.form_data?.guardianEmail),
+    "Physical address: " + fmt(row.form_data?.address),
+    "Effective transfer date: " + fmt(row.form_data?.effectiveDate),
+    "Reason details: " + fmt(row.form_data?.reasonDetail),
     row.review_note ? "Manager note: " + row.review_note : "",
     "",
     "ACADEMIC RECORD SUMMARY",
