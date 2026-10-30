@@ -257,11 +257,11 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, asyn
   const pageLines = Array.from({ length: Math.max(1, Math.ceil(wrapped.length / 48)) }, (_, index) => wrapped.slice(index * 48, (index + 1) * 48));
   const objects: string[] = [
     "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [" + pageLines.map((_, index) => (4 + index * 2) + " 0 R").join(" ") + "] /Count " + pageLines.length + " >>",
+    "<< /Type /Pages /Kids [" + pageLines.map((_, index) => (5 + index * 2) + " 0 R").join(" ") + "] /Count " + pageLines.length + " >>",
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
   ];
   pageLines.forEach((page, pageIndex) => {
-    const pageObject = 4 + pageIndex * 2;
+    const pageObject = 5 + pageIndex * 2;
     const contentObject = pageObject + 1;
     const textCommands = page.map((line, index) => {
       const isHeading = /^(DALLYLETTER ELIDEMS|OFFICIAL TRANSFER LETTER|ACADEMIC RECORD SUMMARY)$/.test(line);
@@ -277,7 +277,7 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, asyn
       "0.055 0.13 0.29 rg 48 34 499 1 re f",
       "0 0 0 rg BT /F1 8 Tf 48 20 Td (Protected academic document - DL-TR-" + id + ") Tj 440 0 Td (Page " + (pageIndex + 1) + " of " + pageLines.length + ") Tj ET",
     ].join("\\n");
-    objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 3 0 R >> >> /Contents " + contentObject + " 0 R >>");
+    objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents " + contentObject + " 0 R >>");
     objects.push("<< /Length " + new TextEncoder().encode(stream).length + " >>\\nstream\\n" + stream + "\\nendstream");
   });
   let pdf = "%PDF-1.4\\n"; const offsets = [0];
