@@ -82,7 +82,7 @@ export default function ManagerStudents() {
           <Card className="border-0 shadow-sm"><CardContent className="p-4">
             <h2 className="mb-3 font-semibold text-slate-900">Highest performing learners</h2>
             {!managerSummary?.topLearners?.length ? <p className="text-sm text-slate-500">No learner activity recorded yet.</p> :
-              <div className="space-y-2">{managerSummary.topLearners.map((s:any,index:number)=><div key={s.id} className="flex items-center gap-3 rounded-lg bg-slate-50 p-2"><span className="w-5 text-xs font-bold text-slate-400">#{index+1}</span><div className="min-w-0 flex-1"><p className="text-sm font-medium">{s.name}</p><p className="text-xs text-slate-500">{s.exerciseSubmissions} exercise · {s.assignmentSubmissions} assignment submissions</p></div><Badge variant="secondary"><Award className="mr-1 h-3 w-3"/>{s.badgeCount} awards</Badge></div>)}</div>}
+              <div className="space-y-2">{managerSummary.topLearners.map((s:any,index:number)=><div key={s.id} className="flex items-center gap-3 rounded-lg bg-slate-50 p-2"><span className="w-5 text-xs font-bold text-slate-400">#{index+1}</span><div className="min-w-0 flex-1"><p className="text-sm font-medium">{s.name}</p><p className="text-xs text-slate-500">{s.exerciseSubmissions} exercise · {s.assignmentSubmissions} assignment submissions · {s.averageMarkPercentage == null ? "marks pending" : s.averageMarkPercentage + "% average"}</p></div><Badge variant="secondary"><Award className="mr-1 h-3 w-3"/>{s.badgeCount} awards</Badge></div>)}</div>}
           </CardContent></Card>
         </div>
 
