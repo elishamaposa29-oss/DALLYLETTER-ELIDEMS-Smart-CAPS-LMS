@@ -23,6 +23,7 @@ export default function ManagerReports() {
     { label: "Total Lessons", value: report?.lessonCount ?? 0, icon: BookOpen, color: "text-amber-600", bg: "bg-amber-50" },
     { label: "Total Classes", value: report?.classCount ?? 0, icon: Video, color: "text-indigo-600", bg: "bg-indigo-50" },
     { label: "Total Revenue", value: `$${(report?.totalRevenue ?? 0).toFixed(2)}`, icon: DollarSign, color: "text-emerald-600", bg: "bg-emerald-50" },
+    { label: "All registered users", value: report?.totalUsers ?? 0, icon: Users, color: "text-slate-700", bg: "bg-slate-100" },
     { label: "Owners / Admins", value: report?.ownerCount ?? 0, icon: Users, color: "text-slate-700", bg: "bg-slate-100" },
     { label: "Prefects", value: report?.prefectCount ?? 0, icon: Award, color: "text-amber-600", bg: "bg-amber-50" },
     { label: "Assignments", value: report?.assignmentCount ?? 0, icon: ClipboardCheck, color: "text-blue-600", bg: "bg-blue-50" },
