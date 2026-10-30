@@ -189,9 +189,8 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, asyn
     return out;
   }).slice(0, 46);
   const stream = [
-    "BT", "/F1 10 Tf", "48 790 Td",
-    "0.94 g", "1 0 0 1 110 420 Tm", "/F1 38 Tf", "(DALLYLETTER ELIDEMS) Tj",
-    "0 g", "/F1 10 Tf", "0 -32 Td",
+    "BT", "/F1 38 Tf", "0.94 g", "1 0 0 1 105 420 Tm", "(DALLYLETTER ELIDEMS) Tj",
+    "0 g", "/F1 10 Tf", "1 0 0 1 48 790 Tm",
     ...wrapped.map((line, i) => (i ? "0 -15 Td" : "") + "(" + escapePdf(line) + ") Tj"),
     "ET",
   ].filter(Boolean).join("\n");
