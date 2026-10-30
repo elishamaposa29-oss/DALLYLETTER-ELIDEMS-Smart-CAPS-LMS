@@ -3,6 +3,7 @@ import { db, auditLogsTable, usersTable, pool } from "@workspace/db";
 import { eq, desc, inArray, and } from "drizzle-orm";
 import { getAIProvider } from "../lib/ai-provider";
 import { requireAuth, canAccessManager } from "../lib/auth-middleware";
+import { enqueueEmailNotification } from "../lib/email-notification-queue";
 
 const router = Router();
 
@@ -92,8 +93,23 @@ router.post("/academic-records/transfer-requests", requireAuth, async (req, res)
     "INSERT INTO academic_transfer_requests (learner_id, requested_by, reason) VALUES ($1,$1,$2) RETURNING id, learner_id, reason, status, created_at",
     [user.id, reason],
   );
-  await db.insert(auditLogsTable).values({ performedBy: user.id, action: "transfer_letter.requested", category: "academic", targetType: "transfer_request", targetId: Number(result.rows[0].id), details: JSON.stringify({ status: "pending" }) });
-  res.status(201).json(result.rows[0]);
+  const requestRow = result.rows[0];
+  await db.insert(auditLogsTable).values({ performedBy: user.id, action: "transfer_letter.requested", category: "academic", targetType: "transfer_request", targetId: Number(requestRow.id), details: JSON.stringify({ status: "pending" }) });
+  // Queue reviewer email alerts; the audit event above is also the admin-dashboard alert.
+  try {
+    const reviewers = await pool.query(
+      "SELECT id FROM users WHERE lower(role)=ANY($1::text[]) AND is_blocked=false AND is_suspended=false ORDER BY id",
+      [["manager", "senior_manager", "owner", "admin"]],
+    );
+    await Promise.all(reviewers.rows.map((reviewer: { id: number }) =>
+      enqueueEmailNotification(Number(reviewer.id), "Transfer letter request awaiting review",
+        "A learner submitted transfer letter request #" + requestRow.id + ". Sign in to Dallyletter Elidems and open the transfer requests queue to review it. The request remains pending until an authorized reviewer decides.")
+    ));
+  } catch (error) {
+    // Do not report a saved request as failed if notification infrastructure is temporarily unavailable.
+    console.error("Transfer request reviewer notification queue failed", error instanceof Error ? error.message : "unknown");
+  }
+  res.status(201).json(requestRow);
 });
 
 router.get("/academic-records/transfer-requests", requireAuth, async (req, res): Promise<void> => {
@@ -123,28 +139,83 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, asyn
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id < 1) { res.status(400).json({ error: "Invalid request ID." }); return; }
   const result = await pool.query(
-    "SELECT r.*,u.name AS learner_name,u.email,c.name AS school_name FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id LEFT JOIN LATERAL (SELECT name FROM users WHERE role IN ('manager','owner') ORDER BY id LIMIT 1) c ON true WHERE r.id=$1",
+    "SELECT r.*,u.name AS learner_name,u.email,u.grade,c.name AS school_name FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id LEFT JOIN LATERAL (SELECT name FROM users WHERE role IN ('manager','owner') ORDER BY id LIMIT 1) c ON true WHERE r.id=$1",
     [id],
   );
   const row = result.rows[0];
   if (!row || (Number(row.learner_id) !== Number(user.id) && !canAccessManager(user))) { res.status(404).json({ error: "Approved transfer letter not found." }); return; }
   if (row.status !== "approved") { res.status(403).json({ error: "The transfer letter cannot be downloaded until an authorized manager approves the request." }); return; }
-  const letter = [
-    "DALLYLETTER ELIDEMS — TRANSFER LETTER",
+  const [enrollmentRows, attendanceRows, awardRows, subjectRows] = await Promise.all([
+    pool.query("SELECT c.title,c.subject,c.grade,e.enrolled_at,e.progress_percent,e.status FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 ORDER BY e.enrolled_at DESC LIMIT 12", [row.learner_id]),
+    pool.query("SELECT count(*)::int AS sessions,count(*) FILTER (WHERE lower(status)='present')::int AS present,count(*) FILTER (WHERE lower(status)='absent')::int AS absent FROM attendance WHERE student_id=$1", [row.learner_id]),
+    pool.query("SELECT a.name,ua.earned_at FROM user_achievements ua JOIN achievements a ON a.id=ua.achievement_id WHERE ua.user_id=$1 ORDER BY ua.earned_at DESC LIMIT 8", [row.learner_id]),
+    pool.query("SELECT subjects FROM learner_subjects WHERE user_id=$1", [row.learner_id]),
+  ]);
+  const fmt = (value: unknown) => value == null || value === "" ? "Not recorded" : String(value);
+  const lines = [
+    "DALLYLETTER ELIDEMS",
+    "OFFICIAL TRANSFER LETTER",
     "",
-    "Learner: " + row.learner_name,
-    "Account email: " + row.email,
+    "Learner: " + fmt(row.learner_name),
+    "Account email: " + fmt(row.email),
+    "Grade/Form: " + fmt(row.grade),
+    "Current school: " + fmt(row.school_name || "Dallyletter Elidems"),
     "Request date: " + new Date(row.created_at).toISOString().slice(0,10),
-    "Approval date: " + new Date(row.reviewed_at).toISOString().slice(0,10),
-    "Approved by account ID: " + row.reviewed_by,
-    "Transfer reason: " + row.reason,
+    "Approval date: " + (row.reviewed_at ? new Date(row.reviewed_at).toISOString().slice(0,10) : "Not recorded"),
+    "Transfer reason: " + fmt(row.reason),
     row.review_note ? "Manager note: " + row.review_note : "",
     "",
-    "This letter was generated from a transfer request and approved by an authorized manager.",
+    "ACADEMIC RECORD SUMMARY",
+    "Subjects: " + fmt((subjectRows.rows[0]?.subjects || []).join(", ")),
+    "Attendance sessions recorded: " + String(attendanceRows.rows[0]?.sessions ?? 0),
+    "Present sessions: " + String(attendanceRows.rows[0]?.present ?? 0),
+    "Absent sessions recorded: " + String(attendanceRows.rows[0]?.absent ?? 0),
+    "Enrollments: " + (enrollmentRows.rows.length ? enrollmentRows.rows.map((e: any) => [e.title,e.subject,e.grade ? "Grade " + e.grade : "",e.progress_percent + "% complete"].filter(Boolean).join(" | ")).join("; ") : "No enrollment records available"),
+    "Achievements: " + (awardRows.rows.length ? awardRows.rows.map((a: any) => a.name).join(", ") : "No achievements recorded"),
+    "",
+    "Generated from available Dallyletter Elidems account and academic records.",
+    "This document does not certify fee clearance or replace a school stamp/signature not present in the system.",
+    "Approved by authorized reviewer account ID: " + fmt(row.reviewed_by),
+    "Document reference: DL-TR-" + id + " | Protected authenticated download",
+  ].filter(Boolean);
+  const escapePdf = (value: string) => value.normalize("NFKD").replace(/[^\x20-\x7E]/g, "").replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+  const wrapped = lines.flatMap(line => {
+    const words = line.split(/\s+/); const out: string[] = []; let current = "";
+    for (const word of words) {
+      if ((current + " " + word).trim().length > 88) { if (current) out.push(current); current = word; }
+      else current = (current + " " + word).trim();
+    }
+    if (current) out.push(current);
+    return out;
+  }).slice(0, 46);
+  const stream = [
+    "BT", "/F1 10 Tf", "48 790 Td",
+    "0.94 g", "1 0 0 1 110 420 Tm", "/F1 38 Tf", "(DALLYLETTER ELIDEMS) Tj",
+    "0 g", "/F1 10 Tf", "0 -32 Td",
+    ...wrapped.map((line, i) => (i ? "0 -15 Td" : "") + "(" + escapePdf(line) + ") Tj"),
+    "ET",
   ].filter(Boolean).join("\n");
-  res.setHeader("Content-Type", "text/plain; charset=utf-8");
-  res.setHeader("Content-Disposition", 'attachment; filename="dallyletter-transfer-letter-' + id + '.txt"');
-  res.send(letter);
+  const objects: string[] = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    "<< /Length " + new TextEncoder().encode(stream).length + " >>\nstream\n" + stream + "\nendstream",
+  ];
+  let pdf = "%PDF-1.4\n"; const offsets = [0];
+  for (let i = 0; i < objects.length; i++) {
+    offsets.push(new TextEncoder().encode(pdf).length);
+    pdf += (i+1) + " 0 obj\n" + objects[i] + "\nendobj\n";
+  }
+  const xref = new TextEncoder().encode(pdf).length;
+  pdf += "xref\n0 " + (objects.length+1) + "\n0000000000 65535 f \n";
+  for (const offset of offsets.slice(1)) pdf += String(offset).padStart(10,"0") + " 00000 n \n";
+  pdf += "trailer\n<< /Size " + (objects.length+1) + " /Root 1 0 R >>\nstartxref\n" + xref + "\n%%EOF";
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Disposition", 'attachment; filename="dallyletter-transfer-letter-' + id + '.pdf"');
+  res.send(Buffer.from(pdf, "binary"));
 });
 
 router.get("/academic-records/me", requireAuth, async (req, res): Promise<void> => {
