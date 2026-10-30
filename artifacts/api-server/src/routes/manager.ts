@@ -100,7 +100,7 @@ router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
 });
 
 router.get("/teachers", requireAuth, requireManager, async (req, res) => {
-  const [teachers, lessonCounts, classCounts, assignments, exercises, assignmentSubmissions, exerciseSubmissions, enrollments] = await Promise.all([
+  const [teachers, lessonCounts, classCounts, assignments, exercises, assignmentSubmissions, exerciseSubmissions, enrollments, alerts] = await Promise.all([
     db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email, subject: usersTable.subject, performanceScore: usersTable.performanceScore, badgeCount: usersTable.badgeCount, createdAt: usersTable.createdAt, isManager: usersTable.isManager, isBlocked: usersTable.isBlocked, isSuspended: usersTable.isSuspended }).from(usersTable).where(eq(usersTable.role, "teacher")),
     db.select().from(lessonsTable),
     db.select().from(classesTable),
@@ -109,6 +109,7 @@ router.get("/teachers", requireAuth, requireManager, async (req, res) => {
     db.select().from(assignmentSubmissionsTable),
     db.select().from(exerciseSubmissionsTable),
     pool.query("SELECT c.teacher_id, COUNT(DISTINCT e.learner_id)::int AS learners_joined FROM classes c LEFT JOIN enrollments e ON e.class_id=c.id GROUP BY c.teacher_id"),
+    db.select().from(ownerAlertsTable).where(eq(ownerAlertsTable.status, "open")),
   ]);
   const ranked = teachers.filter((t: any) => !t.isManager && !t.isBlocked && !t.isSuspended).map((teacher: any) => {
     const teacherLessons = lessonCounts.filter((l: any) => l.teacherId === teacher.id);
@@ -125,7 +126,9 @@ router.get("/teachers", requireAuth, requireManager, async (req, res) => {
       + (markedAssignments + markedExercises) * 3 + learnersJoined * 2 + teacherAssignmentSubmissions.length + teacherExerciseSubmissions.length;
     return { ...teacher, lessonsCount: teacherLessons.length, classesCount: classCounts.filter((cl: any) => cl.teacherId === teacher.id).length,
       exercisesCount: teacherExercises.length, assignmentsCount: teacherAssignments.length, markedCount: markedAssignments + markedExercises,
-      learnersJoined, learnerSubmissions: teacherAssignmentSubmissions.length + teacherExerciseSubmissions.length, activityScore };
+      learnersJoined, learnerSubmissions: teacherAssignmentSubmissions.length + teacherExerciseSubmissions.length, activityScore,
+      alerts: alerts.filter((alert: any) => alert.reportedBy === teacher.id || (Number(alert.targetId) === teacher.id && ["teacher","user"].includes(String(alert.targetType || "").toLowerCase()))),
+      alertsCount: alerts.filter((alert: any) => alert.reportedBy === teacher.id || (Number(alert.targetId) === teacher.id && ["teacher","user"].includes(String(alert.targetType || "").toLowerCase()))).length };
   }).sort((a: any,b: any)=>b.activityScore-a.activityScore||b.learnersJoined-a.learnersJoined||a.name.localeCompare(b.name));
   res.json(ranked);
 });
