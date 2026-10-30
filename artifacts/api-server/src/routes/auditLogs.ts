@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, auditLogsTable, usersTable, pool } from "@workspace/db";
 import { eq, desc, inArray, and } from "drizzle-orm";
 import { getAIProvider } from "../lib/ai-provider";
-import { requireAuth, canAccessManager } from "../lib/auth-middleware";
+import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { enqueueEmailNotification } from "../lib/email-notification-queue";
 
 const router = Router();
@@ -11,7 +11,7 @@ const router = Router();
 router.get("/audit-logs", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canAccessManager(user)) { res.status(403).json({ error: "Manager or owner access required" }); return; }
-  const isOwner = user.role === "owner";
+  const isOwner = isOwnerRole(user.role);
   const limit = Math.min(parseInt(String(req.query.limit ?? "200")), 500);
   const base = db.select({
     id: auditLogsTable.id,
@@ -129,8 +129,8 @@ router.post("/academic-records/transfer-requests", requireAuth, async (req, res)
   // Queue reviewer email alerts; the audit event above is also the admin-dashboard alert.
   try {
     const reviewers = await pool.query(
-      "SELECT id FROM users WHERE lower(role)=ANY($1::text[]) AND is_blocked=false AND is_suspended=false ORDER BY id",
-      [["manager", "senior_manager", "owner"]],
+      "SELECT id FROM users WHERE (lower(role)=ANY($1::text[]) OR (lower(role)='teacher' AND is_manager=true)) AND is_blocked=false AND is_suspended=false ORDER BY id",
+      [["manager", "senior_manager", "owner", "admin", "platform_owner"]],
     );
     await Promise.all(reviewers.rows.map((reviewer: { id: number }) =>
       enqueueEmailNotification(Number(reviewer.id), "Transfer letter request awaiting review",
