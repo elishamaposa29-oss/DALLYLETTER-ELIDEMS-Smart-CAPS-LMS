@@ -38,7 +38,7 @@ export default function ProfileHub() {
   const [, params] = useRoute("/profile/:id");
   const profileId = params?.id ? Number(params.id) : user?.id;
   const isOwner = Boolean(user && profileId === user.id);
-  const canReviewTransferLetters = ["manager","senior_manager","owner","admin","platform_owner"].includes(String(user?.role||"").toLowerCase());
+  const canReviewTransferLetters = ["manager","senior_manager","owner"].includes(String(user?.role||"").toLowerCase());
   async function pasteVerificationCode(target: "phone" | "notification" | "recovery") {
     try {
       const clipboard = await navigator.clipboard.readText();
@@ -172,7 +172,7 @@ export default function ProfileHub() {
         const professional = ["teacher","manager","senior_manager"].includes(String(me.role).toLowerCase());
         const savedSubjects = professional ? (s.subjects_to_teach||[]) : (s.subjects||[]);
         setProfile({...publicSummary,id:me.id,display_name:me.name,avatar:me.avatarUrl,bio:me.bio,role:me.role,verified_qualifications:professional?(q||[]).filter((v:any)=>v.verification_status==="verified").map((v:any)=>({title:v.title,verified:true})):[],subjects_to_teach:savedSubjects,subjects:savedSubjects,primary_subject:s.primary_subject||null,grade:me.grade,is_prefect:Boolean(me.isPrefect),is_manager:Boolean(me.isManager)});
-        setNameInput(me.name||""); setPhoneInput(me.phone||""); setPhoneVerified(Boolean(recovery.recovery_phone_verified_at&&recovery.recovery_phone===me.phone)); setSubjectCatalog(Array.isArray(catalog.subjects)?catalog.subjects:[]);
+        setNameInput(me.name||""); setTransferForm((v:any)=>({...v,learnerName:me.name||v.learnerName,grade:me.grade||v.grade})); setPhoneInput(me.phone||""); setPhoneVerified(Boolean(recovery.recovery_phone_verified_at&&recovery.recovery_phone===me.phone)); setSubjectCatalog(Array.isArray(catalog.subjects)?catalog.subjects:[]);
         setQualifications(professional?(q||[]):[]); setDocuments(professional&&Array.isArray(docs)?docs:[]); setSubjects(s||{teaching_subjects:[],subjects_to_teach:[]}); setSubjectInput(savedSubjects.join(", ")); setPrimarySubject(s.primary_subject||savedSubjects[0]||""); setSummary(academic); setAchievements(Array.isArray(earned)?earned:[]); setEnrollments(Array.isArray(enrolled)?enrolled:[]); setApprovedReports(Array.isArray(reports)?reports:[]); setTransferRequests(Array.isArray(transfers)?transfers:[]); setPaymentRecords(Array.isArray(payments)?payments:[]); setNotificationEmail(notification.notification_email||""); setNotificationEmailVerified(Boolean(notification.notification_email_verified_at)); setPayoutMethod(payout.method||"ecocash"); setPayoutDestinationMasked(payout.destination_masked||""); setBankName(payout.bank_name||""); setAccountHolder(payout.account_name_holder||""); setRecoveryEmail(recovery.recovery_email||""); setRecoveryEmailVerified(Boolean(recovery.recovery_email_verified_at)); if(["owner","admin","platform_owner"].includes(String(me.role).toLowerCase())) request("/api/qualifications/pending").then((rows:any)=>setModerationQueue(Array.isArray(rows)?rows:[])).catch(()=>setModerationQueue([]));
       } else {
         const [p, earned, docs, transfers] = await Promise.all([
