@@ -81,9 +81,20 @@ router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
     markingStats: { markedAssignments: totalMarkedAssignments, markedExercises: totalMarkedExercises },
     topLearners: students.map((student: any) => {
       const submissions = exerciseSubmissions.filter((s: any) => s.learnerId === student.id);
-      const assignmentCount = assignmentSubmissions.filter((s: any) => s.studentId === student.id).length;
+      const learnerAssignmentSubmissions = assignmentSubmissions.filter((s: any) => s.studentId === student.id);
       const awards = learnerAwards.filter((a: any) => a.userId === student.id).length;
-      return { id: student.id, name: student.name, grade: student.grade, performanceScore: student.performanceScore ?? 0, badgeCount: student.badgeCount ?? awards, exerciseSubmissions: submissions.length, assignmentSubmissions: assignmentCount, activityScore: submissions.length + assignmentCount + Number(student.performanceScore ?? 0) };
+      const percentages = [
+        ...submissions.map((s: any) => s.percentage == null ? null : Number(s.percentage)),
+        ...learnerAssignmentSubmissions.map((s: any) => {
+          if (s.marks == null) return null;
+          const assignment = assignments.find((a: any) => a.id === s.assignmentId);
+          return assignment?.totalMarks ? Number(s.marks) / Number(assignment.totalMarks) * 100 : null;
+        }),
+      ].filter((value: number | null): value is number => value !== null && Number.isFinite(value));
+      const averageMarkPercentage = percentages.length ? Math.round(percentages.reduce((sum, value) => sum + value, 0) / percentages.length) : null;
+      const assignmentCount = learnerAssignmentSubmissions.length;
+      const activityScore = submissions.length + assignmentCount + awards * 2 + Number(student.performanceScore ?? 0) + (averageMarkPercentage ?? 0);
+      return { id: student.id, name: student.name, grade: student.grade, performanceScore: student.performanceScore ?? 0, badgeCount: awards, exerciseSubmissions: submissions.length, assignmentSubmissions: assignmentCount, averageMarkPercentage, activityScore };
     }).sort((a: any,b: any) => b.activityScore-a.activityScore).slice(0,5),
   });
 });
