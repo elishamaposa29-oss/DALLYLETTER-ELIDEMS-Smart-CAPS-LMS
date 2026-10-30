@@ -74,7 +74,7 @@ export default function ManagerStudents() {
 
         <div className="grid gap-4 lg:grid-cols-2">
           <Card className="border-0 shadow-sm"><CardContent className="p-4">
-            <div className="mb-3 flex items-center justify-between"><h2 className="font-semibold text-slate-900">Learner-related approvals and reports</h2><Badge variant="secondary">{(managerSummary?.reviewQueue || []).filter((q:any)=>["transfer_request","academic_report"].includes(q.type)).length} pending</Badge></div>
+            <div className="mb-3 flex items-center justify-between"><h2 className="font-semibold text-slate-900">Learner-related approvals and reports</h2><Badge variant="secondary">{(managerSummary?.reviewQueue || []).filter((q:any)=>["transfer_request","academic_report","alert"].includes(q.type)).length} pending</Badge></div>
             {(managerSummary?.reviewQueue || []).filter((q:any)=>["transfer_request","academic_report"].includes(q.type)).length===0
               ? <p className="text-sm text-slate-500">No pending learner transfer requests or report reviews.</p>
               : <div className="space-y-2">{(managerSummary?.reviewQueue || []).filter((q:any)=>["transfer_request","academic_report"].includes(q.type)).slice(0,5).map((q:any)=><div key={q.id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 p-3"><div className="min-w-0"><p className="text-sm font-medium">{q.title}</p><p className="text-xs text-slate-500">{q.learnerName} · {q.description}</p></div><Link href={q.href}><Button size="sm" variant="outline">Review</Button></Link></div>)}</div>}
