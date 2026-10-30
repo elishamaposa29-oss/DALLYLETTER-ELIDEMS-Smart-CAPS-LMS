@@ -228,7 +228,7 @@ router.get("/reports/overview", requireAuth, requireManager, async (req, res) =>
     db.select().from(exerciseSubmissionsTable),
     db.select({ id: userAchievementsTable.id }).from(userAchievementsTable),
     db.select({ id: attendanceTable.id, status: attendanceTable.status }).from(attendanceTable),
-    db.select({ id: ownerAlertsTable.id }).from(ownerAlertsTable).where(eq(ownerAlertsTable.status, "open")),
+    isOwnerRole(req.currentUser!.role) ? db.select({ id: ownerAlertsTable.id }).from(ownerAlertsTable).where(eq(ownerAlertsTable.status, "open")) : db.select({ id: ownerAlertsTable.id }).from(ownerAlertsTable).where(and(eq(ownerAlertsTable.status, "open"), inArray(ownerAlertsTable.category, managerVisibleAlertCategories))),
   ]);
   const countRole = (roles: string[]) => users.filter((u: any) => roles.includes(String(u.role).toLowerCase())).length;
   const totalRevenue = payments.reduce((sum: number, payment: any) => sum + (payment.status === "paid" ? parseFloat(payment.amount ?? "0") : 0), 0);
