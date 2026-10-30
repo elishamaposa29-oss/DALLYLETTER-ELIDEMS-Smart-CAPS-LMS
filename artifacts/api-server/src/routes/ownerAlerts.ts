@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { ownerAlertsTable } from "@workspace/db/schema";
-import { eq, desc, inArray } from "drizzle-orm";
+import { eq, desc, inArray, and } from "drizzle-orm";
 import { requireAuth, isOwnerRole, canAccessManager } from "../lib/auth-middleware";
 
 const router = Router();
@@ -25,9 +25,15 @@ router.get("/owner-alerts", requireAuth, async (req, res): Promise<void> => {
 
 router.get("/owner-alerts/unread-count", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (!isOwnerOrAdmin(user.role)) { res.json({ count: 0 }); return; }
-  const rows = await db.select().from(ownerAlertsTable).where(eq(ownerAlertsTable.isRead, false));
-  res.json({ count: rows.length });
+  if (isOwnerOrAdmin(user.role)) {
+    const rows = await db.select().from(ownerAlertsTable).where(eq(ownerAlertsTable.isRead, false));
+    res.json({ count: rows.length }); return;
+  }
+  if (canAccessManager(user)) {
+    const rows = await db.select().from(ownerAlertsTable).where(and(eq(ownerAlertsTable.isRead, false), inArray(ownerAlertsTable.category, managerVisibleCategories)));
+    res.json({ count: rows.length }); return;
+  }
+  res.json({ count: 0 });
 });
 
 router.post("/owner-alerts", requireAuth, async (req, res): Promise<void> => {
