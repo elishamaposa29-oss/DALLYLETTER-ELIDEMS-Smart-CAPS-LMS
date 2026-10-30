@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { getApiUrl, useLogoutUser } from "@workspace/api-client-react";
 import {
-  BookOpen, Users, Video, MessageSquare, CreditCard, Bell, LogOut, Home,
+  BookOpen, Users, Video, MessageSquare, CreditCard, Bell, LogOut, Home, FileCheck2,
   Shield, Menu, GraduationCap, Settings, Sparkles, ClipboardList, Star, EllipsisVertical,
   ScrollText, Trophy, AlertTriangle, DollarSign, BarChart3, Briefcase,
   Flame, Send, ImagePlus,
@@ -177,6 +177,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         { label: "Reports", href: "/manager/reports", icon: ScrollText },
         { label: "Notifications", href: "/manager/notifications", icon: Bell },
         { label: "Prefect Management", href: "/manager/prefects", icon: Shield },
+      { label: "Transfer Requests", href: "/manager/transfer-requests", icon: FileCheck2, section: "Approvals", accent: "text-amber-300" },
       ] : []),
     ];
   } else if (["manager","senior_manager"].includes(normalizedRole)) {
@@ -198,6 +199,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Profile Hub", href: "/profile-hub", icon: Users },
       { label: "Feature Preview Center", href: "/features", icon: Sparkles },
       { label: "Owner Command Center", href: "/admin/command-center", icon: Briefcase },
+      { label: "Transfer Requests", href: "/manager/transfer-requests", icon: FileCheck2, section: "Approvals", accent: "text-amber-300" },
       { label: "Users", href: "/admin/users", icon: Users },
       { label: "All Lessons", href: "/admin/lessons", icon: BookOpen },
       { label: "All Classes", href: "/admin/classes", icon: Video },
