@@ -78,33 +78,32 @@ export default function ManagerHome() {
           <Card className="border-0 shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm">
-                <AlertTriangle className="h-4 w-4 text-red-500" /> Open Alerts
-                {(data?.reviewQueue?.length ?? data?.openAlerts?.length ?? 0) > 0 && <Badge className="bg-red-500 text-white text-xs ml-auto">{data.reviewQueue?.length ?? data.openAlerts.length}</Badge>}
+                <AlertTriangle className="h-4 w-4 text-red-500" /> Manager Action Queue
+                <Badge className="ml-auto bg-red-500 text-white text-xs">{data?.reviewQueue?.length ?? 0} pending</Badge>
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              {!data?.openAlerts?.length ? (
-                <p className="text-slate-400 text-sm text-center py-4">No open alerts or pending reviews.</p>
-              ) : (
-                <div className="space-y-2">
-                  {data.openAlerts.slice(0, 6).map((a: any) => (
-                    <div key={a.id} className="flex items-start gap-2 p-2 bg-red-50 rounded-lg">
-                      <AlertTriangle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+            <CardContent className="space-y-3">
+              {!data?.reviewQueue?.length ? <p className="text-slate-400 text-sm text-center py-4">No pending approvals or open alerts.</p> : (
+                <div className="max-h-96 space-y-2 overflow-y-auto">
+                  {data.reviewQueue.map((item:any) => (
+                    <div key={item.id} className="flex items-start gap-2 rounded-lg bg-slate-50 p-3">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs font-medium text-slate-800">{a.title}</p>
-                        <p className="text-xs text-slate-500">{a.learnerName || a.reporterName || "Platform"} · {a.type?.replaceAll("_", " ") || a.severity || "needs attention"}</p>
-                        {a.description && <p className="mt-1 line-clamp-2 text-xs text-slate-600">{a.description}</p>}
+                        <p className="text-xs font-semibold text-slate-800">{item.title}</p>
+                        <p className="text-xs text-slate-500">{item.learnerName || "Platform"} · {String(item.type || "review").replaceAll("_"," ")}</p>
+                        {item.description && <p className="mt-1 line-clamp-2 text-xs text-slate-600">{item.description}</p>}
                       </div>
-                      {a.href && <Link href={a.href}><Button size="sm" variant="outline">Review</Button></Link>}
+                      {item.href && <Link href={item.href}><Button size="sm" variant="outline">Review</Button></Link>}
                     </div>
                   ))}
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    <Link href="/manager/transfer-requests"><Button size="sm" variant="outline">Transfer approvals ({data.reviewCounts?.transferRequests ?? pendingTransfers})</Button></Link>
-                    <Link href="/manager/reports/review"><Button size="sm" variant="outline">Report review ({data.reviewCounts?.performanceReports ?? 0})</Button></Link>
-                    <Link href="/manager/review-queue"><Button size="sm" variant="outline">Show everything</Button></Link>
-                  </div>
                 </div>
               )}
+              <div className="flex flex-wrap gap-2 border-t pt-3">
+                <Link href="/manager/transfer-requests"><Button size="sm" variant="outline">Transfer approvals ({data?.reviewCounts?.transferRequests ?? pendingTransfers})</Button></Link>
+                <Link href="/manager/reports/review"><Button size="sm" variant="outline">Report review ({data?.reviewCounts?.performanceReports ?? 0})</Button></Link>
+                <Link href="/manager/notifications"><Button size="sm" variant="outline">All alerts</Button></Link>
+                {transferError && <span className="self-center text-xs text-amber-700">{transferError}</span>}
+              </div>
             </CardContent>
           </Card>
 
