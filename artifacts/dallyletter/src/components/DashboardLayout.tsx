@@ -180,6 +180,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Transfer Requests", href: "/manager/transfer-requests", icon: FileCheck2, section: "Approvals", accent: "text-amber-300" },
       { label: "Report Review", href: "/manager/reports/review", icon: FileCheck2, section: "Approvals", accent: "text-violet-300" },
       { label: "All Review Items", href: "/manager/review-queue", icon: FileCheck2, section: "Approvals", accent: "text-red-300" },
+      { label: "Content Moderation", href: "/manager/safety", icon: Shield, section: "Approvals", accent: "text-orange-300" },
       { label: "Report Review", href: "/manager/reports/review", icon: FileCheck2, section: "Approvals", accent: "text-violet-300" },
       ] : []),
     ];
@@ -204,6 +205,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Owner Command Center", href: "/admin/command-center", icon: Briefcase },
       { label: "Transfer Requests", href: "/manager/transfer-requests", icon: FileCheck2, section: "Approvals", accent: "text-amber-300" },
       { label: "All Review Items", href: "/manager/review-queue", icon: FileCheck2, section: "Approvals", accent: "text-red-300" },
+      { label: "Content Moderation", href: "/manager/safety", icon: Shield, section: "Approvals", accent: "text-orange-300" },
       { label: "Users", href: "/admin/users", icon: Users },
       { label: "All Lessons", href: "/admin/lessons", icon: BookOpen },
       { label: "All Classes", href: "/admin/classes", icon: Video },
