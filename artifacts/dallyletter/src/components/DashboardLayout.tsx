@@ -181,7 +181,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Report Review", href: "/manager/reports/review", icon: FileCheck2, section: "Approvals", accent: "text-violet-300" },
       { label: "All Review Items", href: "/manager/review-queue", icon: FileCheck2, section: "Approvals", accent: "text-red-300" },
       { label: "Content Moderation", href: "/manager/safety", icon: Shield, section: "Approvals", accent: "text-orange-300" },
-      { label: "Report Review", href: "/manager/reports/review", icon: FileCheck2, section: "Approvals", accent: "text-violet-300" },
       ] : []),
     ];
   } else if (["manager","senior_manager"].includes(normalizedRole)) {
@@ -196,6 +195,10 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Reports", href: "/manager/reports", icon: ScrollText },
       { label: "Notifications", href: "/manager/notifications", icon: Bell },
       { label: "Prefect Management", href: "/manager/prefects", icon: Shield },
+      { label: "Transfer Requests", href: "/manager/transfer-requests", icon: FileCheck2, section: "Approvals", accent: "text-amber-300" },
+      { label: "Report Review", href: "/manager/reports/review", icon: FileCheck2, section: "Approvals", accent: "text-violet-300" },
+      { label: "All Review Items", href: "/manager/review-queue", icon: FileCheck2, section: "Approvals", accent: "text-red-300" },
+      { label: "Content Moderation", href: "/manager/safety", icon: Shield, section: "Approvals", accent: "text-orange-300" },
     ];
   } else if (["owner","admin","platform_owner"].includes(normalizedRole)) {
     navItems = [
@@ -204,6 +207,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Feature Preview Center", href: "/features", icon: Sparkles },
       { label: "Owner Command Center", href: "/admin/command-center", icon: Briefcase },
       { label: "Transfer Requests", href: "/manager/transfer-requests", icon: FileCheck2, section: "Approvals", accent: "text-amber-300" },
+      { label: "Report Review", href: "/manager/reports/review", icon: FileCheck2, section: "Approvals", accent: "text-violet-300" },
       { label: "All Review Items", href: "/manager/review-queue", icon: FileCheck2, section: "Approvals", accent: "text-red-300" },
       { label: "Content Moderation", href: "/manager/safety", icon: Shield, section: "Approvals", accent: "text-orange-300" },
       { label: "Users", href: "/admin/users", icon: Users },
