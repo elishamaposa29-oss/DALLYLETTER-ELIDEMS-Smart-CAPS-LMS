@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, pool } from "@workspace/db";
 import { usersTable, classesTable, lessonsTable, paymentsTable, ownerAlertsTable, assignmentsTable, assignmentSubmissionsTable, pollsTable, exercisesTable, auditLogsTable, attendanceTable, userAchievementsTable, achievementsTable, exerciseSubmissionsTable, pollSubmissionsTable } from "@workspace/db/schema";
 import { eq, desc, and } from "drizzle-orm";
-import { requireAuth, canAccessManager } from "../lib/auth-middleware";
+import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 
 const router = Router();
 
@@ -35,7 +35,7 @@ router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
   const [transferRows, reportRows, qualificationRows, enrollmentRows] = await Promise.all([
     pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,r.reason,r.status,r.created_at FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id WHERE r.status='pending' ORDER BY r.created_at ASC LIMIT 100"),
     pool.query("SELECT d.id,d.learner_id,u.name AS learner_name,d.report_type,d.term_label,d.status,d.created_at FROM academic_report_drafts d JOIN users u ON u.id=d.learner_id WHERE d.status='pending_review' ORDER BY d.created_at ASC LIMIT 100"),
-    String(req.currentUser!.role).toLowerCase() === "owner"
+    isOwnerRole(req.currentUser!.role)
       ? pool.query("SELECT q.id,q.user_id,u.name AS teacher_name,q.title,q.institution,q.created_at FROM teacher_qualifications q JOIN users u ON u.id=q.user_id WHERE q.verification_status='pending' ORDER BY q.created_at ASC LIMIT 100")
       : Promise.resolve({ rows: [] as any[] }),
     pool.query("SELECT c.teacher_id, COUNT(DISTINCT e.learner_id)::int AS learners_joined FROM classes c LEFT JOIN enrollments e ON e.class_id=c.id GROUP BY c.teacher_id"),
