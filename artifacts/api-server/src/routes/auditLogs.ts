@@ -134,7 +134,7 @@ router.post("/academic-records/transfer-requests", requireAuth, async (req, res)
   // Queue reviewer email alerts; the audit event above is also the admin-dashboard alert.
   try {
     const reviewers = await pool.query(
-      "SELECT id FROM users WHERE (lower(role)=ANY($1::text[]) OR (lower(role)='teacher' AND is_manager=true)) AND is_blocked=false AND is_suspended=false ORDER BY id",
+      "SELECT id FROM users WHERE (lower(role)=ANY($1::text[]) OR (lower(role)='teacher' AND is_manager=true AND teacher_application_status<>'pending_review')) AND is_blocked=false AND is_suspended=false ORDER BY id",
       [["manager", "senior_manager", "owner"]],
     );
     await Promise.all(reviewers.rows.map((reviewer: { id: number }) =>
