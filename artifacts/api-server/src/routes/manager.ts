@@ -167,22 +167,48 @@ router.get("/users/:id/activity", requireAuth, requireManager, async (req, res):
 });
 
 router.get("/reports/overview", requireAuth, requireManager, async (req, res) => {
-  const [teachers, students, managers, payments, lessons, classes] = await Promise.all([
-    db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "teacher")),
-    db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "student")),
-    db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.isManager, true)),
+  const [users, payments, lessons, classes, assignments, exercises, assignmentSubmissions, exerciseSubmissions, awards, attendance, alerts] = await Promise.all([
+    db.select({ id: usersTable.id, role: usersTable.role, isManager: usersTable.isManager, isPrefect: usersTable.isPrefect }).from(usersTable),
     db.select().from(paymentsTable),
     db.select({ id: lessonsTable.id }).from(lessonsTable),
     db.select({ id: classesTable.id }).from(classesTable),
+    db.select({ id: assignmentsTable.id }).from(assignmentsTable),
+    db.select({ id: exercisesTable.id }).from(exercisesTable),
+    db.select().from(assignmentSubmissionsTable),
+    db.select().from(exerciseSubmissionsTable),
+    db.select({ id: userAchievementsTable.id }).from(userAchievementsTable),
+    db.select({ id: attendanceTable.id, status: attendanceTable.status }).from(attendanceTable),
+    db.select({ id: ownerAlertsTable.id }).from(ownerAlertsTable).where(eq(ownerAlertsTable.status, "open")),
   ]);
-  const totalRevenue = payments.reduce((s: number, p: any) => s + parseFloat(p.amount ?? "0"), 0);
+  const countRole = (roles: string[]) => users.filter((u: any) => roles.includes(String(u.role).toLowerCase())).length;
+  const totalRevenue = payments.reduce((sum: number, payment: any) => sum + (payment.status === "paid" ? parseFloat(payment.amount ?? "0") : 0), 0);
+  const [transferQueue, reportQueue] = await Promise.all([
+    pool.query("SELECT COUNT(*)::int AS count FROM academic_transfer_requests WHERE status='pending'"),
+    pool.query("SELECT COUNT(*)::int AS count FROM academic_report_drafts WHERE status='pending_review'"),
+  ]);
   res.json({
-    teacherCount: teachers.length,
-    studentCount: students.length,
-    managerCount: managers.length,
+    teacherCount: countRole(["teacher"]),
+    studentCount: countRole(["student","learner","prefect"]),
+    learnerCount: countRole(["student","learner","prefect"]),
+    prefectCount: users.filter((u: any) => u.isPrefect === true).length,
+    managerCount: users.filter((u: any) => u.isManager === true || ["manager","senior_manager"].includes(String(u.role).toLowerCase())).length,
+    ownerCount: countRole(["owner","admin","platform_owner"]),
+    totalUsers: users.length,
     totalRevenue,
     lessonCount: lessons.length,
     classCount: classes.length,
+    assignmentCount: assignments.length,
+    exerciseCount: exercises.length,
+    assignmentSubmissionCount: assignmentSubmissions.length,
+    exerciseSubmissionCount: exerciseSubmissions.length,
+    markedAssignmentCount: assignmentSubmissions.filter((s: any) => s.gradedAt || s.gradedBy || s.marks !== null).length,
+    markedExerciseCount: exerciseSubmissions.filter((s: any) => s.markedAt || s.returnedAt || ["marked","returned","graded"].includes(String(s.status).toLowerCase())).length,
+    awardCount: awards.length,
+    attendanceRecordCount: attendance.length,
+    presentAttendanceCount: attendance.filter((a: any) => String(a.status).toLowerCase() === "present").length,
+    openAlertCount: alerts.length,
+    pendingTransferCount: Number(transferQueue.rows[0]?.count ?? 0),
+    pendingReportReviewCount: Number(reportQueue.rows[0]?.count ?? 0),
     paidPayments: payments.filter((p: any) => p.status === "paid").length,
     pendingPayments: payments.filter((p: any) => p.status === "pending").length,
   });
