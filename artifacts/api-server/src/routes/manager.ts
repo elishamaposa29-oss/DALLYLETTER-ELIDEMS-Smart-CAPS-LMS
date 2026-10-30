@@ -141,7 +141,23 @@ router.get("/students", requireAuth, requireManager, async (req, res) => {
     streakDays: usersTable.streakDays, isSuspended: usersTable.isSuspended,
     isBlocked: usersTable.isBlocked, lastActiveDate: usersTable.lastActiveDate,
   }).from(usersTable).where(eq(usersTable.role, "student"));
-  res.json(students);
+  const [awards, alerts, exercises, assignments, transfers, reports] = await Promise.all([
+    db.select({ userId: userAchievementsTable.userId }).from(userAchievementsTable),
+    db.select().from(ownerAlertsTable).where(eq(ownerAlertsTable.status, "open")),
+    db.select().from(exerciseSubmissionsTable),
+    db.select().from(assignmentSubmissionsTable),
+    pool.query("SELECT learner_id, COUNT(*)::int AS count FROM academic_transfer_requests WHERE status='pending' GROUP BY learner_id"),
+    pool.query("SELECT learner_id, COUNT(*)::int AS count FROM academic_report_drafts WHERE status='pending_review' GROUP BY learner_id"),
+  ]);
+  res.json(students.map((student: any) => {
+    const learnerAlerts = alerts.filter((alert: any) => alert.reportedBy === student.id || (Number(alert.targetId) === student.id && ["student","learner","user"].includes(String(alert.targetType || "").toLowerCase())));
+    return { ...student, awardsCount: awards.filter((award: any) => award.userId === student.id).length,
+      alerts: learnerAlerts, alertsCount: learnerAlerts.length,
+      exerciseSubmissions: exercises.filter((submission: any) => submission.learnerId === student.id).length,
+      assignmentSubmissions: assignments.filter((submission: any) => submission.studentId === student.id).length,
+      pendingTransferRequests: Number(transfers.rows.find((row: any) => Number(row.learner_id) === student.id)?.count || 0),
+      pendingReportReviews: Number(reports.rows.find((row: any) => Number(row.learner_id) === student.id)?.count || 0) };
+  }));
 });
 
 router.get("/prefects", requireAuth, requireManager, async (req, res) => {
