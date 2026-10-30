@@ -90,6 +90,14 @@ router.post("/academic-records/transfer-requests", requireAuth, async (req, res)
   const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
   const formData = req.body?.formData && typeof req.body.formData === "object" && !Array.isArray(req.body.formData) ? req.body.formData : {};
   if (reason.length < 3 || reason.length > 2000) { res.status(400).json({ error: "Provide a transfer reason between 3 and 2000 characters." }); return; }
+  const requiredFormFields: Array<[string, string]> = [
+    ["learnerName", "Learner full name"], ["receivingSchool", "Receiving school"],
+    ["guardianName", "Parent/guardian name"], ["guardianPhone", "Parent/guardian phone"],
+    ["reasonDetail", "Transfer reason details"],
+  ];
+  const missingField = requiredFormFields.find(([key]) => typeof formData[key] !== "string" || !String(formData[key]).trim());
+  if (missingField) { res.status(400).json({ error: missingField[1] + " is required." }); return; }
+  if (JSON.stringify(formData).length > 180_000) { res.status(413).json({ error: "Transfer application attachments or form data exceed the allowed size." }); return; }
   // Serialize submissions per learner so rapid taps/retries cannot create duplicate pending requests.
   const client = await pool.connect();
   let requestRow: any;
@@ -175,7 +183,7 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, asyn
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id < 1) { res.status(400).json({ error: "Invalid request ID." }); return; }
   const result = await pool.query(
-    "SELECT r.*,u.name AS learner_name,u.email,u.grade,c.name AS school_name FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id LEFT JOIN LATERAL (SELECT name FROM users WHERE role IN ('manager','owner') ORDER BY id LIMIT 1) c ON true WHERE r.id=$1",
+    "SELECT r.*,u.name AS learner_name,u.email,u.grade FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id WHERE r.id=$1",
     [id],
   );
   const row = result.rows[0];
@@ -196,7 +204,7 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, asyn
     "Learner: " + fmt(row.learner_name),
     "Account email: " + fmt(row.email),
     "Grade/Form: " + fmt(row.grade),
-    "Current school: " + fmt(row.school_name || "Dallyletter Elidems"),
+    "Current school: " + fmt(row.form_data?.currentSchool),
     "Request date: " + new Date(row.created_at).toISOString().slice(0,10),
     "Approval date: " + (row.reviewed_at ? new Date(row.reviewed_at).toISOString().slice(0,10) : "Not recorded"),
     "Transfer reason: " + fmt(row.reason),
@@ -216,6 +224,9 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, asyn
     "Physical address: " + fmt(row.form_data?.address),
     "Effective transfer date: " + fmt(row.form_data?.effectiveDate),
     "Reason details: " + fmt(row.form_data?.reasonDetail),
+    "Parent/guardian signature: " + fmt(row.form_data?.guardianSignatureName),
+    "Current-school headmaster: " + fmt(row.form_data?.headmasterName),
+    "Signature and official stamp: To be completed by the authorized school representative; no signature or stamp is fabricated.",
     row.review_note ? "Manager note: " + row.review_note : "",
     "",
     "ACADEMIC RECORD SUMMARY",
@@ -235,36 +246,49 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, asyn
   ].filter(Boolean);
   const escapePdf = (value: string) => value.normalize("NFKD").replace(/[^\x20-\x7E]/g, "").replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
   const wrapped = lines.flatMap(line => {
-    const words = line.split(/\s+/); const out: string[] = []; let current = "";
+    const words = line.split(/\\s+/); const out: string[] = []; let current = "";
     for (const word of words) {
       if ((current + " " + word).trim().length > 88) { if (current) out.push(current); current = word; }
       else current = (current + " " + word).trim();
     }
     if (current) out.push(current);
     return out;
-  }).slice(0, 46);
-  const stream = [
-    "BT", "/F1 38 Tf", "0.94 g", "1 0 0 1 105 420 Tm", "(DALLYLETTER ELIDEMS) Tj",
-    "0 g", "/F1 10 Tf", "1 0 0 1 48 790 Tm",
-    ...wrapped.map((line, i) => (i ? "0 -15 Td" : "") + "(" + escapePdf(line) + ") Tj"),
-    "ET",
-  ].filter(Boolean).join("\n");
+  });
+  const pageLines = Array.from({ length: Math.max(1, Math.ceil(wrapped.length / 48)) }, (_, index) => wrapped.slice(index * 48, (index + 1) * 48));
   const objects: string[] = [
     "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+    "<< /Type /Pages /Kids [" + pageLines.map((_, index) => (4 + index * 2) + " 0 R").join(" ") + "] /Count " + pageLines.length + " >>",
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-    "<< /Length " + new TextEncoder().encode(stream).length + " >>\nstream\n" + stream + "\nendstream",
   ];
-  let pdf = "%PDF-1.4\n"; const offsets = [0];
+  pageLines.forEach((page, pageIndex) => {
+    const pageObject = 4 + pageIndex * 2;
+    const contentObject = pageObject + 1;
+    const textCommands = page.map((line, index) => {
+      const isHeading = /^(DALLYLETTER ELIDEMS|OFFICIAL TRANSFER LETTER|ACADEMIC RECORD SUMMARY)$/.test(line);
+      return (index ? "0 -14 Td\\n" : "") + (isHeading ? "/F2 11 Tf\\n" : "/F1 9 Tf\\n") + "(" + escapePdf(line) + ") Tj";
+    }).join("\\n");
+    const stream = [
+      "0.055 0.13 0.29 rg 0 790 595 52 re f",
+      "1 1 1 rg BT /F2 18 Tf 48 808 Td (DALLYLETTER ELIDEMS) Tj ET",
+      "0.72 0.55 0.08 rg 0 786 595 4 re f",
+      "0 0 0 rg BT 48 760 Td",
+      textCommands,
+      "ET",
+      "0.055 0.13 0.29 rg 48 34 499 1 re f",
+      "0 0 0 rg BT /F1 8 Tf 48 20 Td (Protected academic document - DL-TR-" + id + ") Tj 440 0 Td (Page " + (pageIndex + 1) + " of " + pageLines.length + ") Tj ET",
+    ].join("\\n");
+    objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 3 0 R >> >> /Contents " + contentObject + " 0 R >>");
+    objects.push("<< /Length " + new TextEncoder().encode(stream).length + " >>\\nstream\\n" + stream + "\\nendstream");
+  });
+  let pdf = "%PDF-1.4\\n"; const offsets = [0];
   for (let i = 0; i < objects.length; i++) {
     offsets.push(new TextEncoder().encode(pdf).length);
-    pdf += (i+1) + " 0 obj\n" + objects[i] + "\nendobj\n";
+    pdf += (i+1) + " 0 obj\\n" + objects[i] + "\\nendobj\\n";
   }
   const xref = new TextEncoder().encode(pdf).length;
-  pdf += "xref\n0 " + (objects.length+1) + "\n0000000000 65535 f \n";
-  for (const offset of offsets.slice(1)) pdf += String(offset).padStart(10,"0") + " 00000 n \n";
-  pdf += "trailer\n<< /Size " + (objects.length+1) + " /Root 1 0 R >>\nstartxref\n" + xref + "\n%%EOF";
+  pdf += "xref\\n0 " + (objects.length+1) + "\\n0000000000 65535 f \\n";
+  for (const offset of offsets.slice(1)) pdf += String(offset).padStart(10,"0") + " 00000 n \\n";
+  pdf += "trailer\\n<< /Size " + (objects.length+1) + " /Root 1 0 R >>\\nstartxref\\n" + xref + "\\n%%EOF";
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
