@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
+import { db, pool } from "@workspace/db";
 import { usersTable, classesTable, lessonsTable, paymentsTable, ownerAlertsTable, assignmentsTable, pollsTable, exercisesTable, auditLogsTable, attendanceTable, userAchievementsTable, achievementsTable, exerciseSubmissionsTable, pollSubmissionsTable } from "@workspace/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { requireAuth, canAccessManager } from "../lib/auth-middleware";
@@ -15,23 +15,77 @@ function requireManager(req: any, res: any, next: any) {
 }
 
 router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
-  const [teachers, students, classes, lessons, alerts, assignments] = await Promise.all([
-    db.select({ id: usersTable.id, name: usersTable.name, subject: usersTable.subject, performanceScore: usersTable.performanceScore })
+  const [teachers, students, classes, lessons, alerts, assignments, exercises, exerciseSubmissions, assignmentSubmissions, pollSubmissions] = await Promise.all([
+    db.select({ id: usersTable.id, name: usersTable.name, subject: usersTable.subject, performanceScore: usersTable.performanceScore, isManager: usersTable.isManager, isBlocked: usersTable.isBlocked, isSuspended: usersTable.isSuspended })
       .from(usersTable).where(eq(usersTable.role, "teacher")),
-    db.select({ id: usersTable.id, name: usersTable.name, grade: usersTable.grade })
+    db.select({ id: usersTable.id, name: usersTable.name, grade: usersTable.grade, performanceScore: usersTable.performanceScore, badgeCount: usersTable.badgeCount })
       .from(usersTable).where(eq(usersTable.role, "student")),
     db.select().from(classesTable).orderBy(desc(classesTable.createdAt)).limit(10),
-    db.select().from(lessonsTable).orderBy(desc(lessonsTable.createdAt)).limit(10),
-    db.select().from(ownerAlertsTable).where(eq(ownerAlertsTable.status, "open")).orderBy(desc(ownerAlertsTable.createdAt)).limit(5),
-    db.select().from(assignmentsTable).orderBy(desc(assignmentsTable.createdAt)).limit(5),
+    db.select().from(lessonsTable),
+    db.select().from(ownerAlertsTable).where(eq(ownerAlertsTable.status, "open")).orderBy(desc(ownerAlertsTable.createdAt)).limit(100),
+    db.select().from(assignmentsTable),
+    db.select().from(exercisesTable),
+    db.select().from(exerciseSubmissionsTable),
+    db.select().from(assignmentsTable).then(async rows => {
+      const all = await db.select().from((await import("@workspace/db/schema")).assignmentSubmissionsTable);
+      return all;
+    }),
+    db.select().from(pollSubmissionsTable),
   ]);
+
+  // Rank from observed work, marking, and learner engagement rather than the manually editable score.
+  const [transferRows, reportRows, qualificationRows, enrollmentRows] = await Promise.all([
+    pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,r.reason,r.status,r.created_at FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id WHERE r.status='pending' ORDER BY r.created_at ASC LIMIT 100"),
+    pool.query("SELECT d.id,d.learner_id,u.name AS learner_name,d.report_type,d.term_label,d.status,d.created_at FROM academic_report_drafts d JOIN users u ON u.id=d.learner_id WHERE d.status='pending_review' ORDER BY d.created_at ASC LIMIT 100"),
+    pool.query("SELECT q.id,q.user_id,u.name AS teacher_name,q.title,q.institution,q.created_at FROM teacher_qualifications q JOIN users u ON u.id=q.user_id WHERE q.verification_status='pending' ORDER BY q.created_at ASC LIMIT 100"),
+    pool.query("SELECT c.teacher_id, COUNT(DISTINCT e.learner_id)::int AS learners_joined FROM classes c LEFT JOIN enrollments e ON e.class_id=c.id GROUP BY c.teacher_id"),
+  ]);
+
+  const activeTeachers = teachers.filter((t: any) => !t.isManager && !t.isBlocked && !t.isSuspended);
+  const teacherRanks = activeTeachers.map((teacher: any) => {
+    const teacherLessons = lessons.filter((x: any) => x.teacherId === teacher.id);
+    const teacherClasses = classes.filter((x: any) => x.teacherId === teacher.id);
+    const teacherAssignments = assignments.filter((x: any) => x.teacherId === teacher.id);
+    const teacherExercises = exercises.filter((x: any) => x.createdBy === teacher.id);
+    const assignmentIds = new Set(teacherAssignments.map((x: any) => x.id));
+    const exerciseIds = new Set(teacherExercises.map((x: any) => x.id));
+    const markedAssignments = assignmentSubmissions.filter((s: any) => assignmentIds.has(s.assignmentId) && (s.gradedAt || s.gradedBy || s.marks !== null)).length;
+    const markedExercises = exerciseSubmissions.filter((s: any) => exerciseIds.has(s.exerciseId) && (s.markedAt || s.returnedAt || ["marked","returned","graded"].includes(String(s.status).toLowerCase()))).length;
+    const learnersJoined = Number(enrollmentRows.rows.find((r: any) => Number(r.teacher_id) === teacher.id)?.learners_joined || 0);
+    const learnerSubmissions = assignmentSubmissions.filter((s: any) => assignmentIds.has(s.assignmentId)).length
+      + exerciseSubmissions.filter((s: any) => exerciseIds.has(s.exerciseId)).length;
+    const score = teacherLessons.length + teacherExercises.length * 2 + teacherAssignments.length * 2
+      + (markedAssignments + markedExercises) * 3 + learnersJoined * 2 + learnerSubmissions;
+    return { ...teacher, lessonsCount: teacherLessons.length, exercisesCount: teacherExercises.length,
+      assignmentsCount: teacherAssignments.length, markedCount: markedAssignments + markedExercises,
+      learnersJoined, learnerSubmissions, activityScore: score };
+  }).sort((a: any, b: any) => b.activityScore - a.activityScore || b.learnersJoined - a.learnersJoined || a.name.localeCompare(b.name)).slice(0, 5);
+
+  const reviewQueue = [
+    ...transferRows.rows.map((r: any) => ({ id: "transfer-" + r.id, type: "transfer_request", title: "Transfer letter approval", description: r.reason, targetId: Number(r.id), learnerId: Number(r.learner_id), learnerName: r.learner_name, status: "pending", createdAt: r.created_at, href: "/manager/transfer-requests" })),
+    ...reportRows.rows.map((r: any) => ({ id: "report-" + r.id, type: "academic_report", title: "Performance report review", description: r.report_type + " · " + r.term_label, targetId: Number(r.id), learnerId: Number(r.learner_id), learnerName: r.learner_name, status: "pending_review", createdAt: r.created_at, href: "/manager/reports/review" })),
+    ...qualificationRows.rows.map((r: any) => ({ id: "qualification-" + r.id, type: "qualification_verification", title: "Teacher qualification verification", description: r.title + (r.institution ? " · " + r.institution : ""), targetId: Number(r.id), learnerName: r.teacher_name, status: "pending", createdAt: r.created_at, href: "/admin/users" })),
+    ...alerts.map((a: any) => ({ id: "alert-" + a.id, type: "alert", title: a.title, description: a.description, targetId: a.id, learnerName: a.reporterName, status: a.status, severity: a.severity, createdAt: a.createdAt, href: "/manager/notifications" })),
+  ].sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+  const totalMarkedAssignments = assignmentSubmissions.filter((s: any) => s.gradedAt || s.gradedBy || s.marks !== null).length;
+  const totalMarkedExercises = exerciseSubmissions.filter((s: any) => s.markedAt || s.returnedAt || ["marked","returned","graded"].includes(String(s.status).toLowerCase())).length;
   res.json({
-    stats: { teachers: teachers.length, students: students.length, classes: classes.length, lessons: lessons.length },
-    recentClasses: classes,
-    recentLessons: lessons,
-    openAlerts: alerts,
-    recentAssignments: assignments,
-    topTeachers: teachers.sort((a: any, b: any) => (b.performanceScore ?? 0) - (a.performanceScore ?? 0)).slice(0, 5),
+    stats: { teachers: activeTeachers.length, students: students.length, classes: classes.length, lessons: lessons.length },
+    recentClasses: classes.slice(0, 10),
+    recentLessons: lessons.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10),
+    openAlerts: reviewQueue.slice(0, 12),
+    reviewQueue,
+    reviewCounts: { transferRequests: transferRows.rows.length, performanceReports: reportRows.rows.length, qualificationVerifications: qualificationRows.rows.length, alerts: alerts.length },
+    recentAssignments: assignments.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10),
+    topTeachers: teacherRanks,
+    markingStats: { markedAssignments: totalMarkedAssignments, markedExercises: totalMarkedExercises },
+    topLearners: students.map((student: any) => {
+      const submissions = exerciseSubmissions.filter((s: any) => s.learnerId === student.id);
+      const assignmentCount = assignmentSubmissions.filter((s: any) => s.studentId === student.id).length;
+      const awards = 0;
+      return { id: student.id, name: student.name, grade: student.grade, performanceScore: student.performanceScore ?? 0, badgeCount: student.badgeCount ?? awards, exerciseSubmissions: submissions.length, assignmentSubmissions: assignmentCount, activityScore: submissions.length + assignmentCount + Number(student.performanceScore ?? 0) };
+    }).sort((a: any,b: any) => b.activityScore-a.activityScore).slice(0,5),
   });
 });
 
