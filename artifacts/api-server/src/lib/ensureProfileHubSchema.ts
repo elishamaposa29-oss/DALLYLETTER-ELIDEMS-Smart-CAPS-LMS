@@ -140,6 +140,7 @@ export async function ensureProfileHubSchema(): Promise<void> {
       updated_at timestamptz NOT NULL DEFAULT now()
     )`);
     await client.query("CREATE INDEX IF NOT EXISTS academic_transfer_requests_learner_idx ON academic_transfer_requests(learner_id, created_at DESC)");
+    await client.query("ALTER TABLE academic_transfer_requests ADD COLUMN IF NOT EXISTS form_data jsonb NOT NULL DEFAULT '{}'::jsonb");
     await client.query("CREATE INDEX IF NOT EXISTS academic_transfer_requests_status_idx ON academic_transfer_requests(status, created_at DESC)");
     await client.query(`CREATE TABLE IF NOT EXISTS academic_report_drafts (
       id bigserial PRIMARY KEY,
