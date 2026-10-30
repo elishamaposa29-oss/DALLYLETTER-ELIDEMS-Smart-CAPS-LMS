@@ -89,19 +89,34 @@ router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
 });
 
 router.get("/teachers", requireAuth, requireManager, async (req, res) => {
-  const teachers = await db.select({
-    id: usersTable.id, name: usersTable.name, email: usersTable.email,
-    subject: usersTable.subject, performanceScore: usersTable.performanceScore,
-    badgeCount: usersTable.badgeCount, createdAt: usersTable.createdAt,
-  }).from(usersTable).where(eq(usersTable.role, "teacher"));
-  const lessonCounts = await db.select().from(lessonsTable);
-  const classCounts = await db.select().from(classesTable);
-  const result = teachers.map((t: any) => ({
-    ...t,
-    lessonsCount: lessonCounts.filter((l: any) => l.teacherId === t.id).length,
-    classesCount: classCounts.filter((c: any) => c.teacherId === t.id).length,
-  }));
-  res.json(result);
+  const [teachers, lessonCounts, classCounts, assignments, exercises, assignmentSubmissions, exerciseSubmissions, enrollments] = await Promise.all([
+    db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email, subject: usersTable.subject, performanceScore: usersTable.performanceScore, badgeCount: usersTable.badgeCount, createdAt: usersTable.createdAt, isManager: usersTable.isManager, isBlocked: usersTable.isBlocked, isSuspended: usersTable.isSuspended }).from(usersTable).where(eq(usersTable.role, "teacher")),
+    db.select().from(lessonsTable),
+    db.select().from(classesTable),
+    db.select().from(assignmentsTable),
+    db.select().from(exercisesTable),
+    db.select().from(assignmentSubmissionsTable),
+    db.select().from(exerciseSubmissionsTable),
+    pool.query("SELECT c.teacher_id, COUNT(DISTINCT e.learner_id)::int AS learners_joined FROM classes c LEFT JOIN enrollments e ON e.class_id=c.id GROUP BY c.teacher_id"),
+  ]);
+  const ranked = teachers.filter((t: any) => !t.isManager && !t.isBlocked && !t.isSuspended).map((teacher: any) => {
+    const teacherLessons = lessonCounts.filter((l: any) => l.teacherId === teacher.id);
+    const teacherAssignments = assignments.filter((a: any) => a.teacherId === teacher.id);
+    const teacherExercises = exercises.filter((e: any) => e.createdBy === teacher.id);
+    const assignmentIds = new Set(teacherAssignments.map((a: any) => a.id));
+    const exerciseIds = new Set(teacherExercises.map((e: any) => e.id));
+    const teacherAssignmentSubmissions = assignmentSubmissions.filter((s: any) => assignmentIds.has(s.assignmentId));
+    const teacherExerciseSubmissions = exerciseSubmissions.filter((s: any) => exerciseIds.has(s.exerciseId));
+    const markedAssignments = teacherAssignmentSubmissions.filter((s: any) => s.gradedAt || s.gradedBy || s.marks !== null).length;
+    const markedExercises = teacherExerciseSubmissions.filter((s: any) => s.markedAt || s.returnedAt || ["marked","returned","graded"].includes(String(s.status).toLowerCase())).length;
+    const learnersJoined = Number(enrollments.rows.find((r: any) => Number(r.teacher_id) === teacher.id)?.learners_joined || 0);
+    const activityScore = teacherLessons.length + teacherExercises.length * 2 + teacherAssignments.length * 2
+      + (markedAssignments + markedExercises) * 3 + learnersJoined * 2 + teacherAssignmentSubmissions.length + teacherExerciseSubmissions.length;
+    return { ...teacher, lessonsCount: teacherLessons.length, classesCount: classCounts.filter((cl: any) => cl.teacherId === teacher.id).length,
+      exercisesCount: teacherExercises.length, assignmentsCount: teacherAssignments.length, markedCount: markedAssignments + markedExercises,
+      learnersJoined, learnerSubmissions: teacherAssignmentSubmissions.length + teacherExerciseSubmissions.length, activityScore };
+  }).sort((a: any,b: any)=>b.activityScore-a.activityScore||b.learnersJoined-a.learnersJoined||a.name.localeCompare(b.name));
+  res.json(ranked);
 });
 
 router.get("/students", requireAuth, requireManager, async (req, res) => {
