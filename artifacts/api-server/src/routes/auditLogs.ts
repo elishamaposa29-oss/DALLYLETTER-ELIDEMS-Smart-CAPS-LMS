@@ -9,7 +9,7 @@ const router = Router();
 
 function canReviewAcademicTransfer(user: { role: unknown; isManager?: unknown; teacherApplicationStatus?: unknown }): boolean {
   const role = String(user.role || "").trim().toLowerCase().replace(/[ -]+/g, "_");
-  return role === "owner" || (!isOwnerRole(role) && canAccessManager(user));
+  return ["owner", "manager", "senior_manager"].includes(role) || (role === "teacher" && canAccessManager(user));
 }
 
 // GET /audit-logs — list audit logs (owner only)
