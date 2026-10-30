@@ -7,6 +7,11 @@ import { enqueueEmailNotification } from "../lib/email-notification-queue";
 
 const router = Router();
 
+function canReviewAcademicTransfer(user: { role: unknown; isManager?: unknown; teacherApplicationStatus?: unknown }): boolean {
+  const role = String(user.role || "").trim().toLowerCase().replace(/[ -]+/g, "_");
+  return role === "owner" || (!isOwnerRole(role) && canAccessManager(user));
+}
+
 // GET /audit-logs — list audit logs (owner only)
 router.get("/audit-logs", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
@@ -145,7 +150,7 @@ router.post("/academic-records/transfer-requests", requireAuth, async (req, res)
 
 router.get("/academic-records/transfer-requests", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  const manager = canAccessManager(user);
+  const manager = canReviewAcademicTransfer(user);
   const result = manager
     ? await pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,r.requested_by,r.reason,r.status,r.review_note,r.reviewed_by,r.reviewed_at,r.created_at FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id ORDER BY r.created_at DESC LIMIT 200")
     : await pool.query("SELECT id,learner_id,reason,status,review_note,reviewed_at,created_at FROM academic_transfer_requests WHERE learner_id=$1 ORDER BY created_at DESC LIMIT 100", [user.id]);
@@ -154,7 +159,7 @@ router.get("/academic-records/transfer-requests", requireAuth, async (req, res):
 
 router.post("/academic-records/transfer-requests/:id/review", requireAuth, async (req, res): Promise<void> => {
   const reviewer = req.currentUser!;
-  if (!canAccessManager(reviewer)) { res.status(403).json({ error: "Only authorized managers and owners can review transfer requests." }); return; }
+  if (!canReviewAcademicTransfer(reviewer)) { res.status(403).json({ error: "Only authorized managers and owners can review transfer requests." }); return; }
   const id = Number(req.params.id);
   const status = req.body?.status;
   const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 2000) : "";
@@ -187,7 +192,7 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, asyn
     [id],
   );
   const row = result.rows[0];
-  if (!row || (Number(row.learner_id) !== Number(user.id) && !canAccessManager(user))) { res.status(404).json({ error: "Approved transfer letter not found." }); return; }
+  if (!row || (Number(row.learner_id) !== Number(user.id) && !canReviewAcademicTransfer(user))) { res.status(404).json({ error: "Approved transfer letter not found." }); return; }
   if (row.status !== "approved") { res.status(403).json({ error: "The transfer letter cannot be downloaded until an authorized manager approves the request." }); return; }
   const [enrollmentRows, attendanceRows, awardRows, subjectRows, reportRows] = await Promise.all([
     pool.query("SELECT c.title,c.subject,c.grade,e.enrolled_at,e.progress_percent,e.status FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 ORDER BY e.enrolled_at DESC LIMIT 12", [row.learner_id]),
