@@ -38,6 +38,7 @@ export default function ManagerReports() {
     { label: "Open alerts", value: report?.openAlertCount ?? 0, icon: FileCheck2, color: "text-red-600", bg: "bg-red-50" },
     { label: "Transfer requests awaiting approval", value: report?.pendingTransferCount ?? 0, icon: FileCheck2, color: "text-amber-600", bg: "bg-amber-50" },
     { label: "Reports awaiting review", value: report?.pendingReportReviewCount ?? 0, icon: FileCheck2, color: "text-violet-600", bg: "bg-violet-50" },
+    { label: "Content moderation pending", value: report?.pendingContentModerationCount ?? 0, icon: FileCheck2, color: "text-orange-600", bg: "bg-orange-50" },
   ];
 
   return (
