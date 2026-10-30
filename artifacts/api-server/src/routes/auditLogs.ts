@@ -90,11 +90,33 @@ router.post("/academic-records/transfer-requests", requireAuth, async (req, res)
   const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
   const formData = req.body?.formData && typeof req.body.formData === "object" && !Array.isArray(req.body.formData) ? req.body.formData : {};
   if (reason.length < 3 || reason.length > 2000) { res.status(400).json({ error: "Provide a transfer reason between 3 and 2000 characters." }); return; }
-  const result = await pool.query(
-    "INSERT INTO academic_transfer_requests (learner_id, requested_by, reason, form_data) VALUES ($1,$1,$2,$3::jsonb) RETURNING id, learner_id, reason, status, created_at",
-    [user.id, reason, JSON.stringify(formData)],
-  );
-  const requestRow = result.rows[0];
+  // Serialize submissions per learner so rapid taps/retries cannot create duplicate pending requests.
+  const client = await pool.connect();
+  let requestRow: any;
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock($1::bigint)", [user.id]);
+    const pending = await client.query(
+      "SELECT id FROM academic_transfer_requests WHERE learner_id=$1 AND status='pending' LIMIT 1",
+      [user.id],
+    );
+    if (pending.rowCount) {
+      await client.query("ROLLBACK");
+      res.status(409).json({ error: "You already have a transfer request awaiting review.", requestId: pending.rows[0].id });
+      return;
+    }
+    const inserted = await client.query(
+      "INSERT INTO academic_transfer_requests (learner_id, requested_by, reason, form_data) VALUES ($1,$1,$2,$3::jsonb) RETURNING id, learner_id, reason, status, created_at",
+      [user.id, reason, JSON.stringify(formData)],
+    );
+    requestRow = inserted.rows[0];
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
   await db.insert(auditLogsTable).values({ performedBy: user.id, action: "transfer_letter.requested", category: "academic", targetType: "transfer_request", targetId: Number(requestRow.id), details: JSON.stringify({ status: "pending" }) });
   // Queue reviewer email alerts; the audit event above is also the admin-dashboard alert.
   try {
@@ -127,11 +149,24 @@ router.post("/academic-records/transfer-requests/:id/review", requireAuth, async
   if (!["manager","senior_manager","owner"].includes(String(reviewer.role||"").toLowerCase())) { res.status(403).json({ error: "Only managers and owners can review transfer requests." }); return; }
   const id = Number(req.params.id);
   const status = req.body?.status;
-  const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 2000) : null;
+  const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 2000) : "";
   if (!Number.isSafeInteger(id) || id < 1 || !["approved","rejected"].includes(status)) { res.status(400).json({ error: "A valid request ID and approved/rejected decision are required." }); return; }
-  const result = await pool.query("UPDATE academic_transfer_requests SET status=$1,reviewed_by=$2,review_note=$3,reviewed_at=now(),updated_at=now() WHERE id=$4 AND status='pending' RETURNING id,learner_id,status,review_note,reviewed_by,reviewed_at", [status, reviewer.id, note, id]);
+  if (status === "rejected" && note.length < 3) { res.status(400).json({ error: "A clear rejection reason of at least 3 characters is required." }); return; }
+  const result = await pool.query("UPDATE academic_transfer_requests SET status=$1,reviewed_by=$2,review_note=$3,reviewed_at=now(),updated_at=now() WHERE id=$4 AND status='pending' RETURNING id,learner_id,status,review_note,reviewed_by,reviewed_at", [status, reviewer.id, note || null, id]);
   if (!result.rowCount) { res.status(404).json({ error: "Pending transfer request not found or already reviewed." }); return; }
   await db.insert(auditLogsTable).values({ performedBy: reviewer.id, action: "transfer_letter.reviewed", category: "academic", targetType: "transfer_request", targetId: id, details: JSON.stringify({ status, note }) });
+  // Notify the applicant after the committed decision; email failures must not undo the review.
+  try {
+    await enqueueEmailNotification(
+      Number(result.rows[0].learner_id),
+      status === "approved" ? "Your transfer letter request was approved" : "Your transfer letter request was declined",
+      status === "approved"
+        ? "Your transfer letter request #" + id + " was approved. Sign in to Dallyletter Elidems to view and download your protected PDF."
+        : "Your transfer letter request #" + id + " was declined. Reviewer feedback: " + note + ". Sign in to Dallyletter Elidems to review the decision."
+    );
+  } catch (error) {
+    console.error("Transfer decision applicant notification queue failed", error instanceof Error ? error.message : "unknown");
+  }
   res.json(result.rows[0]);
 });
 
