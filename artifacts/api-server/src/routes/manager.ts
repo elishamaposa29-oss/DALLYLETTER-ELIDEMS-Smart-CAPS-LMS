@@ -41,7 +41,7 @@ router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
       : Promise.resolve({ rows: [] as any[] }),
     pool.query("SELECT c.teacher_id, COUNT(DISTINCT e.learner_id)::int AS learners_joined FROM classes c LEFT JOIN enrollments e ON e.class_id=c.id GROUP BY c.teacher_id"),
     db.select().from(contentFlagsTable).where(eq(contentFlagsTable.status, "pending")).orderBy(desc(contentFlagsTable.createdAt)).limit(100),
-    isOwnerRole(req.currentUser!.role) ? pool.query("SELECT id,name,email,teacher_review_deadline FROM users WHERE role=$1 AND teacher_application_status=$2 ORDER BY created_at ASC LIMIT 100", ["teacher", "pending_review"]) : Promise.resolve({ rows: [] as any[] }),
+    isOwnerRole(req.currentUser!.role) ? pool.query("SELECT id,name,email,created_at,teacher_review_deadline FROM users WHERE role=$1 AND teacher_application_status=$2 ORDER BY created_at ASC LIMIT 100", ["teacher", "pending_review"]) : Promise.resolve({ rows: [] as any[] }),
   ]);
 
   const activeTeachers = teachers.filter((t: any) => !t.isManager && !t.isBlocked && !t.isSuspended);
@@ -68,7 +68,7 @@ router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
     ...reportRows.rows.map((r: any) => ({ id: "report-" + r.id, type: "academic_report", title: "Performance report review", description: r.report_type + " · " + r.term_label, targetId: Number(r.id), learnerId: Number(r.learner_id), learnerName: r.learner_name, status: "pending_review", createdAt: r.created_at, href: "/manager/reports/review" })),
     ...qualificationRows.rows.map((r: any) => ({ id: "qualification-" + r.id, type: "qualification_verification", title: "Teacher qualification verification", description: r.title + (r.institution ? " · " + r.institution : ""), targetId: Number(r.id), learnerName: r.teacher_name, status: "pending", createdAt: r.created_at, href: "/admin/users" })),
     ...contentFlags.map((r: any) => ({ id: "content-flag-" + r.id, type: "content_moderation", title: "Content moderation review", description: r.reason, targetId: r.id, learnerName: r.contentType + " #" + r.contentId, status: r.status, severity: r.severity, createdAt: r.createdAt, href: "/manager/safety" })),
-    ...teacherApplications.rows.map((r: any) => ({ id: "teacher-application-" + r.id, type: "teacher_application", title: "Teacher application review", description: r.email || "Teacher applicant", targetId: Number(r.id), learnerName: r.name, status: "pending_review", createdAt: r.teacher_review_deadline, href: "/admin/users" })),
+    ...teacherApplications.rows.map((r: any) => ({ id: "teacher-application-" + r.id, type: "teacher_application", title: "Teacher application review", description: r.email || "Teacher applicant", targetId: Number(r.id), learnerName: r.name, status: "pending_review", createdAt: r.created_at, href: "/admin/users" })),
     ...alerts.map((a: any) => ({ id: "alert-" + a.id, type: "alert", title: a.title, description: a.description, targetId: a.id, learnerName: a.reporterName, status: a.status, severity: a.severity, createdAt: a.createdAt, href: "/manager/notifications" })),
   ].sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
