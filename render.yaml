@@ -3,10 +3,11 @@ services:
     name: DALLYLETTER-ELIDEMS-STAGING-PR84
     env: node
     plan: free
-    branch: feat/profile-hub-secure-foundation
+    branch: feat/learner-attendance-register-card-2026-10
     autoDeploy: false
     rootDir: artifacts/api-server
-    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    buildCommand: cd ../.. && pnpm install --frozen-lockfile && pnpm --dir artifacts/api-server build
+    preDeployCommand: cd ../.. && pnpm --dir lib/db run migrate:transfer-form-data
     startCommand: pnpm start
     healthCheckPath: /api/healthz
     envVars:
