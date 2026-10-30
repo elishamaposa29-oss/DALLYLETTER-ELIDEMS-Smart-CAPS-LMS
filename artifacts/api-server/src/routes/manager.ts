@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, pool } from "@workspace/db";
-import { usersTable, classesTable, lessonsTable, paymentsTable, ownerAlertsTable, assignmentsTable, pollsTable, exercisesTable, auditLogsTable, attendanceTable, userAchievementsTable, achievementsTable, exerciseSubmissionsTable, pollSubmissionsTable } from "@workspace/db/schema";
+import { usersTable, classesTable, lessonsTable, paymentsTable, ownerAlertsTable, assignmentsTable, assignmentSubmissionsTable, pollsTable, exercisesTable, auditLogsTable, attendanceTable, userAchievementsTable, achievementsTable, exerciseSubmissionsTable, pollSubmissionsTable } from "@workspace/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { requireAuth, canAccessManager } from "../lib/auth-middleware";
 
@@ -15,22 +15,21 @@ function requireManager(req: any, res: any, next: any) {
 }
 
 router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
-  const [teachers, students, classes, lessons, alerts, assignments, exercises, exerciseSubmissions, assignmentSubmissions, pollSubmissions] = await Promise.all([
+  const [teachers, students, classes, lessons, alerts, assignments, exercises, exerciseSubmissions, assignmentSubmissions, pollSubmissions, allClasses, learnerAwards] = await Promise.all([
     db.select({ id: usersTable.id, name: usersTable.name, subject: usersTable.subject, performanceScore: usersTable.performanceScore, isManager: usersTable.isManager, isBlocked: usersTable.isBlocked, isSuspended: usersTable.isSuspended })
       .from(usersTable).where(eq(usersTable.role, "teacher")),
     db.select({ id: usersTable.id, name: usersTable.name, grade: usersTable.grade, performanceScore: usersTable.performanceScore, badgeCount: usersTable.badgeCount })
       .from(usersTable).where(eq(usersTable.role, "student")),
-    db.select().from(classesTable).orderBy(desc(classesTable.createdAt)).limit(10),
+    db.select().from(classesTable).orderBy(desc(classesTable.createdAt)),
     db.select().from(lessonsTable),
     db.select().from(ownerAlertsTable).where(eq(ownerAlertsTable.status, "open")).orderBy(desc(ownerAlertsTable.createdAt)).limit(100),
     db.select().from(assignmentsTable),
     db.select().from(exercisesTable),
     db.select().from(exerciseSubmissionsTable),
-    db.select().from(assignmentsTable).then(async rows => {
-      const all = await db.select().from((await import("@workspace/db/schema")).assignmentSubmissionsTable);
-      return all;
-    }),
+    db.select().from(assignmentSubmissionsTable),
     db.select().from(pollSubmissionsTable),
+    db.select().from(classesTable),
+    db.select({ userId: userAchievementsTable.userId }).from(userAchievementsTable),
   ]);
 
   // Rank from observed work, marking, and learner engagement rather than the manually editable score.
@@ -44,7 +43,7 @@ router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
   const activeTeachers = teachers.filter((t: any) => !t.isManager && !t.isBlocked && !t.isSuspended);
   const teacherRanks = activeTeachers.map((teacher: any) => {
     const teacherLessons = lessons.filter((x: any) => x.teacherId === teacher.id);
-    const teacherClasses = classes.filter((x: any) => x.teacherId === teacher.id);
+    const teacherClasses = allClasses.filter((x: any) => x.teacherId === teacher.id);
     const teacherAssignments = assignments.filter((x: any) => x.teacherId === teacher.id);
     const teacherExercises = exercises.filter((x: any) => x.createdBy === teacher.id);
     const assignmentIds = new Set(teacherAssignments.map((x: any) => x.id));
@@ -71,7 +70,7 @@ router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
   const totalMarkedAssignments = assignmentSubmissions.filter((s: any) => s.gradedAt || s.gradedBy || s.marks !== null).length;
   const totalMarkedExercises = exerciseSubmissions.filter((s: any) => s.markedAt || s.returnedAt || ["marked","returned","graded"].includes(String(s.status).toLowerCase())).length;
   res.json({
-    stats: { teachers: activeTeachers.length, students: students.length, classes: classes.length, lessons: lessons.length },
+    stats: { teachers: activeTeachers.length, students: students.length, classes: allClasses.length, lessons: lessons.length },
     recentClasses: classes.slice(0, 10),
     recentLessons: lessons.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10),
     openAlerts: reviewQueue.slice(0, 12),
@@ -83,7 +82,7 @@ router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
     topLearners: students.map((student: any) => {
       const submissions = exerciseSubmissions.filter((s: any) => s.learnerId === student.id);
       const assignmentCount = assignmentSubmissions.filter((s: any) => s.studentId === student.id).length;
-      const awards = 0;
+      const awards = learnerAwards.filter((a: any) => a.userId === student.id).length;
       return { id: student.id, name: student.name, grade: student.grade, performanceScore: student.performanceScore ?? 0, badgeCount: student.badgeCount ?? awards, exerciseSubmissions: submissions.length, assignmentSubmissions: assignmentCount, activityScore: submissions.length + assignmentCount + Number(student.performanceScore ?? 0) };
     }).sort((a: any,b: any) => b.activityScore-a.activityScore).slice(0,5),
   });
