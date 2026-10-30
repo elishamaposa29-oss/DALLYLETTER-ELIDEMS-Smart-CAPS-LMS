@@ -23,6 +23,7 @@ export default function MobileProfileHub() {
   const targetId = params.userId ? Number(params.userId) : user?.id;
   const isOwn = Boolean(user && targetId === user.id);
   const isOwner = ["owner","admin","platform_owner"].includes(String(user?.role||"").toLowerCase());
+  const canReviewTransferLetters = ["manager","senior_manager","owner","admin","platform_owner"].includes(String(user?.role||"").toLowerCase());
   const [tab,setTab] = useState<Tab>("Overview");
   const [profile,setProfile] = useState<Row|null>(null);
   const [qualifications,setQualifications] = useState<Row[]>([]);
@@ -98,17 +99,18 @@ export default function MobileProfileHub() {
         setEmail(n.notification_email||"");setEmailVerified(Boolean(n.notification_email_verified_at));setPayoutMethod(p.method||"ecocash");setPayoutDestinationMasked(p.destination_masked||"");setBankName(p.bank_name||"");setAccountHolder(p.account_name_holder||"");
         if(isOwner){const pending=await api("/api/qualifications/pending").catch(()=>[]);setQueue(Array.isArray(pending)?pending:[]);}
       }else{
-        const [p,a,d]=await Promise.all([api("/api/users/"+targetId+"/public-profile"),api("/api/achievements/user/"+targetId).catch(()=>[]),api("/api/users/"+targetId+"/teacher-documents").catch(()=>[])]);
+        const [p,a,d,transfers]=await Promise.all([api("/api/users/"+targetId+"/public-profile"),api("/api/achievements/user/"+targetId).catch(()=>[]),api("/api/users/"+targetId+"/teacher-documents").catch(()=>[]),canReviewTransferLetters?api("/api/academic-records/transfer-requests").catch(()=>[]):Promise.resolve([])]);
         setProfile(p);setAchievements(Array.isArray(a)?a:[]);
         const professional=["teacher","manager","senior_manager"].includes(String(p.role).toLowerCase());
         setQualifications(professional&&Array.isArray(p.verified_qualifications)?p.verified_qualifications:[]);
         setDocuments(professional&&Array.isArray(d)?d:[]);
         const selected=Array.isArray(p.subjects)?p.subjects:(Array.isArray(p.subjects_to_teach)?p.subjects_to_teach:[]);
         setSubjects(selected);setSubjectInput(selected.join(", "));setPrimarySubject(p.primary_subject||"");
+        if(canReviewTransferLetters)setTransferRequests(Array.isArray(transfers)?transfers:[]);
       }
     }catch(e){setMessage(e instanceof Error?e.message:"Could not load profile.");}
     finally{setLoading(false);}
-  },[api,targetId,user,isOwn,isOwner]);
+  },[api,targetId,user,isOwn,isOwner,canReviewTransferLetters]);
   useEffect(()=>{void load();},[load]);
 
   const pickAvatar=async(source:"library"|"camera"="library")=>{
@@ -291,7 +293,7 @@ export default function MobileProfileHub() {
     </View>
     <Modal visible={Boolean(fullscreenMedia)} transparent={false} presentationStyle="fullScreen" statusBarTranslucent animationType="fade" onRequestClose={()=>setFullscreenMedia(null)}><View style={{flex:1,width:"100%",height:"100%",backgroundColor:"#000",justifyContent:"center",alignItems:"center",padding:0,margin:0}}><StatusBar hidden backgroundColor="#000"/><TouchableOpacity accessibilityRole="button" accessibilityLabel="Close fullscreen media" onPress={()=>setFullscreenMedia(null)} style={{position:"absolute",top:Platform.OS==="ios"?48:18,right:18,zIndex:10,paddingHorizontal:16,paddingVertical:10,backgroundColor:"#333333bb",borderRadius:24}}><Text style={{color:"#fff",fontWeight:"700"}}>Close ✕</Text></TouchableOpacity>{fullscreenMedia?.type?.startsWith("video/")?<VideoView player={fullscreenPlayer} style={{width:"100%",height:"100%"}} nativeControls contentFit="contain"/>:fullscreenMedia?.url?<TouchableOpacity activeOpacity={1} onPress={()=>setFullscreenMedia(null)} style={{width:"100%",height:"100%",justifyContent:"center",alignItems:"center"}}><Image source={{uri:fullscreenMedia.url,headers:token?{Authorization:"Bearer "+token}:{}}} style={{width:"100%",height:"100%"}} resizeMode="contain"/></TouchableOpacity>:null}</View></Modal>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{padding:10,gap:6,backgroundColor:colors.card}}>
-      {TABS.filter(t=>t!=="Qualifications"||["teacher","manager","senior_manager"].includes(String(profile?.role||user.role).toLowerCase())).filter(t=>t!=="Enrollments"||isOwn).filter(t=>isOwn||!["Reports","Attendance","Payments","Transfer Letters"].includes(t)).map(t=><TouchableOpacity key={t} accessibilityRole="tab" accessibilityState={{selected:tab===t}} onPress={()=>setTab(t)} style={{paddingHorizontal:12,paddingVertical:9,borderRadius:10,backgroundColor:tab===t?colors.primary:colors.background,borderColor:colors.border,borderWidth:1}}><Text style={{fontWeight:"700",color:tab===t?"#fff":colors.foreground}}>{t}</Text></TouchableOpacity>)}
+      {TABS.filter(t=>t!=="Qualifications"||["teacher","manager","senior_manager"].includes(String(profile?.role||user.role).toLowerCase())).filter(t=>t!=="Enrollments"||isOwn).filter(t=>(isOwn||!["Reports","Attendance","Payments"].includes(t))&&(t!=="Transfer Letters"||isOwn||canReviewTransferLetters)).map(t=><TouchableOpacity key={t} accessibilityRole="tab" accessibilityState={{selected:tab===t}} onPress={()=>setTab(t)} style={{paddingHorizontal:12,paddingVertical:9,borderRadius:10,backgroundColor:tab===t?colors.primary:colors.background,borderColor:colors.border,borderWidth:1}}><Text style={{fontWeight:"700",color:tab===t?"#fff":colors.foreground}}>{t}</Text></TouchableOpacity>)}
     </ScrollView>
     <ScrollView contentContainerStyle={{padding:14,paddingBottom:50}} keyboardShouldPersistTaps="handled">
       {!!message&&<Text accessibilityRole="alert" style={{...card,color:colors.foreground}}>{message}</Text>}
