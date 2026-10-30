@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, pool } from "@workspace/db";
-import { usersTable, classesTable, lessonsTable, paymentsTable, ownerAlertsTable, assignmentsTable, assignmentSubmissionsTable, pollsTable, exercisesTable, auditLogsTable, attendanceTable, userAchievementsTable, achievementsTable, exerciseSubmissionsTable, pollSubmissionsTable } from "@workspace/db/schema";
+import { usersTable, classesTable, lessonsTable, paymentsTable, ownerAlertsTable, assignmentsTable, assignmentSubmissionsTable, pollsTable, exercisesTable, auditLogsTable, attendanceTable, userAchievementsTable, achievementsTable, exerciseSubmissionsTable, pollSubmissionsTable, contentFlagsTable } from "@workspace/db/schema";
 import { eq, desc, and, inArray } from "drizzle-orm";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 
@@ -33,13 +33,14 @@ router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
   ]);
 
   // Rank from observed work, marking, and learner engagement rather than the manually editable score.
-  const [transferRows, reportRows, qualificationRows, enrollmentRows] = await Promise.all([
+  const [transferRows, reportRows, qualificationRows, enrollmentRows, contentFlags] = await Promise.all([
     pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,r.reason,r.status,r.created_at FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id WHERE r.status='pending' ORDER BY r.created_at ASC LIMIT 100"),
     pool.query("SELECT d.id,d.learner_id,u.name AS learner_name,d.report_type,d.term_label,d.status,d.created_at FROM academic_report_drafts d JOIN users u ON u.id=d.learner_id WHERE d.status='pending_review' ORDER BY d.created_at ASC LIMIT 100"),
     isOwnerRole(req.currentUser!.role)
       ? pool.query("SELECT q.id,q.user_id,u.name AS teacher_name,q.title,q.institution,q.created_at FROM teacher_qualifications q JOIN users u ON u.id=q.user_id WHERE q.verification_status='pending' ORDER BY q.created_at ASC LIMIT 100")
       : Promise.resolve({ rows: [] as any[] }),
     pool.query("SELECT c.teacher_id, COUNT(DISTINCT e.learner_id)::int AS learners_joined FROM classes c LEFT JOIN enrollments e ON e.class_id=c.id GROUP BY c.teacher_id"),
+    db.select().from(contentFlagsTable).where(eq(contentFlagsTable.status, "pending")).orderBy(desc(contentFlagsTable.createdAt)).limit(100),
   ]);
 
   const activeTeachers = teachers.filter((t: any) => !t.isManager && !t.isBlocked && !t.isSuspended);
@@ -65,6 +66,7 @@ router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
     ...transferRows.rows.map((r: any) => ({ id: "transfer-" + r.id, type: "transfer_request", title: "Transfer letter approval", description: r.reason, targetId: Number(r.id), learnerId: Number(r.learner_id), learnerName: r.learner_name, status: "pending", createdAt: r.created_at, href: "/manager/transfer-requests" })),
     ...reportRows.rows.map((r: any) => ({ id: "report-" + r.id, type: "academic_report", title: "Performance report review", description: r.report_type + " · " + r.term_label, targetId: Number(r.id), learnerId: Number(r.learner_id), learnerName: r.learner_name, status: "pending_review", createdAt: r.created_at, href: "/manager/reports/review" })),
     ...qualificationRows.rows.map((r: any) => ({ id: "qualification-" + r.id, type: "qualification_verification", title: "Teacher qualification verification", description: r.title + (r.institution ? " · " + r.institution : ""), targetId: Number(r.id), learnerName: r.teacher_name, status: "pending", createdAt: r.created_at, href: "/admin/users" })),
+    ...contentFlags.map((r: any) => ({ id: "content-flag-" + r.id, type: "content_moderation", title: "Content moderation review", description: r.reason, targetId: r.id, learnerName: r.contentType + " #" + r.contentId, status: r.status, severity: r.severity, createdAt: r.createdAt, href: "/manager/safety" })),
     ...alerts.map((a: any) => ({ id: "alert-" + a.id, type: "alert", title: a.title, description: a.description, targetId: a.id, learnerName: a.reporterName, status: a.status, severity: a.severity, createdAt: a.createdAt, href: "/manager/notifications" })),
   ].sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
@@ -76,7 +78,7 @@ router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
     recentLessons: lessons.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10),
     openAlerts: reviewQueue.slice(0, 12),
     reviewQueue,
-    reviewCounts: { transferRequests: transferRows.rows.length, performanceReports: reportRows.rows.length, qualificationVerifications: qualificationRows.rows.length, alerts: alerts.length },
+    reviewCounts: { transferRequests: transferRows.rows.length, performanceReports: reportRows.rows.length, qualificationVerifications: qualificationRows.rows.length, contentFlags: contentFlags.length, alerts: alerts.length },
     recentAssignments: assignments.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10),
     topTeachers: teacherRanks,
     markingStats: { markedAssignments: totalMarkedAssignments, markedExercises: totalMarkedExercises },
