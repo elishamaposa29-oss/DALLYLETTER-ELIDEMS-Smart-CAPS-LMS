@@ -1,10 +1,11 @@
 import { Router } from "express";
 import { db, pool } from "@workspace/db";
 import { usersTable, classesTable, lessonsTable, paymentsTable, ownerAlertsTable, assignmentsTable, assignmentSubmissionsTable, pollsTable, exercisesTable, auditLogsTable, attendanceTable, userAchievementsTable, achievementsTable, exerciseSubmissionsTable, pollSubmissionsTable } from "@workspace/db/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, inArray } from "drizzle-orm";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 
 const router = Router();
+const managerVisibleAlertCategories = ["academic", "attendance", "content", "student", "teacher", "moderation", "general"];
 
 function requireManager(req: any, res: any, next: any) {
   const user = req.currentUser;
@@ -22,7 +23,7 @@ router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
       .from(usersTable).where(eq(usersTable.role, "student")),
     db.select().from(classesTable).orderBy(desc(classesTable.createdAt)),
     db.select().from(lessonsTable),
-    db.select().from(ownerAlertsTable).where(eq(ownerAlertsTable.status, "open")).orderBy(desc(ownerAlertsTable.createdAt)).limit(100),
+    isOwnerRole(req.currentUser!.role) ? db.select().from(ownerAlertsTable).where(eq(ownerAlertsTable.status, "open")).orderBy(desc(ownerAlertsTable.createdAt)).limit(100) : db.select().from(ownerAlertsTable).where(and(eq(ownerAlertsTable.status, "open"), inArray(ownerAlertsTable.category, managerVisibleAlertCategories))).orderBy(desc(ownerAlertsTable.createdAt)).limit(100),
     db.select().from(assignmentsTable),
     db.select().from(exercisesTable),
     db.select().from(exerciseSubmissionsTable),
@@ -109,7 +110,7 @@ router.get("/teachers", requireAuth, requireManager, async (req, res) => {
     db.select().from(assignmentSubmissionsTable),
     db.select().from(exerciseSubmissionsTable),
     pool.query("SELECT c.teacher_id, COUNT(DISTINCT e.learner_id)::int AS learners_joined FROM classes c LEFT JOIN enrollments e ON e.class_id=c.id GROUP BY c.teacher_id"),
-    db.select().from(ownerAlertsTable).where(eq(ownerAlertsTable.status, "open")),
+    isOwnerRole(req.currentUser!.role) ? db.select().from(ownerAlertsTable).where(eq(ownerAlertsTable.status, "open")) : db.select().from(ownerAlertsTable).where(and(eq(ownerAlertsTable.status, "open"), inArray(ownerAlertsTable.category, managerVisibleAlertCategories))),
   ]);
   const ranked = teachers.filter((t: any) => !t.isManager && !t.isBlocked && !t.isSuspended).map((teacher: any) => {
     const teacherLessons = lessonCounts.filter((l: any) => l.teacherId === teacher.id);
