@@ -25,13 +25,18 @@ export function ActivityMonitor() {
   const [selected, setSelected] = useState<number[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   const load = async () => {
     setLoading(true);
+    setError("");
     try {
-      const r = await fetch(getApiUrl("/api/audit-logs?limit=200"), { headers: { Authorization: `Bearer ${token()}` } });
+      const r = await fetch(getApiUrl("/api/audit-logs?limit=200"), { headers: { Authorization: "Bearer " + token() } });
       const data = await r.json().catch(() => []);
-      if (r.ok) setItems(Array.isArray(data) ? data : []);
+      if (!r.ok) throw new Error(data.error || "Activity is unavailable for this account.");
+      setItems(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load activity.");
     } finally { setLoading(false); }
   };
 
@@ -77,7 +82,7 @@ export function ActivityMonitor() {
       </div>
     </CardHeader>
     <CardContent className="space-y-2">
-      {loading ? <p className="text-sm text-muted-foreground py-6 text-center">Loading activity…</p> : filtered.length === 0 ? <p className="text-sm text-muted-foreground py-6 text-center">No activity found.</p> :
+      {error ? <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : loading ? <p className="text-sm text-muted-foreground py-6 text-center">Loading activity…</p> : filtered.length === 0 ? <p className="text-sm text-muted-foreground py-6 text-center">No activity found.</p> :
         filtered.slice(0, 60).map(item => <div key={item.id} className="flex items-start gap-3 rounded-lg border p-3">
           <input type="checkbox" checked={selected.includes(item.id)} onChange={() => toggle(item.id)} className="mt-1 h-4 w-4" aria-label={`Select activity ${item.id}`} />
           <div className="min-w-0 flex-1">
