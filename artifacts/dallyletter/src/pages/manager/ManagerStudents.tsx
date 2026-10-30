@@ -15,6 +15,7 @@ const token = () => localStorage.getItem("dallyletter_token") ?? "";
 
 export default function ManagerStudents() {
   const [students, setStudents] = useState<any[]>([]);
+  const [managerSummary, setManagerSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const { toast } = useToast();
@@ -35,9 +36,11 @@ export default function ManagerStudents() {
   const action=async(id:number, actionName:string)=>{setBusy(id);try{const endpoint = actionName === "unblock" ? `/api/manager/users/${id}/unblock` : `/api/manager/users/${id}/action`; const r=await fetch(getApiUrl(endpoint),{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token()}`},body:JSON.stringify(actionName === "unblock" ? {} : {action:actionName})}); const data=await r.json().catch(()=>({})); if(!r.ok)throw new Error(data.error||"Action failed"); toast({title:"Action applied"}); try { const next=await fetch(getApiUrl("/api/manager/students"),{headers:{Authorization:`Bearer ${token()}`}}); if(next.ok){const refreshed=await next.json().catch(()=>null); if(Array.isArray(refreshed)) setStudents(refreshed);} } catch { /* The moderation action already succeeded; keep the success state and allow a later refresh. */ }}catch(e){toast({variant:"destructive",title:"Action failed",description:e instanceof Error?e.message:"Try again."});}finally{setBusy(null);}};
 
   useEffect(() => {
-    fetch(getApiUrl("/api/manager/students"), { headers: { Authorization: `Bearer ${token()}` } })
+    fetch(getApiUrl("/api/manager/students"), { headers: { Authorization: "Bearer " + token() } })
       .then(r => r.json()).then(d => { setStudents(Array.isArray(d) ? d : []); setLoading(false); })
       .catch(() => setLoading(false));
+    fetch(getApiUrl("/api/manager/dashboard"), { headers: { Authorization: "Bearer " + token() } })
+      .then(r => r.json()).then(d => { if (d && typeof d === "object") setManagerSummary(d); }).catch(() => undefined);
   }, []);
 
   const filtered = students.filter(s => s.name?.toLowerCase().includes(search.toLowerCase()) || s.grade?.toLowerCase().includes(search.toLowerCase()));
@@ -67,6 +70,20 @@ export default function ManagerStudents() {
             <Search className="h-4 w-4 text-slate-400" />
             <Input placeholder="Search students…" value={search} onChange={e => setSearch(e.target.value)} className="w-48 h-9 text-sm" />
           </div>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card className="border-0 shadow-sm"><CardContent className="p-4">
+            <div className="mb-3 flex items-center justify-between"><h2 className="font-semibold text-slate-900">Learner-related approvals and reports</h2><Badge variant="secondary">{(managerSummary?.reviewQueue || []).filter((q:any)=>["transfer_request","academic_report"].includes(q.type)).length} pending</Badge></div>
+            {(managerSummary?.reviewQueue || []).filter((q:any)=>["transfer_request","academic_report"].includes(q.type)).length===0
+              ? <p className="text-sm text-slate-500">No pending learner transfer requests or report reviews.</p>
+              : <div className="space-y-2">{(managerSummary?.reviewQueue || []).filter((q:any)=>["transfer_request","academic_report"].includes(q.type)).slice(0,5).map((q:any)=><div key={q.id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 p-3"><div className="min-w-0"><p className="text-sm font-medium">{q.title}</p><p className="text-xs text-slate-500">{q.learnerName} · {q.description}</p></div><Link href={q.href}><Button size="sm" variant="outline">Review</Button></Link></div>)}</div>}
+          </CardContent></Card>
+          <Card className="border-0 shadow-sm"><CardContent className="p-4">
+            <h2 className="mb-3 font-semibold text-slate-900">Highest performing learners</h2>
+            {!managerSummary?.topLearners?.length ? <p className="text-sm text-slate-500">No learner activity recorded yet.</p> :
+              <div className="space-y-2">{managerSummary.topLearners.map((s:any,index:number)=><div key={s.id} className="flex items-center gap-3 rounded-lg bg-slate-50 p-2"><span className="w-5 text-xs font-bold text-slate-400">#{index+1}</span><div className="min-w-0 flex-1"><p className="text-sm font-medium">{s.name}</p><p className="text-xs text-slate-500">{s.exerciseSubmissions} exercise · {s.assignmentSubmissions} assignment submissions</p></div><Badge variant="secondary"><Award className="mr-1 h-3 w-3"/>{s.badgeCount} awards</Badge></div>)}</div>}
+          </CardContent></Card>
         </div>
 
         {loading ? <p className="text-center text-slate-400 py-10">Loading…</p> : (
