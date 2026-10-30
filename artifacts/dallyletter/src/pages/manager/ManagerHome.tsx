@@ -79,7 +79,7 @@ export default function ManagerHome() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm">
                 <AlertTriangle className="h-4 w-4 text-red-500" /> Open Alerts
-                {data?.openAlerts?.length > 0 && <Badge className="bg-red-500 text-white text-xs ml-auto">{data.openAlerts.length}</Badge>}
+                {(data?.reviewQueue?.length ?? data?.openAlerts?.length ?? 0) > 0 && <Badge className="bg-red-500 text-white text-xs ml-auto">{data.reviewQueue?.length ?? data.openAlerts.length}</Badge>}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -101,7 +101,7 @@ export default function ManagerHome() {
                   <div className="flex flex-wrap gap-2 pt-2">
                     <Link href="/manager/transfer-requests"><Button size="sm" variant="outline">Transfer approvals ({data.reviewCounts?.transferRequests ?? pendingTransfers})</Button></Link>
                     <Link href="/manager/reports/review"><Button size="sm" variant="outline">Report review ({data.reviewCounts?.performanceReports ?? 0})</Button></Link>
-                    <Link href="/manager/notifications"><Button size="sm" variant="outline">Show all alerts</Button></Link>
+                    <Link href="/manager/review-queue"><Button size="sm" variant="outline">Show everything</Button></Link>
                   </div>
                 </div>
               )}
@@ -164,6 +164,7 @@ export default function ManagerHome() {
             { label: "Manage Prefects", href: "/manager/prefects", icon: Shield, color: "bg-amber-600" },
             { label: "Transfer Approvals", href: "/manager/transfer-requests", icon: AlertTriangle, color: "bg-rose-600" },
             { label: "Review Performance Reports", href: "/manager/reports/review", icon: BarChart3, color: "bg-violet-600" },
+            { label: "All Review Items", href: "/manager/review-queue", icon: AlertTriangle, color: "bg-red-600" },
           ].map(item => (
             <Link key={item.href} href={item.href}>
               <div className={`${item.color} text-white rounded-xl p-4 flex items-center gap-3 hover:opacity-90 transition-opacity cursor-pointer`}>
