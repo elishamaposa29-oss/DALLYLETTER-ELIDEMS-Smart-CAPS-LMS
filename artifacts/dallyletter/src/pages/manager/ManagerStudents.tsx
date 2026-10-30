@@ -108,7 +108,7 @@ export default function ManagerStudents() {
                       <div className="flex items-center gap-3 text-xs text-slate-400">
                         <span className="flex items-center gap-0.5"><Flame className="h-3 w-3 text-orange-400" /> {s.streakDays ?? 0}d streak</span>
                         <span className="flex items-center gap-0.5"><Star className="h-3 w-3 text-amber-400" /> {s.performanceScore ?? 0} pts</span>
-                        <span>{s.badgeCount ?? 0} badges</span>
+                        <span>{s.awardsCount ?? s.badgeCount ?? 0} awards</span><Badge variant={s.alertsCount ? "destructive" : "secondary"}>{s.alertsCount ?? 0} alerts</Badge><span>{s.pendingTransferRequests ?? 0} transfer requests</span><span>{s.pendingReportReviews ?? 0} reports to review</span><span>{(s.exerciseSubmissions ?? 0) + (s.assignmentSubmissions ?? 0)} submissions</span>
                         {s.lastActiveDate && <span>Active: {s.lastActiveDate}</span>}
                       </div>
                     </div>
