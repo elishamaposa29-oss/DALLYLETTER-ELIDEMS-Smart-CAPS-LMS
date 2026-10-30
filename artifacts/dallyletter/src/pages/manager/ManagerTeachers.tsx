@@ -85,6 +85,7 @@ export default function ManagerTeachers() {
                         {i < 3 && <Star className="h-3.5 w-3.5 text-amber-500" />}
                         <Link href={`/profile/${t.id}`} onClick={e=>e.stopPropagation()} className="font-semibold text-slate-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-sm">{t.name}</Link>
                         {t.subject && <Badge variant="outline" className="text-xs">{t.subject}</Badge>}
+                        <Badge variant={t.alertsCount ? "destructive" : "secondary"}>{t.alertsCount ?? 0} alerts</Badge>
                       </div>
                       <p className="text-xs text-slate-500 mb-2">{t.email}</p>
                       <Button size="sm" variant="outline" className="mt-3 gap-1" onClick={() => void openMonitor(t)}><ExternalLink className="h-3.5 w-3.5" />Monitor activity</Button>
