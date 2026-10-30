@@ -145,7 +145,7 @@ router.post("/academic-records/transfer-requests", requireAuth, async (req, res)
 
 router.get("/academic-records/transfer-requests", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  const manager = ["manager","senior_manager","owner"].includes(String(user.role||"").toLowerCase());
+  const manager = canAccessManager(user);
   const result = manager
     ? await pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,r.requested_by,r.reason,r.status,r.review_note,r.reviewed_by,r.reviewed_at,r.created_at FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id ORDER BY r.created_at DESC LIMIT 200")
     : await pool.query("SELECT id,learner_id,reason,status,review_note,reviewed_at,created_at FROM academic_transfer_requests WHERE learner_id=$1 ORDER BY created_at DESC LIMIT 100", [user.id]);
@@ -154,7 +154,7 @@ router.get("/academic-records/transfer-requests", requireAuth, async (req, res):
 
 router.post("/academic-records/transfer-requests/:id/review", requireAuth, async (req, res): Promise<void> => {
   const reviewer = req.currentUser!;
-  if (!["manager","senior_manager","owner"].includes(String(reviewer.role||"").toLowerCase())) { res.status(403).json({ error: "Only managers and owners can review transfer requests." }); return; }
+  if (!canAccessManager(reviewer)) { res.status(403).json({ error: "Only authorized managers and owners can review transfer requests." }); return; }
   const id = Number(req.params.id);
   const status = req.body?.status;
   const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 2000) : "";
