@@ -16,11 +16,17 @@ export default function ManagerHome() {
   const { user } = useAuth();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [pendingTransfers, setPendingTransfers] = useState(0);
+  const [transferError, setTransferError] = useState("");
 
   useEffect(() => {
     fetch(getApiUrl("/api/manager/dashboard"), { headers: { Authorization: `Bearer ${token()}` } })
       .then(r => r.json()).then(d => { setData(d); setLoading(false); })
       .catch(() => setLoading(false));
+    fetch(getApiUrl("/api/academic-records/transfer-requests"), { headers: { Authorization: `Bearer ${token()}` } })
+      .then(async r => { const d = await r.json().catch(() => []); if (!r.ok) throw new Error(d.error || "Could not load transfer approvals"); return d; })
+      .then(d => { setPendingTransfers(Array.isArray(d) ? d.filter((item: any) => item.status === "pending").length : 0); setTransferError(""); })
+      .catch(e => setTransferError(e instanceof Error ? e.message : "Transfer approval count unavailable"));
   }, []);
 
   if (loading) return (
@@ -123,7 +129,15 @@ export default function ManagerHome() {
           </Card>
         </div>
 
-<ActivityMonitor />
+<Card className="border-0 shadow-sm">
+          <CardHeader><CardTitle className="flex items-center gap-2 text-sm"><AlertTriangle className="h-4 w-4 text-amber-600" /> Verification & Approval Queue</CardTitle></CardHeader>
+          <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div><p className="font-semibold text-slate-800">Transfer letter requests</p><p className="text-xs text-slate-500">Review learner requests and approve or reject them with an audit trail.</p>{transferError && <p role="alert" className="mt-1 text-xs text-red-600">{transferError}</p>}</div>
+            <div className="flex items-center gap-3"><Badge className={pendingTransfers ? "bg-amber-500 text-white" : "bg-slate-100 text-slate-700"}>{pendingTransfers} pending</Badge><Link href="/manager/transfer-requests"><Button size="sm">Review requests</Button></Link></div>
+          </CardContent>
+        </Card>
+
+        <ActivityMonitor />
         {/* Quick Nav */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {[
@@ -131,6 +145,7 @@ export default function ManagerHome() {
             { label: "Monitor Students", href: "/manager/students", icon: Users, color: "bg-blue-600" },
             { label: "View Reports", href: "/manager/reports", icon: BarChart3, color: "bg-purple-600" },
             { label: "Manage Prefects", href: "/manager/prefects", icon: Shield, color: "bg-amber-600" },
+            { label: "Transfer Approvals", href: "/manager/transfer-requests", icon: AlertTriangle, color: "bg-rose-600" },
           ].map(item => (
             <Link key={item.href} href={item.href}>
               <div className={`${item.color} text-white rounded-xl p-4 flex items-center gap-3 hover:opacity-90 transition-opacity cursor-pointer`}>
