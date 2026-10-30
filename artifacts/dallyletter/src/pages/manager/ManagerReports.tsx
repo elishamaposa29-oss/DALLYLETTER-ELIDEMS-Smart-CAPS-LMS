@@ -2,7 +2,7 @@ import { getApiUrl } from "@workspace/api-client-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, GraduationCap, BookOpen, Video, DollarSign, BarChart3 } from "lucide-react";
+import { Users, GraduationCap, BookOpen, Video, DollarSign, BarChart3, ClipboardCheck, Award, Activity, FileCheck2 } from "lucide-react";
 
 const token = () => localStorage.getItem("dallyletter_token") ?? "";
 
@@ -23,6 +23,20 @@ export default function ManagerReports() {
     { label: "Total Lessons", value: report?.lessonCount ?? 0, icon: BookOpen, color: "text-amber-600", bg: "bg-amber-50" },
     { label: "Total Classes", value: report?.classCount ?? 0, icon: Video, color: "text-indigo-600", bg: "bg-indigo-50" },
     { label: "Total Revenue", value: `$${(report?.totalRevenue ?? 0).toFixed(2)}`, icon: DollarSign, color: "text-emerald-600", bg: "bg-emerald-50" },
+    { label: "Owners / Admins", value: report?.ownerCount ?? 0, icon: Users, color: "text-slate-700", bg: "bg-slate-100" },
+    { label: "Prefects", value: report?.prefectCount ?? 0, icon: Award, color: "text-amber-600", bg: "bg-amber-50" },
+    { label: "Assignments", value: report?.assignmentCount ?? 0, icon: ClipboardCheck, color: "text-blue-600", bg: "bg-blue-50" },
+    { label: "Exercises", value: report?.exerciseCount ?? 0, icon: BookOpen, color: "text-indigo-600", bg: "bg-indigo-50" },
+    { label: "Assignment submissions", value: report?.assignmentSubmissionCount ?? 0, icon: ClipboardCheck, color: "text-purple-600", bg: "bg-purple-50" },
+    { label: "Exercise submissions", value: report?.exerciseSubmissionCount ?? 0, icon: ClipboardCheck, color: "text-purple-600", bg: "bg-purple-50" },
+    { label: "Assignment marking completed", value: report?.markedAssignmentCount ?? 0, icon: ClipboardCheck, color: "text-emerald-600", bg: "bg-emerald-50" },
+    { label: "Exercise marking completed", value: report?.markedExerciseCount ?? 0, icon: ClipboardCheck, color: "text-emerald-600", bg: "bg-emerald-50" },
+    { label: "Awards granted", value: report?.awardCount ?? 0, icon: Award, color: "text-amber-600", bg: "bg-amber-50" },
+    { label: "Attendance records", value: report?.attendanceRecordCount ?? 0, icon: Activity, color: "text-cyan-600", bg: "bg-cyan-50" },
+    { label: "Present attendance records", value: report?.presentAttendanceCount ?? 0, icon: Activity, color: "text-emerald-600", bg: "bg-emerald-50" },
+    { label: "Open alerts", value: report?.openAlertCount ?? 0, icon: FileCheck2, color: "text-red-600", bg: "bg-red-50" },
+    { label: "Transfer requests awaiting approval", value: report?.pendingTransferCount ?? 0, icon: FileCheck2, color: "text-amber-600", bg: "bg-amber-50" },
+    { label: "Reports awaiting review", value: report?.pendingReportReviewCount ?? 0, icon: FileCheck2, color: "text-violet-600", bg: "bg-violet-50" },
   ];
 
   return (
