@@ -144,7 +144,7 @@ router.get("/students", requireAuth, requireManager, async (req, res) => {
   }).from(usersTable).where(eq(usersTable.role, "student"));
   const [awards, alerts, exercises, assignments, transfers, reports] = await Promise.all([
     db.select({ userId: userAchievementsTable.userId }).from(userAchievementsTable),
-    db.select().from(ownerAlertsTable).where(eq(ownerAlertsTable.status, "open")),
+    isOwnerRole(req.currentUser!.role) ? db.select().from(ownerAlertsTable).where(eq(ownerAlertsTable.status, "open")) : db.select().from(ownerAlertsTable).where(and(eq(ownerAlertsTable.status, "open"), inArray(ownerAlertsTable.category, managerVisibleAlertCategories))),
     db.select().from(exerciseSubmissionsTable),
     db.select().from(assignmentSubmissionsTable),
     pool.query("SELECT learner_id, COUNT(*)::int AS count FROM academic_transfer_requests WHERE status='pending' GROUP BY learner_id"),
