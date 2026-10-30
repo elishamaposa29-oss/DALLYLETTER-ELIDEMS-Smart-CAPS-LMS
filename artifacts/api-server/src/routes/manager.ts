@@ -217,7 +217,7 @@ router.get("/users/:id/activity", requireAuth, requireManager, async (req, res):
 });
 
 router.get("/reports/overview", requireAuth, requireManager, async (req, res) => {
-  const [users, payments, lessons, classes, assignments, exercises, assignmentSubmissions, exerciseSubmissions, awards, attendance, alerts] = await Promise.all([
+  const [users, payments, lessons, classes, assignments, exercises, assignmentSubmissions, exerciseSubmissions, awards, attendance, alerts, pendingFlags] = await Promise.all([
     db.select({ id: usersTable.id, role: usersTable.role, isManager: usersTable.isManager, isPrefect: usersTable.isPrefect }).from(usersTable),
     db.select().from(paymentsTable),
     db.select({ id: lessonsTable.id }).from(lessonsTable),
@@ -229,6 +229,7 @@ router.get("/reports/overview", requireAuth, requireManager, async (req, res) =>
     db.select({ id: userAchievementsTable.id }).from(userAchievementsTable),
     db.select({ id: attendanceTable.id, status: attendanceTable.status }).from(attendanceTable),
     isOwnerRole(req.currentUser!.role) ? db.select({ id: ownerAlertsTable.id }).from(ownerAlertsTable).where(eq(ownerAlertsTable.status, "open")) : db.select({ id: ownerAlertsTable.id }).from(ownerAlertsTable).where(and(eq(ownerAlertsTable.status, "open"), inArray(ownerAlertsTable.category, managerVisibleAlertCategories))),
+    db.select({ id: contentFlagsTable.id }).from(contentFlagsTable).where(eq(contentFlagsTable.status, "pending")),
   ]);
   const countRole = (roles: string[]) => users.filter((u: any) => roles.includes(String(u.role).toLowerCase())).length;
   const totalRevenue = payments.reduce((sum: number, payment: any) => sum + (payment.status === "paid" ? parseFloat(payment.amount ?? "0") : 0), 0);
@@ -257,6 +258,7 @@ router.get("/reports/overview", requireAuth, requireManager, async (req, res) =>
     attendanceRecordCount: attendance.length,
     presentAttendanceCount: attendance.filter((a: any) => String(a.status).toLowerCase() === "present").length,
     openAlertCount: alerts.length,
+    pendingContentModerationCount: pendingFlags.length,
     pendingTransferCount: Number(transferQueue.rows[0]?.count ?? 0),
     pendingReportReviewCount: Number(reportQueue.rows[0]?.count ?? 0),
     paidPayments: payments.filter((p: any) => p.status === "paid").length,
