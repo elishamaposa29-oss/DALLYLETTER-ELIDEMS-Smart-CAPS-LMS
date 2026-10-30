@@ -5,10 +5,12 @@ import { useEffect } from "react";
 
 export function ProtectedRoute({
   children,
-  allowedRoles
+  allowedRoles,
+  allowManagerStaff = false
 }: {
   children: React.ReactNode;
   allowedRoles?: string[];
+  allowManagerStaff?: boolean;
 }) {
   const { user, isLoading } = useAuth();
   const [, setLocation] = useLocation();
@@ -23,7 +25,7 @@ export function ProtectedRoute({
         // without adding an unsupported role to the generated frontend type.
         const role = String(user.role).toLowerCase().replace(/[ -]+/g, "_");
 
-        if (allowedRoles && !allowedRoles.includes(role) && !((["admin","platform_owner"].includes(role)) && allowedRoles.includes("owner"))) {
+        if (allowedRoles && !allowedRoles.includes(role) && !((["admin","platform_owner"].includes(role)) && allowedRoles.includes("owner")) && !(allowManagerStaff && role === "teacher" && user.isManager === true)) {
           if (role === "student" || role === "prefect") setLocation("/");
           else if (role === "teacher") setLocation("/teacher");
           else if (["manager","senior_manager"].includes(role)) setLocation("/manager");
@@ -33,13 +35,13 @@ export function ProtectedRoute({
         }
       }
     }
-  }, [user, isLoading, allowedRoles, setLocation]);
+  }, [user, isLoading, allowedRoles, allowManagerStaff, setLocation]);
 
   const role = user ? String(user.role).toLowerCase().replace(/[ -]+/g, "_") : undefined;
   const hasAllowedRole =
     !allowedRoles ||
     (role !== undefined &&
-      (allowedRoles.includes(role) || (["admin","platform_owner"].includes(role) && allowedRoles.includes("owner"))));
+      (allowedRoles.includes(role) || (["admin","platform_owner"].includes(role) && allowedRoles.includes("owner")) || (allowManagerStaff && role === "teacher" && user?.isManager === true)));
 
   if (isLoading || !user || !hasAllowedRole || user.isBlocked) {
     return (
