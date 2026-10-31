@@ -29,6 +29,8 @@ export async function ensureProfileHubSchema(): Promise<void> {
       created_at timestamptz NOT NULL DEFAULT now()
     )`);
     await client.query("CREATE INDEX IF NOT EXISTS teacher_qualifications_user_idx ON teacher_qualifications(user_id)");
+    await client.query("CREATE TABLE IF NOT EXISTS teacher_qualification_review_history (id bigserial PRIMARY KEY, qualification_id integer NOT NULL REFERENCES teacher_qualifications(id) ON DELETE CASCADE, reviewed_by integer NOT NULL REFERENCES users(id), previous_status text NOT NULL, new_status text NOT NULL, review_note text, created_at timestamptz NOT NULL DEFAULT now())");
+    await client.query("CREATE INDEX IF NOT EXISTS teacher_qualification_review_history_qualification_idx ON teacher_qualification_review_history(qualification_id, created_at DESC)");
     await client.query("ALTER TABLE teacher_qualifications ADD COLUMN IF NOT EXISTS verification_status text NOT NULL DEFAULT 'pending'");
     await client.query("ALTER TABLE teacher_qualifications DROP CONSTRAINT IF EXISTS teacher_qualifications_verification_status_check");
     await client.query("ALTER TABLE teacher_qualifications ADD CONSTRAINT teacher_qualifications_verification_status_check CHECK (verification_status IN ('pending','verified','rejected'))");
