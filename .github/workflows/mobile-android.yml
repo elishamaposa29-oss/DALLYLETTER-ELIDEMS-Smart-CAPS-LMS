@@ -14,7 +14,7 @@ on:
         type: boolean
         default: false
   push:
-    branches: [main]
+    branches: [main, feat/system-sync-audit-repair]
     paths:
       - "artifacts/dallyletter-mobile/**"
       - "artifacts/api-server/**"

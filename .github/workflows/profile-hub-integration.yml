@@ -1,6 +1,17 @@
 name: Profile Hub Staging-Equivalent Integration
 
 on:
+  push:
+    branches: [feat/system-sync-audit-repair]
+    paths:
+      - "artifacts/api-server/**"
+      - "artifacts/dallyletter/**"
+      - "artifacts/dallyletter-mobile/**"
+      - "lib/db/**"
+      - "lib/api-zod/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/profile-hub-integration.yml"
   pull_request:
     branches: [main, staging, production]
     paths:
