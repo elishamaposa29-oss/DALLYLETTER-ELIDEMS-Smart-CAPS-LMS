@@ -158,6 +158,13 @@ export async function ensureProfileHubSchema(): Promise<void> {
     )`);
     await client.query("CREATE INDEX IF NOT EXISTS academic_report_drafts_learner_idx ON academic_report_drafts(learner_id, created_at DESC)");
     await client.query("CREATE INDEX IF NOT EXISTS academic_report_drafts_review_idx ON academic_report_drafts(status, created_at DESC)");
+    await client.query(`CREATE TABLE IF NOT EXISTS manager_action_permissions (
+      manager_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      permissions jsonb NOT NULL DEFAULT '{}'::jsonb,
+      updated_by integer REFERENCES users(id),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query("CREATE INDEX IF NOT EXISTS manager_action_permissions_updated_idx ON manager_action_permissions(updated_at DESC)");
 
     // Additive daily app-access attendance. Separate from class-session attendance.
     await client.query(`CREATE TABLE IF NOT EXISTS user_attendance_preferences (
