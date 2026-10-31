@@ -2,13 +2,14 @@ import { Router } from "express";
 import { pool, db, auditLogsTable, usersTable } from "@workspace/db";
 import { eq, or, inArray } from "drizzle-orm";
 import { requireAuth, isOwnerRole } from "../lib/auth-middleware";
+import { normalizeRole } from "../lib/role-access";
 import { MANAGER_PERMISSION_KEYS, defaultManagerPermissions, getManagerPermissions, type ManagerPermissionMap } from "../lib/manager-permissions";
 
 const router = Router();
 
 router.get("/me", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  const role = String(user.role || "").toLowerCase().replace(/[ -]+/g, "_");
+  const role = normalizeRole(user.role);
   const managerRole = ["manager", "junior_manager", "senior_manager"].includes(role)
     || (role === "teacher" && user.isManager === true);
   if (!isOwnerRole(role) && !managerRole) { res.status(403).json({ error: "Manager permissions are not available for this account." }); return; }
