@@ -30,6 +30,55 @@ export default function AdminSettings() {
     confirmPassword: "",
   });
   const [changingPassword, setChangingPassword] = useState(false);
+  const [managerAccounts, setManagerAccounts] = useState<any[]>([]);
+  const [loadingManagerPermissions, setLoadingManagerPermissions] = useState(true);
+  const [savingManagerId, setSavingManagerId] = useState<number | null>(null);
+  const managerPermissionLabels: Record<string, string> = {
+    transferView: "View transfer requests and approved letters",
+    transferReview: "Approve or reject transfer letters",
+    reportView: "View report review queue",
+    reportCreate: "Create performance report drafts",
+    reportReview: "Approve or reject reports",
+    teacherMonitor: "Monitor teacher activity",
+    studentManage: "Manage learners",
+    prefectManage: "Manage prefects",
+    awardIssue: "Issue awards",
+  };
+
+  useEffect(() => {
+    const token = localStorage.getItem("dallyletter_token");
+    fetch(getApiUrl("/api/manager-permissions"), { headers: { Authorization: `Bearer ${token}` } })
+      .then(async r => { const data = await r.json(); if (!r.ok) throw new Error(data.error || "Unable to load manager permissions"); return data; })
+      .then(data => setManagerAccounts(Array.isArray(data) ? data : []))
+      .catch(err => toast({ variant: "destructive", title: "Manager permissions unavailable", description: err instanceof Error ? err.message : "Unable to load manager permissions." }))
+      .finally(() => setLoadingManagerPermissions(false));
+  }, []);
+
+  const updateManagerPermission = (managerId: number, key: string, enabled: boolean) => {
+    setManagerAccounts(accounts => accounts.map(account => account.id === managerId
+      ? { ...account, permissions: { ...account.permissions, [key]: enabled } }
+      : account));
+  };
+
+  const saveManagerPermissions = async (manager: any) => {
+    setSavingManagerId(manager.id);
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const response = await fetch(getApiUrl("/api/manager-permissions/" + manager.id), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ permissions: manager.permissions }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Could not save manager permissions.");
+      setManagerAccounts(accounts => accounts.map(account => account.id === manager.id ? { ...account, permissions: data.permissions } : account));
+      toast({ title: "Permissions saved", description: "Server-side permissions updated for " + manager.name + "." });
+    } catch (err) {
+      toast({ variant: "destructive", title: "Save failed", description: err instanceof Error ? err.message : "Could not save manager permissions." });
+    } finally {
+      setSavingManagerId(null);
+    }
+  };
 
   useEffect(() => {
     const token = localStorage.getItem("dallyletter_token");
@@ -196,6 +245,38 @@ export default function AdminSettings() {
                 </Button>
               </>
             )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="border-b">
+            <CardTitle>Junior / Senior Manager Permissions</CardTitle>
+            <CardDescription>These grants are saved to the server and enforced by protected APIs. The owner alone can change them. Owner accounts cannot be edited here.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5 pt-5">
+            {loadingManagerPermissions ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading manager accounts…</div>
+              : managerAccounts.length === 0 ? <p className="text-sm text-muted-foreground">No manager accounts found. Assign a manager role first.</p>
+              : managerAccounts.map(manager => (
+                <section key={manager.id} className="rounded-xl border p-4 space-y-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div><h3 className="font-semibold">{manager.name}</h3><p className="text-xs text-muted-foreground">{manager.email} · {String(manager.role).replaceAll("_", " ")}{manager.managerLevel ? " · " + manager.managerLevel : ""}</p></div>
+                    <span className="rounded-full bg-muted px-2 py-1 text-xs">Account #{manager.id}</span>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {Object.entries(managerPermissionLabels).map(([key, label]) => (
+                      <label key={key} className="flex items-start gap-2 rounded-lg border p-3 text-sm">
+                        <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0" checked={manager.permissions?.[key] === true} onChange={event => updateManagerPermission(manager.id, key, event.target.checked)} />
+                        <span>{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <Button onClick={() => void saveManagerPermissions(manager)} disabled={savingManagerId !== null} className="gap-2">
+                    {savingManagerId === manager.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    Save permissions
+                  </Button>
+                </section>
+              ))}
+            <p className="text-xs text-muted-foreground">Junior defaults are restricted for approvals and learner/prefect actions. Senior defaults include those capabilities, but each grant can be adjusted here. Changing a checkbox does not take effect until saved.</p>
           </CardContent>
         </Card>
 
