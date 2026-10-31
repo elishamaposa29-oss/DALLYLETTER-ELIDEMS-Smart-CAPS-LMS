@@ -13,7 +13,7 @@ export default function ManagerDashboard(){
  const colors=useColors(), insets=useSafeAreaInsets();
  const {user,token}=useAuth();
  const role=String(user?.role||"").toLowerCase().replace(/[ -]+/g,"_");
- const allowed=["owner","admin","manager","senior_manager","platform_owner"].includes(role)||Boolean((user as any)?.isManager);
+ const allowed=["owner","admin","manager","junior_manager","jnr_manager","senior_manager","snr_manager","platform_owner"].includes(role)||Boolean((user as any)?.isManager);
  const [panel,setPanel]=useState<Panel>("overview"),[data,setData]=useState<any>(null),[loading,setLoading]=useState(false),[error,setError]=useState("");
  const request=useCallback(async(path:string)=>{
   const response=await fetch(getApiUrl(path),{headers:token?{Authorization:"Bearer "+token}:{}});
