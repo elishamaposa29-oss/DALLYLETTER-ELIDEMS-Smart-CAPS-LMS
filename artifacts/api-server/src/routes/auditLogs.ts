@@ -240,13 +240,13 @@ router.post("/academic-records/reports/drafts", requireAuth, async (req, res): P
       else if (String(row.status).toLowerCase() === "absent") item.absent++;
       byClass.set(item.classId, item);
     }
-    draftContent = { label: termLabel, learner: learner.rows[0].name, records: [...byClass.values()], sourceCount: attendance.rows.length, warning: "Draft only. Verify the term dates and attendance entries before approval." };
+    draftContent = { label: termLabel, learner: learner.rows[0].name, records: [...byClass.values()], subjectPerformance: marksSummary.subjectPerformance, marksScope: marksSummary.scope, sourceCount: attendance.rows.length, warning: "Draft only. Verify the term dates and attendance entries before approval." };
   } else {
     try {
       const ai = await getAIProvider();
       if (ai.name === "mock") { res.status(503).json({ error: "A live AI provider must be configured to draft term-performance commentary. No mock AI report was created." }); return; }
       provider = ai.name;
-      draftContent = { label: termLabel, learner: learner.rows[0].name, factualRecords: { enrollments: enrollments.rows, attendanceCount: attendance.rows.length, awards: awards.rows, marksSummary }, commentary: await ai.analyzeData(sourceSnapshot, "Draft a CAPS-aligned academic performance report using only the supplied verified records. Include subject percentages only from marksSummary, clearly state that mark percentages cover all saved marked records because term dates were not supplied, separate measured facts from interpretations, identify missing data, do not invent marks or attendance, and label this as an unapproved draft. Return concise structured prose.") };
+      draftContent = { label: termLabel, learner: learner.rows[0].name, subjectPerformance: marksSummary.subjectPerformance, marksScope: marksSummary.scope, factualRecords: { enrollments: enrollments.rows, attendanceCount: attendance.rows.length, awards: awards.rows, marksSummary }, commentary: await ai.analyzeData(sourceSnapshot, "Draft a CAPS-aligned academic performance report using only the supplied verified records. Include subject percentages only from marksSummary, clearly state that mark percentages cover all saved marked records because term dates were not supplied, separate measured facts from interpretations, identify missing data, do not invent marks or attendance, and label this as an unapproved draft. Return concise structured prose.") };
     } catch (error) { res.status(503).json({ error: error instanceof Error ? error.message : "Live AI report drafting unavailable." }); return; }
   }
   const saved = await pool.query("INSERT INTO academic_report_drafts (learner_id,created_by,report_type,term_label,source_snapshot,draft_content) VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb) RETURNING id,learner_id,created_by,report_type,term_label,draft_content,status,created_at", [learnerId, creator.id, reportType, termLabel, JSON.stringify(sourceSnapshot), JSON.stringify(draftContent)]);
