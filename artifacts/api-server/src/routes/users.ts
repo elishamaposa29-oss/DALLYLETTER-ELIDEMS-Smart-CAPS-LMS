@@ -829,14 +829,39 @@ router.post("/qualifications/:id/document", requireAuth, (req,res,next):void => 
 });
 
 router.patch("/qualifications/:id/verify", requireAuth, async(req,res):Promise<void>=>{
-  if(!isOwnerRole(req.currentUser!.role)){res.status(403).json({error:"Owner/admin access required."});return;}
+  const reviewer=req.currentUser!;
+  if(!isOwnerRole(reviewer.role)){res.status(403).json({error:"Owner/admin access required."});return;}
   const id=Number(req.params.id);
   const status=req.body?.status;
+  const reviewNote=typeof req.body?.reviewNote==="string"?req.body.reviewNote.trim().slice(0,2000):null;
   if(!Number.isSafeInteger(id)||id<=0){res.status(400).json({error:"Invalid qualification id."});return;}
   if(!["verified","rejected"].includes(status)){res.status(400).json({error:"status must be verified or rejected."});return;}
-  const result=await pool.query("UPDATE teacher_qualifications SET verification_status=$1 WHERE id=$2 RETURNING id,user_id,title,institution,year,verification_status,document_id,created_at",[status,id]);
-  if(!result.rows.length){res.status(404).json({error:"Qualification not found."});return;}
-  res.json(result.rows[0]);
+  if(status==="rejected"&&(!reviewNote||reviewNote.length<3)){res.status(400).json({error:"A rejection note of at least 3 characters is required."});return;}
+  const client=await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const current=await client.query("SELECT id,user_id,title,institution,year,verification_status,document_id,created_at FROM teacher_qualifications WHERE id=$1 FOR UPDATE",[id]);
+    if(!current.rows.length){await client.query("ROLLBACK");res.status(404).json({error:"Qualification not found."});return;}
+    const previousStatus=String(current.rows[0].verification_status||"pending");
+    const updated=await client.query("UPDATE teacher_qualifications SET verification_status=$1 WHERE id=$2 RETURNING id,user_id,title,institution,year,verification_status,document_id,created_at",[status,id]);
+    await client.query("INSERT INTO teacher_qualification_review_history(qualification_id,reviewed_by,previous_status,new_status,review_note) VALUES($1,$2,$3,$4,$5)",[id,reviewer.id,previousStatus,status,reviewNote]);
+    await client.query("COMMIT");
+    res.json(updated.rows[0]);
+  } catch(error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally { client.release(); }
+});
+
+router.get("/qualifications/:id/review-history", requireAuth, async(req,res):Promise<void>=>{
+  const actor=req.currentUser!;
+  const id=Number(req.params.id);
+  if(!Number.isSafeInteger(id)||id<=0){res.status(400).json({error:"Invalid qualification id."});return;}
+  const qualification=await pool.query("SELECT id,user_id FROM teacher_qualifications WHERE id=$1",[id]);
+  if(!qualification.rows.length){res.status(404).json({error:"Qualification not found."});return;}
+  if(!isOwnerRole(actor.role)&&Number(qualification.rows[0].user_id)!==actor.id){res.status(403).json({error:"Only the qualification owner or an authorized owner/admin can view review history."});return;}
+  const history=await pool.query("SELECT h.id,h.qualification_id,h.previous_status,h.new_status,h.review_note,h.created_at,u.name AS reviewer_name FROM teacher_qualification_review_history h JOIN users u ON u.id=h.reviewed_by WHERE h.qualification_id=$1 ORDER BY h.created_at DESC,h.id DESC LIMIT 100",[id]);
+  res.json({qualificationId:id,history:history.rows});
 });
 
 router.get("/qualifications/:id/document", requireAuth, async(req,res):Promise<void>=>{
