@@ -400,7 +400,7 @@ export default function ProfileHub() {
       </section>
       <CardContent className="bg-white/70 p-3 backdrop-blur-xl dark:bg-slate-950/70 sm:p-4">
         <div className="flex max-w-full snap-x snap-mandatory gap-2 overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:thin]" role="tablist" aria-label="Profile sections">
-          {tabs.filter(t=>t!=="Qualifications"||["teacher","manager","junior_manager","senior_manager"].includes(String(profile?.role||(user?.role||"")).toLowerCase())).filter(t=>isOwner||!["Reports","Attendance","Payments","Transfer Letters"].includes(t)).map(t=><Button key={t} role="tab" aria-selected={tab===t} variant={tab===t?"default":"outline"} size="sm" onClick={()=>setTab(t)} className="shrink-0 snap-start whitespace-nowrap">{t}</Button>)}
+          {tabs.filter(t=>t!=="Qualifications"||["teacher","manager","junior_manager","senior_manager"].includes(String(profile?.role||(user?.role||"")).toLowerCase())).filter(t=>t!=="Enrollments"||isOwner).filter(t=>isOwner||!["Reports","Attendance","Payments","Transfer Letters"].includes(t)).map(t=><Button key={t} role="tab" aria-selected={tab===t} variant={tab===t?"default":"outline"} size="sm" onClick={()=>setTab(t)} className="shrink-0 snap-start whitespace-nowrap">{t}</Button>)}
         </div>
       </CardContent>
     </Card>
