@@ -131,7 +131,7 @@ router.post("/academic-records/transfer-requests", requireAuth, async (req, res)
   try {
     const reviewers = await pool.query(
       "SELECT id FROM users WHERE (lower(role)=ANY($1::text[]) OR (lower(role)='teacher' AND is_manager=true AND COALESCE(teacher_application_status,'')<>'pending_review')) AND is_blocked=false AND is_suspended=false ORDER BY id",
-      [["manager", "senior_manager", "owner", "admin", "platform_owner"]],
+      [["manager", "senior_manager", "owner", "platform_owner"]],
     );
     await Promise.all(reviewers.rows.map((reviewer: { id: number }) =>
       enqueueEmailNotification(Number(reviewer.id), "Transfer letter request awaiting review",
