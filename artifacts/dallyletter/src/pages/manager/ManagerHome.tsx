@@ -53,10 +53,20 @@ export default function ManagerHome() {
       const saved = await permissions.json().catch(() => ({}));
       setMyPermissions(saved && typeof saved === "object" ? saved : {});
     } else {
-      setMyPermissions({});
+      const role = String(user?.role || "").trim().toLowerCase().replace(/[ -]+/g, "_");
+      const owner = ["owner", "admin", "platform_owner"].includes(role);
+      const senior = role === "senior_manager" || role === "snr_manager";
+      const manager = owner || ["manager", "junior_manager", "jnr_manager", "senior_manager", "snr_manager"].includes(role) || (role === "teacher" && (user as any)?.isManager === true);
+      // UI defaults only keep role-based tools visible when the preview API is older;
+      // every operation must still pass server-side authorization.
+      setMyPermissions(owner
+        ? { transferView:true, transferReview:true, reportView:true, reportCreate:true, reportReview:true, teacherMonitor:true, studentManage:true, prefectManage:true, awardIssue:true }
+        : manager
+          ? { transferView:true, transferReview:senior, reportView:true, reportCreate:true, reportReview:senior, teacherMonitor:true, studentManage:senior, prefectManage:senior, awardIssue:senior }
+          : {});
       loadErrors.push(permissions.status === 404
-        ? "Manager permissions are unavailable on the connected API version. Review actions remain server-authorized."
-        : `Manager permissions could not be loaded (${permissions.status}).`);
+        ? "Personalised manager permissions are unavailable on this API version; showing role defaults. Server-side authorization remains authoritative."
+        : `Manager permissions could not be loaded (${permissions.status}); showing role defaults where applicable.`);
     }
     if (transfers.ok) {
       const rows = await transfers.json().catch(() => []);
