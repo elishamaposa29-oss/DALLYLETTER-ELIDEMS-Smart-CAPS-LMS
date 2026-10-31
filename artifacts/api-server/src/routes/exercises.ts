@@ -198,14 +198,14 @@ router.post("/:id/archive",requireAuth,async(req,res):Promise<void>=>{
     const [exercise]=await tx.select({id:exercisesTable.id,createdBy:exercisesTable.createdBy,status:exercisesTable.status}).from(exercisesTable).where(eq(exercisesTable.id,exerciseId)).for("update");
     if(!exercise)return {kind:"missing" as const};
     if(!canEditExercise(user,exercise.createdBy))return {kind:"forbidden" as const};
-    if(exercise.status==="archived")return {kind:"archived" as const};
+    if(exercise.status==="archived")return {kind:"archived" as const,alreadyArchived:true};
     const [updated]=await tx.update(exercisesTable).set({status:"archived"}).where(eq(exercisesTable.id,exerciseId)).returning({id:exercisesTable.id,status:exercisesTable.status});
     await tx.insert(auditLogsTable).values({performedBy:user.id,action:"exercise.archived",category:"academic",targetType:"exercise",targetId:exerciseId,details:JSON.stringify({previousStatus:exercise.status,submissionsPreserved:true})});
-    return {kind:"archived" as const,exercise:updated};
+    return {kind:"archived" as const,alreadyArchived:false,exercise:updated};
   });
   if(outcome.kind==="missing"){res.status(404).json({error:"Exercise not found"});return;}
   if(outcome.kind==="forbidden"){res.status(403).json({error:"You cannot archive this exercise"});return;}
-  res.json({id:exerciseId,status:"archived",alreadyArchived:!outcome.exercise});
+  res.json({id:exerciseId,status:"archived",alreadyArchived:outcome.alreadyArchived});
 });
 
 router.post("/:id/questions",requireAuth,async(req,res):Promise<void>=>{
