@@ -195,6 +195,10 @@ router.post("/academic-records/transfer-requests", requireAuth, async (req, res)
   ];
   const missingField = requiredFormFields.find(([key]) => typeof formData[key] !== "string" || !String(formData[key]).trim());
   if (missingField) { res.status(400).json({ error: missingField[1] + " is required." }); return; }
+  if (formData.dob && calculateAgeOnDate(formData.dob, formData.effectiveDate || new Date()) === null) {
+    res.status(400).json({ error: "Enter a valid date of birth that is not after the effective transfer date." });
+    return;
+  }
   if (JSON.stringify(formData).length > 180_000) { res.status(413).json({ error: "Transfer application attachments or form data exceed the allowed size." }); return; }
   // Serialize submissions per learner so rapid taps/retries cannot create duplicate pending requests.
   const client = await pool.connect();
