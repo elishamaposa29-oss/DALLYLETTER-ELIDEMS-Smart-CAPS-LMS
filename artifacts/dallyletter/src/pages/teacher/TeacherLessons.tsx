@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Plus, Trash2, Video, Image as ImageIcon, Headphones, FileText, BookOpen, Upload, X, ClipboardList, ClipboardCheck, Bell, Users, Clock, ListFilter, ArrowDownUp, Maximize2 } from "lucide-react";
+import { Loader2, Plus, Trash2, Video, Image as ImageIcon, Headphones, FileText, BookOpen, Upload, X, ClipboardList, ClipboardCheck, Bell, Users, Clock, ListFilter, ArrowDownUp, Maximize2, Archive } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -69,6 +69,30 @@ export default function TeacherLessons() {
   const [permissionRequests, setPermissionRequests] = useState<any[]>([]);
   const [myPermissionRequests, setMyPermissionRequests] = useState<any[]>([]);
   const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("dallyletter_token") ?? ""}` });
+  const openExerciseManager = async (lessonId:number) => {
+    try {
+      const response = await fetch(getApiUrl(`/api/exercises/lessons/${lessonId}/exercises`), { headers: authHeaders() });
+      const data = await response.json().catch(() => []);
+      if (!response.ok) throw new Error(data.error || "Could not load lesson exercises");
+      setMarkingExercises(Array.isArray(data) ? data : []);
+      setMarkingLessonId(lessonId);
+    } catch (error) {
+      toast({ variant:"destructive", title:"Exercise list unavailable", description:error instanceof Error ? error.message : "Try again." });
+    }
+  };
+  const archiveExercise = async (exerciseId:number) => {
+    if (!window.confirm("Archive this exercise? Learner submissions and historical report records will be preserved.")) return;
+    try {
+      const response = await fetch(getApiUrl(`/api/exercises/${exerciseId}/archive`), { method:"POST", headers:authHeaders() });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Could not archive exercise");
+      setMarkingExercises(rows => rows.map(row => row.id === exerciseId ? { ...row, status:"archived" } : row));
+      queryClient.invalidateQueries({ queryKey:getListLessonsQueryKey() });
+      toast({ title:"Exercise archived", description:"Submissions and historical academic reports were preserved." });
+    } catch (error) {
+      toast({ variant:"destructive", title:"Archive failed", description:error instanceof Error ? error.message : "Try again." });
+    }
+  };
   const loadLessonRequests = async () => { const r=await fetch(getApiUrl("/api/achievements/lesson-requests"),{headers:authHeaders()}); if(r.ok)setLessonRequests(await r.json()); };
   const loadPermissionRequests = async () => { const r=await fetch(getApiUrl("/api/content-permissions"),{headers:authHeaders()}); if(r.ok)setPermissionRequests(await r.json()); };
   const loadMyPermissionRequests = async () => { const r=await fetch(getApiUrl("/api/content-permissions/mine"),{headers:authHeaders()}); if(r.ok)setMyPermissionRequests(await r.json()); };
@@ -408,26 +432,22 @@ export default function TeacherLessons() {
         <Dialog open={markingLessonId !== null} onOpenChange={(open) => { if (!open) { setMarkingLessonId(null); setMarkingExercises([]); } }}>
           <DialogContent className="sm:max-w-[520px]">
             <DialogHeader>
-              <DialogTitle>Choose an exercise to mark</DialogTitle>
-              <DialogDescription>This lesson has multiple published exercises. Select the one whose learner submissions you want to review.</DialogDescription>
+              <DialogTitle>Manage lesson exercises</DialogTitle>
+              <DialogDescription>Open published exercises for marking or archive an exercise. Archiving hides it from learners without deleting submissions or report history.</DialogDescription>
             </DialogHeader>
             <div className="space-y-2">
               {markingExercises.map((exercise) => (
-                <Button
-                  key={exercise.id}
-                  type="button"
-                  variant="outline"
-                  className="h-auto w-full justify-between gap-4 p-4 text-left"
-                  onClick={() => window.location.assign(`/teacher/exercises/${exercise.id}/mark`)}
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium">{exercise.title}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {exercise.totalMarks ? `${exercise.totalMarks} marks` : "Published exercise"}
-                    </span>
-                  </span>
-                  <ClipboardCheck className="h-4 w-4 shrink-0" />
-                </Button>
+                <div key={exercise.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{exercise.title}</p>
+                    <p className="text-xs text-muted-foreground">{exercise.totalMarks ? `${exercise.totalMarks} marks` : "Exercise"} · {exercise.status || "draft"}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {exercise.status === "published" && <Button type="button" size="sm" variant="outline" onClick={() => window.location.assign(`/teacher/exercises/${exercise.id}/mark`)}><ClipboardCheck className="mr-2 h-4 w-4"/>Mark</Button>}
+                    {exercise.status !== "archived" && <Button type="button" size="sm" variant="outline" onClick={() => void archiveExercise(exercise.id)}><Archive className="mr-2 h-4 w-4"/>Archive</Button>}
+                    {exercise.status === "archived" && <Badge variant="secondary">Archived</Badge>}
+                  </div>
+                </div>
               ))}
             </div>
           </DialogContent>
@@ -535,6 +555,9 @@ export default function TeacherLessons() {
                     >
                       <ClipboardCheck className="h-4 w-4" />
                       Mark Submissions
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => void openExerciseManager(lesson.id)}>
+                      <Archive className="h-4 w-4" />Manage exercises
                     </Button>
                     <Button
                       variant="outline"
