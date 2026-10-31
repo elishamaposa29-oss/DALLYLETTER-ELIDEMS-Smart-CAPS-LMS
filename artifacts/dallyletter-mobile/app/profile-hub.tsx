@@ -15,6 +15,17 @@ const TABS = ["Overview","Qualifications","Subjects","Enrollments","Achievements
 type Tab = typeof TABS[number];
 type Row = Record<string, any>;
 
+function calculateAgeOnDate(dateOfBirth: string, asOf: Date = new Date()): number | null {
+  const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(dateOfBirth);
+  if (!match) return null;
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+  const birth = new Date(year, month - 1, day);
+  if (birth.getFullYear() !== year || birth.getMonth() + 1 !== month || birth.getDate() !== day) return null;
+  let age = asOf.getFullYear() - year;
+  if (asOf.getMonth() + 1 < month || (asOf.getMonth() + 1 === month && asOf.getDate() < day)) age -= 1;
+  return age >= 0 ? age : null;
+}
+
 export default function MobileProfileHub() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -50,6 +61,20 @@ export default function MobileProfileHub() {
   const [attendancePeriod,setAttendancePeriod] = useState<"Daily"|"Weekly"|"Monthly"|"Termly">("Weekly");
   const [transferReason,setTransferReason] = useState("");
   const [transferForm,setTransferForm] = useState<Row>({currentSchool:"Elidems Schools",receivingSchool:"",grade:"Grade 8 / Form 1",academicYear:String(new Date().getFullYear()),learnerName:"",dob:"",gender:"Male",admissionNo:"",emisNo:"",average:"",conduct:"Excellent",reasonType:"Family Relocation",reasonDetail:"",guardianName:"",relationship:"Father",guardianId:"",guardianPhone:"",guardianEmail:"",address:"",effectiveDate:new Date().toISOString().slice(0,10)});
+
+  useEffect(() => {
+    if (!isOwn || !token) return;
+    let active = true;
+    void fetch(getApiUrl("/api/academic-records/current-year"), { headers: { Authorization: "Bearer " + token } })
+      .then(async response => response.ok ? response.json() : null)
+      .then(data => {
+        if (active && /^\\d{4}$/.test(String(data?.academicYear ?? ""))) {
+          setTransferForm(current => ({ ...current, academicYear: String(data.academicYear) }));
+        }
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [isOwn, token]);
   const [email,setEmail] = useState("");
   const [otp,setOtp] = useState("");
   const [emailVerified,setEmailVerified] = useState(false);
@@ -319,7 +344,7 @@ export default function MobileProfileHub() {
       {tab==="Payments"&&<View style={card}><Text style={{fontSize:17,fontWeight:"800",color:colors.foreground,marginBottom:8}}>Recorded school payments</Text><Text style={{color:colors.mutedForeground,marginBottom:8}}>These are payment ledger records, not payout preferences. A reported or pending payment is not proof that fees have been cleared.</Text>{paymentRecords.map((payment:Row)=><View key={payment.id} style={{borderTopWidth:1,borderTopColor:colors.border,paddingVertical:10}}>{line("Payment period",String(payment.month||"")+" "+String(payment.year||""))}{line("Amount",String(payment.currency||"USD")+" "+Number(payment.amount||0).toFixed(2))}{line("Status",payment.status||"Not recorded")}{line("Recorded",payment.createdAt?new Date(payment.createdAt).toLocaleDateString():"—")}{line("Reference / notes",payment.notes||"—")}</View>)}{!paymentRecords.length&&<Text style={{color:colors.mutedForeground}}>No payment records are available for this account.</Text>}</View>}
       {tab==="Transfer Letters"&&<View style={card}><Text style={{fontSize:18,fontWeight:"900",color:colors.foreground,marginBottom:6}}>Dallyletter Elidems · Complete Transfer Letter</Text><Text style={{color:colors.mutedForeground,marginBottom:12}}>Every signed-in user can complete this official transfer template and submit a request. Only managers and owners can approve or reject.</Text>
       {canReviewTransferLetters&&<View style={{borderWidth:1,borderColor:colors.border,borderRadius:12,padding:12,marginBottom:12}}><Text style={{fontWeight:"900",color:colors.foreground,marginBottom:8}}>Manager / Owner approval queue</Text>{transferRequests.map((r:Row)=><View key={r.id} style={{borderTopWidth:1,borderColor:colors.border,paddingVertical:10}}>{line("Learner",r.learner_name||("Learner #"+r.learner_id))}{line("Status",r.status)}{line("Reason",r.reason)}{r.status==="pending"&&<View style={{flexDirection:"row",gap:8,flexWrap:"wrap"}}>{button("Approve",()=>void act(async()=>{await api("/api/academic-records/transfer-requests/"+r.id+"/review",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:"approved"})});setTransferRequests(await api("/api/academic-records/transfer-requests"));setMessage("Transfer application approved.");}))}{button("Reject",()=>void act(async()=>{await api("/api/academic-records/transfer-requests/"+r.id+"/review",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:"rejected",note:"Please contact the school office for the rejection reason and next steps."})});setTransferRequests(await api("/api/academic-records/transfer-requests"));setMessage("Transfer application rejected.");}))}</View>}</View>)}</View>}
-      {isOwn&&<><Text style={{fontWeight:"800",color:colors.foreground,marginBottom:8}}>Complete the application</Text>{([["currentSchool","Current school"],["receivingSchool","Receiving school"],["learnerName","Learner full name"],["grade","Grade / Form"],["academicYear","Academic year"],["dob","Date of birth"],["admissionNo","Admission number"],["emisNo","EMIS number"],["average","Last term average %"],["guardianName","Parent / guardian name"],["guardianId","Parent / guardian ID"],["guardianPhone","Parent / guardian phone"],["guardianEmail","Parent / guardian email"],["address","Physical address"],["effectiveDate","Effective transfer date"]] as string[][]).map(([key,label])=><View key={key} style={{marginBottom:8}}><Text style={{fontSize:11,fontWeight:"800",color:colors.mutedForeground,marginBottom:3}}>{label.toUpperCase()}</Text><TextInput value={String(transferForm[key]||"")} onChangeText={v=>setTransferForm(old=>({...old,[key]:v}))} placeholder={label} placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:8,padding:10,color:colors.foreground}} /></View>)}
+      {isOwn&&<><Text style={{fontWeight:"800",color:colors.foreground,marginBottom:8}}>Complete the application</Text>{([["currentSchool","Current school"],["receivingSchool","Receiving school"],["learnerName","Learner full name"],["grade","Grade / Form"],["academicYear","Academic year"],["dob","Date of birth"],["admissionNo","Admission number"],["emisNo","EMIS number"],["average","Last term average %"],["guardianName","Parent / guardian name"],["guardianId","Parent / guardian ID"],["guardianPhone","Parent / guardian phone"],["guardianEmail","Parent / guardian email"],["address","Physical address"],["effectiveDate","Effective transfer date"]] as string[][]).map(([key,label])=><View key={key} style={{marginBottom:8}}><Text style={{fontSize:11,fontWeight:"800",color:colors.mutedForeground,marginBottom:3}}>{label.toUpperCase()}</Text><TextInput value={String(transferForm[key]||"")} onChangeText={v=>setTransferForm(old=>({...old,[key]:v}))} placeholder={key==="dob"?"YYYY-MM-DD":label} placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:8,padding:10,color:colors.foreground}} />{key==="dob"&&<Text style={{fontSize:11,color:colors.mutedForeground,marginTop:4}}>{calculateAgeOnDate(String(transferForm.dob||""))===null?"Age appears after a valid date of birth is entered":"Current age: "+calculateAgeOnDate(String(transferForm.dob||""))+" years"}</Text>}</View>)}
       <Text style={{fontWeight:"700",color:colors.foreground}}>Gender / conduct / relationship</Text><View style={{flexDirection:"row",flexWrap:"wrap",gap:7,marginVertical:8}}>{[["gender","Male"],["gender","Female"],["conduct","Excellent"],["conduct","Very Good"],["conduct","Good"],["conduct","Satisfactory"],["relationship","Father"],["relationship","Mother"],["relationship","Guardian"]].map(([k,v])=><TouchableOpacity key={k+v} onPress={()=>setTransferForm(old=>({...old,[k]:v}))} style={{borderWidth:1,borderColor:transferForm[k]===v?colors.primary:colors.border,borderRadius:16,paddingHorizontal:10,paddingVertical:7}}><Text style={{color:colors.foreground,fontSize:12}}>{v}</Text></TouchableOpacity>)}</View>
       <Text style={{fontSize:11,fontWeight:"800",color:colors.mutedForeground}}>REASON CATEGORY</Text><View style={{flexDirection:"row",flexWrap:"wrap",gap:6,marginVertical:8}}>{["Family Relocation","Seeking Better Academic Opportunities","Medical Reasons","Change of Guardianship","Financial Reasons","Disciplinary Transfer","Other"].map(v=><TouchableOpacity key={v} onPress={()=>setTransferForm(old=>({...old,reasonType:v}))} style={{borderWidth:1,borderColor:transferForm.reasonType===v?colors.primary:colors.border,borderRadius:16,padding:7}}><Text style={{fontSize:11,color:colors.foreground}}>{v}</Text></TouchableOpacity>)}</View>
       <TextInput multiline maxLength={1800} value={String(transferForm.reasonDetail||"")} onChangeText={v=>setTransferForm(old=>({...old,reasonDetail:v}))} placeholder="Explain details of the transfer" placeholderTextColor={colors.mutedForeground} style={{minHeight:80,borderWidth:1,borderColor:colors.border,borderRadius:8,padding:10,color:colors.foreground,marginBottom:10}} />
