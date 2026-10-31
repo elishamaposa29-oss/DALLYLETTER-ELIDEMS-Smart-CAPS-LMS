@@ -15,14 +15,20 @@ router.post("/push/subscriptions", requireAuth, async (req, res): Promise<void> 
   const endpoint = typeof req.body?.endpoint === "string" ? req.body.endpoint.trim() : "";
   const p256dh = typeof req.body?.keys?.p256dh === "string" ? req.body.keys.p256dh.trim() : "";
   const auth = typeof req.body?.keys?.auth === "string" ? req.body.keys.auth.trim() : "";
-  if (!endpoint || !/^https:\/\//i.test(endpoint) || endpoint.length > 4096 || !p256dh || !auth) {
-    res.status(400).json({ error: "A valid push subscription is required" }); return;
+  let parsedEndpoint: URL | null = null;
+  try { parsedEndpoint = new URL(endpoint); } catch { parsedEndpoint = null; }
+  if (!parsedEndpoint || parsedEndpoint.protocol !== "https:" || endpoint.length > 4096 ||
+      !/^[A-Za-z0-9_-]{16,256}$/.test(p256dh) || !/^[A-Za-z0-9_-]{16,128}$/.test(auth)) {
+    res.status(400).json({ error: "A valid HTTPS push endpoint and Web Push keys are required" }); return;
   }
-  await pool.query(`
+  const saved = await pool.query(`
     INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
     VALUES ($1,$2,$3,$4)
-    ON CONFLICT (endpoint) DO UPDATE SET user_id = EXCLUDED.user_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth, updated_at = now()
+    ON CONFLICT (endpoint) DO UPDATE SET p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth, updated_at = now()
+    WHERE push_subscriptions.user_id = EXCLUDED.user_id
+    RETURNING user_id
   `, [userId, endpoint, p256dh, auth]);
+  if (!saved.rowCount) { res.status(409).json({ error: "This push endpoint is already registered to another account." }); return; }
   res.status(201).json({ ok: true });
 });
 
@@ -34,11 +40,14 @@ router.post("/push/expo-subscriptions", requireAuth, async (req, res): Promise<v
   }
   // Native Expo tokens share the durable subscription table but are explicitly
   // tagged so the dispatcher never attempts Web Push encryption on them.
-  await pool.query(`
+  const saved = await pool.query(`
     INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
     VALUES ($1,$2,'expo','expo')
-    ON CONFLICT (endpoint) DO UPDATE SET user_id = EXCLUDED.user_id, p256dh = 'expo', auth = 'expo', updated_at = now()
+    ON CONFLICT (endpoint) DO UPDATE SET p256dh = 'expo', auth = 'expo', updated_at = now()
+    WHERE push_subscriptions.user_id = EXCLUDED.user_id
+    RETURNING user_id
   `, [req.currentUser!.id, token]);
+  if (!saved.rowCount) { res.status(409).json({ error: "This Expo push token is already registered to another account." }); return; }
   res.status(201).json({ ok: true });
 });
 
