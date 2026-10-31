@@ -1,11 +1,11 @@
 import { Buffer } from "node:buffer";
 
 function ascii(value: string): string {
-  return value.normalize("NFKD").replace(/[\\u0300-\\u036f]/g, "").replace(/[^\\x20-\\x7E]/g, "?");
+  return value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7E]/g, "?");
 }
 
 function escapePdf(value: string): string {
-  return ascii(value).replaceAll("\\\\", "\\\\\\\\").replaceAll("(", "\\\\(").replaceAll(")", "\\\\)");
+  return ascii(value).replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)");
 }
 
 /** Build a dependency-free multi-page PDF using only server-provided record data. */
@@ -46,21 +46,21 @@ export function createTransferLetterPdf(lines: string[]): Buffer {
       ops.push("(" + escapePdf(line) + ") Tj");
     });
     ops.push("ET");
-    const stream = ops.join("\\n");
+    const stream = ops.join("\n");
     objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 " + fontObjectId + " 0 R >> >> /Contents " + contentId + " 0 R >>");
-    objects.push("<< /Length " + Buffer.byteLength(stream, "ascii") + " >>\\nstream\\n" + stream + "\\nendstream");
+    objects.push("<< /Length " + Buffer.byteLength(stream, "ascii") + " >>\nstream\n" + stream + "\nendstream");
   });
   objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
 
-  let pdf = "%PDF-1.4\\n%----\\n";
+  let pdf = "%PDF-1.4\n%----\n";
   const offsets: number[] = [0];
   objects.forEach((object, index) => {
     offsets.push(Buffer.byteLength(pdf, "ascii"));
-    pdf += (index + 1) + " 0 obj\\n" + object + "\\nendobj\\n";
+    pdf += (index + 1) + " 0 obj\n" + object + "\nendobj\n";
   });
   const xrefOffset = Buffer.byteLength(pdf, "ascii");
-  pdf += "xref\\n0 " + (objects.length + 1) + "\\n0000000000 65535 f \\n";
-  for (const offset of offsets.slice(1)) pdf += String(offset).padStart(10, "0") + " 00000 n \\n";
-  pdf += "trailer\\n<< /Size " + (objects.length + 1) + " /Root 1 0 R >>\\nstartxref\\n" + xrefOffset + "\\n%%EOF";
+  pdf += "xref\n0 " + (objects.length + 1) + "\n0000000000 65535 f \n";
+  for (const offset of offsets.slice(1)) pdf += String(offset).padStart(10, "0") + " 00000 n \n";
+  pdf += "trailer\n<< /Size " + (objects.length + 1) + " /Root 1 0 R >>\nstartxref\n" + xrefOffset + "\n%%EOF";
   return Buffer.from(pdf, "ascii");
 }
