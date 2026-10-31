@@ -1,6 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
   exercisesTable, exerciseAnswersTable, exerciseOptionsTable, exerciseQuestionsTable,
@@ -13,6 +13,7 @@ import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllow
 
 const router = Router();
 const learnerRole = "student";
+const MAX_EXERCISES_PER_LESSON = 20;
 const questionTypes = new Set(["input", "poll", "drawbox"]);
 const exerciseQuestionMediaUpload = multer({
   storage: multer.diskStorage({
@@ -161,8 +162,50 @@ router.post("/lessons/:lessonId/exercises",requireAuth,async(req,res):Promise<vo
   const [lesson]=await db.select({id:lessonsTable.id,teacherId:lessonsTable.teacherId}).from(lessonsTable).where(eq(lessonsTable.id,lessonId));if(!lesson){res.status(404).json({error:"Lesson not found"});return;} const ownerOrSenior=user.role==="owner"||(user.role==="teacher"&&user.isManager===true&&user.managerLevel==="senior")||lesson.teacherId===user.id; if(!ownerOrSenior&&!(await hasContentPermission(user.id,"lesson",lessonId,"create_exercise"))){res.status(403).json({error:"Create-exercise permission has not been granted by the lesson creator"});return;}
   const {title,instructions,grade,stream,layout}=req.body??{};
   if(typeof title!=="string"||!title.trim()||title.length>300){res.status(400).json({error:"title is required"});return;}
-  const [exercise]=await db.insert(exercisesTable).values({lessonId,createdBy:user.id,title:title.trim(),instructions:typeof instructions==="string"?instructions:null,grade:typeof grade==="string"&&grade.trim()?grade.trim():null,stream:typeof stream==="string"&&stream.trim()?stream.trim():null,layout:layout&&typeof layout==="object"?layout:{version:1,page:"book"}}).returning();
-  res.status(201).json(exercise);
+  const suppliedLayout = layout && typeof layout === "object" && !Array.isArray(layout) ? layout as Record<string, unknown> : {version:1,page:"book"};
+  const normalizedLayout = { ...suppliedLayout, recordForReport: suppliedLayout.recordForReport !== false };
+  const created = await db.transaction(async tx => {
+    const [lockedLesson] = await tx.select({id:lessonsTable.id}).from(lessonsTable).where(eq(lessonsTable.id,lessonId)).for("update");
+    if (!lockedLesson) return {kind:"missing" as const};
+    const [countRow] = await tx.select({count:sql<number>`count(*)::int`}).from(exercisesTable).where(and(eq(exercisesTable.lessonId,lessonId),ne(exercisesTable.status,"archived")));
+    const count = Number(countRow?.count ?? 0);
+    if (count >= MAX_EXERCISES_PER_LESSON) return {kind:"limit" as const,count};
+    const [exercise] = await tx.insert(exercisesTable).values({lessonId,createdBy:user.id,title:title.trim(),instructions:typeof instructions==="string"?instructions:null,grade:typeof grade==="string"&&grade.trim()?grade.trim():null,stream:typeof stream==="string"&&stream.trim()?stream.trim():null,layout:normalizedLayout}).returning();
+    return {kind:"created" as const,exercise};
+  });
+  if (created.kind === "missing") { res.status(404).json({error:"Lesson not found"}); return; }
+  if (created.kind === "limit") { res.status(409).json({error:"This lesson already has the maximum of 20 exercises.",currentCount:created.count,limit:MAX_EXERCISES_PER_LESSON}); return; }
+  res.status(201).json(created.exercise);
+});
+
+router.patch("/:id/reporting",requireAuth,async(req,res):Promise<void>=>{
+  const user=req.currentUser!;if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}
+  const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}
+  if(typeof req.body?.recordForReport!=="boolean"){res.status(400).json({error:"recordForReport must be a boolean"});return;}
+  const [existing]=await db.select({createdBy:exercisesTable.createdBy,layout:exercisesTable.layout}).from(exercisesTable).where(eq(exercisesTable.id,exerciseId));
+  if(!existing){res.status(404).json({error:"Exercise not found"});return;}
+  if(!canEditExercise(user,existing.createdBy)){res.status(403).json({error:"You cannot change report-mark settings for this exercise"});return;}
+  const currentLayout=existing.layout&&typeof existing.layout==="object"&&!Array.isArray(existing.layout)?existing.layout as Record<string,unknown>:{};
+  const [updated]=await db.update(exercisesTable).set({layout:{...currentLayout,recordForReport:req.body.recordForReport}}).where(eq(exercisesTable.id,exerciseId)).returning({id:exercisesTable.id,layout:exercisesTable.layout});
+  if(!updated){res.status(404).json({error:"Exercise not found"});return;}
+  res.json({id:updated.id,recordForReport:req.body.recordForReport});
+});
+
+router.post("/:id/archive",requireAuth,async(req,res):Promise<void>=>{
+  const user=req.currentUser!;if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}
+  const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}
+  const outcome=await db.transaction(async tx=>{
+    const [exercise]=await tx.select({id:exercisesTable.id,createdBy:exercisesTable.createdBy,status:exercisesTable.status}).from(exercisesTable).where(eq(exercisesTable.id,exerciseId)).for("update");
+    if(!exercise)return {kind:"missing" as const};
+    if(!canEditExercise(user,exercise.createdBy))return {kind:"forbidden" as const};
+    if(exercise.status==="archived")return {kind:"archived" as const,alreadyArchived:true};
+    const [updated]=await tx.update(exercisesTable).set({status:"archived"}).where(eq(exercisesTable.id,exerciseId)).returning({id:exercisesTable.id,status:exercisesTable.status});
+    await tx.insert(auditLogsTable).values({performedBy:user.id,action:"exercise.archived",category:"academic",targetType:"exercise",targetId:exerciseId,details:JSON.stringify({previousStatus:exercise.status,submissionsPreserved:true})});
+    return {kind:"archived" as const,alreadyArchived:false,exercise:updated};
+  });
+  if(outcome.kind==="missing"){res.status(404).json({error:"Exercise not found"});return;}
+  if(outcome.kind==="forbidden"){res.status(403).json({error:"You cannot archive this exercise"});return;}
+  res.json({id:exerciseId,status:"archived",alreadyArchived:outcome.alreadyArchived});
 });
 
 router.post("/:id/questions",requireAuth,async(req,res):Promise<void>=>{

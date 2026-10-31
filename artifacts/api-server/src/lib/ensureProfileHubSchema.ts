@@ -29,6 +29,8 @@ export async function ensureProfileHubSchema(): Promise<void> {
       created_at timestamptz NOT NULL DEFAULT now()
     )`);
     await client.query("CREATE INDEX IF NOT EXISTS teacher_qualifications_user_idx ON teacher_qualifications(user_id)");
+    await client.query("CREATE TABLE IF NOT EXISTS teacher_qualification_review_history (id bigserial PRIMARY KEY, qualification_id integer NOT NULL REFERENCES teacher_qualifications(id) ON DELETE CASCADE, reviewed_by integer NOT NULL REFERENCES users(id), previous_status text NOT NULL, new_status text NOT NULL, review_note text, created_at timestamptz NOT NULL DEFAULT now())");
+    await client.query("CREATE INDEX IF NOT EXISTS teacher_qualification_review_history_qualification_idx ON teacher_qualification_review_history(qualification_id, created_at DESC)");
     await client.query("ALTER TABLE teacher_qualifications ADD COLUMN IF NOT EXISTS verification_status text NOT NULL DEFAULT 'pending'");
     await client.query("ALTER TABLE teacher_qualifications DROP CONSTRAINT IF EXISTS teacher_qualifications_verification_status_check");
     await client.query("ALTER TABLE teacher_qualifications ADD CONSTRAINT teacher_qualifications_verification_status_check CHECK (verification_status IN ('pending','verified','rejected'))");
@@ -140,7 +142,12 @@ export async function ensureProfileHubSchema(): Promise<void> {
       updated_at timestamptz NOT NULL DEFAULT now()
     )`);
     await client.query("CREATE INDEX IF NOT EXISTS academic_transfer_requests_learner_idx ON academic_transfer_requests(learner_id, created_at DESC)");
+    await client.query("ALTER TABLE academic_transfer_requests ADD COLUMN IF NOT EXISTS form_data jsonb NOT NULL DEFAULT '{}'::jsonb");
     await client.query("CREATE INDEX IF NOT EXISTS academic_transfer_requests_status_idx ON academic_transfer_requests(status, created_at DESC)");
+    await client.query("ALTER TABLE academic_transfer_requests ADD COLUMN IF NOT EXISTS verification_token_hash text");
+    await client.query("ALTER TABLE academic_transfer_requests ADD COLUMN IF NOT EXISTS verification_token_expires_at timestamptz");
+    await client.query("ALTER TABLE academic_transfer_requests ADD COLUMN IF NOT EXISTS verification_verified_at timestamptz");
+    await client.query("CREATE UNIQUE INDEX IF NOT EXISTS academic_transfer_verification_token_idx ON academic_transfer_requests(verification_token_hash) WHERE verification_token_hash IS NOT NULL");
     await client.query(`CREATE TABLE IF NOT EXISTS academic_report_drafts (
       id bigserial PRIMARY KEY,
       learner_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -158,6 +165,33 @@ export async function ensureProfileHubSchema(): Promise<void> {
     )`);
     await client.query("CREATE INDEX IF NOT EXISTS academic_report_drafts_learner_idx ON academic_report_drafts(learner_id, created_at DESC)");
     await client.query("CREATE INDEX IF NOT EXISTS academic_report_drafts_review_idx ON academic_report_drafts(status, created_at DESC)");
+    await client.query("ALTER TABLE academic_report_drafts ADD COLUMN IF NOT EXISTS period_start date");
+    await client.query("ALTER TABLE academic_report_drafts ADD COLUMN IF NOT EXISTS period_end date");
+    await client.query("CREATE INDEX IF NOT EXISTS academic_report_drafts_period_idx ON academic_report_drafts(learner_id, period_start, period_end)");
+    await client.query(`CREATE TABLE IF NOT EXISTS achievement_award_recommendations (
+      id bigserial PRIMARY KEY,
+      learner_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      achievement_id integer NOT NULL REFERENCES achievements(id) ON DELETE CASCADE,
+      recommended_by integer NOT NULL REFERENCES users(id),
+      recommendation_note text,
+      status text NOT NULL DEFAULT 'pending_senior_review' CHECK (status IN ('pending_senior_review','approved','rejected')),
+      reviewed_by integer REFERENCES users(id),
+      review_note text,
+      reviewed_at timestamptz,
+      awarded_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query("CREATE INDEX IF NOT EXISTS achievement_award_recommendations_review_idx ON achievement_award_recommendations(status, created_at DESC)");
+    await client.query("CREATE INDEX IF NOT EXISTS achievement_award_recommendations_learner_idx ON achievement_award_recommendations(learner_id, created_at DESC)");
+    await client.query("CREATE UNIQUE INDEX IF NOT EXISTS achievement_award_recommendations_pending_unique_idx ON achievement_award_recommendations(learner_id, achievement_id) WHERE status='pending_senior_review'");
+    await client.query(`CREATE TABLE IF NOT EXISTS notification_reads (
+      notification_id integer NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
+      user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      read_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (notification_id, user_id)
+    )`);
+    await client.query("CREATE INDEX IF NOT EXISTS notification_reads_user_idx ON notification_reads(user_id, read_at DESC)");
 
     // Additive daily app-access attendance. Separate from class-session attendance.
     await client.query(`CREATE TABLE IF NOT EXISTS user_attendance_preferences (

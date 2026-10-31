@@ -1,27 +1,39 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { ownerAlertsTable } from "@workspace/db/schema";
-import { eq, desc } from "drizzle-orm";
-import { requireAuth, isOwnerRole } from "../lib/auth-middleware";
+import { eq, desc, inArray, and } from "drizzle-orm";
+import { requireAuth, isOwnerRole, canAccessManager } from "../lib/auth-middleware";
 
 const router = Router();
 
 const isOwnerOrAdmin = (role: string): boolean => isOwnerRole(role);
+const managerVisibleCategories = ["academic", "attendance", "content", "student", "teacher", "moderation", "general"];
 
 router.get("/owner-alerts", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  const rows = await db.select().from(ownerAlertsTable).orderBy(desc(ownerAlertsTable.createdAt));
-  if (!isOwnerOrAdmin(user.role) && !user.isManager) {
-    res.json(rows.filter((r: any) => r.reportedBy === user.id)); return;
+  if (isOwnerOrAdmin(user.role)) {
+    const rows = await db.select().from(ownerAlertsTable).orderBy(desc(ownerAlertsTable.createdAt));
+    res.json(rows); return;
   }
+  if (canAccessManager(user)) {
+    const rows = await db.select().from(ownerAlertsTable).where(inArray(ownerAlertsTable.category, managerVisibleCategories)).orderBy(desc(ownerAlertsTable.createdAt));
+    res.json(rows); return;
+  }
+  const rows = await db.select().from(ownerAlertsTable).where(eq(ownerAlertsTable.reportedBy, user.id)).orderBy(desc(ownerAlertsTable.createdAt));
   res.json(rows);
 });
 
 router.get("/owner-alerts/unread-count", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (!isOwnerOrAdmin(user.role)) { res.json({ count: 0 }); return; }
-  const rows = await db.select().from(ownerAlertsTable).where(eq(ownerAlertsTable.isRead, false));
-  res.json({ count: rows.length });
+  if (isOwnerOrAdmin(user.role)) {
+    const rows = await db.select().from(ownerAlertsTable).where(eq(ownerAlertsTable.isRead, false));
+    res.json({ count: rows.length }); return;
+  }
+  if (canAccessManager(user)) {
+    const rows = await db.select().from(ownerAlertsTable).where(and(eq(ownerAlertsTable.isRead, false), inArray(ownerAlertsTable.category, managerVisibleCategories)));
+    res.json({ count: rows.length }); return;
+  }
+  res.json({ count: 0 });
 });
 
 router.post("/owner-alerts", requireAuth, async (req, res): Promise<void> => {
@@ -42,19 +54,24 @@ router.post("/owner-alerts", requireAuth, async (req, res): Promise<void> => {
 
 router.put("/owner-alerts/:id/read", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (!isOwnerOrAdmin(user.role)) { res.status(403).json({ error: "Forbidden" }); return; }
-  const [row] = await db.update(ownerAlertsTable).set({ isRead: true })
-    .where(eq(ownerAlertsTable.id, parseInt(String(req.params.id)))).returning();
+  const id = parseInt(String(req.params.id));
+  const [existing] = await db.select().from(ownerAlertsTable).where(eq(ownerAlertsTable.id, id)).limit(1);
+  if (!existing) { res.status(404).json({ error: "Alert not found." }); return; }
+  if (!isOwnerOrAdmin(user.role) && (!canAccessManager(user) || !managerVisibleCategories.includes(existing.category))) { res.status(403).json({ error: "You cannot update this alert." }); return; }
+  const [row] = await db.update(ownerAlertsTable).set({ isRead: true }).where(eq(ownerAlertsTable.id, id)).returning();
   res.json(row);
 });
 
 router.put("/owner-alerts/:id/resolve", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (!isOwnerOrAdmin(user.role)) { res.status(403).json({ error: "Forbidden" }); return; }
+  const id = parseInt(String(req.params.id));
+  const [existing] = await db.select().from(ownerAlertsTable).where(eq(ownerAlertsTable.id, id)).limit(1);
+  if (!existing) { res.status(404).json({ error: "Alert not found." }); return; }
+  if (!isOwnerOrAdmin(user.role) && (!canAccessManager(user) || !managerVisibleCategories.includes(existing.category))) { res.status(403).json({ error: "You cannot resolve this alert." }); return; }
   const { resolution } = req.body;
   const [row] = await db.update(ownerAlertsTable)
     .set({ status: "resolved", isRead: true, resolution, resolvedBy: user.id, resolvedAt: new Date() })
-    .where(eq(ownerAlertsTable.id, parseInt(String(req.params.id)))).returning();
+    .where(eq(ownerAlertsTable.id, id)).returning();
   res.json(row);
 });
 

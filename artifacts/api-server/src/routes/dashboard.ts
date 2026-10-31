@@ -5,12 +5,11 @@ import { db, usersTable, lessonsTable, classesTable, studyGroupsTable, paymentsT
 import { canManageAcademicContent, requireAuth, requireOwner } from "../lib/auth-middleware";
 
 const router: IRouter = Router();
-router.use(requireAuth);
 
 // GET /dashboard/stats — Safe platform statistics for authenticated dashboards.
 // Financial/payment totals remain owner-only; academic dashboards must not 403
 // simply because they also use this shared stats endpoint.
-router.get("/dashboard/stats", async (req, res): Promise<void> => {
+router.get("/dashboard/stats", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   const [studentCount] = await db.select({ count: count() }).from(usersTable).where(eq(usersTable.role, "student"));
   const [teacherCount] = await db.select({ count: count() }).from(usersTable).where(eq(usersTable.role, "teacher"));
@@ -55,7 +54,7 @@ router.get("/dashboard/stats", async (req, res): Promise<void> => {
 });
 
 // GET /dashboard/activity — academic staff activity feed.
-router.get("/dashboard/activity", async (req, res): Promise<void> => {
+router.get("/dashboard/activity", requireAuth, async (req, res): Promise<void> => {
   if (!canManageAcademicContent(req.currentUser!)) {
     res.status(403).json({ error: "Academic staff access required" });
     return;

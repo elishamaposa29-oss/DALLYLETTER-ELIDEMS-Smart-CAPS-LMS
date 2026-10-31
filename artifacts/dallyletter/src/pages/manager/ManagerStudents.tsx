@@ -15,6 +15,7 @@ const token = () => localStorage.getItem("dallyletter_token") ?? "";
 
 export default function ManagerStudents() {
   const [students, setStudents] = useState<any[]>([]);
+  const [managerSummary, setManagerSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const { toast } = useToast();
@@ -35,9 +36,11 @@ export default function ManagerStudents() {
   const action=async(id:number, actionName:string)=>{setBusy(id);try{const endpoint = actionName === "unblock" ? `/api/manager/users/${id}/unblock` : `/api/manager/users/${id}/action`; const r=await fetch(getApiUrl(endpoint),{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token()}`},body:JSON.stringify(actionName === "unblock" ? {} : {action:actionName})}); const data=await r.json().catch(()=>({})); if(!r.ok)throw new Error(data.error||"Action failed"); toast({title:"Action applied"}); try { const next=await fetch(getApiUrl("/api/manager/students"),{headers:{Authorization:`Bearer ${token()}`}}); if(next.ok){const refreshed=await next.json().catch(()=>null); if(Array.isArray(refreshed)) setStudents(refreshed);} } catch { /* The moderation action already succeeded; keep the success state and allow a later refresh. */ }}catch(e){toast({variant:"destructive",title:"Action failed",description:e instanceof Error?e.message:"Try again."});}finally{setBusy(null);}};
 
   useEffect(() => {
-    fetch(getApiUrl("/api/manager/students"), { headers: { Authorization: `Bearer ${token()}` } })
+    fetch(getApiUrl("/api/manager/students"), { headers: { Authorization: "Bearer " + token() } })
       .then(r => r.json()).then(d => { setStudents(Array.isArray(d) ? d : []); setLoading(false); })
       .catch(() => setLoading(false));
+    fetch(getApiUrl("/api/manager/dashboard"), { headers: { Authorization: "Bearer " + token() } })
+      .then(r => r.json()).then(d => { if (d && typeof d === "object") setManagerSummary(d); }).catch(() => undefined);
   }, []);
 
   const filtered = students.filter(s => s.name?.toLowerCase().includes(search.toLowerCase()) || s.grade?.toLowerCase().includes(search.toLowerCase()));
@@ -69,6 +72,20 @@ export default function ManagerStudents() {
           </div>
         </div>
 
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card className="border-0 shadow-sm"><CardContent className="p-4">
+            <div className="mb-3 flex items-center justify-between"><h2 className="font-semibold text-slate-900">Learner-related approvals and reports</h2><Badge variant="secondary">{(managerSummary?.reviewQueue || []).filter((q:any)=>["transfer_request","academic_report","alert"].includes(q.type)).length} pending</Badge></div>
+            {(managerSummary?.reviewQueue || []).filter((q:any)=>["transfer_request","academic_report"].includes(q.type)).length===0
+              ? <p className="text-sm text-slate-500">No pending learner transfer requests or report reviews.</p>
+              : <div className="space-y-2">{(managerSummary?.reviewQueue || []).filter((q:any)=>["transfer_request","academic_report"].includes(q.type)).slice(0,5).map((q:any)=><div key={q.id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 p-3"><div className="min-w-0"><p className="text-sm font-medium">{q.title}</p><p className="text-xs text-slate-500">{q.learnerName} · {q.description}</p></div><Link href={q.href}><Button size="sm" variant="outline">Review</Button></Link></div>)}</div>}
+          </CardContent></Card>
+          <Card className="border-0 shadow-sm"><CardContent className="p-4">
+            <h2 className="mb-3 font-semibold text-slate-900">Highest performing learners</h2>
+            {!managerSummary?.topLearners?.length ? <p className="text-sm text-slate-500">No learner activity recorded yet.</p> :
+              <div className="space-y-2">{managerSummary.topLearners.map((s:any,index:number)=><div key={s.id} className="flex items-center gap-3 rounded-lg bg-slate-50 p-2"><span className="w-5 text-xs font-bold text-slate-400">#{index+1}</span><div className="min-w-0 flex-1"><p className="text-sm font-medium">{s.name}</p><p className="text-xs text-slate-500">{s.exerciseSubmissions} exercise · {s.assignmentSubmissions} assignment submissions · {s.averageMarkPercentage == null ? "marks pending" : s.averageMarkPercentage + "% average"}</p></div><Badge variant="secondary"><Award className="mr-1 h-3 w-3"/>{s.badgeCount} awards</Badge></div>)}</div>}
+          </CardContent></Card>
+        </div>
+
         {loading ? <p className="text-center text-slate-400 py-10">Loading…</p> : (
           <div className="grid gap-3">
             {filtered.length === 0 ? (
@@ -91,7 +108,7 @@ export default function ManagerStudents() {
                       <div className="flex items-center gap-3 text-xs text-slate-400">
                         <span className="flex items-center gap-0.5"><Flame className="h-3 w-3 text-orange-400" /> {s.streakDays ?? 0}d streak</span>
                         <span className="flex items-center gap-0.5"><Star className="h-3 w-3 text-amber-400" /> {s.performanceScore ?? 0} pts</span>
-                        <span>{s.badgeCount ?? 0} badges</span>
+                        <span>{s.awardsCount ?? s.badgeCount ?? 0} awards</span><Badge variant={s.alertsCount ? "destructive" : "secondary"}>{s.alertsCount ?? 0} alerts</Badge><span>{s.pendingTransferRequests ?? 0} transfer requests</span><span>{s.pendingReportReviews ?? 0} reports to review</span><span>{(s.exerciseSubmissions ?? 0) + (s.assignmentSubmissions ?? 0)} submissions</span>
                         {s.lastActiveDate && <span>Active: {s.lastActiveDate}</span>}
                       </div>
                     </div>
@@ -115,7 +132,7 @@ export default function ManagerStudents() {
           </div>
         )}
 
-        <Dialog open={Boolean(monitorUser)} onOpenChange={open=>{if(!open)setMonitorUser(null)}}><DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto"><DialogHeader><DialogTitle>Monitor {monitorUser?.name}</DialogTitle></DialogHeader>{monitorLoading?<div className="flex justify-center p-10"><Loader2 className="h-6 w-6 animate-spin"/></div>:monitorData&&<div className="space-y-4"><div className="grid grid-cols-2 sm:grid-cols-4 gap-2">{Object.entries(monitorData.counts??{}).map(([k,v])=><div key={k} className="rounded-lg border p-3 text-center"><p className="font-bold">{String(v)}</p><p className="text-xs text-muted-foreground capitalize">{k}</p></div>)}<div className="rounded-lg border p-3 text-center"><p className="font-bold">#{monitorData.learning?.leaderboardPosition||"—"}</p><p className="text-xs text-muted-foreground">Leaderboard</p></div></div><Card><CardContent className="p-4 space-y-2"><p className="font-semibold">Recent activity</p>{(monitorData.activities??[]).slice(0,60).map((a:any)=><div key={a.id} className="flex items-center gap-2 rounded border p-2"><div className="flex-1 min-w-0"><p className="text-sm">{a.action}</p><p className="text-xs text-muted-foreground">{a.category} · {a.targetType??"activity"}{a.targetId?` #${a.targetId}`:""} · {new Date(a.createdAt).toLocaleString()}</p></div><Button size="sm" variant="outline" onClick={()=>previewActivity(a)}><ExternalLink className="h-3.5 w-3.5"/></Button></div>)}</CardContent></Card><div className="rounded-lg border p-3 space-y-2"><Textarea value={monitorMessage} onChange={e=>setMonitorMessage(e.target.value)} placeholder="Send the learner a private manager message…"/><Button onClick={()=>void sendPrivateMessage()} disabled={monitorSending||!monitorMessage.trim()}><Bell className="mr-2 h-4 w-4"/>Send privately</Button></div></div>}</DialogContent></Dialog>
+        <Dialog open={Boolean(monitorUser)} onOpenChange={open=>{if(!open)setMonitorUser(null)}}><DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto"><DialogHeader><DialogTitle>Monitor {monitorUser?.name}</DialogTitle></DialogHeader><Card><CardContent className="p-4 space-y-2"><p className="font-semibold">Open learner alerts ({monitorUser?.alertsCount ?? 0})</p>{!monitorUser?.alerts?.length?<p className="text-sm text-muted-foreground">No open alerts are linked to this learner.</p>:monitorUser.alerts.map((alert:any)=><div key={alert.id} className="rounded-lg border border-amber-200 bg-amber-50 p-3"><p className="text-sm font-semibold">{alert.title}</p><p className="mt-1 text-xs text-slate-600">{alert.description}</p><p className="mt-1 text-xs text-slate-500">{alert.severity} · {new Date(alert.createdAt).toLocaleString()}</p></div>)}</CardContent></Card>{monitorLoading?<div className="flex justify-center p-10"><Loader2 className="h-6 w-6 animate-spin"/></div>:monitorData&&<div className="space-y-4"><div className="grid grid-cols-2 sm:grid-cols-4 gap-2">{Object.entries(monitorData.counts??{}).map(([k,v])=><div key={k} className="rounded-lg border p-3 text-center"><p className="font-bold">{String(v)}</p><p className="text-xs text-muted-foreground capitalize">{k}</p></div>)}<div className="rounded-lg border p-3 text-center"><p className="font-bold">#{monitorData.learning?.leaderboardPosition||"—"}</p><p className="text-xs text-muted-foreground">Leaderboard</p></div></div><Card><CardContent className="p-4 space-y-2"><p className="font-semibold">Recent activity</p>{(monitorData.activities??[]).slice(0,60).map((a:any)=><div key={a.id} className="flex items-center gap-2 rounded border p-2"><div className="flex-1 min-w-0"><p className="text-sm">{a.action}</p><p className="text-xs text-muted-foreground">{a.category} · {a.targetType??"activity"}{a.targetId?` #${a.targetId}`:""} · {new Date(a.createdAt).toLocaleString()}</p></div><Button size="sm" variant="outline" onClick={()=>previewActivity(a)}><ExternalLink className="h-3.5 w-3.5"/></Button></div>)}</CardContent></Card><div className="rounded-lg border p-3 space-y-2"><Textarea value={monitorMessage} onChange={e=>setMonitorMessage(e.target.value)} placeholder="Send the learner a private manager message…"/><Button onClick={()=>void sendPrivateMessage()} disabled={monitorSending||!monitorMessage.trim()}><Bell className="mr-2 h-4 w-4"/>Send privately</Button></div></div>}</DialogContent></Dialog>
       </div>
     </DashboardLayout>
   );

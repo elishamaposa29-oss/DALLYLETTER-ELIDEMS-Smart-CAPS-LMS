@@ -17,6 +17,7 @@ import { hashPassword, verifyPassword } from "../lib/password-hash";
 import { sendEmail, isEmailConfigured } from "../lib/email-service";
 import { isSmsConfigured, sendSms } from "../lib/sms-service";
 import { enqueueEmailNotification } from "../lib/email-notification-queue";
+import { buildTeacherCvPdf } from "../lib/teacher-cv-pdf";
 
 const router: IRouter = Router();
 
@@ -404,12 +405,45 @@ router.post("/users/me/cover", requireAuth, (req, res, next): void => {
   });
 });
 
+// Build a private CV PDF from the teacher's saved profile and school-verified qualifications.
+async function sendTeacherCvPdf(userId: number, res: any): Promise<void> {
+  await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, cv jsonb NOT NULL DEFAULT '{}'::jsonb, updated_at timestamptz NOT NULL DEFAULT now())");
+  const [userResult, cvResult, qualificationResult, subjectResult] = await Promise.all([
+    pool.query("SELECT id,name,email,role,subject,grade FROM users WHERE id=$1", [userId]),
+    pool.query("SELECT cv FROM teacher_profiles WHERE user_id=$1", [userId]),
+    pool.query("SELECT title,institution,year FROM teacher_qualifications WHERE user_id=$1 AND verification_status='verified' ORDER BY created_at DESC", [userId]),
+    pool.query("SELECT subjects_to_teach FROM teacher_subjects WHERE user_id=$1", [userId]).catch(() => ({ rows: [] as Array<{subjects_to_teach:string[]}> })),
+  ]);
+  const teacher = userResult.rows[0];
+  if (!teacher || String(teacher.role).toLowerCase() !== "teacher") { res.status(404).json({ error: "Teacher profile not found." }); return; }
+  const subjects = Array.isArray(subjectResult.rows[0]?.subjects_to_teach) ? subjectResult.rows[0].subjects_to_teach : [];
+  const pdf = buildTeacherCvPdf({
+    name: teacher.name,
+    email: teacher.email,
+    subject: teacher.subject,
+    grade: teacher.grade,
+    cv: cvResult.rows[0]?.cv ?? {},
+    qualifications: qualificationResult.rows,
+    subjects,
+  });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Disposition", 'attachment; filename="dallyletter-teacher-cv-' + userId + '.pdf"');
+  res.send(pdf);
+}
+
 // Structured CV fields for teacher applications. Only the teacher can edit their own CV.
 router.get("/users/me/teacher-cv", requireAuth, async (req, res): Promise<void> => {
   if (req.currentUser!.role !== "teacher") { res.status(403).json({ error: "Teacher account required" }); return; }
   await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, cv jsonb NOT NULL DEFAULT '{}'::jsonb, updated_at timestamptz NOT NULL DEFAULT now())");
   const result = await pool.query("SELECT cv, updated_at FROM teacher_profiles WHERE user_id = $1", [req.currentUser!.id]);
   res.json(result.rows[0] ?? { cv: {}, updated_at: null });
+});
+
+router.get("/users/me/teacher-cv/pdf", requireAuth, async (req, res): Promise<void> => {
+  if (String(req.currentUser!.role).toLowerCase() !== "teacher") { res.status(403).json({ error: "Teacher account required." }); return; }
+  await sendTeacherCvPdf(req.currentUser!.id, res);
 });
 
 router.get("/users/:id/teacher-cv", requireAuth, async (req, res): Promise<void> => {
@@ -421,6 +455,14 @@ router.get("/users/:id/teacher-cv", requireAuth, async (req, res): Promise<void>
   const result = await pool.query("SELECT cv, updated_at FROM teacher_profiles WHERE user_id = $1", [id]);
   if (!result.rows.length) { res.status(404).json({ error: "Teacher CV not found." }); return; }
   res.json(result.rows[0]);
+});
+
+router.get("/users/:id/teacher-cv/pdf", requireAuth, async (req, res): Promise<void> => {
+  const actor = req.currentUser!;
+  if (!isOwnerRole(actor.role)) { res.status(403).json({ error: "Only the owner may download teacher CVs for review." }); return; }
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid user id." }); return; }
+  await sendTeacherCvPdf(id, res);
 });
 
 router.patch("/users/me/teacher-cv", requireAuth, async (req, res): Promise<void> => {
@@ -787,14 +829,39 @@ router.post("/qualifications/:id/document", requireAuth, (req,res,next):void => 
 });
 
 router.patch("/qualifications/:id/verify", requireAuth, async(req,res):Promise<void>=>{
-  if(!isOwnerRole(req.currentUser!.role)){res.status(403).json({error:"Owner/admin access required."});return;}
+  const reviewer=req.currentUser!;
+  if(!isOwnerRole(reviewer.role)){res.status(403).json({error:"Owner/admin access required."});return;}
   const id=Number(req.params.id);
   const status=req.body?.status;
+  const reviewNote=typeof req.body?.reviewNote==="string"?req.body.reviewNote.trim().slice(0,2000):null;
   if(!Number.isSafeInteger(id)||id<=0){res.status(400).json({error:"Invalid qualification id."});return;}
   if(!["verified","rejected"].includes(status)){res.status(400).json({error:"status must be verified or rejected."});return;}
-  const result=await pool.query("UPDATE teacher_qualifications SET verification_status=$1 WHERE id=$2 RETURNING id,user_id,title,institution,year,verification_status,document_id,created_at",[status,id]);
-  if(!result.rows.length){res.status(404).json({error:"Qualification not found."});return;}
-  res.json(result.rows[0]);
+  if(status==="rejected"&&(!reviewNote||reviewNote.length<3)){res.status(400).json({error:"A rejection note of at least 3 characters is required."});return;}
+  const client=await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const current=await client.query("SELECT id,user_id,title,institution,year,verification_status,document_id,created_at FROM teacher_qualifications WHERE id=$1 FOR UPDATE",[id]);
+    if(!current.rows.length){await client.query("ROLLBACK");res.status(404).json({error:"Qualification not found."});return;}
+    const previousStatus=String(current.rows[0].verification_status||"pending");
+    const updated=await client.query("UPDATE teacher_qualifications SET verification_status=$1 WHERE id=$2 RETURNING id,user_id,title,institution,year,verification_status,document_id,created_at",[status,id]);
+    await client.query("INSERT INTO teacher_qualification_review_history(qualification_id,reviewed_by,previous_status,new_status,review_note) VALUES($1,$2,$3,$4,$5)",[id,reviewer.id,previousStatus,status,reviewNote]);
+    await client.query("COMMIT");
+    res.json(updated.rows[0]);
+  } catch(error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally { client.release(); }
+});
+
+router.get("/qualifications/:id/review-history", requireAuth, async(req,res):Promise<void>=>{
+  const actor=req.currentUser!;
+  const id=Number(req.params.id);
+  if(!Number.isSafeInteger(id)||id<=0){res.status(400).json({error:"Invalid qualification id."});return;}
+  const qualification=await pool.query("SELECT id,user_id FROM teacher_qualifications WHERE id=$1",[id]);
+  if(!qualification.rows.length){res.status(404).json({error:"Qualification not found."});return;}
+  if(!isOwnerRole(actor.role)&&Number(qualification.rows[0].user_id)!==actor.id){res.status(403).json({error:"Only the qualification owner or an authorized owner/admin can view review history."});return;}
+  const history=await pool.query("SELECT h.id,h.qualification_id,h.previous_status,h.new_status,h.review_note,h.created_at,u.name AS reviewer_name FROM teacher_qualification_review_history h JOIN users u ON u.id=h.reviewed_by WHERE h.qualification_id=$1 ORDER BY h.created_at DESC,h.id DESC LIMIT 100",[id]);
+  res.json({qualificationId:id,history:history.rows});
 });
 
 router.get("/qualifications/:id/document", requireAuth, async(req,res):Promise<void>=>{

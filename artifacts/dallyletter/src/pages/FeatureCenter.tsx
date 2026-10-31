@@ -29,8 +29,14 @@ const features:Feature[] = [
  {title:"Manager notifications",description:"Review and manage role-authorized notifications.",href:"/manager/notifications",icon:Bell,tone:"bg-amber-50 text-amber-700",tag:"Management",roles:["manager","senior_manager"]},
  {title:"Manager assignments",description:"Open assignment oversight tools.",href:"/manager/assignments",icon:ClipboardList,tone:"bg-indigo-50 text-indigo-700",tag:"Management",roles:["manager","senior_manager"]},
  {title:"Connect",description:"Open manager-authorized school communication.",href:"/manager/chat",icon:MessageSquare,tone:"bg-rose-50 text-rose-700",tag:"Management",roles:["manager","senior_manager"]},
- {title:"Prefect management",description:"Review and manage prefect assignments.",href:"/manager/prefects",icon:ShieldCheck,tone:"bg-orange-50 text-orange-700",tag:"Management",roles:["manager","senior_manager"]},
+ {title:"Achievement award review",description:"Review achievement recommendations and approve or decline awards according to manager authority.",href:"/admin/achievements",icon:ShieldCheck,tone:"bg-amber-50 text-amber-700",tag:"Approval",roles:["manager","senior_manager","owner"]},
+ {title:"Transfer letter approvals",description:"Review learner transfer requests, record decisions and download approved letters.",href:"/manager/transfer-requests",icon:FileCheck2,tone:"bg-amber-50 text-amber-700",tag:"Approval",roles:["manager","senior_manager","owner"]},
+ {title:"Academic report review",description:"Review teacher-prepared academic report drafts before release to learners.",href:"/manager/reports/review",icon:FileText,tone:"bg-violet-50 text-violet-700",tag:"Approval",roles:["manager","senior_manager","owner"]},
+ {title:"Unified review queue",description:"See pending transfer, report, qualification and achievement decisions in one place.",href:"/manager/review-queue",icon:ClipboardList,tone:"bg-rose-50 text-rose-700",tag:"Approval",roles:["manager","senior_manager","owner"]},
+ {title:"Qualification review history",description:"Open Profile Hub to inspect qualification status and recorded review history.",href:"/profile-hub",icon:ShieldCheck,tone:"bg-cyan-50 text-cyan-700",tag:"Profile",roles:["teacher","manager","senior_manager","owner"]},
+ {title:"Teacher CV PDF",description:"Open your Profile Hub or teacher qualifications area to view and download the verified-record CV.",href:"/profile-hub",icon:FileText,tone:"bg-slate-50 text-slate-700",tag:"Document",roles:["teacher","manager","senior_manager","owner"]},
 ];
+
 
 export default function FeatureCenter(){
  const {user}=useAuth();

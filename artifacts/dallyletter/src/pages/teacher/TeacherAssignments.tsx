@@ -269,7 +269,8 @@ export default function TeacherAssignments() {
                         {sub.status === "graded" ? `${sub.marks}/${viewSubs.assignment.totalMarks}` : "Submitted"}
                       </Badge>
                     </div>
-                    <p className="text-sm text-slate-600 bg-slate-50 rounded-lg p-2 mb-2">{sub.content}</p>
+                    <p className="text-sm text-slate-600 bg-slate-50 rounded-lg p-2 mb-2 whitespace-pre-wrap">{sub.content || "No written answer — attachment submission."}</p>
+                    {sub.fileUrl && <div className="mb-2 rounded-lg border p-3 space-y-2"><p className="text-xs font-semibold text-slate-600">Student attachment{sub.fileName ? `: ${sub.fileName}` : ""}</p><AuthenticatedMedia url={sub.fileUrl} type="document" title={sub.fileName || "Student submission attachment"} /></div>}
                     {sub.feedback && <p className="text-xs text-purple-600 italic">Feedback: {sub.feedback}</p>}
                     {sub.status !== "graded" && (
                       <>

@@ -15,7 +15,16 @@ router.get("/notifications", requireAuth, async (req, res): Promise<void> => {
   const notifications = await db.select().from(notificationsTable)
     .where(or(eq(notificationsTable.recipientId, currentUser.id), isNull(notificationsTable.recipientId)))
     .orderBy(desc(notificationsTable.createdAt));
-  res.json(notifications.map(n => ({ ...n, createdAt: n.createdAt.toISOString() })));
+  const broadcastIds = notifications.filter(n => n.recipientId == null).map(n => n.id);
+  const readReceipts = broadcastIds.length
+    ? await pool.query("SELECT notification_id FROM notification_reads WHERE user_id=$1 AND notification_id=ANY($2::int[])", [currentUser.id, broadcastIds])
+    : { rows: [] as Array<{ notification_id: number }> };
+  const readBroadcastIds = new Set(readReceipts.rows.map(row => Number(row.notification_id)));
+  res.json(notifications.map(n => ({
+    ...n,
+    isRead: n.recipientId == null ? readBroadcastIds.has(Number(n.id)) : n.isRead,
+    createdAt: n.createdAt.toISOString(),
+  })));
 });
 
 // POST /notifications — Create (teacher/owner only)
@@ -51,14 +60,23 @@ router.patch("/notifications/:id/read", requireAuth, async (req, res): Promise<v
   const params = MarkNotificationReadParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
 
+  const [existing] = await db.select().from(notificationsTable)
+    .where(eq(notificationsTable.id, params.data.id)).limit(1);
+  if (!existing || (existing.recipientId != null && Number(existing.recipientId) !== Number(req.currentUser!.id))) {
+    res.status(404).json({ error: "Notification not found" }); return;
+  }
+  if (existing.recipientId == null) {
+    await pool.query(
+      "INSERT INTO notification_reads (notification_id,user_id) VALUES ($1,$2) ON CONFLICT (notification_id,user_id) DO NOTHING",
+      [existing.id, req.currentUser!.id],
+    );
+    res.json({ ...existing, isRead: true, createdAt: existing.createdAt.toISOString() });
+    return;
+  }
   const [notification] = await db.update(notificationsTable)
     .set({ isRead: true })
-    .where(and(
-      eq(notificationsTable.id, params.data.id),
-      or(eq(notificationsTable.recipientId, req.currentUser!.id), isNull(notificationsTable.recipientId)),
-    ))
+    .where(and(eq(notificationsTable.id, params.data.id), eq(notificationsTable.recipientId, req.currentUser!.id)))
     .returning();
-
   if (!notification) { res.status(404).json({ error: "Notification not found" }); return; }
   res.json({ ...notification, createdAt: notification.createdAt.toISOString() });
 });

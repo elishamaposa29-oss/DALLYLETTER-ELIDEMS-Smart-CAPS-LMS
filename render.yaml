@@ -1,58 +1,13 @@
+# Mirrors the existing LMS-4 Render service. Do not Blueprint-sync this PR.
+# Production deployment remains controlled by the existing Render service settings.
 services:
   - type: web
-    name: DALLYLETTER-ELIDEMS-STAGING-PR84
+    name: DALLYLETTER-ELIDEMS-Smart-CAPS-LMS-4
     env: node
     plan: free
-    branch: feat/profile-hub-secure-foundation
-    autoDeploy: false
+    region: oregon
+    branch: main
+    autoDeploy: true
     rootDir: artifacts/api-server
-    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    buildCommand: cd ../.. && pnpm install --frozen-lockfile && pnpm --dir scripts repair:messages-schema && pnpm --dir scripts seed:owner && pnpm --dir artifacts/api-server build
     startCommand: pnpm start
-    healthCheckPath: /api/healthz
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: PORT
-        value: 10000
-      - key: DATABASE_URL
-        sync: false
-      - key: JWT_SECRET
-        sync: false
-      - key: RESEND_API_KEY
-        sync: false
-      - key: EMAIL_FROM
-        sync: false
-      - key: PUBLIC_APP_URL
-        sync: false
-      - key: GOOGLE_CLIENT_ID
-        sync: false
-      - key: TWILIO_ACCOUNT_SID
-        sync: false
-      - key: TWILIO_AUTH_TOKEN
-        sync: false
-      - key: TWILIO_FROM_NUMBER
-        sync: false
-      - key: CORS_ORIGINS
-        value: https://dallyletter-web.onrender.com
-  - type: web
-    name: dallyletter-api-production
-    env: node
-    plan: starter
-    branch: production
-    autoDeploy: false
-    rootDir: artifacts/api-server
-    buildCommand: cd ../.. && pnpm install --frozen-lockfile && pnpm --dir scripts repair:messages-schema && pnpm --dir scripts repair:connect-schema && pnpm --dir scripts seed:owner && pnpm --dir artifacts/api-server build
-    preDeployCommand: cd ../.. && pnpm run db:push && pnpm --dir scripts migrate:exercise-schema
-    startCommand: pnpm start
-    healthCheckPath: /api/healthz
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: PORT
-        value: 10000
-      - key: DATABASE_URL
-        sync: false
-      - key: JWT_SECRET
-        sync: false
-      - key: CORS_ORIGINS
-        value: https://dallyletter-web.onrender.com,https://your-frontend-domain.com

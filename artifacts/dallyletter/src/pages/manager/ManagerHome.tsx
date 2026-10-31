@@ -16,11 +16,17 @@ export default function ManagerHome() {
   const { user } = useAuth();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [pendingTransfers, setPendingTransfers] = useState(0);
+  const [transferError, setTransferError] = useState("");
 
   useEffect(() => {
     fetch(getApiUrl("/api/manager/dashboard"), { headers: { Authorization: `Bearer ${token()}` } })
       .then(r => r.json()).then(d => { setData(d); setLoading(false); })
       .catch(() => setLoading(false));
+    fetch(getApiUrl("/api/academic-records/transfer-requests"), { headers: { Authorization: `Bearer ${token()}` } })
+      .then(async r => { const d = await r.json().catch(() => []); if (!r.ok) throw new Error(d.error || "Could not load transfer approvals"); return d; })
+      .then(d => { setPendingTransfers(Array.isArray(d) ? d.filter((item: any) => item.status === "pending").length : 0); setTransferError(""); })
+      .catch(e => setTransferError(e instanceof Error ? e.message : "Transfer approval count unavailable"));
   }, []);
 
   if (loading) return (
@@ -72,26 +78,32 @@ export default function ManagerHome() {
           <Card className="border-0 shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm">
-                <AlertTriangle className="h-4 w-4 text-red-500" /> Open Alerts
-                {data?.openAlerts?.length > 0 && <Badge className="bg-red-500 text-white text-xs ml-auto">{data.openAlerts.length}</Badge>}
+                <AlertTriangle className="h-4 w-4 text-red-500" /> Manager Action Queue
+                <Badge className="ml-auto bg-red-500 text-white text-xs">{data?.reviewQueue?.length ?? 0} pending</Badge>
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              {!data?.openAlerts?.length ? (
-                <p className="text-slate-400 text-sm text-center py-4">No open alerts</p>
-              ) : (
-                <div className="space-y-2">
-                  {data.openAlerts.slice(0, 4).map((a: any) => (
-                    <div key={a.id} className="flex items-start gap-2 p-2 bg-red-50 rounded-lg">
-                      <AlertTriangle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-xs font-medium text-slate-800">{a.title}</p>
-                        <p className="text-xs text-slate-500">{a.reporterName} · {a.severity}</p>
+            <CardContent className="space-y-3">
+              {!data?.reviewQueue?.length ? <p className="text-slate-400 text-sm text-center py-4">No pending approvals or open alerts.</p> : (
+                <div className="max-h-96 space-y-2 overflow-y-auto">
+                  {data.reviewQueue.map((item:any) => (
+                    <div key={item.id} className="flex items-start gap-2 rounded-lg bg-slate-50 p-3">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold text-slate-800">{item.title}</p>
+                        <p className="text-xs text-slate-500">{item.learnerName || "Platform"} · {String(item.type || "review").replaceAll("_"," ")}</p>
+                        {item.description && <p className="mt-1 line-clamp-2 text-xs text-slate-600">{item.description}</p>}
                       </div>
+                      {item.href && <Link href={item.href}><Button size="sm" variant="outline">Review</Button></Link>}
                     </div>
                   ))}
                 </div>
               )}
+              <div className="flex flex-wrap gap-2 border-t pt-3">
+                <Link href="/manager/transfer-requests"><Button size="sm" variant="outline">Transfer approvals ({data?.reviewCounts?.transferRequests ?? pendingTransfers})</Button></Link>
+                <Link href="/manager/reports/review"><Button size="sm" variant="outline">Report review ({data?.reviewCounts?.performanceReports ?? 0})</Button></Link>
+                <Link href="/manager/notifications"><Button size="sm" variant="outline">All alerts</Button></Link>
+                {transferError && <span className="self-center text-xs text-amber-700">{transferError}</span>}
+              </div>
             </CardContent>
           </Card>
 
@@ -112,9 +124,9 @@ export default function ManagerHome() {
                       <span className="text-xs font-bold text-slate-400 w-5">#{i + 1}</span>
                       <div className="flex-1">
                         <p className="text-xs font-semibold text-slate-800">{t.name}</p>
-                        <p className="text-xs text-slate-400">{t.subject ?? "General"}</p>
+                        <p className="text-xs text-slate-400">{t.subject ?? "General"} · {t.lessonsCount ?? 0} lessons · {t.exercisesCount ?? 0} exercises · {t.assignmentsCount ?? 0} assignments</p><p className="text-xs text-slate-500">{t.markedCount ?? 0} marked · {t.learnersJoined ?? 0} learners joined · {t.learnerSubmissions ?? 0} submissions</p>
                       </div>
-                      <span className="text-xs font-bold text-amber-600">{t.performanceScore ?? 0} pts</span>
+                      <span className="text-xs font-bold text-amber-600">{t.activityScore ?? 0} activity</span>
                     </div>
                   ))}
                 </div>
@@ -123,7 +135,25 @@ export default function ManagerHome() {
           </Card>
         </div>
 
-<ActivityMonitor />
+<Card className="border-0 shadow-sm">
+          <CardHeader><CardTitle className="flex items-center gap-2 text-sm"><AlertTriangle className="h-4 w-4 text-amber-600" /> Verification & Approval Queue</CardTitle></CardHeader>
+          <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div><p className="font-semibold text-slate-800">Transfer letter requests</p><p className="text-xs text-slate-500">Review learner requests and approve or reject them with an audit trail.</p>{transferError && <p role="alert" className="mt-1 text-xs text-red-600">{transferError}</p>}</div>
+            <div className="flex items-center gap-3"><Badge className={pendingTransfers ? "bg-amber-500 text-white" : "bg-slate-100 text-slate-700"}>{pendingTransfers} pending</Badge><Link href="/manager/transfer-requests"><Button size="sm">Review requests</Button></Link></div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-sm">
+          <CardHeader><CardTitle className="flex items-center gap-2 text-sm"><Star className="h-4 w-4 text-emerald-600" /> Highest Performing Learners</CardTitle></CardHeader>
+          <CardContent>
+            {!data?.topLearners?.length ? <p className="py-4 text-center text-sm text-slate-400">No learner activity recorded yet.</p> :
+              <div className="space-y-2">{data.topLearners.map((learner:any,index:number)=><div key={learner.id} className="flex items-center gap-3 rounded-lg bg-slate-50 p-3">
+                <span className="w-6 text-xs font-bold text-slate-400">#{index+1}</span><div className="min-w-0 flex-1"><p className="text-sm font-semibold text-slate-800">{learner.name}</p><p className="text-xs text-slate-500">{learner.grade || "Grade not set"} · {learner.exerciseSubmissions} exercise submissions · {learner.assignmentSubmissions} assignment submissions · {learner.averageMarkPercentage == null ? "marks pending" : learner.averageMarkPercentage + "% average"}</p></div><Badge variant="secondary">{learner.badgeCount} awards</Badge><Link href="/manager/students"><Button size="sm" variant="outline">Monitor</Button></Link>
+              </div>)}</div>}
+          </CardContent>
+        </Card>
+
+        <ActivityMonitor />
         {/* Quick Nav */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {[
@@ -131,6 +161,9 @@ export default function ManagerHome() {
             { label: "Monitor Students", href: "/manager/students", icon: Users, color: "bg-blue-600" },
             { label: "View Reports", href: "/manager/reports", icon: BarChart3, color: "bg-purple-600" },
             { label: "Manage Prefects", href: "/manager/prefects", icon: Shield, color: "bg-amber-600" },
+            { label: "Transfer Approvals", href: "/manager/transfer-requests", icon: AlertTriangle, color: "bg-rose-600" },
+            { label: "Review Performance Reports", href: "/manager/reports/review", icon: BarChart3, color: "bg-violet-600" },
+            { label: "All Review Items", href: "/manager/review-queue", icon: AlertTriangle, color: "bg-red-600" },
           ].map(item => (
             <Link key={item.href} href={item.href}>
               <div className={`${item.color} text-white rounded-xl p-4 flex items-center gap-3 hover:opacity-90 transition-opacity cursor-pointer`}>

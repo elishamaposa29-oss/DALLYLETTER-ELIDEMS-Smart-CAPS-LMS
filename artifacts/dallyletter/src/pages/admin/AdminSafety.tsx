@@ -1,6 +1,7 @@
 import { getApiUrl } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +15,8 @@ interface ContentFlag { id: number; contentType: string; contentId: number; cont
 
 export default function AdminSafety() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const canDeleteFlags = ["owner", "admin", "platform_owner"].includes(String(user?.role || "").toLowerCase());
   const [flags, setFlags] = useState<ContentFlag[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("all");
@@ -140,9 +143,9 @@ export default function AdminSafety() {
                         <Eye className="h-3.5 w-3.5" />Review
                       </Button>
                     )}
-                    <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" onClick={() => deleteFlag(flag.id)}>
+                    {canDeleteFlags && <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" onClick={() => deleteFlag(flag.id)}>
                       <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    </Button>}
                   </div>
                 </div>
               </Card>

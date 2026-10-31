@@ -1,16 +1,123 @@
 import { Router } from "express";
+import { createHash, randomBytes } from "node:crypto";
 import { db, auditLogsTable, usersTable, pool } from "@workspace/db";
 import { eq, desc, inArray, and } from "drizzle-orm";
 import { getAIProvider } from "../lib/ai-provider";
-import { requireAuth, canAccessManager } from "../lib/auth-middleware";
+import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
+import { enqueueEmailNotification } from "../lib/email-notification-queue";
+import { canReviewAcademicTransfer } from "../lib/role-access";
+import { calculateAgeOnDate, getCurrentAcademicYear } from "../lib/academic-year";
 
 const router = Router();
+
+router.get("/academic-records/current-year", requireAuth, (_req, res): void => {
+  res.json(getCurrentAcademicYear());
+});
+function isReportMarkExercise(row: any): boolean {
+  const layout = row?.exercise_layout ?? row?.layout;
+  if (!layout || typeof layout !== "object" || Array.isArray(layout)) return true;
+  return (layout as Record<string, unknown>).recordForReport !== false;
+}
+
+function summarizeAcademicMarks(assignmentRows: any[], exerciseRows: any[]) {
+  const exempt = (status: unknown) => ["exempt", "excused"].includes(String(status || "").trim().toLowerCase());
+  const assignmentMarked = assignmentRows.filter(row => row.marks !== null && row.marks !== undefined && !exempt(row.status));
+  const reportableExerciseRows = exerciseRows.filter(isReportMarkExercise);
+  const exerciseMarked = reportableExerciseRows.filter(row =>
+    !exempt(row.status) && (row.marked_at || row.returned_at || ["marked", "returned", "graded"].includes(String(row.status || "").toLowerCase()))
+  );
+  const summarize = (rows: any[], earnedKey: string, possibleKey: string) => {
+    const earned = rows.reduce((sum, row) => sum + (Number.isFinite(Number(row[earnedKey])) ? Number(row[earnedKey]) : 0), 0);
+    const possible = rows.reduce((sum, row) => sum + (Number.isFinite(Number(row[possibleKey])) ? Number(row[possibleKey]) : 0), 0);
+    return { markedCount: rows.length, earnedMarks: Number(earned.toFixed(2)), possibleMarks: Number(possible.toFixed(2)), percentage: possible > 0 ? Number((earned / possible * 100).toFixed(2)) : null };
+  };
+  const assignmentSummary = summarize(assignmentMarked, "marks", "total_marks");
+  const exerciseSummary = summarize(exerciseMarked, "total_score", "total_marks");
+  const combinedEarned = assignmentSummary.earnedMarks + exerciseSummary.earnedMarks;
+  const combinedPossible = assignmentSummary.possibleMarks + exerciseSummary.possibleMarks;
+  return {
+    assignments: { ...assignmentSummary, unmarkedCount: assignmentRows.filter(row => (row.marks === null || row.marks === undefined) && !exempt(row.status)).length, exemptCount: assignmentRows.filter(row => exempt(row.status)).length },
+    exercises: { ...exerciseSummary, unmarkedCount: reportableExerciseRows.filter(row => !row.marked_at && !row.returned_at && !["marked", "returned", "graded", "exempt", "excused"].includes(String(row.status || "").toLowerCase())).length, exemptCount: reportableExerciseRows.filter(row => exempt(row.status)).length },
+    overall: { markedCount: assignmentSummary.markedCount + exerciseSummary.markedCount, earnedMarks: Number(combinedEarned.toFixed(2)), possibleMarks: Number(combinedPossible.toFixed(2)), percentage: combinedPossible > 0 ? Number((combinedEarned / combinedPossible * 100).toFixed(2)) : null },
+  };
+}
+
+function buildAcademicReportPdf(input: { id: number; reportType: string; termLabel: string; periodStart?: unknown; periodEnd?: unknown; learnerName: string; reviewedAt: unknown; reviewedBy: unknown; report: unknown }): Buffer {
+  const formatPeriodDate = (value: unknown) => {
+    if (!value) return "Not recorded";
+    const date = value instanceof Date ? value : new Date(String(value));
+    return Number.isNaN(date.getTime()) ? String(value).slice(0, 10) : date.toISOString().slice(0, 10);
+  };
+  const raw = [
+    "DALLYLETTER ELIDEMS",
+    "OFFICIAL ACADEMIC REPORT",
+    "Report type: " + input.reportType.replace(/_/g, " "),
+    "Learner: " + input.learnerName,
+    "Term / period: " + input.termLabel,
+    "Period dates: " + formatPeriodDate(input.periodStart) + " to " + formatPeriodDate(input.periodEnd),
+    "Approved on: " + (input.reviewedAt ? new Date(String(input.reviewedAt)).toISOString().slice(0, 10) : "Date unavailable"),
+    "Approved by account ID: " + (input.reviewedBy ?? "Not recorded"),
+    "Document reference: DL-AR-" + input.id,
+    "VERIFIED REPORT CONTENT",
+    ...JSON.stringify(input.report ?? {}, null, 2).split("\n"),
+  ];
+  const escapePdf = (value: string) => value.normalize("NFKD").replace(/[^\x20-\x7E]/g, " ").replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+  const wrapped = raw.flatMap(line => {
+    const words = String(line).split(/\s+/);
+    const out: string[] = [];
+    let current = "";
+    for (const word of words) {
+      if ((current + " " + word).trim().length > 88) { if (current) out.push(current); current = word; }
+      else current = (current + " " + word).trim();
+    }
+    if (current) out.push(current);
+    return out;
+  });
+  const pageLines = Array.from({ length: Math.max(1, Math.ceil(wrapped.length / 48)) }, (_, index) => wrapped.slice(index * 48, (index + 1) * 48));
+  const objects: string[] = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [" + pageLines.map((_, index) => (5 + index * 2) + " 0 R").join(" ") + "] /Count " + pageLines.length + " >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
+  ];
+  pageLines.forEach((page, pageIndex) => {
+    const pageObject = 5 + pageIndex * 2;
+    const contentObject = pageObject + 1;
+    const textCommands = page.map((line, index) => {
+      const heading = /^(DALLYLETTER ELIDEMS|OFFICIAL ACADEMIC REPORT|VERIFIED REPORT CONTENT)$/.test(line);
+      return (index ? "0 -14 Td\n" : "") + (heading ? "/F2 11 Tf\n" : "/F1 9 Tf\n") + "(" + escapePdf(line) + ") Tj";
+    }).join("\n");
+    const stream = [
+      "0.055 0.13 0.29 rg 0 790 595 52 re f",
+      "1 1 1 rg BT /F2 18 Tf 48 808 Td (DALLYLETTER ELIDEMS) Tj ET",
+      "0.72 0.55 0.08 rg 0 786 595 4 re f",
+      "0 0 0 rg BT 48 760 Td",
+      textCommands,
+      "ET",
+      "0.055 0.13 0.29 rg 48 34 499 1 re f",
+      "0 0 0 rg BT /F1 8 Tf 48 20 Td (Protected academic document - DL-AR-" + input.id + ") Tj 440 0 Td (Page " + (pageIndex + 1) + " of " + pageLines.length + ") Tj ET",
+    ].join("\n");
+    objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents " + contentObject + " 0 R >>");
+    objects.push("<< /Length " + new TextEncoder().encode(stream).length + " >>\nstream\n" + stream + "\nendstream");
+  });
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  for (let index = 0; index < objects.length; index++) {
+    offsets.push(new TextEncoder().encode(pdf).length);
+    pdf += (index + 1) + " 0 obj\n" + objects[index] + "\nendobj\n";
+  }
+  const xref = new TextEncoder().encode(pdf).length;
+  pdf += "xref\n0 " + (objects.length + 1) + "\n0000000000 65535 f \n";
+  for (const offset of offsets.slice(1)) pdf += String(offset).padStart(10, "0") + " 00000 n \n";
+  pdf += "trailer\n<< /Size " + (objects.length + 1) + " /Root 1 0 R >>\nstartxref\n" + xref + "\n%%EOF";
+  return Buffer.from(pdf, "binary");
+}
 
 // GET /audit-logs — list audit logs (owner only)
 router.get("/audit-logs", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canAccessManager(user)) { res.status(403).json({ error: "Manager or owner access required" }); return; }
-  const isOwner = user.role === "owner";
+  const isOwner = isOwnerRole(user.role);
   const limit = Math.min(parseInt(String(req.query.limit ?? "200")), 500);
   const base = db.select({
     id: auditLogsTable.id,
@@ -87,18 +194,68 @@ router.post("/audit-logs/summarize", requireAuth, async (req, res): Promise<void
 router.post("/academic-records/transfer-requests", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+  const formData = req.body?.formData && typeof req.body.formData === "object" && !Array.isArray(req.body.formData) ? req.body.formData : {};
   if (reason.length < 3 || reason.length > 2000) { res.status(400).json({ error: "Provide a transfer reason between 3 and 2000 characters." }); return; }
-  const result = await pool.query(
-    "INSERT INTO academic_transfer_requests (learner_id, requested_by, reason) VALUES ($1,$1,$2) RETURNING id, learner_id, reason, status, created_at",
-    [user.id, reason],
-  );
-  await db.insert(auditLogsTable).values({ performedBy: user.id, action: "transfer_letter.requested", category: "academic", targetType: "transfer_request", targetId: Number(result.rows[0].id), details: JSON.stringify({ status: "pending" }) });
-  res.status(201).json(result.rows[0]);
+  const requiredFormFields: Array<[string, string]> = [
+    ["learnerName", "Learner full name"], ["receivingSchool", "Receiving school"],
+    ["guardianName", "Parent/guardian name"], ["guardianPhone", "Parent/guardian phone"],
+    ["reasonDetail", "Transfer reason details"],
+  ];
+  const missingField = requiredFormFields.find(([key]) => typeof formData[key] !== "string" || !String(formData[key]).trim());
+  if (missingField) { res.status(400).json({ error: missingField[1] + " is required." }); return; }
+  if (formData.dob && calculateAgeOnDate(formData.dob, formData.effectiveDate || new Date()) === null) {
+    res.status(400).json({ error: "Enter a valid date of birth that is not after the effective transfer date." });
+    return;
+  }
+  if (JSON.stringify(formData).length > 180_000) { res.status(413).json({ error: "Transfer application attachments or form data exceed the allowed size." }); return; }
+  // Serialize submissions per learner so rapid taps/retries cannot create duplicate pending requests.
+  const client = await pool.connect();
+  let requestRow: any;
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock($1::bigint)", [user.id]);
+    const pending = await client.query(
+      "SELECT id FROM academic_transfer_requests WHERE learner_id=$1 AND status='pending' LIMIT 1",
+      [user.id],
+    );
+    if (pending.rowCount) {
+      await client.query("ROLLBACK");
+      res.status(409).json({ error: "You already have a transfer request awaiting review.", requestId: pending.rows[0].id });
+      return;
+    }
+    const inserted = await client.query(
+      "INSERT INTO academic_transfer_requests (learner_id, requested_by, reason, form_data) VALUES ($1,$1,$2,$3::jsonb) RETURNING id, learner_id, reason, status, created_at",
+      [user.id, reason, JSON.stringify(formData)],
+    );
+    requestRow = inserted.rows[0];
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+  await db.insert(auditLogsTable).values({ performedBy: user.id, action: "transfer_letter.requested", category: "academic", targetType: "transfer_request", targetId: Number(requestRow.id), details: JSON.stringify({ status: "pending" }) });
+  // Queue reviewer email alerts; the audit event above is also the admin-dashboard alert.
+  try {
+    const reviewers = await pool.query(
+      "SELECT id FROM users WHERE (lower(role)=ANY($1::text[]) OR (lower(role)='teacher' AND is_manager=true AND COALESCE(teacher_application_status,'')<>'pending_review')) AND is_blocked=false AND is_suspended=false ORDER BY id",
+      [["manager", "senior_manager", "owner", "admin", "platform_owner"]],
+    );
+    await Promise.all(reviewers.rows.map((reviewer: { id: number }) =>
+      enqueueEmailNotification(Number(reviewer.id), "Transfer letter request awaiting review",
+        "A learner submitted transfer letter request #" + requestRow.id + ". Sign in to Dallyletter Elidems and open the transfer requests queue to review it. The request remains pending until an authorized reviewer decides.")
+    ));
+  } catch (error) {
+    // Do not report a saved request as failed if notification infrastructure is temporarily unavailable.
+    console.error("Transfer request reviewer notification queue failed", error instanceof Error ? error.message : "unknown");
+  }
+  res.status(201).json(requestRow);
 });
 
 router.get("/academic-records/transfer-requests", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  const manager = canAccessManager(user);
+  const manager = canReviewAcademicTransfer(user);
   const result = manager
     ? await pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,r.requested_by,r.reason,r.status,r.review_note,r.reviewed_by,r.reviewed_at,r.created_at FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id ORDER BY r.created_at DESC LIMIT 200")
     : await pool.query("SELECT id,learner_id,reason,status,review_note,reviewed_at,created_at FROM academic_transfer_requests WHERE learner_id=$1 ORDER BY created_at DESC LIMIT 100", [user.id]);
@@ -107,15 +264,90 @@ router.get("/academic-records/transfer-requests", requireAuth, async (req, res):
 
 router.post("/academic-records/transfer-requests/:id/review", requireAuth, async (req, res): Promise<void> => {
   const reviewer = req.currentUser!;
-  if (!canAccessManager(reviewer)) { res.status(403).json({ error: "Authorized manager review is required." }); return; }
+  if (!canReviewAcademicTransfer(reviewer)) { res.status(403).json({ error: "Only authorized managers and owners can review transfer requests." }); return; }
   const id = Number(req.params.id);
   const status = req.body?.status;
-  const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 2000) : null;
+  const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 2000) : "";
   if (!Number.isSafeInteger(id) || id < 1 || !["approved","rejected"].includes(status)) { res.status(400).json({ error: "A valid request ID and approved/rejected decision are required." }); return; }
-  const result = await pool.query("UPDATE academic_transfer_requests SET status=$1,reviewed_by=$2,review_note=$3,reviewed_at=now(),updated_at=now() WHERE id=$4 AND status='pending' RETURNING id,learner_id,status,review_note,reviewed_by,reviewed_at", [status, reviewer.id, note, id]);
-  if (!result.rowCount) { res.status(404).json({ error: "Pending transfer request not found or already reviewed." }); return; }
-  await db.insert(auditLogsTable).values({ performedBy: reviewer.id, action: "transfer_letter.reviewed", category: "academic", targetType: "transfer_request", targetId: id, details: JSON.stringify({ status, note }) });
-  res.json(result.rows[0]);
+  if (status === "rejected" && note.length < 3) { res.status(400).json({ error: "A clear rejection reason of at least 3 characters is required." }); return; }
+  const verificationToken = status === "approved" ? randomBytes(32).toString("base64url") : null;
+  const verificationTokenHash = verificationToken ? createHash("sha256").update(verificationToken).digest("hex") : null;
+  const verificationPath = verificationToken ? "/verify/transfer/" + verificationToken : null;
+  const configuredAppUrl = (process.env.PUBLIC_APP_URL || process.env.VITE_APP_URL || "").trim().replace(/\/+$/, "");
+  const verificationUrl = verificationPath ? (configuredAppUrl ? configuredAppUrl + verificationPath : verificationPath) : null;
+  let reviewedRequest: any;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await client.query(
+      "UPDATE academic_transfer_requests SET status=$1,reviewed_by=$2,review_note=$3,reviewed_at=now(),updated_at=now(),verification_token_hash=$4::text,verification_token_expires_at=CASE WHEN $4::text IS NULL THEN NULL ELSE now()+interval '30 days' END,verification_verified_at=NULL WHERE id=$5 AND status='pending' RETURNING id,learner_id,status,review_note,reviewed_by,reviewed_at,verification_token_expires_at",
+      [status, reviewer.id, note || null, verificationTokenHash, id],
+    );
+    if (!result.rowCount) {
+      await client.query("ROLLBACK");
+      res.status(404).json({ error: "Pending transfer request not found or already reviewed." });
+      return;
+    }
+    reviewedRequest = result.rows[0];
+    await client.query(
+      "INSERT INTO audit_logs (action,category,performed_by,target_type,target_id,details) VALUES ($1,$2,$3,$4,$5,$6)",
+      ["transfer_letter.reviewed", "academic", reviewer.id, "transfer_request", id, JSON.stringify({ status, note, verificationTokenIssued: Boolean(verificationTokenHash) })],
+    );
+    const notificationTitle = status === "approved" ? "Transfer letter approved" : "Transfer letter declined";
+    const notificationMessage = status === "approved"
+      ? "Your transfer request #" + id + " was approved. Use the protected verification link to confirm the issuing-school record."
+      : "Your transfer request #" + id + " was declined. Reviewer feedback: " + note;
+    await client.query(
+      "INSERT INTO notifications(recipient_id,title,message,link,type,is_read) VALUES($1,$2,$3,$4,$5,false)",
+      [Number(reviewedRequest.learner_id), notificationTitle, notificationMessage, verificationPath || "/profile-hub?tab=Transfer%20Letters", status === "approved" ? "transfer_approved" : "transfer_rejected"],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+  // Queue email after the decision and in-app notification commit; email failures do not undo approval.
+  try {
+    await enqueueEmailNotification(
+      Number(reviewedRequest.learner_id),
+      status === "approved" ? "Your transfer letter request was approved" : "Your transfer letter request was declined",
+      status === "approved"
+        ? "Your transfer letter request #" + id + " was approved. Verify the issuing-school record here: " + String(verificationUrl) + ". The link expires in 30 days. You can also sign in to Dallyletter Elidems to download the protected PDF."
+        : "Your transfer letter request #" + id + " was declined. Reviewer feedback: " + note + ". Sign in to Dallyletter Elidems to review the decision."
+    );
+  } catch (error) {
+    console.error("Transfer decision applicant notification queue failed", error instanceof Error ? error.message : "unknown");
+  }
+  res.json({ ...reviewedRequest, verificationUrl });
+});
+
+router.get("/academic-records/transfer-verification/:token", async (req, res): Promise<void> => {
+  const token = String(req.params.token || "");
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) { res.status(404).json({ error: "Verification link is invalid or expired." }); return; }
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const result = await pool.query(
+    "SELECT id,form_data,reviewed_at,verification_token_expires_at,verification_verified_at FROM academic_transfer_requests WHERE verification_token_hash=$1 AND status='approved' AND verification_token_expires_at>now() LIMIT 1",
+    [tokenHash],
+  );
+  const row = result.rows[0];
+  if (!row) { res.status(404).json({ error: "Verification link is invalid or expired." }); return; }
+  await pool.query("UPDATE academic_transfer_requests SET verification_verified_at=COALESCE(verification_verified_at,now()) WHERE id=$1", [row.id]);
+  const data = row.form_data && typeof row.form_data === "object" ? row.form_data : {};
+  res.setHeader("Cache-Control", "no-store, private");
+  res.json({
+    verified: true,
+    reference: "DL-TR-" + row.id,
+    learnerName: data.learnerName || "Not provided",
+    currentSchool: data.currentSchool || "Not provided",
+    receivingSchool: data.receivingSchool || "Not provided",
+    grade: data.grade || "Not provided",
+    academicYear: data.academicYear || "Not provided",
+    approvedAt: row.reviewed_at,
+    expiresAt: row.verification_token_expires_at,
+    verifiedAt: row.verification_verified_at,
+  });
 });
 
 router.get("/academic-records/transfer-requests/:id/download", requireAuth, async (req, res): Promise<void> => {
@@ -123,38 +355,132 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, asyn
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id < 1) { res.status(400).json({ error: "Invalid request ID." }); return; }
   const result = await pool.query(
-    "SELECT r.*,u.name AS learner_name,u.email,c.name AS school_name FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id LEFT JOIN LATERAL (SELECT name FROM users WHERE role IN ('manager','owner') ORDER BY id LIMIT 1) c ON true WHERE r.id=$1",
+    "SELECT r.*,u.name AS learner_name,u.email,u.grade FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id WHERE r.id=$1",
     [id],
   );
   const row = result.rows[0];
-  if (!row || (Number(row.learner_id) !== Number(user.id) && !canAccessManager(user))) { res.status(404).json({ error: "Approved transfer letter not found." }); return; }
+  if (!row || (Number(row.learner_id) !== Number(user.id) && !canReviewAcademicTransfer(user))) { res.status(404).json({ error: "Approved transfer letter not found." }); return; }
   if (row.status !== "approved") { res.status(403).json({ error: "The transfer letter cannot be downloaded until an authorized manager approves the request." }); return; }
-  const letter = [
-    "DALLYLETTER ELIDEMS — TRANSFER LETTER",
+  const [enrollmentRows, attendanceRows, awardRows, subjectRows, reportRows] = await Promise.all([
+    pool.query("SELECT c.title,c.subject,c.grade,e.enrolled_at,e.progress_percent,e.status FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 ORDER BY e.enrolled_at DESC LIMIT 12", [row.learner_id]),
+    pool.query("SELECT count(*)::int AS sessions,count(*) FILTER (WHERE lower(status)='present')::int AS present,count(*) FILTER (WHERE lower(status)='absent')::int AS absent FROM attendance WHERE student_id=$1", [row.learner_id]),
+    pool.query("SELECT a.name,ua.earned_at FROM user_achievements ua JOIN achievements a ON a.id=ua.achievement_id WHERE ua.user_id=$1 ORDER BY ua.earned_at DESC LIMIT 8", [row.learner_id]),
+    pool.query("SELECT subjects FROM learner_subjects WHERE user_id=$1", [row.learner_id]),
+    pool.query("SELECT report_type,term_label,reviewed_at,draft_content FROM academic_report_drafts WHERE learner_id=$1 AND status='approved' ORDER BY reviewed_at DESC NULLS LAST,created_at DESC LIMIT 1", [row.learner_id]),
+  ]);
+  const fmt = (value: unknown) => value == null || value === "" ? "Not recorded" : String(value);
+  const lines = [
+    "DALLYLETTER ELIDEMS",
+    "OFFICIAL TRANSFER LETTER",
     "",
-    "Learner: " + row.learner_name,
-    "Account email: " + row.email,
+    "Learner: " + fmt(row.learner_name),
+    "Account email: " + fmt(row.email),
+    "Grade/Form: " + fmt(row.grade),
+    "Current school: " + fmt(row.form_data?.currentSchool),
     "Request date: " + new Date(row.created_at).toISOString().slice(0,10),
-    "Approval date: " + new Date(row.reviewed_at).toISOString().slice(0,10),
-    "Approved by account ID: " + row.reviewed_by,
-    "Transfer reason: " + row.reason,
+    "Approval date: " + (row.reviewed_at ? new Date(row.reviewed_at).toISOString().slice(0,10) : "Not recorded"),
+    "Transfer reason: " + fmt(row.reason),
+    "Receiving school: " + fmt(row.form_data?.receivingSchool),
+    "Learner full name: " + fmt(row.form_data?.learnerName || row.learner_name),
+    "Date of birth: " + fmt(row.form_data?.dob),
+    "Age on effective transfer date: " + (calculateAgeOnDate(row.form_data?.dob, row.form_data?.effectiveDate || row.created_at) ?? "Not recorded"),
+    "Gender: " + fmt(row.form_data?.gender),
+    "Admission number: " + fmt(row.form_data?.admissionNo),
+    "EMIS number: " + fmt(row.form_data?.emisNo),
+    "Academic year: " + fmt(row.form_data?.academicYear),
+    "Last term average: " + fmt(row.form_data?.average),
+    "Conduct: " + fmt(row.form_data?.conduct),
+    "Parent/guardian: " + fmt(row.form_data?.guardianName) + " (" + fmt(row.form_data?.relationship) + ")",
+    "Guardian ID: " + fmt(row.form_data?.guardianId),
+    "Guardian phone: " + fmt(row.form_data?.guardianPhone),
+    "Guardian email: " + fmt(row.form_data?.guardianEmail),
+    "Physical address: " + fmt(row.form_data?.address),
+    "Effective transfer date: " + fmt(row.form_data?.effectiveDate),
+    "Reason details: " + fmt(row.form_data?.reasonDetail),
+    "Parent/guardian signature: " + fmt(row.form_data?.guardianSignatureName),
+    "Current-school headmaster: " + fmt(row.form_data?.headmasterName),
+    "Signature and official stamp: To be completed by the authorized school representative; no signature or stamp is fabricated.",
     row.review_note ? "Manager note: " + row.review_note : "",
     "",
-    "This letter was generated from a transfer request and approved by an authorized manager.",
-  ].filter(Boolean).join("\n");
-  res.setHeader("Content-Type", "text/plain; charset=utf-8");
-  res.setHeader("Content-Disposition", 'attachment; filename="dallyletter-transfer-letter-' + id + '.txt"');
-  res.send(letter);
+    "ACADEMIC RECORD SUMMARY",
+    "Subjects: " + fmt((subjectRows.rows[0]?.subjects || []).join(", ")),
+    "Latest approved report: " + (reportRows.rows[0] ? String(reportRows.rows[0].term_label) + " (" + String(reportRows.rows[0].report_type) + ", " + (reportRows.rows[0].reviewed_at ? new Date(reportRows.rows[0].reviewed_at).toISOString().slice(0,10) : "approval date unavailable") + ")" : "No approved report recorded"),
+    "Performance/marks: Included only where available in an approved report; no marks are inferred.",
+    "Attendance sessions recorded: " + String(attendanceRows.rows[0]?.sessions ?? 0),
+    "Present sessions: " + String(attendanceRows.rows[0]?.present ?? 0),
+    "Absent sessions recorded: " + String(attendanceRows.rows[0]?.absent ?? 0),
+    "Enrollments: " + (enrollmentRows.rows.length ? enrollmentRows.rows.map((e: any) => [e.title,e.subject,e.grade ? "Grade " + e.grade : "",e.progress_percent + "% complete"].filter(Boolean).join(" | ")).join("; ") : "No enrollment records available"),
+    "Achievements: " + (awardRows.rows.length ? awardRows.rows.map((a: any) => a.name).join(", ") : "No achievements recorded"),
+    "",
+    "Generated from available Dallyletter Elidems account and academic records.",
+    "This document does not certify fee clearance or replace a school stamp/signature not present in the system.",
+    "Approved by authorized reviewer account ID: " + fmt(row.reviewed_by),
+    "Document reference: DL-TR-" + id + " | Protected authenticated download",
+  ].filter(Boolean);
+  const escapePdf = (value: string) => value.normalize("NFKD").replace(/[^\x20-\x7E]/g, "").replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+  const wrapped = lines.flatMap(line => {
+    const words = line.split(/\s+/); const out: string[] = []; let current = "";
+    for (const word of words) {
+      if ((current + " " + word).trim().length > 88) { if (current) out.push(current); current = word; }
+      else current = (current + " " + word).trim();
+    }
+    if (current) out.push(current);
+    return out;
+  });
+  const pageLines = Array.from({ length: Math.max(1, Math.ceil(wrapped.length / 48)) }, (_, index) => wrapped.slice(index * 48, (index + 1) * 48));
+  const objects: string[] = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [" + pageLines.map((_, index) => (5 + index * 2) + " 0 R").join(" ") + "] /Count " + pageLines.length + " >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
+  ];
+  pageLines.forEach((page, pageIndex) => {
+    const pageObject = 5 + pageIndex * 2;
+    const contentObject = pageObject + 1;
+    const textCommands = page.map((line, index) => {
+      const isHeading = /^(DALLYLETTER ELIDEMS|OFFICIAL TRANSFER LETTER|ACADEMIC RECORD SUMMARY)$/.test(line);
+      return (index ? "0 -14 Td\n" : "") + (isHeading ? "/F2 11 Tf\n" : "/F1 9 Tf\n") + "(" + escapePdf(line) + ") Tj";
+    }).join("\n");
+    const stream = [
+      "0.055 0.13 0.29 rg 0 790 595 52 re f",
+      "1 1 1 rg BT /F2 18 Tf 48 808 Td (DALLYLETTER ELIDEMS) Tj ET",
+      "0.72 0.55 0.08 rg 0 786 595 4 re f",
+      "0 0 0 rg BT 48 760 Td",
+      textCommands,
+      "ET",
+      "0.055 0.13 0.29 rg 48 34 499 1 re f",
+      "0 0 0 rg BT /F1 8 Tf 48 20 Td (Protected academic document - DL-TR-" + id + ") Tj 440 0 Td (Page " + (pageIndex + 1) + " of " + pageLines.length + ") Tj ET",
+    ].join("\n");
+    objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents " + contentObject + " 0 R >>");
+    objects.push("<< /Length " + new TextEncoder().encode(stream).length + " >>\nstream\n" + stream + "\nendstream");
+  });
+  let pdf = "%PDF-1.4\n"; const offsets = [0];
+  for (let i = 0; i < objects.length; i++) {
+    offsets.push(new TextEncoder().encode(pdf).length);
+    pdf += (i+1) + " 0 obj\n" + objects[i] + "\nendobj\n";
+  }
+  const xref = new TextEncoder().encode(pdf).length;
+  pdf += "xref\n0 " + (objects.length+1) + "\n0000000000 65535 f \n";
+  for (const offset of offsets.slice(1)) pdf += String(offset).padStart(10,"0") + " 00000 n \n";
+  pdf += "trailer\n<< /Size " + (objects.length+1) + " /Root 1 0 R >>\nstartxref\n" + xref + "\n%%EOF";
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Disposition", 'attachment; filename="dallyletter-transfer-letter-' + id + '.pdf"');
+  res.send(Buffer.from(pdf, "binary"));
 });
 
 router.get("/academic-records/me", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  const [enrollments, awards, attendance] = await Promise.all([
+  const [enrollments, awards, attendance, assignmentMarks, exerciseMarks] = await Promise.all([
     pool.query("SELECT e.id,e.class_id,e.enrolled_at,e.progress_percent,e.status,c.title AS class_title,c.subject,c.teacher_id FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 ORDER BY e.enrolled_at DESC", [user.id]),
     pool.query("SELECT ua.id,ua.earned_at,a.name,a.description,a.icon,a.category,ua.awarded_by_name,ua.note FROM user_achievements ua JOIN achievements a ON a.id=ua.achievement_id WHERE ua.user_id=$1 ORDER BY ua.earned_at DESC", [user.id]),
     pool.query("SELECT class_id,status,joined_at,left_at,duration_minutes,is_late FROM attendance WHERE student_id=$1 ORDER BY joined_at DESC LIMIT 500", [user.id]),
+    pool.query("SELECT a.id AS assignment_id,a.title,a.subject,a.grade,a.total_marks,s.id AS submission_id,s.status,s.marks,s.submitted_at,s.graded_at,s.feedback FROM assignment_submissions s JOIN assignments a ON a.id=s.assignment_id WHERE s.student_id=$1 ORDER BY s.submitted_at DESC", [user.id]),
+    pool.query("SELECT e.id AS exercise_id,e.title,e.grade,e.total_marks,e.layout AS exercise_layout,s.id AS submission_id,s.attempt_number,s.status,s.total_score,s.percentage,s.submitted_at,s.marked_at,s.returned_at,s.overall_comment FROM exercise_submissions s JOIN exercises e ON e.id=s.exercise_id WHERE s.learner_id=$1 ORDER BY s.submitted_at DESC", [user.id]),
   ]);
-  res.json({ enrollments: enrollments.rows, awards: awards.rows, attendance: attendance.rows });
+  const markSummary = summarizeAcademicMarks(assignmentMarks.rows, exerciseMarks.rows);
+  res.json({ enrollments: enrollments.rows, awards: awards.rows, attendance: attendance.rows, assignmentMarks: assignmentMarks.rows, exerciseMarks: exerciseMarks.rows, markSummary });
 });
 
 router.post("/academic-records/reports/drafts", requireAuth, async (req, res): Promise<void> => {
@@ -163,16 +489,27 @@ router.post("/academic-records/reports/drafts", requireAuth, async (req, res): P
   const learnerId = Number(req.body?.learnerId);
   const reportType = req.body?.reportType;
   const termLabel = typeof req.body?.termLabel === "string" ? req.body.termLabel.trim().slice(0,80) : "";
-  if (!Number.isSafeInteger(learnerId) || learnerId < 1 || !["attendance_register","term_performance"].includes(reportType) || !termLabel) { res.status(400).json({ error: "learnerId, reportType and termLabel are required." }); return; }
-  const [learner, enrollments, attendance, awards, events] = await Promise.all([
+  const periodStart = typeof req.body?.periodStart === "string" ? req.body.periodStart : "";
+  const periodEnd = typeof req.body?.periodEnd === "string" ? req.body.periodEnd : "";
+  const isDateOnly = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value + "T00:00:00Z")) && new Date(value + "T00:00:00Z").toISOString().slice(0,10) === value;
+  if (!Number.isSafeInteger(learnerId) || learnerId < 1 || !["attendance_register","term_performance"].includes(reportType) || !termLabel || !isDateOnly(periodStart) || !isDateOnly(periodEnd) || periodStart > periodEnd) {
+    res.status(400).json({ error: "learnerId, reportType, termLabel, and valid inclusive periodStart/periodEnd dates (YYYY-MM-DD) are required." }); return;
+  }
+  const periodDays = (Date.parse(periodEnd + "T00:00:00Z") - Date.parse(periodStart + "T00:00:00Z")) / 86400000 + 1;
+  if (periodDays > 370) { res.status(400).json({ error: "Academic report periods cannot exceed 370 days." }); return; }
+  const [learner, enrollments, attendance, awards, events, assignmentMarks, exerciseMarks] = await Promise.all([
     pool.query("SELECT id,name,role,grade FROM users WHERE id=$1 AND role IN ('student','learner') AND is_blocked=false", [learnerId]),
-    pool.query("SELECT e.id,e.class_id,e.enrolled_at,e.progress_percent,e.status,c.title AS class_title,c.subject FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 ORDER BY e.enrolled_at", [learnerId]),
-    pool.query("SELECT class_id,status,joined_at,duration_minutes,is_late FROM attendance WHERE student_id=$1 AND joined_at >= date_trunc('year',now()) ORDER BY joined_at DESC LIMIT 1000", [learnerId]),
-    pool.query("SELECT ua.earned_at,a.name,a.description FROM user_achievements ua JOIN achievements a ON a.id=ua.achievement_id WHERE ua.user_id=$1 ORDER BY ua.earned_at DESC", [learnerId]),
-    pool.query("SELECT action,category,target_type,created_at FROM audit_logs WHERE target_id=$1 ORDER BY created_at DESC LIMIT 200", [String(learnerId)]),
+    pool.query("SELECT e.id,e.class_id,e.enrolled_at,e.progress_percent,e.status,c.title AS class_title,c.subject FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 AND e.enrolled_at >= ($2::date::timestamp AT TIME ZONE 'Africa/Harare') AND e.enrolled_at < (($3::date + 1)::timestamp AT TIME ZONE 'Africa/Harare') ORDER BY e.enrolled_at", [learnerId, periodStart, periodEnd]),
+    pool.query("SELECT class_id,status,joined_at,duration_minutes,is_late FROM attendance WHERE student_id=$1 AND joined_at >= ($2::date::timestamp AT TIME ZONE 'Africa/Harare') AND joined_at < (($3::date + 1)::timestamp AT TIME ZONE 'Africa/Harare') ORDER BY joined_at DESC LIMIT 1000", [learnerId, periodStart, periodEnd]),
+    pool.query("SELECT ua.earned_at,a.name,a.description FROM user_achievements ua JOIN achievements a ON a.id=ua.achievement_id WHERE ua.user_id=$1 AND ua.earned_at >= ($2::date::timestamp AT TIME ZONE 'Africa/Harare') AND ua.earned_at < (($3::date + 1)::timestamp AT TIME ZONE 'Africa/Harare') ORDER BY ua.earned_at DESC", [learnerId, periodStart, periodEnd]),
+    pool.query("SELECT action,category,target_type,created_at FROM audit_logs WHERE target_id=$1 AND created_at >= ($2::date::timestamp AT TIME ZONE 'Africa/Harare') AND created_at < (($3::date + 1)::timestamp AT TIME ZONE 'Africa/Harare') ORDER BY created_at DESC LIMIT 200", [String(learnerId), periodStart, periodEnd]),
+    pool.query("SELECT a.id AS assignment_id,a.title,a.subject,a.grade,a.total_marks,s.id AS submission_id,s.status,s.marks,s.submitted_at,s.graded_at,s.feedback FROM assignment_submissions s JOIN assignments a ON a.id=s.assignment_id WHERE s.student_id=$1 AND s.submitted_at >= ($2::date::timestamp AT TIME ZONE 'Africa/Harare') AND s.submitted_at < (($3::date + 1)::timestamp AT TIME ZONE 'Africa/Harare') ORDER BY s.submitted_at DESC", [learnerId, periodStart, periodEnd]),
+    pool.query("SELECT e.id AS exercise_id,e.title,e.grade,e.total_marks,e.layout AS exercise_layout,s.id AS submission_id,s.attempt_number,s.status,s.total_score,s.percentage,s.submitted_at,s.marked_at,s.returned_at,s.overall_comment FROM exercise_submissions s JOIN exercises e ON e.id=s.exercise_id WHERE s.learner_id=$1 AND s.submitted_at >= $2::date AND s.submitted_at < ($3::date + interval '1 day') ORDER BY s.submitted_at DESC", [learnerId, periodStart, periodEnd]),
   ]);
   if (!learner.rows[0]) { res.status(404).json({ error: "Learner not found." }); return; }
-  const sourceSnapshot = { learner: learner.rows[0], termLabel, enrollments: enrollments.rows, attendance: attendance.rows, awards: awards.rows, relevantAuditEvents: events.rows };
+  const reportableExerciseMarks = exerciseMarks.rows.filter(isReportMarkExercise);
+  const markSummary = summarizeAcademicMarks(assignmentMarks.rows, reportableExerciseMarks);
+  const sourceSnapshot = { learner: learner.rows[0], termLabel, periodStart, periodEnd, enrollments: enrollments.rows, attendance: attendance.rows, awards: awards.rows, assignmentMarks: assignmentMarks.rows, exerciseMarks: reportableExerciseMarks, markSummary, relevantAuditEvents: events.rows };
   let draftContent: unknown;
   let provider = "record-based";
   if (reportType === "attendance_register") {
@@ -185,30 +522,30 @@ router.post("/academic-records/reports/drafts", requireAuth, async (req, res): P
       else if (String(row.status).toLowerCase() === "absent") item.absent++;
       byClass.set(item.classId, item);
     }
-    draftContent = { label: termLabel, learner: learner.rows[0].name, records: [...byClass.values()], sourceCount: attendance.rows.length, warning: "Draft only. Verify the term dates and attendance entries before approval." };
+    draftContent = { label: termLabel, periodStart, periodEnd, learner: learner.rows[0].name, records: [...byClass.values()], sourceCount: attendance.rows.length, warning: "Draft only. Attendance records are filtered to the inclusive academic period; verify entries before approval." };
   } else {
     try {
       const ai = await getAIProvider();
       if (ai.name === "mock") { res.status(503).json({ error: "A live AI provider must be configured to draft term-performance commentary. No mock AI report was created." }); return; }
       provider = ai.name;
-      draftContent = { label: termLabel, learner: learner.rows[0].name, factualRecords: { enrollments: enrollments.rows, attendanceCount: attendance.rows.length, awards: awards.rows }, commentary: await ai.analyzeData(sourceSnapshot, "Draft a CAPS-aligned term performance report using only the supplied verified records. Separate measured facts from interpretations, identify missing data, do not invent marks or attendance, and clearly label this as an unapproved draft. Return concise structured prose.") };
+      draftContent = { label: termLabel, periodStart, periodEnd, learner: learner.rows[0].name, factualRecords: { enrollments: enrollments.rows, attendanceCount: attendance.rows.length, awards: awards.rows, assignmentMarks: assignmentMarks.rows, exerciseMarks: reportableExerciseMarks, markSummary }, commentary: await ai.analyzeData(sourceSnapshot, `Draft a CAPS-aligned term performance report using only the supplied verified records. Use recorded assignment marks and marked exercise scores; distinguish unmarked and exempt work, calculate percentages only from known earned and possible marks, identify missing data, do not invent marks or attendance, and clearly label this as an unapproved draft. Only records submitted or recorded within the inclusive period ${periodStart} through ${periodEnd} are supplied. These source records have already been filtered by their authoritative event timestamps. Do not add records from outside this period. Return concise structured prose.`) };
     } catch (error) { res.status(503).json({ error: error instanceof Error ? error.message : "Live AI report drafting unavailable." }); return; }
   }
-  const saved = await pool.query("INSERT INTO academic_report_drafts (learner_id,created_by,report_type,term_label,source_snapshot,draft_content) VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb) RETURNING id,learner_id,created_by,report_type,term_label,draft_content,status,created_at", [learnerId, creator.id, reportType, termLabel, JSON.stringify(sourceSnapshot), JSON.stringify(draftContent)]);
+  const saved = await pool.query("INSERT INTO academic_report_drafts (learner_id,created_by,report_type,term_label,period_start,period_end,source_snapshot,draft_content) VALUES ($1,$2,$3,$4,$5::date,$6::date,$7::jsonb,$8::jsonb) RETURNING id,learner_id,created_by,report_type,term_label,period_start,period_end,draft_content,status,created_at", [learnerId, creator.id, reportType, termLabel, periodStart, periodEnd, JSON.stringify(sourceSnapshot), JSON.stringify(draftContent)]);
   await db.insert(auditLogsTable).values({ performedBy: creator.id, action: "academic_report.draft_created", category: "academic", targetType: "academic_report_draft", targetId: Number(saved.rows[0].id), details: JSON.stringify({ learnerId, reportType, termLabel, provider }) });
   res.status(201).json(saved.rows[0]);
 });
 
 router.get("/academic-records/reports/me", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  const result = await pool.query("SELECT id,report_type,term_label,draft_content,reviewed_at,created_at FROM academic_report_drafts WHERE learner_id=$1 AND status='approved' ORDER BY reviewed_at DESC NULLS LAST,created_at DESC LIMIT 100", [user.id]);
+  const result = await pool.query("SELECT id,report_type,term_label,period_start,period_end,draft_content,reviewed_at,created_at FROM academic_report_drafts WHERE learner_id=$1 AND status='approved' ORDER BY reviewed_at DESC NULLS LAST,created_at DESC LIMIT 100", [user.id]);
   res.json(result.rows);
 });
 
 router.get("/academic-records/reports/drafts", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canAccessManager(user)) { res.status(403).json({ error: "Manager review access is required." }); return; }
-  const result = await pool.query("SELECT id,learner_id,created_by,report_type,term_label,draft_content,status,reviewed_by,review_note,reviewed_at,created_at FROM academic_report_drafts ORDER BY created_at DESC LIMIT 200");
+  const result = await pool.query("SELECT id,learner_id,created_by,report_type,term_label,period_start,period_end,draft_content,status,reviewed_by,review_note,reviewed_at,created_at FROM academic_report_drafts ORDER BY created_at DESC LIMIT 200");
   res.json(result.rows);
 });
 
@@ -219,10 +556,48 @@ router.post("/academic-records/reports/drafts/:id/review", requireAuth, async (r
   const status = req.body?.status;
   const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0,2000) : null;
   if (!Number.isSafeInteger(id) || id < 1 || !["approved","rejected"].includes(status)) { res.status(400).json({ error: "A valid draft ID and approved/rejected decision are required." }); return; }
-  const result = await pool.query("UPDATE academic_report_drafts SET status=$1,reviewed_by=$2,review_note=$3,reviewed_at=now(),updated_at=now() WHERE id=$4 AND status='pending_review' RETURNING id,learner_id,report_type,term_label,status,reviewed_by,review_note,reviewed_at", [status, reviewer.id, note, id]);
-  if (!result.rowCount) { res.status(404).json({ error: "Pending report draft not found or already reviewed." }); return; }
-  await db.insert(auditLogsTable).values({ performedBy: reviewer.id, action: "academic_report.reviewed", category: "academic", targetType: "academic_report_draft", targetId: id, details: JSON.stringify({ status, note }) });
-  res.json(result.rows[0]);
+  let reviewedReport: any;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await client.query("UPDATE academic_report_drafts SET status=$1,reviewed_by=$2,review_note=$3,reviewed_at=now(),updated_at=now() WHERE id=$4 AND status='pending_review' RETURNING id,learner_id,report_type,term_label,status,reviewed_by,review_note,reviewed_at", [status, reviewer.id, note, id]);
+    if (!result.rowCount) {
+      await client.query("ROLLBACK");
+      res.status(404).json({ error: "Pending report draft not found or already reviewed." });
+      return;
+    }
+    reviewedReport = result.rows[0];
+    await client.query(
+      "INSERT INTO audit_logs (action,category,performed_by,target_type,target_id,details) VALUES ($1,$2,$3,$4,$5,$6)",
+      ["academic_report.reviewed", "academic", reviewer.id, "academic_report_draft", id, JSON.stringify({ status, note })],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+  res.json(reviewedReport);
+});
+
+router.get("/academic-records/reports/drafts/:id/download/pdf", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1) { res.status(400).json({ error: "Invalid draft ID." }); return; }
+  const result = await pool.query("SELECT * FROM academic_report_drafts WHERE id=$1", [id]);
+  const row = result.rows[0];
+  if (!row || (Number(row.learner_id) !== Number(user.id) && !canAccessManager(user))) { res.status(404).json({ error: "Approved academic report not found." }); return; }
+  if (row.status !== "approved") { res.status(403).json({ error: "Academic reports cannot be downloaded until an authorized manager approves the draft." }); return; }
+  const draftContent = typeof row.draft_content === "string" ? JSON.parse(row.draft_content) : row.draft_content;
+  const sourceSnapshot = typeof row.source_snapshot === "string" ? JSON.parse(row.source_snapshot) : row.source_snapshot;
+  const learnerName = String(draftContent?.learner || sourceSnapshot?.learner?.name || "Learner record");
+  const pdf = buildAcademicReportPdf({ id, reportType: String(row.report_type), termLabel: String(row.term_label), periodStart: row.period_start, periodEnd: row.period_end, learnerName, reviewedAt: row.reviewed_at, reviewedBy: row.reviewed_by, report: draftContent });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Disposition", 'attachment; filename="dallyletter-academic-report-' + id + '.pdf"');
+  res.send(pdf);
 });
 
 router.get("/academic-records/reports/drafts/:id/download", requireAuth, async (req, res): Promise<void> => {
@@ -235,5 +610,5 @@ router.get("/academic-records/reports/drafts/:id/download", requireAuth, async (
   if (row.status !== "approved") { res.status(403).json({ error: "Academic reports cannot be downloaded until an authorized manager approves the draft." }); return; }
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Content-Disposition", 'attachment; filename="dallyletter-' + row.report_type + '-' + id + '.json"');
-  res.send(JSON.stringify({ reportType: row.report_type, termLabel: row.term_label, report: row.draft_content, reviewedAt: row.reviewed_at, reviewedBy: row.reviewed_by }, null, 2));
+  res.send(JSON.stringify({ reportType: row.report_type, termLabel: row.term_label, periodStart: row.period_start, periodEnd: row.period_end, report: row.draft_content, reviewedAt: row.reviewed_at, reviewedBy: row.reviewed_by }, null, 2));
 });
