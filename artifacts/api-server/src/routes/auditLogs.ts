@@ -30,13 +30,18 @@ function summarizeAcademicMarks(assignmentRows: any[], exerciseRows: any[]) {
 }
 
 function buildAcademicReportPdf(input: { id: number; reportType: string; termLabel: string; periodStart?: unknown; periodEnd?: unknown; learnerName: string; reviewedAt: unknown; reviewedBy: unknown; report: unknown }): Buffer {
+  const formatPeriodDate = (value: unknown) => {
+    if (!value) return "Not recorded";
+    const date = value instanceof Date ? value : new Date(String(value));
+    return Number.isNaN(date.getTime()) ? String(value).slice(0, 10) : date.toISOString().slice(0, 10);
+  };
   const raw = [
     "DALLYLETTER ELIDEMS",
     "OFFICIAL ACADEMIC REPORT",
     "Report type: " + input.reportType.replace(/_/g, " "),
     "Learner: " + input.learnerName,
     "Term / period: " + input.termLabel,
-    "Period dates: " + (input.periodStart ? String(input.periodStart).slice(0,10) : "Not recorded") + " to " + (input.periodEnd ? String(input.periodEnd).slice(0,10) : "Not recorded"),
+    "Period dates: " + formatPeriodDate(input.periodStart) + " to " + formatPeriodDate(input.periodEnd),
     "Approved on: " + (input.reviewedAt ? new Date(String(input.reviewedAt)).toISOString().slice(0, 10) : "Date unavailable"),
     "Approved by account ID: " + (input.reviewedBy ?? "Not recorded"),
     "Document reference: DL-AR-" + input.id,
