@@ -48,18 +48,37 @@ export default function ManagerHome() {
       fetch(getApiUrl("/api/academic-records/reports/drafts"), { headers }),
       fetch(getApiUrl("/api/manager-permissions/me"), { headers }),
     ]);
+    const loadErrors: string[] = [];
     if (permissions.ok) {
       const saved = await permissions.json().catch(() => ({}));
       setMyPermissions(saved && typeof saved === "object" ? saved : {});
+    } else {
+      setMyPermissions({});
+      loadErrors.push(permissions.status === 404
+        ? "Manager permissions are unavailable on the connected API version. Review actions remain server-authorized."
+        : `Manager permissions could not be loaded (${permissions.status}).`);
     }
     if (transfers.ok) {
       const rows = await transfers.json().catch(() => []);
       setTransferQueue(Array.isArray(rows) ? rows.filter((row: any) => row.status === "pending") : []);
-    } else if (transfers.status === 403) setTransferQueue([]);
+    } else if (transfers.status === 403) {
+      setTransferQueue([]);
+      loadErrors.push("Your account is not permitted to review transfer requests.");
+    } else {
+      setTransferQueue([]);
+      loadErrors.push(`Transfer requests could not be loaded (${transfers.status}).`);
+    }
     if (reports.ok) {
       const rows = await reports.json().catch(() => []);
       setReportQueue(Array.isArray(rows) ? rows.filter((row: any) => row.status === "pending_review") : []);
-    } else if (reports.status === 403) setReportQueue([]);
+    } else if (reports.status === 403) {
+      setReportQueue([]);
+      loadErrors.push("Your account is not permitted to review academic reports.");
+    } else {
+      setReportQueue([]);
+      loadErrors.push(`Academic report drafts could not be loaded (${reports.status}).`);
+    }
+    if (loadErrors.length) setQueueMessage(loadErrors.join(" "));
   };
 
   useEffect(() => { void loadAcademicQueues().catch(() => setQueueMessage("Academic review queues are temporarily unavailable.")); }, []);
