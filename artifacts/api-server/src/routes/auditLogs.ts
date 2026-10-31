@@ -190,15 +190,44 @@ router.post("/academic-records/reports/drafts", requireAuth, async (req, res): P
   const reportType = req.body?.reportType;
   const termLabel = typeof req.body?.termLabel === "string" ? req.body.termLabel.trim().slice(0,80) : "";
   if (!Number.isSafeInteger(learnerId) || learnerId < 1 || !["attendance_register","term_performance"].includes(reportType) || !termLabel) { res.status(400).json({ error: "learnerId, reportType and termLabel are required." }); return; }
-  const [learner, enrollments, attendance, awards, events] = await Promise.all([
+  const [learner, enrollments, attendance, awards, events, assignmentMarks, exerciseMarks] = await Promise.all([
     pool.query("SELECT id,name,role,grade FROM users WHERE id=$1 AND role IN ('student','learner') AND is_blocked=false", [learnerId]),
     pool.query("SELECT e.id,e.class_id,e.enrolled_at,e.progress_percent,e.status,c.title AS class_title,c.subject FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 ORDER BY e.enrolled_at", [learnerId]),
     pool.query("SELECT class_id,status,joined_at,duration_minutes,is_late FROM attendance WHERE student_id=$1 AND joined_at >= date_trunc('year',now()) ORDER BY joined_at DESC LIMIT 1000", [learnerId]),
     pool.query("SELECT ua.earned_at,a.name,a.description FROM user_achievements ua JOIN achievements a ON a.id=ua.achievement_id WHERE ua.user_id=$1 ORDER BY ua.earned_at DESC", [learnerId]),
     pool.query("SELECT action,category,target_type,created_at FROM audit_logs WHERE target_id=$1 ORDER BY created_at DESC LIMIT 200", [String(learnerId)]),
+    pool.query("SELECT a.subject,a.title,s.marks AS earned_marks,a.total_marks AS possible_marks,s.graded_at AS marked_at,'assignment' AS source FROM assignment_submissions s JOIN assignments a ON a.id=s.assignment_id WHERE s.student_id=$1 AND s.graded_at IS NOT NULL AND s.marks IS NOT NULL ORDER BY s.graded_at DESC LIMIT 1000", [learnerId]),
+    pool.query("SELECT l.subject,e.title,s.total_score AS earned_marks,e.total_marks AS possible_marks,s.marked_at,'exercise' AS source FROM exercise_submissions s JOIN exercises e ON e.id=s.exercise_id JOIN lessons l ON l.id=e.lesson_id WHERE s.learner_id=$1 AND s.marked_at IS NOT NULL AND e.total_marks > 0 ORDER BY s.marked_at DESC LIMIT 1000", [learnerId]),
   ]);
   if (!learner.rows[0]) { res.status(404).json({ error: "Learner not found." }); return; }
-  const sourceSnapshot = { learner: learner.rows[0], termLabel, enrollments: enrollments.rows, attendance: attendance.rows, awards: awards.rows, relevantAuditEvents: events.rows };
+  const allMarkRows = [...assignmentMarks.rows, ...exerciseMarks.rows];
+  const subjectTotals = new Map<string, { subject: string; earnedMarks: number; possibleMarks: number; markedRecords: number }>();
+  let excludedInvalidMarkRecords = 0;
+  for (const row of allMarkRows) {
+    const earned = Number(row.earned_marks);
+    const possible = Number(row.possible_marks);
+    const subject = typeof row.subject === "string" && row.subject.trim() ? row.subject.trim() : "Unspecified subject";
+    if (!Number.isFinite(earned) || !Number.isFinite(possible) || possible <= 0 || earned < 0 || earned > possible) {
+      excludedInvalidMarkRecords++;
+      continue;
+    }
+    const total = subjectTotals.get(subject) || { subject, earnedMarks: 0, possibleMarks: 0, markedRecords: 0 };
+    total.earnedMarks += earned;
+    total.possibleMarks += possible;
+    total.markedRecords++;
+    subjectTotals.set(subject, total);
+  }
+  const subjectPerformance = [...subjectTotals.values()].map(item => ({
+    ...item,
+    percentage: Math.round((item.earnedMarks / item.possibleMarks) * 10000) / 100,
+  })).sort((a,b) => a.subject.localeCompare(b.subject));
+  const marksSummary = {
+    scope: "All valid marked assignment and exercise records currently saved for this learner; term dates were not supplied, so this is not represented as term-only data.",
+    subjectPerformance,
+    markedRecordCount: subjectPerformance.reduce((sum, item) => sum + item.markedRecords, 0),
+    excludedInvalidMarkRecords,
+  };
+  const sourceSnapshot = { learner: learner.rows[0], termLabel, enrollments: enrollments.rows, attendance: attendance.rows, awards: awards.rows, marksSummary, markedAssignments: assignmentMarks.rows, markedExercises: exerciseMarks.rows, relevantAuditEvents: events.rows };
   let draftContent: unknown;
   let provider = "record-based";
   if (reportType === "attendance_register") {
@@ -217,7 +246,7 @@ router.post("/academic-records/reports/drafts", requireAuth, async (req, res): P
       const ai = await getAIProvider();
       if (ai.name === "mock") { res.status(503).json({ error: "A live AI provider must be configured to draft term-performance commentary. No mock AI report was created." }); return; }
       provider = ai.name;
-      draftContent = { label: termLabel, learner: learner.rows[0].name, factualRecords: { enrollments: enrollments.rows, attendanceCount: attendance.rows.length, awards: awards.rows }, commentary: await ai.analyzeData(sourceSnapshot, "Draft a CAPS-aligned term performance report using only the supplied verified records. Separate measured facts from interpretations, identify missing data, do not invent marks or attendance, and clearly label this as an unapproved draft. Return concise structured prose.") };
+      draftContent = { label: termLabel, learner: learner.rows[0].name, factualRecords: { enrollments: enrollments.rows, attendanceCount: attendance.rows.length, awards: awards.rows, marksSummary }, commentary: await ai.analyzeData(sourceSnapshot, "Draft a CAPS-aligned academic performance report using only the supplied verified records. Include subject percentages only from marksSummary, clearly state that mark percentages cover all saved marked records because term dates were not supplied, separate measured facts from interpretations, identify missing data, do not invent marks or attendance, and label this as an unapproved draft. Return concise structured prose.") };
     } catch (error) { res.status(503).json({ error: error instanceof Error ? error.message : "Live AI report drafting unavailable." }); return; }
   }
   const saved = await pool.query("INSERT INTO academic_report_drafts (learner_id,created_by,report_type,term_label,source_snapshot,draft_content) VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb) RETURNING id,learner_id,created_by,report_type,term_label,draft_content,status,created_at", [learnerId, creator.id, reportType, termLabel, JSON.stringify(sourceSnapshot), JSON.stringify(draftContent)]);
