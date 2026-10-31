@@ -130,7 +130,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     logoutMutation.mutate(undefined, { onSettled: () => logout() });
   };
 
-  const normalizedRole = String(user.role||"").toLowerCase().replace(/[ -]+/g,"_");
+  const rawRole = String(user.role||"").toLowerCase().replace(/[ -]+/g,"_");
+  const normalizedRole = rawRole === "jnr_manager" ? "junior_manager" : rawRole === "snr_manager" ? "senior_manager" : rawRole;
 
   let navItems: NavItem[] = [];
 
