@@ -31,6 +31,7 @@ import socialFeaturesRouter from "./socialFeatures";
 import pushRouter from "./push";
 import emailRouter from "./email";
 import contentPermissionsRouter from "./contentPermissions";
+import managerPermissionsRouter from "./managerPermissions";
 
 const router: IRouter = Router();
 
@@ -60,6 +61,7 @@ router.use(ownerAlertsRouter);
 router.use(staffPaymentsRouter);
 router.use("/achievements", achievementsRouter);
 router.use("/manager", managerRouter);
+router.use("/manager-permissions", managerPermissionsRouter);
 router.use("/exercises", exercisesRouter);
 router.use(socialFeaturesRouter);
 router.use(pushRouter);
