@@ -22,7 +22,7 @@ export default function ManagerReports() {
     { label: "Managers", value: report?.managerCount ?? 0, icon: Users, color: "text-purple-600", bg: "bg-purple-50" },
     { label: "Total Lessons", value: report?.lessonCount ?? 0, icon: BookOpen, color: "text-amber-600", bg: "bg-amber-50" },
     { label: "Total Classes", value: report?.classCount ?? 0, icon: Video, color: "text-indigo-600", bg: "bg-indigo-50" },
-    { label: "Total Revenue", value: `$${(report?.totalRevenue ?? 0).toFixed(2)}`, icon: DollarSign, color: "text-emerald-600", bg: "bg-emerald-50" },
+    { label: "Total Revenue", value: report?.totalRevenue == null ? "Restricted" : `${Number(report.totalRevenue).toFixed(2)}`, icon: DollarSign, color: "text-emerald-600", bg: "bg-emerald-50" },
   ];
 
   return (
@@ -57,8 +57,8 @@ export default function ManagerReports() {
                 <CardContent>
                   <div className="space-y-3">
                     {[
-                      { label: "Paid Payments", value: report?.paidPayments ?? 0, color: "bg-emerald-500", pct: report?.paidPayments / ((report?.paidPayments ?? 0) + (report?.pendingPayments ?? 0)) * 100 || 0 },
-                      { label: "Pending Payments", value: report?.pendingPayments ?? 0, color: "bg-amber-500", pct: report?.pendingPayments / ((report?.paidPayments ?? 0) + (report?.pendingPayments ?? 0)) * 100 || 0 },
+                      { label: "Paid Payments", value: report?.paidPayments == null ? "Restricted" : report.paidPayments, color: "bg-emerald-500", pct: report?.paidPayments == null ? 0 : report.paidPayments / ((report?.paidPayments ?? 0) + (report?.pendingPayments ?? 0)) * 100 || 0 },
+                      { label: "Pending Payments", value: report?.pendingPayments == null ? "Restricted" : report.pendingPayments, color: "bg-amber-500", pct: report?.pendingPayments == null ? 0 : report.pendingPayments / ((report?.paidPayments ?? 0) + (report?.pendingPayments ?? 0)) * 100 || 0 },
                     ].map(item => (
                       <div key={item.label}>
                         <div className="flex justify-between text-xs text-slate-600 mb-1">
