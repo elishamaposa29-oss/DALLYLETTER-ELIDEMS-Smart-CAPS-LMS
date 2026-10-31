@@ -19,9 +19,11 @@ function isTeacherPendingReview(user: RoleLikeUser): boolean {
 
 function hasManagerStaffRole(user: RoleLikeUser): boolean {
   const role = normalizeRole(user.role);
-  return user.isManager === true
-    && !isTeacherPendingReview(user)
-    && ["teacher", "manager", "junior_manager", "senior_manager"].includes(role);
+  if (isTeacherPendingReview(user)) return false;
+  // Explicit manager roles are authoritative. The legacy isManager flag is only
+  // needed for teachers who are additionally granted manager access.
+  return ["manager", "junior_manager", "senior_manager"].includes(role)
+    || (role === "teacher" && user.isManager === true);
 }
 
 export function canManageAcademicContent(user: RoleLikeUser): boolean {
