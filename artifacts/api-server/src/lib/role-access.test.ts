@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canAccessManager, canManageAcademicContent, canUseStaffAI, enforceAcademicStaffAccess, enforceAuthenticated, enforceOwnerAccess, isOwnerRole, normalizeRole } from "./role-access.js";
+import { canAccessManager, canManageAcademicContent, canReviewAcademicTransfer, canUseStaffAI, enforceAcademicStaffAccess, enforceAuthenticated, enforceOwnerAccess, isOwnerRole, normalizeRole } from "./role-access.js";
 
 test("normalizes legacy role casing and separators",()=>{
  assert.equal(normalizeRole(" Senior Manager "), "senior_manager");
@@ -116,4 +116,11 @@ test("approved teachers and owners retain academic staff access",()=>{
  assert.equal(canManageAcademicContent({role:"teacher",teacherApplicationStatus:"approved"}),true);
  assert.equal(canUseStaffAI({role:"teacher",teacherApplicationStatus:"approved"}),true);
  assert.equal(canManageAcademicContent({role:"owner",teacherApplicationStatus:"pending_review"}),true);
+});
+
+test("transfer review access recognizes owner aliases and rejects ordinary learners",()=>{
+ for(const role of ["owner","admin","platform_owner","senior_manager","manager"]) assert.equal(canReviewAcademicTransfer({role}),true,role);
+ assert.equal(canReviewAcademicTransfer({role:"teacher",isManager:true}),true);
+ assert.equal(canReviewAcademicTransfer({role:"teacher",isManager:true,teacherApplicationStatus:"pending_review"}),false);
+ for(const role of ["student","prefect","teacher","unknown"]) assert.equal(canReviewAcademicTransfer({role,isManager:false}),false,role);
 });
