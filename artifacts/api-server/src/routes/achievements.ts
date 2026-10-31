@@ -147,6 +147,8 @@ router.post("/award/recommendations/:id/review", requireAuth, async (req, res): 
     }
     let award: any = null;
     if (decision === "approved") {
+      // Serialize all award decisions for this learner before checking duplicates and updating counters.
+      await client.query("SELECT id FROM users WHERE id=$1 FOR UPDATE", [recommendation.learner_id]);
       const existing = await client.query("SELECT id FROM user_achievements WHERE user_id=$1 AND achievement_id=$2 FOR UPDATE", [recommendation.learner_id, recommendation.achievement_id]);
       if (existing.rowCount) {
         await client.query("ROLLBACK");
