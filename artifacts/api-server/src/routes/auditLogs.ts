@@ -102,7 +102,7 @@ router.post("/academic-records/transfer-requests", requireAuth, async (req, res)
 router.get("/academic-records/transfer-requests", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   const manager = canAccessManager(user);
-  if (manager && !(await hasManagerPermission(user, "transferView"))) { res.status(403).json({ error: "You do not have permission to view transfer requests." }); return; }
+  if (manager && !(await hasManagerPermission(user, "transferView")) && !(await hasManagerPermission(user, "transferReview"))) { res.status(403).json({ error: "You do not have permission to view transfer requests." }); return; }
   const result = manager
     ? await pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,r.requested_by,r.reason,r.status,r.review_note,r.reviewed_by,r.reviewed_at,r.created_at FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id ORDER BY r.created_at DESC LIMIT 200")
     : await pool.query("SELECT id,learner_id,reason,status,review_note,reviewed_at,created_at FROM academic_transfer_requests WHERE learner_id=$1 ORDER BY created_at DESC LIMIT 100", [user.id]);
@@ -134,7 +134,7 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, asyn
   const row = result.rows[0];
   if (!row || (Number(row.learner_id) !== Number(user.id) && !canAccessManager(user))) { res.status(404).json({ error: "Approved transfer letter not found." }); return; }
   if (row.status !== "approved") { res.status(403).json({ error: "The transfer letter cannot be downloaded until an authorized manager approves the request." }); return; }
-  if (canAccessManager(user) && !(await hasManagerPermission(user, "transferView"))) { res.status(403).json({ error: "You do not have permission to download transfer letters." }); return; }
+  if (canAccessManager(user) && !(await hasManagerPermission(user, "transferView")) && !(await hasManagerPermission(user, "transferReview"))) { res.status(403).json({ error: "You do not have permission to download transfer letters." }); return; }
   const approvalRef = "DL-TR-" + String(id).padStart(6, "0") + "-" + new Date(row.reviewed_at).toISOString().slice(0,10).replace(/-/g, "");
   const pdf = createTransferLetterPdf([
     "DALLYLETTER ELIDEMS",
@@ -264,7 +264,7 @@ router.get("/academic-records/reports/me", requireAuth, async (req, res): Promis
 
 router.get("/academic-records/reports/drafts", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (!(await hasManagerPermission(user, "reportView"))) { res.status(403).json({ error: "Report-review access is required." }); return; }
+  if (!(await hasManagerPermission(user, "reportView")) && !(await hasManagerPermission(user, "reportReview"))) { res.status(403).json({ error: "Report-review access is required." }); return; }
   const result = await pool.query("SELECT d.id,d.learner_id,u.name AS learner_name,u.grade AS learner_grade,d.created_by,d.report_type,d.term_label,d.draft_content,d.status,d.reviewed_by,d.review_note,d.reviewed_at,d.created_at FROM academic_report_drafts d JOIN users u ON u.id=d.learner_id ORDER BY d.created_at DESC LIMIT 200");
   res.json(result.rows);
 });
@@ -290,7 +290,7 @@ router.get("/academic-records/reports/drafts/:id/download", requireAuth, async (
   const result = await pool.query("SELECT * FROM academic_report_drafts WHERE id=$1", [id]);
   const row = result.rows[0];
   if (!row || (Number(row.learner_id) !== Number(user.id) && !canAccessManager(user))) { res.status(404).json({ error: "Approved academic report not found." }); return; }
-  if (canAccessManager(user) && !(await hasManagerPermission(user, "reportView"))) { res.status(403).json({ error: "You do not have permission to download reports." }); return; }
+  if (canAccessManager(user) && !(await hasManagerPermission(user, "reportView")) && !(await hasManagerPermission(user, "reportReview"))) { res.status(403).json({ error: "You do not have permission to download reports." }); return; }
   if (row.status !== "approved") { res.status(403).json({ error: "Academic reports cannot be downloaded until an authorized manager approves the draft." }); return; }
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Content-Disposition", 'attachment; filename="dallyletter-' + row.report_type + '-' + id + '.json"');
