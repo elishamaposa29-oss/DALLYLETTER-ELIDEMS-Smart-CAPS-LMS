@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { achievementsTable, userAchievementsTable, usersTable, lessonRequestsTable, notificationsTable } from "@workspace/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { requireAuth } from "../lib/auth-middleware";
+import { hasManagerPermission } from "../lib/manager-permissions";
 
 const router = Router();
 
@@ -73,7 +74,7 @@ router.post("/", requireAuth, async (req, res): Promise<void> => {
 
 router.post("/award", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (user.role !== "owner" && !user.isManager) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!(await hasManagerPermission(user, "awardIssue"))) { res.status(403).json({ error: "Award-issuing permission required" }); return; }
   const { userId, achievementId, note } = req.body;
   if (!userId || !achievementId) { res.status(400).json({ error: "userId and achievementId required" }); return; }
   const existing = await db.select().from(userAchievementsTable)
