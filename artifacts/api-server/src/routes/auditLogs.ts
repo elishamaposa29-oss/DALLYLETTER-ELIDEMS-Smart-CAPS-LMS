@@ -227,9 +227,11 @@ router.post("/academic-records/reports/drafts", requireAuth, async (req, res): P
     scope: "All valid marked assignment and exercise records currently saved for this learner; term dates were not supplied, so this is not represented as term-only data.",
     subjectPerformance,
     markedRecordCount: subjectPerformance.reduce((sum, item) => sum + item.markedRecords, 0),
+    assignmentRecords: assignmentMarks.rows.length,
+    exerciseRecords: exerciseMarks.rows.length,
     excludedInvalidMarkRecords,
   };
-  const sourceSnapshot = { learner: learner.rows[0], termLabel, enrollments: enrollments.rows, attendance: attendance.rows, awards: awards.rows, marksSummary, markedAssignments: assignmentMarks.rows, markedExercises: exerciseMarks.rows, relevantAuditEvents: events.rows };
+  const sourceSnapshot = { learner: learner.rows[0], termLabel, enrollments: enrollments.rows, attendance: attendance.rows, awards: awards.rows, marksSummary, relevantAuditEvents: events.rows };
   let draftContent: unknown;
   let provider = "record-based";
   if (reportType === "attendance_register") {
