@@ -40,8 +40,8 @@ export default function AdminSettings() {
     reportCreate: "Create performance report drafts",
     reportReview: "Approve or reject reports",
     teacherMonitor: "Monitor teacher activity",
-    studentManage: "Manage learners",
-    prefectManage: "Manage prefects",
+    studentManage: "View learner records and activity",
+    prefectManage: "View prefect roster",
     awardIssue: "Issue awards",
   };
 
