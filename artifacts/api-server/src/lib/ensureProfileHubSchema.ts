@@ -179,6 +179,13 @@ export async function ensureProfileHubSchema(): Promise<void> {
     await client.query("CREATE INDEX IF NOT EXISTS achievement_award_recommendations_review_idx ON achievement_award_recommendations(status, created_at DESC)");
     await client.query("CREATE INDEX IF NOT EXISTS achievement_award_recommendations_learner_idx ON achievement_award_recommendations(learner_id, created_at DESC)");
     await client.query("CREATE UNIQUE INDEX IF NOT EXISTS achievement_award_recommendations_pending_unique_idx ON achievement_award_recommendations(learner_id, achievement_id) WHERE status='pending_senior_review'");
+    await client.query(`CREATE TABLE IF NOT EXISTS notification_reads (
+      notification_id integer NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
+      user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      read_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (notification_id, user_id)
+    )`);
+    await client.query("CREATE INDEX IF NOT EXISTS notification_reads_user_idx ON notification_reads(user_id, read_at DESC)");
 
     // Additive daily app-access attendance. Separate from class-session attendance.
     await client.query(`CREATE TABLE IF NOT EXISTS user_attendance_preferences (
