@@ -33,7 +33,7 @@ router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
   ]);
 
   // Rank from observed work, marking, and learner engagement rather than the manually editable score.
-  const [transferRows, reportRows, qualificationRows, enrollmentRows, contentFlags, teacherApplications] = await Promise.all([
+  const [transferRows, reportRows, awardRows, qualificationRows, enrollmentRows, contentFlags, teacherApplications] = await Promise.all([
     pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,r.reason,r.status,r.created_at FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id WHERE r.status='pending' ORDER BY r.created_at ASC LIMIT 100"),
     pool.query("SELECT d.id,d.learner_id,u.name AS learner_name,d.report_type,d.term_label,d.status,d.created_at FROM academic_report_drafts d JOIN users u ON u.id=d.learner_id WHERE d.status='pending_review' ORDER BY d.created_at ASC LIMIT 100"),
     isOwnerRole(req.currentUser!.role)
@@ -66,6 +66,7 @@ router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
   const reviewQueue = [
     ...transferRows.rows.map((r: any) => ({ id: "transfer-" + r.id, type: "transfer_request", title: "Transfer letter approval", description: r.reason, targetId: Number(r.id), learnerId: Number(r.learner_id), learnerName: r.learner_name, status: "pending", createdAt: r.created_at, href: "/manager/transfer-requests" })),
     ...reportRows.rows.map((r: any) => ({ id: "report-" + r.id, type: "academic_report", title: "Performance report review", description: r.report_type + " · " + r.term_label, targetId: Number(r.id), learnerId: Number(r.learner_id), learnerName: r.learner_name, status: "pending_review", createdAt: r.created_at, href: "/manager/reports/review" })),
+    ...awardRows.rows.map((r: any) => ({ id: "award-" + r.id, type: "achievement_award", title: "Achievement award recommendation", description: (r.achievement_icon || "🏆") + " " + r.achievement_name + (r.recommendation_note ? " · " + r.recommendation_note : ""), targetId: Number(r.id), learnerId: Number(r.learner_id), learnerName: r.learner_name, status: "pending_senior_review", createdAt: r.created_at, href: "/admin/achievements" })),
     ...qualificationRows.rows.map((r: any) => ({ id: "qualification-" + r.id, type: "qualification_verification", title: "Teacher qualification verification", description: r.title + (r.institution ? " · " + r.institution : ""), targetId: Number(r.id), learnerName: r.teacher_name, status: "pending", createdAt: r.created_at, href: "/admin/users" })),
     ...contentFlags.map((r: any) => ({ id: "content-flag-" + r.id, type: "content_moderation", title: "Content moderation review", description: r.reason, targetId: r.id, learnerName: r.contentType + " #" + r.contentId, status: r.status, severity: r.severity, createdAt: r.createdAt, href: "/manager/safety" })),
     ...teacherApplications.rows.map((r: any) => ({ id: "teacher-application-" + r.id, type: "teacher_application", title: "Teacher application review", description: r.email || "Teacher applicant", targetId: Number(r.id), learnerName: r.name, status: "pending_review", createdAt: r.created_at, href: "/admin/users" })),
@@ -80,7 +81,7 @@ router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
     recentLessons: lessons.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10),
     openAlerts: reviewQueue.slice(0, 12),
     reviewQueue,
-    reviewCounts: { transferRequests: transferRows.rows.length, performanceReports: reportRows.rows.length, qualificationVerifications: qualificationRows.rows.length, contentFlags: contentFlags.length, teacherApplications: teacherApplications.rows.length, alerts: alerts.length },
+    reviewCounts: { transferRequests: transferRows.rows.length, performanceReports: reportRows.rows.length, awardRecommendations: awardRows.rows.length, qualificationVerifications: qualificationRows.rows.length, contentFlags: contentFlags.length, teacherApplications: teacherApplications.rows.length, alerts: alerts.length },
     recentAssignments: assignments.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10),
     topTeachers: teacherRanks,
     markingStats: { markedAssignments: totalMarkedAssignments, markedExercises: totalMarkedExercises },
