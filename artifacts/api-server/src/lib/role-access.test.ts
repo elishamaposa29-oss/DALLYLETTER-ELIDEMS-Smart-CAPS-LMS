@@ -5,6 +5,8 @@ import { canAccessManager, canManageAcademicContent, canUseStaffAI, enforceAcade
 test("normalizes legacy role casing and separators",()=>{
  assert.equal(normalizeRole(" Senior Manager "), "senior_manager");
  assert.equal(normalizeRole("PLATFORM-OWNER"), "platform_owner");
+ assert.equal(normalizeRole("jnr_manager"), "junior_manager");
+ assert.equal(normalizeRole("snr_manager"), "senior_manager");
  assert.equal(normalizeRole(null), "");
 });
 
