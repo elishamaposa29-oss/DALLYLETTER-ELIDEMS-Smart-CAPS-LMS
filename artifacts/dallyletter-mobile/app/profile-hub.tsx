@@ -23,7 +23,7 @@ export default function MobileProfileHub() {
   const targetId = params.userId ? Number(params.userId) : user?.id;
   const isOwn = Boolean(user && targetId === user.id);
   const isOwner = ["owner","admin","platform_owner"].includes(String(user?.role||"").toLowerCase());
-  const canReviewTransferLetters = ["manager","senior_manager","owner"].includes(String(user?.role||"").toLowerCase());
+  const canReviewTransferLetters = ["manager","senior_manager","owner","admin","platform_owner"].includes(String(user?.role||"").trim().toLowerCase().replace(/[ -]+/g,"_"));
   const [tab,setTab] = useState<Tab>("Overview");
   const [profile,setProfile] = useState<Row|null>(null);
   const [qualifications,setQualifications] = useState<Row[]>([]);
