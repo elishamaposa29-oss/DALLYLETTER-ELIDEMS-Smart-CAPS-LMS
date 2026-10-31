@@ -35,6 +35,18 @@ const requiredColumns: Array<[string, string]> = [
   ["media_object_chunks", "created_at"]
 ];
 
+// Public configuration derived from the API runtime, not a hardcoded UI value.
+// Mounted under /api, so clients call GET /api/config/currentYear.
+router.get("/config/currentYear", (_req, res): void => {
+  const now = new Date();
+  res.setHeader("Cache-Control", "public, max-age=300");
+  res.json({
+    currentYear: now.getFullYear(),
+    source: "backend-runtime",
+    generatedAt: now.toISOString()
+  });
+});
+
 router.get("/healthz", async (_req, res): Promise<void> => {
   try {
     await pool.query("SELECT 1");
