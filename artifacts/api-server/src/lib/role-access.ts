@@ -59,3 +59,9 @@ export function enforceAcademicStaffAccess(req:AuthRequestLike,res:AuthResponseL
   if (!req.currentUser || !canManageAcademicContent(req.currentUser)) { res.status(403).json({error:"Teacher or manager access required"}); return; }
   next();
 }
+
+/** Transfer decisions are limited to owner-class accounts and authorized managers. */
+export function canReviewAcademicTransfer(user: RoleLikeUser): boolean {
+  const role = normalizeRole(user.role);
+  return isOwnerRole(role) || role === "manager" || role === "senior_manager" || (role === "teacher" && user.isManager === true && !isTeacherPendingReview(user));
+}
