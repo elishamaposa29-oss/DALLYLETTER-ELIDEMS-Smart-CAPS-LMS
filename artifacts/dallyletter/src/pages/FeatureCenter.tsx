@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { getApiUrl } from "@workspace/api-client-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,7 +9,8 @@ import { Link } from "wouter";
 import type { LucideIcon } from "lucide-react";
 import { Bell, BookOpen, ClipboardList, CreditCard, FileCheck2, FileText, Headphones, Mail, MessageSquare, PenTool, ShieldCheck, Smartphone, Users, Video, WalletCards } from "lucide-react";
 
-type Feature = { title:string; description:string; href:string; icon:LucideIcon; tone:string; tag:string; roles?:string[] };
+type ManagerPermission = "transferView" | "transferReview" | "reportView" | "reportCreate" | "reportReview" | "teacherMonitor" | "studentManage" | "prefectManage" | "awardIssue";
+type Feature = { title:string; description:string; href:string; icon:LucideIcon; tone:string; tag:string; roles?:string[]; permission?:ManagerPermission };
 
 const features:Feature[] = [
  {title:"Clickable notifications",description:"Recent alerts route to the exact lesson, assignment, class, poll or activity instead of a dead end.",href:"/student/notifications",icon:Bell,tone:"bg-amber-50 text-amber-700",tag:"Interactive",roles:["student","prefect"]},
@@ -21,23 +24,45 @@ const features:Feature[] = [
  {title:"Study groups & Connect",description:"Use group permissions, member previews and the Connect communication experience.",href:"/student/study-groups",icon:Users,tone:"bg-orange-50 text-orange-700",tag:"Social",roles:["student","prefect"]},
  {title:"Payments",description:"Open the learner payment flow or staff financial dashboard. Provider-backed payouts remain gated until credentials are configured.",href:"/student/payments",icon:CreditCard,tone:"bg-green-50 text-green-700",tag:"Provider-ready",roles:["student","prefect"]},
  {title:"PWA / install",description:"Use the install experience and test the app shell across supported mobile and desktop browsers.",href:"/docs",icon:Smartphone,tone:"bg-sky-50 text-sky-700",tag:"PWA"},
- {title:"Email notifications",description:"Managers and owners can opt an in-app notification into server-side email delivery.",href:"/admin/notifications",icon:Mail,tone:"bg-violet-50 text-violet-700",tag:"Manager / Owner",roles:["teacher","owner"]},
- {title:"Manager dashboard",description:"Monitor school activity, teachers, learners, prefects and reports.",href:"/manager",icon:BookOpen,tone:"bg-violet-50 text-violet-700",tag:"Management",roles:["manager","senior_manager"]},
- {title:"Monitor teachers",description:"Open the authorized teacher monitoring view.",href:"/manager/teachers",icon:Users,tone:"bg-blue-50 text-blue-700",tag:"Management",roles:["manager","senior_manager"]},
- {title:"Monitor learners",description:"Open the authorized learner monitoring view.",href:"/manager/students",icon:Users,tone:"bg-cyan-50 text-cyan-700",tag:"Management",roles:["manager","senior_manager"]},
- {title:"Manager reports",description:"View school-level reporting summaries.",href:"/manager/reports",icon:FileText,tone:"bg-emerald-50 text-emerald-700",tag:"Management",roles:["manager","senior_manager"]},
- {title:"Manager notifications",description:"Review and manage role-authorized notifications.",href:"/manager/notifications",icon:Bell,tone:"bg-amber-50 text-amber-700",tag:"Management",roles:["manager","senior_manager"]},
- {title:"Manager assignments",description:"Open assignment oversight tools.",href:"/manager/assignments",icon:ClipboardList,tone:"bg-indigo-50 text-indigo-700",tag:"Management",roles:["manager","senior_manager"]},
- {title:"Connect",description:"Open manager-authorized school communication.",href:"/manager/chat",icon:MessageSquare,tone:"bg-rose-50 text-rose-700",tag:"Management",roles:["manager","senior_manager"]},
- {title:"Prefect management",description:"Review and manage prefect assignments.",href:"/manager/prefects",icon:ShieldCheck,tone:"bg-orange-50 text-orange-700",tag:"Management",roles:["manager","senior_manager"]},
+ {title:"Email notifications",description:"Open the role-authorized notification controls; provider delivery is reported only when verified.",href:"/manager/notifications",icon:Mail,tone:"bg-violet-50 text-violet-700",tag:"Notifications",roles:["teacher","owner","manager","junior_manager","senior_manager"]},
+ {title:"Manager dashboard",description:"Open the manager portal for school activity and the features permitted for your account.",href:"/manager",icon:BookOpen,tone:"bg-violet-50 text-violet-700",tag:"Management",roles:["manager","junior_manager","senior_manager"],},
+ {title:"Monitor teachers",description:"Open the authorized teacher monitoring view.",href:"/manager/teachers",icon:Users,tone:"bg-blue-50 text-blue-700",tag:"Management",roles:["manager","junior_manager","senior_manager"],permission:"teacherMonitor"},
+ {title:"Monitor learners",description:"Open the authorized learner monitoring view.",href:"/manager/students",icon:Users,tone:"bg-cyan-50 text-cyan-700",tag:"Management",roles:["manager","junior_manager","senior_manager"],permission:"studentManage"},
+ {title:"Manager reports",description:"View school-level reporting summaries.",href:"/manager/reports",icon:FileText,tone:"bg-emerald-50 text-emerald-700",tag:"Management",roles:["manager","junior_manager","senior_manager"],permission:"reportView"},
+ {title:"Manager notifications",description:"Review role-authorized notifications.",href:"/manager/notifications",icon:Bell,tone:"bg-amber-50 text-amber-700",tag:"Management",roles:["manager","junior_manager","senior_manager"]},
+ {title:"Manager assignments",description:"Open assignment oversight tools.",href:"/manager/assignments",icon:ClipboardList,tone:"bg-indigo-50 text-indigo-700",tag:"Management",roles:["manager","junior_manager","senior_manager"]},
+ {title:"Connect",description:"Open manager-authorized school communication.",href:"/manager/chat",icon:MessageSquare,tone:"bg-rose-50 text-rose-700",tag:"Management",roles:["manager","junior_manager","senior_manager"]},
+ {title:"Prefect management",description:"Review and manage prefect assignments.",href:"/manager/prefects",icon:ShieldCheck,tone:"bg-orange-50 text-orange-700",tag:"Management",roles:["manager","junior_manager","senior_manager"],permission:"prefectManage"},
 ];
 
 export default function FeatureCenter(){
  const {user}=useAuth();
- const normalizedRole=String(user?.role||"").toLowerCase().replace(/[ -]+/g,"_");
- const isManager=Boolean((user as any)?.isManager)||["manager","senior_manager"].includes(normalizedRole);
+ const rawRole=String(user?.role||"").toLowerCase().replace(/[ -]+/g,"_");
+ const normalizedRole=rawRole==="jnr_manager"?"junior_manager":rawRole==="snr_manager"?"senior_manager":rawRole;
  const isOwner=["owner","admin","platform_owner"].includes(normalizedRole);
- const visible=features.filter(f=>!f.roles || (user && (f.roles.includes(normalizedRole)||(isOwner&&f.roles.includes("owner"))||(isManager&&f.roles.some(role=>["manager","senior_manager"].includes(role))))));
+ const isManager=Boolean((user as any)?.isManager)||["manager","junior_manager","senior_manager"].includes(normalizedRole);
+ const [managerPermissions,setManagerPermissions]=useState<Partial<Record<ManagerPermission,boolean>>|null>(null);
+ const [permissionsLoaded,setPermissionsLoaded]=useState(false);
+
+ useEffect(()=>{
+   if(!user||!isManager||isOwner){setManagerPermissions(null);setPermissionsLoaded(true);return;}
+   let active=true;
+   setPermissionsLoaded(false);
+   const token=typeof localStorage!=="undefined"?localStorage.getItem("dallyletter_token"):null;
+   void fetch(getApiUrl("/api/manager-permissions/me"),{headers:token?{Authorization:"Bearer "+token}:{}})
+     .then(async response=>{if(!response.ok)throw new Error("Manager permissions could not be loaded");return response.json();})
+     .then((permissions:Partial<Record<ManagerPermission,boolean>>)=>{if(active)setManagerPermissions(permissions);})
+     .catch(()=>{if(active)setManagerPermissions(null);})
+     .finally(()=>{if(active)setPermissionsLoaded(true);});
+   return()=>{active=false;};
+ },[user,isManager,isOwner]);
+
+ const visible=features.filter(feature=>{
+   if(feature.roles&&!feature.roles.includes(normalizedRole)&&!(isOwner&&feature.roles.includes("owner"))&&!(isManager&&feature.roles.some(role=>["manager","junior_manager","senior_manager"].includes(role))))return false;
+   if(!feature.permission||isOwner)return true;
+   if(!isManager||!permissionsLoaded||!managerPermissions)return false;
+   return managerPermissions[feature.permission]===true;
+ });
  return <DashboardLayout>
   <div className="space-y-6">
    <div className="rounded-3xl bg-gradient-to-br from-[#0a1628] via-[#10294a] to-[#0a1628] p-6 md:p-8 text-white shadow-xl">
@@ -46,6 +71,8 @@ export default function FeatureCenter(){
      <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm"><span className="text-white/50">Signed in as</span><div className="font-semibold">{user?.name}</div></div>
     </div>
    </div>
+   {isManager&&!isOwner&&!permissionsLoaded?<p role="status" className="text-sm text-muted-foreground">Loading your authorised manager features…</p>:null}
+   {isManager&&!isOwner&&permissionsLoaded&&!managerPermissions?<p role="status" className="text-sm text-muted-foreground">Manager permissions could not be loaded. Restricted manager tools are hidden until access can be verified. Retry by refreshing this page.</p>:null}
    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
     {visible.map((f)=>{
       const Icon=f.icon;
