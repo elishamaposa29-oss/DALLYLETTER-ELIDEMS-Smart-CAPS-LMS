@@ -280,7 +280,7 @@ router.post("/academic-records/transfer-requests/:id/review", requireAuth, async
   try {
     await client.query("BEGIN");
     const result = await client.query(
-      "UPDATE academic_transfer_requests SET status=$1,reviewed_by=$2,review_note=$3,reviewed_at=now(),updated_at=now(),verification_token_hash=$4,verification_token_expires_at=CASE WHEN $4 IS NULL THEN NULL ELSE now()+interval '30 days' END,verification_verified_at=NULL WHERE id=$5 AND status='pending' RETURNING id,learner_id,status,review_note,reviewed_by,reviewed_at,verification_token_expires_at",
+      "UPDATE academic_transfer_requests SET status=$1,reviewed_by=$2,review_note=$3,reviewed_at=now(),updated_at=now(),verification_token_hash=$4::text,verification_token_expires_at=CASE WHEN $4::text IS NULL THEN NULL ELSE now()+interval '30 days' END,verification_verified_at=NULL WHERE id=$5 AND status='pending' RETURNING id,learner_id,status,review_note,reviewed_by,reviewed_at,verification_token_expires_at",
       [status, reviewer.id, note || null, verificationTokenHash, id],
     );
     if (!result.rowCount) {
