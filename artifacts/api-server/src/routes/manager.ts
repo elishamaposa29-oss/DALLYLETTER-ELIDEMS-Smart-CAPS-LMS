@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { usersTable, classesTable, lessonsTable, paymentsTable, ownerAlertsTable, assignmentsTable, pollsTable, exercisesTable, auditLogsTable, attendanceTable, userAchievementsTable, achievementsTable, exerciseSubmissionsTable, pollSubmissionsTable } from "@workspace/db/schema";
 import { eq, desc, and } from "drizzle-orm";
-import { requireAuth, canAccessManager } from "../lib/auth-middleware";
+import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { hasManagerPermission, type ManagerPermissionKey } from "../lib/manager-permissions";
 
 const router = Router();
@@ -135,16 +135,17 @@ router.get("/reports/overview", requireAuth, requireManager, requireManagerPermi
     db.select({ id: lessonsTable.id }).from(lessonsTable),
     db.select({ id: classesTable.id }).from(classesTable),
   ]);
+  const canSeeFinancials = isOwnerRole(req.currentUser!.role);
   const totalRevenue = payments.reduce((s: number, p: any) => s + parseFloat(p.amount ?? "0"), 0);
   res.json({
     teacherCount: teachers.length,
     studentCount: students.length,
     managerCount: managers.length,
-    totalRevenue,
+    totalRevenue: canSeeFinancials ? totalRevenue : null,
     lessonCount: lessons.length,
     classCount: classes.length,
-    paidPayments: payments.filter((p: any) => p.status === "paid").length,
-    pendingPayments: payments.filter((p: any) => p.status === "pending").length,
+    paidPayments: canSeeFinancials ? payments.filter((p: any) => p.status === "paid").length : null,
+    pendingPayments: canSeeFinancials ? payments.filter((p: any) => p.status === "pending").length : null,
   });
 });
 
