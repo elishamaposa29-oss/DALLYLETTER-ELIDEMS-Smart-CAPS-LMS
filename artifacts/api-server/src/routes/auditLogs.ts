@@ -7,6 +7,94 @@ import { enqueueEmailNotification } from "../lib/email-notification-queue";
 import { canReviewAcademicTransfer } from "../lib/role-access";
 
 const router = Router();
+function summarizeAcademicMarks(assignmentRows: any[], exerciseRows: any[]) {
+  const exempt = (status: unknown) => ["exempt", "excused"].includes(String(status || "").trim().toLowerCase());
+  const assignmentMarked = assignmentRows.filter(row => row.marks !== null && row.marks !== undefined && !exempt(row.status));
+  const exerciseMarked = exerciseRows.filter(row =>
+    !exempt(row.status) && (row.marked_at || row.returned_at || ["marked", "returned", "graded"].includes(String(row.status || "").toLowerCase()))
+  );
+  const summarize = (rows: any[], earnedKey: string, possibleKey: string) => {
+    const earned = rows.reduce((sum, row) => sum + (Number.isFinite(Number(row[earnedKey])) ? Number(row[earnedKey]) : 0), 0);
+    const possible = rows.reduce((sum, row) => sum + (Number.isFinite(Number(row[possibleKey])) ? Number(row[possibleKey]) : 0), 0);
+    return { markedCount: rows.length, earnedMarks: Number(earned.toFixed(2)), possibleMarks: Number(possible.toFixed(2)), percentage: possible > 0 ? Number((earned / possible * 100).toFixed(2)) : null };
+  };
+  const assignmentSummary = summarize(assignmentMarked, "marks", "total_marks");
+  const exerciseSummary = summarize(exerciseMarked, "total_score", "total_marks");
+  const combinedEarned = assignmentSummary.earnedMarks + exerciseSummary.earnedMarks;
+  const combinedPossible = assignmentSummary.possibleMarks + exerciseSummary.possibleMarks;
+  return {
+    assignments: { ...assignmentSummary, unmarkedCount: assignmentRows.filter(row => (row.marks === null || row.marks === undefined) && !exempt(row.status)).length, exemptCount: assignmentRows.filter(row => exempt(row.status)).length },
+    exercises: { ...exerciseSummary, unmarkedCount: exerciseRows.filter(row => !row.marked_at && !row.returned_at && !["marked", "returned", "graded", "exempt", "excused"].includes(String(row.status || "").toLowerCase())).length, exemptCount: exerciseRows.filter(row => exempt(row.status)).length },
+    overall: { markedCount: assignmentSummary.markedCount + exerciseSummary.markedCount, earnedMarks: Number(combinedEarned.toFixed(2)), possibleMarks: Number(combinedPossible.toFixed(2)), percentage: combinedPossible > 0 ? Number((combinedEarned / combinedPossible * 100).toFixed(2)) : null },
+  };
+}
+
+function buildAcademicReportPdf(input: { id: number; reportType: string; termLabel: string; learnerName: string; reviewedAt: unknown; reviewedBy: unknown; report: unknown }): Buffer {
+  const raw = [
+    "DALLYLETTER ELIDEMS",
+    "OFFICIAL ACADEMIC REPORT",
+    "Report type: " + input.reportType.replace(/_/g, " "),
+    "Learner: " + input.learnerName,
+    "Term / period: " + input.termLabel,
+    "Approved on: " + (input.reviewedAt ? new Date(String(input.reviewedAt)).toISOString().slice(0, 10) : "Date unavailable"),
+    "Approved by account ID: " + (input.reviewedBy ?? "Not recorded"),
+    "Document reference: DL-AR-" + input.id,
+    "VERIFIED REPORT CONTENT",
+    ...JSON.stringify(input.report ?? {}, null, 2).split("\n"),
+  ];
+  const escapePdf = (value: string) => value.normalize("NFKD").replace(/[^\\x20-\\x7E]/g, " ").replace(/\\\\/g, "\\\\").replace(/\\(/g, "\\(").replace(/\\)/g, "\\)");
+  const wrapped = raw.flatMap(line => {
+    const safe = String(line);
+    const words = safe.split(/\\s+/);
+    const out: string[] = [];
+    let current = "";
+    for (const word of words) {
+      if ((current + " " + word).trim().length > 88) { if (current) out.push(current); current = word; }
+      else current = (current + " " + word).trim();
+    }
+    if (current) out.push(current);
+    return out;
+  });
+  const pageLines = Array.from({ length: Math.max(1, Math.ceil(wrapped.length / 48)) }, (_, index) => wrapped.slice(index * 48, (index + 1) * 48));
+  const objects: string[] = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [" + pageLines.map((_, index) => (5 + index * 2) + " 0 R").join(" ") + "] /Count " + pageLines.length + " >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
+  ];
+  pageLines.forEach((page, pageIndex) => {
+    const pageObject = 5 + pageIndex * 2;
+    const contentObject = pageObject + 1;
+    const textCommands = page.map((line, index) => {
+      const heading = /^(DALLYLETTER ELIDEMS|OFFICIAL ACADEMIC REPORT|VERIFIED REPORT CONTENT)$/.test(line);
+      return (index ? "0 -14 Td\\n" : "") + (heading ? "/F2 11 Tf\\n" : "/F1 9 Tf\\n") + "(" + escapePdf(line) + ") Tj";
+    }).join("\\n");
+    const stream = [
+      "0.055 0.13 0.29 rg 0 790 595 52 re f",
+      "1 1 1 rg BT /F2 18 Tf 48 808 Td (DALLYLETTER ELIDEMS) Tj ET",
+      "0.72 0.55 0.08 rg 0 786 595 4 re f",
+      "0 0 0 rg BT 48 760 Td",
+      textCommands,
+      "ET",
+      "0.055 0.13 0.29 rg 48 34 499 1 re f",
+      "0 0 0 rg BT /F1 8 Tf 48 20 Td (Protected academic document - DL-AR-" + input.id + ") Tj 440 0 Td (Page " + (pageIndex + 1) + " of " + pageLines.length + ") Tj ET",
+    ].join("\\n");
+    objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents " + contentObject + " 0 R >>");
+    objects.push("<< /Length " + new TextEncoder().encode(stream).length + " >>\\nstream\\n" + stream + "\\nendstream");
+  });
+  let pdf = "%PDF-1.4\\n";
+  const offsets = [0];
+  for (let index = 0; index < objects.length; index++) {
+    offsets.push(new TextEncoder().encode(pdf).length);
+    pdf += (index + 1) + " 0 obj\\n" + objects[index] + "\\nendobj\\n";
+  }
+  const xref = new TextEncoder().encode(pdf).length;
+  pdf += "xref\\n0 " + (objects.length + 1) + "\\n0000000000 65535 f \\n";
+  for (const offset of offsets.slice(1)) pdf += String(offset).padStart(10, "0") + " 00000 n \\n";
+  pdf += "trailer\\n<< /Size " + (objects.length + 1) + " /Root 1 0 R >>\\nstartxref\\n" + xref + "\\n%%EOF";
+  return Buffer.from(pdf, "binary");
+}
+
 
 // GET /audit-logs — list audit logs (owner only)
 router.get("/audit-logs", requireAuth, async (req, res): Promise<void> => {
@@ -300,12 +388,15 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, asyn
 
 router.get("/academic-records/me", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  const [enrollments, awards, attendance] = await Promise.all([
+  const [enrollments, awards, attendance, assignmentMarks, exerciseMarks] = await Promise.all([
     pool.query("SELECT e.id,e.class_id,e.enrolled_at,e.progress_percent,e.status,c.title AS class_title,c.subject,c.teacher_id FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 ORDER BY e.enrolled_at DESC", [user.id]),
     pool.query("SELECT ua.id,ua.earned_at,a.name,a.description,a.icon,a.category,ua.awarded_by_name,ua.note FROM user_achievements ua JOIN achievements a ON a.id=ua.achievement_id WHERE ua.user_id=$1 ORDER BY ua.earned_at DESC", [user.id]),
     pool.query("SELECT class_id,status,joined_at,left_at,duration_minutes,is_late FROM attendance WHERE student_id=$1 ORDER BY joined_at DESC LIMIT 500", [user.id]),
+    pool.query("SELECT a.id AS assignment_id,a.title,a.subject,a.grade,a.total_marks,s.id AS submission_id,s.status,s.marks,s.submitted_at,s.graded_at,s.feedback FROM assignment_submissions s JOIN assignments a ON a.id=s.assignment_id WHERE s.student_id=$1 ORDER BY s.submitted_at DESC", [user.id]),
+    pool.query("SELECT e.id AS exercise_id,e.title,e.grade,e.total_marks,s.id AS submission_id,s.attempt_number,s.status,s.total_score,s.percentage,s.submitted_at,s.marked_at,s.returned_at,s.overall_comment FROM exercise_submissions s JOIN exercises e ON e.id=s.exercise_id WHERE s.learner_id=$1 ORDER BY s.submitted_at DESC", [user.id]),
   ]);
-  res.json({ enrollments: enrollments.rows, awards: awards.rows, attendance: attendance.rows });
+  const markSummary = summarizeAcademicMarks(assignmentMarks.rows, exerciseMarks.rows);
+  res.json({ enrollments: enrollments.rows, awards: awards.rows, attendance: attendance.rows, assignmentMarks: assignmentMarks.rows, exerciseMarks: exerciseMarks.rows, markSummary });
 });
 
 router.post("/academic-records/reports/drafts", requireAuth, async (req, res): Promise<void> => {
@@ -315,15 +406,18 @@ router.post("/academic-records/reports/drafts", requireAuth, async (req, res): P
   const reportType = req.body?.reportType;
   const termLabel = typeof req.body?.termLabel === "string" ? req.body.termLabel.trim().slice(0,80) : "";
   if (!Number.isSafeInteger(learnerId) || learnerId < 1 || !["attendance_register","term_performance"].includes(reportType) || !termLabel) { res.status(400).json({ error: "learnerId, reportType and termLabel are required." }); return; }
-  const [learner, enrollments, attendance, awards, events] = await Promise.all([
+  const [learner, enrollments, attendance, awards, events, assignmentMarks, exerciseMarks] = await Promise.all([
     pool.query("SELECT id,name,role,grade FROM users WHERE id=$1 AND role IN ('student','learner') AND is_blocked=false", [learnerId]),
     pool.query("SELECT e.id,e.class_id,e.enrolled_at,e.progress_percent,e.status,c.title AS class_title,c.subject FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 ORDER BY e.enrolled_at", [learnerId]),
     pool.query("SELECT class_id,status,joined_at,duration_minutes,is_late FROM attendance WHERE student_id=$1 AND joined_at >= date_trunc('year',now()) ORDER BY joined_at DESC LIMIT 1000", [learnerId]),
     pool.query("SELECT ua.earned_at,a.name,a.description FROM user_achievements ua JOIN achievements a ON a.id=ua.achievement_id WHERE ua.user_id=$1 ORDER BY ua.earned_at DESC", [learnerId]),
     pool.query("SELECT action,category,target_type,created_at FROM audit_logs WHERE target_id=$1 ORDER BY created_at DESC LIMIT 200", [String(learnerId)]),
+    pool.query("SELECT a.id AS assignment_id,a.title,a.subject,a.grade,a.total_marks,s.id AS submission_id,s.status,s.marks,s.submitted_at,s.graded_at,s.feedback FROM assignment_submissions s JOIN assignments a ON a.id=s.assignment_id WHERE s.student_id=$1 ORDER BY s.submitted_at DESC", [learnerId]),
+    pool.query("SELECT e.id AS exercise_id,e.title,e.grade,e.total_marks,s.id AS submission_id,s.attempt_number,s.status,s.total_score,s.percentage,s.submitted_at,s.marked_at,s.returned_at,s.overall_comment FROM exercise_submissions s JOIN exercises e ON e.id=s.exercise_id WHERE s.learner_id=$1 ORDER BY s.submitted_at DESC", [learnerId]),
   ]);
   if (!learner.rows[0]) { res.status(404).json({ error: "Learner not found." }); return; }
-  const sourceSnapshot = { learner: learner.rows[0], termLabel, enrollments: enrollments.rows, attendance: attendance.rows, awards: awards.rows, relevantAuditEvents: events.rows };
+  const markSummary = summarizeAcademicMarks(assignmentMarks.rows, exerciseMarks.rows);
+  const sourceSnapshot = { learner: learner.rows[0], termLabel, enrollments: enrollments.rows, attendance: attendance.rows, awards: awards.rows, assignmentMarks: assignmentMarks.rows, exerciseMarks: exerciseMarks.rows, markSummary, relevantAuditEvents: events.rows };
   let draftContent: unknown;
   let provider = "record-based";
   if (reportType === "attendance_register") {
@@ -342,7 +436,7 @@ router.post("/academic-records/reports/drafts", requireAuth, async (req, res): P
       const ai = await getAIProvider();
       if (ai.name === "mock") { res.status(503).json({ error: "A live AI provider must be configured to draft term-performance commentary. No mock AI report was created." }); return; }
       provider = ai.name;
-      draftContent = { label: termLabel, learner: learner.rows[0].name, factualRecords: { enrollments: enrollments.rows, attendanceCount: attendance.rows.length, awards: awards.rows }, commentary: await ai.analyzeData(sourceSnapshot, "Draft a CAPS-aligned term performance report using only the supplied verified records. Separate measured facts from interpretations, identify missing data, do not invent marks or attendance, and clearly label this as an unapproved draft. Return concise structured prose.") };
+      draftContent = { label: termLabel, learner: learner.rows[0].name, factualRecords: { enrollments: enrollments.rows, attendanceCount: attendance.rows.length, awards: awards.rows, assignmentMarks: assignmentMarks.rows, exerciseMarks: exerciseMarks.rows, markSummary }, commentary: await ai.analyzeData(sourceSnapshot, "Draft a CAPS-aligned term performance report using only the supplied verified records. Use recorded assignment marks and marked exercise scores; distinguish unmarked and exempt work, calculate percentages only from known earned and possible marks, identify missing data, do not invent marks or attendance, and clearly label this as an unapproved draft. The supplied submissions are the saved records for this learner; the term label is descriptive and is not proof of a date filter. Return concise structured prose.") };
     } catch (error) { res.status(503).json({ error: error instanceof Error ? error.message : "Live AI report drafting unavailable." }); return; }
   }
   const saved = await pool.query("INSERT INTO academic_report_drafts (learner_id,created_by,report_type,term_label,source_snapshot,draft_content) VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb) RETURNING id,learner_id,created_by,report_type,term_label,draft_content,status,created_at", [learnerId, creator.id, reportType, termLabel, JSON.stringify(sourceSnapshot), JSON.stringify(draftContent)]);
@@ -374,6 +468,25 @@ router.post("/academic-records/reports/drafts/:id/review", requireAuth, async (r
   if (!result.rowCount) { res.status(404).json({ error: "Pending report draft not found or already reviewed." }); return; }
   await db.insert(auditLogsTable).values({ performedBy: reviewer.id, action: "academic_report.reviewed", category: "academic", targetType: "academic_report_draft", targetId: id, details: JSON.stringify({ status, note }) });
   res.json(result.rows[0]);
+});
+
+router.get("/academic-records/reports/drafts/:id/download/pdf", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1) { res.status(400).json({ error: "Invalid draft ID." }); return; }
+  const result = await pool.query("SELECT * FROM academic_report_drafts WHERE id=$1", [id]);
+  const row = result.rows[0];
+  if (!row || (Number(row.learner_id) !== Number(user.id) && !canAccessManager(user))) { res.status(404).json({ error: "Approved academic report not found." }); return; }
+  if (row.status !== "approved") { res.status(403).json({ error: "Academic reports cannot be downloaded until an authorized manager approves the draft." }); return; }
+  const draftContent = typeof row.draft_content === "string" ? JSON.parse(row.draft_content) : row.draft_content;
+  const sourceSnapshot = typeof row.source_snapshot === "string" ? JSON.parse(row.source_snapshot) : row.source_snapshot;
+  const learnerName = String(draftContent?.learner || sourceSnapshot?.learner?.name || "Learner record");
+  const pdf = buildAcademicReportPdf({ id, reportType: String(row.report_type), termLabel: String(row.term_label), learnerName, reviewedAt: row.reviewed_at, reviewedBy: row.reviewed_by, report: draftContent });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Disposition", 'attachment; filename="dallyletter-academic-report-' + id + '.pdf"');
+  res.send(pdf);
 });
 
 router.get("/academic-records/reports/drafts/:id/download", requireAuth, async (req, res): Promise<void> => {
