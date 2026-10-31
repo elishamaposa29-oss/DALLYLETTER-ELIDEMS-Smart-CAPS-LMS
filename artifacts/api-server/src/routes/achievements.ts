@@ -222,15 +222,11 @@ router.post("/award", requireAuth, async (req, res): Promise<void> => {
       "UPDATE users SET badge_count=COALESCE(badge_count,0)+1, performance_score=COALESCE(performance_score,0)+$2 WHERE id=$1",
       [learnerId, Number(achievement.rows[0].points_value ?? 10)],
     );
+    await client.query(
+      "INSERT INTO audit_logs (action,category,performed_by,target_type,target_id,details) VALUES ($1,$2,$3,$4,$5,$6)",
+      ["achievement.direct_awarded", "academic", user.id, "user_achievement", Number(inserted.rows[0].id), JSON.stringify({ learnerId, achievementId: badgeId })],
+    );
     await client.query("COMMIT");
-    await db.insert(auditLogsTable).values({
-      performedBy: user.id,
-      action: "achievement.direct_awarded",
-      category: "academic",
-      targetType: "user_achievement",
-      targetId: Number(inserted.rows[0].id),
-      details: JSON.stringify({ learnerId, achievementId: badgeId }),
-    });
     res.status(201).json(inserted.rows[0]);
   } catch (error: any) {
     await client.query("ROLLBACK").catch(() => undefined);
