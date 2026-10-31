@@ -105,6 +105,7 @@ export default function FeatureHub() {
   const [exerciseDraftQuestions, setExerciseDraftQuestions] = useState<Array<{prompt:string;type:"input"|"poll"|"drawbox";marks:string;options:string[];correct:number;drawData?:Record<string,any>}>>([{prompt:"",type:"input",marks:"1",options:["Option A","Option B"],correct:0,drawData:{}}]);
   const [exerciseBuilderBusy, setExerciseBuilderBusy] = useState(false);
   const [exerciseDraftId, setExerciseDraftId] = useState<number | null>(null);
+  const [exerciseRecordForReport, setExerciseRecordForReport] = useState(true);
   const [exerciseQuestionsSaved, setExerciseQuestionsSaved] = useState(0);
   const [overallComment, setOverallComment] = useState("");
   const [pollTitle, setPollTitle] = useState("");
@@ -657,12 +658,14 @@ export default function FeatureHub() {
   const createMobileExercise = async () => {
     if (!(isTeacher || ["owner","admin","platform_owner"].includes(role) || Boolean((user as any)?.isManager))) { Alert.alert("Preview only","Your role cannot create exercises."); return; }
     if (!exerciseLessonId || !exerciseTitle.trim() || !exerciseDraftQuestions.length || exerciseDraftQuestions.some(q=>!q.prompt.trim() || !Number.isFinite(Number(q.marks)) || Number(q.marks)<0 || Math.round(Number(q.marks)*2)!==Number(q.marks)*2)) { Alert.alert("Complete exercise","Choose a lesson, enter a title, and give every question a prompt and marks in 0.5 increments."); return; }
+    const existingExerciseCount = rows.filter(row => Number(row.lessonId) === Number(exerciseLessonId)).length;
+    if (!exerciseDraftId && existingExerciseCount >= 20) { Alert.alert("Exercise limit reached", "This lesson already has 20 exercises. Archive or remove an exercise before creating another."); return; }
     if (exerciseDraftQuestions.some(q=>q.type==="poll" && (q.options.filter(o=>o.trim()).length<2 || !q.options[q.correct]?.trim()))) { Alert.alert("Complete poll options","Each choice question needs at least two options and a correct option."); return; }
     setExerciseBuilderBusy(true);
     let exerciseId:number|undefined = exerciseDraftId ?? undefined;
     try {
       if (!exerciseId) {
-        const created = await request(`/api/exercises/lessons/${exerciseLessonId}/exercises`, { method:"POST", body:JSON.stringify({title:exerciseTitle.trim(),instructions:exerciseInstructions.trim()||null,layout:{version:1,page:"book"}}) });
+        const created = await request(`/api/exercises/lessons/${exerciseLessonId}/exercises`, { method:"POST", body:JSON.stringify({title:exerciseTitle.trim(),instructions:exerciseInstructions.trim()||null,layout:{version:1,page:"book",recordForReport:exerciseRecordForReport}}) });
         exerciseId = Number(created?.id);
         if (!Number.isInteger(exerciseId) || exerciseId<=0) throw new Error("The server did not return the created exercise ID.");
         setExerciseDraftId(exerciseId); setExerciseQuestionsSaved(0);
@@ -674,8 +677,9 @@ export default function FeatureHub() {
         await request(`/api/exercises/${exerciseId}/questions`,{method:"POST",body:JSON.stringify(payload)});
         setExerciseQuestionsSaved(index+1);
       }
+      await request(`/api/exercises/${exerciseId}/reporting`,{method:"PATCH",body:JSON.stringify({recordForReport:exerciseRecordForReport})});
       await request(`/api/exercises/${exerciseId}/publish`,{method:"POST",body:JSON.stringify({})});
-      setExerciseBuilderOpen(false); setExerciseTitle(""); setExerciseInstructions(""); setExerciseLessonId(""); setExerciseDraftId(null); setExerciseQuestionsSaved(0); setExerciseDraftQuestions([{prompt:"",type:"input",marks:"1",options:["Option A","Option B"],correct:0,drawData:{}}]);
+      setExerciseBuilderOpen(false); setExerciseTitle(""); setExerciseInstructions(""); setExerciseLessonId(""); setExerciseDraftId(null); setExerciseQuestionsSaved(0); setExerciseRecordForReport(true); setExerciseDraftQuestions([{prompt:"",type:"input",marks:"1",options:["Option A","Option B"],correct:0,drawData:{}}]);
       await loadSection("exercises");
       Alert.alert("Exercise published","Your exercise and questions are published for eligible learners.");
     } catch(e) { Alert.alert(exerciseId?`Draft #${exerciseId} preserved`:"Exercise not created",e instanceof Error?e.message:"Reconnect and retry. Saved questions are tracked so retrying this builder does not intentionally recreate them."); }
@@ -1140,6 +1144,11 @@ export default function FeatureHub() {
               {exerciseLessons.length===0 && <Text style={styles.muted}>No lessons returned for your account. Refresh the list or check lesson permissions.</Text>}
               <TextInput style={styles.input} value={exerciseTitle} onChangeText={setExerciseTitle} placeholder="Exercise title" placeholderTextColor={colors.mutedForeground}/>
               <TextInput style={[styles.input,styles.textArea]} value={exerciseInstructions} onChangeText={setExerciseInstructions} multiline placeholder="Instructions (optional)" placeholderTextColor={colors.mutedForeground}/>
+              <Text style={styles.muted}>Exercises in this lesson: {rows.filter(row => Number(row.lessonId) === Number(exerciseLessonId)).length}/20</Text>
+              <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{checked:exerciseRecordForReport}} style={{flexDirection:"row",alignItems:"center",gap:10,padding:10,borderWidth:1,borderColor:colors.border,borderRadius:8}} onPress={()=>setExerciseRecordForReport(value=>!value)}>
+                <Feather name={exerciseRecordForReport?"check-square":"square"} size={20} color={colors.primary}/>
+                <View style={{flex:1}}><Text style={styles.body}>Record for Report Mark</Text><Text style={styles.muted}>Include marked learner submissions in academic report totals.</Text></View>
+              </TouchableOpacity>
               {exerciseDraftQuestions.map((q,index)=><View key={index} style={[styles.card,{alignItems:"stretch",flexDirection:"column"}]}>
                 <Text style={styles.cardTitle}>Question {index+1}</Text>
                 <TextInput style={[styles.input,styles.textArea]} value={q.prompt} onChangeText={v=>updateExerciseQuestion(index,{prompt:v})} multiline placeholder="Question prompt" placeholderTextColor={colors.mutedForeground}/>
