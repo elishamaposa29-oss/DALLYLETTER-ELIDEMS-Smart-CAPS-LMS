@@ -21,7 +21,8 @@ export function ProtectedRoute({
         // The generated API role model is student/teacher/owner.
         // Keep the existing legacy "admin" compatibility at the runtime boundary
         // without adding an unsupported role to the generated frontend type.
-        const role = String(user.role).toLowerCase().replace(/[ -]+/g, "_");
+        const rawRole = String(user.role).toLowerCase().replace(/[ -]+/g, "_");
+        const role = rawRole === "jnr_manager" ? "junior_manager" : rawRole === "snr_manager" ? "senior_manager" : rawRole;
 
         if (allowedRoles && !allowedRoles.includes(role) && !((["admin","platform_owner"].includes(role)) && allowedRoles.includes("owner"))) {
           if (role === "student" || role === "prefect") setLocation("/");
@@ -35,7 +36,8 @@ export function ProtectedRoute({
     }
   }, [user, isLoading, allowedRoles, setLocation]);
 
-  const role = user ? String(user.role).toLowerCase().replace(/[ -]+/g, "_") : undefined;
+  const rawRole = user ? String(user.role).toLowerCase().replace(/[ -]+/g, "_") : undefined;
+  const role = rawRole === "jnr_manager" ? "junior_manager" : rawRole === "snr_manager" ? "senior_manager" : rawRole;
   const hasAllowedRole =
     !allowedRoles ||
     (role !== undefined &&
