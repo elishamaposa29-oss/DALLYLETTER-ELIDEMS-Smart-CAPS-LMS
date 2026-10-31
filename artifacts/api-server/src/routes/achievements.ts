@@ -188,21 +188,29 @@ router.post("/award", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!isOwnerRole(user.role)) { res.status(403).json({ error: "Use the junior recommendation and senior approval workflow." }); return; }
   const { userId, achievementId, note } = req.body;
-  if (!userId || !achievementId) { res.status(400).json({ error: "userId and achievementId required" }); return; }
+  const learnerId = Number(userId);
+  const badgeId = Number(achievementId);
+  if (!Number.isSafeInteger(learnerId) || learnerId < 1 || !Number.isSafeInteger(badgeId) || badgeId < 1) {
+    res.status(400).json({ error: "Valid learner and achievement IDs are required." }); return;
+  }
+  const learnerCheck = await pool.query("SELECT id FROM users WHERE id=$1 AND role IN ('student','learner') AND COALESCE(is_blocked,false)=false", [learnerId]);
+  if (!learnerCheck.rowCount) { res.status(404).json({ error: "Active learner not found." }); return; }
+  const badgeCheck = await pool.query("SELECT id FROM achievements WHERE id=$1 AND is_active=true", [badgeId]);
+  if (!badgeCheck.rowCount) { res.status(404).json({ error: "Active achievement not found." }); return; }
   const existing = await db.select().from(userAchievementsTable)
-    .where(and(eq(userAchievementsTable.userId, userId), eq(userAchievementsTable.achievementId, achievementId)));
+    .where(and(eq(userAchievementsTable.userId, learnerId), eq(userAchievementsTable.achievementId, badgeId)));
   if (existing.length > 0) { res.status(409).json({ error: "Already awarded" }); return; }
-  const [achievement] = await db.select().from(achievementsTable).where(eq(achievementsTable.id, achievementId));
+  const [achievement] = await db.select().from(achievementsTable).where(eq(achievementsTable.id, badgeId));
   const [ua] = await db.insert(userAchievementsTable).values({
-    userId, achievementId, awardedBy: user.id, awardedByName: user.name, note,
+    userId: learnerId, achievementId: badgeId, awardedBy: user.id, awardedByName: user.name, note,
   }).returning();
-  const currentUser = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+  const currentUser = await db.select().from(usersTable).where(eq(usersTable.id, learnerId));
   const currentScore = currentUser[0]?.performanceScore ?? 0;
   const currentBadges = currentUser[0]?.badgeCount ?? 0;
   await db.update(usersTable).set({
     badgeCount: currentBadges + 1,
     performanceScore: currentScore + (achievement?.pointsValue ?? 10),
-  }).where(eq(usersTable.id, userId));
+  }).where(eq(usersTable.id, learnerId));
   res.status(201).json(ua);
 });
 
