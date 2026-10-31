@@ -63,5 +63,5 @@ export function enforceAcademicStaffAccess(req:AuthRequestLike,res:AuthResponseL
 /** Transfer decisions are limited to owner-class accounts and authorized managers. */
 export function canReviewAcademicTransfer(user: RoleLikeUser): boolean {
   const role = normalizeRole(user.role);
-  return role === "owner" || role === "platform_owner" || role === "manager" || role === "senior_manager" || (role === "teacher" && user.isManager === true && !isTeacherPendingReview(user));
+  return isOwnerRole(role) || role === "manager" || role === "senior_manager" || (role === "teacher" && user.isManager === true && !isTeacherPendingReview(user));
 }
