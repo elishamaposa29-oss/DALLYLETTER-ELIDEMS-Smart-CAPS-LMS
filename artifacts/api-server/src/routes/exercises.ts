@@ -1,6 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
   exercisesTable, exerciseAnswersTable, exerciseOptionsTable, exerciseQuestionsTable,
@@ -167,7 +167,7 @@ router.post("/lessons/:lessonId/exercises",requireAuth,async(req,res):Promise<vo
   const created = await db.transaction(async tx => {
     const [lockedLesson] = await tx.select({id:lessonsTable.id}).from(lessonsTable).where(eq(lessonsTable.id,lessonId)).for("update");
     if (!lockedLesson) return {kind:"missing" as const};
-    const [countRow] = await tx.select({count:sql<number>`count(*)::int`}).from(exercisesTable).where(eq(exercisesTable.lessonId,lessonId));
+    const [countRow] = await tx.select({count:sql<number>`count(*)::int`}).from(exercisesTable).where(and(eq(exercisesTable.lessonId,lessonId),ne(exercisesTable.status,"archived")));
     const count = Number(countRow?.count ?? 0);
     if (count >= MAX_EXERCISES_PER_LESSON) return {kind:"limit" as const,count};
     const [exercise] = await tx.insert(exercisesTable).values({lessonId,createdBy:user.id,title:title.trim(),instructions:typeof instructions==="string"?instructions:null,grade:typeof grade==="string"&&grade.trim()?grade.trim():null,stream:typeof stream==="string"&&stream.trim()?stream.trim():null,layout:normalizedLayout}).returning();
@@ -189,6 +189,23 @@ router.patch("/:id/reporting",requireAuth,async(req,res):Promise<void>=>{
   const [updated]=await db.update(exercisesTable).set({layout:{...currentLayout,recordForReport:req.body.recordForReport}}).where(eq(exercisesTable.id,exerciseId)).returning({id:exercisesTable.id,layout:exercisesTable.layout});
   if(!updated){res.status(404).json({error:"Exercise not found"});return;}
   res.json({id:updated.id,recordForReport:req.body.recordForReport});
+});
+
+router.post("/:id/archive",requireAuth,async(req,res):Promise<void>=>{
+  const user=req.currentUser!;if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}
+  const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}
+  const outcome=await db.transaction(async tx=>{
+    const [exercise]=await tx.select({id:exercisesTable.id,createdBy:exercisesTable.createdBy,status:exercisesTable.status}).from(exercisesTable).where(eq(exercisesTable.id,exerciseId)).for("update");
+    if(!exercise)return {kind:"missing" as const};
+    if(!canEditExercise(user,exercise.createdBy))return {kind:"forbidden" as const};
+    if(exercise.status==="archived")return {kind:"archived" as const};
+    const [updated]=await tx.update(exercisesTable).set({status:"archived"}).where(eq(exercisesTable.id,exerciseId)).returning({id:exercisesTable.id,status:exercisesTable.status});
+    await tx.insert(auditLogsTable).values({performedBy:user.id,action:"exercise.archived",category:"academic",targetType:"exercise",targetId:exerciseId,details:JSON.stringify({previousStatus:exercise.status,submissionsPreserved:true})});
+    return {kind:"archived" as const,exercise:updated};
+  });
+  if(outcome.kind==="missing"){res.status(404).json({error:"Exercise not found"});return;}
+  if(outcome.kind==="forbidden"){res.status(403).json({error:"You cannot archive this exercise"});return;}
+  res.json({id:exerciseId,status:"archived",alreadyArchived:!outcome.exercise});
 });
 
 router.post("/:id/questions",requireAuth,async(req,res):Promise<void>=>{
