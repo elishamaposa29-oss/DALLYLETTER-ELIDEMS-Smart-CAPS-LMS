@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canAccessManager, canManageAcademicContent, canReviewAcademicTransfer, canUseStaffAI, enforceAcademicStaffAccess, enforceAuthenticated, enforceOwnerAccess, isOwnerRole, normalizeRole } from "./role-access.js";
+import { canAccessManager, canApproveAchievementAwards, canManageAcademicContent, canRecommendAchievementAwards, canReviewAcademicTransfer, canUseStaffAI, enforceAcademicStaffAccess, enforceAuthenticated, enforceOwnerAccess, isJuniorManager, isOwnerRole, isSeniorManager, normalizeRole } from "./role-access.js";
 
 test("normalizes legacy role casing and separators",()=>{
  assert.equal(normalizeRole(" Senior Manager "), "senior_manager");
@@ -123,4 +123,41 @@ test("transfer review access preserves all existing owner-class aliases and mana
  assert.equal(canReviewAcademicTransfer({role:"teacher",isManager:true}),true);
  assert.equal(canReviewAcademicTransfer({role:"teacher",isManager:true,teacherApplicationStatus:"pending_review"}),false);
  for(const role of ["student","prefect","teacher","unknown"]) assert.equal(canReviewAcademicTransfer({role,isManager:false}),false,role);
+});
+
+test("explicit hierarchy keeps junior and senior manager permissions while separating approvals",()=>{
+ const juniorRole={role:"manager",managerLevel:"junior"};
+ const juniorLegacy={role:"teacher",isManager:true,managerLevel:"junior"};
+ const seniorRole={role:"senior_manager"};
+ const seniorLegacy={role:"teacher",isManager:true,managerLevel:"senior"};
+ const owner={role:"owner"};
+ for(const user of [juniorRole,juniorLegacy]){
+  assert.equal(isJuniorManager(user),true);
+  assert.equal(isSeniorManager(user),false);
+  assert.equal(canRecommendAchievementAwards(user),true);
+  assert.equal(canApproveAchievementAwards(user),false);
+  assert.equal(canAccessManager(user),true);
+ }
+ for(const user of [seniorRole,seniorLegacy,owner]){
+  assert.equal(isJuniorManager(user),false);
+  assert.equal(isSeniorManager(user),true);
+  assert.equal(canRecommendAchievementAwards(user),true);
+  assert.equal(canApproveAchievementAwards(user),true);
+  assert.equal(canAccessManager(user),true);
+ }
+});
+test("pending teacher managers do not gain award authority from stale manager flags",()=>{
+ const pending={role:"teacher",isManager:true,managerLevel:"senior",teacherApplicationStatus:"pending_review"};
+ assert.equal(isJuniorManager(pending),false);
+ assert.equal(isSeniorManager(pending),false);
+ assert.equal(canRecommendAchievementAwards(pending),false);
+ assert.equal(canApproveAchievementAwards(pending),false);
+});
+test("ordinary teachers and learners retain existing access without manager authority",()=>{
+ for(const user of [{role:"teacher",isManager:false},{role:"student"},{role:"prefect"}]){
+  assert.equal(isJuniorManager(user),false);
+  assert.equal(isSeniorManager(user),false);
+  assert.equal(canRecommendAchievementAwards(user),false);
+  assert.equal(canApproveAchievementAwards(user),false);
+ }
 });

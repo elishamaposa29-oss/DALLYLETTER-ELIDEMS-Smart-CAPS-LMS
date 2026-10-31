@@ -3,6 +3,7 @@ import { db, pool, auditLogsTable } from "@workspace/db";
 import { achievementsTable, userAchievementsTable, usersTable, lessonRequestsTable, notificationsTable } from "@workspace/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { requireAuth, isOwnerRole, canAccessManager } from "../lib/auth-middleware";
+import { canApproveAchievementAwards, canRecommendAchievementAwards } from "../lib/role-access";
 
 const router = Router();
 
@@ -71,20 +72,10 @@ router.post("/", requireAuth, async (req, res): Promise<void> => {
   res.status(201).json(row);
 });
 
-function isJuniorAwardRecommender(user: { role: string; isManager: boolean }): boolean {
-  const role = String(user.role || "").toLowerCase().replace(/[\s-]+/g, "_");
-  return role === "manager" || (role === "teacher" && user.isManager === true);
-}
-
-function isSeniorAwardApprover(user: { role: string }): boolean {
-  const role = String(user.role || "").toLowerCase().replace(/[\s-]+/g, "_");
-  return isOwnerRole(role) || role === "senior_manager";
-}
-
 // Junior managers submit recommendations. They cannot directly award or approve them.
 router.post("/award/recommendations", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (!isJuniorAwardRecommender(user)) { res.status(403).json({ error: "Junior manager recommendation access required." }); return; }
+  if (!canRecommendAchievementAwards(user)) { res.status(403).json({ error: "Manager recommendation access required." }); return; }
   const learnerId = Number(req.body?.userId);
   const achievementId = Number(req.body?.achievementId);
   const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 2000) : "";
@@ -101,7 +92,7 @@ router.post("/award/recommendations", requireAuth, async (req, res): Promise<voi
       [learnerId, achievementId, user.id, note || null],
     );
     await db.insert(auditLogsTable).values({ performedBy: user.id, action: "achievement.award_recommended", category: "academic", targetType: "achievement_award_recommendation", targetId: Number(result.rows[0].id), details: JSON.stringify({ learnerId, achievementId }) });
-    const reviewers = await pool.query("SELECT id FROM users WHERE (role IN ('senior_manager','owner','admin','platform_owner')) AND COALESCE(is_blocked,false)=false");
+    const reviewers = await pool.query("SELECT id FROM users WHERE (role IN ('senior_manager','owner','admin','platform_owner') OR (role IN ('manager','teacher') AND manager_level='senior' AND (role <> 'teacher' OR (is_manager=true AND teacher_application_status <> 'pending_review')))) AND COALESCE(is_blocked,false)=false");
     for (const reviewer of reviewers.rows) {
       await db.insert(notificationsTable).values({ title: "Achievement award recommendation", message: user.name + " recommended an achievement for learner account #" + learnerId + ". Senior review is required.", type: "achievement_award_review", recipientId: Number(reviewer.id), isRead: false });
     }
@@ -115,17 +106,17 @@ router.post("/award/recommendations", requireAuth, async (req, res): Promise<voi
 router.get("/award/recommendations", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canAccessManager(user)) { res.status(403).json({ error: "Manager access required." }); return; }
-  const senior = isSeniorAwardApprover(user);
+  const senior = canApproveAchievementAwards(user);
   const result = await pool.query(
     "SELECT r.*,u.name AS learner_name,a.name AS achievement_name,a.icon AS achievement_icon,a.points_value,m.name AS recommender_name,reviewer.name AS reviewer_name FROM achievement_award_recommendations r JOIN users u ON u.id=r.learner_id JOIN achievements a ON a.id=r.achievement_id JOIN users m ON m.id=r.recommended_by LEFT JOIN users reviewer ON reviewer.id=r.reviewed_by WHERE ($1::boolean=true OR r.recommended_by=$2) ORDER BY CASE WHEN r.status='pending_senior_review' THEN 0 ELSE 1 END,r.created_at DESC LIMIT 200",
     [senior, user.id],
   );
-  res.json({ items: result.rows, canApprove: senior, canDirectAward: isOwnerRole(user.role), canRecommend: isJuniorAwardRecommender(user) });
+  res.json({ items: result.rows, canApprove: senior, canDirectAward: isOwnerRole(user.role), canRecommend: canRecommendAchievementAwards(user) });
 });
 
 router.post("/award/recommendations/:id/review", requireAuth, async (req, res): Promise<void> => {
   const reviewer = req.currentUser!;
-  if (!isSeniorAwardApprover(reviewer)) { res.status(403).json({ error: "Senior manager or owner approval is required." }); return; }
+  if (!canApproveAchievementAwards(reviewer)) { res.status(403).json({ error: "Senior manager or owner approval is required." }); return; }
   const id = Number(req.params.id);
   const decision = req.body?.status;
   const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 2000) : "";
@@ -183,35 +174,74 @@ router.post("/award/recommendations/:id/review", requireAuth, async (req, res): 
 });
 
 // Legacy direct-award route remains for owner-class emergency administration only.
-// Junior managers must use recommendation -> independent senior approval.
+// It shares the learner-row lock used by senior approval so both award paths serialize.
 router.post("/award", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!isOwnerRole(user.role)) { res.status(403).json({ error: "Use the junior recommendation and senior approval workflow." }); return; }
-  const { userId, achievementId, note } = req.body;
-  const learnerId = Number(userId);
-  const badgeId = Number(achievementId);
+  const learnerId = Number(req.body?.userId);
+  const badgeId = Number(req.body?.achievementId);
+  const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 2000) : null;
   if (!Number.isSafeInteger(learnerId) || learnerId < 1 || !Number.isSafeInteger(badgeId) || badgeId < 1) {
     res.status(400).json({ error: "Valid learner and achievement IDs are required." }); return;
   }
-  const learnerCheck = await pool.query("SELECT id FROM users WHERE id=$1 AND role IN ('student','learner') AND COALESCE(is_blocked,false)=false", [learnerId]);
-  if (!learnerCheck.rowCount) { res.status(404).json({ error: "Active learner not found." }); return; }
-  const badgeCheck = await pool.query("SELECT id FROM achievements WHERE id=$1 AND is_active=true", [badgeId]);
-  if (!badgeCheck.rowCount) { res.status(404).json({ error: "Active achievement not found." }); return; }
-  const existing = await db.select().from(userAchievementsTable)
-    .where(and(eq(userAchievementsTable.userId, learnerId), eq(userAchievementsTable.achievementId, badgeId)));
-  if (existing.length > 0) { res.status(409).json({ error: "Already awarded" }); return; }
-  const [achievement] = await db.select().from(achievementsTable).where(eq(achievementsTable.id, badgeId));
-  const [ua] = await db.insert(userAchievementsTable).values({
-    userId: learnerId, achievementId: badgeId, awardedBy: user.id, awardedByName: user.name, note,
-  }).returning();
-  const currentUser = await db.select().from(usersTable).where(eq(usersTable.id, learnerId));
-  const currentScore = currentUser[0]?.performanceScore ?? 0;
-  const currentBadges = currentUser[0]?.badgeCount ?? 0;
-  await db.update(usersTable).set({
-    badgeCount: currentBadges + 1,
-    performanceScore: currentScore + (achievement?.pointsValue ?? 10),
-  }).where(eq(usersTable.id, learnerId));
-  res.status(201).json(ua);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const learner = await client.query(
+      "SELECT id FROM users WHERE id=$1 AND role IN ('student','learner') AND COALESCE(is_blocked,false)=false FOR UPDATE",
+      [learnerId],
+    );
+    if (!learner.rowCount) {
+      await client.query("ROLLBACK");
+      res.status(404).json({ error: "Active learner not found." });
+      return;
+    }
+    const achievement = await client.query(
+      "SELECT id,points_value FROM achievements WHERE id=$1 AND is_active=true FOR SHARE",
+      [badgeId],
+    );
+    if (!achievement.rowCount) {
+      await client.query("ROLLBACK");
+      res.status(404).json({ error: "Active achievement not found." });
+      return;
+    }
+    const existing = await client.query(
+      "SELECT id FROM user_achievements WHERE user_id=$1 AND achievement_id=$2 LIMIT 1",
+      [learnerId, badgeId],
+    );
+    if (existing.rowCount) {
+      await client.query("ROLLBACK");
+      res.status(409).json({ error: "Already awarded" });
+      return;
+    }
+    const inserted = await client.query(
+      "INSERT INTO user_achievements (user_id,achievement_id,awarded_by,awarded_by_name,note) VALUES ($1,$2,$3,$4,$5) RETURNING *",
+      [learnerId, badgeId, user.id, user.name, note],
+    );
+    await client.query(
+      "UPDATE users SET badge_count=COALESCE(badge_count,0)+1, performance_score=COALESCE(performance_score,0)+$2 WHERE id=$1",
+      [learnerId, Number(achievement.rows[0].points_value ?? 10)],
+    );
+    await client.query("COMMIT");
+    await db.insert(auditLogsTable).values({
+      performedBy: user.id,
+      action: "achievement.direct_awarded",
+      category: "academic",
+      targetType: "user_achievement",
+      targetId: Number(inserted.rows[0].id),
+      details: JSON.stringify({ learnerId, achievementId: badgeId }),
+    });
+    res.status(201).json(inserted.rows[0]);
+  } catch (error: any) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    if (error?.code === "23505") {
+      res.status(409).json({ error: "Already awarded" });
+      return;
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
 });
 
 router.get("/prefect-teachers", requireAuth, async (req, res): Promise<void> => {
