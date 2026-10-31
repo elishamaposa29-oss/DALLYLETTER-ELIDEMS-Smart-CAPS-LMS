@@ -179,7 +179,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         { label: "Prefect Management", href: "/manager/prefects", icon: Shield },
       ] : []),
     ];
-  } else if (["manager","senior_manager"].includes(normalizedRole)) {
+  } else if (["manager","junior_manager","senior_manager"].includes(normalizedRole)) {
     navItems = [
       { label: "Manager Dashboard", href: "/manager", icon: Home, section: "Management" },
       { label: "Profile Hub", href: "/profile-hub", icon: Users },
@@ -220,7 +220,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     ];
   }
 
-  const homeHref = ["student","prefect"].includes(normalizedRole) ? "/" : normalizedRole === "teacher" ? "/teacher" : ["manager","senior_manager"].includes(normalizedRole) ? "/manager" : "/admin";
+  const homeHref = ["student","prefect"].includes(normalizedRole) ? "/" : normalizedRole === "teacher" ? "/teacher" : ["manager","junior_manager","senior_manager"].includes(normalizedRole) ? "/manager" : "/admin";
 
   const NavLinks = ({ onNav }: { onNav?: () => void }) => {
     let lastSection: string | undefined;
