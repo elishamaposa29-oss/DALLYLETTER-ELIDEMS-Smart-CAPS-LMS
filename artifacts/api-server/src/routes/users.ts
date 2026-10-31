@@ -412,7 +412,7 @@ async function sendTeacherCvPdf(userId: number, res: any): Promise<void> {
     pool.query("SELECT id,name,email,role,subject,grade FROM users WHERE id=$1", [userId]),
     pool.query("SELECT cv FROM teacher_profiles WHERE user_id=$1", [userId]),
     pool.query("SELECT title,institution,year FROM teacher_qualifications WHERE user_id=$1 AND verification_status='verified' ORDER BY created_at DESC", [userId]),
-    pool.query("SELECT subjects_to_teach FROM teacher_subjects WHERE user_id=$1").catch(() => ({ rows: [] as Array<{subjects_to_teach:string[]}> })),
+    pool.query("SELECT subjects_to_teach FROM teacher_subjects WHERE user_id=$1", [userId]).catch(() => ({ rows: [] as Array<{subjects_to_teach:string[]}> })),
   ]);
   const teacher = userResult.rows[0];
   if (!teacher || String(teacher.role).toLowerCase() !== "teacher") { res.status(404).json({ error: "Teacher profile not found." }); return; }
