@@ -6,6 +6,19 @@ import { MANAGER_PERMISSION_KEYS, defaultManagerPermissions, getManagerPermissio
 
 const router = Router();
 
+router.get("/me", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  const role = String(user.role || "").toLowerCase().replace(/[ -]+/g, "_");
+  const managerRole = ["manager", "junior_manager", "senior_manager"].includes(role)
+    || (role === "teacher" && user.isManager === true);
+  if (!isOwnerRole(role) && !managerRole) { res.status(403).json({ error: "Manager permissions are not available for this account." }); return; }
+  if (isOwnerRole(role)) {
+    res.json(Object.fromEntries(MANAGER_PERMISSION_KEYS.map(key => [key, true])));
+    return;
+  }
+  res.json(await getManagerPermissions(user.id, role));
+});
+
 router.get("/", requireAuth, async (req, res): Promise<void> => {
   if (!isOwnerRole(req.currentUser!.role)) { res.status(403).json({ error: "Only the owner can manage manager permissions." }); return; }
   const managers = await db.select({
