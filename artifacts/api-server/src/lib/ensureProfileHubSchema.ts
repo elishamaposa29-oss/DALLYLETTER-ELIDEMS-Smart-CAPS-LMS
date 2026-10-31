@@ -162,6 +162,23 @@ export async function ensureProfileHubSchema(): Promise<void> {
     await client.query("ALTER TABLE academic_report_drafts ADD COLUMN IF NOT EXISTS period_start date");
     await client.query("ALTER TABLE academic_report_drafts ADD COLUMN IF NOT EXISTS period_end date");
     await client.query("CREATE INDEX IF NOT EXISTS academic_report_drafts_period_idx ON academic_report_drafts(learner_id, period_start, period_end)");
+    await client.query(`CREATE TABLE IF NOT EXISTS achievement_award_recommendations (
+      id bigserial PRIMARY KEY,
+      learner_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      achievement_id integer NOT NULL REFERENCES achievements(id) ON DELETE CASCADE,
+      recommended_by integer NOT NULL REFERENCES users(id),
+      recommendation_note text,
+      status text NOT NULL DEFAULT 'pending_senior_review' CHECK (status IN ('pending_senior_review','approved','rejected')),
+      reviewed_by integer REFERENCES users(id),
+      review_note text,
+      reviewed_at timestamptz,
+      awarded_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query("CREATE INDEX IF NOT EXISTS achievement_award_recommendations_review_idx ON achievement_award_recommendations(status, created_at DESC)");
+    await client.query("CREATE INDEX IF NOT EXISTS achievement_award_recommendations_learner_idx ON achievement_award_recommendations(learner_id, created_at DESC)");
+    await client.query("CREATE UNIQUE INDEX IF NOT EXISTS achievement_award_recommendations_pending_unique_idx ON achievement_award_recommendations(learner_id, achievement_id) WHERE status='pending_senior_review'");
 
     // Additive daily app-access attendance. Separate from class-session attendance.
     await client.query(`CREATE TABLE IF NOT EXISTS user_attendance_preferences (
