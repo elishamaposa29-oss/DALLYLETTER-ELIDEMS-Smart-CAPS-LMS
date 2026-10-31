@@ -17,6 +17,7 @@ import { hashPassword, verifyPassword } from "../lib/password-hash";
 import { sendEmail, isEmailConfigured } from "../lib/email-service";
 import { isSmsConfigured, sendSms } from "../lib/sms-service";
 import { enqueueEmailNotification } from "../lib/email-notification-queue";
+import { buildTeacherCvPdf } from "../lib/teacher-cv-pdf";
 
 const router: IRouter = Router();
 
@@ -404,12 +405,45 @@ router.post("/users/me/cover", requireAuth, (req, res, next): void => {
   });
 });
 
+// Build a private CV PDF from the teacher's saved profile and school-verified qualifications.
+async function sendTeacherCvPdf(userId: number, res: any): Promise<void> {
+  await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, cv jsonb NOT NULL DEFAULT '{}'::jsonb, updated_at timestamptz NOT NULL DEFAULT now())");
+  const [userResult, cvResult, qualificationResult, subjectResult] = await Promise.all([
+    pool.query("SELECT id,name,email,role,subject,grade FROM users WHERE id=$1", [userId]),
+    pool.query("SELECT cv FROM teacher_profiles WHERE user_id=$1", [userId]),
+    pool.query("SELECT title,institution,year FROM teacher_qualifications WHERE user_id=$1 AND verification_status='verified' ORDER BY created_at DESC", [userId]),
+    pool.query("SELECT subjects_to_teach FROM teacher_subjects WHERE user_id=$1").catch(() => ({ rows: [] as Array<{subjects_to_teach:string[]}> })),
+  ]);
+  const teacher = userResult.rows[0];
+  if (!teacher || String(teacher.role).toLowerCase() !== "teacher") { res.status(404).json({ error: "Teacher profile not found." }); return; }
+  const subjects = Array.isArray(subjectResult.rows[0]?.subjects_to_teach) ? subjectResult.rows[0].subjects_to_teach : [];
+  const pdf = buildTeacherCvPdf({
+    name: teacher.name,
+    email: teacher.email,
+    subject: teacher.subject,
+    grade: teacher.grade,
+    cv: cvResult.rows[0]?.cv ?? {},
+    qualifications: qualificationResult.rows,
+    subjects,
+  });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Disposition", 'attachment; filename="dallyletter-teacher-cv-' + userId + '.pdf"');
+  res.send(pdf);
+}
+
 // Structured CV fields for teacher applications. Only the teacher can edit their own CV.
 router.get("/users/me/teacher-cv", requireAuth, async (req, res): Promise<void> => {
   if (req.currentUser!.role !== "teacher") { res.status(403).json({ error: "Teacher account required" }); return; }
   await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, cv jsonb NOT NULL DEFAULT '{}'::jsonb, updated_at timestamptz NOT NULL DEFAULT now())");
   const result = await pool.query("SELECT cv, updated_at FROM teacher_profiles WHERE user_id = $1", [req.currentUser!.id]);
   res.json(result.rows[0] ?? { cv: {}, updated_at: null });
+});
+
+router.get("/users/me/teacher-cv/pdf", requireAuth, async (req, res): Promise<void> => {
+  if (String(req.currentUser!.role).toLowerCase() !== "teacher") { res.status(403).json({ error: "Teacher account required." }); return; }
+  await sendTeacherCvPdf(req.currentUser!.id, res);
 });
 
 router.get("/users/:id/teacher-cv", requireAuth, async (req, res): Promise<void> => {
@@ -421,6 +455,14 @@ router.get("/users/:id/teacher-cv", requireAuth, async (req, res): Promise<void>
   const result = await pool.query("SELECT cv, updated_at FROM teacher_profiles WHERE user_id = $1", [id]);
   if (!result.rows.length) { res.status(404).json({ error: "Teacher CV not found." }); return; }
   res.json(result.rows[0]);
+});
+
+router.get("/users/:id/teacher-cv/pdf", requireAuth, async (req, res): Promise<void> => {
+  const actor = req.currentUser!;
+  if (!isOwnerRole(actor.role)) { res.status(403).json({ error: "Only the owner may download teacher CVs for review." }); return; }
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid user id." }); return; }
+  await sendTeacherCvPdf(id, res);
 });
 
 router.patch("/users/me/teacher-cv", requireAuth, async (req, res): Promise<void> => {
