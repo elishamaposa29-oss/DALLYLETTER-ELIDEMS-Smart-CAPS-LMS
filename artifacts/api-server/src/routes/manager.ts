@@ -126,7 +126,7 @@ router.get("/users/:id/activity", requireAuth, requireManager, async (req, res):
   res.json({ user: target, activities: audit, learning: { attendance, achievements, exerciseResults, pollResults, leaderboardPosition }, counts: { attendance: attendance.length, achievements: achievements.length, exerciseResults: exerciseResults.length, pollResults: pollResults.length } });
 });
 
-router.get("/reports/overview", requireAuth, requireManager, async (req, res) => {
+router.get("/reports/overview", requireAuth, requireManager, requireManagerPermission("reportView"), async (req, res) => {
   const [teachers, students, managers, payments, lessons, classes] = await Promise.all([
     db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "teacher")),
     db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "student")),
