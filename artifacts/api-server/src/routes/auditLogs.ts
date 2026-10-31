@@ -263,7 +263,7 @@ router.get("/academic-records/reports/me", requireAuth, async (req, res): Promis
 router.get("/academic-records/reports/drafts", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!(await hasManagerPermission(user, "reportView"))) { res.status(403).json({ error: "Report-review access is required." }); return; }
-  const result = await pool.query("SELECT id,learner_id,created_by,report_type,term_label,draft_content,status,reviewed_by,review_note,reviewed_at,created_at FROM academic_report_drafts ORDER BY created_at DESC LIMIT 200");
+  const result = await pool.query("SELECT d.id,d.learner_id,u.name AS learner_name,u.grade AS learner_grade,d.created_by,d.report_type,d.term_label,d.draft_content,d.status,d.reviewed_by,d.review_note,d.reviewed_at,d.created_at FROM academic_report_drafts d JOIN users u ON u.id=d.learner_id ORDER BY d.created_at DESC LIMIT 200");
   res.json(result.rows);
 });
 
