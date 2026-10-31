@@ -35,7 +35,7 @@ function TeacherDrawboxSetup({value,onChange,permissions,onPermissionsChange}:{v
 export function ExerciseBuilderPanel({lessonId,onSaved,onClose}:ExerciseBuilderPanelProps){
  const [title,setTitle]=useState("");const [instructions,setInstructions]=useState("");const [totalMarks,setTotalMarks]=useState("0");const [questions,setQuestions]=useState<ExerciseQuestionDraft[]>([]);
  const [recordForReport,setRecordForReport]=useState(true);const [existingExerciseCount,setExistingExerciseCount]=useState<number|null>(null);
- useEffect(()=>{let active=true;const token=localStorage.getItem("dallyletter_token");const headers:HeadersInit=token?{Authorization:`Bearer ${token}`}:{};void fetch(getApiUrl(`/api/exercises/lessons/${lessonId}/exercises`),{headers}).then(async r=>r.ok?r.json():null).then(data=>{if(active&&Array.isArray(data))setExistingExerciseCount(data.length);}).catch(()=>undefined);return()=>{active=false};},[lessonId]);
+ useEffect(()=>{let active=true;const token=localStorage.getItem("dallyletter_token");const headers:HeadersInit=token?{Authorization:`Bearer ${token}`}:{};void fetch(getApiUrl(`/api/exercises/lessons/${lessonId}/exercises`),{headers}).then(async r=>r.ok?r.json():null).then(data=>{if(active&&Array.isArray(data))setExistingExerciseCount(data.filter((item:any)=>item.status!=="archived").length);}).catch(()=>undefined);return()=>{active=false};},[lessonId]);
  const [busy,setBusy]=useState(false);
  const [learnerPreview,setLearnerPreview]=useState(false);
  const questionTotal=questions.reduce((sum,q)=>sum+Math.max(0,Number(q.marks)||0),0);
