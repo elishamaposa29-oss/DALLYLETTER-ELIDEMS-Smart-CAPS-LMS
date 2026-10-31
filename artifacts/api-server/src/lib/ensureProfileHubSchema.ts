@@ -159,6 +159,9 @@ export async function ensureProfileHubSchema(): Promise<void> {
     )`);
     await client.query("CREATE INDEX IF NOT EXISTS academic_report_drafts_learner_idx ON academic_report_drafts(learner_id, created_at DESC)");
     await client.query("CREATE INDEX IF NOT EXISTS academic_report_drafts_review_idx ON academic_report_drafts(status, created_at DESC)");
+    await client.query("ALTER TABLE academic_report_drafts ADD COLUMN IF NOT EXISTS period_start date");
+    await client.query("ALTER TABLE academic_report_drafts ADD COLUMN IF NOT EXISTS period_end date");
+    await client.query("CREATE INDEX IF NOT EXISTS academic_report_drafts_period_idx ON academic_report_drafts(learner_id, period_start, period_end)");
 
     // Additive daily app-access attendance. Separate from class-session attendance.
     await client.query(`CREATE TABLE IF NOT EXISTS user_attendance_preferences (
