@@ -278,7 +278,7 @@ router.post("/academic-records/transfer-requests/:id/review", requireAuth, async
   // Notify the applicant after the committed decision; email failures must not undo the review.
   try {
     await enqueueEmailNotification(
-      Number(result.rows[0].learner_id),
+      Number(reviewedRequest.learner_id),
       status === "approved" ? "Your transfer letter request was approved" : "Your transfer letter request was declined",
       status === "approved"
         ? "Your transfer letter request #" + id + " was approved. Sign in to Dallyletter Elidems to view and download your protected PDF."
@@ -287,7 +287,7 @@ router.post("/academic-records/transfer-requests/:id/review", requireAuth, async
   } catch (error) {
     console.error("Transfer decision applicant notification queue failed", error instanceof Error ? error.message : "unknown");
   }
-  res.json(result.rows[0]);
+  res.json(reviewedRequest);
 });
 
 router.get("/academic-records/transfer-requests/:id/download", requireAuth, async (req, res): Promise<void> => {
