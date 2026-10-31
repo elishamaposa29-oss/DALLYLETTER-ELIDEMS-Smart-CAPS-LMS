@@ -1,14 +1,14 @@
 import { Router } from "express";
 import { db, contentFlagsTable, auditLogsTable, usersTable, notificationsTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
-import { requireAuth } from "../lib/auth-middleware";
+import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { getAIProvider } from "../lib/ai-provider";
 
 const router = Router();
 const moderationRoles = new Set(["teacher", "owner"]);
 
 function canReviewContent(user: { role: string; isManager: boolean }): boolean {
-  return moderationRoles.has(user.role) || user.isManager;
+  return moderationRoles.has(user.role) || user.role === "teacher" || canAccessManager(user);
 }
 
 // GET /content-flags — list flags (owner/teacher only)
@@ -72,7 +72,7 @@ router.patch("/content-flags/:id", requireAuth, async (req, res): Promise<void> 
 // DELETE /content-flags/:id
 router.delete("/content-flags/:id", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (user.role !== "owner") { res.status(403).json({ error: "Owner only" }); return; }
+  if (!isOwnerRole(user.role)) { res.status(403).json({ error: "Owner only" }); return; }
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   await db.delete(contentFlagsTable).where(eq(contentFlagsTable.id, id));
