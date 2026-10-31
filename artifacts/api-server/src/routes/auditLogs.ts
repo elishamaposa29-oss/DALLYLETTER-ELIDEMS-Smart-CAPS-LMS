@@ -5,8 +5,13 @@ import { getAIProvider } from "../lib/ai-provider";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { enqueueEmailNotification } from "../lib/email-notification-queue";
 import { canReviewAcademicTransfer } from "../lib/role-access";
+import { calculateAgeOnDate, getCurrentAcademicYear } from "../lib/academic-year";
 
 const router = Router();
+
+router.get("/academic-records/current-year", requireAuth, (_req, res): void => {
+  res.json(getCurrentAcademicYear());
+});
 function summarizeAcademicMarks(assignmentRows: any[], exerciseRows: any[]) {
   const exempt = (status: unknown) => ["exempt", "excused"].includes(String(status || "").trim().toLowerCase());
   const assignmentMarked = assignmentRows.filter(row => row.marks !== null && row.marks !== undefined && !exempt(row.status));
@@ -323,6 +328,7 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, asyn
     "Receiving school: " + fmt(row.form_data?.receivingSchool),
     "Learner full name: " + fmt(row.form_data?.learnerName || row.learner_name),
     "Date of birth: " + fmt(row.form_data?.dob),
+    "Age on effective transfer date: " + (calculateAgeOnDate(row.form_data?.dob, row.form_data?.effectiveDate || row.created_at) ?? "Not recorded"),
     "Gender: " + fmt(row.form_data?.gender),
     "Admission number: " + fmt(row.form_data?.admissionNo),
     "EMIS number: " + fmt(row.form_data?.emisNo),
