@@ -4,6 +4,7 @@ import { eq, desc, inArray, and } from "drizzle-orm";
 import { getAIProvider } from "../lib/ai-provider";
 import { requireAuth, canAccessManager } from "../lib/auth-middleware";
 import { hasManagerPermission } from "../lib/manager-permissions";
+import { createTransferLetterPdf } from "../lib/transfer-letter-pdf";
 
 const router = Router();
 
@@ -125,28 +126,51 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, asyn
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id < 1) { res.status(400).json({ error: "Invalid request ID." }); return; }
   const result = await pool.query(
-    "SELECT r.*,u.name AS learner_name,u.email,c.name AS school_name FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id LEFT JOIN LATERAL (SELECT name FROM users WHERE role IN ('manager','owner') ORDER BY id LIMIT 1) c ON true WHERE r.id=$1",
+    "SELECT r.*,u.name AS learner_name,u.email,reviewer.name AS reviewer_name,reviewer.role AS reviewer_role FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id LEFT JOIN users reviewer ON reviewer.id=r.reviewed_by WHERE r.id=$1",
     [id],
   );
   const row = result.rows[0];
   if (!row || (Number(row.learner_id) !== Number(user.id) && !canAccessManager(user))) { res.status(404).json({ error: "Approved transfer letter not found." }); return; }
   if (row.status !== "approved") { res.status(403).json({ error: "The transfer letter cannot be downloaded until an authorized manager approves the request." }); return; }
-  const letter = [
-    "DALLYLETTER ELIDEMS — TRANSFER LETTER",
+  if (canAccessManager(user) && !(await hasManagerPermission(user, "transferView"))) { res.status(403).json({ error: "You do not have permission to download transfer letters." }); return; }
+  const approvalRef = "DL-TR-" + String(id).padStart(6, "0") + "-" + new Date(row.reviewed_at).toISOString().slice(0,10).replace(/-/g, "");
+  const pdf = createTransferLetterPdf([
+    "DALLYLETTER ELIDEMS",
+    "OFFICIAL LEARNER TRANSFER LETTER",
+    "CONFIDENTIAL - FOR AUTHORIZED SCHOOL USE",
     "",
-    "Learner: " + row.learner_name,
-    "Account email: " + row.email,
+    "Transfer reference: " + approvalRef,
+    "Learner full name: " + row.learner_name,
+    "Learner account email: " + row.email,
     "Request date: " + new Date(row.created_at).toISOString().slice(0,10),
     "Approval date: " + new Date(row.reviewed_at).toISOString().slice(0,10),
-    "Approved by account ID: " + row.reviewed_by,
-    "Transfer reason: " + row.reason,
-    row.review_note ? "Manager note: " + row.review_note : "",
     "",
-    "This letter was generated from a transfer request and approved by an authorized manager.",
-  ].filter(Boolean).join("\n");
-  res.setHeader("Content-Type", "text/plain; charset=utf-8");
-  res.setHeader("Content-Disposition", 'attachment; filename="dallyletter-transfer-letter-' + id + '.txt"');
-  res.send(letter);
+    "TRANSFER REQUEST REASON",
+    row.reason,
+    row.review_note ? "Reviewer comments: " + row.review_note : "Reviewer comments: None supplied",
+    "",
+    "AUTHORIZATION RECORD",
+    "Approved by: " + (row.reviewer_name || "Authorized manager"),
+    "Role at approval: " + (row.reviewer_role || "manager"),
+    "Reviewer account ID: " + row.reviewed_by,
+    "Approval status: APPROVED",
+    "Approval recorded in the Dallyletter academic transfer register.",
+    "",
+    "AUTHORIZED SIGNATURE",
+    (row.reviewer_name || "Authorized manager") + " / " + (row.reviewer_role || "manager"),
+    "Electronic approval record: " + approvalRef,
+    "Signature identity is the authenticated reviewer recorded by the server.",
+    "",
+    "Protected document: do not alter. Verify the reference against the academic transfer register.",
+    "Generated at: " + new Date().toISOString(),
+    "DALLYLETTER ELIDEMS | APPROVED TRANSFER | " + approvalRef,
+  ]);
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", "attachment; filename=dallyletter-transfer-letter-" + id + ".pdf");
+  res.setHeader("Cache-Control", "private, no-store, max-age=0");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.send(pdf);
 });
 
 router.get("/academic-records/me", requireAuth, async (req, res): Promise<void> => {
