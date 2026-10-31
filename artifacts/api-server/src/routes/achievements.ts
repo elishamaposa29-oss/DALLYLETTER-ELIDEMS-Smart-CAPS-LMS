@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { achievementsTable, userAchievementsTable, usersTable, lessonRequestsTable, notificationsTable } from "@workspace/db/schema";
 import { eq, desc, and } from "drizzle-orm";
-import { requireAuth } from "../lib/auth-middleware";
+import { requireAuth, isOwnerRole, canAccessManager } from "../lib/auth-middleware";
 
 const router = Router();
 
@@ -62,7 +62,7 @@ router.get("/user/:userId", requireAuth, async (req, res): Promise<void> => {
 
 router.post("/", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (user.role !== "owner") { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!isOwnerRole(user.role)) { res.status(403).json({ error: "Forbidden" }); return; }
   const { name, description, icon, category, pointsValue, criteria } = req.body;
   if (!name || !description) { res.status(400).json({ error: "name and description required" }); return; }
   const [row] = await db.insert(achievementsTable).values({
@@ -73,7 +73,7 @@ router.post("/", requireAuth, async (req, res): Promise<void> => {
 
 router.post("/award", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (user.role !== "owner" && !user.isManager) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!canAccessManager(user)) { res.status(403).json({ error: "Forbidden" }); return; }
   const { userId, achievementId, note } = req.body;
   if (!userId || !achievementId) { res.status(400).json({ error: "userId and achievementId required" }); return; }
   const existing = await db.select().from(userAchievementsTable)
