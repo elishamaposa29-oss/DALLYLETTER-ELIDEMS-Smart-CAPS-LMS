@@ -253,9 +253,28 @@ router.post("/academic-records/transfer-requests/:id/review", requireAuth, async
   const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 2000) : "";
   if (!Number.isSafeInteger(id) || id < 1 || !["approved","rejected"].includes(status)) { res.status(400).json({ error: "A valid request ID and approved/rejected decision are required." }); return; }
   if (status === "rejected" && note.length < 3) { res.status(400).json({ error: "A clear rejection reason of at least 3 characters is required." }); return; }
-  const result = await pool.query("UPDATE academic_transfer_requests SET status=$1,reviewed_by=$2,review_note=$3,reviewed_at=now(),updated_at=now() WHERE id=$4 AND status='pending' RETURNING id,learner_id,status,review_note,reviewed_by,reviewed_at", [status, reviewer.id, note || null, id]);
-  if (!result.rowCount) { res.status(404).json({ error: "Pending transfer request not found or already reviewed." }); return; }
-  await db.insert(auditLogsTable).values({ performedBy: reviewer.id, action: "transfer_letter.reviewed", category: "academic", targetType: "transfer_request", targetId: id, details: JSON.stringify({ status, note }) });
+  let reviewedRequest: any;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await client.query("UPDATE academic_transfer_requests SET status=$1,reviewed_by=$2,review_note=$3,reviewed_at=now(),updated_at=now() WHERE id=$4 AND status='pending' RETURNING id,learner_id,status,review_note,reviewed_by,reviewed_at", [status, reviewer.id, note || null, id]);
+    if (!result.rowCount) {
+      await client.query("ROLLBACK");
+      res.status(404).json({ error: "Pending transfer request not found or already reviewed." });
+      return;
+    }
+    reviewedRequest = result.rows[0];
+    await client.query(
+      "INSERT INTO audit_logs (action,category,performed_by,target_type,target_id,details) VALUES ($1,$2,$3,$4,$5,$6)",
+      ["transfer_letter.reviewed", "academic", reviewer.id, "transfer_request", id, JSON.stringify({ status, note })],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
   // Notify the applicant after the committed decision; email failures must not undo the review.
   try {
     await enqueueEmailNotification(
@@ -475,10 +494,29 @@ router.post("/academic-records/reports/drafts/:id/review", requireAuth, async (r
   const status = req.body?.status;
   const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0,2000) : null;
   if (!Number.isSafeInteger(id) || id < 1 || !["approved","rejected"].includes(status)) { res.status(400).json({ error: "A valid draft ID and approved/rejected decision are required." }); return; }
-  const result = await pool.query("UPDATE academic_report_drafts SET status=$1,reviewed_by=$2,review_note=$3,reviewed_at=now(),updated_at=now() WHERE id=$4 AND status='pending_review' RETURNING id,learner_id,report_type,term_label,status,reviewed_by,review_note,reviewed_at", [status, reviewer.id, note, id]);
-  if (!result.rowCount) { res.status(404).json({ error: "Pending report draft not found or already reviewed." }); return; }
-  await db.insert(auditLogsTable).values({ performedBy: reviewer.id, action: "academic_report.reviewed", category: "academic", targetType: "academic_report_draft", targetId: id, details: JSON.stringify({ status, note }) });
-  res.json(result.rows[0]);
+  let reviewedReport: any;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await client.query("UPDATE academic_report_drafts SET status=$1,reviewed_by=$2,review_note=$3,reviewed_at=now(),updated_at=now() WHERE id=$4 AND status='pending_review' RETURNING id,learner_id,report_type,term_label,status,reviewed_by,review_note,reviewed_at", [status, reviewer.id, note, id]);
+    if (!result.rowCount) {
+      await client.query("ROLLBACK");
+      res.status(404).json({ error: "Pending report draft not found or already reviewed." });
+      return;
+    }
+    reviewedReport = result.rows[0];
+    await client.query(
+      "INSERT INTO audit_logs (action,category,performed_by,target_type,target_id,details) VALUES ($1,$2,$3,$4,$5,$6)",
+      ["academic_report.reviewed", "academic", reviewer.id, "academic_report_draft", id, JSON.stringify({ status, note })],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+  res.json(reviewedReport);
 });
 
 router.get("/academic-records/reports/drafts/:id/download/pdf", requireAuth, async (req, res): Promise<void> => {
