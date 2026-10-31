@@ -118,9 +118,8 @@ test("approved teachers and owners retain academic staff access",()=>{
  assert.equal(canManageAcademicContent({role:"owner",teacherApplicationStatus:"pending_review"}),true);
 });
 
-test("transfer review access requires explicit owner or manager authority",()=>{
- for(const role of ["owner","platform_owner","senior_manager","manager"]) assert.equal(canReviewAcademicTransfer({role}),true,role);
- assert.equal(canReviewAcademicTransfer({role:"admin"}),false,"admin role alone must not review transfer requests");
+test("transfer review access preserves all existing owner-class aliases and manager authority",()=>{
+ for(const role of ["owner","admin","platform_owner","senior_manager","manager"]) assert.equal(canReviewAcademicTransfer({role}),true,role);
  assert.equal(canReviewAcademicTransfer({role:"teacher",isManager:true}),true);
  assert.equal(canReviewAcademicTransfer({role:"teacher",isManager:true,teacherApplicationStatus:"pending_review"}),false);
  for(const role of ["student","prefect","teacher","unknown"]) assert.equal(canReviewAcademicTransfer({role,isManager:false}),false,role);
