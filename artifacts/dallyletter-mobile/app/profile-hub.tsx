@@ -16,7 +16,7 @@ type Tab = typeof TABS[number];
 type Row = Record<string, any>;
 
 function calculateAgeOnDate(dateOfBirth: string, asOf: Date = new Date()): number | null {
-  const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(dateOfBirth);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateOfBirth);
   if (!match) return null;
   const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
   const birth = new Date(year, month - 1, day);
@@ -68,7 +68,7 @@ export default function MobileProfileHub() {
     void fetch(getApiUrl("/api/academic-records/current-year"), { headers: { Authorization: "Bearer " + token } })
       .then(async response => response.ok ? response.json() : null)
       .then(data => {
-        if (active && /^\\d{4}$/.test(String(data?.academicYear ?? ""))) {
+        if (active && /^\d{4}$/.test(String(data?.academicYear ?? ""))) {
           setTransferForm(current => ({ ...current, academicYear: String(data.academicYear) }));
         }
       })
