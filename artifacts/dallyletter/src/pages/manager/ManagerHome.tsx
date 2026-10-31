@@ -17,6 +17,8 @@ export default function ManagerHome() {
   const { user } = useAuth();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [transferQueue, setTransferQueue] = useState<any[]>([]);
   const [reportQueue, setReportQueue] = useState<any[]>([]);
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
@@ -25,10 +27,19 @@ export default function ManagerHome() {
   const [myPermissions, setMyPermissions] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setLoadError(null);
     fetch(getApiUrl("/api/manager/dashboard"), { headers: { Authorization: `Bearer ${token()}` } })
-      .then(r => r.json()).then(d => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
+      .then(async response => {
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(typeof body?.error === "string" ? body.error : `Manager dashboard request failed (${response.status}).`);
+        if (active) setData(body);
+      })
+      .catch(error => { if (active) setLoadError(error instanceof Error ? error.message : "Could not load manager dashboard."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [reloadKey]);
 
   const loadAcademicQueues = async () => {
     const headers = { Authorization: `Bearer ${token()}` };
@@ -82,6 +93,22 @@ export default function ManagerHome() {
     <DashboardLayout>
       <div className="mx-auto w-full max-w-7xl px-4 pt-4"><InstallAppCard /></div>
       <div className="flex items-center justify-center h-64 text-slate-500">Loading manager dashboard…</div>
+    </DashboardLayout>
+  );
+
+  if (loadError) return (
+    <DashboardLayout>
+      <div className="mx-auto w-full max-w-7xl space-y-4 px-4 pt-4">
+        <InstallAppCard />
+        <Card role="alert" className="border-amber-300">
+          <CardHeader><CardTitle>Manager dashboard unavailable</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">{loadError}</p>
+            <p className="text-sm text-muted-foreground">Your access was not changed. Retry after confirming that your account has manager permissions.</p>
+            <Button onClick={() => setReloadKey(value => value + 1)}>Retry</Button>
+          </CardContent>
+        </Card>
+      </div>
     </DashboardLayout>
   );
 
