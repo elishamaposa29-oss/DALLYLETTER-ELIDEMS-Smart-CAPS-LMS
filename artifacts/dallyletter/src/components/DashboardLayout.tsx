@@ -123,15 +123,27 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const logoutMutation = useLogoutUser();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [managerPermissions, setManagerPermissions] = useState<Record<string, boolean>>({});
+  const rawRole = String(user?.role||"").toLowerCase().replace(/[ -]+/g,"_");
+  const normalizedRole = rawRole === "jnr_manager" ? "junior_manager" : rawRole === "snr_manager" ? "senior_manager" : rawRole;
+  const isManagerAccount = ["manager","junior_manager","senior_manager"].includes(normalizedRole) || (normalizedRole === "teacher" && Boolean((user as any)?.isManager));
+
+  useEffect(() => {
+    if (!user || !isManagerAccount) { setManagerPermissions({}); return; }
+    const token = localStorage.getItem("dallyletter_token") ?? "";
+    let active = true;
+    fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: "Bearer " + token } })
+      .then(async response => { const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(payload.error || "Permission lookup failed"); return payload; })
+      .then(payload => { if (active) setManagerPermissions(payload && typeof payload === "object" ? payload : {}); })
+      .catch(() => { if (active) setManagerPermissions({}); });
+    return () => { active = false; };
+  }, [user?.id, isManagerAccount]);
 
   if (!user) return null;
 
   const handleLogout = () => {
     logoutMutation.mutate(undefined, { onSettled: () => logout() });
   };
-
-  const rawRole = String(user.role||"").toLowerCase().replace(/[ -]+/g,"_");
-  const normalizedRole = rawRole === "jnr_manager" ? "junior_manager" : rawRole === "snr_manager" ? "senior_manager" : rawRole;
 
   let navItems: NavItem[] = [];
 
@@ -173,13 +185,13 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Student Payments", href: "/teacher/payments", icon: CreditCard },
       ...((user as any).isManager ? [
         { label: "Manager Panel", href: "/manager", icon: Briefcase, section: "Management", accent: "text-purple-400" },
-        { label: "Monitor Teachers", href: "/manager/teachers", icon: GraduationCap },
-        { label: "Monitor Students", href: "/manager/students", icon: Users },
+        ...(managerPermissions.teacherMonitor ? [{ label: "Monitor Teachers", href: "/manager/teachers", icon: GraduationCap }] : []),
+        ...(managerPermissions.studentManage ? [{ label: "Monitor Students", href: "/manager/students", icon: Users }] : []),
         { label: "Assignments", href: "/manager/assignments", icon: ClipboardList },
         { label: "Connect", href: "/manager/chat", icon: MessageSquare },
-        { label: "Reports", href: "/manager/reports", icon: ScrollText },
+        ...(managerPermissions.reportView ? [{ label: "Reports", href: "/manager/reports", icon: ScrollText }] : []),
         { label: "Notifications", href: "/manager/notifications", icon: Bell },
-        { label: "Prefect Management", href: "/manager/prefects", icon: Shield },
+        ...(managerPermissions.prefectManage ? [{ label: "Prefect Management", href: "/manager/prefects", icon: Shield }] : []),
       ] : []),
     ];
   } else if (["manager","junior_manager","senior_manager"].includes(normalizedRole)) {
@@ -187,13 +199,13 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Manager Dashboard", href: "/manager", icon: Home, section: "Management" },
       { label: "Profile Hub", href: "/profile-hub", icon: Users },
       { label: "Feature Preview Center", href: "/features", icon: Sparkles },
-      { label: "Monitor Teachers", href: "/manager/teachers", icon: GraduationCap },
-      { label: "Monitor Students", href: "/manager/students", icon: Users },
+      ...(managerPermissions.teacherMonitor ? [{ label: "Monitor Teachers", href: "/manager/teachers", icon: GraduationCap }] : []),
+      ...(managerPermissions.studentManage ? [{ label: "Monitor Students", href: "/manager/students", icon: Users }] : []),
       { label: "Assignments", href: "/manager/assignments", icon: ClipboardList },
       { label: "Connect", href: "/manager/chat", icon: MessageSquare },
-      { label: "Reports", href: "/manager/reports", icon: ScrollText },
+      ...(managerPermissions.reportView ? [{ label: "Reports", href: "/manager/reports", icon: ScrollText }] : []),
       { label: "Notifications", href: "/manager/notifications", icon: Bell },
-      { label: "Prefect Management", href: "/manager/prefects", icon: Shield },
+      ...(managerPermissions.prefectManage ? [{ label: "Prefect Management", href: "/manager/prefects", icon: Shield }] : []),
     ];
   } else if (["owner","admin","platform_owner"].includes(normalizedRole)) {
     navItems = [
