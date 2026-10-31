@@ -48,6 +48,7 @@ router.post("/manager/users/:id/action", requireAuth, async(req,res):Promise<voi
  const [target]=await db.select().from(usersTable).where(eq(usersTable.id,targetId));if(!target){res.status(404).json({error:"User not found"});return;}
  if(isOwnerRole(target.role)&&!isOwnerRole(req.currentUser!.role)){res.status(403).json({error:"Owner account protected"});return;}
  const note=typeof req.body?.note==="string"?req.body.note.trim().slice(0,1000):null;
+ if(["block","suspend"].includes(action)&&(!note||note.length<3)){res.status(400).json({error:"A moderation reason of at least 3 characters is required to block or suspend an account."});return;}
  if(action==="block") await db.update(usersTable).set({isBlocked:true}).where(eq(usersTable.id,targetId));
  if(action==="suspend") await db.update(usersTable).set({isSuspended:true}).where(eq(usersTable.id,targetId));
  if(action==="promote_prefect") await db.update(usersTable).set({isPrefect:true}).where(eq(usersTable.id,targetId));
