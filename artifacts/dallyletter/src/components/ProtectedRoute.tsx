@@ -26,7 +26,7 @@ export function ProtectedRoute({
         if (allowedRoles && !allowedRoles.includes(role) && !((["admin","platform_owner"].includes(role)) && allowedRoles.includes("owner"))) {
           if (role === "student" || role === "prefect") setLocation("/");
           else if (role === "teacher") setLocation("/teacher");
-          else if (["manager","senior_manager"].includes(role)) setLocation("/manager");
+          else if (["manager","junior_manager","senior_manager"].includes(role)) setLocation("/manager");
           else if (["owner","admin","platform_owner"].includes(role)) setLocation("/admin");
         } else if (user.isBlocked) {
           setLocation("/suspended");
