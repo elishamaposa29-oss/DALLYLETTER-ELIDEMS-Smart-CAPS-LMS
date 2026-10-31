@@ -120,7 +120,7 @@ router.get("/award/recommendations", requireAuth, async (req, res): Promise<void
     "SELECT r.*,u.name AS learner_name,a.name AS achievement_name,a.icon AS achievement_icon,a.points_value,m.name AS recommender_name,reviewer.name AS reviewer_name FROM achievement_award_recommendations r JOIN users u ON u.id=r.learner_id JOIN achievements a ON a.id=r.achievement_id JOIN users m ON m.id=r.recommended_by LEFT JOIN users reviewer ON reviewer.id=r.reviewed_by WHERE ($1::boolean=true OR r.recommended_by=$2) ORDER BY CASE WHEN r.status='pending_senior_review' THEN 0 ELSE 1 END,r.created_at DESC LIMIT 200",
     [senior, user.id],
   );
-  res.json(result.rows);
+  res.json({ items: result.rows, canApprove: senior, canDirectAward: isOwnerRole(user.role), canRecommend: isJuniorAwardRecommender(user) });
 });
 
 router.post("/award/recommendations/:id/review", requireAuth, async (req, res): Promise<void> => {
