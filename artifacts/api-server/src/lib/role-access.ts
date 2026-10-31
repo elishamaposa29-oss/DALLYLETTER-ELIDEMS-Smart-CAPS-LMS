@@ -5,7 +5,10 @@ export type RoleLikeUser = {
 };
 
 export function normalizeRole(role: unknown): string {
-  return typeof role === "string" ? role.trim().toLowerCase().replace(/[ -]+/g, "_") : "";
+  const normalized = typeof role === "string" ? role.trim().toLowerCase().replace(/[ -]+/g, "_") : "";
+  if (normalized === "jnr_manager") return "junior_manager";
+  if (normalized === "snr_manager") return "senior_manager";
+  return normalized;
 }
 
 /** Existing owner policy includes admins; platform_owner is a normalized legacy alias. */
