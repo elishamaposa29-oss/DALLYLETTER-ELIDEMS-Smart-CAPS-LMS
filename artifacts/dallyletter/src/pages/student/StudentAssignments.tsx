@@ -35,6 +35,7 @@ export default function StudentAssignments() {
   const [selected, setSelected] = useState<any>(null);
   const [content, setContent] = useState("");
   const [submissionFile, setSubmissionFile] = useState<{ url: string; fileName: string } | null>(null);
+  const [uploadingSubmissionFile, setUploadingSubmissionFile] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const load = () => {
@@ -71,6 +72,8 @@ export default function StudentAssignments() {
 
   const uploadSubmissionMaterial = (file: File | undefined) => {
     if (!file) return;
+    setSubmissionFile(null);
+    setUploadingSubmissionFile(true);
     const body = new FormData();
     body.append("file", file);
     void fetch(getApiUrl("/api/assignments/submission-material"), { method: "POST", headers: { Authorization: `Bearer ${token()}` }, body })
@@ -79,10 +82,12 @@ export default function StudentAssignments() {
         return response.json() as Promise<{ attachmentUrl: string; fileName: string }>;
       })
       .then(result => setSubmissionFile({ url: result.attachmentUrl, fileName: result.fileName }))
-      .catch(error => toast({ variant: "destructive", title: error instanceof Error ? error.message : "Attachment upload failed" }));
+      .catch(error => toast({ variant: "destructive", title: error instanceof Error ? error.message : "Attachment upload failed" }))
+      .finally(() => setUploadingSubmissionFile(false));
   };
 
   const submit = () => {
+    if (uploadingSubmissionFile) { toast({ variant: "destructive", title: "Wait for your attachment to finish uploading before submitting." }); return; }
     if (!selected || (!content.trim() && !submissionFile)) { toast({ variant: "destructive", title: "Write an answer or attach a file first" }); return; }
     if (isOverdue(selected.dueDate)) { toast({ variant: "destructive", title: "This assignment is past its due date" }); return; }
     setSubmitting(true);
@@ -219,10 +224,11 @@ export default function StudentAssignments() {
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700">Optional attachment</label>
-                <Input type="file" accept="video/mp4,video/webm,video/quicktime,video/ogg,audio/mpeg,audio/mp4,audio/ogg,audio/wav,image/jpeg,image/png,image/webp,application/pdf,.doc,.docx" onChange={e => uploadSubmissionMaterial(e.target.files?.[0])} />
+                <Input type="file" accept="video/mp4,video/webm,video/quicktime,video/ogg,audio/mpeg,audio/mp4,audio/ogg,audio/wav,image/jpeg,image/png,image/webp,application/pdf,.doc,.docx" disabled={uploadingSubmissionFile || submitting} onChange={e => uploadSubmissionMaterial(e.target.files?.[0])} />
+                {uploadingSubmissionFile && <p role="status" className="text-xs text-blue-600">Uploading attachment… Please wait before submitting.</p>}
                 {submissionFile && <p className="text-xs text-slate-500">Attached: {submissionFile.fileName}</p>}
               </div>
-              <Button className="w-full bg-blue-600 text-white gap-2" onClick={submit} disabled={submitting}>
+              <Button className="w-full bg-blue-600 text-white gap-2" onClick={submit} disabled={submitting || uploadingSubmissionFile}>
                 <Send className="h-4 w-4" /> {submitting ? "Submitting…" : "Submit Assignment"}
               </Button>
             </div>
