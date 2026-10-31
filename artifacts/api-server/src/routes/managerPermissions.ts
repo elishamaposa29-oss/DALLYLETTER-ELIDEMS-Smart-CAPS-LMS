@@ -25,7 +25,7 @@ router.get("/", requireAuth, async (req, res): Promise<void> => {
     id: usersTable.id, name: usersTable.name, email: usersTable.email,
     role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel,
   }).from(usersTable).where(or(
-    inArray(usersTable.role, ["manager", "junior_manager", "senior_manager"]),
+    inArray(usersTable.role, ["manager", "junior_manager", "jnr_manager", "senior_manager", "snr_manager"]),
     eq(usersTable.isManager, true),
   ));
   const result = await Promise.all(managers.filter(m => !isOwnerRole(m.role)).map(async manager => ({
@@ -41,7 +41,7 @@ router.put("/:managerId", requireAuth, async (req, res): Promise<void> => {
   const managerId = Number(req.params.managerId);
   if (!Number.isSafeInteger(managerId) || managerId < 1) { res.status(400).json({ error: "Invalid manager ID." }); return; }
   const [manager] = await db.select({ id: usersTable.id, role: usersTable.role, isManager: usersTable.isManager }).from(usersTable).where(eq(usersTable.id, managerId));
-  if (!manager || isOwnerRole(manager.role) || !(["manager", "junior_manager", "senior_manager"].includes(String(manager.role).toLowerCase()) || manager.isManager === true)) {
+  if (!manager || isOwnerRole(manager.role) || !(["manager", "junior_manager", "jnr_manager", "senior_manager", "snr_manager"].includes(String(manager.role).toLowerCase()) || manager.isManager === true)) {
     res.status(404).json({ error: "Manager account not found." }); return;
   }
   const body = req.body?.permissions;
