@@ -403,19 +403,26 @@ router.post("/academic-records/reports/drafts", requireAuth, async (req, res): P
   const learnerId = Number(req.body?.learnerId);
   const reportType = req.body?.reportType;
   const termLabel = typeof req.body?.termLabel === "string" ? req.body.termLabel.trim().slice(0,80) : "";
-  if (!Number.isSafeInteger(learnerId) || learnerId < 1 || !["attendance_register","term_performance"].includes(reportType) || !termLabel) { res.status(400).json({ error: "learnerId, reportType and termLabel are required." }); return; }
+  const periodStart = typeof req.body?.periodStart === "string" ? req.body.periodStart : "";
+  const periodEnd = typeof req.body?.periodEnd === "string" ? req.body.periodEnd : "";
+  const isDateOnly = (value: string) => /^\\d{4}-\\d{2}-\\d{2}$/.test(value) && !Number.isNaN(Date.parse(value + "T00:00:00Z")) && new Date(value + "T00:00:00Z").toISOString().slice(0,10) === value;
+  if (!Number.isSafeInteger(learnerId) || learnerId < 1 || !["attendance_register","term_performance"].includes(reportType) || !termLabel || !isDateOnly(periodStart) || !isDateOnly(periodEnd) || periodStart > periodEnd) {
+    res.status(400).json({ error: "learnerId, reportType, termLabel, and valid inclusive periodStart/periodEnd dates (YYYY-MM-DD) are required." }); return;
+  }
+  const periodDays = (Date.parse(periodEnd + "T00:00:00Z") - Date.parse(periodStart + "T00:00:00Z")) / 86400000 + 1;
+  if (periodDays > 370) { res.status(400).json({ error: "Academic report periods cannot exceed 370 days." }); return; }
   const [learner, enrollments, attendance, awards, events, assignmentMarks, exerciseMarks] = await Promise.all([
     pool.query("SELECT id,name,role,grade FROM users WHERE id=$1 AND role IN ('student','learner') AND is_blocked=false", [learnerId]),
-    pool.query("SELECT e.id,e.class_id,e.enrolled_at,e.progress_percent,e.status,c.title AS class_title,c.subject FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 ORDER BY e.enrolled_at", [learnerId]),
-    pool.query("SELECT class_id,status,joined_at,duration_minutes,is_late FROM attendance WHERE student_id=$1 AND joined_at >= date_trunc('year',now()) ORDER BY joined_at DESC LIMIT 1000", [learnerId]),
-    pool.query("SELECT ua.earned_at,a.name,a.description FROM user_achievements ua JOIN achievements a ON a.id=ua.achievement_id WHERE ua.user_id=$1 ORDER BY ua.earned_at DESC", [learnerId]),
-    pool.query("SELECT action,category,target_type,created_at FROM audit_logs WHERE target_id=$1 ORDER BY created_at DESC LIMIT 200", [String(learnerId)]),
-    pool.query("SELECT a.id AS assignment_id,a.title,a.subject,a.grade,a.total_marks,s.id AS submission_id,s.status,s.marks,s.submitted_at,s.graded_at,s.feedback FROM assignment_submissions s JOIN assignments a ON a.id=s.assignment_id WHERE s.student_id=$1 ORDER BY s.submitted_at DESC", [learnerId]),
-    pool.query("SELECT e.id AS exercise_id,e.title,e.grade,e.total_marks,s.id AS submission_id,s.attempt_number,s.status,s.total_score,s.percentage,s.submitted_at,s.marked_at,s.returned_at,s.overall_comment FROM exercise_submissions s JOIN exercises e ON e.id=s.exercise_id WHERE s.learner_id=$1 ORDER BY s.submitted_at DESC", [learnerId]),
+    pool.query("SELECT e.id,e.class_id,e.enrolled_at,e.progress_percent,e.status,c.title AS class_title,c.subject FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 AND e.enrolled_at >= $2::date AND e.enrolled_at < ($3::date + interval '1 day') ORDER BY e.enrolled_at", [learnerId, periodStart, periodEnd]),
+    pool.query("SELECT class_id,status,joined_at,duration_minutes,is_late FROM attendance WHERE student_id=$1 AND joined_at >= $2::date AND joined_at < ($3::date + interval '1 day') ORDER BY joined_at DESC LIMIT 1000", [learnerId, periodStart, periodEnd]),
+    pool.query("SELECT ua.earned_at,a.name,a.description FROM user_achievements ua JOIN achievements a ON a.id=ua.achievement_id WHERE ua.user_id=$1 AND ua.earned_at >= $2::date AND ua.earned_at < ($3::date + interval '1 day') ORDER BY ua.earned_at DESC", [learnerId, periodStart, periodEnd]),
+    pool.query("SELECT action,category,target_type,created_at FROM audit_logs WHERE target_id=$1 AND created_at >= $2::date AND created_at < ($3::date + interval '1 day') ORDER BY created_at DESC LIMIT 200", [String(learnerId), periodStart, periodEnd]),
+    pool.query("SELECT a.id AS assignment_id,a.title,a.subject,a.grade,a.total_marks,s.id AS submission_id,s.status,s.marks,s.submitted_at,s.graded_at,s.feedback FROM assignment_submissions s JOIN assignments a ON a.id=s.assignment_id WHERE s.student_id=$1 AND s.submitted_at >= $2::date AND s.submitted_at < ($3::date + interval '1 day') ORDER BY s.submitted_at DESC", [learnerId, periodStart, periodEnd]),
+    pool.query("SELECT e.id AS exercise_id,e.title,e.grade,e.total_marks,s.id AS submission_id,s.attempt_number,s.status,s.total_score,s.percentage,s.submitted_at,s.marked_at,s.returned_at,s.overall_comment FROM exercise_submissions s JOIN exercises e ON e.id=s.exercise_id WHERE s.learner_id=$1 AND s.submitted_at >= $2::date AND s.submitted_at < ($3::date + interval '1 day') ORDER BY s.submitted_at DESC", [learnerId, periodStart, periodEnd]),
   ]);
   if (!learner.rows[0]) { res.status(404).json({ error: "Learner not found." }); return; }
   const markSummary = summarizeAcademicMarks(assignmentMarks.rows, exerciseMarks.rows);
-  const sourceSnapshot = { learner: learner.rows[0], termLabel, enrollments: enrollments.rows, attendance: attendance.rows, awards: awards.rows, assignmentMarks: assignmentMarks.rows, exerciseMarks: exerciseMarks.rows, markSummary, relevantAuditEvents: events.rows };
+  const sourceSnapshot = { learner: learner.rows[0], termLabel, periodStart, periodEnd, enrollments: enrollments.rows, attendance: attendance.rows, awards: awards.rows, assignmentMarks: assignmentMarks.rows, exerciseMarks: exerciseMarks.rows, markSummary, relevantAuditEvents: events.rows };
   let draftContent: unknown;
   let provider = "record-based";
   if (reportType === "attendance_register") {
@@ -428,16 +435,16 @@ router.post("/academic-records/reports/drafts", requireAuth, async (req, res): P
       else if (String(row.status).toLowerCase() === "absent") item.absent++;
       byClass.set(item.classId, item);
     }
-    draftContent = { label: termLabel, learner: learner.rows[0].name, records: [...byClass.values()], sourceCount: attendance.rows.length, warning: "Draft only. Verify the term dates and attendance entries before approval." };
+    draftContent = { label: termLabel, periodStart, periodEnd, learner: learner.rows[0].name, records: [...byClass.values()], sourceCount: attendance.rows.length, warning: "Draft only. Attendance records are filtered to the inclusive academic period; verify entries before approval." };
   } else {
     try {
       const ai = await getAIProvider();
       if (ai.name === "mock") { res.status(503).json({ error: "A live AI provider must be configured to draft term-performance commentary. No mock AI report was created." }); return; }
       provider = ai.name;
-      draftContent = { label: termLabel, learner: learner.rows[0].name, factualRecords: { enrollments: enrollments.rows, attendanceCount: attendance.rows.length, awards: awards.rows, assignmentMarks: assignmentMarks.rows, exerciseMarks: exerciseMarks.rows, markSummary }, commentary: await ai.analyzeData(sourceSnapshot, "Draft a CAPS-aligned term performance report using only the supplied verified records. Use recorded assignment marks and marked exercise scores; distinguish unmarked and exempt work, calculate percentages only from known earned and possible marks, identify missing data, do not invent marks or attendance, and clearly label this as an unapproved draft. The supplied submissions are the saved records for this learner; the term label is descriptive and is not proof of a date filter. Return concise structured prose.") };
+      draftContent = { label: termLabel, periodStart, periodEnd, learner: learner.rows[0].name, factualRecords: { enrollments: enrollments.rows, attendanceCount: attendance.rows.length, awards: awards.rows, assignmentMarks: assignmentMarks.rows, exerciseMarks: exerciseMarks.rows, markSummary }, commentary: await ai.analyzeData(sourceSnapshot, "Draft a CAPS-aligned term performance report using only the supplied verified records. Use recorded assignment marks and marked exercise scores; distinguish unmarked and exempt work, calculate percentages only from known earned and possible marks, identify missing data, do not invent marks or attendance, and clearly label this as an unapproved draft. Only records submitted or recorded within the inclusive period ${periodStart} through ${periodEnd} are supplied. These source records have already been filtered by their authoritative event timestamps. Do not add records from outside this period. Return concise structured prose.") };
     } catch (error) { res.status(503).json({ error: error instanceof Error ? error.message : "Live AI report drafting unavailable." }); return; }
   }
-  const saved = await pool.query("INSERT INTO academic_report_drafts (learner_id,created_by,report_type,term_label,source_snapshot,draft_content) VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb) RETURNING id,learner_id,created_by,report_type,term_label,draft_content,status,created_at", [learnerId, creator.id, reportType, termLabel, JSON.stringify(sourceSnapshot), JSON.stringify(draftContent)]);
+  const saved = await pool.query("INSERT INTO academic_report_drafts (learner_id,created_by,report_type,term_label,period_start,period_end,source_snapshot,draft_content) VALUES ($1,$2,$3,$4,$5::date,$6::date,$7::jsonb,$8::jsonb) RETURNING id,learner_id,created_by,report_type,term_label,period_start,period_end,draft_content,status,created_at", [learnerId, creator.id, reportType, termLabel, periodStart, periodEnd, JSON.stringify(sourceSnapshot), JSON.stringify(draftContent)]);
   await db.insert(auditLogsTable).values({ performedBy: creator.id, action: "academic_report.draft_created", category: "academic", targetType: "academic_report_draft", targetId: Number(saved.rows[0].id), details: JSON.stringify({ learnerId, reportType, termLabel, provider }) });
   res.status(201).json(saved.rows[0]);
 });
