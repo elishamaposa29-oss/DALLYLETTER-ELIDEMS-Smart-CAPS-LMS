@@ -86,19 +86,20 @@ test("learner, prefect, and unknown roles cannot gain staff privileges from a st
  }
 });
 
-test("manager access requires both a manager flag and an authorized staff role",()=>{
- for(const role of ["teacher","manager","senior_manager"]){
+test("explicit manager roles retain access even if a legacy manager flag is unset",()=>{
+ for(const role of ["teacher","manager","junior_manager","senior_manager"]){
   const user={role,isManager:true};
   assert.equal(canAccessManager(user),true,role);
   assert.equal(canManageAcademicContent(user),true,role);
   assert.equal(canUseStaffAI(user),true,role);
  }
- for(const role of ["manager","senior_manager"]){
+ for(const role of ["manager","junior_manager","senior_manager"]){
   const user={role,isManager:false};
-  assert.equal(canAccessManager(user),false,role);
-  assert.equal(canManageAcademicContent(user),false,role);
-  assert.equal(canUseStaffAI(user),false,role);
+  assert.equal(canAccessManager(user),true,role);
+  assert.equal(canManageAcademicContent(user),true,role);
+  assert.equal(canUseStaffAI(user),true,role);
  }
+ assert.equal(canAccessManager({role:"teacher",isManager:false}),false);
 });
 
 test("pending teacher applicants cannot access academic staff tools or staff AI",()=>{
