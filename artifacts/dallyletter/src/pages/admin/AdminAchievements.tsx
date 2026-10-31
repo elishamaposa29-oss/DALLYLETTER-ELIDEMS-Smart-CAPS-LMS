@@ -20,6 +20,7 @@ export default function AdminAchievements() {
   const [recommendations, setRecommendations] = useState<any[]>([]);
   const [canApproveRecommendations, setCanApproveRecommendations] = useState(false);
   const [canDirectAward, setCanDirectAward] = useState(false);
+  const [canRecommend, setCanRecommend] = useState(false);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [awardOpen, setAwardOpen] = useState(false);
@@ -39,6 +40,7 @@ export default function AdminAchievements() {
       setRecommendations(Array.isArray(workflow?.items) ? workflow.items : []);
       setCanApproveRecommendations(workflow?.canApprove === true);
       setCanDirectAward(workflow?.canDirectAward === true);
+      setCanRecommend(workflow?.canRecommend === true);
       setLoading(false);
     }).catch(() => setLoading(false));
   };
@@ -102,7 +104,7 @@ export default function AdminAchievements() {
             <p className="text-slate-500 mt-1">Create badges and award them to outstanding learners</p>
           </div>
           <div className="flex gap-2">
-            <Dialog open={awardOpen} onOpenChange={setAwardOpen}>
+            {(canDirectAward || canRecommend) && <Dialog open={awardOpen} onOpenChange={setAwardOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline" className="gap-2"><Gift className="h-4 w-4" /> Award Badge</Button>
               </DialogTrigger>
@@ -127,7 +129,7 @@ export default function AdminAchievements() {
                   <Button className="w-full bg-amber-500 text-white" onClick={award}>{canDirectAward ? "Award Badge" : "Submit Recommendation"}</Button>
                 </div>
               </DialogContent>
-            </Dialog>
+            </Dialog>}
             <Dialog open={createOpen} onOpenChange={setCreateOpen}>
               <DialogTrigger asChild>
                 <Button className="gap-2 bg-amber-500 text-white"><Plus className="h-4 w-4" /> Create Badge</Button>
