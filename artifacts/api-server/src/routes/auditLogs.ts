@@ -42,10 +42,9 @@ function buildAcademicReportPdf(input: { id: number; reportType: string; termLab
     "VERIFIED REPORT CONTENT",
     ...JSON.stringify(input.report ?? {}, null, 2).split("\n"),
   ];
-  const escapePdf = (value: string) => value.normalize("NFKD").replace(/[^\\x20-\\x7E]/g, " ").replace(/\\\\/g, "\\\\").replace(/\\(/g, "\\(").replace(/\\)/g, "\\)");
+  const escapePdf = (value: string) => value.normalize("NFKD").replace(/[^\x20-\x7E]/g, " ").replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
   const wrapped = raw.flatMap(line => {
-    const safe = String(line);
-    const words = safe.split(/\\s+/);
+    const words = String(line).split(/\s+/);
     const out: string[] = [];
     let current = "";
     for (const word of words) {
@@ -67,8 +66,8 @@ function buildAcademicReportPdf(input: { id: number; reportType: string; termLab
     const contentObject = pageObject + 1;
     const textCommands = page.map((line, index) => {
       const heading = /^(DALLYLETTER ELIDEMS|OFFICIAL ACADEMIC REPORT|VERIFIED REPORT CONTENT)$/.test(line);
-      return (index ? "0 -14 Td\\n" : "") + (heading ? "/F2 11 Tf\\n" : "/F1 9 Tf\\n") + "(" + escapePdf(line) + ") Tj";
-    }).join("\\n");
+      return (index ? "0 -14 Td\n" : "") + (heading ? "/F2 11 Tf\n" : "/F1 9 Tf\n") + "(" + escapePdf(line) + ") Tj";
+    }).join("\n");
     const stream = [
       "0.055 0.13 0.29 rg 0 790 595 52 re f",
       "1 1 1 rg BT /F2 18 Tf 48 808 Td (DALLYLETTER ELIDEMS) Tj ET",
@@ -78,23 +77,22 @@ function buildAcademicReportPdf(input: { id: number; reportType: string; termLab
       "ET",
       "0.055 0.13 0.29 rg 48 34 499 1 re f",
       "0 0 0 rg BT /F1 8 Tf 48 20 Td (Protected academic document - DL-AR-" + input.id + ") Tj 440 0 Td (Page " + (pageIndex + 1) + " of " + pageLines.length + ") Tj ET",
-    ].join("\\n");
+    ].join("\n");
     objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents " + contentObject + " 0 R >>");
-    objects.push("<< /Length " + new TextEncoder().encode(stream).length + " >>\\nstream\\n" + stream + "\\nendstream");
+    objects.push("<< /Length " + new TextEncoder().encode(stream).length + " >>\nstream\n" + stream + "\nendstream");
   });
-  let pdf = "%PDF-1.4\\n";
+  let pdf = "%PDF-1.4\n";
   const offsets = [0];
   for (let index = 0; index < objects.length; index++) {
     offsets.push(new TextEncoder().encode(pdf).length);
-    pdf += (index + 1) + " 0 obj\\n" + objects[index] + "\\nendobj\\n";
+    pdf += (index + 1) + " 0 obj\n" + objects[index] + "\nendobj\n";
   }
   const xref = new TextEncoder().encode(pdf).length;
-  pdf += "xref\\n0 " + (objects.length + 1) + "\\n0000000000 65535 f \\n";
-  for (const offset of offsets.slice(1)) pdf += String(offset).padStart(10, "0") + " 00000 n \\n";
-  pdf += "trailer\\n<< /Size " + (objects.length + 1) + " /Root 1 0 R >>\\nstartxref\\n" + xref + "\\n%%EOF";
+  pdf += "xref\n0 " + (objects.length + 1) + "\n0000000000 65535 f \n";
+  for (const offset of offsets.slice(1)) pdf += String(offset).padStart(10, "0") + " 00000 n \n";
+  pdf += "trailer\n<< /Size " + (objects.length + 1) + " /Root 1 0 R >>\nstartxref\n" + xref + "\n%%EOF";
   return Buffer.from(pdf, "binary");
 }
-
 
 // GET /audit-logs — list audit logs (owner only)
 router.get("/audit-logs", requireAuth, async (req, res): Promise<void> => {
