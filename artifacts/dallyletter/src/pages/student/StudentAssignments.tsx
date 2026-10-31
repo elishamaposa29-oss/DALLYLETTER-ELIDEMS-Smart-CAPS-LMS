@@ -83,7 +83,7 @@ export default function StudentAssignments() {
   };
 
   const submit = () => {
-    if (!selected || !content.trim()) { toast({ variant: "destructive", title: "Write your answer first" }); return; }
+    if (!selected || (!content.trim() && !submissionFile)) { toast({ variant: "destructive", title: "Write an answer or attach a file first" }); return; }
     if (isOverdue(selected.dueDate)) { toast({ variant: "destructive", title: "This assignment is past its due date" }); return; }
     setSubmitting(true);
     void fetch(getApiUrl(`/api/assignments/${selected.id}/submit`), {
