@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, staging]
+    branches: [main, staging, feat/system-sync-audit-repair]
   pull_request:
     branches: [main, staging, production]
 
