@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { createHash, randomBytes } from "node:crypto";
 import { db, auditLogsTable, usersTable, pool } from "@workspace/db";
 import { eq, desc, inArray, and } from "drizzle-orm";
 import { getAIProvider } from "../lib/ai-provider";
@@ -269,11 +270,19 @@ router.post("/academic-records/transfer-requests/:id/review", requireAuth, async
   const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 2000) : "";
   if (!Number.isSafeInteger(id) || id < 1 || !["approved","rejected"].includes(status)) { res.status(400).json({ error: "A valid request ID and approved/rejected decision are required." }); return; }
   if (status === "rejected" && note.length < 3) { res.status(400).json({ error: "A clear rejection reason of at least 3 characters is required." }); return; }
+  const verificationToken = status === "approved" ? randomBytes(32).toString("base64url") : null;
+  const verificationTokenHash = verificationToken ? createHash("sha256").update(verificationToken).digest("hex") : null;
+  const verificationPath = verificationToken ? "/verify/transfer/" + verificationToken : null;
+  const configuredAppUrl = (process.env.PUBLIC_APP_URL || process.env.VITE_APP_URL || "").trim().replace(/\/+$/, "");
+  const verificationUrl = verificationPath ? (configuredAppUrl ? configuredAppUrl + verificationPath : verificationPath) : null;
   let reviewedRequest: any;
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const result = await client.query("UPDATE academic_transfer_requests SET status=$1,reviewed_by=$2,review_note=$3,reviewed_at=now(),updated_at=now() WHERE id=$4 AND status='pending' RETURNING id,learner_id,status,review_note,reviewed_by,reviewed_at", [status, reviewer.id, note || null, id]);
+    const result = await client.query(
+      "UPDATE academic_transfer_requests SET status=$1,reviewed_by=$2,review_note=$3,reviewed_at=now(),updated_at=now(),verification_token_hash=$4,verification_token_expires_at=CASE WHEN $4 IS NULL THEN NULL ELSE now()+interval '30 days' END,verification_verified_at=NULL WHERE id=$5 AND status='pending' RETURNING id,learner_id,status,review_note,reviewed_by,reviewed_at,verification_token_expires_at",
+      [status, reviewer.id, note || null, verificationTokenHash, id],
+    );
     if (!result.rowCount) {
       await client.query("ROLLBACK");
       res.status(404).json({ error: "Pending transfer request not found or already reviewed." });
@@ -282,7 +291,15 @@ router.post("/academic-records/transfer-requests/:id/review", requireAuth, async
     reviewedRequest = result.rows[0];
     await client.query(
       "INSERT INTO audit_logs (action,category,performed_by,target_type,target_id,details) VALUES ($1,$2,$3,$4,$5,$6)",
-      ["transfer_letter.reviewed", "academic", reviewer.id, "transfer_request", id, JSON.stringify({ status, note })],
+      ["transfer_letter.reviewed", "academic", reviewer.id, "transfer_request", id, JSON.stringify({ status, note, verificationTokenIssued: Boolean(verificationTokenHash) })],
+    );
+    const notificationTitle = status === "approved" ? "Transfer letter approved" : "Transfer letter declined";
+    const notificationMessage = status === "approved"
+      ? "Your transfer request #" + id + " was approved. Use the protected verification link to confirm the issuing-school record."
+      : "Your transfer request #" + id + " was declined. Reviewer feedback: " + note;
+    await client.query(
+      "INSERT INTO notifications(recipient_id,title,message,link,type,is_read) VALUES($1,$2,$3,$4,$5,false)",
+      [Number(reviewedRequest.learner_id), notificationTitle, notificationMessage, verificationPath || "/profile-hub?tab=Transfer%20Letters", status === "approved" ? "transfer_approved" : "transfer_rejected"],
     );
     await client.query("COMMIT");
   } catch (error) {
@@ -291,19 +308,46 @@ router.post("/academic-records/transfer-requests/:id/review", requireAuth, async
   } finally {
     client.release();
   }
-  // Notify the applicant after the committed decision; email failures must not undo the review.
+  // Queue email after the decision and in-app notification commit; email failures do not undo approval.
   try {
     await enqueueEmailNotification(
       Number(reviewedRequest.learner_id),
       status === "approved" ? "Your transfer letter request was approved" : "Your transfer letter request was declined",
       status === "approved"
-        ? "Your transfer letter request #" + id + " was approved. Sign in to Dallyletter Elidems to view and download your protected PDF."
+        ? "Your transfer letter request #" + id + " was approved. Verify the issuing-school record here: " + String(verificationUrl) + ". The link expires in 30 days. You can also sign in to Dallyletter Elidems to download the protected PDF."
         : "Your transfer letter request #" + id + " was declined. Reviewer feedback: " + note + ". Sign in to Dallyletter Elidems to review the decision."
     );
   } catch (error) {
     console.error("Transfer decision applicant notification queue failed", error instanceof Error ? error.message : "unknown");
   }
-  res.json(reviewedRequest);
+  res.json({ ...reviewedRequest, verificationUrl });
+});
+
+router.get("/academic-records/transfer-verification/:token", async (req, res): Promise<void> => {
+  const token = String(req.params.token || "");
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) { res.status(404).json({ error: "Verification link is invalid or expired." }); return; }
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const result = await pool.query(
+    "SELECT id,form_data,reviewed_at,verification_token_expires_at,verification_verified_at FROM academic_transfer_requests WHERE verification_token_hash=$1 AND status='approved' AND verification_token_expires_at>now() LIMIT 1",
+    [tokenHash],
+  );
+  const row = result.rows[0];
+  if (!row) { res.status(404).json({ error: "Verification link is invalid or expired." }); return; }
+  await pool.query("UPDATE academic_transfer_requests SET verification_verified_at=COALESCE(verification_verified_at,now()) WHERE id=$1", [row.id]);
+  const data = row.form_data && typeof row.form_data === "object" ? row.form_data : {};
+  res.setHeader("Cache-Control", "no-store, private");
+  res.json({
+    verified: true,
+    reference: "DL-TR-" + row.id,
+    learnerName: data.learnerName || "Not provided",
+    currentSchool: data.currentSchool || "Not provided",
+    receivingSchool: data.receivingSchool || "Not provided",
+    grade: data.grade || "Not provided",
+    academicYear: data.academicYear || "Not provided",
+    approvedAt: row.reviewed_at,
+    expiresAt: row.verification_token_expires_at,
+    verifiedAt: row.verification_verified_at,
+  });
 });
 
 router.get("/academic-records/transfer-requests/:id/download", requireAuth, async (req, res): Promise<void> => {
