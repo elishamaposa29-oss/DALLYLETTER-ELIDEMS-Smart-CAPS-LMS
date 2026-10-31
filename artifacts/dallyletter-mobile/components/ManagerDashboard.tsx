@@ -18,8 +18,8 @@ export default function ManagerDashboard(){
  const [permissions,setPermissions]=useState<Record<string,boolean>>({});
  const [reviewNotes,setReviewNotes]=useState<Record<string,string>>({});
  const [reviewBusy,setReviewBusy]=useState<string|null>(null);
- const request=useCallback(async(path:string)=>{
-  const response=await fetch(getApiUrl(path),{headers:token?{Authorization:"Bearer "+token}:{}});
+ const request=useCallback(async(path:string,init:RequestInit={})=>{
+  const response=await fetch(getApiUrl(path),{...init,headers:{...(token?{Authorization:"Bearer "+token}:{}),...((init.headers||{}) as Record<string,string>)}});
   const payload=await response.json().catch(()=>({}));
   if(!response.ok)throw new Error(payload?.error||`Request failed (${response.status})`);
   return payload;
@@ -47,7 +47,7 @@ export default function ManagerDashboard(){
   const key=kind+"-"+id;setReviewBusy(key);setError("");
   try{
    const path=kind==="transfer"?"/api/academic-records/transfer-requests/"+id+"/review":"/api/academic-records/reports/drafts/"+id+"/review";
-   await request(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({status,note:reviewNotes[key]||""})} as any);
+   await request(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({status,note:reviewNotes[key]||""})});
    setReviewNotes(notes=>({...notes,[key]:""}));
    await load();
    Alert.alert("Review saved",(kind==="transfer"?"Transfer request":"Report")+" #"+id+" "+status+".");
