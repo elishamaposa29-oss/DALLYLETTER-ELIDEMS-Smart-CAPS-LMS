@@ -3,6 +3,7 @@ import { db, auditLogsTable, usersTable, pool } from "@workspace/db";
 import { eq, desc, inArray, and } from "drizzle-orm";
 import { getAIProvider } from "../lib/ai-provider";
 import { requireAuth, canAccessManager } from "../lib/auth-middleware";
+import { hasManagerPermission } from "../lib/manager-permissions";
 
 const router = Router();
 
@@ -99,6 +100,7 @@ router.post("/academic-records/transfer-requests", requireAuth, async (req, res)
 router.get("/academic-records/transfer-requests", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   const manager = canAccessManager(user);
+  if (manager && !(await hasManagerPermission(user, "transferView"))) { res.status(403).json({ error: "You do not have permission to view transfer requests." }); return; }
   const result = manager
     ? await pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,r.requested_by,r.reason,r.status,r.review_note,r.reviewed_by,r.reviewed_at,r.created_at FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id ORDER BY r.created_at DESC LIMIT 200")
     : await pool.query("SELECT id,learner_id,reason,status,review_note,reviewed_at,created_at FROM academic_transfer_requests WHERE learner_id=$1 ORDER BY created_at DESC LIMIT 100", [user.id]);
@@ -107,7 +109,7 @@ router.get("/academic-records/transfer-requests", requireAuth, async (req, res):
 
 router.post("/academic-records/transfer-requests/:id/review", requireAuth, async (req, res): Promise<void> => {
   const reviewer = req.currentUser!;
-  if (!canAccessManager(reviewer)) { res.status(403).json({ error: "Authorized manager review is required." }); return; }
+  if (!(await hasManagerPermission(reviewer, "transferReview"))) { res.status(403).json({ error: "Transfer approval permission is required." }); return; }
   const id = Number(req.params.id);
   const status = req.body?.status;
   const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 2000) : null;
@@ -159,7 +161,7 @@ router.get("/academic-records/me", requireAuth, async (req, res): Promise<void> 
 
 router.post("/academic-records/reports/drafts", requireAuth, async (req, res): Promise<void> => {
   const creator = req.currentUser!;
-  if (!canAccessManager(creator)) { res.status(403).json({ error: "Manager review access is required to create academic report drafts." }); return; }
+  if (!(await hasManagerPermission(creator, "reportCreate"))) { res.status(403).json({ error: "Report-draft creation permission is required." }); return; }
   const learnerId = Number(req.body?.learnerId);
   const reportType = req.body?.reportType;
   const termLabel = typeof req.body?.termLabel === "string" ? req.body.termLabel.trim().slice(0,80) : "";
@@ -207,14 +209,14 @@ router.get("/academic-records/reports/me", requireAuth, async (req, res): Promis
 
 router.get("/academic-records/reports/drafts", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (!canAccessManager(user)) { res.status(403).json({ error: "Manager review access is required." }); return; }
+  if (!(await hasManagerPermission(user, "reportView"))) { res.status(403).json({ error: "Report-review access is required." }); return; }
   const result = await pool.query("SELECT id,learner_id,created_by,report_type,term_label,draft_content,status,reviewed_by,review_note,reviewed_at,created_at FROM academic_report_drafts ORDER BY created_at DESC LIMIT 200");
   res.json(result.rows);
 });
 
 router.post("/academic-records/reports/drafts/:id/review", requireAuth, async (req, res): Promise<void> => {
   const reviewer = req.currentUser!;
-  if (!canAccessManager(reviewer)) { res.status(403).json({ error: "Authorized manager review is required." }); return; }
+  if (!(await hasManagerPermission(reviewer, "reportReview"))) { res.status(403).json({ error: "Academic report approval permission is required." }); return; }
   const id = Number(req.params.id);
   const status = req.body?.status;
   const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0,2000) : null;
@@ -232,6 +234,7 @@ router.get("/academic-records/reports/drafts/:id/download", requireAuth, async (
   const result = await pool.query("SELECT * FROM academic_report_drafts WHERE id=$1", [id]);
   const row = result.rows[0];
   if (!row || (Number(row.learner_id) !== Number(user.id) && !canAccessManager(user))) { res.status(404).json({ error: "Approved academic report not found." }); return; }
+  if (canAccessManager(user) && !(await hasManagerPermission(user, "reportView"))) { res.status(403).json({ error: "You do not have permission to download reports." }); return; }
   if (row.status !== "approved") { res.status(403).json({ error: "Academic reports cannot be downloaded until an authorized manager approves the draft." }); return; }
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Content-Disposition", 'attachment; filename="dallyletter-' + row.report_type + '-' + id + '.json"');
