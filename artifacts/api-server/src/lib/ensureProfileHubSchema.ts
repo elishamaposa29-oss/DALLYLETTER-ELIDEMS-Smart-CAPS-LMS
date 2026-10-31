@@ -142,6 +142,10 @@ export async function ensureProfileHubSchema(): Promise<void> {
     await client.query("CREATE INDEX IF NOT EXISTS academic_transfer_requests_learner_idx ON academic_transfer_requests(learner_id, created_at DESC)");
     await client.query("ALTER TABLE academic_transfer_requests ADD COLUMN IF NOT EXISTS form_data jsonb NOT NULL DEFAULT '{}'::jsonb");
     await client.query("CREATE INDEX IF NOT EXISTS academic_transfer_requests_status_idx ON academic_transfer_requests(status, created_at DESC)");
+    await client.query("ALTER TABLE academic_transfer_requests ADD COLUMN IF NOT EXISTS verification_token_hash text");
+    await client.query("ALTER TABLE academic_transfer_requests ADD COLUMN IF NOT EXISTS verification_token_expires_at timestamptz");
+    await client.query("ALTER TABLE academic_transfer_requests ADD COLUMN IF NOT EXISTS verification_verified_at timestamptz");
+    await client.query("CREATE UNIQUE INDEX IF NOT EXISTS academic_transfer_verification_token_idx ON academic_transfer_requests(verification_token_hash) WHERE verification_token_hash IS NOT NULL");
     await client.query(`CREATE TABLE IF NOT EXISTS academic_report_drafts (
       id bigserial PRIMARY KEY,
       learner_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
