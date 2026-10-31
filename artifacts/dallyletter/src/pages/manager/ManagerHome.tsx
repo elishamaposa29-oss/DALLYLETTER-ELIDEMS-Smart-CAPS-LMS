@@ -5,6 +5,8 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { Users, BookOpen, Video, AlertTriangle, TrendingUp, GraduationCap, Shield, BarChart3, Star } from "lucide-react";
 import { ActivityMonitor } from "@/components/ActivityMonitor";
@@ -16,12 +18,60 @@ export default function ManagerHome() {
   const { user } = useAuth();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [transferQueue, setTransferQueue] = useState<any[]>([]);
+  const [reportQueue, setReportQueue] = useState<any[]>([]);
+  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
+  const [queueBusyId, setQueueBusyId] = useState<string | null>(null);
+  const [queueMessage, setQueueMessage] = useState("");
 
   useEffect(() => {
     fetch(getApiUrl("/api/manager/dashboard"), { headers: { Authorization: `Bearer ${token()}` } })
       .then(r => r.json()).then(d => { setData(d); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
+
+  const loadAcademicQueues = async () => {
+    const headers = { Authorization: `Bearer ${token()}` };
+    const [transfers, reports] = await Promise.all([
+      fetch(getApiUrl("/api/academic-records/transfer-requests"), { headers }),
+      fetch(getApiUrl("/api/academic-records/reports/drafts"), { headers }),
+    ]);
+    if (transfers.ok) {
+      const rows = await transfers.json().catch(() => []);
+      setTransferQueue(Array.isArray(rows) ? rows.filter((row: any) => row.status === "pending") : []);
+    } else if (transfers.status === 403) setTransferQueue([]);
+    if (reports.ok) {
+      const rows = await reports.json().catch(() => []);
+      setReportQueue(Array.isArray(rows) ? rows.filter((row: any) => row.status === "pending_review") : []);
+    } else if (reports.status === 403) setReportQueue([]);
+  };
+
+  useEffect(() => { void loadAcademicQueues().catch(() => setQueueMessage("Academic review queues are temporarily unavailable.")); }, []);
+
+  const reviewAcademicItem = async (kind: "transfer" | "report", id: number, status: "approved" | "rejected") => {
+    const key = kind + "-" + id;
+    setQueueBusyId(key);
+    setQueueMessage("");
+    try {
+      const endpoint = kind === "transfer"
+        ? "/api/academic-records/transfer-requests/" + id + "/review"
+        : "/api/academic-records/reports/drafts/" + id + "/review";
+      const response = await fetch(getApiUrl(endpoint), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({ status, note: reviewNotes[key] || "" }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Review action was denied.");
+      setQueueMessage((kind === "transfer" ? "Transfer request " : "Report ") + "#" + id + " " + status + ".");
+      setReviewNotes(notes => ({ ...notes, [key]: "" }));
+      await loadAcademicQueues();
+    } catch (error) {
+      setQueueMessage(error instanceof Error ? error.message : "Review action failed.");
+    } finally {
+      setQueueBusyId(null);
+    }
+  };
 
   if (loading) return (
     <DashboardLayout>
@@ -66,6 +116,44 @@ export default function ManagerHome() {
             ))}
           </div>
         )}
+
+        {(transferQueue.length > 0 || reportQueue.length > 0 || queueMessage) && <section className="space-y-4">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">Academic approvals</h2>
+            <p className="text-sm text-slate-500">Approval controls are checked again by the server. If your role lacks a permission, its queue is not shown.</p>
+            {queueMessage && <p role="status" className="mt-2 rounded-lg border bg-white p-3 text-sm text-slate-700">{queueMessage}</p>}
+          </div>
+          {transferQueue.length > 0 && <Card className="border-0 shadow-sm">
+            <CardHeader><CardTitle>Transfer letter requests <Badge className="ml-2">{transferQueue.length}</Badge></CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              {transferQueue.map((item: any) => {
+                const key = "transfer-" + item.id;
+                return <article key={item.id} className="rounded-xl border p-4 space-y-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2"><div><h3 className="font-semibold text-slate-900">{item.learner_name || "Learner #" + item.learner_id}</h3><p className="text-xs text-slate-500">Request #{item.id} · Submitted {item.created_at ? new Date(item.created_at).toLocaleDateString() : "date unavailable"}</p></div><Badge>Pending</Badge></div>
+                  <p className="whitespace-pre-wrap break-words text-sm text-slate-700">{item.reason}</p>
+                  <Textarea aria-label={"Review comments for transfer request " + item.id} maxLength={2000} value={reviewNotes[key] || ""} onChange={event => setReviewNotes(notes => ({ ...notes, [key]: event.target.value }))} placeholder="Optional review comments (up to 2,000 characters)" />
+                  <div className="flex flex-wrap gap-2"><Button disabled={queueBusyId !== null} onClick={() => void reviewAcademicItem("transfer", Number(item.id), "approved")}>Approve & enable PDF</Button><Button variant="outline" disabled={queueBusyId !== null} onClick={() => void reviewAcademicItem("transfer", Number(item.id), "rejected")}>Reject</Button></div>
+                </article>;
+              })}
+            </CardContent>
+          </Card>}
+          {reportQueue.length > 0 && <Card className="border-0 shadow-sm">
+            <CardHeader><CardTitle>Performance report review <Badge className="ml-2">{reportQueue.length}</Badge></CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              {reportQueue.map((item: any) => {
+                const key = "report-" + item.id;
+                const subjectRows = item.draft_content?.subjectPerformance || item.draft_content?.factualRecords?.marksSummary?.subjectPerformance || [];
+                return <article key={item.id} className="rounded-xl border p-4 space-y-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2"><div><h3 className="font-semibold text-slate-900">{item.learner_name || "Learner #" + item.learner_id} · {item.term_label}</h3><p className="text-xs text-slate-500">Report #{item.id} · {item.report_type === "attendance_register" ? "Attendance register" : "Term performance"} · {item.learner_grade || "Grade not recorded"}</p></div><Badge>Pending review</Badge></div>
+                  {subjectRows.length > 0 && <div className="grid gap-2 sm:grid-cols-2">{subjectRows.map((row: any) => <div key={row.subject} className="rounded-lg bg-slate-50 p-3"><p className="text-sm font-semibold text-slate-800">{row.subject}</p><p className="text-sm text-slate-600">{row.percentage}% · {row.earnedMarks}/{row.possibleMarks} marks · {row.markedRecords} records</p></div>)}</div>}
+                  <details><summary className="cursor-pointer text-sm font-medium text-indigo-700">Preview report source and content</summary><pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-50 p-3 text-xs">{JSON.stringify(item.draft_content, null, 2)}</pre></details>
+                  <Textarea aria-label={"Review comments for report " + item.id} maxLength={2000} value={reviewNotes[key] || ""} onChange={event => setReviewNotes(notes => ({ ...notes, [key]: event.target.value }))} placeholder="Comments required by your review process (up to 2,000 characters)" />
+                  <div className="flex flex-wrap gap-2"><Button disabled={queueBusyId !== null} onClick={() => void reviewAcademicItem("report", Number(item.id), "approved")}>Approve report</Button><Button variant="outline" disabled={queueBusyId !== null} onClick={() => void reviewAcademicItem("report", Number(item.id), "rejected")}>Reject</Button></div>
+                </article>;
+              })}
+            </CardContent>
+          </Card>}
+        </section>}
 
         <div className="grid md:grid-cols-2 gap-6">
           {/* Open Alerts */}
