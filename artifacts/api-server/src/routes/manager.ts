@@ -36,6 +36,7 @@ router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
   const [transferRows, reportRows, awardRows, qualificationRows, enrollmentRows, contentFlags, teacherApplications] = await Promise.all([
     pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,r.reason,r.status,r.created_at FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id WHERE r.status='pending' ORDER BY r.created_at ASC LIMIT 100"),
     pool.query("SELECT d.id,d.learner_id,u.name AS learner_name,d.report_type,d.term_label,d.status,d.created_at FROM academic_report_drafts d JOIN users u ON u.id=d.learner_id WHERE d.status='pending_review' ORDER BY d.created_at ASC LIMIT 100"),
+    pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,a.name AS achievement_name,a.icon AS achievement_icon,r.recommendation_note,r.created_at FROM achievement_award_recommendations r JOIN users u ON u.id=r.learner_id JOIN achievements a ON a.id=r.achievement_id WHERE r.status='pending_senior_review' ORDER BY r.created_at ASC LIMIT 100"),
     isOwnerRole(req.currentUser!.role)
       ? pool.query("SELECT q.id,q.user_id,u.name AS teacher_name,q.title,q.institution,q.created_at FROM teacher_qualifications q JOIN users u ON u.id=q.user_id WHERE q.verification_status='pending' ORDER BY q.created_at ASC LIMIT 100")
       : Promise.resolve({ rows: [] as any[] }),
