@@ -43,16 +43,26 @@ export default function FeatureCenter(){
  const isManager=Boolean((user as any)?.isManager)||["manager","junior_manager","senior_manager"].includes(normalizedRole);
  const [managerPermissions,setManagerPermissions]=useState<Partial<Record<ManagerPermission,boolean>>|null>(null);
  const [permissionsLoaded,setPermissionsLoaded]=useState(false);
+ const [usingRoleDefaults,setUsingRoleDefaults]=useState(false);
 
  useEffect(()=>{
-   if(!user||!isManager||isOwner){setManagerPermissions(null);setPermissionsLoaded(true);return;}
+   if(!user||!isManager||isOwner){setManagerPermissions(null);setPermissionsLoaded(true);setUsingRoleDefaults(false);return;}
    let active=true;
    setPermissionsLoaded(false);
+   setUsingRoleDefaults(false);
    const token=typeof localStorage!=="undefined"?localStorage.getItem("dallyletter_token"):null;
    void fetch(getApiUrl("/api/manager-permissions/me"),{headers:token?{Authorization:"Bearer "+token}:{}})
      .then(async response=>{if(!response.ok)throw new Error("Manager permissions could not be loaded");return response.json();})
      .then((permissions:Partial<Record<ManagerPermission,boolean>>)=>{if(active)setManagerPermissions(permissions);})
-     .catch(()=>{if(active)setManagerPermissions(null);})
+     .catch(()=>{
+       if(!active)return;
+       // The production API may lag a preview and not expose this endpoint yet.
+       // Keep the existing role defaults visible without treating UI visibility as authorization.
+       setManagerPermissions(normalizedRole==="senior_manager"
+         ? {transferView:true,transferReview:true,reportView:true,reportCreate:true,reportReview:true,teacherMonitor:true,studentManage:true,prefectManage:true,awardIssue:true}
+         : {transferView:true,transferReview:false,reportView:true,reportCreate:true,reportReview:false,teacherMonitor:true,studentManage:false,prefectManage:false,awardIssue:false});
+       setUsingRoleDefaults(true);
+     })
      .finally(()=>{if(active)setPermissionsLoaded(true);});
    return()=>{active=false;};
  },[user,isManager,isOwner]);
@@ -72,7 +82,7 @@ export default function FeatureCenter(){
     </div>
    </div>
    {isManager&&!isOwner&&!permissionsLoaded?<p role="status" className="text-sm text-muted-foreground">Loading your authorised manager features…</p>:null}
-   {isManager&&!isOwner&&permissionsLoaded&&!managerPermissions?<p role="status" className="text-sm text-muted-foreground">Manager permissions could not be loaded. Restricted manager tools are hidden until access can be verified. Retry by refreshing this page.</p>:null}
+   {isManager&&!isOwner&&permissionsLoaded&&usingRoleDefaults?<p role="status" className="text-sm text-muted-foreground">Personalised manager permissions are unavailable; showing the configured role defaults. Server-side authorization remains authoritative.</p>:null}
    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
     {visible.map((f)=>{
       const Icon=f.icon;
