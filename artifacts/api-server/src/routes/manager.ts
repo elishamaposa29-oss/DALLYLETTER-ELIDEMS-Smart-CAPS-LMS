@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { usersTable, classesTable, lessonsTable, paymentsTable, ownerAlertsTable, assignmentsTable, pollsTable, exercisesTable, auditLogsTable, attendanceTable, userAchievementsTable, achievementsTable, exerciseSubmissionsTable, pollSubmissionsTable } from "@workspace/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { requireAuth, canAccessManager } from "../lib/auth-middleware";
+import { hasManagerPermission, type ManagerPermissionKey } from "../lib/manager-permissions";
 
 const router = Router();
 
@@ -12,6 +13,15 @@ function requireManager(req: any, res: any, next: any) {
     return res.status(403).json({ error: "Manager access required" });
   }
   next();
+}
+
+function requireManagerPermission(permission: ManagerPermissionKey) {
+  return async (req: any, res: any, next: any) => {
+    if (!req.currentUser || !(await hasManagerPermission(req.currentUser, permission))) {
+      return res.status(403).json({ error: "Manager permission required: " + permission });
+    }
+    next();
+  };
 }
 
 router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
@@ -35,7 +45,7 @@ router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
   });
 });
 
-router.get("/teachers", requireAuth, requireManager, async (req, res) => {
+router.get("/teachers", requireAuth, requireManager, requireManagerPermission("teacherMonitor"), async (req, res) => {
   const teachers = await db.select({
     id: usersTable.id, name: usersTable.name, email: usersTable.email,
     subject: usersTable.subject, performanceScore: usersTable.performanceScore,
@@ -51,7 +61,7 @@ router.get("/teachers", requireAuth, requireManager, async (req, res) => {
   res.json(result);
 });
 
-router.get("/students", requireAuth, requireManager, async (req, res) => {
+router.get("/students", requireAuth, requireManager, requireManagerPermission("studentManage"), async (req, res) => {
   const students = await db.select({
     id: usersTable.id, name: usersTable.name, email: usersTable.email,
     grade: usersTable.grade, isPrefect: usersTable.isPrefect,
@@ -62,13 +72,13 @@ router.get("/students", requireAuth, requireManager, async (req, res) => {
   res.json(students);
 });
 
-router.get("/prefects", requireAuth, requireManager, async (req, res) => {
+router.get("/prefects", requireAuth, requireManager, requireManagerPermission("prefectManage"), async (req, res) => {
   const prefects = await db.select().from(usersTable)
     .where(and(eq(usersTable.role, "student"), eq(usersTable.isPrefect, true)));
   res.json(prefects);
 });
 
-router.put("/teacher/:id/score", requireAuth, requireManager, async (req, res): Promise<void> => {
+router.put("/teacher/:id/score", requireAuth, requireManager, requireManagerPermission("teacherMonitor"), async (req, res): Promise<void> => {
   const { performanceScore } = req.body;
   const [row] = await db.update(usersTable).set({ performanceScore })
     .where(eq(usersTable.id, parseInt(String(req.params.id)))).returning();
@@ -84,6 +94,8 @@ router.get("/users/:id/activity", requireAuth, requireManager, async (req, res):
     performanceScore: usersTable.performanceScore, badgeCount: usersTable.badgeCount, streakDays: usersTable.streakDays,
   }).from(usersTable).where(eq(usersTable.id, id));
   if (!target || !["student", "teacher"].includes(target.role) || (target.role === "teacher" && target.isManager === true)) { res.status(404).json({ error: "User activity is not available" }); return; }
+  const requiredPermission: ManagerPermissionKey = target.role === "teacher" ? "teacherMonitor" : "studentManage";
+  if (!(await hasManagerPermission(req.currentUser!, requiredPermission))) { res.status(403).json({ error: "Manager permission required: " + requiredPermission }); return; }
 
   const audit = await db.select({
     id: auditLogsTable.id, action: auditLogsTable.action, category: auditLogsTable.category,
