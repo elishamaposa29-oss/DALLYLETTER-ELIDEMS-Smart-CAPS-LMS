@@ -21,7 +21,7 @@ function hasManagerStaffRole(user: RoleLikeUser): boolean {
   const role = normalizeRole(user.role);
   return user.isManager === true
     && !isTeacherPendingReview(user)
-    && ["teacher", "manager", "senior_manager"].includes(role);
+    && ["teacher", "manager", "junior_manager", "senior_manager"].includes(role);
 }
 
 export function canManageAcademicContent(user: RoleLikeUser): boolean {
