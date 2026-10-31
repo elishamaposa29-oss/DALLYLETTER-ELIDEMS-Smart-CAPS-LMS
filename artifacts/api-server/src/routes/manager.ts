@@ -35,13 +35,14 @@ router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
     db.select().from(ownerAlertsTable).where(eq(ownerAlertsTable.status, "open")).orderBy(desc(ownerAlertsTable.createdAt)).limit(5),
     db.select().from(assignmentsTable).orderBy(desc(assignmentsTable.createdAt)).limit(5),
   ]);
+  const canMonitorTeachers = await hasManagerPermission(req.currentUser!, "teacherMonitor");
   res.json({
     stats: { teachers: teachers.length, students: students.length, classes: classes.length, lessons: lessons.length },
     recentClasses: classes,
     recentLessons: lessons,
     openAlerts: alerts,
     recentAssignments: assignments,
-    topTeachers: teachers.sort((a: any, b: any) => (b.performanceScore ?? 0) - (a.performanceScore ?? 0)).slice(0, 5),
+    topTeachers: canMonitorTeachers ? teachers.sort((a: any, b: any) => (b.performanceScore ?? 0) - (a.performanceScore ?? 0)).slice(0, 5) : [],
   });
 });
 
