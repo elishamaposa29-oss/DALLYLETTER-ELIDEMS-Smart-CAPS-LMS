@@ -22,6 +22,7 @@ export default function ManagerHome() {
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
   const [queueBusyId, setQueueBusyId] = useState<string | null>(null);
   const [queueMessage, setQueueMessage] = useState("");
+  const [myPermissions, setMyPermissions] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetch(getApiUrl("/api/manager/dashboard"), { headers: { Authorization: `Bearer ${token()}` } })
@@ -31,10 +32,15 @@ export default function ManagerHome() {
 
   const loadAcademicQueues = async () => {
     const headers = { Authorization: `Bearer ${token()}` };
-    const [transfers, reports] = await Promise.all([
+    const [transfers, reports, permissions] = await Promise.all([
       fetch(getApiUrl("/api/academic-records/transfer-requests"), { headers }),
       fetch(getApiUrl("/api/academic-records/reports/drafts"), { headers }),
+      fetch(getApiUrl("/api/manager-permissions/me"), { headers }),
     ]);
+    if (permissions.ok) {
+      const saved = await permissions.json().catch(() => ({}));
+      setMyPermissions(saved && typeof saved === "object" ? saved : {});
+    }
     if (transfers.ok) {
       const rows = await transfers.json().catch(() => []);
       setTransferQueue(Array.isArray(rows) ? rows.filter((row: any) => row.status === "pending") : []);
@@ -214,10 +220,10 @@ export default function ManagerHome() {
         {/* Quick Nav */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {[
-            { label: "Monitor Teachers", href: "/manager/teachers", icon: GraduationCap, color: "bg-emerald-600" },
-            { label: "Monitor Students", href: "/manager/students", icon: Users, color: "bg-blue-600" },
-            { label: "View Reports", href: "/manager/reports", icon: BarChart3, color: "bg-purple-600" },
-            { label: "Manage Prefects", href: "/manager/prefects", icon: Shield, color: "bg-amber-600" },
+            ...(myPermissions.teacherMonitor ? [{ label: "Monitor Teachers", href: "/manager/teachers", icon: GraduationCap, color: "bg-emerald-600" }] : []),
+            ...(myPermissions.studentManage ? [{ label: "Monitor Students", href: "/manager/students", icon: Users, color: "bg-blue-600" }] : []),
+            ...(myPermissions.reportView ? [{ label: "View Reports", href: "/manager/reports", icon: BarChart3, color: "bg-purple-600" }] : []),
+            ...(myPermissions.prefectManage ? [{ label: "Manage Prefects", href: "/manager/prefects", icon: Shield, color: "bg-amber-600" }] : []),
           ].map(item => (
             <Link key={item.href} href={item.href}>
               <div className={`${item.color} text-white rounded-xl p-4 flex items-center gap-3 hover:opacity-90 transition-opacity cursor-pointer`}>
