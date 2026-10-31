@@ -88,6 +88,7 @@ router.post("/audit-logs/summarize", requireAuth, async (req, res): Promise<void
 // AI-assisted reports remain unavailable to learners until an authorized manager approves.
 router.post("/academic-records/transfer-requests", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
+  if (!["student", "learner"].includes(String(user.role).toLowerCase())) { res.status(403).json({ error: "Only learner accounts can request a transfer letter." }); return; }
   const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
   if (reason.length < 3 || reason.length > 2000) { res.status(400).json({ error: "Provide a transfer reason between 3 and 2000 characters." }); return; }
   const result = await pool.query(
