@@ -38,7 +38,7 @@ export default function ProfileHub() {
   const [, params] = useRoute("/profile/:id");
   const profileId = params?.id ? Number(params.id) : user?.id;
   const isOwner = Boolean(user && profileId === user.id);
-  const canReviewTransferLetters = ["manager","senior_manager","owner"].includes(String(user?.role||"").toLowerCase());
+  const canReviewTransferLetters = ["manager","senior_manager","owner","admin","platform_owner"].includes(String(user?.role||"").trim().toLowerCase().replace(/[ -]+/g,"_"));
   async function pasteVerificationCode(target: "phone" | "notification" | "recovery") {
     try {
       const clipboard = await navigator.clipboard.readText();
