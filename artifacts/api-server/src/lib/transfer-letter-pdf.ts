@@ -22,7 +22,7 @@ export function createTransferLetterPdf(lines: string[]): Buffer {
     }
     wrapped.push(remaining);
   }
-  const ops = ["BT", "/F1 10 Tf", "50 790 Td", "14 TL"];
+  const ops = ["q", "0.90 g", "BT", "/F1 34 Tf", "0.707 0.707 -0.707 0 120 300 Tm", "(APPROVED - CONFIDENTIAL) Tj", "ET", "Q", "0 g", "BT", "/F1 10 Tf", "50 790 Td", "14 TL"];
   wrapped.slice(0, 48).forEach((line, index) => {
     if (index > 0) ops.push("T*");
     ops.push("(" + escapePdf(line) + ") Tj");
