@@ -505,5 +505,5 @@ router.get("/academic-records/reports/drafts/:id/download", requireAuth, async (
   if (row.status !== "approved") { res.status(403).json({ error: "Academic reports cannot be downloaded until an authorized manager approves the draft." }); return; }
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Content-Disposition", 'attachment; filename="dallyletter-' + row.report_type + '-' + id + '.json"');
-  res.send(JSON.stringify({ reportType: row.report_type, termLabel: row.term_label, report: row.draft_content, reviewedAt: row.reviewed_at, reviewedBy: row.reviewed_by }, null, 2));
+  res.send(JSON.stringify({ reportType: row.report_type, termLabel: row.term_label, periodStart: row.period_start, periodEnd: row.period_end, report: row.draft_content, reviewedAt: row.reviewed_at, reviewedBy: row.reviewed_by }, null, 2));
 });
