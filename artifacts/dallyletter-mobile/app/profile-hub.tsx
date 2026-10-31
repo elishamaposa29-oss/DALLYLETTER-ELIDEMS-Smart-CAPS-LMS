@@ -83,7 +83,7 @@ export default function MobileProfileHub() {
           api("/api/users/me/enrollments").catch(()=>[]),api("/api/users/me/notification-email").catch(()=>({})),
           api("/api/users/me/payout-preferences").catch(()=>({})),api("/api/users/"+targetId+"/public-profile").catch(()=>({})),
           api("/api/users/"+targetId+"/teacher-documents").catch(()=>[]),api("/api/subjects/catalog").catch(()=>({subjects:[]})),api("/api/users/me/recovery-profile").catch(()=>({recovery_phone:null,recovery_phone_verified_at:null})),
-          api("/api/academic-records/me").catch(()=>({attendance:[]})),api("/api/academic-records/reports/me").catch(()=>[]),api("/api/academic-records/transfer-requests").catch(()=>[]),
+          api("/api/academic-records/me").catch(error=>{setMessage("Could not load your attendance records. "+(error instanceof Error?error.message:"Please retry."));return {attendance:[]};}),api("/api/academic-records/reports/me").catch(error=>{setMessage("Could not load your approved reports. "+(error instanceof Error?error.message:"Please retry."));return [];}),api("/api/academic-records/transfer-requests").catch(error=>{setMessage("Could not load your transfer requests. "+(error instanceof Error?error.message:"Please retry."));return [];}),
           (["student","prefect","learner"].includes(String(user?.role||"").toLowerCase())?api("/api/payments").catch(()=>[]):Promise.resolve([])),api("/api/daily-attendance/me").catch(()=>({records:[]}))
         ]);
         const professional=["teacher","manager","junior_manager","senior_manager"].includes(String(me.role).toLowerCase());

@@ -149,9 +149,9 @@ export default function ProfileHub() {
           request("/api/subjects/catalog").catch(()=>({subjects:[]})),
           request("/api/users/"+profileId+"/teacher-documents").catch(()=>[]),
           request("/api/users/"+profileId+"/public-profile").catch(()=>({})),
-          request("/api/academic-records/me").catch(()=>({attendance:[]})),
-          request("/api/academic-records/reports/me").catch(()=>[]),
-          request("/api/academic-records/transfer-requests").catch(()=>[]),
+          request("/api/academic-records/me").catch(error=>{setMessage("Could not load your attendance records. "+(error instanceof Error?error.message:"Please retry."));return {attendance:[]};}),
+          request("/api/academic-records/reports/me").catch(error=>{setMessage("Could not load your approved reports. "+(error instanceof Error?error.message:"Please retry."));return [];}),
+          request("/api/academic-records/transfer-requests").catch(error=>{setMessage("Could not load your transfer requests. "+(error instanceof Error?error.message:"Please retry."));return [];}),
           (["student","prefect","learner"].includes(String(user?.role||"").toLowerCase())?request("/api/payments").catch(()=>[]):Promise.resolve([]))
         ]);
         const professional = ["teacher","manager","junior_manager","senior_manager"].includes(String(me.role).toLowerCase());
