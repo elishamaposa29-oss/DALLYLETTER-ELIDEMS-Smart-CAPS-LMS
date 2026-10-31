@@ -19,7 +19,7 @@ export default function ManagerDashboard(){
  const [reviewNotes,setReviewNotes]=useState<Record<string,string>>({});
  const [reviewBusy,setReviewBusy]=useState<string|null>(null);
  const request=useCallback(async(path:string,init:RequestInit={})=>{
-  const response=await fetch(getApiUrl(path),{...init,headers:{...(token?{Authorization:"Bearer "+token}:{}),...((init.headers||{}) as Record<string,string>)}});
+  const response=await fetch(getApiUrl(path),{...init,headers:{...(token?{Authorization:"Bearer "+token}:{}),...((init.headers||{}) as any)}});
   const payload=await response.json().catch(()=>({}));
   if(!response.ok)throw new Error(payload?.error||`Request failed (${response.status})`);
   return payload;
