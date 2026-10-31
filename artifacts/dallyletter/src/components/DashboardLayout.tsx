@@ -28,6 +28,7 @@ const roleColors: Record<string, string> = {
   admin: "from-amber-600 to-amber-800",
   platform_owner: "from-amber-600 to-amber-800",
   manager: "from-purple-600 to-purple-800",
+  junior_manager: "from-purple-600 to-purple-800",
   senior_manager: "from-purple-600 to-purple-800",
 };
 
@@ -39,6 +40,7 @@ const roleLabels: Record<string, string> = {
   admin: "Administrator",
   platform_owner: "Platform owner",
   manager: "Manager",
+  junior_manager: "Junior manager",
   senior_manager: "Senior manager",
 };
 
