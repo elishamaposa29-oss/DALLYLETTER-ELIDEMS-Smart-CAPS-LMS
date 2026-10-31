@@ -29,13 +29,14 @@ function summarizeAcademicMarks(assignmentRows: any[], exerciseRows: any[]) {
   };
 }
 
-function buildAcademicReportPdf(input: { id: number; reportType: string; termLabel: string; learnerName: string; reviewedAt: unknown; reviewedBy: unknown; report: unknown }): Buffer {
+function buildAcademicReportPdf(input: { id: number; reportType: string; termLabel: string; periodStart?: unknown; periodEnd?: unknown; learnerName: string; reviewedAt: unknown; reviewedBy: unknown; report: unknown }): Buffer {
   const raw = [
     "DALLYLETTER ELIDEMS",
     "OFFICIAL ACADEMIC REPORT",
     "Report type: " + input.reportType.replace(/_/g, " "),
     "Learner: " + input.learnerName,
     "Term / period: " + input.termLabel,
+    "Period dates: " + (input.periodStart ? String(input.periodStart).slice(0,10) : "Not recorded") + " to " + (input.periodEnd ? String(input.periodEnd).slice(0,10) : "Not recorded"),
     "Approved on: " + (input.reviewedAt ? new Date(String(input.reviewedAt)).toISOString().slice(0, 10) : "Date unavailable"),
     "Approved by account ID: " + (input.reviewedBy ?? "Not recorded"),
     "Document reference: DL-AR-" + input.id,
@@ -451,14 +452,14 @@ router.post("/academic-records/reports/drafts", requireAuth, async (req, res): P
 
 router.get("/academic-records/reports/me", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  const result = await pool.query("SELECT id,report_type,term_label,draft_content,reviewed_at,created_at FROM academic_report_drafts WHERE learner_id=$1 AND status='approved' ORDER BY reviewed_at DESC NULLS LAST,created_at DESC LIMIT 100", [user.id]);
+  const result = await pool.query("SELECT id,report_type,term_label,period_start,period_end,draft_content,reviewed_at,created_at FROM academic_report_drafts WHERE learner_id=$1 AND status='approved' ORDER BY reviewed_at DESC NULLS LAST,created_at DESC LIMIT 100", [user.id]);
   res.json(result.rows);
 });
 
 router.get("/academic-records/reports/drafts", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canAccessManager(user)) { res.status(403).json({ error: "Manager review access is required." }); return; }
-  const result = await pool.query("SELECT id,learner_id,created_by,report_type,term_label,draft_content,status,reviewed_by,review_note,reviewed_at,created_at FROM academic_report_drafts ORDER BY created_at DESC LIMIT 200");
+  const result = await pool.query("SELECT id,learner_id,created_by,report_type,term_label,period_start,period_end,draft_content,status,reviewed_by,review_note,reviewed_at,created_at FROM academic_report_drafts ORDER BY created_at DESC LIMIT 200");
   res.json(result.rows);
 });
 
@@ -486,7 +487,7 @@ router.get("/academic-records/reports/drafts/:id/download/pdf", requireAuth, asy
   const draftContent = typeof row.draft_content === "string" ? JSON.parse(row.draft_content) : row.draft_content;
   const sourceSnapshot = typeof row.source_snapshot === "string" ? JSON.parse(row.source_snapshot) : row.source_snapshot;
   const learnerName = String(draftContent?.learner || sourceSnapshot?.learner?.name || "Learner record");
-  const pdf = buildAcademicReportPdf({ id, reportType: String(row.report_type), termLabel: String(row.term_label), learnerName, reviewedAt: row.reviewed_at, reviewedBy: row.reviewed_by, report: draftContent });
+  const pdf = buildAcademicReportPdf({ id, reportType: String(row.report_type), termLabel: String(row.term_label), periodStart: row.period_start, periodEnd: row.period_end, learnerName, reviewedAt: row.reviewed_at, reviewedBy: row.reviewed_by, report: draftContent });
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
