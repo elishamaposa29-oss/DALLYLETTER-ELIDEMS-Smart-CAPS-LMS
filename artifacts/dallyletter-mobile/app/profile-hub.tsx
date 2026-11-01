@@ -34,7 +34,8 @@ export default function MobileProfileHub() {
   const targetId = params.userId ? Number(params.userId) : user?.id;
   const isOwn = Boolean(user && targetId === user.id);
   const isOwner = ["owner","admin","platform_owner"].includes(String(user?.role||"").toLowerCase());
-  const canReviewTransferLetters = ["manager","senior_manager","owner","admin","platform_owner"].includes(String(user?.role||"").trim().toLowerCase().replace(/[ -]+/g,"_"));
+  const normalizedUserRole = String(user?.role||"").trim().toLowerCase().replace(/[ -]+/g,"_");
+  const canReviewTransferLetters = ["manager","senior_manager","owner","admin","platform_owner"].includes(normalizedUserRole) || (normalizedUserRole === "teacher" && Boolean((user as any)?.isManager) && String((user as any)?.teacherApplicationStatus||"").toLowerCase() !== "pending_review");
   const [tab,setTab] = useState<Tab>("Overview");
   const [profile,setProfile] = useState<Row|null>(null);
   const [qualifications,setQualifications] = useState<Row[]>([]);
@@ -114,7 +115,7 @@ export default function MobileProfileHub() {
           api("/api/academic-records/me").catch(()=>({attendance:[]})),api("/api/academic-records/reports/me").catch(()=>[]),api("/api/academic-records/transfer-requests").catch(()=>[]),
           (["student","prefect","learner"].includes(String(user?.role||"").toLowerCase())?api("/api/payments").catch(()=>[]):Promise.resolve([])),api("/api/daily-attendance/me").catch(()=>({records:[]}))
         ]);
-        const professional=["teacher","manager","senior_manager"].includes(String(me.role).toLowerCase());
+        const professional=["teacher","manager","senior_manager"].includes(String(me.role).toLowerCase().replace(/[ -]+/g,"_")) || Boolean(me.isManager);
         const savedSubjects=professional?(s?.subjects_to_teach||[]):(s?.subjects||[]);
         setProfile({...publicSummary,id:me.id,display_name:me.name,avatar:me.avatarUrl,bio:me.bio,role:me.role,verified_qualifications:professional?(q||[]).filter((x:Row)=>x.verification_status==="verified"):[],subjects_to_teach:savedSubjects,subjects:savedSubjects,primary_subject:s?.primary_subject||null,grade:me.grade,is_prefect:Boolean(me.isPrefect),is_manager:Boolean(me.isManager)});
         setNameInput(me.name||"");setTransferForm(v=>({...v,learnerName:me.name||v.learnerName,grade:me.grade||v.grade}));setPhoneInput(me.phone||"");setPhoneVerified(Boolean(recovery.recovery_phone_verified_at&&recovery.recovery_phone===me.phone));
@@ -319,7 +320,7 @@ export default function MobileProfileHub() {
     </View>
     <Modal visible={Boolean(fullscreenMedia)} transparent={false} presentationStyle="fullScreen" statusBarTranslucent animationType="fade" onRequestClose={()=>setFullscreenMedia(null)}><View style={{flex:1,width:"100%",height:"100%",backgroundColor:"#000",justifyContent:"center",alignItems:"center",padding:0,margin:0}}><StatusBar hidden backgroundColor="#000"/><TouchableOpacity accessibilityRole="button" accessibilityLabel="Close fullscreen media" onPress={()=>setFullscreenMedia(null)} style={{position:"absolute",top:Platform.OS==="ios"?48:18,right:18,zIndex:10,paddingHorizontal:16,paddingVertical:10,backgroundColor:"#333333bb",borderRadius:24}}><Text style={{color:"#fff",fontWeight:"700"}}>Close ✕</Text></TouchableOpacity>{fullscreenMedia?.type?.startsWith("video/")?<VideoView player={fullscreenPlayer} style={{width:"100%",height:"100%"}} nativeControls contentFit="contain"/>:fullscreenMedia?.url?<TouchableOpacity activeOpacity={1} onPress={()=>setFullscreenMedia(null)} style={{width:"100%",height:"100%",justifyContent:"center",alignItems:"center"}}><Image source={{uri:fullscreenMedia.url,headers:token?{Authorization:"Bearer "+token}:{}}} style={{width:"100%",height:"100%"}} resizeMode="contain"/></TouchableOpacity>:null}</View></Modal>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{padding:10,gap:6,backgroundColor:colors.card}}>
-      {TABS.filter(t=>t!=="Qualifications"||["teacher","manager","senior_manager"].includes(String(profile?.role||user.role).toLowerCase())).filter(t=>t!=="Enrollments"||isOwn).filter(t=>isOwn||!["Reports","Attendance","Payments"].includes(t)).map(t=><TouchableOpacity key={t} accessibilityRole="tab" accessibilityState={{selected:tab===t}} onPress={()=>setTab(t)} style={{paddingHorizontal:12,paddingVertical:9,borderRadius:10,backgroundColor:tab===t?colors.primary:colors.background,borderColor:colors.border,borderWidth:1}}><Text style={{fontWeight:"700",color:tab===t?"#fff":colors.foreground}}>{t}</Text></TouchableOpacity>)}
+      {TABS.filter(t=>t!=="Qualifications"||["teacher","manager","senior_manager","owner","admin","platform_owner"].includes(String(profile?.role||user.role).toLowerCase().replace(/[ -]+/g,"_"))).filter(t=>t!=="Enrollments"||isOwn).filter(t=>isOwn||!["Reports","Attendance","Payments"].includes(t)).map(t=><TouchableOpacity key={t} accessibilityRole="tab" accessibilityState={{selected:tab===t}} onPress={()=>setTab(t)} style={{paddingHorizontal:12,paddingVertical:9,borderRadius:10,backgroundColor:tab===t?colors.primary:colors.background,borderColor:colors.border,borderWidth:1}}><Text style={{fontWeight:"700",color:tab===t?"#fff":colors.foreground}}>{t}</Text></TouchableOpacity>)}
     </ScrollView>
     <ScrollView contentContainerStyle={{padding:14,paddingBottom:50}} keyboardShouldPersistTaps="handled">
       {!!message&&<Text accessibilityRole="alert" style={{...card,color:colors.foreground}}>{message}</Text>}
