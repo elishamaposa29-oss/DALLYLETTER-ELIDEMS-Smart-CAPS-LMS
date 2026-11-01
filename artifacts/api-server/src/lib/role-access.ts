@@ -27,7 +27,7 @@ export function isSeniorManager(user: RoleLikeUser): boolean {
   const role = normalizeRole(user.role);
   if (isOwnerRole(role) || role === "senior_manager") return true;
   if (normalizedManagerLevel(user) !== "senior") return false;
-  if (role === "manager") return true;
+  if (role === "manager" || role === "junior_manager") return true;
   return role === "teacher" && user.isManager === true && !isTeacherPendingReview(user);
 }
 
@@ -51,7 +51,7 @@ export function canApproveAchievementAwards(user: RoleLikeUser): boolean {
 function hasManagerStaffRole(user: RoleLikeUser): boolean {
   const role = normalizeRole(user.role);
   // Manager roles remain eligible for existing manager tools at either level.
-  if (["manager", "senior_manager"].includes(role)) return true;
+  if (["manager", "senior_manager", "junior_manager"].includes(role)) return true;
   return role === "teacher" && user.isManager === true && !isTeacherPendingReview(user);
 }
 
