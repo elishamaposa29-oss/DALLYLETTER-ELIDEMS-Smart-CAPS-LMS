@@ -577,6 +577,11 @@ router.patch("/users/:id/teacher-review", requireAuth, async (req, res): Promise
       return;
     }
   }
+  if (action === "reject") {
+    const [applicant] = await db.select({ email: usersTable.email, name: usersTable.name }).from(usersTable).where(eq(usersTable.id, id));
+    try { await sendEmail({ to: [applicant.email], subject: "Dallyletter Elidems teacher application outcome", text: "Hello " + (applicant.name || "applicant") + ", your teacher application was not approved. Your login details remain valid and your account has been converted to a learner account. Sign in again to access the learner dashboard." }); }
+    catch { res.status(503).json({ error: "Notification email could not be accepted. Account remains unchanged; retry after email delivery is restored." }); return; }
+  }
   const [user] = await db.update(usersTable).set(
     action === "approve"
       ? { role: "teacher", teacherApplicationStatus: "approved", teacherReviewDeadline: null }
