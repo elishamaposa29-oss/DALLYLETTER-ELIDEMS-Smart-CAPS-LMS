@@ -21,6 +21,8 @@ import { buildTeacherCvPdf } from "../lib/teacher-cv-pdf";
 
 const router: IRouter = Router();
 
+function canReviewTeacherApplication(user: { role: unknown; managerLevel?: unknown }): boolean { const role=String(user.role||"").trim().toLowerCase().replace(/[ -]+/g,"_"); return ["owner","platform_owner","senior_manager"].includes(role) || (role==="manager" && String(user.managerLevel||"").toLowerCase()==="senior"); }
+
 function hasForbiddenPaymentCredentials(body: unknown): boolean {
   if (!body || typeof body !== "object" || Array.isArray(body)) return false;
   const forbidden = new Set(["cardnumber","cardcvv","cardcvc","cardexpiry","cvv","cvc","expiry","pin","ecocashpin","paypalpassword","googlepassword","password","savedloginpassword","securitycode"]);
@@ -470,12 +472,12 @@ router.patch("/users/me/teacher-cv", requireAuth, async (req, res): Promise<void
   if (actor.role !== "teacher") { res.status(403).json({ error: "Teacher account required" }); return; }
   const body = req.body?.cv;
   if (!body || typeof body !== "object" || Array.isArray(body)) { res.status(400).json({ error: "Provide a CV object." }); return; }
-  const allowed = ["professionalSummary", "education", "experience", "subjects", "address", "certifications", "languages", "references"];
+  const allowed = ["professionalSummary", "education", "experience", "subjects", "address", "certifications", "languages", "references", "personalDetails", "teachingDetails", "surveyAnswers", "photoDocumentId", "qualificationIds"];
   const cv: Record<string, string> = {};
   for (const key of allowed) {
     const value = body[key];
     if (value !== undefined) {
-      if (typeof value !== "string" || value.length > 8000) { res.status(400).json({ error: "CV fields must be text up to 8000 characters." }); return; }
+      if (typeof value !== "string" || value.length > 12000) { res.status(400).json({ error: "CV fields must be text up to 8000 characters." }); return; }
       cv[key] = value.trim();
     }
   }
@@ -490,7 +492,7 @@ router.post("/users/me/teacher-documents", requireAuth, (req, res): void => {
   teacherDocumentUpload.single("file")(req, res, (error) => {
     void (async () => {
       if (error || !req.file) { res.status(400).json({ error: "Upload a PDF, image or document up to 10 MB" }); return; }
-      if (!["teacher", "manager", "senior_manager"].includes(String(req.currentUser!.role).toLowerCase())) { res.status(403).json({ error: "Teacher or manager account required" }); return; }
+      if (String(req.currentUser!.role).toLowerCase() !== "teacher") { res.status(403).json({ error: "Teacher account required" }); return; }
       const documentType = typeof req.body?.documentType === "string" ? req.body.documentType.trim() : "";
       if (!["cv", "resume", "certificate", "proof"].includes(documentType)) { res.status(400).json({ error: "Choose CV, resume, certificate or proof" }); return; }
       const allowed = ["application/pdf","image/jpeg","image/png","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
@@ -830,7 +832,7 @@ router.post("/qualifications/:id/document", requireAuth, (req,res,next):void => 
 
 router.patch("/qualifications/:id/verify", requireAuth, async(req,res):Promise<void>=>{
   const reviewer=req.currentUser!;
-  if(!isOwnerRole(reviewer.role)){res.status(403).json({error:"Owner/admin access required."});return;}
+  if(!canReviewTeacherApplication(reviewer)){res.status(403).json({error:"Owner or Senior Manager access required."});return;}
   const id=Number(req.params.id);
   const status=req.body?.status;
   const reviewNote=typeof req.body?.reviewNote==="string"?req.body.reviewNote.trim().slice(0,2000):null;
@@ -859,7 +861,7 @@ router.get("/qualifications/:id/review-history", requireAuth, async(req,res):Pro
   if(!Number.isSafeInteger(id)||id<=0){res.status(400).json({error:"Invalid qualification id."});return;}
   const qualification=await pool.query("SELECT id,user_id FROM teacher_qualifications WHERE id=$1",[id]);
   if(!qualification.rows.length){res.status(404).json({error:"Qualification not found."});return;}
-  if(!isOwnerRole(actor.role)&&Number(qualification.rows[0].user_id)!==actor.id){res.status(403).json({error:"Only the qualification owner or an authorized owner/admin can view review history."});return;}
+  if(!canReviewTeacherApplication(actor)&&Number(qualification.rows[0].user_id)!==actor.id){res.status(403).json({error:"Only the qualification owner or an authorized owner/admin can view review history."});return;}
   const history=await pool.query("SELECT h.id,h.qualification_id,h.previous_status,h.new_status,h.review_note,h.created_at,u.name AS reviewer_name FROM teacher_qualification_review_history h JOIN users u ON u.id=h.reviewed_by WHERE h.qualification_id=$1 ORDER BY h.created_at DESC,h.id DESC LIMIT 100",[id]);
   res.json({qualificationId:id,history:history.rows});
 });
@@ -870,7 +872,7 @@ router.get("/qualifications/:id/document", requireAuth, async(req,res):Promise<v
   const result=await pool.query("SELECT d.id,d.user_id,d.file_name,d.mime_type,d.storage_key,q.verification_status FROM teacher_documents d LEFT JOIN teacher_qualifications q ON q.document_id=d.id WHERE d.id=$1",[id]);
   const doc=result.rows[0];
   if(!doc){res.status(404).json({error:"Document not found."});return;}
-  if(doc.user_id!==actor.id&&!isOwnerRole(actor.role)){res.status(403).json({error:"Document access denied."});return;}
+  if(doc.user_id!==actor.id&&!canReviewTeacherApplication(actor)){res.status(403).json({error:"Document access denied."});return;}
   if(!doc.storage_key){res.status(503).json({error:"Document storage key unavailable for this legacy record."});return;}
   const media=await streamStoredMedia(doc.storage_key);
   if(!media){res.status(404).json({error:"Stored document not found."});return;}
