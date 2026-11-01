@@ -104,7 +104,7 @@ app.use(extractUser);
 app.use((req,res,next)=>{
   const user=req.currentUser;
   if(!user || String(user.role).toLowerCase()!=="teacher" || user.teacherApplicationStatus!=="pending_review"){next();return;}
-  const path=req.path;
+  const path=req.path.startsWith("/api/")?req.path.slice(4):req.path;
   const method=req.method.toUpperCase();
   const selfId=String(user.id);
   const cvPaths=[
