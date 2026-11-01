@@ -68,6 +68,9 @@ function buildAcademicReportPdf(input: { id: number; reportType: string; termLab
     "LEARNER DETAILS",
     "Learner name: " + input.learnerName,
     "Learner grade / form: " + (report.learnerGrade || "Not recorded"),
+    "Admission number: " + (report.admissionNumber || "Not recorded"),
+    "Date of birth: " + (report.dateOfBirth || "Not recorded"),
+    "Age at period end: " + (report.ageOnPeriodEnd == null ? "Not calculated" : report.ageOnPeriodEnd),
     "Report type: " + input.reportType.replace(/_/g, " "),
     "Academic year: " + (report.academicYear || "Not recorded"),
     "Term: " + input.termLabel,
@@ -121,6 +124,7 @@ function buildAcademicReportPdf(input: { id: number; reportType: string; termLab
   raw.push("Term result / promotion: " + (report.result || "Not recorded"));
   raw.push("Reviewer / headmaster comment: " + (input.reviewNote || "Not recorded"));
   raw.push("Teacher signature: Not digitally recorded");
+  raw.push("Learner position: Not calculated (no saved ranking data).");
   raw.push("Headmaster signature / school stamp: Not recorded");
   raw.push("", "This report contains only saved records available for the selected period.");
   raw.push("Unmarked work is not counted as zero. Missing information is shown as unavailable.");
@@ -631,6 +635,9 @@ router.post("/academic-records/reports/drafts", requireAuth, async (req, res): P
     }
     draftContent = { label: termLabel, periodStart, periodEnd, learner: learner.rows[0].name, factualRecords: { enrollments: enrollments.rows, attendanceCount: attendance.rows.length, attendanceSummary, awards: awards.rows, assignmentMarks: assignmentMarks.rows, exerciseMarks: reportableExerciseMarks, markSummary }, commentary, commentaryStatus: commentary ? "generated" : "not_generated" };
   }
+  const admissionNumber = typeof req.body?.admissionNumber === "string" ? req.body.admissionNumber.trim().slice(0, 50) : "";
+  const dateOfBirth = typeof req.body?.dateOfBirth === "string" && calculateAgeOnDate(req.body.dateOfBirth, periodEnd) !== null ? req.body.dateOfBirth : "";
+  const ageOnPeriodEnd = dateOfBirth ? calculateAgeOnDate(dateOfBirth, periodEnd) : null;
   const teacherComment = typeof req.body?.teacherComment === "string" ? req.body.teacherComment.trim().slice(0, 3000) : "";
   const conduct = typeof req.body?.conduct === "string" ? req.body.conduct.trim().slice(0, 120) : "";
   const result = typeof req.body?.result === "string" ? req.body.result.trim().slice(0, 120) : "";
@@ -638,6 +645,9 @@ router.post("/academic-records/reports/drafts", requireAuth, async (req, res): P
     ...(draftContent && typeof draftContent === "object" ? draftContent as Record<string, unknown> : {}),
     learnerGrade: learner.rows[0].grade ?? null,
     academicYear,
+    admissionNumber: admissionNumber || null,
+    dateOfBirth: dateOfBirth || null,
+    ageOnPeriodEnd,
     teacherComment: teacherComment || null,
     conduct: conduct || null,
     result: result || null,
