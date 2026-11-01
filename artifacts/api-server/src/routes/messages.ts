@@ -138,7 +138,7 @@ router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise
   const user = req.currentUser!;
   const allowed = message.groupId != null
     ? await canAccessGroup(message.groupId, user.id, user.role)
-    : message.recipientId != null && (isOwnerRole(user.role) || message.recipientId === user.id || message.senderId === user.id);
+    : message.recipientId != null && (isOwnerRole(user.role) || ((message.recipientId === user.id || message.senderId === user.id) && await canMessageUser(user, message.senderId === user.id ? message.recipientId : message.senderId)));
   if (!allowed) { res.status(403).json({ error: "You cannot access this media" }); return; }
   try {
     const remote = await streamStoredMedia(storageKey, req.headers.range);
