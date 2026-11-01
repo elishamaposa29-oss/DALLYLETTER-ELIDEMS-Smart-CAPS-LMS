@@ -565,13 +565,18 @@ router.patch("/users/:id/teacher-review", requireAuth, async (req, res): Promise
     const cv = (cvResult.rows[0]?.cv ?? {}) as Record<string, unknown>;
     const requiredFields = ["professionalSummary", "education", "experience", "subjects", "address"];
     const missingFields = requiredFields.filter((key) => typeof cv[key] !== "string" || (cv[key] as string).trim().length < 2);
+    let personalDetails: Record<string, unknown> = {}; try { personalDetails = JSON.parse(String(cv.personalDetails || "{}")) as Record<string, unknown>; } catch { /* incomplete CV is rejected below */ }
+    const hasPhoto = Number(cv.photoDocumentId) > 0;
+    const hasLegalDetails = ["fullName","idNumber","dob","phone","email","address"].every((key) => typeof personalDetails[key] === "string" && String(personalDetails[key]).trim().length > 0);
     const docs = await pool.query("SELECT 1 FROM teacher_documents WHERE user_id = $1 AND document_type IN ('resume','certificate') LIMIT 1", [id]);
     const verifiedQualifications = await pool.query("SELECT count(*)::int AS total, count(*) FILTER (WHERE verification_status=$2 AND document_id IS NOT NULL)::int AS verified FROM teacher_qualifications WHERE user_id=$1", [id, "verified"]);
-    if (missingFields.length || !docs.rows.length || Number(verifiedQualifications.rows[0]?.total||0)===0 || Number(verifiedQualifications.rows[0]?.verified||0)!==Number(verifiedQualifications.rows[0]?.total||0)) {
+    if (missingFields.length || !hasPhoto || !hasLegalDetails || !docs.rows.length || Number(verifiedQualifications.rows[0]?.total||0)===0 || Number(verifiedQualifications.rows[0]?.verified||0)!==Number(verifiedQualifications.rows[0]?.total||0)) {
       res.status(409).json({
-        error: "Teacher application is incomplete. Complete the CV, add payment information, and upload a resume or certificate before owner approval.",
+        error: "Teacher application is incomplete. Complete personal/legal CV details, upload a profile photo and supporting CV document, and have every separate qualification certificate verified before authorization.",
         missingFields,
         qualificationVerificationComplete: Number(verifiedQualifications.rows[0]?.total||0)>0 && Number(verifiedQualifications.rows[0]?.verified||0)===Number(verifiedQualifications.rows[0]?.total||0),
+        profilePhotoUploaded: hasPhoto,
+        legalDetailsComplete: hasLegalDetails,
         qualificationDocumentUploaded: Boolean(docs.rows.length),
       });
       return;
