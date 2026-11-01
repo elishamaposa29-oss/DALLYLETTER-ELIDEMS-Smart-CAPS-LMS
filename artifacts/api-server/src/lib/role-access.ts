@@ -55,6 +55,30 @@ function hasManagerStaffRole(user: RoleLikeUser): boolean {
   return role === "teacher" && user.isManager === true && !isTeacherPendingReview(user);
 }
 
+/** API-level allowlist for applicants who have not yet been authorized to teach. */
+export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, methodValue: string, rawPath: string): boolean {
+  if (!isTeacherPendingReview(user)) return true;
+  const method = methodValue.toUpperCase();
+  const path = rawPath.startsWith("/api/") ? rawPath.slice(4) : rawPath;
+  const selfId = String(user.id ?? "");
+  const cvAllowed =
+    (method === "GET" && path === "/users/me/teacher-cv") ||
+    (method === "PATCH" && path === "/users/me/teacher-cv") ||
+    (method === "GET" && path === "/users/me/qualifications") ||
+    (method === "POST" && path === "/users/me/qualifications") ||
+    (method === "POST" && path === "/users/me/teacher-documents") ||
+    (method === "POST" && /^\\/qualifications\\/\\d+\\/document$/.test(path)) ||
+    (method === "GET" && path === "/users/" + selfId + "/teacher-documents") ||
+    (method === "GET" && path === "/users/" + selfId + "/public-profile") ||
+    (method === "GET" && path === "/users/" + selfId) ||
+    (method === "PATCH" && path === "/users/" + selfId) ||
+    ((method === "GET" || method === "POST") && path === "/teacher-cv-workspace/" + selfId + "/chat");
+  const teachingReadPrefixes = ["/dashboard","/teacher","/teacher-dashboard","/teacher-panel","/manager","/manager-panel","/classes","/lessons","/assignments","/exercises","/polls","/study-groups","/attendance","/daily-attendance","/ai","/live-classes","/reports","/academic-records","/record-book","/recordbook","/marking"];
+  const teachingRead = method === "GET" && teachingReadPrefixes.some(prefix => path === prefix || path.startsWith(prefix + "/"));
+  const profileWrite = method === "PATCH" && path === "/users/" + selfId;
+  return !teachingRead && (!["POST","PUT","PATCH","DELETE"].includes(method) || cvAllowed || profileWrite);
+}
+
 export function canManageAcademicContent(user: RoleLikeUser): boolean {
   const role = normalizeRole(user.role);
   if (isOwnerRole(role)) return true;
