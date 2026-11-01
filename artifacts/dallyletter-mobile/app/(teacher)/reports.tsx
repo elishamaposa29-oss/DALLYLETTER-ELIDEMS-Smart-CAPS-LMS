@@ -12,7 +12,7 @@ type ReportType = "attendance_register" | "term_performance";
 
 export default function TeacherAcademicReports() {
   const colors = useColors();
-  const { token, user } = useAuth();
+  const { token } = useAuth();
   const year = String(new Date().getFullYear());
   const [learners, setLearners] = useState<Row[]>([]);
   const [selectedLearner, setSelectedLearner] = useState("");
