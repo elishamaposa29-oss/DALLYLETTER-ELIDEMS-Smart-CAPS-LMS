@@ -5,8 +5,12 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 import { extractUser } from "./lib/auth-middleware";
 import { db, auditLogsTable } from "@workspace/db";
+import { startTeacherCvExpiryScheduler } from "./lib/teacher-cv-expiry";
 
 const app: Express = express();
+
+// Owner-configured teacher CV expiry is checked by the API service on startup and every five minutes.
+startTeacherCvExpiryScheduler();
 
 const configuredOrigins = (process.env.CORS_ORIGINS ?? "")
   .split(",")
