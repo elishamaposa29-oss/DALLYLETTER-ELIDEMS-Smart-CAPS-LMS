@@ -17,9 +17,9 @@ import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 export default function TeacherChat() {
   const { user } = useAuth();
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("groupId"); return value && /^\d+$/.test(value) ? Number(value) : null; });
-  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("recipientId"); return value && /^\\d+$/.test(value) ? Number(value) : null; });
   const [message, setMessage] = useState("");
-  const [activeTab, setActiveTab] = useState("groups");
+  const [activeTab, setActiveTab] = useState(() => new URLSearchParams(window.location.search).has("recipientId") ? "people" : "groups");
   const [chatFullscreen, setChatFullscreen] = useState(false);
   const [lessonRequests, setLessonRequests] = useState<Array<{id:number; topic:string; notes:string|null; preferredDate:string|null; status:string; teacherReply:string|null; prefectId:number}>>([]);
   const [requestLoading, setRequestLoading] = useState(false);
