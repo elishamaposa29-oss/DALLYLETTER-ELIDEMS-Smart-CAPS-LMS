@@ -46,6 +46,7 @@ export default function RecordBookWorkspace() {
   const [record, setRecord] = useState<AcademicData | null>(null);
   const [snapshot, setSnapshot] = useState<Row | null>(null);
   const [snapshotId, setSnapshotId] = useState<number | null>(null);
+  const [snapshotStatus, setSnapshotStatus] = useState<string>("draft");
   const [busy, setBusy] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [error, setError] = useState("");
@@ -107,11 +108,12 @@ export default function RecordBookWorkspace() {
     if (!learnerId || !termLabel.trim() || !periodStart || !periodEnd || periodStart > periodEnd) {
       setError("Choose a learner, enter a record label and select a valid date range."); return;
     }
-    setBusy(true); setError(""); setNotice(""); setSnapshot(null); setSnapshotId(null);
+    setBusy(true); setError(""); setNotice(""); setSnapshot(null); setSnapshotId(null); setSnapshotStatus("draft");
     try {
       const created = await api("/api/academic-records/reports/drafts", { method: "POST", body: JSON.stringify({ learnerId: Number(learnerId), reportType: "term_performance", termLabel: termLabel.trim(), periodStart, periodEnd }) });
       setSnapshot(created?.draft_content || null);
       setSnapshotId(Number(created?.id) || null);
+      setSnapshotStatus(String(created?.status || "draft").toLowerCase());
       setNotice("RecordBook snapshot created from saved activity, attendance and achievement records. It is a report draft—not an approved report.");
     } catch (e) { setError(e instanceof Error ? e.message : "RecordBook could not be built from saved records."); }
     finally { setBusy(false); }
@@ -137,7 +139,7 @@ export default function RecordBookWorkspace() {
       {isStaff && <div className="flex flex-wrap gap-2 rounded-lg border bg-muted/20 p-3"><span className="w-full text-xs font-semibold uppercase tracking-wide text-muted-foreground">Record marks in the existing activity workspaces</span><Link href="/teacher/assignments"><Button variant="outline" size="sm">Open assignments</Button></Link><Link href="/teacher/polls"><Button variant="outline" size="sm">Open polls & quizzes</Button></Link><Link href="/teacher/classes"><Button variant="outline" size="sm">Open classes & exercises</Button></Link></div>}
 
       {activitySummary && <div className="grid gap-2 sm:grid-cols-4"><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Marked activities</p><p className="text-xl font-bold">{activitySummary.markedCount ?? 0}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Actual marks</p><p className="text-xl font-bold">{activitySummary.earnedMarks ?? "—"}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Possible marks</p><p className="text-xl font-bold">{activitySummary.possibleMarks ?? "—"}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Overall percentage</p><p className="text-xl font-bold">{activitySummary.percentage == null ? "Not available" : `${activitySummary.percentage}%`}</p></div></div>}
-      {isStaff && snapshot && <div className="flex flex-wrap items-center gap-2 rounded-lg border p-3 text-sm"><span>Saved report draft ID: <strong>{snapshotId || "Unavailable"}</strong></span>{snapshotId && <Button variant="outline" size="sm" disabled={pdfBusy} onClick={()=>void downloadPdfDraft()}>{pdfBusy ? "Preparing PDF…" : "Download PDF draft"}</Button>}<span className="text-muted-foreground">PDF access follows existing report permissions.</span></div>}
+      {isStaff && snapshot && <div className="flex flex-wrap items-center gap-2 rounded-lg border p-3 text-sm"><span>Saved report draft ID: <strong>{snapshotId || "Unavailable"}</strong></span><span className="rounded-full border px-2 py-1 text-xs font-semibold capitalize">{snapshotStatus.replace(/_/g, " ")}</span>{snapshotId && snapshotStatus === "approved" && <Button variant="outline" size="sm" disabled={pdfBusy} onClick={()=>void downloadPdfDraft()}>{pdfBusy ? "Preparing PDF…" : "Download approved PDF"}</Button>}<span className="text-muted-foreground">{snapshotStatus === "approved" ? "PDF access follows existing report permissions." : "PDF download unlocks only after the existing Senior Manager / Owner approval."}</span></div>}
       {shownRecord && <div className="space-y-5">
         <MarkRows title="Exercises" rows={shownRecord.exerciseMarks || []} kind="exercise" />
         <MarkRows title="Assignments" rows={shownRecord.assignmentMarks || []} kind="assignment" />
