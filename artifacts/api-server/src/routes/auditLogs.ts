@@ -44,27 +44,73 @@ function summarizeAcademicMarks(assignmentRows: any[], exerciseRows: any[]) {
 }
 
 function buildAcademicReportPdf(input: { id: number; reportType: string; termLabel: string; periodStart?: unknown; periodEnd?: unknown; learnerName: string; reviewedAt: unknown; reviewedBy: unknown; report: unknown }): Buffer {
-  const formatPeriodDate = (value: unknown) => {
+  const report = input.report && typeof input.report === "object" ? input.report as Record<string, any> : {};
+  const facts = report.factualRecords && typeof report.factualRecords === "object" ? report.factualRecords : {};
+  const summary = facts.markSummary?.overall || report.markSummary?.overall || {};
+  const assignments = Array.isArray(facts.assignmentMarks) ? facts.assignmentMarks : [];
+  const exercises = Array.isArray(facts.exerciseMarks) ? facts.exerciseMarks : [];
+  const attendanceRows = Array.isArray(report.records) ? report.records : [];
+  const formatDate = (value: unknown) => {
     if (!value) return "Not recorded";
     const date = value instanceof Date ? value : new Date(String(value));
     return Number.isNaN(date.getTime()) ? String(value).slice(0, 10) : date.toISOString().slice(0, 10);
   };
-  const raw = [
+  // The embedded standard PDF font uses WinAnsi: preserve Latin-1 names/diacritics
+  // and replace unsupported glyphs visibly rather than silently deleting them.
+  const escapePdf = (value: unknown) => String(value ?? "Not recorded")
+    .replace(/[^\\x20-\\xFF]/g, "?")
+    .replace(/\\\\/g, "\\\\").replace(/\\(/g, "\\(").replace(/\\)/g, "\\)");
+  const raw: string[] = [
     "DALLYLETTER ELIDEMS",
     "OFFICIAL ACADEMIC REPORT",
+    "SMART CAPS LEARNER REPORT CARD",
+    "",
+    "LEARNER DETAILS",
+    "Learner name: " + input.learnerName,
     "Report type: " + input.reportType.replace(/_/g, " "),
-    "Learner: " + input.learnerName,
-    "Term / period: " + input.termLabel,
-    "Period dates: " + formatPeriodDate(input.periodStart) + " to " + formatPeriodDate(input.periodEnd),
-    "Approved on: " + (input.reviewedAt ? new Date(String(input.reviewedAt)).toISOString().slice(0, 10) : "Date unavailable"),
-    "Approved by account ID: " + (input.reviewedBy ?? "Not recorded"),
+    "Term: " + input.termLabel,
+    "Academic period: " + formatDate(input.periodStart) + " to " + formatDate(input.periodEnd),
     "Document reference: DL-AR-" + input.id,
-    "VERIFIED REPORT CONTENT",
-    ...JSON.stringify(input.report ?? {}, null, 2).split("\n"),
+    "Approval date: " + formatDate(input.reviewedAt),
+    "Approved by account: " + (input.reviewedBy ?? "Not recorded"),
+    "",
   ];
-  const escapePdf = (value: string) => value.normalize("NFKD").replace(/[^\x20-\x7E]/g, " ").replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+  if (input.reportType === "attendance_register") {
+    raw.push("ATTENDANCE SUMMARY");
+    raw.push("Class ID | Sessions | Present | Absent | Late");
+    if (attendanceRows.length) {
+      for (const row of attendanceRows) raw.push([row.classId, row.sessions, row.present, row.absent, row.late].map(value => value ?? "0").join(" | "));
+    } else raw.push("No attendance sessions were recorded in this period.");
+    raw.push("Total attendance records: " + (report.sourceCount ?? attendanceRows.reduce((sum: number, row: any) => sum + Number(row.sessions || 0), 0)));
+  } else {
+    raw.push("ACADEMIC PERFORMANCE");
+    raw.push("Recorded marks: " + (summary.markedCount ?? "Not available"));
+    raw.push("Earned marks: " + (summary.earnedMarks ?? "Not available"));
+    raw.push("Possible marks: " + (summary.possibleMarks ?? "Not available"));
+    raw.push("Overall percentage: " + (summary.percentage == null ? "Not available" : summary.percentage + "%"));
+    raw.push("");
+    raw.push("ASSIGNMENT MARKS");
+    raw.push("Subject / activity | Mark | Status");
+    if (assignments.length) for (const row of assignments) raw.push([row.subject || row.title || "Assignment", row.marks == null ? "Not marked" : String(row.marks) + " / " + String(row.total_marks ?? "?"), row.status || "Recorded"].join(" | "));
+    else raw.push("No assignment marks were recorded in this period.");
+    raw.push("");
+    raw.push("REPORT-ENABLED EXERCISE MARKS");
+    if (exercises.length) for (const row of exercises) raw.push([row.title || "Exercise", row.total_score == null ? "Not marked" : String(row.total_score) + " / " + String(row.total_marks ?? "?"), row.status || "Recorded"].join(" | "));
+    else raw.push("No marked report-enabled exercises were recorded in this period.");
+    raw.push("");
+    raw.push("ATTENDANCE");
+    raw.push("Recorded attendance sessions: " + (facts.attendanceCount ?? "Not available"));
+    raw.push("ACHIEVEMENTS");
+    const awards = Array.isArray(facts.awards) ? facts.awards : [];
+    raw.push(awards.length ? awards.map((award: any) => award.name).join(", ") : "No achievements recorded in this period.");
+    raw.push("");
+    raw.push("ACADEMIC COMMENTARY");
+    raw.push(String(report.commentary || "No teacher commentary was recorded."));
+  }
+  raw.push("", "This report contains only saved records available for the selected period.");
+  raw.push("Unmarked work is not counted as zero. Missing information is shown as unavailable.");
   const wrapped = raw.flatMap(line => {
-    const words = String(line).split(/\s+/);
+    const words = String(line).split(/\\s+/);
     const out: string[] = [];
     let current = "";
     for (const word of words) {
@@ -78,16 +124,16 @@ function buildAcademicReportPdf(input: { id: number; reportType: string; termLab
   const objects: string[] = [
     "<< /Type /Catalog /Pages 2 0 R >>",
     "<< /Type /Pages /Kids [" + pageLines.map((_, index) => (5 + index * 2) + " 0 R").join(" ") + "] /Count " + pageLines.length + " >>",
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>",
   ];
   pageLines.forEach((page, pageIndex) => {
     const pageObject = 5 + pageIndex * 2;
     const contentObject = pageObject + 1;
     const textCommands = page.map((line, index) => {
-      const heading = /^(DALLYLETTER ELIDEMS|OFFICIAL ACADEMIC REPORT|VERIFIED REPORT CONTENT)$/.test(line);
-      return (index ? "0 -14 Td\n" : "") + (heading ? "/F2 11 Tf\n" : "/F1 9 Tf\n") + "(" + escapePdf(line) + ") Tj";
-    }).join("\n");
+      const heading = /^(DALLYLETTER ELIDEMS|OFFICIAL ACADEMIC REPORT|SMART CAPS LEARNER REPORT CARD|LEARNER DETAILS|ATTENDANCE SUMMARY|ACADEMIC PERFORMANCE|ASSIGNMENT MARKS|REPORT-ENABLED EXERCISE MARKS|ACHIEVEMENTS|ACADEMIC COMMENTARY)$/.test(line);
+      return (index ? "0 -14 Td\\n" : "") + (heading ? "/F2 11 Tf\\n" : "/F1 9 Tf\\n") + "(" + escapePdf(line) + ") Tj";
+    }).join("\\n");
     const stream = [
       "0.055 0.13 0.29 rg 0 790 595 52 re f",
       "1 1 1 rg BT /F2 18 Tf 48 808 Td (DALLYLETTER ELIDEMS) Tj ET",
@@ -96,21 +142,21 @@ function buildAcademicReportPdf(input: { id: number; reportType: string; termLab
       textCommands,
       "ET",
       "0.055 0.13 0.29 rg 48 34 499 1 re f",
-      "0 0 0 rg BT /F1 8 Tf 48 20 Td (Protected academic document - DL-AR-" + input.id + ") Tj 440 0 Td (Page " + (pageIndex + 1) + " of " + pageLines.length + ") Tj ET",
-    ].join("\n");
+      "0 0 0 rg BT /F1 8 Tf 48 20 Td (DL-AR-" + input.id + " | Protected academic report) Tj 440 0 Td (Page " + (pageIndex + 1) + " of " + pageLines.length + ") Tj ET",
+    ].join("\\n");
     objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents " + contentObject + " 0 R >>");
-    objects.push("<< /Length " + new TextEncoder().encode(stream).length + " >>\nstream\n" + stream + "\nendstream");
+    objects.push("<< /Length " + Buffer.byteLength(stream, "binary") + " >>\\nstream\\n" + stream + "\\nendstream");
   });
-  let pdf = "%PDF-1.4\n";
+  let pdf = "%PDF-1.4\\n";
   const offsets = [0];
   for (let index = 0; index < objects.length; index++) {
-    offsets.push(new TextEncoder().encode(pdf).length);
-    pdf += (index + 1) + " 0 obj\n" + objects[index] + "\nendobj\n";
+    offsets.push(Buffer.byteLength(pdf, "binary"));
+    pdf += (index + 1) + " 0 obj\\n" + objects[index] + "\\nendobj\\n";
   }
-  const xref = new TextEncoder().encode(pdf).length;
-  pdf += "xref\n0 " + (objects.length + 1) + "\n0000000000 65535 f \n";
-  for (const offset of offsets.slice(1)) pdf += String(offset).padStart(10, "0") + " 00000 n \n";
-  pdf += "trailer\n<< /Size " + (objects.length + 1) + " /Root 1 0 R >>\nstartxref\n" + xref + "\n%%EOF";
+  const xref = Buffer.byteLength(pdf, "binary");
+  pdf += "xref\\n0 " + (objects.length + 1) + "\\n0000000000 65535 f \\n";
+  for (const offset of offsets.slice(1)) pdf += String(offset).padStart(10, "0") + " 00000 n \\n";
+  pdf += "trailer\\n<< /Size " + (objects.length + 1) + " /Root 1 0 R >>\\nstartxref\\n" + xref + "\\n%%EOF";
   return Buffer.from(pdf, "binary");
 }
 
