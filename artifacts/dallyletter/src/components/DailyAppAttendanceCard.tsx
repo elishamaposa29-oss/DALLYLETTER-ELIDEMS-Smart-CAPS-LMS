@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { CalendarDays, Activity, ChevronRight, BookOpenCheck } from "lucide-react";
+import { CalendarDays, Activity, ChevronRight, BookOpenCheck, ChevronLeft } from "lucide-react";
 
 type ClassAttendance = {
   id: number;
@@ -60,8 +60,11 @@ export function DailyAppAttendanceCard() {
   const [classError, setClassError] = useState("");
   const [dailyError, setDailyError] = useState("");
   const [dailyOpen, setDailyOpen] = useState(false);
+  const [monthOffset, setMonthOffset] = useState(0);
+  const [offlineClassCache, setOfflineClassCache] = useState(false);
+  const [offlineDailyCache, setOfflineDailyCache] = useState(false);
   const today = todayInLocalZone();
-  const monthDate = new Date();
+  const monthDate = new Date(new Date().getFullYear(), new Date().getMonth() + monthOffset, 1);
   const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
   const monthLabel = monthStart.toLocaleDateString(undefined, { month: "long", year: "numeric" });
   const monthDays = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
@@ -178,7 +181,7 @@ export function DailyAppAttendanceCard() {
       <div className="flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-muted-foreground">
         <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-emerald-400 bg-emerald-100" /> Present record</span>
         <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-red-400 bg-red-100" /> Absence recorded</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-orange-400 bg-orange-100" /> Past day / no record</span>
+        <span className="inline-flex items-center gap-1.5"><i className="flex h-3 w-3 items-center justify-center rounded-sm border border-orange-400 bg-orange-100 text-[8px] font-bold not-italic text-orange-900">D</i> Unrecorded past day</span>
         <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-border bg-muted/40" /> Future date</span>
         <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-violet-400 bg-card" /> Weekend</span>
       </div>
@@ -222,7 +225,7 @@ export function DailyAppAttendanceCard() {
             </div>
           </div>
           {classError && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{classError}</p>}
-          {renderCalendar()}
+          {offlineClassCache && <p role="status" className="rounded-lg border border-orange-300 bg-orange-50 p-2 text-xs text-orange-900">Offline mode: showing the last saved attendance records on this device. New attendance changes appear after reconnecting.</p>}\n          {renderCalendar()}
           {!classLoading && !classError && classRecords.length === 0 && <p className="rounded-lg border border-dashed p-3 text-center text-sm text-muted-foreground">No personal attendance records are available yet. The calendar is intentionally empty until the API returns saved records.</p>}
           <p className="text-[11px] text-muted-foreground">A session is counted only when the attendance API returns a saved present or absent record. Unmarked dates are not counted as absences.</p>
         </CardContent>
@@ -247,7 +250,7 @@ export function DailyAppAttendanceCard() {
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">{todayRecord ? `${todayRecord.open_count} app opens · ${todayRecord.activity_label}` : "Today's presence appears after a saved access record is returned."}</p>
                 </div>
-                {dailyLoading ? <p className="text-sm text-muted-foreground">Loading recent activity…</p> : dailyError ? <p role="alert" className="text-sm text-destructive">{dailyError}</p> : dailyRecords.length === 0 ? <p className="text-sm text-muted-foreground">No personal daily access records are available yet.</p> : (
+                {offlineDailyCache && <p role="status" className="text-xs text-orange-800">Offline mode: showing the last saved daily-access records.</p>}\n                {dailyLoading ? <p className="text-sm text-muted-foreground">Loading recent activity…</p> : dailyError ? <p role="alert" className="text-sm text-destructive">{dailyError}</p> : dailyRecords.length === 0 ? <p className="text-sm text-muted-foreground">No personal daily access records are available yet.</p> : (
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     {recentDailyRecords.map(record => (
                       <div key={String(record.attendance_date).slice(0, 10)} className="rounded-lg border p-3">
