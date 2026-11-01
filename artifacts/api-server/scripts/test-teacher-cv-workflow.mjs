@@ -4,7 +4,6 @@ import { readFileSync } from "node:fs";
 import { db, pool, usersTable } from "@workspace/db";
 import { generateSignedToken } from "../dist/lib/signed-token.js";
 import { createAuthSession } from "../dist/lib/auth-session-store.js";
-import { processExpiredTeacherApplications } from "../dist/lib/teacher-cv-expiry.js";
 
 const base=process.env.API_BASE_URL||"http://127.0.0.1:4000";
 const capture=process.env.MOCK_PROVIDER_CAPTURE||"/tmp/dallyletter-provider-capture.jsonl";
@@ -63,7 +62,8 @@ assert.equal(learnerLesson.status,403,"Converted learner cannot create teacher l
 
 const expired=await registerTeacher("expired");
 await pool.query("UPDATE users SET created_at=now()-interval '2 days',teacher_review_deadline=now()-interval '1 day' WHERE id=$1",[expired.id]);
-await processExpiredTeacherApplications();
+const expiryRun=await request("/api/teacher-cv-workspace/__test/process-expired",{token:ownerToken,method:"POST"});
+assert.equal(expiryRun.status,200,"Owner can run the expiry processor in isolated test mode");
 const expiredRow=await pool.query("SELECT role,teacher_application_status,password_hash FROM users WHERE id=$1",[expired.id]);
 assert.equal(expiredRow.rows[0].role,"student","Expired application automatically becomes learner");
 assert.equal(expiredRow.rows[0].teacher_application_status,"auto_converted");
