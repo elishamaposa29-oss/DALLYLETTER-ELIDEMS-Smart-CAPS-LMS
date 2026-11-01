@@ -69,6 +69,7 @@ function buildAcademicReportPdf(input: { id: number; reportType: string; termLab
     "Learner name: " + input.learnerName,
     "Learner grade / form: " + (report.learnerGrade || "Not recorded"),
     "Report type: " + input.reportType.replace(/_/g, " "),
+    "Academic year: " + (report.academicYear || "Not recorded"),
     "Term: " + input.termLabel,
     "Academic period: " + formatDate(input.periodStart) + " to " + formatDate(input.periodEnd),
     "Document reference: DL-AR-" + input.id,
@@ -101,6 +102,9 @@ function buildAcademicReportPdf(input: { id: number; reportType: string; termLab
     raw.push("");
     raw.push("ATTENDANCE");
     raw.push("Recorded attendance sessions: " + (facts.attendanceCount ?? "Not available"));
+    raw.push("Present: " + (facts.attendanceSummary?.present ?? "Not available"));
+    raw.push("Absent: " + (facts.attendanceSummary?.absent ?? "Not available"));
+    raw.push("Late: " + (facts.attendanceSummary?.late ?? "Not available"));
     raw.push("ACHIEVEMENTS");
     const awards = Array.isArray(facts.awards) ? facts.awards : [];
     raw.push(awards.length ? awards.map((award: any) => award.name).join(", ") : "No achievements recorded in this period.");
@@ -593,7 +597,9 @@ router.post("/academic-records/reports/drafts", requireAuth, async (req, res): P
   if (!learner.rows[0]) { res.status(404).json({ error: "Learner not found." }); return; }
   const reportableExerciseMarks = exerciseMarks.rows.filter(isReportMarkExercise);
   const markSummary = summarizeAcademicMarks(assignmentMarks.rows, reportableExerciseMarks);
-  const sourceSnapshot = { learner: learner.rows[0], termLabel, periodStart, periodEnd, enrollments: enrollments.rows, attendance: attendance.rows, awards: awards.rows, assignmentMarks: assignmentMarks.rows, exerciseMarks: reportableExerciseMarks, markSummary, relevantAuditEvents: events.rows };
+  const attendanceSummary = { sessions: attendance.rows.length, present: attendance.rows.filter((row: any) => String(row.status).toLowerCase() === "present").length, absent: attendance.rows.filter((row: any) => String(row.status).toLowerCase() === "absent").length, late: attendance.rows.filter((row: any) => Boolean(row.is_late)).length };
+  const academicYear = periodStart.slice(0, 4);
+  const sourceSnapshot = { learner: learner.rows[0], academicYear, termLabel, periodStart, periodEnd, enrollments: enrollments.rows, attendance: attendance.rows, attendanceSummary, awards: awards.rows, assignmentMarks: assignmentMarks.rows, exerciseMarks: reportableExerciseMarks, markSummary, relevantAuditEvents: events.rows };
   let draftContent: unknown;
   let provider = "record-based";
   if (reportType === "attendance_register") {
@@ -612,7 +618,7 @@ router.post("/academic-records/reports/drafts", requireAuth, async (req, res): P
       const ai = await getAIProvider();
       if (ai.name === "mock") { res.status(503).json({ error: "A live AI provider must be configured to draft term-performance commentary. No mock AI report was created." }); return; }
       provider = ai.name;
-      draftContent = { label: termLabel, periodStart, periodEnd, learner: learner.rows[0].name, factualRecords: { enrollments: enrollments.rows, attendanceCount: attendance.rows.length, awards: awards.rows, assignmentMarks: assignmentMarks.rows, exerciseMarks: reportableExerciseMarks, markSummary }, commentary: await ai.analyzeData(sourceSnapshot, `Draft a CAPS-aligned term performance report using only the supplied verified records. Use recorded assignment marks and marked exercise scores; distinguish unmarked and exempt work, calculate percentages only from known earned and possible marks, identify missing data, do not invent marks or attendance, and clearly label this as an unapproved draft. Only records submitted or recorded within the inclusive period ${periodStart} through ${periodEnd} are supplied. These source records have already been filtered by their authoritative event timestamps. Do not add records from outside this period. Return concise structured prose.`) };
+      draftContent = { label: termLabel, periodStart, periodEnd, learner: learner.rows[0].name, factualRecords: { enrollments: enrollments.rows, attendanceCount: attendance.rows.length, attendanceSummary, awards: awards.rows, assignmentMarks: assignmentMarks.rows, exerciseMarks: reportableExerciseMarks, markSummary }, commentary: await ai.analyzeData(sourceSnapshot, `Draft a CAPS-aligned term performance report using only the supplied verified records. Use recorded assignment marks and marked exercise scores; distinguish unmarked and exempt work, calculate percentages only from known earned and possible marks, identify missing data, do not invent marks or attendance, and clearly label this as an unapproved draft. Only records submitted or recorded within the inclusive period ${periodStart} through ${periodEnd} are supplied. These source records have already been filtered by their authoritative event timestamps. Do not add records from outside this period. Return concise structured prose.`) };
     } catch (error) { res.status(503).json({ error: error instanceof Error ? error.message : "Live AI report drafting unavailable." }); return; }
   }
   const teacherComment = typeof req.body?.teacherComment === "string" ? req.body.teacherComment.trim().slice(0, 3000) : "";
@@ -621,6 +627,7 @@ router.post("/academic-records/reports/drafts", requireAuth, async (req, res): P
   draftContent = {
     ...(draftContent && typeof draftContent === "object" ? draftContent as Record<string, unknown> : {}),
     learnerGrade: learner.rows[0].grade ?? null,
+    academicYear,
     teacherComment: teacherComment || null,
     conduct: conduct || null,
     result: result || null,
