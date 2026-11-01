@@ -67,6 +67,7 @@ export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, 
     (method === "PATCH" && path === "/users/me/teacher-cv") ||
     (method === "GET" && path === "/users/me/qualifications") ||
     (method === "POST" && path === "/users/me/qualifications") ||
+    (method === "POST" && path === "/users/me/qualifications/bulk") ||
     (method === "POST" && path === "/users/me/teacher-documents") ||
     (method === "POST" && /^\/qualifications\/\d+\/document$/.test(path)) ||
     (method === "GET" && path === "/users/" + selfId + "/teacher-documents") ||
