@@ -45,7 +45,8 @@ export default function RecordBookWorkspace() {
   const [record, setRecord] = useState<AcademicData | null>(null);
   const [snapshot, setSnapshot] = useState<Row | null>(null);
   const [snapshotId, setSnapshotId] = useState<number | null>(null);
-  const [busy, setBusy] = useState(false);\n  const [pdfBusy, setPdfBusy] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
