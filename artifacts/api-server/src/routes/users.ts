@@ -851,6 +851,7 @@ router.patch("/qualifications/:id/verify", requireAuth, async(req,res):Promise<v
   if(!Number.isSafeInteger(id)||id<=0){res.status(400).json({error:"Invalid qualification id."});return;}
   if(!["verified","rejected"].includes(status)){res.status(400).json({error:"status must be verified or rejected."});return;}
   if(status==="rejected"&&(!reviewNote||reviewNote.length<3)){res.status(400).json({error:"A rejection note of at least 3 characters is required."});return;}
+  await pool.query("CREATE TABLE IF NOT EXISTS teacher_qualification_review_history (id bigserial PRIMARY KEY,qualification_id integer NOT NULL REFERENCES teacher_qualifications(id) ON DELETE CASCADE,reviewed_by integer REFERENCES users(id),previous_status text NOT NULL,new_status text NOT NULL,review_note text,created_at timestamptz NOT NULL DEFAULT now())");
   const client=await pool.connect();
   try {
     await client.query("BEGIN");
@@ -871,6 +872,7 @@ router.get("/qualifications/:id/review-history", requireAuth, async(req,res):Pro
   const actor=req.currentUser!;
   const id=Number(req.params.id);
   if(!Number.isSafeInteger(id)||id<=0){res.status(400).json({error:"Invalid qualification id."});return;}
+  await pool.query("CREATE TABLE IF NOT EXISTS teacher_qualification_review_history (id bigserial PRIMARY KEY,qualification_id integer NOT NULL REFERENCES teacher_qualifications(id) ON DELETE CASCADE,reviewed_by integer REFERENCES users(id),previous_status text NOT NULL,new_status text NOT NULL,review_note text,created_at timestamptz NOT NULL DEFAULT now())");
   const qualification=await pool.query("SELECT id,user_id FROM teacher_qualifications WHERE id=$1",[id]);
   if(!qualification.rows.length){res.status(404).json({error:"Qualification not found."});return;}
   if(!canReviewTeacherApplication(actor)&&Number(qualification.rows[0].user_id)!==actor.id){res.status(403).json({error:"Only the qualification owner or an authorized owner/admin can view review history."});return;}
