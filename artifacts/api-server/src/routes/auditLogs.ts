@@ -116,6 +116,7 @@ function buildAcademicReportPdf(input: { id: number; reportType: string; termLab
   raw.push("Headmaster signature / school stamp: Not recorded");
   raw.push("", "This report contains only saved records available for the selected period.");
   raw.push("Unmarked work is not counted as zero. Missing information is shown as unavailable.");
+  if (raw.some(line => /[^\x20-\xFF]/.test(line))) raw.push("Font coverage note: Latin-1 characters are preserved; unsupported Unicode glyphs appear as question marks.");
   const wrapped = raw.flatMap(line => {
     const words = String(line).split(/\s+/);
     const out: string[] = [];
