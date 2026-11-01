@@ -289,35 +289,35 @@ export function DailyAppAttendanceCard() {
       <Dialog open={dailyOpen} onOpenChange={setDailyOpen}>
         <DialogTrigger asChild>
           <button type="button" className="group block w-full rounded-xl text-left outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
-            <Card className="border-primary/20 shadow-sm transition-colors group-hover:border-primary/50">
-              <CardHeader className="flex flex-row items-center justify-between gap-3 pb-3">
+            <Card className="flex h-[292px] flex-col overflow-hidden border-primary/20 shadow-sm transition-colors group-hover:border-primary/50 sm:h-[276px]">
+              <CardHeader className="flex shrink-0 flex-row items-center justify-between gap-3 px-3 pb-2 pt-3">
                 <div className="min-w-0">
-                  <CardTitle className="flex items-center gap-2 text-lg"><Activity className="h-5 w-5 text-primary" />Daily Dallyletter access</CardTitle>
-                  <CardDescription className="mt-1">One presence per day · repeat opens count as activity</CardDescription>
+                  <CardTitle className="flex items-center gap-2 text-base"><Activity className="h-4 w-4 shrink-0 text-primary" />Daily Dallyletter access</CardTitle>
+                  <CardDescription className="mt-1 text-xs">One presence per day · repeat opens count as activity</CardDescription>
                 </div>
                 <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1" />
               </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="rounded-xl bg-muted/40 p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm font-semibold">Today · {today}</p>
-                    {todayRecord ? <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">Present</Badge> : <Badge variant="outline">No record yet</Badge>}
+              <CardContent className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden px-3 pb-3 pt-1">
+                <div className="shrink-0 rounded-lg bg-muted/40 p-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-xs font-semibold">Today · {today}</p>
+                    {todayRecord ? <Badge className="shrink-0 bg-emerald-600 text-white hover:bg-emerald-600">Present</Badge> : <Badge className="shrink-0" variant="outline">No record yet</Badge>}
                   </div>
-                  <p className="mt-1 text-sm text-muted-foreground">{todayRecord ? `${todayRecord.open_count} app opens · ${todayRecord.activity_label}` : "Today's presence appears after a saved access record is returned."}</p>
+                  <p className="mt-1 truncate text-xs text-muted-foreground">{todayRecord ? `${todayRecord.open_count} app opens · ${todayRecord.activity_label}` : "Today's presence appears after a saved access record is returned."}</p>
                 </div>
-                {offlineDailyCache && <p role="status" className="text-xs text-orange-800">Offline mode: showing the last saved daily-access records.</p>}
-                {dailyLoading ? <p className="text-sm text-muted-foreground">Loading recent activity…</p> : dailyError ? <p role="alert" className="text-sm text-destructive">{dailyError}</p> : dailyRecords.length === 0 ? <p className="text-sm text-muted-foreground">No personal daily access records are available yet.</p> : (
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                {offlineDailyCache && <p role="status" className="shrink-0 truncate text-[10px] text-orange-800">Offline mode: showing saved activity.</p>}
+                {dailyLoading ? <p className="text-xs text-muted-foreground">Loading recent activity…</p> : dailyError ? <p role="alert" className="line-clamp-2 text-xs text-destructive">{dailyError}</p> : dailyRecords.length === 0 ? <p className="text-xs text-muted-foreground">No personal daily access records are available yet.</p> : (
+                  <div className="grid shrink-0 grid-cols-3 gap-1.5">
                     {recentDailyRecords.map(record => (
-                      <div key={String(record.attendance_date).slice(0, 10)} className="rounded-lg border p-3">
-                        <p className="text-xs font-semibold">{String(record.attendance_date).slice(0, 10)}</p>
-                        <p className={`mt-1 text-sm font-semibold ${record.status === "present" ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"}`}>{record.status === "present" ? "Present" : "Absent"}</p>
-                        <p className="text-[11px] text-muted-foreground">{record.open_count} opens · {record.activity_label}</p>
+                      <div key={String(record.attendance_date).slice(0, 10)} className="min-w-0 rounded-lg border px-2 py-2">
+                        <p className="truncate text-[10px] font-semibold">{String(record.attendance_date).slice(0, 10)}</p>
+                        <p className={`mt-1 text-xs font-semibold ${record.status === "present" ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"}`}>{record.status === "present" ? "Present" : "Absent"}</p>
+                        <p className="truncate text-[10px] text-muted-foreground">{record.open_count} opens · {record.activity_label}</p>
                       </div>
                     ))}
                   </div>
                 )}
-                <p className="flex items-center justify-end gap-1 text-xs font-semibold text-primary">Open full activity history <ChevronRight className="h-3.5 w-3.5" /></p>
+                <p className="mt-auto flex shrink-0 items-center justify-end gap-1 text-xs font-semibold text-primary">Open full activity history <ChevronRight className="h-3.5 w-3.5" /></p>
               </CardContent>
             </Card>
           </button>
