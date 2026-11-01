@@ -676,6 +676,7 @@ router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<v
       name: canViewOverview ? user.name : "Private profile",
       avatarUrl: canViewOverview ? user.avatarUrl : null,
       bio: canViewOverview ? user.bio : null,
+      role: canViewOverview ? user.role : "private",
     }, canViewQualifications ? qualifications.rows : [], canViewSubjects ? teachingSubjects : []),
     cover_url: canViewOverview ? coverMedia.cover_url : null,
     cover_type: canViewOverview ? coverMedia.cover_type : null,
