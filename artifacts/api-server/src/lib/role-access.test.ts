@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canAccessManager, canApproveAchievementAwards, canManageAcademicContent, canRecommendAchievementAwards, canReviewAcademicTransfer, canUseStaffAI, enforceAcademicStaffAccess, enforceAuthenticated, enforceOwnerAccess, isJuniorManager, isOwnerRole, isSeniorManager, normalizeRole } from "./role-access.js";
+import { canAccessManager, canApproveAchievementAwards, canManageAcademicContent, canPendingTeacherUseRoute, canRecommendAchievementAwards, canReviewAcademicTransfer, canUseStaffAI, enforceAcademicStaffAccess, enforceAuthenticated, enforceOwnerAccess, isJuniorManager, isOwnerRole, isSeniorManager, normalizeRole } from "./role-access.js";
 
 test("normalizes legacy role casing and separators",()=>{
  assert.equal(normalizeRole(" Senior Manager "), "senior_manager");
@@ -171,4 +171,38 @@ test("ordinary teachers and learners retain existing access without manager auth
   assert.equal(canRecommendAchievementAwards(user),false);
   assert.equal(canApproveAchievementAwards(user),false);
  }
+});
+
+test("pending teacher API policy allows only own CV, evidence, Profile Hub and application chat",()=>{
+ const applicant={id:41,role:"teacher",teacherApplicationStatus:"pending_review"};
+ for(const [method,path] of [
+  ["GET","/api/users/me/teacher-cv"],
+  ["PATCH","/api/users/me/teacher-cv"],
+  ["POST","/api/users/me/qualifications"],
+  ["POST","/api/users/me/teacher-documents"],
+  ["POST","/api/qualifications/8/document"],
+  ["GET","/api/users/41/teacher-documents"],
+  ["GET","/api/users/41/public-profile"],
+  ["GET","/api/users/41"],
+  ["PATCH","/api/users/41"],
+  ["GET","/api/teacher-cv-workspace/41/chat"],
+  ["POST","/api/teacher-cv-workspace/41/chat"],
+ ]) assert.equal(canPendingTeacherUseRoute(applicant,method,path),true,method+" "+path);
+ for(const [method,path] of [
+  ["GET","/api/dashboard"],
+  ["GET","/api/teacher-dashboard"],
+  ["GET","/api/lessons"],
+  ["GET","/api/assignments"],
+  ["GET","/api/exercises"],
+  ["GET","/api/polls"],
+  ["GET","/api/live-classes"],
+  ["GET","/api/teacher-cv-workspace/42/chat"],
+  ["POST","/api/lessons"],
+  ["POST","/api/assignments"],
+  ["POST","/api/exercises"],
+  ["POST","/api/polls"],
+  ["POST","/api/live-classes"],
+  ["DELETE","/api/users/41"],
+ ]) assert.equal(canPendingTeacherUseRoute(applicant,method,path),false,method+" "+path);
+ assert.equal(canPendingTeacherUseRoute({...applicant,teacherApplicationStatus:"approved"},"POST","/api/lessons"),true);
 });
