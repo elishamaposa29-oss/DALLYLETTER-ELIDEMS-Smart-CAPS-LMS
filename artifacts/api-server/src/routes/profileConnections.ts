@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { and, eq, or } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, followsTable, notificationsTable, usersTable, pool } from "@workspace/db";
 import { requireAuth, canAccessManager, isOwnerRole, normalizeRole } from "../lib/auth-middleware";
 
@@ -46,16 +46,14 @@ export async function hasAcceptedProfileConnection(userA: number, userB: number)
   return result.rowCount > 0;
 }
 
-export async function canViewProfileSection(actorId: number, targetId: number, actorRole: unknown, section: string): Promise<boolean> {
-  if (actorId === targetId) return true;
-  const role = normalizeRole(actorRole);
-  if (isOwnerRole(role) || canAccessManager({ id: actorId, role } as any)) return true;
+export async function canViewProfileSection(actor: NonNullable<Express.Request["currentUser"]>, targetId: number, section: string): Promise<boolean> {
+  if (actor.id === targetId) return true;
+  const role = normalizeRole(actor.role);
+  if (isOwnerRole(role) || canAccessManager(actor)) return true;
   await ensureSchema();
   if (role === "teacher") {
-    const following = await db.select({ id: followsTable.id }).from(followsTable).where(and(
-      eq(followsTable.followerId, actorId), eq(followsTable.targetType, "teacher"), eq(followsTable.targetUserId, targetId),
-    )).limit(1);
-    if (following.length) return true;
+    const following = await pool.query("SELECT 1 FROM follows WHERE follower_id=$1 AND target_user_id=$2 LIMIT 1", [actor.id,targetId]);
+    if (following.rows.length) return true;
   }
   const result = await pool.query("SELECT section_settings FROM profile_privacy_settings WHERE user_id=$1", [targetId]);
   const setting = result.rows[0]?.section_settings?.[section] ?? { mode: "everyone", selectedUserIds: [] };
@@ -74,7 +72,6 @@ router.get("/profile/:id/social", requireAuth, async (req,res): Promise<void> =>
   if(!Number.isSafeInteger(targetId)||targetId<=0){res.status(400).json({error:"Invalid profile id"});return;}
   const [target]=await db.select({id:usersTable.id}).from(usersTable).where(eq(usersTable.id,targetId));
   if(!target){res.status(404).json({error:"Profile not found"});return;}
-  const [settings]=await db.select().from(pool as any).catch(()=>[] as any);
   const privacy=await pool.query("SELECT section_settings,chat_privacy FROM profile_privacy_settings WHERE user_id=$1",[targetId]);
   const link=await pool.query(
     "SELECT id,status,requester_id,recipient_id FROM profile_connections WHERE (requester_id=$1 AND recipient_id=$2) OR (requester_id=$2 AND recipient_id=$1) ORDER BY id DESC LIMIT 1",
