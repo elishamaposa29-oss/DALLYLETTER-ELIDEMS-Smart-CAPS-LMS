@@ -3,8 +3,8 @@ import { sendEmail } from "./email-service";
 let timer: ReturnType<typeof setInterval> | undefined;
 let running = false;
 async function ensure(){
- await pool.query(`CREATE TABLE IF NOT EXISTS teacher_cv_workflow_settings(id integer PRIMARY KEY DEFAULT 1 CHECK(id=1),review_duration_days integer NOT NULL DEFAULT 14 CHECK(review_duration_days BETWEEN 1 AND 365),updated_by integer REFERENCES users(id),updated_at timestamptz NOT NULL DEFAULT now())`);
- await pool.query("INSERT INTO teacher_cv_workflow_settings(id,review_duration_days) VALUES(1,14) ON CONFLICT(id) DO NOTHING");
+ await pool.query(`CREATE TABLE IF NOT EXISTS teacher_cv_workflow_settings(id integer PRIMARY KEY DEFAULT 1 CHECK(id=1),review_duration_days integer CHECK(review_duration_days BETWEEN 1 AND 365 OR review_duration_days IS NULL),updated_by integer REFERENCES users(id),updated_at timestamptz NOT NULL DEFAULT now())`);
+ await pool.query("INSERT INTO teacher_cv_workflow_settings(id,review_duration_days) VALUES(1,NULL) ON CONFLICT(id) DO NOTHING");
  await pool.query(`CREATE TABLE IF NOT EXISTS teacher_cv_review_history(id bigserial PRIMARY KEY,teacher_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,reviewer_id integer REFERENCES users(id),action text NOT NULL,previous_status text,new_status text NOT NULL,note text,created_at timestamptz NOT NULL DEFAULT now())`);
 }
 export async function processExpiredTeacherApplications():Promise<void>{
@@ -12,7 +12,7 @@ export async function processExpiredTeacherApplications():Promise<void>{
  try{
   await ensure();
   const settings=await pool.query("SELECT review_duration_days FROM teacher_cv_workflow_settings WHERE id=1");
-  const days=Math.max(1,Math.min(365,Number(settings.rows[0]?.review_duration_days||14)));
+  const configuredDays=Number(settings.rows[0]?.review_duration_days||0);if(!Number.isInteger(configuredDays)||configuredDays<1||configuredDays>365)return;const days=configuredDays;
   const client=await pool.connect();
   try{
    await client.query("BEGIN");
