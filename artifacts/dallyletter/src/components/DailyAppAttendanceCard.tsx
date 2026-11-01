@@ -63,6 +63,9 @@ export function DailyAppAttendanceCard() {
   const [monthOffset, setMonthOffset] = useState(0);
   const [offlineClassCache, setOfflineClassCache] = useState(false);
   const [offlineDailyCache, setOfflineDailyCache] = useState(false);
+  const [monthOffset, setMonthOffset] = useState(0);
+  const [offlineClassCache, setOfflineClassCache] = useState(false);
+  const [offlineDailyCache, setOfflineDailyCache] = useState(false);
   const today = todayInLocalZone();
   const monthDate = new Date(new Date().getFullYear(), new Date().getMonth() + monthOffset, 1);
   const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
@@ -86,11 +89,17 @@ export function DailyAppAttendanceCard() {
         if (!response.ok) throw new Error("Your class attendance could not be loaded.");
         const payload = await response.json();
         if (active) {
-          setClassRecords(Array.isArray(payload.attendance) ? payload.attendance.map((record: any) => ({ ...record, joinedAt: record.joinedAt ?? record.joined_at })) : []);
+          const records = Array.isArray(payload.attendance) ? payload.attendance.map((record: any) => ({ ...record, joinedAt: record.joinedAt ?? record.joined_at })) : [];
+          setClassRecords(records);
+          try { localStorage.setItem("dallyletter_attendance_calendar_v1_" + user.id, JSON.stringify({ savedAt: Date.now(), records })); } catch { /* Optional cache. */ }
+          setOfflineClassCache(false);
           setClassError("");
         }
       } catch (error) {
-        if (active) setClassError(error instanceof Error ? error.message : "Your class attendance could not be loaded.");
+        if (active) {
+          try { const cached = localStorage.getItem("dallyletter_attendance_calendar_v1_" + user.id); const parsed = cached ? JSON.parse(cached) : null; if (Array.isArray(parsed?.records)) { setClassRecords(parsed.records); setOfflineClassCache(true); setClassError(""); } else setClassError(error instanceof Error ? error.message : "Your class attendance could not be loaded."); }
+          catch { setClassError(error instanceof Error ? error.message : "Your class attendance could not be loaded."); }
+        }
       } finally {
         if (active) setClassLoading(false);
       }
@@ -101,11 +110,17 @@ export function DailyAppAttendanceCard() {
         if (!response.ok) throw new Error("Daily access history is temporarily unavailable.");
         const payload = await response.json();
         if (active) {
-          setDailyRecords(Array.isArray(payload.records) ? payload.records : []);
+          const records = Array.isArray(payload.records) ? payload.records : [];
+          setDailyRecords(records);
+          try { localStorage.setItem("dallyletter_daily_attendance_calendar_v1_" + user.id, JSON.stringify({ savedAt: Date.now(), records })); } catch { /* Optional cache. */ }
+          setOfflineDailyCache(false);
           setDailyError("");
         }
       } catch (error) {
-        if (active) setDailyError(error instanceof Error ? error.message : "Daily access history could not be loaded.");
+        if (active) {
+          try { const cached = localStorage.getItem("dallyletter_daily_attendance_calendar_v1_" + user.id); const parsed = cached ? JSON.parse(cached) : null; if (Array.isArray(parsed?.records)) { setDailyRecords(parsed.records); setOfflineDailyCache(true); setDailyError(""); } else setDailyError(error instanceof Error ? error.message : "Daily access history could not be loaded."); }
+          catch { setDailyError(error instanceof Error ? error.message : "Daily access history could not be loaded."); }
+        }
       } finally {
         if (active) setDailyLoading(false);
       }
@@ -139,11 +154,12 @@ export function DailyAppAttendanceCard() {
   const renderCalendar = () => (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold text-foreground">{monthLabel}</p>
-          <p className="text-xs text-muted-foreground">Your saved class-session attendance</p>
+        <div className="flex min-w-0 items-center gap-1">
+          <button type="button" aria-label="Previous month" onClick={() => setMonthOffset(value => value - 1)} className="rounded-md border p-1.5 hover:bg-muted"><ChevronLeft className="h-4 w-4" /></button>
+          <div className="min-w-0 px-1"><p className="text-sm font-semibold text-foreground">{monthLabel}</p><p className="text-xs text-muted-foreground">Saved attendance · offline-ready</p></div>
+          <button type="button" aria-label="Next month" onClick={() => setMonthOffset(value => value + 1)} className="rounded-md border p-1.5 hover:bg-muted"><ChevronRight className="h-4 w-4" /></button>
         </div>
-        <Badge variant="outline" className="border-primary/20 bg-primary/5">{recordedCount} recorded</Badge>
+        <Badge variant="outline" className="shrink-0 border-primary/20 bg-primary/5">{recordedCount} recorded</Badge>
       </div>
       <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
         {weekdayLabels.map((day, index) => (
@@ -225,7 +241,8 @@ export function DailyAppAttendanceCard() {
             </div>
           </div>
           {classError && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{classError}</p>}
-          {offlineClassCache && <p role="status" className="rounded-lg border border-orange-300 bg-orange-50 p-2 text-xs text-orange-900">Offline mode: showing the last saved attendance records on this device. New attendance changes appear after reconnecting.</p>}\n          {renderCalendar()}
+          {offlineClassCache && <p role="status" className="rounded-lg border border-orange-300 bg-orange-50 p-2 text-xs text-orange-900">Offline mode: showing the last saved attendance records on this device. New attendance changes appear after reconnecting.</p>}\n          {offlineClassCache && <p role="status" className="rounded-lg border border-orange-300 bg-orange-50 p-2 text-xs text-orange-900">Offline mode: showing the last saved attendance records on this device. New changes sync after reconnecting.</p>}
+          {renderCalendar()}
           {!classLoading && !classError && classRecords.length === 0 && <p className="rounded-lg border border-dashed p-3 text-center text-sm text-muted-foreground">No personal attendance records are available yet. The calendar is intentionally empty until the API returns saved records.</p>}
           <p className="text-[11px] text-muted-foreground">A session is counted only when the attendance API returns a saved present or absent record. Unmarked dates are not counted as absences.</p>
         </CardContent>
@@ -250,7 +267,8 @@ export function DailyAppAttendanceCard() {
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">{todayRecord ? `${todayRecord.open_count} app opens · ${todayRecord.activity_label}` : "Today's presence appears after a saved access record is returned."}</p>
                 </div>
-                {offlineDailyCache && <p role="status" className="text-xs text-orange-800">Offline mode: showing the last saved daily-access records.</p>}\n                {dailyLoading ? <p className="text-sm text-muted-foreground">Loading recent activity…</p> : dailyError ? <p role="alert" className="text-sm text-destructive">{dailyError}</p> : dailyRecords.length === 0 ? <p className="text-sm text-muted-foreground">No personal daily access records are available yet.</p> : (
+                {offlineDailyCache && <p role="status" className="text-xs text-orange-800">Offline mode: showing the last saved daily-access records.</p>}\n                {offlineDailyCache && <p role="status" className="text-xs text-orange-800">Offline mode: showing the last saved daily-access records.</p>}
+                {dailyLoading ? <p className="text-sm text-muted-foreground">Loading recent activity…</p> : <p role="alert" className="text-sm text-destructive">{dailyError}</p> : dailyRecords.length === 0 ? <p className="text-sm text-muted-foreground">No personal daily access records are available yet.</p> : (
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     {recentDailyRecords.map(record => (
                       <div key={String(record.attendance_date).slice(0, 10)} className="rounded-lg border p-3">
