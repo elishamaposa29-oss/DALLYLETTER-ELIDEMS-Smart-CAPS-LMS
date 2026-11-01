@@ -22,6 +22,52 @@ function calculateAgeOnDate(dateOfBirth: string, asOf: Date = new Date()): numbe
 type PublicProfile = { id: number; display_name: string; avatar: string | null; cover_url?: string | null; cover_type?: string | null; bio: string | null; role: string; verified_qualifications: Array<{title:string;verified:boolean}>; subjects_to_teach: string[]; subjects?: string[]; primary_subject?: string | null; grade?: string | null; is_prefect?: boolean; is_manager?: boolean; performance_score?: number; leaderboard_position?: number | null; badge_count?: number; streak_days?: number; groups_joined?: Array<{id:number;name:string;subject:string}>; groups_owned?: Array<{id:number;name:string;subject:string}>; groups_with_settings_permission?: Array<{id:number;name:string;subject:string}>; fees_status?: string; achievement_count?: number; lesson_requests_count?: number };
 const tabs: Tab[] = ["Overview","Qualifications","Subjects","Enrollments","Achievements","Reports","Attendance","Payments","Transfer Letters"];
 
+const TRANSFER_IMAGE_INPUT_LIMIT = 15 * 1024 * 1024;
+const TRANSFER_IMAGE_OUTPUT_LIMIT = 900 * 1024;
+
+async function transferImageToDataUrl(file: File): Promise<string> {
+  if (!["image/png", "image/jpeg"].includes(file.type)) throw new Error("Choose a PNG or JPG image.");
+  if (!file.size || file.size > TRANSFER_IMAGE_INPUT_LIMIT) throw new Error("Choose an image smaller than 15 MB.");
+  if (file.size <= TRANSFER_IMAGE_OUTPUT_LIMIT) {
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("The selected image could not be read."));
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.readAsDataURL(file);
+    });
+  }
+  const bitmap = await createImageBitmap(file);
+  try {
+    let width = bitmap.width, height = bitmap.height;
+    const longest = Math.max(width, height);
+    if (longest > 1800) { const scale = 1800 / longest; width = Math.round(width * scale); height = Math.round(height * scale); }
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Image compression is unavailable in this browser.");
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      canvas.width = width; canvas.height = height;
+      context.fillStyle = "#ffffff"; context.fillRect(0, 0, width, height);
+      context.drawImage(bitmap, 0, 0, width, height);
+      const formats = file.type === "image/png"
+        ? [{ type: "image/png", quality: undefined as number | undefined }, { type: "image/jpeg", quality: 0.86 }]
+        : [{ type: "image/jpeg", quality: 0.88 }];
+      for (const format of formats) {
+        const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, format.type, format.quality));
+        if (blob && blob.size <= TRANSFER_IMAGE_OUTPUT_LIMIT) {
+          return await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onerror = () => reject(new Error("The compressed image could not be read."));
+            reader.onload = () => resolve(String(reader.result || ""));
+            reader.readAsDataURL(blob);
+          });
+        }
+      }
+      width = Math.max(320, Math.round(width * 0.78)); height = Math.max(240, Math.round(height * 0.78));
+    }
+    throw new Error("This image could not be compressed below 900 KB. Please choose a smaller image.");
+  } finally { bitmap.close(); }
+}
+
 type AuthenticatedProfileMediaProps = { url: string; type?: string; alt?: string; className?: string; decorative?: boolean; controls?: boolean; autoPlay?: boolean; muted?: boolean; loop?: boolean; onClick?: MouseEventHandler<any>; onError?: () => void };
 function AuthenticatedProfileMedia({url,type="image",alt="",className="",decorative=false,controls=false,autoPlay=false,muted=false,loop=false,onClick,onError}:AuthenticatedProfileMediaProps) {
   const [source,setSource]=useState<string|null>(null);
@@ -79,6 +125,84 @@ export default function ProfileHub() {
   const [termEnd,setTermEnd] = useState(new Date().toISOString().slice(0,10));
   const [transferReason,setTransferReason] = useState("");
   const [transferForm,setTransferForm] = useState<any>({currentSchool:"Elidems Schools",receivingSchool:"",grade:"Grade 8 / Form 1",academicYear:String(new Date().getFullYear()),learnerName:"",dob:"",gender:"Male",admissionNo:"",emisNo:"",average:"",conduct:"Excellent",reasonType:"Family Relocation",reasonDetail:"",guardianName:"",relationship:"Father",guardianId:"",guardianPhone:"",guardianEmail:"",address:"",effectiveDate:new Date().toISOString().slice(0,10)});
+  const [signatureTarget,setSignatureTarget] = useState<"guardian"|"headmaster"|null>(null);
+  const signatureCanvasRef = useRef<HTMLCanvasElement|null>(null);
+  const signaturePathsRef = useRef<Array<Array<{x:number;y:number}>>>([]);
+  const activeSignaturePathRef = useRef<Array<{x:number;y:number}>>([]);
+  const schoolLogoInputRef = useRef<HTMLInputElement|null>(null);
+  const guardianSignatureInputRef = useRef<HTMLInputElement|null>(null);
+  const headmasterSignatureInputRef = useRef<HTMLInputElement|null>(null);
+  const [transferImageBusy,setTransferImageBusy] = useState(false);
+
+  const saveTransferImage = async (field:"schoolLogoDataUrl"|"guardianSignatureDataUrl"|"headmasterSignatureDataUrl", file?:File) => {
+    if (!file) return;
+    setTransferImageBusy(true); setMessage("");
+    try {
+      const dataUrl = await transferImageToDataUrl(file);
+      setTransferForm((current:any)=>({...current,[field]:dataUrl}));
+      setMessage("Image added to your transfer letter preview.");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "The image could not be added."); }
+    finally { setTransferImageBusy(false); }
+  };
+  const redrawTransferSignature = () => {
+    const canvas = signatureCanvasRef.current, context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+    context.clearRect(0,0,canvas.width,canvas.height);
+    context.strokeStyle="#0f2a5a"; context.lineWidth=4; context.lineCap="round"; context.lineJoin="round";
+    for (const path of signaturePathsRef.current) {
+      if (!path.length) continue;
+      context.beginPath(); context.moveTo(path[0].x,path[0].y);
+      for (let index=1; index<path.length; index+=1) context.lineTo(path[index].x,path[index].y);
+      if (path.length===1) context.lineTo(path[0].x+0.1,path[0].y+0.1);
+      context.stroke();
+    }
+  };
+  const signaturePoint = (event:React.PointerEvent<HTMLCanvasElement>) => {
+    const rect=event.currentTarget.getBoundingClientRect();
+    return {x:(event.clientX-rect.left)*(event.currentTarget.width/rect.width),y:(event.clientY-rect.top)*(event.currentTarget.height/rect.height)};
+  };
+  const beginSignatureStroke = (event:React.PointerEvent<HTMLCanvasElement>) => {
+    event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId);
+    activeSignaturePathRef.current=[signaturePoint(event)];
+  };
+  const continueSignatureStroke = (event:React.PointerEvent<HTMLCanvasElement>) => {
+    if (!activeSignaturePathRef.current.length) return;
+    event.preventDefault();
+    const point=signaturePoint(event), previous=activeSignaturePathRef.current[activeSignaturePathRef.current.length-1];
+    activeSignaturePathRef.current.push(point);
+    const context=event.currentTarget.getContext("2d");
+    if (!context || !previous) return;
+    context.strokeStyle="#0f2a5a"; context.lineWidth=4; context.lineCap="round"; context.lineJoin="round";
+    context.beginPath(); context.moveTo(previous.x,previous.y); context.lineTo(point.x,point.y); context.stroke();
+  };
+  const finishSignatureStroke = () => {
+    if (!activeSignaturePathRef.current.length) return;
+    signaturePathsRef.current.push(activeSignaturePathRef.current); activeSignaturePathRef.current=[];
+  };
+  const clearTransferSignature = () => {
+    signaturePathsRef.current=[]; activeSignaturePathRef.current=[];
+    const canvas=signatureCanvasRef.current, context=canvas?.getContext("2d");
+    if (canvas && context) context.clearRect(0,0,canvas.width,canvas.height);
+  };
+  const undoTransferSignature = () => { signaturePathsRef.current.pop(); redrawTransferSignature(); };
+  const saveTransferSignature = () => {
+    const canvas=signatureCanvasRef.current;
+    if (!canvas || signaturePathsRef.current.length===0) { setMessage("Draw a signature before saving it."); return; }
+    const output=document.createElement("canvas"); output.width=canvas.width; output.height=canvas.height;
+    const context=output.getContext("2d");
+    if (!context) { setMessage("The signature could not be saved."); return; }
+    context.fillStyle="#ffffff"; context.fillRect(0,0,output.width,output.height); context.drawImage(canvas,0,0);
+    const field=signatureTarget==="guardian"?"guardianSignatureDataUrl":"headmasterSignatureDataUrl";
+    setTransferForm((current:any)=>({...current,[field]:output.toDataURL("image/png")}));
+    setSignatureTarget(null); setMessage("Signature saved to the transfer letter preview.");
+  };
+  useEffect(() => {
+    if (!signatureTarget) return;
+    signaturePathsRef.current=[]; activeSignaturePathRef.current=[];
+    const canvas=signatureCanvasRef.current, context=canvas?.getContext("2d");
+    if (canvas && context) context.clearRect(0,0,canvas.width,canvas.height);
+  }, [signatureTarget]);
+
 
   useEffect(() => {
     let active = true;
@@ -497,14 +621,50 @@ export default function ProfileHub() {
       <label className="block text-xs font-bold uppercase text-muted-foreground">Reason details<textarea value={transferForm.reasonDetail} onChange={e=>setTransferForm((v:any)=>({...v,reasonDetail:e.target.value}))} rows={3} maxLength={1800} className="mt-1 w-full rounded-md border bg-background p-2 text-sm font-normal normal-case text-foreground" placeholder="Explain the reason for transfer" /></label>
       <label className="block text-xs font-bold uppercase text-muted-foreground">Relationship<select value={transferForm.relationship} onChange={e=>setTransferForm((v:any)=>({...v,relationship:e.target.value}))} className="mt-1 w-full rounded-md border bg-background p-2 text-sm font-normal text-foreground">{["Father","Mother","Guardian"].map(v=><option key={v}>{v}</option>)}</select></label>
       <Button className="w-full" disabled={busy||!transferForm.learnerName.trim()||!transferForm.receivingSchool.trim()||transferForm.reasonDetail.trim().length<3} onClick={()=>void (async()=>{setBusy(true);try{const reason=[transferForm.reasonType,transferForm.reasonDetail].filter(Boolean).join(": ");await request("/api/academic-records/transfer-requests",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reason,formData:transferForm})});setTransferRequests(await request("/api/academic-records/transfer-requests"));setMessage("Your completed transfer letter application has been submitted for manager / owner approval.");}catch(e){setMessage(e instanceof Error?e.message:"Could not submit transfer application.");}finally{setBusy(false);}})()}>Submit transfer application</Button></div>
-      <label className="block text-xs font-bold uppercase tracking-wide text-muted-foreground">Upload school logo (PNG/JPG, max 120 KB)<input type="file" accept="image/png,image/jpeg" disabled={busy} className="mt-1 block w-full text-sm normal-case" onChange={e=>{const file=e.target.files?.[0];if(!file)return;if(file.size>120*1024){setMessage("School logo must be 120 KB or smaller.");e.currentTarget.value="";return;}const reader=new FileReader();reader.onload=()=>setTransferForm((v:any)=>({...v,schoolLogoDataUrl:String(reader.result||"")}));reader.readAsDataURL(file);}} /></label>
-      <label className="block text-xs font-bold uppercase tracking-wide text-muted-foreground">Parent / guardian signature image (PNG/JPG, max 120 KB)<input type="file" accept="image/png,image/jpeg" disabled={busy} className="mt-1 block w-full text-sm normal-case" onChange={e=>{const file=e.target.files?.[0];if(!file)return;if(file.size>120*1024){setMessage("Signature image must be 120 KB or smaller.");e.currentTarget.value="";return;}const reader=new FileReader();reader.onload=()=>setTransferForm((v:any)=>({...v,guardianSignatureDataUrl:String(reader.result||"")}));reader.readAsDataURL(file);}} /></label>
-      <label className="block text-xs font-bold uppercase tracking-wide text-muted-foreground">Headmaster signature / school stamp image (optional, PNG/JPG, max 120 KB)<input type="file" accept="image/png,image/jpeg" disabled={busy} className="mt-1 block w-full text-sm normal-case" onChange={e=>{const file=e.target.files?.[0];if(!file)return;if(file.size>120*1024){setMessage("Headmaster signature/stamp image must be 120 KB or smaller.");e.currentTarget.value="";return;}const reader=new FileReader();reader.onload=()=>setTransferForm((v:any)=>({...v,headmasterSignatureDataUrl:String(reader.result||"")}));reader.readAsDataURL(file);}} /></label>
+      <input ref={schoolLogoInputRef} type="file" accept="image/png,image/jpeg" className="hidden" disabled={busy||transferImageBusy} onChange={e=>{void saveTransferImage("schoolLogoDataUrl",e.currentTarget.files?.[0]);e.currentTarget.value="";}} />
+      <input ref={guardianSignatureInputRef} type="file" accept="image/png,image/jpeg" className="hidden" disabled={busy||transferImageBusy} onChange={e=>{void saveTransferImage("guardianSignatureDataUrl",e.currentTarget.files?.[0]);e.currentTarget.value="";}} />
+      <input ref={headmasterSignatureInputRef} type="file" accept="image/png,image/jpeg" className="hidden" disabled={busy||transferImageBusy} onChange={e=>{void saveTransferImage("headmasterSignatureDataUrl",e.currentTarget.files?.[0]);e.currentTarget.value="";}} />
+      <div className="grid gap-3">
+        <button type="button" disabled={busy||transferImageBusy} onClick={()=>schoolLogoInputRef.current?.click()} className="flex w-full items-center gap-3 rounded-xl border-2 border-dashed border-[#b38b00]/60 bg-[#0f2a5a]/[0.03] p-3 text-left transition hover:border-[#b38b00] hover:bg-[#0f2a5a]/[0.06] disabled:opacity-50">
+          {transferForm.schoolLogoDataUrl?<img src={transferForm.schoolLogoDataUrl} alt="Selected school logo" className="h-14 w-14 rounded-lg border bg-white object-contain p-1"/>:<span className="grid h-14 w-14 shrink-0 place-items-center rounded-lg border bg-white text-[10px] font-black text-[#0f2a5a]">LOGO</span>}
+          <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-[#0f2a5a]">School logo</span><span className="block text-xs text-muted-foreground">{transferForm.schoolLogoDataUrl?"Tap to replace logo":"Tap to upload school logo (PNG/JPG)"}</span><span className="block text-[11px] text-muted-foreground">Original image up to 15 MB · compressed for submission</span></span><span className="text-xs font-bold text-[#8a6d1d]">Choose image</span>
+        </button>
+        <div className="rounded-xl border border-[#b38b00]/40 bg-background p-3">
+          <button type="button" disabled={busy} onClick={()=>setSignatureTarget("guardian")} className="flex w-full items-center gap-3 text-left">
+            {transferForm.guardianSignatureDataUrl?<img src={transferForm.guardianSignatureDataUrl} alt="Parent or guardian signature preview" className="h-12 w-24 rounded border bg-white object-contain p-1"/>:<span className="grid h-12 w-24 shrink-0 place-items-center rounded border border-dashed bg-muted/30 text-lg">✍️</span>}
+            <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-[#0f2a5a]">Parent / guardian signature</span><span className="block text-xs text-muted-foreground">{transferForm.guardianSignatureDataUrl?"Tap to redraw signature":"Tap to sign with your finger"}</span></span><span className="text-xs font-bold text-[#8a6d1d]">Draw signature</span>
+          </button>
+          <div className="mt-2 flex justify-end"><Button type="button" size="sm" variant="outline" disabled={busy||transferImageBusy} onClick={()=>guardianSignatureInputRef.current?.click()}>Upload existing image</Button></div>
+        </div>
+        <div className="rounded-xl border border-[#b38b00]/40 bg-background p-3">
+          <button type="button" disabled={busy} onClick={()=>setSignatureTarget("headmaster")} className="flex w-full items-center gap-3 text-left">
+            {transferForm.headmasterSignatureDataUrl?<img src={transferForm.headmasterSignatureDataUrl} alt="Headmaster signature or school stamp preview" className="h-12 w-24 rounded border bg-white object-contain p-1"/>:<span className="grid h-12 w-24 shrink-0 place-items-center rounded border border-dashed bg-muted/30 text-lg">✍️</span>}
+            <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-[#0f2a5a]">Headmaster signature / school stamp</span><span className="block text-xs text-muted-foreground">{transferForm.headmasterSignatureDataUrl?"Tap to redraw signature / stamp":"Optional · tap to draw signature or stamp"}</span></span><span className="text-xs font-bold text-[#8a6d1d]">Draw signature</span>
+          </button>
+          <div className="mt-2 flex justify-end"><Button type="button" size="sm" variant="outline" disabled={busy||transferImageBusy} onClick={()=>headmasterSignatureInputRef.current?.click()}>Upload existing image</Button></div>
+        </div>
+        {transferImageBusy&&<p role="status" className="text-xs text-[#0f2a5a]">Preparing image for your transfer letter…</p>}
+      </div>
       <div className="rounded-xl border bg-white p-5 text-slate-800 shadow-inner"><div className="flex items-start justify-between gap-4 border-b-[3px] border-[#0f2a5a] pb-3"><div><h3 className="text-xl font-extrabold text-[#0f2a5a]">{transferForm.currentSchool||"Dallyletter Elidems"}</h3><p className="text-xs text-slate-500">Transfer Clearance &amp; Application<br/>Harare, Zimbabwe</p></div>{transferForm.schoolLogoDataUrl?<img src={transferForm.schoolLogoDataUrl} alt="Uploaded school logo" className="h-20 w-20 rounded-lg border object-contain p-1"/>:<div className="grid h-20 w-20 place-items-center rounded-lg border border-dashed text-xs text-slate-400">SCHOOL LOGO</div>}</div><p className="mt-3 text-right text-xs">{new Date().toLocaleDateString()}</p><p className="mt-4 text-sm">The Headmaster<br/><b>{transferForm.receivingSchool||"[Receiving School]"}</b><br/>Dear Sir/Madam,</p><h3 className="my-4 text-sm font-extrabold text-[#0f2a5a]">RE: TRANSFER APPLICATION FOR {(transferForm.learnerName||"LEARNER NAME").toUpperCase()} - {transferForm.grade}</h3>
       {[["1. Learner's Details",[["Full name",transferForm.learnerName],["Grade / Form",transferForm.grade],["Admission No",transferForm.admissionNo],["DOB / Gender",(transferForm.dob||"—")+" / "+transferForm.gender],["EMIS No",transferForm.emisNo],["Academic Year",transferForm.academicYear],["Average / Conduct",(transferForm.average||"—")+"% / "+transferForm.conduct]]],["2. Reason For Transfer",[["Category",transferForm.reasonType],["Details",transferForm.reasonDetail]]],["3. Parent's / Guardian's Details",[["Name & relation",(transferForm.guardianName||"—")+" ("+transferForm.relationship+")"],["ID No",transferForm.guardianId],["Contact",transferForm.guardianPhone],["Email",transferForm.guardianEmail],["Address",transferForm.address],["Effective Date",transferForm.effectiveDate]]]].map(([heading,rows]:any)=><section className="mt-4 rounded-lg border border-slate-200 p-3" key={heading}><h4 className="mb-2 border-l-4 border-[#b38b00] pl-2 text-xs font-extrabold uppercase text-[#0f2a5a]">{heading}</h4>{rows.map(([k,v]:any)=><div className="flex gap-3 border-b border-dotted border-slate-200 py-1 text-xs" key={k}><span className="w-36 shrink-0 text-slate-500">{k}</span><b className="break-words text-[#0f2a5a]">{v||"—"}</b></div>)}</section>)}
       <section className="mt-4 rounded-lg border border-slate-200 p-3"><h4 className="mb-2 border-l-4 border-[#b38b00] pl-2 text-xs font-extrabold uppercase text-[#0f2a5a]">4. Declarations &amp; Signatures</h4><div className="grid grid-cols-2 gap-4 text-xs"><div className="border-t pt-3">Parent / Guardian signature<br/>{transferForm.guardianSignatureDataUrl?<img src={transferForm.guardianSignatureDataUrl} alt="Parent or guardian signature" className="mt-2 h-14 max-w-48 object-contain"/>:<span className="text-slate-400">Signature image not supplied</span>}</div><div className="border-t pt-3">Headmaster - Current School (Stamp)<br/>{transferForm.headmasterSignatureDataUrl?<img src={transferForm.headmasterSignatureDataUrl} alt="Headmaster signature and school stamp" className="mt-2 h-14 max-w-48 object-contain"/>:<span className="text-slate-400">Authorized school signature / stamp not supplied</span>}</div></div><p className="mt-3 text-[10px] text-slate-500">Subject to acceptance by receiving school, space availability, and submission of supporting records. Fee clearance and signatures are not assumed.</p></section></div></section>}
       {isOwner&&transferRequests.filter((entry:any)=>entry.status!=="pending").map((entry:any)=><div key={entry.id} className="rounded-lg border p-3"><p className="font-semibold">Request #{entry.id} · {entry.status}</p>{entry.review_note&&<p className="mt-1 text-sm text-muted-foreground">Reviewer feedback: {entry.review_note}</p>}{entry.status==="approved"&&<Button className="mt-2" onClick={()=>void (async()=>{try{const response=await fetch(getApiUrl("/api/academic-records/transfer-requests/"+entry.id+"/download"),{headers});if(!response.ok)throw new Error("Approved transfer letter could not be downloaded.");const blob=await response.blob();const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="dallyletter-transfer-letter-"+entry.id+".pdf";a.click();URL.revokeObjectURL(url);}catch(e){setMessage(e instanceof Error?e.message:"Could not download transfer letter.");}})()}>Download approved PDF</Button>}</div>)}
     </CardContent></Card>}
+    {signatureTarget&&<div className="fixed inset-0 z-[100000] flex items-center justify-center bg-[#07162b]/80 p-3 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="transfer-signature-title">
+      <section className="w-full max-w-lg overflow-hidden rounded-2xl border-2 border-[#b38b00] bg-background shadow-2xl">
+        <header className="bg-[#0f2a5a] px-4 py-4 text-white"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#e8c85a]">Dallyletter Elidems · Transfer Letter</p><h2 id="transfer-signature-title" className="mt-1 text-lg font-extrabold">{signatureTarget==="guardian"?"Parent / guardian signature":"Headmaster signature / school stamp"}</h2><p className="mt-1 text-xs text-blue-100">Draw naturally with your finger or stylus inside the signing area.</p></header>
+        <div className="space-y-3 p-4">
+          <div className="relative overflow-hidden rounded-xl border-2 border-dashed border-[#b38b00]/70 bg-[#fbfcff]">
+            <canvas ref={signatureCanvasRef} width={1000} height={300} className="block h-[170px] w-full touch-none" aria-label="Finger drawing signature area" onPointerDown={beginSignatureStroke} onPointerMove={continueSignatureStroke} onPointerUp={finishSignatureStroke} onPointerCancel={finishSignatureStroke}/>
+            <div className="pointer-events-none absolute bottom-7 left-4 right-4 border-b border-dashed border-slate-300"/>
+            <p className="pointer-events-none absolute left-0 right-0 top-3 text-center text-[10px] font-semibold text-slate-400">SIGN ABOVE THE LINE</p>
+          </div>
+          <p className="text-[11px] text-muted-foreground">Your drawing is kept in this form until you submit the transfer application. It is included in the document preview.</p>
+          <div className="grid grid-cols-3 gap-2"><Button type="button" variant="outline" onClick={clearTransferSignature}>Clear</Button><Button type="button" variant="outline" onClick={undoTransferSignature}>Undo</Button><Button type="button" className="bg-[#0f2a5a] hover:bg-[#173a72]" onClick={saveTransferSignature}>Save signature</Button></div>
+          <Button type="button" variant="ghost" className="w-full" onClick={()=>setSignatureTarget(null)}>Cancel</Button>
+        </div>
+      </section>
+    </div>}
     <div ref={fullscreenContainerRef} role="dialog" aria-modal={fullscreenMedia?"true":undefined} aria-label="Fullscreen profile media" className="fixed inset-0 z-[99999] items-center justify-center bg-black" style={{display:fullscreenMedia?"flex":"none",position:"fixed",inset:0,width:"100vw",height:"100vh",background:"#000",padding:0,margin:0}} onClick={closeFullscreenMedia}>{fullscreenMedia&&<><button type="button" aria-label="Close fullscreen media" className="absolute right-4 top-4 z-10 rounded-full bg-white/20 px-4 py-2 text-white" onClick={e=>{e.stopPropagation();closeFullscreenMedia();}}>Close ✕</button><AuthenticatedProfileMedia url={fullscreenMedia.url} type={fullscreenMedia.type} alt="Fullscreen profile media" controls autoPlay className="h-full w-full object-contain" onError={()=>setFullscreenMediaError(true)} onClick={e=>e.stopPropagation()}/>{fullscreenMediaError&&<p role="alert" className="absolute bottom-6 left-4 right-4 rounded-lg bg-white/10 p-4 text-center text-sm text-white">This media could not be loaded from the API. The file may be missing or the current server may not support this profile-media route.</p>}</>}</div>
   </main></DashboardLayout>;
 }
