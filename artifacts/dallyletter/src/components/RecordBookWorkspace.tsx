@@ -11,7 +11,7 @@ const dateString = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).pad
 const yearStart = `${today.getFullYear()}-01-01`;
 
 async function api(path: string, init?: RequestInit) {
-  const response = await fetch(getApiUrl(path), { ...init, credentials: "include", headers: { "Content-Type": "application/json", ...(init?.headers || {}) } });
+  const response = await fetch(getApiUrl(path), { ...init, credentials: "include", headers: { "Content-Type": "application/json", ...((init?.headers || {}) as Record<string, string>) } });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`);
   return data;
