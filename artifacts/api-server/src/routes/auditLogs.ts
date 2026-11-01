@@ -43,7 +43,7 @@ function summarizeAcademicMarks(assignmentRows: any[], exerciseRows: any[]) {
   };
 }
 
-function buildAcademicReportPdf(input: { id: number; reportType: string; termLabel: string; periodStart?: unknown; periodEnd?: unknown; learnerName: string; reviewedAt: unknown; reviewedBy: unknown; report: unknown }): Buffer {
+function buildAcademicReportPdf(input: { id: number; reportType: string; termLabel: string; periodStart?: unknown; periodEnd?: unknown; learnerName: string; reviewedAt: unknown; reviewedBy: unknown; reviewNote?: unknown; report: unknown }): Buffer {
   const report = input.report && typeof input.report === "object" ? input.report as Record<string, any> : {};
   const facts = report.factualRecords && typeof report.factualRecords === "object" ? report.factualRecords : {};
   const summary = facts.markSummary?.overall || report.markSummary?.overall || {};
@@ -67,6 +67,7 @@ function buildAcademicReportPdf(input: { id: number; reportType: string; termLab
     "",
     "LEARNER DETAILS",
     "Learner name: " + input.learnerName,
+    "Learner grade / form: " + (report.learnerGrade || "Not recorded"),
     "Report type: " + input.reportType.replace(/_/g, " "),
     "Term: " + input.termLabel,
     "Academic period: " + formatDate(input.periodStart) + " to " + formatDate(input.periodEnd),
@@ -105,7 +106,13 @@ function buildAcademicReportPdf(input: { id: number; reportType: string; termLab
     raw.push(awards.length ? awards.map((award: any) => award.name).join(", ") : "No achievements recorded in this period.");
     raw.push("");
     raw.push("ACADEMIC COMMENTARY");
-    raw.push(String(report.commentary || "No teacher commentary was recorded."));
+    raw.push(String(report.commentary || "No AI academic commentary was recorded."));
+    raw.push("Teacher comment: " + (report.teacherComment || "Not recorded"));
+    raw.push("Conduct / behaviour: " + (report.conduct || "Not recorded"));
+    raw.push("Term result / promotion: " + (report.result || "Not recorded"));
+    raw.push("Reviewer / headmaster comment: " + (input.reviewNote || "Not recorded"));
+    raw.push("Teacher signature: Not digitally recorded");
+    raw.push("Headmaster signature / school stamp: Not recorded");
   }
   raw.push("", "This report contains only saved records available for the selected period.");
   raw.push("Unmarked work is not counted as zero. Missing information is shown as unavailable.");
@@ -624,7 +631,7 @@ router.post("/academic-records/reports/drafts", requireAuth, async (req, res): P
 
 router.get("/academic-records/reports/me", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  const result = await pool.query("SELECT id,report_type,term_label,period_start,period_end,draft_content,reviewed_at,created_at FROM academic_report_drafts WHERE learner_id=$1 AND status='approved' ORDER BY reviewed_at DESC NULLS LAST,created_at DESC LIMIT 100", [user.id]);
+  const result = await pool.query("SELECT id,report_type,term_label,period_start,period_end,draft_content,review_note,reviewed_at,reviewed_by,created_at FROM academic_report_drafts WHERE learner_id=$1 AND status='approved' ORDER BY reviewed_at DESC NULLS LAST,created_at DESC LIMIT 100", [user.id]);
   res.json(result.rows);
 });
 
@@ -688,7 +695,7 @@ router.get("/academic-records/reports/drafts/:id/download/pdf", requireAuth, asy
   const draftContent = typeof row.draft_content === "string" ? JSON.parse(row.draft_content) : row.draft_content;
   const sourceSnapshot = typeof row.source_snapshot === "string" ? JSON.parse(row.source_snapshot) : row.source_snapshot;
   const learnerName = String(draftContent?.learner || sourceSnapshot?.learner?.name || "Learner record");
-  const pdf = buildAcademicReportPdf({ id, reportType: String(row.report_type), termLabel: String(row.term_label), periodStart: row.period_start, periodEnd: row.period_end, learnerName, reviewedAt: row.reviewed_at, reviewedBy: row.reviewed_by, report: draftContent });
+  const pdf = buildAcademicReportPdf({ id, reportType: String(row.report_type), termLabel: String(row.term_label), periodStart: row.period_start, periodEnd: row.period_end, learnerName, reviewedAt: row.reviewed_at, reviewedBy: row.reviewed_by, reviewNote: row.review_note, report: draftContent });
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
