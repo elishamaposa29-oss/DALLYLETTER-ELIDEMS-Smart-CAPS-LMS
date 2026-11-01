@@ -79,8 +79,6 @@ export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, 
     (method === "PUT" && path === "/users/me/payout-preferences") ||
     (method === "POST" && ["/users/me/notification-email/request","/users/me/notification-email/verify","/users/me/recovery-email/request-verification","/users/me/recovery-email/confirm","/users/me/phone/request-verification","/users/me/phone/confirm","/users/me/avatar","/users/me/cover","/auth/email-change/request","/auth/email-change/confirm"].includes(path)) ||
     (method === "PATCH" && path === "/users/me/recovery-profile");
-  const teachingReadPrefixes = ["/dashboard","/teacher","/teacher-dashboard","/teacher-panel","/manager","/manager-panel","/classes","/lessons","/assignments","/exercises","/polls","/study-groups","/attendance","/daily-attendance","/ai","/live-classes","/reports","/academic-records","/record-book","/recordbook","/marking"];
-  const teachingRead = method === "GET" && teachingReadPrefixes.some(prefix => path === prefix || path.startsWith(prefix + "/"));
   const profileWrite = method === "PATCH" && path === "/users/" + selfId;
   return cvAllowed || profileWrite;
 }
