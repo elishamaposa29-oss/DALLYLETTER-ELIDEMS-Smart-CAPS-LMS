@@ -1,4 +1,5 @@
 import { getApiUrl } from "@workspace/api-client-react";
+import RecordBookWorkspace from "@/components/RecordBookWorkspace";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useGetDashboardStats, useListLessons, useListClasses, useListNotifications } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -365,6 +366,7 @@ export default function StudentHome() {
           </div>
         )}
       </div>
+      <RecordBookWorkspace />
     </DashboardLayout>
   );
 }
