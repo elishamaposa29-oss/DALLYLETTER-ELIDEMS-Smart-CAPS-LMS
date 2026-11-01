@@ -43,7 +43,7 @@ export async function hasAcceptedProfileConnection(userA: number, userB: number)
     "SELECT 1 FROM profile_connections WHERE status='accepted' AND ((requester_id=$1 AND recipient_id=$2) OR (requester_id=$2 AND recipient_id=$1)) LIMIT 1",
     [userA,userB],
   );
-  return result.rowCount > 0;
+  return Number(result.rowCount ?? 0) > 0;
 }
 
 export async function canViewProfileSection(actor: NonNullable<Express.Request["currentUser"]>, targetId: number, section: string): Promise<boolean> {
