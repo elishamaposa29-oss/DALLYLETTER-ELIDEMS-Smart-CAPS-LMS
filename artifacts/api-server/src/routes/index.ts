@@ -31,6 +31,7 @@ import socialFeaturesRouter from "./socialFeatures";
 import pushRouter from "./push";
 import emailRouter from "./email";
 import contentPermissionsRouter from "./contentPermissions";
+import teacherCvWorkspaceRouter from "./teacherCvWorkspace";
 
 const router: IRouter = Router();
 
@@ -65,5 +66,6 @@ router.use(socialFeaturesRouter);
 router.use(pushRouter);
 router.use(emailRouter);
 router.use(contentPermissionsRouter);
+router.use("/teacher-cv-workspace", teacherCvWorkspaceRouter);
 
 export default router;
