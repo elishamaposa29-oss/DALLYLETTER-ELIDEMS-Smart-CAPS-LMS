@@ -70,7 +70,7 @@ router.get("/profile/:id/social", requireAuth, async (req,res): Promise<void> =>
   await ensureSchema();
   const targetId=Number(req.params.id), actor=req.currentUser!;
   if(!Number.isSafeInteger(targetId)||targetId<=0){res.status(400).json({error:"Invalid profile id"});return;}
-  const [target]=await db.select({id:usersTable.id}).from(usersTable).where(eq(usersTable.id,targetId));
+  const [target]=await db.select({id:usersTable.id,role:usersTable.role,isPrefect:usersTable.isPrefect,isBlocked:usersTable.isBlocked,isSuspended:usersTable.isSuspended}).from(usersTable).where(eq(usersTable.id,targetId));
   if(!target){res.status(404).json({error:"Profile not found"});return;}
   const privacy=await pool.query("SELECT section_settings,chat_privacy FROM profile_privacy_settings WHERE user_id=$1",[targetId]);
   const link=await pool.query(
@@ -78,13 +78,18 @@ router.get("/profile/:id/social", requireAuth, async (req,res): Promise<void> =>
     [actor.id,targetId],
   );
   const connection=link.rows[0]??null;
+  const accepted=connection?.status==="accepted";
+  const viewerRole=normalizeRole(actor.role),targetRole=normalizeRole(target.role);
+  const existingRoleRuleAllows=viewerRole!=="student"||targetRole==="teacher"||isOwnerRole(target.role)||target.isPrefect===true;
+  const chatPrivacy=privacy.rows[0]?.chat_privacy??"everyone";
+  const canChat=actor.id!==targetId&&!target.isBlocked&&!target.isSuspended&&(accepted||((chatPrivacy!=="approval_required")&&existingRoleRuleAllows));
   res.setHeader("Cache-Control","private, no-store");
   res.json({
     isSelf:actor.id===targetId,
     privacy:actor.id===targetId?(privacy.rows[0]?.section_settings??{}):undefined,
-    chatPrivacy:privacy.rows[0]?.chat_privacy??"everyone",
+    chatPrivacy,
     connection:connection?{id:Number(connection.id),status:connection.status,requestedByMe:connection.requester_id===actor.id}:null,
-    canChat:actor.id!==targetId && (privacy.rows[0]?.chat_privacy!=="approval_required" || connection?.status==="accepted"),
+    canChat,
   });
 });
 
