@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { and, eq } from "drizzle-orm";
-import { db, followsTable, notificationsTable, usersTable, pool } from "@workspace/db";
-import { requireAuth, canAccessManager, isOwnerRole, normalizeRole } from "../lib/auth-middleware";
+import { db, notificationsTable, usersTable, pool } from "@workspace/db";
+import { requireAuth, normalizeRole } from "../lib/auth-middleware";
 
 const router = Router();
 const sectionKeys = new Set(["overview","qualifications","subjects","enrollments","achievements","reports","attendance","register","payments","transfers","teacher_documents","groups","activity"]);
