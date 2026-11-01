@@ -67,6 +67,8 @@ const expiredRow=await pool.query("SELECT role,teacher_application_status,passwo
 assert.equal(expiredRow.rows[0].role,"student","Expired application automatically becomes learner");
 assert.equal(expiredRow.rows[0].teacher_application_status,"auto_converted");
 assert.ok(expiredRow.rows[0].password_hash,"Expiry preserves the login credential");
+const expiredOldSession=await request("/api/users/me/teacher-cv",{token:expired.token});
+assert.equal(expiredOldSession.status,401,"Expiry conversion revokes existing teacher sessions");
 const expiredLogin=await request("/api/auth/login",{method:"POST",body:{email:expired.email,password}});
 assert.equal(expiredLogin.status,200,"Expired applicant can sign in with original credentials");
 assert.equal(expiredLogin.data.user.role,"student","Expired applicant's next login is learner experience");
