@@ -18,6 +18,7 @@ import { sendEmail, isEmailConfigured } from "../lib/email-service";
 import { isSmsConfigured, sendSms } from "../lib/sms-service";
 import { enqueueEmailNotification } from "../lib/email-notification-queue";
 import { buildTeacherCvPdf } from "../lib/teacher-cv-pdf";
+import { canViewProfileSection } from "./profileConnections";
 
 const router: IRouter = Router();
 
@@ -634,6 +635,15 @@ router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<v
   const coverResult = await pool.query("SELECT media_url AS cover_url, media_type AS cover_type FROM user_profile_covers WHERE user_id=$1", [id]).catch(() => ({ rows: [] as Array<{cover_url:string;cover_type:string}> }));
   const coverMedia = coverResult.rows[0] ?? { cover_url: null, cover_type: null };
   const canViewPrivateSummary = req.currentUser!.id === id || canAccessManager(req.currentUser!);
+  const [canViewOverview,canViewQualifications,canViewSubjects,canViewGroups,canViewPayments,canViewAchievements,canViewActivity] = await Promise.all([
+    canViewProfileSection(req.currentUser!,id,"overview"),
+    canViewProfileSection(req.currentUser!,id,"qualifications"),
+    canViewProfileSection(req.currentUser!,id,"subjects"),
+    canViewProfileSection(req.currentUser!,id,"groups"),
+    canViewProfileSection(req.currentUser!,id,"payments"),
+    canViewProfileSection(req.currentUser!,id,"achievements"),
+    canViewProfileSection(req.currentUser!,id,"activity"),
+  ]);
   const isProfessional = ["teacher", "manager", "senior_manager"].includes(String(user.role).toLowerCase());
   const [qualifications, teacherSubjectRows, learnerSubjectRows] = await Promise.all([
     isProfessional
@@ -662,11 +672,12 @@ router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<v
     user.isPrefect ? pool.query("SELECT count(*)::int AS count FROM lesson_requests WHERE prefect_id=$1", [id]).catch(() => ({ rows: [{count:0}] })) : Promise.resolve({ rows: [{count:0}] }),
   ]);
   res.json({
-    ...serializePublicProfile(user, qualifications.rows, teachingSubjects),
-    cover_url: coverMedia.cover_url,
-    cover_type: coverMedia.cover_type,
-    subjects: isProfessional ? teachingSubjects : learningSubjects,
-    primary_subject: teacherSubjectRows.rows[0]?.primary_subject ?? null,
+    ...serializePublicProfile(user, canViewQualifications ? qualifications.rows : [], canViewSubjects ? teachingSubjects : []),
+    cover_url: canViewOverview ? coverMedia.cover_url : null,
+    cover_type: canViewOverview ? coverMedia.cover_type : null,
+    subjects: canViewSubjects ? (isProfessional ? teachingSubjects : learningSubjects) : [],
+    primary_subject: canViewSubjects ? teacherSubjectRows.rows[0]?.primary_subject ?? null : null,
+    section_visibility: { overview:canViewOverview, qualifications:canViewQualifications, subjects:canViewSubjects, groups:canViewGroups, payments:canViewPayments, achievements:canViewAchievements, activity:canViewActivity },
     grade: user.grade,
     is_prefect: Boolean(user.isPrefect),
     is_manager: Boolean(user.isManager),
@@ -674,12 +685,12 @@ router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<v
     leaderboard_position: Number(rankRows.rows[0]?.position ?? 0) || null,
     badge_count: Number(user.badgeCount ?? 0),
     streak_days: Number(user.streakDays ?? 0),
-    groups_joined: canViewPrivateSummary ? groupRows.rows : [],
-    groups_owned: canViewPrivateSummary ? ownedGroupRows.rows : [],
-    groups_with_settings_permission: canViewPrivateSummary ? permissionRows.rows : [],
-    fees_status: canViewPrivateSummary ? feeRows.rows[0]?.status ?? "not_recorded" : null,
-    achievement_count: Number(achievementRows.rows[0]?.count ?? 0),
-    lesson_requests_count: canViewPrivateSummary ? Number(lessonRequestRows.rows[0]?.count ?? 0) : null,
+    groups_joined: canViewGroups ? groupRows.rows : [],
+    groups_owned: canViewGroups ? ownedGroupRows.rows : [],
+    groups_with_settings_permission: canViewGroups ? permissionRows.rows : [],
+    fees_status: canViewPayments ? feeRows.rows[0]?.status ?? "not_recorded" : null,
+    achievement_count: canViewAchievements ? Number(achievementRows.rows[0]?.count ?? 0) : null,
+    lesson_requests_count: canViewActivity ? Number(lessonRequestRows.rows[0]?.count ?? 0) : null,
   });
 });
 
