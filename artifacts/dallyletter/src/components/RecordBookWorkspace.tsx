@@ -43,6 +43,7 @@ export default function RecordBookWorkspace() {
   const [periodEnd, setPeriodEnd] = useState(dateString(today));
   const [record, setRecord] = useState<AcademicData | null>(null);
   const [snapshot, setSnapshot] = useState<Row | null>(null);
+  const [snapshotId, setSnapshotId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -65,7 +66,7 @@ export default function RecordBookWorkspace() {
 
   const selectedLearner = useMemo(() => learners.find(l => String(l.id) === learnerId), [learners, learnerId]);
   const summary = record?.markSummary?.overall;
-  const factual = snapshot?.factualRecords || {};
+  const factual = snapshot?.factualRecords || {};\n  const staffSummary = factual.markSummary?.overall;\n  const activitySummary = isStaff ? staffSummary : summary;
   const shownRecord = snapshot ? {
     assignmentMarks: factual.assignmentMarks || [],
     exerciseMarks: factual.exerciseMarks || [],
@@ -77,10 +78,10 @@ export default function RecordBookWorkspace() {
     if (!learnerId || !termLabel.trim() || !periodStart || !periodEnd || periodStart > periodEnd) {
       setError("Choose a learner, enter a record label and select a valid date range."); return;
     }
-    setBusy(true); setError(""); setNotice(""); setSnapshot(null);
+    setBusy(true); setError(""); setNotice(""); setSnapshot(null); setSnapshotId(null);
     try {
       const created = await api("/api/academic-records/reports/drafts", { method: "POST", body: JSON.stringify({ learnerId: Number(learnerId), reportType: "term_performance", termLabel: termLabel.trim(), periodStart, periodEnd }) });
-      setSnapshot(created?.draft_content || null);
+      setSnapshot(created?.draft_content || null);\n      setSnapshotId(Number(created?.id) || null);
       setNotice("RecordBook snapshot created from saved activity, attendance and achievement records. It is a report draft—not an approved report.");
     } catch (e) { setError(e instanceof Error ? e.message : "RecordBook could not be built from saved records."); }
     finally { setBusy(false); }
@@ -102,11 +103,11 @@ export default function RecordBookWorkspace() {
       {notice && <p role="status" className="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm">{notice}</p>}
       {isStaff && !learners.length && !error && <p className="text-sm text-muted-foreground">No learners are currently available through your permitted report access.</p>}
       {!isStaff && record && <div className="grid gap-2 sm:grid-cols-4"><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Marked activities</p><p className="text-xl font-bold">{summary?.markedCount ?? 0}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Actual marks</p><p className="text-xl font-bold">{summary?.earnedMarks ?? "—"}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Possible marks</p><p className="text-xl font-bold">{summary?.possibleMarks ?? "—"}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Overall percentage</p><p className="text-xl font-bold">{summary?.percentage == null ? "Not available" : `${summary.percentage}%`}</p></div></div>}
-      {isStaff && selectedLearner && <p className="text-sm text-muted-foreground">Selected learner: <strong>{selectedLearner.name}</strong>. Only records within the selected period are included in the generated snapshot.</p>}
+      {isStaff && selectedLearner && <p className="text-sm text-muted-foreground">Selected learner: <strong>{selectedLearner.name}</strong>. Only records within the selected period are included in the generated snapshot.</p>}\n      {activitySummary && <div className="grid gap-2 sm:grid-cols-4"><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Marked activities</p><p className="text-xl font-bold">{activitySummary.markedCount ?? 0}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Actual marks</p><p className="text-xl font-bold">{activitySummary.earnedMarks ?? "—"}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Possible marks</p><p className="text-xl font-bold">{activitySummary.possibleMarks ?? "—"}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Overall percentage</p><p className="text-xl font-bold">{activitySummary.percentage == null ? "Not available" : `${activitySummary.percentage}%`}</p></div></div>}\n      {isStaff && snapshot && <div className="flex flex-wrap items-center gap-2 rounded-lg border p-3 text-sm"><span>Saved report draft ID: <strong>{snapshotId || "Unavailable"}</strong></span>{snapshotId && <Button variant="outline" size="sm" onClick={()=>window.open(getApiUrl(`/api/academic-records/reports/drafts/${snapshotId}/download/pdf`), "_blank", "noopener,noreferrer")}>Open PDF draft</Button>}<span className="text-muted-foreground">PDF access follows existing report permissions.</span></div>}
       {shownRecord && <div className="space-y-5">
         <MarkRows title="Exercises" rows={shownRecord.exerciseMarks || []} kind="exercise" />
         <MarkRows title="Assignments" rows={shownRecord.assignmentMarks || []} kind="assignment" />
-        <MarkRows title="Polls / quizzes" rows={shownRecord.pollSubmissions || []} kind="poll" />
+        <MarkRows title="Polls / quizzes" rows={shownRecord.pollSubmissions || []} kind="poll" />\n        {isStaff && snapshot && <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-lg border p-3"><h4 className="font-semibold text-sm">Attendance evidence</h4><p className="mt-1 text-sm text-muted-foreground">Sessions: {factual.attendanceSummary?.sessions ?? "Not recorded"} · Present: {factual.attendanceSummary?.present ?? "Not recorded"} · Absent: {factual.attendanceSummary?.absent ?? "Not recorded"} · Late: {factual.attendanceSummary?.late ?? "Not recorded"}</p></div><div className="rounded-lg border p-3"><h4 className="font-semibold text-sm">Achievements</h4><p className="mt-1 text-sm text-muted-foreground">{Array.isArray(factual.awards) ? factual.awards.length : 0} saved achievement(s) in this period.</p>{Array.isArray(factual.awards) && factual.awards.map((a: Row, i: number)=><p className="mt-1 text-sm" key={a.id || i}>{a.name || "Achievement"} · {fmtDate(a.earned_at)}</p>)}</div></div>}
         <div className="rounded-lg border bg-muted/20 p-3 text-sm"><p className="font-semibold">Record integrity</p><p className="mt-1 text-muted-foreground">Marks come from saved exercise submissions, assignment submissions and poll submissions. Unmarked work is not counted as zero. This workspace does not create duplicate marks or assume official weighting rules.</p>{!isStaff && <Button variant="outline" size="sm" className="mt-3" onClick={()=>void loadOwnRecord()}>Refresh saved results</Button>}</div>
       </div>}
       {!isStaff && !record && !error && <p className="text-sm text-muted-foreground">Loading your saved academic records…</p>}
