@@ -2,8 +2,6 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { readFileSync } from "node:fs";
 import { db, pool, usersTable } from "@workspace/db";
-import { generateSignedToken } from "../dist/lib/signed-token.js";
-import { createAuthSession } from "../dist/lib/auth-session-store.js";
 
 const base=process.env.API_BASE_URL||"http://127.0.0.1:4000";
 const capture=process.env.MOCK_PROVIDER_CAPTURE||"/tmp/dallyletter-provider-capture.jsonl";
@@ -16,8 +14,9 @@ async function request(path,{token,method="GET",body}={}){
  return {status:response.status,data};
 }
 const [owner]=await db.insert(usersTable).values({email:ownerEmail,passwordHash:"test-only-not-used",name:"CV Workflow Test Owner",role:"owner"}).returning();
-const ownerToken=generateSignedToken(owner.id,process.env.JWT_SECRET);
-await createAuthSession(ownerToken,owner.id);
+const encoded=Buffer.from(JSON.stringify({userId:owner.id,ts:Date.now()})).toString("base64url");
+const ownerToken=encoded+"."+crypto.createHmac("sha256",process.env.JWT_SECRET).update(encoded).digest("hex");
+await pool.query("INSERT INTO auth_sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '90 days')",[crypto.createHash("sha256").update(ownerToken).digest("hex"),owner.id]);
 const config=await request("/api/teacher-cv-workspace/config",{token:ownerToken});
 assert.equal(config.status,200,"Owner can open CV workflow settings");
 const savedConfig=await request("/api/teacher-cv-workspace/config",{token:ownerToken,method:"PATCH",body:{reviewDurationDays:1}});
