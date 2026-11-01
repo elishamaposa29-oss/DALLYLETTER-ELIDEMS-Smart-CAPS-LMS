@@ -667,6 +667,24 @@ router.post("/academic-records/reports/drafts", requireAuth, async (req, res): P
   res.status(201).json(saved.rows[0]);
 });
 
+router.post("/academic-records/reports/drafts/:id/submit", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1) { res.status(400).json({ error: "Invalid draft ID." }); return; }
+  const existing = await pool.query("SELECT id,created_by,status FROM academic_report_drafts WHERE id=$1", [id]);
+  const row = existing.rows[0];
+  if (!row || (Number(row.created_by) !== Number(user.id) && !canAccessManager(user))) {
+    res.status(404).json({ error: "Report draft not found." }); return;
+  }
+  if (row.status !== "draft") {
+    res.status(409).json({ error: "Only an unsubmitted draft can be submitted for review." }); return;
+  }
+  const submitted = await pool.query("UPDATE academic_report_drafts SET status='pending_review',updated_at=now() WHERE id=$1 AND status='draft' RETURNING id,status", [id]);
+  if (!submitted.rowCount) { res.status(409).json({ error: "This report draft has already changed status. Refresh and try again." }); return; }
+  await db.insert(auditLogsTable).values({ performedBy: user.id, action: "academic_report.submitted_for_review", category: "academic", targetType: "academic_report_draft", targetId: id, details: JSON.stringify({ status: "pending_review" }) });
+  res.json(submitted.rows[0]);
+});
+
 router.get("/academic-records/reports/me", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   const result = await pool.query("SELECT id,report_type,term_label,period_start,period_end,draft_content,review_note,reviewed_at,reviewed_by,created_at FROM academic_report_drafts WHERE learner_id=$1 AND status='approved' ORDER BY reviewed_at DESC NULLS LAST,created_at DESC LIMIT 100", [user.id]);
