@@ -91,6 +91,9 @@ function buildAcademicReportPdf(input: { id: number; reportType: string; termLab
     raw.push("Possible marks: " + (summary.possibleMarks ?? "Not available"));
     raw.push("Overall percentage: " + (summary.percentage == null ? "Not available" : summary.percentage + "%"));
     raw.push("");
+    raw.push("SUBJECTS / CLASSES");
+    const enrollments = Array.isArray(facts.enrollments) ? facts.enrollments : [];
+    raw.push(enrollments.length ? enrollments.map((entry: any) => [entry.subject || "Subject not recorded", entry.class_title || "Class not recorded", entry.grade ? "Grade " + entry.grade : ""].filter(Boolean).join(" | ")) : "No subject or class enrollment was recorded in this period.");
     raw.push("ASSIGNMENT MARKS");
     raw.push("Subject / activity | Mark | Status");
     if (assignments.length) for (const row of assignments) raw.push([row.subject || row.title || "Assignment", row.marks == null ? "Not marked" : String(row.marks) + " / " + String(row.total_marks ?? "?"), row.status || "Recorded"].join(" | "));
