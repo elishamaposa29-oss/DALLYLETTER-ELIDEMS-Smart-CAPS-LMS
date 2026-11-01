@@ -59,7 +59,7 @@ function buildAcademicReportPdf(input: { id: number; reportType: string; termLab
   // and replace unsupported glyphs visibly rather than silently deleting them.
   const escapePdf = (value: unknown) => String(value ?? "Not recorded")
     .replace(/[^\x20-\xFF]/g, "?")
-    .replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)")
+    .replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
   const raw: string[] = [
     "DALLYLETTER ELIDEMS",
     "OFFICIAL ACADEMIC REPORT",
@@ -556,7 +556,7 @@ router.post("/academic-records/reports/drafts", requireAuth, async (req, res): P
     }
     const assignment = await pool.query(
       "SELECT 1 FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 AND c.teacher_id=$2 LIMIT 1",
-      [Number(req.body?.learnerId), creator.id],
+      [(Number(req.body?.learnerId) || 0), creator.id],
     );
     if (!assignment.rowCount) {
       res.status(403).json({ error: "You can create reports for learners in your assigned classes." }); return;
