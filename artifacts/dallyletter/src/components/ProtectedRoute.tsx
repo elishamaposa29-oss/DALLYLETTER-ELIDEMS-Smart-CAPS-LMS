@@ -25,10 +25,10 @@ export function ProtectedRoute({
         // without adding an unsupported role to the generated frontend type.
         const role = String(user.role).toLowerCase().replace(/[ -]+/g, "_");
 
-        if (allowedRoles && !allowedRoles.includes(role) && !((["admin","platform_owner"].includes(role)) && allowedRoles.includes("owner")) && !(allowManagerStaff && role === "teacher" && user.isManager === true)) {
+        if (allowedRoles && !allowedRoles.includes(role) && !((["admin","platform_owner"].includes(role)) && allowedRoles.includes("owner")) && !(allowManagerStaff && role === "teacher" && user.isManager === true) && !(role === "junior_manager" && allowedRoles.some(value => ["manager","senior_manager"].includes(value)))) {
           if (role === "student" || role === "prefect") setLocation("/");
           else if (role === "teacher") setLocation("/teacher");
-          else if (["manager","senior_manager"].includes(role)) setLocation("/manager");
+          else if (["manager","senior_manager","junior_manager"].includes(role)) setLocation("/manager");
           else if (["owner","admin","platform_owner"].includes(role)) setLocation("/admin");
         } else if (user.isBlocked) {
           setLocation("/suspended");
@@ -41,7 +41,7 @@ export function ProtectedRoute({
   const hasAllowedRole =
     !allowedRoles ||
     (role !== undefined &&
-      (allowedRoles.includes(role) || (["admin","platform_owner"].includes(role) && allowedRoles.includes("owner")) || (allowManagerStaff && role === "teacher" && user?.isManager === true)));
+      (allowedRoles.includes(role) || (["admin","platform_owner"].includes(role) && allowedRoles.includes("owner")) || (allowManagerStaff && role === "teacher" && user?.isManager === true) || (role === "junior_manager" && allowedRoles.some(value => ["manager","senior_manager"].includes(value)))));
 
   if (isLoading || !user || !hasAllowedRole || user.isBlocked) {
     return (
