@@ -131,6 +131,15 @@ router.post("/profile/:id/connect", requireAuth, async (req,res): Promise<void> 
   res.status(201).json({status:"pending",connectionId:Number(inserted.rows[0].id)});
 });
 
+router.get("/profile/connections/friends", requireAuth, async(req,res):Promise<void> => {
+  await ensureSchema();
+  const rows=await pool.query(
+    "SELECT u.id,u.name,u.role FROM profile_connections c JOIN users u ON u.id=CASE WHEN c.requester_id=$1 THEN c.recipient_id ELSE c.requester_id END WHERE c.status='accepted' AND (c.requester_id=$1 OR c.recipient_id=$1) ORDER BY u.name",
+    [req.currentUser!.id],
+  );
+  res.json(rows.rows);
+});
+
 router.get("/profile/connections/requests", requireAuth, async(req,res):Promise<void> => {
   await ensureSchema();
   const rows=await pool.query(
