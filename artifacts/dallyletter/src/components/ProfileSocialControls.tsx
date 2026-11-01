@@ -80,8 +80,10 @@ export function ProfileSocialControls({profileId,isSelf,role}:{profileId:number|
         await api("/api/profile/"+profileId+"/connect",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({})});
         setNotice("Connection request sent. Both users have been notified; chat unlocks after acceptance.");
         await load();
-      }else{
+      }else if(current.canChat){
         setLocation(chatPath+"?recipientId="+encodeURIComponent(String(profileId)));
+      }else{
+        setError("The existing school chat permissions do not allow this conversation.");
       }
     }catch(e){setError(e instanceof Error?e.message:"Could not connect or open chat.");}
     finally{setBusy(false);}
