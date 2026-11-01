@@ -566,7 +566,8 @@ router.patch("/users/:id/teacher-review", requireAuth, async (req, res): Promise
     const requiredFields = ["professionalSummary", "education", "experience", "subjects", "address"];
     const missingFields = requiredFields.filter((key) => typeof cv[key] !== "string" || (cv[key] as string).trim().length < 2);
     let personalDetails: Record<string, unknown> = {}; try { personalDetails = JSON.parse(String(cv.personalDetails || "{}")) as Record<string, unknown>; } catch { /* incomplete CV is rejected below */ }
-    const hasPhoto = Number(cv.photoDocumentId) > 0;
+    const photoResult = await pool.query("SELECT id FROM teacher_documents WHERE id=$1 AND user_id=$2 AND document_type=$3 AND mime_type LIKE $4", [Number(cv.photoDocumentId), id, "cv", "image/%"]);
+    const hasPhoto = photoResult.rows.length > 0;
     const hasLegalDetails = ["fullName","idNumber","dob","phone","email","address"].every((key) => typeof personalDetails[key] === "string" && String(personalDetails[key]).trim().length > 0);
     const docs = await pool.query("SELECT 1 FROM teacher_documents WHERE user_id = $1 AND document_type IN ('resume','certificate') LIMIT 1", [id]);
     const verifiedQualifications = await pool.query("SELECT count(*)::int AS total, count(*) FILTER (WHERE verification_status=$2 AND document_id IS NOT NULL)::int AS verified FROM teacher_qualifications WHERE user_id=$1", [id, "verified"]);
