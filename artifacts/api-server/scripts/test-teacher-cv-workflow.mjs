@@ -23,6 +23,13 @@ const savedConfig=await request("/api/teacher-cv-workspace/config",{token:ownerT
 assert.equal(savedConfig.status,200,"Owner can set the review duration");
 assert.equal(savedConfig.data.reviewDurationDays,1);
 
+async function upload(path,token,fieldName,fileName,contentType,bytes,extra={}){
+ const form=new FormData();form.append("file",new Blob([bytes],{type:contentType}),fileName);
+ for(const [key,value] of Object.entries(extra))form.append(key,String(value));
+ const response=await fetch(base+path,{method:"POST",headers:{Authorization:"Bearer "+token},body:form});
+ const data=await response.json().catch(()=>({}));
+ return {status:response.status,data};
+}
 async function registerTeacher(label){
  const email="teacher-cv-"+label+"-"+suffix+"@example.test";
  const created=await request("/api/auth/register",{method:"POST",body:{name:"CV Test "+label,email,password,role:"teacher",phone:"+263771234567"}});
@@ -31,6 +38,27 @@ async function registerTeacher(label){
  assert.ok(created.data.user.teacherReviewDeadline,"Owner-configured review deadline must be assigned");
  return {id:created.data.user.id,email,token:created.data.token};
 }
+const approvalApplicant=await registerTeacher("approval");
+const profilePhoto=await upload("/api/users/me/teacher-documents",approvalApplicant.token,"file","teacher-photo.png","image/png",Buffer.from([137,80,78,71,13,10,26,10]),{documentType:"cv"});
+assert.equal(profilePhoto.status,201,"Applicant can upload a private profile photo");
+const qualification=await request("/api/users/me/qualifications",{token:approvalApplicant.token,method:"POST",body:{title:"Bachelor of Education",institution:"CI Test University",year:2018}});
+assert.equal(qualification.status,201,"Applicant can create a separate qualification record");
+const certificate=await upload("/api/qualifications/"+qualification.data.id+"/document",approvalApplicant.token,"file","bachelor-certificate.pdf","application/pdf",Buffer.from("%PDF-1.4\n%teacher cv integration test\n"));
+assert.equal(certificate.status,201,"Applicant can upload an individual qualification certificate");
+const cvPayload={professionalSummary:"Qualified test teacher",education:"Bachelor of Education",experience:"3 years",subjects:"Mathematics",address:"Harare",personalDetails:JSON.stringify({fullName:"CV Test approval",idNumber:"CV-TEST-APPROVAL",dob:"1995-06-15",phone:"+263771234567",email:approvalApplicant.email,address:"Harare"}),teachingDetails:JSON.stringify({level:"Secondary",experience:"3-5 years",subjects:"Mathematics",forms:"Form 1-4",bio:"Test teacher"}),surveyAnswers:JSON.stringify({laptop:"Yes",laptopType:"HP",smartphone:"Yes — Android",computer:"Intermediate",online:"Weekdays",internet:"WiFi at home",platforms:["WhatsApp"],power:"Yes",verificationCall:"Yes — call anytime"}),photoDocumentId:String(profilePhoto.data.id)};
+const savedApprovalCv=await request("/api/users/me/teacher-cv",{token:approvalApplicant.token,method:"PATCH",body:{cv:cvPayload}});
+assert.equal(savedApprovalCv.status,200,"Applicant can save the complete structured CV");
+const verified=await request("/api/qualifications/"+qualification.data.id+"/verify",{token:ownerToken,method:"PATCH",body:{status:"verified"}});
+assert.equal(verified.status,200,"Owner can verify an individual qualification");
+const certificateView=await fetch(base+"/api/users/"+approvalApplicant.id+"/teacher-documents/"+certificate.data.document.id,{headers:{Authorization:"Bearer "+ownerToken}});
+assert.equal(certificateView.status,200,"Owner can view the applicant's individual certificate");
+assert.match(certificateView.headers.get("content-type")||"",/application\\/pdf/);
+const approved=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/decision",{token:ownerToken,method:"POST",body:{action:"approve",note:"All qualification evidence verified"}});
+assert.equal(approved.status,200,"Owner can authorize a complete CV with verified qualifications");
+const approvedRow=await pool.query("SELECT role,teacher_application_status FROM users WHERE id=$1",[approvalApplicant.id]);
+assert.equal(approvedRow.rows[0].role,"teacher");
+assert.equal(approvedRow.rows[0].teacher_application_status,"approved");
+
 const rejected=await registerTeacher("rejected");
 const deniedDashboard=await request("/api/dashboard",{token:rejected.token});
 assert.equal(deniedDashboard.status,403,"Pending teacher cannot access dashboard APIs");
