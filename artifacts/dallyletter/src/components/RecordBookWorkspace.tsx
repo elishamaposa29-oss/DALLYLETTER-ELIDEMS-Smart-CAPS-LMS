@@ -49,6 +49,7 @@ export default function RecordBookWorkspace() {
   const [snapshotStatus, setSnapshotStatus] = useState<string>("draft");
   const [busy, setBusy] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [reviewBusy, setReviewBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -93,6 +94,30 @@ export default function RecordBookWorkspace() {
     pollSubmissions: factual.pollSubmissions || [],
     markSummary: factual.markSummary || {}
   } : record;
+
+  async function submitForReview() {
+    if (!snapshotId) return;
+    setReviewBusy(true); setError(""); setNotice("");
+    try {
+      const result = await api(`/api/academic-records/reports/drafts/${snapshotId}/submit`, { method: "POST", body: JSON.stringify({}) });
+      setSnapshotStatus(String(result?.status || "pending_review").toLowerCase());
+      setNotice("RecordBook submitted for review. A Senior Manager or Owner must approve or reject it before PDF download.");
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not submit the report for review."); }
+    finally { setReviewBusy(false); }
+  }
+
+  async function refreshDraftStatus() {
+    if (!snapshotId) return;
+    setReviewBusy(true); setError("");
+    try {
+      const rows: Row[] = await api("/api/academic-records/reports/drafts");
+      const current = rows.find(row => Number(row.id) === snapshotId);
+      if (!current) throw new Error("This report is not available in your permitted review list.");
+      setSnapshotStatus(String(current.status || "draft").toLowerCase());
+      setNotice(`Report status refreshed: ${String(current.status || "draft").replace(/_/g, " ")}.`);
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not refresh report status."); }
+    finally { setReviewBusy(false); }
+  }
 
   async function downloadPdfDraft() {
     if (!snapshotId) return;
@@ -153,7 +178,7 @@ export default function RecordBookWorkspace() {
       {isStaff && <div className="flex flex-wrap gap-2 rounded-lg border bg-muted/20 p-3"><span className="w-full text-xs font-semibold uppercase tracking-wide text-muted-foreground">Record marks in the existing activity workspaces</span><Link href="/teacher/assignments"><Button variant="outline" size="sm">Open assignments</Button></Link><Link href="/teacher/polls"><Button variant="outline" size="sm">Open polls & quizzes</Button></Link><Link href="/teacher/classes"><Button variant="outline" size="sm">Open classes & exercises</Button></Link></div>}
 
       {activitySummary && <div className="grid gap-2 sm:grid-cols-4"><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Marked activities</p><p className="text-xl font-bold">{activitySummary.markedCount ?? 0}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Actual marks</p><p className="text-xl font-bold">{activitySummary.earnedMarks ?? "—"}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Possible marks</p><p className="text-xl font-bold">{activitySummary.possibleMarks ?? "—"}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Overall percentage</p><p className="text-xl font-bold">{activitySummary.percentage == null ? "Not available" : `${activitySummary.percentage}%`}</p></div></div>}
-      {isStaff && snapshot && <div className="flex flex-wrap items-center gap-2 rounded-lg border p-3 text-sm"><span>Saved report draft ID: <strong>{snapshotId || "Unavailable"}</strong></span><span className="rounded-full border px-2 py-1 text-xs font-semibold capitalize">{snapshotStatus.replace(/_/g, " ")}</span>{snapshotId && snapshotStatus === "approved" && <Button variant="outline" size="sm" disabled={pdfBusy} onClick={()=>void downloadPdfDraft()}>{pdfBusy ? "Preparing PDF…" : "Download approved PDF"}</Button>}<span className="text-muted-foreground">{snapshotStatus === "approved" ? "PDF access follows existing report permissions." : "PDF download unlocks only after the existing Senior Manager / Owner approval."}</span></div>}
+      {isStaff && snapshot && <div className="flex flex-wrap items-center gap-2 rounded-lg border p-3 text-sm"><span>Saved report draft ID: <strong>{snapshotId || "Unavailable"}</strong></span><span className="rounded-full border px-2 py-1 text-xs font-semibold capitalize">{snapshotStatus.replace(/_/g, " ")}</span>{snapshotId && snapshotStatus === "draft" && <Button size="sm" disabled={reviewBusy} onClick={()=>void submitForReview()}>{reviewBusy ? "Submitting…" : "Submit for review"}</Button>}{snapshotId && <Button variant="outline" size="sm" disabled={reviewBusy} onClick={()=>void refreshDraftStatus()}>{reviewBusy ? "Refreshing…" : "Refresh status"}</Button>}{snapshotId && snapshotStatus === "approved" && <Button variant="outline" size="sm" disabled={pdfBusy} onClick={()=>void downloadPdfDraft()}>{pdfBusy ? "Preparing PDF…" : "Download approved PDF"}</Button>}<span className="text-muted-foreground">{snapshotStatus === "approved" ? "PDF access follows existing report permissions." : snapshotStatus === "pending_review" ? "Awaiting Senior Manager / Owner review." : "Submit this draft for Senior Manager / Owner review before PDF download."}</span></div>}
       {shownRecord && <div className="space-y-5">
         <MarkRows title="Exercises" rows={shownRecord.exerciseMarks || []} kind="exercise" />
         <MarkRows title="Assignments" rows={shownRecord.assignmentMarks || []} kind="assignment" />
