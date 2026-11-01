@@ -21,6 +21,7 @@ export async function processExpiredTeacherApplications():Promise<void>{
     try{
      await sendEmail({to:[String(teacher.email)],subject:"Dallyletter Elidems teacher application review period ended",text:"Hello "+(teacher.name||"applicant")+", your teacher CV was not approved within the review duration configured by the Owner. Your login details remain valid. Your teacher account has now been converted to a learner account. On your next login you will enter as a normal learner."});
      await client.query("UPDATE users SET role='student',teacher_application_status='auto_converted',teacher_review_deadline=NULL,subject=NULL,is_manager=false,is_prefect=false WHERE id=$1",[teacher.id]);
+     await client.query("UPDATE auth_sessions SET revoked_at=COALESCE(revoked_at,now()) WHERE user_id=$1",[teacher.id]);
      await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,NULL,'expired',$2,'student','Owner-configured review duration elapsed; notification email accepted before conversion.')",[teacher.id,teacher.teacher_application_status||"pending_review"]);
     }catch(error){console.error("[teacher-cv-expiry] Notification/conversion failed; applicant remains a teacher until email is accepted.",error instanceof Error?error.message:"unknown");}
    }
