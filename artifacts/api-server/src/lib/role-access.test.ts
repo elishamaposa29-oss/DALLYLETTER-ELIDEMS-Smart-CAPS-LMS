@@ -146,6 +146,17 @@ test("explicit hierarchy keeps junior and senior manager permissions while separ
   assert.equal(canAccessManager(user),true);
  }
 });
+test("junior_manager role alias retains manager workspace access but not senior approvals",()=>{
+ const junior={role:"junior_manager"};
+ assert.equal(isJuniorManager(junior),true);
+ assert.equal(isSeniorManager(junior),false);
+ assert.equal(canAccessManager(junior),true);
+ assert.equal(canManageAcademicContent(junior),true);
+ assert.equal(canRecommendAchievementAwards(junior),true);
+ assert.equal(canApproveAchievementAwards(junior),false);
+ assert.equal(canReviewAcademicTransfer(junior),false);
+});
+
 test("pending teacher managers do not gain award authority from stale manager flags",()=>{
  const pending={role:"teacher",isManager:true,managerLevel:"senior",teacherApplicationStatus:"pending_review"};
  assert.equal(isJuniorManager(pending),false);
