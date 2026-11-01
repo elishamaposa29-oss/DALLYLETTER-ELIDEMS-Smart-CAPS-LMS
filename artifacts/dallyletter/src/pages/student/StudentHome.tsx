@@ -14,7 +14,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { InstallAppCard } from "@/components/InstallAppCard";
-import { DailyAppAttendanceCard } from "@/components/DailyAppAttendanceCard";
 
 export default function StudentHome() {
   const { user } = useAuth();
@@ -102,9 +101,6 @@ export default function StudentHome() {
         </div>
 
         <InstallAppCard />
-
-        {/* Learner-visible class attendance register and daily app activity */}
-        <DailyAppAttendanceCard />
 
         {/* Prefect Panel */}
         {user?.isPrefect && (
