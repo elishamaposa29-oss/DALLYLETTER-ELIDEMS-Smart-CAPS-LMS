@@ -4,6 +4,7 @@ import { achievementsTable, userAchievementsTable, usersTable, lessonRequestsTab
 import { eq, desc, and } from "drizzle-orm";
 import { requireAuth, isOwnerRole, canAccessManager } from "../lib/auth-middleware";
 import { canApproveAchievementAwards, canRecommendAchievementAwards } from "../lib/role-access";
+import { canViewProfileSection } from "./profileConnections";
 
 const router = Router();
 
@@ -40,6 +41,7 @@ router.get("/leaderboard", requireAuth, async (_req, res): Promise<void> => {
 router.get("/user/:userId", requireAuth, async (req, res): Promise<void> => {
   const userId = Number(req.params.userId);
   if (!Number.isSafeInteger(userId) || userId <= 0) { res.status(400).json({ error: "Invalid user id." }); return; }
+  if (!(await canViewProfileSection(req.currentUser!,userId,"achievements"))) { res.status(403).json({ error: "Achievement visibility is restricted by this profile's privacy settings." }); return; }
   const rows = await db.select().from(userAchievementsTable)
     .where(eq(userAchievementsTable.userId, userId))
     .orderBy(desc(userAchievementsTable.earnedAt));
