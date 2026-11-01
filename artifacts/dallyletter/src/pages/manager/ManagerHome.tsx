@@ -14,6 +14,7 @@ const token = () => localStorage.getItem("dallyletter_token") ?? "";
 
 export default function ManagerHome() {
   const { user } = useAuth();
+  const isNonManagerTeacher = String(user?.role || "").trim().toLowerCase() === "teacher" && !(user as any)?.isManager;
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [pendingTransfers, setPendingTransfers] = useState(0);
@@ -162,9 +163,9 @@ export default function ManagerHome() {
             { label: "View Reports", href: "/manager/reports", icon: BarChart3, color: "bg-purple-600" },
             { label: "Manage Prefects", href: "/manager/prefects", icon: Shield, color: "bg-amber-600" },
             { label: "Transfer Approvals", href: "/manager/transfer-requests", icon: AlertTriangle, color: "bg-rose-600" },
-            { label: "Review Performance Reports", href: "/manager/reports/review", icon: BarChart3, color: "bg-violet-600" },
+            { label: isNonManagerTeacher ? "Build Academic Reports" : "Review Performance Reports", href: "/manager/reports/review", icon: BarChart3, color: "bg-violet-600" },
             { label: "All Review Items", href: "/manager/review-queue", icon: AlertTriangle, color: "bg-red-600" },
-          ].map(item => (
+          ].filter(item => !isNonManagerTeacher || item.href === "/manager/reports/review").map(item => (
             <Link key={item.href} href={item.href}>
               <div className={`${item.color} text-white rounded-xl p-4 flex items-center gap-3 hover:opacity-90 transition-opacity cursor-pointer`}>
                 <item.icon className="h-5 w-5" />
