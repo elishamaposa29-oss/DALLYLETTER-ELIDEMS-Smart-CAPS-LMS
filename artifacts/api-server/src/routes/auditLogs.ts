@@ -682,11 +682,14 @@ router.get("/academic-records/reports/drafts", requireAuth, async (req, res): Pr
 
 router.post("/academic-records/reports/drafts/:id/review", requireAuth, async (req, res): Promise<void> => {
   const reviewer = req.currentUser!;
-  if (!isSeniorManager(reviewer)) { res.status(403).json({ error: "Report approval is available to Senior Managers and Owners." }); return; }
   const id = Number(req.params.id);
   const status = req.body?.status;
   const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0,2000) : null;
   if (!Number.isSafeInteger(id) || id < 1 || !["approved","rejected"].includes(status)) { res.status(400).json({ error: "A valid draft ID and approved/rejected decision are required." }); return; }
+  // Return the same not-found response for completed reviews, regardless of the caller's role.
+  const pending = await pool.query("SELECT id FROM academic_report_drafts WHERE id=$1 AND status='pending_review'", [id]);
+  if (!pending.rowCount) { res.status(404).json({ error: "Pending report draft not found or already reviewed." }); return; }
+  if (!isSeniorManager(reviewer)) { res.status(403).json({ error: "A Senior Manager or Owner must approve or reject this report." }); return; }
   let reviewedReport: any;
   const client = await pool.connect();
   try {
