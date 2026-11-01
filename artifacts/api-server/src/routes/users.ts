@@ -495,7 +495,7 @@ router.post("/users/me/teacher-documents", requireAuth, (req, res): void => {
       if (String(req.currentUser!.role).toLowerCase() !== "teacher") { res.status(403).json({ error: "Teacher account required" }); return; }
       const documentType = typeof req.body?.documentType === "string" ? req.body.documentType.trim() : "";
       if (!["cv", "resume", "certificate", "proof"].includes(documentType)) { res.status(400).json({ error: "Choose CV, resume, certificate or proof" }); return; }
-      const allowed = ["application/pdf","image/jpeg","image/png","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+      const allowed = ["application/pdf","image/jpeg","image/png","image/webp","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
       if (!allowed.includes(req.file.mimetype)) { res.status(415).json({ error: "Unsupported document type" }); return; }
       const result = await pool.query(
         "INSERT INTO teacher_documents (user_id, document_type, file_name, mime_type, size_bytes, data) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, document_type, file_name, mime_type, size_bytes, created_at",
