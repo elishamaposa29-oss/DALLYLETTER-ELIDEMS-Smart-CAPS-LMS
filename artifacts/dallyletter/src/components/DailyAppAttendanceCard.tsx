@@ -179,7 +179,7 @@ export function DailyAppAttendanceCard() {
           const colorClass = isFuture
             ? "bg-muted/40 text-muted-foreground border-border"
             : isPastUnrecorded
-              ? "bg-card text-foreground border-border"
+              ? "bg-orange-100 text-orange-900 border-orange-400 dark:bg-orange-950/50 dark:text-orange-200 dark:border-orange-700"
               : isAbsent
               ? "bg-red-100 text-red-800 border-red-300 dark:bg-red-950/50 dark:text-red-200 dark:border-red-800"
               : isPresent
@@ -189,6 +189,7 @@ export function DailyAppAttendanceCard() {
             <div key={key} aria-label={`${formatDate(key)}: ${isAbsent ? "absence recorded" : isPresent ? "present" : isFuture ? "not reached" : isPastUnrecorded ? "past day with no record" : "no record"}`} className={`relative flex min-h-[42px] flex-col items-center justify-center rounded-lg border text-sm font-semibold sm:min-h-[54px] ${colorClass} ${isWeekend ? "ring-1 ring-inset ring-violet-300 dark:ring-violet-700" : ""} ${isToday ? "outline outline-2 outline-offset-1 outline-primary" : ""}`}>
               <span>{day}</span>
               {status && <span className="text-[9px] font-medium leading-3">{status.present + status.absent} {status.present + status.absent === 1 ? "session" : "sessions"}</span>}
+              {isPastUnrecorded && <span className="text-[9px] font-extrabold leading-3 text-orange-800 dark:text-orange-200">D</span>}
               {isToday && <span className="text-[8px] font-bold uppercase tracking-wide">Today</span>}
             </div>
           );
