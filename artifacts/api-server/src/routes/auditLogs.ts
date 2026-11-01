@@ -74,7 +74,7 @@ function buildAcademicReportPdf(input: { id: number; reportType: string; termLab
     "Report type: " + input.reportType.replace(/_/g, " "),
     "Academic year: " + (report.academicYear || "Not recorded"),
     "Term: " + input.termLabel,
-    "Academic period: " + formatDate(input.periodStart) + " to " + formatDate(input.periodEnd),
+    "Period dates: " + formatDate(input.periodStart) + " to " + formatDate(input.periodEnd),
     "Document reference: DL-AR-" + input.id,
     "Approval date: " + formatDate(input.reviewedAt),
     "Approved by account: " + (input.reviewedBy ?? "Not recorded"),
