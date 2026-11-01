@@ -21,6 +21,8 @@ export function ProtectedRoute({
     if (!isLoading) {
       if (!user) {
         setLocation("/login");
+      } else if (pendingTeacher && !pendingTeacherAllowed) {
+        setLocation("/profile-hub");
       } else {
         // The generated API role model is student/teacher/owner.
         // Keep the existing legacy "admin" compatibility at the runtime boundary
