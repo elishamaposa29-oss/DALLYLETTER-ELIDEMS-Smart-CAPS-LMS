@@ -63,12 +63,14 @@ export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, 
   const selfId = String(user.id ?? "");
   const cvAllowed =
     (method === "GET" && path === "/users/me/teacher-cv") ||
+    (method === "GET" && path === "/users/me/teacher-cv/pdf") ||
     (method === "PATCH" && path === "/users/me/teacher-cv") ||
     (method === "GET" && path === "/users/me/qualifications") ||
     (method === "POST" && path === "/users/me/qualifications") ||
     (method === "POST" && path === "/users/me/teacher-documents") ||
     (method === "POST" && /^\/qualifications\/\d+\/document$/.test(path)) ||
     (method === "GET" && path === "/users/" + selfId + "/teacher-documents") ||
+    (method === "GET" && /^\/users\/\d+\/teacher-documents\/\d+$/.test(path) && path.startsWith("/users/" + selfId + "/")) ||
     (method === "GET" && path === "/users/" + selfId + "/public-profile") ||
     (method === "GET" && path === "/users/" + selfId) ||
     (method === "PATCH" && path === "/users/" + selfId) ||
