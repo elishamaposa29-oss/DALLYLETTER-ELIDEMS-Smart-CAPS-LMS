@@ -550,7 +550,7 @@ router.get("/users/:id/teacher-documents/:docId", requireAuth, async (req, res):
 
 router.patch("/users/:id/teacher-review", requireAuth, async (req, res): Promise<void> => {
   const actor = req.currentUser!;
-  if (!isOwnerRole(actor.role)) { res.status(403).json({ error: "Owner approval is required for teacher applications." }); return; }
+  if (!canReviewTeacherApplication(actor)) { res.status(403).json({ error: "Owner or Senior Manager approval is required for teacher applications." }); return; }
   const id = Number(req.params.id);
   const action = req.body?.action;
   if (!Number.isInteger(id) || !["approve", "reject", "convert_to_learner"].includes(action)) { res.status(400).json({ error: "Invalid teacher review action" }); return; }
