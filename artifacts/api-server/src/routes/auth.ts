@@ -182,12 +182,17 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     const existing = await db.select().from(usersTable).where(eq(usersTable.email, email));
     if (existing.length > 0) { res.status(400).json({ error: "Email already registered" }); return; }
 
+    await pool.query("CREATE TABLE IF NOT EXISTS teacher_cv_workflow_settings(id integer PRIMARY KEY DEFAULT 1 CHECK(id=1),review_duration_days integer NOT NULL DEFAULT 14 CHECK(review_duration_days BETWEEN 1 AND 365),updated_by integer REFERENCES users(id),updated_at timestamptz NOT NULL DEFAULT now())");
+    await pool.query("INSERT INTO teacher_cv_workflow_settings(id,review_duration_days) VALUES(1,14) ON CONFLICT(id) DO NOTHING");
+    const reviewSetting = await pool.query("SELECT review_duration_days FROM teacher_cv_workflow_settings WHERE id=1");
+    const teacherReviewDays = Math.max(1, Math.min(365, Number(reviewSetting.rows[0]?.review_duration_days || 14)));
+
     const [user] = await db.insert(usersTable).values({
       email, passwordHash: await hashPassword(password), name, role,
       grade: grade ?? null, subject: subject ?? null, phone: phone ?? null,
       isPrefect: false, isBlocked: false, isSuspended: false,
       teacherApplicationStatus: role === "teacher" ? "pending_review" : "not_applicable",
-      teacherReviewDeadline: role === "teacher" ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) : null,
+      teacherReviewDeadline: role === "teacher" ? new Date(Date.now() + teacherReviewDays * 24 * 60 * 60 * 1000) : null,
     }).returning();
 
     await clearAuthAttempts("register", email, ipAddress);
