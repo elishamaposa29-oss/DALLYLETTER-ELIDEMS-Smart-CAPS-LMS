@@ -1,4 +1,5 @@
 import { getApiUrl } from "@workspace/api-client-react";
+import RecordBookWorkspace from "@/components/RecordBookWorkspace";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -112,6 +113,7 @@ export default function ManagerReports() {
           </>
         )}
       </div>
+      <RecordBookWorkspace />
     </DashboardLayout>
   );
 }
