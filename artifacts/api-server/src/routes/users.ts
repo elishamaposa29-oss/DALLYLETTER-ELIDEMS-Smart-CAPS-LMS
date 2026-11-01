@@ -566,11 +566,12 @@ router.patch("/users/:id/teacher-review", requireAuth, async (req, res): Promise
     const requiredFields = ["professionalSummary", "education", "experience", "subjects", "address"];
     const missingFields = requiredFields.filter((key) => typeof cv[key] !== "string" || (cv[key] as string).trim().length < 2);
     const docs = await pool.query("SELECT 1 FROM teacher_documents WHERE user_id = $1 AND document_type IN ('resume','certificate') LIMIT 1", [id]);
-    if (missingFields.length || !target.paymentInfo || !docs.rows.length) {
+    const verifiedQualifications = await pool.query("SELECT count(*)::int AS total, count(*) FILTER (WHERE verification_status=$2 AND document_id IS NOT NULL)::int AS verified FROM teacher_qualifications WHERE user_id=$1", [id, "verified"]);
+    if (missingFields.length || !docs.rows.length || Number(verifiedQualifications.rows[0]?.total||0)===0 || Number(verifiedQualifications.rows[0]?.verified||0)!==Number(verifiedQualifications.rows[0]?.total||0)) {
       res.status(409).json({
         error: "Teacher application is incomplete. Complete the CV, add payment information, and upload a resume or certificate before owner approval.",
         missingFields,
-        paymentInformationComplete: Boolean(target.paymentInfo),
+        qualificationVerificationComplete: Number(verifiedQualifications.rows[0]?.total||0)>0 && Number(verifiedQualifications.rows[0]?.verified||0)===Number(verifiedQualifications.rows[0]?.total||0),
         qualificationDocumentUploaded: Boolean(docs.rows.length),
       });
       return;
