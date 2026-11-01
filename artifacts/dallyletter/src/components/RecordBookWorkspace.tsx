@@ -62,9 +62,23 @@ export default function RecordBookWorkspace() {
   }, []);
 
   const loadOwnRecord = useCallback(async () => {
-    try { setRecord(await api("/api/academic-records/me")); }
-    catch (e) { setError(e instanceof Error ? e.message : "Could not load saved academic records."); }
-  }, []);
+    try {
+      const loaded: AcademicData = await api("/api/academic-records/me");
+      if ((!Array.isArray(loaded.pollSubmissions) || loaded.pollSubmissions.length === 0) && role === "student") {
+        try {
+          const polls: Row[] = await api("/api/polls");
+          const ownResults = await Promise.all(polls.slice(0, 100).map(async (poll: Row) => {
+            try {
+              const result = await api(`/api/polls/${poll.id}/my-results`);
+              return result?.submitted ? { submission_id: `poll-${poll.id}`, poll_id: poll.id, title: result.poll?.title || poll.title, subject: poll.subject, grade: poll.grade, score: result.score, total_questions: result.totalQuestions, completed_at: result.completedAt, status: "saved result" } : null;
+            } catch { return null; }
+          }));
+          loaded.pollSubmissions = ownResults.filter(Boolean) as Row[];
+        } catch { /* Poll history may be unavailable; keep the other saved records visible. */ }
+      }
+      setRecord(loaded);
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not load saved academic records."); }
+  }, [role]);
 
   useEffect(() => { if (isStaff) void loadLearners(); else void loadOwnRecord(); }, [isStaff, loadLearners, loadOwnRecord]);
 
