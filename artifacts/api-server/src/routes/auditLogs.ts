@@ -605,7 +605,7 @@ router.post("/academic-records/reports/drafts", requireAuth, async (req, res): P
   if (!learner.rows[0]) { res.status(404).json({ error: "Learner not found." }); return; }
   const reportableExerciseMarks = exerciseMarks.rows.filter(isReportMarkExercise);
   const markSummary = summarizeAcademicMarks(assignmentMarks.rows, reportableExerciseMarks);
-  const attendanceSummary = { sessions: attendance.rows.length, present: attendance.rows.filter((row: any) => String(row.status).toLowerCase() === "present").length, absent: attendance.rows.filter((row: any) => String(row.status).toLowerCase() === "absent").length, late: attendance.rows.filter((row: any) => Boolean(row.is_late)).length };
+  const attendanceSummary = { sessions: attendance.rows.length, present: attendance.rows.filter((row: any) => String(row.status).toLowerCase() === "present" && !row.is_late).length, absent: attendance.rows.filter((row: any) => String(row.status).toLowerCase() === "absent").length, late: attendance.rows.filter((row: any) => Boolean(row.is_late) || String(row.status).toLowerCase() === "late").length };
   const academicYear = periodStart.slice(0, 4);
   const sourceSnapshot = { learner: learner.rows[0], academicYear, termLabel, periodStart, periodEnd, enrollments: enrollments.rows, attendance: attendance.rows, attendanceSummary, awards: awards.rows, assignmentMarks: assignmentMarks.rows, exerciseMarks: reportableExerciseMarks, markSummary, relevantAuditEvents: events.rows };
   let draftContent: unknown;
@@ -615,8 +615,8 @@ router.post("/academic-records/reports/drafts", requireAuth, async (req, res): P
     for (const row of attendance.rows) {
       const item = byClass.get(Number(row.class_id)) || { classId: Number(row.class_id), sessions: 0, present: 0, late: 0, absent: 0 };
       item.sessions++;
-      if (String(row.status).toLowerCase() === "present") item.present++;
-      else if (row.is_late) item.late++;
+      if (row.is_late || String(row.status).toLowerCase() === "late") item.late++;
+      else if (String(row.status).toLowerCase() === "present") item.present++;
       else if (String(row.status).toLowerCase() === "absent") item.absent++;
       byClass.set(item.classId, item);
     }
