@@ -93,7 +93,8 @@ function buildAcademicReportPdf(input: { id: number; reportType: string; termLab
     raw.push("");
     raw.push("SUBJECTS / CLASSES");
     const enrollments = Array.isArray(facts.enrollments) ? facts.enrollments : [];
-    raw.push(enrollments.length ? enrollments.map((entry: any) => [entry.subject || "Subject not recorded", entry.class_title || "Class not recorded", entry.grade ? "Grade " + entry.grade : ""].filter(Boolean).join(" | ")) : "No subject or class enrollment was recorded in this period.");
+    if (enrollments.length) for (const entry of enrollments) raw.push([entry.subject || "Subject not recorded", entry.class_title || "Class not recorded", entry.grade ? "Grade " + entry.grade : ""].filter(Boolean).join(" | "));
+    else raw.push("No subject or class enrollment was recorded in this period.");
     raw.push("ASSIGNMENT MARKS");
     raw.push("Subject / activity | Mark | Status");
     if (assignments.length) for (const row of assignments) raw.push([row.subject || row.title || "Assignment", row.marks == null ? "Not marked" : String(row.marks) + " / " + String(row.total_marks ?? "?"), row.status || "Recorded"].join(" | "));
@@ -146,7 +147,7 @@ function buildAcademicReportPdf(input: { id: number; reportType: string; termLab
     const pageObject = 5 + pageIndex * 2;
     const contentObject = pageObject + 1;
     const textCommands = page.map((line, index) => {
-      const heading = /^(DALLYLETTER ELIDEMS|OFFICIAL ACADEMIC REPORT|SMART CAPS LEARNER REPORT CARD|LEARNER DETAILS|ATTENDANCE SUMMARY|ACADEMIC PERFORMANCE|ASSIGNMENT MARKS|REPORT-ENABLED EXERCISE MARKS|ACHIEVEMENTS|ACADEMIC COMMENTARY)$/.test(line);
+      const heading = /^(DALLYLETTER ELIDEMS|OFFICIAL ACADEMIC REPORT|SMART CAPS LEARNER REPORT CARD|LEARNER DETAILS|ATTENDANCE SUMMARY|ACADEMIC PERFORMANCE|SUBJECTS \/ CLASSES|ASSIGNMENT MARKS|REPORT-ENABLED EXERCISE MARKS|ACHIEVEMENTS|ACADEMIC COMMENTARY)$/.test(line);
       return (index ? "0 -14 Td\n" : "") + (heading ? "/F2 11 Tf\n" : "/F1 9 Tf\n") + "(" + escapePdf(line) + ") Tj";
     }).join("\n");
     const stream = [
