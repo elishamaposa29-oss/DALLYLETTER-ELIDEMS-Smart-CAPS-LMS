@@ -16,6 +16,7 @@ import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMedi
 
 const MAX_CHAT_MEDIA_SIZE_BYTES = MAX_MEDIA_SIZE_BYTES;
 import { isOwnerRole, normalizeRole } from "../lib/auth-middleware";
+import { hasAcceptedProfileConnection, isProfileChatApprovalRequired } from "./profileConnections";
 
 const router: IRouter = Router();
 
@@ -51,6 +52,10 @@ async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]
     .from(usersTable)
     .where(eq(usersTable.id, recipientId));
   if (!recipient || recipient.isBlocked || recipient.isSuspended) return false;
+  if (await isProfileChatApprovalRequired(recipientId)) {
+    return hasAcceptedProfileConnection(sender.id, recipientId);
+  }
+  if (await hasAcceptedProfileConnection(sender.id, recipientId)) return true;
   const senderRole = normalizeRole(sender.role);
   const recipientRole = normalizeRole(recipient.role);
   if (senderRole === "student") {
@@ -62,6 +67,7 @@ async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]
 async function canViewPrivateConversation(user: NonNullable<Express.Request["currentUser"]>, recipientId: number): Promise<boolean> {
   if (!Number.isInteger(recipientId) || recipientId <= 0 || recipientId === user.id) return false;
   if (isOwnerRole(user.role)) return true;
+  if (await isProfileChatApprovalRequired(recipientId) && !(await hasAcceptedProfileConnection(user.id, recipientId))) return false;
   const [conversation] = await db.select({ id: messagesTable.id })
     .from(messagesTable)
     .where(or(
