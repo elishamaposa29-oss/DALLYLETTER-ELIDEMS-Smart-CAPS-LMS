@@ -4,6 +4,7 @@ import { db, auditLogsTable, usersTable, pool } from "@workspace/db";
 import { eq, desc, inArray, and } from "drizzle-orm";
 import { getAIProvider } from "../lib/ai-provider";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
+import { isSeniorManager } from "../lib/role-access";
 import { enqueueEmailNotification } from "../lib/email-notification-queue";
 import { canReviewAcademicTransfer } from "../lib/role-access";
 import { calculateAgeOnDate, getCurrentAcademicYear } from "../lib/academic-year";
@@ -483,9 +484,38 @@ router.get("/academic-records/me", requireAuth, async (req, res): Promise<void> 
   res.json({ enrollments: enrollments.rows, awards: awards.rows, attendance: attendance.rows, assignmentMarks: assignmentMarks.rows, exerciseMarks: exerciseMarks.rows, markSummary });
 });
 
+router.get("/academic-records/report-learners", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  if (canAccessManager(user)) {
+    const result = await pool.query("SELECT id,name,grade FROM users WHERE role IN ('student','learner') AND is_blocked=false ORDER BY name LIMIT 1000");
+    res.json(result.rows);
+    return;
+  }
+  if (String(user.role).toLowerCase() !== "teacher" || user.teacherApplicationStatus === "pending_review") {
+    res.status(403).json({ error: "Academic report creation is available to teachers and managers." }); return;
+  }
+  const result = await pool.query(
+    "SELECT DISTINCT u.id,u.name,u.grade FROM enrollments e JOIN classes c ON c.id=e.class_id JOIN users u ON u.id=e.learner_id WHERE c.teacher_id=$1 AND u.role IN ('student','learner') AND u.is_blocked=false ORDER BY u.name LIMIT 1000",
+    [user.id],
+  );
+  res.json(result.rows);
+});
+
 router.post("/academic-records/reports/drafts", requireAuth, async (req, res): Promise<void> => {
   const creator = req.currentUser!;
-  if (!canAccessManager(creator)) { res.status(403).json({ error: "Manager review access is required to create academic report drafts." }); return; }
+  const creatorRole = String(creator.role || "").trim().toLowerCase().replace(/[ -]+/g, "_");
+  if (!canAccessManager(creator)) {
+    if (creatorRole !== "teacher" || creator.teacherApplicationStatus === "pending_review") {
+      res.status(403).json({ error: "Academic report creation is available to teachers and managers." }); return;
+    }
+    const assignment = await pool.query(
+      "SELECT 1 FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 AND c.teacher_id=$2 LIMIT 1",
+      [Number(req.body?.learnerId), creator.id],
+    );
+    if (!assignment.rowCount) {
+      res.status(403).json({ error: "You can create reports for learners in your assigned classes." }); return;
+    }
+  }
   const learnerId = Number(req.body?.learnerId);
   const reportType = req.body?.reportType;
   const termLabel = typeof req.body?.termLabel === "string" ? req.body.termLabel.trim().slice(0,80) : "";
@@ -544,14 +574,24 @@ router.get("/academic-records/reports/me", requireAuth, async (req, res): Promis
 
 router.get("/academic-records/reports/drafts", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (!canAccessManager(user)) { res.status(403).json({ error: "Manager review access is required." }); return; }
-  const result = await pool.query("SELECT id,learner_id,created_by,report_type,term_label,period_start,period_end,draft_content,status,reviewed_by,review_note,reviewed_at,created_at FROM academic_report_drafts ORDER BY created_at DESC LIMIT 200");
+  const columns = "SELECT d.id,d.learner_id,d.created_by,d.report_type,d.term_label,d.period_start,d.period_end,d.draft_content,d.status,d.reviewed_by,d.review_note,d.reviewed_at,d.created_at,u.name AS learner_name FROM academic_report_drafts d JOIN users u ON u.id=d.learner_id";
+  if (canAccessManager(user)) {
+    const result = await pool.query(columns + " ORDER BY d.created_at DESC LIMIT 200");
+    res.json(result.rows); return;
+  }
+  if (String(user.role).toLowerCase() !== "teacher" || user.teacherApplicationStatus === "pending_review") {
+    res.status(403).json({ error: "Academic reports are available to their learner, assigned teacher, and managers." }); return;
+  }
+  const result = await pool.query(
+    columns + " WHERE d.created_by=$1 OR EXISTS (SELECT 1 FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=d.learner_id AND c.teacher_id=$1) ORDER BY d.created_at DESC LIMIT 200",
+    [user.id],
+  );
   res.json(result.rows);
 });
 
 router.post("/academic-records/reports/drafts/:id/review", requireAuth, async (req, res): Promise<void> => {
   const reviewer = req.currentUser!;
-  if (!canAccessManager(reviewer)) { res.status(403).json({ error: "Authorized manager review is required." }); return; }
+  if (!isSeniorManager(reviewer)) { res.status(403).json({ error: "Report approval is available to Senior Managers and Owners." }); return; }
   const id = Number(req.params.id);
   const status = req.body?.status;
   const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0,2000) : null;
