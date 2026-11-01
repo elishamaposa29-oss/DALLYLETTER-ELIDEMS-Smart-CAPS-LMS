@@ -15,6 +15,8 @@ const token = () => localStorage.getItem("dallyletter_token") ?? "";
 export default function ManagerHome() {
   const { user } = useAuth();
   const isNonManagerTeacher = String(user?.role || "").trim().toLowerCase() === "teacher" && !(user as any)?.isManager;
+  const managerRole = String(user?.role || "").trim().toLowerCase().replace(/[ -]+/g, "_");
+  const canReviewTeacherCvs = ["owner", "platform_owner", "senior_manager"].includes(managerRole) || (managerRole === "manager" && String((user as any)?.managerLevel || "").toLowerCase() === "senior");
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [pendingTransfers, setPendingTransfers] = useState(0);
@@ -102,7 +104,7 @@ export default function ManagerHome() {
               <div className="flex flex-wrap gap-2 border-t pt-3">
                 <Link href="/manager/transfer-requests"><Button size="sm" variant="outline">Transfer approvals ({data?.reviewCounts?.transferRequests ?? pendingTransfers})</Button></Link>
                 <Link href="/manager/reports/review"><Button size="sm" variant="outline">Report review ({data?.reviewCounts?.performanceReports ?? 0})</Button></Link>
-                <Link href="/manager/teacher-cv-workspace"><Button size="sm" variant="outline">Teacher CV approvals</Button></Link>
+                {canReviewTeacherCvs && <Link href="/manager/teacher-cv-workspace"><Button size="sm" variant="outline">Teacher CV approvals</Button></Link>}
                 <Link href="/manager/notifications"><Button size="sm" variant="outline">All alerts</Button></Link>
                 {transferError && <span className="self-center text-xs text-amber-700">{transferError}</span>}
               </div>
