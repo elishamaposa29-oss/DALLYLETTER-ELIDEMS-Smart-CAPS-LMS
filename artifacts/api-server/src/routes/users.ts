@@ -512,7 +512,7 @@ router.get("/users/:id/teacher-documents", requireAuth, async (req, res): Promis
   if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid user id." }); return; }
   const [target] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, id));
   if (!target) { res.status(404).json({ error: "User not found." }); return; }
-  const selfOrManager = actor.id === id || canAccessManager(actor);
+  const selfOrManager = await canViewProfileSection(actor,id,"teacher_documents");
   const professional = ["teacher", "manager", "senior_manager"].includes(String(target.role).toLowerCase());
   if (!selfOrManager && !professional) { res.status(403).json({ error: "Access denied" }); return; }
   const result = selfOrManager
