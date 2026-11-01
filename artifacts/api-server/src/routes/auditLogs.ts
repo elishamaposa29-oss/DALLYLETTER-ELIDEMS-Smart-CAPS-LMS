@@ -547,15 +547,16 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, asyn
 
 router.get("/academic-records/me", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  const [enrollments, awards, attendance, assignmentMarks, exerciseMarks] = await Promise.all([
+  const [enrollments, awards, attendance, assignmentMarks, exerciseMarks, pollSubmissions] = await Promise.all([
     pool.query("SELECT e.id,e.class_id,e.enrolled_at,e.progress_percent,e.status,c.title AS class_title,c.subject,c.teacher_id FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 ORDER BY e.enrolled_at DESC", [user.id]),
     pool.query("SELECT ua.id,ua.earned_at,a.name,a.description,a.icon,a.category,ua.awarded_by_name,ua.note FROM user_achievements ua JOIN achievements a ON a.id=ua.achievement_id WHERE ua.user_id=$1 ORDER BY ua.earned_at DESC", [user.id]),
     pool.query("SELECT class_id,status,joined_at,left_at,duration_minutes,is_late FROM attendance WHERE student_id=$1 ORDER BY joined_at DESC LIMIT 500", [user.id]),
     pool.query("SELECT a.id AS assignment_id,a.title,a.subject,a.grade,a.total_marks,s.id AS submission_id,s.status,s.marks,s.submitted_at,s.graded_at,s.feedback FROM assignment_submissions s JOIN assignments a ON a.id=s.assignment_id WHERE s.student_id=$1 ORDER BY s.submitted_at DESC", [user.id]),
     pool.query("SELECT e.id AS exercise_id,e.title,e.grade,e.total_marks,e.layout AS exercise_layout,s.id AS submission_id,s.attempt_number,s.status,s.total_score,s.percentage,s.submitted_at,s.marked_at,s.returned_at,s.overall_comment FROM exercise_submissions s JOIN exercises e ON e.id=s.exercise_id WHERE s.learner_id=$1 ORDER BY s.submitted_at DESC", [user.id]),
+    pool.query("SELECT ps.id AS submission_id,ps.poll_id,p.title,p.subject,p.grade,p.mode,ps.score,ps.total_questions,ps.completed_at FROM poll_submissions ps JOIN polls p ON p.id=ps.poll_id WHERE ps.student_id=$1 ORDER BY ps.completed_at DESC LIMIT 500", [user.id]),
   ]);
   const markSummary = summarizeAcademicMarks(assignmentMarks.rows, exerciseMarks.rows);
-  res.json({ enrollments: enrollments.rows, awards: awards.rows, attendance: attendance.rows, assignmentMarks: assignmentMarks.rows, exerciseMarks: exerciseMarks.rows, markSummary });
+  res.json({ enrollments: enrollments.rows, awards: awards.rows, attendance: attendance.rows, assignmentMarks: assignmentMarks.rows, exerciseMarks: exerciseMarks.rows, pollSubmissions: pollSubmissions.rows, markSummary });
 });
 
 router.get("/academic-records/report-learners", requireAuth, async (req, res): Promise<void> => {
