@@ -8,7 +8,7 @@ import {Badge} from "@/components/ui/badge";
 type Applicant={id:number;name:string;email:string;created_at:string;status:string;deadline:string;overdue:boolean;document_count:number};
 export default function TeacherCvWorkspace(){
  const {user}=useAuth();const role=String(user?.role||"").toLowerCase().replace(/[ -]+/g,"_");const owner=["owner","platform_owner"].includes(role);
- const [items,setItems]=useState<Applicant[]>([]),[days,setDays]=useState(14),[canEdit,setCanEdit]=useState(false),[selected,setSelected]=useState<number|null>(null),[detail,setDetail]=useState<any>(null),[messages,setMessages]=useState<any[]>([]),[draft,setDraft]=useState(""),[note,setNote]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
+ const [items,setItems]=useState<Applicant[]>([]),[days,setDays]=useState(0),[canEdit,setCanEdit]=useState(false),[selected,setSelected]=useState<number|null>(null),[detail,setDetail]=useState<any>(null),[messages,setMessages]=useState<any[]>([]),[draft,setDraft]=useState(""),[note,setNote]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
  const token=()=>localStorage.getItem("dallyletter_token")||"";
  const cvPart=(key:string)=>{try{return JSON.parse(String(detail?.cv?.[key]||"{}"))}catch{return {}}};
  const api=async(path:string,init:RequestInit={})=>{const r=await fetch(getApiUrl("/api/teacher-cv-workspace"+path),{...init,headers:{Authorization:"Bearer "+token(),"Content-Type":"application/json",...(init.headers||{})}});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||"Request failed");return d};
