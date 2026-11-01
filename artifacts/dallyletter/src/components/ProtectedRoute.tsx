@@ -13,7 +13,9 @@ export function ProtectedRoute({
   allowManagerStaff?: boolean;
 }) {
   const { user, isLoading } = useAuth();
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
+  const pendingTeacher = String(user?.role || "").toLowerCase() === "teacher" && String((user as any)?.teacherApplicationStatus || "").toLowerCase() === "pending_review";
+  const pendingTeacherAllowed = location === "/profile-hub" || location.startsWith("/profile/") || location === "/teacher/qualifications";
 
   useEffect(() => {
     if (!isLoading) {
@@ -35,7 +37,7 @@ export function ProtectedRoute({
         }
       }
     }
-  }, [user, isLoading, allowedRoles, allowManagerStaff, setLocation]);
+  }, [user, isLoading, allowedRoles, allowManagerStaff, setLocation, pendingTeacher, pendingTeacherAllowed]);
 
   const role = user ? String(user.role).toLowerCase().replace(/[ -]+/g, "_") : undefined;
   const hasAllowedRole =
@@ -43,7 +45,7 @@ export function ProtectedRoute({
     (role !== undefined &&
       (allowedRoles.includes(role) || (["admin","platform_owner"].includes(role) && allowedRoles.includes("owner")) || (allowManagerStaff && role === "teacher" && user?.isManager === true) || (role === "junior_manager" && allowedRoles.some(value => ["manager","senior_manager"].includes(value)))));
 
-  if (isLoading || !user || !hasAllowedRole || user.isBlocked) {
+  if (isLoading || !user || !hasAllowedRole || user.isBlocked || (pendingTeacher && !pendingTeacherAllowed)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
