@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { getApiUrl } from "@workspace/api-client-react";
-import { MessageCircle, Users, ShieldCheck, X, Save, Check, UserPlus } from "lucide-react";
+import { MessageCircle, Users, ShieldCheck, Save, Check, UserPlus } from "lucide-react";
 
 type PrivacyMode = "me_only_authorized" | "selected_friends" | "everyone";
 type SectionSetting = { mode: PrivacyMode; selectedUserIds: number[] };
@@ -108,6 +108,7 @@ export function ProfileSocialControls({profileId,isSelf,role}:{profileId:number|
     {!isSelf&&<button type="button" onClick={()=>void connectOrChat()} disabled={busy} aria-label="Connect or open private chat" title="Connect / Chat" className="fixed bottom-6 right-5 z-[80] grid h-14 w-14 place-items-center rounded-full border-2 border-[#b38b00] bg-[#0f2a5a] text-white shadow-xl transition hover:scale-105 disabled:opacity-60">
       {social?.chatPrivacy==="approval_required"&&social?.connection?.status!=="accepted"?<UserPlus className="h-6 w-6"/>:<MessageCircle className="h-6 w-6"/>}
     </button>}
+    {!isSelf&&(error||notice)&&<div role={error?"alert":"status"} className="fixed bottom-24 right-5 z-[80] max-w-[min(90vw,360px)] rounded-lg border bg-background p-3 text-sm shadow-lg">{error||notice}</div>}
     {isSelf&&<div className="mt-5 rounded-xl border border-[#b38b00]/40 bg-background p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div><h3 className="font-bold text-[#0f2a5a]">Profile privacy & connections</h3><p className="text-xs text-muted-foreground">Each section has its own visibility rule. Institutional access is not controlled by learner privacy choices.</p></div>
