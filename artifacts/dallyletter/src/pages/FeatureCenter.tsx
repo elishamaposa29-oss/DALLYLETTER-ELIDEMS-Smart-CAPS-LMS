@@ -22,13 +22,13 @@ const features:Feature[] = [
  {title:"Payments",description:"Open the learner payment flow or staff financial dashboard. Provider-backed payouts remain gated until credentials are configured.",href:"/student/payments",icon:CreditCard,tone:"bg-green-50 text-green-700",tag:"Provider-ready",roles:["student","prefect"]},
  {title:"PWA / install",description:"Use the install experience and test the app shell across supported mobile and desktop browsers.",href:"/docs",icon:Smartphone,tone:"bg-sky-50 text-sky-700",tag:"PWA"},
  {title:"Email notifications",description:"Managers and owners can opt an in-app notification into server-side email delivery.",href:"/manager/notifications",icon:Mail,tone:"bg-violet-50 text-violet-700",tag:"Manager / Owner",roles:["manager","senior_manager","owner"]},
- {title:"Manager dashboard",description:"Monitor school activity, teachers, learners, prefects and reports.",href:"/manager",icon:BookOpen,tone:"bg-violet-50 text-violet-700",tag:"Management",roles:["manager","senior_manager"]},
- {title:"Monitor teachers",description:"Open the authorized teacher monitoring view.",href:"/manager/teachers",icon:Users,tone:"bg-blue-50 text-blue-700",tag:"Management",roles:["manager","senior_manager"]},
- {title:"Monitor learners",description:"Open the authorized learner monitoring view.",href:"/manager/students",icon:Users,tone:"bg-cyan-50 text-cyan-700",tag:"Management",roles:["manager","senior_manager"]},
- {title:"Manager reports",description:"View school-level reporting summaries.",href:"/manager/reports",icon:FileText,tone:"bg-emerald-50 text-emerald-700",tag:"Management",roles:["manager","senior_manager"]},
- {title:"Manager notifications",description:"Review and manage role-authorized notifications.",href:"/manager/notifications",icon:Bell,tone:"bg-amber-50 text-amber-700",tag:"Management",roles:["manager","senior_manager"]},
- {title:"Manager assignments",description:"Open assignment oversight tools.",href:"/manager/assignments",icon:ClipboardList,tone:"bg-indigo-50 text-indigo-700",tag:"Management",roles:["manager","senior_manager"]},
- {title:"Connect",description:"Open manager-authorized school communication.",href:"/manager/chat",icon:MessageSquare,tone:"bg-rose-50 text-rose-700",tag:"Management",roles:["manager","senior_manager"]},
+ {title:"Manager dashboard",description:"Monitor school activity, teachers, learners, prefects and reports.",href:"/manager",icon:BookOpen,tone:"bg-violet-50 text-violet-700",tag:"Management",roles:["manager","senior_manager","owner"]},
+ {title:"Monitor teachers",description:"Open the authorized teacher monitoring view.",href:"/manager/teachers",icon:Users,tone:"bg-blue-50 text-blue-700",tag:"Management",roles:["manager","senior_manager","owner"]},
+ {title:"Monitor learners",description:"Open the authorized learner monitoring view.",href:"/manager/students",icon:Users,tone:"bg-cyan-50 text-cyan-700",tag:"Management",roles:["manager","senior_manager","owner"]},
+ {title:"Manager reports",description:"View school-level reporting summaries.",href:"/manager/reports",icon:FileText,tone:"bg-emerald-50 text-emerald-700",tag:"Management",roles:["manager","senior_manager","owner"]},
+ {title:"Manager notifications",description:"Review and manage role-authorized notifications.",href:"/manager/notifications",icon:Bell,tone:"bg-amber-50 text-amber-700",tag:"Management",roles:["manager","senior_manager","owner"]},
+ {title:"Manager assignments",description:"Open assignment oversight tools.",href:"/manager/assignments",icon:ClipboardList,tone:"bg-indigo-50 text-indigo-700",tag:"Management",roles:["manager","senior_manager","owner"]},
+ {title:"Connect",description:"Open manager-authorized school communication.",href:"/manager/chat",icon:MessageSquare,tone:"bg-rose-50 text-rose-700",tag:"Management",roles:["manager","senior_manager","owner"]},
  {title:"Achievement award review",description:"Review achievement recommendations and approve or decline awards according to manager authority.",href:"/admin/achievements",icon:ShieldCheck,tone:"bg-amber-50 text-amber-700",tag:"Approval",roles:["manager","senior_manager","owner"]},
  {title:"Transfer letter approvals",description:"Review learner transfer requests, record decisions and download approved letters.",href:"/manager/transfer-requests",icon:FileCheck2,tone:"bg-amber-50 text-amber-700",tag:"Approval",roles:["manager","senior_manager","owner"]},
  {title:"Academic report review",description:"Review teacher-prepared academic report drafts before release to learners.",href:"/manager/reports/review",icon:FileText,tone:"bg-violet-50 text-violet-700",tag:"Approval",roles:["manager","senior_manager","owner"]},
@@ -55,9 +55,10 @@ export default function FeatureCenter(){
    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
     {visible.map((f)=>{
       const Icon=f.icon;
+      const destination = f.title === "Lessons & preview" && isOwner ? "/admin/lessons" : f.href;
       return <Card key={f.title} className="group flex h-full flex-col overflow-hidden border-slate-200/80 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg">
        <CardHeader className="pb-3"><div className="flex items-start justify-between gap-3"><div className={`rounded-2xl p-3 ${f.tone}`}><Icon className="h-5 w-5"/></div><Badge variant="outline">{f.tag}</Badge></div><CardTitle className="mt-2 text-lg">{f.title}</CardTitle><CardDescription className="leading-relaxed">{f.description}</CardDescription></CardHeader>
-       <CardContent className="mt-auto pt-0"><Link href={f.href}><Button className="w-full gap-2">Open & test <span aria-hidden>→</span></Button></Link></CardContent>
+       <CardContent className="mt-auto pt-0"><Link href={destination}><Button className="w-full gap-2">Open & test <span aria-hidden>→</span></Button></Link></CardContent>
       </Card>
     })}
    </div>
