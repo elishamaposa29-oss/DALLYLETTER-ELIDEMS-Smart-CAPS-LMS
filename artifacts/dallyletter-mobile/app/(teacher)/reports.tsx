@@ -21,6 +21,8 @@ export default function TeacherAcademicReports() {
   const [termLabel, setTermLabel] = useState("Term 1 " + year);
   const [periodStart, setPeriodStart] = useState(year + "-01-01");
   const [periodEnd, setPeriodEnd] = useState(year + "-12-31");
+  const [admissionNumber, setAdmissionNumber] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
   const [teacherComment, setTeacherComment] = useState("");
   const [conduct, setConduct] = useState("");
   const [result, setResult] = useState("");
@@ -69,9 +71,11 @@ export default function TeacherAcademicReports() {
       const draft = await api("/api/academic-records/reports/drafts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ learnerId: Number(selectedLearner), reportType, termLabel: termLabel.trim(), periodStart, periodEnd, teacherComment, conduct, result }),
+        body: JSON.stringify({ learnerId: Number(selectedLearner), reportType, termLabel: termLabel.trim(), periodStart, periodEnd, admissionNumber, dateOfBirth, teacherComment, conduct, result }),
       });
       Alert.alert("Report draft saved", "Report #" + draft.id + " is awaiting Senior Manager / Owner review.");
+      setAdmissionNumber("");
+      setDateOfBirth("");
       setTeacherComment("");
       setConduct("");
       setResult("");
@@ -127,6 +131,8 @@ export default function TeacherAcademicReports() {
           {field("Term / period label", termLabel, setTermLabel, "e.g. Term 1 2026")}
           {field("Start date (YYYY-MM-DD)", periodStart, setPeriodStart, "2026-01-01")}
           {field("End date (YYYY-MM-DD)", periodEnd, setPeriodEnd, "2026-04-30")}
+          {field("Admission number (optional)", admissionNumber, setAdmissionNumber, "Learner admission number")}
+          {field("Date of birth (YYYY-MM-DD, optional)", dateOfBirth, setDateOfBirth, "YYYY-MM-DD")}
           {field("Conduct / behaviour (optional)", conduct, setConduct, "Teacher assessment, if recorded")}
           {field("Term result / promotion (optional)", result, setResult, "School decision, if recorded")}
           {field("Teacher comment (optional)", teacherComment, setTeacherComment, "Factual comment based on recorded progress", true)}
