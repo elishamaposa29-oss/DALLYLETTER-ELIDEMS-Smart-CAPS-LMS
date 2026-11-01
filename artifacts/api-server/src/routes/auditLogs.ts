@@ -709,7 +709,7 @@ router.get("/academic-records/reports/drafts/:id/download/pdf", requireAuth, asy
   const result = await pool.query("SELECT * FROM academic_report_drafts WHERE id=$1", [id]);
   const row = result.rows[0];
   if (!row || (Number(row.learner_id) !== Number(user.id) && Number(row.created_by) !== Number(user.id) && !canAccessManager(user))) { res.status(404).json({ error: "Approved academic report not found." }); return; }
-  if (row.status !== "approved") { res.status(403).json({ error: "Academic reports cannot be downloaded until an authorized manager approves the draft." }); return; }
+  if (row.status !== "approved") { res.status(403).json({ error: "Academic reports can be downloaded after Senior Manager / Owner approval." }); return; }
   const draftContent = typeof row.draft_content === "string" ? JSON.parse(row.draft_content) : row.draft_content;
   const sourceSnapshot = typeof row.source_snapshot === "string" ? JSON.parse(row.source_snapshot) : row.source_snapshot;
   const learnerName = String(draftContent?.learner || sourceSnapshot?.learner?.name || "Learner record");
@@ -728,7 +728,7 @@ router.get("/academic-records/reports/drafts/:id/download", requireAuth, async (
   const result = await pool.query("SELECT * FROM academic_report_drafts WHERE id=$1", [id]);
   const row = result.rows[0];
   if (!row || (Number(row.learner_id) !== Number(user.id) && Number(row.created_by) !== Number(user.id) && !canAccessManager(user))) { res.status(404).json({ error: "Approved academic report not found." }); return; }
-  if (row.status !== "approved") { res.status(403).json({ error: "Academic reports cannot be downloaded until an authorized manager approves the draft." }); return; }
+  if (row.status !== "approved") { res.status(403).json({ error: "Academic reports can be downloaded after Senior Manager / Owner approval." }); return; }
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Content-Disposition", 'attachment; filename="dallyletter-' + row.report_type + '-' + id + '.json"');
   res.send(JSON.stringify({ reportType: row.report_type, termLabel: row.term_label, periodStart: row.period_start, periodEnd: row.period_end, report: row.draft_content, reviewedAt: row.reviewed_at, reviewedBy: row.reviewed_by }, null, 2));
