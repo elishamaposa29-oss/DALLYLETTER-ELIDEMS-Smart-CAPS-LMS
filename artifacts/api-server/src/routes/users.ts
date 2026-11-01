@@ -671,7 +671,12 @@ router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<v
     user.isPrefect ? pool.query("SELECT count(*)::int AS count FROM lesson_requests WHERE prefect_id=$1", [id]).catch(() => ({ rows: [{count:0}] })) : Promise.resolve({ rows: [{count:0}] }),
   ]);
   res.json({
-    ...serializePublicProfile(user, canViewQualifications ? qualifications.rows : [], canViewSubjects ? teachingSubjects : []),
+    ...serializePublicProfile({
+      ...user,
+      name: canViewOverview ? user.name : "Private profile",
+      avatarUrl: canViewOverview ? user.avatarUrl : null,
+      bio: canViewOverview ? user.bio : null,
+    }, canViewQualifications ? qualifications.rows : [], canViewSubjects ? teachingSubjects : []),
     cover_url: canViewOverview ? coverMedia.cover_url : null,
     cover_type: canViewOverview ? coverMedia.cover_type : null,
     subjects: canViewSubjects ? (isProfessional ? teachingSubjects : learningSubjects) : [],
