@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { readFileSync } from "node:fs";
-import pg from "pg";
-const pool=new pg.Pool({connectionString:process.env.DATABASE_URL});
+import { createRequire } from "node:module";
+const requireDb=createRequire(new URL("../../../lib/db/package.json",import.meta.url));
+const {Pool}=requireDb("pg");
+const pool=new Pool({connectionString:process.env.DATABASE_URL});
 
 const base=process.env.API_BASE_URL||"http://127.0.0.1:4000";
 const capture=process.env.MOCK_PROVIDER_CAPTURE||"/tmp/dallyletter-provider-capture.jsonl";
