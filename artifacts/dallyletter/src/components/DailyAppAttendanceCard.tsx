@@ -279,7 +279,7 @@ export function DailyAppAttendanceCard() {
             </div>
           </div>
           {classError && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{classError}</p>}
-          {offlineClassCache && <p role="status" className="rounded-lg border border-orange-300 bg-orange-50 p-2 text-xs text-orange-900">Offline mode: showing the last saved attendance records on this device. New attendance changes appear after reconnecting.</p>}\n          {offlineClassCache && <p role="status" className="rounded-lg border border-orange-300 bg-orange-50 p-2 text-xs text-orange-900">Offline mode: showing the last saved attendance records on this device. New changes sync after reconnecting.</p>}
+          {offlineClassCache && <p role="status" className="rounded-lg border border-orange-300 bg-orange-50 p-2 text-xs text-orange-900">Offline mode: showing the last saved attendance records on this device. New changes sync after reconnecting.</p>}
           {renderCalendar()}
           {!classLoading && !classError && classRecords.length === 0 && <p className="rounded-lg border border-dashed p-3 text-center text-sm text-muted-foreground">No personal attendance records are available yet. The calendar is intentionally empty until the API returns saved records.</p>}
           <p className="text-[11px] text-muted-foreground">A session is counted only when the attendance API returns a saved present or absent record. Unmarked dates are not counted as absences.</p>
@@ -305,8 +305,8 @@ export function DailyAppAttendanceCard() {
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">{todayRecord ? `${todayRecord.open_count} app opens · ${todayRecord.activity_label}` : "Today's presence appears after a saved access record is returned."}</p>
                 </div>
-                {offlineDailyCache && <p role="status" className="text-xs text-orange-800">Offline mode: showing the last saved daily-access records.</p>}\n                {offlineDailyCache && <p role="status" className="text-xs text-orange-800">Offline mode: showing the last saved daily-access records.</p>}
-                {dailyLoading ? <p className="text-sm text-muted-foreground">Loading recent activity…</p> : <p role="alert" className="text-sm text-destructive">{dailyError}</p> : dailyRecords.length === 0 ? <p className="text-sm text-muted-foreground">No personal daily access records are available yet.</p> : (
+                {offlineDailyCache && <p role="status" className="text-xs text-orange-800">Offline mode: showing the last saved daily-access records.</p>}
+                {dailyLoading ? <p className="text-sm text-muted-foreground">Loading recent activity…</p> : dailyError ? <p role="alert" className="text-sm text-destructive">{dailyError}</p> : dailyRecords.length === 0 ? <p className="text-sm text-muted-foreground">No personal daily access records are available yet.</p> : (
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     {recentDailyRecords.map(record => (
                       <div key={String(record.attendance_date).slice(0, 10)} className="rounded-lg border p-3">
