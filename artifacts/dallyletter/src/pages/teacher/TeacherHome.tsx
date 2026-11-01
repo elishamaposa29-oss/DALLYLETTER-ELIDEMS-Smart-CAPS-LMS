@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
+import RecordBookWorkspace from "@/components/RecordBookWorkspace";
 import { useGetDashboardStats, useListClasses, useGetRecentActivity } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -237,6 +238,7 @@ export default function TeacherHome() {
           </>
         )}
       </div>
+      <RecordBookWorkspace />
       <Dialog open={Boolean(selectedActivity)} onOpenChange={(open) => { if (!open) setSelectedActivity(null); }}>
         <DialogContent>
           <DialogHeader>
