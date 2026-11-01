@@ -52,7 +52,7 @@ const verified=await request("/api/qualifications/"+qualification.data.id+"/veri
 assert.equal(verified.status,200,"Owner can verify an individual qualification");
 const certificateView=await fetch(base+"/api/users/"+approvalApplicant.id+"/teacher-documents/"+certificate.data.document.id,{headers:{Authorization:"Bearer "+ownerToken}});
 assert.equal(certificateView.status,200,"Owner can view the applicant's individual certificate");
-assert.match(certificateView.headers.get("content-type")||"",/application\\/pdf/);
+assert.match(certificateView.headers.get("content-type")||"",/application\/pdf/);
 const approved=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/decision",{token:ownerToken,method:"POST",body:{action:"approve",note:"All qualification evidence verified"}});
 assert.equal(approved.status,200,"Owner can authorize a complete CV with verified qualifications");
 const approvedRow=await pool.query("SELECT role,teacher_application_status FROM users WHERE id=$1",[approvalApplicant.id]);
