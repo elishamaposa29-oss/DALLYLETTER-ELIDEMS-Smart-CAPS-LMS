@@ -32,6 +32,7 @@ import pushRouter from "./push";
 import emailRouter from "./email";
 import contentPermissionsRouter from "./contentPermissions";
 import teacherCvWorkspaceRouter from "./teacherCvWorkspace";
+import profileConnectionsRouter from "./profileConnections";
 
 const router: IRouter = Router();
 
@@ -63,6 +64,7 @@ router.use("/achievements", achievementsRouter);
 router.use("/manager", managerRouter);
 router.use("/exercises", exercisesRouter);
 router.use(socialFeaturesRouter);
+router.use(profileConnectionsRouter);
 router.use(pushRouter);
 router.use(emailRouter);
 router.use(contentPermissionsRouter);
