@@ -55,7 +55,7 @@ export default function StudentChat() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("groupId"); return value && /^\d+$/.test(value) ? Number(value) : null; });
-  const [selectedUserId, setSelectedUserId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("recipientId"); return value && /^\\d+$/.test(value) ? Number(value) : null; });
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("recipientId"); return value && /^\d+$/.test(value) ? Number(value) : null; });
   const [activeTab, setActiveTab] = useState<"groups" | "people">(() => new URLSearchParams(window.location.search).has("recipientId") ? "people" : "groups");
   const [chatFullscreen, setChatFullscreen] = useState(false);
   const [message, setMessage] = useState("");
