@@ -107,6 +107,14 @@ function buildAcademicReportPdf(input: { id: number; reportType: string; termLab
     if (exercises.length) for (const row of exercises) raw.push([row.title || "Exercise", row.total_score == null ? "Not marked" : String(row.total_score) + " / " + String(row.total_marks ?? "?"), row.status || "Recorded"].join(" | "));
     else raw.push("No marked report-enabled exercises were recorded in this period.");
     raw.push("");
+    raw.push("");
+    raw.push("POLL / QUIZ ACTIVITIES");
+    const polls = Array.isArray(facts.pollSubmissions) ? facts.pollSubmissions : [];
+    if (polls.length) for (const poll of polls) raw.push([poll.title || "Learning poll", poll.subject || "Subject not recorded", poll.score == null || poll.total_questions == null ? "Score not available" : String(poll.score) + " / " + String(poll.total_questions), poll.completed_at ? formatDate(poll.completed_at) : "Date not recorded"].join(" | "));
+    else raw.push("No completed learning poll submissions were recorded in this period.");
+    raw.push("CLASS PROGRESS");
+    if (enrollments.length) for (const entry of enrollments) raw.push([entry.subject || "Subject not recorded", entry.class_title || "Class not recorded", entry.progress_percent == null ? "Progress not recorded" : String(entry.progress_percent) + "%", entry.status || "Status not recorded"].join(" | "));
+    else raw.push("No active or completed class enrollment was recorded before the end of this period.");
     raw.push("ATTENDANCE");
     raw.push("Recorded attendance sessions: " + (facts.attendanceCount ?? "Not available"));
     raw.push("Present: " + (facts.attendanceSummary?.present ?? "Not available"));
