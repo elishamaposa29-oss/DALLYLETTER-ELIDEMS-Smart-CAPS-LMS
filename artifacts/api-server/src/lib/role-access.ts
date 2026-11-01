@@ -27,7 +27,7 @@ export function isSeniorManager(user: RoleLikeUser): boolean {
   const role = normalizeRole(user.role);
   if (isOwnerRole(role) || role === "senior_manager") return true;
   if (normalizedManagerLevel(user) !== "senior") return false;
-  if (role === "manager" || role === "junior_manager") return true;
+  if (role === "manager") return true;
   return role === "teacher" && user.isManager === true && !isTeacherPendingReview(user);
 }
 
@@ -35,7 +35,7 @@ export function isSeniorManager(user: RoleLikeUser): boolean {
 export function isJuniorManager(user: RoleLikeUser): boolean {
   const role = normalizeRole(user.role);
   if (isOwnerRole(role) || isSeniorManager(user)) return false;
-  if (role === "manager") return true;
+  if (role === "manager" || role === "junior_manager") return true;
   return role === "teacher" && user.isManager === true && !isTeacherPendingReview(user);
 }
 
