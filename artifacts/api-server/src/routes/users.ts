@@ -634,7 +634,6 @@ router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<v
   await ensureProfileCoverSchema();
   const coverResult = await pool.query("SELECT media_url AS cover_url, media_type AS cover_type FROM user_profile_covers WHERE user_id=$1", [id]).catch(() => ({ rows: [] as Array<{cover_url:string;cover_type:string}> }));
   const coverMedia = coverResult.rows[0] ?? { cover_url: null, cover_type: null };
-  const canViewPrivateSummary = req.currentUser!.id === id || canAccessManager(req.currentUser!);
   const [canViewOverview,canViewQualifications,canViewSubjects,canViewGroups,canViewPayments,canViewAchievements,canViewActivity] = await Promise.all([
     canViewProfileSection(req.currentUser!,id,"overview"),
     canViewProfileSection(req.currentUser!,id,"qualifications"),
