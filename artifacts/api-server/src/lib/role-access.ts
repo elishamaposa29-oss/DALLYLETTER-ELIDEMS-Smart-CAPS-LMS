@@ -82,7 +82,7 @@ export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, 
   const teachingReadPrefixes = ["/dashboard","/teacher","/teacher-dashboard","/teacher-panel","/manager","/manager-panel","/classes","/lessons","/assignments","/exercises","/polls","/study-groups","/attendance","/daily-attendance","/ai","/live-classes","/reports","/academic-records","/record-book","/recordbook","/marking"];
   const teachingRead = method === "GET" && teachingReadPrefixes.some(prefix => path === prefix || path.startsWith(prefix + "/"));
   const profileWrite = method === "PATCH" && path === "/users/" + selfId;
-  return !teachingRead && (!["POST","PUT","PATCH","DELETE"].includes(method) || cvAllowed || profileWrite);
+  return cvAllowed || profileWrite;
 }
 
 export function canManageAcademicContent(user: RoleLikeUser): boolean {
