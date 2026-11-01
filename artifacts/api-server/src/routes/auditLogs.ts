@@ -614,12 +614,18 @@ router.post("/academic-records/reports/drafts", requireAuth, async (req, res): P
     }
     draftContent = { label: termLabel, periodStart, periodEnd, learner: learner.rows[0].name, records: [...byClass.values()], sourceCount: attendance.rows.length, warning: "Draft only. Attendance records are filtered to the inclusive academic period; verify entries before approval." };
   } else {
+    let commentary: string | null = null;
     try {
       const ai = await getAIProvider();
-      if (ai.name === "mock") { res.status(503).json({ error: "A live AI provider must be configured to draft term-performance commentary. No mock AI report was created." }); return; }
-      provider = ai.name;
-      draftContent = { label: termLabel, periodStart, periodEnd, learner: learner.rows[0].name, factualRecords: { enrollments: enrollments.rows, attendanceCount: attendance.rows.length, attendanceSummary, awards: awards.rows, assignmentMarks: assignmentMarks.rows, exerciseMarks: reportableExerciseMarks, markSummary }, commentary: await ai.analyzeData(sourceSnapshot, `Draft a CAPS-aligned term performance report using only the supplied verified records. Use recorded assignment marks and marked exercise scores; distinguish unmarked and exempt work, calculate percentages only from known earned and possible marks, identify missing data, do not invent marks or attendance, and clearly label this as an unapproved draft. Only records submitted or recorded within the inclusive period ${periodStart} through ${periodEnd} are supplied. These source records have already been filtered by their authoritative event timestamps. Do not add records from outside this period. Return concise structured prose.`) };
-    } catch (error) { res.status(503).json({ error: error instanceof Error ? error.message : "Live AI report drafting unavailable." }); return; }
+      if (ai.name !== "mock") {
+        provider = ai.name;
+        commentary = await ai.analyzeData(sourceSnapshot, `Draft concise CAPS-aligned commentary using only the supplied verified records. Do not invent marks, attendance, achievements or learner details. Clearly identify missing information and unmarked work. The supplied records are already restricted to the inclusive period ${periodStart} through ${periodEnd}. Return prose only.`);
+      }
+    } catch (error) {
+      // Report generation must remain usable from saved academic records if AI is unavailable.
+      console.warn("Academic report AI commentary unavailable; using record-based report", error instanceof Error ? error.message : "unknown");
+    }
+    draftContent = { label: termLabel, periodStart, periodEnd, learner: learner.rows[0].name, factualRecords: { enrollments: enrollments.rows, attendanceCount: attendance.rows.length, attendanceSummary, awards: awards.rows, assignmentMarks: assignmentMarks.rows, exerciseMarks: reportableExerciseMarks, markSummary }, commentary, commentaryStatus: commentary ? "generated" : "not_generated" };
   }
   const teacherComment = typeof req.body?.teacherComment === "string" ? req.body.teacherComment.trim().slice(0, 3000) : "";
   const conduct = typeof req.body?.conduct === "string" ? req.body.conduct.trim().slice(0, 120) : "";
