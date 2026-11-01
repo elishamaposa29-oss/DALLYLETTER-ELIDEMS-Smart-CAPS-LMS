@@ -45,7 +45,7 @@ export default function RecordBookWorkspace() {
   const [record, setRecord] = useState<AcademicData | null>(null);
   const [snapshot, setSnapshot] = useState<Row | null>(null);
   const [snapshotId, setSnapshotId] = useState<number | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(false);\n  const [pdfBusy, setPdfBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -76,6 +76,30 @@ export default function RecordBookWorkspace() {
     pollSubmissions: factual.pollSubmissions || [],
     markSummary: factual.markSummary || {}
   } : record;
+
+  async function downloadPdfDraft() {
+    if (!snapshotId) return;
+    setPdfBusy(true); setError("");
+    try {
+      const token = typeof localStorage !== "undefined" ? localStorage.getItem("dallyletter_token") : null;
+      const response = await fetch(getApiUrl(`/api/academic-records/reports/drafts/${snapshotId}/download/pdf`), {
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `PDF request failed (${response.status}).`);
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `RecordBook-${snapshotId}.pdf`;
+      document.body.appendChild(anchor); anchor.click(); anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not download the saved PDF draft."); }
+    finally { setPdfBusy(false); }
+  }
 
   async function buildSnapshot() {
     if (!learnerId || !termLabel.trim() || !periodStart || !periodEnd || periodStart > periodEnd) {
@@ -109,7 +133,7 @@ export default function RecordBookWorkspace() {
       {!isStaff && record && <div className="grid gap-2 sm:grid-cols-4"><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Marked activities</p><p className="text-xl font-bold">{summary?.markedCount ?? 0}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Assignment/exercise marks</p><p className="text-xl font-bold">{summary?.earnedMarks ?? "—"}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Possible marks</p><p className="text-xl font-bold">{summary?.possibleMarks ?? "—"}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Overall percentage</p><p className="text-xl font-bold">{summary?.percentage == null ? "Not available" : `${summary.percentage}%`}</p></div></div>}
       {isStaff && selectedLearner && <p className="text-sm text-muted-foreground">Selected learner: <strong>{selectedLearner.name}</strong>. Only records within the selected period are included in the generated snapshot.</p>}
       {activitySummary && <div className="grid gap-2 sm:grid-cols-4"><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Marked activities</p><p className="text-xl font-bold">{activitySummary.markedCount ?? 0}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Actual marks</p><p className="text-xl font-bold">{activitySummary.earnedMarks ?? "—"}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Possible marks</p><p className="text-xl font-bold">{activitySummary.possibleMarks ?? "—"}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Overall percentage</p><p className="text-xl font-bold">{activitySummary.percentage == null ? "Not available" : `${activitySummary.percentage}%`}</p></div></div>}
-      {isStaff && snapshot && <div className="flex flex-wrap items-center gap-2 rounded-lg border p-3 text-sm"><span>Saved report draft ID: <strong>{snapshotId || "Unavailable"}</strong></span>{snapshotId && <Button variant="outline" size="sm" onClick={()=>window.open(getApiUrl(`/api/academic-records/reports/drafts/${snapshotId}/download/pdf`), "_blank", "noopener,noreferrer")}>Open PDF draft</Button>}<span className="text-muted-foreground">PDF access follows existing report permissions.</span></div>}
+      {isStaff && snapshot && <div className="flex flex-wrap items-center gap-2 rounded-lg border p-3 text-sm"><span>Saved report draft ID: <strong>{snapshotId || "Unavailable"}</strong></span>{snapshotId && <Button variant="outline" size="sm" disabled={pdfBusy} onClick={()=>void downloadPdfDraft()}>{pdfBusy ? "Preparing PDF…" : "Download PDF draft"}</Button>}<span className="text-muted-foreground">PDF access follows existing report permissions.</span></div>}
       {shownRecord && <div className="space-y-5">
         <MarkRows title="Exercises" rows={shownRecord.exerciseMarks || []} kind="exercise" />
         <MarkRows title="Assignments" rows={shownRecord.assignmentMarks || []} kind="assignment" />
