@@ -6,6 +6,7 @@ import { logger } from "./lib/logger";
 import { extractUser } from "./lib/auth-middleware";
 import { db, auditLogsTable } from "@workspace/db";
 import { startTeacherCvExpiryScheduler } from "./lib/teacher-cv-expiry";
+import { canPendingTeacherUseRoute } from "./lib/role-access";
 
 const app: Express = express();
 
@@ -98,36 +99,11 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 // Extract user from Bearer token on all requests
 app.use(extractUser);
 
-// Pending teacher applicants are restricted at the API boundary, not only in navigation.
-// They may manage their own Profile Hub/CV, upload qualification evidence and use application chat.
-// Teaching dashboards, teaching data and every teaching mutation remain inaccessible until approval.
+// Pending teacher applicants may use only their own Profile Hub, CV evidence and application chat.
 app.use((req,res,next)=>{
   const user=req.currentUser;
-  if(!user || String(user.role).toLowerCase()!=="teacher" || user.teacherApplicationStatus!=="pending_review"){next();return;}
-  const path=req.path.startsWith("/api/")?req.path.slice(4):req.path;
-  const method=req.method.toUpperCase();
-  const selfId=String(user.id);
-  const cvPaths=[
-    method==="GET" && path==="/users/me/teacher-cv",
-    method==="PATCH" && path==="/users/me/teacher-cv",
-    method==="GET" && path==="/users/me/qualifications",
-    method==="POST" && path==="/users/me/qualifications",
-    method==="POST" && path==="/users/me/teacher-documents",
-    method==="POST" && /^\/qualifications\/\d+\/document$/.test(path),
-    method==="GET" && path==="/users/"+selfId+"/teacher-documents",
-    method==="GET" && /^\/users\/\d+\/teacher-documents\/\d+$/.test(path) && path.startsWith("/users/"+selfId+"/"),
-    method==="GET" && path==="/users/"+selfId+"/public-profile",
-    method==="GET" && path==="/users/"+selfId,
-    method==="PATCH" && path==="/users/"+selfId,
-    (method==="GET" || method==="POST") && new RegExp("^/teacher-cv-workspace/"+selfId+"/chat$").test(path)
-  ].some(Boolean);
-  const teachingReadPrefixes=["/dashboard","/lessons","/classes","/assignments","/exercises","/polls","/study-groups","/manager","/attendance","/daily-attendance","/ai","/live-classes"];
-  const teachingRead=method==="GET" && teachingReadPrefixes.some(prefix=>path===prefix||path.startsWith(prefix+"/"));
-  const profileWriteAllowed=method==="PATCH" && path==="/users/"+selfId;
-  if(teachingRead || (["POST","PUT","PATCH","DELETE"].includes(method) && !cvPaths && !profileWriteAllowed)){
-    res.status(403).json({error:"Teacher application pending. Only Profile Hub and CV submission tools are available until an Owner or Senior Manager approves and authorizes your teaching access."});return;
-  }
-  next();
+  if(!user || canPendingTeacherUseRoute(user,req.method,req.path)){next();return;}
+  res.status(403).json({error:"Teacher application pending. Only Profile Hub and CV submission tools are available until an Owner or Senior Manager approves and authorizes your teaching access."});
 });
 
 // Record authenticated activity for owner auditability. Request bodies are intentionally excluded.
