@@ -11,7 +11,8 @@ const dateString = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).pad
 const yearStart = `${today.getFullYear()}-01-01`;
 
 async function api(path: string, init?: RequestInit) {
-  const response = await fetch(getApiUrl(path), { ...init, credentials: "include", headers: { "Content-Type": "application/json", ...((init?.headers || {}) as Record<string, string>) } });
+  const token = typeof localStorage !== "undefined" ? localStorage.getItem("dallyletter_token") : null;
+  const response = await fetch(getApiUrl(path), { ...init, credentials: "include", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...((init?.headers || {}) as Record<string, string>) } });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`);
   return data;
@@ -35,7 +36,7 @@ function MarkRows({ title, rows, kind }: { title: string; rows: Row[]; kind: "ex
 export default function RecordBookWorkspace() {
   const { user } = useAuth();
   const role = String(user?.role || "").toLowerCase().replace(/[ -]+/g, "_");
-  const isStaff = ["teacher","manager","senior_manager","owner","admin","platform_owner"].includes(role);
+  const isStaff = ["teacher","manager","senior_manager","junior_manager","owner"].includes(role);
   const [learners, setLearners] = useState<Row[]>([]);
   const [learnerId, setLearnerId] = useState("");
   const [termLabel, setTermLabel] = useState("Term record");
