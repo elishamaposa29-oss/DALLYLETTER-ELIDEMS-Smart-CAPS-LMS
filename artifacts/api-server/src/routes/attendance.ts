@@ -24,7 +24,6 @@ router.get("/my", requireAuth, async (req, res): Promise<void> => {
 });
 
 router.get("/student/:studentId", requireAuth, async (req, res): Promise<void> => {
-  const user = (req as any).user;
   const studentId = parseInt(String(req.params.studentId));
   if (!Number.isSafeInteger(studentId) || studentId <= 0 || !(await canViewProfileSection(req.currentUser!,studentId,"attendance"))) { res.status(403).json({ error: "Attendance visibility is restricted by this profile's privacy settings." }); return; }
   const rows = await db.select().from(attendanceTable)
