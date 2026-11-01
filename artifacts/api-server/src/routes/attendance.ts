@@ -3,6 +3,7 @@ import { db, auditLogsTable } from "@workspace/db";
 import { attendanceTable, usersTable } from "@workspace/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { canManageAcademicContent, requireAuth } from "../lib/auth-middleware";
+import { canViewProfileSection } from "./profileConnections";
 
 const router = Router();
 
@@ -10,7 +11,8 @@ router.get("/class/:classId", requireAuth, async (req, res): Promise<void> => {
   const rows = await db.select().from(attendanceTable)
     .where(eq(attendanceTable.classId, parseInt(String(req.params.classId))))
     .orderBy(desc(attendanceTable.joinedAt));
-  res.json(rows);
+  const visible = await Promise.all(rows.map(async row => (await canViewProfileSection(req.currentUser!,row.studentId,"attendance")) ? row : null));
+  res.json(visible.filter(Boolean));
 });
 
 router.get("/my", requireAuth, async (req, res): Promise<void> => {
@@ -24,7 +26,7 @@ router.get("/my", requireAuth, async (req, res): Promise<void> => {
 router.get("/student/:studentId", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const studentId = parseInt(String(req.params.studentId));
-  if (user.role === "student" && user.id !== studentId) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!Number.isSafeInteger(studentId) || studentId <= 0 || !(await canViewProfileSection(req.currentUser!,studentId,"attendance"))) { res.status(403).json({ error: "Attendance visibility is restricted by this profile's privacy settings." }); return; }
   const rows = await db.select().from(attendanceTable)
     .where(eq(attendanceTable.studentId, studentId))
     .orderBy(desc(attendanceTable.joinedAt));
