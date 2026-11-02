@@ -78,6 +78,69 @@ await assertRouteResponds(
 );
 
 await assertRouteResponds(
+  "/api/profile/me/privacy",
+  { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({}) },
+  [401, 403],
+  "Profile Hub privacy update route is mounted and authentication-gated",
+);
+
+await assertRouteResponds(
+  "/api/teacher-cv-workspace/config",
+  { method: "GET" },
+  [401, 403],
+  "teacher CV workspace config route is mounted and authentication-gated",
+);
+
+await assertRouteResponds(
+  "/api/teacher-cv-workspace/queue",
+  { method: "GET" },
+  [401, 403],
+  "teacher CV review queue route is mounted and authentication-gated",
+);
+
+await assertRouteResponds(
+  "/api/teacher-cv-workspace/config",
+  { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ reviewDurationDays: 30 }) },
+  [401, 403],
+  "teacher CV workflow configuration update is authentication-gated",
+);
+
+await assertRouteResponds(
+  "/api/teacher-cv-workspace/7/chat",
+  { method: "GET" },
+  [401, 403],
+  "teacher CV application chat read is authentication-gated",
+);
+
+await assertRouteResponds(
+  "/api/teacher-cv-workspace/7/chat",
+  { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ body: "unauthenticated smoke probe" }) },
+  [401, 403],
+  "teacher CV application chat write is authentication-gated",
+);
+
+await assertRouteResponds(
+  "/api/qualifications/3/review-history",
+  { method: "GET" },
+  [401, 403],
+  "qualification review history route is mounted and authentication-gated",
+);
+
+await assertRouteResponds(
+  "/api/users/me/teacher-cv/pdf",
+  { method: "GET" },
+  [401, 403],
+  "teacher CV PDF route is mounted and authentication-gated",
+);
+
+await assertRouteResponds(
+  "/api/achievements/award/recommendations",
+  { method: "GET" },
+  [401, 403],
+  "achievement award recommendations route is mounted and authentication-gated",
+);
+
+await assertRouteResponds(
   "/api/auth/google",
   {
     method: "POST",
