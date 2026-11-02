@@ -12,9 +12,13 @@ import { canViewProfileSection } from "./profileConnections";
 
 const router = Router();
 
-router.get("/academic-records/current-year", requireAuth, (_req, res): void => {
+const currentAcademicYearHandler = (_req: any, res: any): void => {
   res.json(getCurrentAcademicYear());
-});
+};
+
+// Keep the older config path compatible while both paths share one authoritative source.
+router.get("/config/currentYear", requireAuth, currentAcademicYearHandler);
+router.get("/academic-records/current-year", requireAuth, currentAcademicYearHandler);
 function isReportMarkExercise(row: any): boolean {
   const layout = row?.exercise_layout ?? row?.layout;
   if (!layout || typeof layout !== "object" || Array.isArray(layout)) return true;
