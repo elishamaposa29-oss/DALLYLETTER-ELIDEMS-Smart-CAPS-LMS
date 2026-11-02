@@ -634,7 +634,7 @@ router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<v
   await ensureProfileCoverSchema();
   const coverResult = await pool.query("SELECT media_url AS cover_url, media_type AS cover_type FROM user_profile_covers WHERE user_id=$1", [id]).catch(() => ({ rows: [] as Array<{cover_url:string;cover_type:string}> }));
   const coverMedia = coverResult.rows[0] ?? { cover_url: null, cover_type: null };
-  const [canViewOverview,canViewQualifications,canViewSubjects,canViewGroups,canViewPayments,canViewAchievements,canViewActivity] = await Promise.all([
+  const [canViewOverview,canViewQualifications,canViewSubjects,canViewGroups,canViewPayments,canViewAchievements,canViewActivity,canViewRegister] = await Promise.all([
     canViewProfileSection(req.currentUser!,id,"overview"),
     canViewProfileSection(req.currentUser!,id,"qualifications"),
     canViewProfileSection(req.currentUser!,id,"subjects"),
@@ -642,6 +642,7 @@ router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<v
     canViewProfileSection(req.currentUser!,id,"payments"),
     canViewProfileSection(req.currentUser!,id,"achievements"),
     canViewProfileSection(req.currentUser!,id,"activity"),
+    canViewProfileSection(req.currentUser!,id,"register"),
   ]);
   const isProfessional = ["teacher", "manager", "senior_manager"].includes(String(user.role).toLowerCase());
   const [qualifications, teacherSubjectRows, learnerSubjectRows] = await Promise.all([
@@ -683,7 +684,7 @@ router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<v
     cover_type: canViewOverview ? coverMedia.cover_type : null,
     subjects: canViewSubjects ? (isProfessional ? teachingSubjects : learningSubjects) : [],
     primary_subject: canViewSubjects ? teacherSubjectRows.rows[0]?.primary_subject ?? null : null,
-    section_visibility: { overview:canViewOverview, qualifications:canViewQualifications, subjects:canViewSubjects, groups:canViewGroups, payments:canViewPayments, achievements:canViewAchievements, activity:canViewActivity },
+    section_visibility: { overview:canViewOverview, qualifications:canViewQualifications, subjects:canViewSubjects, groups:canViewGroups, payments:canViewPayments, achievements:canViewAchievements, activity:canViewActivity, attendance:await canViewProfileSection(req.currentUser!,id,"attendance"), register:canViewRegister, reports:await canViewProfileSection(req.currentUser!,id,"reports"), transfers:await canViewProfileSection(req.currentUser!,id,"transfers"), enrollments:await canViewProfileSection(req.currentUser!,id,"enrollments"), teacher_documents:await canViewProfileSection(req.currentUser!,id,"teacher_documents") },
     grade: canViewOverview ? user.grade : null,
     is_prefect: canViewOverview && Boolean(user.isPrefect),
     is_manager: canViewOverview && Boolean(user.isManager),
