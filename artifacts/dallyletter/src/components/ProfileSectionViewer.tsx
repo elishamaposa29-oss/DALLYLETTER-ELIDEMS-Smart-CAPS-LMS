@@ -25,6 +25,20 @@ export function ProfileSectionViewer({profileId,section,title}:Props) {
   const [data,setData]=useState<any[]|Record<string,any>>([]);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState("");
+  const [downloading,setDownloading]=useState<number|null>(null);
+  const downloadRecord=async(id:number,kind:"report"|"document")=>{
+    setDownloading(id);setError("");
+    try{
+      const token=localStorage.getItem("dallyletter_token");
+      const url=kind==="report"?"/api/academic-records/reports/drafts/"+id+"/download/pdf":"/api/users/"+profileId+"/teacher-documents/"+id;
+      const response=await fetch(getApiUrl(url),{headers:token?{Authorization:"Bearer "+token}:{},cache:"no-store"});
+      if(!response.ok)throw new Error("The protected document could not be opened.");
+      const blob=await response.blob(),objectUrl=URL.createObjectURL(blob),anchor=document.createElement("a");
+      anchor.href=objectUrl;anchor.download=kind==="report"?"dallyletter-academic-report-"+id+".pdf":"dallyletter-teacher-certificate-"+id;
+      document.body.appendChild(anchor);anchor.click();anchor.remove();URL.revokeObjectURL(objectUrl);
+    }catch(e){setError(e instanceof Error?e.message:"The protected document could not be opened.");}
+    finally{setDownloading(null);}
+  };
   useEffect(()=>{
     let active=true;
     const load=async()=>{
@@ -45,6 +59,7 @@ export function ProfileSectionViewer({profileId,section,title}:Props) {
   return <Card className="border-primary/15 shadow-sm">
     <CardHeader><CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5 text-primary"/>{title}</CardTitle></CardHeader>
     <CardContent className="space-y-3">
+      {error&&<p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p>}
       {loading?<p className="text-sm text-muted-foreground">Loading shared records…</p>:error?<p role="alert" className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"><LockKeyhole className="h-4 w-4 shrink-0"/>{error}</p>:rows.length===0?<p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">No saved records have been shared in this section.</p>:rows.map((item:any,index:number)=>{
         const report=item?.draft_content&&typeof item.draft_content==="object"?item.draft_content:{};
         return <article key={item?.id??index} className="rounded-xl border p-3">
@@ -56,6 +71,8 @@ export function ProfileSectionViewer({profileId,section,title}:Props) {
           {report?.commentary&&<p className="mt-2 whitespace-pre-wrap text-sm">{String(report.commentary)}</p>}
           {item?.review_note&&<p className="mt-2 text-sm"><strong>Review note:</strong> {item.review_note}</p>}
           {item?.reason&&section==="transfers"&&<p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{item.reason}</p>}
+          {section==="reports"&&item?.id&&<button type="button" disabled={downloading===Number(item.id)} onClick={()=>void downloadRecord(Number(item.id),"report")} className="mt-3 rounded-lg bg-[#0f2a5a] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">{downloading===Number(item.id)?"Preparing PDF…":"Download approved report PDF"}</button>}
+          {section==="teacher_documents"&&item?.id&&<button type="button" disabled={downloading===Number(item.id)} onClick={()=>void downloadRecord(Number(item.id),"document")} className="mt-3 rounded-lg bg-[#0f2a5a] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">{downloading===Number(item.id)?"Preparing file…":"Open certificate"}</button>}
           {item?.subjects&&Array.isArray(item.subjects)&&<p className="mt-2 text-sm">{item.subjects.join(", ")}</p>}
           {item?.lesson_requests!=null&&<p className="mt-1 text-sm">Lesson requests: {item.lesson_requests}</p>}
           {item?.days_present!=null&&<p className="mt-1 text-sm">Recorded presence days: {item.days_present}</p>}
