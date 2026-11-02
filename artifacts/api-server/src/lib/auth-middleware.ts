@@ -25,18 +25,10 @@ export async function extractUser(req: Request, _res: Response, next: NextFuncti
     if (parsed && await isAuthSessionActive(token)) {
       const [user] = await db.select().from(usersTable).where(eq(usersTable.id, parsed.userId));
       if (user) {
-        let effectiveUser = user;
-        if (normalizeRole(user.role) === "teacher" && user.teacherApplicationStatus === "pending_review" && user.teacherReviewDeadline && user.teacherReviewDeadline.getTime() <= Date.now()) {
-          const [converted] = await db.update(usersTable).set({
-            role: "student",
-            teacherApplicationStatus: "auto_converted",
-            teacherReviewDeadline: null,
-            subject: null,
-            isManager: false,
-            isPrefect: false,
-          }).where(eq(usersTable.id, user.id)).returning();
-          if (converted) effectiveUser = converted;
-        }
+        // Expired teacher applications are processed by the CV workflow only after
+        // notification email is accepted. Authentication must never silently convert
+        // a teacher account before the applicant has been informed.
+        const effectiveUser = user;
         // Keep one canonical role representation throughout the request.
         if (!effectiveUser.isBlocked && !effectiveUser.isSuspended) req.currentUser = { ...effectiveUser, role: normalizeRole(effectiveUser.role) };
       }
