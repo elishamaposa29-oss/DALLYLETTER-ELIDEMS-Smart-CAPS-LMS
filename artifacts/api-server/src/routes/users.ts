@@ -528,6 +528,9 @@ router.get("/users/:id/teacher-documents/:docId", requireAuth, async (req, res):
   if (!Number.isInteger(id) || id <= 0 || !Number.isInteger(docId) || docId <= 0) { res.status(400).json({ error: "Invalid document reference." }); return; }
   const [target] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, id));
   if (!target) { res.status(404).json({ error: "User not found." }); return; }
+  if (!(await canViewProfileSection(actor, id, "teacher_documents"))) {
+    res.status(403).json({ error: "Teacher document visibility is restricted by this profile's privacy settings." }); return;
+  }
   const selfOrManager = actor.id === id || canAccessManager(actor);
   const professional = ["teacher", "manager", "senior_manager"].includes(String(target.role).toLowerCase());
   const result = selfOrManager
@@ -807,6 +810,9 @@ router.get("/qualifications/pending", requireAuth, async(req,res):Promise<void>=
 router.get("/qualifications/:userId", requireAuth, async (req, res): Promise<void> => {
   const id = Number(req.params.userId);
   if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid user id." }); return; }
+  if (!(await canViewProfileSection(req.currentUser!, id, "qualifications"))) {
+    res.status(403).json({ error: "Qualification visibility is restricted by this profile's privacy settings." }); return;
+  }
   const result = await pool.query("SELECT id,title,institution,year,verification_status,created_at FROM teacher_qualifications WHERE user_id=$1 AND verification_status='verified' ORDER BY created_at DESC", [id]);
   res.json(result.rows);
 });
