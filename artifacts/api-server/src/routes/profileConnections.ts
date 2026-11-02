@@ -131,7 +131,7 @@ router.get("/profile/:id/section/:section", requireAuth, async (req,res): Promis
       data=(await pool.query("SELECT attendance_date,time_zone,status,open_count,first_open_at,last_open_at,last_source,activity_label FROM daily_app_attendance WHERE user_id=$1 ORDER BY attendance_date DESC LIMIT 120",[targetId])).rows;
       break;
     case "payments":
-      data=(await pool.query("SELECT id,month,year,amount,currency,status,created_at,notes FROM payments WHERE student_id=$1 ORDER BY created_at DESC LIMIT 100",[targetId])).rows;
+      data=(await pool.query("SELECT id,month,year,amount,status,created_at,notes FROM payments WHERE student_id=$1 ORDER BY created_at DESC LIMIT 100",[targetId])).rows;
       break;
     case "transfers":
       data=(await pool.query("SELECT id,reason,status,review_note,reviewed_at,created_at FROM academic_transfer_requests WHERE learner_id=$1 ORDER BY created_at DESC LIMIT 100",[targetId])).rows;
