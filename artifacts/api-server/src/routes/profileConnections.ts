@@ -201,7 +201,7 @@ router.post("/profile/:id/connect", requireAuth, async (req,res): Promise<void> 
     [actor.id,targetId],
   );
   await db.insert(notificationsTable).values([
-    {recipientId:targetId,title:"New connection request",message:actor.name+" wants to connect with you.",link:"/profile/connections",type:"connection_request"},
+    {recipientId:targetId,title:"New connection request",message:actor.name+" wants to connect with you.",link:"/profile-hub",type:"connection_request"},
     {recipientId:actor.id,title:"Connection request sent",message:"Your connection request to "+target.name+" was sent.",link:"/profile/"+targetId,type:"connection_request"},
   ]);
   res.status(201).json({status:"pending",connectionId:Number(inserted.rows[0].id)});
