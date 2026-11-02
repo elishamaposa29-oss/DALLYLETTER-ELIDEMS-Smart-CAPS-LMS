@@ -8,6 +8,7 @@ import { isSeniorManager } from "../lib/role-access";
 import { enqueueEmailNotification } from "../lib/email-notification-queue";
 import { canReviewAcademicTransfer } from "../lib/role-access";
 import { calculateAgeOnDate, getCurrentAcademicYear } from "../lib/academic-year";
+import { canViewProfileSection } from "./profileConnections";
 
 const router = Router();
 
@@ -434,7 +435,9 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, asyn
     [id],
   );
   const row = result.rows[0];
-  if (!row || (Number(row.learner_id) !== Number(user.id) && !canReviewAcademicTransfer(user))) { res.status(404).json({ error: "Approved transfer letter not found." }); return; }
+  if (!row) { res.status(404).json({ error: "Approved transfer letter not found." }); return; }
+  const sharedTransferAccess = await canViewProfileSection(user,Number(row.learner_id),"transfers");
+  if (Number(row.learner_id) !== Number(user.id) && !canReviewAcademicTransfer(user) && !sharedTransferAccess) { res.status(404).json({ error: "Approved transfer letter not found." }); return; }
   if (row.status !== "approved") { res.status(403).json({ error: "The transfer letter cannot be downloaded until an authorized manager approves the request." }); return; }
   const [enrollmentRows, attendanceRows, awardRows, subjectRows, reportRows] = await Promise.all([
     pool.query("SELECT c.title,c.subject,c.grade,e.enrolled_at,e.progress_percent,e.status FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 ORDER BY e.enrolled_at DESC LIMIT 12", [row.learner_id]),
@@ -749,7 +752,9 @@ router.get("/academic-records/reports/drafts/:id/download/pdf", requireAuth, asy
   if (!Number.isSafeInteger(id) || id < 1) { res.status(400).json({ error: "Invalid draft ID." }); return; }
   const result = await pool.query("SELECT * FROM academic_report_drafts WHERE id=$1", [id]);
   const row = result.rows[0];
-  if (!row || (Number(row.learner_id) !== Number(user.id) && Number(row.created_by) !== Number(user.id) && !canAccessManager(user))) { res.status(404).json({ error: "Approved academic report not found." }); return; }
+  if (!row) { res.status(404).json({ error: "Approved academic report not found." }); return; }
+  const sharedReportAccess = await canViewProfileSection(user,Number(row.learner_id),"reports");
+  if (Number(row.learner_id) !== Number(user.id) && Number(row.created_by) !== Number(user.id) && !canAccessManager(user) && !sharedReportAccess) { res.status(404).json({ error: "Approved academic report not found." }); return; }
   if (row.status !== "approved") { res.status(403).json({ error: "Academic reports can be downloaded after Senior Manager / Owner approval." }); return; }
   const draftContent = typeof row.draft_content === "string" ? JSON.parse(row.draft_content) : row.draft_content;
   const sourceSnapshot = typeof row.source_snapshot === "string" ? JSON.parse(row.source_snapshot) : row.source_snapshot;
@@ -768,7 +773,9 @@ router.get("/academic-records/reports/drafts/:id/download", requireAuth, async (
   if (!Number.isSafeInteger(id) || id < 1) { res.status(400).json({ error: "Invalid draft ID." }); return; }
   const result = await pool.query("SELECT * FROM academic_report_drafts WHERE id=$1", [id]);
   const row = result.rows[0];
-  if (!row || (Number(row.learner_id) !== Number(user.id) && Number(row.created_by) !== Number(user.id) && !canAccessManager(user))) { res.status(404).json({ error: "Approved academic report not found." }); return; }
+  if (!row) { res.status(404).json({ error: "Approved academic report not found." }); return; }
+  const sharedReportAccess = await canViewProfileSection(user,Number(row.learner_id),"reports");
+  if (Number(row.learner_id) !== Number(user.id) && Number(row.created_by) !== Number(user.id) && !canAccessManager(user) && !sharedReportAccess) { res.status(404).json({ error: "Approved academic report not found." }); return; }
   if (row.status !== "approved") { res.status(403).json({ error: "Academic reports can be downloaded after Senior Manager / Owner approval." }); return; }
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Content-Disposition", 'attachment; filename="dallyletter-' + row.report_type + '-' + id + '.json"');
