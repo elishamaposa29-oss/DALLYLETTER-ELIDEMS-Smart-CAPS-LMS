@@ -77,6 +77,8 @@ jobs:
         run: pnpm run db:push
       - name: Build API
         run: pnpm --dir artifacts/api-server run build
+      - name: Apply additive transfer form-data migration twice (idempotency check)
+        run: pnpm --dir lib/db run migrate:transfer-form-data && pnpm --dir lib/db run migrate:transfer-form-data
       - name: Start API with isolated provider mocks
         shell: bash
         run: |
@@ -98,6 +100,8 @@ jobs:
           done
           test -s /tmp/pr84-health.json
           node -e 'const fs=require("fs");const v=JSON.parse(fs.readFileSync("/tmp/pr84-health.json","utf8"));if(v.status!=="ok")process.exit(1)'
+      - name: Verify teacher CV restrictions, rejection email, learner conversion and expiry
+        run: node artifacts/api-server/scripts/test-teacher-cv-workflow.mjs
       - name: Test schema discovery, authenticated enrollment, progress, OTP, queue and webhook signatures
         run: pnpm --dir lib/db run test:profile-hub-integration
       - name: Verify password reset end to end against isolated PostgreSQL
