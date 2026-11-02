@@ -45,6 +45,20 @@ await assertRouteResponds(
 );
 
 await assertRouteResponds(
+  "/api/profile/4/social",
+  { method: "GET" },
+  [401, 403],
+  "Profile Hub social route is mounted and authentication-gated",
+);
+
+await assertRouteResponds(
+  "/api/academic-records/report-learners",
+  { method: "GET" },
+  [401, 403],
+  "academic report learner-list route is mounted and authentication-gated",
+);
+
+await assertRouteResponds(
   "/api/manager-permissions/me",
   { method: "GET" },
   [401, 403],
