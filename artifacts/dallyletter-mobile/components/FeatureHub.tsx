@@ -764,11 +764,37 @@ export default function FeatureHub() {
   };
 
   const openPrivateConversation = async (person:Row) => {
-    if (!person?.id || Number(person.id)===Number(user?.id)) return;
-    setPrivateRecipient(person); setPrivateMessages([]); setPrivateDraft(""); setPrivateBusy(true); setError("");
-    try { const messages = await request("/api/messages?recipientId="+encodeURIComponent(String(person.id))); setPrivateMessages(Array.isArray(messages)?messages:[]); }
-    catch(e) { setError(e instanceof Error?e.message:"Could not load private conversation."); }
-    finally { setPrivateBusy(false); }
+    if (!person?.id || Number(person.id)===Number(user?.id) || privateBusy) return;
+    setPrivateBusy(true); setError("");
+    try {
+      const social = await request("/api/profile/"+encodeURIComponent(String(person.id))+"/social");
+      if (social?.chatPrivacy === "approval_required" && social?.connection?.status !== "accepted") {
+        if (social?.connection?.status === "pending" && social?.connection?.requestedByMe) {
+          Alert.alert("Connection request pending", "Your request has been sent. Private chat unlocks only after the other user accepts.");
+          return;
+        }
+        if (social?.connection?.status === "pending" && !social?.connection?.requestedByMe) {
+          Alert.alert("Connection request received", "This user has already requested to connect with you.", [
+            { text: "Decline", style: "destructive", onPress: () => { void request("/api/profile/connections/"+social.connection.id,{method:"PATCH",body:JSON.stringify({status:"rejected"})}).catch(e=>Alert.alert("Could not decline request",e instanceof Error?e.message:"Please retry.")); } },
+            { text: "Accept", onPress: () => { void (async()=>{ await request("/api/profile/connections/"+social.connection.id,{method:"PATCH",body:JSON.stringify({status:"accepted"})}); Alert.alert("Connection accepted","Private chat is now available."); await openPrivateConversation(person); })().catch(e=>Alert.alert("Could not accept request",e instanceof Error?e.message:"Please retry.")); } },
+            { text: "Not now", style: "cancel" },
+          ]);
+          return;
+        }
+        await request("/api/profile/"+encodeURIComponent(String(person.id))+"/connect",{method:"POST",body:JSON.stringify({})});
+        Alert.alert("Connection request sent","Both users have been notified. Private chat unlocks only after acceptance.");
+        return;
+      }
+      if (!social?.canChat) {
+        Alert.alert("Chat unavailable","The existing school chat permissions or this user's privacy settings do not allow this conversation.");
+        return;
+      }
+      setPrivateRecipient(person); setPrivateMessages([]); setPrivateDraft("");
+      const messages = await request("/api/messages?recipientId="+encodeURIComponent(String(person.id)));
+      setPrivateMessages(Array.isArray(messages)?messages:[]);
+    } catch(e) {
+      Alert.alert("Chat unavailable",e instanceof Error?e.message:"Could not check connection permissions or load this conversation.");
+    } finally { setPrivateBusy(false); }
   };
   const sendPrivateMessage = async () => {
     if (!privateRecipient || !privateDraft.trim() || privateBusy) return;
