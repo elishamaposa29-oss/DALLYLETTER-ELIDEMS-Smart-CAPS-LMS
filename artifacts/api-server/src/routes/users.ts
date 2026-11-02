@@ -652,7 +652,7 @@ router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<v
   const isProfessional = ["teacher", "manager", "senior_manager"].includes(String(user.role).toLowerCase());
   const [qualifications, teacherSubjectRows, learnerSubjectRows] = await Promise.all([
     isProfessional
-      ? pool.query("SELECT title, verification_status FROM teacher_qualifications WHERE user_id = $1 AND verification_status = 'verified' ORDER BY created_at DESC", [id])
+      ? pool.query("SELECT title, verification_status FROM teacher_qualifications WHERE user_id = $1 AND verification_status = 'verified' AND source = 'user' ORDER BY created_at DESC", [id])
       : Promise.resolve({ rows: [] as Array<{ title: string; verification_status: string }> }),
     isProfessional
       ? pool.query("SELECT subjects_to_teach, primary_subject FROM teacher_subjects WHERE user_id = $1", [id])
@@ -813,7 +813,7 @@ router.get("/qualifications/:userId", requireAuth, async (req, res): Promise<voi
   if (!(await canViewProfileSection(req.currentUser!, id, "qualifications"))) {
     res.status(403).json({ error: "Qualification visibility is restricted by this profile's privacy settings." }); return;
   }
-  const result = await pool.query("SELECT id,title,institution,year,verification_status,created_at FROM teacher_qualifications WHERE user_id=$1 AND verification_status='verified' ORDER BY created_at DESC", [id]);
+  const result = await pool.query("SELECT id,title,institution,year,verification_status,created_at FROM teacher_qualifications WHERE user_id=$1 AND verification_status='verified' AND source='user' ORDER BY created_at DESC", [id]);
   res.json(result.rows);
 });
 
