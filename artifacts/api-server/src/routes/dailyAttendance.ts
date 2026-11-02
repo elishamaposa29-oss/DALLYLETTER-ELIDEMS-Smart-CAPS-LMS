@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { canManageAcademicContent, requireAuth } from "../lib/auth-middleware";
+import { canViewProfileSection } from "./profileConnections";
 
 const router = Router();
 const SYSTEM_TIME_ZONE = process.env.ATTENDANCE_TIME_ZONE || process.env.TZ || "UTC";
@@ -94,6 +95,19 @@ router.get("/me", requireAuth, async (req, res): Promise<void> => {
 
 // Staff can review daily access for all account roles. A missing record for the
 // current local date is "pending", never falsely presented as confirmed absence.
+router.get("/user/:userId", requireAuth, async (req, res): Promise<void> => {
+  const targetId=Number(req.params.userId);
+  if(!Number.isSafeInteger(targetId)||targetId<=0){res.status(400).json({error:"Invalid user id."});return;}
+  if(!(await canViewProfileSection(req.currentUser!,targetId,"register"))){res.status(403).json({error:"Daily register visibility is restricted by this profile's privacy settings."});return;}
+  const result=await pool.query(
+    `SELECT attendance_date,time_zone,status,open_count,first_open_at,last_open_at,last_source,activity_label
+     FROM daily_app_attendance WHERE user_id=$1 ORDER BY attendance_date DESC LIMIT 120`,
+    [targetId],
+  );
+  res.setHeader("Cache-Control","private, no-store");
+  res.json({records:result.rows});
+});
+
 router.get("/today", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser;
   if (!user) { res.status(401).json({ error: "Authentication required" }); return; }
