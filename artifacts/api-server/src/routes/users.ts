@@ -670,6 +670,7 @@ router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<v
     pool.query("SELECT count(*)::int AS count FROM user_achievements WHERE user_id=$1", [id]).catch(() => ({ rows: [{count:0}] })),
     user.isPrefect ? pool.query("SELECT count(*)::int AS count FROM lesson_requests WHERE prefect_id=$1", [id]).catch(() => ({ rows: [{count:0}] })) : Promise.resolve({ rows: [{count:0}] }),
   ]);
+  res.setHeader("Cache-Control","private, no-store, no-cache, must-revalidate");
   res.json({
     ...serializePublicProfile({
       ...user,
