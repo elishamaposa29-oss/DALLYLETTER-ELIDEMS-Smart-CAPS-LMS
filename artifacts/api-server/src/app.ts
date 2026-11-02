@@ -5,8 +5,13 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 import { extractUser } from "./lib/auth-middleware";
 import { db, auditLogsTable } from "@workspace/db";
+import { startTeacherCvExpiryScheduler } from "./lib/teacher-cv-expiry";
+import { canPendingTeacherUseRoute } from "./lib/role-access";
 
 const app: Express = express();
+
+// Owner-configured teacher CV expiry is checked by the API service on startup and every five minutes.
+startTeacherCvExpiryScheduler();
 
 const configuredOrigins = (process.env.CORS_ORIGINS ?? "")
   .split(",")
@@ -94,7 +99,12 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 // Extract user from Bearer token on all requests
 app.use(extractUser);
 
-app.use("/api", router);
+// Pending teacher applicants may use only their own Profile Hub, CV evidence and application chat.
+app.use((req,res,next)=>{
+  const user=req.currentUser;
+  if(!user || canPendingTeacherUseRoute(user,req.method,req.path)){next();return;}
+  res.status(403).json({error:"Teacher application pending. Only Profile Hub and CV submission tools are available until an Owner or Senior Manager approves and authorizes your teaching access."});
+});
 
 // Record authenticated activity for owner auditability. Request bodies are intentionally excluded.
 app.use((req, res, next) => {
@@ -111,6 +121,10 @@ app.use((req, res, next) => {
   });
   next();
 });
+
+app.use("/api", router);
+
+
 
 export default app;
 
