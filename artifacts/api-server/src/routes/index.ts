@@ -26,11 +26,14 @@ import ownerCommandCenterRouter from "./ownerCommandCenter";
 import staffPaymentsRouter from "./staffPayments";
 import achievementsRouter from "./achievements";
 import managerRouter from "./manager";
+import managerPermissionsRouter from "./managerPermissions";
 import exercisesRouter from "./exercises";
 import socialFeaturesRouter from "./socialFeatures";
 import pushRouter from "./push";
 import emailRouter from "./email";
 import contentPermissionsRouter from "./contentPermissions";
+import teacherCvWorkspaceRouter from "./teacherCvWorkspace";
+import profileConnectionsRouter from "./profileConnections";
 
 const router: IRouter = Router();
 
@@ -60,10 +63,13 @@ router.use(ownerAlertsRouter);
 router.use(staffPaymentsRouter);
 router.use("/achievements", achievementsRouter);
 router.use("/manager", managerRouter);
+router.use("/manager-permissions", managerPermissionsRouter);
 router.use("/exercises", exercisesRouter);
 router.use(socialFeaturesRouter);
+router.use(profileConnectionsRouter);
 router.use(pushRouter);
 router.use(emailRouter);
 router.use(contentPermissionsRouter);
+router.use("/teacher-cv-workspace", teacherCvWorkspaceRouter);
 
 export default router;
