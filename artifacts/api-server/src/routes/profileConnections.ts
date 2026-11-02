@@ -51,9 +51,10 @@ export async function hasAcceptedProfileConnection(userA: number, userB: number)
 export async function canViewProfileSection(actor: NonNullable<Express.Request["currentUser"]>, targetId: number, section: string): Promise<boolean> {
   if (actor.id === targetId) return true;
   const role = normalizeRole(actor.role);
-  if (["owner","platform_owner","senior_manager","manager","junior_manager"].includes(role) || (role === "teacher" && actor.isManager === true)) return true;
+  const approvedTeacher = role === "teacher" && actor.teacherApplicationStatus !== "pending_review";
+  if (["owner","platform_owner","senior_manager","manager","junior_manager"].includes(role) || (approvedTeacher && actor.isManager === true)) return true;
   await ensureSchema();
-  if (role === "teacher") {
+  if (approvedTeacher) {
     const following = await pool.query("SELECT 1 FROM follows WHERE follower_id=$1 AND target_user_id=$2 LIMIT 1", [actor.id,targetId]);
     if (following.rows.length) return true;
   }
@@ -138,7 +139,7 @@ router.get("/profile/:id/section/:section", requireAuth, async (req,res): Promis
       break;
     case "teacher_documents":{
       const actor=req.currentUser!,actorRole=normalizeRole(actor.role);
-      const privateDocuments=actor.id===targetId||["owner","platform_owner","senior_manager","manager","junior_manager"].includes(actorRole)||(actorRole==="teacher"&&actor.isManager===true);
+      const privateDocuments=actor.id===targetId||["owner","platform_owner","senior_manager","manager","junior_manager"].includes(actorRole)||(actorRole==="teacher"&&actor.isManager===true&&actor.teacherApplicationStatus!=="pending_review");
       const query=privateDocuments
         ? "SELECT id,document_type,file_name,mime_type,size_bytes,created_at FROM teacher_documents WHERE user_id=$1 ORDER BY created_at DESC"
         : "SELECT id,document_type,file_name,mime_type,size_bytes,created_at FROM teacher_documents WHERE user_id=$1 AND document_type='certificate' ORDER BY created_at DESC";
