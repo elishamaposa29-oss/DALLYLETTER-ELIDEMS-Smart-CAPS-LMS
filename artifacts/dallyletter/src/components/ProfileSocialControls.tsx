@@ -50,9 +50,10 @@ export function ProfileSocialControls({profileId,isSelf,role}:{profileId:number|
         ]);
         setFriends(friendRows);setRequests(requestRows);
         const next:Record<string,SectionSetting>={};
+        const publicByDefault=new Set(["overview","qualifications","subjects","achievements","teacher_documents"]);
         for(const [key] of sections){
           const saved=data.privacy?.[key];
-          next[key]={mode:saved?.mode||"everyone",selectedUserIds:Array.isArray(saved?.selectedUserIds)?saved.selectedUserIds.map(Number):[]};
+          next[key]={mode:saved?.mode||(publicByDefault.has(key)?"everyone":"me_only_authorized"),selectedUserIds:Array.isArray(saved?.selectedUserIds)?saved.selectedUserIds.map(Number):[]};
         }
         setSettings(next);setChatPrivacy(data.chatPrivacy==="approval_required"?"approval_required":"everyone");
       }
