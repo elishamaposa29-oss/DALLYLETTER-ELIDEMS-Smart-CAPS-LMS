@@ -67,8 +67,13 @@ async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]
 async function canViewPrivateConversation(user: NonNullable<Express.Request["currentUser"]>, recipientId: number): Promise<boolean> {
   if (!Number.isInteger(recipientId) || recipientId <= 0 || recipientId === user.id) return false;
   if (isOwnerRole(user.role)) return true;
-  if (await isProfileChatApprovalRequired(recipientId) && !(await hasAcceptedProfileConnection(user.id, recipientId))) return false;
-  if (await hasAcceptedProfileConnection(user.id, recipientId)) return true;
+  const [viewerRequiresApproval,targetRequiresApproval,accepted] = await Promise.all([
+    isProfileChatApprovalRequired(user.id),
+    isProfileChatApprovalRequired(recipientId),
+    hasAcceptedProfileConnection(user.id, recipientId),
+  ]);
+  if ((viewerRequiresApproval || targetRequiresApproval) && !accepted) return false;
+  if (accepted) return true;
   const [conversation] = await db.select({ id: messagesTable.id })
     .from(messagesTable)
     .where(or(
@@ -139,7 +144,7 @@ router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise
   const user = req.currentUser!;
   const allowed = message.groupId != null
     ? await canAccessGroup(message.groupId, user.id, user.role)
-    : message.recipientId != null && (isOwnerRole(user.role) || ((message.recipientId === user.id || message.senderId === user.id) && await canMessageUser(user, message.senderId === user.id ? message.recipientId : message.senderId)));
+    : message.recipientId != null && (isOwnerRole(user.role) || ((message.recipientId === user.id || message.senderId === user.id) && await canViewPrivateConversation(user, message.senderId === user.id ? message.recipientId : message.senderId)));
   if (!allowed) { res.status(403).json({ error: "You cannot access this media" }); return; }
   try {
     const remote = await streamStoredMedia(storageKey, req.headers.range);
