@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { createHash, randomBytes } from "node:crypto";
 import { db, auditLogsTable, usersTable, pool } from "@workspace/db";
 import { eq, desc, inArray, and } from "drizzle-orm";
@@ -12,7 +12,7 @@ import { canViewProfileSection } from "./profileConnections";
 
 const router = Router();
 
-const currentAcademicYearHandler = (_req: any, res: any): void => {
+const currentAcademicYearHandler = (_req: Request, res: Response): void => {
   res.json(getCurrentAcademicYear());
 };
 
