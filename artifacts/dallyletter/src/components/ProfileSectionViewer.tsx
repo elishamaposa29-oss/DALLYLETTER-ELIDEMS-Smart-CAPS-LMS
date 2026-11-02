@@ -59,7 +59,6 @@ export function ProfileSectionViewer({profileId,section,title}:Props) {
   return <Card className="border-primary/15 shadow-sm">
     <CardHeader><CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5 text-primary"/>{title}</CardTitle></CardHeader>
     <CardContent className="space-y-3">
-      {error&&<p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p>}
       {loading?<p className="text-sm text-muted-foreground">Loading shared records…</p>:error?<p role="alert" className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"><LockKeyhole className="h-4 w-4 shrink-0"/>{error}</p>:rows.length===0?<p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">No saved records have been shared in this section.</p>:rows.map((item:any,index:number)=>{
         const report=item?.draft_content&&typeof item.draft_content==="object"?item.draft_content:{};
         return <article key={item?.id??index} className="rounded-xl border p-3">
