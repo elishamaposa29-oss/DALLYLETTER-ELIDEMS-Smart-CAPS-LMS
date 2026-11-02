@@ -435,9 +435,7 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, asyn
     [id],
   );
   const row = result.rows[0];
-  if (!row) { res.status(404).json({ error: "Approved transfer letter not found." }); return; }
-  const sharedTransferAccess = await canViewProfileSection(user,Number(row.learner_id),"transfers");
-  if (Number(row.learner_id) !== Number(user.id) && !canReviewAcademicTransfer(user) && !sharedTransferAccess) { res.status(404).json({ error: "Approved transfer letter not found." }); return; }
+  if (!row || (Number(row.learner_id) !== Number(user.id) && !canReviewAcademicTransfer(user))) { res.status(404).json({ error: "Approved transfer letter not found." }); return; }
   if (row.status !== "approved") { res.status(403).json({ error: "The transfer letter cannot be downloaded until an authorized manager approves the request." }); return; }
   const [enrollmentRows, attendanceRows, awardRows, subjectRows, reportRows] = await Promise.all([
     pool.query("SELECT c.title,c.subject,c.grade,e.enrolled_at,e.progress_percent,e.status FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 ORDER BY e.enrolled_at DESC LIMIT 12", [row.learner_id]),
