@@ -13,7 +13,10 @@ import { canViewProfileSection } from "./profileConnections";
 const router = Router();
 
 const currentAcademicYearHandler = (_req: Request, res: Response): void => {
-  res.json(getCurrentAcademicYear());
+  const academicYear = getCurrentAcademicYear();
+  // Preserve the numeric field expected by older config clients while exposing
+  // the canonical year/date/time-zone contract to newer academic-record clients.
+  res.json({ ...academicYear, currentYear: Number(academicYear.academicYear) });
 };
 
 // Keep the older config path compatible while both paths share one authoritative source.
