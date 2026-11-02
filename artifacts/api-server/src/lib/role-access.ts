@@ -51,7 +51,7 @@ export function canApproveAchievementAwards(user: RoleLikeUser): boolean {
 function hasManagerStaffRole(user: RoleLikeUser): boolean {
   const role = normalizeRole(user.role);
   // Manager roles remain eligible for existing manager tools at either level.
-  if (["manager", "senior_manager", "junior_manager"].includes(role)) return true;
+  if (["manager", "senior_manager", "junior_manager"].includes(role)) return user.isManager === true;
   return role === "teacher" && user.isManager === true && !isTeacherPendingReview(user);
 }
 
@@ -122,5 +122,5 @@ export function enforceAcademicStaffAccess(req:AuthRequestLike,res:AuthResponseL
 export function canReviewAcademicTransfer(user: RoleLikeUser): boolean {
   const role = normalizeRole(user.role);
   // Admin is not a transfer-approval authority merely by holding the admin role.
-  return role === "owner" || role === "platform_owner" || role === "manager" || role === "senior_manager" || (role === "teacher" && user.isManager === true && !isTeacherPendingReview(user));
+  return role === "owner" || role === "platform_owner" || (["manager", "senior_manager", "junior_manager"].includes(role) && user.isManager === true) || (role === "teacher" && user.isManager === true && !isTeacherPendingReview(user));
 }
