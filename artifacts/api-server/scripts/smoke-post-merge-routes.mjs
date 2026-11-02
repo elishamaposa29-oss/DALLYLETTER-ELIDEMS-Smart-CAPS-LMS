@@ -5,9 +5,8 @@
  * Usage:
  *   API_BASE_URL=https://dallyletter-elidems-smart-caps-lms-4.onrender.com node scripts/smoke-post-merge-routes.mjs
  *
- * This deliberately sends no production credentials and performs no writes:
- * both requests are expected to be rejected by authentication/validation before
- * any profile upload, database mutation, or account creation can occur.
+ * This deliberately sends no production credentials and performs no writes.
+ * Protected route probes must be rejected before private data or mutation.
  */
 const base = (process.env.API_BASE_URL || "http://127.0.0.1:3001").replace(/\/$/, "");
 
@@ -22,6 +21,19 @@ async function assertRouteResponds(path, init, acceptedStatuses, label) {
   }
   console.log(`PASS ${label}: HTTP ${response.status}`);
 }
+
+await assertRouteResponds(
+  "/api/healthz",
+  { method: "GET" },
+  [200],
+  "API health check is reachable and database connectivity is healthy",
+);
+
+const unknownRoute = await fetch(base + "/api/__api_404_repair_unknown_route__");
+if (unknownRoute.status !== 404) {
+  throw new Error(`Unknown API route should return HTTP 404, got ${unknownRoute.status}`);
+}
+console.log("PASS unknown API routes return HTTP 404");
 
 await assertRouteResponds(
   "/api/users/me/cover",
