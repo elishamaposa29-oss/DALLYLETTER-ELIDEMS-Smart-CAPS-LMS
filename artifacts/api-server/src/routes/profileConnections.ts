@@ -95,6 +95,74 @@ router.get("/profile/:id/social", requireAuth, async (req,res): Promise<void> =>
   });
 });
 
+router.get("/profile/:id/section/:section", requireAuth, async (req,res): Promise<void> => {
+  await ensureSchema();
+  const targetId=Number(req.params.id),section=String(req.params.section||"");
+  if(!Number.isSafeInteger(targetId)||targetId<=0||!sectionKeys.has(section)||section==="overview"){res.status(400).json({error:"Invalid Profile Hub section."});return;}
+  if(!(await canViewProfileSection(req.currentUser!,targetId,section))){res.status(403).json({error:"This Profile Hub section is private."});return;}
+  const [target]=await db.select({id:usersTable.id,role:usersTable.role}).from(usersTable).where(eq(usersTable.id,targetId));
+  if(!target){res.status(404).json({error:"Profile not found."});return;}
+  let data:unknown;
+  switch(section){
+    case "qualifications":
+      data=(await pool.query("SELECT title,verification_status,created_at FROM teacher_qualifications WHERE user_id=$1 AND verification_status='verified' ORDER BY created_at DESC",[targetId])).rows;
+      break;
+    case "subjects":{
+      const role=normalizeRole(target.role);
+      const query=role==="teacher"||role==="manager"||role==="senior_manager"
+        ? "SELECT subjects_to_teach AS subjects,primary_subject FROM teacher_subjects WHERE user_id=$1"
+        : "SELECT subjects FROM learner_subjects WHERE user_id=$1";
+      data=(await pool.query(query,[targetId])).rows;
+      break;
+    }
+    case "enrollments":
+      data=(await pool.query("SELECT e.id,e.enrolled_at,e.progress_percent,e.status,c.title AS class_title,c.subject FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 ORDER BY e.enrolled_at DESC",[targetId])).rows;
+      break;
+    case "achievements":
+      data=(await pool.query("SELECT ua.id,ua.earned_at,a.name,a.description,a.icon,a.category,ua.awarded_by_name,ua.note FROM user_achievements ua JOIN achievements a ON a.id=ua.achievement_id WHERE ua.user_id=$1 ORDER BY ua.earned_at DESC",[targetId])).rows;
+      break;
+    case "reports":
+      data=(await pool.query("SELECT id,report_type,term_label,period_start,period_end,draft_content,review_note,reviewed_at,created_at FROM academic_report_drafts WHERE learner_id=$1 AND status='approved' ORDER BY reviewed_at DESC NULLS LAST,created_at DESC LIMIT 100",[targetId])).rows;
+      break;
+    case "attendance":
+      data=(await pool.query("SELECT class_id,status,joined_at,left_at,duration_minutes,is_late FROM attendance WHERE student_id=$1 ORDER BY joined_at DESC LIMIT 500",[targetId])).rows;
+      break;
+    case "register":
+      data=(await pool.query("SELECT attendance_date,time_zone,status,open_count,first_open_at,last_open_at,last_source,activity_label FROM daily_app_attendance WHERE user_id=$1 ORDER BY attendance_date DESC LIMIT 120",[targetId])).rows;
+      break;
+    case "payments":
+      data=(await pool.query("SELECT id,month,year,amount,currency,status,created_at,notes FROM payments WHERE student_id=$1 ORDER BY created_at DESC LIMIT 100",[targetId])).rows;
+      break;
+    case "transfers":
+      data=(await pool.query("SELECT id,reason,status,review_note,reviewed_at,created_at FROM academic_transfer_requests WHERE learner_id=$1 ORDER BY created_at DESC LIMIT 100",[targetId])).rows;
+      break;
+    case "teacher_documents":{
+      const actor=req.currentUser!,actorRole=normalizeRole(actor.role);
+      const privateDocuments=actor.id===targetId||["owner","platform_owner","senior_manager","manager","junior_manager"].includes(actorRole)||(actorRole==="teacher"&&actor.isManager===true);
+      const query=privateDocuments
+        ? "SELECT id,document_type,file_name,mime_type,size_bytes,created_at FROM teacher_documents WHERE user_id=$1 ORDER BY created_at DESC"
+        : "SELECT id,document_type,file_name,mime_type,size_bytes,created_at FROM teacher_documents WHERE user_id=$1 AND document_type='certificate' ORDER BY created_at DESC";
+      data=(await pool.query(query,[targetId])).rows;
+      break;
+    }
+    case "groups":
+      data=(await pool.query("SELECT g.id,g.name,g.subject,'joined' AS relationship FROM study_group_members m JOIN study_groups g ON g.id=m.group_id WHERE m.user_id=$1 UNION SELECT g.id,g.name,g.subject,'created' AS relationship FROM study_groups g WHERE g.creator_id=$1 ORDER BY name",[targetId])).rows;
+      break;
+    case "activity":{
+      const [daily,lesson]=await Promise.all([
+        pool.query("SELECT count(*)::int AS days_present,max(attendance_date) AS last_active_date FROM daily_app_attendance WHERE user_id=$1 AND status='present'",[targetId]),
+        pool.query("SELECT count(*)::int AS lesson_requests FROM lesson_requests WHERE prefect_id=$1",[targetId]),
+      ]);
+      data={...daily.rows[0],lesson_requests:lesson.rows[0]?.lesson_requests??0};
+      break;
+    }
+    default:
+      res.status(400).json({error:"This section does not have a public data view."});return;
+  }
+  res.setHeader("Cache-Control","private, no-store, no-cache, must-revalidate");
+  res.json({section,data});
+});
+
 router.put("/profile/me/privacy", requireAuth, async (req,res): Promise<void> => {
   await ensureSchema();
   const sectionSettings=req.body?.sectionSettings;
