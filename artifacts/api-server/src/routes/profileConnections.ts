@@ -6,6 +6,8 @@ import { requireAuth, normalizeRole, isOwnerRole } from "../lib/auth-middleware"
 const router = Router();
 const sectionKeys = new Set(["overview","qualifications","subjects","enrollments","achievements","reports","attendance","register","payments","transfers","teacher_documents","groups","activity"]);
 const modes = new Set(["me_only_authorized","selected_friends","everyone"]);
+const publicByDefault = new Set(["overview","qualifications","subjects","achievements","teacher_documents"]);
+const defaultModeForSection = (section: string): string => publicByDefault.has(section) ? "everyone" : "me_only_authorized";
 let schemaReady: Promise<void> | null = null;
 
 async function ensureSchema(): Promise<void> {
@@ -56,12 +58,12 @@ export async function canViewProfileSection(actor: NonNullable<Express.Request["
     if (following.rows.length) return true;
   }
   const result = await pool.query("SELECT section_settings FROM profile_privacy_settings WHERE user_id=$1", [targetId]);
-  const setting = result.rows[0]?.section_settings?.[section] ?? { mode: "everyone", selectedUserIds: [] };
+  const setting = result.rows[0]?.section_settings?.[section] ?? { mode: defaultModeForSection(section), selectedUserIds: [] };
   if (setting.mode === "everyone") return true;
   if (setting.mode === "me_only_authorized") return false;
   if (setting.mode === "selected_friends") {
-    if (!Array.isArray(setting.selectedUserIds) || !setting.selectedUserIds.includes(actorId)) return false;
-    return hasAcceptedProfileConnection(actorId,targetId);
+    if (!Array.isArray(setting.selectedUserIds) || !setting.selectedUserIds.includes(actor.id)) return false;
+    return hasAcceptedProfileConnection(actor.id,targetId);
   }
   return false;
 }
@@ -103,7 +105,7 @@ router.put("/profile/me/privacy", requireAuth, async (req,res): Promise<void> =>
     if(!sectionKeys.has(key)||!value||typeof value!=="object"){res.status(400).json({error:"Invalid profile section privacy setting"});return;}
     const v=value as any;
     if(!modes.has(v.mode)||!Array.isArray(v.selectedUserIds??[])||(v.selectedUserIds??[]).some((id:any)=>!Number.isSafeInteger(Number(id))||Number(id)<=0)){res.status(400).json({error:"Invalid section privacy mode or selected friends"});return;}
-    cleaned[key]={mode:v.mode,selectedUserIds:[...new Set((v.selectedUserIds??[]).map(Number))].slice(0,500)};
+    cleaned[key]={mode:v.mode,selectedUserIds:[...new Set<number>((v.selectedUserIds??[]).map((id:any)=>Number(id)))].slice(0,500)};
   }
   if(chatPrivacy!==undefined&&!["everyone","approval_required"].includes(chatPrivacy)){res.status(400).json({error:"Invalid chat privacy setting"});return;}
   const existing=await pool.query("SELECT section_settings,chat_privacy FROM profile_privacy_settings WHERE user_id=$1",[req.currentUser!.id]);
