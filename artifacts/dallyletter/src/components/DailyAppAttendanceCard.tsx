@@ -88,8 +88,10 @@ function zimbabwePublicHolidays(year: number): Map<string, string> {
   return holidays;
 }
 
-export function DailyAppAttendanceCard() {
+export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
   const { user } = useAuth();
+  const targetId=profileId??user?.id;
+  const isOwn=!profileId||profileId===user?.id;
   const [classRecords, setClassRecords] = useState<ClassAttendance[]>([]);
   const [dailyRecords, setDailyRecords] = useState<DailyRecord[]>([]);
   const [classLoading, setClassLoading] = useState(true);
@@ -111,7 +113,7 @@ export function DailyAppAttendanceCard() {
   useEffect(() => {
     let active = true;
     const token = localStorage.getItem("dallyletter_token");
-    if (!token || !user?.id) {
+    if (!token || !user?.id || !targetId) {
       setClassLoading(false);
       setDailyLoading(false);
       return;
@@ -119,20 +121,24 @@ export function DailyAppAttendanceCard() {
     const headers = { Authorization: "Bearer " + token };
     const loadClassAttendance = async () => {
       try {
-        const response = await fetch(getApiUrl("/api/academic-records/me"), { headers, cache: "no-store" });
-        if (!response.ok) throw new Error("Your class attendance could not be loaded.");
+        const path=isOwn?"/api/academic-records/me":"/api/attendance/student/"+targetId;
+        const response = await fetch(getApiUrl(path), { headers, cache: "no-store" });
+        if (!response.ok) throw new Error(response.status===403?"This user's attendance section is private.":"Attendance records could not be loaded.");
         const payload = await response.json();
         if (active) {
-          const records = Array.isArray(payload.attendance) ? payload.attendance.map((record: any) => ({ ...record, joinedAt: record.joinedAt ?? record.joined_at })) : [];
+          const source=Array.isArray(payload.attendance)?payload.attendance:payload;
+          const records = Array.isArray(source) ? source.map((record: any) => ({ ...record, joinedAt: record.joinedAt ?? record.joined_at })) : [];
           setClassRecords(records);
-          try { localStorage.setItem("dallyletter_attendance_calendar_v1_" + user.id, JSON.stringify({ savedAt: Date.now(), records })); } catch { /* Optional cache. */ }
+          if(isOwn)try { localStorage.setItem("dallyletter_attendance_calendar_v1_" + user.id, JSON.stringify({ savedAt: Date.now(), records })); } catch { /* Optional cache. */ }
           setOfflineClassCache(false);
           setClassError("");
         }
       } catch (error) {
         if (active) {
-          try { const cached = localStorage.getItem("dallyletter_attendance_calendar_v1_" + user.id); const parsed = cached ? JSON.parse(cached) : null; if (Array.isArray(parsed?.records)) { setClassRecords(parsed.records); setOfflineClassCache(true); setClassError(""); } else setClassError(error instanceof Error ? error.message : "Your class attendance could not be loaded."); }
-          catch { setClassError(error instanceof Error ? error.message : "Your class attendance could not be loaded."); }
+          if(isOwn){
+            try { const cached = localStorage.getItem("dallyletter_attendance_calendar_v1_" + user.id); const parsed = cached ? JSON.parse(cached) : null; if (Array.isArray(parsed?.records)) { setClassRecords(parsed.records); setOfflineClassCache(true); setClassError(""); } else setClassError(error instanceof Error ? error.message : "Attendance records could not be loaded."); }
+            catch { setClassError(error instanceof Error ? error.message : "Attendance records could not be loaded."); }
+          }else setClassError(error instanceof Error ? error.message : "Attendance records could not be loaded.");
         }
       } finally {
         if (active) setClassLoading(false);
@@ -140,20 +146,23 @@ export function DailyAppAttendanceCard() {
     };
     const loadDailyAttendance = async () => {
       try {
-        const response = await fetch(getApiUrl("/api/daily-attendance/me"), { headers, cache: "no-store" });
-        if (!response.ok) throw new Error("Daily access history is temporarily unavailable.");
+        const path=isOwn?"/api/daily-attendance/me":"/api/daily-attendance/user/"+targetId;
+        const response = await fetch(getApiUrl(path), { headers, cache: "no-store" });
+        if (!response.ok) throw new Error(response.status===403?"This user's daily register is private.":"Daily access history is temporarily unavailable.");
         const payload = await response.json();
         if (active) {
           const records = Array.isArray(payload.records) ? payload.records : [];
           setDailyRecords(records);
-          try { localStorage.setItem("dallyletter_daily_attendance_calendar_v1_" + user.id, JSON.stringify({ savedAt: Date.now(), records })); } catch { /* Optional cache. */ }
+          if(isOwn)try { localStorage.setItem("dallyletter_daily_attendance_calendar_v1_" + user.id, JSON.stringify({ savedAt: Date.now(), records })); } catch { /* Optional cache. */ }
           setOfflineDailyCache(false);
           setDailyError("");
         }
       } catch (error) {
         if (active) {
-          try { const cached = localStorage.getItem("dallyletter_daily_attendance_calendar_v1_" + user.id); const parsed = cached ? JSON.parse(cached) : null; if (Array.isArray(parsed?.records)) { setDailyRecords(parsed.records); setOfflineDailyCache(true); setDailyError(""); } else setDailyError(error instanceof Error ? error.message : "Daily access history could not be loaded."); }
-          catch { setDailyError(error instanceof Error ? error.message : "Daily access history could not be loaded."); }
+          if(isOwn){
+            try { const cached = localStorage.getItem("dallyletter_daily_attendance_calendar_v1_" + user.id); const parsed = cached ? JSON.parse(cached) : null; if (Array.isArray(parsed?.records)) { setDailyRecords(parsed.records); setOfflineDailyCache(true); setDailyError(""); } else setDailyError(error instanceof Error ? error.message : "Daily access history could not be loaded."); }
+            catch { setDailyError(error instanceof Error ? error.message : "Daily access history could not be loaded."); }
+          }else setDailyError(error instanceof Error ? error.message : "Daily access history could not be loaded.");
         }
       } finally {
         if (active) setDailyLoading(false);
@@ -162,7 +171,7 @@ export function DailyAppAttendanceCard() {
     void loadClassAttendance();
     void loadDailyAttendance();
     return () => { active = false; };
-  }, [user?.id]);
+  }, [user?.id, targetId, isOwn]);
 
   const presentCount = classRecords.filter(record => record.status?.toLowerCase() === "present").length;
   const absentCount = classRecords.filter(record => record.status?.toLowerCase() === "absent").length;
