@@ -35,6 +35,9 @@ const features:Feature[] = [
  {title:"Unified review queue",description:"See pending transfer, report, qualification and achievement decisions in one place.",href:"/manager/review-queue",icon:ClipboardList,tone:"bg-rose-50 text-rose-700",tag:"Approval",roles:["manager","senior_manager","owner"]},
  {title:"Qualification review history",description:"Open Profile Hub to inspect qualification status and recorded review history.",href:"/profile-hub",icon:ShieldCheck,tone:"bg-cyan-50 text-cyan-700",tag:"Profile",roles:["teacher","manager","senior_manager","owner"]},
  {title:"Teacher CV PDF",description:"Open your Profile Hub or teacher qualifications area to view and download the verified-record CV.",href:"/profile-hub",icon:FileText,tone:"bg-slate-50 text-slate-700",tag:"Document",roles:["teacher","manager","senior_manager","owner"]},
+ {title:"Teacher Record Book · Build / Book / Learner",description:"Open the shared RecordBook workspace for saved activity marks, attendance evidence, learner records and approval-gated reports.",href:"/record-book",icon:BookOpen,tone:"bg-blue-50 text-blue-700",tag:"Academic records",roles:["student","prefect","teacher","manager","senior_manager","owner"]},
+ {title:"Attendance Register & Activity History",description:"Open Profile Hub attendance records and saved fullscreen activity history. Private sections remain controlled independently.",href:"/profile-hub",icon:ClipboardList,tone:"bg-violet-50 text-violet-700",tag:"Attendance",roles:["student","prefect","teacher","manager","senior_manager","owner"]},
+ {title:"Profile privacy & connection approvals",description:"Manage each Profile Hub section separately and review connection requests before private chat is unlocked.",href:"/profile-hub",icon:Users,tone:"bg-cyan-50 text-cyan-700",tag:"Privacy",roles:["student","prefect","teacher","manager","senior_manager","owner"]},
 ];
 
 
