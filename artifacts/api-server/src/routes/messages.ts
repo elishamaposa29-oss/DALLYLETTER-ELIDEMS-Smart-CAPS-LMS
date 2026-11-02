@@ -68,6 +68,7 @@ async function canViewPrivateConversation(user: NonNullable<Express.Request["cur
   if (!Number.isInteger(recipientId) || recipientId <= 0 || recipientId === user.id) return false;
   if (isOwnerRole(user.role)) return true;
   if (await isProfileChatApprovalRequired(recipientId) && !(await hasAcceptedProfileConnection(user.id, recipientId))) return false;
+  if (await hasAcceptedProfileConnection(user.id, recipientId)) return true;
   const [conversation] = await db.select({ id: messagesTable.id })
     .from(messagesTable)
     .where(or(
