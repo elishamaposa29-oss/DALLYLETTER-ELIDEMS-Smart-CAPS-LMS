@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { FileText, LockKeyhole } from "lucide-react";
 
-type SectionKey = "qualifications"|"subjects"|"enrollments"|"achievements"|"reports"|"payments"|"transfers"|"teacher_documents"|"groups"|"activity";
+type SectionKey = "qualifications"|"subjects"|"enrollments"|"achievements"|"reports"|"attendance"|"payments"|"transfers"|"teacher_documents"|"groups"|"activity";
 type Props = { profileId:number; section:SectionKey; title:string };
 
 function labelFor(item:any,section:SectionKey):string {
