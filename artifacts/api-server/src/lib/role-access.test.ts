@@ -120,6 +120,6 @@ test("admin role alone cannot approve transfer requests",()=>{
  assert.equal(canReviewAcademicTransfer({role:"admin"}),false);
  assert.equal(canReviewAcademicTransfer({role:"owner"}),true);
  assert.equal(canReviewAcademicTransfer({role:"platform_owner"}),true);
- assert.equal(canReviewAcademicTransfer({role:"manager"}),true);
- assert.equal(canReviewAcademicTransfer({role:"senior_manager"}),true);
+ assert.equal(canReviewAcademicTransfer({role:"manager",isManager:true}),true);
+ assert.equal(canReviewAcademicTransfer({role:"senior_manager",isManager:true}),true);
 });
