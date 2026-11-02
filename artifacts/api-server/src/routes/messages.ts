@@ -52,10 +52,10 @@ async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]
     .from(usersTable)
     .where(eq(usersTable.id, recipientId));
   if (!recipient || recipient.isBlocked || recipient.isSuspended) return false;
-  if (await isProfileChatApprovalRequired(recipientId)) {
-    return hasAcceptedProfileConnection(sender.id, recipientId);
-  }
+  // An accepted connection must unlock the existing private-message route,
+  // even when the recipient requires approval for first-contact messages.
   if (await hasAcceptedProfileConnection(sender.id, recipientId)) return true;
+  if (await isProfileChatApprovalRequired(recipientId)) return false;
   const senderRole = normalizeRole(sender.role);
   const recipientRole = normalizeRole(recipient.role);
   if (senderRole === "student") {
