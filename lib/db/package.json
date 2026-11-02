@@ -10,7 +10,8 @@
   "scripts": {
     "push": "drizzle-kit push --config ./drizzle.config.ts",
     "push-force": "drizzle-kit push --force --config ./drizzle.config.ts",
-    "test:profile-hub-integration": "node ./scripts/test-profile-hub-integration.mjs"
+    "test:profile-hub-integration": "node ./scripts/test-profile-hub-integration.mjs",
+    "migrate:transfer-form-data": "node ./scripts/migrate-transfer-form-data.mjs"
   },
   "dependencies": {
     "drizzle-orm": "catalog:",
