@@ -10,7 +10,7 @@ import RecordBookWorkspace from "@/components/RecordBookWorkspace";
 import { ProfileSocialControls } from "@/components/ProfileSocialControls";
 import { ProfileSectionViewer } from "@/components/ProfileSectionViewer";
 
-type Tab = "Overview" | "Qualifications" | "Subjects" | "Enrollments" | "Achievements" | "Reports" | "Attendance" | "Payments" | "Transfer Letters" | "Groups" | "Activity";
+type Tab = "Overview" | "Qualifications" | "Subjects" | "Enrollments" | "Achievements" | "Reports" | "Attendance" | "Payments" | "Transfer Letters" | "Groups" | "Activity" | "Teacher Documents";
 
 function calculateAgeOnDate(dateOfBirth: string, asOf: Date = new Date()): number | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateOfBirth);
@@ -23,8 +23,8 @@ function calculateAgeOnDate(dateOfBirth: string, asOf: Date = new Date()): numbe
   return age >= 0 ? age : null;
 }
 type PublicProfile = { id: number; display_name: string; avatar: string | null; cover_url?: string | null; cover_type?: string | null; bio: string | null; role: string; verified_qualifications: Array<{title:string;verified:boolean}>; subjects_to_teach: string[]; subjects?: string[]; primary_subject?: string | null; grade?: string | null; is_prefect?: boolean; is_manager?: boolean; performance_score?: number; leaderboard_position?: number | null; badge_count?: number; streak_days?: number; groups_joined?: Array<{id:number;name:string;subject:string}>; groups_owned?: Array<{id:number;name:string;subject:string}>; groups_with_settings_permission?: Array<{id:number;name:string;subject:string}>; fees_status?: string; achievement_count?: number; lesson_requests_count?: number; section_visibility?: Record<string,boolean> };
-const tabs: Tab[] = ["Overview","Qualifications","Subjects","Enrollments","Achievements","Reports","Attendance","Payments","Transfer Letters","Groups","Activity"];
-const tabPrivacyKey: Partial<Record<Tab,string>> = { Qualifications:"qualifications", Subjects:"subjects", Enrollments:"enrollments", Achievements:"achievements", Reports:"reports", Attendance:"attendance", Payments:"payments", "Transfer Letters":"transfers", Groups:"groups", Activity:"activity" };
+const tabs: Tab[] = ["Overview","Qualifications","Subjects","Enrollments","Achievements","Reports","Attendance","Payments","Transfer Letters","Groups","Activity","Teacher Documents"];
+const tabPrivacyKey: Partial<Record<Tab,string>> = { Qualifications:"qualifications", Subjects:"subjects", Enrollments:"enrollments", Achievements:"achievements", Reports:"reports", Attendance:"attendance", Payments:"payments", "Transfer Letters":"transfers", Groups:"groups", Activity:"activity", "Teacher Documents":"teacher_documents" };
 
 const TRANSFER_IMAGE_INPUT_LIMIT = 15 * 1024 * 1024;
 const TRANSFER_IMAGE_OUTPUT_LIMIT = 900 * 1024;
@@ -622,6 +622,7 @@ export default function ProfileHub() {
     {!isOwner&&profileId&&tab==="Transfer Letters"&&<ProfileSectionViewer profileId={profileId} section="transfers" title="Shared transfer requests"/>}
     {!isOwner&&profileId&&tab==="Groups"&&<ProfileSectionViewer profileId={profileId} section="groups" title="Shared study groups"/>}
     {!isOwner&&profileId&&tab==="Activity"&&<ProfileSectionViewer profileId={profileId} section="activity" title="Shared activity summary"/>}
+    {!isOwner&&profileId&&tab==="Teacher Documents"&&<ProfileSectionViewer profileId={profileId} section="teacher_documents" title="Shared teacher certificates"/>}
     {tab==="Attendance"&&(isOwner||profile?.section_visibility?.attendance===true||profile?.section_visibility?.register===true)&&<DailyAppAttendanceCard profileId={isOwner?undefined:profileId}/>}
     {isOwner&&tab==="Payments"&&<Card><CardHeader><CardTitle>Recorded school payments</CardTitle></CardHeader><CardContent className="space-y-3"><p className="text-sm text-muted-foreground">These are ledger records, not payout preferences. A reported or pending payment is not proof that school fees have been cleared.</p>{paymentRecords.length?paymentRecords.map((payment:any)=><div key={payment.id} className="rounded-lg border p-3"><p className="font-semibold">{payment.month} {payment.year}</p><p className="text-sm">{payment.currency||"USD"} {Number(payment.amount||0).toFixed(2)} · {payment.status||"Not recorded"}</p><p className="text-xs text-muted-foreground">Recorded {payment.createdAt?new Date(payment.createdAt).toLocaleDateString():"date unavailable"} · {payment.notes||"No reference notes"}</p></div>):<p className="text-sm text-muted-foreground">No payment records are available for this account.</p>}</CardContent></Card>}
     {tab==="Transfer Letters"&&<Card className="overflow-hidden border-primary/25 shadow-lg"><CardHeader className="bg-gradient-to-r from-[#0f2a5a]/10 to-[#b38b00]/10"><CardTitle className="text-xl text-[#0f2a5a]">Dallyletter Elidems · Complete Transfer Letter</CardTitle><p className="text-sm text-muted-foreground">Complete the official transfer application template below. Every signed-in user can prepare and submit a request. Only managers and owners can approve or reject it.</p></CardHeader><CardContent className="space-y-5">
