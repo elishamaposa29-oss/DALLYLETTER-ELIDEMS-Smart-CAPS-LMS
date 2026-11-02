@@ -31,6 +31,27 @@ await assertRouteResponds(
 );
 
 await assertRouteResponds(
+  "/api/config/currentYear",
+  { method: "GET" },
+  [401, 403],
+  "current-year config route is mounted and authentication-gated",
+);
+
+await assertRouteResponds(
+  "/api/academic-records/current-year",
+  { method: "GET" },
+  [401, 403],
+  "academic-records current-year route is mounted and authentication-gated",
+);
+
+await assertRouteResponds(
+  "/api/manager-permissions/me",
+  { method: "GET" },
+  [401, 403],
+  "manager permissions route is mounted and authentication-gated",
+);
+
+await assertRouteResponds(
   "/api/auth/google",
   {
     method: "POST",
