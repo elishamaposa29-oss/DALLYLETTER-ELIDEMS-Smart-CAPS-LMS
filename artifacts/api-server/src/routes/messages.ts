@@ -11,6 +11,7 @@ import {
   SendMessageBody,
 } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth-middleware";
+import { hasAcceptedProfileConnection, isProfileChatApprovalRequired } from "./profileConnections";
 import { getAIProvider } from "../lib/ai-provider";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, removeStoredMedia, persistUploadedMedia, streamStoredMedia, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
 
@@ -51,6 +52,14 @@ async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]
     .from(usersTable)
     .where(eq(usersTable.id, recipientId));
   if (!recipient || recipient.isBlocked || recipient.isSuspended) return false;
+  // Accepted connections unlock the existing private-message route. Approval-required
+  // privacy blocks first-contact messages regardless of legacy role allowances.
+  const [accepted, approvalRequired] = await Promise.all([
+    hasAcceptedProfileConnection(sender.id, recipientId),
+    isProfileChatApprovalRequired(recipientId),
+  ]);
+  if (accepted) return true;
+  if (approvalRequired) return false;
   const senderRole = normalizeRole(sender.role);
   const recipientRole = normalizeRole(recipient.role);
   if (senderRole === "student") {
