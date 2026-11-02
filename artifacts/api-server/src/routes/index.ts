@@ -1,6 +1,7 @@
 // Main router — registers all sub-routers
 import { Router, type IRouter } from "express";
 import healthRouter from "./health";
+import academicYearRouter from "./academicYear";
 import authRouter from "./auth";
 import accountEmailRouter from "./accountEmail";
 import usersRouter from "./users";
@@ -38,6 +39,7 @@ import profileConnectionsRouter from "./profileConnections";
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(academicYearRouter);
 router.use(authRouter);
 router.use(accountEmailRouter);
 router.use(usersRouter);
