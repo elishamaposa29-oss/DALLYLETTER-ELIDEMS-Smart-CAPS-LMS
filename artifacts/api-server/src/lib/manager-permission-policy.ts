@@ -11,7 +11,7 @@ export const SENIOR_ONLY_PERMISSION_KEYS = new Set([
 export const isSeniorOnlyManagerPermission = (permissionKey: string): boolean =>
   SENIOR_ONLY_PERMISSION_KEYS.has(permissionKey);
 
-function defaultManagerPermission(role: unknown, managerLevel: unknown, isManager: unknown, permissionKey: string): boolean {
+export function defaultManagerPermission(role: unknown, managerLevel: unknown, isManager: unknown, permissionKey: string): boolean {
   return isSeniorManager({ role, managerLevel: typeof managerLevel === "string" ? managerLevel : undefined, isManager: isManager === true })
     && permissionKey === "manager.monitoring.view";
 }
