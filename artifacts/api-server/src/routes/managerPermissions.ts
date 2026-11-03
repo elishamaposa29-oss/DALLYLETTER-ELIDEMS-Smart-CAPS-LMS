@@ -185,7 +185,7 @@ router.patch("/:userId/role", requireAuth, ownerOnly, async (req, res): Promise<
       // Demotion removes all senior-only permissions and preserves other explicit decisions.
       const granted = nextRole === "senior_manager"
         ? (previousRole === "senior_manager" ? previous === true : true)
-        : isSeniorOnlyManagerPermission(permission.key) ? false : (previous === true);
+        : false;
       await client.query(
         "INSERT INTO manager_permission_grants(manager_user_id,permission_key,granted,changed_by,changed_at) VALUES($1,$2,$3,$4,now()) ON CONFLICT(manager_user_id,permission_key) DO UPDATE SET granted=EXCLUDED.granted,changed_by=EXCLUDED.changed_by,changed_at=now()",
         [userId, permission.key, granted, req.currentUser!.id],
