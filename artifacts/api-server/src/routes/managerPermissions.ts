@@ -36,6 +36,7 @@ router.get("/me", requireAuth, (req, res): void => {
       accessManagerTools: managerAccess,
       manageUsers: owner,
       manageManagerPermissions: owner,
+      moderateUsers: seniorManager,
       manageAcademicContent: canManageAcademicContent(user),
       reviewAcademicTransfers: canReviewAcademicTransfer(user),
       reviewAcademicReports: seniorManager,
