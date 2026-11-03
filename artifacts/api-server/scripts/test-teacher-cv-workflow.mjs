@@ -43,6 +43,9 @@ async function registerTeacher(label){
  return {id:created.data.user.id,email,token:created.data.token};
 }
 const approvalApplicant=await registerTeacher("approval");
+const pendingQueue=await request("/api/teacher-cv-workspace/queue",{token:ownerToken});
+assert.equal(pendingQueue.status,200,"Owner can retrieve the teacher CV review queue");
+assert(pendingQueue.data.applications.some(item=>Number(item.id)===Number(approvalApplicant.id)),"Review queue must include the pending applicant");
 const profilePhoto=await upload("/api/users/me/teacher-documents",approvalApplicant.token,"file","teacher-photo.png","image/png",Buffer.from([137,80,78,71,13,10,26,10]),{documentType:"cv"});
 assert.equal(profilePhoto.status,201,"Applicant can upload a private profile photo");
 const qualification=await request("/api/users/me/qualifications",{token:approvalApplicant.token,method:"POST",body:{title:"Bachelor of Education",institution:"CI Test University",year:2018}});
@@ -52,8 +55,15 @@ assert.equal(certificate.status,201,"Applicant can upload an individual qualific
 const cvPayload={professionalSummary:"Qualified test teacher",education:"Bachelor of Education",experience:"3 years",subjects:"Mathematics",address:"Harare",personalDetails:JSON.stringify({fullName:"CV Test approval",idNumber:"CV-TEST-APPROVAL",dob:"1995-06-15",phone:"+263771234567",email:approvalApplicant.email,address:"Harare"}),teachingDetails:JSON.stringify({level:"Secondary",experience:"3-5 years",subjects:"Mathematics",forms:"Form 1-4",bio:"Test teacher"}),surveyAnswers:JSON.stringify({laptop:"Yes",laptopType:"HP",smartphone:"Yes — Android",computer:"Intermediate",online:"Weekdays",internet:"WiFi at home",platforms:["WhatsApp"],power:"Yes",verificationCall:"Yes — call anytime"}),photoDocumentId:String(profilePhoto.data.id)};
 const savedApprovalCv=await request("/api/users/me/teacher-cv",{token:approvalApplicant.token,method:"PATCH",body:{cv:cvPayload}});
 assert.equal(savedApprovalCv.status,200,"Applicant can save the complete structured CV");
+const ownCvPdf=await fetch(base+"/api/users/me/teacher-cv/pdf",{headers:{Authorization:"Bearer "+approvalApplicant.token}});
+assert.equal(ownCvPdf.status,200,"Pending teacher can download their own CV PDF");
+assert.match(ownCvPdf.headers.get("content-type")||"",/application\/pdf/);
+assert.match((await ownCvPdf.text()).slice(0,8),/^%PDF-1\./,"Teacher CV download must be a genuine PDF");
 const verified=await request("/api/qualifications/"+qualification.data.id+"/verify",{token:ownerToken,method:"PATCH",body:{status:"verified"}});
 assert.equal(verified.status,200,"Owner can verify an individual qualification");
+const qualificationHistory=await request("/api/qualifications/"+qualification.data.id+"/review-history",{token:ownerToken});
+assert.equal(qualificationHistory.status,200,"Owner can retrieve qualification review history");
+assert(qualificationHistory.data.history.some(item=>item.new_status==="verified"),"Qualification review history must record the verification decision");
 const certificateView=await fetch(base+"/api/users/"+approvalApplicant.id+"/teacher-documents/"+certificate.data.document.id,{headers:{Authorization:"Bearer "+ownerToken}});
 assert.equal(certificateView.status,200,"Owner can view the applicant's individual certificate");
 assert.match(certificateView.headers.get("content-type")||"",/application\/pdf/);
@@ -64,6 +74,8 @@ assert.equal(approvedRow.rows[0].role,"teacher");
 assert.equal(approvedRow.rows[0].teacher_application_status,"approved");
 
 const rejected=await registerTeacher("rejected");
+const pendingTeacherReportLearners=await request("/api/academic-records/report-learners",{token:rejected.token});
+assert.equal(pendingTeacherReportLearners.status,403,"Pending teacher must not access academic report learner lists");
 const deniedDashboard=await request("/api/dashboard",{token:rejected.token});
 assert.equal(deniedDashboard.status,403,"Pending teacher cannot access dashboard APIs");
 const deniedLesson=await request("/api/lessons",{token:rejected.token,method:"POST",body:{title:"blocked pending teacher action"}});
