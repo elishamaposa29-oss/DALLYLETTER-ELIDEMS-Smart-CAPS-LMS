@@ -195,7 +195,9 @@ router.patch("/:userId/role", requireAuth, ownerOnly, async (req, res): Promise<
       // Demotion clears every inherited Senior baseline grant; Owner must explicitly re-grant Junior permissions.
       const granted = nextRole === "senior_manager"
         ? (previousRole === "senior_manager" ? previous !== false : true)
-        : false;
+        : previousRole === "senior_manager"
+          ? false
+          : (managerRoles.has(previousRole) || target.is_manager === true) && previous === true;
       await client.query(
         "INSERT INTO manager_permission_grants(manager_user_id,permission_key,granted,changed_by,changed_at) VALUES($1,$2,$3,$4,now()) ON CONFLICT(manager_user_id,permission_key) DO UPDATE SET granted=EXCLUDED.granted,changed_by=EXCLUDED.changed_by,changed_at=now()",
         [userId, permission.key, granted, req.currentUser!.id],
