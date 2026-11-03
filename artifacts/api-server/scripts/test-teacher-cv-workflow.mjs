@@ -81,7 +81,7 @@ assert(ownerDetail.data.documents.some(doc=>Number(doc.id)===Number(profilePhoto
 assert(ownerDetail.data.history.some(item=>item.action==="submitted"),"Owner review receives the submitted review-history event");
 const ownerPhoto=await fetch(base+"/api/users/"+approvalApplicant.id+"/teacher-documents/"+profilePhoto.data.id,{headers:{Authorization:"Bearer "+ownerToken}});
 assert.equal(ownerPhoto.status,200,"Owner can open applicant profile photo");
-assert.match(ownerPhoto.headers.get("content-type")||"",/image\\/png/);
+assert.match(ownerPhoto.headers.get("content-type")||"",new RegExp("image/png"));
 assert((await ownerPhoto.arrayBuffer()).byteLength>0,"Profile photo bytes are readable from persistent storage");
 const managerEmail="teacher-cv-manager-"+suffix+"@example.test";
 const managerRow=await pool.query("INSERT INTO users(email,password_hash,name,role,is_manager,manager_level) VALUES($1,$2,$3,'junior_manager',true,'junior') RETURNING id",[managerEmail,"test-only-not-used","CV Test Authorized Manager"]);
