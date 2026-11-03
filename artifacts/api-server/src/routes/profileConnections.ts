@@ -213,8 +213,8 @@ router.post("/profile/:id/connect", requireAuth, async (req,res): Promise<void> 
   await ensureSchema();
   const actor=req.currentUser!, targetId=Number(req.params.id);
   if(!Number.isSafeInteger(targetId)||targetId<=0||targetId===actor.id){res.status(400).json({error:"Choose another valid profile"});return;}
-  const [target]=await db.select({id:usersTable.id,name:usersTable.name,isBlocked:usersTable.isBlocked,isSuspended:usersTable.isSuspended}).from(usersTable).where(eq(usersTable.id,targetId));
-  if(!target||target.isBlocked||target.isSuspended){res.status(404).json({error:"This profile is unavailable"});return;}
+  const [target]=await db.select({id:usersTable.id,name:usersTable.name,role:usersTable.role,isBlocked:usersTable.isBlocked,isSuspended:usersTable.isSuspended}).from(usersTable).where(eq(usersTable.id,targetId));
+  if(!target || (isOwnerRole(target.role) && !isOwnerRole(actor.role)) || target.isBlocked || target.isSuspended){res.status(404).json({error:"This profile is unavailable"});return;}
   const current=await pool.query("SELECT id,status,requester_id,recipient_id FROM profile_connections WHERE (requester_id=$1 AND recipient_id=$2) OR (requester_id=$2 AND recipient_id=$1) ORDER BY id DESC LIMIT 1",[actor.id,targetId]);
   if(current.rows[0]?.status==="accepted"){res.json({status:"accepted",connectionId:Number(current.rows[0].id)});return;}
   if(current.rows[0]?.status==="pending"){res.status(409).json({error:current.rows[0].requester_id===actor.id?"Connection request already sent":"This user has already requested to connect with you. Review your requests."});return;}
@@ -235,7 +235,8 @@ router.get("/profile/connections/friends", requireAuth, async(req,res):Promise<v
     "SELECT u.id,u.name,u.role FROM profile_connections c JOIN users u ON u.id=CASE WHEN c.requester_id=$1 THEN c.recipient_id ELSE c.requester_id END WHERE c.status='accepted' AND (c.requester_id=$1 OR c.recipient_id=$1) ORDER BY u.name",
     [req.currentUser!.id],
   );
-  res.json(rows.rows);
+  const visibleRows=isOwnerRole(req.currentUser!.role)?rows.rows:rows.rows.filter((row:any)=>!isOwnerRole(row.role));
+  res.json(visibleRows);
 });
 
 router.get("/profile/connections/requests", requireAuth, async(req,res):Promise<void> => {
@@ -244,7 +245,8 @@ router.get("/profile/connections/requests", requireAuth, async(req,res):Promise<
     "SELECT c.id,c.requester_id,c.recipient_id,c.status,c.created_at,u.name AS requester_name,u.role AS requester_role FROM profile_connections c JOIN users u ON u.id=c.requester_id WHERE c.recipient_id=$1 AND c.status='pending' ORDER BY c.created_at DESC",
     [req.currentUser!.id],
   );
-  res.json(rows.rows);
+  const visibleRows=isOwnerRole(req.currentUser!.role)?rows.rows:rows.rows.filter((row:any)=>!isOwnerRole(row.requester_role));
+  res.json(visibleRows);
 });
 
 router.patch("/profile/connections/:id", requireAuth, async(req,res):Promise<void> => {
