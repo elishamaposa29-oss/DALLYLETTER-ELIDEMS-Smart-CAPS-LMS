@@ -2,7 +2,8 @@ import { Router } from "express";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db, followsTable, notificationPreferencesTable, notificationsTable, usersTable, lessonsTable, contentCommentsTable, moderationActionsTable, auditLogsTable, chatPollsTable, chatPollOptionsTable, chatPollVotesTable, broadcastsTable, broadcastRecipientsTable, communitiesTable, communityGroupsTable, messagesTable, studyGroupMembersTable, studyGroupsTable, groupSettingsTable } from "@workspace/db";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
-import { canModerateUser } from "../lib/role-access";
+import { canModerateUser, normalizeRole } from "../lib/role-access";
+import { managerHasPermission } from "../lib/manager-permission-policy";
 
 const router = Router();
 const manager = (u:any) => canAccessManager(u);
@@ -48,6 +49,9 @@ router.post("/manager/users/:id/action", requireAuth, async(req,res):Promise<voi
  if(targetId===req.currentUser!.id){res.status(400).json({error:"You cannot moderate yourself"});return;}
  const [target]=await db.select().from(usersTable).where(eq(usersTable.id,targetId));if(!target){res.status(404).json({error:"User not found"});return;}
  if(!canModerateUser(req.currentUser!,target)){res.status(403).json({error:"This account is above your management authority or outside your permitted scope."});return;}
+ const targetRole=normalizeRole(target.role);
+ const requiredPermission = action==="block" ? "users.block" : action==="suspend" ? "users.suspend" : action==="promote_prefect"||action==="remove_prefect" ? "users.override.prefect" : targetRole==="teacher" ? "users.override.teacher" : targetRole==="prefect" ? "users.override.prefect" : ["student","learner"].includes(targetRole) ? "users.override.learner" : targetRole==="junior_manager" ? "users.override.junior_manager" : "";
+ if (!requiredPermission || !(await managerHasPermission(req.currentUser!, requiredPermission))) { res.status(403).json({error:"Owner has not granted the permission required for this action.",permission:requiredPermission||null});return; }
  const note=typeof req.body?.note==="string"?req.body.note.trim().slice(0,1000):null;
  if(["block","suspend"].includes(action)&&(!note||note.length<3)){res.status(400).json({error:"A moderation reason of at least 3 characters is required to block or suspend an account."});return;}
  if(action==="block") await db.update(usersTable).set({isBlocked:true}).where(eq(usersTable.id,targetId));
@@ -66,7 +70,7 @@ router.post("/manager/users/:id/action", requireAuth, async(req,res):Promise<voi
  if(["warn","comment","block","suspend","promote_prefect","remove_prefect"].includes(action)) await db.insert(notificationsTable).values({recipientId:targetId,title:action==="warn"?"Account warning":"Account update",message:note??`A manager performed: ${action.replace("_"," ")}.`,type:"moderation"});
  res.json({ok:true});
 });
-router.post("/manager/users/:id/unblock", requireAuth, async(req,res):Promise<void>=>{const actor=req.currentUser!;if(!canAccessManager(actor)){res.status(403).json({error:"Manager access required"});return;}const targetId=Number(req.params.id);if(!Number.isInteger(targetId)){res.status(400).json({error:"Invalid user id"});return;}const [target]=await db.select({id:usersTable.id,name:usersTable.name,role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(eq(usersTable.id,targetId));if(!target){res.status(404).json({error:"User not found"});return;}if(!canModerateUser(actor,target)){res.status(403).json({error:"This account is above your management authority or outside your permitted scope."});return;}await db.update(usersTable).set({isBlocked:false,isSuspended:false}).where(eq(usersTable.id,targetId));await db.insert(auditLogsTable).values({action:"Manager action: restore_access",category:"moderation",performedBy:actor.id,targetType:"user",targetId,details:JSON.stringify({actorId:actor.id,actorName:actor.name,actorRole:actor.role,targetUserId:targetId,targetName:target.name,action:"restore_access"})});await db.insert(notificationsTable).values({recipientId:targetId,title:"Account access restored",message:"Your DALLYLETTER ELIDEMS access has been restored by authorized management staff.",type:"moderation"});res.json({ok:true});});
+router.post("/manager/users/:id/unblock", requireAuth, async(req,res):Promise<void>=>{const actor=req.currentUser!;if(!canAccessManager(actor)){res.status(403).json({error:"Manager access required"});return;}if(!(await managerHasPermission(actor,"users.restore"))){res.status(403).json({error:"Owner has not granted permission to restore user access.",permission:"users.restore"});return;}const targetId=Number(req.params.id);if(!Number.isInteger(targetId)){res.status(400).json({error:"Invalid user id"});return;}const [target]=await db.select({id:usersTable.id,name:usersTable.name,role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(eq(usersTable.id,targetId));if(!target){res.status(404).json({error:"User not found"});return;}if(!canModerateUser(actor,target)){res.status(403).json({error:"This account is above your management authority or outside your permitted scope."});return;}await db.update(usersTable).set({isBlocked:false,isSuspended:false}).where(eq(usersTable.id,targetId));await db.insert(auditLogsTable).values({action:"Manager action: restore_access",category:"moderation",performedBy:actor.id,targetType:"user",targetId,details:JSON.stringify({actorId:actor.id,actorName:actor.name,actorRole:actor.role,targetUserId:targetId,targetName:target.name,action:"restore_access"})});await db.insert(notificationsTable).values({recipientId:targetId,title:"Account access restored",message:"Your DALLYLETTER ELIDEMS access has been restored by authorized management staff.",type:"moderation"});res.json({ok:true});});
 
 export default router;
 
@@ -121,7 +125,7 @@ router.get("/communities", requireAuth, async(_req,res)=>{
  res.json(rows);
 });
 router.post("/communities", requireAuth, async(req,res):Promise<void>=>{
- const user=req.currentUser!; if(!canAccessManager(user)){res.status(403).json({error:"Manager access required"});return;}
+ const user=req.currentUser!; if(!canAccessManager(user)||!(await managerHasPermission(user,"groups.manage"))){res.status(403).json({error:"Study group management permission required."});return;}
  const name=typeof req.body?.name==="string"?req.body.name.trim():""; if(!name){res.status(400).json({error:"Community name required"});return;}
  const [row]=await db.insert(communitiesTable).values({name,description:typeof req.body?.description==="string"?req.body.description:null,ownerId:user.id}).returning();res.status(201).json(row);
 });
@@ -138,6 +142,7 @@ router.post("/broadcasts", requireAuth, async(req,res):Promise<void>=>{
     : [];
   const content=typeof req.body?.content==="string"?req.body.content.trim():"";
   if (!manager(user) && !isOwnerRole(user.role)) { res.status(403).json({ error: "Staff access required" }); return; }
+  if (manager(user) && !(await managerHasPermission(user,"notifications.broadcast"))) { res.status(403).json({ error: "Owner has not granted broadcast permission.", permission: "notifications.broadcast" }); return; }
  if(!content||recipientIds.length===0){res.status(400).json({error:"content and recipients are required"});return;}
   const uniqueRecipientIds = [...new Set(recipientIds)].filter(id => id !== user.id).slice(0, 1024);
   const recipients = await db.select({ id: usersTable.id }).from(usersTable).where(inArray(usersTable.id, uniqueRecipientIds));
