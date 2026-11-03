@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireManagerPermission, requireManagerPermissionForRequest, requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
 import { pool } from "@workspace/db";
-import { requireAuth } from "../lib/auth-middleware";
+import { requireAuth, canAccessManager } from "../lib/auth-middleware";
 import { sendEmail } from "../lib/email-service";
 import { normalizeRole, isSeniorManager } from "../lib/role-access";
 import { revokeUserSessions } from "../lib/auth-session-store";
