@@ -134,7 +134,6 @@ router.get("/today", requireAuth, requireManagerPermissionIfManager("attendance.
          ON d.user_id = u.id
         AND d.attendance_date = (now() AT TIME ZONE COALESCE(p.time_zone, $1))::date
        WHERE COALESCE(u.is_blocked, false) = false
-         AND lower(u.role) NOT IN ('owner','platform_owner')
        ORDER BY u.role, u.name`,
     [timeZone],
   );
