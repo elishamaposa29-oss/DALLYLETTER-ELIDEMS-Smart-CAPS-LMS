@@ -9,15 +9,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FileCheck2, RefreshCw, CheckCircle2, XCircle, FileDown } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
 
 type Draft = { id:number; learner_id:number; learner_name?:string; report_type:string; term_label:string; period_start?:string|null; period_end?:string|null; draft_content:any; status:string; review_note?:string|null; created_at:string; reviewed_at?:string|null };
 const token = () => localStorage.getItem("dallyletter_token") ?? "";
 
 export default function ManagerReportReview() {
-  const { user } = useAuth();
-  const role = String(user?.role || "").trim().toLowerCase().replace(/[ -]+/g, "_");
-  const canReview = ["owner","admin","platform_owner","senior_manager"].includes(role) || (["manager","teacher"].includes(role) && String((user as any)?.managerLevel || "").toLowerCase() === "senior");
+  const [canReview, setCanReview] = useState(false);
   const [rows,setRows] = useState<Draft[]>([]);
   const [notes,setNotes] = useState<Record<number,string>>({});
   const [loading,setLoading] = useState(true);
@@ -39,12 +36,15 @@ export default function ManagerReportReview() {
   const load = useCallback(async()=>{
     setLoading(true);setError("");
     try {
-      const [r,usersResponse]=await Promise.all([
+      const [r,usersResponse,permissionResponse]=await Promise.all([
         fetch(getApiUrl("/api/academic-records/reports/drafts"),{headers:{Authorization:"Bearer "+token()}}),
         fetch(getApiUrl("/api/academic-records/report-learners"),{headers:{Authorization:"Bearer "+token()}}),
+        fetch(getApiUrl("/api/manager-permissions/me"),{headers:{Authorization:"Bearer "+token()}}),
       ]);
       const d=await r.json().catch(()=>[]);
       const users=await usersResponse.json().catch(()=>[]);
+      const permissionData=await permissionResponse.json().catch(()=>({}));
+      setCanReview(Boolean(permissionResponse.ok && permissionData?.permissions?.reviewAcademicReports));
       if(!r.ok) throw new Error(d.error||"Could not load academic report drafts.");
       if(!Array.isArray(d)) throw new Error("Invalid report draft response.");
       setRows(d);
