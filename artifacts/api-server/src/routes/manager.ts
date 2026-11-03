@@ -175,9 +175,21 @@ router.get("/prefects", requireAuth, requireManager, async (req, res) => {
 });
 
 router.put("/teacher/:id/score", requireAuth, requireManager, async (req, res): Promise<void> => {
-  const { performanceScore } = req.body;
+  const targetId = Number(req.params.id);
+  const performanceScore = Number(req.body?.performanceScore);
+  if (!Number.isSafeInteger(targetId) || targetId < 1) { res.status(400).json({ error: "Invalid teacher ID." }); return; }
+  if (!Number.isFinite(performanceScore) || performanceScore < 0 || performanceScore > 100) {
+    res.status(400).json({ error: "Performance score must be a number between 0 and 100." }); return;
+  }
+  const [target] = await db.select({ id: usersTable.id, name: usersTable.name, role: usersTable.role, isManager: usersTable.isManager, performanceScore: usersTable.performanceScore })
+    .from(usersTable).where(eq(usersTable.id, targetId));
+  if (!target || target.role !== "teacher" || target.isManager === true) { res.status(404).json({ error: "Managed teacher not found." }); return; }
   const [row] = await db.update(usersTable).set({ performanceScore })
-    .where(eq(usersTable.id, parseInt(String(req.params.id)))).returning();
+    .where(eq(usersTable.id, targetId)).returning();
+  await db.insert(auditLogsTable).values({
+    performedBy: req.currentUser!.id, action: "manager.teacher_performance_score_updated", category: "staff",
+    targetType: "teacher", targetId, details: JSON.stringify({ previousScore: target.performanceScore, newScore: performanceScore }),
+  });
   res.json(row);
 });
 
