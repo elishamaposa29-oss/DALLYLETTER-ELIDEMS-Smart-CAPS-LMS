@@ -15,6 +15,8 @@ const token = () => localStorage.getItem("dallyletter_token") ?? "";
 
 export default function ManagerReportReview() {
   const [canReview, setCanReview] = useState(false);
+  const [canCreate, setCanCreate] = useState(false);
+  const [canViewReports, setCanViewReports] = useState(false);
   const [rows,setRows] = useState<Draft[]>([]);
   const [notes,setNotes] = useState<Record<number,string>>({});
   const [loading,setLoading] = useState(true);
@@ -36,16 +38,24 @@ export default function ManagerReportReview() {
   const load = useCallback(async()=>{
     setLoading(true);setError("");
     try {
-      const [r,usersResponse,permissionResponse]=await Promise.all([
-        fetch(getApiUrl("/api/academic-records/reports/drafts"),{headers:{Authorization:"Bearer "+token()}}),
-        fetch(getApiUrl("/api/academic-records/report-learners"),{headers:{Authorization:"Bearer "+token()}}),
-        fetch(getApiUrl("/api/manager-permissions/me"),{headers:{Authorization:"Bearer "+token()}}),
-      ]);
-      const d=await r.json().catch(()=>[]);
-      const users=await usersResponse.json().catch(()=>[]);
+      const headers={Authorization:"Bearer "+token()};
+      const permissionResponse=await fetch(getApiUrl("/api/manager-permissions/me"),{headers});
       const permissionData=await permissionResponse.json().catch(()=>({}));
-      setCanReview(Boolean(permissionResponse.ok && permissionData?.permissions?.reviewAcademicReports));
-      if(!r.ok) throw new Error(d.error||"Could not load academic report drafts.");
+      const isOwner=Boolean(permissionResponse.ok && permissionData?.isOwner);
+      const permissions=permissionData?.permissions ?? {};
+      const viewAllowed=isOwner || permissions["reports.view"]===true;
+      const createAllowed=isOwner || permissions["reports.create"]===true;
+      setCanReview(isOwner || permissions["reports.review"]===true);
+      setCanCreate(createAllowed);
+      setCanViewReports(viewAllowed);
+      const [r,usersResponse]=await Promise.all([
+        viewAllowed ? fetch(getApiUrl("/api/academic-records/reports/drafts"),{headers}) : Promise.resolve(null),
+        createAllowed ? fetch(getApiUrl("/api/academic-records/report-learners"),{headers}) : Promise.resolve(null),
+      ]);
+      const d=r ? await r.json().catch(()=>[]) : [];
+      const users=usersResponse ? await usersResponse.json().catch(()=>[]) : [];
+      if(r && !r.ok) throw new Error(d.error||"Could not load academic report drafts.");
+      if(usersResponse && !usersResponse.ok) throw new Error(users.error||"Could not load learners for report creation.");
       if(!Array.isArray(d)) throw new Error("Invalid report draft response.");
       setRows(d);
       setLearners(Array.isArray(users)?users:[]);
@@ -91,13 +101,13 @@ export default function ManagerReportReview() {
   const pending=rows.filter(r=>r.status==="pending_review");
   return <DashboardLayout><div className="mx-auto max-w-6xl space-y-5">
     <div className="rounded-2xl bg-gradient-to-r from-violet-700 to-indigo-800 p-6 text-white"><div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-bold">Academic reports</h1><p className="mt-1 text-sm text-violet-100">Teachers build reports for their assigned learners. Senior Managers and Owners review and approve them.</p></div><Button variant="secondary" onClick={()=>void load()} disabled={loading}><RefreshCw className={`mr-2 h-4 w-4 ${loading?"animate-spin":""}`}/>Refresh</Button></div><div className="mt-4 flex gap-2"><Badge className="bg-amber-400 text-slate-900">{pending.length} awaiting review</Badge><Badge variant="secondary">{rows.filter(r=>r.status==="approved").length} approved</Badge><Badge variant="secondary">{rows.filter(r=>r.status==="rejected").length} rejected</Badge></div></div>
-    <Card><CardHeader><CardTitle>Teacher report builder</CardTitle><p className="text-sm text-muted-foreground">Both dates are required. Records outside this inclusive range are excluded from the report snapshot and mark totals.</p></CardHeader><CardContent className="grid gap-3 md:grid-cols-2">
+    {canCreate && <Card><CardHeader><CardTitle>Teacher report builder</CardTitle><p className="text-sm text-muted-foreground">Both dates are required. Records outside this inclusive range are excluded from the report snapshot and mark totals.</p></CardHeader><CardContent className="grid gap-3 md:grid-cols-2">
       <div className="space-y-1"><label className="text-sm font-medium">Learner</label><Select value={learnerId} onValueChange={setLearnerId}><SelectTrigger><SelectValue placeholder="Select learner"/></SelectTrigger><SelectContent>{learners.map(learner=><SelectItem key={learner.id} value={String(learner.id)}>{learner.name}{learner.grade?` (${learner.grade})`: ""}</SelectItem>)}</SelectContent></Select></div>
       <div className="space-y-1"><label className="text-sm font-medium">Report type</label><Select value={reportType} onValueChange={v=>setReportType(v as "attendance_register"|"term_performance")}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="attendance_register">Attendance register</SelectItem><SelectItem value="term_performance">Term performance (recorded marks; AI commentary optional)</SelectItem></SelectContent></Select></div>
       <div className="space-y-1"><label className="text-sm font-medium">Term / period label</label><Input value={termLabel} onChange={e=>setTermLabel(e.target.value)} maxLength={80} placeholder="e.g. Term 1 2026"/></div>
       <div className="grid grid-cols-2 gap-2"><div className="space-y-1"><label className="text-sm font-medium">Start date</label><Input type="date" value={periodStart} onChange={e=>setPeriodStart(e.target.value)}/></div><div className="space-y-1"><label className="text-sm font-medium">End date</label><Input type="date" value={periodEnd} onChange={e=>setPeriodEnd(e.target.value)}/></div></div><div className="space-y-1"><label className="text-sm font-medium">Admission number (optional)</label><Input value={admissionNumber} onChange={e=>setAdmissionNumber(e.target.value)} maxLength={50} placeholder="Learner admission number"/></div><div className="space-y-1"><label className="text-sm font-medium">Date of birth (optional)</label><Input type="date" value={dateOfBirth} onChange={e=>setDateOfBirth(e.target.value)}/></div><div className="space-y-1"><label className="text-sm font-medium">Conduct / behaviour (optional)</label><Input value={conduct} onChange={e=>setConduct(e.target.value)} maxLength={120} placeholder="Enter a recorded teacher assessment, or leave blank"/></div><div className="space-y-1"><label className="text-sm font-medium">Promotion / term result (optional)</label><Input value={result} onChange={e=>setResult(e.target.value)} maxLength={120} placeholder="Enter the school decision, or leave blank"/></div><div className="space-y-1 md:col-span-2"><label className="text-sm font-medium">Teacher comment (optional)</label><Textarea value={teacherComment} onChange={e=>setTeacherComment(e.target.value)} maxLength={3000} placeholder="Write a factual comment based on the learner’s recorded progress."/></div>
       <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-muted-foreground">Maximum period: 370 days. Teachers can create reports for assigned learners. Reports appear in the learner Profile Hub after approval.</p><Button onClick={()=>void createDraft()} disabled={creating||learners.length===0}>{creating?"Creating draft…":"Create report draft"}</Button></div>
-    </CardContent></Card>
+    </CardContent></Card>}
     {error&&<div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
     {message&&<div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</div>}
     {loading?<p className="py-12 text-center text-muted-foreground">Loading reports…</p>:rows.length===0?<Card><CardContent className="py-12 text-center text-muted-foreground">No academic report drafts have been created.</CardContent></Card>:
