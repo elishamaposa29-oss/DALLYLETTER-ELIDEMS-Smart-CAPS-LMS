@@ -16,7 +16,9 @@ const token = () => localStorage.getItem("dallyletter_token") ?? "";
 export default function ManagerStudents() {
   const [students, setStudents] = useState<any[]>([]);
   const [managerSummary, setManagerSummary] = useState<any>(null);
-  const [canModerateUsers, setCanModerateUsers] = useState(false);
+  const [permissions, setPermissions] = useState<Record<string, boolean>>({});
+  const [isOwner, setIsOwner] = useState(false);
+  const can = (key: string) => isOwner || permissions[key] === true;
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const { toast } = useToast();
@@ -40,10 +42,10 @@ export default function ManagerStudents() {
     fetch(getApiUrl("/api/manager/students"), { headers: { Authorization: "Bearer " + token() } })
       .then(r => r.json()).then(d => { setStudents(Array.isArray(d) ? d : []); setLoading(false); })
       .catch(() => setLoading(false));
-    fetch(getApiUrl("/api/manager/dashboard"), { headers: { Authorization: "Bearer " + token() } })
-      .then(r => r.json()).then(d => { if (d && typeof d === "object") setManagerSummary(d); }).catch(() => undefined);
+    can("manager.dashboard.view") ? fetch(getApiUrl("/api/manager/dashboard"), { headers: { Authorization: "Bearer " + token() } }) : Promise.resolve(null)
+      .then(r => r ? r.json() : null).then(d => { if (d && typeof d === "object") setManagerSummary(d); }).catch(() => undefined);
     fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: "Bearer " + token() } })
-      .then(r => r.json()).then(d => setCanModerateUsers(Boolean(d?.permissions?.moderateUsers))).catch(() => setCanModerateUsers(false));
+      .then(r => r.json()).then(d => { setPermissions(d?.permissions ?? {}); setIsOwner(Boolean(d?.isOwner)); }).catch(() => { setPermissions({}); setIsOwner(false); });
   }, []);
 
   const filtered = students.filter(s => s.name?.toLowerCase().includes(search.toLowerCase()) || s.grade?.toLowerCase().includes(search.toLowerCase()));
@@ -59,7 +61,7 @@ export default function ManagerStudents() {
             <p className="text-slate-500 mt-1">{students.length} enrolled learner{students.length !== 1 ? "s" : ""}</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            {selected.length > 0 && <Button size="sm" variant="outline" onClick={async () => {
+            {selected.length > 0 && can("notifications.broadcast") && <Button size="sm" variant="outline" onClick={async () => {
               const content = window.prompt(`Broadcast to ${selected.length} selected learners:`);
               if (!content?.trim()) return;
               try {
@@ -76,17 +78,17 @@ export default function ManagerStudents() {
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
-          <Card className="border-0 shadow-sm"><CardContent className="p-4">
+          {(can("transfers.view") || can("reports.view") || can("notifications.view")) && <Card className="border-0 shadow-sm"><CardContent className="p-4">
             <div className="mb-3 flex items-center justify-between"><h2 className="font-semibold text-slate-900">Learner-related approvals and reports</h2><Badge variant="secondary">{(managerSummary?.reviewQueue || []).filter((q:any)=>["transfer_request","academic_report","alert"].includes(q.type)).length} pending</Badge></div>
             {(managerSummary?.reviewQueue || []).filter((q:any)=>["transfer_request","academic_report"].includes(q.type)).length===0
               ? <p className="text-sm text-slate-500">No pending learner transfer requests or report reviews.</p>
               : <div className="space-y-2">{(managerSummary?.reviewQueue || []).filter((q:any)=>["transfer_request","academic_report"].includes(q.type)).slice(0,5).map((q:any)=><div key={q.id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 p-3"><div className="min-w-0"><p className="text-sm font-medium">{q.title}</p><p className="text-xs text-slate-500">{q.learnerName} · {q.description}</p></div><Link href={q.href}><Button size="sm" variant="outline">Review</Button></Link></div>)}</div>}
-          </CardContent></Card>
-          <Card className="border-0 shadow-sm"><CardContent className="p-4">
+          </CardContent></Card>}
+          {can("users.view") && <Card className="border-0 shadow-sm"><CardContent className="p-4">
             <h2 className="mb-3 font-semibold text-slate-900">Highest performing learners</h2>
             {!managerSummary?.topLearners?.length ? <p className="text-sm text-slate-500">No learner activity recorded yet.</p> :
               <div className="space-y-2">{managerSummary.topLearners.map((s:any,index:number)=><div key={s.id} className="flex items-center gap-3 rounded-lg bg-slate-50 p-2"><span className="w-5 text-xs font-bold text-slate-400">#{index+1}</span><div className="min-w-0 flex-1"><p className="text-sm font-medium">{s.name}</p><p className="text-xs text-slate-500">{s.exerciseSubmissions} exercise · {s.assignmentSubmissions} assignment submissions · {s.averageMarkPercentage == null ? "marks pending" : s.averageMarkPercentage + "% average"}</p></div><Badge variant="secondary"><Award className="mr-1 h-3 w-3"/>{s.badgeCount} awards</Badge></div>)}</div>}
-          </CardContent></Card>
+          </CardContent></Card>}
         </div>
 
         {loading ? <p className="text-center text-slate-400 py-10">Loading…</p> : (
@@ -117,17 +119,17 @@ export default function ManagerStudents() {
                     </div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 border-t pt-3" onClick={event => event.stopPropagation()}>
-                    {canModerateUsers && (s.isBlocked || s.isSuspended ? (
+                    {can("users.restore") && (s.isBlocked || s.isSuspended ? (
                       <Button size="sm" variant="outline" onClick={() => void action(s.id, "unblock")} disabled={busy === s.id}><UserCheck className="mr-1.5 h-3.5 w-3.5" />Restore access</Button>
                     ) : (
                       <>
-                        <Button size="sm" variant="outline" onClick={() => void action(s.id, "warn")} disabled={busy === s.id}><AlertTriangle className="mr-1.5 h-3.5 w-3.5" />Warn</Button>
-                        <Button size="sm" variant="outline" onClick={() => void action(s.id, "suspend")} disabled={busy === s.id}><UserX className="mr-1.5 h-3.5 w-3.5" />Suspend</Button>
-                        <Button size="sm" variant="outline" onClick={() => void action(s.id, "block")} disabled={busy === s.id}><Ban className="mr-1.5 h-3.5 w-3.5" />Block</Button>
+                        {can("users.override.learner") && <Button size="sm" variant="outline" onClick={() => void action(s.id, "warn")} disabled={busy === s.id}><AlertTriangle className="mr-1.5 h-3.5 w-3.5" />Warn</Button>}
+                        {can("users.suspend") && <Button size="sm" variant="outline" onClick={() => void action(s.id, "suspend")} disabled={busy === s.id}><UserX className="mr-1.5 h-3.5 w-3.5" />Suspend</Button>}
+                        {can("users.block") && <Button size="sm" variant="outline" onClick={() => void action(s.id, "block")} disabled={busy === s.id}><Ban className="mr-1.5 h-3.5 w-3.5" />Block</Button>}
                       </>
                     ))}
-                    {canModerateUsers && !s.isPrefect && <Button size="sm" variant="outline" onClick={() => void action(s.id, "promote_prefect")} disabled={busy === s.id}><Shield className="mr-1.5 h-3.5 w-3.5" />Make prefect</Button>}
-                    <Button size="sm" variant="outline" onClick={() => void openMonitor(s)}><ExternalLink className="mr-1.5 h-3.5 w-3.5" />Monitor</Button><Button size="sm" variant="outline" onClick={() => window.location.assign("/manager/chat")}><MessageSquare className="mr-1.5 h-3.5 w-3.5" />Open Connect</Button>
+                    {can("users.override.prefect") && !s.isPrefect && <Button size="sm" variant="outline" onClick={() => void action(s.id, "promote_prefect")} disabled={busy === s.id}><Shield className="mr-1.5 h-3.5 w-3.5" />Make prefect</Button>}
+                    {can("audit.view_subordinate") && <Button size="sm" variant="outline" onClick={() => void openMonitor(s)}><ExternalLink className="mr-1.5 h-3.5 w-3.5" />Monitor</Button>}{can("groups.manage") && <Button size="sm" variant="outline" onClick={() => window.location.assign("/manager/chat")}><MessageSquare className="mr-1.5 h-3.5 w-3.5" />Open Connect</Button>}
                   </div>
                 </CardContent>
               </Card>
