@@ -11,10 +11,17 @@
 const base = (process.env.API_BASE_URL || "http://127.0.0.1:3001").replace(/\/$/, "");
 
 const failures = [];
+let baseReachable = true;
 
 async function assertRouteResponds(path, init, acceptedStatuses, label) {
+  if (!baseReachable) {
+    failures.push(`${label}: skipped because the API host did not respond to the initial probe`);
+    console.error(`SKIP ${label}: API host unavailable`);
+    return;
+  }
   try {
-    const response = await fetch(base + path, init);
+    const response = await fetch(base + path, { ...init, signal: AbortSignal.timeout(8000) });
+    baseReachable = true;
     const body = await response.text();
     if (response.status === 404) {
       failures.push(`${label}: HTTP 404 (deployment may be stale or route is not mounted)`);
@@ -28,6 +35,7 @@ async function assertRouteResponds(path, init, acceptedStatuses, label) {
     }
     console.log(`PASS ${label}: HTTP ${response.status}`);
   } catch (error) {
+    baseReachable = false;
     failures.push(`${label}: request failed: ${error instanceof Error ? error.message : String(error)}`);
     console.error(`FAIL ${label}: request failed`);
   }
@@ -41,14 +49,21 @@ await assertRouteResponds(
 );
 
 try {
-  const unknownRoute = await fetch(base + "/api/__api_404_repair_unknown_route__");
+  const unknownRoute = baseReachable
+    ? await fetch(base + "/api/__api_404_repair_unknown_route__", { signal: AbortSignal.timeout(8000) })
+    : null;
+  if (!unknownRoute) {
+    failures.push("Unknown API route probe skipped because the API host is unavailable");
+  } else {
   if (unknownRoute.status !== 404) {
     failures.push(`Unknown API route should return HTTP 404, got ${unknownRoute.status}`);
     console.error(`FAIL unknown API route: HTTP ${unknownRoute.status}`);
   } else {
     console.log("PASS unknown API routes return HTTP 404");
   }
+  }
 } catch (error) {
+  baseReachable = false;
   failures.push(`Unknown API route probe failed: ${error instanceof Error ? error.message : String(error)}`);
 }
 
