@@ -36,8 +36,11 @@ router.post("/notifications", requireAuth, requireManagerPermissionIfManager("no
   const managerActor=canAccessManager(actor)&&!isOwnerRole(actor.role);
   if (!canAccessManager(actor) && !actor.isPrefect) { res.status(403).json({ error: "Only authorized staff or prefects can create notifications" }); return; }
   const recipientRole = typeof req.body?.recipientRole === "string" ? req.body.recipientRole.trim().toLowerCase() : "";
-  const specificId=Number(req.body?.recipientId);
-  const isSpecific=Number.isSafeInteger(specificId)&&specificId>0;
+  const rawRecipientId=req.body?.recipientId;
+  const hasRecipientId=rawRecipientId!==undefined&&rawRecipientId!==null&&rawRecipientId!=="";
+  const specificId=Number(rawRecipientId);
+  if((hasRecipientId&&(!Number.isSafeInteger(specificId)||specificId<=0))||(req.body?.recipientType==="specific"&&!hasRecipientId)){res.status(400).json({error:"Choose a valid specific recipient."});return;}
+  const isSpecific=hasRecipientId;
   const isBroadcast=!isSpecific&&!recipientRole;
   if(managerActor && (recipientRole||isBroadcast) && !(await managerHasPermission(actor,"notifications.broadcast"))){res.status(403).json({error:"Owner has not granted broadcast permission."});return;}
   const parsed = CreateNotificationBody.safeParse({ ...req.body, recipientId: isSpecific ? specificId : null });
