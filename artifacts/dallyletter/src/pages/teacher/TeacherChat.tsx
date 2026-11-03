@@ -18,8 +18,10 @@ export default function TeacherChat() {
   const { user } = useAuth();
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("groupId"); return value && /^\d+$/.test(value) ? Number(value) : null; });
   const [selectedUserId, setSelectedUserId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("recipientId"); return value && /^\d+$/.test(value) ? Number(value) : null; });
+  const [ownerContact,setOwnerContact]=useState<{id:number;name:string}|null>(null);
+  const ownerChatRequested=new URLSearchParams(window.location.search).get("ownerChat")==="1";
   const [message, setMessage] = useState("");
-  const [activeTab, setActiveTab] = useState(() => new URLSearchParams(window.location.search).has("recipientId") ? "people" : "groups");
+  const [activeTab, setActiveTab] = useState(() => (new URLSearchParams(window.location.search).has("recipientId")||new URLSearchParams(window.location.search).has("ownerChat")) ? "people" : "groups");
   const [chatFullscreen, setChatFullscreen] = useState(false);
   const [lessonRequests, setLessonRequests] = useState<Array<{id:number; topic:string; notes:string|null; preferredDate:string|null; status:string; teacherReply:string|null; prefectId:number}>>([]);
   const [requestLoading, setRequestLoading] = useState(false);
@@ -35,6 +37,8 @@ export default function TeacherChat() {
   );
 
   const sendMessageMutation = useSendMessage();
+
+  useEffect(()=>{if(!ownerChatRequested)return;const token=localStorage.getItem("dallyletter_token");void fetch(getApiUrl("/api/manager/owner-contact"),{headers:token?{Authorization:`Bearer ${token}`}:{}}).then(async response=>{const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"Owner chat permission is unavailable.");setOwnerContact({id:Number(data.id),name:String(data.name||"Owner")});setSelectedGroupId(null);setSelectedUserId(Number(data.id));setActiveTab("people");}).catch(error=>window.alert(error instanceof Error?error.message:"Owner chat is unavailable."));},[ownerChatRequested]);
 
   const loadLessonRequests = async () => {
     setRequestLoading(true);
@@ -114,7 +118,7 @@ export default function TeacherChat() {
 
   const chatTitle = selectedGroupId
     ? groups?.find(g => g.id === selectedGroupId)?.name
-    : users?.find(u => u.id === selectedUserId)?.name;
+     : (ownerContact?.id===selectedUserId?ownerContact.name:users?.find(u => u.id === selectedUserId)?.name);
 
   return (
     <DashboardLayout>
