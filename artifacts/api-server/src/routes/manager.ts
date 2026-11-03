@@ -278,9 +278,9 @@ router.get("/reports/overview", requireAuth, requireManager, requireManagerPermi
     learnerCount: countRole(["student","learner","prefect"]),
     prefectCount: users.filter((u: any) => u.isPrefect === true).length,
     managerCount: users.filter((u: any) => u.isManager === true || ["manager","senior_manager"].includes(String(u.role).toLowerCase())).length,
-    ownerCount: countRole(["owner","admin","platform_owner"]),
+    ownerCount: isOwnerRole(req.currentUser!.role) ? countRole(["owner","platform_owner"]) : null,
     totalUsers: users.length,
-    totalRevenue,
+    totalRevenue: isOwnerRole(req.currentUser!.role) ? totalRevenue : null,
     lessonCount: lessons.length,
     classCount: classes.length,
     assignmentCount: assignments.length,
@@ -296,8 +296,8 @@ router.get("/reports/overview", requireAuth, requireManager, requireManagerPermi
     pendingContentModerationCount: pendingFlags.length,
     pendingTransferCount: Number(transferQueue.rows[0]?.count ?? 0),
     pendingReportReviewCount: Number(reportQueue.rows[0]?.count ?? 0),
-    paidPayments: payments.filter((p: any) => p.status === "paid").length,
-    pendingPayments: payments.filter((p: any) => p.status === "pending").length,
+    paidPayments: isOwnerRole(req.currentUser!.role) ? payments.filter((p: any) => p.status === "paid").length : null,
+    pendingPayments: isOwnerRole(req.currentUser!.role) ? payments.filter((p: any) => p.status === "pending").length : null,
   });
 });
 
