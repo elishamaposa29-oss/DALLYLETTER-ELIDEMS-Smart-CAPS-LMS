@@ -11,6 +11,11 @@ export const SENIOR_ONLY_PERMISSION_KEYS = new Set([
 export const isSeniorOnlyManagerPermission = (permissionKey: string): boolean =>
   SENIOR_ONLY_PERMISSION_KEYS.has(permissionKey);
 
+function defaultManagerPermission(role: unknown, managerLevel: unknown, isManager: unknown, permissionKey: string): boolean {
+  if (isSeniorManager({ role, managerLevel: typeof managerLevel === "string" ? managerLevel : undefined, isManager: isManager === true })) return true;
+  return permissionKey === "users.view" || permissionKey === "owner.chat";
+}
+
 type CurrentAuthority = {
   id: number;
   role: string;
@@ -62,7 +67,8 @@ export function requireManagerPermission(permissionKey: string) {
         res.status(403).json({ error: "Senior Manager or Owner authority required", permission: permissionKey });
         return;
       }
-      if (account.granted !== true) {
+      const granted = account.granted === null ? defaultManagerPermission(account.role,account.manager_level,account.is_manager,permissionKey) : account.granted === true;
+      if (!granted) {
         res.status(403).json({ error: "Permission not granted by Owner", permission: permissionKey });
         return;
       }
@@ -117,7 +123,7 @@ export async function managerHasPermission(user: NonNullable<Request["currentUse
       managerLevel: account.manager_level ?? undefined,
       isManager: account.is_manager,
     })) return false;
-    return account.granted === true;
+    return account.granted === null ? defaultManagerPermission(account.role,account.manager_level,account.is_manager,permissionKey) : account.granted === true;
   } catch {
     return false;
   }
