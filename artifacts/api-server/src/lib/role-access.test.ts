@@ -244,16 +244,19 @@ test("manager moderation follows hierarchy and protects Owner, Admin, and senior
  assert.equal(canModerateUser(owner,{role:"owner"}),false);
 });
 
-test("manager role defaults are least-privilege with senior read-only monitoring exception",()=>{
+test("senior managers retain established operational defaults while junior managers require individual grants",()=>{
  for(const role of ["manager","junior_manager","senior_manager"]){
   for(const key of ["manager.dashboard.view","users.view","owner.chat","transfers.approve","reports.review","teacher_cv.authorize","attendance.view","recordbook.view"]){
-   assert.equal(defaultManagerPermission(role,role==="senior_manager"?"senior":"junior",false,key),false,role+" must not inherit "+key);
+   assert.equal(defaultManagerPermission(role,role==="senior_manager"?"senior":"junior",false,key),role==="senior_manager",role+" default for "+key);
   }
  }
  assert.equal(defaultManagerPermission("senior_manager","senior",false,"manager.monitoring.view"),true);
+ assert.equal(defaultManagerPermission("senior_manager","senior",false,"transfers.approve"),true);
+ assert.equal(defaultManagerPermission("senior_manager","senior",false,"teacher_cv.authorize"),true);
  assert.equal(defaultManagerPermission("junior_manager","junior",false,"manager.monitoring.view"),false);
  assert.equal(defaultManagerPermission("manager","junior",false,"manager.monitoring.view"),false);
  assert.equal(isSeniorOnlyManagerPermission("manager.monitoring.view"),true);
+ assert.equal(isSeniorOnlyManagerPermission("teacher_cv.chat"),false);
  assert.equal(defaultManagerPermission("admin",undefined,false,"manager.monitoring.view"),false);
  assert.equal(defaultManagerPermission("teacher",undefined,true,"users.view"),false);
 });
