@@ -32,16 +32,15 @@ export default function ManagerHome() {
         const effective = permissionData.isOwner ? { "*": true } : (permissionData.permissions ?? {});
         if (!active) return;
         setPermissions(effective);
-        if (!permissionData.isOwner && effective["manager.dashboard.view"] !== true) {
-          setPermissionError("Owner has not granted Manager Dashboard access to this account. Ask the Owner to enable it in Owner Users.");
-          setLoading(false);
-          return;
+        // The overview is optional. Individual workspaces are independently
+        // available when their own permission is granted.
+        if (permissionData.isOwner || effective["manager.dashboard.view"] === true) {
+          const dashboardResponse = await fetch(getApiUrl("/api/manager/dashboard"), { headers });
+          const dashboardData = await dashboardResponse.json().catch(() => ({}));
+          if (!dashboardResponse.ok) throw new Error(dashboardData.error || "Manager dashboard could not be loaded.");
+          if (!active) return;
+          setData(dashboardData);
         }
-        const dashboardResponse = await fetch(getApiUrl("/api/manager/dashboard"), { headers });
-        const dashboardData = await dashboardResponse.json().catch(() => ({}));
-        if (!dashboardResponse.ok) throw new Error(dashboardData.error || "Manager dashboard could not be loaded.");
-        if (!active) return;
-        setData(dashboardData);
         if (permissionData.isOwner || effective["transfers.view"] === true) {
           const transferResponse = await fetch(getApiUrl("/api/academic-records/transfer-requests"), { headers });
           const transferData = await transferResponse.json().catch(() => []);
