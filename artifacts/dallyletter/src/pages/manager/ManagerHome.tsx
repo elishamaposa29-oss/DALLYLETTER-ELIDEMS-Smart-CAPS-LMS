@@ -59,7 +59,6 @@ export default function ManagerHome() {
   }, []);
 
   const can = (key: string) => permissions["*"] === true || permissions[key] === true;
-  const canReviewTeacherCvs = can("teacher_cv.review") || can("teacher_cv.authorize");
   const visibleQueue = (data?.reviewQueue ?? []).filter((item: any) => {
     const required: Record<string, string> = {
       transfer_request: "transfers.view", academic_report: "reports.view", achievement_award: "achievements.view",
