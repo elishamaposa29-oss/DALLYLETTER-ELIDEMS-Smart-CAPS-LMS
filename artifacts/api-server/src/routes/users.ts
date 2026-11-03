@@ -19,10 +19,11 @@ import { isSmsConfigured, sendSms } from "../lib/sms-service";
 import { enqueueEmailNotification } from "../lib/email-notification-queue";
 import { buildTeacherCvPdf } from "../lib/teacher-cv-pdf";
 import { canViewProfileSection } from "./profileConnections";
+import { isSeniorManager } from "../lib/role-access";
 
 const router: IRouter = Router();
 
-function canReviewTeacherApplication(user: { role: unknown; managerLevel?: unknown }): boolean { const role=String(user.role||"").trim().toLowerCase().replace(/[ -]+/g,"_"); return ["owner","platform_owner","senior_manager"].includes(role) || (role==="manager" && String(user.managerLevel||"").toLowerCase()==="senior"); }
+function canReviewTeacherApplication(user: { role: unknown; managerLevel?: unknown; isManager?: unknown; teacherApplicationStatus?: unknown }): boolean { return isSeniorManager(user); }
 
 function hasForbiddenPaymentCredentials(body: unknown): boolean {
   if (!body || typeof body !== "object" || Array.isArray(body)) return false;
