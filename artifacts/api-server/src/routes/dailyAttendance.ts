@@ -103,7 +103,7 @@ router.get("/user/:userId", requireAuth, requireManagerPermissionIfManager("atte
   const actor=req.currentUser!;
   const targetResult=await pool.query("SELECT id,role,is_manager,manager_level FROM users WHERE id=$1",[targetId]);
   const target=targetResult.rows[0];
-  if(!target || (!isOwnerRole(actor.role) && !canModerateUser(actor,{role:target.role,isManager:target.is_manager,managerLevel:target.manager_level}))){res.status(404).json({error:"User not found."});return;}
+  if(!target || (actor.id!==targetId && !isOwnerRole(actor.role) && !canModerateUser(actor,{role:target.role,isManager:target.is_manager,managerLevel:target.manager_level}))){res.status(404).json({error:"User not found."});return;}
   if(!(await canViewProfileSection(actor,targetId,"register"))){res.status(403).json({error:"Daily register visibility is restricted by this profile's privacy settings."});return;}
   const result=await pool.query(
     `SELECT attendance_date,time_zone,status,open_count,first_open_at,last_open_at,last_source,activity_label
@@ -138,7 +138,7 @@ router.get("/today", requireAuth, requireManagerPermissionIfManager("attendance.
     [timeZone],
   );
   const actor=req.currentUser!;
-  const records=isOwnerRole(actor.role)?result.rows:result.rows.filter((row:any)=>canModerateUser(actor,{role:row.role,isManager:row.is_manager,managerLevel:row.manager_level}));
+  const records=isOwnerRole(actor.role)?result.rows:result.rows.filter((row:any)=>Number(row.user_id)===actor.id||canModerateUser(actor,{role:row.role,isManager:row.is_manager,managerLevel:row.manager_level}));
   res.json({ records: records.map(({is_manager,manager_level,...row}:any)=>row) });
 });
 
