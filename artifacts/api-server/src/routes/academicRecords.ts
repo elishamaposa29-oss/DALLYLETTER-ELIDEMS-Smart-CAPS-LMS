@@ -507,8 +507,9 @@ router.get("/academic-records/me", requireAuth, async (req, res): Promise<void> 
 router.get("/academic-records/report-learners", requireAuth, requireManagerPermissionIfManager("recordbook.view"), requireManagerPermissionIfManager("reports.create"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (canAccessManager(user)) {
-    const result = await pool.query("SELECT id,name,grade FROM users WHERE role IN ('student','learner') AND is_blocked=false ORDER BY name LIMIT 1000");
-    res.json(result.rows);
+    const result = await pool.query("SELECT id,name,grade,role,is_manager,manager_level FROM users WHERE role IN ('student','learner') AND is_blocked=false ORDER BY name LIMIT 1000");
+    const visible=isOwnerRole(user.role)?result.rows:result.rows.filter((row:any)=>canModerateUser(user,{role:row.role,isManager:row.is_manager,managerLevel:row.manager_level}));
+    res.json(isOwnerRole(user.role)?visible:visible.map(({role,is_manager,manager_level,...row}:any)=>row));
     return;
   }
   if (String(user.role).toLowerCase() !== "teacher" || user.teacherApplicationStatus === "pending_review") {
@@ -548,7 +549,7 @@ router.post("/academic-records/reports/drafts", requireAuth, requireManagerPermi
   const periodDays = (Date.parse(periodEnd + "T00:00:00Z") - Date.parse(periodStart + "T00:00:00Z")) / 86400000 + 1;
   if (periodDays > 370) { res.status(400).json({ error: "Academic report periods cannot exceed 370 days." }); return; }
   const [learner, enrollments, attendance, awards, events, assignmentMarks, exerciseMarks, pollSubmissions] = await Promise.all([
-    pool.query("SELECT id,name,role,grade FROM users WHERE id=$1 AND role IN ('student','learner') AND is_blocked=false", [learnerId]),
+    pool.query("SELECT id,name,role,grade,is_manager,manager_level FROM users WHERE id=$1 AND role IN ('student','learner') AND is_blocked=false", [learnerId]),
     pool.query("SELECT e.id,e.class_id,e.enrolled_at,e.progress_percent,e.status,c.title AS class_title,c.subject FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 AND e.enrolled_at < (($2::date + 1)::timestamp AT TIME ZONE 'Africa/Harare') AND e.status <> 'cancelled' ORDER BY e.enrolled_at", [learnerId, periodEnd]),
     pool.query("SELECT class_id,status,joined_at,duration_minutes,is_late FROM attendance WHERE student_id=$1 AND joined_at >= ($2::date::timestamp AT TIME ZONE 'Africa/Harare') AND joined_at < (($3::date + 1)::timestamp AT TIME ZONE 'Africa/Harare') ORDER BY joined_at DESC LIMIT 1000", [learnerId, periodStart, periodEnd]),
     pool.query("SELECT ua.earned_at,a.name,a.description FROM user_achievements ua JOIN achievements a ON a.id=ua.achievement_id WHERE ua.user_id=$1 AND ua.earned_at >= ($2::date::timestamp AT TIME ZONE 'Africa/Harare') AND ua.earned_at < (($3::date + 1)::timestamp AT TIME ZONE 'Africa/Harare') ORDER BY ua.earned_at DESC", [learnerId, periodStart, periodEnd]),
@@ -558,6 +559,7 @@ router.post("/academic-records/reports/drafts", requireAuth, requireManagerPermi
     pool.query("SELECT ps.id AS submission_id,ps.poll_id,p.title,p.subject,p.grade,p.mode,ps.score,ps.total_questions,ps.completed_at FROM poll_submissions ps JOIN polls p ON p.id=ps.poll_id WHERE ps.student_id=$1 AND ps.completed_at >= ($2::date::timestamp AT TIME ZONE 'Africa/Harare') AND ps.completed_at < (($3::date + 1)::timestamp AT TIME ZONE 'Africa/Harare') ORDER BY ps.completed_at DESC", [learnerId, periodStart, periodEnd]),
   ]);
   if (!learner.rows[0]) { res.status(404).json({ error: "Learner not found." }); return; }
+  if(canAccessManager(creator)&&!isOwnerRole(creator.role)&&!canModerateUser(creator,{role:learner.rows[0].role,isManager:learner.rows[0].is_manager,managerLevel:learner.rows[0].manager_level})){res.status(404).json({error:"Learner not found."});return;}
   const reportableExerciseMarks = exerciseMarks.rows.filter(isReportMarkExercise);
   const markSummary = summarizeAcademicMarks(assignmentMarks.rows, reportableExerciseMarks);
   const attendanceSummary = { sessions: attendance.rows.length, present: attendance.rows.filter((row: any) => String(row.status).toLowerCase() === "present" && !row.is_late).length, absent: attendance.rows.filter((row: any) => String(row.status).toLowerCase() === "absent").length, late: attendance.rows.filter((row: any) => Boolean(row.is_late) || String(row.status).toLowerCase() === "late").length };
@@ -616,10 +618,15 @@ router.post("/academic-records/reports/drafts/:id/submit", requireAuth, requireM
   const user = req.currentUser!;
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id < 1) { res.status(400).json({ error: "Invalid draft ID." }); return; }
-  const existing = await pool.query("SELECT id,created_by,status FROM academic_report_drafts WHERE id=$1", [id]);
+  const existing = await pool.query("SELECT id,created_by,learner_id,status FROM academic_report_drafts WHERE id=$1", [id]);
   const row = existing.rows[0];
-  if (!row || (Number(row.created_by) !== Number(user.id) && !canAccessManager(user))) {
+  if (!row || (Number(row.created_by) !== Number(user.id) && !isOwnerRole(user.role))) {
     res.status(404).json({ error: "Report draft not found." }); return;
+  }
+  if(canAccessManager(user)&&!isOwnerRole(user.role)){
+    const target=await pool.query("SELECT role,is_manager,manager_level FROM users WHERE id=$1",[row.learner_id]);
+    const t=target.rows[0];
+    if(!t||!canModerateUser(user,{role:t.role,isManager:t.is_manager,managerLevel:t.manager_level})){res.status(404).json({error:"Report draft not found."});return;}
   }
   if (row.status !== "draft") {
     res.status(409).json({ error: "Only an unsubmitted draft can be submitted for review." }); return;
@@ -640,8 +647,9 @@ router.get("/academic-records/reports/drafts", requireAuth, requireManagerPermis
   const user = req.currentUser!;
   const columns = "SELECT d.id,d.learner_id,d.created_by,d.report_type,d.term_label,d.period_start,d.period_end,d.draft_content,d.status,d.reviewed_by,d.review_note,d.reviewed_at,d.created_at,u.name AS learner_name FROM academic_report_drafts d JOIN users u ON u.id=d.learner_id";
   if (canAccessManager(user)) {
-    const result = await pool.query(columns + " ORDER BY d.created_at DESC LIMIT 200");
-    res.json(result.rows); return;
+    const result = await pool.query(columns.replace("u.name AS learner_name","u.name AS learner_name,u.role,u.is_manager,u.manager_level") + " ORDER BY d.created_at DESC LIMIT 200");
+    const visible=isOwnerRole(user.role)?result.rows:result.rows.filter((row:any)=>canModerateUser(user,{role:row.role,isManager:row.is_manager,managerLevel:row.manager_level}));
+    res.json(isOwnerRole(user.role)?visible:visible.map(({role,is_manager,manager_level,...row}:any)=>row)); return;
   }
   if (String(user.role).toLowerCase() !== "teacher" || user.teacherApplicationStatus === "pending_review") {
     res.status(403).json({ error: "Academic reports are available to their learner, assigned teacher, and managers." }); return;
