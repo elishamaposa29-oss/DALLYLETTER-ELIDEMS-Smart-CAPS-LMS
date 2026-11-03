@@ -3,7 +3,10 @@ import multer from "multer";
 import { db, notificationsTable, auditLogsTable } from "@workspace/db";
 import { assignmentsTable, assignmentSubmissionsTable } from "@workspace/db/schema";
 import { eq, desc, and } from "drizzle-orm";
-import { canManageAcademicContent, isOwnerRole, requireAuth } from "../lib/auth-middleware";
+import { canManageAcademicContent, canAccessManager, isOwnerRole, requireAuth } from "../lib/auth-middleware";
+import { canModerateUser } from "../lib/role-access";
+import { managerHasPermission, requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
+import { usersTable } from "@workspace/db/schema";
 import { normalizeAssignmentAttachmentUrl, validateAssignmentSubmission } from "../lib/assignment-submission";
 import { getAIProvider } from "../lib/ai-provider";
 import { isObjectStorageConfigured } from "../lib/object-storage";
@@ -22,6 +25,12 @@ const materialUpload = multer({
   fileFilter: (_req, file, callback) => callback(null, isAllowedMediaType(file.mimetype)),
 });
 
+async function canManagerAccessTeacherRecord(user: NonNullable<Express.Request["currentUser"]>, teacherId: number, permissionKey: string): Promise<boolean> {
+  if (isOwnerRole(user.role)) return true;
+  if (!canAccessManager(user) || !(await managerHasPermission(user, permissionKey))) return false;
+  const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, teacherId));
+  return Boolean(target && canModerateUser(user, target));
+}
 function normalizeGrade(value: string | null | undefined): string {
   return String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -88,7 +97,7 @@ router.post("/submission-material", requireAuth, (req, res): void => {
   });
 });
 
-router.get("/", requireAuth, async (req, res): Promise<void> => {
+router.get("/", requireAuth, requireManagerPermissionIfManager("recordbook.view"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (user.role !== "student" && !canManageAcademicContent(user)) { res.status(403).json({ error: "Assignment access required" }); return; }
   let rows;
@@ -101,19 +110,21 @@ router.get("/", requireAuth, async (req, res): Promise<void> => {
       .orderBy(desc(assignmentsTable.createdAt));
     rows = activeRows.filter(row => isVisibleToStudent(row, user.grade ?? null));
   }
-  res.json(user.role === "student" ? rows.map(row => row.referenceMaterialHidden ? { ...row, attachmentUrl: null } : row) : rows);
+  const visibleRows = canAccessManager(user) && !isOwnerRole(user.role) ? (await Promise.all(rows.map(async row => await canManagerAccessTeacherRecord(user, row.teacherId, "recordbook.view") ? row : null))).filter(Boolean) : rows;
+  res.json(user.role === "student" ? visibleRows.map(row => row.referenceMaterialHidden ? { ...row, attachmentUrl: null } : row) : visibleRows);
 });
 
-router.get("/:id", requireAuth, async (req, res): Promise<void> => {
+router.get("/:id", requireAuth, requireManagerPermissionIfManager("recordbook.view"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (user.role !== "student" && !canManageAcademicContent(user)) { res.status(403).json({ error: "Assignment access required" }); return; }
   const [assignment] = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, parseInt(String(req.params.id))));
   if (!assignment) { res.status(404).json({ error: "Not found" }); return; }
   // Do not expose another teacher's assignment or learner submissions through the detail endpoint.
   // The list screen filters client-side, but this API check is the actual authorization boundary.
-  if (canManageAcademicContent(user) && !isOwnerRole(user.role) && !user.isManager && assignment.teacherId !== user.id) {
-    res.status(403).json({ error: "You can only access your own assignments" }); return;
+  if (canAccessManager(user) && !isOwnerRole(user.role) && !(await canManagerAccessTeacherRecord(user, assignment.teacherId, "recordbook.view"))) {
+    res.status(403).json({ error: "You do not have permission to view this teacher's assignment." }); return;
   }
+  if (user.role === "teacher" && assignment.teacherId !== user.id) { res.status(403).json({ error: "You can only access your own assignments" }); return; }
   if (user.role === "student" && !isVisibleToStudent(assignment, user.grade)) { res.status(404).json({ error: "Not found" }); return; }
   const submissions = user.role === "student"
     ? await db.select().from(assignmentSubmissionsTable).where(and(eq(assignmentSubmissionsTable.assignmentId, assignment.id), eq(assignmentSubmissionsTable.studentId, user.id)))
@@ -222,7 +233,7 @@ router.delete("/:id", requireAuth, async (req, res): Promise<void> => {
   res.json({ ok: true });
 });
 
-router.get("/:id/submissions", requireAuth, async (req, res): Promise<void> => {
+router.get("/:id/submissions", requireAuth, requireManagerPermissionIfManager("recordbook.view"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (user.role !== "student" && !canManageAcademicContent(user)) { res.status(403).json({ error: "Assignment access required" }); return; }
   const assignmentId = parseInt(String(req.params.id));
@@ -265,7 +276,7 @@ router.post("/:id/submit", requireAuth, async (req, res): Promise<void> => {
   res.status(201).json(row);
 });
 
-router.post("/submissions/:subId/ai-grade", requireAuth, async (req, res): Promise<void> => {
+router.post("/submissions/:subId/ai-grade", requireAuth, requireManagerPermissionIfManager("recordbook.edit"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Academic staff access required" }); return; }
   const submissionId = parseInt(String(req.params.subId));
@@ -275,9 +286,8 @@ router.post("/submissions/:subId/ai-grade", requireAuth, async (req, res): Promi
   }).from(assignmentSubmissionsTable).innerJoin(assignmentsTable, eq(assignmentSubmissionsTable.assignmentId, assignmentsTable.id))
     .where(eq(assignmentSubmissionsTable.id, submissionId));
   if (!row) { res.status(404).json({ error: "Submission not found" }); return; }
-  if (!isOwnerRole(user.role) && !user.isManager && row.assignment.teacherId !== user.id) {
-    res.status(403).json({ error: "You can only mark your own assignments" }); return;
-  }
+  if (canAccessManager(user) && !isOwnerRole(user.role) && !(await canManagerAccessTeacherRecord(user, row.assignment.teacherId, "recordbook.edit"))) { res.status(403).json({ error: "You do not have permission to mark this teacher's assignment." }); return; }
+  if (user.role === "teacher" && row.assignment.teacherId !== user.id) { res.status(403).json({ error: "You can only mark your own assignments" }); return; }
   try {
     const ai = await getAIProvider();
     const result = await ai.analyzeData({
@@ -299,7 +309,7 @@ router.post("/submissions/:subId/ai-grade", requireAuth, async (req, res): Promi
   }
 });
 
-router.put("/submissions/:subId/grade", requireAuth, async (req, res): Promise<void> => {
+router.put("/submissions/:subId/grade", requireAuth, requireManagerPermissionIfManager("recordbook.edit"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Forbidden" }); return; }
   const { marks, feedback } = req.body;
@@ -308,7 +318,8 @@ router.put("/submissions/:subId/grade", requireAuth, async (req, res): Promise<v
     .innerJoin(assignmentsTable, eq(assignmentSubmissionsTable.assignmentId, assignmentsTable.id))
     .where(eq(assignmentSubmissionsTable.id, submissionId));
   if (!submission) { res.status(404).json({ error: "Not found" }); return; }
-  if (!isOwnerRole(user.role) && !user.isManager && submission.teacherId !== user.id) { res.status(403).json({ error: "You can only grade your own assignments" }); return; }
+  if (canAccessManager(user) && !isOwnerRole(user.role) && !(await canManagerAccessTeacherRecord(user, submission.teacherId, "recordbook.edit"))) { res.status(403).json({ error: "You do not have permission to grade this teacher's assignment." }); return; }
+  if (user.role === "teacher" && submission.teacherId !== user.id) { res.status(403).json({ error: "You can only grade your own assignments" }); return; }
   const numericMarks = typeof marks === "number" ? marks : Number(marks);
   if (!Number.isFinite(numericMarks) || numericMarks < 0 || numericMarks > submission.totalMarks || (feedback != null && (typeof feedback !== "string" || feedback.length > 5000))) {
     res.status(400).json({ error: `marks must be between 0 and ${submission.totalMarks}; feedback must be at most 5000 characters` }); return;
