@@ -8,6 +8,7 @@ type CurrentAuthority = {
   role: string;
   is_manager: boolean;
   manager_level: string | null;
+  teacher_application_status: string | null;
   granted: boolean | null;
 };
 
@@ -17,7 +18,7 @@ type CurrentAuthority = {
  */
 async function readCurrentAuthority(userId: number, permissionKey: string): Promise<CurrentAuthority | null> {
   const result = await pool.query(
-    `SELECT u.id,u.role,u.is_manager,u.manager_level,g.granted
+    `SELECT u.id,u.role,u.is_manager,u.manager_level,u.teacher_application_status,g.granted
        FROM users u
        LEFT JOIN manager_permission_grants g
          ON g.manager_user_id=u.id AND g.permission_key=$2
@@ -30,7 +31,7 @@ async function readCurrentAuthority(userId: number, permissionKey: string): Prom
 
 function isManagerAccount(account: CurrentAuthority): boolean {
   const role = normalizeRole(account.role);
-  return MANAGER_ROLES.has(role) || (role === "teacher" && account.is_manager === true);
+  return MANAGER_ROLES.has(role) || (role === "teacher" && account.is_manager === true && account.teacher_application_status !== "pending_review");
 }
 
 /** Replace stale JWT role claims with the live database authority for downstream route checks. */
@@ -39,6 +40,7 @@ function syncCurrentAuthority(user: NonNullable<Request["currentUser"]>, account
     role: account.role,
     isManager: account.is_manager,
     managerLevel: account.manager_level ?? undefined,
+    teacherApplicationStatus: account.teacher_application_status ?? undefined,
   });
 }
 
@@ -60,6 +62,7 @@ export function requireManagerPermission(permissionKey: string) {
         role: account.role,
         managerLevel: account.manager_level ?? undefined,
         isManager: account.is_manager,
+        teacherApplicationStatus: account.teacher_application_status ?? undefined,
       })) {
         res.status(403).json({ error: "Senior Manager or Owner authority required", permission: permissionKey });
         return;
@@ -121,6 +124,7 @@ export async function managerHasPermission(user: NonNullable<Request["currentUse
       role: account.role,
       managerLevel: account.manager_level ?? undefined,
       isManager: account.is_manager,
+      teacherApplicationStatus: account.teacher_application_status ?? undefined,
     })) return false;
     return account.granted === null ? defaultManagerPermission(account.role,account.manager_level,account.is_manager,permissionKey) : account.granted === true;
   } catch {
