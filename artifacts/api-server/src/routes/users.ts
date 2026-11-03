@@ -845,8 +845,10 @@ router.post("/users/me/qualifications", requireAuth, async (req, res): Promise<v
 
 // Owner-only moderation queue for qualifications awaiting verification.
 router.get("/qualifications/pending", requireAuth, requireManagerPermission("qualifications.view"), async(req,res):Promise<void>=>{
-  const result=await pool.query("SELECT q.id,q.user_id,u.name AS teacher_name,q.title,q.institution,q.year,q.verification_status,q.document_id,d.file_name AS document_file_name,d.mime_type AS document_mime_type,q.created_at FROM teacher_qualifications q JOIN users u ON u.id=q.user_id LEFT JOIN teacher_documents d ON d.id=q.document_id WHERE q.verification_status='pending' AND lower(u.role) NOT IN ('owner','platform_owner') ORDER BY q.created_at ASC");
-  res.json(result.rows);
+  const actor=req.currentUser!;
+  const result=await pool.query("SELECT q.id,q.user_id,u.name AS teacher_name,u.role,u.is_manager,u.manager_level,q.title,q.institution,q.year,q.verification_status,q.document_id,d.file_name AS document_file_name,d.mime_type AS document_mime_type,q.created_at FROM teacher_qualifications q JOIN users u ON u.id=q.user_id LEFT JOIN teacher_documents d ON d.id=q.document_id WHERE q.verification_status='pending' ORDER BY q.created_at ASC");
+  const visible=isOwnerRole(actor.role)?result.rows:result.rows.filter((row:any)=>canModerateUser(actor,{role:row.role,isManager:row.is_manager,managerLevel:row.manager_level}));
+  res.json(visible.map(({role,is_manager,manager_level,...row}:any)=>row));
 });
 
 // Public list is intentionally minimal; only verified qualifications are public.
@@ -926,8 +928,9 @@ router.patch("/qualifications/:id/verify", requireAuth, requireManagerPermission
     await client.query("BEGIN");
     const current=await client.query("SELECT id,user_id,title,institution,year,verification_status,document_id,created_at FROM teacher_qualifications WHERE id=$1 FOR UPDATE",[id]);
     if(!current.rows.length){await client.query("ROLLBACK");res.status(404).json({error:"Qualification not found."});return;}
-    const qualificationOwner = await client.query("SELECT role FROM users WHERE id=$1", [current.rows[0].user_id]);
-    if (isOwnerRole(qualificationOwner.rows[0]?.role) && !isOwnerRole(reviewer.role)) {
+    const qualificationOwner = await client.query("SELECT role,is_manager,manager_level FROM users WHERE id=$1", [current.rows[0].user_id]);
+    const ownerRow=qualificationOwner.rows[0];
+    if (ownerRow && !isOwnerRole(reviewer.role) && !canModerateUser(reviewer,{role:ownerRow.role,isManager:ownerRow.is_manager,managerLevel:ownerRow.manager_level})) {
       await client.query("ROLLBACK");
       res.status(404).json({ error: "Qualification not found." });
       return;
@@ -950,8 +953,9 @@ router.get("/qualifications/:id/review-history", requireAuth, requireManagerPerm
   await pool.query("CREATE TABLE IF NOT EXISTS teacher_qualification_review_history (id bigserial PRIMARY KEY,qualification_id integer NOT NULL REFERENCES teacher_qualifications(id) ON DELETE CASCADE,reviewed_by integer REFERENCES users(id),previous_status text NOT NULL,new_status text NOT NULL,review_note text,created_at timestamptz NOT NULL DEFAULT now())");
   const qualification=await pool.query("SELECT id,user_id FROM teacher_qualifications WHERE id=$1",[id]);
   if(!qualification.rows.length){res.status(404).json({error:"Qualification not found."});return;}
-  const targetUser = await pool.query("SELECT role FROM users WHERE id=$1", [qualification.rows[0].user_id]);
-  if(isOwnerRole(targetUser.rows[0]?.role) && !isOwnerRole(actor.role)){res.status(404).json({error:"Qualification not found."});return;}
+  const targetUser = await pool.query("SELECT role,is_manager,manager_level FROM users WHERE id=$1", [qualification.rows[0].user_id]);
+  const target=targetUser.rows[0];
+  if(!target || (Number(qualification.rows[0].user_id)!==actor.id && !isOwnerRole(actor.role) && !canModerateUser(actor,{role:target.role,isManager:target.is_manager,managerLevel:target.manager_level}))){res.status(404).json({error:"Qualification not found."});return;}
   if(Number(qualification.rows[0].user_id)!==actor.id && !(canAccessManager(actor) && await managerHasPermission(actor,"qualifications.view"))){res.status(403).json({error:"Only the qualification owner or an authorized owner/admin can view review history."});return;}
   const history=await pool.query("SELECT h.id,h.qualification_id,h.previous_status,h.new_status,h.review_note,h.created_at,u.name AS reviewer_name FROM teacher_qualification_review_history h JOIN users u ON u.id=h.reviewed_by WHERE h.qualification_id=$1 ORDER BY h.created_at DESC,h.id DESC LIMIT 100",[id]);
   res.json({qualificationId:id,history:history.rows});
@@ -963,8 +967,9 @@ router.get("/qualifications/:id/document", requireAuth, requireManagerPermission
   const result=await pool.query("SELECT d.id,d.user_id,d.file_name,d.mime_type,d.storage_key,q.verification_status FROM teacher_documents d LEFT JOIN teacher_qualifications q ON q.document_id=d.id WHERE d.id=$1",[id]);
   const doc=result.rows[0];
   if(!doc){res.status(404).json({error:"Document not found."});return;}
-  const targetUser = await pool.query("SELECT role FROM users WHERE id=$1", [doc.user_id]);
-  if(isOwnerRole(targetUser.rows[0]?.role) && !isOwnerRole(actor.role)){res.status(404).json({error:"Document not found."});return;}
+  const targetUser = await pool.query("SELECT role,is_manager,manager_level FROM users WHERE id=$1", [doc.user_id]);
+  const target=targetUser.rows[0];
+  if(!target || (Number(doc.user_id)!==actor.id && !isOwnerRole(actor.role) && !canModerateUser(actor,{role:target.role,isManager:target.is_manager,managerLevel:target.manager_level}))){res.status(404).json({error:"Document not found."});return;}
   if(doc.user_id!==actor.id&&!(canAccessManager(actor)&&await managerHasPermission(actor,"qualifications.view"))){res.status(403).json({error:"Document access denied."});return;}
   if(!doc.storage_key){res.status(503).json({error:"Document storage key unavailable for this legacy record."});return;}
   const media=await streamStoredMedia(doc.storage_key);
