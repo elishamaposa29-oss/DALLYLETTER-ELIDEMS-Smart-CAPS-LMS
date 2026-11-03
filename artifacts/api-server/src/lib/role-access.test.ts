@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { defaultManagerPermission, isSeniorOnlyManagerPermission } from "./manager-permission-policy.js";
 import { canAccessManager, canApproveAchievementAwards, canManageAcademicContent, canModerateUser, canPendingTeacherUseRoute, canRecommendAchievementAwards, canReviewAcademicTransfer, canUseStaffAI, enforceAcademicStaffAccess, enforceAuthenticated, enforceOwnerAccess, isJuniorManager, isOwnerRole, isSeniorManager, normalizeRole } from "./role-access.js";
 
 test("normalizes legacy role casing and separators",()=>{
@@ -241,4 +242,18 @@ test("manager moderation follows hierarchy and protects Owner, Admin, and senior
  assert.equal(canModerateUser(junior,{role:"owner"}),false);
  assert.equal(canModerateUser(owner,{role:"admin"}),true);
  assert.equal(canModerateUser(owner,{role:"owner"}),false);
+});
+
+test("manager role defaults are least-privilege with senior read-only monitoring exception",()=>{
+ for(const role of ["manager","junior_manager","senior_manager"]){
+  for(const key of ["manager.dashboard.view","users.view","owner.chat","transfers.approve","reports.review","teacher_cv.authorize","attendance.view","recordbook.view"]){
+   assert.equal(defaultManagerPermission(role,role==="senior_manager"?"senior":"junior",false,key),false,role+" must not inherit "+key);
+  }
+ }
+ assert.equal(defaultManagerPermission("senior_manager","senior",false,"manager.monitoring.view"),true);
+ assert.equal(defaultManagerPermission("junior_manager","junior",false,"manager.monitoring.view"),false);
+ assert.equal(defaultManagerPermission("manager","junior",false,"manager.monitoring.view"),false);
+ assert.equal(isSeniorOnlyManagerPermission("manager.monitoring.view"),true);
+ assert.equal(defaultManagerPermission("admin",undefined,false,"manager.monitoring.view"),false);
+ assert.equal(defaultManagerPermission("teacher",undefined,true,"users.view"),false);
 });
