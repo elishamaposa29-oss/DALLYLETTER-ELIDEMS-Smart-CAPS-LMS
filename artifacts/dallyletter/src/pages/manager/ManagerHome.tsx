@@ -18,19 +18,58 @@ export default function ManagerHome() {
   const managerRole = String(user?.role || "").trim().toLowerCase().replace(/[ -]+/g, "_");
   const canReviewTeacherCvs = ["owner", "platform_owner", "senior_manager"].includes(managerRole) || (["manager", "teacher"].includes(managerRole) && String((user as any)?.managerLevel || "").toLowerCase() === "senior" && (managerRole !== "teacher" || (user as any)?.isManager === true));
   const [data, setData] = useState<any>(null);
+  const [permissions, setPermissions] = useState<Record<string, boolean>>({});
+  const [permissionError, setPermissionError] = useState("");
   const [loading, setLoading] = useState(true);
   const [pendingTransfers, setPendingTransfers] = useState(0);
   const [transferError, setTransferError] = useState("");
 
   useEffect(() => {
-    fetch(getApiUrl("/api/manager/dashboard"), { headers: { Authorization: `Bearer ${token()}` } })
-      .then(r => r.json()).then(d => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
-    fetch(getApiUrl("/api/academic-records/transfer-requests"), { headers: { Authorization: `Bearer ${token()}` } })
-      .then(async r => { const d = await r.json().catch(() => []); if (!r.ok) throw new Error(d.error || "Could not load transfer approvals"); return d; })
-      .then(d => { setPendingTransfers(Array.isArray(d) ? d.filter((item: any) => item.status === "pending").length : 0); setTransferError(""); })
-      .catch(e => setTransferError(e instanceof Error ? e.message : "Transfer approval count unavailable"));
+    let active = true;
+    const load = async () => {
+      try {
+        const headers = { Authorization: `Bearer ${token()}` };
+        const permissionResponse = await fetch(getApiUrl("/api/manager-permissions/me"), { headers });
+        const permissionData = await permissionResponse.json().catch(() => ({}));
+        if (!permissionResponse.ok) throw new Error(permissionData.error || "Unable to load Owner-assigned permissions.");
+        const effective = permissionData.isOwner ? { "*": true } : (permissionData.permissions ?? {});
+        if (!active) return;
+        setPermissions(effective);
+        if (!permissionData.isOwner && effective["manager.dashboard.view"] !== true) {
+          setPermissionError("Owner has not granted Manager Dashboard access to this account. Ask the Owner to enable it in Owner Users.");
+          setLoading(false);
+          return;
+        }
+        const dashboardResponse = await fetch(getApiUrl("/api/manager/dashboard"), { headers });
+        const dashboardData = await dashboardResponse.json().catch(() => ({}));
+        if (!dashboardResponse.ok) throw new Error(dashboardData.error || "Manager dashboard could not be loaded.");
+        if (!active) return;
+        setData(dashboardData);
+        if (permissionData.isOwner || effective["transfers.view"] === true) {
+          const transferResponse = await fetch(getApiUrl("/api/academic-records/transfer-requests"), { headers });
+          const transferData = await transferResponse.json().catch(() => []);
+          if (!transferResponse.ok) throw new Error(transferData.error || "Could not load transfer approvals");
+          if (active) setPendingTransfers(Array.isArray(transferData) ? transferData.filter((item: any) => item.status === "pending").length : 0);
+        }
+      } catch (e) {
+        if (active) setPermissionError(e instanceof Error ? e.message : "Manager dashboard unavailable.");
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void load();
+    return () => { active = false; };
   }, []);
+
+  const can = (key: string) => permissions["*"] === true || permissions[key] === true;
+  const visibleQueue = (data?.reviewQueue ?? []).filter((item: any) => {
+    const required: Record<string, string> = {
+      transfer_request: "transfers.view", academic_report: "reports.view", achievement_award: "achievements.view",
+      qualification_verification: "qualifications.view", content_moderation: "moderation.view",
+      teacher_application: "teacher_cv.view", alert: "notifications.view",
+    };
+    return !required[item.type] || can(required[item.type]);
+  });
 
   if (loading) return (
     <DashboardLayout>
@@ -82,13 +121,13 @@ export default function ManagerHome() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm">
                 <AlertTriangle className="h-4 w-4 text-red-500" /> Manager Action Queue
-                <Badge className="ml-auto bg-red-500 text-white text-xs">{data?.reviewQueue?.length ?? 0} pending</Badge>
+                <Badge className="ml-auto bg-red-500 text-white text-xs">{visibleQueue.length} pending</Badge>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {!data?.reviewQueue?.length ? <p className="text-slate-400 text-sm text-center py-4">No pending approvals or open alerts.</p> : (
+              {!visibleQueue.length ? <p className="text-slate-400 text-sm text-center py-4">No pending approvals or open alerts.</p> : (
                 <div className="max-h-96 space-y-2 overflow-y-auto">
-                  {data.reviewQueue.map((item:any) => (
+                  {visibleQueue.map((item:any) => (
                     <div key={item.id} className="flex items-start gap-2 rounded-lg bg-slate-50 p-3">
                       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
                       <div className="min-w-0 flex-1">
@@ -102,10 +141,10 @@ export default function ManagerHome() {
                 </div>
               )}
               <div className="flex flex-wrap gap-2 border-t pt-3">
-                <Link href="/manager/transfer-requests"><Button size="sm" variant="outline">Transfer approvals ({data?.reviewCounts?.transferRequests ?? pendingTransfers})</Button></Link>
-                <Link href="/manager/reports/review"><Button size="sm" variant="outline">Report review ({data?.reviewCounts?.performanceReports ?? 0})</Button></Link>
-                {canReviewTeacherCvs && <Link href="/manager/teacher-cv-workspace"><Button size="sm" variant="outline">Teacher CV approvals</Button></Link>}
-                <Link href="/manager/notifications"><Button size="sm" variant="outline">All alerts</Button></Link>
+                {can("transfers.view") && <Link href="/manager/transfer-requests"><Button size="sm" variant="outline">Transfer approvals ({data?.reviewCounts?.transferRequests ?? pendingTransfers})</Button></Link>}
+                {can("reports.review") && <Link href="/manager/reports/review"><Button size="sm" variant="outline">Report review ({data?.reviewCounts?.performanceReports ?? 0})</Button></Link>}
+                {can("teacher_cv.view") && canReviewTeacherCvs && <Link href="/manager/teacher-cv-workspace"><Button size="sm" variant="outline">Teacher CV approvals</Button></Link>}
+                {can("notifications.view") && <Link href="/manager/notifications"><Button size="sm" variant="outline">All alerts</Button></Link>}
                 {transferError && <span className="self-center text-xs text-amber-700">{transferError}</span>}
               </div>
             </CardContent>
