@@ -676,7 +676,7 @@ router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<v
   if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid user id." }); return; }
   const [user] = await db.select({
     id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl, bio: usersTable.bio,
-    role: usersTable.role, grade: usersTable.grade, isPrefect: usersTable.isPrefect, isManager: usersTable.isManager,
+    role: usersTable.role, grade: usersTable.grade, isPrefect: usersTable.isPrefect, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel,
     performanceScore: usersTable.performanceScore, badgeCount: usersTable.badgeCount, streakDays: usersTable.streakDays,
   }).from(usersTable).where(eq(usersTable.id, id));
   if (!user || (isOwnerRole(user.role) && !isOwnerRole(req.currentUser!.role)) || ((isSeniorManager(req.currentUser!) || isJuniorManager(req.currentUser!)) && !canViewManagerTarget(req.currentUser!,user))) { res.status(404).json({ error: "User not found." }); return; }
