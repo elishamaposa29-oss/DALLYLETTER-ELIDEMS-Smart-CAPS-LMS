@@ -15,7 +15,6 @@ const token = () => localStorage.getItem("dallyletter_token") ?? "";
 export default function ManagerHome() {
   const { user } = useAuth();
   const isNonManagerTeacher = String(user?.role || "").trim().toLowerCase() === "teacher" && !(user as any)?.isManager;
-  const managerRole = String(user?.role || "").trim().toLowerCase().replace(/[ -]+/g, "_");
   const [data, setData] = useState<any>(null);
   const [permissions, setPermissions] = useState<Record<string, boolean>>({});
   const [permissionError, setPermissionError] = useState("");
@@ -144,7 +143,7 @@ export default function ManagerHome() {
                 {can("reports.review") && <Link href="/manager/reports/review"><Button size="sm" variant="outline">Report review ({data?.reviewCounts?.performanceReports ?? 0})</Button></Link>}
                 {can("teacher_cv.view") && canReviewTeacherCvs && <Link href="/manager/teacher-cv-workspace"><Button size="sm" variant="outline">Teacher CV approvals</Button></Link>}
                 {can("achievements.view") && <Link href="/manager/achievements"><Button size="sm" variant="outline">Achievements</Button></Link>}
-                {can("qualifications.view") && <Link href="/manager/qualifications"><Button size="sm" variant="outline">Qualifications</Button></Link>
+                {can("qualifications.view") && <Link href="/manager/qualifications"><Button size="sm" variant="outline">Qualifications</Button></Link>}
                 {can("notifications.view") && <Link href="/manager/notifications"><Button size="sm" variant="outline">All alerts</Button></Link>}
               </div>
             </CardContent>
