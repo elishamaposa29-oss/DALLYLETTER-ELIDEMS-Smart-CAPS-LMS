@@ -100,6 +100,11 @@ jobs:
           done
           test -s /tmp/pr84-health.json
           node -e 'const fs=require("fs");const v=JSON.parse(fs.readFileSync("/tmp/pr84-health.json","utf8"));if(v.status!=="ok")process.exit(1)'
+      - name: Smoke-test every protected API route before authenticated workflows
+        env:
+          API_BASE_URL: http://127.0.0.1:4000
+        run: node artifacts/api-server/scripts/smoke-post-merge-routes.mjs
+
       - name: Verify teacher CV restrictions, rejection email, learner conversion and expiry
         run: node artifacts/api-server/scripts/test-teacher-cv-workflow.mjs
       - name: Test schema discovery, authenticated enrollment, progress, OTP, queue and webhook signatures
