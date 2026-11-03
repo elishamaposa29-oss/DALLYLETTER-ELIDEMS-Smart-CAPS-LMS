@@ -106,7 +106,7 @@ export default function AdminUsers() {
               <SelectItem value="all">All Roles</SelectItem>
               <SelectItem value="student">Students</SelectItem>
               <SelectItem value="teacher">Teachers</SelectItem>
-              <SelectItem value="owner">Admins</SelectItem>
+              <SelectItem value="admin">Admins</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -190,12 +190,10 @@ export default function AdminUsers() {
                                   <Shield className={`h-4 w-4 ${user.isPrefect ? "text-amber-500" : "text-muted-foreground"}`} />
                                 </Button>
                               )}
-                              {(user.role !== "owner" && user.role !== "admin") && (
-                                <ManagerPermissionControls
-                                  user={user as any}
-                                  onChanged={() => void queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() })}
-                                />
-                              )}
+                              <ManagerPermissionControls
+                                user={user as any}
+                                onChanged={() => void queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() })}
+                              />
                               {/* Suspend button */}
                               <Button
                                 variant="ghost"
