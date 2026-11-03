@@ -16,7 +16,6 @@ export default function ManagerHome() {
   const { user } = useAuth();
   const isNonManagerTeacher = String(user?.role || "").trim().toLowerCase() === "teacher" && !(user as any)?.isManager;
   const managerRole = String(user?.role || "").trim().toLowerCase().replace(/[ -]+/g, "_");
-  const canReviewTeacherCvs = ["owner", "platform_owner", "senior_manager"].includes(managerRole) || (["manager", "teacher"].includes(managerRole) && String((user as any)?.managerLevel || "").toLowerCase() === "senior" && (managerRole !== "teacher" || (user as any)?.isManager === true));
   const [data, setData] = useState<any>(null);
   const [permissions, setPermissions] = useState<Record<string, boolean>>({});
   const [permissionError, setPermissionError] = useState("");
@@ -61,6 +60,7 @@ export default function ManagerHome() {
   }, []);
 
   const can = (key: string) => permissions["*"] === true || permissions[key] === true;
+  const canReviewTeacherCvs = can("teacher_cv.review") || can("teacher_cv.authorize");
   const visibleQueue = (data?.reviewQueue ?? []).filter((item: any) => {
     const required: Record<string, string> = {
       transfer_request: "transfers.view", academic_report: "reports.view", achievement_award: "achievements.view",
@@ -100,7 +100,7 @@ export default function ManagerHome() {
               { label: "Students", value: data.stats.students, icon: Users, color: "text-blue-600", bg: "bg-blue-50" },
               { label: "Classes", value: data.stats.classes, icon: Video, color: "text-purple-600", bg: "bg-purple-50" },
               { label: "Lessons", value: data.stats.lessons, icon: BookOpen, color: "text-amber-600", bg: "bg-amber-50" },
-            ].map(m => (
+            ].filter(m => m.label === "Teachers" || m.label === "Students" ? can("users.view") : can("recordbook.view")).map(m => (
               <Card key={m.label} className="border-0 shadow-sm">
                 <CardContent className="p-4">
                   <div className={`w-10 h-10 rounded-xl ${m.bg} flex items-center justify-center mb-2`}>
@@ -143,13 +143,15 @@ export default function ManagerHome() {
                 {can("transfers.view") && <Link href="/manager/transfer-requests"><Button size="sm" variant="outline">Transfer approvals ({data?.reviewCounts?.transferRequests ?? pendingTransfers})</Button></Link>}
                 {can("reports.review") && <Link href="/manager/reports/review"><Button size="sm" variant="outline">Report review ({data?.reviewCounts?.performanceReports ?? 0})</Button></Link>}
                 {can("teacher_cv.view") && canReviewTeacherCvs && <Link href="/manager/teacher-cv-workspace"><Button size="sm" variant="outline">Teacher CV approvals</Button></Link>}
+                {can("achievements.view") && <Link href="/manager/achievements"><Button size="sm" variant="outline">Achievements</Button></Link>}
+                {can("qualifications.view") && <Link href="/manager/qualifications"><Button size="sm" variant="outline">Qualifications</Button></Link>
                 {can("notifications.view") && <Link href="/manager/notifications"><Button size="sm" variant="outline">All alerts</Button></Link>}
               </div>
             </CardContent>
           </Card>
 
           {/* Top Teachers */}
-          <Card className="border-0 shadow-sm">
+          {can("users.view") && <Card className="border-0 shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm">
                 <Star className="h-4 w-4 text-amber-500" /> Top Performing Teachers
@@ -173,18 +175,18 @@ export default function ManagerHome() {
                 </div>
               )}
             </CardContent>
-          </Card>
+          </Card>}
         </div>
 
-<Card className="border-0 shadow-sm">
+{can("transfers.view") && <Card className="border-0 shadow-sm">
           <CardHeader><CardTitle className="flex items-center gap-2 text-sm"><AlertTriangle className="h-4 w-4 text-amber-600" /> Verification & Approval Queue</CardTitle></CardHeader>
           <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div><p className="font-semibold text-slate-800">Transfer letter requests</p><p className="text-xs text-slate-500">Review learner requests and approve or reject them with an audit trail.</p></div>
             <div className="flex items-center gap-3"><Badge className={pendingTransfers ? "bg-amber-500 text-white" : "bg-slate-100 text-slate-700"}>{pendingTransfers} pending</Badge><Link href="/manager/transfer-requests"><Button size="sm">Review requests</Button></Link></div>
           </CardContent>
-        </Card>
+        </Card>}
 
-        <Card className="border-0 shadow-sm">
+        {can("users.view") && <Card className="border-0 shadow-sm">
           <CardHeader><CardTitle className="flex items-center gap-2 text-sm"><Star className="h-4 w-4 text-emerald-600" /> Highest Performing Learners</CardTitle></CardHeader>
           <CardContent>
             {!data?.topLearners?.length ? <p className="py-4 text-center text-sm text-slate-400">No learner activity recorded yet.</p> :
@@ -192,20 +194,20 @@ export default function ManagerHome() {
                 <span className="w-6 text-xs font-bold text-slate-400">#{index+1}</span><div className="min-w-0 flex-1"><p className="text-sm font-semibold text-slate-800">{learner.name}</p><p className="text-xs text-slate-500">{learner.grade || "Grade not set"} · {learner.exerciseSubmissions} exercise submissions · {learner.assignmentSubmissions} assignment submissions · {learner.averageMarkPercentage == null ? "marks pending" : learner.averageMarkPercentage + "% average"}</p></div><Badge variant="secondary">{learner.badgeCount} awards</Badge><Link href="/manager/students"><Button size="sm" variant="outline">Monitor</Button></Link>
               </div>)}</div>}
           </CardContent>
-        </Card>
+        </Card>}
 
-        <ActivityMonitor />
+        {can("audit.view_subordinate") && <ActivityMonitor />}
         {/* Quick Nav */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {[
-            { label: "Monitor Teachers", href: "/manager/teachers", icon: GraduationCap, color: "bg-emerald-600" },
-            { label: "Monitor Students", href: "/manager/students", icon: Users, color: "bg-blue-600" },
-            { label: "View Reports", href: "/manager/reports", icon: BarChart3, color: "bg-purple-600" },
-            { label: "Manage Prefects", href: "/manager/prefects", icon: Shield, color: "bg-amber-600" },
-            { label: "Transfer Approvals", href: "/manager/transfer-requests", icon: AlertTriangle, color: "bg-rose-600" },
-            { label: isNonManagerTeacher ? "Build Academic Reports" : "Review Performance Reports", href: "/manager/reports/review", icon: BarChart3, color: "bg-violet-600" },
-            { label: "All Review Items", href: "/manager/review-queue", icon: AlertTriangle, color: "bg-red-600" },
-          ].filter(item => !isNonManagerTeacher || item.href === "/manager/reports/review").map(item => (
+            { label: "Monitor Teachers", href: "/manager/teachers", icon: GraduationCap, color: "bg-emerald-600", permission: "users.view" },
+            { label: "Monitor Students", href: "/manager/students", icon: Users, color: "bg-blue-600", permission: "users.view" },
+            { label: "View Reports", href: "/manager/reports", icon: BarChart3, color: "bg-purple-600", permission: "reports.view" },
+            { label: "Manage Prefects", href: "/manager/prefects", icon: Shield, color: "bg-amber-600", permission: "users.view" },
+            { label: "Transfer Approvals", href: "/manager/transfer-requests", icon: AlertTriangle, color: "bg-rose-600", permission: "transfers.view" },
+            { label: isNonManagerTeacher ? "Build Academic Reports" : "Review Performance Reports", href: "/manager/reports/review", icon: BarChart3, color: "bg-violet-600", permission: isNonManagerTeacher ? "reports.create" : "reports.review" },
+            { label: "All Review Items", href: "/manager/review-queue", icon: AlertTriangle, color: "bg-red-600", permission: "manager.dashboard.view" },
+          ].filter(item => can(item.permission) && (!isNonManagerTeacher || item.href === "/manager/reports/review")).map(item => (
             <Link key={item.href} href={item.href}>
               <div className={`${item.color} text-white rounded-xl p-4 flex items-center gap-3 hover:opacity-90 transition-opacity cursor-pointer`}>
                 <item.icon className="h-5 w-5" />
