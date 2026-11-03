@@ -3,6 +3,8 @@ import { pool } from "@workspace/db";
 import { isOwnerRole, isSeniorManager, normalizeRole } from "./role-access";
 
 const MANAGER_ROLES = new Set(["junior_manager", "senior_manager", "manager"]);
+export const SENIOR_ONLY_PERMISSION_KEYS = new Set(["transfers.approve", "reports.review", "achievements.approve", "teacher_cv.review", "teacher_cv.authorize", "qualifications.verify", "users.override.junior_manager"]);
+export const isSeniorOnlyManagerPermission = (permissionKey: string): boolean => SENIOR_ONLY_PERMISSION_KEYS.has(permissionKey);
 
 /** Explicit per-user grants only. Owner bypass is intentional; no manager role receives implicit grants. */
 export function requireManagerPermission(permissionKey: string) {
@@ -13,8 +15,7 @@ export function requireManagerPermission(permissionKey: string) {
     const role = normalizeRole(user.role);
     const isManager = MANAGER_ROLES.has(role) || (role === "teacher" && user.isManager === true);
     if (!isManager) { res.status(403).json({ error: "Manager access required" }); return; }
-    const seniorOnly = new Set(["transfers.approve", "reports.review", "achievements.approve", "teacher_cv.review", "teacher_cv.authorize", "qualifications.verify", "users.override.junior_manager"]);
-    if (seniorOnly.has(permissionKey) && !isSeniorManager(user)) { res.status(403).json({ error: "Senior Manager or Owner authority required", permission: permissionKey }); return; }
+    if (isSeniorOnlyManagerPermission(permissionKey) && !isSeniorManager(user)) { res.status(403).json({ error: "Senior Manager or Owner authority required", permission: permissionKey }); return; }
     try {
       const result = await pool.query(
         "SELECT granted FROM manager_permission_grants WHERE manager_user_id=$1 AND permission_key=$2",
@@ -58,7 +59,7 @@ export async function managerHasPermission(user: NonNullable<Request["currentUse
   if (isOwnerRole(user.role)) return true;
   const role = normalizeRole(user.role);
   if (!MANAGER_ROLES.has(role) && !(role === "teacher" && user.isManager === true)) return false;
-  if (new Set(["transfers.approve", "reports.review", "achievements.approve", "teacher_cv.review", "teacher_cv.authorize", "qualifications.verify", "users.override.junior_manager"]).has(permissionKey) && !isSeniorManager(user)) return false;
+  if (isSeniorOnlyManagerPermission(permissionKey) && !isSeniorManager(user)) return false;
   try {
     const result = await pool.query("SELECT granted FROM manager_permission_grants WHERE manager_user_id=$1 AND permission_key=$2", [user.id, permissionKey]);
     return result.rows[0]?.granted === true;
