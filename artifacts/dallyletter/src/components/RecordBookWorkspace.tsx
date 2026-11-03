@@ -38,6 +38,13 @@ export default function RecordBookWorkspace() {
   const { user } = useAuth();
   const role = String(user?.role || "").toLowerCase().replace(/[ -]+/g, "_");
   const isStaff = ["teacher","manager","senior_manager","junior_manager","owner"].includes(role);
+  const isManager = ["manager","senior_manager","junior_manager"].includes(role) || (role === "teacher" && (user as any)?.isManager === true);
+  const [managerPermissions, setManagerPermissions] = useState<Record<string, boolean>>({});
+  const [permissionLoaded, setPermissionLoaded] = useState(!isManager);
+  const [isOwner, setIsOwner] = useState(role === "owner" || role === "platform_owner");
+  const canCreateReports = !isManager || isOwner || managerPermissions["reports.create"] === true;
+  const canViewReports = !isManager || isOwner || managerPermissions["reports.view"] === true;
+  const canViewRecordBook = !isManager || isOwner || managerPermissions["recordbook.view"] === true;
   const [learners, setLearners] = useState<Row[]>([]);
   const [learnerId, setLearnerId] = useState("");
   const [termLabel, setTermLabel] = useState("Term record");
@@ -81,7 +88,17 @@ export default function RecordBookWorkspace() {
     } catch (e) { setError(e instanceof Error ? e.message : "Could not load saved academic records."); }
   }, [role]);
 
-  useEffect(() => { if (isStaff) void loadLearners(); else void loadOwnRecord(); }, [isStaff, loadLearners, loadOwnRecord]);
+  useEffect(() => {
+    if (isManager) {
+      void fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: "Bearer " + (typeof localStorage !== "undefined" ? localStorage.getItem("dallyletter_token") : "") } })
+        .then(async response => { const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || "Could not load manager permissions"); setManagerPermissions(data.permissions || {}); setIsOwner(Boolean(data.isOwner)); })
+        .catch(error => setError(error instanceof Error ? error.message : "Could not load manager permissions"))
+        .finally(() => setPermissionLoaded(true));
+      return;
+    }
+    if (isStaff) void loadLearners(); else void loadOwnRecord();
+  }, [isManager, isStaff, loadLearners, loadOwnRecord]);
+  useEffect(() => { if (isManager && permissionLoaded && canCreateReports) void loadLearners(); }, [isManager, permissionLoaded, canCreateReports, loadLearners]);
 
   const selectedLearner = useMemo(() => learners.find(l => String(l.id) === learnerId), [learners, learnerId]);
   const summary = record?.markSummary?.overall;
@@ -163,7 +180,7 @@ export default function RecordBookWorkspace() {
       <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-primary">Academic workspace</p><CardTitle className="mt-1">RecordBook</CardTitle><p className="mt-1 text-sm text-muted-foreground">{isStaff ? "Build an activity-by-activity view from existing saved records. Mark work in its original activity workspace." : "Your saved activity results, with missing marks kept unscored."}</p></div><span className="rounded-full border px-3 py-1 text-xs font-semibold">Saved records only</span></div>
     </CardHeader>
     <CardContent className="space-y-4 p-4">
-      {isStaff && <div className="grid gap-3 sm:grid-cols-2">
+      {isStaff && canCreateReports && <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm font-medium">Learner<select className="mt-1 w-full rounded-md border bg-background p-2.5" value={learnerId} onChange={e=>{setLearnerId(e.target.value);setSnapshot(null);}}><option value="">Choose assigned learner</option>{learners.map(l=><option key={l.id} value={String(l.id)}>{l.name} · {l.grade || "Grade not recorded"}</option>)}</select></label>
         <label className="text-sm font-medium">Term / record label<input className="mt-1 w-full rounded-md border bg-background p-2.5" maxLength={80} value={termLabel} onChange={e=>setTermLabel(e.target.value)} /></label>
         <label className="text-sm font-medium">Period starts<input type="date" className="mt-1 w-full rounded-md border bg-background p-2.5" value={periodStart} onChange={e=>setPeriodStart(e.target.value)} /></label>
@@ -172,13 +189,15 @@ export default function RecordBookWorkspace() {
       </div>}
       {error && <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm">{error}</p>}
       {notice && <p role="status" className="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm">{notice}</p>}
-      {isStaff && !learners.length && !error && <p className="text-sm text-muted-foreground">No learners are currently available through your permitted report access.</p>}
+      {isStaff && canCreateReports && !learners.length && !error && <p className="text-sm text-muted-foreground">No learners are currently available through your permitted report access.</p>}
+      {isManager && permissionLoaded && !canCreateReports && <p className="rounded-lg border p-3 text-sm text-muted-foreground">Report creation is not enabled for this manager account. Ask the Owner to grant Reports → Create academic reports.</p>}
+      {isManager && permissionLoaded && canCreateReports && !canViewRecordBook && <p className="rounded-lg border p-3 text-sm text-muted-foreground">You can build reports, but RecordBook view access is not granted. Ask the Owner to grant RecordBook → View saved RecordBook activity.</p>}
       {!isStaff && record && <div className="grid gap-2 sm:grid-cols-4"><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Marked activities</p><p className="text-xl font-bold">{summary?.markedCount ?? 0}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Assignment/exercise marks</p><p className="text-xl font-bold">{summary?.earnedMarks ?? "—"}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Possible marks</p><p className="text-xl font-bold">{summary?.possibleMarks ?? "—"}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Overall percentage</p><p className="text-xl font-bold">{summary?.percentage == null ? "Not available" : `${summary.percentage}%`}</p></div></div>}
       {isStaff && selectedLearner && <p className="text-sm text-muted-foreground">Selected learner: <strong>{selectedLearner.name}</strong>. Only records within the selected period are included in the generated snapshot.</p>}
-      {isStaff && <div className="flex flex-wrap gap-2 rounded-lg border bg-muted/20 p-3"><span className="w-full text-xs font-semibold uppercase tracking-wide text-muted-foreground">Record marks in the existing activity workspaces</span><Link href="/teacher/assignments"><Button variant="outline" size="sm">Open assignments</Button></Link><Link href="/teacher/polls"><Button variant="outline" size="sm">Open polls & quizzes</Button></Link><Link href="/teacher/classes"><Button variant="outline" size="sm">Open classes & exercises</Button></Link></div>}
+      {isStaff && canViewRecordBook && <div className="flex flex-wrap gap-2 rounded-lg border bg-muted/20 p-3"><span className="w-full text-xs font-semibold uppercase tracking-wide text-muted-foreground">Record marks in the existing activity workspaces</span><Link href="/teacher/assignments"><Button variant="outline" size="sm">Open assignments</Button></Link><Link href="/teacher/polls"><Button variant="outline" size="sm">Open polls & quizzes</Button></Link><Link href="/teacher/classes"><Button variant="outline" size="sm">Open classes & exercises</Button></Link></div>}
 
       {activitySummary && <div className="grid gap-2 sm:grid-cols-4"><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Marked activities</p><p className="text-xl font-bold">{activitySummary.markedCount ?? 0}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Actual marks</p><p className="text-xl font-bold">{activitySummary.earnedMarks ?? "—"}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Possible marks</p><p className="text-xl font-bold">{activitySummary.possibleMarks ?? "—"}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Overall percentage</p><p className="text-xl font-bold">{activitySummary.percentage == null ? "Not available" : `${activitySummary.percentage}%`}</p></div></div>}
-      {isStaff && snapshot && <div className="flex flex-wrap items-center gap-2 rounded-lg border p-3 text-sm"><span>Saved report draft ID: <strong>{snapshotId || "Unavailable"}</strong></span><span className="rounded-full border px-2 py-1 text-xs font-semibold capitalize">{snapshotStatus.replace(/_/g, " ")}</span>{snapshotId && snapshotStatus === "draft" && <Button size="sm" disabled={reviewBusy} onClick={()=>void submitForReview()}>{reviewBusy ? "Submitting…" : "Submit for review"}</Button>}{snapshotId && <Button variant="outline" size="sm" disabled={reviewBusy} onClick={()=>void refreshDraftStatus()}>{reviewBusy ? "Refreshing…" : "Refresh status"}</Button>}{snapshotId && snapshotStatus === "approved" && <Button variant="outline" size="sm" disabled={pdfBusy} onClick={()=>void downloadPdfDraft()}>{pdfBusy ? "Preparing PDF…" : "Download approved PDF"}</Button>}<span className="text-muted-foreground">{snapshotStatus === "approved" ? "PDF access follows existing report permissions." : snapshotStatus === "pending_review" ? "Awaiting Senior Manager / Owner review." : "Submit this draft for Senior Manager / Owner review before PDF download."}</span></div>}
+      {isStaff && snapshot && <div className="flex flex-wrap items-center gap-2 rounded-lg border p-3 text-sm"><span>Saved report draft ID: <strong>{snapshotId || "Unavailable"}</strong></span><span className="rounded-full border px-2 py-1 text-xs font-semibold capitalize">{snapshotStatus.replace(/_/g, " ")}</span>{snapshotId && snapshotStatus === "draft" && canCreateReports && <Button size="sm" disabled={reviewBusy} onClick={()=>void submitForReview()}>{reviewBusy ? "Submitting…" : "Submit for review"}</Button>}{snapshotId && canViewReports && <Button variant="outline" size="sm" disabled={reviewBusy} onClick={()=>void refreshDraftStatus()}>{reviewBusy ? "Refreshing…" : "Refresh status"}</Button>}{snapshotId && snapshotStatus === "approved" && canViewReports && <Button variant="outline" size="sm" disabled={pdfBusy} onClick={()=>void downloadPdfDraft()}>{pdfBusy ? "Preparing PDF…" : "Download approved PDF"}</Button>}<span className="text-muted-foreground">{snapshotStatus === "approved" ? "PDF access follows existing report permissions." : snapshotStatus === "pending_review" ? "Awaiting Senior Manager / Owner review." : "Submit this draft for Senior Manager / Owner review before PDF download."}</span></div>}
       {shownRecord && <div className="space-y-5">
         <MarkRows title="Exercises" rows={shownRecord.exerciseMarks || []} kind="exercise" />
         <MarkRows title="Assignments" rows={shownRecord.assignmentMarks || []} kind="assignment" />
