@@ -11,7 +11,9 @@ const router: IRouter = Router();
 
 /**
  * The catalogue describes actions that can be requested. It does not grant them.
- * A missing grant is always denied. Owner-only powers are deliberately absent.
+ * Senior Managers retain the established catalogue capabilities unless Owner explicitly revokes one.
+ * Junior Managers receive no operational defaults; Owner grants each permission individually.
+ * Owner-only powers are deliberately absent.
  */
 export const MANAGER_PERMISSION_CATALOG = [
   { key: "manager.dashboard.view", group: "Dashboard", label: "View manager dashboard", description: "Open the manager overview and action queue." },
@@ -90,7 +92,7 @@ router.get("/catalog", requireAuth, ownerOnly, (_req, res) => {
   res.json({ permissions: MANAGER_PERMISSION_CATALOG.map((p) => ({ ...p, seniorOnly: isSeniorOnlyManagerPermission(p.key) })), protectedCapabilities: ["owner.account.manage", "owner.activity.view", "owner.audit.view", "owner.permissions.manage", "admin.account.manage"] });
 });
 
-/** Effective permissions: explicit grants only. No role-derived implicit grants. */
+/** Effective permissions: Senior defaults plus persisted Owner decisions; Junior grants are individual. */
 router.get("/me", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   const isManager = managerRoles.has(normalizeRole(user.role)) || (normalizeRole(user.role) === "teacher" && user.isManager);
