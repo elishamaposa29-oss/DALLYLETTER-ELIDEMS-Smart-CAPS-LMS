@@ -1,6 +1,6 @@
 // Live classes routes — manage Google Meet classes
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { db, pool, classesTable, handRaisesTable, attendanceTable, activityLogTable, usersTable } from "@workspace/db";
 import {
   CreateClassBody,
@@ -18,8 +18,15 @@ import { logger } from "../lib/logger";
 const router: IRouter = Router();
 
 // GET /classes — List all live classes
-router.get("/classes", requireAuth, async (req, res): Promise<void> => {
-  const classes = await db.select().from(classesTable).orderBy(classesTable.createdAt);
+router.get("/classes", requireAuth, requireManagerPermissionIfManager("classes.manage"), async (req, res): Promise<void> => {
+  let classes = await db.select().from(classesTable).orderBy(classesTable.createdAt);
+  const actor = req.currentUser!;
+  if (canAccessManager(actor) && !isOwnerRole(actor.role)) {
+    const teacherIds = [...new Set(classes.map(item => item.teacherId))];
+    const targets = teacherIds.length ? await db.select({ id: usersTable.id, role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(inArray(usersTable.id, teacherIds)) : [];
+    const targetById = new Map(targets.map(target => [target.id, target]));
+    classes = classes.filter(item => item.teacherId === actor.id || Boolean(targetById.get(item.teacherId) && canModerateUser(actor, targetById.get(item.teacherId)!)));
+  }
   const role = String(req.currentUser!.role).toLowerCase();
   let preferred = new Set<string>();
   if (["student", "learner", "prefect"].includes(role)) {
@@ -62,7 +69,7 @@ router.post("/classes", requireAuth, requireManagerPermissionIfManager("classes.
 });
 
 // GET /classes/:id — Get class by ID
-router.get("/classes/:id", requireAuth, async (req, res): Promise<void> => {
+router.get("/classes/:id", requireAuth, requireManagerPermissionIfManager("classes.manage"), async (req, res): Promise<void> => {
   const params = GetClassParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -73,6 +80,11 @@ router.get("/classes/:id", requireAuth, async (req, res): Promise<void> => {
   if (!cls) {
     res.status(404).json({ error: "Class not found" });
     return;
+  }
+  const actor = req.currentUser!;
+  if (canAccessManager(actor) && !isOwnerRole(actor.role) && actor.id !== cls.teacherId) {
+    const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, cls.teacherId));
+    if (!target || !canModerateUser(actor, target)) { res.status(404).json({ error: "Class not found" }); return; }
   }
 
   res.json({ ...cls, createdAt: cls.createdAt.toISOString() });
