@@ -3,31 +3,72 @@ import { pool } from "@workspace/db";
 import { isOwnerRole, isSeniorManager, normalizeRole } from "./role-access";
 
 const MANAGER_ROLES = new Set(["junior_manager", "senior_manager", "manager"]);
-export const SENIOR_ONLY_PERMISSION_KEYS = new Set(["transfers.approve", "reports.review", "achievements.approve", "teacher_cv.review", "teacher_cv.authorize", "qualifications.verify", "users.override.junior_manager", "teacher_cv.chat"]);
-export const isSeniorOnlyManagerPermission = (permissionKey: string): boolean => SENIOR_ONLY_PERMISSION_KEYS.has(permissionKey);
+export const SENIOR_ONLY_PERMISSION_KEYS = new Set([
+  "transfers.approve", "reports.review", "achievements.approve",
+  "teacher_cv.review", "teacher_cv.authorize", "qualifications.verify",
+  "users.override.junior_manager", "teacher_cv.chat",
+]);
+export const isSeniorOnlyManagerPermission = (permissionKey: string): boolean =>
+  SENIOR_ONLY_PERMISSION_KEYS.has(permissionKey);
 
-/** Explicit per-user grants only. Owner bypass is intentional; no manager role receives implicit grants. */
+type CurrentAuthority = {
+  id: number;
+  role: string;
+  is_manager: boolean;
+  manager_level: string | null;
+  granted: boolean | null;
+};
+
+/**
+ * Read the live account role and grant together on every protected request.
+ * JWT role claims can be stale after a demotion or permission revocation.
+ */
+async function readCurrentAuthority(userId: number, permissionKey: string): Promise<CurrentAuthority | null> {
+  const result = await pool.query(
+    `SELECT u.id,u.role,u.is_manager,u.manager_level,g.granted
+       FROM users u
+       LEFT JOIN manager_permission_grants g
+         ON g.manager_user_id=u.id AND g.permission_key=$2
+      WHERE u.id=$1
+      LIMIT 1`,
+    [userId, permissionKey],
+  );
+  return (result.rows[0] as CurrentAuthority | undefined) ?? null;
+}
+
+function isManagerAccount(account: CurrentAuthority): boolean {
+  const role = normalizeRole(account.role);
+  return MANAGER_ROLES.has(role) || (role === "teacher" && account.is_manager === true);
+}
+
+/** Explicit per-user grants only. Owner authority is checked against the live DB role. */
 export function requireManagerPermission(permissionKey: string) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const user = req.currentUser;
     if (!user) { res.status(401).json({ error: "Authentication required" }); return; }
-    if (isOwnerRole(user.role)) { next(); return; }
-    const role = normalizeRole(user.role);
-    const isManager = MANAGER_ROLES.has(role) || (role === "teacher" && user.isManager === true);
-    if (!isManager) { res.status(403).json({ error: "Manager access required" }); return; }
-    if (isSeniorOnlyManagerPermission(permissionKey) && !isSeniorManager(user)) { res.status(403).json({ error: "Senior Manager or Owner authority required", permission: permissionKey }); return; }
     try {
-      const result = await pool.query(
-        "SELECT granted FROM manager_permission_grants WHERE manager_user_id=$1 AND permission_key=$2",
-        [user.id, permissionKey],
-      );
-      if (result.rows[0]?.granted !== true) {
+      const account = await readCurrentAuthority(user.id, permissionKey);
+      if (!account) { res.status(401).json({ error: "Account no longer exists" }); return; }
+      if (isOwnerRole(account.role)) { next(); return; }
+      if (!isManagerAccount(account)) {
+        res.status(403).json({ error: "Manager access required" });
+        return;
+      }
+      if (isSeniorOnlyManagerPermission(permissionKey) && !isSeniorManager({
+        role: account.role,
+        managerLevel: account.manager_level ?? undefined,
+        isManager: account.is_manager,
+      })) {
+        res.status(403).json({ error: "Senior Manager or Owner authority required", permission: permissionKey });
+        return;
+      }
+      if (account.granted !== true) {
         res.status(403).json({ error: "Permission not granted by Owner", permission: permissionKey });
         return;
       }
       next();
     } catch {
-      // Fail closed when the additive permission migration has not been installed.
+      // Fail closed if the permission schema or database is unavailable.
       res.status(503).json({ error: "Manager permission service is unavailable. Contact the Owner." });
     }
   };
@@ -37,31 +78,47 @@ export function requireManagerPermission(permissionKey: string) {
 export function requireManagerPermissionForRequest(resolvePermission: (req: Request) => string) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const key = resolvePermission(req);
-    if (!key || typeof key !== "string") { res.status(400).json({ error: "Invalid permission action" }); return; }
+    if (!key || typeof key !== "string") {
+      res.status(400).json({ error: "Invalid permission action" });
+      return;
+    }
     void requireManagerPermission(key)(req, res, next);
   };
 }
 
-/** Preserve teacher/learner self-service while requiring explicit grants from manager accounts. */
+/**
+ * Preserve non-manager self-service, but determine the live role from PostgreSQL
+ * rather than trusting a potentially stale JWT role claim.
+ */
 export function requireManagerPermissionIfManager(permissionKey: string) {
-  return (req: Request, res: Response, next: NextFunction): void => {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const user = req.currentUser;
     if (!user) { res.status(401).json({ error: "Authentication required" }); return; }
-    const role = normalizeRole(user.role);
-    if (isOwnerRole(role)) { next(); return; }
-    if (!MANAGER_ROLES.has(role) && !(role === "teacher" && user.isManager === true)) { next(); return; }
-    void requireManagerPermission(permissionKey)(req, res, next);
+    try {
+      const account = await readCurrentAuthority(user.id, permissionKey);
+      if (!account) { res.status(401).json({ error: "Account no longer exists" }); return; }
+      if (isOwnerRole(account.role) || !isManagerAccount(account)) { next(); return; }
+      void requireManagerPermission(permissionKey)(req, res, next);
+    } catch {
+      res.status(503).json({ error: "Manager permission service is unavailable. Contact the Owner." });
+    }
   };
 }
 
-/** Query the effective grant for response shaping; Owner is always authoritative. */
+/** Query effective grant for response shaping; uses current database role, never stale JWT role. */
 export async function managerHasPermission(user: NonNullable<Request["currentUser"]>, permissionKey: string): Promise<boolean> {
-  if (isOwnerRole(user.role)) return true;
-  const role = normalizeRole(user.role);
-  if (!MANAGER_ROLES.has(role) && !(role === "teacher" && user.isManager === true)) return false;
-  if (isSeniorOnlyManagerPermission(permissionKey) && !isSeniorManager(user)) return false;
   try {
-    const result = await pool.query("SELECT granted FROM manager_permission_grants WHERE manager_user_id=$1 AND permission_key=$2", [user.id, permissionKey]);
-    return result.rows[0]?.granted === true;
-  } catch { return false; }
+    const account = await readCurrentAuthority(user.id, permissionKey);
+    if (!account) return false;
+    if (isOwnerRole(account.role)) return true;
+    if (!isManagerAccount(account)) return false;
+    if (isSeniorOnlyManagerPermission(permissionKey) && !isSeniorManager({
+      role: account.role,
+      managerLevel: account.manager_level ?? undefined,
+      isManager: account.is_manager,
+    })) return false;
+    return account.granted === true;
+  } catch {
+    return false;
+  }
 }
