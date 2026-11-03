@@ -1,12 +1,28 @@
 import { Router } from "express";
 import { requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
-import { db, contentFlagsTable, auditLogsTable, usersTable, notificationsTable } from "@workspace/db";
+import { db, pool, contentFlagsTable, auditLogsTable, usersTable, notificationsTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { getAIProvider } from "../lib/ai-provider";
 
 const router = Router();
 const moderationRoles = new Set(["teacher", "owner"]);
+async function isOwnerContentFlag(flag: { contentType: string; contentId: number }): Promise<boolean> {
+  const owners = await pool.query("SELECT id FROM users WHERE lower(role) IN ('owner','platform_owner')");
+  const ownerIds = new Set(owners.rows.map((row: any) => Number(row.id)));
+  const type = String(flag.contentType || "").toLowerCase();
+  if (["user","profile","account"].includes(type)) return ownerIds.has(Number(flag.contentId));
+  const sources: Record<string, { table: string; column: string }> = {
+    lesson: { table: "lessons", column: "teacher_id" },
+    class: { table: "classes", column: "teacher_id" },
+    assignment: { table: "assignments", column: "teacher_id" },
+    exercise: { table: "exercises", column: "created_by" },
+  };
+  const source = sources[type];
+  if (!source) return false;
+  const result = await pool.query(`SELECT ${source.column} AS owner_id FROM ${source.table} WHERE id=$1`, [flag.contentId]);
+  return ownerIds.has(Number(result.rows[0]?.owner_id));
+}
 
 function canReviewContent(user: { role: string; isManager: boolean }): boolean {
   return moderationRoles.has(user.role) || user.role === "teacher" || canAccessManager(user);
@@ -32,7 +48,8 @@ router.get("/content-flags", requireAuth, requireManagerPermissionIfManager("mod
     .leftJoin(usersTable, eq(contentFlagsTable.reviewedBy, usersTable.id))
     .orderBy(desc(contentFlagsTable.createdAt))
     .limit(200);
-  res.json(flags);
+  const visibleFlags = isOwnerRole(user.role) ? flags : (await Promise.all(flags.map(async (flag: any) => (await isOwnerContentFlag(flag)) ? null : flag))).filter(Boolean);
+  res.json(visibleFlags);
 });
 
 // POST /content-flags — create flag (internal use or manual)
@@ -52,6 +69,9 @@ router.patch("/content-flags/:id", requireAuth, requireManagerPermissionIfManage
   if (!canReviewContent(user)) { res.status(403).json({ error: "Authorized staff access required" }); return; }
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [existingFlag] = await db.select({ contentType: contentFlagsTable.contentType, contentId: contentFlagsTable.contentId }).from(contentFlagsTable).where(eq(contentFlagsTable.id, id));
+  if (!existingFlag) { res.status(404).json({ error: "Not found" }); return; }
+  if (!isOwnerRole(user.role) && await isOwnerContentFlag(existingFlag)) { res.status(404).json({ error: "Not found" }); return; }
   const { status, reviewNote } = req.body as { status: string; reviewNote?: string };
   if (!new Set(["pending", "reviewed", "dismissed", "actioned"]).has(status)) {
     res.status(400).json({ error: "Invalid moderation status" });
