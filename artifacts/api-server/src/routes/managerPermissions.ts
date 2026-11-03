@@ -162,12 +162,20 @@ router.patch("/:userId/role", requireAuth, ownerOnly, async (req, res): Promise<
       );
     }
     await client.query("UPDATE users SET role=$2,is_manager=false,manager_level=$3,updated_at=now() WHERE id=$1", [userId, nextRole, nextRole === "senior_manager" ? "senior" : "junior"]);
-    // Apply role-specific starting defaults to this account only. Every permission remains editable by Owner.
-    const defaultGrant = (key: string) => nextRole === "senior_manager" || key === "users.view" || key === "owner.chat";
+    // Least privilege: a new manager receives only the minimum baseline.
+    // Changing JR/SR level preserves explicit grants, except Senior-only grants are revoked on demotion.
+    const wasManager = managerRoles.has(previousRole);
     for (const permission of MANAGER_PERMISSION_CATALOG) {
-      const granted = defaultGrant(permission.key);
-      const prior = await client.query("SELECT granted FROM manager_permission_grants WHERE manager_user_id=$1 AND permission_key=$2 FOR UPDATE", [userId, permission.key]);
+      const prior = await client.query(
+        "SELECT granted FROM manager_permission_grants WHERE manager_user_id=$1 AND permission_key=$2 FOR UPDATE",
+        [userId, permission.key],
+      );
       const previous = prior.rows[0]?.granted ?? null;
+      const granted = !wasManager
+        ? permission.key === "users.view" || permission.key === "owner.chat"
+        : nextRole === "junior_manager" && isSeniorOnlyManagerPermission(permission.key)
+          ? false
+          : previous === true;
       await client.query(
         "INSERT INTO manager_permission_grants(manager_user_id,permission_key,granted,changed_by,changed_at) VALUES($1,$2,$3,$4,now()) ON CONFLICT(manager_user_id,permission_key) DO UPDATE SET granted=EXCLUDED.granted,changed_by=EXCLUDED.changed_by,changed_at=now()",
         [userId, permission.key, granted, req.currentUser!.id],
@@ -231,6 +239,24 @@ router.put("/:userId", requireAuth, ownerOnly, async (req, res): Promise<void> =
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    // Serialize permission edits with role changes; re-check the live role under the same row lock.
+    const lockedTarget = await client.query(
+      "SELECT id,role,is_manager,manager_level FROM users WHERE id=$1 FOR UPDATE",
+      [userId],
+    );
+    const liveTarget = lockedTarget.rows[0] as { id: number; role: string; is_manager: boolean; manager_level: string } | undefined;
+    if (!liveTarget || isOwnerRole(liveTarget.role) || normalizeRole(liveTarget.role) === "admin" ||
+        (!managerRoles.has(normalizeRole(liveTarget.role)) && !(normalizeRole(liveTarget.role) === "teacher" && liveTarget.is_manager))) {
+      await client.query("ROLLBACK");
+      res.status(409).json({ error: "The target is no longer an eligible manager account." });
+      return;
+    }
+    const liveTargetIsSenior = isSeniorManager(liveTarget);
+    if (!liveTargetIsSenior && (permissions as Array<{ key: string; granted: boolean }>).some((item) => isSeniorOnlyManagerPermission(item.key) && item.granted)) {
+      await client.query("ROLLBACK");
+      res.status(409).json({ error: "Senior-only permissions cannot be granted after a role change to Junior Manager." });
+      return;
+    }
     for (const item of permissions as Array<{ key: string; granted: boolean }>) {
       const previous = await client.query("SELECT granted FROM manager_permission_grants WHERE manager_user_id=$1 AND permission_key=$2 FOR UPDATE", [userId, item.key]);
       const previousGranted = previous.rows[0]?.granted ?? null;
