@@ -64,7 +64,6 @@ router.get("/dashboard", requireAuth, requireManager, requireManagerPermission("
   const visibleAssignments = assignments.filter((row: any) => !ownerIds.has(Number(row.teacherId)));
   const visibleExercises = exercises.filter((row: any) => !ownerIds.has(Number(row.createdBy)));
   const visibleAlerts = await visibleManagerAlerts(req.currentUser!, alerts);
-  const visibleContentFlags = contentFlags.filter((row: any) => !(String(row.contentType).toLowerCase() === "user" && ownerIds.has(Number(row.contentId))));
 
   // Rank from observed work, marking, and learner engagement rather than the manually editable score.
   const [transferRows, reportRows, awardRows, qualificationRows, enrollmentRows, contentFlags, teacherApplications] = await Promise.all([
@@ -78,6 +77,7 @@ router.get("/dashboard", requireAuth, requireManager, requireManagerPermission("
     db.select().from(contentFlagsTable).where(eq(contentFlagsTable.status, "pending")).orderBy(desc(contentFlagsTable.createdAt)).limit(100),
     isSeniorManager(req.currentUser!) ? pool.query("SELECT id,name,email,created_at,teacher_review_deadline FROM users WHERE role=$1 AND teacher_application_status=$2 ORDER BY created_at ASC LIMIT 100", ["teacher", "pending_review"]) : Promise.resolve({ rows: [] as any[] }),
   ]);
+  const visibleContentFlags = contentFlags.filter((row: any) => !(["user","profile","account"].includes(String(row.contentType).toLowerCase()) && ownerIds.has(Number(row.contentId))));
 
   const activeTeachers = teachers.filter((t: any) => !t.isManager && !t.isBlocked && !t.isSuspended);
   const teacherRanks = activeTeachers.map((teacher: any) => {
