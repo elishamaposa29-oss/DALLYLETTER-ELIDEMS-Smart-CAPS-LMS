@@ -34,6 +34,7 @@ async function canViewGroup(user:any,group:any):Promise<boolean>{
 }
 
 async function canManageGroupSettings(user: any, groupId: number, group?: any) {
+  if (group && !(await canViewGroup(user,group))) return false;
   if (group && await canManageGroup(user,group)) return true;
   const [control] = await db.select({ canManageSettings: groupMemberControlsTable.canManageSettings })
     .from(groupMemberControlsTable)
