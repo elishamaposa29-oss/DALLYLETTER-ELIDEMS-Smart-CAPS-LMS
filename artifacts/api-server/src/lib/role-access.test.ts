@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canAccessManager, canApproveAchievementAwards, canManageAcademicContent, canPendingTeacherUseRoute, canRecommendAchievementAwards, canReviewAcademicTransfer, canUseStaffAI, enforceAcademicStaffAccess, enforceAuthenticated, enforceOwnerAccess, isJuniorManager, isOwnerRole, isSeniorManager, normalizeRole } from "./role-access.js";
+import { canAccessManager, canApproveAchievementAwards, canManageAcademicContent, canModerateUser, canPendingTeacherUseRoute, canRecommendAchievementAwards, canReviewAcademicTransfer, canUseStaffAI, enforceAcademicStaffAccess, enforceAuthenticated, enforceOwnerAccess, isJuniorManager, isOwnerRole, isSeniorManager, normalizeRole } from "./role-access.js";
 
 test("normalizes legacy role casing and separators",()=>{
  assert.equal(normalizeRole(" Senior Manager "), "senior_manager");
@@ -211,4 +211,18 @@ test("pending teacher API policy allows only own CV, evidence, Profile Hub and a
   ["DELETE","/api/users/41"],
  ]) assert.equal(canPendingTeacherUseRoute(applicant,method,path),false,method+" "+path);
  assert.equal(canPendingTeacherUseRoute({...applicant,teacherApplicationStatus:"approved"},"POST","/api/lessons"),true);
+});
+
+test("manager moderation follows hierarchy and protects Owner, Admin, and senior peers",()=>{
+ const junior={role:"junior_manager"};
+ const senior={role:"senior_manager"};
+ const owner={role:"owner"};
+ for(const target of [{role:"teacher"},{role:"student"},{role:"prefect"},{role:"manager",managerLevel:"junior"}])
+  assert.equal(canModerateUser(senior,target),true,JSON.stringify(target));
+ for(const target of [{role:"owner"},{role:"platform_owner"},{role:"admin"},{role:"senior_manager"},{role:"manager",managerLevel:"senior"},{role:"teacher",isManager:true,managerLevel:"senior"}])
+  assert.equal(canModerateUser(senior,target),false,JSON.stringify(target));
+ assert.equal(canModerateUser(junior,{role:"teacher"}),false);
+ assert.equal(canModerateUser(junior,{role:"student"}),false);
+ assert.equal(canModerateUser(owner,{role:"admin"}),true);
+ assert.equal(canModerateUser(owner,{role:"owner"}),false);
 });
