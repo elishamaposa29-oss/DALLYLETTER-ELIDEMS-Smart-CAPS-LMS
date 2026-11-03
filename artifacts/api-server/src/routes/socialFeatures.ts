@@ -13,6 +13,7 @@ async function isOwnerOwnedContent(contentType: string, contentId: number): Prom
     lesson: { table: "lessons", ownerColumn: "teacher_id" },
     assignment: { table: "assignments", ownerColumn: "teacher_id" },
     exercise: { table: "exercises", ownerColumn: "created_by" },
+    activity: { table: "audit_logs", ownerColumn: "performed_by" },
   };
   const selected = source[contentType];
   if (!selected) return false;
