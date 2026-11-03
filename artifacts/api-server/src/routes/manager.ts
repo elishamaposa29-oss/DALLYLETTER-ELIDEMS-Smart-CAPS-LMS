@@ -75,6 +75,11 @@ router.get("/dashboard", requireAuth, requireManager, requireManagerPermission("
     db.select().from(contentFlagsTable).where(eq(contentFlagsTable.status, "pending")).orderBy(desc(contentFlagsTable.createdAt)).limit(100),
     isSeniorManager(req.currentUser!) ? pool.query("SELECT id,name,email,created_at,teacher_review_deadline FROM users WHERE role=$1 AND teacher_application_status=$2 ORDER BY created_at ASC LIMIT 100", ["teacher", "pending_review"]) : Promise.resolve({ rows: [] as any[] }),
   ]);
+  const visibleTransferRows=transferRows.rows.filter((row:any)=>canSeeUser(Number(row.learner_id)));
+  const visibleReportRows=reportRows.rows.filter((row:any)=>canSeeUser(Number(row.learner_id)));
+  const visibleAwardRows=awardRows.rows.filter((row:any)=>canSeeUser(Number(row.learner_id)));
+  const visibleQualificationRows=qualificationRows.rows.filter((row:any)=>canSeeUser(Number(row.user_id)));
+  const visibleTeacherApplications=teacherApplications.rows.filter((row:any)=>canSeeUser(Number(row.id)));
   const ownerContentIds: Record<string, Set<number>> = {
     user: ownerIds,
     profile: ownerIds,
@@ -84,7 +89,18 @@ router.get("/dashboard", requireAuth, requireManager, requireManagerPermission("
     assignment: new Set(assignments.filter((row: any) => ownerIds.has(Number(row.teacherId))).map((row: any) => Number(row.id))),
     exercise: new Set(exercises.filter((row: any) => ownerIds.has(Number(row.createdBy))).map((row: any) => Number(row.id))),
   };
-  const visibleContentFlags = contentFlags.filter((row: any) => !ownerContentIds[String(row.contentType).toLowerCase()]?.has(Number(row.contentId)));
+  const visibleContentIds:Record<string,Set<number>>={
+    lesson:new Set(visibleLessons.map((row:any)=>Number(row.id))),
+    class:new Set(visibleClasses.map((row:any)=>Number(row.id))),
+    assignment:new Set(visibleAssignments.map((row:any)=>Number(row.id))),
+    exercise:new Set(visibleExercises.map((row:any)=>Number(row.id))),
+  };
+  const visibleContentFlags = contentFlags.filter((row: any) => {
+    const type=String(row.contentType).toLowerCase(),id=Number(row.contentId);
+    if(ownerContentIds[type]?.has(id))return false;
+    if(ownerViewer)return true;
+    return Boolean(visibleContentIds[type]?.has(id));
+  });
 
   const activeTeachers = visibleTeachers.filter((t: any) => !t.isManager && !t.isBlocked && !t.isSuspended);
   const teacherRanks = activeTeachers.map((teacher: any) => {
@@ -106,12 +122,12 @@ router.get("/dashboard", requireAuth, requireManager, requireManagerPermission("
   }).sort((a: any, b: any) => b.activityScore - a.activityScore || b.learnersJoined - a.learnersJoined || a.name.localeCompare(b.name)).slice(0, 5);
 
   const reviewQueue = [
-    ...transferRows.rows.map((r: any) => ({ id: "transfer-" + r.id, type: "transfer_request", title: "Transfer letter approval", description: r.reason, targetId: Number(r.id), learnerId: Number(r.learner_id), learnerName: r.learner_name, status: "pending", createdAt: r.created_at, href: "/manager/transfer-requests" })),
-    ...reportRows.rows.map((r: any) => ({ id: "report-" + r.id, type: "academic_report", title: "Performance report review", description: r.report_type + " · " + r.term_label, targetId: Number(r.id), learnerId: Number(r.learner_id), learnerName: r.learner_name, status: "pending_review", createdAt: r.created_at, href: "/manager/reports/review" })),
-    ...awardRows.rows.map((r: any) => ({ id: "award-" + r.id, type: "achievement_award", title: "Achievement award recommendation", description: (r.achievement_icon || "🏆") + " " + r.achievement_name + (r.recommendation_note ? " · " + r.recommendation_note : ""), targetId: Number(r.id), learnerId: Number(r.learner_id), learnerName: r.learner_name, status: "pending_senior_review", createdAt: r.created_at, href: "/admin/achievements" })),
-    ...qualificationRows.rows.map((r: any) => ({ id: "qualification-" + r.id, type: "qualification_verification", title: "Teacher qualification verification", description: r.title + (r.institution ? " · " + r.institution : ""), targetId: Number(r.id), learnerName: r.teacher_name, status: "pending", createdAt: r.created_at, href: "/manager/qualifications" })),
+    ...visibleTransferRows.map((r: any) => ({ id: "transfer-" + r.id, type: "transfer_request", title: "Transfer letter approval", description: r.reason, targetId: Number(r.id), learnerId: Number(r.learner_id), learnerName: r.learner_name, status: "pending", createdAt: r.created_at, href: "/manager/transfer-requests" })),
+    ...visibleReportRows.map((r: any) => ({ id: "report-" + r.id, type: "academic_report", title: "Performance report review", description: r.report_type + " · " + r.term_label, targetId: Number(r.id), learnerId: Number(r.learner_id), learnerName: r.learner_name, status: "pending_review", createdAt: r.created_at, href: "/manager/reports/review" })),
+    ...visibleAwardRows.map((r: any) => ({ id: "award-" + r.id, type: "achievement_award", title: "Achievement award recommendation", description: (r.achievement_icon || "🏆") + " " + r.achievement_name + (r.recommendation_note ? " · " + r.recommendation_note : ""), targetId: Number(r.id), learnerId: Number(r.learner_id), learnerName: r.learner_name, status: "pending_senior_review", createdAt: r.created_at, href: "/admin/achievements" })),
+    ...visibleQualificationRows.map((r: any) => ({ id: "qualification-" + r.id, type: "qualification_verification", title: "Teacher qualification verification", description: r.title + (r.institution ? " · " + r.institution : ""), targetId: Number(r.id), learnerName: r.teacher_name, status: "pending", createdAt: r.created_at, href: "/manager/qualifications" })),
     ...visibleContentFlags.map((r: any) => ({ id: "content-flag-" + r.id, type: "content_moderation", title: "Content moderation review", description: r.reason, targetId: r.id, learnerName: r.contentType + " #" + r.contentId, status: r.status, severity: r.severity, createdAt: r.createdAt, href: "/manager/safety" })),
-    ...teacherApplications.rows.map((r: any) => ({ id: "teacher-application-" + r.id, type: "teacher_application", title: "Teacher application review", description: r.email || "Teacher applicant", targetId: Number(r.id), learnerName: r.name, status: "pending_review", createdAt: r.created_at, href: "/manager/teacher-cv-workspace" })),
+    ...visibleTeacherApplications.map((r: any) => ({ id: "teacher-application-" + r.id, type: "teacher_application", title: "Teacher application review", description: r.email || "Teacher applicant", targetId: Number(r.id), learnerName: r.name, status: "pending_review", createdAt: r.created_at, href: "/manager/teacher-cv-workspace" })),
     ...visibleAlerts.map((a: any) => ({ id: "alert-" + a.id, type: "alert", title: a.title, description: a.description, targetId: a.id, learnerName: a.reporterName, status: a.status, severity: a.severity, createdAt: a.createdAt, href: "/manager/notifications" })),
   ].sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
@@ -144,7 +160,7 @@ router.get("/dashboard", requireAuth, requireManager, requireManagerPermission("
     recentLessons: canViewRecordBook ? visibleLessons.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10) : [],
     openAlerts: permittedQueue.slice(0, 12),
     reviewQueue: permittedQueue,
-    reviewCounts: { transferRequests: canViewTransfers ? transferRows.rows.length : 0, performanceReports: canViewReports ? reportRows.rows.length : 0, awardRecommendations: canViewAchievements ? awardRows.rows.length : 0, qualificationVerifications: canViewQualifications ? qualificationRows.rows.length : 0, contentFlags: canViewModeration ? visibleContentFlags.length : 0, teacherApplications: canViewTeacherCv ? teacherApplications.rows.length : 0, alerts: canViewNotifications ? visibleAlerts.length : 0 },
+    reviewCounts: { transferRequests: canViewTransfers ? visibleTransferRows.length : 0, performanceReports: canViewReports ? visibleReportRows.length : 0, awardRecommendations: canViewAchievements ? visibleAwardRows.length : 0, qualificationVerifications: canViewQualifications ? visibleQualificationRows.length : 0, contentFlags: canViewModeration ? visibleContentFlags.length : 0, teacherApplications: canViewTeacherCv ? visibleTeacherApplications.length : 0, alerts: canViewNotifications ? visibleAlerts.length : 0 },
     recentAssignments: canViewRecordBook ? visibleAssignments.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10) : [],
     topTeachers: canViewUsers ? teacherRanks : [],
     markingStats: canViewRecordBook ? { markedAssignments: totalMarkedAssignments, markedExercises: totalMarkedExercises } : null,
