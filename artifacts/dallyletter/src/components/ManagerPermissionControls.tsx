@@ -24,7 +24,6 @@ export function ManagerPermissionControls({ user, onChanged }: Props) {
   const [historyLoading, setHistoryLoading] = useState(false);
 
   const isManager = ["junior_manager", "senior_manager", "manager"].includes(user.role) || Boolean(user.isManager);
-  const currentRole = user.role === "senior_manager" || user.managerLevel === "senior" ? "senior_manager" : "junior_manager";
   const groups = useMemo(() => [...new Set(permissions.map((p) => p.group))], [permissions]);
 
   const load = async (nextRole: "junior_manager" | "senior_manager", promote: boolean) => {
