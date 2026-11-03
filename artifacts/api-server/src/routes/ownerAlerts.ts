@@ -4,6 +4,7 @@ import { ownerAlertsTable } from "@workspace/db/schema";
 import { eq, desc, inArray, and } from "drizzle-orm";
 import { requireAuth, isOwnerRole, canAccessManager } from "../lib/auth-middleware";
 import { managerHasPermission } from "../lib/manager-permission-policy";
+import { canModerateUser } from "../lib/role-access";
 
 const router = Router();
 
@@ -24,8 +25,19 @@ async function visibleManagerAlerts(user: NonNullable<Express.Request["currentUs
     db.select().from(ownerAlertsTable).where(inArray(ownerAlertsTable.category, managerVisibleCategories)).orderBy(desc(ownerAlertsTable.createdAt)),
     pool.query("SELECT id FROM users WHERE lower(role) IN ('owner','platform_owner')"),
   ]);
-  const ownerIds = new Set(ownerRows.rows.map((row: any) => Number(row.id)));
-  const filtered = rows.filter((row: any) => row.reporterRole !== "owner" && row.reporterRole !== "platform_owner" && !(row.targetType === "user" && ownerIds.has(Number(row.targetId))));
+  const relatedIds=[...new Set(rows.flatMap((row:any)=>[Number(row.reportedBy||0),row.targetType==="user"?Number(row.targetId||0):0]).filter((id:number)=>Number.isSafeInteger(id)&&id>0))];
+  const related=relatedIds.length?await pool.query("SELECT id,role,is_manager,manager_level FROM users WHERE id=ANY($1::int[])",[relatedIds]):{rows:[] as any[]};
+  const byId=new Map(related.rows.map((row:any)=>[Number(row.id),row]));
+  const filtered = rows.filter((row: any) => {
+    if(row.reporterRole==="owner"||row.reporterRole==="platform_owner")return false;
+    const reporter=byId.get(Number(row.reportedBy));
+    if(reporter && Number(reporter.id)!==user.id && !canModerateUser(user,{role:reporter.role,isManager:reporter.is_manager,managerLevel:reporter.manager_level}))return false;
+    if(row.targetType==="user"){
+      const target=byId.get(Number(row.targetId));
+      if(!target || !canModerateUser(user,{role:target.role,isManager:target.is_manager,managerLevel:target.manager_level}))return false;
+    }
+    return true;
+  });
   const allowed = await Promise.all(filtered.map(async (row: any) => (await managerHasPermission(user, permissionForAlert(row))) ? row : null));
   return allowed.filter(Boolean);
 }
