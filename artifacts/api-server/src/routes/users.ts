@@ -20,7 +20,7 @@ import { enqueueEmailNotification } from "../lib/email-notification-queue";
 import { buildTeacherCvPdf } from "../lib/teacher-cv-pdf";
 import { canViewProfileSection } from "./profileConnections";
 import { isSeniorManager, isJuniorManager, canModerateUser, normalizeRole } from "../lib/role-access";
-import { requireManagerPermission } from "../lib/manager-permission-policy";
+import { requireManagerPermission, requireManagerPermissionIfManager, requireManagerPermissionForRequest, managerHasPermission } from "../lib/manager-permission-policy";
 
 const router: IRouter = Router();
 
@@ -468,22 +468,24 @@ router.get("/users/me/teacher-cv/pdf", requireAuth, async (req, res): Promise<vo
   await sendTeacherCvPdf(req.currentUser!.id, res);
 });
 
-router.get("/users/:id/teacher-cv", requireAuth, async (req, res): Promise<void> => {
+router.get("/users/:id/teacher-cv", requireAuth, requireManagerPermission("teacher_cv.view"), async (req, res): Promise<void> => {
   const actor = req.currentUser!;
-  if (!canReviewTeacherApplication(actor)) { res.status(403).json({ error: "Owner or Senior Manager access is required to review teacher CVs." }); return; }
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid user id." }); return; }
+  const [target] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, id));
+  if (!target || normalizeRole(target.role) !== "teacher") { res.status(404).json({ error: "Teacher CV not found." }); return; }
   await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, cv jsonb NOT NULL DEFAULT '{}'::jsonb, updated_at timestamptz NOT NULL DEFAULT now())");
   const result = await pool.query("SELECT cv, updated_at FROM teacher_profiles WHERE user_id = $1", [id]);
   if (!result.rows.length) { res.status(404).json({ error: "Teacher CV not found." }); return; }
   res.json(result.rows[0]);
 });
 
-router.get("/users/:id/teacher-cv/pdf", requireAuth, async (req, res): Promise<void> => {
+router.get("/users/:id/teacher-cv/pdf", requireAuth, requireManagerPermission("teacher_cv.view"), async (req, res): Promise<void> => {
   const actor = req.currentUser!;
-  if (!canReviewTeacherApplication(actor)) { res.status(403).json({ error: "Owner or Senior Manager access is required to download teacher CVs for review." }); return; }
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid user id." }); return; }
+  const [target] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, id));
+  if (!target || normalizeRole(target.role) !== "teacher") { res.status(404).json({ error: "Teacher CV not found." }); return; }
   await sendTeacherCvPdf(id, res);
 });
 
@@ -533,7 +535,7 @@ router.get("/users/:id/teacher-documents", requireAuth, async (req, res): Promis
   if (!target) { res.status(404).json({ error: "User not found." }); return; }
   if (!(await canViewProfileSection(actor,id,"teacher_documents"))) { res.status(403).json({ error: "Teacher document visibility is restricted by this profile's privacy settings." }); return; }
   const actorRole = String(actor.role || "").trim().toLowerCase().replace(/[ -]+/g, "_");
-  const selfOrManager = actor.id === id || canReviewTeacherApplication(actor);
+  const selfOrManager = actor.id === id || (canAccessManager(actor) && await managerHasPermission(actor, "teacher_cv.view"));
   const professional = ["teacher", "manager", "senior_manager"].includes(String(target.role).toLowerCase());
   if (!selfOrManager && !professional) { res.status(403).json({ error: "Access denied" }); return; }
   const result = selfOrManager
@@ -573,7 +575,7 @@ router.get("/users/:id/teacher-documents/:docId", requireAuth, async (req, res):
   res.setHeader("Content-Length", row.size_bytes); res.end(row.data);
 });
 
-router.patch("/users/:id/teacher-review", requireAuth, async (req, res): Promise<void> => {
+router.patch("/users/:id/teacher-review", requireAuth, requireManagerPermissionForRequest((req) => req.body?.action === "approve" ? "teacher_cv.authorize" : "teacher_cv.review"), async (req, res): Promise<void> => {
   const actor = req.currentUser!;
   if (!canReviewTeacherApplication(actor)) { res.status(403).json({ error: "Owner or Senior Manager approval is required for teacher applications." }); return; }
   const id = Number(req.params.id);
@@ -820,8 +822,7 @@ router.post("/users/me/qualifications", requireAuth, async (req, res): Promise<v
 
 // Owner-only moderation queue for qualifications awaiting verification.
 router.get("/qualifications/pending", requireAuth, requireManagerPermission("qualifications.view"), async(req,res):Promise<void>=>{
-  if(!canReviewTeacherApplication(req.currentUser!)){res.status(403).json({error:"Owner or Senior Manager access required."});return;}
-  const result=await pool.query("SELECT q.id,q.user_id,u.name AS teacher_name,q.title,q.institution,q.year,q.verification_status,q.document_id,d.file_name AS document_file_name,d.mime_type AS document_mime_type,q.created_at FROM teacher_qualifications q JOIN users u ON u.id=q.user_id LEFT JOIN teacher_documents d ON d.id=q.document_id WHERE q.verification_status='pending' ORDER BY q.created_at ASC");
+  const result=await pool.query("SELECT q.id,q.user_id,u.name AS teacher_name,q.title,q.institution,q.year,q.verification_status,q.document_id,d.file_name AS document_file_name,d.mime_type AS document_mime_type,q.created_at FROM teacher_qualifications q JOIN users u ON u.id=q.user_id LEFT JOIN teacher_documents d ON d.id=q.document_id WHERE q.verification_status='pending' AND lower(u.role) NOT IN ('owner','platform_owner') ORDER BY q.created_at ASC");
   res.json(result.rows);
 });
 
@@ -913,25 +914,29 @@ router.patch("/qualifications/:id/verify", requireAuth, requireManagerPermission
   } finally { client.release(); }
 });
 
-router.get("/qualifications/:id/review-history", requireAuth, async(req,res):Promise<void>=>{
+router.get("/qualifications/:id/review-history", requireAuth, requireManagerPermissionIfManager("qualifications.view"), async(req,res):Promise<void>=>{
   const actor=req.currentUser!;
   const id=Number(req.params.id);
   if(!Number.isSafeInteger(id)||id<=0){res.status(400).json({error:"Invalid qualification id."});return;}
   await pool.query("CREATE TABLE IF NOT EXISTS teacher_qualification_review_history (id bigserial PRIMARY KEY,qualification_id integer NOT NULL REFERENCES teacher_qualifications(id) ON DELETE CASCADE,reviewed_by integer REFERENCES users(id),previous_status text NOT NULL,new_status text NOT NULL,review_note text,created_at timestamptz NOT NULL DEFAULT now())");
   const qualification=await pool.query("SELECT id,user_id FROM teacher_qualifications WHERE id=$1",[id]);
   if(!qualification.rows.length){res.status(404).json({error:"Qualification not found."});return;}
-  if(!canReviewTeacherApplication(actor)&&Number(qualification.rows[0].user_id)!==actor.id){res.status(403).json({error:"Only the qualification owner or an authorized owner/admin can view review history."});return;}
+  const targetUser = await pool.query("SELECT role FROM users WHERE id=$1", [qualification.rows[0].user_id]);
+  if(isOwnerRole(targetUser.rows[0]?.role) && !isOwnerRole(actor.role)){res.status(404).json({error:"Qualification not found."});return;}
+  if(Number(qualification.rows[0].user_id)!==actor.id && !(canAccessManager(actor) && await managerHasPermission(actor,"qualifications.view"))){res.status(403).json({error:"Only the qualification owner or an authorized owner/admin can view review history."});return;}
   const history=await pool.query("SELECT h.id,h.qualification_id,h.previous_status,h.new_status,h.review_note,h.created_at,u.name AS reviewer_name FROM teacher_qualification_review_history h JOIN users u ON u.id=h.reviewed_by WHERE h.qualification_id=$1 ORDER BY h.created_at DESC,h.id DESC LIMIT 100",[id]);
   res.json({qualificationId:id,history:history.rows});
 });
 
-router.get("/qualifications/:id/document", requireAuth, async(req,res):Promise<void>=>{
+router.get("/qualifications/:id/document", requireAuth, requireManagerPermissionIfManager("qualifications.view"), async(req,res):Promise<void>=>{
   const id=Number(req.params.id), actor=req.currentUser!;
   if(!Number.isSafeInteger(id)||id<=0){res.status(400).json({error:"Invalid document id."});return;}
   const result=await pool.query("SELECT d.id,d.user_id,d.file_name,d.mime_type,d.storage_key,q.verification_status FROM teacher_documents d LEFT JOIN teacher_qualifications q ON q.document_id=d.id WHERE d.id=$1",[id]);
   const doc=result.rows[0];
   if(!doc){res.status(404).json({error:"Document not found."});return;}
-  if(doc.user_id!==actor.id&&!canReviewTeacherApplication(actor)){res.status(403).json({error:"Document access denied."});return;}
+  const targetUser = await pool.query("SELECT role FROM users WHERE id=$1", [doc.user_id]);
+  if(isOwnerRole(targetUser.rows[0]?.role) && !isOwnerRole(actor.role)){res.status(404).json({error:"Document not found."});return;}
+  if(doc.user_id!==actor.id&&!(canAccessManager(actor)&&await managerHasPermission(actor,"qualifications.view"))){res.status(403).json({error:"Document access denied."});return;}
   if(!doc.storage_key){res.status(503).json({error:"Document storage key unavailable for this legacy record."});return;}
   const media=await streamStoredMedia(doc.storage_key);
   if(!media){res.status(404).json({error:"Stored document not found."});return;}
