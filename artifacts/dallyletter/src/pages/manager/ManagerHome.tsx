@@ -16,7 +16,7 @@ export default function ManagerHome() {
   const { user } = useAuth();
   const isNonManagerTeacher = String(user?.role || "").trim().toLowerCase() === "teacher" && !(user as any)?.isManager;
   const managerRole = String(user?.role || "").trim().toLowerCase().replace(/[ -]+/g, "_");
-  const canReviewTeacherCvs = ["owner", "platform_owner", "senior_manager"].includes(managerRole) || (managerRole === "manager" && String((user as any)?.managerLevel || "").toLowerCase() === "senior");
+  const canReviewTeacherCvs = ["owner", "platform_owner", "senior_manager"].includes(managerRole) || (["manager", "teacher"].includes(managerRole) && String((user as any)?.managerLevel || "").toLowerCase() === "senior" && (managerRole !== "teacher" || (user as any)?.isManager === true));
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [pendingTransfers, setPendingTransfers] = useState(0);
