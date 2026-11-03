@@ -5,6 +5,7 @@ import {
   normalizeRole,
   isSeniorManager,
 } from "../lib/role-access";
+import { isSeniorOnlyManagerPermission } from "../lib/manager-permission-policy";
 
 const router: IRouter = Router();
 
@@ -21,7 +22,7 @@ export const MANAGER_PERMISSION_CATALOG = [
   { key: "users.override.teacher", group: "Users", label: "Override teacher actions", description: "Reverse or correct permitted teacher actions." },
   { key: "users.override.learner", group: "Users", label: "Override learner actions", description: "Reverse or correct permitted learner actions." },
   { key: "users.override.prefect", group: "Users", label: "Override prefect actions", description: "Reverse or correct permitted prefect actions." },
-  { key: "users.override.junior_manager", seniorOnly: true, group: "Users", label: "Override Junior Manager actions", description: "Senior-level review of Junior Manager actions only." },
+  { key: "users.override.junior_manager", group: "Users", label: "Override Junior Manager actions", description: "Senior-level review of Junior Manager actions only." },
   { key: "attendance.view", group: "Attendance", label: "View attendance", description: "View school-scoped attendance records." },
   { key: "attendance.edit", group: "Attendance", label: "Edit attendance", description: "Correct attendance records with an audit reason." },
   { key: "recordbook.view", group: "Academic", label: "View RecordBook", description: "View teacher and learner activity records." },
@@ -75,7 +76,7 @@ async function getTargetManager(userId: number) {
 
 router.get("/catalog", requireAuth, ownerOnly, (_req, res) => {
   res.setHeader("Cache-Control", "no-store");
-  res.json({ permissions: MANAGER_PERMISSION_CATALOG, protectedCapabilities: ["owner.account.manage", "owner.activity.view", "owner.audit.view", "owner.permissions.manage", "admin.account.manage"] });
+  res.json({ permissions: MANAGER_PERMISSION_CATALOG.map((p) => ({ ...p, seniorOnly: isSeniorOnlyManagerPermission(p.key) })), protectedCapabilities: ["owner.account.manage", "owner.activity.view", "owner.audit.view", "owner.permissions.manage", "admin.account.manage"] });
 });
 
 /** Effective permissions: explicit grants only. No role-derived implicit grants. */
@@ -197,7 +198,7 @@ router.get("/:userId", requireAuth, ownerOnly, async (req, res): Promise<void> =
   const grants = Object.fromEntries(MANAGER_PERMISSION_CATALOG.map((p) => [p.key, false]));
   for (const row of result.rows) if (allowedKeys.has(row.permission_key)) grants[row.permission_key] = row.granted === true;
   res.setHeader("Cache-Control", "no-store");
-  res.json({ manager: { id: target.id, name: target.name, email: target.email, role: target.role, managerLevel: target.manager_level }, permissions: MANAGER_PERMISSION_CATALOG.map((p) => ({ ...p, granted: grants[p.key] })), updatedAt: result.rows.reduce((latest: string | null, row: any) => !latest || new Date(row.changed_at) > new Date(latest) ? row.changed_at : latest, null) });
+  res.json({ manager: { id: target.id, name: target.name, email: target.email, role: target.role, managerLevel: target.manager_level }, permissions: MANAGER_PERMISSION_CATALOG.map((p) => ({ ...p, seniorOnly: isSeniorOnlyManagerPermission(p.key), granted: grants[p.key] })), updatedAt: result.rows.reduce((latest: string | null, row: any) => !latest || new Date(row.changed_at) > new Date(latest) ? row.changed_at : latest, null) });
 });
 
 router.put("/:userId", requireAuth, ownerOnly, async (req, res): Promise<void> => {
@@ -218,9 +219,8 @@ router.put("/:userId", requireAuth, ownerOnly, async (req, res): Promise<void> =
     }
     seen.add(item.key);
   }
-  const seniorOnlyKeys = new Set(["transfers.approve","reports.review","achievements.approve","teacher_cv.review","teacher_cv.authorize","qualifications.verify","users.override.junior_manager"]);
   const targetIsSenior = isSeniorManager({ role: target.role, managerLevel: target.manager_level, isManager: target.is_manager });
-  if (!targetIsSenior && (permissions as Array<{ key: string; granted: boolean }>).some((item) => seniorOnlyKeys.has(item.key) && item.granted)) {
+  if (!targetIsSenior && (permissions as Array<{ key: string; granted: boolean }>).some((item) => isSeniorOnlyManagerPermission(item.key) && item.granted)) {
     res.status(400).json({ error: "Senior-only permissions cannot be granted to a Junior Manager." });
     return;
   }
