@@ -2,7 +2,9 @@ import { Router, type IRouter } from "express";
 import { eq, or, isNull, and, desc } from "drizzle-orm";
 import { db, notificationsTable, pool } from "@workspace/db";
 import { CreateNotificationBody, MarkNotificationReadParams } from "@workspace/api-zod";
-import { requireAuth, requireTeacherOrOwner, requireOwner, canAccessManager } from "../lib/auth-middleware";
+import { requireAuth, requireTeacherOrOwner, requireOwner, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
+import { managerHasPermission } from "../lib/manager-permission-policy";
+import { canModerateUser } from "../lib/role-access";
 import { requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
 
 const router: IRouter = Router();
@@ -30,17 +32,50 @@ router.get("/notifications", requireAuth, async (req, res): Promise<void> => {
 
 // POST /notifications — Create (teacher/owner only)
 router.post("/notifications", requireAuth, requireManagerPermissionIfManager("notifications.create"), async (req, res): Promise<void> => {
-  if (!canAccessManager(req.currentUser!) && !req.currentUser?.isPrefect) { res.status(403).json({ error: "Only authorized staff or prefects can create notifications" }); return; }
+  const actor=req.currentUser!;
+  const managerActor=canAccessManager(actor)&&!isOwnerRole(actor.role);
+  if (!canAccessManager(actor) && !actor.isPrefect) { res.status(403).json({ error: "Only authorized staff or prefects can create notifications" }); return; }
   const recipientRole = typeof req.body?.recipientRole === "string" ? req.body.recipientRole.trim().toLowerCase() : "";
+  const specificId=Number(req.body?.recipientId);
+  const isSpecific=Number.isSafeInteger(specificId)&&specificId>0;
+  const isBroadcast=!isSpecific&&!recipientRole;
+  if(managerActor && (recipientRole||isBroadcast) && !(await managerHasPermission(actor,"notifications.broadcast"))){res.status(403).json({error:"Owner has not granted broadcast permission."});return;}
+  const parsed = CreateNotificationBody.safeParse({ ...req.body, recipientId: isSpecific ? specificId : null });
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  if(managerActor){
+    let matches:any[]=[];
+    if(isSpecific){
+      const target=await pool.query("SELECT id,role,is_manager,manager_level,is_blocked,is_suspended FROM users WHERE id=$1",[specificId]);
+      const row=target.rows[0];
+      if(!row||row.is_blocked||row.is_suspended||!canModerateUser(actor,{role:row.role,isManager:row.is_manager,managerLevel:row.manager_level})){res.status(404).json({error:"Recipient not found."});return;}
+      matches=[row];
+    }else{
+      const result=recipientRole
+        ? recipientRole==="prefect"
+          ? await pool.query("SELECT id,role,is_manager,manager_level FROM users WHERE is_prefect=true AND is_blocked=false AND is_suspended=false")
+          : recipientRole==="manager"
+            ? await pool.query("SELECT id,role,is_manager,manager_level FROM users WHERE (is_manager=true OR lower(role) IN ('manager','junior_manager','senior_manager')) AND is_blocked=false AND is_suspended=false")
+            : await pool.query("SELECT id,role,is_manager,manager_level FROM users WHERE lower(role)=$1 AND is_blocked=false AND is_suspended=false",[recipientRole])
+        : await pool.query("SELECT id,role,is_manager,manager_level FROM users WHERE is_blocked=false AND is_suspended=false");
+      matches=result.rows.filter((row:any)=>canModerateUser(actor,{role:row.role,isManager:row.is_manager,managerLevel:row.manager_level}));
+    }
+    if(!matches.length){res.status(404).json({error:"No eligible subordinate recipients were found. No notification was created."});return;}
+    const created=await Promise.all(matches.map(async(row:any)=>{
+      const [notification]=await db.insert(notificationsTable).values({...parsed.data,recipientId:Number(row.id),isRead:false}).returning();
+      return notification;
+    }));
+    res.status(201).json({ok:true,recipients:created.length,notifications:created.map(notification=>({...notification,createdAt:notification.createdAt.toISOString()}))});
+    return;
+  }
+
   if (recipientRole) {
     const allowed = ["student", "teacher", "manager", "prefect"];
     if (!allowed.includes(recipientRole)) { res.status(400).json({ error: "Choose a supported recipient role." }); return; }
-    const parsed = CreateNotificationBody.safeParse({ ...req.body, recipientId: null });
-    if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
     const matches = recipientRole === "prefect"
       ? await pool.query("SELECT id FROM users WHERE is_prefect = true AND is_blocked = false AND is_suspended = false")
       : recipientRole === "manager"
-        ? await pool.query("SELECT id FROM users WHERE (is_manager = true OR lower(role) IN ('manager','senior_manager')) AND is_blocked = false AND is_suspended = false")
+        ? await pool.query("SELECT id FROM users WHERE (is_manager = true OR lower(role) IN ('manager','junior_manager','senior_manager')) AND is_blocked = false AND is_suspended = false")
         : await pool.query("SELECT id FROM users WHERE lower(role) = $1 AND is_blocked = false AND is_suspended = false", [recipientRole]);
     if (!matches.rows.length) { res.status(404).json({ error: "No active users were found for that role. No notification was created." }); return; }
     const created = await Promise.all(matches.rows.map(async (row: { id: number | string }) => {
@@ -50,8 +85,6 @@ router.post("/notifications", requireAuth, requireManagerPermissionIfManager("no
     res.status(201).json({ ok: true, recipientRole, recipients: created.length, notifications: created.map(notification => ({ ...notification, createdAt: notification.createdAt.toISOString() })) });
     return;
   }
-  const parsed = CreateNotificationBody.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const [notification] = await db.insert(notificationsTable).values({ ...parsed.data, isRead: false }).returning();
   res.status(201).json({ ...notification, createdAt: notification.createdAt.toISOString() });
 });
