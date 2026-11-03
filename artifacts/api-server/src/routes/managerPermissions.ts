@@ -4,8 +4,8 @@ import { requireAuth, isOwnerRole } from "../lib/auth-middleware";
 import {
   normalizeRole,
   isSeniorManager,
+  isSeniorOnlyManagerPermission,
 } from "../lib/role-access";
-import { isSeniorOnlyManagerPermission } from "../lib/manager-permission-policy";
 
 const router: IRouter = Router();
 
