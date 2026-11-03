@@ -172,7 +172,7 @@ export default function AdminAssignments() {
                       </Button>}
                       {canEditAssignments && <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-600 h-8 w-8 p-0" onClick={() => del(a.id)}>
                         <Trash2 className="h-4 w-4" />
-                      </Button>
+                      </Button>}
                     </div>
                   </div>
                 </CardContent>
