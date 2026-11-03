@@ -119,15 +119,12 @@ export default function ManagerStudents() {
                     </div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 border-t pt-3" onClick={event => event.stopPropagation()}>
-                    {can("users.restore") && (s.isBlocked || s.isSuspended ? (
-                      <Button size="sm" variant="outline" onClick={() => void action(s.id, "unblock")} disabled={busy === s.id}><UserCheck className="mr-1.5 h-3.5 w-3.5" />Restore access</Button>
-                    ) : (
-                      <>
-                        {can("users.override.learner") && <Button size="sm" variant="outline" onClick={() => void action(s.id, "warn")} disabled={busy === s.id}><AlertTriangle className="mr-1.5 h-3.5 w-3.5" />Warn</Button>}
-                        {can("users.suspend") && <Button size="sm" variant="outline" onClick={() => void action(s.id, "suspend")} disabled={busy === s.id}><UserX className="mr-1.5 h-3.5 w-3.5" />Suspend</Button>}
-                        {can("users.block") && <Button size="sm" variant="outline" onClick={() => void action(s.id, "block")} disabled={busy === s.id}><Ban className="mr-1.5 h-3.5 w-3.5" />Block</Button>}
-                      </>
-                    ))}
+                    {(s.isBlocked || s.isSuspended) && can("users.restore") && <Button size="sm" variant="outline" onClick={() => void action(s.id, "unblock")} disabled={busy === s.id}><UserCheck className="mr-1.5 h-3.5 w-3.5" />Restore access</Button>}
+                    {!s.isBlocked && !s.isSuspended && <>
+                      {can("users.override.learner") && <Button size="sm" variant="outline" onClick={() => void action(s.id, "warn")} disabled={busy === s.id}><AlertTriangle className="mr-1.5 h-3.5 w-3.5" />Warn</Button>}
+                      {can("users.suspend") && <Button size="sm" variant="outline" onClick={() => void action(s.id, "suspend")} disabled={busy === s.id}><UserX className="mr-1.5 h-3.5 w-3.5" />Suspend</Button>}
+                      {can("users.block") && <Button size="sm" variant="outline" onClick={() => void action(s.id, "block")} disabled={busy === s.id}><Ban className="mr-1.5 h-3.5 w-3.5" />Block</Button>}
+                    </>}
                     {can("users.override.prefect") && !s.isPrefect && <Button size="sm" variant="outline" onClick={() => void action(s.id, "promote_prefect")} disabled={busy === s.id}><Shield className="mr-1.5 h-3.5 w-3.5" />Make prefect</Button>}
                     {can("audit.view_subordinate") && <Button size="sm" variant="outline" onClick={() => void openMonitor(s)}><ExternalLink className="mr-1.5 h-3.5 w-3.5" />Monitor</Button>}{can("groups.manage") && <Button size="sm" variant="outline" onClick={() => window.location.assign("/manager/chat")}><MessageSquare className="mr-1.5 h-3.5 w-3.5" />Open Connect</Button>}
                   </div>
