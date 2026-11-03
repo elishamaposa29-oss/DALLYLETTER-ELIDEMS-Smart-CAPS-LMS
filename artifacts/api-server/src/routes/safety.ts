@@ -13,7 +13,7 @@ function canReviewContent(user: { role: string; isManager: boolean }): boolean {
 }
 
 // GET /content-flags — list flags (owner/teacher only)
-router.get("/content-flags", requireAuth, async (req, res): Promise<void> => {
+router.get("/content-flags", requireAuth, requireManagerPermission("moderation.view"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canReviewContent(user)) { res.status(403).json({ error: "Authorized staff access required" }); return; }
   const flags = await db.select({
@@ -47,7 +47,7 @@ router.post("/content-flags", requireAuth, async (req, res): Promise<void> => {
 });
 
 // PATCH /content-flags/:id — review a flag
-router.patch("/content-flags/:id", requireAuth, async (req, res): Promise<void> => {
+router.patch("/content-flags/:id", requireAuth, requireManagerPermission("moderation.action"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canReviewContent(user)) { res.status(403).json({ error: "Authorized staff access required" }); return; }
   const id = parseInt(String(req.params.id));
