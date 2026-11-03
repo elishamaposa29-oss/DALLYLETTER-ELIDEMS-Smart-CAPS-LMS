@@ -374,11 +374,12 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, requ
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id < 1) { res.status(400).json({ error: "Invalid request ID." }); return; }
   const result = await pool.query(
-    "SELECT r.*,u.name AS learner_name,u.email,u.grade FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id WHERE r.id=$1",
+    "SELECT r.*,u.name AS learner_name,u.email,u.grade,u.role,u.is_manager,u.manager_level FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id WHERE r.id=$1",
     [id],
   );
   const row = result.rows[0];
   if (!row || (Number(row.learner_id) !== Number(user.id) && !canAccessManager(user))) { res.status(404).json({ error: "Approved transfer letter not found." }); return; }
+  if(canAccessManager(user)&&!isOwnerRole(user.role)&&!canModerateUser(user,{role:row.role,isManager:row.is_manager,managerLevel:row.manager_level})){res.status(404).json({error:"Approved transfer letter not found."});return;}
   if (row.status !== "approved") { res.status(403).json({ error: "The transfer letter cannot be downloaded until an authorized manager approves the request." }); return; }
   const [enrollmentRows, attendanceRows, awardRows, subjectRows, reportRows] = await Promise.all([
     pool.query("SELECT c.title,c.subject,c.grade,e.enrolled_at,e.progress_percent,e.status FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 ORDER BY e.enrolled_at DESC LIMIT 12", [row.learner_id]),
