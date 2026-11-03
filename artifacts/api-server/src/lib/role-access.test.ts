@@ -119,6 +119,17 @@ test("approved teachers and owners retain academic staff access",()=>{
  assert.equal(canManageAcademicContent({role:"owner",teacherApplicationStatus:"pending_review"}),true);
 });
 
+test("Junior managers may override only ordinary subordinate accounts",()=>{
+ const junior={role:"junior_manager"};
+ for(const role of ["teacher","student","learner","prefect"]) assert.equal(canModerateUser(junior,{role}),true,role);
+ for(const target of [{role:"junior_manager"},{role:"senior_manager"},{role:"manager",managerLevel:"junior"},{role:"admin"},{role:"owner"}]) assert.equal(canModerateUser(junior,target),false,String(target.role));
+});
+test("Senior managers may override Junior Managers and ordinary users but never Admin or Owner",()=>{
+ const senior={role:"senior_manager"};
+ for(const target of [{role:"junior_manager"},{role:"manager",managerLevel:"junior"},{role:"teacher"},{role:"student"},{role:"prefect"}]) assert.equal(canModerateUser(senior,target),true,String(target.role));
+ for(const target of [{role:"senior_manager"},{role:"admin"},{role:"owner"}]) assert.equal(canModerateUser(senior,target),false,String(target.role));
+});
+
 test("transfer review access preserves all existing owner-class aliases and manager authority",()=>{
  for(const role of ["owner","admin","platform_owner","senior_manager","manager"]) assert.equal(canReviewAcademicTransfer({role}),true,role);
  assert.equal(canReviewAcademicTransfer({role:"teacher",isManager:true}),true);
