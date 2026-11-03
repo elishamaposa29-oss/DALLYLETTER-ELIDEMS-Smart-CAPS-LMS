@@ -98,7 +98,7 @@ router.get("/profile/:id/social", requireAuth, async (req,res): Promise<void> =>
   const targetId=Number(req.params.id), actor=req.currentUser!;
   if(!Number.isSafeInteger(targetId)||targetId<=0){res.status(400).json({error:"Invalid profile id"});return;}
   const [target]=await db.select({id:usersTable.id,role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel,isPrefect:usersTable.isPrefect,isBlocked:usersTable.isBlocked,isSuspended:usersTable.isSuspended}).from(usersTable).where(eq(usersTable.id,targetId));
-  if(!target || (isOwnerRole(target.role) && !isOwnerRole(actor.role)) || (canAccessManager(actor) && !isOwnerRole(actor.role) && !canModerateUser(actor,target))){res.status(404).json({error:"Profile not found"});return;}
+  if(!target || (isOwnerRole(target.role) && !isOwnerRole(actor.role)) || (actor.id!==targetId && canAccessManager(actor) && !isOwnerRole(actor.role) && !canModerateUser(actor,target))){res.status(404).json({error:"Profile not found"});return;}
   const privacy=await pool.query("SELECT section_settings,chat_privacy FROM profile_privacy_settings WHERE user_id=$1",[targetId]);
   const link=await pool.query(
     "SELECT id,status,requester_id,recipient_id FROM profile_connections WHERE (requester_id=$1 AND recipient_id=$2) OR (requester_id=$2 AND recipient_id=$1) ORDER BY id DESC LIMIT 1",
