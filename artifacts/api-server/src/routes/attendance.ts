@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
 import { db, auditLogsTable } from "@workspace/db";
 import { attendanceTable, usersTable } from "@workspace/db/schema";
 import { eq, desc, and } from "drizzle-orm";
@@ -7,7 +8,7 @@ import { canViewProfileSection } from "./profileConnections";
 
 const router = Router();
 
-router.get("/class/:classId", requireAuth, async (req, res): Promise<void> => {
+router.get("/class/:classId", requireAuth, requireManagerPermissionIfManager("attendance.view"), async (req, res): Promise<void> => {
   const rows = await db.select().from(attendanceTable)
     .where(eq(attendanceTable.classId, parseInt(String(req.params.classId))))
     .orderBy(desc(attendanceTable.joinedAt));
@@ -23,7 +24,7 @@ router.get("/my", requireAuth, async (req, res): Promise<void> => {
   res.json(rows);
 });
 
-router.get("/student/:studentId", requireAuth, async (req, res): Promise<void> => {
+router.get("/student/:studentId", requireAuth, requireManagerPermissionIfManager("attendance.view"), async (req, res): Promise<void> => {
   const studentId = parseInt(String(req.params.studentId));
   if (!Number.isSafeInteger(studentId) || studentId <= 0 || !(await canViewProfileSection(req.currentUser!,studentId,"attendance"))) { res.status(403).json({ error: "Attendance visibility is restricted by this profile's privacy settings." }); return; }
   const rows = await db.select().from(attendanceTable)
@@ -47,7 +48,7 @@ router.post("/join/:classId", requireAuth, async (req, res): Promise<void> => {
   res.status(201).json(row);
 });
 
-router.put("/:id/status", requireAuth, async (req, res): Promise<void> => {
+router.put("/:id/status", requireAuth, requireManagerPermissionIfManager("attendance.edit"), async (req, res): Promise<void> => {
   const user = (req as any).user;
   if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Academic staff access required" }); return; }
   const status = req.body?.status === "absent" ? "absent" : req.body?.status === "present" ? "present" : null;
@@ -70,7 +71,7 @@ router.put("/:id/leave", requireAuth, async (req, res): Promise<void> => {
   res.json(updated);
 });
 
-router.get("/stats", requireAuth, async (req, res): Promise<void> => {
+router.get("/stats", requireAuth, requireManagerPermissionIfManager("attendance.view"), async (req, res): Promise<void> => {
   const user = (req as any).user;
   if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Forbidden" }); return; }
   const rows = await db.select().from(attendanceTable);
