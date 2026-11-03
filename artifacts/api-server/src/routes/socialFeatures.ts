@@ -130,7 +130,7 @@ router.post("/communities", requireAuth, async(req,res):Promise<void>=>{
  const [row]=await db.insert(communitiesTable).values({name,description:typeof req.body?.description==="string"?req.body.description:null,ownerId:user.id}).returning();res.status(201).json(row);
 });
 router.post("/communities/:id/groups", requireAuth, async(req,res):Promise<void>=>{
- const user=req.currentUser!; if(!canAccessManager(user)){res.status(403).json({error:"Manager access required"});return;}
+ const user=req.currentUser!; if(!canAccessManager(user)||!(await managerHasPermission(user,"groups.manage"))){res.status(403).json({error:"Study group management permission required."});return;}
  const communityId=Number(req.params.id),groupId=Number(req.body?.groupId); if(!groupId){res.status(400).json({error:"groupId required"});return;}
  const [row]=await db.insert(communityGroupsTable).values({communityId,groupId}).returning();res.status(201).json(row);
 });
