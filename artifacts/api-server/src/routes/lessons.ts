@@ -246,8 +246,15 @@ router.get("/lessons/media/:storageKey", mediaAccess, async (req, res): Promise<
 });
 
 // GET /lessons — List all lessons
-router.get("/lessons", requireAuth, async (req, res): Promise<void> => {
-  const lessons = await db.select().from(lessonsTable).orderBy(lessonsTable.createdAt);
+router.get("/lessons", requireAuth, requireManagerPermissionIfManager("recordbook.view"), async (req, res): Promise<void> => {
+  let lessons = await db.select().from(lessonsTable).orderBy(lessonsTable.createdAt);
+  const actor = req.currentUser!;
+  if (canAccessManager(actor) && !isOwnerRole(actor.role)) {
+    const teacherIds = [...new Set(lessons.map(item => item.teacherId))];
+    const targets = teacherIds.length ? await db.select({ id: usersTable.id, role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(inArray(usersTable.id, teacherIds)) : [];
+    const targetById = new Map(targets.map(target => [target.id, target]));
+    lessons = lessons.filter(item => item.teacherId === actor.id || Boolean(targetById.get(item.teacherId) && canModerateUser(actor, targetById.get(item.teacherId)!)));
+  }
   const role = String(req.currentUser!.role).toLowerCase();
   let preferred = new Set<string>();
   if (["student", "learner", "prefect"].includes(role)) {
@@ -313,7 +320,7 @@ router.post("/lessons/:id/notify-followers", requireAuth, requireManagerPermissi
 });
 
 // GET /lessons/:id — Get lesson by ID
-router.get("/lessons/:id", requireAuth, async (req, res): Promise<void> => {
+router.get("/lessons/:id", requireAuth, requireManagerPermissionIfManager("recordbook.view"), async (req, res): Promise<void> => {
   const params = GetLessonParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -324,6 +331,11 @@ router.get("/lessons/:id", requireAuth, async (req, res): Promise<void> => {
   if (!lesson) {
     res.status(404).json({ error: "Lesson not found" });
     return;
+  }
+  const actor = req.currentUser!;
+  if (canAccessManager(actor) && !isOwnerRole(actor.role) && actor.id !== lesson.teacherId) {
+    const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, lesson.teacherId));
+    if (!target || !canModerateUser(actor, target)) { res.status(404).json({ error: "Lesson not found" }); return; }
   }
 
   res.json({ ...lesson, createdAt: lesson.createdAt.toISOString() });
