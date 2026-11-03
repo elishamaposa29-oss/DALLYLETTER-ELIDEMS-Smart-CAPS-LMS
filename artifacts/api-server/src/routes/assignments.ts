@@ -110,7 +110,7 @@ router.get("/", requireAuth, requireManagerPermissionIfManager("recordbook.view"
       .orderBy(desc(assignmentsTable.createdAt));
     rows = activeRows.filter(row => isVisibleToStudent(row, user.grade ?? null));
   }
-  const visibleRows = canAccessManager(user) && !isOwnerRole(user.role) ? (await Promise.all(rows.map(async row => await canManagerAccessTeacherRecord(user, row.teacherId, "recordbook.view") ? row : null))).filter(Boolean) : rows;
+  const visibleRows = canAccessManager(user) && !isOwnerRole(user.role) ? (await Promise.all(rows.map(async row => await canManagerAccessTeacherRecord(user, row.teacherId, "recordbook.view") ? row : null))).filter((row): row is typeof rows[number] => row !== null) : rows;
   res.json(user.role === "student" ? visibleRows.map(row => row.referenceMaterialHidden ? { ...row, attachmentUrl: null } : row) : visibleRows);
 });
 
@@ -135,6 +135,7 @@ router.get("/:id", requireAuth, requireManagerPermissionIfManager("recordbook.vi
 router.post("/", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (canAccessManager(user) && !isOwnerRole(user.role)) { res.status(403).json({ error: "Managers may review and mark assignments but cannot create them as teachers." }); return; }
   const { title, description, subject, grade, dueDate, totalMarks, attachmentUrl } = req.body;
   const parsedMarks = parseTotalMarks(totalMarks ?? 100);
   const normalizedAttachmentUrl = normalizeAssignmentAttachmentUrl(attachmentUrl);
@@ -151,7 +152,7 @@ router.post("/", requireAuth, async (req, res): Promise<void> => {
   res.status(201).json(row);
 });
 
-router.patch("/:id/reference-visibility", requireAuth, async (req, res): Promise<void> => {
+router.patch("/:id/reference-visibility", requireAuth, requireManagerPermissionIfManager("users.override.teacher"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Forbidden" }); return; }
   const assignmentId = Number(req.params.id);
@@ -160,20 +161,20 @@ router.patch("/:id/reference-visibility", requireAuth, async (req, res): Promise
   }
   const [existing] = await db.select({ teacherId: assignmentsTable.teacherId }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
   if (!existing) { res.status(404).json({ error: "Assignment not found" }); return; }
-  if (!isOwnerRole(user.role) && !user.isManager && existing.teacherId !== user.id) {
-    res.status(403).json({ error: "You can only change reference visibility for your own assignments" }); return;
-  }
+  if (canAccessManager(user) && !isOwnerRole(user.role) && !(await canManagerAccessTeacherRecord(user, existing.teacherId, "users.override.teacher"))) { res.status(403).json({ error: "You cannot override this teacher's assignment." }); return; }
+  if (user.role === "teacher" && existing.teacherId !== user.id) { res.status(403).json({ error: "You can only change reference visibility for your own assignments" }); return; }
   const [updated] = await db.update(assignmentsTable).set({ referenceMaterialHidden: req.body.hidden }).where(eq(assignmentsTable.id, assignmentId)).returning();
   res.json({ id: updated.id, referenceMaterialHidden: updated.referenceMaterialHidden });
 });
 
-router.put("/:id", requireAuth, async (req, res): Promise<void> => {
+router.put("/:id", requireAuth, requireManagerPermissionIfManager("users.override.teacher"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Forbidden" }); return; }
   const assignmentId = parseInt(String(req.params.id));
   const [existing] = await db.select({ teacherId: assignmentsTable.teacherId, attachmentUrl: assignmentsTable.attachmentUrl }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
-  if (!isOwnerRole(user.role) && !user.isManager && existing.teacherId !== user.id) { res.status(403).json({ error: "You can only edit your own assignments" }); return; }
+  if (canAccessManager(user) && !isOwnerRole(user.role) && !(await canManagerAccessTeacherRecord(user, existing.teacherId, "users.override.teacher"))) { res.status(403).json({ error: "You cannot override this teacher's assignment." }); return; }
+  if (user.role === "teacher" && existing.teacherId !== user.id) { res.status(403).json({ error: "You can only edit your own assignments" }); return; }
   const { title, description, subject, grade, dueDate, totalMarks, status, attachmentUrl } = req.body;
   const parsedMarks = parseTotalMarks(totalMarks);
   const normalizedAttachmentUrl = normalizeAssignmentAttachmentUrl(attachmentUrl);
@@ -193,7 +194,7 @@ router.put("/:id", requireAuth, async (req, res): Promise<void> => {
   res.json(row);
 });
 
-router.delete("/:id", requireAuth, async (req, res): Promise<void> => {
+router.delete("/:id", requireAuth, requireManagerPermissionIfManager("users.override.teacher"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Academic staff access required" }); return; }
   const assignmentId = Number(req.params.id);
@@ -204,7 +205,7 @@ router.delete("/:id", requireAuth, async (req, res): Promise<void> => {
     attachmentUrl: assignmentsTable.attachmentUrl,
   }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
   if (!existing) { res.status(404).json({ error: "Assignment not found" }); return; }
-  const privileged = isOwnerRole(user.role) || user.isManager === true;
+  const privileged = isOwnerRole(user.role) || (canAccessManager(user) && await canManagerAccessTeacherRecord(user, existing.teacherId, "users.override.teacher"));
   if (!privileged && existing.teacherId !== user.id) {
     res.status(403).json({ error: "You can delete only assignments you created" });
     return;
@@ -246,9 +247,8 @@ router.get("/:id/submissions", requireAuth, requireManagerPermissionIfManager("r
   }
   const [assignment] = await db.select({ teacherId: assignmentsTable.teacherId }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
   if (!assignment) { res.status(404).json({ error: "Not found" }); return; }
-  if (!isOwnerRole(user.role) && !user.isManager && assignment.teacherId !== user.id) {
-    res.status(403).json({ error: "You can only view submissions for your own assignments" }); return;
-  }
+  if (canAccessManager(user) && !isOwnerRole(user.role) && !(await canManagerAccessTeacherRecord(user, assignment.teacherId, "recordbook.view"))) { res.status(403).json({ error: "You cannot view this teacher's submissions." }); return; }
+  if (user.role === "teacher" && assignment.teacherId !== user.id) { res.status(403).json({ error: "You can only view submissions for your own assignments" }); return; }
   const subs = await db.select().from(assignmentSubmissionsTable).where(eq(assignmentSubmissionsTable.assignmentId, assignmentId));
   res.json(subs);
 });
