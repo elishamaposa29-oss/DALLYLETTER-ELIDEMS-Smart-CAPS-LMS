@@ -244,8 +244,7 @@ router.post("/academic-records/transfer-requests", requireAuth, async (req, res)
   // Queue reviewer email alerts; the audit event above is also the admin-dashboard alert.
   try {
     const reviewers = await pool.query(
-      "SELECT id FROM users WHERE (lower(role)=ANY($1::text[]) OR (lower(role)='teacher' AND is_manager=true AND COALESCE(teacher_application_status,'')<>'pending_review')) AND is_blocked=false AND is_suspended=false ORDER BY id",
-      [["manager", "senior_manager", "owner", "admin", "platform_owner"]],
+      "SELECT id FROM users WHERE (lower(role) IN ('owner','platform_owner','senior_manager') OR (lower(role)='manager' AND lower(COALESCE(manager_level,'junior'))='senior') OR (lower(role)='teacher' AND is_manager=true AND lower(COALESCE(manager_level,'junior'))='senior' AND COALESCE(teacher_application_status,'')<>'pending_review')) AND is_blocked=false AND is_suspended=false ORDER BY id",
     );
     await Promise.all(reviewers.rows.map((reviewer: { id: number }) =>
       enqueueEmailNotification(Number(reviewer.id), "Transfer letter request awaiting review",
@@ -260,7 +259,7 @@ router.post("/academic-records/transfer-requests", requireAuth, async (req, res)
 
 router.get("/academic-records/transfer-requests", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  const manager = canReviewAcademicTransfer(user);
+  const manager = canAccessManager(user);
   const result = manager
     ? await pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,r.requested_by,r.reason,r.status,r.review_note,r.reviewed_by,r.reviewed_at,r.created_at FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id ORDER BY r.created_at DESC LIMIT 200")
     : await pool.query("SELECT id,learner_id,reason,status,review_note,reviewed_at,created_at FROM academic_transfer_requests WHERE learner_id=$1 ORDER BY created_at DESC LIMIT 100", [user.id]);
