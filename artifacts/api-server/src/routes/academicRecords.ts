@@ -356,7 +356,7 @@ router.get("/academic-records/transfer-verification/:token", async (req, res): P
   });
 });
 
-router.get("/academic-records/transfer-requests/:id/download", requireAuth, async (req, res): Promise<void> => {
+router.get("/academic-records/transfer-requests/:id/download", requireAuth, requireManagerPermissionIfManager("transfers.view"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id < 1) { res.status(400).json({ error: "Invalid request ID." }); return; }
@@ -365,7 +365,7 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, asyn
     [id],
   );
   const row = result.rows[0];
-  if (!row || (Number(row.learner_id) !== Number(user.id) && !canReviewAcademicTransfer(user))) { res.status(404).json({ error: "Approved transfer letter not found." }); return; }
+  if (!row || (Number(row.learner_id) !== Number(user.id) && !canAccessManager(user))) { res.status(404).json({ error: "Approved transfer letter not found." }); return; }
   if (row.status !== "approved") { res.status(403).json({ error: "The transfer letter cannot be downloaded until an authorized manager approves the request." }); return; }
   const [enrollmentRows, attendanceRows, awardRows, subjectRows, reportRows] = await Promise.all([
     pool.query("SELECT c.title,c.subject,c.grade,e.enrolled_at,e.progress_percent,e.status FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 ORDER BY e.enrolled_at DESC LIMIT 12", [row.learner_id]),
@@ -490,7 +490,7 @@ router.get("/academic-records/me", requireAuth, async (req, res): Promise<void> 
   res.json({ enrollments: enrollments.rows, awards: awards.rows, attendance: attendance.rows, assignmentMarks: assignmentMarks.rows, exerciseMarks: exerciseMarks.rows, pollSubmissions: pollSubmissions.rows, markSummary });
 });
 
-router.get("/academic-records/report-learners", requireAuth, async (req, res): Promise<void> => {
+router.get("/academic-records/report-learners", requireAuth, requireManagerPermissionIfManager("reports.view"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (canAccessManager(user)) {
     const result = await pool.query("SELECT id,name,grade FROM users WHERE role IN ('student','learner') AND is_blocked=false ORDER BY name LIMIT 1000");
@@ -507,7 +507,7 @@ router.get("/academic-records/report-learners", requireAuth, async (req, res): P
   res.json(result.rows);
 });
 
-router.post("/academic-records/reports/drafts", requireAuth, async (req, res): Promise<void> => {
+router.post("/academic-records/reports/drafts", requireAuth, requireManagerPermissionIfManager("reports.create"), async (req, res): Promise<void> => {
   const creator = req.currentUser!;
   const creatorRole = String(creator.role || "").trim().toLowerCase().replace(/[ -]+/g, "_");
   if (!canAccessManager(creator)) {
@@ -598,7 +598,7 @@ router.post("/academic-records/reports/drafts", requireAuth, async (req, res): P
   res.status(201).json(saved.rows[0]);
 });
 
-router.post("/academic-records/reports/drafts/:id/submit", requireAuth, async (req, res): Promise<void> => {
+router.post("/academic-records/reports/drafts/:id/submit", requireAuth, requireManagerPermissionIfManager("reports.create"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id < 1) { res.status(400).json({ error: "Invalid draft ID." }); return; }
@@ -622,7 +622,7 @@ router.get("/academic-records/reports/me", requireAuth, async (req, res): Promis
   res.json(result.rows);
 });
 
-router.get("/academic-records/reports/drafts", requireAuth, async (req, res): Promise<void> => {
+router.get("/academic-records/reports/drafts", requireAuth, requireManagerPermissionIfManager("reports.view"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   const columns = "SELECT d.id,d.learner_id,d.created_by,d.report_type,d.term_label,d.period_start,d.period_end,d.draft_content,d.status,d.reviewed_by,d.review_note,d.reviewed_at,d.created_at,u.name AS learner_name FROM academic_report_drafts d JOIN users u ON u.id=d.learner_id";
   if (canAccessManager(user)) {
