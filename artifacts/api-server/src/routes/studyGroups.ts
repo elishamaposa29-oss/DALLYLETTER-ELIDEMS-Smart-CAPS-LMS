@@ -28,9 +28,11 @@ async function canManageGroup(user: any, group: any): Promise<boolean> {
 }
 
 async function canViewGroup(user:any,group:any):Promise<boolean>{
-  if(!canAccessManager(user)||isOwnerRole(user.role)||group.creatorId===user.id)return true;
+  if(isOwnerRole(user.role)||group.creatorId===user.id)return true;
   const [creator]=await db.select({role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(eq(usersTable.id,group.creatorId));
-  return Boolean(creator && canModerateUser(user,creator));
+  if(!creator||isOwnerRole(creator.role))return false;
+  if(canAccessManager(user))return canModerateUser(user,creator);
+  return true;
 }
 
 async function canManageGroupSettings(user: any, groupId: number, group?: any) {
