@@ -107,8 +107,8 @@ router.patch("/:userId/role", requireAuth, ownerOnly, async (req, res): Promise<
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const selected = await client.query("SELECT id,name,role FROM users WHERE id=$1 FOR UPDATE", [userId]);
-    const target = selected.rows[0] as { id: number; name: string; role: string } | undefined;
+    const selected = await client.query("SELECT id,name,role,is_manager FROM users WHERE id=$1 FOR UPDATE", [userId]);
+    const target = selected.rows[0] as { id: number; name: string; role: string; is_manager: boolean } | undefined;
     if (!target) { await client.query("ROLLBACK"); res.status(404).json({ error: "User not found" }); return; }
     const previousRole = normalizeRole(target.role);
     if (isOwnerRole(previousRole) || previousRole === "admin") {
@@ -117,7 +117,7 @@ router.patch("/:userId/role", requireAuth, ownerOnly, async (req, res): Promise<
       return;
     }
     if (nextRole === "teacher") {
-      if (!managerRoles.has(previousRole)) {
+      if (!managerRoles.has(previousRole) && target.is_manager !== true) {
         await client.query("ROLLBACK");
         res.status(409).json({ error: "This account is not currently a manager." });
         return;
