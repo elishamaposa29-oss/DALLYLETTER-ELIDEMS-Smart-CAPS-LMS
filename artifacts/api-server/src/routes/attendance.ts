@@ -2,7 +2,7 @@ import { Router } from "express";
 import { requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
 import { db, auditLogsTable } from "@workspace/db";
 import { attendanceTable, usersTable, classesTable } from "@workspace/db/schema";
-import { eq, desc, and, notInArray } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { canManageAcademicContent, requireAuth, isOwnerRole } from "../lib/auth-middleware";
 import { canModerateUser } from "../lib/role-access";
 import { canViewProfileSection } from "./profileConnections";
