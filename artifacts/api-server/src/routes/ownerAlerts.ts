@@ -45,7 +45,7 @@ router.get("/owner-alerts", requireAuth, async (req, res): Promise<void> => {
     res.json(rows); return;
   }
   if (canAccessManager(user)) {
-    const rows = await db.select().from(ownerAlertsTable).where(inArray(ownerAlertsTable.category, managerVisibleCategories)).orderBy(desc(ownerAlertsTable.createdAt));
+    const rows = await visibleManagerAlerts(user);
     res.json(rows); return;
   }
   const rows = await db.select().from(ownerAlertsTable).where(eq(ownerAlertsTable.reportedBy, user.id)).orderBy(desc(ownerAlertsTable.createdAt));
@@ -59,8 +59,8 @@ router.get("/owner-alerts/unread-count", requireAuth, async (req, res): Promise<
     res.json({ count: rows.length }); return;
   }
   if (canAccessManager(user)) {
-    const rows = await db.select().from(ownerAlertsTable).where(and(eq(ownerAlertsTable.isRead, false), inArray(ownerAlertsTable.category, managerVisibleCategories)));
-    res.json({ count: rows.length }); return;
+    const rows = await visibleManagerAlerts(user);
+    res.json({ count: rows.filter((row: any) => !row.isRead).length }); return;
   }
   res.json({ count: 0 });
 });
