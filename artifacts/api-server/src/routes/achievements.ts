@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireManagerPermission } from "../lib/manager-permission-policy";
+import { requireManagerPermission, requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
 import { db, pool, auditLogsTable } from "@workspace/db";
 import { achievementsTable, userAchievementsTable, usersTable, lessonRequestsTable, notificationsTable } from "@workspace/db/schema";
 import { eq, desc, and } from "drizzle-orm";
@@ -76,7 +76,7 @@ router.post("/", requireAuth, async (req, res): Promise<void> => {
 });
 
 // Junior managers submit recommendations. They cannot directly award or approve them.
-router.post("/award/recommendations", requireAuth, async (req, res): Promise<void> => {
+router.post("/award/recommendations", requireAuth, requireManagerPermissionIfManager("achievements.recommend"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canRecommendAchievementAwards(user)) { res.status(403).json({ error: "Manager recommendation access required." }); return; }
   const learnerId = Number(req.body?.userId);
@@ -106,7 +106,7 @@ router.post("/award/recommendations", requireAuth, async (req, res): Promise<voi
   }
 });
 
-router.get("/award/recommendations", requireAuth, async (req, res): Promise<void> => {
+router.get("/award/recommendations", requireAuth, requireManagerPermission("achievements.view"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canAccessManager(user)) { res.status(403).json({ error: "Manager access required." }); return; }
   const senior = canApproveAchievementAwards(user);
