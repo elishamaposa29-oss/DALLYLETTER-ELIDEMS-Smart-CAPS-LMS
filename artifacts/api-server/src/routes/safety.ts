@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { requireManagerPermission } from "../lib/manager-permission-policy";
 import { db, contentFlagsTable, auditLogsTable, usersTable, notificationsTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
@@ -80,7 +81,7 @@ router.delete("/content-flags/:id", requireAuth, async (req, res): Promise<void>
 });
 
 // POST /content-flags/moderate — run AI moderation on text
-router.post("/content-flags/moderate", requireAuth, async (req, res): Promise<void> => {
+router.post("/content-flags/moderate", requireAuth, requireManagerPermission("moderation.action"), async (req, res): Promise<void> => {
   if (!canReviewContent(req.currentUser!)) { res.status(403).json({ error: "Authorized staff access required" }); return; }
   const { text, contentType, contentId } = req.body as { text: string; contentType?: string; contentId?: number };
   if (!text) { res.status(400).json({ error: "text required" }); return; }
