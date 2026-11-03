@@ -24,6 +24,7 @@ export const MANAGER_PERMISSION_CATALOG = [
   { key: "attendance.edit", group: "Attendance", label: "Edit attendance", description: "Correct attendance records with an audit reason." },
   { key: "recordbook.view", group: "Academic", label: "View RecordBook", description: "View teacher and learner activity records." },
   { key: "recordbook.edit", group: "Academic", label: "Edit RecordBook marks", description: "Correct marks and trigger recalculation with an audit trail." },
+  { key: "reports.create", group: "Academic", label: "Create academic reports", description: "Create and submit school-scoped report drafts." },
   { key: "reports.view", group: "Academic", label: "View reports", description: "View school-scoped academic reports." },
   { key: "reports.review", seniorOnly: true, group: "Academic", label: "Approve or reject reports", description: "Review submitted academic reports and record a decision." },
   { key: "transfers.view", group: "Transfers", label: "View transfer requests", description: "View school-scoped transfer requests and documents." },
