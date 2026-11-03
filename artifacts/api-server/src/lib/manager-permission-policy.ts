@@ -40,3 +40,15 @@ export function requireManagerPermissionForRequest(resolvePermission: (req: Requ
     void requireManagerPermission(key)(req, res, next);
   };
 }
+
+/** Preserve teacher/learner self-service while requiring explicit grants from manager accounts. */
+export function requireManagerPermissionIfManager(permissionKey: string) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const user = req.currentUser;
+    if (!user) { res.status(401).json({ error: "Authentication required" }); return; }
+    const role = normalizeRole(user.role);
+    if (isOwnerRole(role)) { next(); return; }
+    if (!MANAGER_ROLES.has(role) && !(role === "teacher" && user.isManager === true)) { next(); return; }
+    void requireManagerPermission(permissionKey)(req, res, next);
+  };
+}
