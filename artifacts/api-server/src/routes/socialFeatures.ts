@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { db, followsTable, notificationPreferencesTable, notificationsTable, usersTable, lessonsTable, contentCommentsTable, moderationActionsTable, auditLogsTable, chatPollsTable, chatPollOptionsTable, chatPollVotesTable, broadcastsTable, broadcastRecipientsTable, communitiesTable, communityGroupsTable, messagesTable, studyGroupMembersTable, studyGroupsTable, groupSettingsTable } from "@workspace/db";
+import { db, pool, followsTable, notificationPreferencesTable, notificationsTable, usersTable, lessonsTable, contentCommentsTable, moderationActionsTable, auditLogsTable, chatPollsTable, chatPollOptionsTable, chatPollVotesTable, broadcastsTable, broadcastRecipientsTable, communitiesTable, communityGroupsTable, messagesTable, studyGroupMembersTable, studyGroupsTable, groupSettingsTable } from "@workspace/db";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { canModerateUser, normalizeRole } from "../lib/role-access";
 import { managerHasPermission, requireManagerPermission } from "../lib/manager-permission-policy";
@@ -8,15 +8,33 @@ import { managerHasPermission, requireManagerPermission } from "../lib/manager-p
 const router = Router();
 const manager = (u:any) => canAccessManager(u);
 const targetTypes = new Set(["teacher","prefect","manager","event","subject"]);
+async function isOwnerOwnedContent(contentType: string, contentId: number): Promise<boolean> {
+  const source: Record<string, { table: string; ownerColumn: string }> = {
+    lesson: { table: "lessons", ownerColumn: "teacher_id" },
+    assignment: { table: "assignments", ownerColumn: "teacher_id" },
+    exercise: { table: "exercises", ownerColumn: "created_by" },
+  };
+  const selected = source[contentType];
+  if (!selected) return false;
+  const result = await pool.query(`SELECT u.role FROM ${selected.table} c JOIN users u ON u.id=c.${selected.ownerColumn} WHERE c.id=$1`, [contentId]);
+  return isOwnerRole(result.rows[0]?.role);
+}
 
 router.get("/follows", requireAuth, async (req,res) => {
   const rows=await db.select().from(followsTable).where(eq(followsTable.followerId,req.currentUser!.id)).orderBy(desc(followsTable.createdAt));
-  res.json(rows);
+  if (isOwnerRole(req.currentUser!.role)) { res.json(rows); return; }
+  const owners = await pool.query("SELECT id FROM users WHERE lower(role) IN ('owner','platform_owner')");
+  const ownerIds = new Set(owners.rows.map((row: any) => Number(row.id)));
+  res.json(rows.filter((row: any) => !ownerIds.has(Number(row.targetUserId))));
 });
 router.post("/follows", requireAuth, async (req,res):Promise<void> => {
   const {targetType,targetUserId,targetKey,targetName}=req.body??{};
   if(!targetTypes.has(targetType)||typeof targetName!=="string"||!targetName.trim()){res.status(400).json({error:"targetType and targetName are required"});return;}
   if(["teacher","prefect","manager"].includes(targetType)&&(!Number.isInteger(Number(targetUserId))||Number(targetUserId)<=0)){res.status(400).json({error:"targetUserId is required"});return;}
+  if (targetUserId && !isOwnerRole(req.currentUser!.role)) {
+    const [target] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, Number(targetUserId)));
+    if (!target || isOwnerRole(target.role)) { res.status(404).json({ error: "Follow target not found." }); return; }
+  }
   const existing=await db.select().from(followsTable).where(and(eq(followsTable.followerId,req.currentUser!.id),eq(followsTable.targetType,targetType), targetUserId?eq(followsTable.targetUserId,Number(targetUserId)):eq(followsTable.targetKey,String(targetKey??"")))).limit(1);
   if(existing[0]){res.json(existing[0]);return;}
   const [row]=await db.insert(followsTable).values({followerId:req.currentUser!.id,targetType,targetUserId:targetUserId?Number(targetUserId):null,targetKey:targetKey?String(targetKey):null,targetName:targetName.trim()}).returning();
@@ -34,10 +52,11 @@ router.patch("/notification-preferences", requireAuth, async(req,res)=>{
  const [row]=await db.insert(notificationPreferencesTable).values({userId:req.currentUser!.id,...values}).onConflictDoUpdate({target:notificationPreferencesTable.userId,set:values}).returning();res.json(row);
 });
 
-router.get("/content-comments/:contentType/:contentId", requireAuth, async(req,res)=>{const rows=await db.select().from(contentCommentsTable).where(and(eq(contentCommentsTable.contentType,String(req.params.contentType)),eq(contentCommentsTable.contentId,Number(req.params.contentId)))).orderBy(desc(contentCommentsTable.createdAt));res.json(rows);});
+router.get("/content-comments/:contentType/:contentId", requireAuth, async(req,res)=>{const contentType=String(req.params.contentType),contentId=Number(req.params.contentId);if(!isOwnerRole(req.currentUser!.role)&&await isOwnerOwnedContent(contentType,contentId)){res.status(404).json({error:"Content not found"});return;}const rows=await db.select().from(contentCommentsTable).where(and(eq(contentCommentsTable.contentType,contentType),eq(contentCommentsTable.contentId,contentId))).orderBy(desc(contentCommentsTable.createdAt));res.json(rows);});
 router.post("/content-comments", requireAuth, requireManagerPermission("content.comment"), async(req,res):Promise<void>=>{
  const {contentType,contentId,body}=req.body??{}; if(!["lesson","exercise","assignment","activity"].includes(contentType)||!Number.isInteger(Number(contentId))||typeof body!=="string"||!body.trim()){res.status(400).json({error:"contentType, contentId and body are required"});return;}
  if(!manager(req.currentUser)){res.status(403).json({error:"Staff access required"});return;}
+ if (!isOwnerRole(req.currentUser!.role) && await isOwnerOwnedContent(contentType, Number(contentId))) { res.status(404).json({ error: "Content not found" }); return; }
  const [row]=await db.insert(contentCommentsTable).values({authorId:req.currentUser!.id,contentType,contentId:Number(contentId),body:body.trim().slice(0,4000)}).returning();
  if(contentType==="lesson"){const [lesson]=await db.select({teacherId:lessonsTable.teacherId}).from(lessonsTable).where(eq(lessonsTable.id,Number(contentId)));if(lesson) await db.insert(notificationsTable).values({recipientId:lesson.teacherId,title:"New content comment",message:`${req.currentUser!.name} commented on a lesson.`,type:"content_comment"});}
  res.status(201).json(row);
