@@ -146,11 +146,9 @@ export default function AdminSafety() {
                     <p className="text-xs text-muted-foreground">{new Date(flag.createdAt).toLocaleString()}</p>
                   </div>
                   <div className="flex gap-1.5 shrink-0">
-                    {flag.status === "pending" && (
-                      {canActOnModeration && <Button size="sm" variant="outline" onClick={() => { setReviewing(flag); setReviewNote(""); }} className="text-xs gap-1">
-                        <Eye className="h-3.5 w-3.5" />Review
-                      </Button>
-                    )}
+                    {flag.status === "pending" && canActOnModeration && <Button size="sm" variant="outline" onClick={() => { setReviewing(flag); setReviewNote(""); }} className="text-xs gap-1">
+                      <Eye className="h-3.5 w-3.5" />Review
+                    </Button>}
                     {canDeleteFlags && <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" onClick={() => deleteFlag(flag.id)}>
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>}
