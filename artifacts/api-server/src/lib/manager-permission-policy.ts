@@ -6,14 +6,14 @@ const MANAGER_ROLES = new Set(["junior_manager", "senior_manager", "manager"]);
 export const SENIOR_ONLY_PERMISSION_KEYS = new Set([
   "transfers.approve", "reports.review", "achievements.approve",
   "teacher_cv.review", "teacher_cv.authorize", "qualifications.verify",
-  "users.override.junior_manager", "teacher_cv.chat",
+  "users.override.junior_manager", "teacher_cv.chat", "manager.monitoring.view",
 ]);
 export const isSeniorOnlyManagerPermission = (permissionKey: string): boolean =>
   SENIOR_ONLY_PERMISSION_KEYS.has(permissionKey);
 
 function defaultManagerPermission(role: unknown, managerLevel: unknown, isManager: unknown, permissionKey: string): boolean {
-  if (isSeniorManager({ role, managerLevel: typeof managerLevel === "string" ? managerLevel : undefined, isManager: isManager === true })) return true;
-  return permissionKey === "users.view" || permissionKey === "owner.chat";
+  return isSeniorManager({ role, managerLevel: typeof managerLevel === "string" ? managerLevel : undefined, isManager: isManager === true })
+    && permissionKey === "manager.monitoring.view";
 }
 
 type CurrentAuthority = {
