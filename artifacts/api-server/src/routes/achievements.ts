@@ -302,7 +302,7 @@ router.patch("/lesson-requests/:id", requireAuth, async (req, res): Promise<void
   res.json(updated);
 });
 
-router.get("/prefect-leaderboard", requireAuth, async (_req, res): Promise<void> => {
+router.get("/prefect-leaderboard", requireAuth, requireManagerPermissionIfManager("users.view"), async (_req, res): Promise<void> => {
   const prefects = await db.select({
     id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl, grade: usersTable.grade,
     performanceScore: usersTable.performanceScore, badgeCount: usersTable.badgeCount,
