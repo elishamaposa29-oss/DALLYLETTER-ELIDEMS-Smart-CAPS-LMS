@@ -253,7 +253,7 @@ router.post("/study-groups/:id/leave", requireAuth, async (req, res): Promise<vo
 
   const currentUser = req.currentUser!;
   const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, params.data.id));
-  if (!group) {
+  if (!group || !(await canViewGroup(currentUser,group))) {
     res.status(404).json({ error: "Study group not found" });
     return;
   }
