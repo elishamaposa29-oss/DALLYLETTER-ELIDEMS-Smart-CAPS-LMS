@@ -679,7 +679,7 @@ router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<v
     role: usersTable.role, grade: usersTable.grade, isPrefect: usersTable.isPrefect, isManager: usersTable.isManager,
     performanceScore: usersTable.performanceScore, badgeCount: usersTable.badgeCount, streakDays: usersTable.streakDays,
   }).from(usersTable).where(eq(usersTable.id, id));
-  if (!user || (isOwnerRole(user.role) && !isOwnerRole(req.currentUser!.role))) { res.status(404).json({ error: "User not found." }); return; }
+  if (!user || (isOwnerRole(user.role) && !isOwnerRole(req.currentUser!.role)) || ((isSeniorManager(req.currentUser!) || isJuniorManager(req.currentUser!)) && !canViewManagerTarget(req.currentUser!,user))) { res.status(404).json({ error: "User not found." }); return; }
   await ensureProfileCoverSchema();
   const coverResult = await pool.query("SELECT media_url AS cover_url, media_type AS cover_type FROM user_profile_covers WHERE user_id=$1", [id]).catch(() => ({ rows: [] as Array<{cover_url:string;cover_type:string}> }));
   const coverMedia = coverResult.rows[0] ?? { cover_url: null, cover_type: null };
