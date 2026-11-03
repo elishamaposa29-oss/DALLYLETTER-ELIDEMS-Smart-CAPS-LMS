@@ -17,7 +17,7 @@ export default function ManagerDashboard(){
  const [panel,setPanel]=useState<Panel>("overview"),[data,setData]=useState<any>(null),[loading,setLoading]=useState(false),[error,setError]=useState("");
  const [permissionData,setPermissionData]=useState<any>(null),[permissionLoading,setPermissionLoading]=useState(true);
  const can=(key:string)=>permissionData?.isOwner===true||permissionData?.permissions?.[key]===true;
- const allowed=roleAllowed&&permissionData!==null&&(can("manager.dashboard.view")||can("users.view")||can("reports.view"));
+ const allowed=roleAllowed&&permissionData!==null&&(permissionData.isOwner===true||Object.values(permissionData.permissions||{}).some((granted:any)=>granted===true));
  const request=useCallback(async(path:string)=>{
   const response=await fetch(getApiUrl(path),{headers:token?{Authorization:"Bearer "+token}:{}});
   const payload=await response.json().catch(()=>({}));
@@ -36,7 +36,7 @@ export default function ManagerDashboard(){
     const hasUsers=result.isOwner===true||result.permissions?.["users.view"]===true;
     const hasReports=result.isOwner===true||result.permissions?.["reports.view"]===true;
     if(!hasOverview)setPanel(hasUsers?"teachers":hasReports?"reports":"overview");
-    if(!hasOverview&&!hasUsers&&!hasReports)setError("Owner has not granted Manager Dashboard or any data-view permissions to this account.");
+    if(!hasOverview&&!hasUsers&&!hasReports&&Object.values(result.permissions||{}).every((granted:any)=>granted!==true))setError("No manager workspace permissions have been granted. Open More tools to see available access.");
    }catch(e){if(active)setError(e instanceof Error?e.message:"Manager permissions could not be loaded.");}
    finally{if(active)setPermissionLoading(false);}
   };
@@ -46,7 +46,7 @@ export default function ManagerDashboard(){
  const load=useCallback(async()=>{
   if(!allowed){setLoading(false);return;}
   const permitted=panel==="overview"?can("manager.dashboard.view"):panel==="reports"?can("reports.view"):can("users.view");
-  if(!permitted){setError("Owner has not granted permission to view this section.");setData(null);return;}
+  if(!permitted){setError("");setData(null);setLoading(false);return;}
   setLoading(true);setError("");
   try{
    const path=panel==="overview"?"/api/manager/dashboard":panel==="teachers"?"/api/manager/teachers":panel==="students"?"/api/manager/students":panel==="prefects"?"/api/manager/prefects":"/api/manager/reports/overview";
