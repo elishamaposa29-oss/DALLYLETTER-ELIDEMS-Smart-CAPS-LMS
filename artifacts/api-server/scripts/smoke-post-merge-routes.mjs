@@ -16,8 +16,9 @@ let globalAuthInterceptsUnknownRoutes = false;
 
 async function assertRouteResponds(path, init, acceptedStatuses, label) {
   if (!baseReachable) {
-    failures.push(`${label}: skipped because the API host did not respond to the initial probe`);
-    console.error(`SKIP ${label}: API host unavailable`);
+    // A skipped route is not an independent failure. Preserve the first
+    // transport/availability error as the sole infrastructure diagnostic.
+    console.error(`SKIP ${label}: API host unavailable; no route-level conclusion`);
     return;
   }
   try {
@@ -54,7 +55,7 @@ try {
     ? await fetch(base + "/api/__api_404_repair_unknown_route__", { signal: AbortSignal.timeout(8000) })
     : null;
   if (!unknownRoute) {
-    failures.push("Unknown API route probe skipped because the API host is unavailable");
+    console.error("SKIP unknown API route probe: API host unavailable; no route-level conclusion");
   } else {
   if (unknownRoute.status === 401 || unknownRoute.status === 403) {
     globalAuthInterceptsUnknownRoutes = true;
@@ -142,9 +143,12 @@ await assertRouteResponds(
   "Google sign-in rejects invalid/missing credentials",
 );
 
+if (!baseReachable) {
+  console.error("DEPLOYED_API_UNAVAILABLE: the API host did not respond; remaining route probes were skipped and are not counted as route failures.");
+}
 if (failures.length) {
   console.error("ROUTE_SMOKE_FAILURES:", JSON.stringify(failures, null, 2));
-  throw new Error(`${failures.length} API route smoke check(s) failed against ${base}`);
+  throw new Error(`${failures.length} API smoke probe(s) failed against ${base}; inspect whether this is host availability or a route response before drawing route conclusions.`);
 }
 if (globalAuthInterceptsUnknownRoutes) {
   console.log("NOTE: The deployed API applies authentication before route resolution. HTTP 401/403 confirms the request is gated but does NOT prove that each protected handler is registered. Use the authenticated integration tests for route-level verification.");
