@@ -19,6 +19,9 @@ export function ManagerPermissionControls({ user, onChanged }: Props) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [history, setHistory] = useState<any[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const isManager = ["junior_manager", "senior_manager", "manager"].includes(user.role) || Boolean(user.isManager);
   const currentRole = user.role === "senior_manager" || user.managerLevel === "senior" ? "senior_manager" : "junior_manager";
@@ -45,6 +48,19 @@ export function ManagerPermissionControls({ user, onChanged }: Props) {
   };
 
   const decide = (key: string, granted: boolean) => setPermissions((current) => current.map((p) => p.key === key ? { ...p, granted } : p));
+
+  const loadHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const response = await fetch(getApiUrl(`/api/manager-permissions/${user.id}/history`), { headers: authHeaders() });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error ?? "Could not load permission history.");
+      setHistory(data.history ?? []);
+      setHistoryOpen(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load permission history.");
+    } finally { setHistoryLoading(false); }
+  };
 
   const save = async () => {
     setSaving(true); setError("");
@@ -101,6 +117,17 @@ export function ManagerPermissionControls({ user, onChanged }: Props) {
             </div>
           </div>)}
         </section>)}
+        <div className="border-t pt-3">
+          <Button type="button" variant="ghost" size="sm" onClick={() => void loadHistory()} disabled={historyLoading}>
+            {historyLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}View permission change history
+          </Button>
+          {historyOpen && <div className="mt-2 max-h-52 space-y-2 overflow-y-auto rounded-lg bg-muted/30 p-3">
+            {!history.length ? <p className="text-xs text-muted-foreground">No permission changes have been recorded yet.</p> : history.map((entry) => <div key={entry.id} className="border-b pb-2 text-xs last:border-0">
+              <p className="font-semibold">{entry.permission_key}: {entry.previous_granted === null ? "Not set" : entry.previous_granted ? "Granted" : "Denied"} → {entry.granted ? "Granted" : "Denied"}</p>
+              <p className="text-muted-foreground">{entry.changed_by_name} · {new Date(entry.changed_at).toLocaleString()}</p>
+            </div>)}
+          </div>}
+        </div>
         <div className="flex flex-col-reverse gap-2 border-t pt-3 sm:flex-row sm:justify-end">
           <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={saving}>Cancel</Button>
           <Button type="button" className="bg-[#0f2a5a] hover:bg-[#173d7d]" onClick={() => void save()} disabled={saving || loading || permissions.length === 0}>{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Save all {permissions.length} decisions</Button>
