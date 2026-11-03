@@ -221,8 +221,13 @@ test("manager moderation follows hierarchy and protects Owner, Admin, and senior
   assert.equal(canModerateUser(senior,target),true,JSON.stringify(target));
  for(const target of [{role:"owner"},{role:"platform_owner"},{role:"admin"},{role:"senior_manager"},{role:"manager",managerLevel:"senior"},{role:"teacher",isManager:true,managerLevel:"senior"}])
   assert.equal(canModerateUser(senior,target),false,JSON.stringify(target));
- assert.equal(canModerateUser(junior,{role:"teacher"}),false);
- assert.equal(canModerateUser(junior,{role:"student"}),false);
+ assert.equal(canModerateUser(junior,{role:"teacher"}),true,"Junior may override an ordinary teacher when separately granted the matching permission");
+ assert.equal(canModerateUser(junior,{role:"student"}),true,"Junior may override an ordinary learner when separately granted the matching permission");
+ assert.equal(canModerateUser(junior,{role:"prefect"}),true,"Junior may override a prefect when separately granted the matching permission");
+ assert.equal(canModerateUser(junior,{role:"manager",managerLevel:"junior"}),false,"Junior cannot override another manager");
+ assert.equal(canModerateUser(junior,{role:"senior_manager"}),false);
+ assert.equal(canModerateUser(junior,{role:"admin"}),false);
+ assert.equal(canModerateUser(junior,{role:"owner"}),false);
  assert.equal(canModerateUser(owner,{role:"admin"}),true);
  assert.equal(canModerateUser(owner,{role:"owner"}),false);
 });
