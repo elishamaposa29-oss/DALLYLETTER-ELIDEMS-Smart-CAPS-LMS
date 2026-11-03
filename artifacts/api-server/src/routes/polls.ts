@@ -26,7 +26,8 @@ router.get("/polls", requireAuth, requireManagerPermissionIfManager("polls.manag
   const user = req.currentUser!;
   let polls;
   if (canManageAcademicContent(user)) {
-    polls = await db.select().from(pollsTable).orderBy(desc(pollsTable.createdAt));
+    const allPolls=await db.select().from(pollsTable).orderBy(desc(pollsTable.createdAt));
+    polls=isOwnerRole(user.role)?allPolls:(await Promise.all(allPolls.map(item=>getPollForManager(item.id,user)))).filter(Boolean);
   } else {
     polls = await db.select().from(pollsTable)
       .where(eq(pollsTable.status, "active"))
@@ -266,12 +267,12 @@ router.get("/polls/:id/my-results", requireAuth, async (req, res): Promise<void>
 });
 
 // GET /polls/:id/results — leaderboard + analytics
-router.get("/polls/:id/results", requireAuth, async (req, res): Promise<void> => {
+router.get("/polls/:id/results", requireAuth, requireManagerPermissionIfManager("polls.manage"), async (req, res): Promise<void> => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const [poll] = await db.select().from(pollsTable).where(eq(pollsTable.id, id));
-  if (!poll) { res.status(404).json({ error: "Poll not found" }); return; }
   const user = req.currentUser!;
+  const poll = canManageAcademicContent(user) ? await getPollForManager(id,user) : (await db.select().from(pollsTable).where(eq(pollsTable.id, id)))[0];
+  if (!poll) { res.status(404).json({ error: "Poll not found" }); return; }
   const allSubmissions = await db.select({ id: pollSubmissionsTable.id, score: pollSubmissionsTable.score, totalQuestions: pollSubmissionsTable.totalQuestions, completedAt: pollSubmissionsTable.completedAt, answers: pollSubmissionsTable.answers, studentName: usersTable.name, studentId: usersTable.id }).from(pollSubmissionsTable).leftJoin(usersTable, eq(pollSubmissionsTable.studentId, usersTable.id)).where(eq(pollSubmissionsTable.pollId, id)).orderBy(desc(pollSubmissionsTable.score));
   const submissions = user.role === "student" ? allSubmissions.filter(row => { if (row.studentId === user.id) return true; try { const meta = JSON.parse(row.answers) as { resultPrivacy?: string; selectedFriendIds?: number[] }; return meta.resultPrivacy === "public" || (meta.resultPrivacy === "selected_friends" && meta.selectedFriendIds?.includes(user.id)); } catch { return false; } }) : allSubmissions;
   const visible = submissions.map(({ answers: _answers, ...row }) => row);
