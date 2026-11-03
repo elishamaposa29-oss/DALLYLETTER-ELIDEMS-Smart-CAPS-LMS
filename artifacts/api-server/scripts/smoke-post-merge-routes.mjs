@@ -75,40 +75,40 @@ await assertRouteResponds(
   "/api/users/me/cover",
   { method: "POST", body: new FormData() },
   [401, 403],
-  "profile cover route is mounted and authentication-gated",
+  "profile cover request is blocked without authentication",
 );
 
 await assertRouteResponds(
   "/api/config/currentYear",
   { method: "GET" },
   [401, 403],
-  "current-year config route is mounted and authentication-gated",
+  "current-year config request is blocked without authentication",
 );
 
 await assertRouteResponds(
   "/api/academic-records/current-year",
   { method: "GET" },
   [401, 403],
-  "academic-records current-year route is mounted and authentication-gated",
+  "academic-records current-year request is blocked without authentication",
 );
 
 await assertRouteResponds(
   "/api/profile/4/social",
   { method: "GET" },
   [401, 403],
-  "Profile Hub social route is mounted and authentication-gated",
+  "Profile Hub social request is blocked without authentication",
 );
 
 await assertRouteResponds(
   "/api/academic-records/report-learners",
   { method: "GET" },
   [401, 403],
-  "academic report learner-list route is mounted and authentication-gated",
+  "academic report learner-list request is blocked without authentication",
 );
 
-await assertRouteResponds("/api/academic-records/me", { method: "GET" }, [401, 403], "learner academic record route is mounted and authentication-gated");
-await assertRouteResponds("/api/academic-records/reports/me", { method: "GET" }, [401, 403], "approved learner reports route is mounted and authentication-gated");
-await assertRouteResponds("/api/academic-records/reports/drafts", { method: "GET" }, [401, 403], "academic report draft list is mounted and authentication-gated");
+await assertRouteResponds("/api/academic-records/me", { method: "GET" }, [401, 403], "learner academic-record request is blocked without authentication");
+await assertRouteResponds("/api/academic-records/reports/me", { method: "GET" }, [401, 403], "approved learner reports request is blocked without authentication");
+await assertRouteResponds("/api/academic-records/reports/drafts", { method: "GET" }, [401, 403], "academic report draft-list request is blocked without authentication");
 await assertRouteResponds("/api/academic-records/reports/drafts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({}) }, [401, 403], "academic report draft creation is authentication-gated");
 await assertRouteResponds("/api/academic-records/reports/drafts/1/submit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({}) }, [401, 403], "academic report submission is authentication-gated");
 await assertRouteResponds("/api/academic-records/reports/drafts/1/review", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: "approved" }) }, [401, 403], "academic report review is authentication-gated");
@@ -118,7 +118,7 @@ await assertRouteResponds(
   "/api/manager-permissions/me",
   { method: "GET" },
   [401, 403],
-  "manager permissions route is mounted and authentication-gated",
+  "manager permissions request is blocked without authentication",
 );
 
 await assertRouteResponds("/api/profile/me/privacy", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({}) }, [401, 403], "profile privacy update is authentication-gated");
@@ -139,7 +139,7 @@ await assertRouteResponds(
     body: JSON.stringify({ credential: "invalid.test.token" }),
   },
   [400, 401, 503],
-  "Google sign-in route is mounted and rejects invalid/missing credentials",
+  "Google sign-in rejects invalid/missing credentials",
 );
 
 if (failures.length) {
