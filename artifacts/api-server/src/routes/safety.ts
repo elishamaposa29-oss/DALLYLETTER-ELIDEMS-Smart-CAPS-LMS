@@ -7,9 +7,11 @@ import { getAIProvider } from "../lib/ai-provider";
 
 const router = Router();
 const moderationRoles = new Set(["teacher", "owner"]);
-async function isOwnerContentFlag(flag: { contentType: string; contentId: number }): Promise<boolean> {
+async function getOwnerAccountIds(): Promise<Set<number>> {
   const owners = await pool.query("SELECT id FROM users WHERE lower(role) IN ('owner','platform_owner')");
-  const ownerIds = new Set(owners.rows.map((row: any) => Number(row.id)));
+  return new Set(owners.rows.map((row: any) => Number(row.id)));
+}
+async function isOwnerContentFlag(flag: { contentType: string; contentId: number }, ownerIds: Set<number>): Promise<boolean> {
   const type = String(flag.contentType || "").toLowerCase();
   if (["user","profile","account"].includes(type)) return ownerIds.has(Number(flag.contentId));
   const sources: Record<string, { table: string; column: string }> = {
@@ -48,7 +50,8 @@ router.get("/content-flags", requireAuth, requireManagerPermissionIfManager("mod
     .leftJoin(usersTable, eq(contentFlagsTable.reviewedBy, usersTable.id))
     .orderBy(desc(contentFlagsTable.createdAt))
     .limit(200);
-  const visibleFlags = isOwnerRole(user.role) ? flags : (await Promise.all(flags.map(async (flag: any) => (await isOwnerContentFlag(flag)) ? null : flag))).filter(Boolean);
+  const ownerIds = isOwnerRole(user.role) ? new Set<number>() : await getOwnerAccountIds();
+  const visibleFlags = isOwnerRole(user.role) ? flags : (await Promise.all(flags.map(async (flag: any) => (await isOwnerContentFlag(flag, ownerIds)) ? null : flag))).filter(Boolean);
   res.json(visibleFlags);
 });
 
@@ -71,7 +74,7 @@ router.patch("/content-flags/:id", requireAuth, requireManagerPermissionIfManage
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const [existingFlag] = await db.select({ contentType: contentFlagsTable.contentType, contentId: contentFlagsTable.contentId }).from(contentFlagsTable).where(eq(contentFlagsTable.id, id));
   if (!existingFlag) { res.status(404).json({ error: "Not found" }); return; }
-  if (!isOwnerRole(user.role) && await isOwnerContentFlag(existingFlag)) { res.status(404).json({ error: "Not found" }); return; }
+  if (!isOwnerRole(user.role) && await isOwnerContentFlag(existingFlag, await getOwnerAccountIds())) { res.status(404).json({ error: "Not found" }); return; }
   const { status, reviewNote } = req.body as { status: string; reviewNote?: string };
   if (!new Set(["pending", "reviewed", "dismissed", "actioned"]).has(status)) {
     res.status(400).json({ error: "Invalid moderation status" });
