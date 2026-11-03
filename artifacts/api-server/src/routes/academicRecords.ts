@@ -674,7 +674,7 @@ router.post("/academic-records/reports/drafts/:id/review", requireAuth, requireM
   res.json(reviewedReport);
 });
 
-router.get("/academic-records/reports/drafts/:id/download/pdf", requireAuth, async (req, res): Promise<void> => {
+router.get("/academic-records/reports/drafts/:id/download/pdf", requireAuth, requireManagerPermissionIfManager("reports.view"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id < 1) { res.status(400).json({ error: "Invalid draft ID." }); return; }
@@ -695,7 +695,7 @@ router.get("/academic-records/reports/drafts/:id/download/pdf", requireAuth, asy
   res.send(pdf);
 });
 
-router.get("/academic-records/reports/drafts/:id/download", requireAuth, async (req, res): Promise<void> => {
+router.get("/academic-records/reports/drafts/:id/download", requireAuth, requireManagerPermissionIfManager("reports.view"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id < 1) { res.status(400).json({ error: "Invalid draft ID." }); return; }
