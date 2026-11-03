@@ -4,6 +4,7 @@ import { db, auditLogsTable } from "@workspace/db";
 import { attendanceTable, usersTable, classesTable } from "@workspace/db/schema";
 import { eq, desc, and, notInArray } from "drizzle-orm";
 import { canManageAcademicContent, requireAuth, isOwnerRole } from "../lib/auth-middleware";
+import { canModerateUser } from "../lib/role-access";
 import { canViewProfileSection } from "./profileConnections";
 
 const router = Router();
@@ -12,12 +13,16 @@ router.get("/class/:classId", requireAuth, requireManagerPermissionIfManager("at
   const classId = Number(req.params.classId);
   const [classRow] = await db.select({ teacherId: classesTable.teacherId }).from(classesTable).where(eq(classesTable.id, classId));
   if (!classRow) { res.status(404).json({ error: "Class not found." }); return; }
-  const [teacher] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, classRow.teacherId));
-  if (teacher && isOwnerRole(teacher.role) && !isOwnerRole(req.currentUser!.role)) { res.status(404).json({ error: "Class not found." }); return; }
+  const [teacher] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, classRow.teacherId));
+  if (teacher && !isOwnerRole(req.currentUser!.role) && !canModerateUser(req.currentUser!, teacher)) { res.status(404).json({ error: "Class not found." }); return; }
   const rows = await db.select().from(attendanceTable)
     .where(eq(attendanceTable.classId, classId))
     .orderBy(desc(attendanceTable.joinedAt));
-  const visible = await Promise.all(rows.map(async row => (await canViewProfileSection(req.currentUser!,row.studentId,"attendance")) ? row : null));
+  const visible = await Promise.all(rows.map(async row => {
+    const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, row.studentId));
+    const inAuthority = isOwnerRole(req.currentUser!.role) || Boolean(target && canModerateUser(req.currentUser!, target));
+    return inAuthority && (await canViewProfileSection(req.currentUser!,row.studentId,"attendance")) ? row : null;
+  }));
   res.json(visible.filter(Boolean));
 });
 
@@ -31,7 +36,10 @@ router.get("/my", requireAuth, async (req, res): Promise<void> => {
 
 router.get("/student/:studentId", requireAuth, requireManagerPermissionIfManager("attendance.view"), async (req, res): Promise<void> => {
   const studentId = parseInt(String(req.params.studentId));
-  if (!Number.isSafeInteger(studentId) || studentId <= 0 || !(await canViewProfileSection(req.currentUser!,studentId,"attendance"))) { res.status(403).json({ error: "Attendance visibility is restricted by this profile's privacy settings." }); return; }
+  const [target] = Number.isSafeInteger(studentId) ? await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, studentId)) : [];
+  const inAuthority = isOwnerRole(req.currentUser!.role) || Boolean(target && canModerateUser(req.currentUser!, target));
+  if (!Number.isSafeInteger(studentId) || studentId <= 0 || !inAuthority) { res.status(404).json({ error: "User not found." }); return; }
+  if (!(await canViewProfileSection(req.currentUser!,studentId,"attendance"))) { res.status(403).json({ error: "Attendance visibility is restricted by this profile's privacy settings." }); return; }
   const rows = await db.select().from(attendanceTable)
     .where(eq(attendanceTable.studentId, studentId))
     .orderBy(desc(attendanceTable.joinedAt));
@@ -86,11 +94,12 @@ router.put("/:id/leave", requireAuth, requireManagerPermissionIfManager("attenda
 router.get("/stats", requireAuth, requireManagerPermissionIfManager("attendance.view"), async (req, res): Promise<void> => {
   const user = (req as any).user;
   if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Forbidden" }); return; }
-  const rows = await db.select({ classId: attendanceTable.classId, studentId: attendanceTable.studentId, durationMinutes: attendanceTable.durationMinutes }).from(attendanceTable).innerJoin(usersTable, eq(attendanceTable.studentId, usersTable.id)).where(notInArray(usersTable.role, ["owner", "platform_owner"]));
-  const totalSessions = new Set(rows.map((r: any) => r.classId)).size;
-  const totalAttendances = rows.length;
-  const uniqueStudents = new Set(rows.map((r: any) => r.studentId)).size;
-  const withDuration = rows.filter((r: any) => r.durationMinutes);
+  const rows = await db.select({ classId: attendanceTable.classId, studentId: attendanceTable.studentId, durationMinutes: attendanceTable.durationMinutes, role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(attendanceTable).innerJoin(usersTable, eq(attendanceTable.studentId, usersTable.id));
+  const scopedRows = isOwnerRole(user.role) ? rows : rows.filter(row => canModerateUser(user, row));
+  const totalSessions = new Set(scopedRows.map((r: any) => r.classId)).size;
+  const totalAttendances = scopedRows.length;
+  const uniqueStudents = new Set(scopedRows.map((r: any) => r.studentId)).size;
+  const withDuration = scopedRows.filter((r: any) => r.durationMinutes);
   const avgDuration = withDuration.length > 0 ? withDuration.reduce((s: number, r: any) => s + r.durationMinutes, 0) / withDuration.length : 0;
   res.json({ totalSessions, totalAttendances, uniqueStudents, avgDuration: Math.round(avgDuration) });
 });
