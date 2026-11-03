@@ -258,5 +258,7 @@ test("senior managers retain established operational defaults while junior manag
  assert.equal(isSeniorOnlyManagerPermission("manager.monitoring.view"),true);
  assert.equal(isSeniorOnlyManagerPermission("teacher_cv.chat"),false);
  assert.equal(defaultManagerPermission("admin",undefined,false,"manager.monitoring.view"),false);
+ assert.equal(defaultManagerPermission("senior_manager","senior",false,"owner.activity.view"),false);
+ assert.equal(defaultManagerPermission("senior_manager","senior",false,"unregistered.permission"),false);
  assert.equal(defaultManagerPermission("teacher",undefined,true,"users.view"),false);
 });
