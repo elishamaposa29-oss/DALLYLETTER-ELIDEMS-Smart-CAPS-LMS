@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { getListUsersQueryKey } from "@workspace/api-client-react";
 import { Link } from "wouter";
+import { ManagerPermissionControls } from "@/components/ManagerPermissionControls";
 
 export default function AdminUsers() {
   const { data: users, isLoading } = useListUsers();
@@ -203,16 +204,11 @@ export default function AdminUsers() {
                                   <Shield className={`h-4 w-4 ${user.isPrefect ? "text-amber-500" : "text-muted-foreground"}`} />
                                 </Button>
                               )}
-                              {user.role === 'teacher' && (
-                                <div className="flex items-center gap-1">
-                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title={(user as any).isManager ? "Remove Manager status" : "Promote to Manager"} onClick={() => handleToggleManager(user.id, !!(user as any).isManager)}>
-                                    <Briefcase className={`h-4 w-4 ${(user as any).isManager ? "text-purple-500" : "text-muted-foreground"}`} />
-                                  </Button>
-                                  {(user as any).isManager && <div className="flex rounded-md border overflow-hidden">
-                                    <button type="button" className={`px-1.5 py-1 text-[10px] ${(user as any).managerLevel === "junior" ? "bg-muted font-bold" : ""}`} onClick={() => handleToggleManager(user.id,true,"junior")} title="Junior Manager">Jr</button>
-                                    <button type="button" className={`px-1.5 py-1 text-[10px] ${(user as any).managerLevel === "senior" ? "bg-primary/10 font-bold text-primary" : ""}`} onClick={() => handleToggleManager(user.id,true,"senior")} title="Senior Manager">Sr</button>
-                                  </div>}
-                                </div>
+                              {(user.role === "teacher" || user.role === "junior_manager" || user.role === "senior_manager" || (user as any).isManager) && (
+                                <ManagerPermissionControls
+                                  user={user as any}
+                                  onChanged={() => void queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() })}
+                                />
                               )}
                               {/* Suspend button */}
                               <Button
