@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useEffect } from "react";
-import { getApiUrl as apiUrl } from "@workspace/api-client-react";
 import { Loader2, Search, Trash2, Calendar, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -20,7 +19,7 @@ export default function AdminClasses() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [canManage, setCanManage] = useState(false);
-  useEffect(() => { fetch(apiUrl("/api/manager-permissions/me"), { headers: { Authorization: "Bearer " + (localStorage.getItem("dallyletter_token") ?? "") } }).then(r => r.json()).then(d => setCanManage(Boolean(d?.isOwner || d?.permissions?.["classes.manage"]))).catch(() => setCanManage(false)); }, []);
+  useEffect(() => { fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: "Bearer " + (localStorage.getItem("dallyletter_token") ?? "") } }).then(r => r.json()).then(d => setCanManage(Boolean(d?.isOwner || d?.permissions?.["classes.manage"]))).catch(() => setCanManage(false)); }, []);
 
   const filteredClasses = classes?.filter(c => {
     const matchesSearch = c.title.toLowerCase().includes(search.toLowerCase()) || 
