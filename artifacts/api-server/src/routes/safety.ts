@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireManagerPermission } from "../lib/manager-permission-policy";
+import { requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
 import { db, contentFlagsTable, auditLogsTable, usersTable, notificationsTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
@@ -13,7 +13,7 @@ function canReviewContent(user: { role: string; isManager: boolean }): boolean {
 }
 
 // GET /content-flags — list flags (owner/teacher only)
-router.get("/content-flags", requireAuth, requireManagerPermission("moderation.view"), async (req, res): Promise<void> => {
+router.get("/content-flags", requireAuth, requireManagerPermissionIfManager("moderation.view"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canReviewContent(user)) { res.status(403).json({ error: "Authorized staff access required" }); return; }
   const flags = await db.select({
@@ -36,7 +36,7 @@ router.get("/content-flags", requireAuth, requireManagerPermission("moderation.v
 });
 
 // POST /content-flags — create flag (internal use or manual)
-router.post("/content-flags", requireAuth, async (req, res): Promise<void> => {
+router.post("/content-flags", requireAuth, requireManagerPermissionIfManager("moderation.action"), async (req, res): Promise<void> => {
   if (!canReviewContent(req.currentUser!)) { res.status(403).json({ error: "Authorized staff access required" }); return; }
   const { contentType, contentId, contentText, reason, severity = "medium", detectedBy = "ai" } = req.body as {
     contentType: string; contentId: number; contentText?: string; reason: string; severity?: string; detectedBy?: string;
@@ -47,7 +47,7 @@ router.post("/content-flags", requireAuth, async (req, res): Promise<void> => {
 });
 
 // PATCH /content-flags/:id — review a flag
-router.patch("/content-flags/:id", requireAuth, requireManagerPermission("moderation.action"), async (req, res): Promise<void> => {
+router.patch("/content-flags/:id", requireAuth, requireManagerPermissionIfManager("moderation.action"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canReviewContent(user)) { res.status(403).json({ error: "Authorized staff access required" }); return; }
   const id = parseInt(String(req.params.id));
@@ -81,7 +81,7 @@ router.delete("/content-flags/:id", requireAuth, async (req, res): Promise<void>
 });
 
 // POST /content-flags/moderate — run AI moderation on text
-router.post("/content-flags/moderate", requireAuth, requireManagerPermission("moderation.action"), async (req, res): Promise<void> => {
+router.post("/content-flags/moderate", requireAuth, requireManagerPermissionIfManager("moderation.action"), async (req, res): Promise<void> => {
   if (!canReviewContent(req.currentUser!)) { res.status(403).json({ error: "Authorized staff access required" }); return; }
   const { text, contentType, contentId } = req.body as { text: string; contentType?: string; contentId?: number };
   if (!text) { res.status(400).json({ error: "text required" }); return; }
