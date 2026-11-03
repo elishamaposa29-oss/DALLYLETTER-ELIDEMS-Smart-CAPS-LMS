@@ -19,10 +19,22 @@ import { isSmsConfigured, sendSms } from "../lib/sms-service";
 import { enqueueEmailNotification } from "../lib/email-notification-queue";
 import { buildTeacherCvPdf } from "../lib/teacher-cv-pdf";
 import { canViewProfileSection } from "./profileConnections";
-import { isSeniorManager } from "../lib/role-access";
+import { isSeniorManager, isJuniorManager, canModerateUser, normalizeRole } from "../lib/role-access";
 import { requireManagerPermission } from "../lib/manager-permission-policy";
 
 const router: IRouter = Router();
+
+async function canManageManagerTarget(actor: NonNullable<Express.Request["currentUser"]>, targetId: number): Promise<boolean> {
+  const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, targetId));
+  if (!target || isOwnerRole(target.role) || normalizeRole(target.role) === "admin") return false;
+  if (isOwnerRole(actor.role)) return true;
+  if (isSeniorManager(actor)) return canModerateUser(actor, target);
+  if (isJuniorManager(actor)) {
+    const targetRole = normalizeRole(target.role);
+    return ["teacher", "student", "learner", "prefect"].includes(targetRole) && !(targetRole === "teacher" && target.isManager);
+  }
+  return false;
+}
 
 function canReviewTeacherApplication(user: { role: unknown; managerLevel?: unknown; isManager?: unknown; teacherApplicationStatus?: unknown }): boolean { return isSeniorManager(user); }
 
@@ -283,22 +295,24 @@ router.delete("/users/:id", requireAuth, requireOwner, async (req, res): Promise
   res.sendStatus(204);
 });
 
-router.patch("/users/:id/block", requireAuth, requireOwner, async (req, res): Promise<void> => {
+router.patch("/users/:id/block", requireAuth, requireManagerPermission("users.block"), async (req, res): Promise<void> => {
   const params = BlockUserParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const body = BlockUserBody.safeParse(req.body);
   if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
+  if (!(await canManageManagerTarget(req.currentUser!, params.data.id))) { res.status(403).json({ error: "You cannot block this account." }); return; }
   const [user] = await db.update(usersTable).set({ isBlocked: body.data.isBlocked }).where(eq(usersTable.id, params.data.id)).returning(safeUserFields);
   if (body.data.isBlocked) await revokeUserSessions(params.data.id);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   res.json({ ...user, createdAt: user.createdAt.toISOString() });
 });
 
-router.patch("/users/:id/suspend", requireAuth, requireOwner, async (req, res): Promise<void> => {
+router.patch("/users/:id/suspend", requireAuth, requireManagerPermission("users.suspend"), async (req, res): Promise<void> => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const { isSuspended } = req.body as { isSuspended: boolean };
   if (typeof isSuspended !== "boolean") { res.status(400).json({ error: "isSuspended must be boolean" }); return; }
+  if (!(await canManageManagerTarget(req.currentUser!, id))) { res.status(403).json({ error: "You cannot suspend this account." }); return; }
   const [user] = await db.update(usersTable).set({ isSuspended }).where(eq(usersTable.id, id)).returning(safeUserFields);
   if (isSuspended) await revokeUserSessions(id);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
