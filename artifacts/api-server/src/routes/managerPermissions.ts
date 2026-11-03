@@ -33,6 +33,7 @@ export const MANAGER_PERMISSION_CATALOG = [
   { key: "transfers.view", group: "Transfers", label: "View transfer requests", description: "View school-scoped transfer requests and documents." },
   { key: "transfers.reject", group: "Transfers", label: "Reject transfer requests", description: "Reject eligible transfer requests with a reason; does not grant approval." },
   { key: "transfers.approve", seniorOnly: true, group: "Transfers", label: "Approve transfer requests", description: "Approve eligible transfer requests with verification and audit history." },
+  { key: "teacher_cv.chat", group: "Teacher CV", label: "Chat with applying teachers", description: "Use the existing private application conversation with applicants." },
   { key: "teacher_cv.view", group: "Teacher applications", label: "View teacher CV applications", description: "Review submitted teacher CV information." },
   { key: "teacher_cv.review", seniorOnly: true, group: "Teacher applications", label: "Review teacher applications", description: "Request corrections or reject an application." },
   { key: "teacher_cv.authorize", seniorOnly: true, group: "Teacher applications", label: "Authorize approved teachers", description: "Activate teaching access after Owner-defined approval checks." },
