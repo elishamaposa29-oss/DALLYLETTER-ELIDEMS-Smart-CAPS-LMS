@@ -1,16 +1,21 @@
 import { Router } from "express";
 import { requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
 import { db, auditLogsTable } from "@workspace/db";
-import { attendanceTable, usersTable } from "@workspace/db/schema";
-import { eq, desc, and } from "drizzle-orm";
-import { canManageAcademicContent, requireAuth } from "../lib/auth-middleware";
+import { attendanceTable, usersTable, classesTable } from "@workspace/db/schema";
+import { eq, desc, and, notInArray } from "drizzle-orm";
+import { canManageAcademicContent, requireAuth, isOwnerRole } from "../lib/auth-middleware";
 import { canViewProfileSection } from "./profileConnections";
 
 const router = Router();
 
 router.get("/class/:classId", requireAuth, requireManagerPermissionIfManager("attendance.view"), async (req, res): Promise<void> => {
+  const classId = Number(req.params.classId);
+  const [classRow] = await db.select({ teacherId: classesTable.teacherId }).from(classesTable).where(eq(classesTable.id, classId));
+  if (!classRow) { res.status(404).json({ error: "Class not found." }); return; }
+  const [teacher] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, classRow.teacherId));
+  if (teacher && isOwnerRole(teacher.role) && !isOwnerRole(req.currentUser!.role)) { res.status(404).json({ error: "Class not found." }); return; }
   const rows = await db.select().from(attendanceTable)
-    .where(eq(attendanceTable.classId, parseInt(String(req.params.classId))))
+    .where(eq(attendanceTable.classId, classId))
     .orderBy(desc(attendanceTable.joinedAt));
   const visible = await Promise.all(rows.map(async row => (await canViewProfileSection(req.currentUser!,row.studentId,"attendance")) ? row : null));
   res.json(visible.filter(Boolean));
@@ -54,8 +59,11 @@ router.put("/:id/status", requireAuth, requireManagerPermissionIfManager("attend
   const status = req.body?.status === "absent" ? "absent" : req.body?.status === "present" ? "present" : null;
   const id = parseInt(String(req.params.id));
   if (!status || !Number.isInteger(id)) { res.status(400).json({ error: "status must be present or absent" }); return; }
+  const [existing] = await db.select({ studentId: attendanceTable.studentId }).from(attendanceTable).where(eq(attendanceTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Attendance record not found" }); return; }
+  const [target] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, existing.studentId));
+  if (target && isOwnerRole(target.role) && !isOwnerRole(user.role)) { res.status(404).json({ error: "Attendance record not found" }); return; }
   const [row] = await db.update(attendanceTable).set({ status }).where(eq(attendanceTable.id, id)).returning();
-  if (!row) { res.status(404).json({ error: "Attendance record not found" }); return; }
   await db.insert(auditLogsTable).values({ action: `Marked attendance ${status} for ${row.studentName}`, category: "attendance", performedBy: user.id, targetType: "attendance", targetId: row.id, details: JSON.stringify({ studentId: row.studentId, studentName: row.studentName, status }) });
   res.json(row);
 });
@@ -64,6 +72,10 @@ router.put("/:id/leave", requireAuth, async (req, res): Promise<void> => {
   const leftAt = new Date();
   const [row] = await db.select().from(attendanceTable).where(eq(attendanceTable.id, parseInt(String(req.params.id))));
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
+  const actor = req.currentUser!;
+  if (row.studentId !== actor.id && !canManageAcademicContent(actor)) { res.status(403).json({ error: "You cannot close another user's attendance session." }); return; }
+  const [target] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, row.studentId));
+  if (target && isOwnerRole(target.role) && !isOwnerRole(actor.role)) { res.status(404).json({ error: "Not found" }); return; }
   const durationMs = leftAt.getTime() - new Date(row.joinedAt).getTime();
   const durationMinutes = Math.round(durationMs / 60000);
   const [updated] = await db.update(attendanceTable)
@@ -74,7 +86,7 @@ router.put("/:id/leave", requireAuth, async (req, res): Promise<void> => {
 router.get("/stats", requireAuth, requireManagerPermissionIfManager("attendance.view"), async (req, res): Promise<void> => {
   const user = (req as any).user;
   if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Forbidden" }); return; }
-  const rows = await db.select().from(attendanceTable);
+  const rows = await db.select({ classId: attendanceTable.classId, studentId: attendanceTable.studentId, durationMinutes: attendanceTable.durationMinutes }).from(attendanceTable).innerJoin(usersTable, eq(attendanceTable.studentId, usersTable.id)).where(notInArray(usersTable.role, ["owner", "platform_owner"]));
   const totalSessions = new Set(rows.map((r: any) => r.classId)).size;
   const totalAttendances = rows.length;
   const uniqueStudents = new Set(rows.map((r: any) => r.studentId)).size;
