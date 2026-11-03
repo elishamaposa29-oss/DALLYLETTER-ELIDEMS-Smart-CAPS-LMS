@@ -20,12 +20,18 @@ export default function ManagerTransferRequests() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [canReview, setCanReview] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const response = await fetch(getApiUrl("/api/academic-records/transfer-requests"), { headers: { Authorization: "Bearer " + token() } });
+      const [response, permissionResponse] = await Promise.all([
+        fetch(getApiUrl("/api/academic-records/transfer-requests"), { headers: { Authorization: "Bearer " + token() } }),
+        fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: "Bearer " + token() } }),
+      ]);
       const data = await response.json().catch(() => []);
+      const permissionData = await permissionResponse.json().catch(() => ({}));
+      setCanReview(Boolean(permissionResponse.ok && permissionData?.permissions?.reviewAcademicTransfers));
       if (!response.ok) throw new Error(data.error || "Could not load transfer requests.");
       if (!Array.isArray(data)) throw new Error("The server returned an invalid transfer request list.");
       setRows(data);
@@ -81,8 +87,8 @@ export default function ManagerTransferRequests() {
     {loading ? <p className="py-12 text-center text-muted-foreground">Loading transfer requests…</p> : rows.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">No transfer requests have been submitted.</CardContent></Card> :
       <div className="space-y-4">{rows.map(row => <Card key={row.id} className="overflow-hidden"><CardHeader className="pb-3"><div className="flex flex-wrap items-start justify-between gap-3"><div><CardTitle className="flex items-center gap-2 text-base"><FileCheck2 className="h-5 w-5"/>Request #{row.id} · {row.learner_name || `Learner #${row.learner_id}`}</CardTitle><p className="mt-1 text-xs text-muted-foreground">Submitted {new Date(row.created_at).toLocaleString()}</p></div><Badge variant={row.status==="approved"?"default":row.status==="rejected"?"destructive":"secondary"}>{row.status}</Badge></div></CardHeader><CardContent className="space-y-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Transfer reason</p><p className="whitespace-pre-wrap text-sm">{row.reason}</p></div>
       {row.review_note && <div className="rounded-md bg-muted p-3 text-sm"><strong>Review note:</strong> {row.review_note}</div>}
-      {row.status==="pending" ? <><label className="block text-sm font-medium" htmlFor={`note-${row.id}`}>Review note / rejection reason</label><Textarea id={`note-${row.id}`} value={notes[row.id]||""} onChange={e=>setNotes(current=>({...current,[row.id]:e.target.value}))} maxLength={2000} placeholder="Record the reason for your decision (required for rejection)." />
-      <div className="flex flex-wrap gap-2"><Button disabled={busy===row.id} onClick={()=>void review(row,"approved")}><CheckCircle2 className="mr-2 h-4 w-4"/>Approve request</Button><Button variant="destructive" disabled={busy===row.id} onClick={()=>void review(row,"rejected")}><XCircle className="mr-2 h-4 w-4"/>Reject request</Button></div></> : <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-muted-foreground"><Clock3 className="mr-1 inline h-3 w-3"/>Reviewed {row.reviewed_at ? new Date(row.reviewed_at).toLocaleString() : "date not recorded"}</p>{row.status==="approved" && <Button variant="outline" disabled={busy===row.id} onClick={()=>void download(row)}><FileDown className="mr-2 h-4 w-4"/>Download approved PDF</Button>}</div>}
+      {row.status==="pending" && canReview ? <><label className="block text-sm font-medium" htmlFor={`note-${row.id}`}>Review note / rejection reason</label><Textarea id={`note-${row.id}`} value={notes[row.id]||""} onChange={e=>setNotes(current=>({...current,[row.id]:e.target.value}))} maxLength={2000} placeholder="Record the reason for your decision (required for rejection)." />
+      <div className="flex flex-wrap gap-2"><Button disabled={busy===row.id} onClick={()=>void review(row,"approved")}><CheckCircle2 className="mr-2 h-4 w-4"/>Approve request</Button><Button variant="destructive" disabled={busy===row.id} onClick={()=>void review(row,"rejected")}><XCircle className="mr-2 h-4 w-4"/>Reject request</Button></div></> : row.status==="pending" ? <p className="text-sm text-muted-foreground">Visible for monitoring. Only a Senior Manager or Owner can approve or reject this request.</p> : <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-muted-foreground"><Clock3 className="mr-1 inline h-3 w-3"/>Reviewed {row.reviewed_at ? new Date(row.reviewed_at).toLocaleString() : "date not recorded"}</p>{row.status==="approved" && <Button variant="outline" disabled={busy===row.id} onClick={()=>void download(row)}><FileDown className="mr-2 h-4 w-4"/>Download approved PDF</Button>}</div>}
       </CardContent></Card>)}</div>}
   </div></DashboardLayout>;
 }
