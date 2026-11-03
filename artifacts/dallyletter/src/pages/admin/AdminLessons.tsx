@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Loader2, Search, Trash2, Video, Image as ImageIcon, Headphones, FileText, BookOpen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -18,6 +18,8 @@ export default function AdminLessons() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [subjectFilter, setSubjectFilter] = useState("all");
+  const [canDelete, setCanDelete] = useState(false);
+  useEffect(() => { fetch("/api/manager-permissions/me", { headers: { Authorization: "Bearer " + (localStorage.getItem("dallyletter_token") ?? "") } }).then(r=>r.json()).then(d=>setCanDelete(Boolean(d?.isOwner||d?.permissions?.["lessons.delete"]))).catch(()=>setCanDelete(false)); }, []);
 
   const filteredLessons = lessons?.filter(lesson => {
     const matchesSearch = lesson.title.toLowerCase().includes(search.toLowerCase()) || 
@@ -111,7 +113,7 @@ export default function AdminLessons() {
                     </div>
                   </CardContent>
                   <CardFooter className="pt-4 border-t flex justify-end gap-2">\n                    <Button variant="outline" size="sm" className="gap-2" onClick={() => window.location.assign(`/preview/lesson/${lesson.id}`)}>Preview lesson</Button>
-                    <Button 
+                    {canDelete && <Button 
                       variant="ghost" 
                       size="sm" 
                       className="text-destructive hover:bg-destructive/10 hover:text-destructive gap-2"
@@ -120,7 +122,7 @@ export default function AdminLessons() {
                     >
                       <Trash2 className="h-4 w-4" />
                       Delete
-                    </Button>
+                    </Button>}
                   </CardFooter>
                 </Card>
               ))
