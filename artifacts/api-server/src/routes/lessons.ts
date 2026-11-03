@@ -6,7 +6,7 @@ import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import multer from "multer";
-import { db, pool, lessonsTable, activityLogTable, followsTable, notificationPreferencesTable, notificationsTable, studyGroupsTable } from "@workspace/db";
+import { db, pool, lessonsTable, activityLogTable, followsTable, notificationPreferencesTable, notificationsTable, studyGroupsTable, usersTable } from "@workspace/db";
 import {
   CreateLessonBody,
   GetLessonParams,
@@ -14,7 +14,9 @@ import {
   UpdateLessonBody,
   DeleteLessonParams,
 } from "@workspace/api-zod";
-import { requireAuth, requireTeacherOrOwner, canManageAcademicContent } from "../lib/auth-middleware";
+import { requireAuth, requireTeacherOrOwner, canManageAcademicContent, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
+import { requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
+import { canModerateUser } from "../lib/role-access";
 import {
   createMediaStorageKey,
   ensureMediaDirectory,
@@ -135,7 +137,7 @@ const authorizeLessonMediaUpload = (req: Request, res: Response, next: NextFunct
     res.status(403).json({ error: "Only the group creator, manager, or platform owner can upload this group cover" });
   }).catch(next);
 };
-router.post("/lessons/media", requireAuth, authorizeLessonMediaUpload, (req, res, next): void => {
+router.post("/lessons/media", requireAuth, requireManagerPermissionIfManager("lessons.create"), authorizeLessonMediaUpload, (req, res, next): void => {
   upload.single("file")(req, res, (error) => {
     if (error instanceof multer.MulterError) {
       res.status(400).json({ error: "A supported media file up to 250 MB is required" });
@@ -262,7 +264,7 @@ router.get("/lessons", requireAuth, async (req, res): Promise<void> => {
 });
 
 // POST /lessons — Create lesson (teacher, prefect student, or owner)
-router.post("/lessons", requireAuth, async (req, res): Promise<void> => {
+router.post("/lessons", requireAuth, requireManagerPermissionIfManager("lessons.create"), async (req, res): Promise<void> => {
   const currentUser = req.currentUser!;
   // Allow teachers, owners, and prefect students to upload lessons
   if (currentUser.role === "student" && !currentUser.isPrefect) {
@@ -295,13 +297,17 @@ router.post("/lessons", requireAuth, async (req, res): Promise<void> => {
   res.status(201).json({ ...lesson, createdAt: lesson.createdAt.toISOString() });
 });
 
-router.post("/lessons/:id/notify-followers", requireAuth, async (req, res): Promise<void> => {
+router.post("/lessons/:id/notify-followers", requireAuth, requireManagerPermissionIfManager("lessons.notify"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid lesson id" }); return; }
   const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, id));
   if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
-  if (lesson.teacherId !== user.id && user.role !== "owner" && !(user.isManager && user.managerLevel === "senior") && !(await hasContentPermission(user.id,"lesson",id,"notify"))) { res.status(403).json({ error: "Notify permission has not been granted by the lesson creator" }); return; }
+  if (canAccessManager(user) && !isOwnerRole(user.role) && lesson.teacherId !== user.id) {
+    const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, lesson.teacherId));
+    if (!target || !canModerateUser(user, target)) { res.status(404).json({ error: "Lesson not found." }); return; }
+  }
+  if (lesson.teacherId !== user.id && !isOwnerRole(user.role) && !canAccessManager(user) && !(await hasContentPermission(user.id,"lesson",id,"notify"))) { res.status(403).json({ error: "Notify permission has not been granted by the lesson creator" }); return; }
   const count = await notifyTeacherFollowers(lesson.teacherId, lesson.id, `${lesson.teacherName} posted "${lesson.title}".`);
   res.json({ ok: true, recipientCount: count, message: count ? "Followers notified successfully." : "No followers are currently opted in to notifications." });
 });
@@ -324,7 +330,7 @@ router.get("/lessons/:id", requireAuth, async (req, res): Promise<void> => {
 });
 
 // PATCH /lessons/:id — Update lesson
-router.patch("/lessons/:id", requireAuth, requireTeacherOrOwner, async (req, res): Promise<void> => {
+router.patch("/lessons/:id", requireAuth, requireManagerPermissionIfManager("lessons.edit"), requireTeacherOrOwner, async (req, res): Promise<void> => {
   const params = UpdateLessonParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -343,6 +349,10 @@ router.patch("/lessons/:id", requireAuth, requireTeacherOrOwner, async (req, res
     return;
   }
   const actor = req.currentUser!;
+  if (canAccessManager(actor) && !isOwnerRole(actor.role) && actor.id !== existingLesson.teacherId) {
+    const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, existingLesson.teacherId));
+    if (!target || !canModerateUser(actor, target)) { res.status(404).json({ error: "Lesson not found." }); return; }
+  }
   if (actor.role === "teacher" && (actor.isManager !== true || actor.managerLevel !== "senior") && existingLesson.teacherId !== actor.id) {
     const allowed = await hasContentPermission(actor.id,"lesson",params.data.id,"edit");
     if(!allowed){ res.status(403).json({ error: "Preview only. Request edit permission from the lesson creator." }); return; }
@@ -371,7 +381,7 @@ router.patch("/lessons/:id", requireAuth, requireTeacherOrOwner, async (req, res
 });
 
 // DELETE /lessons/:id — Delete lesson
-router.delete("/lessons/:id", requireAuth, requireTeacherOrOwner, async (req, res): Promise<void> => {
+router.delete("/lessons/:id", requireAuth, requireManagerPermissionIfManager("lessons.delete"), requireTeacherOrOwner, async (req, res): Promise<void> => {
   const params = DeleteLessonParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -384,6 +394,10 @@ router.delete("/lessons/:id", requireAuth, requireTeacherOrOwner, async (req, re
     return;
   }
   const actor = req.currentUser!;
+  if (canAccessManager(actor) && !isOwnerRole(actor.role) && actor.id !== existingLesson.teacherId) {
+    const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, existingLesson.teacherId));
+    if (!target || !canModerateUser(actor, target)) { res.status(404).json({ error: "Lesson not found." }); return; }
+  }
   if (actor.role === "teacher" && (actor.isManager !== true || actor.managerLevel !== "senior") && existingLesson.teacherId !== actor.id) {
     const allowed = await hasContentPermission(actor.id,"lesson",params.data.id,"delete");
     if(!allowed){ res.status(403).json({ error: "Delete permission has not been granted by the lesson creator." }); return; }
