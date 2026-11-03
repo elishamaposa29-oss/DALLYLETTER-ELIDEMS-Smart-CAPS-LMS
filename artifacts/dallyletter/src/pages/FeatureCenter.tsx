@@ -44,9 +44,9 @@ const features:Feature[] = [
 export default function FeatureCenter(){
  const {user}=useAuth();
  const normalizedRole=String(user?.role||"").toLowerCase().replace(/[ -]+/g,"_");
- const isManager=Boolean((user as any)?.isManager)||["manager","senior_manager"].includes(normalizedRole);
+ const isManager=Boolean((user as any)?.isManager)||["manager","senior_manager","junior_manager"].includes(normalizedRole);
  const isOwner=["owner","admin","platform_owner"].includes(normalizedRole);
- const visible=features.filter(f=>!f.roles || (user && (f.roles.includes(normalizedRole)||(isOwner&&f.roles.includes("owner"))||(isManager&&f.roles.some(role=>["manager","senior_manager"].includes(role))))));
+ const visible=features.filter(f=>!f.roles || (user && (f.roles.includes(normalizedRole)||(isOwner&&f.roles.includes("owner"))||(isManager&&f.roles.some(role=>["manager","senior_manager","junior_manager"].includes(role))))));
  return <DashboardLayout>
   <div className="space-y-6">
    <div className="rounded-3xl bg-gradient-to-br from-[#0a1628] via-[#10294a] to-[#0a1628] p-6 md:p-8 text-white shadow-xl">
