@@ -3,7 +3,7 @@ import { pool } from "@workspace/db";
 import { isOwnerRole, isSeniorManager, normalizeRole } from "./role-access";
 
 const MANAGER_ROLES = new Set(["junior_manager", "senior_manager", "manager"]);
-export const SENIOR_ONLY_PERMISSION_KEYS = new Set(["transfers.approve", "reports.review", "achievements.approve", "teacher_cv.review", "teacher_cv.authorize", "qualifications.verify", "users.override.junior_manager"]);
+export const SENIOR_ONLY_PERMISSION_KEYS = new Set(["transfers.approve", "reports.review", "achievements.approve", "teacher_cv.review", "teacher_cv.authorize", "qualifications.verify", "users.override.junior_manager", "teacher_cv.chat"]);
 export const isSeniorOnlyManagerPermission = (permissionKey: string): boolean => SENIOR_ONLY_PERMISSION_KEYS.has(permissionKey);
 
 /** Explicit per-user grants only. Owner bypass is intentional; no manager role receives implicit grants. */
