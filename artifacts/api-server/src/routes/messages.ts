@@ -17,6 +17,7 @@ import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMedi
 const MAX_CHAT_MEDIA_SIZE_BYTES = MAX_MEDIA_SIZE_BYTES;
 import { isOwnerRole, normalizeRole } from "../lib/auth-middleware";
 import { hasAcceptedProfileConnection, isProfileChatApprovalRequired } from "./profileConnections";
+import { managerHasPermission } from "../lib/manager-permission-policy";
 
 const router: IRouter = Router();
 
@@ -58,6 +59,8 @@ async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]
   if (await isProfileChatApprovalRequired(recipientId)) return false;
   const senderRole = normalizeRole(sender.role);
   const recipientRole = normalizeRole(recipient.role);
+  const senderIsManager = ["junior_manager","senior_manager","manager"].includes(senderRole) || (senderRole === "teacher" && sender.isManager === true);
+  if (senderIsManager && isOwnerRole(recipientRole) && !(await managerHasPermission(sender, "owner.chat"))) return false;
   if (senderRole === "student") {
     return recipientRole === "teacher" || isOwnerRole(recipientRole) || recipient.isPrefect === true;
   }
@@ -67,6 +70,12 @@ async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]
 async function canViewPrivateConversation(user: NonNullable<Express.Request["currentUser"]>, recipientId: number): Promise<boolean> {
   if (!Number.isInteger(recipientId) || recipientId <= 0 || recipientId === user.id) return false;
   if (isOwnerRole(user.role)) return true;
+  const viewerRole = normalizeRole(user.role);
+  const viewerIsManager = ["junior_manager","senior_manager","manager"].includes(viewerRole) || (viewerRole === "teacher" && user.isManager === true);
+  if (viewerIsManager) {
+    const target = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, recipientId));
+    if (isOwnerRole(target[0]?.role) && !(await managerHasPermission(user, "owner.chat"))) return false;
+  }
   const [viewerRequiresApproval,targetRequiresApproval,accepted] = await Promise.all([
     isProfileChatApprovalRequired(user.id),
     isProfileChatApprovalRequired(recipientId),
