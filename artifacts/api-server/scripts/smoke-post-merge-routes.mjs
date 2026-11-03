@@ -70,6 +70,14 @@ await assertRouteResponds(
   "academic report learner-list route is mounted and authentication-gated",
 );
 
+await assertRouteResponds("/api/academic-records/me", { method: "GET" }, [401, 403], "learner academic record route is mounted and authentication-gated");
+await assertRouteResponds("/api/academic-records/reports/me", { method: "GET" }, [401, 403], "approved learner reports route is mounted and authentication-gated");
+await assertRouteResponds("/api/academic-records/reports/drafts", { method: "GET" }, [401, 403], "academic report draft list is mounted and authentication-gated");
+await assertRouteResponds("/api/academic-records/reports/drafts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({}) }, [401, 403], "academic report draft creation is authentication-gated");
+await assertRouteResponds("/api/academic-records/reports/drafts/1/submit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({}) }, [401, 403], "academic report submission is authentication-gated");
+await assertRouteResponds("/api/academic-records/reports/drafts/1/review", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: "approved" }) }, [401, 403], "academic report review is authentication-gated");
+await assertRouteResponds("/api/academic-records/reports/drafts/1/download/pdf", { method: "GET" }, [401, 403], "approved academic PDF route is authentication-gated");
+
 await assertRouteResponds(
   "/api/manager-permissions/me",
   { method: "GET" },
