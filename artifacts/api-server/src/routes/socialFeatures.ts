@@ -2,7 +2,7 @@ import { Router } from "express";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db, pool, followsTable, notificationPreferencesTable, notificationsTable, usersTable, lessonsTable, contentCommentsTable, moderationActionsTable, auditLogsTable, chatPollsTable, chatPollOptionsTable, chatPollVotesTable, broadcastsTable, broadcastRecipientsTable, communitiesTable, communityGroupsTable, messagesTable, studyGroupMembersTable, studyGroupsTable, groupSettingsTable } from "@workspace/db";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
-import { canModerateUser, normalizeRole } from "../lib/role-access";
+import { canModerateUser, isJuniorManager, normalizeRole } from "../lib/role-access";
 import { managerHasPermission, requireManagerPermission, requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
 
 const router = Router();
