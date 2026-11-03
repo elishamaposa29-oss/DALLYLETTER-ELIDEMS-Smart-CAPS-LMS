@@ -557,7 +557,8 @@ router.get("/users/:id/teacher-documents", requireAuth, async (req, res): Promis
   const id = Number(req.params.id); const actor = req.currentUser!;
   if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid user id." }); return; }
   const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, id));
-  if (!target || (actor.id !== id && !isOwnerRole(actor.role) && !canModerateUser(actor, target))) { res.status(404).json({ error: "User not found." }); return; }
+  if (!target || (isOwnerRole(target.role) && !isOwnerRole(actor.role))) { res.status(404).json({ error: "User not found." }); return; }
+  if (actor.id !== id && !isOwnerRole(actor.role) && !canModerateUser(actor, target)) { res.status(403).json({ error: "You are not authorized to access this user's teacher documents." }); return; }
   if (!(await canViewProfileSection(actor,id,"teacher_documents"))) { res.status(403).json({ error: "Teacher document visibility is restricted by this profile's privacy settings." }); return; }
   const selfOrManager = actor.id === id || (canAccessManager(actor) && await managerHasPermission(actor, "teacher_cv.view"));
   const professional = ["teacher", "manager", "senior_manager"].includes(String(target.role).toLowerCase());
@@ -572,7 +573,8 @@ router.get("/users/:id/teacher-documents/:docId", requireAuth, async (req, res):
   const id = Number(req.params.id); const docId = Number(req.params.docId); const actor = req.currentUser!;
   if (!Number.isInteger(id) || id <= 0 || !Number.isInteger(docId) || docId <= 0) { res.status(400).json({ error: "Invalid document reference." }); return; }
   const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, id));
-  if (!target || (actor.id !== id && !isOwnerRole(actor.role) && !canModerateUser(actor, target))) { res.status(404).json({ error: "User not found." }); return; }
+  if (!target || (isOwnerRole(target.role) && !isOwnerRole(actor.role))) { res.status(404).json({ error: "User not found." }); return; }
+  if (actor.id !== id && !isOwnerRole(actor.role) && !canModerateUser(actor, target)) { res.status(403).json({ error: "You are not authorized to access this user's teacher documents." }); return; }
   if (!(await canViewProfileSection(actor, id, "teacher_documents"))) {
     res.status(403).json({ error: "Teacher document visibility is restricted by this profile's privacy settings." }); return;
   }
