@@ -22,4 +22,10 @@ CREATE TABLE IF NOT EXISTS public.manager_permission_history (
 );
 CREATE INDEX IF NOT EXISTS manager_permission_history_manager_idx
   ON public.manager_permission_history(manager_user_id, changed_at DESC);
+CREATE TABLE IF NOT EXISTS public.manager_role_assignments (
+  manager_user_id integer PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
+  original_role text NOT NULL,
+  assigned_by integer NOT NULL REFERENCES public.users(id),
+  assigned_at timestamptz NOT NULL DEFAULT now()
+);
 COMMIT;
