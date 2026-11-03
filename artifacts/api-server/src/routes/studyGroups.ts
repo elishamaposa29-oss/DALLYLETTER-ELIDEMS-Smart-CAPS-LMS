@@ -9,17 +9,32 @@ import {
   GetStudyGroupParams,
   JoinStudyGroupParams,
 } from "@workspace/api-zod";
-import { requireAuth, isOwnerRole } from "../lib/auth-middleware";
+import { requireAuth, isOwnerRole, canAccessManager } from "../lib/auth-middleware";
+import { canModerateUser } from "../lib/role-access";
+import { managerHasPermission } from "../lib/manager-permission-policy";
 
 const router: IRouter = Router();
 
 // Helper to get members of a study group
-function canManageGroup(user: any, group: any) {
-  return isOwnerRole(user.role) || user.isManager === true || group.creatorId === user.id;
+async function canManageGroup(user: any, group: any): Promise<boolean> {
+  if (isOwnerRole(user.role)) return true;
+  if (canAccessManager(user)) {
+    if (!(await managerHasPermission(user,"groups.manage"))) return false;
+    if (group.creatorId === user.id) return true;
+    const [creator]=await db.select({role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(eq(usersTable.id,group.creatorId));
+    return Boolean(creator && canModerateUser(user,creator));
+  }
+  return group.creatorId === user.id;
+}
+
+async function canViewGroup(user:any,group:any):Promise<boolean>{
+  if(!canAccessManager(user)||isOwnerRole(user.role)||group.creatorId===user.id)return true;
+  const [creator]=await db.select({role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(eq(usersTable.id,group.creatorId));
+  return Boolean(creator && canModerateUser(user,creator));
 }
 
 async function canManageGroupSettings(user: any, groupId: number, group?: any) {
-  if (group && (isOwnerRole(user.role) || user.isManager === true || group.creatorId === user.id)) return true;
+  if (group && await canManageGroup(user,group)) return true;
   const [control] = await db.select({ canManageSettings: groupMemberControlsTable.canManageSettings })
     .from(groupMemberControlsTable)
     .where(and(eq(groupMemberControlsTable.groupId, groupId), eq(groupMemberControlsTable.userId, user.id)));
@@ -80,12 +95,13 @@ async function getGroupMembers(groupId: number) {
 // GET /study-groups — List all study groups
 router.get("/study-groups", requireAuth, async (req, res): Promise<void> => {
   const currentUser = req.currentUser!;
-  const groups = await db.select().from(studyGroupsTable).orderBy(studyGroupsTable.createdAt);
+  const allGroups = await db.select().from(studyGroupsTable).orderBy(studyGroupsTable.createdAt);
+  const groups = await Promise.all(allGroups.map(async g => await canViewGroup(currentUser,g) ? g : null)).then(rows=>rows.filter(Boolean) as typeof allGroups);
 
   const result = await Promise.all(groups.map(async (g) => {
     const members = await getGroupMembers(g.id);
     const isMember = members.some(member => member.id === currentUser.id);
-    const canManage = canManageGroup(currentUser, g);
+    const canManage = await canManageGroup(currentUser, g);
     const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, g.id));
     return {
       ...g,
@@ -113,7 +129,7 @@ router.get("/study-groups", requireAuth, async (req, res): Promise<void> => {
 // POST /study-groups — Create a study group
 router.post("/study-groups", requireAuth, async (req, res): Promise<void> => {
   const currentUser = req.currentUser!;
-  const canCreate = isOwnerRole(currentUser.role) || currentUser.isManager === true || currentUser.isPrefect === true || currentUser.role === "teacher";
+  const canCreate = isOwnerRole(currentUser.role) || (canAccessManager(currentUser) && await managerHasPermission(currentUser,"groups.manage")) || currentUser.isPrefect === true || currentUser.role === "teacher";
   if (!canCreate) {
     res.status(403).json({ error: "Only teachers, prefects, managers, and owners can create study groups" });
     return;
@@ -167,7 +183,7 @@ router.get("/study-groups/:id", requireAuth, async (req, res): Promise<void> => 
   }
 
   const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, params.data.id));
-  if (!group) {
+  if (!group || !(await canViewGroup(req.currentUser!,group))) {
     res.status(404).json({ error: "Study group not found" });
     return;
   }
@@ -191,7 +207,7 @@ router.post("/study-groups/:id/join", requireAuth, async (req, res): Promise<voi
 
   const currentUser = req.currentUser!;
   const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, params.data.id));
-  if (!group) {
+  if (!group || !(await canViewGroup(currentUser,group))) {
     res.status(404).json({ error: "Study group not found" });
     return;
   }
@@ -259,12 +275,12 @@ router.patch("/study-groups/:id/profile", requireAuth, async (req, res): Promise
   const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
   if (!group) { res.status(404).json({ error: "Study group not found" }); return; }
   const isPlatformOwner = isOwnerRole(user.role);
-  if (!isPlatformOwner && !canManageGroup(user, group)) { res.status(403).json({ error: "Only the group creator, a manager, or platform owner can edit group profile details." }); return; }
+  if (!isPlatformOwner && !(await canManageGroup(user, group))) { res.status(403).json({ error: "Only the group creator, a manager, or platform owner can edit group profile details." }); return; }
   const grade = typeof req.body?.grade === "string" ? req.body.grade.trim().slice(0, 80) || null : group.grade;
   const topic = typeof req.body?.topic === "string" ? req.body.topic.trim().slice(0, 120) || null : group.topic;
   let coverImageUrl = group.coverImageUrl;
   if (req.body?.coverImageUrl !== undefined) {
-    if (!isPlatformOwner && !canManageGroup(user, group) && !(await canManageGroupSettings(user, groupId, group))) { res.status(403).json({ error: "Group creator or authorized group manager access required to change a cover image." }); return; }
+    if (!isPlatformOwner && !(await canManageGroup(user, group)) && !(await canManageGroupSettings(user, groupId, group))) { res.status(403).json({ error: "Group creator or authorized group manager access required to change a cover image." }); return; }
     const next = typeof req.body.coverImageUrl === "string" ? req.body.coverImageUrl.trim() : "";
     if (next && !/^\/api\/lessons\/media\/[a-f0-9-]{36}(?:\?type=image(?:\/|%2f)[a-z0-9.+-]+)?$/i.test(next)) {
       res.status(400).json({ error: "Cover image must be uploaded through the authenticated media endpoint." }); return;
@@ -335,7 +351,7 @@ router.get("/study-groups/:id/members", requireAuth, async (req, res): Promise<v
   if (!Number.isInteger(groupId) || groupId <= 0) { res.status(400).json({ error: "Invalid group id" }); return; }
   const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
   if (!group) { res.status(404).json({ error: "Study group not found" }); return; }
-  if (!(await isGroupMember(groupId, req.currentUser!.id) || canManageGroup(req.currentUser!, group))) {
+  if (!(await canViewGroup(req.currentUser!,group)) || !(await isGroupMember(groupId, req.currentUser!.id) || await canManageGroup(req.currentUser!, group))) {
     res.status(403).json({ error: "You must be a group member to view members" });
     return;
   }
