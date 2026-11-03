@@ -497,8 +497,8 @@ router.get("/users/me/teacher-cv/pdf", requireAuth, async (req, res): Promise<vo
 router.get("/users/:id/teacher-cv", requireAuth, requireManagerPermission("teacher_cv.view"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid user id." }); return; }
-  const [target] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, id));
-  if (!target || normalizeRole(target.role) !== "teacher") { res.status(404).json({ error: "Teacher CV not found." }); return; }
+  const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, id));
+  if (!target || normalizeRole(target.role) !== "teacher" || (!isOwnerRole(req.currentUser!.role) && !canModerateUser(req.currentUser!, target))) { res.status(404).json({ error: "Teacher CV not found." }); return; }
   await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, cv jsonb NOT NULL DEFAULT '{}'::jsonb, updated_at timestamptz NOT NULL DEFAULT now())");
   const result = await pool.query("SELECT cv, updated_at FROM teacher_profiles WHERE user_id = $1", [id]);
   if (!result.rows.length) { res.status(404).json({ error: "Teacher CV not found." }); return; }
@@ -508,8 +508,8 @@ router.get("/users/:id/teacher-cv", requireAuth, requireManagerPermission("teach
 router.get("/users/:id/teacher-cv/pdf", requireAuth, requireManagerPermission("teacher_cv.view"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid user id." }); return; }
-  const [target] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, id));
-  if (!target || normalizeRole(target.role) !== "teacher") { res.status(404).json({ error: "Teacher CV not found." }); return; }
+  const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, id));
+  if (!target || normalizeRole(target.role) !== "teacher" || (!isOwnerRole(req.currentUser!.role) && !canModerateUser(req.currentUser!, target))) { res.status(404).json({ error: "Teacher CV not found." }); return; }
   await sendTeacherCvPdf(id, res);
 });
 
@@ -555,8 +555,8 @@ router.post("/users/me/teacher-documents", requireAuth, (req, res): void => {
 router.get("/users/:id/teacher-documents", requireAuth, async (req, res): Promise<void> => {
   const id = Number(req.params.id); const actor = req.currentUser!;
   if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid user id." }); return; }
-  const [target] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, id));
-  if (!target) { res.status(404).json({ error: "User not found." }); return; }
+  const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, id));
+  if (!target || (actor.id !== id && !isOwnerRole(actor.role) && !canModerateUser(actor, target))) { res.status(404).json({ error: "User not found." }); return; }
   if (!(await canViewProfileSection(actor,id,"teacher_documents"))) { res.status(403).json({ error: "Teacher document visibility is restricted by this profile's privacy settings." }); return; }
   const selfOrManager = actor.id === id || (canAccessManager(actor) && await managerHasPermission(actor, "teacher_cv.view"));
   const professional = ["teacher", "manager", "senior_manager"].includes(String(target.role).toLowerCase());
@@ -570,8 +570,8 @@ router.get("/users/:id/teacher-documents", requireAuth, async (req, res): Promis
 router.get("/users/:id/teacher-documents/:docId", requireAuth, async (req, res): Promise<void> => {
   const id = Number(req.params.id); const docId = Number(req.params.docId); const actor = req.currentUser!;
   if (!Number.isInteger(id) || id <= 0 || !Number.isInteger(docId) || docId <= 0) { res.status(400).json({ error: "Invalid document reference." }); return; }
-  const [target] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, id));
-  if (!target) { res.status(404).json({ error: "User not found." }); return; }
+  const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, id));
+  if (!target || (actor.id !== id && !isOwnerRole(actor.role) && !canModerateUser(actor, target))) { res.status(404).json({ error: "User not found." }); return; }
   if (!(await canViewProfileSection(actor, id, "teacher_documents"))) {
     res.status(403).json({ error: "Teacher document visibility is restricted by this profile's privacy settings." }); return;
   }
