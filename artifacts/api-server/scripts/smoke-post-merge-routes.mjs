@@ -12,6 +12,7 @@ const base = (process.env.API_BASE_URL || "http://127.0.0.1:3001").replace(/\/$/
 
 const failures = [];
 let baseReachable = true;
+let globalAuthInterceptsUnknownRoutes = false;
 
 async function assertRouteResponds(path, init, acceptedStatuses, label) {
   if (!baseReachable) {
@@ -55,8 +56,11 @@ try {
   if (!unknownRoute) {
     failures.push("Unknown API route probe skipped because the API host is unavailable");
   } else {
-  if (unknownRoute.status !== 404) {
-    failures.push(`Unknown API route should return HTTP 404, got ${unknownRoute.status}`);
+  if (unknownRoute.status === 401 || unknownRoute.status === 403) {
+    globalAuthInterceptsUnknownRoutes = true;
+    console.log(`NOTE unknown API route returned HTTP ${unknownRoute.status}: authentication is enforced before route resolution, so unauthenticated probes cannot prove route existence`);
+  } else if (unknownRoute.status !== 404) {
+    failures.push(`Unknown API route should return HTTP 404 or an upstream auth response, got ${unknownRoute.status}`);
     console.error(`FAIL unknown API route: HTTP ${unknownRoute.status}`);
   } else {
     console.log("PASS unknown API routes return HTTP 404");
@@ -142,4 +146,7 @@ if (failures.length) {
   console.error("ROUTE_SMOKE_FAILURES:", JSON.stringify(failures, null, 2));
   throw new Error(`${failures.length} API route smoke check(s) failed against ${base}`);
 }
-console.log("Post-merge route smoke checks passed. These checks do not prove inbox delivery or successful authenticated media uploads.");
+if (globalAuthInterceptsUnknownRoutes) {
+  console.log("NOTE: The deployed API applies authentication before route resolution. HTTP 401/403 confirms the request is gated but does NOT prove that each protected handler is registered. Use the authenticated integration tests for route-level verification.");
+}
+console.log("Post-merge API access smoke checks passed. These checks do not prove inbox delivery or successful authenticated media uploads.");
