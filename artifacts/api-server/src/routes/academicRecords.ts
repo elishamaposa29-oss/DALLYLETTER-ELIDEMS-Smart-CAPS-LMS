@@ -667,14 +667,15 @@ router.post("/academic-records/reports/drafts/:id/review", requireAuth, requireM
   const status = req.body?.status;
   const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0,2000) : null;
   if (!Number.isSafeInteger(id) || id < 1 || !["approved","rejected"].includes(status)) { res.status(400).json({ error: "A valid draft ID and approved/rejected decision are required." }); return; }
-  // Return the same not-found response for completed reviews, regardless of the caller's role.
-  const pending = await pool.query("SELECT id FROM academic_report_drafts WHERE id=$1 AND status='pending_review'", [id]);
-  if (!pending.rowCount) { res.status(404).json({ error: "Pending report draft not found or already reviewed." }); return; }
-  if (!isSeniorManager(reviewer)) { res.status(403).json({ error: "A Senior Manager or Owner must approve or reject this report." }); return; }
   let reviewedReport: any;
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    const pending = await client.query("SELECT d.id,d.learner_id,u.role,u.is_manager,u.manager_level FROM academic_report_drafts d JOIN users u ON u.id=d.learner_id WHERE d.id=$1 AND d.status='pending_review' FOR UPDATE OF d", [id]);
+    if(!pending.rowCount){await client.query("ROLLBACK");res.status(404).json({error:"Pending report draft not found or already reviewed."});return;}
+    if (!isSeniorManager(reviewer)) { await client.query("ROLLBACK"); res.status(403).json({ error: "A Senior Manager or Owner must approve or reject this report." }); return; }
+    const target=pending.rows[0];
+    if(!isOwnerRole(reviewer.role)&&!canModerateUser(reviewer,{role:target.role,isManager:target.is_manager,managerLevel:target.manager_level})){await client.query("ROLLBACK");res.status(404).json({error:"Pending report draft not found."});return;}
     const result = await client.query("UPDATE academic_report_drafts SET status=$1,reviewed_by=$2,review_note=$3,reviewed_at=now(),updated_at=now() WHERE id=$4 AND status='pending_review' RETURNING id,learner_id,report_type,term_label,status,reviewed_by,review_note,reviewed_at", [status, reviewer.id, note, id]);
     if (!result.rowCount) {
       await client.query("ROLLBACK");
