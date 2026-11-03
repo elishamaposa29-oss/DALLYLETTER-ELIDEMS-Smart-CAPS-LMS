@@ -62,6 +62,15 @@ function isManagerAccount(account: CurrentAuthority): boolean {
   return MANAGER_ROLES.has(role) || (role === "teacher" && account.is_manager === true);
 }
 
+/** Replace stale JWT role claims with the live database authority for downstream route checks. */
+function syncCurrentAuthority(user: NonNullable<Request["currentUser"]>, account: CurrentAuthority): void {
+  Object.assign(user, {
+    role: account.role,
+    isManager: account.is_manager,
+    managerLevel: account.manager_level ?? undefined,
+  });
+}
+
 /** Explicit per-user grants only. Owner authority is checked against the live DB role. */
 export function requireManagerPermission(permissionKey: string) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -70,6 +79,7 @@ export function requireManagerPermission(permissionKey: string) {
     try {
       const account = await readCurrentAuthority(user.id, permissionKey);
       if (!account) { res.status(401).json({ error: "Account no longer exists" }); return; }
+      syncCurrentAuthority(user, account);
       if (isOwnerRole(account.role)) { next(); return; }
       if (!isManagerAccount(account)) {
         res.status(403).json({ error: "Manager access required" });
@@ -119,6 +129,7 @@ export function requireManagerPermissionIfManager(permissionKey: string) {
     try {
       const account = await readCurrentAuthority(user.id, permissionKey);
       if (!account) { res.status(401).json({ error: "Account no longer exists" }); return; }
+      syncCurrentAuthority(user, account);
       if (isOwnerRole(account.role) || !isManagerAccount(account)) { next(); return; }
       void requireManagerPermission(permissionKey)(req, res, next);
     } catch {
@@ -132,6 +143,7 @@ export async function managerHasPermission(user: NonNullable<Request["currentUse
   try {
     const account = await readCurrentAuthority(user.id, permissionKey);
     if (!account) return false;
+    syncCurrentAuthority(user, account);
     if (isOwnerRole(account.role)) return true;
     if (!isManagerAccount(account)) return false;
     if (isSeniorOnlyManagerPermission(permissionKey) && !isSeniorManager({
