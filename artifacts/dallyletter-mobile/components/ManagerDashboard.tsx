@@ -13,23 +13,48 @@ export default function ManagerDashboard(){
  const colors=useColors(), insets=useSafeAreaInsets();
  const {user,token}=useAuth();
  const role=String(user?.role||"").toLowerCase().replace(/[ -]+/g,"_");
- const allowed=["owner","admin","manager","senior_manager","junior_manager","platform_owner"].includes(role)||Boolean((user as any)?.isManager);
+ const roleAllowed=["owner","platform_owner","manager","senior_manager","junior_manager"].includes(role)||(role==="teacher"&&Boolean((user as any)?.isManager);
  const [panel,setPanel]=useState<Panel>("overview"),[data,setData]=useState<any>(null),[loading,setLoading]=useState(false),[error,setError]=useState("");
+ const [permissionData,setPermissionData]=useState<any>(null),[permissionLoading,setPermissionLoading]=useState(true);
+ const can=(key:string)=>permissionData?.isOwner===true||permissionData?.permissions?.[key]===true;
+ const allowed=roleAllowed&&permissionData!==null&&(can("manager.dashboard.view")||can("users.view")||can("reports.view"));
  const request=useCallback(async(path:string)=>{
   const response=await fetch(getApiUrl(path),{headers:token?{Authorization:"Bearer "+token}:{}});
   const payload=await response.json().catch(()=>({}));
   if(!response.ok)throw new Error(payload?.error||`Request failed (${response.status})`);
   return payload;
  },[token]);
+ useEffect(()=>{
+  let active=true;
+  const loadPermissions=async()=>{
+   setPermissionLoading(true);setError("");
+   try{
+    const result=await request("/api/manager-permissions/me");
+    if(!active)return;
+    setPermissionData(result);
+    const hasOverview=result.isOwner===true||result.permissions?.["manager.dashboard.view"]===true;
+    const hasUsers=result.isOwner===true||result.permissions?.["users.view"]===true;
+    const hasReports=result.isOwner===true||result.permissions?.["reports.view"]===true;
+    if(!hasOverview)setPanel(hasUsers?"teachers":hasReports?"reports":"overview");
+    if(!hasOverview&&!hasUsers&&!hasReports)setError("Owner has not granted Manager Dashboard or any data-view permissions to this account.");
+   }catch(e){if(active)setError(e instanceof Error?e.message:"Manager permissions could not be loaded.");}
+   finally{if(active)setPermissionLoading(false);}
+  };
+  void loadPermissions();
+  return()=>{active=false;};
+ },[request]);
  const load=useCallback(async()=>{
+  if(!allowed){setLoading(false);return;}
+  const permitted=panel==="overview"?can("manager.dashboard.view"):panel==="reports"?can("reports.view"):can("users.view");
+  if(!permitted){setError("Owner has not granted permission to view this section.");setData(null);return;}
   setLoading(true);setError("");
   try{
    const path=panel==="overview"?"/api/manager/dashboard":panel==="teachers"?"/api/manager/teachers":panel==="students"?"/api/manager/students":panel==="prefects"?"/api/manager/prefects":"/api/manager/reports/overview";
    setData(await request(path));
   }catch(e){setError(e instanceof Error?e.message:"Could not load manager data.");}
   finally{setLoading(false);}
- },[panel,request]);
- useEffect(()=>{void load();},[load]);
+ },[panel,request,allowed,permissionData]);
+ useEffect(()=>{if(!permissionLoading&&allowed)void load();},[load,permissionLoading,allowed]);
  const s=StyleSheet.create({
   root:{flex:1,backgroundColor:colors.background},header:{backgroundColor:colors.primary,paddingTop:insets.top+14,paddingHorizontal:18,paddingBottom:18},
   title:{fontSize:23,fontFamily:"Inter_700Bold",color:"#fff"},subtitle:{fontSize:12,color:"rgba(255,255,255,.75)",marginTop:5},
@@ -38,7 +63,9 @@ export default function ManagerDashboard(){
   chip:{paddingHorizontal:12,paddingVertical:9,borderRadius:8,borderWidth:1,borderColor:colors.border},metric:{flexGrow:1,flexBasis:"40%",padding:12,borderRadius:10,borderWidth:1,borderColor:colors.border},
  });
  const metric=(label:string,value:any)=><View key={label} style={s.metric}><Text style={{fontSize:22,fontWeight:"700",color:colors.primary}}>{value??"—"}</Text><Text style={s.muted}>{label}</Text></View>;
- if(!allowed)return <View style={s.root}><Text style={s.body}>Manager access required. The server enforces this permission.</Text></View>;
+ if(!roleAllowed)return <View style={s.root}><Text style={s.body}>Manager access required. Administrator status alone does not grant manager permissions.</Text></View>;
+ if(permissionLoading)return <View style={[s.root,{justifyContent:"center",alignItems:"center"}]}><ActivityIndicator color={colors.primary}/><Text style={s.body}>Checking Owner-assigned permissions…</Text></View>;
+ if(!allowed)return <View style={s.root}><View style={[s.card,{margin:16}]}><Text style={s.heading}>Manager access not granted</Text><Text style={s.body}>{error||"Ask the Owner to grant the dashboard or a permitted data-view capability."}</Text></View></View>;
  return <View style={s.root}>
   <View style={s.header}>
    <View style={{flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:12,flexWrap:"wrap"}}>
@@ -51,7 +78,7 @@ export default function ManagerDashboard(){
    <Text style={s.title}>Manager dashboard</Text><Text style={s.subtitle}>Scoped school oversight · access remains server-authorized</Text>
   </View>
   <ScrollView contentContainerStyle={s.content}>
-   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:7}}>{panels.map(p=><TouchableOpacity key={p.id} style={[s.chip,{backgroundColor:panel===p.id?colors.primary:colors.card}]} onPress={()=>setPanel(p.id)}><Text style={{color:panel===p.id?"#fff":colors.foreground}}>{p.title}</Text></TouchableOpacity>)}</ScrollView>
+   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:7}}>{panels.filter(p=>p.id==="overview"?can("manager.dashboard.view"):p.id==="reports"?can("reports.view"):can("users.view")).map(p=><TouchableOpacity key={p.id} style={[s.chip,{backgroundColor:panel===p.id?colors.primary:colors.card}]} onPress={()=>setPanel(p.id)}><Text style={{color:panel===p.id?"#fff":colors.foreground}}>{p.title}</Text></TouchableOpacity>)}</ScrollView>
    <TouchableOpacity style={[s.card,s.row]} onPress={()=>void load()}><Feather name="refresh-cw" size={16} color={colors.primary}/><Text style={s.body}>Refresh live data</Text></TouchableOpacity>
    {loading?<View style={[s.card,s.row]}><ActivityIndicator color={colors.primary}/><Text style={s.body}>Loading…</Text></View>:null}
    {error?<View style={s.card}><Text style={{color:"#b91c1c",fontWeight:"700"}}>Could not load this view</Text><Text style={s.body}>{error}</Text></View>:null}
