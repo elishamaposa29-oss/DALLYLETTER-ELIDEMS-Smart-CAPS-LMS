@@ -66,7 +66,7 @@ export function ManagerPermissionControls({ user, onChanged }: Props) {
     try {
       const response = await fetch(getApiUrl(`/api/manager-permissions/${user.id}/role`), { method: "PATCH", headers: authHeaders(), body: JSON.stringify({ role: "teacher" }) });
       if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error ?? "Could not remove manager role.");
-      toast({ title: "Manager role removed", description: `${user.name} is now a teacher.` }); onChanged();
+      toast({ title: "Manager role removed", description: `${user.name} has been restored to their original account role.` }); onChanged();
     } catch (e) { toast({ variant: "destructive", title: "Could not remove manager", description: e instanceof Error ? e.message : "Request failed." }); }
     finally { setLoading(false); }
   };
