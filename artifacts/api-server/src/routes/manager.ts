@@ -11,12 +11,19 @@ const managerVisibleAlertCategories = ["academic", "attendance", "content", "stu
 function permissionForManagerAlert(_alert: any): string { return "notifications.view"; }
 async function visibleManagerAlerts(user: NonNullable<Express.Request["currentUser"]>, rows: any[]) {
   if (isOwnerRole(user.role)) return rows;
-  const ownerRows = await pool.query("SELECT id FROM users WHERE lower(role) IN ('owner','platform_owner')");
-  const ownerIds = new Set(ownerRows.rows.map((row: any) => Number(row.id)));
-  const candidates = rows.filter((row: any) =>
-    row.reporterRole !== "owner" && row.reporterRole !== "platform_owner" &&
-    row.targetType !== "owner" && !(row.targetType === "user" && ownerIds.has(Number(row.targetId))),
-  );
+  const relatedIds=[...new Set(rows.flatMap((row:any)=>[Number(row.reportedBy||0),row.targetType==="user"?Number(row.targetId||0):0]).filter((id:number)=>Number.isSafeInteger(id)&&id>0))];
+  const related=relatedIds.length?await db.select({id:usersTable.id,role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(inArray(usersTable.id,relatedIds)):[];
+  const byId=new Map(related.map((row:any)=>[row.id,row]));
+  const candidates = rows.filter((row: any) => {
+    if(row.reporterRole==="owner"||row.reporterRole==="platform_owner"||row.targetType==="owner")return false;
+    const reporter=byId.get(Number(row.reportedBy));
+    if(reporter && reporter.id!==user.id && !canModerateUser(user,reporter))return false;
+    if(row.targetType==="user"){
+      const target=byId.get(Number(row.targetId));
+      if(!target || !canModerateUser(user,target))return false;
+    }
+    return true;
+  });
   const allowed = await Promise.all(candidates.map(async (row: any) =>
     (await managerHasPermission(user, permissionForManagerAlert(row))) ? row : null,
   ));
