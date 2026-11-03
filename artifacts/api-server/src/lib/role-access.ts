@@ -118,6 +118,25 @@ export function enforceAcademicStaffAccess(req:AuthRequestLike,res:AuthResponseL
   next();
 }
 
+/** Senior managers may override users below their level, never Owner/Admin or peer/senior managers. */
+export function canModerateUser(actor: RoleLikeUser, target: RoleLikeUser): boolean {
+  const actorRole = normalizeRole(actor.role);
+  const targetRole = normalizeRole(target.role);
+  if (isOwnerRole(targetRole)) return false;
+  if (targetRole === "admin" && !isOwnerRole(actorRole)) return false;
+  if (isOwnerRole(actorRole)) return true;
+  if (!isSeniorManager(actor)) return false;
+
+  if (targetRole === "senior_manager") return false;
+  if (targetRole === "manager" || targetRole === "junior_manager") {
+    return normalizedManagerLevel(target) === "junior";
+  }
+  if (targetRole === "teacher" && target.isManager === true) {
+    return normalizedManagerLevel(target) === "junior";
+  }
+  return ["teacher", "student", "learner", "prefect"].includes(targetRole);
+}
+
 /** Transfer decisions are senior authority: junior managers may view the queue but cannot approve or reject. */
 export function canReviewAcademicTransfer(user: RoleLikeUser): boolean {
   return isSeniorManager(user);
