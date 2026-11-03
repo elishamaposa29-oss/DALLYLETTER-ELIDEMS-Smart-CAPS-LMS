@@ -4,7 +4,7 @@ import { db, auditLogsTable, pool } from "@workspace/db";
 import { getAIProvider } from "../lib/ai-provider";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { isSeniorManager, isJuniorManager } from "../lib/role-access";
-import { requireManagerPermission, requireManagerPermissionForRequest } from "../lib/manager-permission-policy";
+import { requireManagerPermission, requireManagerPermissionForRequest, requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
 import { enqueueEmailNotification } from "../lib/email-notification-queue";
 import { calculateAgeOnDate, getCurrentAcademicYear } from "../lib/academic-year";
 import { canViewProfileSection } from "./profileConnections";
@@ -258,7 +258,7 @@ router.post("/academic-records/transfer-requests", requireAuth, async (req, res)
   res.status(201).json(requestRow);
 });
 
-router.get("/academic-records/transfer-requests", requireAuth, async (req, res): Promise<void> => {
+router.get("/academic-records/transfer-requests", requireAuth, requireManagerPermissionIfManager("transfers.view"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   const manager = canAccessManager(user);
   const result = manager
