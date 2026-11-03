@@ -2,7 +2,8 @@ import { Router } from "express";
 import { requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
 import { db, pollsTable, pollQuestionsTable, pollOptionsTable, pollSubmissionsTable, usersTable, auditLogsTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
-import { canManageAcademicContent, requireAuth } from "../lib/auth-middleware";
+import { canManageAcademicContent, requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
+import { canModerateUser } from "../lib/role-access";
 import { getAIProvider } from "../lib/ai-provider";
 import { logger } from "../lib/logger";
 
@@ -11,12 +12,17 @@ const router = Router();
 async function getPollForManager(pollId: number, user: NonNullable<Express.Request["currentUser"]>) {
   const [poll] = await db.select().from(pollsTable).where(eq(pollsTable.id, pollId));
   if (!poll) return null;
-  if (!canManageAcademicContent(user) || (user.role === "teacher" && !user.isManager && poll.createdBy !== user.id)) return null;
-  return poll;
+  if (!canManageAcademicContent(user)) return null;
+  if (isOwnerRole(user.role) || poll.createdBy === user.id) return poll;
+  if (canAccessManager(user)) {
+    const [creator] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, poll.createdBy));
+    return creator && canModerateUser(user, creator) ? poll : null;
+  }
+  return user.role === "teacher" && !user.isManager ? null : poll;
 }
 
 // GET /polls — list polls
-router.get("/polls", requireAuth, async (req, res): Promise<void> => {
+router.get("/polls", requireAuth, requireManagerPermissionIfManager("polls.manage"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   let polls;
   if (canManageAcademicContent(user)) {
@@ -109,10 +115,10 @@ router.post("/polls/ai-generate", requireAuth, requireManagerPermissionIfManager
 });
 
 // GET /polls/:id — get poll with questions and options
-router.get("/polls/:id", requireAuth, async (req, res): Promise<void> => {
+router.get("/polls/:id", requireAuth, requireManagerPermissionIfManager("polls.manage"), async (req, res): Promise<void> => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const [poll] = await db.select().from(pollsTable).where(eq(pollsTable.id, id));
+  const poll = canManageAcademicContent(req.currentUser!) ? await getPollForManager(id, req.currentUser!) : (await db.select().from(pollsTable).where(eq(pollsTable.id, id)))[0];
   if (!poll) { res.status(404).json({ error: "Not found" }); return; }
   const questions = await db.select().from(pollQuestionsTable).where(eq(pollQuestionsTable.pollId, id)).orderBy(pollQuestionsTable.orderIndex);
   const questionsWithOptions = await Promise.all(questions.map(async q => {
