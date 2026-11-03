@@ -10,16 +10,27 @@
  */
 const base = (process.env.API_BASE_URL || "http://127.0.0.1:3001").replace(/\/$/, "");
 
+const failures = [];
+
 async function assertRouteResponds(path, init, acceptedStatuses, label) {
-  const response = await fetch(base + path, init);
-  const body = await response.text();
-  if (response.status === 404) {
-    throw new Error(`${label}: route returned 404 (deployment may be stale or route is not mounted)`);
+  try {
+    const response = await fetch(base + path, init);
+    const body = await response.text();
+    if (response.status === 404) {
+      failures.push(`${label}: HTTP 404 (deployment may be stale or route is not mounted)`);
+      console.error(`FAIL ${label}: HTTP 404`);
+      return;
+    }
+    if (!acceptedStatuses.includes(response.status)) {
+      failures.push(`${label}: expected HTTP ${acceptedStatuses.join(" or ")}, got ${response.status}: ${body.slice(0, 240)}`);
+      console.error(`FAIL ${label}: HTTP ${response.status}`);
+      return;
+    }
+    console.log(`PASS ${label}: HTTP ${response.status}`);
+  } catch (error) {
+    failures.push(`${label}: request failed: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`FAIL ${label}: request failed`);
   }
-  if (!acceptedStatuses.includes(response.status)) {
-    throw new Error(`${label}: expected HTTP ${acceptedStatuses.join(" or ")}, got ${response.status}: ${body.slice(0, 240)}`);
-  }
-  console.log(`PASS ${label}: HTTP ${response.status}`);
 }
 
 await assertRouteResponds(
@@ -29,11 +40,17 @@ await assertRouteResponds(
   "API health check is reachable and database connectivity is healthy",
 );
 
-const unknownRoute = await fetch(base + "/api/__api_404_repair_unknown_route__");
-if (unknownRoute.status !== 404) {
-  throw new Error(`Unknown API route should return HTTP 404, got ${unknownRoute.status}`);
+try {
+  const unknownRoute = await fetch(base + "/api/__api_404_repair_unknown_route__");
+  if (unknownRoute.status !== 404) {
+    failures.push(`Unknown API route should return HTTP 404, got ${unknownRoute.status}`);
+    console.error(`FAIL unknown API route: HTTP ${unknownRoute.status}`);
+  } else {
+    console.log("PASS unknown API routes return HTTP 404");
+  }
+} catch (error) {
+  failures.push(`Unknown API route probe failed: ${error instanceof Error ? error.message : String(error)}`);
 }
-console.log("PASS unknown API routes return HTTP 404");
 
 await assertRouteResponds(
   "/api/users/me/cover",
@@ -106,4 +123,8 @@ await assertRouteResponds(
   "Google sign-in route is mounted and rejects invalid/missing credentials",
 );
 
+if (failures.length) {
+  console.error("ROUTE_SMOKE_FAILURES:", JSON.stringify(failures, null, 2));
+  throw new Error(`${failures.length} API route smoke check(s) failed against ${base}`);
+}
 console.log("Post-merge route smoke checks passed. These checks do not prove inbox delivery or successful authenticated media uploads.");
