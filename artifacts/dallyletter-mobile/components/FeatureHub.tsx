@@ -161,6 +161,7 @@ export default function FeatureHub() {
   const [achievementTab, setAchievementTab] = useState<"badges" | "leaderboard" | "all">("badges");
   const [queuedSubmissions, setQueuedSubmissions] = useState<QueuedSubmission[]>([]);
   const [queueBusy, setQueueBusy] = useState(false);
+  const [managerPermissions, setManagerPermissions] = useState<Record<string, boolean>>({});
   const queryClient = useQueryClient();
   const { data: notifications, refetch: refetchNotifications } = useListNotifications({ query: { queryKey: getListNotificationsQueryKey(), refetchInterval: section === "notifications" ? 30000 : false, refetchOnWindowFocus: true } });
   const markRead = useMarkNotificationRead();
@@ -169,11 +170,12 @@ export default function FeatureHub() {
 
   const role = String(user?.role ?? "guest").toLowerCase().replace(/[ -]+/g, "_");
   const isStudent = role === "student" || role === "prefect";
-  const managerRole = ["manager", "senior_manager"].includes(role) || Boolean((user as any)?.isManager);
-  const visibleSections = sections.filter(item => (item.id !== "achievements" || isStudent) && (item.id !== "prefect" || Boolean((user as any)?.isPrefect)) && (item.id !== "reports" || isStudent) && (item.id !== "audit" || ["owner","admin","platform_owner"].includes(role) || managerRole));
+  const managerRole = ["manager", "senior_manager", "junior_manager"].includes(role) || Boolean((user as any)?.isManager);
+  const canManagerPermission = (key: string) => ["owner", "platform_owner"].includes(role) || managerPermissions[key] === true;
+  const visibleSections = sections.filter(item => (item.id !== "achievements" || isStudent) && (item.id !== "prefect" || Boolean((user as any)?.isPrefect)) && (item.id !== "reports" || isStudent) && (item.id !== "audit" || canManagerPermission("audit.view_subordinate")));
   const isTeacher = role === "teacher";
   const canManageExercises = isTeacher || ["owner","admin","platform_owner"].includes(role) || Boolean((user as any)?.isManager);
-  const canCreateGroups = isTeacher || Boolean((user as any)?.isPrefect || (user as any)?.isManager) || ["owner", "admin", "platform_owner"].includes(role);
+  const canCreateGroups = isTeacher || Boolean((user as any)?.isPrefect) || canManagerPermission("groups.manage") || ["admin"].includes(role);
   const exerciseLocked = Boolean(exerciseResult?.submission?.status) && !newAttempt;
 
   const styles = StyleSheet.create({
@@ -210,6 +212,17 @@ export default function FeatureHub() {
     if (!response.ok) throw new Error(payload?.error || payload?.message || `Request failed (${response.status})`);
     return payload;
   }, [token]);
+
+  useEffect(() => {
+    let active = true;
+    if (!managerRole || !token) { setManagerPermissions({}); return () => { active = false; }; }
+    void request("/api/manager-permissions/me").then((result: any) => {
+      if (active) setManagerPermissions(result?.isOwner ? { "*": true } : (result?.permissions ?? {}));
+    }).catch(() => { if (active) setManagerPermissions({}); });
+    return () => { active = false; };
+  }, [request, managerRole, token]);
+
+
 
   const saveLearningItemOffline = useCallback(async () => {
     if (!user?.id || !section || !selected || !["assignments", "exercises", "polls"].includes(section)) return;
@@ -919,7 +932,7 @@ export default function FeatureHub() {
     finally { setChatLoading(false); }
   };
 
-  const canManageSelectedGroup = Boolean(selectedChatGroup && (selectedChatGroup.creatorId === user?.id || (user as any)?.isManager || ["owner", "admin", "platform_owner"].includes(role)));
+  const canManageSelectedGroup = Boolean(selectedChatGroup && (selectedChatGroup.creatorId === user?.id || canManagerPermission("groups.manage") || ["admin"].includes(role)));
 
   const loadGroupSettings = async () => {
     if (!selectedChatGroup || !canManageSelectedGroup) return;
@@ -1123,7 +1136,7 @@ export default function FeatureHub() {
     if (!url) return;
     if (/^https?:\/\//i.test(url)) { void Linking.openURL(url); return; }
     if (/^\/(student|teacher|admin)\//i.test(url)) {
-      router.push((["manager","senior_manager"].includes(role) || Boolean((user as any)?.isManager) ? "/(manager)/more" : role === "teacher" ? "/(teacher)/more" : ["student","prefect"].includes(role) ? "/(student)/more" : "/(admin)/more") as any);
+      router.push((["manager","senior_manager","junior_manager"].includes(role) || Boolean((user as any)?.isManager) ? "/(manager)/more" : role === "teacher" ? "/(teacher)/more" : ["student","prefect"].includes(role) ? "/(student)/more" : "/(admin)/more") as any);
       return;
     }
     if (/^\/api\/(?:lessons|messages|assignments)\/.*media/i.test(url)) {
