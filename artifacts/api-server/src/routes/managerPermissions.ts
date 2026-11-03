@@ -52,6 +52,7 @@ export const MANAGER_PERMISSION_CATALOG = [
   { key: "lessons.notify", group: "Learning content", label: "Notify lesson followers", description: "Send lesson updates to opted-in followers for permitted teachers." },
   { key: "polls.manage", group: "Learning content", label: "Create and manage polls", description: "Create, generate, edit and delete school polls." },
   { key: "messages.send", group: "Communications", label: "Send private messages to subordinates", description: "Use the existing private messaging system with eligible subordinate accounts." },
+  { key: "content.view_comments", group: "Moderation", label: "View teacher content comments", description: "Read existing manager comments on subordinate educational content." },
   { key: "content.comment", group: "Moderation", label: "Comment on teacher work", description: "Leave an auditable manager comment on eligible teacher content." },
   { key: "notifications.broadcast", group: "Communications", label: "Send broadcasts", description: "Send school-scoped broadcast messages to selected recipients." },
   { key: "notifications.view", group: "Communications", label: "View manager notifications", description: "View alerts and workflow notifications available to this manager." },
