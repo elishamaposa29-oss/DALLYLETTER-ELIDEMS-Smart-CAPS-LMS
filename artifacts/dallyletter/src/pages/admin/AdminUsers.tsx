@@ -106,6 +106,8 @@ export default function AdminUsers() {
               <SelectItem value="all">All Roles</SelectItem>
               <SelectItem value="student">Students</SelectItem>
               <SelectItem value="teacher">Teachers</SelectItem>
+              <SelectItem value="junior_manager">Junior Managers</SelectItem>
+              <SelectItem value="senior_manager">Senior Managers</SelectItem>
               <SelectItem value="admin">Admins</SelectItem>
             </SelectContent>
           </Select>
