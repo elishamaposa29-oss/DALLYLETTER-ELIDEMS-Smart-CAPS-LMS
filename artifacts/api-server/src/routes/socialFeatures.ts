@@ -3,7 +3,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { db, followsTable, notificationPreferencesTable, notificationsTable, usersTable, lessonsTable, contentCommentsTable, moderationActionsTable, auditLogsTable, chatPollsTable, chatPollOptionsTable, chatPollVotesTable, broadcastsTable, broadcastRecipientsTable, communitiesTable, communityGroupsTable, messagesTable, studyGroupMembersTable, studyGroupsTable, groupSettingsTable } from "@workspace/db";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { canModerateUser, normalizeRole } from "../lib/role-access";
-import { managerHasPermission } from "../lib/manager-permission-policy";
+import { managerHasPermission, requireManagerPermission } from "../lib/manager-permission-policy";
 
 const router = Router();
 const manager = (u:any) => canAccessManager(u);
@@ -35,7 +35,7 @@ router.patch("/notification-preferences", requireAuth, async(req,res)=>{
 });
 
 router.get("/content-comments/:contentType/:contentId", requireAuth, async(req,res)=>{const rows=await db.select().from(contentCommentsTable).where(and(eq(contentCommentsTable.contentType,String(req.params.contentType)),eq(contentCommentsTable.contentId,Number(req.params.contentId)))).orderBy(desc(contentCommentsTable.createdAt));res.json(rows);});
-router.post("/content-comments", requireAuth, async(req,res):Promise<void>=>{
+router.post("/content-comments", requireAuth, requireManagerPermission("content.comment"), async(req,res):Promise<void>=>{
  const {contentType,contentId,body}=req.body??{}; if(!["lesson","exercise","assignment","activity"].includes(contentType)||!Number.isInteger(Number(contentId))||typeof body!=="string"||!body.trim()){res.status(400).json({error:"contentType, contentId and body are required"});return;}
  if(!manager(req.currentUser)){res.status(403).json({error:"Staff access required"});return;}
  const [row]=await db.insert(contentCommentsTable).values({authorId:req.currentUser!.id,contentType,contentId:Number(contentId),body:body.trim().slice(0,4000)}).returning();
