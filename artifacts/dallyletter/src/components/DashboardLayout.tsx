@@ -236,7 +236,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     ];
   }
 
-  const homeHref = ["student","prefect"].includes(normalizedRole) ? "/" : normalizedRole === "teacher" ? "/teacher" : ["manager","senior_manager"].includes(normalizedRole) ? "/manager" : "/admin";
+  const homeHref = ["student","prefect"].includes(normalizedRole) ? "/" : normalizedRole === "teacher" ? "/teacher" : ["manager","senior_manager","junior_manager"].includes(normalizedRole) ? "/manager" : "/admin";
 
   const NavLinks = ({ onNav }: { onNav?: () => void }) => {
     let lastSection: string | undefined;
