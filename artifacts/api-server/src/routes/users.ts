@@ -20,6 +20,7 @@ import { enqueueEmailNotification } from "../lib/email-notification-queue";
 import { buildTeacherCvPdf } from "../lib/teacher-cv-pdf";
 import { canViewProfileSection } from "./profileConnections";
 import { isSeniorManager } from "../lib/role-access";
+import { requireManagerPermission } from "../lib/manager-permission-policy";
 
 const router: IRouter = Router();
 
@@ -801,7 +802,7 @@ router.post("/users/me/qualifications", requireAuth, async (req, res): Promise<v
 
 
 // Owner-only moderation queue for qualifications awaiting verification.
-router.get("/qualifications/pending", requireAuth, async(req,res):Promise<void>=>{
+router.get("/qualifications/pending", requireAuth, requireManagerPermission("qualifications.view"), async(req,res):Promise<void>=>{
   if(!canReviewTeacherApplication(req.currentUser!)){res.status(403).json({error:"Owner or Senior Manager access required."});return;}
   const result=await pool.query("SELECT q.id,q.user_id,u.name AS teacher_name,q.title,q.institution,q.year,q.verification_status,q.document_id,d.file_name AS document_file_name,d.mime_type AS document_mime_type,q.created_at FROM teacher_qualifications q JOIN users u ON u.id=q.user_id LEFT JOIN teacher_documents d ON d.id=q.document_id WHERE q.verification_status='pending' ORDER BY q.created_at ASC");
   res.json(result.rows);
@@ -869,7 +870,7 @@ router.post("/qualifications/:id/document", requireAuth, (req,res,next):void => 
   });
 });
 
-router.patch("/qualifications/:id/verify", requireAuth, async(req,res):Promise<void>=>{
+router.patch("/qualifications/:id/verify", requireAuth, requireManagerPermission("qualifications.verify"), async(req,res):Promise<void>=>{
   const reviewer=req.currentUser!;
   if(!canReviewTeacherApplication(reviewer)){res.status(403).json({error:"Owner or Senior Manager access required."});return;}
   const id=Number(req.params.id);
