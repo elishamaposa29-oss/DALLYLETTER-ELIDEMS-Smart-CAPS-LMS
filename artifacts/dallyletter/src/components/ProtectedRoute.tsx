@@ -45,7 +45,7 @@ export function ProtectedRoute({
   const hasAllowedRole =
     !allowedRoles ||
     (role !== undefined &&
-      (allowedRoles.includes(role) || (["admin","platform_owner"].includes(role) && allowedRoles.includes("owner")) || (allowManagerStaff && role === "teacher" && user?.isManager === true) || (role === "junior_manager" && allowedRoles.some(value => ["manager","senior_manager"].includes(value)))));
+      (allowedRoles.includes(role) || (["platform_owner"].includes(role) && allowedRoles.includes("owner")) || (allowManagerStaff && role === "teacher" && user?.isManager === true) || (role === "junior_manager" && allowedRoles.some(value => ["manager","senior_manager"].includes(value)))));
 
   if (isLoading || !user || !hasAllowedRole || user.isBlocked || (pendingTeacher && !pendingTeacherAllowed)) {
     return (
