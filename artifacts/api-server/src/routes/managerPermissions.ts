@@ -98,14 +98,14 @@ router.get("/me", requireAuth, async (req, res): Promise<void> => {
   // Resolve role and manager level from PostgreSQL on every read so role changes
   // are reflected immediately instead of trusting stale JWT role claims.
   const accountResult = await pool.query(
-    "SELECT role,is_manager,manager_level FROM users WHERE id=$1 LIMIT 1",
+    "SELECT role,is_manager,manager_level,teacher_application_status FROM users WHERE id=$1 LIMIT 1",
     [user.id],
   );
-  const account = accountResult.rows[0] as { role: string; is_manager: boolean; manager_level: string | null } | undefined;
+  const account = accountResult.rows[0] as { role: string; is_manager: boolean; manager_level: string | null; teacher_application_status: string | null } | undefined;
   if (!account) { res.status(401).json({ error: "Account no longer exists" }); return; }
   const currentRole = normalizeRole(account.role);
   const isOwner = isOwnerRole(currentRole);
-  const isManager = managerRoles.has(currentRole) || (currentRole === "teacher" && account.is_manager === true);
+  const isManager = managerRoles.has(currentRole) || (currentRole === "teacher" && account.is_manager === true && account.teacher_application_status !== "pending_review");
   if (!isOwner && !isManager) {
     res.status(403).json({ error: "Manager access required" });
     return;
@@ -113,7 +113,7 @@ router.get("/me", requireAuth, async (req, res): Promise<void> => {
   const result = isOwner
     ? { rows: [] as Array<{ permission_key: string; granted: boolean }> }
     : await pool.query("SELECT permission_key, granted FROM manager_permission_grants WHERE manager_user_id=$1", [user.id]);
-  const senior = isSeniorManager({ role: currentRole, managerLevel: account.manager_level ?? undefined, isManager: account.is_manager });
+  const senior = isSeniorManager({ role: currentRole, managerLevel: account.manager_level ?? undefined, isManager: account.is_manager, teacherApplicationStatus: account.teacher_application_status ?? undefined });
   const permissions = Object.fromEntries(MANAGER_PERMISSION_CATALOG.map((p) => [p.key, senior]));
   for (const row of result.rows) if (allowedKeys.has(row.permission_key)) permissions[row.permission_key] = row.granted === true;
   res.setHeader("Cache-Control", "no-store");
