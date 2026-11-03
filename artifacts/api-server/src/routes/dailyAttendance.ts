@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { requireManagerPermissionIfManager, requireManagerPermission } from "../lib/manager-permission-policy";
 import { pool } from "@workspace/db";
 import { canManageAcademicContent, requireAuth } from "../lib/auth-middleware";
 import { canViewProfileSection } from "./profileConnections";
@@ -95,7 +96,7 @@ router.get("/me", requireAuth, async (req, res): Promise<void> => {
 
 // Staff can review daily access for all account roles. A missing record for the
 // current local date is "pending", never falsely presented as confirmed absence.
-router.get("/user/:userId", requireAuth, async (req, res): Promise<void> => {
+router.get("/user/:userId", requireAuth, requireManagerPermissionIfManager("attendance.view"), async (req, res): Promise<void> => {
   const targetId=Number(req.params.userId);
   if(!Number.isSafeInteger(targetId)||targetId<=0){res.status(400).json({error:"Invalid user id."});return;}
   if(!(await canViewProfileSection(req.currentUser!,targetId,"register"))){res.status(403).json({error:"Daily register visibility is restricted by this profile's privacy settings."});return;}
@@ -108,7 +109,7 @@ router.get("/user/:userId", requireAuth, async (req, res): Promise<void> => {
   res.json({records:result.rows});
 });
 
-router.get("/today", requireAuth, async (req, res): Promise<void> => {
+router.get("/today", requireAuth, requireManagerPermission("attendance.view"), async (req, res): Promise<void> => {
   const user = req.currentUser;
   if (!user) { res.status(401).json({ error: "Authentication required" }); return; }
   if (!canManageAcademicContent(user)) {
