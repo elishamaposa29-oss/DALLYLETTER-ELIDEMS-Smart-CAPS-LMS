@@ -4,7 +4,7 @@ import { usersTable, classesTable, lessonsTable, paymentsTable, ownerAlertsTable
 import { eq, desc, and, inArray } from "drizzle-orm";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { isSeniorManager } from "../lib/role-access";
-import { requireManagerPermission } from "../lib/manager-permission-policy";
+import { requireManagerPermission, managerHasPermission } from "../lib/manager-permission-policy";
 
 const router = Router();
 const managerVisibleAlertCategories = ["academic", "attendance", "content", "student", "teacher", "moderation", "general"];
@@ -78,17 +78,36 @@ router.get("/dashboard", requireAuth, requireManager, requireManagerPermission("
 
   const totalMarkedAssignments = assignmentSubmissions.filter((s: any) => s.gradedAt || s.gradedBy || s.marks !== null).length;
   const totalMarkedExercises = exerciseSubmissions.filter((s: any) => s.markedAt || s.returnedAt || ["marked","returned","graded"].includes(String(s.status).toLowerCase())).length;
+  const [canViewUsers, canViewRecordBook, canViewTransfers, canViewReports, canViewAchievements, canViewQualifications, canViewModeration, canViewTeacherCv, canViewNotifications] = await Promise.all([
+    managerHasPermission(req.currentUser!, "users.view"),
+    managerHasPermission(req.currentUser!, "recordbook.view"),
+    managerHasPermission(req.currentUser!, "transfers.view"),
+    managerHasPermission(req.currentUser!, "reports.view"),
+    managerHasPermission(req.currentUser!, "achievements.view"),
+    managerHasPermission(req.currentUser!, "qualifications.view"),
+    managerHasPermission(req.currentUser!, "moderation.view"),
+    managerHasPermission(req.currentUser!, "teacher_cv.view"),
+    managerHasPermission(req.currentUser!, "notifications.view"),
+  ]);
+  const permittedQueue = reviewQueue.filter((item: any) => {
+    const access: Record<string, boolean> = {
+      transfer_request: canViewTransfers, academic_report: canViewReports, achievement_award: canViewAchievements,
+      qualification_verification: canViewQualifications, content_moderation: canViewModeration,
+      teacher_application: canViewTeacherCv, alert: canViewNotifications,
+    };
+    return access[item.type] === true;
+  });
   res.json({
-    stats: { teachers: activeTeachers.length, students: students.length, classes: allClasses.length, lessons: lessons.length },
-    recentClasses: classes.slice(0, 10),
-    recentLessons: lessons.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10),
-    openAlerts: reviewQueue.slice(0, 12),
-    reviewQueue,
-    reviewCounts: { transferRequests: transferRows.rows.length, performanceReports: reportRows.rows.length, awardRecommendations: awardRows.rows.length, qualificationVerifications: qualificationRows.rows.length, contentFlags: contentFlags.length, teacherApplications: teacherApplications.rows.length, alerts: alerts.length },
-    recentAssignments: assignments.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10),
-    topTeachers: teacherRanks,
-    markingStats: { markedAssignments: totalMarkedAssignments, markedExercises: totalMarkedExercises },
-    topLearners: students.map((student: any) => {
+    stats: { teachers: canViewUsers ? activeTeachers.length : null, students: canViewUsers ? students.length : null, classes: canViewRecordBook ? allClasses.length : null, lessons: canViewRecordBook ? lessons.length : null },
+    recentClasses: canViewRecordBook ? classes.slice(0, 10) : [],
+    recentLessons: canViewRecordBook ? lessons.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10) : [],
+    openAlerts: permittedQueue.slice(0, 12),
+    reviewQueue: permittedQueue,
+    reviewCounts: { transferRequests: canViewTransfers ? transferRows.rows.length : 0, performanceReports: canViewReports ? reportRows.rows.length : 0, awardRecommendations: canViewAchievements ? awardRows.rows.length : 0, qualificationVerifications: canViewQualifications ? qualificationRows.rows.length : 0, contentFlags: canViewModeration ? contentFlags.length : 0, teacherApplications: canViewTeacherCv ? teacherApplications.rows.length : 0, alerts: canViewNotifications ? alerts.length : 0 },
+    recentAssignments: canViewRecordBook ? assignments.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10) : [],
+    topTeachers: canViewUsers ? teacherRanks : [],
+    markingStats: canViewRecordBook ? { markedAssignments: totalMarkedAssignments, markedExercises: totalMarkedExercises } : null,
+    topLearners: canViewUsers ? students.map((student: any) => {
       const submissions = exerciseSubmissions.filter((s: any) => s.learnerId === student.id);
       const learnerAssignmentSubmissions = assignmentSubmissions.filter((s: any) => s.studentId === student.id);
       const awards = learnerAwards.filter((a: any) => a.userId === student.id).length;
@@ -104,7 +123,7 @@ router.get("/dashboard", requireAuth, requireManager, requireManagerPermission("
       const assignmentCount = learnerAssignmentSubmissions.length;
       const activityScore = submissions.length + assignmentCount + awards * 2 + Number(student.performanceScore ?? 0) + (averageMarkPercentage ?? 0);
       return { id: student.id, name: student.name, grade: student.grade, performanceScore: student.performanceScore ?? 0, badgeCount: awards, exerciseSubmissions: submissions.length, assignmentSubmissions: assignmentCount, averageMarkPercentage, activityScore };
-    }).sort((a: any,b: any) => b.activityScore-a.activityScore).slice(0,5),
+    }).sort((a: any,b: any) => b.activityScore-a.activityScore).slice(0,5) : [],
   });
 });
 
