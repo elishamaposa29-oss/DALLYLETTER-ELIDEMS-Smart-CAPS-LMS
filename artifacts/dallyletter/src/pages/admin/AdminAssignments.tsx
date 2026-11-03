@@ -169,7 +169,7 @@ export default function AdminAssignments() {
                     <div className="flex items-center gap-2">
                       {canEditAssignments && <Button size="sm" variant="outline" onClick={() => { setEditingId(a.id); setForm({ title: a.title, description: a.description ?? "", subject: a.subject, grade: a.grade ?? "", dueDate: a.dueDate, totalMarks: String(a.totalMarks), attachmentUrl: a.attachmentUrl ?? "" }); setOpen(true); }}>
                         Edit
-                      </Button>
+                      </Button>}
                       {canEditAssignments && <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-600 h-8 w-8 p-0" onClick={() => del(a.id)}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
