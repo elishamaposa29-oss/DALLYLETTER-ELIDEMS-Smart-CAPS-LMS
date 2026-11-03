@@ -4,6 +4,7 @@ import { usersTable, classesTable, lessonsTable, paymentsTable, ownerAlertsTable
 import { eq, desc, and, inArray } from "drizzle-orm";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { isSeniorManager } from "../lib/role-access";
+import { requireManagerPermission } from "../lib/manager-permission-policy";
 
 const router = Router();
 const managerVisibleAlertCategories = ["academic", "attendance", "content", "student", "teacher", "moderation", "general"];
@@ -16,7 +17,7 @@ function requireManager(req: any, res: any, next: any) {
   next();
 }
 
-router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
+router.get("/dashboard", requireAuth, requireManager, requireManagerPermission("manager.dashboard.view"), async (req, res) => {
   const [teachers, students, classes, lessons, alerts, assignments, exercises, exerciseSubmissions, assignmentSubmissions, allClasses, learnerAwards] = await Promise.all([
     db.select({ id: usersTable.id, name: usersTable.name, subject: usersTable.subject, performanceScore: usersTable.performanceScore, isManager: usersTable.isManager, isBlocked: usersTable.isBlocked, isSuspended: usersTable.isSuspended })
       .from(usersTable).where(eq(usersTable.role, "teacher")),
@@ -107,7 +108,7 @@ router.get("/dashboard", requireAuth, requireManager, async (req, res) => {
   });
 });
 
-router.get("/teachers", requireAuth, requireManager, async (req, res) => {
+router.get("/teachers", requireAuth, requireManager, requireManagerPermission("users.view"), async (req, res) => {
   const [teachers, lessonCounts, classCounts, assignments, exercises, assignmentSubmissions, exerciseSubmissions, enrollments, alerts] = await Promise.all([
     db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email, subject: usersTable.subject, performanceScore: usersTable.performanceScore, badgeCount: usersTable.badgeCount, createdAt: usersTable.createdAt, isManager: usersTable.isManager, isBlocked: usersTable.isBlocked, isSuspended: usersTable.isSuspended }).from(usersTable).where(eq(usersTable.role, "teacher")),
     db.select().from(lessonsTable),
@@ -141,7 +142,7 @@ router.get("/teachers", requireAuth, requireManager, async (req, res) => {
   res.json(ranked);
 });
 
-router.get("/students", requireAuth, requireManager, async (req, res) => {
+router.get("/students", requireAuth, requireManager, requireManagerPermission("users.view"), async (req, res) => {
   const students = await db.select({
     id: usersTable.id, name: usersTable.name, email: usersTable.email,
     grade: usersTable.grade, isPrefect: usersTable.isPrefect,
@@ -168,13 +169,13 @@ router.get("/students", requireAuth, requireManager, async (req, res) => {
   }));
 });
 
-router.get("/prefects", requireAuth, requireManager, async (req, res) => {
+router.get("/prefects", requireAuth, requireManager, requireManagerPermission("users.view"), async (req, res) => {
   const prefects = await db.select().from(usersTable)
     .where(and(eq(usersTable.role, "student"), eq(usersTable.isPrefect, true)));
   res.json(prefects);
 });
 
-router.put("/teacher/:id/score", requireAuth, requireManager, async (req, res): Promise<void> => {
+router.put("/teacher/:id/score", requireAuth, requireManager, requireManagerPermission("users.override.teacher"), async (req, res): Promise<void> => {
   const targetId = Number(req.params.id);
   const performanceScore = Number(req.body?.performanceScore);
   if (!Number.isSafeInteger(targetId) || targetId < 1) { res.status(400).json({ error: "Invalid teacher ID." }); return; }
@@ -193,7 +194,7 @@ router.put("/teacher/:id/score", requireAuth, requireManager, async (req, res): 
   res.json(row);
 });
 
-router.get("/users/:id/activity", requireAuth, requireManager, async (req, res): Promise<void> => {
+router.get("/users/:id/activity", requireAuth, requireManager, requireManagerPermission("audit.view_subordinate"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid user id" }); return; }
   const [target] = await db.select({
@@ -231,7 +232,7 @@ router.get("/users/:id/activity", requireAuth, requireManager, async (req, res):
   res.json({ user: target, activities: audit, learning: { attendance, achievements, exerciseResults, pollResults, leaderboardPosition }, counts: { attendance: attendance.length, achievements: achievements.length, exerciseResults: exerciseResults.length, pollResults: pollResults.length } });
 });
 
-router.get("/reports/overview", requireAuth, requireManager, async (req, res) => {
+router.get("/reports/overview", requireAuth, requireManager, requireManagerPermission("reports.view"), async (req, res) => {
   const [users, payments, lessons, classes, assignments, exercises, assignmentSubmissions, exerciseSubmissions, awards, attendance, alerts, pendingFlags] = await Promise.all([
     db.select({ id: usersTable.id, role: usersTable.role, isManager: usersTable.isManager, isPrefect: usersTable.isPrefect }).from(usersTable),
     db.select().from(paymentsTable),
