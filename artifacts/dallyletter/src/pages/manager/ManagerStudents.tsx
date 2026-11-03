@@ -126,6 +126,7 @@ export default function ManagerStudents() {
                       {can("users.block") && <Button size="sm" variant="outline" onClick={() => void action(s.id, "block")} disabled={busy === s.id}><Ban className="mr-1.5 h-3.5 w-3.5" />Block</Button>}
                     </>}
                     {can("users.override.prefect") && !s.isPrefect && <Button size="sm" variant="outline" onClick={() => void action(s.id, "promote_prefect")} disabled={busy === s.id}><Shield className="mr-1.5 h-3.5 w-3.5" />Make prefect</Button>}
+                      {can("users.override.prefect") && s.isPrefect && <Button size="sm" variant="outline" onClick={() => void action(s.id, "remove_prefect")} disabled={busy === s.id}><Shield className="mr-1.5 h-3.5 w-3.5" />Remove prefect</Button>}
                     {can("audit.view_subordinate") && <Button size="sm" variant="outline" onClick={() => void openMonitor(s)}><ExternalLink className="mr-1.5 h-3.5 w-3.5" />Monitor</Button>}{can("messages.send") && <Button size="sm" variant="outline" onClick={() => window.location.assign("/manager/chat")}><MessageSquare className="mr-1.5 h-3.5 w-3.5" />Open Connect</Button>}
                   </div>
                 </CardContent>
