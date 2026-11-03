@@ -45,6 +45,7 @@ export const MANAGER_PERMISSION_CATALOG = [
   { key: "moderation.view", group: "Moderation", label: "View moderation queue", description: "Review school-scoped content flags." },
   { key: "moderation.action", group: "Moderation", label: "Take moderation action", description: "Resolve eligible content moderation cases." },
   { key: "notifications.create", group: "Communications", label: "Send notifications", description: "Create school-scoped notifications for permitted recipients." },
+  { key: "classes.manage", group: "Learning content", label: "Create and manage live classes", description: "Schedule, edit and cancel classes owned by teachers below your manager authority." },
   { key: "lessons.create", group: "Learning content", label: "Create lessons", description: "Create lesson content and upload lesson media." },
   { key: "lessons.edit", group: "Learning content", label: "Edit subordinate lessons", description: "Edit lesson content owned by teachers below your manager authority." },
   { key: "lessons.delete", group: "Learning content", label: "Delete subordinate lessons", description: "Delete lesson content owned by teachers below your manager authority." },
