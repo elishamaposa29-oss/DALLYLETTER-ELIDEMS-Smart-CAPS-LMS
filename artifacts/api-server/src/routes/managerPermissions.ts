@@ -104,26 +104,65 @@ router.patch("/:userId/role", requireAuth, ownerOnly, async (req, res): Promise<
     res.status(400).json({ error: "Provide a valid user ID and role: junior_manager, senior_manager or teacher." });
     return;
   }
-  const targetResult = await pool.query("SELECT id,name,role FROM users WHERE id=$1", [userId]);
-  const target = targetResult.rows[0] as { id: number; name: string; role: string } | undefined;
-  if (!target) { res.status(404).json({ error: "User not found" }); return; }
-  if (isOwnerRole(target.role) || normalizeRole(target.role) === "admin") {
-    res.status(403).json({ error: "Owner and Admin roles cannot be changed through manager assignment." });
-    return;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const selected = await client.query("SELECT id,name,role FROM users WHERE id=$1 FOR UPDATE", [userId]);
+    const target = selected.rows[0] as { id: number; name: string; role: string } | undefined;
+    if (!target) { await client.query("ROLLBACK"); res.status(404).json({ error: "User not found" }); return; }
+    const previousRole = normalizeRole(target.role);
+    if (isOwnerRole(previousRole) || previousRole === "admin") {
+      await client.query("ROLLBACK");
+      res.status(403).json({ error: "Owner and Admin roles cannot be changed through manager assignment." });
+      return;
+    }
+    if (nextRole === "teacher") {
+      if (!managerRoles.has(previousRole)) {
+        await client.query("ROLLBACK");
+        res.status(409).json({ error: "This account is not currently a manager." });
+        return;
+      }
+      const savedRole = await client.query("SELECT original_role FROM manager_role_assignments WHERE manager_user_id=$1", [userId]);
+      const restoredRole = savedRole.rows[0]?.original_role || "teacher";
+      await client.query("UPDATE users SET role=$2,is_manager=false,manager_level='junior',updated_at=now() WHERE id=$1", [userId, restoredRole]);
+      await client.query("DELETE FROM manager_role_assignments WHERE manager_user_id=$1", [userId]);
+      const currentGrants = await client.query("SELECT permission_key,granted FROM manager_permission_grants WHERE manager_user_id=$1 AND granted=true FOR UPDATE", [userId]);
+      for (const grant of currentGrants.rows) {
+        await client.query("UPDATE manager_permission_grants SET granted=false,changed_by=$2,changed_at=now() WHERE manager_user_id=$1 AND permission_key=$3", [userId, req.currentUser!.id, grant.permission_key]);
+        await client.query("INSERT INTO manager_permission_history (manager_user_id,permission_key,previous_granted,granted,changed_by) VALUES ($1,$2,true,false,$3)", [userId, grant.permission_key, req.currentUser!.id]);
+      }
+      await client.query(
+        "INSERT INTO audit_logs (action,category,performed_by,target_type,target_id,details) VALUES ($1,'security',$2,'user',$3,$4)",
+        ["Removed manager role and revoked all grants", req.currentUser!.id, userId, JSON.stringify({ previousRole, restoredRole, revokedPermissions: currentGrants.rows.map((r: any) => r.permission_key) })],
+      );
+      await client.query("COMMIT");
+      res.json({ updated: true, userId, role: restoredRole, name: target.name, revokedPermissions: currentGrants.rows.length });
+      return;
+    }
+    if (!managerRoles.has(previousRole)) {
+      if (!["teacher", "student", "learner", "prefect"].includes(previousRole)) {
+        await client.query("ROLLBACK");
+        res.status(409).json({ error: "This account type cannot be promoted to manager." });
+        return;
+      }
+      await client.query(
+        "INSERT INTO manager_role_assignments (manager_user_id,original_role,assigned_by) VALUES ($1,$2,$3) ON CONFLICT (manager_user_id) DO NOTHING",
+        [userId, previousRole, req.currentUser!.id],
+      );
+    }
+    await client.query("UPDATE users SET role=$2,is_manager=false,manager_level=$3,updated_at=now() WHERE id=$1", [userId, nextRole, nextRole === "senior_manager" ? "senior" : "junior"]);
+    await client.query(
+      "INSERT INTO audit_logs (action,category,performed_by,target_type,target_id,details) VALUES ($1,'security',$2,'user',$3,$4)",
+      ["Assigned " + nextRole, req.currentUser!.id, userId, JSON.stringify({ previousRole, nextRole })],
+    );
+    await client.query("COMMIT");
+    res.json({ updated: true, userId, role: nextRole, name: target.name });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
   }
-  if (nextRole === "teacher" && !managerRoles.has(normalizeRole(target.role)) && normalizeRole(target.role) !== "teacher") {
-    res.status(409).json({ error: "Only a teacher or manager account can be demoted through this control." });
-    return;
-  }
-  await pool.query(
-    "UPDATE users SET role=$2,is_manager=false,manager_level=$3,updated_at=now() WHERE id=$1",
-    [userId, nextRole, nextRole === "senior_manager" ? "senior" : "junior"],
-  );
-  await pool.query(
-    "INSERT INTO audit_logs (action,category,performed_by,target_type,target_id,details) VALUES ($1,'security',$2,'user',$3,$4)",
-    [nextRole === "teacher" ? "Removed manager role" : "Assigned " + nextRole, req.currentUser!.id, userId, JSON.stringify({ previousRole: target.role, nextRole })],
-  );
-  res.json({ updated: true, userId, role: nextRole, name: target.name });
 });
 
 router.get("/:userId", requireAuth, ownerOnly, async (req, res): Promise<void> => {
