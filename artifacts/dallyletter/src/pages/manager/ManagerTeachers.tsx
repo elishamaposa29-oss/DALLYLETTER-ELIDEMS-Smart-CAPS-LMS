@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { GraduationCap, BookOpen, Video, Star, TrendingUp, ExternalLink, MessageSquare, Bell, Loader2 } from "lucide-react";
+import { GraduationCap, BookOpen, Video, Star, TrendingUp, ExternalLink, MessageSquare, Bell, Loader2, Ban, UserX, UserCheck, AlertTriangle } from "lucide-react";
 
 const token = () => localStorage.getItem("dallyletter_token") ?? "";
 
@@ -22,6 +22,7 @@ export default function ManagerTeachers() {
   const [activityLoading, setActivityLoading] = useState(false);
   const [comment, setComment] = useState("");
   const [sending, setSending] = useState(false);
+  const [busy,setBusy]=useState<number|null>(null);
 
   useEffect(() => {
     fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()).then(d => { setPermissions(d?.permissions ?? {}); setIsOwner(Boolean(d?.isOwner)); }).catch(() => undefined);
@@ -29,6 +30,18 @@ export default function ManagerTeachers() {
       .then(r => r.json()).then(d => { setTeachers(Array.isArray(d) ? d : []); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
+
+  const action=async(id:number,actionName:string)=>{
+    const note=["block","suspend"].includes(actionName)?window.prompt(`Enter the reason to ${actionName} this teacher (at least 3 characters):`):null;
+    if(["block","suspend"].includes(actionName)&&(!note||note.trim().length<3)){window.alert("A clear reason of at least 3 characters is required.");return;}
+    setBusy(id);
+    try{
+      const endpoint=actionName==="unblock"?`/api/manager/users/${id}/unblock`:`/api/manager/users/${id}/action`;
+      const r=await fetch(getApiUrl(endpoint),{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token()}`},body:JSON.stringify(actionName==="unblock"?{}:{action:actionName,...(note?{note:note.trim()}: {})})});
+      const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(data.error||"Action failed.");
+      const refreshed=await fetch(getApiUrl("/api/manager/teachers"),{headers:{Authorization:`Bearer ${token()}`}});if(refreshed.ok){const next=await refreshed.json().catch(()=>[]);setTeachers(Array.isArray(next)?next:[]);}
+    }catch(e){window.alert(e instanceof Error?e.message:"Action failed.");}finally{setBusy(null);}
+  };
 
   const openMonitor = async (teacher: any) => {
     setSelectedTeacher(teacher); setActivity(null); setComment(""); setActivityLoading(true);
@@ -92,7 +105,15 @@ export default function ManagerTeachers() {
                         <Badge variant={t.alertsCount ? "destructive" : "secondary"}>{t.alertsCount ?? 0} alerts</Badge>
                       </div>
                       <p className="text-xs text-slate-500 mb-2">{t.email}</p>
-                      {can("audit.view_subordinate") && <Button size="sm" variant="outline" className="mt-3 gap-1" onClick={() => void openMonitor(t)}><ExternalLink className="h-3.5 w-3.5" />Monitor activity</Button>}
+                      <div className="mt-3 flex flex-wrap gap-2">
+          {can("audit.view_subordinate") && <Button size="sm" variant="outline" className="gap-1" onClick={() => void openMonitor(t)}><ExternalLink className="h-3.5 w-3.5" />Monitor activity</Button>}
+          {(t.isBlocked||t.isSuspended)&&can("users.restore")&&<Button size="sm" variant="outline" onClick={()=>void action(t.id,"unblock")} disabled={busy===t.id}><UserCheck className="h-3.5 w-3.5 mr-1"/>Restore</Button>}
+          {!t.isBlocked&&!t.isSuspended&&<>
+            {can("users.override.teacher")&&<Button size="sm" variant="outline" onClick={()=>void action(t.id,"warn")} disabled={busy===t.id}><AlertTriangle className="h-3.5 w-3.5 mr-1"/>Warn</Button>}
+            {can("users.suspend")&&<Button size="sm" variant="outline" onClick={()=>void action(t.id,"suspend")} disabled={busy===t.id}><UserX className="h-3.5 w-3.5 mr-1"/>Suspend</Button>}
+            {can("users.block")&&<Button size="sm" variant="outline" onClick={()=>void action(t.id,"block")} disabled={busy===t.id}><Ban className="h-3.5 w-3.5 mr-1"/>Block</Button>}
+          </>}
+        </div>
                       <div className="flex items-center gap-4 text-xs text-slate-400">
                         <span className="flex items-center gap-1"><BookOpen className="h-3 w-3" /> {t.lessonsCount ?? 0} lessons</span>
                         <span className="flex items-center gap-1"><Video className="h-3 w-3" /> {t.classesCount ?? 0} classes</span>
