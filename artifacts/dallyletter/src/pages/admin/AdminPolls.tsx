@@ -170,10 +170,12 @@ export default function AdminPolls() {
             <p className="text-muted-foreground">Create, manage and analyze educational polls for students.</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setAiGenOpen(true)} className="gap-2 border-purple-300 text-purple-700 hover:bg-purple-50">
-              <Sparkles className="h-4 w-4" />AI Generate
-            </Button>
-            <Button onClick={() => setCreateOpen(true)} className="gap-2"><Plus className="h-4 w-4" />Create Poll</Button>}
+            {canManage && <>
+              <Button variant="outline" onClick={() => setAiGenOpen(true)} className="gap-2 border-purple-300 text-purple-700 hover:bg-purple-50">
+                <Sparkles className="h-4 w-4" />AI Generate
+              </Button>
+              <Button onClick={() => setCreateOpen(true)} className="gap-2"><Plus className="h-4 w-4" />Create Poll</Button>
+            </>}
           </div>
         </div>
 
@@ -198,18 +200,20 @@ export default function AdminPolls() {
                     <p className="text-xs text-muted-foreground">{new Date(poll.createdAt).toLocaleDateString()}</p>
                   </div>
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <Button variant="ghost" size="sm" onClick={() => toggleExpand(poll.id)} className="gap-1 text-xs">
-                      {expandedId === poll.id ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}Preview
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => loadResults(poll.id)} className="gap-1 text-xs">
-                      <BarChart3 className="h-3.5 w-3.5" />Results
-                    </Button>
-                    {poll.status === "draft" && <Button size="sm" onClick={() => setStatus(poll.id, "active")} className="gap-1 text-xs bg-emerald-600 hover:bg-emerald-700"><Play className="h-3 w-3" />Activate</Button>}
-                    {poll.status === "active" && <Button size="sm" variant="outline" onClick={() => setStatus(poll.id, "closed")} className="gap-1 text-xs"><Square className="h-3 w-3" />Close</Button>}
-                    {poll.status === "closed" && <Button size="sm" variant="outline" onClick={() => setStatus(poll.id, "active")} className="gap-1 text-xs"><Play className="h-3 w-3" />Reopen</Button>}
-                    <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" onClick={() => deletePoll(poll.id)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    {canManage && <>
+                      <Button variant="ghost" size="sm" onClick={() => toggleExpand(poll.id)} className="gap-1 text-xs">
+                        {expandedId === poll.id ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}Preview
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => loadResults(poll.id)} className="gap-1 text-xs">
+                        <BarChart3 className="h-3.5 w-3.5" />Results
+                      </Button>
+                      {poll.status === "draft" && <Button size="sm" onClick={() => setStatus(poll.id, "active")} className="gap-1 text-xs bg-emerald-600 hover:bg-emerald-700"><Play className="h-3 w-3" />Activate</Button>}
+                      {poll.status === "active" && <Button size="sm" variant="outline" onClick={() => setStatus(poll.id, "closed")} className="gap-1 text-xs"><Square className="h-3 w-3" />Close</Button>}
+                      {poll.status === "closed" && <Button size="sm" variant="outline" onClick={() => setStatus(poll.id, "active")} className="gap-1 text-xs"><Play className="h-3 w-3" />Reopen</Button>}
+                      <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" onClick={() => deletePoll(poll.id)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </>}
                   </div>
                 </div>
                 {expandedId === poll.id && pollDetail?.id === poll.id && (
