@@ -54,12 +54,12 @@ test("authentication guard returns 401 without a session and never calls next",(
  assert.equal(response.status(),401);assert.equal(nextCalls,0);
 });
 test("owner guard denies students and managers but permits owner-class roles",()=>{
- for(const user of [{role:"student"},{role:"teacher",isManager:true},{role:"senior_manager"}]){
+ for(const user of [{role:"student"},{role:"teacher",isManager:true},{role:"senior_manager"},{role:"admin"}]){
   const response=mockResponse();let nextCalls=0;
   enforceOwnerAccess({currentUser:user},response.res,()=>{nextCalls+=1;});
   assert.equal(response.status(),403,String(user.role));assert.equal(nextCalls,0);
  }
- for(const user of [{role:"owner"},{role:"admin"},{role:"platform_owner"}]){
+ for(const user of [{role:"owner"},{role:"platform_owner"}]){
   const response=mockResponse();let nextCalls=0;
   enforceOwnerAccess({currentUser:user},response.res,()=>{nextCalls+=1;});
   assert.equal(response.status(),200,String(user.role));assert.equal(nextCalls,1);
