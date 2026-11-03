@@ -704,6 +704,11 @@ router.get("/academic-records/reports/drafts/:id/download/pdf", requireAuth, req
   const result = await pool.query("SELECT * FROM academic_report_drafts WHERE id=$1", [id]);
   const row = result.rows[0];
   if (!row) { res.status(404).json({ error: "Approved academic report not found." }); return; }
+  if(canAccessManager(user)&&!isOwnerRole(user.role)){
+    const target=await pool.query("SELECT role,is_manager,manager_level FROM users WHERE id=$1",[row.learner_id]);
+    const t=target.rows[0];
+    if(!t||!canModerateUser(user,{role:t.role,isManager:t.is_manager,managerLevel:t.manager_level})){res.status(404).json({error:"Approved academic report not found."});return;}
+  }
   const sharedReportAccess = await canViewProfileSection(user,Number(row.learner_id),"reports");
   if (Number(row.learner_id) !== Number(user.id) && Number(row.created_by) !== Number(user.id) && !canAccessManager(user) && !sharedReportAccess) { res.status(404).json({ error: "Approved academic report not found." }); return; }
   if (row.status !== "approved") { res.status(403).json({ error: "Academic reports can be downloaded after Senior Manager / Owner approval." }); return; }
@@ -725,6 +730,11 @@ router.get("/academic-records/reports/drafts/:id/download", requireAuth, require
   const result = await pool.query("SELECT * FROM academic_report_drafts WHERE id=$1", [id]);
   const row = result.rows[0];
   if (!row) { res.status(404).json({ error: "Approved academic report not found." }); return; }
+  if(canAccessManager(user)&&!isOwnerRole(user.role)){
+    const target=await pool.query("SELECT role,is_manager,manager_level FROM users WHERE id=$1",[row.learner_id]);
+    const t=target.rows[0];
+    if(!t||!canModerateUser(user,{role:t.role,isManager:t.is_manager,managerLevel:t.manager_level})){res.status(404).json({error:"Approved academic report not found."});return;}
+  }
   const sharedReportAccess = await canViewProfileSection(user,Number(row.learner_id),"reports");
   if (Number(row.learner_id) !== Number(user.id) && Number(row.created_by) !== Number(user.id) && !canAccessManager(user) && !sharedReportAccess) { res.status(404).json({ error: "Approved academic report not found." }); return; }
   if (row.status !== "approved") { res.status(403).json({ error: "Academic reports can be downloaded after Senior Manager / Owner approval." }); return; }
