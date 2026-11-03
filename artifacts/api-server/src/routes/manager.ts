@@ -3,7 +3,7 @@ import { db, pool } from "@workspace/db";
 import { usersTable, classesTable, lessonsTable, paymentsTable, ownerAlertsTable, assignmentsTable, assignmentSubmissionsTable, pollsTable, exercisesTable, auditLogsTable, attendanceTable, userAchievementsTable, achievementsTable, exerciseSubmissionsTable, pollSubmissionsTable, contentFlagsTable } from "@workspace/db/schema";
 import { eq, desc, and, inArray } from "drizzle-orm";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
-import { isSeniorManager } from "../lib/role-access";
+import { isSeniorManager, canModerateUser } from "../lib/role-access";
 import { requireManagerPermission, managerHasPermission } from "../lib/manager-permission-policy";
 
 const router = Router();
@@ -33,7 +33,7 @@ function requireManager(req: any, res: any, next: any) {
 
 router.get("/dashboard", requireAuth, requireManager, requireManagerPermission("manager.dashboard.view"), async (req, res) => {
   const [teachers, students, classes, lessons, alerts, assignments, exercises, exerciseSubmissions, assignmentSubmissions, allClasses, learnerAwards] = await Promise.all([
-    db.select({ id: usersTable.id, name: usersTable.name, subject: usersTable.subject, performanceScore: usersTable.performanceScore, isManager: usersTable.isManager, isBlocked: usersTable.isBlocked, isSuspended: usersTable.isSuspended })
+    db.select({ id: usersTable.id, name: usersTable.name, subject: usersTable.subject, performanceScore: usersTable.performanceScore, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel, isBlocked: usersTable.isBlocked, isSuspended: usersTable.isSuspended })
       .from(usersTable).where(eq(usersTable.role, "teacher")),
     db.select({ id: usersTable.id, name: usersTable.name, grade: usersTable.grade, performanceScore: usersTable.performanceScore, badgeCount: usersTable.badgeCount })
       .from(usersTable).where(eq(usersTable.role, "student")),
@@ -48,12 +48,19 @@ router.get("/dashboard", requireAuth, requireManager, requireManagerPermission("
     db.select({ userId: userAchievementsTable.userId }).from(userAchievementsTable),
   ]);
 
-  const ownerIds = isOwnerRole(req.currentUser!.role) ? new Set<number>() : new Set<number>((await pool.query("SELECT id FROM users WHERE lower(role) IN ('owner','platform_owner')")).rows.map((row: any) => Number(row.id)));
-  const visibleClasses = classes.filter((row: any) => !ownerIds.has(Number(row.teacherId)));
-  const visibleAllClasses = allClasses.filter((row: any) => !ownerIds.has(Number(row.teacherId)));
-  const visibleLessons = lessons.filter((row: any) => !ownerIds.has(Number(row.teacherId)));
-  const visibleAssignments = assignments.filter((row: any) => !ownerIds.has(Number(row.teacherId)));
-  const visibleExercises = exercises.filter((row: any) => !ownerIds.has(Number(row.createdBy)));
+  const actor=req.currentUser!;
+  const ownerViewer=isOwnerRole(actor.role);
+  const scopeUsers=await db.select({id:usersTable.id,role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable);
+  const userById=new Map(scopeUsers.map((u:any)=>[u.id,u]));
+  const canSeeUser=(id:number)=>ownerViewer || actor.id===id || Boolean(userById.get(id) && canModerateUser(actor,userById.get(id)));
+  const ownerIds = ownerViewer ? new Set<number>() : new Set<number>((await pool.query("SELECT id FROM users WHERE lower(role) IN ('owner','platform_owner')")).rows.map((row: any) => Number(row.id)));
+  const visibleClasses = classes.filter((row: any) => !ownerIds.has(Number(row.teacherId)) && canSeeUser(Number(row.teacherId)));
+  const visibleAllClasses = allClasses.filter((row: any) => !ownerIds.has(Number(row.teacherId)) && canSeeUser(Number(row.teacherId)));
+  const visibleLessons = lessons.filter((row: any) => !ownerIds.has(Number(row.teacherId)) && canSeeUser(Number(row.teacherId)));
+  const visibleAssignments = assignments.filter((row: any) => !ownerIds.has(Number(row.teacherId)) && canSeeUser(Number(row.teacherId)));
+  const visibleExercises = exercises.filter((row: any) => !ownerIds.has(Number(row.createdBy)) && canSeeUser(Number(row.createdBy)));
+  const visibleTeachers=teachers.filter((row:any)=>canSeeUser(Number(row.id)));
+  const visibleStudents=students.filter((row:any)=>canSeeUser(Number(row.id)));
   const visibleAlerts = await visibleManagerAlerts(req.currentUser!, alerts);
 
   // Rank from observed work, marking, and learner engagement rather than the manually editable score.
@@ -79,7 +86,7 @@ router.get("/dashboard", requireAuth, requireManager, requireManagerPermission("
   };
   const visibleContentFlags = contentFlags.filter((row: any) => !ownerContentIds[String(row.contentType).toLowerCase()]?.has(Number(row.contentId)));
 
-  const activeTeachers = teachers.filter((t: any) => !t.isManager && !t.isBlocked && !t.isSuspended);
+  const activeTeachers = visibleTeachers.filter((t: any) => !t.isManager && !t.isBlocked && !t.isSuspended);
   const teacherRanks = activeTeachers.map((teacher: any) => {
     const teacherLessons = visibleLessons.filter((x: any) => x.teacherId === teacher.id);
     const teacherAssignments = visibleAssignments.filter((x: any) => x.teacherId === teacher.id);
@@ -132,7 +139,7 @@ router.get("/dashboard", requireAuth, requireManager, requireManagerPermission("
     return access[item.type] === true;
   });
   res.json({
-    stats: { teachers: canViewUsers ? activeTeachers.length : null, students: canViewUsers ? students.length : null, classes: canViewRecordBook ? visibleAllClasses.length : null, lessons: canViewRecordBook ? visibleLessons.length : null },
+    stats: { teachers: canViewUsers ? activeTeachers.length : null, students: canViewUsers ? visibleStudents.length : null, classes: canViewRecordBook ? visibleAllClasses.length : null, lessons: canViewRecordBook ? visibleLessons.length : null },
     recentClasses: canViewRecordBook ? visibleClasses.slice(0, 10) : [],
     recentLessons: canViewRecordBook ? visibleLessons.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10) : [],
     openAlerts: permittedQueue.slice(0, 12),
@@ -141,7 +148,7 @@ router.get("/dashboard", requireAuth, requireManager, requireManagerPermission("
     recentAssignments: canViewRecordBook ? visibleAssignments.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10) : [],
     topTeachers: canViewUsers ? teacherRanks : [],
     markingStats: canViewRecordBook ? { markedAssignments: totalMarkedAssignments, markedExercises: totalMarkedExercises } : null,
-    topLearners: canViewUsers ? students.map((student: any) => {
+    topLearners: canViewUsers ? visibleStudents.map((student: any) => {
       const submissions = exerciseSubmissions.filter((s: any) => s.learnerId === student.id);
       const learnerAssignmentSubmissions = assignmentSubmissions.filter((s: any) => s.studentId === student.id);
       const awards = learnerAwards.filter((a: any) => a.userId === student.id).length;
