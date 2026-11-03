@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { Users, BookOpen, Video, AlertTriangle, TrendingUp, GraduationCap, Shield, BarChart3, Star, ClipboardList } from "lucide-react";
+import { Users, BookOpen, Video, AlertTriangle, TrendingUp, GraduationCap, Shield, BarChart3, Star, ClipboardList, Bell, FileText } from "lucide-react";
 import { ActivityMonitor } from "@/components/ActivityMonitor";
 import { InstallAppCard } from "@/components/InstallAppCard";
 
@@ -205,6 +205,12 @@ export default function ManagerHome() {
             { label: "Manage Polls & Quizzes", href: "/manager/polls", icon: ClipboardList, color: "bg-purple-700", permission: "polls.manage" },
             { label: "Subordinate Audit History", href: "/manager/audit-logs", icon: Shield, color: "bg-slate-700", permission: "audit.view_subordinate" },
             { label: "Study Groups & Connect", href: "/manager/chat", icon: Users, color: "bg-indigo-700", permission: "groups.manage" },
+            { label: "Teacher CV Workspace", href: "/manager/teacher-cv-workspace", icon: FileText, color: "bg-sky-700", permission: "teacher_cv.view" },
+            { label: "Qualification Verification", href: "/manager/qualifications", icon: GraduationCap, color: "bg-emerald-700", permission: "qualifications.view" },
+            { label: "Moderation Queue", href: "/manager/safety", icon: Shield, color: "bg-rose-700", permission: "moderation.view" },
+            { label: "Manager Notifications", href: "/manager/notifications", icon: Bell, color: "bg-orange-700", permission: "notifications.view" },
+            { label: "Achievement Reviews", href: "/admin/achievements", icon: Star, color: "bg-amber-700", permission: "achievements.view" },
+            { label: "Assignments", href: "/manager/assignments", icon: ClipboardList, color: "bg-blue-700", permission: "recordbook.view" },
             { label: "View Reports", href: "/manager/reports", icon: BarChart3, color: "bg-purple-600", permission: "reports.view" },
             { label: "RecordBook", href: "/record-book", icon: BookOpen, color: "bg-indigo-600", permission: "recordbook.view" },
             { label: "Manage Prefects", href: "/manager/prefects", icon: Shield, color: "bg-amber-600", permission: "users.view" },
