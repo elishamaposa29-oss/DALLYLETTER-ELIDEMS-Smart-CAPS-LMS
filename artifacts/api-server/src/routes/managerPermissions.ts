@@ -153,6 +153,23 @@ router.patch("/:userId/role", requireAuth, ownerOnly, async (req, res): Promise<
       );
     }
     await client.query("UPDATE users SET role=$2,is_manager=false,manager_level=$3,updated_at=now() WHERE id=$1", [userId, nextRole, nextRole === "senior_manager" ? "senior" : "junior"]);
+    // Apply role-specific starting defaults to this account only. Every permission remains editable by Owner.
+    const defaultGrant = (key: string) => nextRole === "senior_manager" || key === "users.view" || key === "owner.chat";
+    for (const permission of MANAGER_PERMISSION_CATALOG) {
+      const granted = defaultGrant(permission.key);
+      const prior = await client.query("SELECT granted FROM manager_permission_grants WHERE manager_user_id=$1 AND permission_key=$2 FOR UPDATE", [userId, permission.key]);
+      const previous = prior.rows[0]?.granted ?? null;
+      await client.query(
+        "INSERT INTO manager_permission_grants(manager_user_id,permission_key,granted,changed_by,changed_at) VALUES($1,$2,$3,$4,now()) ON CONFLICT(manager_user_id,permission_key) DO UPDATE SET granted=EXCLUDED.granted,changed_by=EXCLUDED.changed_by,changed_at=now()",
+        [userId, permission.key, granted, req.currentUser!.id],
+      );
+      if (previous !== granted) {
+        await client.query(
+          "INSERT INTO manager_permission_history(manager_user_id,permission_key,previous_granted,granted,changed_by) VALUES($1,$2,$3,$4,$5)",
+          [userId, permission.key, previous, granted, req.currentUser!.id],
+        );
+      }
+    }
     await client.query(
       "INSERT INTO audit_logs (action,category,performed_by,target_type,target_id,details) VALUES ($1,'security',$2,'user',$3,$4)",
       ["Assigned " + nextRole, req.currentUser!.id, userId, JSON.stringify({ previousRole, nextRole })],
