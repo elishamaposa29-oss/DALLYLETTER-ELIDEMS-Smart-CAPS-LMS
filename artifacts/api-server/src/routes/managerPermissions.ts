@@ -102,7 +102,7 @@ router.get("/me", requireAuth, async (req, res): Promise<void> => {
     ? { rows: [] as Array<{ permission_key: string; granted: boolean }> }
     : await pool.query("SELECT permission_key, granted FROM manager_permission_grants WHERE manager_user_id=$1", [user.id]);
   const senior=isSeniorManager(user);
-  const permissions = Object.fromEntries(MANAGER_PERMISSION_CATALOG.map((p) => [p.key, senior && p.key === "manager.monitoring.view"]));
+  const permissions = Object.fromEntries(MANAGER_PERMISSION_CATALOG.map((p) => [p.key, senior]));
   for (const row of result.rows) if (allowedKeys.has(row.permission_key)) permissions[row.permission_key] = row.granted === true;
   res.setHeader("Cache-Control", "no-store");
   res.json({
@@ -178,12 +178,12 @@ router.patch("/:userId/role", requireAuth, ownerOnly, async (req, res): Promise<
         [userId, permission.key],
       );
       const previous = prior.rows[0]?.granted ?? null;
-      // New appointments receive no operational grants. Senior Managers receive only
-      // the read-only monitoring exception; existing grants survive promotion, while
-      // demotion revokes every senior-only grant. All other grants remain Owner-controlled.
-      const granted = previous === null
-        ? nextRole === "senior_manager" && permission.key === "manager.monitoring.view"
-        : nextRole !== "senior_manager" && isSeniorOnlyManagerPermission(permission.key) ? false : previous === true;
+      // Preserve full established Senior Manager operational capability.
+      // Junior Managers start with no grants; Owner assigns each permission individually.
+      // Demotion removes all senior-only permissions and preserves other explicit decisions.
+      const granted = nextRole === "senior_manager"
+        ? (previous === null ? true : previous === true)
+        : isSeniorOnlyManagerPermission(permission.key) ? false : (previous === true);
       await client.query(
         "INSERT INTO manager_permission_grants(manager_user_id,permission_key,granted,changed_by,changed_at) VALUES($1,$2,$3,$4,now()) ON CONFLICT(manager_user_id,permission_key) DO UPDATE SET granted=EXCLUDED.granted,changed_by=EXCLUDED.changed_by,changed_at=now()",
         [userId, permission.key, granted, req.currentUser!.id],
@@ -216,7 +216,7 @@ router.get("/:userId", requireAuth, ownerOnly, async (req, res): Promise<void> =
   if (!target) { res.status(404).json({ error: "Manager account not found" }); return; }
   const result = await pool.query("SELECT permission_key, granted, changed_by, changed_at FROM manager_permission_grants WHERE manager_user_id=$1 ORDER BY permission_key", [userId]);
   const senior=isSeniorManager({role:target.role,managerLevel:target.manager_level,isManager:target.is_manager});
-  const grants = Object.fromEntries(MANAGER_PERMISSION_CATALOG.map((p) => [p.key, senior && p.key === "manager.monitoring.view"]));
+  const grants = Object.fromEntries(MANAGER_PERMISSION_CATALOG.map((p) => [p.key, senior]));
   for (const row of result.rows) if (allowedKeys.has(row.permission_key)) grants[row.permission_key] = row.granted === true;
   res.setHeader("Cache-Control", "no-store");
   res.json({ manager: { id: target.id, name: target.name, email: target.email, role: target.role, managerLevel: target.manager_level }, permissions: MANAGER_PERMISSION_CATALOG.map((p) => ({ ...p, seniorOnly: isSeniorOnlyManagerPermission(p.key), granted: grants[p.key] })), updatedAt: result.rows.reduce((latest: string | null, row: any) => !latest || new Date(row.changed_at) > new Date(latest) ? row.changed_at : latest, null) });
