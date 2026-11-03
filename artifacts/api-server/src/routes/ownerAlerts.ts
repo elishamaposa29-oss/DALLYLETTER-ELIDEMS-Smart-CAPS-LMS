@@ -40,11 +40,17 @@ async function visibleManagerAlerts(user: NonNullable<Express.Request["currentUs
 }
 async function canManagerAccessAlert(user: NonNullable<Express.Request["currentUser"]>, alert: any) {
   if (alert.reporterRole === "owner" || alert.reporterRole === "platform_owner") return false;
-  if (alert.targetType === "user") {
-    const target = await pool.query("SELECT role FROM users WHERE id=$1", [alert.targetId]);
-    if (isOwnerRole(target.rows[0]?.role)) return false;
+  if(alert.reportedBy && Number(alert.reportedBy)!==user.id){
+    const reporter=await pool.query("SELECT role,is_manager,manager_level FROM users WHERE id=$1",[alert.reportedBy]);
+    const row=reporter.rows[0];
+    if(row&&!canModerateUser(user,{role:row.role,isManager:row.is_manager,managerLevel:row.manager_level}))return false;
   }
-  return managerVisibleCategories.includes(alert.category) && managerHasPermission(user, permissionForAlert(alert));
+  if (alert.targetType === "user") {
+    const target = await pool.query("SELECT role,is_manager,manager_level FROM users WHERE id=$1", [alert.targetId]);
+    const row=target.rows[0];
+    if (!row || !canModerateUser(user,{role:row.role,isManager:row.is_manager,managerLevel:row.manager_level})) return false;
+  }
+  return managerVisibleCategories.includes(alert.category) && await managerHasPermission(user, permissionForAlert(alert));
 }
 
 router.get("/owner-alerts", requireAuth, async (req, res): Promise<void> => {
