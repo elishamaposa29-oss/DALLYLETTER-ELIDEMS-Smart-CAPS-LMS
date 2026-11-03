@@ -13,7 +13,7 @@ export default function ManagerDashboard(){
  const colors=useColors(), insets=useSafeAreaInsets();
  const {user,token}=useAuth();
  const role=String(user?.role||"").toLowerCase().replace(/[ -]+/g,"_");
- const roleAllowed=["owner","platform_owner","manager","senior_manager","junior_manager"].includes(role)||(role==="teacher"&&Boolean((user as any)?.isManager);
+ const roleAllowed=["owner","platform_owner","manager","senior_manager","junior_manager"].includes(role)||(role==="teacher"&&Boolean((user as any)?.isManager));
  const [panel,setPanel]=useState<Panel>("overview"),[data,setData]=useState<any>(null),[loading,setLoading]=useState(false),[error,setError]=useState("");
  const [permissionData,setPermissionData]=useState<any>(null),[permissionLoading,setPermissionLoading]=useState(true);
  const can=(key:string)=>permissionData?.isOwner===true||permissionData?.permissions?.[key]===true;
