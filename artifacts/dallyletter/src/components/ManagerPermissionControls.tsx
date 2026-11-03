@@ -90,10 +90,10 @@ export function ManagerPermissionControls({ user, onChanged }: Props) {
   useEffect(() => { if (open) setError(""); }, [open]);
 
   return <div className="flex flex-wrap items-center justify-end gap-1">
-    <Button type="button" size="sm" variant="outline" className="h-8 border-violet-300 px-2 text-violet-700" disabled={loading} onClick={() => void load("junior_manager", !isManager || currentRole !== "junior_manager")}>
+    <Button type="button" size="sm" variant="outline" className="h-8 border-violet-300 px-2 text-violet-700" disabled={loading} onClick={() => void load("junior_manager", user.role !== "junior_manager")}>
       {loading ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null} Jr
     </Button>
-    <Button type="button" size="sm" variant="outline" className="h-8 border-amber-400 px-2 text-amber-800" disabled={loading} onClick={() => void load("senior_manager", !isManager || currentRole !== "senior_manager")}>
+    <Button type="button" size="sm" variant="outline" className="h-8 border-amber-400 px-2 text-amber-800" disabled={loading} onClick={() => void load("senior_manager", user.role !== "senior_manager")}>
       {loading ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null} Sr
     </Button>
     {isManager && <Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-destructive" disabled={loading} onClick={() => void demote()}>Remove</Button>}
