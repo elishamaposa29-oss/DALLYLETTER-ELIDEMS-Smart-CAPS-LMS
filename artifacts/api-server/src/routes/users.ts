@@ -480,7 +480,6 @@ router.get("/users/:id/teacher-cv", requireAuth, requireManagerPermission("teach
 });
 
 router.get("/users/:id/teacher-cv/pdf", requireAuth, requireManagerPermission("teacher_cv.view"), async (req, res): Promise<void> => {
-  const actor = req.currentUser!;
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid user id." }); return; }
   const [target] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, id));
