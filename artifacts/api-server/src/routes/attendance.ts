@@ -68,7 +68,7 @@ router.put("/:id/status", requireAuth, requireManagerPermissionIfManager("attend
   res.json(row);
 });
 
-router.put("/:id/leave", requireAuth, async (req, res): Promise<void> => {
+router.put("/:id/leave", requireAuth, requireManagerPermissionIfManager("attendance.edit"), async (req, res): Promise<void> => {
   const leftAt = new Date();
   const [row] = await db.select().from(attendanceTable).where(eq(attendanceTable.id, parseInt(String(req.params.id))));
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
