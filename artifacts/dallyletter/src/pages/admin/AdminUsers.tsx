@@ -177,7 +177,7 @@ export default function AdminUsers() {
                           {getStatusBadge(user as { isBlocked: boolean; isSuspended?: boolean })}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          {user.role !== 'owner' && user.role !== 'admin' && (
+                          {(user.role as string) !== 'owner' && (user.role as string) !== 'admin' && (
                             <div className="flex justify-end gap-1">
                               {user.role === 'student' && (
                                 <Button
