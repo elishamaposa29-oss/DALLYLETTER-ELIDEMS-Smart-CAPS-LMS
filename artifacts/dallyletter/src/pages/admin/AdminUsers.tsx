@@ -177,7 +177,7 @@ export default function AdminUsers() {
                           {getStatusBadge(user as { isBlocked: boolean; isSuspended?: boolean })}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          {user.role !== 'owner' && (
+                          {user.role !== 'owner' && user.role !== 'admin' && (
                             <div className="flex justify-end gap-1">
                               {user.role === 'student' && (
                                 <Button
@@ -190,7 +190,7 @@ export default function AdminUsers() {
                                   <Shield className={`h-4 w-4 ${user.isPrefect ? "text-amber-500" : "text-muted-foreground"}`} />
                                 </Button>
                               )}
-                              {(user.role === "teacher" || user.role === "junior_manager" || user.role === "senior_manager" || (user as any).isManager) && (
+                              {(user.role !== "owner" && user.role !== "admin") && (
                                 <ManagerPermissionControls
                                   user={user as any}
                                   onChanged={() => void queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() })}
