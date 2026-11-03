@@ -7,7 +7,7 @@ export default function ManagerLayout() {
   const { user, isLoading } = useAuth();
   const colors = useColors();
   const role = String(user?.role || "").toLowerCase().replace(/[ -]+/g, "_");
-  const allowed = ["manager", "senior_manager"].includes(role) || Boolean((user as any)?.isManager);
+  const allowed = ["manager", "senior_manager", "junior_manager"].includes(role) || Boolean((user as any)?.isManager);
 
   if (isLoading) return <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background }}><ActivityIndicator color={colors.primary} /></View>;
   if (!user) return <Redirect href="/login" />;
