@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { db, auditLogsTable, pool } from "@workspace/db";
 import { getAIProvider } from "../lib/ai-provider";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
-import { isSeniorManager, isJuniorManager } from "../lib/role-access";
+import { isSeniorManager, isJuniorManager, canModerateUser } from "../lib/role-access";
 import { requireManagerPermission, requireManagerPermissionForRequest, requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
 import { enqueueEmailNotification } from "../lib/email-notification-queue";
 import { calculateAgeOnDate, getCurrentAcademicYear } from "../lib/academic-year";
@@ -262,9 +262,10 @@ router.get("/academic-records/transfer-requests", requireAuth, requireManagerPer
   const user = req.currentUser!;
   const manager = canAccessManager(user);
   const result = manager
-    ? await pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,r.requested_by,r.reason,r.status,r.review_note,r.reviewed_by,r.reviewed_at,r.created_at FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id ORDER BY r.created_at DESC LIMIT 200")
+    ? await pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,u.role,u.is_manager,u.manager_level,r.requested_by,r.reason,r.status,r.review_note,r.reviewed_by,r.reviewed_at,r.created_at FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id ORDER BY r.created_at DESC LIMIT 200")
     : await pool.query("SELECT id,learner_id,reason,status,review_note,reviewed_at,created_at FROM academic_transfer_requests WHERE learner_id=$1 ORDER BY created_at DESC LIMIT 100", [user.id]);
-  res.json(result.rows);
+  const visible=manager&&!isOwnerRole(user.role)?result.rows.filter((row:any)=>canModerateUser(user,{role:row.role,isManager:row.is_manager,managerLevel:row.manager_level})):result.rows;
+  res.json(manager&&!isOwnerRole(user.role)?visible.map(({role,is_manager,manager_level,...row}:any)=>row):visible);
 });
 
 router.post("/academic-records/transfer-requests/:id/review", requireAuth, requireManagerPermissionForRequest((req) => req.body?.status === "approved" ? "transfers.approve" : "transfers.reject"), async (req, res): Promise<void> => {
@@ -285,6 +286,18 @@ router.post("/academic-records/transfer-requests/:id/review", requireAuth, requi
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    const pending=await client.query("SELECT r.id,r.learner_id,u.role,u.is_manager,u.manager_level FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id WHERE r.id=$1 AND r.status='pending' FOR UPDATE OF r",[id]);
+    if(!pending.rowCount){
+      await client.query("ROLLBACK");
+      res.status(404).json({ error: "Pending transfer request not found or already reviewed." });
+      return;
+    }
+    const target=pending.rows[0];
+    if(!isOwnerRole(reviewer.role)&&!canModerateUser(reviewer,{role:target.role,isManager:target.is_manager,managerLevel:target.manager_level})){
+      await client.query("ROLLBACK");
+      res.status(404).json({error:"Pending transfer request not found."});
+      return;
+    }
     const result = await client.query(
       "UPDATE academic_transfer_requests SET status=$1,reviewed_by=$2,review_note=$3,reviewed_at=now(),updated_at=now(),verification_token_hash=$4::text,verification_token_expires_at=CASE WHEN $4::text IS NULL THEN NULL ELSE now()+interval '30 days' END,verification_verified_at=NULL WHERE id=$5 AND status='pending' RETURNING id,learner_id,status,review_note,reviewed_by,reviewed_at,verification_token_expires_at",
       [status, reviewer.id, note || null, verificationTokenHash, id],
