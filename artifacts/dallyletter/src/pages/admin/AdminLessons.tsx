@@ -1,5 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { useListLessons, useDeleteLesson } from "@workspace/api-client-react";
+import { useListLessons, useDeleteLesson, getApiUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +19,7 @@ export default function AdminLessons() {
   const [search, setSearch] = useState("");
   const [subjectFilter, setSubjectFilter] = useState("all");
   const [canDelete, setCanDelete] = useState(false);
-  useEffect(() => { fetch("/api/manager-permissions/me", { headers: { Authorization: "Bearer " + (localStorage.getItem("dallyletter_token") ?? "") } }).then(r=>r.json()).then(d=>setCanDelete(Boolean(d?.isOwner||d?.permissions?.["lessons.delete"]))).catch(()=>setCanDelete(false)); }, []);
+  useEffect(() => { fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: "Bearer " + (localStorage.getItem("dallyletter_token") ?? "") } }).then(r=>r.json()).then(d=>setCanDelete(Boolean(d?.isOwner||d?.permissions?.["lessons.delete"]))).catch(()=>setCanDelete(false)); }, []);
 
   const filteredLessons = lessons?.filter(lesson => {
     const matchesSearch = lesson.title.toLowerCase().includes(search.toLowerCase()) || 
