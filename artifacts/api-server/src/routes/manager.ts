@@ -8,16 +8,7 @@ import { requireManagerPermission, managerHasPermission } from "../lib/manager-p
 
 const router = Router();
 const managerVisibleAlertCategories = ["academic", "attendance", "content", "student", "teacher", "moderation", "general"];
-function permissionForManagerAlert(alert: any): string {
-  if (alert.targetType === "transfer_request") return "transfers.view";
-  if (alert.targetType === "academic_report_draft") return "reports.view";
-  if (alert.targetType === "user") return "users.view";
-  if (alert.category === "attendance") return "attendance.view";
-  if (["content", "moderation"].includes(alert.category)) return "moderation.view";
-  if (["student", "teacher"].includes(alert.category)) return "users.view";
-  if (alert.category === "academic") return "reports.view";
-  return "notifications.view";
-}
+function permissionForManagerAlert(_alert: any): string { return "notifications.view"; }
 async function visibleManagerAlerts(user: NonNullable<Express.Request["currentUser"]>, rows: any[]) {
   if (isOwnerRole(user.role)) return rows;
   const ownerRows = await pool.query("SELECT id FROM users WHERE lower(role) IN ('owner','platform_owner')");
