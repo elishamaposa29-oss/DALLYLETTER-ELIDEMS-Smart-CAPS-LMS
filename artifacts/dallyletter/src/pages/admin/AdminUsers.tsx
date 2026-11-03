@@ -2,7 +2,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { useListUsers, useBlockUser, usePromoteUser, useDeleteUser, getApiUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Users, Search, Shield, Ban, Trash2, PauseCircle, Briefcase } from "lucide-react";
+import { Loader2, Users, Search, Shield, Ban, Trash2, PauseCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
@@ -65,20 +65,6 @@ export default function AdminUsers() {
         toast({ title: !isPrefect ? "Promoted to Prefect" : "Prefect status removed" });
         queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
       }
-    });
-  };
-
-  const handleToggleManager = (id: number, isManager: boolean, managerLevel?: "junior"|"senior") => {
-    if (!confirm(isManager ? "Remove Manager status from this user?" : "Promote this user to Manager? They will gain access to the Manager Dashboard.")) return;
-    const tok = localStorage.getItem("dallyletter_token");
-    void fetch(getApiUrl(`/api/users/${id}/promote-manager`), {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
-      body: JSON.stringify({ isManager: !isManager, ...(managerLevel ? { managerLevel } : {}) }),
-    }).then(res => {
-      if (!res.ok) { toast({ variant: "destructive", title: "Error", description: "Could not update manager status." }); return; }
-      toast({ title: !isManager ? "✅ Promoted to Manager" : "Manager status removed" });
-      void queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
     });
   };
 
