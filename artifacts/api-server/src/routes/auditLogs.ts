@@ -51,7 +51,9 @@ router.get("/audit-logs", requireAuth, requireManagerPermission("audit.view_subo
         visiblePerformers,
         inArray(auditLogsTable.category, managerVisibleCategories),
       )).orderBy(desc(auditLogsTable.createdAt)).limit(limit);
-  res.json(logs.map(({ details, performerIsPrefect, ...log }) => ({
+  const ownerIds=isOwner?new Set<number>():new Set<number>((await db.select({id:usersTable.id}).from(usersTable).where(inArray(usersTable.role,["owner","platform_owner"]))).map(row=>row.id));
+  const visibleLogs=isOwner?logs:logs.filter((log:any)=>!(["user","profile","account","owner"].includes(String(log.targetType||"").toLowerCase())&&ownerIds.has(Number(log.targetId))));
+  res.json(visibleLogs.map(({ details, performerIsPrefect, ...log }) => ({
     ...log,
     // Never expose raw audit details to managers: details can contain sensitive operational data.
     details: isOwner ? details : null,
