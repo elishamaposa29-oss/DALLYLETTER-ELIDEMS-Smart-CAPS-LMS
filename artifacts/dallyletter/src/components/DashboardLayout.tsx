@@ -29,6 +29,7 @@ const roleColors: Record<string, string> = {
   platform_owner: "from-amber-600 to-amber-800",
   manager: "from-purple-600 to-purple-800",
   senior_manager: "from-purple-600 to-purple-800",
+  junior_manager: "from-indigo-600 to-indigo-800",
 };
 
 const roleLabels: Record<string, string> = {
@@ -40,6 +41,7 @@ const roleLabels: Record<string, string> = {
   platform_owner: "Platform owner",
   manager: "Manager",
   senior_manager: "Senior manager",
+  junior_manager: "Junior manager",
 };
 
 function AuthenticatedAvatar({ url, name }: { url: string; name: string }) {
@@ -184,7 +186,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Content Moderation", href: "/manager/safety", icon: Shield, section: "Approvals", accent: "text-orange-300" },
       ] : []),
     ];
-  } else if (["manager","senior_manager"].includes(normalizedRole)) {
+  } else if (["manager","senior_manager","junior_manager"].includes(normalizedRole)) {
     navItems = [
       { label: "Manager Dashboard", href: "/manager", icon: Home, section: "Management" },
       { label: "Profile Hub", href: "/profile-hub", icon: Users },
