@@ -20,7 +20,7 @@ router.get("/class/:classId", requireAuth, requireManagerPermissionIfManager("at
     .orderBy(desc(attendanceTable.joinedAt));
   const visible = await Promise.all(rows.map(async row => {
     const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, row.studentId));
-    const inAuthority = req.currentUser!.id === studentId || isOwnerRole(req.currentUser!.role) || Boolean(target && canModerateUser(req.currentUser!, target));
+    const inAuthority = req.currentUser!.id === row.studentId || isOwnerRole(req.currentUser!.role) || Boolean(target && canModerateUser(req.currentUser!, target));
     return inAuthority && (await canViewProfileSection(req.currentUser!,row.studentId,"attendance")) ? row : null;
   }));
   res.json(visible.filter(Boolean));
