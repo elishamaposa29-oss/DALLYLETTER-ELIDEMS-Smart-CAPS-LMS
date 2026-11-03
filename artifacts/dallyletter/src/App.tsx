@@ -77,7 +77,6 @@ const ManagerReportReview = lazy(() => import("@/pages/manager/ManagerReportRevi
 const ManagerReviewQueue = lazy(() => import("@/pages/manager/ManagerReviewQueue"));
 const ManagerQualifications = lazy(() => import("@/pages/manager/ManagerQualifications"));
 const ManagerAuditLogs = lazy(() => import("@/pages/manager/ManagerAuditLogs"));
-const AdminClasses = lazy(() => import("@/pages/admin/AdminClasses"));
 const FeatureCenter = lazy(() => import("@/pages/FeatureCenter"));
 const TeacherCvWorkspace = lazy(() => import("@/pages/TeacherCvWorkspace"));
 
