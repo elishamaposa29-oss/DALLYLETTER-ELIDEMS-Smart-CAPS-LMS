@@ -9,9 +9,9 @@ export function normalizeRole(role: unknown): string {
   return typeof role === "string" ? role.trim().toLowerCase().replace(/[ -]+/g, "_") : "";
 }
 
-/** Existing owner policy includes admins; platform_owner is a normalized legacy alias. */
+/** Only the actual owner and the explicit legacy platform_owner alias receive Owner authority. Admin is a separate operational role. */
 export function isOwnerRole(role: unknown): boolean {
-  return ["owner", "admin", "platform_owner"].includes(normalizeRole(role));
+  return ["owner", "platform_owner"].includes(normalizeRole(role));
 }
 
 function isTeacherPendingReview(user: RoleLikeUser): boolean {
@@ -118,8 +118,7 @@ export function enforceAcademicStaffAccess(req:AuthRequestLike,res:AuthResponseL
   next();
 }
 
-/** Transfer decisions are limited to owner-class accounts and authorized managers. */
+/** Transfer decisions are senior authority: junior managers may view the queue but cannot approve or reject. */
 export function canReviewAcademicTransfer(user: RoleLikeUser): boolean {
-  const role = normalizeRole(user.role);
-  return isOwnerRole(role) || role === "manager" || role === "senior_manager" || (role === "teacher" && user.isManager === true && !isTeacherPendingReview(user));
+  return isSeniorManager(user);
 }
