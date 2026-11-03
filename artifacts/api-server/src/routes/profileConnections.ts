@@ -2,6 +2,7 @@ import { Router } from "express";
 import { and, eq } from "drizzle-orm";
 import { db, notificationsTable, usersTable, pool } from "@workspace/db";
 import { requireAuth, normalizeRole, isOwnerRole, canAccessManager } from "../lib/auth-middleware";
+import { managerHasPermission } from "../lib/manager-permission-policy";
 
 const router = Router();
 const sectionKeys = new Set(["overview","qualifications","subjects","enrollments","achievements","reports","attendance","register","payments","transfers","teacher_documents","groups","activity"]);
@@ -67,7 +68,16 @@ export async function canViewProfileSection(actor: NonNullable<Express.Request["
 
   if (setting.mode === "everyone") return true;
   if (setting.mode === "me_only_authorized") {
-    if (managerAccess) return true;
+    if (managerAccess) {
+      const managerSectionPermissions: Record<string, string> = {
+        overview: "users.view", qualifications: "qualifications.view", subjects: "users.view",
+        enrollments: "users.view", achievements: "achievements.view", reports: "reports.view",
+        attendance: "attendance.view", register: "attendance.view", transfers: "transfers.view",
+        teacher_documents: "teacher_cv.view", groups: "groups.manage", activity: "audit.view_subordinate",
+      };
+      const requiredPermission = managerSectionPermissions[section];
+      return requiredPermission ? managerHasPermission(actor, requiredPermission) : false;
+    }
     if (approvedTeacher) {
       const following = await pool.query("SELECT 1 FROM follows WHERE follower_id=$1 AND target_user_id=$2 LIMIT 1", [actor.id,targetId]);
       return following.rows.length > 0;
