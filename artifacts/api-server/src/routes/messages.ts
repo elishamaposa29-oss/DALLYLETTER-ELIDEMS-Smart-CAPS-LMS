@@ -17,10 +17,17 @@ import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMedi
 const MAX_CHAT_MEDIA_SIZE_BYTES = MAX_MEDIA_SIZE_BYTES;
 import { isOwnerRole, normalizeRole } from "../lib/auth-middleware";
 import { hasAcceptedProfileConnection, isProfileChatApprovalRequired } from "./profileConnections";
-import { managerHasPermission } from "../lib/manager-permission-policy";
+import { managerHasPermission, requireManagerPermission } from "../lib/manager-permission-policy";
 import { canModerateUser } from "../lib/role-access";
 
 const router: IRouter = Router();
+
+router.get("/manager/owner-contact", requireAuth, requireManagerPermission("owner.chat"), async (req,res):Promise<void> => {
+  const result=await pool.query("SELECT id,name FROM users WHERE lower(role) IN ('owner','platform_owner') ORDER BY id ASC LIMIT 1");
+  if(!result.rows[0]){res.status(404).json({error:"Owner contact is not available."});return;}
+  res.setHeader("Cache-Control","private,no-store");
+  res.json({id:Number(result.rows[0].id),name:String(result.rows[0].name||"Owner")});
+});
 
 const voiceUpload = multer({
   storage: multer.diskStorage({
