@@ -49,6 +49,8 @@ async function isGroupMember(groupId: number, userId: number): Promise<boolean> 
   return Boolean(membership);
 }
 
+function hideOwnerMembers(user:any,members:any[]){return isOwnerRole(user.role)?members:members.filter(member=>!isOwnerRole(member.role));}
+
 async function getGroupMembers(groupId: number) {
   const memberRows = await db.select({
     id: usersTable.id,
@@ -102,14 +104,15 @@ router.get("/study-groups", requireAuth, async (req, res): Promise<void> => {
     const members = await getGroupMembers(g.id);
     const isMember = members.some(member => member.id === currentUser.id);
     const canManage = await canManageGroup(currentUser, g);
+    const visibleMembers=hideOwnerMembers(currentUser,members);
     const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, g.id));
     return {
       ...g,
-      memberCount: members.length,
+      memberCount: visibleMembers.length,
       isMember,
       // Non-members get only a safe public profile preview: never expose email, phone,
       // moderation controls, payment details, or private account metadata.
-      members: isMember || canManage ? members : members.map(member => ({
+      members: isMember || canManage ? visibleMembers : visibleMembers.map(member => ({
         id: member.id,
         name: member.name,
         role: member.role,
@@ -188,7 +191,7 @@ router.get("/study-groups/:id", requireAuth, async (req, res): Promise<void> => 
     return;
   }
 
-  const members = await getGroupMembers(group.id);
+  const members = hideOwnerMembers(req.currentUser!,await getGroupMembers(group.id));
   res.json({
     ...group,
     memberCount: members.length,
@@ -230,7 +233,7 @@ router.post("/study-groups/:id/join", requireAuth, async (req, res): Promise<voi
     });
   }
 
-  const members = await getGroupMembers(group.id);
+  const members = hideOwnerMembers(currentUser,await getGroupMembers(group.id));
   res.json({
     ...group,
     memberCount: members.length,
@@ -261,7 +264,7 @@ router.post("/study-groups/:id/leave", requireAuth, async (req, res): Promise<vo
   await db.delete(studyGroupMembersTable).where(
     and(eq(studyGroupMembersTable.groupId, group.id), eq(studyGroupMembersTable.userId, currentUser.id)),
   );
-  const members = await getGroupMembers(group.id);
+  const members = hideOwnerMembers(currentUser,await getGroupMembers(group.id));
   res.json({ ...group, memberCount: members.length, members, createdAt: group.createdAt.toISOString() });
 });
 
@@ -355,7 +358,7 @@ router.get("/study-groups/:id/members", requireAuth, async (req, res): Promise<v
     res.status(403).json({ error: "You must be a group member to view members" });
     return;
   }
-  const members = await getGroupMembers(groupId);
+  const members = hideOwnerMembers(req.currentUser!,await getGroupMembers(groupId));
   const controls = await db.select().from(groupMemberControlsTable).where(eq(groupMemberControlsTable.groupId, groupId));
   const controlsByUser = new Map(controls.map(control => [control.userId, control]));
   res.json(members.map(member => ({ ...member, control: controlsByUser.get(member.id) ?? null })));
