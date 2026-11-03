@@ -514,7 +514,7 @@ router.get("/users/:id/teacher-documents", requireAuth, async (req, res): Promis
   if (!target) { res.status(404).json({ error: "User not found." }); return; }
   if (!(await canViewProfileSection(actor,id,"teacher_documents"))) { res.status(403).json({ error: "Teacher document visibility is restricted by this profile's privacy settings." }); return; }
   const actorRole = String(actor.role || "").trim().toLowerCase().replace(/[ -]+/g, "_");
-  const selfOrManager = actor.id === id || ["owner","platform_owner","senior_manager","manager","junior_manager"].includes(actorRole) || (actorRole === "teacher" && actor.isManager === true && actor.teacherApplicationStatus !== "pending_review");
+  const selfOrManager = actor.id === id || canReviewTeacherApplication(actor);
   const professional = ["teacher", "manager", "senior_manager"].includes(String(target.role).toLowerCase());
   if (!selfOrManager && !professional) { res.status(403).json({ error: "Access denied" }); return; }
   const result = selfOrManager
@@ -531,7 +531,7 @@ router.get("/users/:id/teacher-documents/:docId", requireAuth, async (req, res):
   if (!(await canViewProfileSection(actor, id, "teacher_documents"))) {
     res.status(403).json({ error: "Teacher document visibility is restricted by this profile's privacy settings." }); return;
   }
-  const selfOrManager = actor.id === id || canAccessManager(actor);
+  const selfOrManager = actor.id === id || canReviewTeacherApplication(actor);
   const professional = ["teacher", "manager", "senior_manager"].includes(String(target.role).toLowerCase());
   const result = selfOrManager
     ? await pool.query("SELECT file_name, mime_type, size_bytes, data, storage_key FROM teacher_documents WHERE id = $1 AND user_id = $2 LIMIT 1", [docId, id])
