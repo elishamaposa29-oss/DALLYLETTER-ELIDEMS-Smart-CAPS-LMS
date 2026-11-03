@@ -125,15 +125,15 @@ export function canModerateUser(actor: RoleLikeUser, target: RoleLikeUser): bool
   if (isOwnerRole(targetRole)) return false;
   if (targetRole === "admin" && !isOwnerRole(actorRole)) return false;
   if (isOwnerRole(actorRole)) return true;
-  if (!isSeniorManager(actor)) return false;
-
-  if (targetRole === "senior_manager") return false;
-  if (targetRole === "manager" || targetRole === "junior_manager") {
-    return normalizedManagerLevel(target) === "junior";
+  if (isSeniorManager(actor)) {
+    if (targetRole === "senior_manager") return false;
+    if (targetRole === "manager" || targetRole === "junior_manager") return normalizedManagerLevel(target) === "junior";
+    if (targetRole === "teacher" && target.isManager === true) return normalizedManagerLevel(target) === "junior";
+    return ["teacher", "student", "learner", "prefect"].includes(targetRole);
   }
-  if (targetRole === "teacher" && target.isManager === true) {
-    return normalizedManagerLevel(target) === "junior";
-  }
+  if (!isJuniorManager(actor)) return false;
+  if (["manager", "junior_manager", "senior_manager"].includes(targetRole)) return false;
+  if (targetRole === "teacher" && target.isManager === true) return false;
   return ["teacher", "student", "learner", "prefect"].includes(targetRole);
 }
 
