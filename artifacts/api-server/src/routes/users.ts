@@ -38,7 +38,8 @@ async function canManageManagerTarget(actor: NonNullable<Express.Request["curren
 }
 
 
-function canViewManagerTarget(actor: NonNullable<Express.Request["currentUser"]>, target: { role: unknown; isManager?: unknown; managerLevel?: unknown }): boolean {
+function canViewManagerTarget(actor: NonNullable<Express.Request["currentUser"]>, target: { id?: number; role: unknown; isManager?: unknown; managerLevel?: unknown }): boolean {
+  if (Number(target.id) === Number(actor.id)) return true;
   if (isOwnerRole(target.role)) return isOwnerRole(actor.role);
   if (isOwnerRole(actor.role)) return true;
   const targetRole = normalizeRole(target.role);
@@ -122,7 +123,7 @@ router.get("/users/:id", requireAuth, requireManagerPermissionIfManager("users.v
   const params = GetUserParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const actor = req.currentUser!;
-  const [targetRole] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, params.data.id));
+  const [targetRole] = await db.select({ id: usersTable.id, role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, params.data.id));
   if (targetRole && !canViewManagerTarget(actor, targetRole) && (isSeniorManager(actor) || isJuniorManager(actor))) { res.status(404).json({ error: "User not found" }); return; }
   if (targetRole && isOwnerRole(targetRole.role) && !isOwnerRole(actor.role)) { res.status(404).json({ error: "User not found" }); return; }
   if (!canReadPrivateProfileByRole(actor.id, params.data.id, actor.role)) { res.status(403).json({ error: "You cannot access this private profile." }); return; }
