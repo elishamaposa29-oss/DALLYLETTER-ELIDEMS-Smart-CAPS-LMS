@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { requireManagerPermission } from "../lib/manager-permission-policy";
 import { db, pool, auditLogsTable } from "@workspace/db";
 import { achievementsTable, userAchievementsTable, usersTable, lessonRequestsTable, notificationsTable } from "@workspace/db/schema";
 import { eq, desc, and } from "drizzle-orm";
@@ -116,7 +117,7 @@ router.get("/award/recommendations", requireAuth, async (req, res): Promise<void
   res.json({ items: result.rows, canApprove: senior, canDirectAward: isOwnerRole(user.role), canRecommend: canRecommendAchievementAwards(user) });
 });
 
-router.post("/award/recommendations/:id/review", requireAuth, async (req, res): Promise<void> => {
+router.post("/award/recommendations/:id/review", requireAuth, requireManagerPermission("achievements.approve"), async (req, res): Promise<void> => {
   const reviewer = req.currentUser!;
   if (!canApproveAchievementAwards(reviewer)) { res.status(403).json({ error: "Senior manager or owner approval is required." }); return; }
   const id = Number(req.params.id);
