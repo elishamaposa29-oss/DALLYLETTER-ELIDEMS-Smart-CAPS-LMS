@@ -26,8 +26,9 @@ const router: IRouter = Router();
 
 async function canManageManagerTarget(actor: NonNullable<Express.Request["currentUser"]>, targetId: number): Promise<boolean> {
   const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, targetId));
-  if (!target || isOwnerRole(target.role) || normalizeRole(target.role) === "admin") return false;
+  if (!target || isOwnerRole(target.role)) return false;
   if (isOwnerRole(actor.role)) return true;
+  if (normalizeRole(target.role) === "admin") return false;
   if (isSeniorManager(actor)) return canModerateUser(actor, target);
   if (isJuniorManager(actor)) {
     const targetRole = normalizeRole(target.role);
