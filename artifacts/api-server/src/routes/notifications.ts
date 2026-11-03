@@ -36,6 +36,7 @@ router.post("/notifications", requireAuth, requireManagerPermissionIfManager("no
   const managerActor=canAccessManager(actor)&&!isOwnerRole(actor.role);
   if (!canAccessManager(actor) && !actor.isPrefect) { res.status(403).json({ error: "Only authorized staff or prefects can create notifications" }); return; }
   const recipientRole = typeof req.body?.recipientRole === "string" ? req.body.recipientRole.trim().toLowerCase() : "";
+  if(req.body?.recipientType==="role"&&!recipientRole){res.status(400).json({error:"Choose a recipient role."});return;}
   const rawRecipientId=req.body?.recipientId;
   const hasRecipientId=rawRecipientId!==undefined&&rawRecipientId!==null&&rawRecipientId!=="";
   const specificId=Number(rawRecipientId);
