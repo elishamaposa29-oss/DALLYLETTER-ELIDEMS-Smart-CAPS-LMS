@@ -77,7 +77,16 @@ router.get("/dashboard", requireAuth, requireManager, requireManagerPermission("
     db.select().from(contentFlagsTable).where(eq(contentFlagsTable.status, "pending")).orderBy(desc(contentFlagsTable.createdAt)).limit(100),
     isSeniorManager(req.currentUser!) ? pool.query("SELECT id,name,email,created_at,teacher_review_deadline FROM users WHERE role=$1 AND teacher_application_status=$2 ORDER BY created_at ASC LIMIT 100", ["teacher", "pending_review"]) : Promise.resolve({ rows: [] as any[] }),
   ]);
-  const visibleContentFlags = contentFlags.filter((row: any) => !(["user","profile","account"].includes(String(row.contentType).toLowerCase()) && ownerIds.has(Number(row.contentId))));
+  const ownerContentIds: Record<string, Set<number>> = {
+    user: ownerIds,
+    profile: ownerIds,
+    account: ownerIds,
+    lesson: new Set(lessons.filter((row: any) => ownerIds.has(Number(row.teacherId))).map((row: any) => Number(row.id))),
+    class: new Set(classes.filter((row: any) => ownerIds.has(Number(row.teacherId))).map((row: any) => Number(row.id))),
+    assignment: new Set(assignments.filter((row: any) => ownerIds.has(Number(row.teacherId))).map((row: any) => Number(row.id))),
+    exercise: new Set(exercises.filter((row: any) => ownerIds.has(Number(row.createdBy))).map((row: any) => Number(row.id))),
+  };
+  const visibleContentFlags = contentFlags.filter((row: any) => !ownerContentIds[String(row.contentType).toLowerCase()]?.has(Number(row.contentId)));
 
   const activeTeachers = teachers.filter((t: any) => !t.isManager && !t.isBlocked && !t.isSuspended);
   const teacherRanks = activeTeachers.map((teacher: any) => {
