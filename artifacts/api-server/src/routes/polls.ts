@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
 import { db, pollsTable, pollQuestionsTable, pollOptionsTable, pollSubmissionsTable, usersTable, auditLogsTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
 import { canManageAcademicContent, requireAuth } from "../lib/auth-middleware";
@@ -29,7 +30,7 @@ router.get("/polls", requireAuth, async (req, res): Promise<void> => {
 });
 
 // POST /polls — create poll (teacher/owner)
-router.post("/polls", requireAuth, async (req, res): Promise<void> => {
+router.post("/polls", requireAuth, requireManagerPermissionIfManager("polls.manage"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Academic staff access required" }); return; }
   const { title, topic, type = "manual", grade, subject, mode = "practice", timerSeconds, questions } = req.body as {
@@ -61,7 +62,7 @@ router.post("/polls", requireAuth, async (req, res): Promise<void> => {
 });
 
 // POST /polls/ai-generate — generate poll questions with AI
-router.post("/polls/ai-generate", requireAuth, async (req, res): Promise<void> => {
+router.post("/polls/ai-generate", requireAuth, requireManagerPermissionIfManager("polls.manage"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Academic staff access required" }); return; }
   const { topic, grade, subject, count = 5 } = req.body as { topic?: unknown; grade?: unknown; subject?: unknown; count?: unknown };
@@ -127,7 +128,7 @@ router.get("/polls/:id", requireAuth, async (req, res): Promise<void> => {
 });
 
 // PATCH /polls/:id — update poll status / metadata
-router.patch("/polls/:id", requireAuth, async (req, res): Promise<void> => {
+router.patch("/polls/:id", requireAuth, requireManagerPermissionIfManager("polls.manage"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Academic staff access required" }); return; }
   const id = parseInt(String(req.params.id));
@@ -152,7 +153,7 @@ router.patch("/polls/:id", requireAuth, async (req, res): Promise<void> => {
 });
 
 // DELETE /polls/:id
-router.delete("/polls/:id", requireAuth, async (req, res): Promise<void> => {
+router.delete("/polls/:id", requireAuth, requireManagerPermissionIfManager("polls.manage"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (user.role === "student") { res.status(403).json({ error: "Forbidden" }); return; }
   const id = parseInt(String(req.params.id));
