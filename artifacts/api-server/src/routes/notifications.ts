@@ -3,6 +3,7 @@ import { eq, or, isNull, and, desc } from "drizzle-orm";
 import { db, notificationsTable, pool } from "@workspace/db";
 import { CreateNotificationBody, MarkNotificationReadParams } from "@workspace/api-zod";
 import { requireAuth, requireTeacherOrOwner, requireOwner, canAccessManager } from "../lib/auth-middleware";
+import { requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
 
 const router: IRouter = Router();
 
@@ -28,7 +29,7 @@ router.get("/notifications", requireAuth, async (req, res): Promise<void> => {
 });
 
 // POST /notifications — Create (teacher/owner only)
-router.post("/notifications", requireAuth, async (req, res): Promise<void> => {
+router.post("/notifications", requireAuth, requireManagerPermissionIfManager("notifications.create"), async (req, res): Promise<void> => {
   if (!canAccessManager(req.currentUser!) && !req.currentUser?.isPrefect) { res.status(403).json({ error: "Only authorized staff or prefects can create notifications" }); return; }
   const recipientRole = typeof req.body?.recipientRole === "string" ? req.body.recipientRole.trim().toLowerCase() : "";
   if (recipientRole) {
