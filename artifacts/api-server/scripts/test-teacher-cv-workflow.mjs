@@ -45,9 +45,11 @@ async function registerTeacher(label){
 const approvalApplicant=await registerTeacher("approval");
 const pendingQueue=await request("/api/teacher-cv-workspace/queue",{token:ownerToken});
 assert.equal(pendingQueue.status,200,"Owner can retrieve the teacher CV review queue");
-assert(pendingQueue.data.applications.some(item=>Number(item.id)===Number(approvalApplicant.id)),"Review queue must include the pending applicant");
+assert(!pendingQueue.data.applications.some(item=>Number(item.id)===Number(approvalApplicant.id)),"Unsubmitted teacher registrations must not appear as submitted CV applications");
 const profilePhoto=await upload("/api/users/me/teacher-documents",approvalApplicant.token,"file","teacher-photo.png","image/png",Buffer.from([137,80,78,71,13,10,26,10]),{documentType:"cv"});
 assert.equal(profilePhoto.status,201,"Applicant can upload a private profile photo");
+const resume=await upload("/api/users/me/teacher-documents",approvalApplicant.token,"file","teacher-resume.pdf","application/pdf",Buffer.from("%PDF-1.4\\n%teacher resume integration test\\n"),{documentType:"resume"});
+assert.equal(resume.status,201,"Applicant can upload the required PDF resume");
 const qualification=await request("/api/users/me/qualifications",{token:approvalApplicant.token,method:"POST",body:{title:"Bachelor of Education",institution:"CI Test University",year:2018}});
 assert.equal(qualification.status,201,"Applicant can create a separate qualification record");
 const certificate=await upload("/api/qualifications/"+qualification.data.id+"/document",approvalApplicant.token,"file","bachelor-certificate.pdf","application/pdf",Buffer.from("%PDF-1.4\n%teacher cv integration test\n"));
@@ -55,6 +57,14 @@ assert.equal(certificate.status,201,"Applicant can upload an individual qualific
 const cvPayload={professionalSummary:"Qualified test teacher",education:"Bachelor of Education",experience:"3 years",subjects:"Mathematics",address:"Harare",personalDetails:JSON.stringify({fullName:"CV Test approval",idNumber:"CV-TEST-APPROVAL",dob:"1995-06-15",phone:"+263771234567",email:approvalApplicant.email,address:"Harare"}),teachingDetails:JSON.stringify({level:"Secondary",experience:"3-5 years",subjects:"Mathematics",forms:"Form 1-4",bio:"Test teacher"}),surveyAnswers:JSON.stringify({laptop:"Yes",laptopType:"HP",smartphone:"Yes — Android",computer:"Intermediate",online:"Weekdays",internet:"WiFi at home",platforms:["WhatsApp"],power:"Yes",verificationCall:"Yes — call anytime"}),photoDocumentId:String(profilePhoto.data.id)};
 const savedApprovalCv=await request("/api/users/me/teacher-cv",{token:approvalApplicant.token,method:"PATCH",body:{cv:cvPayload}});
 assert.equal(savedApprovalCv.status,200,"Applicant can save the complete structured CV");
+const submitted=await request("/api/teacher-cv-workspace/submit",{token:approvalApplicant.token,method:"POST"});
+assert.equal(submitted.status,200,"Submit CV must notify the applicant and Owner after validating uploaded documents");
+assert.equal(submitted.data.submitted,true);
+const ownerQueueAfterSubmit=await request("/api/teacher-cv-workspace/queue",{token:ownerToken});
+assert(ownerQueueAfterSubmit.data.applications.some(item=>Number(item.id)===Number(approvalApplicant.id)),"Submitted CV must appear in the Owner review queue");
+const duplicateSubmit=await request("/api/teacher-cv-workspace/submit",{token:approvalApplicant.token,method:"POST"});
+assert.equal(duplicateSubmit.status,200,"Resubmitting an already-submitted application must be idempotent");
+assert.equal(duplicateSubmit.data.alreadySubmitted,true);
 const ownCvPdf=await fetch(base+"/api/users/me/teacher-cv/pdf",{headers:{Authorization:"Bearer "+approvalApplicant.token}});
 assert.equal(ownCvPdf.status,200,"Pending teacher can download their own CV PDF");
 assert.match(ownCvPdf.headers.get("content-type")||"",/application\/pdf/);
