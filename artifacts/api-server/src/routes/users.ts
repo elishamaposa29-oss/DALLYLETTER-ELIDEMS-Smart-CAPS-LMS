@@ -98,6 +98,8 @@ router.get("/users/:id", requireAuth, async (req, res): Promise<void> => {
   const params = GetUserParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const actor = req.currentUser!;
+  const [targetRole] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, params.data.id));
+  if (targetRole && isOwnerRole(targetRole.role) && !isOwnerRole(actor.role)) { res.status(404).json({ error: "User not found" }); return; }
   if (!canReadPrivateProfileByRole(actor.id, params.data.id, actor.role)) { res.status(403).json({ error: "You cannot access this private profile." }); return; }
   const [user] = await db.select(safeUserFields).from(usersTable).where(eq(usersTable.id, params.data.id));
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
@@ -652,7 +654,7 @@ router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<v
     role: usersTable.role, grade: usersTable.grade, isPrefect: usersTable.isPrefect, isManager: usersTable.isManager,
     performanceScore: usersTable.performanceScore, badgeCount: usersTable.badgeCount, streakDays: usersTable.streakDays,
   }).from(usersTable).where(eq(usersTable.id, id));
-  if (!user) { res.status(404).json({ error: "User not found." }); return; }
+  if (!user || (isOwnerRole(user.role) && !isOwnerRole(req.currentUser!.role))) { res.status(404).json({ error: "User not found." }); return; }
   await ensureProfileCoverSchema();
   const coverResult = await pool.query("SELECT media_url AS cover_url, media_type AS cover_type FROM user_profile_covers WHERE user_id=$1", [id]).catch(() => ({ rows: [] as Array<{cover_url:string;cover_type:string}> }));
   const coverMedia = coverResult.rows[0] ?? { cover_url: null, cover_type: null };
