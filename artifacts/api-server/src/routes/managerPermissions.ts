@@ -192,10 +192,10 @@ router.patch("/:userId/role", requireAuth, ownerOnly, async (req, res): Promise<
       const previous = prior.rows[0]?.granted ?? null;
       // Preserve full established Senior Manager operational capability.
       // Junior Managers start with no grants; Owner assigns each permission individually.
-      // Demotion removes all senior-only permissions and preserves other explicit decisions.
+      // Demotion clears every inherited Senior baseline grant; Owner must explicitly re-grant Junior permissions.
       const granted = nextRole === "senior_manager"
         ? (previousRole === "senior_manager" ? previous !== false : true)
-        : isSeniorOnlyManagerPermission(permission.key) ? false : previous === true;
+        : false;
       await client.query(
         "INSERT INTO manager_permission_grants(manager_user_id,permission_key,granted,changed_by,changed_at) VALUES($1,$2,$3,$4,now()) ON CONFLICT(manager_user_id,permission_key) DO UPDATE SET granted=EXCLUDED.granted,changed_by=EXCLUDED.changed_by,changed_at=now()",
         [userId, permission.key, granted, req.currentUser!.id],
