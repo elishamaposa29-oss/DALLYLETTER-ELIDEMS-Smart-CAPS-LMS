@@ -3,6 +3,7 @@ import { pool } from "@workspace/db";
 import { requireAuth, isOwnerRole } from "../lib/auth-middleware";
 import {
   normalizeRole,
+  isSeniorManager,
 } from "../lib/role-access";
 
 const router: IRouter = Router();
