@@ -45,6 +45,7 @@ export const MANAGER_PERMISSION_CATALOG = [
   { key: "moderation.view", group: "Moderation", label: "View moderation queue", description: "Review school-scoped content flags." },
   { key: "moderation.action", group: "Moderation", label: "Take moderation action", description: "Resolve eligible content moderation cases." },
   { key: "notifications.create", group: "Communications", label: "Send notifications", description: "Create school-scoped notifications for permitted recipients." },
+  { key: "polls.manage", group: "Learning content", label: "Create and manage polls", description: "Create, generate, edit and delete school polls." },
   { key: "messages.send", group: "Communications", label: "Send private messages to subordinates", description: "Use the existing private messaging system with eligible subordinate accounts." },
   { key: "content.comment", group: "Moderation", label: "Comment on teacher work", description: "Leave an auditable manager comment on eligible teacher content." },
   { key: "notifications.broadcast", group: "Communications", label: "Send broadcasts", description: "Send school-scoped broadcast messages to selected recipients." },
