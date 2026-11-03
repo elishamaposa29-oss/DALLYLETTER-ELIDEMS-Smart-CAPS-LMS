@@ -94,7 +94,7 @@ router.post("/award/recommendations", requireAuth, async (req, res): Promise<voi
       [learnerId, achievementId, user.id, note || null],
     );
     await db.insert(auditLogsTable).values({ performedBy: user.id, action: "achievement.award_recommended", category: "academic", targetType: "achievement_award_recommendation", targetId: Number(result.rows[0].id), details: JSON.stringify({ learnerId, achievementId }) });
-    const reviewers = await pool.query("SELECT id FROM users WHERE (role IN ('senior_manager','owner','admin','platform_owner') OR (role IN ('manager','teacher') AND manager_level='senior' AND (role <> 'teacher' OR (is_manager=true AND teacher_application_status <> 'pending_review')))) AND COALESCE(is_blocked,false)=false");
+    const reviewers = await pool.query("SELECT id FROM users WHERE (role IN ('senior_manager','owner','platform_owner') OR (role IN ('manager','teacher') AND manager_level='senior' AND (role <> 'teacher' OR (is_manager=true AND teacher_application_status <> 'pending_review')))) AND COALESCE(is_blocked,false)=false");
     for (const reviewer of reviewers.rows) {
       await db.insert(notificationsTable).values({ title: "Achievement award recommendation", message: user.name + " recommended an achievement for learner account #" + learnerId + ". Senior review is required.", type: "achievement_award_review", recipientId: Number(reviewer.id), isRead: false });
     }
