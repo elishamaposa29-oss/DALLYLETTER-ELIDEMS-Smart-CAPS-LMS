@@ -3,6 +3,21 @@ import { pool } from "@workspace/db";
 import { isOwnerRole, isSeniorManager, normalizeRole } from "./role-access";
 
 const MANAGER_ROLES = new Set(["junior_manager", "senior_manager", "manager"]);
+export const SENIOR_DEFAULT_PERMISSION_KEYS = new Set([
+  "manager.dashboard.view", "manager.monitoring.view",
+  "users.view", "users.block", "users.restore", "users.suspend",
+  "users.override.teacher", "users.override.learner", "users.override.prefect", "users.override.junior_manager",
+  "attendance.view", "attendance.edit", "recordbook.view", "recordbook.edit",
+  "reports.create", "reports.view", "reports.review",
+  "transfers.view", "transfers.reject", "transfers.approve",
+  "teacher_cv.chat", "teacher_cv.view", "teacher_cv.review", "teacher_cv.authorize",
+  "qualifications.view", "qualifications.verify",
+  "achievements.view", "achievements.recommend", "achievements.approve",
+  "moderation.view", "moderation.action", "notifications.create",
+  "classes.manage", "lessons.create", "lessons.edit", "lessons.delete", "lessons.notify",
+  "polls.manage", "messages.send", "content.view_comments", "content.comment",
+  "notifications.broadcast", "notifications.view", "groups.manage", "audit.view_subordinate", "owner.chat",
+]);
 export const SENIOR_ONLY_PERMISSION_KEYS = new Set([
   "transfers.approve", "reports.review", "achievements.approve",
   "teacher_cv.review", "teacher_cv.authorize", "qualifications.verify",
@@ -14,7 +29,7 @@ export const isSeniorOnlyManagerPermission = (permissionKey: string): boolean =>
 export function defaultManagerPermission(role: unknown, managerLevel: unknown, isManager: unknown, _permissionKey: string): boolean {
   // Preserve the established Senior Manager operational authority. Owner-only
   // capabilities are never part of this catalogue or this policy.
-  return isSeniorManager({ role, managerLevel: typeof managerLevel === "string" ? managerLevel : undefined, isManager: isManager === true });
+  return SENIOR_DEFAULT_PERMISSION_KEYS.has(_permissionKey) && isSeniorManager({ role, managerLevel: typeof managerLevel === "string" ? managerLevel : undefined, isManager: isManager === true });
 }
 
 type CurrentAuthority = {
