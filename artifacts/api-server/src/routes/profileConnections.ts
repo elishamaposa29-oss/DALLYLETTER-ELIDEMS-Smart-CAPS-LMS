@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { and, eq } from "drizzle-orm";
 import { db, notificationsTable, usersTable, pool } from "@workspace/db";
-import { requireAuth, normalizeRole, isOwnerRole } from "../lib/auth-middleware";
+import { requireAuth, normalizeRole, isOwnerRole, canAccessManager } from "../lib/auth-middleware";
 
 const router = Router();
 const sectionKeys = new Set(["overview","qualifications","subjects","enrollments","achievements","reports","attendance","register","payments","transfers","teacher_documents","groups","activity"]);
@@ -50,18 +50,30 @@ export async function hasAcceptedProfileConnection(userA: number, userB: number)
 
 export async function canViewProfileSection(actor: NonNullable<Express.Request["currentUser"]>, targetId: number, section: string): Promise<boolean> {
   if (actor.id === targetId) return true;
+  const actorIsOwner = isOwnerRole(actor.role);
+  await ensureSchema();
+  const target = await pool.query("SELECT role FROM users WHERE id=$1", [targetId]);
+  if (!target.rows.length) return false;
+  // Owner profiles and Owner activity are invisible to every non-Owner account,
+  // including Senior Managers and Admins, regardless of the profile's public defaults.
+  if (isOwnerRole(target.rows[0].role) && !actorIsOwner) return false;
+  if (actorIsOwner) return true;
+
   const role = normalizeRole(actor.role);
   const approvedTeacher = role === "teacher" && actor.teacherApplicationStatus !== "pending_review";
-  if (["owner","platform_owner","senior_manager","manager","junior_manager"].includes(role) || (approvedTeacher && actor.isManager === true)) return true;
-  await ensureSchema();
-  if (approvedTeacher) {
-    const following = await pool.query("SELECT 1 FROM follows WHERE follower_id=$1 AND target_user_id=$2 LIMIT 1", [actor.id,targetId]);
-    if (following.rows.length) return true;
-  }
+  const managerAccess = canAccessManager(actor) || (approvedTeacher && actor.isManager === true);
   const result = await pool.query("SELECT section_settings FROM profile_privacy_settings WHERE user_id=$1", [targetId]);
   const setting = result.rows[0]?.section_settings?.[section] ?? { mode: defaultModeForSection(section), selectedUserIds: [] };
+
   if (setting.mode === "everyone") return true;
-  if (setting.mode === "me_only_authorized") return false;
+  if (setting.mode === "me_only_authorized") {
+    if (managerAccess) return true;
+    if (approvedTeacher) {
+      const following = await pool.query("SELECT 1 FROM follows WHERE follower_id=$1 AND target_user_id=$2 LIMIT 1", [actor.id,targetId]);
+      return following.rows.length > 0;
+    }
+    return false;
+  }
   if (setting.mode === "selected_friends") {
     if (!Array.isArray(setting.selectedUserIds) || !setting.selectedUserIds.includes(actor.id)) return false;
     return hasAcceptedProfileConnection(actor.id,targetId);
