@@ -16,7 +16,11 @@ interface ContentFlag { id: number; contentType: string; contentId: number; cont
 export default function AdminSafety() {
   const { toast } = useToast();
   const { user } = useAuth();
-  const canDeleteFlags = ["owner", "admin", "platform_owner"].includes(String(user?.role || "").toLowerCase());
+  const [managerPermissions, setManagerPermissions] = useState<Record<string, boolean>>({});
+  const [isOwner, setIsOwner] = useState(["owner", "platform_owner"].includes(String(user?.role || "").toLowerCase()));
+  const canViewModeration = isOwner || managerPermissions["moderation.view"] === true;
+  const canActOnModeration = isOwner || managerPermissions["moderation.action"] === true;
+  const canDeleteFlags = isOwner;
   const [flags, setFlags] = useState<ContentFlag[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("all");
@@ -33,10 +37,14 @@ export default function AdminSafety() {
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    void fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: `Bearer ${token()}` } })
+      .then(async response => { const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || "Permission access unavailable"); setManagerPermissions(data.permissions ?? {}); setIsOwner(Boolean(data.isOwner)); if (data.isOwner || data.permissions?.["moderation.view"] === true) await load(); else setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
 
   async function reviewFlag(status: string) {
-    if (!reviewing) return;
+    if (!reviewing || !canActOnModeration) return;
     setSaving(true);
     const r = await fetch(getApiUrl(`/api/content-flags/${reviewing.id}`), {
       method: "PATCH",
@@ -139,7 +147,7 @@ export default function AdminSafety() {
                   </div>
                   <div className="flex gap-1.5 shrink-0">
                     {flag.status === "pending" && (
-                      <Button size="sm" variant="outline" onClick={() => { setReviewing(flag); setReviewNote(""); }} className="text-xs gap-1">
+                      {canActOnModeration && <Button size="sm" variant="outline" onClick={() => { setReviewing(flag); setReviewNote(""); }} className="text-xs gap-1">
                         <Eye className="h-3.5 w-3.5" />Review
                       </Button>
                     )}
