@@ -25,11 +25,10 @@ export function ProtectedRoute({
         setLocation("/profile-hub");
       } else {
         // The generated API role model is student/teacher/owner.
-        // Keep the existing legacy "admin" compatibility at the runtime boundary
-        // without adding an unsupported role to the generated frontend type.
+        // Keep only the legacy platform_owner alias at the runtime boundary.
         const role = String(user.role).toLowerCase().replace(/[ -]+/g, "_");
 
-        if (allowedRoles && !allowedRoles.includes(role) && !((["admin","platform_owner"].includes(role)) && allowedRoles.includes("owner")) && !(allowManagerStaff && role === "teacher" && user.isManager === true) && !(role === "junior_manager" && allowedRoles.some(value => ["manager","senior_manager"].includes(value)))) {
+        if (allowedRoles && !allowedRoles.includes(role) && !((["platform_owner"].includes(role)) && allowedRoles.includes("owner")) && !(allowManagerStaff && role === "teacher" && user.isManager === true) && !(role === "junior_manager" && allowedRoles.some(value => ["manager","senior_manager"].includes(value)))) {
           if (role === "student" || role === "prefect") setLocation("/");
           else if (role === "teacher") setLocation("/teacher");
           else if (["manager","senior_manager","junior_manager"].includes(role)) setLocation("/manager");
