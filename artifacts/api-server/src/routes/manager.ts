@@ -68,11 +68,11 @@ router.get("/dashboard", requireAuth, requireManager, requireManagerPermission("
 
   // Rank from observed work, marking, and learner engagement rather than the manually editable score.
   const [transferRows, reportRows, awardRows, qualificationRows, enrollmentRows, contentFlags, teacherApplications] = await Promise.all([
-    pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,r.reason,r.status,r.created_at FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id WHERE r.status='pending' ORDER BY r.created_at ASC LIMIT 100"),
-    pool.query("SELECT d.id,d.learner_id,u.name AS learner_name,d.report_type,d.term_label,d.status,d.created_at FROM academic_report_drafts d JOIN users u ON u.id=d.learner_id WHERE d.status='pending_review' ORDER BY d.created_at ASC LIMIT 100"),
-    pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,a.name AS achievement_name,a.icon AS achievement_icon,r.recommendation_note,r.created_at FROM achievement_award_recommendations r JOIN users u ON u.id=r.learner_id JOIN achievements a ON a.id=r.achievement_id WHERE r.status='pending_senior_review' ORDER BY r.created_at ASC LIMIT 100"),
+    pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,r.reason,r.status,r.created_at FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id WHERE r.status='pending' AND ($1::boolean OR lower(u.role) NOT IN ('owner','platform_owner')) ORDER BY r.created_at ASC LIMIT 100", [isOwnerRole(req.currentUser!.role)]),
+    pool.query("SELECT d.id,d.learner_id,u.name AS learner_name,d.report_type,d.term_label,d.status,d.created_at FROM academic_report_drafts d JOIN users u ON u.id=d.learner_id WHERE d.status='pending_review' AND ($1::boolean OR lower(u.role) NOT IN ('owner','platform_owner')) ORDER BY d.created_at ASC LIMIT 100", [isOwnerRole(req.currentUser!.role)]),
+    pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,a.name AS achievement_name,a.icon AS achievement_icon,r.recommendation_note,r.created_at FROM achievement_award_recommendations r JOIN users u ON u.id=r.learner_id JOIN achievements a ON a.id=r.achievement_id WHERE r.status='pending_senior_review' AND ($1::boolean OR lower(u.role) NOT IN ('owner','platform_owner')) ORDER BY r.created_at ASC LIMIT 100", [isOwnerRole(req.currentUser!.role)]),
     isSeniorManager(req.currentUser!)
-      ? pool.query("SELECT q.id,q.user_id,u.name AS teacher_name,q.title,q.institution,q.created_at FROM teacher_qualifications q JOIN users u ON u.id=q.user_id WHERE q.verification_status='pending' ORDER BY q.created_at ASC LIMIT 100")
+      ? pool.query("SELECT q.id,q.user_id,u.name AS teacher_name,q.title,q.institution,q.created_at FROM teacher_qualifications q JOIN users u ON u.id=q.user_id WHERE q.verification_status='pending' AND ($1::boolean OR lower(u.role) NOT IN ('owner','platform_owner')) ORDER BY q.created_at ASC LIMIT 100", [isOwnerRole(req.currentUser!.role)])
       : Promise.resolve({ rows: [] as any[] }),
     pool.query("SELECT c.teacher_id, COUNT(DISTINCT e.learner_id)::int AS learners_joined FROM classes c LEFT JOIN enrollments e ON e.class_id=c.id GROUP BY c.teacher_id"),
     db.select().from(contentFlagsTable).where(eq(contentFlagsTable.status, "pending")).orderBy(desc(contentFlagsTable.createdAt)).limit(100),
@@ -173,6 +173,7 @@ router.get("/teachers", requireAuth, requireManager, requireManagerPermission("u
     pool.query("SELECT c.teacher_id, COUNT(DISTINCT e.learner_id)::int AS learners_joined FROM classes c LEFT JOIN enrollments e ON e.class_id=c.id GROUP BY c.teacher_id"),
     isOwnerRole(req.currentUser!.role) ? db.select().from(ownerAlertsTable).where(eq(ownerAlertsTable.status, "open")) : db.select().from(ownerAlertsTable).where(and(eq(ownerAlertsTable.status, "open"), inArray(ownerAlertsTable.category, managerVisibleAlertCategories))),
   ]);
+  const visibleTeacherAlerts = await visibleManagerAlerts(req.currentUser!, alerts);
   const ranked = teachers.filter((t: any) => !t.isManager && !t.isBlocked && !t.isSuspended).map((teacher: any) => {
     const teacherLessons = lessonCounts.filter((l: any) => l.teacherId === teacher.id);
     const teacherAssignments = assignments.filter((a: any) => a.teacherId === teacher.id);
@@ -189,8 +190,8 @@ router.get("/teachers", requireAuth, requireManager, requireManagerPermission("u
     return { ...teacher, lessonsCount: teacherLessons.length, classesCount: classCounts.filter((cl: any) => cl.teacherId === teacher.id).length,
       exercisesCount: teacherExercises.length, assignmentsCount: teacherAssignments.length, markedCount: markedAssignments + markedExercises,
       learnersJoined, learnerSubmissions: teacherAssignmentSubmissions.length + teacherExerciseSubmissions.length, activityScore,
-      alerts: alerts.filter((alert: any) => alert.reportedBy === teacher.id || (Number(alert.targetId) === teacher.id && ["teacher","user"].includes(String(alert.targetType || "").toLowerCase()))),
-      alertsCount: alerts.filter((alert: any) => alert.reportedBy === teacher.id || (Number(alert.targetId) === teacher.id && ["teacher","user"].includes(String(alert.targetType || "").toLowerCase()))).length };
+      alerts: visibleTeacherAlerts.filter((alert: any) => alert.reportedBy === teacher.id || (Number(alert.targetId) === teacher.id && ["teacher","user"].includes(String(alert.targetType || "").toLowerCase()))),
+      alertsCount: visibleTeacherAlerts.filter((alert: any) => alert.reportedBy === teacher.id || (Number(alert.targetId) === teacher.id && ["teacher","user"].includes(String(alert.targetType || "").toLowerCase()))).length };
   }).sort((a: any,b: any)=>b.activityScore-a.activityScore||b.learnersJoined-a.learnersJoined||a.name.localeCompare(b.name));
   res.json(ranked);
 });
@@ -211,8 +212,9 @@ router.get("/students", requireAuth, requireManager, requireManagerPermission("u
     pool.query("SELECT learner_id, COUNT(*)::int AS count FROM academic_transfer_requests WHERE status='pending' GROUP BY learner_id"),
     pool.query("SELECT learner_id, COUNT(*)::int AS count FROM academic_report_drafts WHERE status='pending_review' GROUP BY learner_id"),
   ]);
+  const visibleStudentAlerts = await visibleManagerAlerts(req.currentUser!, alerts);
   res.json(students.map((student: any) => {
-    const learnerAlerts = alerts.filter((alert: any) => alert.reportedBy === student.id || (Number(alert.targetId) === student.id && ["student","learner","user"].includes(String(alert.targetType || "").toLowerCase())));
+    const learnerAlerts = visibleStudentAlerts.filter((alert: any) => alert.reportedBy === student.id || (Number(alert.targetId) === student.id && ["student","learner","user"].includes(String(alert.targetType || "").toLowerCase())));
     return { ...student, awardsCount: awards.filter((award: any) => award.userId === student.id).length,
       alerts: learnerAlerts, alertsCount: learnerAlerts.length,
       exerciseSubmissions: exercises.filter((submission: any) => submission.learnerId === student.id).length,
