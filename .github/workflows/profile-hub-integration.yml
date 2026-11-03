@@ -75,6 +75,8 @@ jobs:
       # Android build and typecheck are intentionally deferred per the PR owner's explicit release constraint.
       - name: Create schema in isolated ephemeral PostgreSQL
         run: pnpm run db:push
+      - name: Apply additive manager-permission migration (idempotent)
+        run: pnpm --dir lib/db run migrate:manager-permissions
       - name: Build API
         run: pnpm --dir artifacts/api-server run build
       - name: Apply additive transfer form-data migration twice (idempotency check)
