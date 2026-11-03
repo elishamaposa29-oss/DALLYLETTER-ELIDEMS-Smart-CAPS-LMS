@@ -27,7 +27,7 @@ const materialUpload = multer({
 
 async function canManagerAccessTeacherRecord(user: NonNullable<Express.Request["currentUser"]>, teacherId: number | null, permissionKey: string): Promise<boolean> {
   if (isOwnerRole(user.role)) return true;
-  if (!Number.isSafeInteger(teacherId) || !canAccessManager(user) || !(await managerHasPermission(user, permissionKey))) return false;
+  if (teacherId === null || !Number.isSafeInteger(teacherId) || !canAccessManager(user) || !(await managerHasPermission(user, permissionKey))) return false;
   const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, teacherId));
   return Boolean(target && canModerateUser(user, target));
 }
