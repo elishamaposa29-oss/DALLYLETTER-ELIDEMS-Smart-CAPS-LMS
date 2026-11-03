@@ -21,10 +21,7 @@ const permissionForAlert = (alert: any): string => {
   return "notifications.view";
 };
 async function visibleManagerAlerts(user: NonNullable<Express.Request["currentUser"]>) {
-  const [rows, ownerRows] = await Promise.all([
-    db.select().from(ownerAlertsTable).where(inArray(ownerAlertsTable.category, managerVisibleCategories)).orderBy(desc(ownerAlertsTable.createdAt)),
-    pool.query("SELECT id FROM users WHERE lower(role) IN ('owner','platform_owner')"),
-  ]);
+  const rows=await db.select().from(ownerAlertsTable).where(inArray(ownerAlertsTable.category,managerVisibleCategories)).orderBy(desc(ownerAlertsTable.createdAt));
   const relatedIds=[...new Set(rows.flatMap((row:any)=>[Number(row.reportedBy||0),row.targetType==="user"?Number(row.targetId||0):0]).filter((id:number)=>Number.isSafeInteger(id)&&id>0))];
   const related=relatedIds.length?await pool.query("SELECT id,role,is_manager,manager_level FROM users WHERE id=ANY($1::int[])",[relatedIds]):{rows:[] as any[]};
   const byId=new Map(related.rows.map((row:any)=>[Number(row.id),row]));
