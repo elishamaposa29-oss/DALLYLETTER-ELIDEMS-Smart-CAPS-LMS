@@ -96,6 +96,7 @@ const directoryUserFields = {
   role: usersTable.role,
   isPrefect: usersTable.isPrefect,
   isManager: usersTable.isManager,
+  managerLevel: usersTable.managerLevel,
   grade: usersTable.grade,
   subject: usersTable.subject,
   avatarUrl: usersTable.avatarUrl,
