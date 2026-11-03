@@ -16,6 +16,7 @@ const token = () => localStorage.getItem("dallyletter_token") ?? "";
 export default function ManagerStudents() {
   const [students, setStudents] = useState<any[]>([]);
   const [managerSummary, setManagerSummary] = useState<any>(null);
+  const [canModerateUsers, setCanModerateUsers] = useState(false);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const { toast } = useToast();
@@ -41,6 +42,8 @@ export default function ManagerStudents() {
       .catch(() => setLoading(false));
     fetch(getApiUrl("/api/manager/dashboard"), { headers: { Authorization: "Bearer " + token() } })
       .then(r => r.json()).then(d => { if (d && typeof d === "object") setManagerSummary(d); }).catch(() => undefined);
+    fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: "Bearer " + token() } })
+      .then(r => r.json()).then(d => setCanModerateUsers(Boolean(d?.permissions?.moderateUsers))).catch(() => setCanModerateUsers(false));
   }, []);
 
   const filtered = students.filter(s => s.name?.toLowerCase().includes(search.toLowerCase()) || s.grade?.toLowerCase().includes(search.toLowerCase()));
@@ -114,7 +117,7 @@ export default function ManagerStudents() {
                     </div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 border-t pt-3" onClick={event => event.stopPropagation()}>
-                    {s.isBlocked || s.isSuspended ? (
+                    {canModerateUsers && (s.isBlocked || s.isSuspended ? (
                       <Button size="sm" variant="outline" onClick={() => void action(s.id, "unblock")} disabled={busy === s.id}><UserCheck className="mr-1.5 h-3.5 w-3.5" />Restore access</Button>
                     ) : (
                       <>
@@ -123,7 +126,7 @@ export default function ManagerStudents() {
                         <Button size="sm" variant="outline" onClick={() => void action(s.id, "block")} disabled={busy === s.id}><Ban className="mr-1.5 h-3.5 w-3.5" />Block</Button>
                       </>
                     )}
-                    {!s.isPrefect && <Button size="sm" variant="outline" onClick={() => void action(s.id, "promote_prefect")} disabled={busy === s.id}><Shield className="mr-1.5 h-3.5 w-3.5" />Make prefect</Button>}
+                    {canModerateUsers && !s.isPrefect && <Button size="sm" variant="outline" onClick={() => void action(s.id, "promote_prefect")} disabled={busy === s.id}><Shield className="mr-1.5 h-3.5 w-3.5" />Make prefect</Button>}
                     <Button size="sm" variant="outline" onClick={() => void openMonitor(s)}><ExternalLink className="mr-1.5 h-3.5 w-3.5" />Monitor</Button><Button size="sm" variant="outline" onClick={() => window.location.assign("/manager/chat")}><MessageSquare className="mr-1.5 h-3.5 w-3.5" />Open Connect</Button>
                   </div>
                 </CardContent>
