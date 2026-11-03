@@ -109,7 +109,7 @@ router.get("/user/:userId", requireAuth, requireManagerPermissionIfManager("atte
   res.json({records:result.rows});
 });
 
-router.get("/today", requireAuth, requireManagerPermission("attendance.view"), async (req, res): Promise<void> => {
+router.get("/today", requireAuth, requireManagerPermissionIfManager("attendance.view"), async (req, res): Promise<void> => {
   const user = req.currentUser;
   if (!user) { res.status(401).json({ error: "Authentication required" }); return; }
   if (!canManageAcademicContent(user)) {
