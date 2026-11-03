@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db, notificationsTable, usersTable, pool } from "@workspace/db";
 import { requireAuth, normalizeRole, isOwnerRole, canAccessManager } from "../lib/auth-middleware";
 import { managerHasPermission } from "../lib/manager-permission-policy";
+import { canModerateUser } from "../lib/role-access";
 
 const router = Router();
 const sectionKeys = new Set(["overview","qualifications","subjects","enrollments","achievements","reports","attendance","register","payments","transfers","teacher_documents","groups","activity"]);
