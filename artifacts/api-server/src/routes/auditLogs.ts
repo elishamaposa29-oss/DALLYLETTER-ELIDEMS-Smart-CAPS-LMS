@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { db, auditLogsTable, usersTable } from "@workspace/db";
-import { eq, desc, inArray, and } from "drizzle-orm";
+import { eq, desc, inArray, and, or } from "drizzle-orm";
 import { getAIProvider } from "../lib/ai-provider";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
+import { isSeniorManager } from "../lib/role-access";
 
 const router = Router();
 
@@ -30,12 +31,23 @@ router.get("/audit-logs", requireAuth, async (req, res): Promise<void> => {
   const managerVisibleCategories = [
     "academic", "attendance", "content", "activity", "staff", "moderation",
   ];
+  const ordinaryUsers = and(
+    inArray(usersTable.role, ["student", "learner", "teacher", "prefect"]),
+    eq(usersTable.isManager, false),
+    eq(usersTable.isBlocked, false),
+  );
+  const visiblePerformers = isSeniorManager(user)
+    ? or(
+        ordinaryUsers,
+        eq(usersTable.role, "junior_manager"),
+        and(eq(usersTable.role, "manager"), eq(usersTable.managerLevel, "junior")),
+        and(eq(usersTable.role, "teacher"), eq(usersTable.isManager, true), eq(usersTable.managerLevel, "junior")),
+      )
+    : ordinaryUsers;
   const logs = isOwner
     ? await base.orderBy(desc(auditLogsTable.createdAt)).limit(limit)
     : await base.where(and(
-        inArray(usersTable.role, ["student", "teacher"]),
-        eq(usersTable.isManager, false),
-        eq(usersTable.isBlocked, false),
+        visiblePerformers,
         inArray(auditLogsTable.category, managerVisibleCategories),
       )).orderBy(desc(auditLogsTable.createdAt)).limit(limit);
   res.json(logs.map(({ details, performerIsPrefect, ...log }) => ({
