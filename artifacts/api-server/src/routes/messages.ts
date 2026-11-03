@@ -18,6 +18,7 @@ const MAX_CHAT_MEDIA_SIZE_BYTES = MAX_MEDIA_SIZE_BYTES;
 import { isOwnerRole, normalizeRole } from "../lib/auth-middleware";
 import { hasAcceptedProfileConnection, isProfileChatApprovalRequired } from "./profileConnections";
 import { managerHasPermission } from "../lib/manager-permission-policy";
+import { canModerateUser } from "../lib/role-access";
 
 const router: IRouter = Router();
 
@@ -61,6 +62,7 @@ async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]
   const recipientRole = normalizeRole(recipient.role);
   const senderIsManager = ["junior_manager","senior_manager","manager"].includes(senderRole) || (senderRole === "teacher" && sender.isManager === true);
   if (senderIsManager && isOwnerRole(recipientRole) && !(await managerHasPermission(sender, "owner.chat"))) return false;
+  if (senderIsManager && !isOwnerRole(recipientRole) && (!canModerateUser(sender, recipient) || !(await managerHasPermission(sender, "messages.send")))) return false;
   if (senderRole === "student") {
     return recipientRole === "teacher" || isOwnerRole(recipientRole) || recipient.isPrefect === true;
   }
@@ -73,8 +75,12 @@ async function canViewPrivateConversation(user: NonNullable<Express.Request["cur
   const viewerRole = normalizeRole(user.role);
   const viewerIsManager = ["junior_manager","senior_manager","manager"].includes(viewerRole) || (viewerRole === "teacher" && user.isManager === true);
   if (viewerIsManager) {
-    const target = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, recipientId));
-    if (isOwnerRole(target[0]?.role) && !(await managerHasPermission(user, "owner.chat"))) return false;
+    const target = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, recipientId));
+    const recipient = target[0];
+    if (!recipient) return false;
+    if (isOwnerRole(recipient.role)) {
+      if (!(await managerHasPermission(user, "owner.chat"))) return false;
+    } else if (!canModerateUser(user, recipient) || !(await managerHasPermission(user, "messages.send"))) return false;
   }
   const [viewerRequiresApproval,targetRequiresApproval,accepted] = await Promise.all([
     isProfileChatApprovalRequired(user.id),
