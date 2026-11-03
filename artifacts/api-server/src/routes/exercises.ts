@@ -160,6 +160,7 @@ router.get("/:id",requireAuth,requireManagerPermissionIfManager("recordbook.view
   const user=req.currentUser!;
   const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));
   if(!exercise){res.status(404).json({error:"Exercise not found"});return;}
+  if (canAccessManager(user) && !isOwnerRole(user.role) && !(await canManageExerciseForUser(user, exercise.createdBy, "recordbook.view"))) { res.status(404).json({error:"Exercise not found"}); return; }
   if(exercise.status!=="published"){
     if(!canManageAcademicContent(user)){res.status(404).json({error:"Exercise not found"});return;}
     if(!(await canManageExerciseForUser(user,exercise.createdBy,"recordbook.view"))){res.status(404).json({error:"Exercise not found"});return;}
@@ -291,7 +292,7 @@ router.post("/:id/ai-marking/:submissionId/run",requireAuth,requireManagerPermis
   const exerciseId=parseId(req.params.id),submissionId=parseId(req.params.submissionId);
   if(!exerciseId||!submissionId){res.status(400).json({error:"Invalid exercise or submission id"});return;}
   const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));
-  if(!exercise||!(await canManageExerciseForUser(user,exercise.createdBy,"recordbook.view"))){res.status(404).json({error:"Exercise not found"});return;}
+  if(!exercise||!(await canManageExerciseForUser(user,exercise.createdBy,"recordbook.edit"))){res.status(404).json({error:"Exercise not found"});return;}
   const aiConfig=(exercise.layout&&typeof exercise.layout==="object"?(exercise.layout as Record<string,unknown>).aiMarking:null) as {enabled?:boolean;approved?:boolean}|null;
   if(!aiConfig?.enabled||!aiConfig?.approved){res.status(409).json({error:"AI marking is not enabled and approved for this exercise"});return;}
   const [submission]=await db.select().from(exerciseSubmissionsTable).where(and(eq(exerciseSubmissionsTable.id,submissionId),eq(exerciseSubmissionsTable.exerciseId,exerciseId)));
