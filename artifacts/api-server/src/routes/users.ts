@@ -469,7 +469,6 @@ router.get("/users/me/teacher-cv/pdf", requireAuth, async (req, res): Promise<vo
 });
 
 router.get("/users/:id/teacher-cv", requireAuth, requireManagerPermission("teacher_cv.view"), async (req, res): Promise<void> => {
-  const actor = req.currentUser!;
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid user id." }); return; }
   const [target] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, id));
@@ -534,7 +533,6 @@ router.get("/users/:id/teacher-documents", requireAuth, async (req, res): Promis
   const [target] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, id));
   if (!target) { res.status(404).json({ error: "User not found." }); return; }
   if (!(await canViewProfileSection(actor,id,"teacher_documents"))) { res.status(403).json({ error: "Teacher document visibility is restricted by this profile's privacy settings." }); return; }
-  const actorRole = String(actor.role || "").trim().toLowerCase().replace(/[ -]+/g, "_");
   const selfOrManager = actor.id === id || (canAccessManager(actor) && await managerHasPermission(actor, "teacher_cv.view"));
   const professional = ["teacher", "manager", "senior_manager"].includes(String(target.role).toLowerCase());
   if (!selfOrManager && !professional) { res.status(403).json({ error: "Access denied" }); return; }
@@ -552,7 +550,7 @@ router.get("/users/:id/teacher-documents/:docId", requireAuth, async (req, res):
   if (!(await canViewProfileSection(actor, id, "teacher_documents"))) {
     res.status(403).json({ error: "Teacher document visibility is restricted by this profile's privacy settings." }); return;
   }
-  const selfOrManager = actor.id === id || canReviewTeacherApplication(actor);
+  const selfOrManager = actor.id === id || (canAccessManager(actor) && await managerHasPermission(actor, "teacher_cv.view"));
   const professional = ["teacher", "manager", "senior_manager"].includes(String(target.role).toLowerCase());
   const result = selfOrManager
     ? await pool.query("SELECT file_name, mime_type, size_bytes, data, storage_key FROM teacher_documents WHERE id = $1 AND user_id = $2 LIMIT 1", [docId, id])
@@ -903,6 +901,12 @@ router.patch("/qualifications/:id/verify", requireAuth, requireManagerPermission
     await client.query("BEGIN");
     const current=await client.query("SELECT id,user_id,title,institution,year,verification_status,document_id,created_at FROM teacher_qualifications WHERE id=$1 FOR UPDATE",[id]);
     if(!current.rows.length){await client.query("ROLLBACK");res.status(404).json({error:"Qualification not found."});return;}
+    const qualificationOwner = await client.query("SELECT role FROM users WHERE id=$1", [current.rows[0].user_id]);
+    if (isOwnerRole(qualificationOwner.rows[0]?.role) && !isOwnerRole(reviewer.role)) {
+      await client.query("ROLLBACK");
+      res.status(404).json({ error: "Qualification not found." });
+      return;
+    }
     const previousStatus=String(current.rows[0].verification_status||"pending");
     const updated=await client.query("UPDATE teacher_qualifications SET verification_status=$1 WHERE id=$2 RETURNING id,user_id,title,institution,year,verification_status,document_id,created_at",[status,id]);
     await client.query("INSERT INTO teacher_qualification_review_history(qualification_id,reviewed_by,previous_status,new_status,review_note) VALUES($1,$2,$3,$4,$5)",[id,reviewer.id,previousStatus,status,reviewNote]);
