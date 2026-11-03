@@ -97,7 +97,7 @@ export default router;
 async function canAccessChatGroup(groupId: number, userId: number, user: NonNullable<Express.Request["currentUser"]>): Promise<boolean> {
   const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
   if (!group) return false;
-  if (isOwnerRole(user.role) || user.isManager || user.isPrefect || group.creatorId === userId) return true;
+  if (isOwnerRole(user.role) || (canAccessManager(user) && await managerHasPermission(user, "groups.manage")) || user.isPrefect || group.creatorId === userId) return true;
   const [member] = await db.select({ id: studyGroupMembersTable.id }).from(studyGroupMembersTable)
     .where(and(eq(studyGroupMembersTable.groupId, groupId), eq(studyGroupMembersTable.userId, userId)));
   return Boolean(member);
