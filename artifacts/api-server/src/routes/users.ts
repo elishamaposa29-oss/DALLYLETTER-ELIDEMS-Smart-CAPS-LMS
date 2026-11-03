@@ -452,7 +452,7 @@ router.get("/users/me/teacher-cv/pdf", requireAuth, async (req, res): Promise<vo
 
 router.get("/users/:id/teacher-cv", requireAuth, async (req, res): Promise<void> => {
   const actor = req.currentUser!;
-  if (!isOwnerRole(actor.role)) { res.status(403).json({ error: "Only the owner may review teacher CVs." }); return; }
+  if (!canReviewTeacherApplication(actor)) { res.status(403).json({ error: "Owner or Senior Manager access is required to review teacher CVs." }); return; }
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid user id." }); return; }
   await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, cv jsonb NOT NULL DEFAULT '{}'::jsonb, updated_at timestamptz NOT NULL DEFAULT now())");
@@ -463,7 +463,7 @@ router.get("/users/:id/teacher-cv", requireAuth, async (req, res): Promise<void>
 
 router.get("/users/:id/teacher-cv/pdf", requireAuth, async (req, res): Promise<void> => {
   const actor = req.currentUser!;
-  if (!isOwnerRole(actor.role)) { res.status(403).json({ error: "Only the owner may download teacher CVs for review." }); return; }
+  if (!canReviewTeacherApplication(actor)) { res.status(403).json({ error: "Owner or Senior Manager access is required to download teacher CVs for review." }); return; }
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid user id." }); return; }
   await sendTeacherCvPdf(id, res);
@@ -802,7 +802,7 @@ router.post("/users/me/qualifications", requireAuth, async (req, res): Promise<v
 
 // Owner-only moderation queue for qualifications awaiting verification.
 router.get("/qualifications/pending", requireAuth, async(req,res):Promise<void>=>{
-  if(!isOwnerRole(req.currentUser!.role)){res.status(403).json({error:"Owner/admin access required."});return;}
+  if(!canReviewTeacherApplication(req.currentUser!)){res.status(403).json({error:"Owner or Senior Manager access required."});return;}
   const result=await pool.query("SELECT q.id,q.user_id,u.name AS teacher_name,q.title,q.institution,q.year,q.verification_status,q.document_id,d.file_name AS document_file_name,d.mime_type AS document_mime_type,q.created_at FROM teacher_qualifications q JOIN users u ON u.id=q.user_id LEFT JOIN teacher_documents d ON d.id=q.document_id WHERE q.verification_status='pending' ORDER BY q.created_at ASC");
   res.json(result.rows);
 });
