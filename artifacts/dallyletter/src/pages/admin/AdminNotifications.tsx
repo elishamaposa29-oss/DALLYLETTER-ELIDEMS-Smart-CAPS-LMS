@@ -39,6 +39,7 @@ export default function AdminNotifications() {
   const canCreate=isOwner||permissions["notifications.create"]===true;
   const canBroadcast=isOwner||permissions["notifications.broadcast"]===true;
   const canViewUsers=isOwner||permissions["users.view"]===true;
+  const canCompose=canCreate&&(canBroadcast||canViewUsers);
   const { data: notifications, isLoading } = useListNotifications();
   const { data: users } = useListUsers();
   const createNotificationMutation = useCreateNotification();
@@ -135,7 +136,7 @@ export default function AdminNotifications() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Compose */}
-          {canCreate && <Card className="lg:col-span-1 h-fit">
+          {canCompose && <Card className="lg:col-span-1 h-fit">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Send className="h-5 w-5 text-primary" />
