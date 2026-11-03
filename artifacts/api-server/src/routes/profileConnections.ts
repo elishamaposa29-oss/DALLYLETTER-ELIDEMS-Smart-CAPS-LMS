@@ -53,12 +53,13 @@ export async function canViewProfileSection(actor: NonNullable<Express.Request["
   if (actor.id === targetId) return true;
   const actorIsOwner = isOwnerRole(actor.role);
   await ensureSchema();
-  const target = await pool.query("SELECT role FROM users WHERE id=$1", [targetId]);
+  const target = await pool.query("SELECT role,is_manager,manager_level FROM users WHERE id=$1", [targetId]);
   if (!target.rows.length) return false;
   // Owner profiles and Owner activity are invisible to every non-Owner account,
   // including Senior Managers and Admins, regardless of the profile's public defaults.
   if (isOwnerRole(target.rows[0].role) && !actorIsOwner) return false;
   if (actorIsOwner) return true;
+  if (canAccessManager(actor) && !canModerateUser(actor,{role:target.rows[0].role,isManager:target.rows[0].is_manager,managerLevel:target.rows[0].manager_level})) return false;
 
   const role = normalizeRole(actor.role);
   const approvedTeacher = role === "teacher" && actor.teacherApplicationStatus !== "pending_review";
