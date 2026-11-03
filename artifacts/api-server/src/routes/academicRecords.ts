@@ -490,7 +490,7 @@ router.get("/academic-records/me", requireAuth, async (req, res): Promise<void> 
   res.json({ enrollments: enrollments.rows, awards: awards.rows, attendance: attendance.rows, assignmentMarks: assignmentMarks.rows, exerciseMarks: exerciseMarks.rows, pollSubmissions: pollSubmissions.rows, markSummary });
 });
 
-router.get("/academic-records/report-learners", requireAuth, requireManagerPermissionIfManager("reports.view"), async (req, res): Promise<void> => {
+router.get("/academic-records/report-learners", requireAuth, requireManagerPermissionIfManager("reports.create"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (canAccessManager(user)) {
     const result = await pool.query("SELECT id,name,grade FROM users WHERE role IN ('student','learner') AND is_blocked=false ORDER BY name LIMIT 1000");
