@@ -95,14 +95,14 @@ export default function NativePushControls() {
       const role = String(user.role).toLowerCase().replace(/[ -]+/g, "_");
       if (url.startsWith("/teacher/") && role === "teacher") {
         router.push({ pathname: "/(teacher)/more", params: { section: "notifications" } } as any);
-      } else if (url.startsWith("/manager/") && ["manager", "senior_manager"].includes(role)) {
+      } else if (url.startsWith("/manager/") && ["manager", "senior_manager", "junior_manager"].includes(role)) {
         router.push({ pathname: "/(manager)/more", params: { section: "notifications" } } as any);
       } else if (url.startsWith("/admin/") && ["owner", "admin"].includes(role)) {
         router.push({ pathname: "/(admin)/more", params: { section: "notifications" } } as any);
       } else {
         const destination = role === "teacher"
           ? "/(teacher)/more"
-          : ["manager", "senior_manager"].includes(role)
+          : ["manager", "senior_manager", "junior_manager"].includes(role)
             ? "/(manager)/more"
             : ["owner", "admin"].includes(role)
               ? "/(admin)/more"
