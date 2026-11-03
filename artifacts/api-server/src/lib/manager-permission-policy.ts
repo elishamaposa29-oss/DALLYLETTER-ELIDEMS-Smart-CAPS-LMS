@@ -52,3 +52,15 @@ export function requireManagerPermissionIfManager(permissionKey: string) {
     void requireManagerPermission(permissionKey)(req, res, next);
   };
 }
+
+/** Query the effective grant for response shaping; Owner is always authoritative. */
+export async function managerHasPermission(user: NonNullable<Request["currentUser"]>, permissionKey: string): Promise<boolean> {
+  if (isOwnerRole(user.role)) return true;
+  const role = normalizeRole(user.role);
+  if (!MANAGER_ROLES.has(role) && !(role === "teacher" && user.isManager === true)) return false;
+  if (new Set(["transfers.approve", "reports.review", "achievements.approve", "teacher_cv.review", "teacher_cv.authorize", "qualifications.verify", "users.override.junior_manager"]).has(permissionKey) && !isSeniorManager(user)) return false;
+  try {
+    const result = await pool.query("SELECT granted FROM manager_permission_grants WHERE manager_user_id=$1 AND permission_key=$2", [user.id, permissionKey]);
+    return result.rows[0]?.granted === true;
+  } catch { return false; }
+}
