@@ -9,7 +9,8 @@ test("normalizes legacy role casing and separators",()=>{
 });
 
 test("only owner-class roles receive owner privileges",()=>{
- for(const role of ["owner","OWNER","admin","platform_owner","Platform Owner"]) assert.equal(isOwnerRole(role),true,role);
+ for(const role of ["owner","OWNER","platform_owner","Platform Owner"]) assert.equal(isOwnerRole(role),true,role);
+ assert.equal(isOwnerRole("admin"),false,"admin must not inherit Owner authority");
  for(const role of ["student","teacher","manager","senior_manager","prefect","unknown"]) assert.equal(isOwnerRole(role),false,role);
 });
 
@@ -34,8 +35,8 @@ test("authorized teachers can use staff AI but cannot access owner tools",()=>{
  assert.equal(isOwnerRole(teacher.role),false);
 });
 
-test("owner and admin have owner-class access",()=>{
- for(const role of ["owner","admin","platform_owner"]){
+test("only owner aliases have owner-class access; admin remains separate",()=>{
+ for(const role of ["owner","platform_owner"]){
   assert.equal(canUseStaffAI({role}),true);
   assert.equal(canManageAcademicContent({role}),true);
   assert.equal(canAccessManager({role}),true);
