@@ -42,8 +42,8 @@ export default function ManagerStudents() {
     fetch(getApiUrl("/api/manager/students"), { headers: { Authorization: "Bearer " + token() } })
       .then(r => r.json()).then(d => { setStudents(Array.isArray(d) ? d : []); setLoading(false); })
       .catch(() => setLoading(false));
-    can("manager.dashboard.view") ? fetch(getApiUrl("/api/manager/dashboard"), { headers: { Authorization: "Bearer " + token() } }) : Promise.resolve(null)
-      .then(r => r ? r.json() : null).then(d => { if (d && typeof d === "object") setManagerSummary(d); }).catch(() => undefined);
+    fetch(getApiUrl("/api/manager/dashboard"), { headers: { Authorization: "Bearer " + token() } })
+      .then(r => r.json()).then(d => { if (d && typeof d === "object") setManagerSummary(d); }).catch(() => undefined);
     fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: "Bearer " + token() } })
       .then(r => r.json()).then(d => { setPermissions(d?.permissions ?? {}); setIsOwner(Boolean(d?.isOwner)); }).catch(() => { setPermissions({}); setIsOwner(false); });
   }, []);
