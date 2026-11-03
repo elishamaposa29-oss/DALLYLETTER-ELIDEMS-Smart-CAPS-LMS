@@ -141,3 +141,36 @@ export function canModerateUser(actor: RoleLikeUser, target: RoleLikeUser): bool
 export function canReviewAcademicTransfer(user: RoleLikeUser): boolean {
   return isSeniorManager(user);
 }
+
+/** Senior-only approvals and elevated review operations. */
+export const SENIOR_ONLY_PERMISSION_KEYS = new Set([
+  "transfers.approve", "reports.review", "achievements.approve",
+  "teacher_cv.review", "teacher_cv.authorize", "qualifications.verify",
+  "users.override.junior_manager", "manager.monitoring.view",
+]);
+
+/** The established Senior Manager operational catalogue; excludes every Owner-only capability. */
+export const SENIOR_DEFAULT_PERMISSION_KEYS = new Set([
+  "manager.dashboard.view", "manager.monitoring.view",
+  "users.view", "users.block", "users.restore", "users.suspend",
+  "users.override.teacher", "users.override.learner", "users.override.prefect", "users.override.junior_manager",
+  "attendance.view", "attendance.edit", "recordbook.view", "recordbook.edit",
+  "reports.create", "reports.view", "reports.review",
+  "transfers.view", "transfers.reject", "transfers.approve",
+  "teacher_cv.chat", "teacher_cv.view", "teacher_cv.review", "teacher_cv.authorize",
+  "qualifications.view", "qualifications.verify",
+  "achievements.view", "achievements.recommend", "achievements.approve",
+  "moderation.view", "moderation.action", "notifications.create",
+  "classes.manage", "lessons.create", "lessons.edit", "lessons.delete", "lessons.notify",
+  "polls.manage", "messages.send", "content.view_comments", "content.comment",
+  "notifications.broadcast", "notifications.view", "groups.manage", "audit.view_subordinate", "owner.chat",
+]);
+
+export const isSeniorOnlyManagerPermission = (permissionKey: string): boolean =>
+  SENIOR_ONLY_PERMISSION_KEYS.has(permissionKey);
+
+/** Senior defaults are limited to known manager capabilities; Junior grants remain individually assigned. */
+export function defaultManagerPermission(role: unknown, managerLevel: unknown, isManager: unknown, permissionKey: string): boolean {
+  return SENIOR_DEFAULT_PERMISSION_KEYS.has(permissionKey) &&
+    isSeniorManager({ role, managerLevel: typeof managerLevel === "string" ? managerLevel : undefined, isManager: isManager === true });
+}
