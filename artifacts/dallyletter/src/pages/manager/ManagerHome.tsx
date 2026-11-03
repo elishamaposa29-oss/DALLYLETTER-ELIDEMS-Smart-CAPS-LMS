@@ -22,7 +22,6 @@ export default function ManagerHome() {
   const [permissionError, setPermissionError] = useState("");
   const [loading, setLoading] = useState(true);
   const [pendingTransfers, setPendingTransfers] = useState(0);
-  const [transferError, setTransferError] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -145,7 +144,6 @@ export default function ManagerHome() {
                 {can("reports.review") && <Link href="/manager/reports/review"><Button size="sm" variant="outline">Report review ({data?.reviewCounts?.performanceReports ?? 0})</Button></Link>}
                 {can("teacher_cv.view") && canReviewTeacherCvs && <Link href="/manager/teacher-cv-workspace"><Button size="sm" variant="outline">Teacher CV approvals</Button></Link>}
                 {can("notifications.view") && <Link href="/manager/notifications"><Button size="sm" variant="outline">All alerts</Button></Link>}
-                {transferError && <span className="self-center text-xs text-amber-700">{transferError}</span>}
               </div>
             </CardContent>
           </Card>
@@ -181,7 +179,7 @@ export default function ManagerHome() {
 <Card className="border-0 shadow-sm">
           <CardHeader><CardTitle className="flex items-center gap-2 text-sm"><AlertTriangle className="h-4 w-4 text-amber-600" /> Verification & Approval Queue</CardTitle></CardHeader>
           <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div><p className="font-semibold text-slate-800">Transfer letter requests</p><p className="text-xs text-slate-500">Review learner requests and approve or reject them with an audit trail.</p>{transferError && <p role="alert" className="mt-1 text-xs text-red-600">{transferError}</p>}</div>
+            <div><p className="font-semibold text-slate-800">Transfer letter requests</p><p className="text-xs text-slate-500">Review learner requests and approve or reject them with an audit trail.</p></div>
             <div className="flex items-center gap-3"><Badge className={pendingTransfers ? "bg-amber-500 text-white" : "bg-slate-100 text-slate-700"}>{pendingTransfers} pending</Badge><Link href="/manager/transfer-requests"><Button size="sm">Review requests</Button></Link></div>
           </CardContent>
         </Card>
