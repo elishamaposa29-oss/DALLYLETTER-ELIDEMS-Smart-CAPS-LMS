@@ -96,6 +96,7 @@ router.get("/me", requireAuth, async (req, res): Promise<void> => {
     userId: user.id,
     role: normalizeRole(user.role),
     isOwner: isOwnerRole(user.role),
+    protectedCapabilities: ["owner.account.manage", "owner.activity.view", "owner.audit.view", "owner.permissions.manage", "admin.account.manage"],
     permissions,
   });
 });
