@@ -37,6 +37,24 @@ async function canManageManagerTarget(actor: NonNullable<Express.Request["curren
   return false;
 }
 
+
+function canViewManagerTarget(actor: NonNullable<Express.Request["currentUser"]>, target: { role: unknown; isManager?: unknown; managerLevel?: unknown }): boolean {
+  if (isOwnerRole(target.role)) return isOwnerRole(actor.role);
+  if (isOwnerRole(actor.role)) return true;
+  const targetRole = normalizeRole(target.role);
+  if (isSeniorManager(actor)) {
+    if (["owner", "platform_owner", "admin", "senior_manager"].includes(targetRole)) return false;
+    if (targetRole === "manager") return normalizeRole(target.managerLevel) !== "senior";
+    if (targetRole === "teacher" && target.isManager === true) return normalizeRole(target.managerLevel) !== "senior";
+    return ["teacher", "student", "learner", "prefect", "junior_manager"].includes(targetRole);
+  }
+  if (isJuniorManager(actor)) {
+    if (["manager", "junior_manager", "senior_manager", "admin", "owner", "platform_owner"].includes(targetRole)) return false;
+    if (targetRole === "teacher" && target.isManager === true) return false;
+    return ["teacher", "student", "learner", "prefect"].includes(targetRole);
+  }
+  return false;
+}
 function canReviewTeacherApplication(user: { role: unknown; managerLevel?: unknown; isManager?: unknown; teacherApplicationStatus?: unknown }): boolean { return isSeniorManager(user); }
 
 function hasForbiddenPaymentCredentials(body: unknown): boolean {
@@ -88,20 +106,24 @@ const directoryUserFields = {
   createdAt: usersTable.createdAt,
 };
 
-router.get("/users", requireAuth, async (req, res): Promise<void> => {
-  const ownerViewer = isOwnerRole(req.currentUser!.role);
+router.get("/users", requireAuth, requireManagerPermissionIfManager("users.view"), async (req, res): Promise<void> => {
+  const actor = req.currentUser!;
+  const ownerViewer = isOwnerRole(actor.role);
+  const managerViewer = isSeniorManager(actor) || isJuniorManager(actor);
   const fields = ownerViewer ? safeUserFields : directoryUserFields;
   const users = ownerViewer
     ? await db.select(fields).from(usersTable).orderBy(usersTable.createdAt)
     : await db.select(fields).from(usersTable).where(notInArray(usersTable.role, ["owner", "platform_owner"])).orderBy(usersTable.createdAt);
-  res.json(users.map(u => ({ ...u, createdAt: u.createdAt.toISOString() })));
+  const visible = managerViewer ? users.filter(u => canViewManagerTarget(actor, u)) : users;
+  res.json(visible.map(u => ({ ...u, createdAt: u.createdAt.toISOString() })));
 });
 
-router.get("/users/:id", requireAuth, async (req, res): Promise<void> => {
+router.get("/users/:id", requireAuth, requireManagerPermissionIfManager("users.view"), async (req, res): Promise<void> => {
   const params = GetUserParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const actor = req.currentUser!;
-  const [targetRole] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, params.data.id));
+  const [targetRole] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, params.data.id));
+  if (targetRole && !canViewManagerTarget(actor, targetRole) && (isSeniorManager(actor) || isJuniorManager(actor))) { res.status(404).json({ error: "User not found" }); return; }
   if (targetRole && isOwnerRole(targetRole.role) && !isOwnerRole(actor.role)) { res.status(404).json({ error: "User not found" }); return; }
   if (!canReadPrivateProfileByRole(actor.id, params.data.id, actor.role)) { res.status(403).json({ error: "You cannot access this private profile." }); return; }
   const [user] = await db.select(safeUserFields).from(usersTable).where(eq(usersTable.id, params.data.id));
