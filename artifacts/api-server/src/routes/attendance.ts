@@ -94,8 +94,15 @@ router.put("/:id/leave", requireAuth, requireManagerPermissionIfManager("attenda
 router.get("/stats", requireAuth, requireManagerPermissionIfManager("attendance.view"), async (req, res): Promise<void> => {
   const user = (req as any).user;
   if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Forbidden" }); return; }
-  const rows = await db.select({ classId: attendanceTable.classId, studentId: attendanceTable.studentId, durationMinutes: attendanceTable.durationMinutes, role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(attendanceTable).innerJoin(usersTable, eq(attendanceTable.studentId, usersTable.id));
-  const scopedRows = isOwnerRole(user.role) ? rows : rows.filter(row => canModerateUser(user, row));
+  const rows = await db.select({ classId: attendanceTable.classId, studentId: attendanceTable.studentId, durationMinutes: attendanceTable.durationMinutes, role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel, teacherId: classesTable.teacherId }).from(attendanceTable).innerJoin(usersTable, eq(attendanceTable.studentId, usersTable.id)).innerJoin(classesTable,eq(attendanceTable.classId,classesTable.id));
+  const teacherRows=await db.select({id:usersTable.id,role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable);
+  const teacherById=new Map(teacherRows.map(row=>[row.id,row]));
+  const scopedRows = isOwnerRole(user.role) ? rows : rows.filter(row => {
+    const studentAllowed=Number(row.studentId)===user.id||canModerateUser(user,row);
+    const teacher=teacherById.get(row.teacherId);
+    const teacherAllowed=Number(row.teacherId)===user.id||Boolean(teacher&&canModerateUser(user,teacher));
+    return studentAllowed&&teacherAllowed;
+  });
   const totalSessions = new Set(scopedRows.map((r: any) => r.classId)).size;
   const totalAttendances = scopedRows.length;
   const uniqueStudents = new Set(scopedRows.map((r: any) => r.studentId)).size;
