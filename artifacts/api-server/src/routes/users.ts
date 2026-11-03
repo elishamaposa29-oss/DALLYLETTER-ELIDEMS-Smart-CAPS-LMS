@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import crypto from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { eq } from "drizzle-orm";
+import { eq, notInArray } from "drizzle-orm";
 import multer from "multer";
 import { db, usersTable, classesTable, pool } from "@workspace/db";
 import {
@@ -89,8 +89,11 @@ const directoryUserFields = {
 };
 
 router.get("/users", requireAuth, async (req, res): Promise<void> => {
-  const fields = isOwnerRole(req.currentUser!.role) ? safeUserFields : directoryUserFields;
-  const users = await db.select(fields).from(usersTable).orderBy(usersTable.createdAt);
+  const ownerViewer = isOwnerRole(req.currentUser!.role);
+  const fields = ownerViewer ? safeUserFields : directoryUserFields;
+  const users = ownerViewer
+    ? await db.select(fields).from(usersTable).orderBy(usersTable.createdAt)
+    : await db.select(fields).from(usersTable).where(notInArray(usersTable.role, ["owner", "platform_owner"])).orderBy(usersTable.createdAt);
   res.json(users.map(u => ({ ...u, createdAt: u.createdAt.toISOString() })));
 });
 
