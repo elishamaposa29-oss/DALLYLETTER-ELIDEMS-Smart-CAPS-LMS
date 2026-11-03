@@ -14,13 +14,13 @@ router.get("/class/:classId", requireAuth, requireManagerPermissionIfManager("at
   const [classRow] = await db.select({ teacherId: classesTable.teacherId }).from(classesTable).where(eq(classesTable.id, classId));
   if (!classRow) { res.status(404).json({ error: "Class not found." }); return; }
   const [teacher] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, classRow.teacherId));
-  if (teacher && !isOwnerRole(req.currentUser!.role) && !canModerateUser(req.currentUser!, teacher)) { res.status(404).json({ error: "Class not found." }); return; }
+  if (teacher && req.currentUser!.id !== classRow.teacherId && !isOwnerRole(req.currentUser!.role) && !canModerateUser(req.currentUser!, teacher)) { res.status(404).json({ error: "Class not found." }); return; }
   const rows = await db.select().from(attendanceTable)
     .where(eq(attendanceTable.classId, classId))
     .orderBy(desc(attendanceTable.joinedAt));
   const visible = await Promise.all(rows.map(async row => {
     const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, row.studentId));
-    const inAuthority = isOwnerRole(req.currentUser!.role) || Boolean(target && canModerateUser(req.currentUser!, target));
+    const inAuthority = req.currentUser!.id === studentId || isOwnerRole(req.currentUser!.role) || Boolean(target && canModerateUser(req.currentUser!, target));
     return inAuthority && (await canViewProfileSection(req.currentUser!,row.studentId,"attendance")) ? row : null;
   }));
   res.json(visible.filter(Boolean));
@@ -37,7 +37,7 @@ router.get("/my", requireAuth, async (req, res): Promise<void> => {
 router.get("/student/:studentId", requireAuth, requireManagerPermissionIfManager("attendance.view"), async (req, res): Promise<void> => {
   const studentId = parseInt(String(req.params.studentId));
   const [target] = Number.isSafeInteger(studentId) ? await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, studentId)) : [];
-  const inAuthority = isOwnerRole(req.currentUser!.role) || Boolean(target && canModerateUser(req.currentUser!, target));
+  const inAuthority = req.currentUser!.id === studentId || isOwnerRole(req.currentUser!.role) || Boolean(target && canModerateUser(req.currentUser!, target));
   if (!Number.isSafeInteger(studentId) || studentId <= 0 || !inAuthority) { res.status(404).json({ error: "User not found." }); return; }
   if (!(await canViewProfileSection(req.currentUser!,studentId,"attendance"))) { res.status(403).json({ error: "Attendance visibility is restricted by this profile's privacy settings." }); return; }
   const rows = await db.select().from(attendanceTable)
