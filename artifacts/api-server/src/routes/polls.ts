@@ -15,6 +15,7 @@ async function getPollForManager(pollId: number, user: NonNullable<Express.Reque
   if (!canManageAcademicContent(user)) return null;
   if (isOwnerRole(user.role) || poll.createdBy === user.id) return poll;
   if (canAccessManager(user)) {
+    if (poll.createdBy == null) return null;
     const [creator] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, poll.createdBy));
     return creator && canModerateUser(user, creator) ? poll : null;
   }
