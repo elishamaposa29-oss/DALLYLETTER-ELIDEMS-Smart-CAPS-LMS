@@ -45,6 +45,7 @@ export default function RecordBookWorkspace() {
   const canCreateReports = !isManager || isOwner || managerPermissions["reports.create"] === true;
   const canViewReports = !isManager || isOwner || managerPermissions["reports.view"] === true;
   const canViewRecordBook = !isManager || isOwner || managerPermissions["recordbook.view"] === true;
+  const canBuildRecordBook = canCreateReports && canViewRecordBook;
   const [learners, setLearners] = useState<Row[]>([]);
   const [learnerId, setLearnerId] = useState("");
   const [termLabel, setTermLabel] = useState("Term record");
@@ -98,7 +99,7 @@ export default function RecordBookWorkspace() {
     }
     if (isStaff) void loadLearners(); else void loadOwnRecord();
   }, [isManager, isStaff, loadLearners, loadOwnRecord]);
-  useEffect(() => { if (isManager && permissionLoaded && canCreateReports) void loadLearners(); }, [isManager, permissionLoaded, canCreateReports, loadLearners]);
+  useEffect(() => { if (isManager && permissionLoaded && canBuildRecordBook) void loadLearners(); }, [isManager, permissionLoaded, canBuildRecordBook, loadLearners]);
 
   const selectedLearner = useMemo(() => learners.find(l => String(l.id) === learnerId), [learners, learnerId]);
   const summary = record?.markSummary?.overall;
@@ -180,7 +181,7 @@ export default function RecordBookWorkspace() {
       <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-primary">Academic workspace</p><CardTitle className="mt-1">RecordBook</CardTitle><p className="mt-1 text-sm text-muted-foreground">{isStaff ? "Build an activity-by-activity view from existing saved records. Mark work in its original activity workspace." : "Your saved activity results, with missing marks kept unscored."}</p></div><span className="rounded-full border px-3 py-1 text-xs font-semibold">Saved records only</span></div>
     </CardHeader>
     <CardContent className="space-y-4 p-4">
-      {isStaff && canCreateReports && <div className="grid gap-3 sm:grid-cols-2">
+      {isStaff && canBuildRecordBook && <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm font-medium">Learner<select className="mt-1 w-full rounded-md border bg-background p-2.5" value={learnerId} onChange={e=>{setLearnerId(e.target.value);setSnapshot(null);}}><option value="">Choose assigned learner</option>{learners.map(l=><option key={l.id} value={String(l.id)}>{l.name} · {l.grade || "Grade not recorded"}</option>)}</select></label>
         <label className="text-sm font-medium">Term / record label<input className="mt-1 w-full rounded-md border bg-background p-2.5" maxLength={80} value={termLabel} onChange={e=>setTermLabel(e.target.value)} /></label>
         <label className="text-sm font-medium">Period starts<input type="date" className="mt-1 w-full rounded-md border bg-background p-2.5" value={periodStart} onChange={e=>setPeriodStart(e.target.value)} /></label>
@@ -189,7 +190,7 @@ export default function RecordBookWorkspace() {
       </div>}
       {error && <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm">{error}</p>}
       {notice && <p role="status" className="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm">{notice}</p>}
-      {isStaff && canCreateReports && !learners.length && !error && <p className="text-sm text-muted-foreground">No learners are currently available through your permitted report access.</p>}
+      {isStaff && canBuildRecordBook && !learners.length && !error && <p className="text-sm text-muted-foreground">No learners are currently available through your permitted report access.</p>}
       {isManager && permissionLoaded && !canCreateReports && <p className="rounded-lg border p-3 text-sm text-muted-foreground">Report creation is not enabled for this manager account. Ask the Owner to grant Reports → Create academic reports.</p>}
       {isManager && permissionLoaded && canCreateReports && !canViewRecordBook && <p className="rounded-lg border p-3 text-sm text-muted-foreground">You can build reports, but RecordBook view access is not granted. Ask the Owner to grant RecordBook → View saved RecordBook activity.</p>}
       {!isStaff && record && <div className="grid gap-2 sm:grid-cols-4"><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Marked activities</p><p className="text-xl font-bold">{summary?.markedCount ?? 0}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Assignment/exercise marks</p><p className="text-xl font-bold">{summary?.earnedMarks ?? "—"}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Possible marks</p><p className="text-xl font-bold">{summary?.possibleMarks ?? "—"}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Overall percentage</p><p className="text-xl font-bold">{summary?.percentage == null ? "Not available" : `${summary.percentage}%`}</p></div></div>}
