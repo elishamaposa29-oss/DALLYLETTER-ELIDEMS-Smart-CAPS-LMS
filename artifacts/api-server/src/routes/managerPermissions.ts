@@ -112,6 +112,37 @@ router.get("/me", requireAuth, async (req, res): Promise<void> => {
   });
 });
 
+
+/** Owner assigns or removes a distinct manager role. Admin and Owner targets are immutable here. */
+router.patch("/:userId/role", requireAuth, ownerOnly, async (req, res): Promise<void> => {
+  const userId = Number(req.params.userId);
+  const nextRole = req.body?.role;
+  if (!Number.isSafeInteger(userId) || userId <= 0 || !["junior_manager", "senior_manager", "teacher"].includes(nextRole)) {
+    res.status(400).json({ error: "Provide a valid user ID and role: junior_manager, senior_manager or teacher." });
+    return;
+  }
+  const targetResult = await pool.query("SELECT id,name,role FROM users WHERE id=$1", [userId]);
+  const target = targetResult.rows[0] as { id: number; name: string; role: string } | undefined;
+  if (!target) { res.status(404).json({ error: "User not found" }); return; }
+  if (isOwnerRole(target.role) || normalizeRole(target.role) === "admin") {
+    res.status(403).json({ error: "Owner and Admin roles cannot be changed through manager assignment." });
+    return;
+  }
+  if (nextRole === "teacher" && !managerRoles.has(normalizeRole(target.role)) && normalizeRole(target.role) !== "teacher") {
+    res.status(409).json({ error: "Only a teacher or manager account can be demoted through this control." });
+    return;
+  }
+  await pool.query(
+    "UPDATE users SET role=$2,is_manager=false,manager_level=$3,updated_at=now() WHERE id=$1",
+    [userId, nextRole, nextRole === "senior_manager" ? "senior" : "junior"],
+  );
+  await pool.query(
+    "INSERT INTO audit_logs (action,category,performed_by,target_type,target_id,details) VALUES ($1,'security',$2,'user',$3,$4)",
+    [nextRole === "teacher" ? "Removed manager role" : "Assigned " + nextRole, req.currentUser!.id, userId, JSON.stringify({ previousRole: target.role, nextRole })],
+  );
+  res.json({ updated: true, userId, role: nextRole, name: target.name });
+});
+
 router.get("/:userId", requireAuth, ownerOnly, async (req, res): Promise<void> => {
   const userId = Number(req.params.userId);
   if (!Number.isSafeInteger(userId) || userId <= 0) { res.status(400).json({ error: "Invalid manager user ID" }); return; }
