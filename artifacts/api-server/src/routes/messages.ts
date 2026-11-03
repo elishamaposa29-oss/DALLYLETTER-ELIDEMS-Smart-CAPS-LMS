@@ -61,6 +61,7 @@ async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]
   const senderRole = normalizeRole(sender.role);
   const recipientRole = normalizeRole(recipient.role);
   const senderIsManager = ["junior_manager","senior_manager","manager"].includes(senderRole) || (senderRole === "teacher" && sender.isManager === true);
+  if (isOwnerRole(recipientRole) && senderRole === "admin") return false;
   if (senderIsManager && isOwnerRole(recipientRole) && !(await managerHasPermission(sender, "owner.chat"))) return false;
   if (senderIsManager && !isOwnerRole(recipientRole) && (!canModerateUser(sender, recipient) || !(await managerHasPermission(sender, "messages.send")))) return false;
   if (senderRole === "student") {
@@ -79,7 +80,8 @@ async function canViewPrivateConversation(user: NonNullable<Express.Request["cur
     const recipient = target[0];
     if (!recipient) return false;
     if (isOwnerRole(recipient.role)) {
-      if (!(await managerHasPermission(user, "owner.chat"))) return false;
+      if (viewerRole === "admin") return false;
+      if (viewerIsManager && !(await managerHasPermission(user, "owner.chat"))) return false;
     } else if (!canModerateUser(user, recipient) || !(await managerHasPermission(user, "messages.send"))) return false;
   }
   const [viewerRequiresApproval,targetRequiresApproval,accepted] = await Promise.all([
