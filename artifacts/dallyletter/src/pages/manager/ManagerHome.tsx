@@ -218,6 +218,7 @@ export default function ManagerHome() {
             </Link>
           ))}
         </div>
+        {!isNonManagerTeacher && can("reports.create") && !can("reports.review") && <Link href="/manager/reports/review"><Button size="sm" variant="outline">Build Academic Reports</Button></Link>}
       </div>
     </DashboardLayout>
   );
