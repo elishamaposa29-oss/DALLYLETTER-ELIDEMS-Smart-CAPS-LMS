@@ -4,11 +4,12 @@ import { eq, desc, inArray, and, or } from "drizzle-orm";
 import { getAIProvider } from "../lib/ai-provider";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { isSeniorManager } from "../lib/role-access";
+import { requireManagerPermission } from "../lib/manager-permission-policy";
 
 const router = Router();
 
 // GET /audit-logs — list audit logs (owner only)
-router.get("/audit-logs", requireAuth, async (req, res): Promise<void> => {
+router.get("/audit-logs", requireAuth, requireManagerPermission("audit.view_subordinate"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canAccessManager(user)) { res.status(403).json({ error: "Manager or owner access required" }); return; }
   const isOwner = isOwnerRole(user.role);
