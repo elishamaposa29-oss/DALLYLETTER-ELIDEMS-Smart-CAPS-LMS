@@ -214,7 +214,7 @@ router.get("/:userId", requireAuth, ownerOnly, async (req, res): Promise<void> =
   const target = await getTargetManager(userId);
   if (!target) { res.status(404).json({ error: "Manager account not found" }); return; }
   const result = await pool.query("SELECT permission_key, granted, changed_by, changed_at FROM manager_permission_grants WHERE manager_user_id=$1 ORDER BY permission_key", [userId]);
-  const senior=isSeniorManager(target);
+  const senior=isSeniorManager({role:target.role,managerLevel:target.manager_level,isManager:target.is_manager});
   const grants = Object.fromEntries(MANAGER_PERMISSION_CATALOG.map((p) => [p.key, senior || p.key === "users.view" || p.key === "owner.chat"]));
   for (const row of result.rows) if (allowedKeys.has(row.permission_key)) grants[row.permission_key] = row.granted === true;
   res.setHeader("Cache-Control", "no-store");
