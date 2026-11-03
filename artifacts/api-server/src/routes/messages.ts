@@ -23,10 +23,10 @@ import { canModerateUser } from "../lib/role-access";
 const router: IRouter = Router();
 
 router.get("/manager/owner-contact", requireAuth, requireManagerPermission("owner.chat"), async (req,res):Promise<void> => {
-  const result=await pool.query("SELECT id,name FROM users WHERE lower(role) IN ('owner','platform_owner') ORDER BY id ASC LIMIT 1");
-  if(!result.rows[0]){res.status(404).json({error:"Owner contact is not available."});return;}
+  const [owner]=await db.select({id:usersTable.id,name:usersTable.name}).from(usersTable).where(inArray(usersTable.role,["owner","platform_owner"])).orderBy(usersTable.id).limit(1);
+  if(!owner){res.status(404).json({error:"Owner contact is not available."});return;}
   res.setHeader("Cache-Control","private,no-store");
-  res.json({id:Number(result.rows[0].id),name:String(result.rows[0].name||"Owner")});
+  res.json({id:Number(owner.id),name:String(owner.name||"Owner")});
 });
 
 const voiceUpload = multer({
