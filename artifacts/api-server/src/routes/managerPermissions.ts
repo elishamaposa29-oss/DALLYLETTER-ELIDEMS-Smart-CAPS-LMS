@@ -176,8 +176,12 @@ router.patch("/:userId/role", requireAuth, ownerOnly, async (req, res): Promise<
         [userId, permission.key],
       );
       const previous = prior.rows[0]?.granted ?? null;
+      // A newly appointed Senior Manager receives the full manager capability set.
+      // The catalogue contains no Owner-only or Admin-only controls; those remain outside
+      // this grant system. Junior Managers start with the deliberately restricted baseline.
+      // Existing managers retain Owner decisions, while demotion always revokes senior-only grants.
       const granted = !wasManager
-        ? permission.key === "users.view" || permission.key === "owner.chat"
+        ? nextRole === "senior_manager" || permission.key === "users.view" || permission.key === "owner.chat"
         : nextRole === "junior_manager" && isSeniorOnlyManagerPermission(permission.key)
           ? false
           : previous === true;
