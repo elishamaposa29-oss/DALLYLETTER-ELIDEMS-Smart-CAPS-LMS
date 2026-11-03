@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { defaultManagerPermission, isSeniorOnlyManagerPermission } from "./manager-permission-policy.js";
-import { canAccessManager, canApproveAchievementAwards, canManageAcademicContent, canModerateUser, canPendingTeacherUseRoute, canRecommendAchievementAwards, canReviewAcademicTransfer, canUseStaffAI, enforceAcademicStaffAccess, enforceAuthenticated, enforceOwnerAccess, isJuniorManager, isOwnerRole, isSeniorManager, normalizeRole } from "./role-access.js";
+import { defaultManagerPermission, isSeniorOnlyManagerPermission, canAccessManager, canApproveAchievementAwards, canManageAcademicContent, canModerateUser, canPendingTeacherUseRoute, canRecommendAchievementAwards, canReviewAcademicTransfer, canUseStaffAI, enforceAcademicStaffAccess, enforceAuthenticated, enforceOwnerAccess, isJuniorManager, isOwnerRole, isSeniorManager, normalizeRole } from "./role-access.js";
 
 test("normalizes legacy role casing and separators",()=>{
  assert.equal(normalizeRole(" Senior Manager "), "senior_manager");
