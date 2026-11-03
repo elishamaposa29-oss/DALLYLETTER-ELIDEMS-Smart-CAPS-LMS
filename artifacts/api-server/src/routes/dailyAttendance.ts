@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { requireManagerPermissionIfManager, requireManagerPermission } from "../lib/manager-permission-policy";
 import { pool } from "@workspace/db";
-import { canManageAcademicContent, requireAuth } from "../lib/auth-middleware";
+import { canManageAcademicContent, requireAuth, isOwnerRole } from "../lib/auth-middleware";
+import { canModerateUser } from "../lib/role-access";
 import { canViewProfileSection } from "./profileConnections";
 
 const router = Router();
@@ -99,7 +100,11 @@ router.get("/me", requireAuth, async (req, res): Promise<void> => {
 router.get("/user/:userId", requireAuth, requireManagerPermissionIfManager("attendance.view"), async (req, res): Promise<void> => {
   const targetId=Number(req.params.userId);
   if(!Number.isSafeInteger(targetId)||targetId<=0){res.status(400).json({error:"Invalid user id."});return;}
-  if(!(await canViewProfileSection(req.currentUser!,targetId,"register"))){res.status(403).json({error:"Daily register visibility is restricted by this profile's privacy settings."});return;}
+  const actor=req.currentUser!;
+  const targetResult=await pool.query("SELECT id,role,is_manager,manager_level FROM users WHERE id=$1",[targetId]);
+  const target=targetResult.rows[0];
+  if(!target || (!isOwnerRole(actor.role) && !canModerateUser(actor,{role:target.role,isManager:target.is_manager,managerLevel:target.manager_level}))){res.status(404).json({error:"User not found."});return;}
+  if(!(await canViewProfileSection(actor,targetId,"register"))){res.status(403).json({error:"Daily register visibility is restricted by this profile's privacy settings."});return;}
   const result=await pool.query(
     `SELECT attendance_date,time_zone,status,open_count,first_open_at,last_open_at,last_source,activity_label
      FROM daily_app_attendance WHERE user_id=$1 ORDER BY attendance_date DESC LIMIT 120`,
@@ -118,7 +123,7 @@ router.get("/today", requireAuth, requireManagerPermissionIfManager("attendance.
   }
   const timeZone = safeSystemTimeZone();
   const result = await pool.query(
-    `SELECT u.id AS user_id, u.name, u.role, COALESCE(p.time_zone, $1) AS time_zone,
+    `SELECT u.id AS user_id, u.name, u.role, u.is_manager, u.manager_level, COALESCE(p.time_zone, $1) AS time_zone,
             (now() AT TIME ZONE COALESCE(p.time_zone, $1))::date AS local_date,
             d.status, COALESCE(d.open_count, 0) AS open_count,
             d.first_open_at, d.last_open_at, d.last_source,
@@ -133,7 +138,9 @@ router.get("/today", requireAuth, requireManagerPermissionIfManager("attendance.
        ORDER BY u.role, u.name`,
     [timeZone],
   );
-  res.json({ records: result.rows });
+  const actor=req.currentUser!;
+  const records=isOwnerRole(actor.role)?result.rows:result.rows.filter((row:any)=>canModerateUser(actor,{role:row.role,isManager:row.is_manager,managerLevel:row.manager_level}));
+  res.json({ records: records.map(({is_manager,manager_level,...row}:any)=>row) });
 });
 
 export default router;
