@@ -38,6 +38,7 @@ router.get("/me", requireAuth, (req, res): void => {
       manageManagerPermissions: owner,
       manageAcademicContent: canManageAcademicContent(user),
       reviewAcademicTransfers: canReviewAcademicTransfer(user),
+      reviewAcademicReports: seniorManager,
       recommendAchievementAwards: canRecommendAchievementAwards(user),
       approveAchievementAwards: canApproveAchievementAwards(user),
     },
