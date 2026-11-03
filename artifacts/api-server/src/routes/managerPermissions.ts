@@ -171,6 +171,8 @@ router.patch("/:userId/role", requireAuth, ownerOnly, async (req, res): Promise<
     // Least privilege: a new manager receives only the minimum baseline.
     // Changing JR/SR level preserves explicit grants, except Senior-only grants are revoked on demotion.
     const wasManager = managerRoles.has(previousRole);
+    const existingGrantCount=await client.query("SELECT count(*)::int AS count FROM manager_permission_grants WHERE manager_user_id=$1",[userId]);
+    const initializeDefaults=!wasManager || Number(existingGrantCount.rows[0]?.count??0)===0;
     for (const permission of MANAGER_PERMISSION_CATALOG) {
       const prior = await client.query(
         "SELECT granted FROM manager_permission_grants WHERE manager_user_id=$1 AND permission_key=$2 FOR UPDATE",
@@ -181,7 +183,7 @@ router.patch("/:userId/role", requireAuth, ownerOnly, async (req, res): Promise<
       // The catalogue contains no Owner-only or Admin-only controls; those remain outside
       // this grant system. Junior Managers start with the deliberately restricted baseline.
       // Existing managers retain Owner decisions, while demotion always revokes senior-only grants.
-      const granted = !wasManager
+      const granted = initializeDefaults
         ? nextRole === "senior_manager" || permission.key === "users.view" || permission.key === "owner.chat"
         : nextRole === "junior_manager" && isSeniorOnlyManagerPermission(permission.key)
           ? false
