@@ -19,24 +19,24 @@ export const MANAGER_PERMISSION_CATALOG = [
   { key: "users.override.teacher", group: "Users", label: "Override teacher actions", description: "Reverse or correct permitted teacher actions." },
   { key: "users.override.learner", group: "Users", label: "Override learner actions", description: "Reverse or correct permitted learner actions." },
   { key: "users.override.prefect", group: "Users", label: "Override prefect actions", description: "Reverse or correct permitted prefect actions." },
-  { key: "users.override.junior_manager", group: "Users", label: "Override Junior Manager actions", description: "Senior-level review of Junior Manager actions only." },
+  { key: "users.override.junior_manager", seniorOnly: true, group: "Users", label: "Override Junior Manager actions", description: "Senior-level review of Junior Manager actions only." },
   { key: "attendance.view", group: "Attendance", label: "View attendance", description: "View school-scoped attendance records." },
   { key: "attendance.edit", group: "Attendance", label: "Edit attendance", description: "Correct attendance records with an audit reason." },
   { key: "recordbook.view", group: "Academic", label: "View RecordBook", description: "View teacher and learner activity records." },
   { key: "recordbook.edit", group: "Academic", label: "Edit RecordBook marks", description: "Correct marks and trigger recalculation with an audit trail." },
   { key: "reports.view", group: "Academic", label: "View reports", description: "View school-scoped academic reports." },
-  { key: "reports.review", group: "Academic", label: "Approve or reject reports", description: "Review submitted academic reports and record a decision." },
+  { key: "reports.review", seniorOnly: true, group: "Academic", label: "Approve or reject reports", description: "Review submitted academic reports and record a decision." },
   { key: "transfers.view", group: "Transfers", label: "View transfer requests", description: "View school-scoped transfer requests and documents." },
   { key: "transfers.reject", group: "Transfers", label: "Reject transfer requests", description: "Reject eligible transfer requests with a reason; does not grant approval." },
-  { key: "transfers.approve", group: "Transfers", label: "Approve transfer requests", description: "Approve eligible transfer requests with verification and audit history." },
+  { key: "transfers.approve", seniorOnly: true, group: "Transfers", label: "Approve transfer requests", description: "Approve eligible transfer requests with verification and audit history." },
   { key: "teacher_cv.view", group: "Teacher applications", label: "View teacher CV applications", description: "Review submitted teacher CV information." },
-  { key: "teacher_cv.review", group: "Teacher applications", label: "Review teacher applications", description: "Request corrections or reject an application." },
-  { key: "teacher_cv.authorize", group: "Teacher applications", label: "Authorize approved teachers", description: "Activate teaching access after Owner-defined approval checks." },
+  { key: "teacher_cv.review", seniorOnly: true, group: "Teacher applications", label: "Review teacher applications", description: "Request corrections or reject an application." },
+  { key: "teacher_cv.authorize", seniorOnly: true, group: "Teacher applications", label: "Authorize approved teachers", description: "Activate teaching access after Owner-defined approval checks." },
   { key: "qualifications.view", group: "Teacher applications", label: "View qualifications", description: "View qualification evidence submitted by teachers." },
-  { key: "qualifications.verify", group: "Teacher applications", label: "Verify qualifications", description: "Verify or reject individual qualification records." },
+  { key: "qualifications.verify", seniorOnly: true, group: "Teacher applications", label: "Verify qualifications", description: "Verify or reject individual qualification records." },
   { key: "achievements.view", group: "Achievements", label: "View achievement recommendations", description: "View learner achievement recommendations." },
   { key: "achievements.recommend", group: "Achievements", label: "Recommend achievements", description: "Submit achievement recommendations for review." },
-  { key: "achievements.approve", group: "Achievements", label: "Approve achievements", description: "Approve eligible achievement awards." },
+  { key: "achievements.approve", seniorOnly: true, group: "Achievements", label: "Approve achievements", description: "Approve eligible achievement awards." },
   { key: "moderation.view", group: "Moderation", label: "View moderation queue", description: "Review school-scoped content flags." },
   { key: "moderation.action", group: "Moderation", label: "Take moderation action", description: "Resolve eligible content moderation cases." },
   { key: "notifications.view", group: "Communications", label: "View manager notifications", description: "View alerts and workflow notifications available to this manager." },
@@ -194,6 +194,12 @@ router.put("/:userId", requireAuth, ownerOnly, async (req, res): Promise<void> =
       return;
     }
     seen.add(item.key);
+  }
+  const seniorOnlyKeys = new Set(["transfers.approve","reports.review","achievements.approve","teacher_cv.review","teacher_cv.authorize","qualifications.verify","users.override.junior_manager"]);
+  const targetIsSenior = isSeniorManager({ role: target.role, managerLevel: target.manager_level, isManager: target.is_manager });
+  if (!targetIsSenior && (permissions as Array<{ key: string; granted: boolean }>).some((item) => seniorOnlyKeys.has(item.key) && item.granted)) {
+    res.status(400).json({ error: "Senior-only permissions cannot be granted to a Junior Manager." });
+    return;
   }
   const client = await pool.connect();
   try {
