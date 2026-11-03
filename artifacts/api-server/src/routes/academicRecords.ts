@@ -3,7 +3,8 @@ import { createHash, randomBytes } from "node:crypto";
 import { db, auditLogsTable, pool } from "@workspace/db";
 import { getAIProvider } from "../lib/ai-provider";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
-import { isSeniorManager, canReviewAcademicTransfer } from "../lib/role-access";
+import { isSeniorManager, isJuniorManager } from "../lib/role-access";
+import { requireManagerPermission, requireManagerPermissionForRequest } from "../lib/manager-permission-policy";
 import { enqueueEmailNotification } from "../lib/email-notification-queue";
 import { calculateAgeOnDate, getCurrentAcademicYear } from "../lib/academic-year";
 import { canViewProfileSection } from "./profileConnections";
@@ -266,11 +267,12 @@ router.get("/academic-records/transfer-requests", requireAuth, async (req, res):
   res.json(result.rows);
 });
 
-router.post("/academic-records/transfer-requests/:id/review", requireAuth, async (req, res): Promise<void> => {
+router.post("/academic-records/transfer-requests/:id/review", requireAuth, requireManagerPermissionForRequest((req) => req.body?.status === "approved" ? "transfers.approve" : "transfers.reject"), async (req, res): Promise<void> => {
   const reviewer = req.currentUser!;
-  if (!canReviewAcademicTransfer(reviewer)) { res.status(403).json({ error: "Only authorized managers and owners can review transfer requests." }); return; }
   const id = Number(req.params.id);
   const status = req.body?.status;
+  if (status === "approved" && !isSeniorManager(reviewer)) { res.status(403).json({ error: "Only a Senior Manager or Owner can approve a transfer." }); return; }
+  if (status === "rejected" && !isSeniorManager(reviewer) && !isJuniorManager(reviewer)) { res.status(403).json({ error: "Manager access required to reject a transfer." }); return; }
   const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 2000) : "";
   if (!Number.isSafeInteger(id) || id < 1 || !["approved","rejected"].includes(status)) { res.status(400).json({ error: "A valid request ID and approved/rejected decision are required." }); return; }
   if (status === "rejected" && note.length < 3) { res.status(400).json({ error: "A clear rejection reason of at least 3 characters is required." }); return; }
@@ -637,7 +639,7 @@ router.get("/academic-records/reports/drafts", requireAuth, async (req, res): Pr
   res.json(result.rows);
 });
 
-router.post("/academic-records/reports/drafts/:id/review", requireAuth, async (req, res): Promise<void> => {
+router.post("/academic-records/reports/drafts/:id/review", requireAuth, requireManagerPermission("reports.review"), async (req, res): Promise<void> => {
   const reviewer = req.currentUser!;
   const id = Number(req.params.id);
   const status = req.body?.status;
