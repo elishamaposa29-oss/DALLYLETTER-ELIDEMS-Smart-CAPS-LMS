@@ -19,6 +19,7 @@ async function isOwnerContentFlag(flag: { contentType: string; contentId: number
     class: { table: "classes", column: "teacher_id" },
     assignment: { table: "assignments", column: "teacher_id" },
     exercise: { table: "exercises", column: "created_by" },
+    activity: { table: "audit_logs", column: "performed_by" },
   };
   const source = sources[type];
   if (!source) return false;
