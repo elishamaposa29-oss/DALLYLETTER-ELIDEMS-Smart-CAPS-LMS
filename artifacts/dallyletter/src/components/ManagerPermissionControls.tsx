@@ -6,7 +6,7 @@ import { Loader2, ShieldCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 type UserRow = { id: number; name: string; email: string; role: string; isManager?: boolean; managerLevel?: string };
-type Permission = { key: string; group: string; label: string; description: string; granted: boolean };
+type Permission = { key: string; group: string; label: string; description: string; granted: boolean; seniorOnly?: boolean };
 type Props = { user: UserRow; onChanged: () => void };
 
 const authHeaders = () => ({ "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("dallyletter_token") ?? ""}` });
@@ -94,9 +94,9 @@ export function ManagerPermissionControls({ user, onChanged }: Props) {
         {loading ? <div className="flex justify-center p-8"><Loader2 className="h-7 w-7 animate-spin" /></div> : groups.map((group) => <section key={group} className="space-y-2">
           <h3 className="border-b pb-1 font-semibold text-[#0f2a5a]">{group}</h3>
           {permissions.filter((p) => p.group === group).map((p) => <div key={p.key} className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0"><p className="text-sm font-semibold">{p.label}</p><p className="text-xs text-muted-foreground">{p.description}</p><p className="mt-1 font-mono text-[10px] text-muted-foreground">{p.key}</p></div>
+            <div className="min-w-0"><p className="text-sm font-semibold">{p.label}</p><p className="text-xs text-muted-foreground">{p.description}</p><p className="mt-1 font-mono text-[10px] text-muted-foreground">{p.key}</p>{p.seniorOnly && <p className="mt-1 text-[10px] font-semibold text-amber-700">Senior Manager only — cannot be granted to a Junior Manager</p>}</div>
             <div className="flex shrink-0 gap-2">
-              <Button type="button" size="sm" variant={p.granted ? "default" : "outline"} className={p.granted ? "bg-emerald-700 hover:bg-emerald-800" : "border-emerald-600 text-emerald-700"} onClick={() => decide(p.key, true)}>✓ Grant</Button>
+              <Button type="button" size="sm" variant={p.granted ? "default" : "outline"} className={p.granted ? "bg-emerald-700 hover:bg-emerald-800" : "border-emerald-600 text-emerald-700"} onClick={() => decide(p.key, true)} disabled={p.seniorOnly === true && role === "junior_manager"}>✓ Grant</Button>
               <Button type="button" size="sm" variant={!p.granted ? "destructive" : "outline"} className={!p.granted ? "" : "border-red-500 text-red-700"} onClick={() => decide(p.key, false)}>✕ Deny</Button>
             </div>
           </div>)}
