@@ -201,6 +201,8 @@ export default function ManagerHome() {
             { label: "Monitor Teachers", href: "/manager/teachers", icon: GraduationCap, color: "bg-emerald-600", permission: "users.view" },
             { label: "Monitor Students", href: "/manager/students", icon: Users, color: "bg-blue-600", permission: "users.view" },
             { label: "Manage Live Classes", href: "/manager/classes", icon: Video, color: "bg-cyan-700", permission: "classes.manage" },
+            { label: "Subordinate Audit History", href: "/manager/audit-logs", icon: Shield, color: "bg-slate-700", permission: "audit.view_subordinate" },
+            { label: "Study Groups & Connect", href: "/manager/chat", icon: Users, color: "bg-indigo-700", permission: "groups.manage" },
             { label: "View Reports", href: "/manager/reports", icon: BarChart3, color: "bg-purple-600", permission: "reports.view" },
             { label: "RecordBook", href: "/record-book", icon: BookOpen, color: "bg-indigo-600", permission: "recordbook.view" },
             { label: "Manage Prefects", href: "/manager/prefects", icon: Shield, color: "bg-amber-600", permission: "users.view" },
