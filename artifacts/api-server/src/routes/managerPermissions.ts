@@ -3,12 +3,6 @@ import { pool } from "@workspace/db";
 import { requireAuth, isOwnerRole } from "../lib/auth-middleware";
 import {
   normalizeRole,
-  isSeniorManager,
-  isJuniorManager,
-  canManageAcademicContent,
-  canReviewAcademicTransfer,
-  canApproveAchievementAwards,
-  canRecommendAchievementAwards,
 } from "../lib/role-access";
 
 const router: IRouter = Router();
@@ -98,17 +92,6 @@ router.get("/me", requireAuth, async (req, res): Promise<void> => {
     role: normalizeRole(user.role),
     isOwner: isOwnerRole(user.role),
     permissions,
-    legacyCapabilities: {
-      accessManagerTools: isOwnerRole(user.role) || isManager,
-      manageUsers: isOwnerRole(user.role),
-      manageManagerPermissions: isOwnerRole(user.role),
-      manageAcademicContent: canManageAcademicContent(user),
-      reviewAcademicTransfers: canReviewAcademicTransfer(user),
-      approveAchievementAwards: canApproveAchievementAwards(user),
-      recommendAchievementAwards: canRecommendAchievementAwards(user),
-      seniorManager: isSeniorManager(user),
-      juniorManager: isJuniorManager(user),
-    },
   });
 });
 
