@@ -126,7 +126,7 @@ router.post("/payments/paynow/result", async (req, res): Promise<void> => {
       UPDATE payments
       SET status = ${normalizedStatus},
           notes = CONCAT(COALESCE(notes, ''), ' | Paynow callback: ', CAST(${providerStatus} AS TEXT))
-      WHERE notes = ${"Paynow reference " + reference}
+      WHERE notes LIKE ${"%Paynow reference " + reference + "%"}
         AND amount::numeric = ${callbackAmount}
         AND status = 'pending'
       RETURNING student_id
