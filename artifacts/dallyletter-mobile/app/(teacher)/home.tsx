@@ -106,6 +106,11 @@ export default function TeacherHome() {
           ))}
         </View>
 
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Build academic reports" onPress={() => router.push("/(teacher)/reports" as any)} style={{ padding: 15, marginBottom: 20, borderRadius: 12, borderWidth: 1, borderColor: "#b38b00", backgroundColor: colors.card, flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <Feather name="file-text" size={22} color={colors.primary} />
+          <View style={{ flex: 1 }}><Text style={{ fontSize: 15, fontFamily: "Inter_700Bold", color: colors.foreground }}>Academic report builder</Text><Text style={{ fontSize: 12, color: colors.mutedForeground, marginTop: 3 }}>Create reports from saved attendance and marked work; send them for Senior Manager / Owner review.</Text></View>
+          <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+        </TouchableOpacity>
         <Text style={s.sectionTitle}>Recent Activity</Text>
         <View style={s.activityCard}>
           {activity && activity.length > 0 ? (

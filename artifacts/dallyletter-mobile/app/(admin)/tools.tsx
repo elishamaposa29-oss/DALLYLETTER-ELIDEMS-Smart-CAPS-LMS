@@ -69,8 +69,8 @@ export default function OwnerTools() {
       } else if(section==="safety") {
         const result=await request("/api/content-flags"); setData(Array.isArray(result)?result:[]);
       } else if(section==="achievements") {
-        const [achievements,users]=await Promise.all([request("/api/achievements"),request("/api/users")]);
-        setData({achievements:Array.isArray(achievements)?achievements:[],students:Array.isArray(users)?users.filter((item:Row)=>["student","prefect"].includes(String(item.role||"").toLowerCase())):[]});
+        const [achievements,users,workflow]=await Promise.all([request("/api/achievements"),request("/api/users"),request("/api/achievements/award/recommendations")]);
+        setData({achievements:Array.isArray(achievements)?achievements:[],students:Array.isArray(users)?users.filter((item:Row)=>["student","prefect"].includes(String(item.role||"").toLowerCase())):[],workflow});
       } else {
         const [summary,staff,payments]=await Promise.all([
           request("/api/staff-payments/summary"),
@@ -98,11 +98,15 @@ export default function OwnerTools() {
     await request("/api/achievements",{method:"POST",body:JSON.stringify({...achievementForm,name:achievementForm.name.trim(),description:achievementForm.description.trim(),pointsValue})});
     setAchievementForm({name:"",description:"",icon:"🏆",category:"learning",pointsValue:"10"});
   });
-  const awardAchievement=()=>act("Achievement awarded.",async()=>{
+  const awardAchievement=()=>act(data?.workflow?.canDirectAward?"Achievement awarded.":"Recommendation submitted for senior approval.",async()=>{
     const achievementId=Number(awardAchievementId), userId=Number(awardUserId);
     if(!achievementId||!userId) throw new Error("Select an achievement and a learner.");
-    await request("/api/achievements/award",{method:"POST",body:JSON.stringify({userId,achievementId,note:awardNote.trim()})});
+    const endpoint=data?.workflow?.canDirectAward?"/api/achievements/award":"/api/achievements/award/recommendations";
+    await request(endpoint,{method:"POST",body:JSON.stringify({userId,achievementId,note:awardNote.trim()})});
     setAwardAchievementId("");setAwardUserId("");setAwardNote("");
+  });
+  const reviewAwardRecommendation=(id:number,status:"approved"|"rejected")=>act(status==="approved"?"Achievement approved and awarded.":"Recommendation declined.",async()=>{
+    await request("/api/achievements/award/recommendations/"+id+"/review",{method:"POST",body:JSON.stringify({status})});
   });
   const patchSettings=()=>act("Settings saved.",async()=>{
     const safe:Record<string,string>={};
@@ -188,14 +192,16 @@ export default function OwnerTools() {
         <View style={[s.row,{flexWrap:"wrap"}]}><TextInput style={[s.input,{width:70}]} value={achievementForm.icon} onChangeText={icon=>setAchievementForm(old=>({...old,icon:icon.slice(0,4)}))} placeholder="🏆" placeholderTextColor={colors.mutedForeground}/><TextInput style={[s.input,{width:110}]} keyboardType="number-pad" value={achievementForm.pointsValue} onChangeText={pointsValue=>setAchievementForm(old=>({...old,pointsValue}))} placeholder="Points" placeholderTextColor={colors.mutedForeground}/></View>
         <TouchableOpacity style={s.button} onPress={()=>void createAchievement()} disabled={busy}><Text style={s.buttonText}>{busy?"Saving…":"Create badge"}</Text></TouchableOpacity>
       </View>
-      <View style={s.card}><Text style={s.heading}>Award an achievement</Text>
-        <Text style={s.muted}>Choose a badge and a learner. Duplicate awards are rejected by the API.</Text>
+      {(data.workflow?.canDirectAward||data.workflow?.canRecommend)&&<View style={s.card}><Text style={s.heading}>{data.workflow?.canDirectAward?"Award an achievement":"Recommend an achievement"}</Text>
+        <Text style={s.muted}>{data.workflow?.canDirectAward?"Owner-class awards are recorded immediately.":"Junior manager recommendations require independent senior-manager or owner approval. Badges and points are applied only after approval."} Duplicate pending recommendations are rejected by the API.</Text>
         {(data.achievements||[]).map((item:Row)=><TouchableOpacity key={item.id} onPress={()=>setAwardAchievementId(String(item.id))} style={[s.row,{borderWidth:1,borderColor:awardAchievementId===String(item.id)?colors.primary:colors.border,borderRadius:9,marginTop:6}]}><Text style={s.body}>{item.icon||"🏆"} {item.name} · {item.pointsValue??0} points</Text></TouchableOpacity>)}
         <Text style={[s.muted,{marginTop:12}]}>Learner</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:7}}>{(data.students||[]).map((item:Row)=><TouchableOpacity key={item.id} onPress={()=>setAwardUserId(String(item.id))} style={[s.chip,{backgroundColor:awardUserId===String(item.id)?colors.primary:colors.card}]}><Text style={{color:awardUserId===String(item.id)?"#fff":colors.foreground,fontSize:12}}>{item.name||item.email||("Learner #"+item.id)}</Text></TouchableOpacity>)}</ScrollView>
         <TextInput style={s.input} value={awardNote} onChangeText={setAwardNote} placeholder="Award note (optional)" placeholderTextColor={colors.mutedForeground}/>
-        <TouchableOpacity style={s.button} onPress={()=>void awardAchievement()} disabled={busy||!awardAchievementId||!awardUserId}><Text style={s.buttonText}>{busy?"Working…":"Award selected badge"}</Text></TouchableOpacity>
-      </View></>}
+        <TouchableOpacity style={s.button} onPress={()=>void awardAchievement()} disabled={busy||!awardAchievementId||!awardUserId}><Text style={s.buttonText}>{busy?"Working…":data.workflow?.canDirectAward?"Award selected badge":"Submit recommendation"}</Text></TouchableOpacity>
+      </View>}
+      </>}
+      {section==="achievements" && data && (data.workflow?.items||[]).length>0 && <View style={s.card}><Text style={s.heading}>Achievement approval workflow</Text>{(data.workflow.items as Row[]).map(item=><View key={item.id} style={{paddingVertical:9,borderBottomWidth:1,borderBottomColor:colors.border}}><Text style={s.body}>{item.achievement_icon||"🏆"} {item.achievement_name} · {item.learner_name}</Text><Text style={s.muted}>Recommended by {item.recommender_name} · {String(item.status).replace(/_/g," ")}</Text>{item.recommendation_note?<Text style={s.muted}>{item.recommendation_note}</Text>:null}{data.workflow.canApprove&&item.status==="pending_senior_review"?<View style={[s.row,{marginTop:8}]}><TouchableOpacity style={[s.button,{flex:1,backgroundColor:"#15803d"}]} onPress={()=>void reviewAwardRecommendation(Number(item.id),"approved")} disabled={busy}><Text style={s.buttonText}>Approve & award</Text></TouchableOpacity><TouchableOpacity style={[s.button,{flex:1,backgroundColor:"#b91c1c"}]} onPress={()=>void reviewAwardRecommendation(Number(item.id),"rejected")} disabled={busy}><Text style={s.buttonText}>Decline</Text></TouchableOpacity></View>:null}</View>)}</View>}
       {section==="financial" && data && <><View style={s.card}><Text style={s.heading}>Staff payment summary</Text><View style={{flexDirection:"row",flexWrap:"wrap",gap:8}}>{metric("Total paid",data.summary?.total)}{metric("Payment records",data.summary?.count)}{Object.entries(data.summary?.byRole||{}).map(([k,v])=>metric(k,v))}</View></View><View style={s.card}><Text style={s.heading}>Staff payments</Text>{(data.staff||[]).length===0?<Text style={s.muted}>No staff payment records.</Text>:(data.staff||[]).map((p:Row)=><View key={p.id} style={{paddingVertical:8,borderBottomWidth:1,borderBottomColor:colors.border}}><Text style={s.body}>{p.recipientName||p.name||("Staff #"+p.recipientId)} · {p.amount}</Text><Text style={s.muted}>{p.status||"recorded"} · {p.createdAt?new Date(p.createdAt).toLocaleDateString():""} · {p.notes||""}</Text></View>)}</View><View style={s.card}><Text style={s.heading}>School fee records</Text>{(data.payments||[]).length===0?<Text style={s.muted}>No payment records.</Text>:(data.payments||[]).slice(0,100).map((p:Row)=><View key={p.id} style={{paddingVertical:8,borderBottomWidth:1,borderBottomColor:colors.border}}><Text style={s.body}>{p.studentName||("Learner #"+p.studentId)} · {p.amount}</Text><Text style={s.muted}>{p.month||""} {p.year||""} · {p.status||"unknown"}</Text></View>)}</View></>}
     </ScrollView>
   </View>;

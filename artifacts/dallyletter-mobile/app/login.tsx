@@ -41,7 +41,7 @@ export default function LoginScreen() {
         await login(rawUser, rawToken);
         const role = String(rawUser.role || "").toLowerCase().replace(/[ -]+/g, "_");
         if (["owner", "admin"].includes(role)) router.replace("/(admin)/home");
-        else if (["manager", "senior_manager"].includes(role) || Boolean(rawUser.isManager)) router.replace("/(manager)/home");
+        else if (["manager", "senior_manager", "junior_manager"].includes(role) || Boolean(rawUser.isManager)) router.replace("/(manager)/home");
         else if (role === "teacher") router.replace("/(teacher)/home");
         else if (role === "student" || role === "prefect") router.replace("/(student)/home");
         else router.replace("/login");

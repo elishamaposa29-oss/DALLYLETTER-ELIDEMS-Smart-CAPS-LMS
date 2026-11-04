@@ -1,19 +1,26 @@
 // Payments routes — track and manage school fee payments
 import { Router, type IRouter } from "express";
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import crypto from "node:crypto";
 import { db, paymentsTable, usersTable, activityLogTable, notificationsTable } from "@workspace/db";
-import {
-  RecordPaymentBody,
-  GetPaymentParams,
-} from "@workspace/api-zod";
+import { RecordPaymentBody, GetPaymentParams } from "@workspace/api-zod";
 import { requireAuth, requireTeacherOrOwner } from "../lib/auth-middleware";
 
 const router: IRouter = Router();
 
 function paynowHash(values: Record<string, string>, key: string): string {
-  const raw = Object.entries(values).filter(([name]) => name.toLowerCase() !== "hash").map(([, value]) => value ?? "").join("") + key;
+  const raw = Object.entries(values)
+    .filter(([name]) => name.toLowerCase() !== "hash")
+    .map(([, value]) => value ?? "")
+    .join("") + key;
   return crypto.createHash("sha512").update(raw, "utf8").digest("hex").toUpperCase();
+}
+
+function isValidPaynowHash(values: Record<string, string>, key: string): boolean {
+  const supplied = String(values.hash ?? "").toUpperCase();
+  const expected = paynowHash(values, key);
+  if (!/^[A-F0-9]{128}$/.test(supplied)) return false;
+  return crypto.timingSafeEqual(Buffer.from(supplied, "ascii"), Buffer.from(expected, "ascii"));
 }
 
 function parsePaynow(text: string): Record<string, string> {
@@ -22,11 +29,26 @@ function parsePaynow(text: string): Record<string, string> {
   return out;
 }
 
+async function markPaynowAttempt(reference: string, status: "failed" | "cancelled", detail: string): Promise<void> {
+  await db.execute(sql`
+    UPDATE payments
+    SET status = ${status},
+        notes = CONCAT(COALESCE(notes, ''), ' | Paynow ', CAST(${status} AS TEXT), ': ', CAST(${detail} AS TEXT)),
+        updated_at = now()
+    WHERE notes LIKE ${"%Paynow reference " + reference + "%"}
+      AND status = 'pending'
+  `);
+}
+
 router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (user.role !== "student") { res.status(403).json({ error: "Learner access required" }); return; }
   const amount = Number(req.body?.amount);
-  if (!Number.isFinite(amount) || amount <= 0 || amount > 100000) { res.status(400).json({ error: "Enter a valid payment amount" }); return; }
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 100000) {
+    res.status(400).json({ error: "Enter a valid payment amount" });
+    return;
+  }
+
   const integrationId = process.env.PAYNOW_INTEGRATION_ID;
   const integrationKey = process.env.PAYNOW_INTEGRATION_KEY;
   const publicBase = (process.env.PUBLIC_APP_URL || process.env.VITE_PUBLIC_APP_URL || "").replace(/\/$/, "");
@@ -35,11 +57,17 @@ router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<vo
     res.status(503).json({ error: "Live Paynow payments are not configured yet. Add PAYNOW_INTEGRATION_ID, PAYNOW_INTEGRATION_KEY, PUBLIC_APP_URL and PUBLIC_API_URL to the server secrets." });
     return;
   }
-  const reference = "DL-" + user.id + "-" + Date.now();
+
+  const reference = "DL-" + user.id + "-" + Date.now() + "-" + crypto.randomBytes(4).toString("hex");
   const now = new Date();
   const month = now.toLocaleString("en-US", { month: "long" });
-  await db.insert(paymentsTable).values({ studentId: user.id, studentName: user.name, amount: amount.toFixed(2), month, year: now.getUTCFullYear(), status: "pending", notes: "Paynow reference " + reference, recordedBy: user.id });
-  const fields: Record<string,string> = {
+  await db.insert(paymentsTable).values({
+    studentId: user.id, studentName: user.name, amount: amount.toFixed(2),
+    month, year: now.getUTCFullYear(), status: "pending",
+    notes: "Paynow reference " + reference, recordedBy: user.id,
+  });
+
+  const fields: Record<string, string> = {
     id: integrationId, reference, amount: amount.toFixed(2),
     additionalinfo: "DallyLetter Elidems school payment",
     returnurl: publicBase + "/student/payments?reference=" + encodeURIComponent(reference),
@@ -47,31 +75,85 @@ router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<vo
     authemail: user.email, status: "Message",
   };
   fields.hash = paynowHash(fields, integrationKey);
+
   try {
     const response = await fetch("https://www.paynow.co.zw/interface/initiatetransaction", {
-      method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams(fields),
+      signal: AbortSignal.timeout(15000),
     });
     const parsed = parsePaynow(await response.text());
-    if (parsed.status?.toLowerCase() === "error") { res.status(502).json({ error: parsed.error || "Paynow rejected the transaction" }); return; }
-    if (!parsed.browserurl) { res.status(502).json({ error: "Paynow did not return a checkout URL" }); return; }
+    if (!response.ok || parsed.status?.toLowerCase() === "error" || !parsed.browserurl) {
+      const reason = parsed.error || (response.ok ? "Paynow did not return a checkout URL" : "Paynow HTTP " + response.status);
+      await markPaynowAttempt(reference, "failed", reason.slice(0, 300));
+      res.status(502).json({ error: reason });
+      return;
+    }
     res.status(201).json({ reference, checkoutUrl: parsed.browserurl, status: parsed.status || "ok" });
   } catch (error) {
-    res.status(502).json({ error: error instanceof Error ? error.message : "Paynow is unavailable" });
+    const reason = error instanceof Error ? error.message : "Paynow is unavailable";
+    await markPaynowAttempt(reference, "failed", reason.slice(0, 300));
+    res.status(502).json({ error: "Paynow checkout could not be initialized" });
   }
 });
 
 router.post("/payments/paynow/result", async (req, res): Promise<void> => {
   const integrationKey = process.env.PAYNOW_INTEGRATION_KEY;
   if (!integrationKey) { res.status(503).send("Paynow integration is not configured"); return; }
-  const body: Record<string,string> = {};
+
+  const body: Record<string, string> = {};
   for (const [key, value] of Object.entries(req.body ?? {})) body[String(key).toLowerCase()] = String(value ?? "");
-  if (!body.hash || body.hash.toUpperCase() !== paynowHash(body, integrationKey)) { res.status(400).send("Invalid hash"); return; }
-  const reference = body.reference;
-  const status = body.status || "Unknown";
-  if (reference) {
-    const normalizedStatus = status.toLowerCase() === "paid" ? "paid" : status.toLowerCase() === "cancelled" ? "pending" : "pending";
-    await db.execute(sql`UPDATE payments SET status = ${normalizedStatus}, notes = CONCAT(COALESCE(notes, ''), CASE WHEN COALESCE(notes,'') = '' THEN '' ELSE ' | ' END, 'Paynow ', ${status}, ' ref ', ${reference}) WHERE notes LIKE ${"%" + reference + "%"}`);
+  if (!isValidPaynowHash(body, integrationKey)) { res.status(400).send("Invalid hash"); return; }
+
+  const reference = body.reference ?? "";
+  if (!/^DL-\d+-\d+-[a-f0-9]{8}$/i.test(reference)) { res.status(400).send("Invalid reference"); return; }
+  const providerStatus = (body.status ?? "").trim().toLowerCase();
+  const normalizedStatus =
+    providerStatus === "paid" ? "paid" :
+    providerStatus === "refunded" ? "refunded" :
+    providerStatus === "cancelled" || providerStatus === "canceled" ? "cancelled" :
+    providerStatus === "failed" || providerStatus === "error" ? "failed" :
+    providerStatus === "created" || providerStatus === "sent" || providerStatus === "pending" || providerStatus === "awaiting delivery" || providerStatus === "delivered" || providerStatus === "disputed" ? "pending" :
+    null;
+  if (!normalizedStatus) { res.status(400).send("Unsupported Paynow status"); return; }
+
+  const callbackAmount = Number(body.amount);
+  if (!Number.isFinite(callbackAmount) || callbackAmount <= 0) {
+    res.status(400).send("Invalid payment amount");
+    return;
+  }
+
+  const result = await db.transaction(async (tx) => {
+    const updated = await tx.execute(sql`
+      UPDATE payments
+      SET status = ${normalizedStatus},
+          notes = CONCAT(COALESCE(notes, ''), ' | Paynow callback: ', CAST(${providerStatus} AS TEXT)),
+          updated_at = now()
+      WHERE notes LIKE ${"%Paynow reference " + reference + "%"}
+        AND amount::numeric = ${callbackAmount}
+        AND (status = 'pending' OR (CAST(${normalizedStatus} AS TEXT) = 'refunded' AND status = 'paid'))
+      RETURNING student_id
+    `);
+    const rows = (updated as unknown as { rows?: Array<{ student_id: number }> }).rows ?? [];
+    if (rows.length > 0 && normalizedStatus === "paid") {
+      await tx.update(usersTable)
+        .set({ lastPaymentDate: new Date().toISOString() })
+        .where(eq(usersTable.id, Number(rows[0].student_id)));
+    }
+    return { updated: rows.length > 0 };
+  });
+
+  if (!result.updated) {
+    const existing = await db.execute(sql`
+      SELECT id, amount FROM payments
+      WHERE notes LIKE ${"%Paynow reference " + reference + "%"}
+      LIMIT 1
+    `);
+    const existingRows = (existing as unknown as { rows?: Array<{ id: number; amount: string | number }> }).rows ?? [];
+    if (existingRows.length === 0) { res.status(404).send("Payment reference not found"); return; }
+    if (Number(existingRows[0].amount) !== callbackAmount) { res.status(400).send("Payment amount does not match reference"); return; }
+    // Duplicate or out-of-order callbacks cannot reopen or reverse a terminal payment.
   }
   res.status(200).send("OK");
 });
@@ -163,32 +245,39 @@ router.post("/payments/notify-admin", requireAuth, async (req, res): Promise<voi
     return;
   }
 
-  const { amount } = req.body;
-
-  // Find all owner accounts
-  const owners = await db.select().from(usersTable).where(eq(usersTable.role, "owner"));
-
-  const amountStr = amount ? `$${Number(amount).toFixed(2)}` : "an amount";
-
-  // Send notification to each owner
-  for (const owner of owners) {
-    await db.insert(notificationsTable).values({
-      recipientId: owner.id,
-      title: "💳 Payment Reported by Learner",
-      message: `${currentUser.name} has reported paying ${amountStr} via PayPal. Please verify the payment and update their records accordingly.`,
-      type: "payment_overdue",
-      isRead: false,
-    });
+  const amount = Number(req.body?.amount);
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 100000) {
+    res.status(400).json({ error: "Enter a valid payment amount greater than zero." });
+    return;
   }
 
-  // Log activity
-  await db.insert(activityLogTable).values({
-    type: "payment_recorded",
-    description: `${currentUser.name} self-reported a PayPal payment of ${amountStr}. Awaiting admin verification.`,
-    actorName: currentUser.name,
+  const owners = await db.select({ id: usersTable.id }).from(usersTable)
+    .where(inArray(usersTable.role, ["owner", "platform_owner"]));
+  if (!owners.length) {
+    res.status(503).json({ error: "No Owner account is available to receive payment reports." });
+    return;
+  }
+  const amountStr = `$${amount.toFixed(2)}`;
+
+  // Record all Owner notifications and the audit activity as one database transaction.
+  await db.transaction(async (tx) => {
+    for (const owner of owners) {
+      await tx.insert(notificationsTable).values({
+        recipientId: owner.id,
+        title: "💳 Payment Reported by Learner",
+        message: `${currentUser.name} reported a payment of ${amountStr}. The payment method has not been independently verified; please check the transaction and update the ledger.`,
+        type: "payment_overdue",
+        isRead: false,
+      });
+    }
+    await tx.insert(activityLogTable).values({
+      type: "payment_recorded",
+      description: `${currentUser.name} self-reported a payment of ${amountStr}. Awaiting Owner verification.`,
+      actorName: currentUser.name,
+    });
   });
 
-  res.json({ success: true });
+  res.json({ success: true, notifiedOwners: owners.length });
 });
 
 // GET /payments/:id — Get payment by ID

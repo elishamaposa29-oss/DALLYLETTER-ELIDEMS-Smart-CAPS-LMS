@@ -17,6 +17,10 @@ export default function AdminAchievements() {
   const { toast } = useToast();
   const [achievements, setAchievements] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
+  const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [canApproveRecommendations, setCanApproveRecommendations] = useState(false);
+  const [canDirectAward, setCanDirectAward] = useState(false);
+  const [canRecommend, setCanRecommend] = useState(false);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [awardOpen, setAwardOpen] = useState(false);
@@ -29,9 +33,14 @@ export default function AdminAchievements() {
     void Promise.all([
       fetch(getApiUrl("/api/achievements"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
       fetch(getApiUrl("/api/users"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
-    ]).then(([a, u]) => {
+      fetch(getApiUrl("/api/achievements/award/recommendations"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.ok ? r.json() : null),
+    ]).then(([a, u, workflow]) => {
       setAchievements(Array.isArray(a) ? a : []);
       setStudents(Array.isArray(u) ? u : []);
+      setRecommendations(Array.isArray(workflow?.items) ? workflow.items : []);
+      setCanApproveRecommendations(workflow?.canApprove === true);
+      setCanDirectAward(workflow?.canDirectAward === true);
+      setCanRecommend(workflow?.canRecommend === true);
       setLoading(false);
     }).catch(() => setLoading(false));
   };
@@ -54,16 +63,34 @@ export default function AdminAchievements() {
 
   const award = () => {
     if (!selectedAchievement || !awardUserId) { toast({ variant: "destructive", title: "Select a student" }); return; }
-    void fetch(getApiUrl("/api/achievements/award"), {
+    const endpoint = canDirectAward ? "/api/achievements/award" : "/api/achievements/award/recommendations";
+    void fetch(getApiUrl(endpoint), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
       body: JSON.stringify({ userId: parseInt(awardUserId), achievementId: selectedAchievement.id, note: awardNote }),
     }).then(async r => {
-      if (r.status === 409) { toast({ variant: "destructive", title: "Already awarded to this student" }); return; }
-      if (!r.ok) { toast({ variant: "destructive", title: "Award failed" }); return; }
-      toast({ title: `✅ ${selectedAchievement.icon} ${selectedAchievement.name} awarded!` });
-      setAwardOpen(false); setAwardUserId(""); setAwardNote(""); setSelectedAchievement(null);
+      const result = await r.json().catch(() => ({}));
+      if (r.status === 409) { toast({ variant: "destructive", title: result.error || "Already awarded or recommended" }); return; }
+      if (!r.ok) { toast({ variant: "destructive", title: result.error || "Award request failed" }); return; }
+      toast({ title: canDirectAward ? `✅ ${selectedAchievement.icon} ${selectedAchievement.name} awarded` : "Achievement recommendation submitted for senior approval" });
+      setAwardOpen(false); setAwardUserId(""); setAwardNote(""); setSelectedAchievement(null); load();
     });
+  };
+
+  const reviewRecommendation = async (id: number, status: "approved" | "rejected") => {
+    try {
+      const response = await fetch(getApiUrl(`/api/achievements/award/recommendations/${id}/review`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({ status }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Could not review recommendation.");
+      toast({ title: status === "approved" ? "Achievement approved and awarded" : "Recommendation declined" });
+      load();
+    } catch (error) {
+      toast({ variant: "destructive", title: error instanceof Error ? error.message : "Review failed" });
+    }
   };
 
   return (
@@ -77,12 +104,12 @@ export default function AdminAchievements() {
             <p className="text-slate-500 mt-1">Create badges and award them to outstanding learners</p>
           </div>
           <div className="flex gap-2">
-            <Dialog open={awardOpen} onOpenChange={setAwardOpen}>
+            {(canDirectAward || canRecommend) && <Dialog open={awardOpen} onOpenChange={setAwardOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline" className="gap-2"><Gift className="h-4 w-4" /> Award Badge</Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-md">
-                <DialogHeader><DialogTitle>Award a Badge to a Student</DialogTitle></DialogHeader>
+                <DialogHeader><DialogTitle>{canDirectAward ? "Award a Badge to a Student" : "Recommend a Badge for Senior Approval"}</DialogTitle></DialogHeader>
                 <div className="space-y-3 mt-2">
                   <div>
                     <label className="text-sm font-medium text-slate-700 mb-1 block">Select Achievement</label>
@@ -99,10 +126,10 @@ export default function AdminAchievements() {
                     </select>
                   </div>
                   <Input placeholder="Award note (optional)" value={awardNote} onChange={e => setAwardNote(e.target.value)} />
-                  <Button className="w-full bg-amber-500 text-white" onClick={award}>Award Badge</Button>
+                  <Button className="w-full bg-amber-500 text-white" onClick={award}>{canDirectAward ? "Award Badge" : "Submit Recommendation"}</Button>
                 </div>
               </DialogContent>
-            </Dialog>
+            </Dialog>}
             <Dialog open={createOpen} onOpenChange={setCreateOpen}>
               <DialogTrigger asChild>
                 <Button className="gap-2 bg-amber-500 text-white"><Plus className="h-4 w-4" /> Create Badge</Button>
@@ -149,6 +176,20 @@ export default function AdminAchievements() {
             </Dialog>
           </div>
         </div>
+
+        {recommendations.length > 0 && (
+          <Card>
+            <CardContent className="p-4 space-y-3">
+              <div><h2 className="font-semibold text-slate-900">Achievement approval workflow</h2><p className="text-sm text-slate-500">Junior manager recommendations require independent senior-manager or owner review. Points and badges are applied only after approval.</p></div>
+              {recommendations.map(item => (
+                <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+                  <div className="min-w-0"><p className="font-medium">{item.achievement_icon || "🏆"} {item.achievement_name} · {item.learner_name}</p><p className="text-xs text-slate-500">Recommended by {item.recommender_name} · {item.status.replace(/_/g, " ")}</p>{item.recommendation_note && <p className="text-sm mt-1">{item.recommendation_note}</p>}</div>
+                  {canApproveRecommendations && item.status === "pending_senior_review" && <div className="flex gap-2"><Button size="sm" onClick={() => void reviewRecommendation(Number(item.id), "approved")}>Approve & award</Button><Button size="sm" variant="outline" onClick={() => void reviewRecommendation(Number(item.id), "rejected")}>Decline</Button></div>}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         {loading ? <p className="text-center text-slate-400 py-10">Loading…</p> : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">

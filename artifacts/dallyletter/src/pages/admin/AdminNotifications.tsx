@@ -1,5 +1,6 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
+import { useEffect, useState } from "react";
 import { useListNotifications, useCreateNotification, useListUsers, getApiUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,13 @@ const createNotificationSchema = z.object({
 
 export default function AdminNotifications() {
   const { user } = useAuth();
+  const [permissions,setPermissions]=useState<Record<string,boolean>>({});
+  const [permissionLoaded,setPermissionLoaded]=useState(false);
+  const isOwner=user?.role==="owner";
+  const canCreate=isOwner||permissions["notifications.create"]===true;
+  const canBroadcast=isOwner||permissions["notifications.broadcast"]===true;
+  const canViewUsers=isOwner||permissions["users.view"]===true;
+  const canCompose=canCreate&&(canBroadcast||canViewUsers);
   const { data: notifications, isLoading } = useListNotifications();
   const { data: users } = useListUsers();
   const createNotificationMutation = useCreateNotification();
@@ -45,6 +53,7 @@ export default function AdminNotifications() {
 
   const recipientType = form.watch("recipientType");
   const recipientRole = form.watch("recipientRole");
+  useEffect(()=>{if(!user)return;fetch(getApiUrl("/api/manager-permissions/me"),{headers:{Authorization:"Bearer "+(localStorage.getItem("dallyletter_token")??"")}}).then(r=>r.json()).then(d=>{setPermissions(d?.permissions??{});if(d?.isOwner){setPermissions({});}if(!d?.isOwner&&d?.permissions?.["notifications.broadcast"]!==true&&d?.permissions?.["users.view"]===true)form.setValue("recipientType","specific");}).catch(()=>setPermissions({})).finally(()=>setPermissionLoaded(true));},[user]);
 
   const onSubmit = (values: z.infer<typeof createNotificationSchema>) => {
     const data = {
@@ -127,7 +136,7 @@ export default function AdminNotifications() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Compose */}
-          <Card className="lg:col-span-1 h-fit">
+          {canCompose && <Card className="lg:col-span-1 h-fit">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Send className="h-5 w-5 text-primary" />
@@ -172,9 +181,9 @@ export default function AdminNotifications() {
                           <SelectTrigger><SelectValue placeholder="Send to..." /></SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="all">All Users (in-app)</SelectItem>
-                          <SelectItem value="specific">Specific User</SelectItem>
-                          <SelectItem value="role">Select a role</SelectItem>
+                          {canBroadcast && <SelectItem value="all">All subordinate users (in-app)</SelectItem>}
+                          {canViewUsers && <SelectItem value="specific">Specific User</SelectItem>}
+                          {canBroadcast && <SelectItem value="role">Select a role</SelectItem>}
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -228,7 +237,7 @@ export default function AdminNotifications() {
                     </FormItem>
                   )} />
 
-                  <FormField control={form.control} name="sendEmail" render={({ field }) => (
+                  {canBroadcast && <><FormField control={form.control} name="sendEmail" render={({ field }) => (
                     <FormItem className="flex items-start gap-3 rounded-xl border p-3">
                       <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
                       <div>
@@ -252,14 +261,15 @@ export default function AdminNotifications() {
                     </FormItem>
                   )} />
 
-                  <Button type="submit" className="w-full" disabled={createNotificationMutation.isPending}>
+                  </>}
+                  <Button type="submit" className="w-full" disabled={createNotificationMutation.isPending || !permissionLoaded}>
                     {createNotificationMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Send Notification
                   </Button>
                 </form>
               </Form>
             </CardContent>
-          </Card>
+          </Card>}
 
           {/* History */}
           <Card className="lg:col-span-2">
@@ -268,7 +278,7 @@ export default function AdminNotifications() {
                 <Bell className="h-5 w-5 text-primary" />
                 Recent Notifications Sent
               </CardTitle>
-              <CardDescription>History of all broadcasted notifications. Click the trash icon to delete.</CardDescription>
+              <CardDescription>Notifications available to this account. Owner-only deletion is kept separate.</CardDescription>
             </CardHeader>
             <CardContent>
               {isLoading ? (
@@ -299,7 +309,7 @@ export default function AdminNotifications() {
                           <span className="text-xs text-muted-foreground hidden sm:block">
                             {new Date(notification.createdAt).toLocaleDateString()}
                           </span>
-{user?.role === "owner" && <Button
+{isOwner && <Button
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"

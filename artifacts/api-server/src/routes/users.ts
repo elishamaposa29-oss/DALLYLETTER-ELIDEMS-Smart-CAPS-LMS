@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import crypto from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { eq } from "drizzle-orm";
+import { eq, notInArray } from "drizzle-orm";
 import multer from "multer";
 import { db, usersTable, classesTable, pool } from "@workspace/db";
 import {
@@ -17,8 +17,46 @@ import { hashPassword, verifyPassword } from "../lib/password-hash";
 import { sendEmail, isEmailConfigured } from "../lib/email-service";
 import { isSmsConfigured, sendSms } from "../lib/sms-service";
 import { enqueueEmailNotification } from "../lib/email-notification-queue";
+import { buildTeacherCvPdf } from "../lib/teacher-cv-pdf";
+import { canViewProfileSection } from "./profileConnections";
+import { isSeniorManager, isJuniorManager, canModerateUser, normalizeRole } from "../lib/role-access";
+import { requireManagerPermission, requireManagerPermissionIfManager, requireManagerPermissionForRequest, managerHasPermission } from "../lib/manager-permission-policy";
 
 const router: IRouter = Router();
+
+async function canManageManagerTarget(actor: NonNullable<Express.Request["currentUser"]>, targetId: number): Promise<boolean> {
+  const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, targetId));
+  if (!target || isOwnerRole(target.role)) return false;
+  if (isOwnerRole(actor.role)) return true;
+  if (normalizeRole(target.role) === "admin") return false;
+  if (isSeniorManager(actor)) return canModerateUser(actor, target);
+  if (isJuniorManager(actor)) {
+    const targetRole = normalizeRole(target.role);
+    return ["teacher", "student", "learner", "prefect"].includes(targetRole) && !(targetRole === "teacher" && target.isManager);
+  }
+  return false;
+}
+
+
+function canViewManagerTarget(actor: NonNullable<Express.Request["currentUser"]>, target: { id?: number; role: unknown; isManager?: unknown; managerLevel?: unknown }): boolean {
+  if (Number(target.id) === Number(actor.id)) return true;
+  if (isOwnerRole(target.role)) return isOwnerRole(actor.role);
+  if (isOwnerRole(actor.role)) return true;
+  const targetRole = normalizeRole(target.role);
+  if (isSeniorManager(actor)) {
+    if (["owner", "platform_owner", "admin", "senior_manager"].includes(targetRole)) return false;
+    if (targetRole === "manager") return normalizeRole(target.managerLevel) !== "senior";
+    if (targetRole === "teacher" && target.isManager === true) return normalizeRole(target.managerLevel) !== "senior";
+    return ["teacher", "student", "learner", "prefect", "junior_manager"].includes(targetRole);
+  }
+  if (isJuniorManager(actor)) {
+    if (["manager", "junior_manager", "senior_manager", "admin", "owner", "platform_owner"].includes(targetRole)) return false;
+    if (targetRole === "teacher" && target.isManager === true) return false;
+    return ["teacher", "student", "learner", "prefect"].includes(targetRole);
+  }
+  return false;
+}
+function canReviewTeacherApplication(user: { role: unknown; managerLevel?: unknown; isManager?: unknown; teacherApplicationStatus?: unknown }): boolean { return isSeniorManager(user); }
 
 function hasForbiddenPaymentCredentials(body: unknown): boolean {
   if (!body || typeof body !== "object" || Array.isArray(body)) return false;
@@ -58,6 +96,7 @@ const directoryUserFields = {
   role: usersTable.role,
   isPrefect: usersTable.isPrefect,
   isManager: usersTable.isManager,
+  managerLevel: usersTable.managerLevel,
   grade: usersTable.grade,
   subject: usersTable.subject,
   avatarUrl: usersTable.avatarUrl,
@@ -69,16 +108,25 @@ const directoryUserFields = {
   createdAt: usersTable.createdAt,
 };
 
-router.get("/users", requireAuth, async (req, res): Promise<void> => {
-  const fields = isOwnerRole(req.currentUser!.role) ? safeUserFields : directoryUserFields;
-  const users = await db.select(fields).from(usersTable).orderBy(usersTable.createdAt);
-  res.json(users.map(u => ({ ...u, createdAt: u.createdAt.toISOString() })));
+router.get("/users", requireAuth, requireManagerPermissionIfManager("users.view"), async (req, res): Promise<void> => {
+  const actor = req.currentUser!;
+  const ownerViewer = isOwnerRole(actor.role);
+  const managerViewer = isSeniorManager(actor) || isJuniorManager(actor);
+  const fields = ownerViewer ? safeUserFields : directoryUserFields;
+  const users = ownerViewer
+    ? await db.select(fields).from(usersTable).orderBy(usersTable.createdAt)
+    : await db.select(fields).from(usersTable).where(notInArray(usersTable.role, ["owner", "platform_owner"])).orderBy(usersTable.createdAt);
+  const visible = managerViewer ? users.filter(u => canViewManagerTarget(actor, u)) : users;
+  res.json(visible.map(u => ({ ...u, createdAt: u.createdAt.toISOString() })));
 });
 
-router.get("/users/:id", requireAuth, async (req, res): Promise<void> => {
+router.get("/users/:id", requireAuth, requireManagerPermissionIfManager("users.view"), async (req, res): Promise<void> => {
   const params = GetUserParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const actor = req.currentUser!;
+  const [targetRole] = await db.select({ id: usersTable.id, role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, params.data.id));
+  if (targetRole && !canViewManagerTarget(actor, targetRole) && (isSeniorManager(actor) || isJuniorManager(actor))) { res.status(404).json({ error: "User not found" }); return; }
+  if (targetRole && isOwnerRole(targetRole.role) && !isOwnerRole(actor.role)) { res.status(404).json({ error: "User not found" }); return; }
   if (!canReadPrivateProfileByRole(actor.id, params.data.id, actor.role)) { res.status(403).json({ error: "You cannot access this private profile." }); return; }
   const [user] = await db.select(safeUserFields).from(usersTable).where(eq(usersTable.id, params.data.id));
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
@@ -277,22 +325,24 @@ router.delete("/users/:id", requireAuth, requireOwner, async (req, res): Promise
   res.sendStatus(204);
 });
 
-router.patch("/users/:id/block", requireAuth, requireOwner, async (req, res): Promise<void> => {
+router.patch("/users/:id/block", requireAuth, requireManagerPermission("users.block"), async (req, res): Promise<void> => {
   const params = BlockUserParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const body = BlockUserBody.safeParse(req.body);
   if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
+  if (!(await canManageManagerTarget(req.currentUser!, params.data.id))) { res.status(403).json({ error: "You cannot block this account." }); return; }
   const [user] = await db.update(usersTable).set({ isBlocked: body.data.isBlocked }).where(eq(usersTable.id, params.data.id)).returning(safeUserFields);
   if (body.data.isBlocked) await revokeUserSessions(params.data.id);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   res.json({ ...user, createdAt: user.createdAt.toISOString() });
 });
 
-router.patch("/users/:id/suspend", requireAuth, requireOwner, async (req, res): Promise<void> => {
+router.patch("/users/:id/suspend", requireAuth, requireManagerPermission("users.suspend"), async (req, res): Promise<void> => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const { isSuspended } = req.body as { isSuspended: boolean };
   if (typeof isSuspended !== "boolean") { res.status(400).json({ error: "isSuspended must be boolean" }); return; }
+  if (!(await canManageManagerTarget(req.currentUser!, id))) { res.status(403).json({ error: "You cannot suspend this account." }); return; }
   const [user] = await db.update(usersTable).set({ isSuspended }).where(eq(usersTable.id, id)).returning(safeUserFields);
   if (isSuspended) await revokeUserSessions(id);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
@@ -404,6 +454,34 @@ router.post("/users/me/cover", requireAuth, (req, res, next): void => {
   });
 });
 
+// Build a private CV PDF from the teacher's saved profile and school-verified qualifications.
+async function sendTeacherCvPdf(userId: number, res: any): Promise<void> {
+  await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, cv jsonb NOT NULL DEFAULT '{}'::jsonb, updated_at timestamptz NOT NULL DEFAULT now())");
+  const [userResult, cvResult, qualificationResult, subjectResult] = await Promise.all([
+    pool.query("SELECT id,name,email,role,subject,grade FROM users WHERE id=$1", [userId]),
+    pool.query("SELECT cv FROM teacher_profiles WHERE user_id=$1", [userId]),
+    pool.query("SELECT title,institution,year FROM teacher_qualifications WHERE user_id=$1 AND verification_status='verified' AND source='user' ORDER BY created_at DESC", [userId]),
+    pool.query("SELECT subjects_to_teach FROM teacher_subjects WHERE user_id=$1", [userId]).catch(() => ({ rows: [] as Array<{subjects_to_teach:string[]}> })),
+  ]);
+  const teacher = userResult.rows[0];
+  if (!teacher || String(teacher.role).toLowerCase() !== "teacher") { res.status(404).json({ error: "Teacher profile not found." }); return; }
+  const subjects = Array.isArray(subjectResult.rows[0]?.subjects_to_teach) ? subjectResult.rows[0].subjects_to_teach : [];
+  const pdf = buildTeacherCvPdf({
+    name: teacher.name,
+    email: teacher.email,
+    subject: teacher.subject,
+    grade: teacher.grade,
+    cv: cvResult.rows[0]?.cv ?? {},
+    qualifications: qualificationResult.rows,
+    subjects,
+  });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Disposition", 'attachment; filename="dallyletter-teacher-cv-' + userId + '.pdf"');
+  res.send(pdf);
+}
+
 // Structured CV fields for teacher applications. Only the teacher can edit their own CV.
 router.get("/users/me/teacher-cv", requireAuth, async (req, res): Promise<void> => {
   if (req.currentUser!.role !== "teacher") { res.status(403).json({ error: "Teacher account required" }); return; }
@@ -412,15 +490,28 @@ router.get("/users/me/teacher-cv", requireAuth, async (req, res): Promise<void> 
   res.json(result.rows[0] ?? { cv: {}, updated_at: null });
 });
 
-router.get("/users/:id/teacher-cv", requireAuth, async (req, res): Promise<void> => {
-  const actor = req.currentUser!;
-  if (!isOwnerRole(actor.role)) { res.status(403).json({ error: "Only the owner may review teacher CVs." }); return; }
+router.get("/users/me/teacher-cv/pdf", requireAuth, async (req, res): Promise<void> => {
+  if (String(req.currentUser!.role).toLowerCase() !== "teacher") { res.status(403).json({ error: "Teacher account required." }); return; }
+  await sendTeacherCvPdf(req.currentUser!.id, res);
+});
+
+router.get("/users/:id/teacher-cv", requireAuth, requireManagerPermission("teacher_cv.view"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid user id." }); return; }
+  const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, id));
+  if (!target || normalizeRole(target.role) !== "teacher" || (!isOwnerRole(req.currentUser!.role) && !canModerateUser(req.currentUser!, target))) { res.status(404).json({ error: "Teacher CV not found." }); return; }
   await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, cv jsonb NOT NULL DEFAULT '{}'::jsonb, updated_at timestamptz NOT NULL DEFAULT now())");
   const result = await pool.query("SELECT cv, updated_at FROM teacher_profiles WHERE user_id = $1", [id]);
   if (!result.rows.length) { res.status(404).json({ error: "Teacher CV not found." }); return; }
   res.json(result.rows[0]);
+});
+
+router.get("/users/:id/teacher-cv/pdf", requireAuth, requireManagerPermission("teacher_cv.view"), async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid user id." }); return; }
+  const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, id));
+  if (!target || normalizeRole(target.role) !== "teacher" || (!isOwnerRole(req.currentUser!.role) && !canModerateUser(req.currentUser!, target))) { res.status(404).json({ error: "Teacher CV not found." }); return; }
+  await sendTeacherCvPdf(id, res);
 });
 
 router.patch("/users/me/teacher-cv", requireAuth, async (req, res): Promise<void> => {
@@ -428,12 +519,12 @@ router.patch("/users/me/teacher-cv", requireAuth, async (req, res): Promise<void
   if (actor.role !== "teacher") { res.status(403).json({ error: "Teacher account required" }); return; }
   const body = req.body?.cv;
   if (!body || typeof body !== "object" || Array.isArray(body)) { res.status(400).json({ error: "Provide a CV object." }); return; }
-  const allowed = ["professionalSummary", "education", "experience", "subjects", "address", "certifications", "languages", "references"];
+  const allowed = ["professionalSummary", "education", "experience", "subjects", "address", "certifications", "languages", "references", "personalDetails", "teachingDetails", "surveyAnswers", "photoDocumentId", "qualificationIds"];
   const cv: Record<string, string> = {};
   for (const key of allowed) {
     const value = body[key];
     if (value !== undefined) {
-      if (typeof value !== "string" || value.length > 8000) { res.status(400).json({ error: "CV fields must be text up to 8000 characters." }); return; }
+      if (typeof value !== "string" || value.length > 12000) { res.status(400).json({ error: "CV fields must be text up to 8000 characters." }); return; }
       cv[key] = value.trim();
     }
   }
@@ -448,10 +539,10 @@ router.post("/users/me/teacher-documents", requireAuth, (req, res): void => {
   teacherDocumentUpload.single("file")(req, res, (error) => {
     void (async () => {
       if (error || !req.file) { res.status(400).json({ error: "Upload a PDF, image or document up to 10 MB" }); return; }
-      if (!["teacher", "manager", "senior_manager"].includes(String(req.currentUser!.role).toLowerCase())) { res.status(403).json({ error: "Teacher or manager account required" }); return; }
+      if (String(req.currentUser!.role).toLowerCase() !== "teacher") { res.status(403).json({ error: "Teacher account required" }); return; }
       const documentType = typeof req.body?.documentType === "string" ? req.body.documentType.trim() : "";
       if (!["cv", "resume", "certificate", "proof"].includes(documentType)) { res.status(400).json({ error: "Choose CV, resume, certificate or proof" }); return; }
-      const allowed = ["application/pdf","image/jpeg","image/png","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+      const allowed = ["application/pdf","image/jpeg","image/png","image/webp","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
       if (!allowed.includes(req.file.mimetype)) { res.status(415).json({ error: "Unsupported document type" }); return; }
       const result = await pool.query(
         "INSERT INTO teacher_documents (user_id, document_type, file_name, mime_type, size_bytes, data) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, document_type, file_name, mime_type, size_bytes, created_at",
@@ -465,9 +556,12 @@ router.post("/users/me/teacher-documents", requireAuth, (req, res): void => {
 router.get("/users/:id/teacher-documents", requireAuth, async (req, res): Promise<void> => {
   const id = Number(req.params.id); const actor = req.currentUser!;
   if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid user id." }); return; }
-  const [target] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, id));
-  if (!target) { res.status(404).json({ error: "User not found." }); return; }
-  const selfOrManager = actor.id === id || canAccessManager(actor);
+  const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, id));
+  if (!target || (isOwnerRole(target.role) && !isOwnerRole(actor.role))) { res.status(404).json({ error: "User not found." }); return; }
+  if (actor.id !== id && !isOwnerRole(actor.role) && !canModerateUser(actor, target)) { res.status(403).json({ error: "You are not authorized to access this user's teacher documents." }); return; }
+  if (!(await canViewProfileSection(actor,id,"teacher_documents"))) { res.status(403).json({ error: "Teacher document visibility is restricted by this profile's privacy settings." }); return; }
+  const selfOrManager = actor.id === id || isOwnerRole(actor.role) || (canAccessManager(actor) && await managerHasPermission(actor, "qualifications.view"));
+  if (canAccessManager(actor) && !isOwnerRole(actor.role) && actor.id !== id && !selfOrManager) { res.status(403).json({ error: "Individual qualifications.view permission is required for teacher document access." }); return; }
   const professional = ["teacher", "manager", "senior_manager"].includes(String(target.role).toLowerCase());
   if (!selfOrManager && !professional) { res.status(403).json({ error: "Access denied" }); return; }
   const result = selfOrManager
@@ -479,9 +573,13 @@ router.get("/users/:id/teacher-documents", requireAuth, async (req, res): Promis
 router.get("/users/:id/teacher-documents/:docId", requireAuth, async (req, res): Promise<void> => {
   const id = Number(req.params.id); const docId = Number(req.params.docId); const actor = req.currentUser!;
   if (!Number.isInteger(id) || id <= 0 || !Number.isInteger(docId) || docId <= 0) { res.status(400).json({ error: "Invalid document reference." }); return; }
-  const [target] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, id));
-  if (!target) { res.status(404).json({ error: "User not found." }); return; }
-  const selfOrManager = actor.id === id || canAccessManager(actor);
+  const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, id));
+  if (!target || (isOwnerRole(target.role) && !isOwnerRole(actor.role))) { res.status(404).json({ error: "User not found." }); return; }
+  if (actor.id !== id && !isOwnerRole(actor.role) && !canModerateUser(actor, target)) { res.status(403).json({ error: "You are not authorized to access this user's teacher documents." }); return; }
+  if (!(await canViewProfileSection(actor, id, "teacher_documents"))) {
+    res.status(403).json({ error: "Teacher document visibility is restricted by this profile's privacy settings." }); return;
+  }
+  const selfOrManager = actor.id === id || isOwnerRole(actor.role) || (canAccessManager(actor) && await managerHasPermission(actor, "qualifications.view"));
   const professional = ["teacher", "manager", "senior_manager"].includes(String(target.role).toLowerCase());
   const result = selfOrManager
     ? await pool.query("SELECT file_name, mime_type, size_bytes, data, storage_key FROM teacher_documents WHERE id = $1 AND user_id = $2 LIMIT 1", [docId, id])
@@ -504,9 +602,9 @@ router.get("/users/:id/teacher-documents/:docId", requireAuth, async (req, res):
   res.setHeader("Content-Length", row.size_bytes); res.end(row.data);
 });
 
-router.patch("/users/:id/teacher-review", requireAuth, async (req, res): Promise<void> => {
+router.patch("/users/:id/teacher-review", requireAuth, requireManagerPermissionForRequest((req) => req.body?.action === "approve" ? "teacher_cv.authorize" : "teacher_cv.review"), async (req, res): Promise<void> => {
   const actor = req.currentUser!;
-  if (!isOwnerRole(actor.role)) { res.status(403).json({ error: "Owner approval is required for teacher applications." }); return; }
+  if (!canReviewTeacherApplication(actor)) { res.status(403).json({ error: "Owner or Senior Manager approval is required for teacher applications." }); return; }
   const id = Number(req.params.id);
   const action = req.body?.action;
   if (!Number.isInteger(id) || !["approve", "reject", "convert_to_learner"].includes(action)) { res.status(400).json({ error: "Invalid teacher review action" }); return; }
@@ -521,16 +619,28 @@ router.patch("/users/:id/teacher-review", requireAuth, async (req, res): Promise
     const cv = (cvResult.rows[0]?.cv ?? {}) as Record<string, unknown>;
     const requiredFields = ["professionalSummary", "education", "experience", "subjects", "address"];
     const missingFields = requiredFields.filter((key) => typeof cv[key] !== "string" || (cv[key] as string).trim().length < 2);
+    let personalDetails: Record<string, unknown> = {}; try { personalDetails = JSON.parse(String(cv.personalDetails || "{}")) as Record<string, unknown>; } catch { /* incomplete CV is rejected below */ }
+    const photoResult = await pool.query("SELECT id FROM teacher_documents WHERE id=$1 AND user_id=$2 AND document_type=$3 AND mime_type LIKE $4", [Number(cv.photoDocumentId), id, "cv", "image/%"]);
+    const hasPhoto = photoResult.rows.length > 0;
+    const hasLegalDetails = ["fullName","idNumber","dob","phone","email","address"].every((key) => typeof personalDetails[key] === "string" && String(personalDetails[key]).trim().length > 0);
     const docs = await pool.query("SELECT 1 FROM teacher_documents WHERE user_id = $1 AND document_type IN ('resume','certificate') LIMIT 1", [id]);
-    if (missingFields.length || !target.paymentInfo || !docs.rows.length) {
+    const verifiedQualifications = await pool.query("SELECT count(*)::int AS total, count(*) FILTER (WHERE verification_status=$2 AND document_id IS NOT NULL)::int AS verified FROM teacher_qualifications WHERE user_id=$1", [id, "verified"]);
+    if (missingFields.length || !hasPhoto || !hasLegalDetails || !docs.rows.length || Number(verifiedQualifications.rows[0]?.total||0)===0 || Number(verifiedQualifications.rows[0]?.verified||0)!==Number(verifiedQualifications.rows[0]?.total||0)) {
       res.status(409).json({
-        error: "Teacher application is incomplete. Complete the CV, add payment information, and upload a resume or certificate before owner approval.",
+        error: "Teacher application is incomplete. Complete personal/legal CV details, upload a profile photo and supporting CV document, and have every separate qualification certificate verified before authorization.",
         missingFields,
-        paymentInformationComplete: Boolean(target.paymentInfo),
+        qualificationVerificationComplete: Number(verifiedQualifications.rows[0]?.total||0)>0 && Number(verifiedQualifications.rows[0]?.verified||0)===Number(verifiedQualifications.rows[0]?.total||0),
+        profilePhotoUploaded: hasPhoto,
+        legalDetailsComplete: hasLegalDetails,
         qualificationDocumentUploaded: Boolean(docs.rows.length),
       });
       return;
     }
+  }
+  if (action === "reject" || action === "convert_to_learner") {
+    const [applicant] = await db.select({ email: usersTable.email, name: usersTable.name }).from(usersTable).where(eq(usersTable.id, id));
+    try { await sendEmail({ to: [applicant.email], subject: "Dallyletter Elidems teacher application outcome", text: "Hello " + (applicant.name || "applicant") + ", your teacher application was not approved. Your login details remain valid and your account has been converted to a learner account. Sign in again to access the learner dashboard." }); }
+    catch { res.status(503).json({ error: "Notification email could not be accepted. Account remains unchanged; retry after email delivery is restored." }); return; }
   }
   const [user] = await db.update(usersTable).set(
     action === "approve"
@@ -570,18 +680,27 @@ router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<v
   if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid user id." }); return; }
   const [user] = await db.select({
     id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl, bio: usersTable.bio,
-    role: usersTable.role, grade: usersTable.grade, isPrefect: usersTable.isPrefect, isManager: usersTable.isManager,
+    role: usersTable.role, grade: usersTable.grade, isPrefect: usersTable.isPrefect, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel,
     performanceScore: usersTable.performanceScore, badgeCount: usersTable.badgeCount, streakDays: usersTable.streakDays,
   }).from(usersTable).where(eq(usersTable.id, id));
-  if (!user) { res.status(404).json({ error: "User not found." }); return; }
+  if (!user || (isOwnerRole(user.role) && !isOwnerRole(req.currentUser!.role)) || ((isSeniorManager(req.currentUser!) || isJuniorManager(req.currentUser!)) && !canViewManagerTarget(req.currentUser!,user))) { res.status(404).json({ error: "User not found." }); return; }
   await ensureProfileCoverSchema();
   const coverResult = await pool.query("SELECT media_url AS cover_url, media_type AS cover_type FROM user_profile_covers WHERE user_id=$1", [id]).catch(() => ({ rows: [] as Array<{cover_url:string;cover_type:string}> }));
   const coverMedia = coverResult.rows[0] ?? { cover_url: null, cover_type: null };
-  const canViewPrivateSummary = req.currentUser!.id === id || canAccessManager(req.currentUser!);
+  const [canViewOverview,canViewQualifications,canViewSubjects,canViewGroups,canViewPayments,canViewAchievements,canViewActivity,canViewRegister] = await Promise.all([
+    canViewProfileSection(req.currentUser!,id,"overview"),
+    canViewProfileSection(req.currentUser!,id,"qualifications"),
+    canViewProfileSection(req.currentUser!,id,"subjects"),
+    canViewProfileSection(req.currentUser!,id,"groups"),
+    canViewProfileSection(req.currentUser!,id,"payments"),
+    canViewProfileSection(req.currentUser!,id,"achievements"),
+    canViewProfileSection(req.currentUser!,id,"activity"),
+    canViewProfileSection(req.currentUser!,id,"register"),
+  ]);
   const isProfessional = ["teacher", "manager", "senior_manager"].includes(String(user.role).toLowerCase());
   const [qualifications, teacherSubjectRows, learnerSubjectRows] = await Promise.all([
     isProfessional
-      ? pool.query("SELECT title, verification_status FROM teacher_qualifications WHERE user_id = $1 AND verification_status = 'verified' ORDER BY created_at DESC", [id])
+      ? pool.query("SELECT title, verification_status FROM teacher_qualifications WHERE user_id = $1 AND verification_status = 'verified' AND source = 'user' ORDER BY created_at DESC", [id])
       : Promise.resolve({ rows: [] as Array<{ title: string; verification_status: string }> }),
     isProfessional
       ? pool.query("SELECT subjects_to_teach, primary_subject FROM teacher_subjects WHERE user_id = $1", [id])
@@ -605,25 +724,33 @@ router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<v
     pool.query("SELECT count(*)::int AS count FROM user_achievements WHERE user_id=$1", [id]).catch(() => ({ rows: [{count:0}] })),
     user.isPrefect ? pool.query("SELECT count(*)::int AS count FROM lesson_requests WHERE prefect_id=$1", [id]).catch(() => ({ rows: [{count:0}] })) : Promise.resolve({ rows: [{count:0}] }),
   ]);
+  res.setHeader("Cache-Control","private, no-store, no-cache, must-revalidate");
   res.json({
-    ...serializePublicProfile(user, qualifications.rows, teachingSubjects),
-    cover_url: coverMedia.cover_url,
-    cover_type: coverMedia.cover_type,
-    subjects: isProfessional ? teachingSubjects : learningSubjects,
-    primary_subject: teacherSubjectRows.rows[0]?.primary_subject ?? null,
-    grade: user.grade,
-    is_prefect: Boolean(user.isPrefect),
-    is_manager: Boolean(user.isManager),
-    performance_score: Number(user.performanceScore ?? 0),
-    leaderboard_position: Number(rankRows.rows[0]?.position ?? 0) || null,
-    badge_count: Number(user.badgeCount ?? 0),
-    streak_days: Number(user.streakDays ?? 0),
-    groups_joined: canViewPrivateSummary ? groupRows.rows : [],
-    groups_owned: canViewPrivateSummary ? ownedGroupRows.rows : [],
-    groups_with_settings_permission: canViewPrivateSummary ? permissionRows.rows : [],
-    fees_status: canViewPrivateSummary ? feeRows.rows[0]?.status ?? "not_recorded" : null,
-    achievement_count: Number(achievementRows.rows[0]?.count ?? 0),
-    lesson_requests_count: canViewPrivateSummary ? Number(lessonRequestRows.rows[0]?.count ?? 0) : null,
+    ...serializePublicProfile({
+      ...user,
+      name: canViewOverview ? user.name : "Private profile",
+      avatarUrl: canViewOverview ? user.avatarUrl : null,
+      bio: canViewOverview ? user.bio : null,
+      role: canViewOverview ? user.role : "private",
+    }, canViewQualifications ? qualifications.rows : [], canViewSubjects ? teachingSubjects : []),
+    cover_url: canViewOverview ? coverMedia.cover_url : null,
+    cover_type: canViewOverview ? coverMedia.cover_type : null,
+    subjects: canViewSubjects ? (isProfessional ? teachingSubjects : learningSubjects) : [],
+    primary_subject: canViewSubjects ? teacherSubjectRows.rows[0]?.primary_subject ?? null : null,
+    section_visibility: { overview:canViewOverview, qualifications:canViewQualifications, subjects:canViewSubjects, groups:canViewGroups, payments:canViewPayments, achievements:canViewAchievements, activity:canViewActivity, attendance:await canViewProfileSection(req.currentUser!,id,"attendance"), register:canViewRegister, reports:await canViewProfileSection(req.currentUser!,id,"reports"), transfers:await canViewProfileSection(req.currentUser!,id,"transfers"), enrollments:await canViewProfileSection(req.currentUser!,id,"enrollments"), teacher_documents:await canViewProfileSection(req.currentUser!,id,"teacher_documents") },
+    grade: canViewOverview ? user.grade : null,
+    is_prefect: canViewOverview && Boolean(user.isPrefect),
+    is_manager: canViewOverview && Boolean(user.isManager),
+    performance_score: canViewOverview ? Number(user.performanceScore ?? 0) : null,
+    leaderboard_position: canViewOverview ? (Number(rankRows.rows[0]?.position ?? 0) || null) : null,
+    badge_count: canViewOverview ? Number(user.badgeCount ?? 0) : null,
+    streak_days: canViewOverview ? Number(user.streakDays ?? 0) : null,
+    groups_joined: canViewGroups ? groupRows.rows : [],
+    groups_owned: canViewGroups ? ownedGroupRows.rows : [],
+    groups_with_settings_permission: canViewGroups ? permissionRows.rows : [],
+    fees_status: canViewPayments ? feeRows.rows[0]?.status ?? "not_recorded" : null,
+    achievement_count: canViewAchievements ? Number(achievementRows.rows[0]?.count ?? 0) : null,
+    lesson_requests_count: canViewActivity ? Number(lessonRequestRows.rows[0]?.count ?? 0) : null,
   });
 });
 
@@ -721,17 +848,21 @@ router.post("/users/me/qualifications", requireAuth, async (req, res): Promise<v
 
 
 // Owner-only moderation queue for qualifications awaiting verification.
-router.get("/qualifications/pending", requireAuth, async(req,res):Promise<void>=>{
-  if(!isOwnerRole(req.currentUser!.role)){res.status(403).json({error:"Owner/admin access required."});return;}
-  const result=await pool.query("SELECT q.id,q.user_id,u.name AS teacher_name,q.title,q.institution,q.year,q.verification_status,q.document_id,d.file_name AS document_file_name,d.mime_type AS document_mime_type,q.created_at FROM teacher_qualifications q JOIN users u ON u.id=q.user_id LEFT JOIN teacher_documents d ON d.id=q.document_id WHERE q.verification_status='pending' ORDER BY q.created_at ASC");
-  res.json(result.rows);
+router.get("/qualifications/pending", requireAuth, requireManagerPermission("qualifications.view"), async(req,res):Promise<void>=>{
+  const actor=req.currentUser!;
+  const result=await pool.query("SELECT q.id,q.user_id,u.name AS teacher_name,u.role,u.is_manager,u.manager_level,q.title,q.institution,q.year,q.verification_status,q.document_id,d.file_name AS document_file_name,d.mime_type AS document_mime_type,q.created_at FROM teacher_qualifications q JOIN users u ON u.id=q.user_id LEFT JOIN teacher_documents d ON d.id=q.document_id WHERE q.verification_status='pending' ORDER BY q.created_at ASC");
+  const visible=isOwnerRole(actor.role)?result.rows:result.rows.filter((row:any)=>canModerateUser(actor,{role:row.role,isManager:row.is_manager,managerLevel:row.manager_level}));
+  res.json(visible.map(({role,is_manager,manager_level,...row}:any)=>row));
 });
 
 // Public list is intentionally minimal; only verified qualifications are public.
 router.get("/qualifications/:userId", requireAuth, async (req, res): Promise<void> => {
   const id = Number(req.params.userId);
   if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid user id." }); return; }
-  const result = await pool.query("SELECT id,title,institution,year,verification_status,created_at FROM teacher_qualifications WHERE user_id=$1 AND verification_status='verified' ORDER BY created_at DESC", [id]);
+  if (!(await canViewProfileSection(req.currentUser!, id, "qualifications"))) {
+    res.status(403).json({ error: "Qualification visibility is restricted by this profile's privacy settings." }); return;
+  }
+  const result = await pool.query("SELECT id,title,institution,year,verification_status,created_at FROM teacher_qualifications WHERE user_id=$1 AND verification_status='verified' AND source='user' ORDER BY created_at DESC", [id]);
   res.json(result.rows);
 });
 
@@ -786,24 +917,64 @@ router.post("/qualifications/:id/document", requireAuth, (req,res,next):void => 
   });
 });
 
-router.patch("/qualifications/:id/verify", requireAuth, async(req,res):Promise<void>=>{
-  if(!isOwnerRole(req.currentUser!.role)){res.status(403).json({error:"Owner/admin access required."});return;}
+router.patch("/qualifications/:id/verify", requireAuth, requireManagerPermission("qualifications.verify"), async(req,res):Promise<void>=>{
+  const reviewer=req.currentUser!;
+  if(!canReviewTeacherApplication(reviewer)){res.status(403).json({error:"Owner or Senior Manager access required."});return;}
   const id=Number(req.params.id);
   const status=req.body?.status;
+  const reviewNote=typeof req.body?.reviewNote==="string"?req.body.reviewNote.trim().slice(0,2000):null;
   if(!Number.isSafeInteger(id)||id<=0){res.status(400).json({error:"Invalid qualification id."});return;}
   if(!["verified","rejected"].includes(status)){res.status(400).json({error:"status must be verified or rejected."});return;}
-  const result=await pool.query("UPDATE teacher_qualifications SET verification_status=$1 WHERE id=$2 RETURNING id,user_id,title,institution,year,verification_status,document_id,created_at",[status,id]);
-  if(!result.rows.length){res.status(404).json({error:"Qualification not found."});return;}
-  res.json(result.rows[0]);
+  if(status==="rejected"&&(!reviewNote||reviewNote.length<3)){res.status(400).json({error:"A rejection note of at least 3 characters is required."});return;}
+  await pool.query("CREATE TABLE IF NOT EXISTS teacher_qualification_review_history (id bigserial PRIMARY KEY,qualification_id integer NOT NULL REFERENCES teacher_qualifications(id) ON DELETE CASCADE,reviewed_by integer REFERENCES users(id),previous_status text NOT NULL,new_status text NOT NULL,review_note text,created_at timestamptz NOT NULL DEFAULT now())");
+  const client=await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const current=await client.query("SELECT id,user_id,title,institution,year,verification_status,document_id,created_at FROM teacher_qualifications WHERE id=$1 FOR UPDATE",[id]);
+    if(!current.rows.length){await client.query("ROLLBACK");res.status(404).json({error:"Qualification not found."});return;}
+    const qualificationOwner = await client.query("SELECT role,is_manager,manager_level FROM users WHERE id=$1", [current.rows[0].user_id]);
+    const ownerRow=qualificationOwner.rows[0];
+    if (ownerRow && !isOwnerRole(reviewer.role) && !canModerateUser(reviewer,{role:ownerRow.role,isManager:ownerRow.is_manager,managerLevel:ownerRow.manager_level})) {
+      await client.query("ROLLBACK");
+      res.status(404).json({ error: "Qualification not found." });
+      return;
+    }
+    const previousStatus=String(current.rows[0].verification_status||"pending");
+    const updated=await client.query("UPDATE teacher_qualifications SET verification_status=$1 WHERE id=$2 RETURNING id,user_id,title,institution,year,verification_status,document_id,created_at",[status,id]);
+    await client.query("INSERT INTO teacher_qualification_review_history(qualification_id,reviewed_by,previous_status,new_status,review_note) VALUES($1,$2,$3,$4,$5)",[id,reviewer.id,previousStatus,status,reviewNote]);
+    await client.query("COMMIT");
+    res.json(updated.rows[0]);
+  } catch(error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally { client.release(); }
 });
 
-router.get("/qualifications/:id/document", requireAuth, async(req,res):Promise<void>=>{
+router.get("/qualifications/:id/review-history", requireAuth, requireManagerPermissionIfManager("qualifications.view"), async(req,res):Promise<void>=>{
+  const actor=req.currentUser!;
+  const id=Number(req.params.id);
+  if(!Number.isSafeInteger(id)||id<=0){res.status(400).json({error:"Invalid qualification id."});return;}
+  await pool.query("CREATE TABLE IF NOT EXISTS teacher_qualification_review_history (id bigserial PRIMARY KEY,qualification_id integer NOT NULL REFERENCES teacher_qualifications(id) ON DELETE CASCADE,reviewed_by integer REFERENCES users(id),previous_status text NOT NULL,new_status text NOT NULL,review_note text,created_at timestamptz NOT NULL DEFAULT now())");
+  const qualification=await pool.query("SELECT id,user_id FROM teacher_qualifications WHERE id=$1",[id]);
+  if(!qualification.rows.length){res.status(404).json({error:"Qualification not found."});return;}
+  const targetUser = await pool.query("SELECT role,is_manager,manager_level FROM users WHERE id=$1", [qualification.rows[0].user_id]);
+  const target=targetUser.rows[0];
+  if(!target || (Number(qualification.rows[0].user_id)!==actor.id && !isOwnerRole(actor.role) && !canModerateUser(actor,{role:target.role,isManager:target.is_manager,managerLevel:target.manager_level}))){res.status(404).json({error:"Qualification not found."});return;}
+  if(Number(qualification.rows[0].user_id)!==actor.id && !(canAccessManager(actor) && await managerHasPermission(actor,"qualifications.view"))){res.status(403).json({error:"Only the qualification owner or an authorized owner/admin can view review history."});return;}
+  const history=await pool.query("SELECT h.id,h.qualification_id,h.previous_status,h.new_status,h.review_note,h.created_at,u.name AS reviewer_name FROM teacher_qualification_review_history h JOIN users u ON u.id=h.reviewed_by WHERE h.qualification_id=$1 ORDER BY h.created_at DESC,h.id DESC LIMIT 100",[id]);
+  res.json({qualificationId:id,history:history.rows});
+});
+
+router.get("/qualifications/:id/document", requireAuth, requireManagerPermissionIfManager("qualifications.view"), async(req,res):Promise<void>=>{
   const id=Number(req.params.id), actor=req.currentUser!;
   if(!Number.isSafeInteger(id)||id<=0){res.status(400).json({error:"Invalid document id."});return;}
   const result=await pool.query("SELECT d.id,d.user_id,d.file_name,d.mime_type,d.storage_key,q.verification_status FROM teacher_documents d LEFT JOIN teacher_qualifications q ON q.document_id=d.id WHERE d.id=$1",[id]);
   const doc=result.rows[0];
   if(!doc){res.status(404).json({error:"Document not found."});return;}
-  if(doc.user_id!==actor.id&&!isOwnerRole(actor.role)){res.status(403).json({error:"Document access denied."});return;}
+  const targetUser = await pool.query("SELECT role,is_manager,manager_level FROM users WHERE id=$1", [doc.user_id]);
+  const target=targetUser.rows[0];
+  if(!target || (Number(doc.user_id)!==actor.id && !isOwnerRole(actor.role) && !canModerateUser(actor,{role:target.role,isManager:target.is_manager,managerLevel:target.manager_level}))){res.status(404).json({error:"Document not found."});return;}
+  if(doc.user_id!==actor.id&&!(canAccessManager(actor)&&await managerHasPermission(actor,"qualifications.view"))){res.status(403).json({error:"Document access denied."});return;}
   if(!doc.storage_key){res.status(503).json({error:"Document storage key unavailable for this legacy record."});return;}
   const media=await streamStoredMedia(doc.storage_key);
   if(!media){res.status(404).json({error:"Stored document not found."});return;}

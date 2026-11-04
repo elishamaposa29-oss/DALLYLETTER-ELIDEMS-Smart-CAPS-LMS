@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
+import RecordBookWorkspace from "@/components/RecordBookWorkspace";
 import { useGetDashboardStats, useListClasses, useGetRecentActivity } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -116,6 +117,16 @@ export default function TeacherHome() {
               })}
             </div>
 
+            <Card className="border-[#b38b00]/40 bg-gradient-to-r from-[#0f2a5a]/[0.04] to-[#b38b00]/[0.06]">
+              <CardContent className="flex flex-wrap items-center justify-between gap-4 p-5">
+                <div>
+                  <h2 className="font-bold text-[#0f2a5a]">Academic report builder</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">Create period-based learner reports using saved attendance, assignment marks and report-enabled exercise results. Reports go to Senior Manager / Owner review.</p>
+                </div>
+                <Link href="/manager/reports/review"><Button className="bg-[#0f2a5a] hover:bg-[#173a72]">Build academic report</Button></Link>
+              </CardContent>
+            </Card>
+
             {/* Bottom Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
@@ -227,6 +238,7 @@ export default function TeacherHome() {
           </>
         )}
       </div>
+      <RecordBookWorkspace />
       <Dialog open={Boolean(selectedActivity)} onOpenChange={(open) => { if (!open) setSelectedActivity(null); }}>
         <DialogContent>
           <DialogHeader>

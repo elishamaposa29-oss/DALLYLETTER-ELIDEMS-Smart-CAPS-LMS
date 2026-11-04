@@ -105,6 +105,7 @@ export default function FeatureHub() {
   const [exerciseDraftQuestions, setExerciseDraftQuestions] = useState<Array<{prompt:string;type:"input"|"poll"|"drawbox";marks:string;options:string[];correct:number;drawData?:Record<string,any>}>>([{prompt:"",type:"input",marks:"1",options:["Option A","Option B"],correct:0,drawData:{}}]);
   const [exerciseBuilderBusy, setExerciseBuilderBusy] = useState(false);
   const [exerciseDraftId, setExerciseDraftId] = useState<number | null>(null);
+  const [exerciseRecordForReport, setExerciseRecordForReport] = useState(true);
   const [exerciseQuestionsSaved, setExerciseQuestionsSaved] = useState(0);
   const [overallComment, setOverallComment] = useState("");
   const [pollTitle, setPollTitle] = useState("");
@@ -160,6 +161,7 @@ export default function FeatureHub() {
   const [achievementTab, setAchievementTab] = useState<"badges" | "leaderboard" | "all">("badges");
   const [queuedSubmissions, setQueuedSubmissions] = useState<QueuedSubmission[]>([]);
   const [queueBusy, setQueueBusy] = useState(false);
+  const [managerPermissions, setManagerPermissions] = useState<Record<string, boolean>>({});
   const queryClient = useQueryClient();
   const { data: notifications, refetch: refetchNotifications } = useListNotifications({ query: { queryKey: getListNotificationsQueryKey(), refetchInterval: section === "notifications" ? 30000 : false, refetchOnWindowFocus: true } });
   const markRead = useMarkNotificationRead();
@@ -168,11 +170,12 @@ export default function FeatureHub() {
 
   const role = String(user?.role ?? "guest").toLowerCase().replace(/[ -]+/g, "_");
   const isStudent = role === "student" || role === "prefect";
-  const managerRole = ["manager", "senior_manager"].includes(role) || Boolean((user as any)?.isManager);
-  const visibleSections = sections.filter(item => (item.id !== "achievements" || isStudent) && (item.id !== "prefect" || Boolean((user as any)?.isPrefect)) && (item.id !== "reports" || isStudent) && (item.id !== "audit" || ["owner","admin","platform_owner"].includes(role) || managerRole));
+  const managerRole = ["manager", "senior_manager", "junior_manager"].includes(role) || Boolean((user as any)?.isManager);
+  const canManagerPermission = (key: string) => ["owner", "platform_owner"].includes(role) || managerPermissions[key] === true;
+  const visibleSections = sections.filter(item => (item.id !== "achievements" || isStudent) && (item.id !== "prefect" || Boolean((user as any)?.isPrefect)) && (item.id !== "reports" || isStudent) && (item.id !== "audit" || canManagerPermission("audit.view_subordinate")));
   const isTeacher = role === "teacher";
   const canManageExercises = isTeacher || ["owner","admin","platform_owner"].includes(role) || Boolean((user as any)?.isManager);
-  const canCreateGroups = isTeacher || Boolean((user as any)?.isPrefect || (user as any)?.isManager) || ["owner", "admin", "platform_owner"].includes(role);
+  const canCreateGroups = isTeacher || Boolean((user as any)?.isPrefect) || canManagerPermission("groups.manage") || ["admin"].includes(role);
   const exerciseLocked = Boolean(exerciseResult?.submission?.status) && !newAttempt;
 
   const styles = StyleSheet.create({
@@ -209,6 +212,17 @@ export default function FeatureHub() {
     if (!response.ok) throw new Error(payload?.error || payload?.message || `Request failed (${response.status})`);
     return payload;
   }, [token]);
+
+  useEffect(() => {
+    let active = true;
+    if (!managerRole || !token) { setManagerPermissions({}); return () => { active = false; }; }
+    void request("/api/manager-permissions/me").then((result: any) => {
+      if (active) setManagerPermissions(result?.isOwner ? { "*": true } : (result?.permissions ?? {}));
+    }).catch(() => { if (active) setManagerPermissions({}); });
+    return () => { active = false; };
+  }, [request, managerRole, token]);
+
+
 
   const saveLearningItemOffline = useCallback(async () => {
     if (!user?.id || !section || !selected || !["assignments", "exercises", "polls"].includes(section)) return;
@@ -654,15 +668,34 @@ export default function FeatureHub() {
 
   const addExerciseQuestion = () => setExerciseDraftQuestions(old => [...old, { prompt:"", type:"input", marks:"1", options:["Option A","Option B"], correct:0, drawData:{} }]);
   const updateExerciseQuestion = (index:number, patch:Partial<{prompt:string;type:"input"|"poll"|"drawbox";marks:string;options:string[];correct:number;drawData?:Record<string,any>}>) => setExerciseDraftQuestions(old => old.map((q,i)=>i===index?{...q,...patch}:q));
+  const archiveMobileExercise = (row:any) => {
+    Alert.alert("Archive exercise", "This hides the exercise from learners but preserves every submission and historical report record.", [
+      { text:"Cancel", style:"cancel" },
+      { text:"Archive", style:"destructive", onPress:() => {
+        void (async () => {
+          try {
+            await request(`/api/exercises/${row.id}/archive`, { method:"POST" });
+            await loadSection("exercises");
+            Alert.alert("Exercise archived", "Learner submissions and academic report history were preserved.");
+          } catch (error) {
+            Alert.alert("Archive failed", error instanceof Error ? error.message : "Try again.");
+          }
+        })();
+      } },
+    ]);
+  };
+
   const createMobileExercise = async () => {
     if (!(isTeacher || ["owner","admin","platform_owner"].includes(role) || Boolean((user as any)?.isManager))) { Alert.alert("Preview only","Your role cannot create exercises."); return; }
     if (!exerciseLessonId || !exerciseTitle.trim() || !exerciseDraftQuestions.length || exerciseDraftQuestions.some(q=>!q.prompt.trim() || !Number.isFinite(Number(q.marks)) || Number(q.marks)<0 || Math.round(Number(q.marks)*2)!==Number(q.marks)*2)) { Alert.alert("Complete exercise","Choose a lesson, enter a title, and give every question a prompt and marks in 0.5 increments."); return; }
+    const existingExerciseCount = rows.filter(row => Number(row.lessonId) === Number(exerciseLessonId) && row.status !== "archived").length;
+    if (!exerciseDraftId && existingExerciseCount >= 20) { Alert.alert("Exercise limit reached", "This lesson already has 20 exercises. Archive or remove an exercise before creating another."); return; }
     if (exerciseDraftQuestions.some(q=>q.type==="poll" && (q.options.filter(o=>o.trim()).length<2 || !q.options[q.correct]?.trim()))) { Alert.alert("Complete poll options","Each choice question needs at least two options and a correct option."); return; }
     setExerciseBuilderBusy(true);
     let exerciseId:number|undefined = exerciseDraftId ?? undefined;
     try {
       if (!exerciseId) {
-        const created = await request(`/api/exercises/lessons/${exerciseLessonId}/exercises`, { method:"POST", body:JSON.stringify({title:exerciseTitle.trim(),instructions:exerciseInstructions.trim()||null,layout:{version:1,page:"book"}}) });
+        const created = await request(`/api/exercises/lessons/${exerciseLessonId}/exercises`, { method:"POST", body:JSON.stringify({title:exerciseTitle.trim(),instructions:exerciseInstructions.trim()||null,layout:{version:1,page:"book",recordForReport:exerciseRecordForReport}}) });
         exerciseId = Number(created?.id);
         if (!Number.isInteger(exerciseId) || exerciseId<=0) throw new Error("The server did not return the created exercise ID.");
         setExerciseDraftId(exerciseId); setExerciseQuestionsSaved(0);
@@ -674,8 +707,9 @@ export default function FeatureHub() {
         await request(`/api/exercises/${exerciseId}/questions`,{method:"POST",body:JSON.stringify(payload)});
         setExerciseQuestionsSaved(index+1);
       }
+      await request(`/api/exercises/${exerciseId}/reporting`,{method:"PATCH",body:JSON.stringify({recordForReport:exerciseRecordForReport})});
       await request(`/api/exercises/${exerciseId}/publish`,{method:"POST",body:JSON.stringify({})});
-      setExerciseBuilderOpen(false); setExerciseTitle(""); setExerciseInstructions(""); setExerciseLessonId(""); setExerciseDraftId(null); setExerciseQuestionsSaved(0); setExerciseDraftQuestions([{prompt:"",type:"input",marks:"1",options:["Option A","Option B"],correct:0,drawData:{}}]);
+      setExerciseBuilderOpen(false); setExerciseTitle(""); setExerciseInstructions(""); setExerciseLessonId(""); setExerciseDraftId(null); setExerciseQuestionsSaved(0); setExerciseRecordForReport(true); setExerciseDraftQuestions([{prompt:"",type:"input",marks:"1",options:["Option A","Option B"],correct:0,drawData:{}}]);
       await loadSection("exercises");
       Alert.alert("Exercise published","Your exercise and questions are published for eligible learners.");
     } catch(e) { Alert.alert(exerciseId?`Draft #${exerciseId} preserved`:"Exercise not created",e instanceof Error?e.message:"Reconnect and retry. Saved questions are tracked so retrying this builder does not intentionally recreate them."); }
@@ -743,11 +777,37 @@ export default function FeatureHub() {
   };
 
   const openPrivateConversation = async (person:Row) => {
-    if (!person?.id || Number(person.id)===Number(user?.id)) return;
-    setPrivateRecipient(person); setPrivateMessages([]); setPrivateDraft(""); setPrivateBusy(true); setError("");
-    try { const messages = await request("/api/messages?recipientId="+encodeURIComponent(String(person.id))); setPrivateMessages(Array.isArray(messages)?messages:[]); }
-    catch(e) { setError(e instanceof Error?e.message:"Could not load private conversation."); }
-    finally { setPrivateBusy(false); }
+    if (!person?.id || Number(person.id)===Number(user?.id) || privateBusy) return;
+    setPrivateBusy(true); setError("");
+    try {
+      const social = await request("/api/profile/"+encodeURIComponent(String(person.id))+"/social");
+      if (social?.chatPrivacy === "approval_required" && social?.connection?.status !== "accepted") {
+        if (social?.connection?.status === "pending" && social?.connection?.requestedByMe) {
+          Alert.alert("Connection request pending", "Your request has been sent. Private chat unlocks only after the other user accepts.");
+          return;
+        }
+        if (social?.connection?.status === "pending" && !social?.connection?.requestedByMe) {
+          Alert.alert("Connection request received", "This user has already requested to connect with you.", [
+            { text: "Decline", style: "destructive", onPress: () => { void request("/api/profile/connections/"+social.connection.id,{method:"PATCH",body:JSON.stringify({status:"rejected"})}).catch(e=>Alert.alert("Could not decline request",e instanceof Error?e.message:"Please retry.")); } },
+            { text: "Accept", onPress: () => { void (async()=>{ await request("/api/profile/connections/"+social.connection.id,{method:"PATCH",body:JSON.stringify({status:"accepted"})}); Alert.alert("Connection accepted","Private chat is now available."); await openPrivateConversation(person); })().catch(e=>Alert.alert("Could not accept request",e instanceof Error?e.message:"Please retry.")); } },
+            { text: "Not now", style: "cancel" },
+          ]);
+          return;
+        }
+        await request("/api/profile/"+encodeURIComponent(String(person.id))+"/connect",{method:"POST",body:JSON.stringify({})});
+        Alert.alert("Connection request sent","Both users have been notified. Private chat unlocks only after acceptance.");
+        return;
+      }
+      if (!social?.canChat) {
+        Alert.alert("Chat unavailable","The existing school chat permissions or this user's privacy settings do not allow this conversation.");
+        return;
+      }
+      setPrivateRecipient(person); setPrivateMessages([]); setPrivateDraft("");
+      const messages = await request("/api/messages?recipientId="+encodeURIComponent(String(person.id)));
+      setPrivateMessages(Array.isArray(messages)?messages:[]);
+    } catch(e) {
+      Alert.alert("Chat unavailable",e instanceof Error?e.message:"Could not check connection permissions or load this conversation.");
+    } finally { setPrivateBusy(false); }
   };
   const sendPrivateMessage = async () => {
     if (!privateRecipient || !privateDraft.trim() || privateBusy) return;
@@ -840,7 +900,7 @@ export default function FeatureHub() {
     ]);
   };
 
-  const paymentTotalOwed = rows.filter((p: any) => p.status !== "paid").reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+  const paymentTotalOwed = rows.filter((p: any) => p.status === "pending" || p.status === "overdue").reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
   const startPaynow = async () => {
     if (!isStudent || paymentBusy || paymentTotalOwed <= 0) return;
     setPaymentBusy(true);
@@ -872,7 +932,7 @@ export default function FeatureHub() {
     finally { setChatLoading(false); }
   };
 
-  const canManageSelectedGroup = Boolean(selectedChatGroup && (selectedChatGroup.creatorId === user?.id || (user as any)?.isManager || ["owner", "admin", "platform_owner"].includes(role)));
+  const canManageSelectedGroup = Boolean(selectedChatGroup && (selectedChatGroup.creatorId === user?.id || canManagerPermission("groups.manage") || ["admin"].includes(role)));
 
   const loadGroupSettings = async () => {
     if (!selectedChatGroup || !canManageSelectedGroup) return;
@@ -1076,7 +1136,7 @@ export default function FeatureHub() {
     if (!url) return;
     if (/^https?:\/\//i.test(url)) { void Linking.openURL(url); return; }
     if (/^\/(student|teacher|admin)\//i.test(url)) {
-      router.push((["manager","senior_manager"].includes(role) || Boolean((user as any)?.isManager) ? "/(manager)/more" : role === "teacher" ? "/(teacher)/more" : ["student","prefect"].includes(role) ? "/(student)/more" : "/(admin)/more") as any);
+      router.push((["manager","senior_manager","junior_manager"].includes(role) || Boolean((user as any)?.isManager) ? "/(manager)/more" : role === "teacher" ? "/(teacher)/more" : ["student","prefect"].includes(role) ? "/(student)/more" : "/(admin)/more") as any);
       return;
     }
     if (/^\/api\/(?:lessons|messages|assignments)\/.*media/i.test(url)) {
@@ -1140,6 +1200,11 @@ export default function FeatureHub() {
               {exerciseLessons.length===0 && <Text style={styles.muted}>No lessons returned for your account. Refresh the list or check lesson permissions.</Text>}
               <TextInput style={styles.input} value={exerciseTitle} onChangeText={setExerciseTitle} placeholder="Exercise title" placeholderTextColor={colors.mutedForeground}/>
               <TextInput style={[styles.input,styles.textArea]} value={exerciseInstructions} onChangeText={setExerciseInstructions} multiline placeholder="Instructions (optional)" placeholderTextColor={colors.mutedForeground}/>
+              <Text style={styles.muted}>Exercises in this lesson: {rows.filter(row => Number(row.lessonId) === Number(exerciseLessonId) && row.status !== "archived").length}/20</Text>
+              <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{checked:exerciseRecordForReport}} style={{flexDirection:"row",alignItems:"center",gap:10,padding:10,borderWidth:1,borderColor:colors.border,borderRadius:8}} onPress={()=>setExerciseRecordForReport(value=>!value)}>
+                <Feather name={exerciseRecordForReport?"check-square":"square"} size={20} color={colors.primary}/>
+                <View style={{flex:1}}><Text style={styles.body}>Record for Report Mark</Text><Text style={styles.muted}>Include marked learner submissions in academic report totals.</Text></View>
+              </TouchableOpacity>
               {exerciseDraftQuestions.map((q,index)=><View key={index} style={[styles.card,{alignItems:"stretch",flexDirection:"column"}]}>
                 <Text style={styles.cardTitle}>Question {index+1}</Text>
                 <TextInput style={[styles.input,styles.textArea]} value={q.prompt} onChangeText={v=>updateExerciseQuestion(index,{prompt:v})} multiline placeholder="Question prompt" placeholderTextColor={colors.mutedForeground}/>
@@ -1154,7 +1219,7 @@ export default function FeatureHub() {
             </View>}
           </View>
         </View>}
-        {["assignments", "exercises", "polls"].includes(section) && rows.map(row => <View key={row.id} style={styles.card}><TouchableOpacity style={{flex:1,flexDirection:"row",alignItems:"center",gap:12}} onPress={() => void openRow(row)}><View style={styles.icon}><Feather name={section === "assignments" ? "clipboard" : section === "exercises" ? "edit-3" : "check-square"} size={20} color={colors.primary}/></View><View style={styles.grow}><Text style={styles.cardTitle}>{row.title || row.name || "Untitled"}</Text><Text style={styles.muted}>{[row.subject, row.grade, row.dueDate ? `Due ${String(row.dueDate).slice(0,10)}` : null, row.status].filter(Boolean).join(" · ")}</Text>{row.description ? <Text numberOfLines={3} style={styles.muted}>{row.description}</Text> : null}{row.attachmentUrl ? <Text style={{color:colors.primary,fontSize:12,marginTop:5}}>Attachment available</Text> : null}</View><Feather name="chevron-right" size={18} color={colors.mutedForeground}/></TouchableOpacity>{section === "assignments" && isTeacher && <View style={{gap:10,justifyContent:"center"}}><TouchableOpacity accessibilityRole="button" accessibilityLabel="Edit assignment" onPress={()=>editAssignment(row)}><Feather name="edit-2" size={18} color={colors.primary}/></TouchableOpacity><TouchableOpacity accessibilityRole="button" accessibilityLabel="Toggle reference material visibility" onPress={()=>void toggleAssignmentReference(row)}><Feather name={row.referenceMaterialHidden?"eye":"eye-off"} size={18} color={colors.primary}/></TouchableOpacity><TouchableOpacity accessibilityRole="button" accessibilityLabel="Delete assignment" onPress={()=>deleteAssignment(row)}><Feather name="trash-2" size={18} color="#dc2626"/></TouchableOpacity></View>}</View>)}
+        {["assignments", "exercises", "polls"].includes(section) && rows.map(row => <View key={row.id} style={styles.card}><TouchableOpacity style={{flex:1,flexDirection:"row",alignItems:"center",gap:12}} onPress={() => void openRow(row)}><View style={styles.icon}><Feather name={section === "assignments" ? "clipboard" : section === "exercises" ? "edit-3" : "check-square"} size={20} color={colors.primary}/></View><View style={styles.grow}><Text style={styles.cardTitle}>{row.title || row.name || "Untitled"}</Text><Text style={styles.muted}>{[row.subject, row.grade, row.dueDate ? `Due ${String(row.dueDate).slice(0,10)}` : null, row.status].filter(Boolean).join(" · ")}</Text>{row.description ? <Text numberOfLines={3} style={styles.muted}>{row.description}</Text> : null}{row.attachmentUrl ? <Text style={{color:colors.primary,fontSize:12,marginTop:5}}>Attachment available</Text> : null}</View><Feather name="chevron-right" size={18} color={colors.mutedForeground}/></TouchableOpacity>{section === "exercises" && canManageExercises && row.status !== "archived" && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Archive exercise" onPress={()=>archiveMobileExercise(row)} style={{padding:8}}><Feather name="archive" size={18} color={colors.primary}/></TouchableOpacity>}{section === "exercises" && row.status === "archived" && <Text style={styles.muted}>Archived</Text>}{section === "assignments" && isTeacher && <View style={{gap:10,justifyContent:"center"}}><TouchableOpacity accessibilityRole="button" accessibilityLabel="Edit assignment" onPress={()=>editAssignment(row)}><Feather name="edit-2" size={18} color={colors.primary}/></TouchableOpacity><TouchableOpacity accessibilityRole="button" accessibilityLabel="Toggle reference material visibility" onPress={()=>void toggleAssignmentReference(row)}><Feather name={row.referenceMaterialHidden?"eye":"eye-off"} size={18} color={colors.primary}/></TouchableOpacity><TouchableOpacity accessibilityRole="button" accessibilityLabel="Delete assignment" onPress={()=>deleteAssignment(row)}><Feather name="trash-2" size={18} color="#dc2626"/></TouchableOpacity></View>}</View>)}
         {section === "exercises" && canManageExercises && selected && <View style={styles.card}><View style={styles.grow}><Text style={styles.sectionTitle}>Exercise submissions · {selected.title}</Text>{(submissionMap[selected.id] || []).map(sub => <TouchableOpacity key={sub.id} onPress={() => void loadExerciseSubmission(sub)} style={{paddingVertical:10,borderBottomWidth:1,borderBottomColor:colors.border}}><UserProfileLink userId={sub.studentId ?? sub.student?.id} name={sub.studentName || sub.student?.name || `Learner #${sub.studentId ?? "?"}`} avatarUrl={sub.student?.avatarUrl} /><Text style={styles.muted}>{sub.status || "Submitted"} · {sub.totalScore != null ? `Score ${sub.totalScore}` : "Awaiting marking"}</Text></TouchableOpacity>)}{selectedSubmission && submissionDetail && <View style={{marginTop:14}}><View style={{marginBottom:8}}><UserProfileLink userId={selectedSubmission.studentId ?? selectedSubmission.student?.id} name={(selectedSubmission.studentName || selectedSubmission.student?.name || "Learner") + " · Marking"} avatarUrl={selectedSubmission.student?.avatarUrl} /></View>{(submissionDetail.answers || []).map((a:any,index:number)=><View key={a.id} style={{paddingVertical:12,borderBottomWidth:1,borderBottomColor:colors.border}}><Text style={styles.cardTitle}>Question {index+1}</Text><Text style={styles.body}>{a.textAnswer || a.selectedValue || (a.mediaReference ? "Learner attached media" : a.drawData ? "Learner submitted a drawing" : "No written answer")}</Text>{a.drawData ? <MobileDrawAnswer value={a.drawData} disabled onChange={() => undefined}/> : null}{a.mediaReference ? <View style={{marginTop:8}}><AuthenticatedMediaPreview url={String(a.mediaReference)} height={160} accessibilityLabel="Learner answer media"/><TouchableOpacity onPress={() => openUrl(a.mediaReference)}><Text style={{color:colors.primary,marginTop:5}}>Open answer media</Text></TouchableOpacity></View> : null}<TextInput style={styles.input} keyboardType="numeric" value={exerciseMarks[a.id] ?? "0"} onChangeText={v=>setExerciseMarks(old=>({...old,[a.id]:v}))} placeholder="Marks awarded" placeholderTextColor={colors.mutedForeground}/><TextInput style={[styles.input,styles.textArea]} multiline value={exerciseNotes[a.id] ?? ""} onChangeText={v=>setExerciseNotes(old=>({...old,[a.id]:v}))} placeholder="Correction / feedback" placeholderTextColor={colors.mutedForeground}/></View>)}<TextInput style={[styles.input,styles.textArea]} multiline value={overallComment} onChangeText={setOverallComment} placeholder="Overall feedback to learner" placeholderTextColor={colors.mutedForeground}/><TouchableOpacity style={styles.button} onPress={() => void returnExerciseMarking()} disabled={busy}><Text style={styles.buttonText}>{busy?"Saving marks…":"Save marks and return result"}</Text></TouchableOpacity></View>}</View></View>}
         {section === "assignments" && isStudent && selected && <View style={styles.card}><View style={styles.grow}><Text style={styles.sectionTitle}>Submit: {selected.title}</Text><TouchableOpacity style={[styles.button,styles.secondary]} onPress={() => void saveLearningItemOffline()}><Text style={[styles.buttonText,styles.secondaryText]}>Save assignment for offline access</Text></TouchableOpacity>{selected.description ? <Text style={styles.body}>{selected.description}</Text> : <Text style={styles.muted}>No additional instructions were provided.</Text>}{(submissionMap[selected.id] || []).slice(0,1).map(sub=><View key={sub.id} style={{backgroundColor:colors.background,borderRadius:10,padding:10,marginVertical:8}}><Text style={styles.cardTitle}>Previous submission: {sub.status || "Submitted"}</Text>{sub.marks != null ? <Text style={styles.muted}>Marks: {sub.marks}/{selected.totalMarks || "—"}</Text> : null}{sub.feedback ? <Text style={styles.muted}>Teacher feedback: {sub.feedback}</Text> : null}</View>)}{selected.attachmentUrl && !selected.referenceMaterialHidden ? <View style={{marginBottom:10}}><AuthenticatedMediaPreview url={String(selected.attachmentUrl)} height={180} accessibilityLabel="Assignment reference material"/><TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>openUrl(selected.attachmentUrl)}><Text style={[styles.buttonText,styles.secondaryText]}>Open reference material</Text></TouchableOpacity></View> : selected.referenceMaterialHidden ? <Text style={styles.muted}>Reference material is hidden by the teacher.</Text> : null}<TextInput style={[styles.input,styles.textArea]} multiline value={answerText} onChangeText={value=>{setAnswerText(value);if(user?.id&&selected?.id)void AsyncStorage.setItem("dallyletter_assignment_draft_"+user.id+"_"+selected.id,value).catch(()=>undefined);}} placeholder="Write your answer or submission notes" placeholderTextColor={colors.mutedForeground}/><TouchableOpacity style={[styles.button,styles.secondary]} onPress={() => void uploadAssignmentAttachment()} disabled={uploading}><Text style={[styles.buttonText,styles.secondaryText]}>{uploading ? "Uploading…" : attachmentUrl ? "Replace attachment" : "Attach image/video"}</Text></TouchableOpacity>
             <TouchableOpacity style={[styles.button,styles.secondary]} onPress={() => void uploadAssignmentAttachment(true)} disabled={uploading}><Text style={[styles.buttonText,styles.secondaryText]}>{uploading ? "Uploading…" : "Attach PDF/Word document"}</Text></TouchableOpacity><TouchableOpacity style={styles.button} onPress={() => void submitAssignment()} disabled={busy}><Text style={styles.buttonText}>{busy ? "Submitting…" : "Submit assignment"}</Text></TouchableOpacity></View></View>}
@@ -1240,7 +1305,7 @@ export default function FeatureHub() {
             {isStudent ? <Text style={styles.muted}>Payment options need an internet connection. A notification to school is a report, not proof that funds have cleared.</Text> : <Text style={styles.muted}>Staff view: payment records are read-only here.</Text>}
           </View>
           <Text style={styles.sectionTitle}>Payment history</Text>
-          {rows.length===0 ? <Text style={styles.muted}>No payment records are available.</Text> : rows.map((payment:any)=><View key={payment.id} style={styles.card}><View style={styles.grow}><Text style={styles.cardTitle}>{payment.month} {payment.year}</Text><Text style={styles.muted}>{payment.createdAt?new Date(payment.createdAt).toLocaleDateString():""}{payment.notes?" · "+payment.notes:""}</Text></View><View style={{alignItems:"flex-end"}}><Text style={styles.cardTitle}>${Number(payment.amount||0).toFixed(2)}</Text><Text style={[styles.pill,{color:payment.status==="paid"?"#15803d":payment.status==="overdue"?"#b91c1c":"#a16207"}]}>{String(payment.status||"unknown").toUpperCase()}</Text></View></View>)}
+          {rows.length===0 ? <Text style={styles.muted}>No payment records are available.</Text> : rows.map((payment:any)=><View key={payment.id} style={styles.card}><View style={styles.grow}><Text style={styles.cardTitle}>{payment.month} {payment.year}</Text><Text style={styles.muted}>{payment.createdAt?new Date(payment.createdAt).toLocaleDateString():""}{payment.notes?" · "+payment.notes:""}</Text></View><View style={{alignItems:"flex-end"}}><Text style={styles.cardTitle}>${Number(payment.amount||0).toFixed(2)}</Text><Text style={[styles.pill,{color:payment.status==="paid"?"#15803d":payment.status==="overdue"||payment.status==="failed"?"#b91c1c":payment.status==="cancelled"?"#64748b":payment.status==="refunded"?"#0ea5e9":"#a16207"}]}>{String(payment.status||"unknown").toUpperCase()}</Text></View></View>)}
         </View>}
         {section === "groups" && selectedChatGroup && <View style={[styles.card,{alignItems:"stretch",marginTop:10}]}><View style={styles.grow}><View style={{flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:8}}><Text style={styles.sectionTitle}>{selectedChatGroup.name} · Chat</Text><TouchableOpacity onPress={()=>setSelectedChatGroup(null)} accessibilityRole="button" accessibilityLabel="Close group chat"><Feather name="x" size={20} color={colors.mutedForeground}/></TouchableOpacity></View><Text style={styles.muted}>Messages are visible to members of this group only.</Text>{canManageSelectedGroup && <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void loadGroupSettings()} disabled={groupSettingsBusy}><Text style={[styles.buttonText,styles.secondaryText]}>{groupSettingsBusy?"Loading settings…":"Group settings"}</Text></TouchableOpacity>}{groupSettingsOpen && groupSettings && <View style={{padding:12,borderWidth:1,borderColor:colors.border,borderRadius:10,marginTop:8}}><Text style={styles.cardTitle}>Group rules</Text><TextInput style={[styles.input,styles.textArea,{marginTop:8}]} multiline value={groupRules} onChangeText={setGroupRules} editable={!groupSettingsBusy} placeholder="Add group rules…" placeholderTextColor={colors.mutedForeground}/><TouchableOpacity style={styles.button} onPress={()=>void saveGroupSettings({rules:groupRules})} disabled={groupSettingsBusy}><Text style={styles.buttonText}>Save rules</Text></TouchableOpacity>{([{key:"announcementsOnly",label:"Announcements only"},{key:"allowPolls",label:"Allow polls"},{key:"allowMedia",label:"Allow image/video media"}] as const).map(setting=><TouchableOpacity key={setting.key} style={[styles.button,styles.secondary,{flexDirection:"row",justifyContent:"space-between"}]} disabled={groupSettingsBusy} onPress={()=>void saveGroupSettings({[setting.key]:!groupSettings[setting.key]})}><Text style={[styles.buttonText,styles.secondaryText]}>{setting.label}</Text><Text style={{color:groupSettings[setting.key]?"#16a34a":"#dc2626",fontWeight:"700"}}>{groupSettings[setting.key]?"ON":"OFF"}</Text></TouchableOpacity>)}</View>}<TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void refreshGroupMessages(selectedChatGroup.id)} disabled={chatLoading}><Text style={[styles.buttonText,styles.secondaryText]}>{chatLoading?"Refreshing…":"Refresh messages"}</Text></TouchableOpacity>{chatError ? <Text style={{color:"#dc2626",marginTop:8}}>{chatError}</Text> : null}{chatLoading && chatMessages.length===0 ? <ActivityIndicator color={colors.primary} style={{margin:14}}/> : chatMessages.length===0 ? <Text style={styles.muted}>No messages yet. Start the conversation.</Text> : chatMessages.map(message=><View key={message.id} style={{paddingVertical:10,borderBottomWidth:1,borderBottomColor:colors.border}}><Text style={styles.cardTitle}>{message.senderName || "Group member"}</Text><Text style={styles.body}>{message.type==="media"?"Shared learning media":message.content}</Text>{message.type==="voice" && message.mediaUrl ? <AuthenticatedAudioMessage url={String(message.mediaUrl)}/> : message.type==="media" && message.mediaUrl ? <View style={{marginTop:8}}><AuthenticatedMediaPreview url={String(message.mediaUrl)} height={160} accessibilityLabel="Group message media"/><TouchableOpacity onPress={()=>openUrl(String(message.mediaUrl))}><Text style={{color:colors.primary,marginTop:5}}>Open attachment</Text></TouchableOpacity></View>:null}<Text style={styles.muted}>{message.createdAt ? new Date(message.createdAt).toLocaleString() : ""}</Text></View>)}<TextInput style={[styles.input,styles.textArea,{marginTop:12}]} multiline value={chatDraft} onChangeText={value=>{setChatDraft(value);if(user?.id&&selectedChatGroup?.id)void AsyncStorage.setItem("dallyletter_group_draft_"+user.id+"_"+selectedChatGroup.id,value).catch(()=>undefined);}} placeholder="Write a group message…" placeholderTextColor={colors.mutedForeground}/><TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void uploadGroupMessageMedia()} disabled={chatMediaBusy}><Text style={[styles.buttonText,styles.secondaryText]}>{chatMediaBusy?"Uploading media…":"Attach image/video"}</Text></TouchableOpacity>
             <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void uploadGroupMessageMedia(true)} disabled={chatMediaBusy}><Text style={[styles.buttonText,styles.secondaryText]}>{chatMediaBusy?"Uploading media…":"Attach PDF/Word document"}</Text></TouchableOpacity>

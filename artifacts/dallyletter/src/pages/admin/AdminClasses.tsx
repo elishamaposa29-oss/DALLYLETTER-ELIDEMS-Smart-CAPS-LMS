@@ -1,10 +1,10 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { useListClasses, useDeleteClass } from "@workspace/api-client-react";
+import { useListClasses, useDeleteClass, getApiUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Loader2, Search, Trash2, Calendar, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -18,6 +18,8 @@ export default function AdminClasses() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [canManage, setCanManage] = useState(false);
+  useEffect(() => { fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: "Bearer " + (localStorage.getItem("dallyletter_token") ?? "") } }).then(r => r.json()).then(d => setCanManage(Boolean(d?.isOwner || d?.permissions?.["classes.manage"]))).catch(() => setCanManage(false)); }, []);
 
   const filteredClasses = classes?.filter(c => {
     const matchesSearch = c.title.toLowerCase().includes(search.toLowerCase()) || 
@@ -121,7 +123,7 @@ export default function AdminClasses() {
                     )}
                   </CardContent>
                   <CardFooter className="pt-4 border-t flex justify-end">
-                    <Button 
+                    {canManage && <Button 
                       variant="ghost" 
                       size="sm" 
                       className="text-destructive hover:bg-destructive/10 hover:text-destructive gap-2"
@@ -130,7 +132,7 @@ export default function AdminClasses() {
                     >
                       <Trash2 className="h-4 w-4" />
                       Delete
-                    </Button>
+                    </Button>}
                   </CardFooter>
                 </Card>
               ))

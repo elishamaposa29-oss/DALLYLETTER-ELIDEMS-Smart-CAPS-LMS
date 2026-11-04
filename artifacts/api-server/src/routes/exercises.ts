@@ -1,18 +1,21 @@
 import { Router } from "express";
 import multer from "multer";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
   exercisesTable, exerciseAnswersTable, exerciseOptionsTable, exerciseQuestionsTable,
-  exerciseSubmissionsTable, lessonsTable, auditLogsTable,
+  exerciseSubmissionsTable, lessonsTable, auditLogsTable, usersTable,
 } from "@workspace/db/schema";
-import { canManageAcademicContent, isOwnerRole, requireAuth } from "../lib/auth-middleware";
+import { canManageAcademicContent, canAccessManager, isOwnerRole, requireAuth } from "../lib/auth-middleware";
+import { canModerateUser } from "../lib/role-access";
+import { managerHasPermission, requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
 import { getAIProvider } from "../lib/ai-provider";
 import { hasContentPermission } from "../lib/content-permissions";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, removeStoredMedia } from "../lib/media-storage";
 
 const router = Router();
 const learnerRole = "student";
+const MAX_EXERCISES_PER_LESSON = 20;
 const questionTypes = new Set(["input", "poll", "drawbox"]);
 const exerciseQuestionMediaUpload = multer({
   storage: multer.diskStorage({
@@ -65,10 +68,21 @@ function parseId(value: unknown): number | null {
   const id = Number(value);
   return Number.isInteger(id) && id > 0 ? id : null;
 }
+async function canManagerAccessTeacherRecord(user: NonNullable<Express.Request["currentUser"]>, teacherId: number, permissionKey: string): Promise<boolean> {
+  if (isOwnerRole(user.role)) return true;
+  if (!canAccessManager(user) || !(await managerHasPermission(user, permissionKey))) return false;
+  const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, teacherId));
+  return Boolean(target && canModerateUser(user, target));
+}
+async function canManageExerciseForUser(user: NonNullable<Express.Request["currentUser"]>, createdBy: number, permissionKey: string): Promise<boolean> {
+  if (isOwnerRole(user.role)) return true;
+  if (canAccessManager(user)) return canManagerAccessTeacherRecord(user, createdBy, permissionKey);
+  return canEditExercise(user, createdBy);
+}
 function canEditExercise(user: NonNullable<Express.Request["currentUser"]>, createdBy: number): boolean {
   return isOwnerRole(user.role) || user.isManager === true || (user.role === "teacher" && createdBy === user.id);
 }
-router.post("/question-media", requireAuth, (req,res,next):void => {
+router.post("/question-media", requireAuth, requireManagerPermissionIfManager("users.override.teacher"), (req,res,next):void => {
   const user = req.currentUser!;
   if (!canManageAcademicContent(user)) { res.status(403).json({error:"Teacher or owner access required"}); return; }
   exerciseQuestionMediaUpload.single("file")(req,res,(error) => {
@@ -83,7 +97,7 @@ router.post("/question-media", requireAuth, (req,res,next):void => {
       if (!exerciseId || !questionId) { await discardTemporaryFile(); res.status(400).json({error:"Valid exerciseId and questionId are required"}); return; }
       const [exercise] = await db.select().from(exercisesTable).where(eq(exercisesTable.id, exerciseId));
       if (!exercise) { await discardTemporaryFile(); res.status(404).json({error:"Exercise not found"}); return; }
-      if (!canEditExercise(user, exercise.createdBy)) { await discardTemporaryFile(); res.status(403).json({error:"You can only attach media to your own exercise"}); return; }
+      if (!(await canManageExerciseForUser(user, exercise.createdBy, "users.override.teacher"))) { await discardTemporaryFile(); res.status(403).json({error:"You can only attach media to your own exercise"}); return; }
       const [question] = await db.select().from(exerciseQuestionsTable).where(and(eq(exerciseQuestionsTable.id, questionId),eq(exerciseQuestionsTable.exerciseId,exerciseId)));
       if (!question) { await discardTemporaryFile(); res.status(404).json({error:"Question not found in this exercise"}); return; }
       const config = question.config && typeof question.config === "object" && !Array.isArray(question.config) ? question.config as Record<string, unknown> : {};
@@ -121,16 +135,16 @@ async function writeAudit(userId: number, action: string, targetId: number, deta
   await db.insert(auditLogsTable).values({ action, category: "exercise", performedBy: userId, targetType: "exercise", targetId, details: JSON.stringify(details) });
 }
 
-router.get("/lessons/:lessonId/exercises", requireAuth, async (req,res):Promise<void> => {
+router.get("/lessons/:lessonId/exercises", requireAuth, requireManagerPermissionIfManager("recordbook.view"), async (req,res):Promise<void> => {
   const lessonId=parseId(req.params.lessonId);
   if(!lessonId){res.status(400).json({error:"Invalid lesson id"});return;}
   const published=await db.select().from(exercisesTable).where(and(eq(exercisesTable.lessonId,lessonId),eq(exercisesTable.status,"published"))).orderBy(desc(exercisesTable.createdAt));
   if(req.currentUser && canManageAcademicContent(req.currentUser)){
     const user=req.currentUser;
-    const rows = isOwnerRole(user.role) || user.isManager === true
-      ? await db.select().from(exercisesTable).where(eq(exercisesTable.lessonId,lessonId)).orderBy(desc(exercisesTable.createdAt))
-      : await db.select().from(exercisesTable).where(and(eq(exercisesTable.lessonId,lessonId),eq(exercisesTable.createdBy,user.id))).orderBy(desc(exercisesTable.createdAt));
-    res.json(rows);return;
+    const rows = await db.select().from(exercisesTable).where(eq(exercisesTable.lessonId,lessonId)).orderBy(desc(exercisesTable.createdAt));
+    if (isOwnerRole(user.role)) { res.json(rows); return; }
+    const visibleRows = await Promise.all(rows.map(async exercise => await canManageExerciseForUser(user, exercise.createdBy, "recordbook.view") ? exercise : null));
+    res.json(visibleRows.filter((exercise): exercise is typeof rows[number] => exercise !== null));return;
   }
   const learnerId=req.currentUser?.role===learnerRole ? req.currentUser.id : null;
   if(!learnerId){res.json(published);return;}
@@ -141,35 +155,78 @@ router.get("/lessons/:lessonId/exercises", requireAuth, async (req,res):Promise<
   res.json(withStatus);
 });
 
-router.get("/:id",requireAuth,async(req,res):Promise<void>=>{
+router.get("/:id",requireAuth,requireManagerPermissionIfManager("recordbook.view"),async(req,res):Promise<void>=>{
   const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}
   const user=req.currentUser!;
   const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));
   if(!exercise){res.status(404).json({error:"Exercise not found"});return;}
+  if (canAccessManager(user) && !isOwnerRole(user.role) && !(await canManageExerciseForUser(user, exercise.createdBy, "recordbook.view"))) { res.status(404).json({error:"Exercise not found"}); return; }
   if(exercise.status!=="published"){
     if(!canManageAcademicContent(user)){res.status(404).json({error:"Exercise not found"});return;}
-    if(!canEditExercise(user,exercise.createdBy)){res.status(404).json({error:"Exercise not found"});return;}
+    if(!(await canManageExerciseForUser(user,exercise.createdBy,"recordbook.view"))){res.status(404).json({error:"Exercise not found"});return;}
   }
   const questions=await db.select().from(exerciseQuestionsTable).where(eq(exerciseQuestionsTable.exerciseId,exercise.id)).orderBy(asc(exerciseQuestionsTable.position));
   const allOptionRows=questions.length?(await Promise.all(questions.map(q=>db.select().from(exerciseOptionsTable).where(eq(exerciseOptionsTable.questionId,q.id))))).flat():[];
   res.json({exercise,questions,options:allOptionRows.map(({isCorrect:_isCorrect,...option})=>option)});
 });
 
-router.post("/lessons/:lessonId/exercises",requireAuth,async(req,res):Promise<void>=>{
+router.post("/lessons/:lessonId/exercises",requireAuth,requireManagerPermissionIfManager("users.override.teacher"),async(req,res):Promise<void>=>{
   const user=req.currentUser!;if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}
   const lessonId=parseId(req.params.lessonId);if(!lessonId){res.status(400).json({error:"Invalid lesson id"});return;}
-  const [lesson]=await db.select({id:lessonsTable.id,teacherId:lessonsTable.teacherId}).from(lessonsTable).where(eq(lessonsTable.id,lessonId));if(!lesson){res.status(404).json({error:"Lesson not found"});return;} const ownerOrSenior=user.role==="owner"||(user.role==="teacher"&&user.isManager===true&&user.managerLevel==="senior")||lesson.teacherId===user.id; if(!ownerOrSenior&&!(await hasContentPermission(user.id,"lesson",lessonId,"create_exercise"))){res.status(403).json({error:"Create-exercise permission has not been granted by the lesson creator"});return;}
+  const [lesson]=await db.select({id:lessonsTable.id,teacherId:lessonsTable.teacherId}).from(lessonsTable).where(eq(lessonsTable.id,lessonId));if(!lesson){res.status(404).json({error:"Lesson not found"});return;} const managerCanCreate=canAccessManager(user)&&!isOwnerRole(user.role)?await canManagerAccessTeacherRecord(user,lesson.teacherId,"users.override.teacher"):false; const ownerOrTeacher=isOwnerRole(user.role)||lesson.teacherId===user.id; if(!ownerOrTeacher&&!managerCanCreate&&!(await hasContentPermission(user.id,"lesson",lessonId,"create_exercise"))){res.status(403).json({error:"Create-exercise permission has not been granted by the lesson creator"});return;}
   const {title,instructions,grade,stream,layout}=req.body??{};
   if(typeof title!=="string"||!title.trim()||title.length>300){res.status(400).json({error:"title is required"});return;}
-  const [exercise]=await db.insert(exercisesTable).values({lessonId,createdBy:user.id,title:title.trim(),instructions:typeof instructions==="string"?instructions:null,grade:typeof grade==="string"&&grade.trim()?grade.trim():null,stream:typeof stream==="string"&&stream.trim()?stream.trim():null,layout:layout&&typeof layout==="object"?layout:{version:1,page:"book"}}).returning();
-  res.status(201).json(exercise);
+  const suppliedLayout = layout && typeof layout === "object" && !Array.isArray(layout) ? layout as Record<string, unknown> : {version:1,page:"book"};
+  const normalizedLayout = { ...suppliedLayout, recordForReport: suppliedLayout.recordForReport !== false };
+  const created = await db.transaction(async tx => {
+    const [lockedLesson] = await tx.select({id:lessonsTable.id}).from(lessonsTable).where(eq(lessonsTable.id,lessonId)).for("update");
+    if (!lockedLesson) return {kind:"missing" as const};
+    const [countRow] = await tx.select({count:sql<number>`count(*)::int`}).from(exercisesTable).where(and(eq(exercisesTable.lessonId,lessonId),ne(exercisesTable.status,"archived")));
+    const count = Number(countRow?.count ?? 0);
+    if (count >= MAX_EXERCISES_PER_LESSON) return {kind:"limit" as const,count};
+    const [exercise] = await tx.insert(exercisesTable).values({lessonId,createdBy:user.id,title:title.trim(),instructions:typeof instructions==="string"?instructions:null,grade:typeof grade==="string"&&grade.trim()?grade.trim():null,stream:typeof stream==="string"&&stream.trim()?stream.trim():null,layout:normalizedLayout}).returning();
+    return {kind:"created" as const,exercise};
+  });
+  if (created.kind === "missing") { res.status(404).json({error:"Lesson not found"}); return; }
+  if (created.kind === "limit") { res.status(409).json({error:"This lesson already has the maximum of 20 exercises.",currentCount:created.count,limit:MAX_EXERCISES_PER_LESSON}); return; }
+  res.status(201).json(created.exercise);
 });
 
-router.post("/:id/questions",requireAuth,async(req,res):Promise<void>=>{
+router.patch("/:id/reporting",requireAuth,requireManagerPermissionIfManager("users.override.teacher"),async(req,res):Promise<void>=>{
+  const user=req.currentUser!;if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}
+  const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}
+  if(typeof req.body?.recordForReport!=="boolean"){res.status(400).json({error:"recordForReport must be a boolean"});return;}
+  const [existing]=await db.select({createdBy:exercisesTable.createdBy,layout:exercisesTable.layout}).from(exercisesTable).where(eq(exercisesTable.id,exerciseId));
+  if(!existing){res.status(404).json({error:"Exercise not found"});return;}
+  if(!(await canManageExerciseForUser(user,existing.createdBy,"users.override.teacher"))){res.status(403).json({error:"You cannot change report-mark settings for this exercise"});return;}
+  const currentLayout=existing.layout&&typeof existing.layout==="object"&&!Array.isArray(existing.layout)?existing.layout as Record<string,unknown>:{};
+  const [updated]=await db.update(exercisesTable).set({layout:{...currentLayout,recordForReport:req.body.recordForReport}}).where(eq(exercisesTable.id,exerciseId)).returning({id:exercisesTable.id,layout:exercisesTable.layout});
+  if(!updated){res.status(404).json({error:"Exercise not found"});return;}
+  res.json({id:updated.id,recordForReport:req.body.recordForReport});
+});
+
+router.post("/:id/archive",requireAuth,requireManagerPermissionIfManager("users.override.teacher"),async(req,res):Promise<void>=>{
+  const user=req.currentUser!;if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}
+  const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}
+  const outcome=await db.transaction(async tx=>{
+    const [exercise]=await tx.select({id:exercisesTable.id,createdBy:exercisesTable.createdBy,status:exercisesTable.status}).from(exercisesTable).where(eq(exercisesTable.id,exerciseId)).for("update");
+    if(!exercise)return {kind:"missing" as const};
+    if(!(await canManageExerciseForUser(user,exercise.createdBy,"users.override.teacher")))return {kind:"forbidden" as const};
+    if(exercise.status==="archived")return {kind:"archived" as const,alreadyArchived:true};
+    const [updated]=await tx.update(exercisesTable).set({status:"archived"}).where(eq(exercisesTable.id,exerciseId)).returning({id:exercisesTable.id,status:exercisesTable.status});
+    await tx.insert(auditLogsTable).values({performedBy:user.id,action:"exercise.archived",category:"academic",targetType:"exercise",targetId:exerciseId,details:JSON.stringify({previousStatus:exercise.status,submissionsPreserved:true})});
+    return {kind:"archived" as const,alreadyArchived:false,exercise:updated};
+  });
+  if(outcome.kind==="missing"){res.status(404).json({error:"Exercise not found"});return;}
+  if(outcome.kind==="forbidden"){res.status(403).json({error:"You cannot archive this exercise"});return;}
+  res.json({id:exerciseId,status:"archived",alreadyArchived:outcome.alreadyArchived});
+});
+
+router.post("/:id/questions",requireAuth,requireManagerPermissionIfManager("users.override.teacher"),async(req,res):Promise<void>=>{
   const user=req.currentUser!;if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}
   const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}
   const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));if(!exercise){res.status(404).json({error:"Exercise not found"});return;}
-  if(!canEditExercise(user,exercise.createdBy)){res.status(403).json({error:"You can only edit your own exercise"});return;}
+  if(!(await canManageExerciseForUser(user,exercise.createdBy,"users.override.teacher"))){res.status(403).json({error:"You can only edit your own exercise"});return;}
   const {prompt,type,marksAllocated,position,config,options}=req.body??{};
   const marks=Number(marksAllocated??1);
   if(typeof prompt!=="string"||!prompt.trim()||!questionTypes.has(type)||!Number.isFinite(marks)||marks<0||marks>10000||Math.round(marks*2)!==marks*2){res.status(400).json({error:"prompt, type (input|poll|drawbox), and marksAllocated in 0.5 increments are required"});return;}
@@ -184,11 +241,11 @@ router.post("/:id/questions",requireAuth,async(req,res):Promise<void>=>{
   res.status(201).json(question);
 });
 
-router.post("/:id/publish",requireAuth,async(req,res):Promise<void>=>{
+router.post("/:id/publish",requireAuth,requireManagerPermissionIfManager("users.override.teacher"),async(req,res):Promise<void>=>{
   const user=req.currentUser!;if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}
   const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}
   const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));if(!exercise){res.status(404).json({error:"Exercise not found"});return;}
-  if(!canEditExercise(user,exercise.createdBy)){res.status(403).json({error:"You can only publish your own exercise"});return;}
+  if(!(await canManageExerciseForUser(user,exercise.createdBy,"users.override.teacher"))){res.status(403).json({error:"You can only publish your own exercise"});return;}
   const questions=await db.select().from(exerciseQuestionsTable).where(eq(exerciseQuestionsTable.exerciseId,exercise.id));
   if(!questions.length){res.status(409).json({error:"Add at least one question before publishing"});return;}
   for(const q of questions){if(q.type==="poll"){const opts=await db.select().from(exerciseOptionsTable).where(eq(exerciseOptionsTable.questionId,q.id));if(opts.length<2||!opts.some(o=>o.isCorrect)){res.status(409).json({error:`Poll question ${q.position+1} needs at least two options and one correct option`});return;}}}
@@ -205,12 +262,12 @@ router.post("/:id/publish",requireAuth,async(req,res):Promise<void>=>{
   await writeAudit(user.id,"exercise_published",exercise.id,{totalMarks});res.json(updated);
 });
 
-router.post("/:id/ai-marking/check",requireAuth,async(req,res):Promise<void>=>{
+router.post("/:id/ai-marking/check",requireAuth,requireManagerPermissionIfManager("recordbook.edit"),async(req,res):Promise<void>=>{
   const user=req.currentUser!;
   if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}
   const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}
   const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));
-  if(!exercise||!canEditExercise(user,exercise.createdBy)){res.status(404).json({error:"Exercise not found"});return;}
+  if(!exercise||!(await canManageExerciseForUser(user,exercise.createdBy,"recordbook.edit"))){res.status(404).json({error:"Exercise not found"});return;}
   const questions=await db.select().from(exerciseQuestionsTable).where(eq(exerciseQuestionsTable.exerciseId,exerciseId)).orderBy(asc(exerciseQuestionsTable.position));
   if(!questions.length){res.status(409).json({error:"Add at least one question before checking AI marking"});return;}
   const teacherClarification=typeof req.body?.teacherClarification==="string"?req.body.teacherClarification.trim():"";
@@ -229,13 +286,13 @@ router.post("/:id/ai-marking/check",requireAuth,async(req,res):Promise<void>=>{
   }catch(err){res.status(502).json({error:err instanceof Error?err.message:"AI readiness check failed",provider:ai.name});}
 });
 
-router.post("/:id/ai-marking/:submissionId/run",requireAuth,async(req,res):Promise<void>=>{
+router.post("/:id/ai-marking/:submissionId/run",requireAuth,requireManagerPermissionIfManager("recordbook.edit"),async(req,res):Promise<void>=>{
   const user=req.currentUser!;
   if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}
   const exerciseId=parseId(req.params.id),submissionId=parseId(req.params.submissionId);
   if(!exerciseId||!submissionId){res.status(400).json({error:"Invalid exercise or submission id"});return;}
   const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));
-  if(!exercise||!canEditExercise(user,exercise.createdBy)){res.status(404).json({error:"Exercise not found"});return;}
+  if(!exercise||!(await canManageExerciseForUser(user,exercise.createdBy,"recordbook.edit"))){res.status(404).json({error:"Exercise not found"});return;}
   const aiConfig=(exercise.layout&&typeof exercise.layout==="object"?(exercise.layout as Record<string,unknown>).aiMarking:null) as {enabled?:boolean;approved?:boolean}|null;
   if(!aiConfig?.enabled||!aiConfig?.approved){res.status(409).json({error:"AI marking is not enabled and approved for this exercise"});return;}
   const [submission]=await db.select().from(exerciseSubmissionsTable).where(and(eq(exerciseSubmissionsTable.id,submissionId),eq(exerciseSubmissionsTable.exerciseId,exerciseId)));
@@ -285,14 +342,14 @@ router.post("/:id/submit",requireAuth,async(req,res):Promise<void>=>{
   await writeAudit(user.id,"exercise_submitted",exercise.id,{submissionId:submission.id,attemptNumber:submission.attemptNumber,answerCount:answers.length});res.status(createNew?201:200).json({submissionId:submission.id,status:submission.status});
 });
 
-router.get("/:id/submissions",requireAuth,async(req,res):Promise<void>=>{
-  const user=req.currentUser!;if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));if(!exercise){res.status(404).json({error:"Exercise not found"});return;}if(!canEditExercise(user,exercise.createdBy)){res.status(403).json({error:"You can only view your own exercise submissions"});return;}res.json(await db.select().from(exerciseSubmissionsTable).where(eq(exerciseSubmissionsTable.exerciseId,exercise.id)).orderBy(desc(exerciseSubmissionsTable.submittedAt)));
+router.get("/:id/submissions",requireAuth,requireManagerPermissionIfManager("recordbook.view"),async(req,res):Promise<void>=>{
+  const user=req.currentUser!;if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));if(!exercise){res.status(404).json({error:"Exercise not found"});return;}if(!(await canManageExerciseForUser(user,exercise.createdBy,"recordbook.view"))){res.status(403).json({error:"You can only view your own exercise submissions"});return;}res.json(await db.select().from(exerciseSubmissionsTable).where(eq(exerciseSubmissionsTable.exerciseId,exercise.id)).orderBy(desc(exerciseSubmissionsTable.submittedAt)));
 });
-router.get("/:id/submissions/:submissionId",requireAuth,async(req,res):Promise<void>=>{
-  const user=req.currentUser!;if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}const exerciseId=parseId(req.params.id),submissionId=parseId(req.params.submissionId);if(!exerciseId||!submissionId){res.status(400).json({error:"Invalid exercise or submission id"});return;}const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));if(!exercise||!canEditExercise(user,exercise.createdBy)){res.status(404).json({error:"Exercise not found"});return;}const [submission]=await db.select().from(exerciseSubmissionsTable).where(and(eq(exerciseSubmissionsTable.id,submissionId),eq(exerciseSubmissionsTable.exerciseId,exerciseId)));if(!submission){res.status(404).json({error:"Submission not found"});return;}res.json({submission,answers:await db.select().from(exerciseAnswersTable).where(eq(exerciseAnswersTable.submissionId,submissionId))});
+router.get("/:id/submissions/:submissionId",requireAuth,requireManagerPermissionIfManager("recordbook.view"),async(req,res):Promise<void>=>{
+  const user=req.currentUser!;if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}const exerciseId=parseId(req.params.id),submissionId=parseId(req.params.submissionId);if(!exerciseId||!submissionId){res.status(400).json({error:"Invalid exercise or submission id"});return;}const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));if(!exercise||!(await canManageExerciseForUser(user,exercise.createdBy,"recordbook.view"))){res.status(404).json({error:"Exercise not found"});return;}const [submission]=await db.select().from(exerciseSubmissionsTable).where(and(eq(exerciseSubmissionsTable.id,submissionId),eq(exerciseSubmissionsTable.exerciseId,exerciseId)));if(!submission){res.status(404).json({error:"Submission not found"});return;}res.json({submission,answers:await db.select().from(exerciseAnswersTable).where(eq(exerciseAnswersTable.submissionId,submissionId))});
 });
-router.post("/:id/submissions/:submissionId/mark",requireAuth,async(req,res):Promise<void>=>{
-  const user=req.currentUser!;if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}const exerciseId=parseId(req.params.id),submissionId=parseId(req.params.submissionId);if(!exerciseId||!submissionId){res.status(400).json({error:"Invalid exercise or submission id"});return;}const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));if(!exercise||!canEditExercise(user,exercise.createdBy)){res.status(404).json({error:"Exercise not found"});return;}const [submission]=await db.select().from(exerciseSubmissionsTable).where(and(eq(exerciseSubmissionsTable.id,submissionId),eq(exerciseSubmissionsTable.exerciseId,exerciseId)));if(!submission){res.status(404).json({error:"Submission not found"});return;}if(submission.status==="marked"){res.status(409).json({error:"This submission has already been returned. Start a new attempt if a correction is needed."});return;}const marks=Array.isArray(req.body?.marks)?req.body.marks:[];const questions=await db.select().from(exerciseQuestionsTable).where(eq(exerciseQuestionsTable.exerciseId,exerciseId));const allocation=new Map(questions.map(q=>[q.id,Number(q.marksAllocated)]));const submissionAnswers=await db.select().from(exerciseAnswersTable).where(eq(exerciseAnswersTable.submissionId,submissionId));if(marks.length!==submissionAnswers.length){res.status(400).json({error:"Provide a mark for every submitted answer before returning the result"});return;}const answerById=new Map(submissionAnswers.map(answer=>[answer.id,answer]));const seen=new Set<number>();for(const item of marks){const answerId=parseId(item?.answerId),awarded=Number(item?.awardedMarks);const answer=answerId?answerById.get(answerId):undefined;const max=answer?allocation.get(answer.questionId):undefined;if(!answer||seen.has(answerId!)||!Number.isFinite(awarded)||awarded<0||Math.round(awarded*2)!==awarded*2||max===undefined||!Number.isFinite(max)||awarded>max){res.status(400).json({error:"Marks must include each answer exactly once and be in 0.5 increments between zero and the question allocation"});return;}seen.add(answerId!);}for(const item of marks){const answerId=parseId(item?.answerId),awarded=Number(item?.awardedMarks);const [answer]=await db.select().from(exerciseAnswersTable).where(and(eq(exerciseAnswersTable.id,answerId!),eq(exerciseAnswersTable.submissionId,submissionId)));if(!answer)continue;const max=allocation.get(answer.questionId)??0;const safeMarks=awarded;await db.update(exerciseAnswersTable).set({awardedMarks:safeMarks.toString(),correctionNotes:typeof item.correctionNotes==="string"?item.correctionNotes:null,...(item.markingData&&typeof item.markingData==="object"?{markingData:item.markingData}:{}),markedBy:user.id,markedAt:new Date()}).where(eq(exerciseAnswersTable.id,answerId!));}const updatedAnswers=await db.select().from(exerciseAnswersTable).where(eq(exerciseAnswersTable.submissionId,submissionId));const rawTotalScore=updatedAnswers.reduce((sum,a)=>sum+Math.max(0,Number(a.awardedMarks)||0),0);const maximum=Number(exercise.totalMarks);const totalScore=maximum>0?Math.min(maximum,rawTotalScore):0;const percentage=maximum>0?Math.max(0,Math.min(100,(totalScore/maximum)*100)):0;const returnedAt=new Date();const [updatedSubmission]=await db.update(exerciseSubmissionsTable).set({totalScore:totalScore.toFixed(2),percentage:percentage.toFixed(2),status:"marked",markedAt:returnedAt,returnedAt,overallComment:typeof req.body?.overallComment==="string"?req.body.overallComment.slice(0,5000):submission.overallComment}).where(eq(exerciseSubmissionsTable.id,submissionId)).returning();await writeAudit(user.id,"exercise_marked",exercise.id,{submissionId,totalScore,percentage});await writeAudit(user.id,"exercise_returned",exercise.id,{submissionId,totalScore,percentage});res.json({submission:updatedSubmission,answers:updatedAnswers});
+router.post("/:id/submissions/:submissionId/mark",requireAuth,requireManagerPermissionIfManager("recordbook.edit"),async(req,res):Promise<void>=>{
+  const user=req.currentUser!;if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}const exerciseId=parseId(req.params.id),submissionId=parseId(req.params.submissionId);if(!exerciseId||!submissionId){res.status(400).json({error:"Invalid exercise or submission id"});return;}const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));if(!exercise||!(await canManageExerciseForUser(user,exercise.createdBy,"recordbook.edit"))){res.status(404).json({error:"Exercise not found"});return;}const [submission]=await db.select().from(exerciseSubmissionsTable).where(and(eq(exerciseSubmissionsTable.id,submissionId),eq(exerciseSubmissionsTable.exerciseId,exerciseId)));if(!submission){res.status(404).json({error:"Submission not found"});return;}if(submission.status==="marked"){res.status(409).json({error:"This submission has already been returned. Start a new attempt if a correction is needed."});return;}const marks=Array.isArray(req.body?.marks)?req.body.marks:[];const questions=await db.select().from(exerciseQuestionsTable).where(eq(exerciseQuestionsTable.exerciseId,exerciseId));const allocation=new Map(questions.map(q=>[q.id,Number(q.marksAllocated)]));const submissionAnswers=await db.select().from(exerciseAnswersTable).where(eq(exerciseAnswersTable.submissionId,submissionId));if(marks.length!==submissionAnswers.length){res.status(400).json({error:"Provide a mark for every submitted answer before returning the result"});return;}const answerById=new Map(submissionAnswers.map(answer=>[answer.id,answer]));const seen=new Set<number>();for(const item of marks){const answerId=parseId(item?.answerId),awarded=Number(item?.awardedMarks);const answer=answerId?answerById.get(answerId):undefined;const max=answer?allocation.get(answer.questionId):undefined;if(!answer||seen.has(answerId!)||!Number.isFinite(awarded)||awarded<0||Math.round(awarded*2)!==awarded*2||max===undefined||!Number.isFinite(max)||awarded>max){res.status(400).json({error:"Marks must include each answer exactly once and be in 0.5 increments between zero and the question allocation"});return;}seen.add(answerId!);}for(const item of marks){const answerId=parseId(item?.answerId),awarded=Number(item?.awardedMarks);const [answer]=await db.select().from(exerciseAnswersTable).where(and(eq(exerciseAnswersTable.id,answerId!),eq(exerciseAnswersTable.submissionId,submissionId)));if(!answer)continue;const max=allocation.get(answer.questionId)??0;const safeMarks=awarded;await db.update(exerciseAnswersTable).set({awardedMarks:safeMarks.toString(),correctionNotes:typeof item.correctionNotes==="string"?item.correctionNotes:null,...(item.markingData&&typeof item.markingData==="object"?{markingData:item.markingData}:{}),markedBy:user.id,markedAt:new Date()}).where(eq(exerciseAnswersTable.id,answerId!));}const updatedAnswers=await db.select().from(exerciseAnswersTable).where(eq(exerciseAnswersTable.submissionId,submissionId));const rawTotalScore=updatedAnswers.reduce((sum,a)=>sum+Math.max(0,Number(a.awardedMarks)||0),0);const maximum=Number(exercise.totalMarks);const totalScore=maximum>0?Math.min(maximum,rawTotalScore):0;const percentage=maximum>0?Math.max(0,Math.min(100,(totalScore/maximum)*100)):0;const returnedAt=new Date();const [updatedSubmission]=await db.update(exerciseSubmissionsTable).set({totalScore:totalScore.toFixed(2),percentage:percentage.toFixed(2),status:"marked",markedAt:returnedAt,returnedAt,overallComment:typeof req.body?.overallComment==="string"?req.body.overallComment.slice(0,5000):submission.overallComment}).where(eq(exerciseSubmissionsTable.id,submissionId)).returning();await writeAudit(user.id,"exercise_marked",exercise.id,{submissionId,totalScore,percentage});await writeAudit(user.id,"exercise_returned",exercise.id,{submissionId,totalScore,percentage});res.json({submission:updatedSubmission,answers:updatedAnswers});
 });
 router.get("/:id/result",requireAuth,async(req,res):Promise<void>=>{
   const user=req.currentUser!;if(user.role!==learnerRole){res.status(403).json({error:"Student access required"});return;}const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}const [submission]=await db.select().from(exerciseSubmissionsTable).where(and(eq(exerciseSubmissionsTable.exerciseId,exerciseId),eq(exerciseSubmissionsTable.learnerId,user.id))).orderBy(desc(exerciseSubmissionsTable.attemptNumber)).limit(1);if(!submission){res.status(404).json({error:"No submission yet"});return;}res.json({submission,answers:await db.select().from(exerciseAnswersTable).where(eq(exerciseAnswersTable.submissionId,submission.id))});

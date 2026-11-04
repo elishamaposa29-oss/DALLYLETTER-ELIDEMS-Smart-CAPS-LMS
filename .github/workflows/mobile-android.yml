@@ -3,7 +3,7 @@ name: Mobile Android Build and Smoke Test
 # Keep one expensive APK/emulator run per PR/branch; newer revisions supersede older ones.
 concurrency:
   group: mobile-android-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 on:
   workflow_dispatch:
@@ -42,10 +42,9 @@ permissions:
   contents: write
 
 jobs:
-  # Defer the expensive APK/emulator suite until the parity pass is ready.
-  # Manual dispatch always runs it; PRs opt in with the android-release-check label.
+  # Build the standalone release APK for every PR so Android parity is not silently skipped.
+  # The live-API emulator smoke remains separately opt-in below.
   build-apk:
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'android-release-check') || contains(github.event.pull_request.labels.*.name, 'android-device-smoke')
     runs-on: ubuntu-latest
     # Release and upgrade APK builds take ~43 minutes on hosted runners; leave time for artifact checks.
     timeout-minutes: 75

@@ -1,18 +1,38 @@
 import { Router } from "express";
-import { db, contentFlagsTable, auditLogsTable, usersTable, notificationsTable } from "@workspace/db";
+import { requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
+import { db, pool, contentFlagsTable, auditLogsTable, usersTable, notificationsTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
-import { requireAuth } from "../lib/auth-middleware";
+import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { getAIProvider } from "../lib/ai-provider";
 
 const router = Router();
 const moderationRoles = new Set(["teacher", "owner"]);
+async function getOwnerAccountIds(): Promise<Set<number>> {
+  const owners = await pool.query("SELECT id FROM users WHERE lower(role) IN ('owner','platform_owner')");
+  return new Set(owners.rows.map((row: any) => Number(row.id)));
+}
+async function isOwnerContentFlag(flag: { contentType: string; contentId: number }, ownerIds: Set<number>): Promise<boolean> {
+  const type = String(flag.contentType || "").toLowerCase();
+  if (["user","profile","account"].includes(type)) return ownerIds.has(Number(flag.contentId));
+  const sources: Record<string, { table: string; column: string }> = {
+    lesson: { table: "lessons", column: "teacher_id" },
+    class: { table: "classes", column: "teacher_id" },
+    assignment: { table: "assignments", column: "teacher_id" },
+    exercise: { table: "exercises", column: "created_by" },
+    activity: { table: "audit_logs", column: "performed_by" },
+  };
+  const source = sources[type];
+  if (!source) return false;
+  const result = await pool.query(`SELECT ${source.column} AS owner_id FROM ${source.table} WHERE id=$1`, [flag.contentId]);
+  return ownerIds.has(Number(result.rows[0]?.owner_id));
+}
 
 function canReviewContent(user: { role: string; isManager: boolean }): boolean {
-  return moderationRoles.has(user.role) || user.isManager;
+  return moderationRoles.has(user.role) || user.role === "teacher" || canAccessManager(user);
 }
 
 // GET /content-flags — list flags (owner/teacher only)
-router.get("/content-flags", requireAuth, async (req, res): Promise<void> => {
+router.get("/content-flags", requireAuth, requireManagerPermissionIfManager("moderation.view"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canReviewContent(user)) { res.status(403).json({ error: "Authorized staff access required" }); return; }
   const flags = await db.select({
@@ -31,11 +51,13 @@ router.get("/content-flags", requireAuth, async (req, res): Promise<void> => {
     .leftJoin(usersTable, eq(contentFlagsTable.reviewedBy, usersTable.id))
     .orderBy(desc(contentFlagsTable.createdAt))
     .limit(200);
-  res.json(flags);
+  const ownerIds = isOwnerRole(user.role) ? new Set<number>() : await getOwnerAccountIds();
+  const visibleFlags = isOwnerRole(user.role) ? flags : (await Promise.all(flags.map(async (flag: any) => (await isOwnerContentFlag(flag, ownerIds)) ? null : flag))).filter(Boolean);
+  res.json(visibleFlags);
 });
 
 // POST /content-flags — create flag (internal use or manual)
-router.post("/content-flags", requireAuth, async (req, res): Promise<void> => {
+router.post("/content-flags", requireAuth, requireManagerPermissionIfManager("moderation.action"), async (req, res): Promise<void> => {
   if (!canReviewContent(req.currentUser!)) { res.status(403).json({ error: "Authorized staff access required" }); return; }
   const { contentType, contentId, contentText, reason, severity = "medium", detectedBy = "ai" } = req.body as {
     contentType: string; contentId: number; contentText?: string; reason: string; severity?: string; detectedBy?: string;
@@ -46,11 +68,14 @@ router.post("/content-flags", requireAuth, async (req, res): Promise<void> => {
 });
 
 // PATCH /content-flags/:id — review a flag
-router.patch("/content-flags/:id", requireAuth, async (req, res): Promise<void> => {
+router.patch("/content-flags/:id", requireAuth, requireManagerPermissionIfManager("moderation.action"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canReviewContent(user)) { res.status(403).json({ error: "Authorized staff access required" }); return; }
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [existingFlag] = await db.select({ contentType: contentFlagsTable.contentType, contentId: contentFlagsTable.contentId }).from(contentFlagsTable).where(eq(contentFlagsTable.id, id));
+  if (!existingFlag) { res.status(404).json({ error: "Not found" }); return; }
+  if (!isOwnerRole(user.role) && await isOwnerContentFlag(existingFlag, await getOwnerAccountIds())) { res.status(404).json({ error: "Not found" }); return; }
   const { status, reviewNote } = req.body as { status: string; reviewNote?: string };
   if (!new Set(["pending", "reviewed", "dismissed", "actioned"]).has(status)) {
     res.status(400).json({ error: "Invalid moderation status" });
@@ -72,7 +97,7 @@ router.patch("/content-flags/:id", requireAuth, async (req, res): Promise<void> 
 // DELETE /content-flags/:id
 router.delete("/content-flags/:id", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (user.role !== "owner") { res.status(403).json({ error: "Owner only" }); return; }
+  if (!isOwnerRole(user.role)) { res.status(403).json({ error: "Owner only" }); return; }
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   await db.delete(contentFlagsTable).where(eq(contentFlagsTable.id, id));
@@ -80,7 +105,7 @@ router.delete("/content-flags/:id", requireAuth, async (req, res): Promise<void>
 });
 
 // POST /content-flags/moderate — run AI moderation on text
-router.post("/content-flags/moderate", requireAuth, async (req, res): Promise<void> => {
+router.post("/content-flags/moderate", requireAuth, requireManagerPermissionIfManager("moderation.action"), async (req, res): Promise<void> => {
   if (!canReviewContent(req.currentUser!)) { res.status(403).json({ error: "Authorized staff access required" }); return; }
   const { text, contentType, contentId } = req.body as { text: string; contentType?: string; contentId?: number };
   if (!text) { res.status(400).json({ error: "text required" }); return; }

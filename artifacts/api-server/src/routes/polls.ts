@@ -1,7 +1,9 @@
 import { Router } from "express";
+import { requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
 import { db, pollsTable, pollQuestionsTable, pollOptionsTable, pollSubmissionsTable, usersTable, auditLogsTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
-import { canManageAcademicContent, requireAuth } from "../lib/auth-middleware";
+import { canManageAcademicContent, requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
+import { canModerateUser } from "../lib/role-access";
 import { getAIProvider } from "../lib/ai-provider";
 import { logger } from "../lib/logger";
 
@@ -10,16 +12,23 @@ const router = Router();
 async function getPollForManager(pollId: number, user: NonNullable<Express.Request["currentUser"]>) {
   const [poll] = await db.select().from(pollsTable).where(eq(pollsTable.id, pollId));
   if (!poll) return null;
-  if (!canManageAcademicContent(user) || (user.role === "teacher" && !user.isManager && poll.createdBy !== user.id)) return null;
-  return poll;
+  if (!canManageAcademicContent(user)) return null;
+  if (isOwnerRole(user.role) || poll.createdBy === user.id) return poll;
+  if (canAccessManager(user)) {
+    if (poll.createdBy == null) return null;
+    const [creator] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, poll.createdBy));
+    return creator && canModerateUser(user, creator) ? poll : null;
+  }
+  return user.role === "teacher" && !user.isManager ? null : poll;
 }
 
 // GET /polls — list polls
-router.get("/polls", requireAuth, async (req, res): Promise<void> => {
+router.get("/polls", requireAuth, requireManagerPermissionIfManager("polls.manage"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   let polls;
   if (canManageAcademicContent(user)) {
-    polls = await db.select().from(pollsTable).orderBy(desc(pollsTable.createdAt));
+    const allPolls=await db.select().from(pollsTable).orderBy(desc(pollsTable.createdAt));
+    polls=isOwnerRole(user.role)?allPolls:(await Promise.all(allPolls.map(item=>getPollForManager(item.id,user)))).filter(Boolean);
   } else {
     polls = await db.select().from(pollsTable)
       .where(eq(pollsTable.status, "active"))
@@ -29,7 +38,7 @@ router.get("/polls", requireAuth, async (req, res): Promise<void> => {
 });
 
 // POST /polls — create poll (teacher/owner)
-router.post("/polls", requireAuth, async (req, res): Promise<void> => {
+router.post("/polls", requireAuth, requireManagerPermissionIfManager("polls.manage"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Academic staff access required" }); return; }
   const { title, topic, type = "manual", grade, subject, mode = "practice", timerSeconds, questions } = req.body as {
@@ -61,7 +70,7 @@ router.post("/polls", requireAuth, async (req, res): Promise<void> => {
 });
 
 // POST /polls/ai-generate — generate poll questions with AI
-router.post("/polls/ai-generate", requireAuth, async (req, res): Promise<void> => {
+router.post("/polls/ai-generate", requireAuth, requireManagerPermissionIfManager("polls.manage"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Academic staff access required" }); return; }
   const { topic, grade, subject, count = 5 } = req.body as { topic?: unknown; grade?: unknown; subject?: unknown; count?: unknown };
@@ -108,10 +117,10 @@ router.post("/polls/ai-generate", requireAuth, async (req, res): Promise<void> =
 });
 
 // GET /polls/:id — get poll with questions and options
-router.get("/polls/:id", requireAuth, async (req, res): Promise<void> => {
+router.get("/polls/:id", requireAuth, requireManagerPermissionIfManager("polls.manage"), async (req, res): Promise<void> => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const [poll] = await db.select().from(pollsTable).where(eq(pollsTable.id, id));
+  const poll = canManageAcademicContent(req.currentUser!) ? await getPollForManager(id, req.currentUser!) : (await db.select().from(pollsTable).where(eq(pollsTable.id, id)))[0];
   if (!poll) { res.status(404).json({ error: "Not found" }); return; }
   const questions = await db.select().from(pollQuestionsTable).where(eq(pollQuestionsTable.pollId, id)).orderBy(pollQuestionsTable.orderIndex);
   const questionsWithOptions = await Promise.all(questions.map(async q => {
@@ -127,7 +136,7 @@ router.get("/polls/:id", requireAuth, async (req, res): Promise<void> => {
 });
 
 // PATCH /polls/:id — update poll status / metadata
-router.patch("/polls/:id", requireAuth, async (req, res): Promise<void> => {
+router.patch("/polls/:id", requireAuth, requireManagerPermissionIfManager("polls.manage"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Academic staff access required" }); return; }
   const id = parseInt(String(req.params.id));
@@ -152,7 +161,7 @@ router.patch("/polls/:id", requireAuth, async (req, res): Promise<void> => {
 });
 
 // DELETE /polls/:id
-router.delete("/polls/:id", requireAuth, async (req, res): Promise<void> => {
+router.delete("/polls/:id", requireAuth, requireManagerPermissionIfManager("polls.manage"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (user.role === "student") { res.status(403).json({ error: "Forbidden" }); return; }
   const id = parseInt(String(req.params.id));
@@ -259,12 +268,12 @@ router.get("/polls/:id/my-results", requireAuth, async (req, res): Promise<void>
 });
 
 // GET /polls/:id/results — leaderboard + analytics
-router.get("/polls/:id/results", requireAuth, async (req, res): Promise<void> => {
+router.get("/polls/:id/results", requireAuth, requireManagerPermissionIfManager("polls.manage"), async (req, res): Promise<void> => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const [poll] = await db.select().from(pollsTable).where(eq(pollsTable.id, id));
-  if (!poll) { res.status(404).json({ error: "Poll not found" }); return; }
   const user = req.currentUser!;
+  const poll = canManageAcademicContent(user) ? await getPollForManager(id,user) : (await db.select().from(pollsTable).where(eq(pollsTable.id, id)))[0];
+  if (!poll) { res.status(404).json({ error: "Poll not found" }); return; }
   const allSubmissions = await db.select({ id: pollSubmissionsTable.id, score: pollSubmissionsTable.score, totalQuestions: pollSubmissionsTable.totalQuestions, completedAt: pollSubmissionsTable.completedAt, answers: pollSubmissionsTable.answers, studentName: usersTable.name, studentId: usersTable.id }).from(pollSubmissionsTable).leftJoin(usersTable, eq(pollSubmissionsTable.studentId, usersTable.id)).where(eq(pollSubmissionsTable.pollId, id)).orderBy(desc(pollSubmissionsTable.score));
   const submissions = user.role === "student" ? allSubmissions.filter(row => { if (row.studentId === user.id) return true; try { const meta = JSON.parse(row.answers) as { resultPrivacy?: string; selectedFriendIds?: number[] }; return meta.resultPrivacy === "public" || (meta.resultPrivacy === "selected_friends" && meta.selectedFriendIds?.includes(user.id)); } catch { return false; } }) : allSubmissions;
   const visible = submissions.map(({ answers: _answers, ...row }) => row);

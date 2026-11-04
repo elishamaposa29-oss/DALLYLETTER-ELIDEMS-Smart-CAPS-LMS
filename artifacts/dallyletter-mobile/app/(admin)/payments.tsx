@@ -56,7 +56,7 @@ export default function AdminPayments() {
     });
   };
 
-  const statusColor: Record<string, string> = { paid: "#22c55e", overdue: "#ef4444", pending: "#f59e0b" };
+  const statusColor: Record<string, string> = { paid: "#22c55e", overdue: "#ef4444", pending: "#f59e0b", refunded: "#0ea5e9" };
 
   const s = StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },

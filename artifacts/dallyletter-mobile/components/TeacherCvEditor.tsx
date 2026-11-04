@@ -1,7 +1,8 @@
 import { Feather } from "@expo/vector-icons";
 import { getApiUrl } from "@workspace/api-client-react";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Text, TextInput, TouchableOpacity, View } from "react-native";
+import * as FileSystem from "expo-file-system/legacy";
+import { ActivityIndicator, Alert, Linking, Platform, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
@@ -38,6 +39,7 @@ export function TeacherCvEditor() {
   const [cv, setCv] = useState<TeacherCv>(emptyCv);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -74,6 +76,28 @@ export function TeacherCvEditor() {
     }
   };
 
+  const downloadPdf = async () => {
+    if (!token || downloading) return;
+    setDownloading(true);
+    try {
+      const target = (FileSystem.documentDirectory || FileSystem.cacheDirectory || "") + "dallyletter-teacher-cv.pdf";
+      const result = await FileSystem.downloadAsync(getApiUrl("/api/users/me/teacher-cv/pdf"), target, { headers: { Authorization: "Bearer " + token } });
+      if (result.status !== 200) {
+        const body = await FileSystem.readAsStringAsync(result.uri).catch(() => "");
+        let message = "Could not download your CV PDF.";
+        try { message = JSON.parse(body).error || message; } catch {}
+        throw new Error(message);
+      }
+      const openUri = Platform.OS === "android" ? await FileSystem.getContentUriAsync(result.uri) : result.uri;
+      await Linking.openURL(openUri);
+      Alert.alert("CV PDF ready", "Verified qualifications are clearly identified. Other CV details are labelled teacher-provided.");
+    } catch (error) {
+      Alert.alert("CV download failed", error instanceof Error ? error.message : "Please retry.");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   if (user?.role !== "teacher") return null;
   return (
     <View style={{ marginHorizontal: 16, marginTop: 18, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card }}>
@@ -96,6 +120,10 @@ export function TeacherCvEditor() {
       <TouchableOpacity disabled={saving || loading} onPress={save} style={{ backgroundColor: colors.primary, borderRadius: 10, padding: 13, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, opacity: saving || loading ? 0.65 : 1 }}>
         {saving ? <ActivityIndicator color="#fff" /> : <Feather name="save" size={16} color="#fff" />}
         <Text style={{ color: "#fff", fontWeight: "700" }}>{saving ? "Saving…" : "Save teacher CV"}</Text>
+      </TouchableOpacity>
+      <TouchableOpacity disabled={saving || loading || downloading} onPress={() => void downloadPdf()} style={{ marginTop: 10, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 13, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, opacity: downloading ? 0.65 : 1 }}>
+        {downloading ? <ActivityIndicator color={colors.primary} /> : <Feather name="download" size={16} color={colors.primary} />}
+        <Text style={{ color: colors.primary, fontWeight: "700" }}>{downloading ? "Preparing CV PDF…" : "Download verified CV PDF"}</Text>
       </TouchableOpacity>
     </View>
   );

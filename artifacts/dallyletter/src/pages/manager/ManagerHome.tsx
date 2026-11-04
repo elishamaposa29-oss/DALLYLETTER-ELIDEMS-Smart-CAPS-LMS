@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { Users, BookOpen, Video, AlertTriangle, TrendingUp, GraduationCap, Shield, BarChart3, Star } from "lucide-react";
+import { Users, BookOpen, Video, AlertTriangle, TrendingUp, GraduationCap, Shield, BarChart3, Star, ClipboardList, Bell, FileText, MessageSquare } from "lucide-react";
 import { ActivityMonitor } from "@/components/ActivityMonitor";
 import { InstallAppCard } from "@/components/InstallAppCard";
 
@@ -14,14 +14,58 @@ const token = () => localStorage.getItem("dallyletter_token") ?? "";
 
 export default function ManagerHome() {
   const { user } = useAuth();
+  const isNonManagerTeacher = String(user?.role || "").trim().toLowerCase() === "teacher" && !(user as any)?.isManager;
   const [data, setData] = useState<any>(null);
+  const [permissions, setPermissions] = useState<Record<string, boolean>>({});
+  const [permissionError, setPermissionError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [pendingTransfers, setPendingTransfers] = useState(0);
 
   useEffect(() => {
-    fetch(getApiUrl("/api/manager/dashboard"), { headers: { Authorization: `Bearer ${token()}` } })
-      .then(r => r.json()).then(d => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
+    let active = true;
+    const load = async () => {
+      try {
+        const headers = { Authorization: `Bearer ${token()}` };
+        const permissionResponse = await fetch(getApiUrl("/api/manager-permissions/me"), { headers });
+        const permissionData = await permissionResponse.json().catch(() => ({}));
+        if (!permissionResponse.ok) throw new Error(permissionData.error || "Unable to load Owner-assigned permissions.");
+        const effective = permissionData.isOwner ? { "*": true } : (permissionData.permissions ?? {});
+        if (!active) return;
+        setPermissions(effective);
+        // The overview is optional. Individual workspaces are independently
+        // available when their own permission is granted.
+        if (permissionData.isOwner || effective["manager.dashboard.view"] === true) {
+          const dashboardResponse = await fetch(getApiUrl("/api/manager/dashboard"), { headers });
+          const dashboardData = await dashboardResponse.json().catch(() => ({}));
+          if (!dashboardResponse.ok) throw new Error(dashboardData.error || "Manager dashboard could not be loaded.");
+          if (!active) return;
+          setData(dashboardData);
+        }
+        if (permissionData.isOwner || effective["transfers.view"] === true) {
+          const transferResponse = await fetch(getApiUrl("/api/academic-records/transfer-requests"), { headers });
+          const transferData = await transferResponse.json().catch(() => []);
+          if (!transferResponse.ok) throw new Error(transferData.error || "Could not load transfer approvals");
+          if (active) setPendingTransfers(Array.isArray(transferData) ? transferData.filter((item: any) => item.status === "pending").length : 0);
+        }
+      } catch (e) {
+        if (active) setPermissionError(e instanceof Error ? e.message : "Manager dashboard unavailable.");
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void load();
+    return () => { active = false; };
   }, []);
+
+  const can = (key: string) => permissions["*"] === true || permissions[key] === true;
+  const visibleQueue = (data?.reviewQueue ?? []).filter((item: any) => {
+    const required: Record<string, string> = {
+      transfer_request: "transfers.view", academic_report: "reports.view", achievement_award: "achievements.view",
+      qualification_verification: "qualifications.view", content_moderation: "moderation.view",
+      teacher_application: "teacher_cv.view", alert: "notifications.view",
+    };
+    return !required[item.type] || can(required[item.type]);
+  });
 
   if (loading) return (
     <DashboardLayout>
@@ -53,7 +97,7 @@ export default function ManagerHome() {
               { label: "Students", value: data.stats.students, icon: Users, color: "text-blue-600", bg: "bg-blue-50" },
               { label: "Classes", value: data.stats.classes, icon: Video, color: "text-purple-600", bg: "bg-purple-50" },
               { label: "Lessons", value: data.stats.lessons, icon: BookOpen, color: "text-amber-600", bg: "bg-amber-50" },
-            ].map(m => (
+            ].filter(m => m.label === "Teachers" || m.label === "Students" ? can("users.view") : can("recordbook.view")).map(m => (
               <Card key={m.label} className="border-0 shadow-sm">
                 <CardContent className="p-4">
                   <div className={`w-10 h-10 rounded-xl ${m.bg} flex items-center justify-center mb-2`}>
@@ -72,31 +116,39 @@ export default function ManagerHome() {
           <Card className="border-0 shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm">
-                <AlertTriangle className="h-4 w-4 text-red-500" /> Open Alerts
-                {data?.openAlerts?.length > 0 && <Badge className="bg-red-500 text-white text-xs ml-auto">{data.openAlerts.length}</Badge>}
+                <AlertTriangle className="h-4 w-4 text-red-500" /> Manager Action Queue
+                <Badge className="ml-auto bg-red-500 text-white text-xs">{visibleQueue.length} pending</Badge>
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              {!data?.openAlerts?.length ? (
-                <p className="text-slate-400 text-sm text-center py-4">No open alerts</p>
-              ) : (
-                <div className="space-y-2">
-                  {data.openAlerts.slice(0, 4).map((a: any) => (
-                    <div key={a.id} className="flex items-start gap-2 p-2 bg-red-50 rounded-lg">
-                      <AlertTriangle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-xs font-medium text-slate-800">{a.title}</p>
-                        <p className="text-xs text-slate-500">{a.reporterName} · {a.severity}</p>
+            <CardContent className="space-y-3">
+              {!visibleQueue.length ? <p className="text-slate-400 text-sm text-center py-4">No pending approvals or open alerts.</p> : (
+                <div className="max-h-96 space-y-2 overflow-y-auto">
+                  {visibleQueue.map((item:any) => (
+                    <div key={item.id} className="flex items-start gap-2 rounded-lg bg-slate-50 p-3">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold text-slate-800">{item.title}</p>
+                        <p className="text-xs text-slate-500">{item.learnerName || "Platform"} · {String(item.type || "review").replaceAll("_"," ")}</p>
+                        {item.description && <p className="mt-1 line-clamp-2 text-xs text-slate-600">{item.description}</p>}
                       </div>
+                      {item.href && <Link href={item.href}><Button size="sm" variant="outline">Review</Button></Link>}
                     </div>
                   ))}
                 </div>
               )}
+              <div className="flex flex-wrap gap-2 border-t pt-3">
+                {can("transfers.view") && <Link href="/manager/transfer-requests"><Button size="sm" variant="outline">Transfer approvals ({data?.reviewCounts?.transferRequests ?? pendingTransfers})</Button></Link>}
+                {can("reports.review") && <Link href="/manager/reports/review"><Button size="sm" variant="outline">Report review ({data?.reviewCounts?.performanceReports ?? 0})</Button></Link>}
+                {can("teacher_cv.view") && <Link href="/manager/teacher-cv-workspace"><Button size="sm" variant="outline">Teacher CV approvals</Button></Link>}
+                {can("achievements.view") && <Link href="/admin/achievements"><Button size="sm" variant="outline">Achievements</Button></Link>}
+                {can("qualifications.view") && <Link href="/manager/qualifications"><Button size="sm" variant="outline">Qualifications</Button></Link>}
+                {can("notifications.view") && <Link href="/manager/notifications"><Button size="sm" variant="outline">All alerts</Button></Link>}
+              </div>
             </CardContent>
           </Card>
 
           {/* Top Teachers */}
-          <Card className="border-0 shadow-sm">
+          {can("users.view") && <Card className="border-0 shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm">
                 <Star className="h-4 w-4 text-amber-500" /> Top Performing Teachers
@@ -112,26 +164,60 @@ export default function ManagerHome() {
                       <span className="text-xs font-bold text-slate-400 w-5">#{i + 1}</span>
                       <div className="flex-1">
                         <p className="text-xs font-semibold text-slate-800">{t.name}</p>
-                        <p className="text-xs text-slate-400">{t.subject ?? "General"}</p>
+                        <p className="text-xs text-slate-400">{t.subject ?? "General"} · {t.lessonsCount ?? 0} lessons · {t.exercisesCount ?? 0} exercises · {t.assignmentsCount ?? 0} assignments</p><p className="text-xs text-slate-500">{t.markedCount ?? 0} marked · {t.learnersJoined ?? 0} learners joined · {t.learnerSubmissions ?? 0} submissions</p>
                       </div>
-                      <span className="text-xs font-bold text-amber-600">{t.performanceScore ?? 0} pts</span>
+                      <span className="text-xs font-bold text-amber-600">{t.activityScore ?? 0} activity</span>
                     </div>
                   ))}
                 </div>
               )}
             </CardContent>
-          </Card>
+          </Card>}
         </div>
 
-<ActivityMonitor />
+{can("transfers.view") && <Card className="border-0 shadow-sm">
+          <CardHeader><CardTitle className="flex items-center gap-2 text-sm"><AlertTriangle className="h-4 w-4 text-amber-600" /> Verification & Approval Queue</CardTitle></CardHeader>
+          <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div><p className="font-semibold text-slate-800">Transfer letter requests</p><p className="text-xs text-slate-500">Review learner requests and approve or reject them with an audit trail.</p></div>
+            <div className="flex items-center gap-3"><Badge className={pendingTransfers ? "bg-amber-500 text-white" : "bg-slate-100 text-slate-700"}>{pendingTransfers} pending</Badge><Link href="/manager/transfer-requests"><Button size="sm">Review requests</Button></Link></div>
+          </CardContent>
+        </Card>}
+
+        {can("users.view") && <Card className="border-0 shadow-sm">
+          <CardHeader><CardTitle className="flex items-center gap-2 text-sm"><Star className="h-4 w-4 text-emerald-600" /> Highest Performing Learners</CardTitle></CardHeader>
+          <CardContent>
+            {!data?.topLearners?.length ? <p className="py-4 text-center text-sm text-slate-400">No learner activity recorded yet.</p> :
+              <div className="space-y-2">{data.topLearners.map((learner:any,index:number)=><div key={learner.id} className="flex items-center gap-3 rounded-lg bg-slate-50 p-3">
+                <span className="w-6 text-xs font-bold text-slate-400">#{index+1}</span><div className="min-w-0 flex-1"><p className="text-sm font-semibold text-slate-800">{learner.name}</p><p className="text-xs text-slate-500">{learner.grade || "Grade not set"} · {learner.exerciseSubmissions} exercise submissions · {learner.assignmentSubmissions} assignment submissions · {learner.averageMarkPercentage == null ? "marks pending" : learner.averageMarkPercentage + "% average"}</p></div><Badge variant="secondary">{learner.badgeCount} awards</Badge><Link href="/manager/students"><Button size="sm" variant="outline">Monitor</Button></Link>
+              </div>)}</div>}
+          </CardContent>
+        </Card>}
+
+        {can("audit.view_subordinate") && <ActivityMonitor />}
         {/* Quick Nav */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {[
-            { label: "Monitor Teachers", href: "/manager/teachers", icon: GraduationCap, color: "bg-emerald-600" },
-            { label: "Monitor Students", href: "/manager/students", icon: Users, color: "bg-blue-600" },
-            { label: "View Reports", href: "/manager/reports", icon: BarChart3, color: "bg-purple-600" },
-            { label: "Manage Prefects", href: "/manager/prefects", icon: Shield, color: "bg-amber-600" },
-          ].map(item => (
+            { label: "Monitor Teachers", href: "/manager/teachers", icon: GraduationCap, color: "bg-emerald-600", permission: "users.view" },
+            { label: "Monitor Students", href: "/manager/students", icon: Users, color: "bg-blue-600", permission: "users.view" },
+            { label: "Manage Live Classes", href: "/manager/classes", icon: Video, color: "bg-cyan-700", permission: "classes.manage" },
+            { label: "Review Lessons", href: "/manager/lessons", icon: BookOpen, color: "bg-teal-700", permission: "recordbook.view" },
+            { label: "Manage Polls & Quizzes", href: "/manager/polls", icon: ClipboardList, color: "bg-purple-700", permission: "polls.manage" },
+            { label: "Subordinate Audit History", href: "/manager/audit-logs", icon: Shield, color: "bg-slate-700", permission: "audit.view_subordinate" },
+            { label: "Study Groups & Connect", href: "/manager/chat", icon: Users, color: "bg-indigo-700", permission: "groups.manage" },
+            { label: "Chat with Owner", href: "/manager/chat?ownerChat=1", icon: MessageSquare, color: "bg-slate-800", permission: "owner.chat" },
+            { label: "Teacher CV Workspace", href: "/manager/teacher-cv-workspace", icon: FileText, color: "bg-sky-700", permission: "teacher_cv.view" },
+            { label: "Qualification Verification", href: "/manager/qualifications", icon: GraduationCap, color: "bg-emerald-700", permission: "qualifications.view" },
+            { label: "Moderation Queue", href: "/manager/safety", icon: Shield, color: "bg-rose-700", permission: "moderation.view" },
+            { label: "Manager Notifications", href: "/manager/notifications", icon: Bell, color: "bg-orange-700", permission: "notifications.view" },
+            { label: "Achievement Reviews", href: "/admin/achievements", icon: Star, color: "bg-amber-700", permission: "achievements.view" },
+            { label: "Assignments", href: "/manager/assignments", icon: ClipboardList, color: "bg-blue-700", permission: "recordbook.view" },
+            { label: "View Reports", href: "/manager/reports", icon: BarChart3, color: "bg-purple-600", permission: "reports.view" },
+            { label: "RecordBook", href: "/record-book", icon: BookOpen, color: "bg-indigo-600", permission: "recordbook.view" },
+            { label: "Manage Prefects", href: "/manager/prefects", icon: Shield, color: "bg-amber-600", permission: "users.view" },
+            { label: "Transfer Approvals", href: "/manager/transfer-requests", icon: AlertTriangle, color: "bg-rose-600", permission: "transfers.view" },
+            { label: isNonManagerTeacher ? "Build Academic Reports" : "Review Performance Reports", href: "/manager/reports/review", icon: BarChart3, color: "bg-violet-600", permission: isNonManagerTeacher ? "reports.create" : "reports.review" },
+            { label: "All Review Items", href: "/manager/review-queue", icon: AlertTriangle, color: "bg-red-600", permission: "manager.dashboard.view" },
+          ].filter(item => can(item.permission) && (!isNonManagerTeacher || item.href === "/manager/reports/review")).map(item => (
             <Link key={item.href} href={item.href}>
               <div className={`${item.color} text-white rounded-xl p-4 flex items-center gap-3 hover:opacity-90 transition-opacity cursor-pointer`}>
                 <item.icon className="h-5 w-5" />
@@ -140,6 +226,7 @@ export default function ManagerHome() {
             </Link>
           ))}
         </div>
+        {!isNonManagerTeacher && can("reports.create") && <Link href="/manager/reports/review"><Button size="sm" variant="outline">Build Academic Reports</Button></Link>}
       </div>
     </DashboardLayout>
   );

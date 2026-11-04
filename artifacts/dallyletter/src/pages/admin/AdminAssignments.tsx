@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { useAuth } from "@/contexts/AuthContext";
 import { getApiUrl } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,6 +14,14 @@ const token = () => localStorage.getItem("dallyletter_token") ?? "";
 
 export default function AdminAssignments() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const role = String(user?.role || "").toLowerCase().replace(/[ -]+/g, "_");
+  const isManager = ["manager","senior_manager","junior_manager"].includes(role) || (role === "teacher" && (user as any)?.isManager === true);
+  const isOwner = ["owner","platform_owner"].includes(role);
+  const canCreateAssignment = isOwner || (role === "teacher" && (user as any)?.isManager !== true);
+  const [managerPermissions, setManagerPermissions] = useState<Record<string, boolean>>({});
+  const canViewAssignments = !isManager || isOwner || managerPermissions["recordbook.view"] === true;
+  const canEditAssignments = isOwner || (isManager && managerPermissions["users.override.teacher"] === true) || (!isManager && role === "teacher");
   const [assignments, setAssignments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [materialUploading, setMaterialUploading] = useState(false);
@@ -26,7 +35,13 @@ export default function AdminAssignments() {
       .then(r => r.json()).then(d => { setAssignments(Array.isArray(d) ? d : []); setLoading(false); })
       .catch(() => setLoading(false));
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    if (isManager) {
+      void fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: `Bearer ${token()}` } })
+        .then(r => r.json()).then(d => setManagerPermissions(d?.permissions ?? {})).catch(() => setManagerPermissions({}));
+    }
+    load();
+  }, [isManager]);
 
   const resetForm = () => {
     setOpen(false);
@@ -98,7 +113,7 @@ export default function AdminAssignments() {
           </div>
           <Dialog open={open} onOpenChange={(value) => { if (!value) resetForm(); else setOpen(true); }}>
             <DialogTrigger asChild>
-              <Button className="gap-2 bg-blue-600 text-white" onClick={() => { setEditingId(null); setForm(emptyForm); setOpen(true); }}><Plus className="h-4 w-4" /> New Assignment</Button>
+              {canCreateAssignment && <Button className="gap-2 bg-blue-600 text-white" onClick={() => { setEditingId(null); setForm(emptyForm); setOpen(true); }}><Plus className="h-4 w-4" /> New Assignment</Button>}
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
               <DialogHeader><DialogTitle>{editingId == null ? "Create Assignment" : "Edit Assignment"}</DialogTitle></DialogHeader>
@@ -115,7 +130,7 @@ export default function AdminAssignments() {
                   <div><label className="text-xs text-slate-500 mb-1 block">Due Date *</label><Input type="date" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} /></div>
                   <div><label className="text-xs text-slate-500 mb-1 block">Total Marks</label><Input type="number" value={form.totalMarks} onChange={e => setForm(f => ({ ...f, totalMarks: e.target.value }))} /></div>
                 </div>
-                <Button className="w-full bg-blue-600 text-white" onClick={saveAssignment} disabled={materialUploading}>{materialUploading ? "Uploading material…" : (editingId == null ? "Create Assignment" : "Save changes")}</Button>
+                {(canCreateAssignment || (editingId !== null && canEditAssignments)) && <Button className="w-full bg-blue-600 text-white" onClick={saveAssignment} disabled={materialUploading}>{materialUploading ? "Uploading material…" : (editingId == null ? "Create Assignment" : "Save changes")}</Button>}
               </div>
             </DialogContent>
           </Dialog>
@@ -152,12 +167,12 @@ export default function AdminAssignments() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button size="sm" variant="outline" onClick={() => { setEditingId(a.id); setForm({ title: a.title, description: a.description ?? "", subject: a.subject, grade: a.grade ?? "", dueDate: a.dueDate, totalMarks: String(a.totalMarks), attachmentUrl: a.attachmentUrl ?? "" }); setOpen(true); }}>
+                      {canEditAssignments && <Button size="sm" variant="outline" onClick={() => { setEditingId(a.id); setForm({ title: a.title, description: a.description ?? "", subject: a.subject, grade: a.grade ?? "", dueDate: a.dueDate, totalMarks: String(a.totalMarks), attachmentUrl: a.attachmentUrl ?? "" }); setOpen(true); }}>
                         Edit
-                      </Button>
-                      <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-600 h-8 w-8 p-0" onClick={() => del(a.id)}>
+                      </Button>}
+                      {canEditAssignments && <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-600 h-8 w-8 p-0" onClick={() => del(a.id)}>
                         <Trash2 className="h-4 w-4" />
-                      </Button>
+                      </Button>}
                     </div>
                   </div>
                 </CardContent>

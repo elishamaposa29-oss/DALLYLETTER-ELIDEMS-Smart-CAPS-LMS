@@ -1,6 +1,7 @@
 import { getApiUrl } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +15,12 @@ interface ContentFlag { id: number; contentType: string; contentId: number; cont
 
 export default function AdminSafety() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const [managerPermissions, setManagerPermissions] = useState<Record<string, boolean>>({});
+  const [isOwner, setIsOwner] = useState(["owner", "platform_owner"].includes(String(user?.role || "").toLowerCase()));
+  const canViewModeration = isOwner || managerPermissions["moderation.view"] === true;
+  const canActOnModeration = isOwner || managerPermissions["moderation.action"] === true;
+  const canDeleteFlags = isOwner;
   const [flags, setFlags] = useState<ContentFlag[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("all");
@@ -30,10 +37,14 @@ export default function AdminSafety() {
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    void fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: `Bearer ${token()}` } })
+      .then(async response => { const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || "Permission access unavailable"); setManagerPermissions(data.permissions ?? {}); setIsOwner(Boolean(data.isOwner)); if (data.isOwner || data.permissions?.["moderation.view"] === true) await load(); else setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
 
   async function reviewFlag(status: string) {
-    if (!reviewing) return;
+    if (!reviewing || !canActOnModeration) return;
     setSaving(true);
     const r = await fetch(getApiUrl(`/api/content-flags/${reviewing.id}`), {
       method: "PATCH",
@@ -135,14 +146,12 @@ export default function AdminSafety() {
                     <p className="text-xs text-muted-foreground">{new Date(flag.createdAt).toLocaleString()}</p>
                   </div>
                   <div className="flex gap-1.5 shrink-0">
-                    {flag.status === "pending" && (
-                      <Button size="sm" variant="outline" onClick={() => { setReviewing(flag); setReviewNote(""); }} className="text-xs gap-1">
-                        <Eye className="h-3.5 w-3.5" />Review
-                      </Button>
-                    )}
-                    <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" onClick={() => deleteFlag(flag.id)}>
+                    {flag.status === "pending" && canActOnModeration && <Button size="sm" variant="outline" onClick={() => { setReviewing(flag); setReviewNote(""); }} className="text-xs gap-1">
+                      <Eye className="h-3.5 w-3.5" />Review
+                    </Button>}
+                    {canDeleteFlags && <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" onClick={() => deleteFlag(flag.id)}>
                       <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    </Button>}
                   </div>
                 </div>
               </Card>

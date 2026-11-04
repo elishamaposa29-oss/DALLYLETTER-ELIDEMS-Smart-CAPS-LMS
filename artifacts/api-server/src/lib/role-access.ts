@@ -2,26 +2,86 @@ export type RoleLikeUser = {
   role: unknown;
   isManager?: unknown;
   teacherApplicationStatus?: unknown;
+  managerLevel?: unknown;
 };
 
 export function normalizeRole(role: unknown): string {
   return typeof role === "string" ? role.trim().toLowerCase().replace(/[ -]+/g, "_") : "";
 }
 
-/** Existing owner policy includes admins; platform_owner is a normalized legacy alias. */
+/** Only the actual owner and the explicit legacy platform_owner alias receive Owner authority. Admin is a separate operational role. */
 export function isOwnerRole(role: unknown): boolean {
-  return ["owner", "admin", "platform_owner"].includes(normalizeRole(role));
+  return ["owner", "platform_owner"].includes(normalizeRole(role));
 }
 
 function isTeacherPendingReview(user: RoleLikeUser): boolean {
   return normalizeRole(user.role) === "teacher" && user.teacherApplicationStatus === "pending_review";
 }
 
+function normalizedManagerLevel(user: RoleLikeUser): string {
+  return typeof user.managerLevel === "string" ? user.managerLevel.trim().toLowerCase() : "junior";
+}
+
+/** Senior authority is explicit; legacy teacher-manager accounts use managerLevel. */
+export function isSeniorManager(user: RoleLikeUser): boolean {
+  const role = normalizeRole(user.role);
+  if (isOwnerRole(role) || role === "senior_manager") return true;
+  if (normalizedManagerLevel(user) !== "senior") return false;
+  if (role === "manager") return true;
+  return role === "teacher" && user.isManager === true && !isTeacherPendingReview(user);
+}
+
+/** Junior managers retain manager access but cannot perform senior-only approvals. */
+export function isJuniorManager(user: RoleLikeUser): boolean {
+  const role = normalizeRole(user.role);
+  if (isOwnerRole(role) || isSeniorManager(user)) return false;
+  if (role === "manager" || role === "junior_manager") return true;
+  return role === "teacher" && user.isManager === true && !isTeacherPendingReview(user);
+}
+
+/** Recommendation is available to both manager levels; approval is senior/owner only. */
+export function canRecommendAchievementAwards(user: RoleLikeUser): boolean {
+  return isJuniorManager(user) || isSeniorManager(user);
+}
+
+export function canApproveAchievementAwards(user: RoleLikeUser): boolean {
+  return isSeniorManager(user);
+}
+
 function hasManagerStaffRole(user: RoleLikeUser): boolean {
   const role = normalizeRole(user.role);
-  return user.isManager === true
-    && !isTeacherPendingReview(user)
-    && ["teacher", "manager", "senior_manager"].includes(role);
+  // Manager roles remain eligible for existing manager tools at either level.
+  if (["manager", "senior_manager", "junior_manager"].includes(role)) return true;
+  return role === "teacher" && user.isManager === true && !isTeacherPendingReview(user);
+}
+
+/** API-level allowlist for applicants who have not yet been authorized to teach. */
+export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, methodValue: string, rawPath: string): boolean {
+  if (!isTeacherPendingReview(user)) return true;
+  const method = methodValue.toUpperCase();
+  const path = rawPath.startsWith("/api/") ? rawPath.slice(4) : rawPath;
+  const selfId = String(user.id ?? "");
+  const cvAllowed =
+    (method === "GET" && path === "/users/me/teacher-cv") ||
+    (method === "GET" && path === "/users/me/teacher-cv/pdf") ||
+    (method === "PATCH" && path === "/users/me/teacher-cv") ||
+    (method === "GET" && path === "/users/me/qualifications") ||
+    (method === "POST" && path === "/users/me/qualifications") ||
+    (method === "POST" && path === "/users/me/qualifications/bulk") ||
+    (method === "POST" && path === "/users/me/teacher-documents") ||
+    (method === "POST" && path === "/teacher-cv-workspace/submit") ||
+    (method === "POST" && /^\/qualifications\/\d+\/document$/.test(path)) ||
+    (method === "GET" && path === "/users/" + selfId + "/teacher-documents") ||
+    (method === "GET" && /^\/users\/\d+\/teacher-documents\/\d+$/.test(path) && path.startsWith("/users/" + selfId + "/")) ||
+    (method === "GET" && path === "/users/" + selfId + "/public-profile") ||
+    (method === "GET" && path === "/users/" + selfId) ||
+    (method === "PATCH" && path === "/users/" + selfId) ||
+    ((method === "GET" || method === "POST") && path === "/teacher-cv-workspace/" + selfId + "/chat") ||
+    (method === "PUT" && path === "/users/me/payout-preferences") ||
+    (method === "POST" && ["/users/me/notification-email/request","/users/me/notification-email/verify","/users/me/recovery-email/request-verification","/users/me/recovery-email/confirm","/users/me/phone/request-verification","/users/me/phone/confirm","/users/me/avatar","/users/me/cover","/auth/email-change/request","/auth/email-change/confirm"].includes(path)) ||
+    (method === "PATCH" && path === "/users/me/recovery-profile");
+  const profileWrite = method === "PATCH" && path === "/users/" + selfId;
+  return cvAllowed || profileWrite;
 }
 
 export function canManageAcademicContent(user: RoleLikeUser): boolean {
@@ -57,4 +117,60 @@ export function enforceOwnerAccess(req:AuthRequestLike,res:AuthResponseLike,next
 export function enforceAcademicStaffAccess(req:AuthRequestLike,res:AuthResponseLike,next:AuthNextLike):void {
   if (!req.currentUser || !canManageAcademicContent(req.currentUser)) { res.status(403).json({error:"Teacher or manager access required"}); return; }
   next();
+}
+
+/** Senior managers may override users below their level, never Owner/Admin or peer/senior managers. */
+export function canModerateUser(actor: RoleLikeUser, target: RoleLikeUser): boolean {
+  const actorRole = normalizeRole(actor.role);
+  const targetRole = normalizeRole(target.role);
+  if (isOwnerRole(targetRole)) return false;
+  if (targetRole === "admin" && !isOwnerRole(actorRole)) return false;
+  if (isOwnerRole(actorRole)) return true;
+  if (isSeniorManager(actor)) {
+    if (targetRole === "senior_manager") return false;
+    if (targetRole === "manager" || targetRole === "junior_manager") return normalizedManagerLevel(target) === "junior";
+    if (targetRole === "teacher" && target.isManager === true) return normalizedManagerLevel(target) === "junior";
+    return ["teacher", "student", "learner", "prefect"].includes(targetRole);
+  }
+  if (!isJuniorManager(actor)) return false;
+  if (["manager", "junior_manager", "senior_manager"].includes(targetRole)) return false;
+  if (targetRole === "teacher" && target.isManager === true) return false;
+  return ["teacher", "student", "learner", "prefect"].includes(targetRole);
+}
+
+/** Transfer decisions are senior authority: junior managers may view the queue but cannot approve or reject. */
+export function canReviewAcademicTransfer(user: RoleLikeUser): boolean {
+  return isSeniorManager(user);
+}
+
+/** Senior-only approvals and elevated review operations. */
+export const SENIOR_ONLY_PERMISSION_KEYS = new Set([
+  "transfers.approve", "reports.review", "achievements.approve",
+  "teacher_cv.review", "teacher_cv.authorize", "qualifications.verify",
+  "users.override.junior_manager", "manager.monitoring.view",
+]);
+
+/** The established Senior Manager operational catalogue; excludes every Owner-only capability. */
+export const SENIOR_DEFAULT_PERMISSION_KEYS = new Set([
+  "manager.dashboard.view", "manager.monitoring.view",
+  "users.view", "users.block", "users.restore", "users.suspend",
+  "users.override.teacher", "users.override.learner", "users.override.prefect", "users.override.junior_manager",
+  "attendance.view", "attendance.edit", "recordbook.view", "recordbook.edit",
+  "reports.create", "reports.view", "reports.review",
+  "transfers.view", "transfers.reject", "transfers.approve",
+  "teacher_cv.chat", "teacher_cv.view", "teacher_cv.review", "teacher_cv.authorize",
+  "qualifications.view", "qualifications.verify",
+  "achievements.view", "achievements.recommend", "achievements.approve",
+  "moderation.view", "moderation.action", "notifications.create",
+  "classes.manage", "lessons.create", "lessons.edit", "lessons.delete", "lessons.notify",
+  "polls.manage", "messages.send", "content.view_comments", "content.comment",
+  "notifications.broadcast", "notifications.view", "groups.manage", "audit.view_subordinate", "owner.chat",
+]);
+
+export const isSeniorOnlyManagerPermission = (permissionKey: string): boolean =>
+  SENIOR_ONLY_PERMISSION_KEYS.has(permissionKey);
+
+/** No operational permission is implied by role or seniority; every manager permission requires an explicit Owner grant. */
+export function defaultManagerPermission(_role: unknown, _managerLevel: unknown, _isManager: unknown, _permissionKey: string): boolean {
+  return false;
 }

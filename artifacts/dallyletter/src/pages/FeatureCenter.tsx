@@ -3,6 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
+import { getApiUrl } from "@workspace/api-client-react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import type { LucideIcon } from "lucide-react";
 import { Bell, BookOpen, ClipboardList, CreditCard, FileCheck2, FileText, Headphones, Mail, MessageSquare, PenTool, ShieldCheck, Smartphone, Users, Video, WalletCards } from "lucide-react";
@@ -21,23 +23,71 @@ const features:Feature[] = [
  {title:"Study groups & Connect",description:"Use group permissions, member previews and the Connect communication experience.",href:"/student/study-groups",icon:Users,tone:"bg-orange-50 text-orange-700",tag:"Social",roles:["student","prefect"]},
  {title:"Payments",description:"Open the learner payment flow or staff financial dashboard. Provider-backed payouts remain gated until credentials are configured.",href:"/student/payments",icon:CreditCard,tone:"bg-green-50 text-green-700",tag:"Provider-ready",roles:["student","prefect"]},
  {title:"PWA / install",description:"Use the install experience and test the app shell across supported mobile and desktop browsers.",href:"/docs",icon:Smartphone,tone:"bg-sky-50 text-sky-700",tag:"PWA"},
- {title:"Email notifications",description:"Managers and owners can opt an in-app notification into server-side email delivery.",href:"/admin/notifications",icon:Mail,tone:"bg-violet-50 text-violet-700",tag:"Manager / Owner",roles:["teacher","owner"]},
- {title:"Manager dashboard",description:"Monitor school activity, teachers, learners, prefects and reports.",href:"/manager",icon:BookOpen,tone:"bg-violet-50 text-violet-700",tag:"Management",roles:["manager","senior_manager"]},
- {title:"Monitor teachers",description:"Open the authorized teacher monitoring view.",href:"/manager/teachers",icon:Users,tone:"bg-blue-50 text-blue-700",tag:"Management",roles:["manager","senior_manager"]},
- {title:"Monitor learners",description:"Open the authorized learner monitoring view.",href:"/manager/students",icon:Users,tone:"bg-cyan-50 text-cyan-700",tag:"Management",roles:["manager","senior_manager"]},
- {title:"Manager reports",description:"View school-level reporting summaries.",href:"/manager/reports",icon:FileText,tone:"bg-emerald-50 text-emerald-700",tag:"Management",roles:["manager","senior_manager"]},
- {title:"Manager notifications",description:"Review and manage role-authorized notifications.",href:"/manager/notifications",icon:Bell,tone:"bg-amber-50 text-amber-700",tag:"Management",roles:["manager","senior_manager"]},
- {title:"Manager assignments",description:"Open assignment oversight tools.",href:"/manager/assignments",icon:ClipboardList,tone:"bg-indigo-50 text-indigo-700",tag:"Management",roles:["manager","senior_manager"]},
- {title:"Connect",description:"Open manager-authorized school communication.",href:"/manager/chat",icon:MessageSquare,tone:"bg-rose-50 text-rose-700",tag:"Management",roles:["manager","senior_manager"]},
- {title:"Prefect management",description:"Review and manage prefect assignments.",href:"/manager/prefects",icon:ShieldCheck,tone:"bg-orange-50 text-orange-700",tag:"Management",roles:["manager","senior_manager"]},
+ {title:"Email notifications",description:"Managers and owners can opt an in-app notification into server-side email delivery.",href:"/manager/notifications",icon:Mail,tone:"bg-violet-50 text-violet-700",tag:"Manager / Owner",roles:["manager","senior_manager","owner"]},
+ {title:"Manager dashboard",description:"Monitor school activity, teachers, learners, prefects and reports.",href:"/manager",icon:BookOpen,tone:"bg-violet-50 text-violet-700",tag:"Management",roles:["manager","senior_manager","owner"]},
+ {title:"Monitor teachers",description:"Open the authorized teacher monitoring view.",href:"/manager/teachers",icon:Users,tone:"bg-blue-50 text-blue-700",tag:"Management",roles:["manager","senior_manager","owner"]},
+ {title:"Monitor learners",description:"Open the authorized learner monitoring view.",href:"/manager/students",icon:Users,tone:"bg-cyan-50 text-cyan-700",tag:"Management",roles:["manager","senior_manager","owner"]},
+ {title:"Manager reports",description:"View school-level reporting summaries.",href:"/manager/reports",icon:FileText,tone:"bg-emerald-50 text-emerald-700",tag:"Management",roles:["manager","senior_manager","owner"]},
+ {title:"Manager notifications",description:"Review and manage role-authorized notifications.",href:"/manager/notifications",icon:Bell,tone:"bg-amber-50 text-amber-700",tag:"Management",roles:["manager","senior_manager","owner"]},
+ {title:"Manager assignments",description:"Open assignment oversight tools.",href:"/manager/assignments",icon:ClipboardList,tone:"bg-indigo-50 text-indigo-700",tag:"Management",roles:["manager","senior_manager","owner"]},
+ {title:"Connect",description:"Open manager-authorized school communication.",href:"/manager/chat",icon:MessageSquare,tone:"bg-rose-50 text-rose-700",tag:"Management",roles:["manager","senior_manager","owner"]},
+ {title:"Achievement award review",description:"Review achievement recommendations and approve or decline awards according to manager authority.",href:"/admin/achievements",icon:ShieldCheck,tone:"bg-amber-50 text-amber-700",tag:"Approval",roles:["manager","senior_manager","owner"]},
+ {title:"Transfer letter approvals",description:"Review learner transfer requests, record decisions and download approved letters.",href:"/manager/transfer-requests",icon:FileCheck2,tone:"bg-amber-50 text-amber-700",tag:"Approval",roles:["manager","senior_manager","owner"]},
+ {title:"Academic report review",description:"Review teacher-prepared academic report drafts before release to learners.",href:"/manager/reports/review",icon:FileText,tone:"bg-violet-50 text-violet-700",tag:"Approval",roles:["manager","senior_manager","owner"]},
+ {title:"Unified review queue",description:"See pending transfer, report, qualification and achievement decisions in one place.",href:"/manager/review-queue",icon:ClipboardList,tone:"bg-rose-50 text-rose-700",tag:"Approval",roles:["manager","senior_manager","owner"]},
+ {title:"Qualification review history",description:"Open Profile Hub to inspect qualification status and recorded review history.",href:"/profile-hub",icon:ShieldCheck,tone:"bg-cyan-50 text-cyan-700",tag:"Profile",roles:["teacher","manager","senior_manager","owner"]},
+ {title:"Teacher CV applications",description:"Review submitted CVs, applicant documents, messages and authorization decisions.",href:"/manager/teacher-cv-workspace",icon:FileCheck2,tone:"bg-indigo-50 text-indigo-700",tag:"Approval",roles:["manager","senior_manager","junior_manager","owner"]},
+ {title:"Qualification verification",description:"Open individual certificates, verify evidence and inspect review history.",href:"/manager/qualifications",icon:ShieldCheck,tone:"bg-cyan-50 text-cyan-700",tag:"Approval",roles:["manager","senior_manager","junior_manager","owner"]},
+ {title:"Manager audit history",description:"Inspect subordinate actions and permission decisions permitted to your account.",href:"/manager/audit-logs",icon:FileText,tone:"bg-slate-50 text-slate-700",tag:"Audit",roles:["manager","senior_manager","junior_manager","owner"]},
+ {title:"Teacher CV PDF",description:"Open your Profile Hub or teacher qualifications area to view and download the verified-record CV.",href:"/profile-hub",icon:FileText,tone:"bg-slate-50 text-slate-700",tag:"Document",roles:["teacher","manager","senior_manager","owner"]},
+ {title:"Teacher Record Book · Build / Book / Learner",description:"Open the shared RecordBook workspace for saved activity marks, attendance evidence, learner records and approval-gated reports.",href:"/record-book",icon:BookOpen,tone:"bg-blue-50 text-blue-700",tag:"Academic records",roles:["student","prefect","teacher","manager","senior_manager","owner"]},
+ {title:"Attendance Register & Activity History",description:"Open Profile Hub attendance records and saved fullscreen activity history. Private sections remain controlled independently.",href:"/profile-hub",icon:ClipboardList,tone:"bg-violet-50 text-violet-700",tag:"Attendance",roles:["student","prefect","teacher","manager","senior_manager","owner"]},
+ {title:"Profile privacy & connection approvals",description:"Manage each Profile Hub section separately and review connection requests before private chat is unlocked.",href:"/profile-hub",icon:Users,tone:"bg-cyan-50 text-cyan-700",tag:"Privacy",roles:["student","prefect","teacher","manager","senior_manager","owner"]},
 ];
+
 
 export default function FeatureCenter(){
  const {user}=useAuth();
  const normalizedRole=String(user?.role||"").toLowerCase().replace(/[ -]+/g,"_");
- const isManager=Boolean((user as any)?.isManager)||["manager","senior_manager"].includes(normalizedRole);
- const isOwner=["owner","admin","platform_owner"].includes(normalizedRole);
- const visible=features.filter(f=>!f.roles || (user && (f.roles.includes(normalizedRole)||(isOwner&&f.roles.includes("owner"))||(isManager&&f.roles.some(role=>["manager","senior_manager"].includes(role))))));
+ const isManager=Boolean((user as any)?.isManager)||["manager","senior_manager","junior_manager"].includes(normalizedRole);
+ const isOwner=["owner","platform_owner"].includes(normalizedRole);
+ const [managerPermissions,setManagerPermissions]=useState<Record<string,boolean>|null>(null);
+ useEffect(()=>{
+  if(!user||!isManager){setManagerPermissions(null);return;}
+  let active=true;
+  const token=localStorage.getItem("dallyletter_token")??"";
+  void fetch(getApiUrl("/api/manager-permissions/me"),{headers:{Authorization:"Bearer "+token},cache:"no-store"})
+   .then(async response=>{const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"Manager permissions unavailable");if(active)setManagerPermissions(data.permissions&&typeof data.permissions==="object"?data.permissions:{});})
+   .catch(()=>{if(active)setManagerPermissions({});});
+  return()=>{active=false;};
+ },[user?.id,user?.role,(user as any)?.isManager]);
+ const permissionForTitle:Record<string,string>={
+  "Manager dashboard":"manager.dashboard.view",
+  "Monitor teachers":"users.view",
+  "Monitor learners":"users.view",
+  "Manager reports":"reports.view",
+  "Manager notifications":"notifications.view",
+  "Email notifications":"notifications.view",
+  "Manager assignments":"recordbook.view",
+  "Connect":"messages.send",
+  "Achievement award review":"achievements.view",
+  "Transfer letter approvals":"transfers.view",
+  "Academic report review":"reports.review",
+  "Unified review queue":"manager.dashboard.view",
+  "Qualification review history":"qualifications.view",
+  "Teacher CV PDF":"teacher_cv.view",
+  "Teacher Record Book · Build / Book / Learner":"recordbook.view",
+  "Attendance Register & Activity History":"attendance.view",
+  "Teacher CV applications":"teacher_cv.view",
+  "Qualification verification":"qualifications.view",
+  "Manager audit history":"audit.view_subordinate",
+ };
+ const visible=features.filter(f=>{
+  const roleAllowed=!f.roles || (user && (f.roles.includes(normalizedRole)||(isOwner&&f.roles.includes("owner"))||(isManager&&f.roles.some(role=>["manager","senior_manager","junior_manager"].includes(role)))));
+  if(!roleAllowed)return false;
+  const key=permissionForTitle[f.title];
+  return !isManager||!key||managerPermissions?.[key]===true;
+ });
  return <DashboardLayout>
   <div className="space-y-6">
    <div className="rounded-3xl bg-gradient-to-br from-[#0a1628] via-[#10294a] to-[#0a1628] p-6 md:p-8 text-white shadow-xl">
@@ -49,9 +99,10 @@ export default function FeatureCenter(){
    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
     {visible.map((f)=>{
       const Icon=f.icon;
+      const destination = f.title === "Lessons & preview" && isOwner ? "/admin/lessons" : f.href;
       return <Card key={f.title} className="group flex h-full flex-col overflow-hidden border-slate-200/80 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg">
        <CardHeader className="pb-3"><div className="flex items-start justify-between gap-3"><div className={`rounded-2xl p-3 ${f.tone}`}><Icon className="h-5 w-5"/></div><Badge variant="outline">{f.tag}</Badge></div><CardTitle className="mt-2 text-lg">{f.title}</CardTitle><CardDescription className="leading-relaxed">{f.description}</CardDescription></CardHeader>
-       <CardContent className="mt-auto pt-0"><Link href={f.href}><Button className="w-full gap-2">Open & test <span aria-hidden>→</span></Button></Link></CardContent>
+       <CardContent className="mt-auto pt-0"><Link href={destination}><Button className="w-full gap-2">Open & test <span aria-hidden>→</span></Button></Link></CardContent>
       </Card>
     })}
    </div>

@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { getApiUrl, useLogoutUser } from "@workspace/api-client-react";
 import {
-  BookOpen, Users, Video, MessageSquare, CreditCard, Bell, LogOut, Home,
+  BookOpen, Users, Video, MessageSquare, CreditCard, Bell, LogOut, Home, FileCheck2,
   Shield, Menu, GraduationCap, Settings, Sparkles, ClipboardList, Star, EllipsisVertical,
   ScrollText, Trophy, AlertTriangle, DollarSign, BarChart3, Briefcase,
   Flame, Send, ImagePlus,
@@ -18,6 +18,7 @@ interface NavItem {
   icon: React.ElementType;
   section?: string;
   accent?: string;
+  permissionKey?: string;
 }
 
 const roleColors: Record<string, string> = {
@@ -29,6 +30,7 @@ const roleColors: Record<string, string> = {
   platform_owner: "from-amber-600 to-amber-800",
   manager: "from-purple-600 to-purple-800",
   senior_manager: "from-purple-600 to-purple-800",
+  junior_manager: "from-indigo-600 to-indigo-800",
 };
 
 const roleLabels: Record<string, string> = {
@@ -40,6 +42,7 @@ const roleLabels: Record<string, string> = {
   platform_owner: "Platform owner",
   manager: "Manager",
   senior_manager: "Senior manager",
+  junior_manager: "Junior manager",
 };
 
 function AuthenticatedAvatar({ url, name }: { url: string; name: string }) {
@@ -121,6 +124,23 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const logoutMutation = useLogoutUser();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [managerPermissions, setManagerPermissions] = useState<Record<string, boolean> | null>(null);
+
+  useEffect(() => {
+    const role = String(user?.role || "").toLowerCase().replace(/[ -]+/g, "_");
+    const managerAccount = ["manager", "senior_manager", "junior_manager"].includes(role) || (role === "teacher" && Boolean((user as any)?.isManager));
+    if (!user || !managerAccount) { setManagerPermissions(null); return; }
+    let active = true;
+    const token = localStorage.getItem("dallyletter_token") ?? "";
+    void fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: "Bearer " + token }, cache: "no-store" })
+      .then(async response => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Manager permissions unavailable");
+        if (active) setManagerPermissions(data.permissions && typeof data.permissions === "object" ? data.permissions : {});
+      })
+      .catch(() => { if (active) setManagerPermissions({}); });
+    return () => { active = false; };
+  }, [user?.id, user?.role, (user as any)?.isManager]);
 
   if (!user) return null;
 
@@ -137,6 +157,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Dashboard", href: "/", icon: Home, section: "Main" },
       { label: "Profile Hub", href: "/profile-hub", icon: Users },
       { label: "Feature Preview Center", href: "/features", icon: Sparkles },
+      { label: "My RecordBook & Reports", href: "/record-book", icon: ScrollText },
       { label: "Lessons", href: "/student/lessons", icon: BookOpen },
       { label: "Exercises & Drawing", href: "/student/exercises", icon: ClipboardList },
       { label: "Live Classes", href: "/student/classes", icon: Video },
@@ -160,6 +181,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Dashboard", href: "/teacher", icon: Home, section: "Main" },
       { label: "Profile Hub", href: "/profile-hub", icon: Users },
       { label: "Feature Preview Center", href: "/features", icon: Sparkles },
+      { label: "Teacher RecordBook", href: "/record-book", icon: ScrollText },
       { label: "My Lessons", href: "/teacher/lessons", icon: BookOpen },
       { label: "Qualifications & CV", href: "/teacher/qualifications", icon: GraduationCap },
       { label: "My Classes", href: "/teacher/classes", icon: Video },
@@ -169,35 +191,75 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Chat", href: "/teacher/chat", icon: MessageSquare },
       { label: "Student Payments", href: "/teacher/payments", icon: CreditCard },
       ...((user as any).isManager ? [
-        { label: "Manager Panel", href: "/manager", icon: Briefcase, section: "Management", accent: "text-purple-400" },
-        { label: "Monitor Teachers", href: "/manager/teachers", icon: GraduationCap },
-        { label: "Monitor Students", href: "/manager/students", icon: Users },
-        { label: "Assignments", href: "/manager/assignments", icon: ClipboardList },
-        { label: "Connect", href: "/manager/chat", icon: MessageSquare },
-        { label: "Reports", href: "/manager/reports", icon: ScrollText },
-        { label: "Notifications", href: "/manager/notifications", icon: Bell },
-        { label: "Prefect Management", href: "/manager/prefects", icon: Shield },
+        { label: "Manager Panel", href: "/manager", icon: Briefcase, section: "Management", accent: "text-purple-400", permissionKey: "manager.dashboard.view" },
+        { label: "Teacher CV Applications", href: "/manager/teacher-cv-workspace", icon: GraduationCap, permissionKey: "teacher_cv.view" },
+        { label: "Qualification Verification", href: "/manager/qualifications", icon: FileCheck2, permissionKey: "qualifications.view" },
+        { label: "RecordBook & Academic Records", href: "/record-book", icon: ScrollText, permissionKey: "recordbook.view" },
+        { label: "Monitor Teachers", href: "/manager/teachers", icon: GraduationCap, permissionKey: "users.view" },
+        { label: "Monitor Students", href: "/manager/students", icon: Users, permissionKey: "users.view" },
+        { label: "Assignments", href: "/manager/assignments", icon: ClipboardList, permissionKey: "recordbook.view" },
+      { label: "Classes", href: "/manager/classes", icon: Video, permissionKey: "classes.manage" },
+      { label: "Lessons", href: "/manager/lessons", icon: BookOpen, permissionKey: "recordbook.view" },
+      { label: "Polls & Quizzes", href: "/manager/polls", icon: BarChart3, permissionKey: "polls.manage" },
+      { label: "Study Groups", href: "/student/study-groups", icon: Users, permissionKey: "groups.manage" },
+      { label: "Audit History", href: "/manager/audit-logs", icon: ScrollText, permissionKey: "audit.view_subordinate" },
+        { label: "Connect", href: "/manager/chat", icon: MessageSquare, permissionKey: "messages.send" },
+        { label: "Reports", href: "/manager/reports", icon: ScrollText, permissionKey: "reports.view" },
+        { label: "Notifications", href: "/manager/notifications", icon: Bell, permissionKey: "notifications.view" },
+        { label: "Prefect Management", href: "/manager/prefects", icon: Shield, permissionKey: "users.view" },
+      { label: "Achievement Awards", href: "/admin/achievements", icon: Trophy, permissionKey: "achievements.view" },
+      { label: "Transfer Requests", href: "/manager/transfer-requests", icon: FileCheck2, section: "Approvals", accent: "text-amber-300", permissionKey: "transfers.view" },
+      { label: "Report Review", href: "/manager/reports/review", icon: FileCheck2, section: "Approvals", accent: "text-violet-300", permissionKey: "reports.review" },
+      { label: "All Review Items", href: "/manager/review-queue", icon: FileCheck2, section: "Approvals", accent: "text-red-300", permissionKey: "manager.dashboard.view" },
+      { label: "Content Moderation", href: "/manager/safety", icon: Shield, section: "Approvals", accent: "text-orange-300", permissionKey: "moderation.view" },
       ] : []),
     ];
-  } else if (["manager","senior_manager"].includes(normalizedRole)) {
+  } else if (["manager","senior_manager","junior_manager"].includes(normalizedRole)) {
     navItems = [
-      { label: "Manager Dashboard", href: "/manager", icon: Home, section: "Management" },
+      { label: "Manager Dashboard", href: "/manager", icon: Home, section: "Management", permissionKey: "manager.dashboard.view" },
+      { label: "Profile Hub", href: "/profile-hub", icon: Users },
+      { label: "RecordBook & Academic Records", href: "/record-book", icon: ScrollText, permissionKey: "recordbook.view" },
+      { label: "Teacher CV Applications", href: "/manager/teacher-cv-workspace", icon: GraduationCap, permissionKey: "teacher_cv.view" },
+      { label: "Qualification Verification", href: "/manager/qualifications", icon: FileCheck2, permissionKey: "qualifications.view" },
+      { label: "Feature Preview Center", href: "/features", icon: Sparkles },
+      { label: "Monitor Teachers", href: "/manager/teachers", icon: GraduationCap, permissionKey: "users.view" },
+      { label: "Monitor Students", href: "/manager/students", icon: Users, permissionKey: "users.view" },
+      { label: "Assignments", href: "/manager/assignments", icon: ClipboardList, permissionKey: "recordbook.view" },
+      { label: "Classes", href: "/manager/classes", icon: Video, permissionKey: "classes.manage" },
+      { label: "Lessons", href: "/manager/lessons", icon: BookOpen, permissionKey: "recordbook.view" },
+      { label: "Polls & Quizzes", href: "/manager/polls", icon: BarChart3, permissionKey: "polls.manage" },
+      { label: "Study Groups", href: "/student/study-groups", icon: Users, permissionKey: "groups.manage" },
+      { label: "Audit History", href: "/manager/audit-logs", icon: ScrollText, permissionKey: "audit.view_subordinate" },
+      { label: "Connect", href: "/manager/chat", icon: MessageSquare, permissionKey: "messages.send" },
+      { label: "Reports", href: "/manager/reports", icon: ScrollText, permissionKey: "reports.view" },
+      { label: "Notifications", href: "/manager/notifications", icon: Bell, permissionKey: "notifications.view" },
+      { label: "Prefect Management", href: "/manager/prefects", icon: Shield, permissionKey: "users.view" },
+      { label: "Achievement Awards", href: "/admin/achievements", icon: Trophy, permissionKey: "achievements.view" },
+      { label: "Transfer Requests", href: "/manager/transfer-requests", icon: FileCheck2, section: "Approvals", accent: "text-amber-300", permissionKey: "transfers.view" },
+      { label: "Report Review", href: "/manager/reports/review", icon: FileCheck2, section: "Approvals", accent: "text-violet-300", permissionKey: "reports.review" },
+      { label: "All Review Items", href: "/manager/review-queue", icon: FileCheck2, section: "Approvals", accent: "text-red-300", permissionKey: "manager.dashboard.view" },
+      { label: "Content Moderation", href: "/manager/safety", icon: Shield, section: "Approvals", accent: "text-orange-300", permissionKey: "moderation.view" },
+    ];
+  } else if (normalizedRole === "admin") {
+    // Admin is a separate operational role, never an Owner alias.
+    // ProtectedRoute grants Admin access only to these shared workspaces.
+    navItems = [
       { label: "Profile Hub", href: "/profile-hub", icon: Users },
       { label: "Feature Preview Center", href: "/features", icon: Sparkles },
-      { label: "Monitor Teachers", href: "/manager/teachers", icon: GraduationCap },
-      { label: "Monitor Students", href: "/manager/students", icon: Users },
-      { label: "Assignments", href: "/manager/assignments", icon: ClipboardList },
-      { label: "Connect", href: "/manager/chat", icon: MessageSquare },
-      { label: "Reports", href: "/manager/reports", icon: ScrollText },
-      { label: "Notifications", href: "/manager/notifications", icon: Bell },
-      { label: "Prefect Management", href: "/manager/prefects", icon: Shield },
     ];
-  } else if (["owner","admin","platform_owner"].includes(normalizedRole)) {
+  } else if (["owner","platform_owner"].includes(normalizedRole)) {
     navItems = [
       { label: "Overview", href: "/admin", icon: Home, section: "Platform" },
       { label: "Profile Hub", href: "/profile-hub", icon: Users },
       { label: "Feature Preview Center", href: "/features", icon: Sparkles },
       { label: "Owner Command Center", href: "/admin/command-center", icon: Briefcase },
+      { label: "Teacher CV Applications", href: "/admin/teacher-cv-workspace", icon: GraduationCap },
+      { label: "RecordBook & Academic Records", href: "/record-book", icon: ScrollText },
+      { label: "Qualification Verification", href: "/manager/qualifications", icon: FileCheck2 },
+      { label: "Transfer Requests", href: "/manager/transfer-requests", icon: FileCheck2, section: "Approvals", accent: "text-amber-300", permissionKey: "transfers.view" },
+      { label: "Report Review", href: "/manager/reports/review", icon: FileCheck2, section: "Approvals", accent: "text-violet-300", permissionKey: "reports.review" },
+      { label: "All Review Items", href: "/manager/review-queue", icon: FileCheck2, section: "Approvals", accent: "text-red-300", permissionKey: "manager.dashboard.view" },
+      { label: "Content Moderation", href: "/manager/safety", icon: Shield, section: "Approvals", accent: "text-orange-300", permissionKey: "moderation.view" },
       { label: "Users", href: "/admin/users", icon: Users },
       { label: "All Lessons", href: "/admin/lessons", icon: BookOpen },
       { label: "All Classes", href: "/admin/classes", icon: Video },
@@ -220,7 +282,19 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     ];
   }
 
-  const homeHref = ["student","prefect"].includes(normalizedRole) ? "/" : normalizedRole === "teacher" ? "/teacher" : ["manager","senior_manager"].includes(normalizedRole) ? "/manager" : "/admin";
+  const managerNavigationAccount = ["manager", "senior_manager", "junior_manager"].includes(normalizedRole) || (normalizedRole === "teacher" && Boolean((user as any).isManager));
+  if (managerNavigationAccount) {
+    // Fail closed while permissions load or if the permission service is unavailable.
+    navItems = navItems.filter(item => !item.permissionKey || managerPermissions?.[item.permissionKey] === true);
+  }
+
+  const pendingTeacher = normalizedRole === "teacher" && String((user as any).teacherApplicationStatus || "").toLowerCase() === "pending_review";
+  if (pendingTeacher) {
+    // Pending applicants may use only their Profile Hub and CV/qualification workspace.
+    navItems = navItems.filter(item => ["/profile-hub", "/teacher/qualifications"].includes(item.href));
+  }
+
+  const homeHref = ["student","prefect"].includes(normalizedRole) ? "/" : normalizedRole === "teacher" ? "/teacher" : ["manager","senior_manager","junior_manager"].includes(normalizedRole) ? "/manager" : normalizedRole === "admin" ? "/features" : "/admin";
 
   const NavLinks = ({ onNav }: { onNav?: () => void }) => {
     let lastSection: string | undefined;

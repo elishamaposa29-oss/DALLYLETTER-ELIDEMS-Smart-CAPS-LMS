@@ -7,24 +7,41 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { GraduationCap, BookOpen, Video, Star, TrendingUp, ExternalLink, MessageSquare, Bell, Loader2 } from "lucide-react";
+import { GraduationCap, BookOpen, Video, Star, TrendingUp, ExternalLink, MessageSquare, Bell, Loader2, Ban, UserX, UserCheck, AlertTriangle } from "lucide-react";
 
 const token = () => localStorage.getItem("dallyletter_token") ?? "";
 
 export default function ManagerTeachers() {
   const [teachers, setTeachers] = useState<any[]>([]);
+  const [permissions, setPermissions] = useState<Record<string, boolean>>({});
+  const [isOwner, setIsOwner] = useState(false);
+  const can = (key: string) => isOwner || permissions[key] === true;
   const [loading, setLoading] = useState(true);
   const [selectedTeacher, setSelectedTeacher] = useState<any | null>(null);
   const [activity, setActivity] = useState<any | null>(null);
   const [activityLoading, setActivityLoading] = useState(false);
   const [comment, setComment] = useState("");
   const [sending, setSending] = useState(false);
+  const [busy,setBusy]=useState<number|null>(null);
 
   useEffect(() => {
+    fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()).then(d => { setPermissions(d?.permissions ?? {}); setIsOwner(Boolean(d?.isOwner)); }).catch(() => undefined);
     fetch(getApiUrl("/api/manager/teachers"), { headers: { Authorization: `Bearer ${token()}` } })
       .then(r => r.json()).then(d => { setTeachers(Array.isArray(d) ? d : []); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
+
+  const action=async(id:number,actionName:string)=>{
+    const note=["block","suspend"].includes(actionName)?window.prompt(`Enter the reason to ${actionName} this teacher (at least 3 characters):`):null;
+    if(["block","suspend"].includes(actionName)&&(!note||note.trim().length<3)){window.alert("A clear reason of at least 3 characters is required.");return;}
+    setBusy(id);
+    try{
+      const endpoint=actionName==="unblock"?`/api/manager/users/${id}/unblock`:`/api/manager/users/${id}/action`;
+      const r=await fetch(getApiUrl(endpoint),{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token()}`},body:JSON.stringify(actionName==="unblock"?{}:{action:actionName,...(note?{note:note.trim()}: {})})});
+      const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(data.error||"Action failed.");
+      const refreshed=await fetch(getApiUrl("/api/manager/teachers"),{headers:{Authorization:`Bearer ${token()}`}});if(refreshed.ok){const next=await refreshed.json().catch(()=>[]);setTeachers(Array.isArray(next)?next:[]);}
+    }catch(e){window.alert(e instanceof Error?e.message:"Action failed.");}finally{setBusy(null);}
+  };
 
   const openMonitor = async (teacher: any) => {
     setSelectedTeacher(teacher); setActivity(null); setComment(""); setActivityLoading(true);
@@ -73,8 +90,8 @@ export default function ManagerTeachers() {
           <div className="space-y-3">
             {teachers.length === 0 ? (
               <div className="text-center py-16 text-slate-400"><GraduationCap className="h-12 w-12 mx-auto mb-3 opacity-20" /><p>No teachers found</p></div>
-            ) : teachers.sort((a: any, b: any) => (b.performanceScore ?? 0) - (a.performanceScore ?? 0)).map((t, i) => (
-              <Card key={t.id} className="border-0 shadow-sm" onClick={() => void openMonitor(t)}>
+            ) : teachers.sort((a: any, b: any) => (b.activityScore ?? 0) - (a.activityScore ?? 0)).map((t, i) => (
+              <Card key={t.id} className="border-0 shadow-sm">
                 <CardContent className="p-4">
                   <div className="flex items-start gap-4">
                     <Link href={`/profile/${t.id}`} onClick={e=>e.stopPropagation()} aria-label={`Open ${t.name} profile`} className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center text-white font-bold text-lg shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
@@ -85,13 +102,23 @@ export default function ManagerTeachers() {
                         {i < 3 && <Star className="h-3.5 w-3.5 text-amber-500" />}
                         <Link href={`/profile/${t.id}`} onClick={e=>e.stopPropagation()} className="font-semibold text-slate-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-sm">{t.name}</Link>
                         {t.subject && <Badge variant="outline" className="text-xs">{t.subject}</Badge>}
+                        <Badge variant={t.alertsCount ? "destructive" : "secondary"}>{t.alertsCount ?? 0} alerts</Badge>
                       </div>
                       <p className="text-xs text-slate-500 mb-2">{t.email}</p>
-                      <Button size="sm" variant="outline" className="mt-3 gap-1" onClick={() => void openMonitor(t)}><ExternalLink className="h-3.5 w-3.5" />Monitor activity</Button>
+                      <div className="mt-3 flex flex-wrap gap-2">
+          {can("audit.view_subordinate") && <Button size="sm" variant="outline" className="gap-1" onClick={() => void openMonitor(t)}><ExternalLink className="h-3.5 w-3.5" />Monitor activity</Button>}
+          {(t.isBlocked||t.isSuspended)&&can("users.restore")&&<Button size="sm" variant="outline" onClick={()=>void action(t.id,"unblock")} disabled={busy===t.id}><UserCheck className="h-3.5 w-3.5 mr-1"/>Restore</Button>}
+          {!t.isBlocked&&!t.isSuspended&&<>
+            {can("users.override.teacher")&&<Button size="sm" variant="outline" onClick={()=>void action(t.id,"warn")} disabled={busy===t.id}><AlertTriangle className="h-3.5 w-3.5 mr-1"/>Warn</Button>}
+            {can("users.suspend")&&<Button size="sm" variant="outline" onClick={()=>void action(t.id,"suspend")} disabled={busy===t.id}><UserX className="h-3.5 w-3.5 mr-1"/>Suspend</Button>}
+            {can("users.block")&&<Button size="sm" variant="outline" onClick={()=>void action(t.id,"block")} disabled={busy===t.id}><Ban className="h-3.5 w-3.5 mr-1"/>Block</Button>}
+          </>}
+        </div>
                       <div className="flex items-center gap-4 text-xs text-slate-400">
                         <span className="flex items-center gap-1"><BookOpen className="h-3 w-3" /> {t.lessonsCount ?? 0} lessons</span>
                         <span className="flex items-center gap-1"><Video className="h-3 w-3" /> {t.classesCount ?? 0} classes</span>
-                        <span className="flex items-center gap-1"><TrendingUp className="h-3 w-3" /> {t.performanceScore ?? 0} pts</span>
+                        <span className="flex items-center gap-1"><TrendingUp className="h-3 w-3" /> {t.activityScore ?? 0} activity</span>
+                        <span>{t.exercisesCount ?? 0} exercises</span><span>{t.assignmentsCount ?? 0} assignments</span><span>{t.markedCount ?? 0} marked</span><span>{t.learnersJoined ?? 0} learners</span>
                       </div>
                     </div>
                   </div>
@@ -104,10 +131,13 @@ export default function ManagerTeachers() {
         <Dialog open={Boolean(selectedTeacher)} onOpenChange={open => { if (!open) setSelectedTeacher(null); }}>
           <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
             <DialogHeader><DialogTitle>Monitor {selectedTeacher?.name}</DialogTitle></DialogHeader>
+            <Card><CardHeader><CardTitle className="text-base">Open teacher alerts ({selectedTeacher?.alertsCount ?? 0})</CardTitle></CardHeader><CardContent className="space-y-2">
+              {!selectedTeacher?.alerts?.length ? <p className="text-sm text-muted-foreground">No open alerts are linked to this teacher.</p> : selectedTeacher.alerts.map((alert:any)=><div key={alert.id} className="rounded-lg border border-amber-200 bg-amber-50 p-3"><p className="text-sm font-semibold">{alert.title}</p><p className="mt-1 text-xs text-slate-600">{alert.description}</p><p className="mt-1 text-xs text-slate-500">{alert.severity} · {new Date(alert.createdAt).toLocaleString()}</p></div>)}
+            </CardContent></Card>
             {activityLoading ? <div className="flex justify-center p-10"><Loader2 className="h-6 w-6 animate-spin" /></div> : activity && <div className="space-y-5">
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">{Object.entries(activity.counts ?? {}).map(([k,v]) => <div key={k} className="rounded-lg border p-3 text-center"><p className="text-lg font-bold">{String(v)}</p><p className="text-xs text-muted-foreground capitalize">{k}</p></div>)}</div>
               <Card><CardHeader><CardTitle className="text-base">Recent activity</CardTitle></CardHeader><CardContent className="space-y-2">{(activity.activities ?? []).slice(0,50).map((a:any)=><div key={a.id} className="flex items-center gap-2 rounded-lg border p-2"><div className="min-w-0 flex-1"><p className="text-sm font-medium">{a.action}</p><p className="text-xs text-muted-foreground">{a.category} · {a.targetType ?? "activity"}{a.targetId ? ` #${a.targetId}`:""} · {new Date(a.createdAt).toLocaleString()}</p></div><Button size="sm" variant="outline" onClick={()=>preview(a)}><ExternalLink className="h-3.5 w-3.5" /></Button></div>)}</CardContent></Card>
-              <div className="rounded-lg border p-3 space-y-2"><Textarea value={comment} onChange={e=>setComment(e.target.value)} placeholder="Comment or message the teacher…" /><div className="flex flex-wrap gap-2"><Button onClick={()=>void sendComment()} disabled={sending||!comment.trim()}><MessageSquare className="mr-2 h-4 w-4" />Comment</Button><Button variant="outline" onClick={()=>void notifyTeacher()} disabled={sending||!comment.trim()}><Bell className="mr-2 h-4 w-4" />Private message</Button></div></div>
+              {(can("content.comment") || can("messages.send")) && <div className="rounded-lg border p-3 space-y-2"><Textarea value={comment} onChange={e=>setComment(e.target.value)} placeholder="Comment or message the teacher…" /><div className="flex flex-wrap gap-2">{can("content.comment") && <Button onClick={()=>void sendComment()} disabled={sending||!comment.trim()}><MessageSquare className="mr-2 h-4 w-4" />Comment</Button>}{can("messages.send") && <Button variant="outline" onClick={()=>void notifyTeacher()} disabled={sending||!comment.trim()}><Bell className="mr-2 h-4 w-4" />Private message</Button>}</div></div>}
             </div>}
           </DialogContent>
         </Dialog>

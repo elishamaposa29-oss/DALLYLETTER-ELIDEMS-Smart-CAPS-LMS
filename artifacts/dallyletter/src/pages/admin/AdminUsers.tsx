@@ -2,7 +2,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { useListUsers, useBlockUser, usePromoteUser, useDeleteUser, getApiUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Users, Search, Shield, Ban, Trash2, PauseCircle, Briefcase } from "lucide-react";
+import { Loader2, Users, Search, Shield, Ban, Trash2, PauseCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { getListUsersQueryKey } from "@workspace/api-client-react";
 import { Link } from "wouter";
+import { ManagerPermissionControls } from "@/components/ManagerPermissionControls";
 
 export default function AdminUsers() {
   const { data: users, isLoading } = useListUsers();
@@ -67,20 +68,6 @@ export default function AdminUsers() {
     });
   };
 
-  const handleToggleManager = (id: number, isManager: boolean, managerLevel?: "junior"|"senior") => {
-    if (!confirm(isManager ? "Remove Manager status from this user?" : "Promote this user to Manager? They will gain access to the Manager Dashboard.")) return;
-    const tok = localStorage.getItem("dallyletter_token");
-    void fetch(getApiUrl(`/api/users/${id}/promote-manager`), {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
-      body: JSON.stringify({ isManager: !isManager, ...(managerLevel ? { managerLevel } : {}) }),
-    }).then(res => {
-      if (!res.ok) { toast({ variant: "destructive", title: "Error", description: "Could not update manager status." }); return; }
-      toast({ title: !isManager ? "✅ Promoted to Manager" : "Manager status removed" });
-      void queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
-    });
-  };
-
   const handleDelete = (id: number) => {
     if (confirm("Are you sure you want to permanently delete this user?")) {
       deleteUserMutation.mutate({ id }, {
@@ -119,7 +106,9 @@ export default function AdminUsers() {
               <SelectItem value="all">All Roles</SelectItem>
               <SelectItem value="student">Students</SelectItem>
               <SelectItem value="teacher">Teachers</SelectItem>
-              <SelectItem value="owner">Admins</SelectItem>
+              <SelectItem value="junior_manager">Junior Managers</SelectItem>
+              <SelectItem value="senior_manager">Senior Managers</SelectItem>
+              <SelectItem value="admin">Admins</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -190,7 +179,7 @@ export default function AdminUsers() {
                           {getStatusBadge(user as { isBlocked: boolean; isSuspended?: boolean })}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          {user.role !== 'owner' && (
+                          {(user.role as string) !== 'owner' && (user.role as string) !== 'admin' && (
                             <div className="flex justify-end gap-1">
                               {user.role === 'student' && (
                                 <Button
@@ -203,17 +192,10 @@ export default function AdminUsers() {
                                   <Shield className={`h-4 w-4 ${user.isPrefect ? "text-amber-500" : "text-muted-foreground"}`} />
                                 </Button>
                               )}
-                              {user.role === 'teacher' && (
-                                <div className="flex items-center gap-1">
-                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title={(user as any).isManager ? "Remove Manager status" : "Promote to Manager"} onClick={() => handleToggleManager(user.id, !!(user as any).isManager)}>
-                                    <Briefcase className={`h-4 w-4 ${(user as any).isManager ? "text-purple-500" : "text-muted-foreground"}`} />
-                                  </Button>
-                                  {(user as any).isManager && <div className="flex rounded-md border overflow-hidden">
-                                    <button type="button" className={`px-1.5 py-1 text-[10px] ${(user as any).managerLevel === "junior" ? "bg-muted font-bold" : ""}`} onClick={() => handleToggleManager(user.id,true,"junior")} title="Junior Manager">Jr</button>
-                                    <button type="button" className={`px-1.5 py-1 text-[10px] ${(user as any).managerLevel === "senior" ? "bg-primary/10 font-bold text-primary" : ""}`} onClick={() => handleToggleManager(user.id,true,"senior")} title="Senior Manager">Sr</button>
-                                  </div>}
-                                </div>
-                              )}
+                              <ManagerPermissionControls
+                                user={user as any}
+                                onChanged={() => void queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() })}
+                              />
                               {/* Suspend button */}
                               <Button
                                 variant="ghost"

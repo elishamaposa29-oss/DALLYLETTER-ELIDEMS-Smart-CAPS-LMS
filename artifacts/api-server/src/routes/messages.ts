@@ -16,8 +16,18 @@ import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMedi
 
 const MAX_CHAT_MEDIA_SIZE_BYTES = MAX_MEDIA_SIZE_BYTES;
 import { isOwnerRole, normalizeRole } from "../lib/auth-middleware";
+import { hasAcceptedProfileConnection, isProfileChatApprovalRequired } from "./profileConnections";
+import { managerHasPermission, requireManagerPermission } from "../lib/manager-permission-policy";
+import { canModerateUser } from "../lib/role-access";
 
 const router: IRouter = Router();
+
+router.get("/manager/owner-contact", requireAuth, requireManagerPermission("owner.chat"), async (req,res):Promise<void> => {
+  const [owner]=await db.select({id:usersTable.id,name:usersTable.name}).from(usersTable).where(inArray(usersTable.role,["owner","platform_owner"])).orderBy(usersTable.id).limit(1);
+  if(!owner){res.status(404).json({error:"Owner contact is not available."});return;}
+  res.setHeader("Cache-Control","private,no-store");
+  res.json({id:Number(owner.id),name:String(owner.name||"Owner")});
+});
 
 const voiceUpload = multer({
   storage: multer.diskStorage({
@@ -47,12 +57,20 @@ async function canAccessGroup(groupId: number, userId: number, role: string): Pr
 
 async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]>, recipientId: number): Promise<boolean> {
   if (!Number.isInteger(recipientId) || recipientId <= 0 || recipientId === sender.id) return false;
-  const [recipient] = await db.select({ id: usersTable.id, role: usersTable.role, isPrefect: usersTable.isPrefect, isBlocked: usersTable.isBlocked, isSuspended: usersTable.isSuspended })
+  const [recipient] = await db.select({ id: usersTable.id, role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel, isPrefect: usersTable.isPrefect, isBlocked: usersTable.isBlocked, isSuspended: usersTable.isSuspended })
     .from(usersTable)
     .where(eq(usersTable.id, recipientId));
   if (!recipient || recipient.isBlocked || recipient.isSuspended) return false;
+  // An accepted connection must unlock the existing private-message route,
+  // even when the recipient requires approval for first-contact messages.
+  if (await hasAcceptedProfileConnection(sender.id, recipientId)) return true;
+  if (await isProfileChatApprovalRequired(recipientId)) return false;
   const senderRole = normalizeRole(sender.role);
   const recipientRole = normalizeRole(recipient.role);
+  const senderIsManager = ["junior_manager","senior_manager","manager"].includes(senderRole) || (senderRole === "teacher" && sender.isManager === true);
+  if (isOwnerRole(recipientRole) && senderRole === "admin") return false;
+  if (senderIsManager && isOwnerRole(recipientRole) && !(await managerHasPermission(sender, "owner.chat"))) return false;
+  if (senderIsManager && !isOwnerRole(recipientRole) && (!canModerateUser(sender, recipient) || !(await managerHasPermission(sender, "messages.send")))) return false;
   if (senderRole === "student") {
     return recipientRole === "teacher" || isOwnerRole(recipientRole) || recipient.isPrefect === true;
   }
@@ -62,6 +80,24 @@ async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]
 async function canViewPrivateConversation(user: NonNullable<Express.Request["currentUser"]>, recipientId: number): Promise<boolean> {
   if (!Number.isInteger(recipientId) || recipientId <= 0 || recipientId === user.id) return false;
   if (isOwnerRole(user.role)) return true;
+  const viewerRole = normalizeRole(user.role);
+  const viewerIsManager = ["junior_manager","senior_manager","manager"].includes(viewerRole) || (viewerRole === "teacher" && user.isManager === true);
+  if (viewerIsManager) {
+    const target = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, recipientId));
+    const recipient = target[0];
+    if (!recipient) return false;
+    if (isOwnerRole(recipient.role)) {
+      if (viewerRole === "admin") return false;
+      if (viewerIsManager && !(await managerHasPermission(user, "owner.chat"))) return false;
+    } else if (!canModerateUser(user, recipient) || !(await managerHasPermission(user, "messages.send"))) return false;
+  }
+  const [viewerRequiresApproval,targetRequiresApproval,accepted] = await Promise.all([
+    isProfileChatApprovalRequired(user.id),
+    isProfileChatApprovalRequired(recipientId),
+    hasAcceptedProfileConnection(user.id, recipientId),
+  ]);
+  if ((viewerRequiresApproval || targetRequiresApproval) && !accepted) return false;
+  if (accepted) return true;
   const [conversation] = await db.select({ id: messagesTable.id })
     .from(messagesTable)
     .where(or(
@@ -132,7 +168,7 @@ router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise
   const user = req.currentUser!;
   const allowed = message.groupId != null
     ? await canAccessGroup(message.groupId, user.id, user.role)
-    : message.recipientId != null && (isOwnerRole(user.role) || message.recipientId === user.id || message.senderId === user.id);
+    : message.recipientId != null && (isOwnerRole(user.role) || ((message.recipientId === user.id || message.senderId === user.id) && await canViewPrivateConversation(user, message.senderId === user.id ? message.recipientId : message.senderId)));
   if (!allowed) { res.status(403).json({ error: "You cannot access this media" }); return; }
   try {
     const remote = await streamStoredMedia(storageKey, req.headers.range);
