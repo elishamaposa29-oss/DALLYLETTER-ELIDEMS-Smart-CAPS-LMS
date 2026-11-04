@@ -142,12 +142,13 @@ router.post("/payments/paynow/result", async (req, res): Promise<void> => {
 
   if (!result.updated) {
     const existing = await db.execute(sql`
-      SELECT id FROM payments
+      SELECT id, amount FROM payments
       WHERE notes = ${"Paynow reference " + reference}
       LIMIT 1
     `);
-    const existingRows = (existing as unknown as { rows?: unknown[] }).rows ?? [];
+    const existingRows = (existing as unknown as { rows?: Array<{ id: number; amount: string | number }> }).rows ?? [];
     if (existingRows.length === 0) { res.status(404).send("Payment reference not found"); return; }
+    if (Number(existingRows[0].amount) !== callbackAmount) { res.status(400).send("Payment amount does not match reference"); return; }
     // Duplicate or out-of-order callbacks cannot reopen or reverse a terminal payment.
   }
   res.status(200).send("OK");
