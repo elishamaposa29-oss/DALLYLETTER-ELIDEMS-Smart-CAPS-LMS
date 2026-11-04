@@ -33,7 +33,7 @@ async function markPaynowAttempt(reference: string, status: "failed" | "cancelle
   await db.execute(sql`
     UPDATE payments
     SET status = ${status},
-        notes = CONCAT(COALESCE(notes, ''), ' | Paynow ', ${status}, ': ', ${detail})
+        notes = CONCAT(COALESCE(notes, ''), ' | Paynow ', CAST(${status} AS TEXT), ': ', CAST(${detail} AS TEXT))
     WHERE notes LIKE ${"%Paynow reference " + reference + "%"}
   `);
 }
@@ -125,7 +125,7 @@ router.post("/payments/paynow/result", async (req, res): Promise<void> => {
     const updated = await tx.execute(sql`
       UPDATE payments
       SET status = ${normalizedStatus},
-          notes = CONCAT(COALESCE(notes, ''), ' | Paynow callback: ', ${providerStatus})
+          notes = CONCAT(COALESCE(notes, ''), ' | Paynow callback: ', CAST(${providerStatus} AS TEXT))
       WHERE notes = ${"Paynow reference " + reference}
         AND amount::numeric = ${callbackAmount}
         AND status = 'pending'
