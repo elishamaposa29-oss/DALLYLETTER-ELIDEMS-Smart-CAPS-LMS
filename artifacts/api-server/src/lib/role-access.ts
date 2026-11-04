@@ -170,8 +170,7 @@ export const SENIOR_DEFAULT_PERMISSION_KEYS = new Set([
 export const isSeniorOnlyManagerPermission = (permissionKey: string): boolean =>
   SENIOR_ONLY_PERMISSION_KEYS.has(permissionKey);
 
-/** Senior defaults are limited to known manager capabilities; Junior grants remain individually assigned. */
-export function defaultManagerPermission(role: unknown, managerLevel: unknown, isManager: unknown, permissionKey: string): boolean {
-  return SENIOR_DEFAULT_PERMISSION_KEYS.has(permissionKey) &&
-    isSeniorManager({ role, managerLevel: typeof managerLevel === "string" ? managerLevel : undefined, isManager: isManager === true });
+/** No operational permission is implied by role or seniority; every manager permission requires an explicit Owner grant. */
+export function defaultManagerPermission(_role: unknown, _managerLevel: unknown, _isManager: unknown, _permissionKey: string): boolean {
+  return false;
 }
