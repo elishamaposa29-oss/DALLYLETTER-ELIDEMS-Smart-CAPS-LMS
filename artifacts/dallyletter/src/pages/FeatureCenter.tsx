@@ -67,6 +67,7 @@ export default function FeatureCenter(){
   "Monitor learners":"users.view",
   "Manager reports":"reports.view",
   "Manager notifications":"notifications.view",
+  "Email notifications":"notifications.view",
   "Manager assignments":"recordbook.view",
   "Connect":"messages.send",
   "Achievement award review":"achievements.view",
