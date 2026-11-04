@@ -139,8 +139,8 @@ await assertRouteResponds(
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ credential: "invalid.test.token" }),
   },
-  [400, 401, 503],
-  "Google sign-in rejects invalid/missing credentials",
+  [401],
+  "configured Google sign-in rejects an invalid ID token (503 means GOOGLE_CLIENT_ID is missing)",
 );
 
 if (!baseReachable) {
