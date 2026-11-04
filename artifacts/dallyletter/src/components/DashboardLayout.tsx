@@ -282,8 +282,16 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     ];
   }
 
-  if ((["manager", "senior_manager", "junior_manager"].includes(normalizedRole) || (normalizedRole === "teacher" && Boolean((user as any).isManager))) && managerPermissions !== null) {
-    navItems = navItems.filter(item => !item.permissionKey || managerPermissions[item.permissionKey] === true);
+  const managerNavigationAccount = ["manager", "senior_manager", "junior_manager"].includes(normalizedRole) || (normalizedRole === "teacher" && Boolean((user as any).isManager));
+  if (managerNavigationAccount) {
+    // Fail closed while permissions load or if the permission service is unavailable.
+    navItems = navItems.filter(item => !item.permissionKey || managerPermissions?.[item.permissionKey] === true);
+  }
+
+  const pendingTeacher = normalizedRole === "teacher" && String((user as any).teacherApplicationStatus || "").toLowerCase() === "pending_review";
+  if (pendingTeacher) {
+    // Pending applicants may use only their Profile Hub and CV/qualification workspace.
+    navItems = navItems.filter(item => ["/profile-hub", "/teacher/qualifications"].includes(item.href));
   }
 
   const homeHref = ["student","prefect"].includes(normalizedRole) ? "/" : normalizedRole === "teacher" ? "/teacher" : ["manager","senior_manager","junior_manager"].includes(normalizedRole) ? "/manager" : normalizedRole === "admin" ? "/features" : "/admin";
