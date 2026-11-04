@@ -3,7 +3,7 @@ import { requireManagerPermission, requireManagerPermissionForRequest, requireMa
 import { pool } from "@workspace/db";
 import { requireAuth, canAccessManager } from "../lib/auth-middleware";
 import { sendEmail } from "../lib/email-service";
-import { normalizeRole, isSeniorManager, canModerateUser, canAccessManager } from "../lib/role-access";
+import { normalizeRole, isSeniorManager, canModerateUser } from "../lib/role-access";
 import { revokeUserSessions } from "../lib/auth-session-store";
 import { processExpiredTeacherApplications } from "../lib/teacher-cv-expiry";
 const router=Router(); let ready:Promise<void>|null=null;
