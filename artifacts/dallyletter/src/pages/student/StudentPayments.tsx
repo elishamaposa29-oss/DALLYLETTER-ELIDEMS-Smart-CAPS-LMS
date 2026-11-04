@@ -33,7 +33,7 @@ export default function StudentPayments() {
   }, []);
 
   const hasOverdue = payments?.some(p => p.status === "overdue");
-  const totalOwed = payments?.filter(p => p.status !== "paid").reduce((sum, p) => sum + p.amount, 0) || 0;
+  const totalOwed = payments?.filter(p => p.status === "pending" || p.status === "overdue").reduce((sum, p) => sum + p.amount, 0) || 0;
   const paidCount = payments?.filter(p => p.status === "paid").length || 0;
   const overdueCount = payments?.filter(p => p.status === "overdue").length || 0;
 
@@ -101,6 +101,7 @@ export default function StudentPayments() {
       case "overdue": return <AlertTriangle className="h-5 w-5 text-red-500" />;
       case "failed": return <XCircle className="h-5 w-5 text-red-600" />;
       case "cancelled": return <XCircle className="h-5 w-5 text-muted-foreground" />;
+      case "refunded": return <CheckCircle2 className="h-5 w-5 text-sky-600" />;
       default: return null;
     }
   };
@@ -112,6 +113,7 @@ export default function StudentPayments() {
       case "overdue": return <Badge className="bg-red-500/10 text-red-700 border border-red-300 font-semibold">⚠ Overdue</Badge>;
       case "failed": return <Badge className="bg-red-500/10 text-red-700 border border-red-300 font-semibold">✕ Payment failed</Badge>;
       case "cancelled": return <Badge variant="outline">Cancelled</Badge>;
+      case "refunded": return <Badge variant="outline" className="border-sky-300 text-sky-700">Refunded</Badge>;
       default: return <Badge variant="outline">{status}</Badge>;
     }
   };
