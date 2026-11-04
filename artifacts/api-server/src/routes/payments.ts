@@ -33,7 +33,8 @@ async function markPaynowAttempt(reference: string, status: "failed" | "cancelle
   await db.execute(sql`
     UPDATE payments
     SET status = ${status},
-        notes = CONCAT(COALESCE(notes, ''), ' | Paynow ', CAST(${status} AS TEXT), ': ', CAST(${detail} AS TEXT))
+        notes = CONCAT(COALESCE(notes, ''), ' | Paynow ', CAST(${status} AS TEXT), ': ', CAST(${detail} AS TEXT)),
+        updated_at = now()
     WHERE notes LIKE ${"%Paynow reference " + reference + "%"}
   `);
 }
@@ -112,7 +113,7 @@ router.post("/payments/paynow/result", async (req, res): Promise<void> => {
     providerStatus === "refunded" ? "refunded" :
     providerStatus === "cancelled" || providerStatus === "canceled" ? "cancelled" :
     providerStatus === "failed" || providerStatus === "error" ? "failed" :
-    providerStatus === "created" || providerStatus === "sent" || providerStatus === "pending" ? "pending" :
+    providerStatus === "created" || providerStatus === "sent" || providerStatus === "pending" || providerStatus === "awaiting delivery" || providerStatus === "delivered" || providerStatus === "disputed" ? "pending" :
     null;
   if (!normalizedStatus) { res.status(400).send("Unsupported Paynow status"); return; }
 
@@ -126,7 +127,8 @@ router.post("/payments/paynow/result", async (req, res): Promise<void> => {
     const updated = await tx.execute(sql`
       UPDATE payments
       SET status = ${normalizedStatus},
-          notes = CONCAT(COALESCE(notes, ''), ' | Paynow callback: ', CAST(${providerStatus} AS TEXT))
+          notes = CONCAT(COALESCE(notes, ''), ' | Paynow callback: ', CAST(${providerStatus} AS TEXT)),
+          updated_at = now()
       WHERE notes LIKE ${"%Paynow reference " + reference + "%"}
         AND amount::numeric = ${callbackAmount}
         AND (status = 'pending' OR (CAST(${normalizedStatus} AS TEXT) = 'refunded' AND status = 'paid'))
