@@ -1,6 +1,6 @@
 // Payments routes — track and manage school fee payments
 import { Router, type IRouter } from "express";
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import crypto from "node:crypto";
 import { db, paymentsTable, usersTable, activityLogTable, notificationsTable } from "@workspace/db";
 import { RecordPaymentBody, GetPaymentParams } from "@workspace/api-zod";
@@ -241,32 +241,39 @@ router.post("/payments/notify-admin", requireAuth, async (req, res): Promise<voi
     return;
   }
 
-  const { amount } = req.body;
-
-  // Find all owner accounts
-  const owners = await db.select().from(usersTable).where(eq(usersTable.role, "owner"));
-
-  const amountStr = amount ? `$${Number(amount).toFixed(2)}` : "an amount";
-
-  // Send notification to each owner
-  for (const owner of owners) {
-    await db.insert(notificationsTable).values({
-      recipientId: owner.id,
-      title: "💳 Payment Reported by Learner",
-      message: `${currentUser.name} has reported paying ${amountStr} via PayPal. Please verify the payment and update their records accordingly.`,
-      type: "payment_overdue",
-      isRead: false,
-    });
+  const amount = Number(req.body?.amount);
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 100000) {
+    res.status(400).json({ error: "Enter a valid payment amount greater than zero." });
+    return;
   }
 
-  // Log activity
-  await db.insert(activityLogTable).values({
-    type: "payment_recorded",
-    description: `${currentUser.name} self-reported a PayPal payment of ${amountStr}. Awaiting admin verification.`,
-    actorName: currentUser.name,
+  const owners = await db.select({ id: usersTable.id }).from(usersTable)
+    .where(inArray(usersTable.role, ["owner", "platform_owner"]));
+  if (!owners.length) {
+    res.status(503).json({ error: "No Owner account is available to receive payment reports." });
+    return;
+  }
+  const amountStr = `${amount.toFixed(2)}`;
+
+  // Record all Owner notifications and the audit activity as one database transaction.
+  await db.transaction(async (tx) => {
+    for (const owner of owners) {
+      await tx.insert(notificationsTable).values({
+        recipientId: owner.id,
+        title: "💳 Payment Reported by Learner",
+        message: `${currentUser.name} reported a payment of ${amountStr}. The payment method has not been independently verified; please check the transaction and update the ledger.`,
+        type: "payment_overdue",
+        isRead: false,
+      });
+    }
+    await tx.insert(activityLogTable).values({
+      type: "payment_recorded",
+      description: `${currentUser.name} self-reported a payment of ${amountStr}. Awaiting Owner verification.`,
+      actorName: currentUser.name,
+    });
   });
 
-  res.json({ success: true });
+  res.json({ success: true, notifiedOwners: owners.length });
 });
 
 // GET /payments/:id — Get payment by ID
