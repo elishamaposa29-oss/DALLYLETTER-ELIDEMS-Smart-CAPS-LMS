@@ -3,6 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
+import { getApiUrl } from "@workspace/api-client-react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import type { LucideIcon } from "lucide-react";
 import { Bell, BookOpen, ClipboardList, CreditCard, FileCheck2, FileText, Headphones, Mail, MessageSquare, PenTool, ShieldCheck, Smartphone, Users, Video, WalletCards } from "lucide-react";
@@ -34,6 +36,9 @@ const features:Feature[] = [
  {title:"Academic report review",description:"Review teacher-prepared academic report drafts before release to learners.",href:"/manager/reports/review",icon:FileText,tone:"bg-violet-50 text-violet-700",tag:"Approval",roles:["manager","senior_manager","owner"]},
  {title:"Unified review queue",description:"See pending transfer, report, qualification and achievement decisions in one place.",href:"/manager/review-queue",icon:ClipboardList,tone:"bg-rose-50 text-rose-700",tag:"Approval",roles:["manager","senior_manager","owner"]},
  {title:"Qualification review history",description:"Open Profile Hub to inspect qualification status and recorded review history.",href:"/profile-hub",icon:ShieldCheck,tone:"bg-cyan-50 text-cyan-700",tag:"Profile",roles:["teacher","manager","senior_manager","owner"]},
+ {title:"Teacher CV applications",description:"Review submitted CVs, applicant documents, messages and authorization decisions.",href:"/manager/teacher-cv-workspace",icon:FileCheck2,tone:"bg-indigo-50 text-indigo-700",tag:"Approval",roles:["manager","senior_manager","junior_manager","owner"]},
+ {title:"Qualification verification",description:"Open individual certificates, verify evidence and inspect review history.",href:"/manager/qualifications",icon:ShieldCheck,tone:"bg-cyan-50 text-cyan-700",tag:"Approval",roles:["manager","senior_manager","junior_manager","owner"]},
+ {title:"Manager audit history",description:"Inspect subordinate actions and permission decisions permitted to your account.",href:"/manager/audit-logs",icon:FileText,tone:"bg-slate-50 text-slate-700",tag:"Audit",roles:["manager","senior_manager","junior_manager","owner"]},
  {title:"Teacher CV PDF",description:"Open your Profile Hub or teacher qualifications area to view and download the verified-record CV.",href:"/profile-hub",icon:FileText,tone:"bg-slate-50 text-slate-700",tag:"Document",roles:["teacher","manager","senior_manager","owner"]},
  {title:"Teacher Record Book · Build / Book / Learner",description:"Open the shared RecordBook workspace for saved activity marks, attendance evidence, learner records and approval-gated reports.",href:"/record-book",icon:BookOpen,tone:"bg-blue-50 text-blue-700",tag:"Academic records",roles:["student","prefect","teacher","manager","senior_manager","owner"]},
  {title:"Attendance Register & Activity History",description:"Open Profile Hub attendance records and saved fullscreen activity history. Private sections remain controlled independently.",href:"/profile-hub",icon:ClipboardList,tone:"bg-violet-50 text-violet-700",tag:"Attendance",roles:["student","prefect","teacher","manager","senior_manager","owner"]},
@@ -45,8 +50,43 @@ export default function FeatureCenter(){
  const {user}=useAuth();
  const normalizedRole=String(user?.role||"").toLowerCase().replace(/[ -]+/g,"_");
  const isManager=Boolean((user as any)?.isManager)||["manager","senior_manager","junior_manager"].includes(normalizedRole);
- const isOwner=["owner","admin","platform_owner"].includes(normalizedRole);
- const visible=features.filter(f=>!f.roles || (user && (f.roles.includes(normalizedRole)||(isOwner&&f.roles.includes("owner"))||(isManager&&f.roles.some(role=>["manager","senior_manager","junior_manager"].includes(role))))));
+ const isOwner=["owner","platform_owner"].includes(normalizedRole);
+ const [managerPermissions,setManagerPermissions]=useState<Record<string,boolean>|null>(null);
+ useEffect(()=>{
+  if(!user||!isManager){setManagerPermissions(null);return;}
+  let active=true;
+  const token=localStorage.getItem("dallyletter_token")??"";
+  void fetch(getApiUrl("/api/manager-permissions/me"),{headers:{Authorization:"Bearer "+token},cache:"no-store"})
+   .then(async response=>{const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"Manager permissions unavailable");if(active)setManagerPermissions(data.permissions&&typeof data.permissions==="object"?data.permissions:{});})
+   .catch(()=>{if(active)setManagerPermissions({});});
+  return()=>{active=false;};
+ },[user?.id,user?.role,(user as any)?.isManager]);
+ const permissionForTitle:Record<string,string>={
+  "Manager dashboard":"manager.dashboard.view",
+  "Monitor teachers":"users.view",
+  "Monitor learners":"users.view",
+  "Manager reports":"reports.view",
+  "Manager notifications":"notifications.view",
+  "Manager assignments":"recordbook.view",
+  "Connect":"messages.send",
+  "Achievement award review":"achievements.view",
+  "Transfer letter approvals":"transfers.view",
+  "Academic report review":"reports.review",
+  "Unified review queue":"manager.dashboard.view",
+  "Qualification review history":"qualifications.view",
+  "Teacher CV PDF":"teacher_cv.view",
+  "Teacher Record Book · Build / Book / Learner":"recordbook.view",
+  "Attendance Register & Activity History":"attendance.view",
+  "Teacher CV applications":"teacher_cv.view",
+  "Qualification verification":"qualifications.view",
+  "Manager audit history":"audit.view_subordinate",
+ };
+ const visible=features.filter(f=>{
+  const roleAllowed=!f.roles || (user && (f.roles.includes(normalizedRole)||(isOwner&&f.roles.includes("owner"))||(isManager&&f.roles.some(role=>["manager","senior_manager","junior_manager"].includes(role))));
+  if(!roleAllowed)return false;
+  const key=permissionForTitle[f.title];
+  return !isManager||!key||managerPermissions?.[key]===true;
+ });
  return <DashboardLayout>
   <div className="space-y-6">
    <div className="rounded-3xl bg-gradient-to-br from-[#0a1628] via-[#10294a] to-[#0a1628] p-6 md:p-8 text-white shadow-xl">
