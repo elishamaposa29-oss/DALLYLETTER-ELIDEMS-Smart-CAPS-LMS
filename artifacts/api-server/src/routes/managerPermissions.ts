@@ -11,8 +11,8 @@ const router: IRouter = Router();
 
 /**
  * The catalogue describes actions that can be requested. It does not grant them.
- * Senior Managers retain the established catalogue capabilities unless Owner explicitly revokes one.
- * Junior Managers receive no operational defaults; Owner grants each permission individually.
+ * No manager receives operational capabilities from role or seniority.
+ * Owner grants every permission individually; senior-only actions remain unavailable to Junior Managers.
  * Owner-only powers are deliberately absent.
  */
 export const MANAGER_PERMISSION_CATALOG = [
@@ -92,7 +92,7 @@ router.get("/catalog", requireAuth, ownerOnly, (_req, res) => {
   res.json({ permissions: MANAGER_PERMISSION_CATALOG.map((p) => ({ ...p, seniorOnly: isSeniorOnlyManagerPermission(p.key) })), protectedCapabilities: ["owner.account.manage", "owner.activity.view", "owner.audit.view", "owner.permissions.manage", "admin.account.manage"] });
 });
 
-/** Effective permissions: Senior defaults plus persisted Owner decisions; Junior grants are individual. */
+/** Effective permissions: persisted per-user Owner decisions only; no role-based defaults. */
 router.get("/me", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   // Resolve role and manager level from PostgreSQL on every read so role changes
@@ -113,8 +113,7 @@ router.get("/me", requireAuth, async (req, res): Promise<void> => {
   const result = isOwner
     ? { rows: [] as Array<{ permission_key: string; granted: boolean }> }
     : await pool.query("SELECT permission_key, granted FROM manager_permission_grants WHERE manager_user_id=$1", [user.id]);
-  const senior = isSeniorManager({ role: currentRole, managerLevel: account.manager_level ?? undefined, isManager: account.is_manager, teacherApplicationStatus: account.teacher_application_status ?? undefined });
-  const permissions = Object.fromEntries(MANAGER_PERMISSION_CATALOG.map((p) => [p.key, senior]));
+  const permissions = Object.fromEntries(MANAGER_PERMISSION_CATALOG.map((p) => [p.key, false]));
   for (const row of result.rows) if (allowedKeys.has(row.permission_key)) permissions[row.permission_key] = row.granted === true;
   res.setHeader("Cache-Control", "no-store");
   res.json({
@@ -182,22 +181,18 @@ router.patch("/:userId/role", requireAuth, ownerOnly, async (req, res): Promise<
       );
     }
     await client.query("UPDATE users SET role=$2,is_manager=false,manager_level=$3,updated_at=now() WHERE id=$1", [userId, nextRole, nextRole === "senior_manager" ? "senior" : "junior"]);
-    // Least privilege: a new manager receives only the minimum baseline.
-    // Changing JR/SR level preserves explicit grants, except Senior-only grants are revoked on demotion.
+    // Role assignment never grants permissions. Preserve only prior explicit grants;
+    // revoke senior-only grants on demotion so approval powers cannot survive demotion.
     for (const permission of MANAGER_PERMISSION_CATALOG) {
       const prior = await client.query(
         "SELECT granted FROM manager_permission_grants WHERE manager_user_id=$1 AND permission_key=$2 FOR UPDATE",
         [userId, permission.key],
       );
       const previous = prior.rows[0]?.granted ?? null;
-      // Preserve full established Senior Manager operational capability.
-      // Junior Managers start with no grants; Owner assigns each permission individually.
-      // Demotion clears every inherited Senior baseline grant; Owner must explicitly re-grant Junior permissions.
-      const granted = nextRole === "senior_manager"
-        ? (previousRole === "senior_manager" ? previous !== false : true)
-        : previousRole === "senior_manager"
-          ? false
-          : (managerRoles.has(previousRole) || target.is_manager === true) && previous === true;
+      const granted = nextRole === "junior_manager" && isSeniorOnlyManagerPermission(permission.key)
+        ? false
+        : previous === true;
+      if (previous === null && !granted) continue;
       await client.query(
         "INSERT INTO manager_permission_grants(manager_user_id,permission_key,granted,changed_by,changed_at) VALUES($1,$2,$3,$4,now()) ON CONFLICT(manager_user_id,permission_key) DO UPDATE SET granted=EXCLUDED.granted,changed_by=EXCLUDED.changed_by,changed_at=now()",
         [userId, permission.key, granted, req.currentUser!.id],
@@ -229,8 +224,7 @@ router.get("/:userId", requireAuth, ownerOnly, async (req, res): Promise<void> =
   const target = await getTargetManager(userId);
   if (!target) { res.status(404).json({ error: "Manager account not found" }); return; }
   const result = await pool.query("SELECT permission_key, granted, changed_by, changed_at FROM manager_permission_grants WHERE manager_user_id=$1 ORDER BY permission_key", [userId]);
-  const senior=isSeniorManager({role:target.role,managerLevel:target.manager_level,isManager:target.is_manager});
-  const grants = Object.fromEntries(MANAGER_PERMISSION_CATALOG.map((p) => [p.key, senior]));
+  const grants = Object.fromEntries(MANAGER_PERMISSION_CATALOG.map((p) => [p.key, false]));
   for (const row of result.rows) if (allowedKeys.has(row.permission_key)) grants[row.permission_key] = row.granted === true;
   res.setHeader("Cache-Control", "no-store");
   res.json({ manager: { id: target.id, name: target.name, email: target.email, role: target.role, managerLevel: target.manager_level }, permissions: MANAGER_PERMISSION_CATALOG.map((p) => ({ ...p, seniorOnly: isSeniorOnlyManagerPermission(p.key), granted: grants[p.key] })), updatedAt: result.rows.reduce((latest: string | null, row: any) => !latest || new Date(row.changed_at) > new Date(latest) ? row.changed_at : latest, null) });
