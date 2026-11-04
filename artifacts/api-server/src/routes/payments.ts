@@ -36,6 +36,7 @@ async function markPaynowAttempt(reference: string, status: "failed" | "cancelle
         notes = CONCAT(COALESCE(notes, ''), ' | Paynow ', CAST(${status} AS TEXT), ': ', CAST(${detail} AS TEXT)),
         updated_at = now()
     WHERE notes LIKE ${"%Paynow reference " + reference + "%"}
+      AND status = 'pending'
   `);
 }
 
