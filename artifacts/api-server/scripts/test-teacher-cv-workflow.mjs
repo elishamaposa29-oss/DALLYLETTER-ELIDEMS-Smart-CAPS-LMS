@@ -96,6 +96,13 @@ assert.equal(managerQueue.status,200,"Individually authorized Junior Manager can
 assert(managerQueue.data.applications.some(item=>Number(item.id)===Number(approvalApplicant.id)),"Authorized manager can see the submitted application");
 const managerDetail=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/details",{token:managerToken});
 assert.equal(managerDetail.status,200,"Authorized manager can open applicant details");
+const grantManagerChat=await request("/api/manager-permissions/"+managerId,{token:ownerToken,method:"PUT",body:{permissions:[{key:"teacher_cv.chat",granted:true}]}});
+assert.equal(grantManagerChat.status,200,"Owner can grant the existing applicant chat capability individually");
+const managerChatMessage=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/chat",{token:managerToken,method:"POST",body:{body:"Your submitted application is being reviewed."}});
+assert.equal(managerChatMessage.status,201,"Junior Manager with explicit chat grant can use the existing applicant conversation");
+const applicantChatHistory=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/chat",{token:approvalApplicant.token});
+assert.equal(applicantChatHistory.status,200);
+assert(applicantChatHistory.data.some(message=>message.body==="Your submitted application is being reviewed."),"Applicant can read the manager's persisted conversation message");
 const deniedManagerRow=await pool.query("INSERT INTO users(email,password_hash,name,role,is_manager,manager_level) VALUES($1,$2,$3,'junior_manager',true,'junior') RETURNING id",["teacher-cv-denied-"+suffix+"@example.test","test-only-not-used","CV Test Unauthorised Manager"]);
 const deniedManagerId=deniedManagerRow.rows[0].id;
 const deniedEncoded=Buffer.from(JSON.stringify({userId:deniedManagerId,ts:Date.now()})).toString("base64url");
