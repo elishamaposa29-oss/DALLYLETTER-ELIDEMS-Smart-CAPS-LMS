@@ -3,7 +3,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { useListPayments } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, CheckCircle2, Clock, AlertTriangle, Receipt, CreditCard, ExternalLink, Bell, Copy, Phone, Bitcoin } from "lucide-react";
+import { Loader2, CheckCircle2, Clock, AlertTriangle, XCircle, Receipt, CreditCard, ExternalLink, Bell, Copy, Phone, Bitcoin } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -99,6 +99,8 @@ export default function StudentPayments() {
       case "paid": return <CheckCircle2 className="h-5 w-5 text-emerald-500" />;
       case "pending": return <Clock className="h-5 w-5 text-amber-500" />;
       case "overdue": return <AlertTriangle className="h-5 w-5 text-red-500" />;
+      case "failed": return <XCircle className="h-5 w-5 text-red-600" />;
+      case "cancelled": return <XCircle className="h-5 w-5 text-muted-foreground" />;
       default: return null;
     }
   };
@@ -108,6 +110,8 @@ export default function StudentPayments() {
       case "paid": return <Badge className="bg-emerald-500/10 text-emerald-700 border border-emerald-300 font-semibold">✓ Paid</Badge>;
       case "pending": return <Badge className="bg-amber-500/10 text-amber-700 border border-amber-300 font-semibold">⏳ Pending</Badge>;
       case "overdue": return <Badge className="bg-red-500/10 text-red-700 border border-red-300 font-semibold">⚠ Overdue</Badge>;
+      case "failed": return <Badge className="bg-red-500/10 text-red-700 border border-red-300 font-semibold">✕ Payment failed</Badge>;
+      case "cancelled": return <Badge variant="outline">Cancelled</Badge>;
       default: return <Badge variant="outline">{status}</Badge>;
     }
   };
