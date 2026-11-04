@@ -129,7 +129,7 @@ router.post("/payments/paynow/result", async (req, res): Promise<void> => {
           notes = CONCAT(COALESCE(notes, ''), ' | Paynow callback: ', CAST(${providerStatus} AS TEXT))
       WHERE notes LIKE ${"%Paynow reference " + reference + "%"}
         AND amount::numeric = ${callbackAmount}
-        AND (status = 'pending' OR (${normalizedStatus} = 'refunded' AND status = 'paid'))
+        AND (status = 'pending' OR (CAST(${normalizedStatus} AS TEXT) = 'refunded' AND status = 'paid'))
       RETURNING student_id
     `);
     const rows = (updated as unknown as { rows?: Array<{ student_id: number }> }).rows ?? [];
