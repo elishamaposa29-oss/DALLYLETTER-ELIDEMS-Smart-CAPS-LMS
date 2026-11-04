@@ -115,31 +115,40 @@ router.post("/payments/paynow/result", async (req, res): Promise<void> => {
     null;
   if (!normalizedStatus) { res.status(400).send("Unsupported Paynow status"); return; }
 
-  const updated = await db.execute(sql`
-    UPDATE payments
-    SET status = ${normalizedStatus},
-        notes = CONCAT(COALESCE(notes, ''), ' | Paynow callback: ', ${providerStatus})
-    WHERE notes LIKE ${"%Paynow reference " + reference + "%"}
-      AND status <> 'paid'
-    RETURNING student_id
-  `);
-  const rows = (updated as unknown as { rows?: Array<{ student_id: number }> }).rows ?? [];
-  if (rows.length === 0) {
-    const existing = await db.execute(sql`
-      SELECT id FROM payments WHERE notes LIKE ${"%Paynow reference " + reference + "%"} LIMIT 1
-    `);
-    const existingRows = (existing as unknown as { rows?: unknown[] }).rows ?? [];
-    if (existingRows.length === 0) { res.status(404).send("Payment reference not found"); return; }
-    // A repeated callback for an already-paid payment is acknowledged without changing it.
-    res.status(200).send("OK");
+  const callbackAmount = Number(body.amount);
+  if (!Number.isFinite(callbackAmount) || callbackAmount <= 0) {
+    res.status(400).send("Invalid payment amount");
     return;
   }
 
-  if (normalizedStatus === "paid") {
-    const studentId = Number(rows[0].student_id);
-    await db.update(usersTable)
-      .set({ lastPaymentDate: new Date().toISOString() })
-      .where(eq(usersTable.id, studentId));
+  const result = await db.transaction(async (tx) => {
+    const updated = await tx.execute(sql`
+      UPDATE payments
+      SET status = ${normalizedStatus},
+          notes = CONCAT(COALESCE(notes, ''), ' | Paynow callback: ', ${providerStatus})
+      WHERE notes = ${"Paynow reference " + reference}
+        AND amount::numeric = ${callbackAmount}
+        AND status = 'pending'
+      RETURNING student_id
+    `);
+    const rows = (updated as unknown as { rows?: Array<{ student_id: number }> }).rows ?? [];
+    if (rows.length > 0 && normalizedStatus === "paid") {
+      await tx.update(usersTable)
+        .set({ lastPaymentDate: new Date().toISOString() })
+        .where(eq(usersTable.id, Number(rows[0].student_id)));
+    }
+    return { updated: rows.length > 0 };
+  });
+
+  if (!result.updated) {
+    const existing = await db.execute(sql`
+      SELECT id FROM payments
+      WHERE notes = ${"Paynow reference " + reference}
+      LIMIT 1
+    `);
+    const existingRows = (existing as unknown as { rows?: unknown[] }).rows ?? [];
+    if (existingRows.length === 0) { res.status(404).send("Payment reference not found"); return; }
+    // Duplicate or out-of-order callbacks cannot reopen or reverse a terminal payment.
   }
   res.status(200).send("OK");
 });
