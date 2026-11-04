@@ -143,7 +143,7 @@ router.post("/payments/paynow/result", async (req, res): Promise<void> => {
   if (!result.updated) {
     const existing = await db.execute(sql`
       SELECT id, amount FROM payments
-      WHERE notes = ${"Paynow reference " + reference}
+      WHERE notes LIKE ${"%Paynow reference " + reference + "%"}
       LIMIT 1
     `);
     const existingRows = (existing as unknown as { rows?: Array<{ id: number; amount: string | number }> }).rows ?? [];
