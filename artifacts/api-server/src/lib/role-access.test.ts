@@ -245,21 +245,15 @@ test("manager moderation follows hierarchy and protects Owner, Admin, and senior
  assert.equal(canModerateUser(owner,{role:"owner"}),false);
 });
 
-test("senior managers retain established operational defaults while junior managers require individual grants",()=>{
+test("every manager permission requires an explicit per-user Owner grant regardless of seniority",()=>{
  for(const role of ["manager","junior_manager","senior_manager"]){
-  for(const key of ["manager.dashboard.view","users.view","owner.chat","transfers.approve","reports.review","teacher_cv.authorize","attendance.view","recordbook.view"]){
-   assert.equal(defaultManagerPermission(role,role==="senior_manager"?"senior":"junior",false,key),role==="senior_manager",role+" default for "+key);
+  for(const key of ["manager.dashboard.view","users.view","owner.chat","transfers.approve","reports.review","teacher_cv.authorize","attendance.view","recordbook.view","manager.monitoring.view"]){
+   assert.equal(defaultManagerPermission(role,role==="senior_manager"?"senior":"junior",false,key),false,role+" must not inherit "+key);
   }
  }
- assert.equal(defaultManagerPermission("senior_manager","senior",false,"manager.monitoring.view"),true);
- assert.equal(defaultManagerPermission("senior_manager","senior",false,"transfers.approve"),true);
- assert.equal(defaultManagerPermission("senior_manager","senior",false,"teacher_cv.authorize"),true);
- assert.equal(defaultManagerPermission("junior_manager","junior",false,"manager.monitoring.view"),false);
- assert.equal(defaultManagerPermission("manager","junior",false,"manager.monitoring.view"),false);
  assert.equal(isSeniorOnlyManagerPermission("manager.monitoring.view"),true);
  assert.equal(isSeniorOnlyManagerPermission("teacher_cv.chat"),false);
- assert.equal(defaultManagerPermission("admin",undefined,false,"manager.monitoring.view"),false);
+ for(const role of ["admin","teacher","student","owner"]) assert.equal(defaultManagerPermission(role,undefined,false,"users.view"),false);
  assert.equal(defaultManagerPermission("senior_manager","senior",false,"owner.activity.view"),false);
  assert.equal(defaultManagerPermission("senior_manager","senior",false,"unregistered.permission"),false);
- assert.equal(defaultManagerPermission("teacher",undefined,true,"users.view"),false);
 });
