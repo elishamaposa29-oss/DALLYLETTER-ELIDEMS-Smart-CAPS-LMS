@@ -240,7 +240,14 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "All Review Items", href: "/manager/review-queue", icon: FileCheck2, section: "Approvals", accent: "text-red-300", permissionKey: "manager.dashboard.view" },
       { label: "Content Moderation", href: "/manager/safety", icon: Shield, section: "Approvals", accent: "text-orange-300", permissionKey: "moderation.view" },
     ];
-  } else if (["owner","admin","platform_owner"].includes(normalizedRole)) {
+  } else if (normalizedRole === "admin") {
+    // Admin is a separate operational role, never an Owner alias.
+    // ProtectedRoute grants Admin access only to these shared workspaces.
+    navItems = [
+      { label: "Profile Hub", href: "/profile-hub", icon: Users },
+      { label: "Feature Preview Center", href: "/features", icon: Sparkles },
+    ];
+  } else if (["owner","platform_owner"].includes(normalizedRole)) {
     navItems = [
       { label: "Overview", href: "/admin", icon: Home, section: "Platform" },
       { label: "Profile Hub", href: "/profile-hub", icon: Users },
@@ -279,7 +286,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     navItems = navItems.filter(item => !item.permissionKey || managerPermissions[item.permissionKey] === true);
   }
 
-  const homeHref = ["student","prefect"].includes(normalizedRole) ? "/" : normalizedRole === "teacher" ? "/teacher" : ["manager","senior_manager","junior_manager"].includes(normalizedRole) ? "/manager" : "/admin";
+  const homeHref = ["student","prefect"].includes(normalizedRole) ? "/" : normalizedRole === "teacher" ? "/teacher" : ["manager","senior_manager","junior_manager"].includes(normalizedRole) ? "/manager" : normalizedRole === "admin" ? "/features" : "/admin";
 
   const NavLinks = ({ onNav }: { onNav?: () => void }) => {
     let lastSection: string | undefined;
