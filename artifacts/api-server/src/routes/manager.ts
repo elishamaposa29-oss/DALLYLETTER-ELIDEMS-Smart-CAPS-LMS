@@ -3,7 +3,7 @@ import { db, pool } from "@workspace/db";
 import { usersTable, classesTable, lessonsTable, paymentsTable, ownerAlertsTable, assignmentsTable, assignmentSubmissionsTable, pollsTable, exercisesTable, auditLogsTable, attendanceTable, userAchievementsTable, achievementsTable, exerciseSubmissionsTable, pollSubmissionsTable, contentFlagsTable } from "@workspace/db/schema";
 import { eq, desc, and, inArray } from "drizzle-orm";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
-import { isSeniorManager, canModerateUser } from "../lib/role-access";
+import { canModerateUser } from "../lib/role-access";
 import { requireManagerPermission, managerHasPermission } from "../lib/manager-permission-policy";
 
 const router = Router();
@@ -69,18 +69,22 @@ router.get("/dashboard", requireAuth, requireManager, requireManagerPermission("
   const visibleTeachers=teachers.filter((row:any)=>canSeeUser(Number(row.id)));
   const visibleStudents=students.filter((row:any)=>canSeeUser(Number(row.id)));
   const visibleAlerts = await visibleManagerAlerts(req.currentUser!, alerts);
+  const [canViewQualifications, canViewTeacherCv] = await Promise.all([
+    managerHasPermission(actor, "qualifications.view"),
+    managerHasPermission(actor, "teacher_cv.view"),
+  ]);
 
   // Rank from observed work, marking, and learner engagement rather than the manually editable score.
   const [transferRows, reportRows, awardRows, qualificationRows, enrollmentRows, contentFlags, teacherApplications] = await Promise.all([
     pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,r.reason,r.status,r.created_at FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id WHERE r.status='pending' AND ($1::boolean OR lower(u.role) NOT IN ('owner','platform_owner')) ORDER BY r.created_at ASC LIMIT 100", [isOwnerRole(req.currentUser!.role)]),
     pool.query("SELECT d.id,d.learner_id,u.name AS learner_name,d.report_type,d.term_label,d.status,d.created_at FROM academic_report_drafts d JOIN users u ON u.id=d.learner_id WHERE d.status='pending_review' AND ($1::boolean OR lower(u.role) NOT IN ('owner','platform_owner')) ORDER BY d.created_at ASC LIMIT 100", [isOwnerRole(req.currentUser!.role)]),
     pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,a.name AS achievement_name,a.icon AS achievement_icon,r.recommendation_note,r.created_at FROM achievement_award_recommendations r JOIN users u ON u.id=r.learner_id JOIN achievements a ON a.id=r.achievement_id WHERE r.status='pending_senior_review' AND ($1::boolean OR lower(u.role) NOT IN ('owner','platform_owner')) ORDER BY r.created_at ASC LIMIT 100", [isOwnerRole(req.currentUser!.role)]),
-    isSeniorManager(req.currentUser!)
+    canViewQualifications
       ? pool.query("SELECT q.id,q.user_id,u.name AS teacher_name,q.title,q.institution,q.created_at FROM teacher_qualifications q JOIN users u ON u.id=q.user_id WHERE q.verification_status='pending' AND ($1::boolean OR lower(u.role) NOT IN ('owner','platform_owner')) ORDER BY q.created_at ASC LIMIT 100", [isOwnerRole(req.currentUser!.role)])
       : Promise.resolve({ rows: [] as any[] }),
     pool.query("SELECT c.teacher_id, COUNT(DISTINCT e.learner_id)::int AS learners_joined FROM classes c LEFT JOIN enrollments e ON e.class_id=c.id GROUP BY c.teacher_id"),
     db.select().from(contentFlagsTable).where(eq(contentFlagsTable.status, "pending")).orderBy(desc(contentFlagsTable.createdAt)).limit(100),
-    isSeniorManager(req.currentUser!) ? pool.query("SELECT id,name,email,created_at,teacher_review_deadline FROM users WHERE role=$1 AND teacher_application_status=$2 ORDER BY created_at ASC LIMIT 100", ["teacher", "pending_review"]) : Promise.resolve({ rows: [] as any[] }),
+    canViewTeacherCv ? pool.query("SELECT id,name,email,created_at,teacher_review_deadline FROM users WHERE role=$1 AND teacher_application_status=$2 ORDER BY created_at ASC LIMIT 100", ["teacher", "pending_review"]) : Promise.resolve({ rows: [] as any[] }),
   ]);
   const visibleTransferRows=transferRows.rows.filter((row:any)=>canSeeUser(Number(row.learner_id)));
   const visibleReportRows=reportRows.rows.filter((row:any)=>canSeeUser(Number(row.learner_id)));
@@ -142,15 +146,13 @@ router.get("/dashboard", requireAuth, requireManager, requireManagerPermission("
   const visibleExerciseIds = new Set(visibleExercises.map((row: any) => row.id));
   const totalMarkedAssignments = assignmentSubmissions.filter((s: any) => visibleAssignmentIds.has(s.assignmentId) && (s.gradedAt || s.gradedBy || s.marks !== null)).length;
   const totalMarkedExercises = exerciseSubmissions.filter((s: any) => visibleExerciseIds.has(s.exerciseId) && (s.markedAt || s.returnedAt || ["marked","returned","graded"].includes(String(s.status).toLowerCase()))).length;
-  const [canViewUsers, canViewRecordBook, canViewTransfers, canViewReports, canViewAchievements, canViewQualifications, canViewModeration, canViewTeacherCv, canViewNotifications] = await Promise.all([
+  const [canViewUsers, canViewRecordBook, canViewTransfers, canViewReports, canViewAchievements, canViewModeration, canViewNotifications] = await Promise.all([
     managerHasPermission(req.currentUser!, "users.view"),
     managerHasPermission(req.currentUser!, "recordbook.view"),
     managerHasPermission(req.currentUser!, "transfers.view"),
     managerHasPermission(req.currentUser!, "reports.view"),
     managerHasPermission(req.currentUser!, "achievements.view"),
-    managerHasPermission(req.currentUser!, "qualifications.view"),
     managerHasPermission(req.currentUser!, "moderation.view"),
-    managerHasPermission(req.currentUser!, "teacher_cv.view"),
     managerHasPermission(req.currentUser!, "notifications.view"),
   ]);
   const permittedQueue = reviewQueue.filter((item: any) => {
