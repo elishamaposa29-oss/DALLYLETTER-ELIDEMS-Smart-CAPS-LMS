@@ -253,7 +253,7 @@ router.post("/payments/notify-admin", requireAuth, async (req, res): Promise<voi
     res.status(503).json({ error: "No Owner account is available to receive payment reports." });
     return;
   }
-  const amountStr = `${amount.toFixed(2)}`;
+  const amountStr = `$${amount.toFixed(2)}`;
 
   // Record all Owner notifications and the audit activity as one database transaction.
   await db.transaction(async (tx) => {
