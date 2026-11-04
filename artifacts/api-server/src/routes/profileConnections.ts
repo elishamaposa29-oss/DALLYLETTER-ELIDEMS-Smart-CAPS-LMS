@@ -75,7 +75,7 @@ export async function canViewProfileSection(actor: NonNullable<Express.Request["
         overview: "users.view", qualifications: "qualifications.view", subjects: "users.view",
         enrollments: "users.view", achievements: "achievements.view", reports: "reports.view",
         attendance: "attendance.view", register: "attendance.view", transfers: "transfers.view",
-        teacher_documents: "teacher_cv.view", groups: "groups.manage", activity: "audit.view_subordinate",
+        teacher_documents: "qualifications.view", groups: "groups.manage", activity: "audit.view_subordinate",
       };
       const requiredPermission = managerSectionPermissions[section];
       return requiredPermission ? managerHasPermission(actor, requiredPermission) : false;
