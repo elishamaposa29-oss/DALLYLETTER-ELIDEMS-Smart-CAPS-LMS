@@ -44,16 +44,23 @@ router.post("/submit",async(req,res)=>{
   "INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,NULL,'submitted',$2,'pending_review','CV submission persisted. Notifications are best-effort and do not control workflow.')",
   [actor.id,(actor as any).teacherApplicationStatus||"pending_review"]
  );
- const reviewerResult=await pool.query(
-  "SELECT DISTINCT u.id,u.role FROM users u LEFT JOIN manager_permission_grants g ON g.manager_user_id=u.id AND g.permission_key='teacher_cv.view' AND g.granted=true WHERE (lower(u.role) IN ('owner','platform_owner') OR g.manager_user_id IS NOT NULL) AND u.is_blocked=false AND u.is_suspended=false"
- );
- const reviewerIds=reviewerResult.rows.map((r:any)=>Number(r.id)).filter((id:number)=>Number.isSafeInteger(id)&&id>0);
+ let reviewerRows:any[]=[];
+ try{
+  const reviewerResult=await pool.query(
+   "SELECT DISTINCT u.id,u.role FROM users u LEFT JOIN manager_permission_grants g ON g.manager_user_id=u.id AND g.permission_key='teacher_cv.view' AND g.granted=true WHERE (lower(u.role) IN ('owner','platform_owner') OR g.manager_user_id IS NOT NULL) AND u.is_blocked=false AND u.is_suspended=false"
+  );
+  reviewerRows=reviewerResult.rows;
+ }catch(error){
+  // The persisted CV submission is still valid when reviewer-notification lookup is temporarily unavailable.
+  console.error("[teacher-cv] Reviewer lookup failed after submission was saved.",error instanceof Error?error.message:"unknown");
+ }
+ const reviewerIds=reviewerRows.map((r:any)=>Number(r.id)).filter((id:number)=>Number.isSafeInteger(id)&&id>0);
  const title="Teacher CV submitted for review";
  const message=(actor.name||"A teacher applicant")+" submitted a CV and supporting documents. Open the Teacher CV Approval Workspace to review the full application.";
  try{
   await db.insert(notificationsTable).values([
    {recipientId:actor.id,title,message:"Your CV and supporting documents were submitted. You can follow the application from your Profile Hub.",link:"/profile-hub",type:"teacher_cv_submission"},
-   ...reviewerResult.rows.map((reviewer:any)=>({recipientId:Number(reviewer.id),title,message,link:["owner","platform_owner"].includes(String(reviewer.role||"").toLowerCase())?"/admin/teacher-cv-workspace":"/manager/teacher-cv-workspace",type:"teacher_cv_submission"}))
+   ...reviewerRows.map((reviewer:any)=>({recipientId:Number(reviewer.id),title,message,link:["owner","platform_owner"].includes(String(reviewer.role||"").toLowerCase())?"/admin/teacher-cv-workspace":"/manager/teacher-cv-workspace",type:"teacher_cv_submission"}))
   ]);
  }catch(error){console.error("[teacher-cv] In-app submission notification failed; CV remains submitted.",error instanceof Error?error.message:"unknown");}
  const emailTargets=[actor.id,...reviewerIds];
