@@ -205,6 +205,7 @@ test("pending teacher API policy never blocks authentication and permits all sel
   ["GET","/api/academic-records/current-year"],
   ["GET","/api/achievements/my"],
   ["GET","/api/subjects/catalog"],
+   ["GET","/api/config/currentYear"],
   ["GET","/api/profile/41/social"],
   ["GET","/api/profile/41/section/attendance"],
   ["GET","/api/profile/41/section/qualifications"],
