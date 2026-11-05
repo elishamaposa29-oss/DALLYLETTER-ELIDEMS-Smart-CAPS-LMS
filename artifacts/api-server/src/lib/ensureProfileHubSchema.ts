@@ -10,6 +10,26 @@ export async function ensureProfileHubSchema(): Promise<void> {
     await client.query("BEGIN");
     await client.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_email text");
     await client.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_email_verified_at timestamptz");
+    // Recovery data is shared by signup, account recovery and password-reset flows.
+    // Provision it before serving requests so the auth path never depends on a
+    // user-facing route being called first.
+    await client.query(`CREATE TABLE IF NOT EXISTS account_recovery_profiles (
+      user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      recovery_email text,
+      recovery_email_verified_at timestamptz,
+      recovery_phone text,
+      recovery_phone_verified_at timestamptz,
+      security_question text,
+      security_answer_hash text,
+      verification_code_hash text,
+      verification_expires_at timestamptz,
+      phone_verification_code_hash text,
+      phone_verification_expires_at timestamptz,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query("ALTER TABLE account_recovery_profiles ADD COLUMN IF NOT EXISTS phone_verification_code_hash text");
+    await client.query("ALTER TABLE account_recovery_profiles ADD COLUMN IF NOT EXISTS phone_verification_expires_at timestamptz");
+    await client.query("CREATE INDEX IF NOT EXISTS account_recovery_profiles_email_idx ON account_recovery_profiles(lower(recovery_email)) WHERE recovery_email IS NOT NULL");
     await client.query(`CREATE TABLE IF NOT EXISTS teacher_documents (
       id serial PRIMARY KEY, user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       document_type text NOT NULL, file_name text NOT NULL, mime_type text NOT NULL,
