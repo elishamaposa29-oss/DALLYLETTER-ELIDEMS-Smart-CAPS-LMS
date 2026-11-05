@@ -113,6 +113,19 @@ test("pending teacher applicants cannot access academic staff tools or staff AI"
  enforceAcademicStaffAccess({currentUser:pending},response.res,()=>{nextCalls+=1;});
  assert.equal(response.status(),403);assert.equal(nextCalls,0);
 });
+test("rejected applicants remain authenticated but cannot use teaching operations until scheduled conversion",()=>{
+ const rejected={id:41,role:"teacher",isManager:false,teacherApplicationStatus:"rejected"};
+ assert.equal(canManageAcademicContent(rejected),false);
+ assert.equal(canUseStaffAI(rejected),false);
+ assert.equal(canAccessManager(rejected),false);
+ assert.equal(canPendingTeacherUseRoute(rejected,"GET","/api/auth/me"),true);
+ assert.equal(canPendingTeacherUseRoute(rejected,"POST","/api/auth/login"),true);
+ assert.equal(canPendingTeacherUseRoute(rejected,"GET","/api/users/me/teacher-cv"),true);
+ assert.equal(canPendingTeacherUseRoute(rejected,"GET","/api/notifications"),true);
+ assert.equal(canPendingTeacherUseRoute(rejected,"POST","/api/lessons"),false);
+ assert.equal(canPendingTeacherUseRoute(rejected,"GET","/api/dashboard"),false);
+});
+
 test("approved teachers and owners retain academic staff access",()=>{
  assert.equal(canManageAcademicContent({role:"teacher",teacherApplicationStatus:"approved"}),true);
  assert.equal(canUseStaffAI({role:"teacher",teacherApplicationStatus:"approved"}),true);
