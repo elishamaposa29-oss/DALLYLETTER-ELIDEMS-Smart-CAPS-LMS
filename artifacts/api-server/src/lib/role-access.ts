@@ -78,6 +78,9 @@ export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, 
     (method === "GET" && new RegExp("^/profile/[0-9]+/section/[a-zA-Z0-9_-]+$").test(path)) ||
     (method === "GET" && new RegExp("^/users/[0-9]+/public-profile$").test(path)) ||
     (method === "GET" && new RegExp("^/users/[0-9]+/teacher-documents$").test(path)) ||
+    (method === "GET" && new RegExp("^/users/[0-9]+/teacher-documents/[0-9]+$").test(path)) ||
+    (method === "GET" && new RegExp("^/achievements/user/[0-9]+$").test(path)) ||
+    (method === "GET" && path === "/achievements") ||
     (method === "POST" && new RegExp("^/profile/[0-9]+/connect$").test(path)) ||
     (method === "GET" && ["/profile/connections/friends","/profile/connections/requests","/notifications"].includes(path)) ||
     (method === "PUT" && path === "/profile/me/privacy") ||
