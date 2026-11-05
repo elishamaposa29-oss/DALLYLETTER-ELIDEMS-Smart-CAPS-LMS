@@ -198,6 +198,7 @@ test("pending teacher API policy allows only own CV, evidence, Profile Hub and a
   ["GET","/api/users/me/subjects"],
   ["PUT","/api/users/me/subjects"],
   ["GET","/api/users/me/payout-preferences"],
+  // Pending applicants may read only their own academic/profile records.
   ["GET","/api/academic-records/current-year"],
   ["GET","/api/academic-records/me"],
   ["GET","/api/academic-records/reports/me"],
