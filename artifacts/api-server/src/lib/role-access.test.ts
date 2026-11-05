@@ -187,6 +187,32 @@ test("ordinary teachers and learners retain existing access without manager auth
  }
 });
 
+test("pending teacher API policy never blocks authentication and permits all self Profile Hub data",()=>{
+ const applicant={id:41,role:"teacher",teacherApplicationStatus:"pending_review"};
+ for(const [method,path] of [
+  ["GET","/api/auth/me"],
+  ["POST","/api/auth/login"],
+  ["POST","/api/auth/register"],
+  ["POST","/api/auth/google"],
+  ["GET","/api/users/me/enrollments-summary"],
+  ["GET","/api/users/me/enrollments"],
+  ["GET","/api/users/me/notification-email"],
+  ["GET","/api/users/me/subjects"],
+  ["GET","/api/users/me/payout-preferences"],
+  ["GET","/api/users/me/recovery-profile"],
+  ["GET","/api/academic-records/reports/me"],
+  ["GET","/api/academic-records/transfer-requests"],
+  ["GET","/api/academic-records/current-year"],
+  ["GET","/api/achievements/my"],
+  ["GET","/api/subjects/catalog"],
+  ["GET","/api/profile/41/social"],
+ ]) assert.equal(canPendingTeacherUseRoute(applicant,method,path),true,method+" "+path);
+ const rejected={...applicant,teacherApplicationStatus:"rejected_pending_conversion"};
+ for(const [method,path] of [["GET","/api/auth/me"],["POST","/api/auth/login"],["GET","/api/users/me/notification-email"],["POST","/api/teacher-cv-workspace/submit"]])
+  assert.equal(canPendingTeacherUseRoute(rejected,method,path),true,method+" "+path);
+ assert.equal(canPendingTeacherUseRoute(rejected,"POST","/api/lessons"),false);
+});
+
 test("pending teacher API policy allows only own CV, evidence, Profile Hub and application chat",()=>{
  const applicant={id:41,role:"teacher",teacherApplicationStatus:"pending_review"};
  for(const [method,path] of [
