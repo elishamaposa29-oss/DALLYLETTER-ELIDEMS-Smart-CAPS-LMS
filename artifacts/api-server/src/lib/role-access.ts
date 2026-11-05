@@ -64,7 +64,10 @@ export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, 
   const cvAllowed =
     // Keep authenticated applicants able to restore their session and sign out.
     (method === "GET" && path === "/auth/me") ||
-    (method === "POST" && path === "/auth/logout") ||
+    (method === "POST" && ["/auth/login", "/auth/google", "/auth/logout"].includes(path)) ||
+    // Personal notifications are part of the signed-in Profile Hub; creation/deletion remain blocked.
+    (method === "GET" && path === "/notifications") ||
+    (method === "PATCH" && /^\/notifications\/\d+\/read$/.test(path)) ||
     (method === "GET" && path === "/users/me/teacher-cv") ||
     (method === "GET" && path === "/users/me/teacher-cv/pdf") ||
     (method === "PATCH" && path === "/users/me/teacher-cv") ||
