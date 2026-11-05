@@ -16,7 +16,7 @@ export function isOwnerRole(role: unknown): boolean {
 
 function isTeacherRestricted(user: RoleLikeUser): boolean {
   return normalizeRole(user.role) === "teacher" &&
-    ["pending_review", "rejected_pending_conversion"].includes(String(user.teacherApplicationStatus ?? ""));
+    ["pending_review", "rejected_pending_conversion"].includes(String(user.teacherApplicationStatus ?? "").trim().toLowerCase());
 }
 
 function normalizedManagerLevel(user: RoleLikeUser): string {
@@ -59,8 +59,9 @@ function hasManagerStaffRole(user: RoleLikeUser): boolean {
 /** API-level allowlist for applicants who have not yet been authorized to teach. */
 export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, methodValue: string, rawPath: string): boolean {
   if (!isTeacherRestricted(user)) return true;
-  const method = methodValue.toUpperCase();
-  const path = rawPath.startsWith("/api/") ? rawPath.slice(4) : rawPath;
+  const method = methodValue.trim().toUpperCase();
+  const normalizedPath = rawPath.split("?")[0].replace(/\/{2,}/g, "/").replace(/\/$/, "") || "/";
+  const path = normalizedPath.startsWith("/api/") ? normalizedPath.slice(4) : normalizedPath;
   const selfId = String(user.id ?? "");
   // Authentication and account recovery must never be blocked by the teacher CV gate.
   // A pending applicant must be able to sign in, refresh /auth/me, and switch accounts.
@@ -73,9 +74,11 @@ export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, 
     (method === "POST" && path === "/users/me/qualifications") ||
     (method === "GET" && ["/users/me/enrollments-summary","/users/me/enrollments","/users/me/notification-email","/users/me/subjects","/users/me/payout-preferences","/users/me/recovery-profile","/academic-records/reports/me","/academic-records/transfer-requests","/academic-records/current-year","/achievements/my","/subjects/catalog"].includes(path)) ||
     (method === "GET" && path === "/profile/" + selfId + "/social") ||
+    (method === "GET" && new RegExp("^/profile/" + selfId + "/section/[a-zA-Z0-9_-]+$").test(path)) ||
     (method === "GET" && ["/profile/connections/friends","/profile/connections/requests","/notifications"].includes(path)) ||
     (method === "PUT" && path === "/profile/me/privacy") ||
     (method === "PATCH" && path.startsWith("/profile/connections/")) ||
+    (method === "POST" && /^\\/profile\\/\\d+\\/connect$/.test(path)) ||
     (method === "PATCH" && path.startsWith("/notifications/") && path.endsWith("/read")) ||
     (method === "POST" && path === "/users/me/qualifications/bulk") ||
     (method === "POST" && path === "/users/me/teacher-documents") ||
