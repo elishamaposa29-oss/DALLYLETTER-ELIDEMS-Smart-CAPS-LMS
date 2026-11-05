@@ -22,6 +22,7 @@ export default function AdminLessons() {
   const [subjectFilter, setSubjectFilter] = useState("all");
   const [canDelete, setCanDelete] = useState(false);
   useEffect(() => {
+    // Admin is a separate authority class; manager grants are never queried or inherited here.
     if (!user) return;
     if (String(user.role).toLowerCase() === "admin") { setCanDelete(false); return; }
     fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: "Bearer " + (localStorage.getItem("dallyletter_token") ?? "") } }).then(r=>r.json()).then(d=>setCanDelete(Boolean(d?.isOwner||d?.permissions?.["lessons.delete"]))).catch(()=>setCanDelete(false));
