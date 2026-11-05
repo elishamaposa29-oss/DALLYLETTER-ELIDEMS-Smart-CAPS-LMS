@@ -2,7 +2,7 @@
 import { Router, type IRouter } from "express";
 import { eq, count, sum, sql } from "drizzle-orm";
 import { db, usersTable, lessonsTable, classesTable, studyGroupsTable, paymentsTable, messagesTable, activityLogTable } from "@workspace/db";
-import { canManageAcademicContent, requireAuth, requireOwner } from "../lib/auth-middleware";
+import { isOwnerRole, requireAuth, requireOwner } from "../lib/auth-middleware";
 
 const router: IRouter = Router();
 
@@ -27,12 +27,9 @@ router.get("/dashboard/stats", requireAuth, async (req, res): Promise<void> => {
     recentMessages: recentMsgCount.count,
   };
 
-  if (!canManageAcademicContent(user) && user.role !== "student") {
-    res.json(baseStats);
-    return;
-  }
-
-  if (user.role === "student") {
+  // Payment totals are sensitive financial data. Only the live Owner role may
+  // receive them; teacher/manager/admin dashboards receive academic counts only.
+  if (!isOwnerRole(user.role)) {
     res.json(baseStats);
     return;
   }
