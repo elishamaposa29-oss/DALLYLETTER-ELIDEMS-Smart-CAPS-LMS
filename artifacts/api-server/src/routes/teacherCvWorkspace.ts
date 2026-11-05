@@ -47,7 +47,6 @@ router.post("/submit",async(req,res)=>{
   "SELECT DISTINCT u.id,u.role FROM users u LEFT JOIN manager_permission_grants g ON g.manager_user_id=u.id AND g.permission_key='teacher_cv.view' AND g.granted=true WHERE (lower(u.role) IN ('owner','platform_owner') OR g.manager_user_id IS NOT NULL) AND u.is_blocked=false AND u.is_suspended=false"
  );
  const reviewerIds=reviewerResult.rows.map((r:any)=>Number(r.id)).filter((id:number)=>Number.isSafeInteger(id)&&id>0);
- const notificationRecipients=[...new Set([actor.id,...reviewerIds])];
  const title="Teacher CV submitted for review";
  const message=(actor.name||"A teacher applicant")+" submitted a CV and supporting documents. Open the Teacher CV Approval Workspace to review the full application.";
  try{
