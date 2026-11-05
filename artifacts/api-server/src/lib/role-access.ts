@@ -62,6 +62,9 @@ export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, 
   const path = rawPath.startsWith("/api/") ? rawPath.slice(4) : rawPath;
   const selfId = String(user.id ?? "");
   const cvAllowed =
+    // Keep authenticated applicants able to restore their session and sign out.
+    (method === "GET" && path === "/auth/me") ||
+    (method === "POST" && path === "/auth/logout") ||
     (method === "GET" && path === "/users/me/teacher-cv") ||
     (method === "GET" && path === "/users/me/teacher-cv/pdf") ||
     (method === "PATCH" && path === "/users/me/teacher-cv") ||
