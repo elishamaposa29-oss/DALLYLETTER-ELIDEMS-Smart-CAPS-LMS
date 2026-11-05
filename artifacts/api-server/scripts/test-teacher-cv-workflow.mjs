@@ -103,6 +103,8 @@ assert.equal(managerChatMessage.status,201,"Junior Manager with explicit chat gr
 const applicantChatHistory=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/chat",{token:approvalApplicant.token});
 assert.equal(applicantChatHistory.status,200);
 assert(applicantChatHistory.data.some(message=>message.body==="Your submitted application is being reviewed."),"Applicant can read the manager's persisted conversation message");
+const grantManagerAuthorize=await request("/api/manager-permissions/"+managerId,{token:ownerToken,method:"PUT",body:{permissions:[{key:"teacher_cv.authorize",granted:true}]}});
+assert.equal(grantManagerAuthorize.status,200,"Owner can grant this manager the separate CV authorization permission");
 const deniedManagerRow=await pool.query("INSERT INTO users(email,password_hash,name,role,is_manager,manager_level) VALUES($1,$2,$3,'junior_manager',true,'junior') RETURNING id",["teacher-cv-denied-"+suffix+"@example.test","test-only-not-used","CV Test Unauthorised Manager"]);
 const deniedManagerId=deniedManagerRow.rows[0].id;
 const deniedEncoded=Buffer.from(JSON.stringify({userId:deniedManagerId,ts:Date.now()})).toString("base64url");
@@ -125,13 +127,15 @@ assert(qualificationHistory.data.history.some(item=>item.new_status==="verified"
 const certificateView=await fetch(base+"/api/users/"+approvalApplicant.id+"/teacher-documents/"+certificate.data.document.id,{headers:{Authorization:"Bearer "+ownerToken}});
 assert.equal(certificateView.status,200,"Owner can view the applicant's individual certificate");
 assert.match(certificateView.headers.get("content-type")||"",/application\/pdf/);
-const approved=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/decision",{token:ownerToken,method:"POST",body:{action:"approve",note:"All qualification evidence verified"}});
+const approved=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/decision",{token:managerToken,method:"POST",body:{action:"approve",note:"All qualification evidence verified by Owner"}});
 assert.equal(approved.status,200,"Owner can authorize a complete CV with verified qualifications");
 const approvedRow=await pool.query("SELECT role,teacher_application_status FROM users WHERE id=$1",[approvalApplicant.id]);
 assert.equal(approvedRow.rows[0].role,"teacher");
 assert.equal(approvedRow.rows[0].teacher_application_status,"approved");
 
 const rejected=await registerTeacher("rejected");
+const grantManagerReview=await request("/api/manager-permissions/"+managerId,{token:ownerToken,method:"PUT",body:{permissions:[{key:"teacher_cv.review",granted:true}]}});
+assert.equal(grantManagerReview.status,200,"Owner can grant this manager the separate CV review/rejection permission");
 const pendingLogin=await request("/api/auth/login",{token:rejected.token,method:"POST",body:{email:rejected.email,password}});
 assert.equal(pendingLogin.status,200,"A pending teacher can sign in again even when the previous teacher token is sent with the login request");
 assert.equal(pendingLogin.data.user.role,"teacher","CV review state must not change the login role");
@@ -154,7 +158,7 @@ assert.equal(applicantMessage.status,201,"Applicant can message reviewers");
 const ownerMessages=await request("/api/teacher-cv-workspace/"+rejected.id+"/chat",{token:ownerToken});
 assert.equal(ownerMessages.status,200);
 assert.equal(ownerMessages.data.length,1,"Owner can read applicant conversation");
-const rejectedDecision=await request("/api/teacher-cv-workspace/"+rejected.id+"/decision",{token:ownerToken,method:"POST",body:{action:"reject",note:"Test rejection"}});
+const rejectedDecision=await request("/api/teacher-cv-workspace/"+rejected.id+"/decision",{token:managerToken,method:"POST",body:{action:"reject",note:"Test rejection"}});
 assert.equal(rejectedDecision.status,200,"Owner rejection is persisted even if notification delivery is unavailable");
 const rejectedRow=await pool.query("SELECT role,teacher_application_status,password_hash,teacher_review_deadline FROM users WHERE id=$1",[rejected.id]);
 assert.equal(rejectedRow.rows[0].role,"teacher","Rejected applicant retains the original account role until the scheduled conversion");
