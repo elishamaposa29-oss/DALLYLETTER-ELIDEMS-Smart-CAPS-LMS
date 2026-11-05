@@ -87,10 +87,10 @@ export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, 
     // the messages router separately denies group-chat access to restricted applicants.
     (method === "GET" && path === "/messages") ||
     (method === "POST" && path === "/messages") ||
-    (method === "DELETE" && /^\\/messages\\/\\d+$/.test(path)) ||
+    (method === "DELETE" && path.startsWith("/messages/") && !path.startsWith("/messages/media/")) ||
     (method === "POST" && path === "/messages/media") ||
     (method === "GET" && path.startsWith("/messages/media/")) ||
-    (method === "POST" && /^\\/messages\\/\\d+\\/report$/.test(path)) ||
+    (method === "POST" && path.startsWith("/messages/") && path.endsWith("/report")) ||
     (method === "POST" && path === "/users/me/qualifications/bulk") ||
     (method === "POST" && path === "/users/me/teacher-documents") ||
     (method === "POST" && path === "/teacher-cv-workspace/submit") ||
