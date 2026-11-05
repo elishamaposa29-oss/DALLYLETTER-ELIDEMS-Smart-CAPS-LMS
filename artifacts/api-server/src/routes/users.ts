@@ -372,9 +372,19 @@ router.patch("/users/:id/promote-manager", requireAuth, requireOwner, async (req
   if (typeof isManager === "boolean") updates.isManager = isManager;
   if (managerLevel != null) { if (!["junior","senior"].includes(managerLevel)) { res.status(400).json({ error: "managerLevel must be junior or senior" }); return; } updates.managerLevel = managerLevel; }
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, id)).returning(safeUserFields);
-  await revokeUserSessions(id);
+  if (action === "convert_to_learner") await revokeUserSessions(id);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
-  res.json({ ...user, createdAt: user.createdAt.toISOString() });
+  if (action === "reject") {
+    const [applicant] = await db.select({ email: usersTable.email, name: usersTable.name }).from(usersTable).where(eq(usersTable.id, id));
+    if (applicant?.email?.trim()) {
+      try {
+        await sendEmail({ to: [applicant.email.trim()], subject: "Dallyletter Elidems teacher application outcome", text: "Hello " + (applicant.name || "applicant") + ", your teacher application was not approved. Your account remains active, your teaching privileges are restricted, and your existing login credentials remain valid. Learner conversion is scheduled after the configured period." });
+      } catch {
+        // Email is optional; the rejection and scheduled conversion are already persisted.
+      }
+    }
+  }
+  res.json({ ...user, conversionScheduled: action === "reject", createdAt: user.createdAt.toISOString() });
 });
 
 const avatarUpload = multer({
@@ -637,15 +647,22 @@ router.patch("/users/:id/teacher-review", requireAuth, requireManagerPermissionF
       return;
     }
   }
-  if (action === "reject" || action === "convert_to_learner") {
-    const [applicant] = await db.select({ email: usersTable.email, name: usersTable.name }).from(usersTable).where(eq(usersTable.id, id));
-    try { await sendEmail({ to: [applicant.email], subject: "Dallyletter Elidems teacher application outcome", text: "Hello " + (applicant.name || "applicant") + ", your teacher application was not approved. Your login details remain valid and your account has been converted to a learner account. Sign in again to access the learner dashboard." }); }
-    catch { res.status(503).json({ error: "Notification email could not be accepted. Account remains unchanged; retry after email delivery is restored." }); return; }
+  let rejectionDeadline: Date | null = null;
+  if (action === "reject") {
+    const setting = await pool.query("SELECT review_duration_days FROM teacher_cv_workflow_settings WHERE id=1");
+    const days = Number(setting.rows[0]?.review_duration_days || 0);
+    if (!Number.isInteger(days) || days < 1 || days > 365) {
+      res.status(503).json({ error: "The Owner must configure the conversion schedule before rejecting an application." });
+      return;
+    }
+    rejectionDeadline = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
   }
   const [user] = await db.update(usersTable).set(
     action === "approve"
       ? { role: "teacher", teacherApplicationStatus: "approved", teacherReviewDeadline: null }
-      : { role: "student", teacherApplicationStatus: action === "reject" ? "rejected" : "manual_conversion", teacherReviewDeadline: null, subject: null, isManager: false, isPrefect: false },
+      : action === "reject"
+        ? { role: "teacher", teacherApplicationStatus: "rejected", teacherReviewDeadline: rejectionDeadline }
+        : { role: "student", teacherApplicationStatus: "manual_conversion", teacherReviewDeadline: null, subject: null, isManager: false, isPrefect: false },
   ).where(eq(usersTable.id, id)).returning(safeUserFields);
   await revokeUserSessions(id);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
