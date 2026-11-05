@@ -210,6 +210,7 @@ test("pending teacher API policy allows only own CV, evidence, Profile Hub and a
   ["POST","/api/users/me/recovery-question/verify"],
   ["POST","/api/daily-attendance/open"],
   ["GET","/api/auth/me/"],
+  ["GET","/api/auth/me?source=profile"],
   ["GET","/api//auth//me/"],
   ["PATCH","/api/notifications/123/read/"],
   ["POST","/api/auth/login"],
