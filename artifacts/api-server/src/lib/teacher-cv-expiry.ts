@@ -12,10 +12,10 @@ async function ensure(): Promise<void> {
     updated_by integer REFERENCES users(id),
     updated_at timestamptz NOT NULL DEFAULT now()
   )`);
-  await pool.query("INSERT INTO teacher_cv_workflow_settings(id,review_duration_days) VALUES(1,NULL) ON CONFLICT(id) DO NOTHING");
+  await pool.query("INSERT INTO teacher_cv_workflow_settings(id,review_duration_days) VALUES(1,14) ON CONFLICT(id) DO UPDATE SET review_duration_days=COALESCE(teacher_cv_workflow_settings.review_duration_days,14)");
   await pool.query("ALTER TABLE teacher_cv_workflow_settings ALTER COLUMN review_duration_days DROP NOT NULL");
   await pool.query("ALTER TABLE teacher_cv_workflow_settings ALTER COLUMN review_duration_days DROP DEFAULT");
-  await pool.query("UPDATE teacher_cv_workflow_settings SET review_duration_days=NULL WHERE updated_by IS NULL");
+  await pool.query("UPDATE teacher_cv_workflow_settings SET review_duration_days=14 WHERE review_duration_days IS NULL");
   await pool.query(`CREATE TABLE IF NOT EXISTS teacher_cv_review_history (
     id bigserial PRIMARY KEY,
     teacher_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
