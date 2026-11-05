@@ -75,8 +75,8 @@ export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, 
     (method === "GET" && path === "/profile/" + selfId + "/social") ||
     (method === "GET" && ["/profile/connections/friends","/profile/connections/requests","/notifications"].includes(path)) ||
     (method === "PUT" && path === "/profile/me/privacy") ||
-    (method === "PATCH" && /^\\/profile\\/connections\\/\\d+$/.test(path)) ||
-    (method === "PATCH" && /^\\/notifications\\/\\d+\\/read$/.test(path)) ||
+    (method === "PATCH" && path.startsWith("/profile/connections/")) ||
+    (method === "PATCH" && path.startsWith("/notifications/") && path.endsWith("/read")) ||
     (method === "POST" && path === "/users/me/qualifications/bulk") ||
     (method === "POST" && path === "/users/me/teacher-documents") ||
     (method === "POST" && path === "/teacher-cv-workspace/submit") ||
