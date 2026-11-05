@@ -100,10 +100,22 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(extractUser);
 
 // Pending teacher applicants may use only their own Profile Hub, CV evidence and application chat.
-app.use((req,res,next)=>{
-  const user=req.currentUser;
-  if(!user || canPendingTeacherUseRoute(user,req.method,req.path)){next();return;}
-  res.status(403).json({error:"Teacher application pending. Only Profile Hub and CV submission tools are available until an Owner or Senior Manager approves and authorizes your teaching access."});
+app.use((req, res, next) => {
+  const user = req.currentUser;
+  if (!user || canPendingTeacherUseRoute(user, req.method, req.path)) {
+    next();
+    return;
+  }
+
+  // Record the exact denied route without logging tokens, request bodies or personal data.
+  logger.warn(
+    { event: "teacher_application_route_denied", userId: user.id, method: req.method, path: req.path },
+    "Pending teacher attempted to access a restricted route",
+  );
+  res.status(403).json({
+    error: "Teacher application pending. Only Profile Hub and CV submission tools are available until an Owner or Senior Manager approves and authorizes your teaching access.",
+    code: "TEACHER_APPLICATION_PENDING",
+  });
 });
 
 // Record authenticated activity for owner auditability. Request bodies are intentionally excluded.
