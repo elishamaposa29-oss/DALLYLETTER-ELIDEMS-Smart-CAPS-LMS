@@ -1,6 +1,7 @@
 import { getApiUrl } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +20,7 @@ interface PollWithQuestions extends Poll { questions: PollQuestion[]; }
 interface PollResults { submissions: { studentName: string; score: number; totalQuestions: number; completedAt: string }[]; total: number; avgScore: number; }
 
 export default function AdminPolls() {
+  const { user } = useAuth();
   const { toast } = useToast();
   const [polls, setPolls] = useState<Poll[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,9 +49,11 @@ export default function AdminPolls() {
   }
 
   useEffect(() => {
+    if (!user) return;
+    if (String(user.role).toLowerCase() === "admin") { setCanManage(false); void loadPolls(); return; }
     fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: `Bearer ${token()}` } }).then(r=>r.json()).then(d=>setCanManage(Boolean(d?.isOwner||d?.permissions?.["polls.manage"]))).catch(()=>setCanManage(false));
-    loadPolls();
-  }, []);
+    void loadPolls();
+  }, [user?.role]);
 
   async function uploadQuestionImage(index: number, file: File) {
     const body = new FormData();

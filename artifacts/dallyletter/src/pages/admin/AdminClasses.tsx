@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { useAuth } from "@/contexts/AuthContext";
 import { useListClasses, useDeleteClass, getApiUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { getListClassesQueryKey } from "@workspace/api-client-react";
 
 export default function AdminClasses() {
+  const { user } = useAuth();
   const { data: classes, isLoading } = useListClasses();
   const deleteClassMutation = useDeleteClass();
   const { toast } = useToast();
@@ -19,7 +21,11 @@ export default function AdminClasses() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [canManage, setCanManage] = useState(false);
-  useEffect(() => { fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: "Bearer " + (localStorage.getItem("dallyletter_token") ?? "") } }).then(r => r.json()).then(d => setCanManage(Boolean(d?.isOwner || d?.permissions?.["classes.manage"]))).catch(() => setCanManage(false)); }, []);
+  useEffect(() => {
+    if (!user) return;
+    if (String(user.role).toLowerCase() === "admin") { setCanManage(false); return; }
+    fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: "Bearer " + (localStorage.getItem("dallyletter_token") ?? "") } }).then(r => r.json()).then(d => setCanManage(Boolean(d?.isOwner || d?.permissions?.["classes.manage"]))).catch(() => setCanManage(false));
+  }, [user?.role]);
 
   const filteredClasses = classes?.filter(c => {
     const matchesSearch = c.title.toLowerCase().includes(search.toLowerCase()) || 
