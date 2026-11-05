@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { eq, notInArray } from "drizzle-orm";
 import multer from "multer";
-import { db, usersTable, classesTable, pool } from "@workspace/db";
+import { db, usersTable, classesTable, notificationsTable, pool } from "@workspace/db";
 import {
   GetUserParams, UpdateUserParams, UpdateUserBody,
   DeleteUserParams, BlockUserParams, BlockUserBody,
@@ -608,11 +608,12 @@ router.patch("/users/:id/teacher-review", requireAuth, requireManagerPermissionF
   const id = Number(req.params.id);
   const action = req.body?.action;
   if (!Number.isInteger(id) || !["approve", "reject", "convert_to_learner"].includes(action)) { res.status(400).json({ error: "Invalid teacher review action" }); return; }
-  const [target] = await db.select({ id: usersTable.id, role: usersTable.role, teacherApplicationStatus: usersTable.teacherApplicationStatus, paymentInfo: usersTable.paymentInfo })
+  const [target] = await db.select({ id: usersTable.id, role: usersTable.role, teacherApplicationStatus: usersTable.teacherApplicationStatus, name: usersTable.name })
     .from(usersTable).where(eq(usersTable.id, id));
   if (!target || target.role !== "teacher" || target.teacherApplicationStatus !== "pending_review") {
     res.status(409).json({ error: "Only pending teacher applications can be reviewed" }); return;
   }
+
   if (action === "approve") {
     await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, cv jsonb NOT NULL DEFAULT '{}'::jsonb, updated_at timestamptz NOT NULL DEFAULT now())");
     const cvResult = await pool.query("SELECT cv FROM teacher_profiles WHERE user_id = $1", [id]);
@@ -637,19 +638,48 @@ router.patch("/users/:id/teacher-review", requireAuth, requireManagerPermissionF
       return;
     }
   }
-  if (action === "reject" || action === "convert_to_learner") {
-    const [applicant] = await db.select({ email: usersTable.email, name: usersTable.name }).from(usersTable).where(eq(usersTable.id, id));
-    try { await sendEmail({ to: [applicant.email], subject: "Dallyletter Elidems teacher application outcome", text: "Hello " + (applicant.name || "applicant") + ", your teacher application was not approved. Your login details remain valid and your account has been converted to a learner account. Sign in again to access the learner dashboard." }); }
-    catch { res.status(503).json({ error: "Notification email could not be accepted. Account remains unchanged; retry after email delivery is restored." }); return; }
+
+  let conversionDeadline: Date | null = null;
+  let update: any;
+  if (action === "approve") {
+    update = { role: "teacher", teacherApplicationStatus: "approved", teacherReviewDeadline: null };
+  } else if (action === "reject") {
+    const setting = await pool.query("SELECT review_duration_days FROM teacher_cv_workflow_settings WHERE id=1");
+    const configuredDays = Number(setting.rows[0]?.review_duration_days || 30);
+    const days = Number.isInteger(configuredDays) && configuredDays >= 1 && configuredDays <= 365 ? configuredDays : 30;
+    conversionDeadline = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+    update = { teacherApplicationStatus: "rejected_pending_conversion", teacherReviewDeadline: conversionDeadline, isManager: false, isPrefect: false };
+  } else {
+    update = { role: "student", teacherApplicationStatus: "manual_conversion", teacherReviewDeadline: null, subject: null, isManager: false, isPrefect: false };
   }
-  const [user] = await db.update(usersTable).set(
-    action === "approve"
-      ? { role: "teacher", teacherApplicationStatus: "approved", teacherReviewDeadline: null }
-      : { role: "student", teacherApplicationStatus: action === "reject" ? "rejected" : "manual_conversion", teacherReviewDeadline: null, subject: null, isManager: false, isPrefect: false },
-  ).where(eq(usersTable.id, id)).returning(safeUserFields);
-  await revokeUserSessions(id);
+
+  const [user] = await db.update(usersTable).set(update).where(eq(usersTable.id, id)).returning(safeUserFields);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
-  res.json({ ...user, createdAt: user.createdAt.toISOString() });
+  // Keep the rejected applicant's current session alive during the grace period.
+  // Approval and an explicitly requested immediate manual conversion refresh the session role.
+  if (action !== "reject") await revokeUserSessions(id);
+
+  const title = action === "approve" ? "Teacher application approved" : action === "reject" ? "Teacher application not approved" : "Account converted to learner";
+  const message = action === "approve"
+    ? "Your teacher CV has been approved. Your teacher permissions are now active."
+    : action === "reject"
+      ? "Your teacher CV was not approved. Teaching permissions are disabled, but your account and login remain active until " + (conversionDeadline?.toLocaleString() || "the scheduled learner conversion") + ". You may continue using your Profile Hub."
+      : "Your account has been converted to a learner account. Your login email and password remain unchanged.";
+  try {
+    await db.insert(notificationsTable).values({ recipientId: id, title, message, link: "/profile-hub", type: "teacher_cv_decision" });
+  } catch (error) {
+    console.error("[teacher-review] In-app notification failed; account decision remains saved.", error instanceof Error ? error.message : "unknown");
+  }
+  try {
+    await enqueueEmailNotification(id, "Dallyletter Elidems — " + title, message);
+  } catch (error) {
+    console.error("[teacher-review] Email notification could not be queued; account decision remains saved.", error instanceof Error ? error.message : "unknown");
+  }
+  res.json({
+    ...user,
+    createdAt: user.createdAt.toISOString(),
+    conversionDeadline: conversionDeadline?.toISOString() ?? null,
+  });
 });
 
 router.patch("/users/:id/payment-info", requireAuth, async (req, res): Promise<void> => {
