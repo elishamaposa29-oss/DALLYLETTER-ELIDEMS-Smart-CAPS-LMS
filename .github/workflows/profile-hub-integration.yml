@@ -107,7 +107,9 @@ jobs:
         run: node artifacts/api-server/scripts/smoke-post-merge-routes.mjs
 
       - name: Diagnose deployed Render API route surface (read-only, no credentials)
-        timeout-minutes: 5
+        # Production uptime is observed, but must not suppress isolated PostgreSQL/API integration tests.
+        continue-on-error: true
+        timeout-minutes: 3
         env:
           API_BASE_URL: https://dallyletter-elidems-smart-caps-lms-4.onrender.com
         run: node artifacts/api-server/scripts/smoke-post-merge-routes.mjs
