@@ -105,7 +105,6 @@ export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, 
     (method === "POST" && [
       "/users/me/phone/request-verification",
       "/users/me/recovery-question/verify",
-      "/daily-attendance/open",
     ].includes(path)) ||
     (method === "GET" && path === "/profile/" + selfId + "/social") ||
     (method === "GET" && new RegExp("^/profile/" + selfId + "/section/[a-zA-Z0-9_-]+$").test(path)) ||
