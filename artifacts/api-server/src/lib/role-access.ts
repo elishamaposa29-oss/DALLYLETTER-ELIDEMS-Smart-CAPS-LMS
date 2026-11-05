@@ -73,12 +73,24 @@ export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, 
     (method === "GET" && path === "/users/me/qualifications") ||
     (method === "POST" && path === "/users/me/qualifications") ||
     (method === "GET" && ["/users/me/enrollments-summary","/users/me/enrollments","/users/me/notification-email","/users/me/subjects","/users/me/payout-preferences","/users/me/recovery-profile","/academic-records/reports/me","/academic-records/transfer-requests","/academic-records/current-year","/achievements/my","/subjects/catalog"].includes(path)) ||
-    (method === "GET" && path === "/profile/" + selfId + "/social") ||
-    (method === "GET" && new RegExp("^/profile/" + selfId + "/section/[a-zA-Z0-9_-]+$").test(path)) ||
+    // Profile Hub public/section endpoints enforce their own visibility and connection rules.
+    (method === "GET" && new RegExp("^/profile/[0-9]+/social$").test(path)) ||
+    (method === "GET" && new RegExp("^/profile/[0-9]+/section/[a-zA-Z0-9_-]+$").test(path)) ||
+    (method === "GET" && new RegExp("^/users/[0-9]+/public-profile$").test(path)) ||
+    (method === "GET" && new RegExp("^/users/[0-9]+/teacher-documents$").test(path)) ||
+    (method === "POST" && new RegExp("^/profile/[0-9]+/connect$").test(path)) ||
     (method === "GET" && ["/profile/connections/friends","/profile/connections/requests","/notifications"].includes(path)) ||
     (method === "PUT" && path === "/profile/me/privacy") ||
     (method === "PATCH" && path.startsWith("/profile/connections/")) ||
     (method === "PATCH" && path.startsWith("/notifications/") && path.endsWith("/read")) ||
+    // Direct messages are still governed by canMessageUser/canViewPrivateConversation;
+    // the messages router separately denies group-chat access to restricted applicants.
+    (method === "GET" && path === "/messages") ||
+    (method === "POST" && path === "/messages") ||
+    (method === "DELETE" && /^\\/messages\\/\\d+$/.test(path)) ||
+    (method === "POST" && path === "/messages/media") ||
+    (method === "GET" && path.startsWith("/messages/media/")) ||
+    (method === "POST" && /^\\/messages\\/\\d+\\/report$/.test(path)) ||
     (method === "POST" && path === "/users/me/qualifications/bulk") ||
     (method === "POST" && path === "/users/me/teacher-documents") ||
     (method === "POST" && path === "/teacher-cv-workspace/submit") ||
