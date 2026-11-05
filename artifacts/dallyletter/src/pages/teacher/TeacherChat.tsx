@@ -16,20 +16,21 @@ import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 
 export default function TeacherChat() {
   const { user } = useAuth();
+  const restrictedApplicant = String(user?.role||"").toLowerCase()==="teacher" && ["pending_review","rejected_pending_conversion"].includes(String((user as any)?.teacherApplicationStatus||"").toLowerCase());
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("groupId"); return value && /^\d+$/.test(value) ? Number(value) : null; });
   const [selectedUserId, setSelectedUserId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("recipientId"); return value && /^\d+$/.test(value) ? Number(value) : null; });
   const [ownerContact,setOwnerContact]=useState<{id:number;name:string}|null>(null);
   const ownerChatRequested=new URLSearchParams(window.location.search).get("ownerChat")==="1";
   const [message, setMessage] = useState("");
-  const [activeTab, setActiveTab] = useState(() => (new URLSearchParams(window.location.search).has("recipientId")||new URLSearchParams(window.location.search).has("ownerChat")) ? "people" : "groups");
+  const [activeTab, setActiveTab] = useState(() => (new URLSearchParams(window.location.search).has("recipientId")||new URLSearchParams(window.location.search).has("ownerChat")) ? "students" : "groups");
   const [chatFullscreen, setChatFullscreen] = useState(false);
   const [lessonRequests, setLessonRequests] = useState<Array<{id:number; topic:string; notes:string|null; preferredDate:string|null; status:string; teacherReply:string|null; prefectId:number}>>([]);
   const [requestLoading, setRequestLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
-  const { data: groups, isLoading: groupsLoading } = useListStudyGroups();
-  const { data: users, isLoading: usersLoading } = useListUsers();
+  const { data: groups, isLoading: groupsLoading } = useListStudyGroups({ query: { enabled: !restrictedApplicant } } as any);
+  const { data: users, isLoading: usersLoading } = useListUsers({ query: { enabled: !restrictedApplicant } } as any);
 
   const { data: messages, isLoading: messagesLoading } = useListMessages(
     { groupId: selectedGroupId, recipientId: selectedUserId },
@@ -49,7 +50,7 @@ export default function TeacherChat() {
     } finally { setRequestLoading(false); }
   };
 
-  useEffect(() => { void loadLessonRequests(); }, []);
+  useEffect(() => { if (!restrictedApplicant) void loadLessonRequests(); }, [restrictedApplicant]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -125,17 +126,25 @@ export default function TeacherChat() {
       <div className="h-[calc(100dvh-8rem)] min-h-[500px] flex flex-col md:flex-row gap-3 md:gap-6 min-w-0">
         <Card className="w-full md:w-1/3 flex flex-col bg-card/50 max-h-40 md:max-h-none shrink-0">
           <div className="p-4 border-b">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="w-full grid grid-cols-3">
-                <TabsTrigger value="groups">Groups</TabsTrigger>
-                <TabsTrigger value="students">Students</TabsTrigger>
-              <TabsTrigger value="requests">Lesson Requests</TabsTrigger>
-              </TabsList>
-            </Tabs>
+            {restrictedApplicant ? (
+              <div className="text-sm font-semibold">Private Profile Hub chat</div>
+            ) : (
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                <TabsList className="w-full grid grid-cols-3">
+                  <TabsTrigger value="groups">Groups</TabsTrigger>
+                  <TabsTrigger value="students">Students</TabsTrigger>
+                  <TabsTrigger value="requests">Lesson Requests</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            {activeTab === "requests" ? (
+            {restrictedApplicant ? (
+              <div className="p-4 text-center text-sm text-muted-foreground">
+                Open a Profile Hub and choose Chat to start or continue a private conversation. Group chat and lesson-request tools unlock after teacher authorization.
+              </div>
+            ) : activeTab === "requests" ? (
               requestLoading ? (
                 <div className="flex justify-center p-6"><Loader2 className="h-5 w-5 animate-spin" /></div>
               ) : lessonRequests.length === 0 ? (
