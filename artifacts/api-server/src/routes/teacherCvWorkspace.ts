@@ -29,11 +29,12 @@ router.post("/submit",async(req,res)=>{
   pool.query("SELECT id,title,document_id FROM teacher_qualifications WHERE user_id=$1",[actor.id]),
  ]);
  const cv=(cvResult.rows[0]?.cv||{}) as Record<string,unknown>;
- let personal:any={};try{personal=JSON.parse(String(cv.personalDetails||"{}"))}catch{}
+ let personal:any={},survey:any={};try{personal=JSON.parse(String(cv.personalDetails||"{}"))}catch{}try{survey=JSON.parse(String(cv.surveyAnswers||"{}"))}catch{}
  const missing=["professionalSummary","education","experience","subjects","address"].filter(k=>typeof cv[k]!=="string"||String(cv[k]).trim().length<2);
+ const missingSurvey=["laptop","laptopType","smartphone","computer","online","internet","power","verificationCall"].filter(k=>typeof survey[k]!=="string"||!String(survey[k]).trim());
  const incomplete=quals.rows.filter(q=>!q.document_id);
- if(missing.length||!personal.fullName||!personal.idNumber||!personal.dob||!personal.phone||!personal.email||!personal.address||!cv.photoDocumentId||!docs.rows.length||!quals.rows.length||incomplete.length){
-  res.status(409).json({error:"Complete your CV, upload a PDF resume, profile photo and a separate certificate for every qualification before submitting.",missingFields:missing,resumeUploaded:docs.rows.length>0,qualifications:quals.rows.length,certificatesMissing:incomplete.length});return;
+ if(missing.length||missingSurvey.length||!personal.fullName||!personal.idNumber||!personal.dob||!personal.phone||!personal.email||!personal.address||!cv.photoDocumentId||!docs.rows.length||!quals.rows.length||incomplete.length){
+  res.status(409).json({error:"Complete your CV, answer every teaching-readiness survey question, upload a PDF resume and profile photo, and attach a separate certificate to every qualification before submitting.",missingFields:missing,missingSurveyFields:missingSurvey,resumeUploaded:docs.rows.length>0,qualifications:quals.rows.length,certificatesMissing:incomplete.length});return;
  }
  const priorSubmission=await pool.query("SELECT id FROM teacher_cv_review_history WHERE teacher_id=$1 AND action='submitted' LIMIT 1",[actor.id]);
  if(priorSubmission.rows.length){res.json({submitted:true,alreadySubmitted:true,status:"pending_review",message:"Your application has already been submitted and is awaiting review."});return;}
@@ -84,14 +85,15 @@ router.post("/:teacherId/decision",requireManagerPermissionForRequest((req)=>req
    pool.query("SELECT id,title,verification_status,document_id FROM teacher_qualifications WHERE user_id=$1",[id])
   ]);
   const cv=(cvResult.rows[0]?.cv||{}) as Record<string,unknown>;
-  let personal:any={};try{personal=JSON.parse(String(cv.personalDetails||"{}"))}catch{}
+  let personal:any={},survey:any={};try{personal=JSON.parse(String(cv.personalDetails||"{}"))}catch{}try{survey=JSON.parse(String(cv.surveyAnswers||"{}"))}catch{}
   const required=["professionalSummary","education","experience","subjects","address"];
   const missing=required.filter(k=>typeof cv[k]!=="string"||String(cv[k]).trim().length<2);
+  const missingSurvey=["laptop","laptopType","smartphone","computer","online","internet","power","verificationCall"].filter(k=>typeof survey[k]!=="string"||!String(survey[k]).trim());
   const photoResult=await pool.query("SELECT id FROM teacher_documents WHERE id=$1 AND user_id=$2 AND document_type=$3 AND mime_type LIKE $4",[Number(cv.photoDocumentId),id,"cv","image/%"]);
   const hasPhoto=photoResult.rows.length>0;
   const incomplete=qualResult.rows.filter(q=>q.verification_status!=="verified"||!q.document_id);
-  if(missing.length||!hasPhoto||!personal.fullName||!personal.idNumber||!personal.dob||!personal.phone||!personal.email||!personal.address||!qualResult.rows.length||incomplete.length){
-   res.status(409).json({error:"Complete personal/legal details, upload a photo and a separate certificate for every qualification, then verify every qualification before authorizing teaching access.",missingFields:missing,photoUploaded:hasPhoto,qualificationCount:qualResult.rows.length,unverifiedQualifications:incomplete.map(q=>({id:q.id,title:q.title,status:q.verification_status,documentUploaded:Boolean(q.document_id)}))});return;
+  if(missing.length||missingSurvey.length||!hasPhoto||!personal.fullName||!personal.idNumber||!personal.dob||!personal.phone||!personal.email||!personal.address||!qualResult.rows.length||incomplete.length){
+   res.status(409).json({error:"Complete personal/legal details, answer every teaching-readiness survey question, upload a photo and a separate certificate for every qualification, then verify every qualification before authorizing teaching access.",missingFields:missing,missingSurveyFields:missingSurvey,photoUploaded:hasPhoto,qualificationCount:qualResult.rows.length,unverifiedQualifications:incomplete.map(q=>({id:q.id,title:q.title,status:q.verification_status,documentUploaded:Boolean(q.document_id)}))});return;
   }
  }
  const client=await pool.connect();
