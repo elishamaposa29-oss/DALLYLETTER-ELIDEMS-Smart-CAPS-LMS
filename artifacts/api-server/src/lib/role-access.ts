@@ -61,7 +61,7 @@ export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, 
   const method = methodValue.toUpperCase();
   const path = rawPath.startsWith("/api/") ? rawPath.slice(4) : rawPath;
   const selfId = String(user.id ?? "");
-  const cvAllowed =
+  const applicantAllowed =
     // Keep authenticated applicants able to restore their session and sign out.
     (method === "GET" && path === "/auth/me") ||
     (method === "POST" && ["/auth/login", "/auth/google", "/auth/logout"].includes(path)) ||
@@ -87,7 +87,7 @@ export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, 
     (method === "POST" && ["/users/me/notification-email/request","/users/me/notification-email/verify","/users/me/recovery-email/request-verification","/users/me/recovery-email/confirm","/users/me/phone/request-verification","/users/me/phone/confirm","/users/me/avatar","/users/me/cover","/auth/email-change/request","/auth/email-change/confirm"].includes(path)) ||
     (method === "PATCH" && path === "/users/me/recovery-profile");
   const profileWrite = method === "PATCH" && path === "/users/" + selfId;
-  return cvAllowed || profileWrite;
+  return applicantAllowed || profileWrite;
 }
 
 export function canManageAcademicContent(user: RoleLikeUser): boolean {
