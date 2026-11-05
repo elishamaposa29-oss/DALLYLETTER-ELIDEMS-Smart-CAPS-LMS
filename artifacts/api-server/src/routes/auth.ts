@@ -183,13 +183,14 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     if (existing.length > 0) { res.status(400).json({ error: "Email already registered" }); return; }
 
     await pool.query("CREATE TABLE IF NOT EXISTS teacher_cv_workflow_settings(id integer PRIMARY KEY DEFAULT 1 CHECK(id=1),review_duration_days integer CHECK(review_duration_days BETWEEN 1 AND 365 OR review_duration_days IS NULL),updated_by integer REFERENCES users(id),updated_at timestamptz NOT NULL DEFAULT now())");
-    await pool.query("INSERT INTO teacher_cv_workflow_settings(id,review_duration_days) VALUES(1,NULL) ON CONFLICT(id) DO NOTHING");
+    await pool.query("INSERT INTO teacher_cv_workflow_settings(id,review_duration_days) VALUES(1,14) ON CONFLICT(id) DO UPDATE SET review_duration_days=COALESCE(teacher_cv_workflow_settings.review_duration_days,14)");
     await pool.query("ALTER TABLE teacher_cv_workflow_settings ALTER COLUMN review_duration_days DROP NOT NULL");
     await pool.query("ALTER TABLE teacher_cv_workflow_settings ALTER COLUMN review_duration_days DROP DEFAULT");
-    await pool.query("UPDATE teacher_cv_workflow_settings SET review_duration_days=NULL WHERE updated_by IS NULL");
+    await pool.query("UPDATE teacher_cv_workflow_settings SET review_duration_days=14 WHERE review_duration_days IS NULL");
     const reviewSetting = await pool.query("SELECT review_duration_days FROM teacher_cv_workflow_settings WHERE id=1");
     const teacherReviewDays = Number(reviewSetting.rows[0]?.review_duration_days || 0);
-    if (role === "teacher" && (!Number.isInteger(teacherReviewDays) || teacherReviewDays < 1 || teacherReviewDays > 365)) { res.status(503).json({ error: "Teacher applications are temporarily unavailable until the Owner configures the CV review duration." }); return; }
+    // New teacher registration must remain available even before Owner customization.
+    // The workflow settings row supplies the safe 14-day default; Owner may change it later.
 
     const [user] = await db.insert(usersTable).values({
       email, passwordHash: await hashPassword(password), name, role,
