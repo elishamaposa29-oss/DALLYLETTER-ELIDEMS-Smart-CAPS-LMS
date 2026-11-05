@@ -15,7 +15,7 @@ export function isOwnerRole(role: unknown): boolean {
 }
 
 function isTeacherPendingReview(user: RoleLikeUser): boolean {
-  return normalizeRole(user.role) === "teacher" && user.teacherApplicationStatus === "pending_review";
+  return normalizeRole(user.role) === "teacher" && typeof user.teacherApplicationStatus === "string" && user.teacherApplicationStatus.trim().toLowerCase() === "pending_review";
 }
 
 function normalizedManagerLevel(user: RoleLikeUser): string {
@@ -58,8 +58,11 @@ function hasManagerStaffRole(user: RoleLikeUser): boolean {
 /** API-level allowlist for applicants who have not yet been authorized to teach. */
 export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, methodValue: string, rawPath: string): boolean {
   if (!isTeacherPendingReview(user)) return true;
-  const method = methodValue.toUpperCase();
-  const path = rawPath.startsWith("/api/") ? rawPath.slice(4) : rawPath;
+  const method = methodValue.trim().toUpperCase();
+  // Match Express route semantics: ignore query strings, duplicate separators and
+  // optional trailing slashes so applicants are not randomly locked out by URL form.
+  const requestPath = rawPath.split("?")[0].replace(/\\+/g, "/").replace(/\/{2,}/g, "/").replace(/\/$/, "") || "/";
+  const path = requestPath.startsWith("/api/") ? requestPath.slice(4) : requestPath;
   const selfId = String(user.id ?? "");
   const applicantAllowed =
     // Keep authenticated applicants able to restore their session and sign out.
