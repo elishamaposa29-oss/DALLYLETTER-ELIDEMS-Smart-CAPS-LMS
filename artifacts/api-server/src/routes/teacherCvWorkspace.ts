@@ -5,7 +5,6 @@ import { requireAuth, canAccessManager } from "../lib/auth-middleware";
 import { sendEmail } from "../lib/email-service";
 import { logger } from "../lib/logger";
 import { normalizeRole, isSeniorManager, canModerateUser } from "../lib/role-access";
-import { revokeUserSessions } from "../lib/auth-session-store";
 import { processExpiredTeacherApplications } from "../lib/teacher-cv-expiry";
 const router=Router(); let ready:Promise<void>|null=null;
 async function ensure(){if(!ready)ready=(async()=>{await pool.query(`CREATE TABLE IF NOT EXISTS teacher_cv_workflow_settings(id integer PRIMARY KEY DEFAULT 1 CHECK(id=1),review_duration_days integer CHECK(review_duration_days BETWEEN 1 AND 365 OR review_duration_days IS NULL),updated_by integer REFERENCES users(id),updated_at timestamptz NOT NULL DEFAULT now())`);await pool.query("INSERT INTO teacher_cv_workflow_settings(id,review_duration_days) VALUES(1,NULL) ON CONFLICT(id) DO NOTHING");
