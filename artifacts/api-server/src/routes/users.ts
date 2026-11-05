@@ -640,20 +640,50 @@ router.patch("/users/:id/teacher-review", requireAuth, requireManagerPermissionF
   }
 
   let conversionDeadline: Date | null = null;
-  let update: any;
-  if (action === "approve") {
-    update = { role: "teacher", teacherApplicationStatus: "approved", teacherReviewDeadline: null };
-  } else if (action === "reject") {
+  if (action === "reject") {
     const setting = await pool.query("SELECT review_duration_days FROM teacher_cv_workflow_settings WHERE id=1");
     const configuredDays = Number(setting.rows[0]?.review_duration_days || 30);
     const days = Number.isInteger(configuredDays) && configuredDays >= 1 && configuredDays <= 365 ? configuredDays : 30;
     conversionDeadline = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-    update = { teacherApplicationStatus: "rejected_pending_conversion", teacherReviewDeadline: conversionDeadline, isManager: false, isPrefect: false };
-  } else {
-    update = { role: "student", teacherApplicationStatus: "manual_conversion", teacherReviewDeadline: null, subject: null, isManager: false, isPrefect: false };
   }
-
-  const [user] = await db.update(usersTable).set(update).where(eq(usersTable.id, id)).returning(safeUserFields);
+  const nextStatus = action === "approve" ? "approved" : action === "reject" ? "rejected_pending_conversion" : "manual_conversion";
+  const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 2000) : null;
+  await pool.query(`CREATE TABLE IF NOT EXISTS teacher_cv_review_history(
+    id bigserial PRIMARY KEY,
+    teacher_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    reviewer_id integer REFERENCES users(id),
+    action text NOT NULL,
+    previous_status text,
+    new_status text NOT NULL,
+    note text,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const updateSql = action === "approve"
+      ? "UPDATE users SET role='teacher',teacher_application_status='approved',teacher_review_deadline=NULL WHERE id=$1 AND lower(role)='teacher' RETURNING id"
+      : action === "reject"
+        ? "UPDATE users SET teacher_application_status='rejected_pending_conversion',teacher_review_deadline=$2,is_manager=false,is_prefect=false WHERE id=$1 AND lower(role)='teacher' RETURNING id"
+        : "UPDATE users SET role='student',teacher_application_status='manual_conversion',teacher_review_deadline=NULL,subject=NULL,is_manager=false,is_prefect=false WHERE id=$1 AND lower(role)='teacher' RETURNING id";
+    const updated = await client.query(updateSql, action === "reject" ? [id, conversionDeadline] : [id]);
+    if (!updated.rows.length) {
+      await client.query("ROLLBACK");
+      res.status(409).json({ error: "Teacher application changed before the review decision could be saved." });
+      return;
+    }
+    await client.query(
+      "INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,$3,$4,$5,$6)",
+      [id, actor.id, action === "convert_to_learner" ? "manual_conversion" : action, target.teacherApplicationStatus || "pending_review", nextStatus, note],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+  const [user] = await db.select(safeUserFields).from(usersTable).where(eq(usersTable.id, id));
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   // Keep the rejected applicant's current session alive during the grace period.
   // Approval and an explicitly requested immediate manual conversion refresh the session role.
