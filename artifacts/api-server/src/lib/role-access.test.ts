@@ -206,6 +206,12 @@ test("pending teacher API policy never blocks authentication and permits all sel
   ["GET","/api/achievements/my"],
   ["GET","/api/subjects/catalog"],
   ["GET","/api/profile/41/social"],
+  ["GET","/api/profile/connections/friends"],
+  ["GET","/api/profile/connections/requests"],
+  ["PUT","/api/profile/me/privacy"],
+  ["PATCH","/api/profile/connections/123"],
+  ["GET","/api/notifications"],
+  ["PATCH","/api/notifications/123/read"],
  ]) assert.equal(canPendingTeacherUseRoute(applicant,method,path),true,method+" "+path);
  const rejected={...applicant,teacherApplicationStatus:"rejected_pending_conversion"};
  for(const [method,path] of [["GET","/api/auth/me"],["POST","/api/auth/login"],["GET","/api/users/me/notification-email"],["POST","/api/teacher-cv-workspace/submit"]])
