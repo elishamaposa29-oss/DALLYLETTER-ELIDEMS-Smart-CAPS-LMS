@@ -88,7 +88,29 @@ export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, 
     ((method === "GET" || method === "POST") && path === "/teacher-cv-workspace/" + selfId + "/chat") ||
     (method === "PUT" && path === "/users/me/payout-preferences") ||
     (method === "POST" && ["/users/me/notification-email/request","/users/me/notification-email/verify","/users/me/recovery-email/request-verification","/users/me/recovery-email/confirm","/users/me/phone/request-verification","/users/me/phone/confirm","/users/me/avatar","/users/me/cover","/auth/email-change/request","/auth/email-change/confirm"].includes(path)) ||
-    (method === "PATCH" && path === "/users/me/recovery-profile");
+    (method === "PATCH" && path === "/users/me/recovery-profile") ||
+    // Own-account Profile Hub data and settings; no other user's private data is exposed.
+    (method === "GET" && [
+      "/users/me/recovery-profile",
+      "/users/me/notification-email",
+      "/users/me/enrollments",
+      "/users/me/enrollments-summary",
+      "/users/me/subjects",
+      "/users/me/payout-preferences",
+      "/subjects/catalog",
+      "/profile/connections/friends",
+      "/profile/connections/requests",
+    ].includes(path)) ||
+    (method === "PUT" && ["/users/me/subjects", "/profile/me/privacy"].includes(path)) ||
+    (method === "POST" && [
+      "/users/me/phone/request-verification",
+      "/users/me/recovery-question/verify",
+      "/daily-attendance/open",
+    ].includes(path)) ||
+    (method === "GET" && path === "/profile/" + selfId + "/social") ||
+    (method === "GET" && new RegExp("^/profile/" + selfId + "/section/[a-zA-Z0-9_-]+$").test(path)) ||
+    (method === "POST" && /^\/profile\/\d+\/connect$/.test(path)) ||
+    (method === "PATCH" && /^\/profile\/connections\/\d+$/.test(path));
   const profileWrite = method === "PATCH" && path === "/users/" + selfId;
   return applicantAllowed || profileWrite;
 }
