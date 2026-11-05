@@ -191,6 +191,9 @@ test("pending teacher API policy allows only own CV, evidence, Profile Hub and a
  const applicant={id:41,role:"teacher",teacherApplicationStatus:"pending_review"};
  for(const [method,path] of [
   ["GET","/api/auth/me"],
+  ["GET","/api/auth/me/"],
+  ["GET","/api//auth//me/"],
+  ["PATCH","/api/notifications/123/read/"],
   ["POST","/api/auth/login"],
   ["POST","/api/auth/google"],
   ["POST","/api/auth/logout"],
@@ -232,6 +235,7 @@ test("pending teacher API policy allows only own CV, evidence, Profile Hub and a
   ["DELETE","/api/users/41"],
  ]) assert.equal(canPendingTeacherUseRoute(applicant,method,path),false,method+" "+path);
  assert.equal(canPendingTeacherUseRoute({...applicant,teacherApplicationStatus:"approved"},"POST","/api/lessons"),true);
+ assert.equal(canPendingTeacherUseRoute({...applicant,teacherApplicationStatus:" PENDING_REVIEW "},"GET","/api/auth/me"),true);
 });
 
 test("manager moderation follows hierarchy and protects Owner, Admin, and senior peers",()=>{
