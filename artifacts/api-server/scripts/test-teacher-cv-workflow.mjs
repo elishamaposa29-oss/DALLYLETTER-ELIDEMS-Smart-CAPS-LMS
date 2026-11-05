@@ -64,6 +64,14 @@ assert.equal(certificate.status,201,"Applicant can upload an individual qualific
 const cvPayload={professionalSummary:"Qualified test teacher",education:"Bachelor of Education",experience:"3 years",subjects:"Mathematics",address:"Harare",personalDetails:JSON.stringify({fullName:"CV Test approval",idNumber:"CV-TEST-APPROVAL",dob:"1995-06-15",phone:"+263771234567",email:approvalApplicant.email,address:"Harare"}),teachingDetails:JSON.stringify({level:"Secondary",experience:"3-5 years",subjects:"Mathematics",forms:"Form 1-4",bio:"Test teacher"}),surveyAnswers:JSON.stringify({laptop:"Yes",laptopType:"HP",smartphone:"Yes — Android",computer:"Intermediate",online:"Weekdays",internet:"WiFi at home",platforms:["WhatsApp"],power:"Yes",verificationCall:"Yes — call anytime"}),photoDocumentId:String(profilePhoto.data.id)};
 const savedApprovalCv=await request("/api/users/me/teacher-cv",{token:approvalApplicant.token,method:"PATCH",body:{cv:cvPayload}});
 assert.equal(savedApprovalCv.status,200,"Applicant can save the complete structured CV");
+const incompleteSurveyCv={...cvPayload,surveyAnswers:JSON.stringify({laptop:"Yes"})};
+const incompleteSurveySave=await request("/api/users/me/teacher-cv",{token:approvalApplicant.token,method:"PATCH",body:{cv:incompleteSurveyCv}});
+assert.equal(incompleteSurveySave.status,200);
+const incompleteSurveySubmit=await request("/api/teacher-cv-workspace/submit",{token:approvalApplicant.token,method:"POST"});
+assert.equal(incompleteSurveySubmit.status,409,"Server rejects CV submission until every required survey answer is saved");
+assert(incompleteSurveySubmit.data.missingSurveyFields?.includes("verificationCall"));
+const restoredSurveySave=await request("/api/users/me/teacher-cv",{token:approvalApplicant.token,method:"PATCH",body:{cv:cvPayload}});
+assert.equal(restoredSurveySave.status,200);
 const submitted=await request("/api/teacher-cv-workspace/submit",{token:approvalApplicant.token,method:"POST"});
 assert.equal(submitted.status,200,"Submit CV must notify the applicant and Owner after validating uploaded documents");
 assert.equal(submitted.data.submitted,true);
