@@ -191,7 +191,11 @@ test("pending teacher API policy allows only own CV, evidence, Profile Hub and a
  const applicant={id:41,role:"teacher",teacherApplicationStatus:"pending_review"};
  for(const [method,path] of [
   ["GET","/api/auth/me"],
+  ["POST","/api/auth/login"],
+  ["POST","/api/auth/google"],
   ["POST","/api/auth/logout"],
+  ["GET","/api/notifications"],
+  ["PATCH","/api/notifications/123/read"],
   ["GET","/api/users/me/teacher-cv"],
   ["PATCH","/api/users/me/teacher-cv"],
   ["POST","/api/users/me/qualifications"],
@@ -210,6 +214,8 @@ test("pending teacher API policy allows only own CV, evidence, Profile Hub and a
   ["POST","/api/teacher-cv-workspace/41/chat"],
  ]) assert.equal(canPendingTeacherUseRoute(applicant,method,path),true,method+" "+path);
  for(const [method,path] of [
+  ["POST","/api/notifications"],
+  ["DELETE","/api/notifications/123"],
   ["GET","/api/dashboard"],
   ["GET","/api/teacher-dashboard"],
   ["GET","/api/lessons"],
