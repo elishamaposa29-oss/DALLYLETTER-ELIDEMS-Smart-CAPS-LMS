@@ -206,6 +206,14 @@ test("pending teacher API policy never blocks authentication and permits all sel
   ["GET","/api/achievements/my"],
   ["GET","/api/subjects/catalog"],
   ["GET","/api/profile/41/social"],
+  ["GET","/api/profile/41/section/attendance"],
+  ["GET","/api/profile/41/section/qualifications"],
+  ["POST","/api/profile/99/connect"],
+  ["GET","/api/profile/connections/friends"],
+  ["GET","/api/profile/connections/requests"],
+  ["PATCH","/api/profile/connections/123"],
+  ["GET","/api/notifications"],
+  ["PATCH","/api/notifications/123/read"],
   ["GET","/api/profile/connections/friends"],
   ["GET","/api/profile/connections/requests"],
   ["PUT","/api/profile/me/privacy"],
@@ -217,6 +225,8 @@ test("pending teacher API policy never blocks authentication and permits all sel
  for(const [method,path] of [["GET","/api/auth/me"],["POST","/api/auth/login"],["GET","/api/users/me/notification-email"],["POST","/api/teacher-cv-workspace/submit"]])
   assert.equal(canPendingTeacherUseRoute(rejected,method,path),true,method+" "+path);
  assert.equal(canPendingTeacherUseRoute(rejected,"POST","/api/lessons"),false);
+ assert.equal(canPendingTeacherUseRoute(rejected,"POST","/api/notifications"),false,"Applicants may read and mark their own notifications but cannot broadcast/create notifications");
+ assert.equal(canPendingTeacherUseRoute(rejected,"DELETE","/api/notifications/123"),false);
 });
 
 test("pending teacher API policy allows only own CV, evidence, Profile Hub and application chat",()=>{
