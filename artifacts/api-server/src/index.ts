@@ -5,6 +5,7 @@ import { startPushDispatcher } from "./lib/push-service";
 import { startTeacherLifecycle } from "./lib/teacher-lifecycle";
 import { ensureAuthSessionSchema } from "./lib/auth-session-store";
 import { ensureProfileHubSchema } from "./lib/ensureProfileHubSchema";
+import { ensureManagerPermissionSchema } from "./lib/ensureManagerPermissionSchema";
 import { startEmailNotificationDispatcher } from "./lib/email-notification-queue";
 import { startDailyAttendanceLifecycle } from "./lib/daily-attendance-lifecycle";
 
@@ -24,8 +25,9 @@ async function startServer(): Promise<void> {
     await ensureConnectSchema();
     await ensureAuthSessionSchema();
     await ensureProfileHubSchema();
+    await ensureManagerPermissionSchema();
     startEmailNotificationDispatcher();
-    logger.info("Connect/social schema verified");
+    logger.info("Connect/social and manager-permission schemas verified");
     startPushDispatcher();
     startTeacherLifecycle();
     startDailyAttendanceLifecycle();
