@@ -44,14 +44,17 @@ router.post("/submit",async(req,res)=>{
   [actor.id,(actor as any).teacherApplicationStatus||"pending_review"]
  );
  const reviewerResult=await pool.query(
-  "SELECT DISTINCT u.id FROM users u LEFT JOIN manager_permission_grants g ON g.manager_user_id=u.id AND g.permission_key='teacher_cv.view' AND g.granted=true WHERE (lower(u.role) IN ('owner','platform_owner') OR g.manager_user_id IS NOT NULL) AND u.is_blocked=false AND u.is_suspended=false"
+  "SELECT DISTINCT u.id,u.role FROM users u LEFT JOIN manager_permission_grants g ON g.manager_user_id=u.id AND g.permission_key='teacher_cv.view' AND g.granted=true WHERE (lower(u.role) IN ('owner','platform_owner') OR g.manager_user_id IS NOT NULL) AND u.is_blocked=false AND u.is_suspended=false"
  );
  const reviewerIds=reviewerResult.rows.map((r:any)=>Number(r.id)).filter((id:number)=>Number.isSafeInteger(id)&&id>0);
  const notificationRecipients=[...new Set([actor.id,...reviewerIds])];
  const title="Teacher CV submitted for review";
  const message=(actor.name||"A teacher applicant")+" submitted a CV and supporting documents. Open the Teacher CV Approval Workspace to review the full application.";
  try{
-  await db.insert(notificationsTable).values(notificationRecipients.map(recipientId=>({recipientId,title,message,link:"/manager/teacher-cv-workspace",type:"teacher_cv_submission"})));
+  await db.insert(notificationsTable).values([
+   {recipientId:actor.id,title,message:"Your CV and supporting documents were submitted. You can follow the application from your Profile Hub.",link:"/profile-hub",type:"teacher_cv_submission"},
+   ...reviewerResult.rows.map((reviewer:any)=>({recipientId:Number(reviewer.id),title,message,link:["owner","platform_owner"].includes(String(reviewer.role||"").toLowerCase())?"/admin/teacher-cv-workspace":"/manager/teacher-cv-workspace",type:"teacher_cv_submission"}))
+  ]);
  }catch(error){console.error("[teacher-cv] In-app submission notification failed; CV remains submitted.",error instanceof Error?error.message:"unknown");}
  const emailTargets=[actor.id,...reviewerIds];
  const emailResults=await Promise.allSettled(emailTargets.map(recipientId=>enqueueEmailNotification(
