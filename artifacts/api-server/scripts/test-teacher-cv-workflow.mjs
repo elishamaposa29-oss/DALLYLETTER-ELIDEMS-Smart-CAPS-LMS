@@ -192,13 +192,25 @@ const learnerLesson=await request("/api/lessons",{token:learnerLogin.data.token,
 assert.equal(learnerLesson.status,403,"Converted learner cannot create teacher lessons");
 
 const expired=await registerTeacher("expired");
-await pool.query("UPDATE users SET created_at=now()-interval '2 days',teacher_review_deadline=now()-interval '1 day' WHERE id=$1",[expired.id]);
+const legacyRejected=await registerTeacher("legacy-rejected");
+const legacyDecision=await request("/api/users/"+legacyRejected.id+"/teacher-review",{token:ownerToken,method:"PATCH",body:{action:"reject",note:"Legacy endpoint scheduled rejection test"}});
+assert.equal(legacyDecision.status,200,"Legacy Owner user-review action also saves rejection without requiring email delivery");
+const legacyRejectedRow=await pool.query("SELECT role,teacher_application_status,teacher_review_deadline,password_hash FROM users WHERE id=$1",[legacyRejected.id]);
+assert.equal(legacyRejectedRow.rows[0].role,"teacher","Legacy rejection preserves the teacher account until the grace period ends");
+assert.equal(legacyRejectedRow.rows[0].teacher_application_status,"rejected_pending_conversion");
+assert.ok(legacyRejectedRow.rows[0].teacher_review_deadline);
+assert.ok(legacyRejectedRow.rows[0].password_hash);
+await pool.query("UPDATE users SET created_at=now()-interval '2 days',teacher_review_deadline=now()-interval '1 day' WHERE id=ANY($1::int[])",[[expired.id,legacyRejected.id]]);
 const expiryRun=await request("/api/teacher-cv-workspace/__test/process-expired",{token:ownerToken,method:"POST"});
 assert.equal(expiryRun.status,200,"Owner can run the expiry processor in isolated test mode");
 const expiredRow=await pool.query("SELECT role,teacher_application_status,password_hash FROM users WHERE id=$1",[expired.id]);
 assert.equal(expiredRow.rows[0].role,"student","Expired application automatically becomes learner");
 assert.equal(expiredRow.rows[0].teacher_application_status,"auto_converted");
 assert.ok(expiredRow.rows[0].password_hash,"Expiry preserves the login credential");
+const legacyConverted=await pool.query("SELECT role,teacher_application_status,password_hash FROM users WHERE id=$1",[legacyRejected.id]);
+assert.equal(legacyConverted.rows[0].role,"student","Legacy rejection is also converted by the scheduled expiry processor");
+assert.equal(legacyConverted.rows[0].teacher_application_status,"auto_converted");
+assert.ok(legacyConverted.rows[0].password_hash,"Legacy conversion preserves the original password");
 const expiredOldSession=await request("/api/users/me/teacher-cv",{token:expired.token});
 assert.equal(expiredOldSession.status,401,"Expiry conversion revokes existing teacher sessions");
 const expiredLogin=await request("/api/auth/login",{method:"POST",body:{email:expired.email,password}});
