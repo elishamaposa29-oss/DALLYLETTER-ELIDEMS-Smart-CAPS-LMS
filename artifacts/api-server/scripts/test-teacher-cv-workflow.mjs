@@ -110,7 +110,7 @@ const applicantChatHistory=await request("/api/teacher-cv-workspace/"+approvalAp
 assert.equal(applicantChatHistory.status,200);
 assert(applicantChatHistory.data.some(message=>message.body==="Your submitted application is being reviewed."),"Applicant can read the manager's persisted conversation message");
 const grantManagerAuthorize=await request("/api/manager-permissions/"+seniorManagerId,{token:ownerToken,method:"PUT",body:{permissions:[{key:"teacher_cv.authorize",granted:true}]}});
-assert.equal(grantManagerAuthorize.status,403,"Junior Managers cannot receive the senior-only CV authorization permission");
+assert.equal(grantManagerAuthorize.status,200,"Owner can grant the Senior Manager CV authorization permission individually");
 const deniedManagerRow=await pool.query("INSERT INTO users(email,password_hash,name,role,is_manager,manager_level) VALUES($1,$2,$3,'junior_manager',true,'junior') RETURNING id",["teacher-cv-denied-"+suffix+"@example.test","test-only-not-used","CV Test Unauthorised Manager"]);
 const deniedManagerId=deniedManagerRow.rows[0].id;
 const deniedEncoded=Buffer.from(JSON.stringify({userId:deniedManagerId,ts:Date.now()})).toString("base64url");
