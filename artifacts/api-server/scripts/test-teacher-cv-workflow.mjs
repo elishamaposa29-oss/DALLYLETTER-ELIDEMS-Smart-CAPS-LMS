@@ -147,6 +147,11 @@ assert.equal(pendingLogin.status,200,"A pending teacher can sign in again even w
 assert.equal(pendingLogin.data.user.role,"teacher","CV review state must not change the login role");
 const pendingMe=await request("/api/auth/me",{token:rejected.token});
 assert.equal(pendingMe.status,200,"Pending teacher can refresh the authenticated session");
+const pendingProfileChat=await request("/api/messages",{token:approvalApplicant.token,method:"POST",body:{content:"Private Profile Hub conversation test",type:"text",groupId:null,recipientId:ownerId}});
+assert.equal(pendingProfileChat.status,201,"Pending teacher can start a privacy-checked private Profile Hub conversation");
+const pendingProfileChatHistory=await request("/api/messages?recipientId="+ownerId,{token:approvalApplicant.token});
+assert.equal(pendingProfileChatHistory.status,200,"Pending teacher can read their own private Profile Hub conversation");
+assert(pendingProfileChatHistory.data.some(message=>message.content==="Private Profile Hub conversation test"));
 const profileNotificationEmail=await request("/api/users/me/notification-email",{token:rejected.token});
 assert.equal(profileNotificationEmail.status,200,"Pending teacher can read Profile Hub notification-email settings");
 const pendingTeacherReportLearners=await request("/api/academic-records/report-learners",{token:rejected.token});
