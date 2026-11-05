@@ -23,6 +23,13 @@ const ownerToken=encoded+"."+crypto.createHmac("sha256",process.env.JWT_SECRET).
 await pool.query("INSERT INTO auth_sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '90 days')",[crypto.createHash("sha256").update(ownerToken).digest("hex"),owner.id]);
 const config=await request("/api/teacher-cv-workspace/config",{token:ownerToken});
 assert.equal(config.status,200,"Owner can open CV workflow settings");
+const defaultReviewEmail="teacher-cv-default-review-"+suffix+"@example.test";
+const defaultReviewSignup=await request("/api/auth/register",{method:"POST",body:{name:"CV Test Default Review",email:defaultReviewEmail,password,role:"teacher",phone:"+263771234568"}});
+assert.equal(defaultReviewSignup.status,201,"Teacher signup must remain available when the Owner has not configured a review duration");
+const defaultReviewDays=(Date.parse(defaultReviewSignup.data.user.teacherReviewDeadline)-Date.now())/(24*60*60*1000);
+assert(defaultReviewDays>=29&&defaultReviewDays<=31,"Unconfigured teacher applications receive the safe 30-day default review period");
+const defaultReviewLogin=await request("/api/auth/login",{token:defaultReviewSignup.data.token,method:"POST",body:{email:defaultReviewEmail,password}});
+assert.equal(defaultReviewLogin.status,200,"A teacher can log in repeatedly while their CV review is pending");
 const savedConfig=await request("/api/teacher-cv-workspace/config",{token:ownerToken,method:"PATCH",body:{reviewDurationDays:1}});
 assert.equal(savedConfig.status,200,"Owner can set the review duration");
 assert.equal(savedConfig.data.reviewDurationDays,1);
