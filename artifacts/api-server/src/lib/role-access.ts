@@ -72,7 +72,7 @@ export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, 
     (method === "PATCH" && path === "/users/me/teacher-cv") ||
     (method === "GET" && path === "/users/me/qualifications") ||
     (method === "POST" && path === "/users/me/qualifications") ||
-    (method === "GET" && ["/users/me/enrollments-summary","/users/me/enrollments","/users/me/notification-email","/users/me/subjects","/users/me/payout-preferences","/users/me/recovery-profile","/academic-records/reports/me","/academic-records/transfer-requests","/academic-records/current-year","/achievements/my","/subjects/catalog"].includes(path)) ||
+    (method === "GET" && ["/users/me/enrollments-summary","/users/me/enrollments","/users/me/notification-email","/users/me/subjects","/users/me/payout-preferences","/users/me/recovery-profile","/academic-records/reports/me","/academic-records/transfer-requests","/academic-records/current-year","/achievements/my","/subjects/catalog","/config/currentYear"].includes(path)) ||
     // Profile Hub public/section endpoints enforce their own visibility and connection rules.
     (method === "GET" && new RegExp("^/profile/[0-9]+/social$").test(path)) ||
     (method === "GET" && new RegExp("^/profile/[0-9]+/section/[a-zA-Z0-9_-]+$").test(path)) ||
