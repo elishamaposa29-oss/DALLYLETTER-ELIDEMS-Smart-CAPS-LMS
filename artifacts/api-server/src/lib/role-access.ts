@@ -15,7 +15,7 @@ export function isOwnerRole(role: unknown): boolean {
 }
 
 function isTeacherPendingReview(user: RoleLikeUser): boolean {
-  return normalizeRole(user.role) === "teacher" && typeof user.teacherApplicationStatus === "string" && user.teacherApplicationStatus.trim().toLowerCase() === "pending_review";
+  return normalizeRole(user.role) === "teacher" && typeof user.teacherApplicationStatus === "string" && ["pending_review", "rejected"].includes(user.teacherApplicationStatus.trim().toLowerCase());
 }
 
 function normalizedManagerLevel(user: RoleLikeUser): string {
