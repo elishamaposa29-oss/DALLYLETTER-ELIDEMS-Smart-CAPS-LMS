@@ -14,8 +14,9 @@ export function isOwnerRole(role: unknown): boolean {
   return ["owner", "platform_owner"].includes(normalizeRole(role));
 }
 
-function isTeacherPendingReview(user: RoleLikeUser): boolean {
-  return normalizeRole(user.role) === "teacher" && user.teacherApplicationStatus === "pending_review";
+function isTeacherRestricted(user: RoleLikeUser): boolean {
+  return normalizeRole(user.role) === "teacher" &&
+    ["pending_review", "rejected_pending_conversion"].includes(String(user.teacherApplicationStatus ?? ""));
 }
 
 function normalizedManagerLevel(user: RoleLikeUser): string {
@@ -28,7 +29,7 @@ export function isSeniorManager(user: RoleLikeUser): boolean {
   if (isOwnerRole(role) || role === "senior_manager") return true;
   if (normalizedManagerLevel(user) !== "senior") return false;
   if (role === "manager") return true;
-  return role === "teacher" && user.isManager === true && !isTeacherPendingReview(user);
+  return role === "teacher" && user.isManager === true && !isTeacherRestricted(user);
 }
 
 /** Junior managers retain manager access but cannot perform senior-only approvals. */
@@ -36,7 +37,7 @@ export function isJuniorManager(user: RoleLikeUser): boolean {
   const role = normalizeRole(user.role);
   if (isOwnerRole(role) || isSeniorManager(user)) return false;
   if (role === "manager" || role === "junior_manager") return true;
-  return role === "teacher" && user.isManager === true && !isTeacherPendingReview(user);
+  return role === "teacher" && user.isManager === true && !isTeacherRestricted(user);
 }
 
 /** Recommendation is available to both manager levels; approval is senior/owner only. */
@@ -52,21 +53,26 @@ function hasManagerStaffRole(user: RoleLikeUser): boolean {
   const role = normalizeRole(user.role);
   // Manager roles remain eligible for existing manager tools at either level.
   if (["manager", "senior_manager", "junior_manager"].includes(role)) return true;
-  return role === "teacher" && user.isManager === true && !isTeacherPendingReview(user);
+  return role === "teacher" && user.isManager === true && !isTeacherRestricted(user);
 }
 
 /** API-level allowlist for applicants who have not yet been authorized to teach. */
 export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, methodValue: string, rawPath: string): boolean {
-  if (!isTeacherPendingReview(user)) return true;
+  if (!isTeacherRestricted(user)) return true;
   const method = methodValue.toUpperCase();
   const path = rawPath.startsWith("/api/") ? rawPath.slice(4) : rawPath;
   const selfId = String(user.id ?? "");
+  // Authentication and account recovery must never be blocked by the teacher CV gate.
+  // A pending applicant must be able to sign in, refresh /auth/me, and switch accounts.
+  if (method === "OPTIONS" || path.startsWith("/auth/")) return true;
   const cvAllowed =
     (method === "GET" && path === "/users/me/teacher-cv") ||
     (method === "GET" && path === "/users/me/teacher-cv/pdf") ||
     (method === "PATCH" && path === "/users/me/teacher-cv") ||
     (method === "GET" && path === "/users/me/qualifications") ||
     (method === "POST" && path === "/users/me/qualifications") ||
+    (method === "GET" && ["/users/me/enrollments-summary","/users/me/enrollments","/users/me/notification-email","/users/me/subjects","/users/me/payout-preferences","/users/me/recovery-profile","/academic-records/reports/me","/academic-records/transfer-requests","/academic-records/current-year","/achievements/my","/subjects/catalog"].includes(path)) ||
+    (method === "GET" && path === "/profile/" + selfId + "/social") ||
     (method === "POST" && path === "/users/me/qualifications/bulk") ||
     (method === "POST" && path === "/users/me/teacher-documents") ||
     (method === "POST" && path === "/teacher-cv-workspace/submit") ||
@@ -87,7 +93,7 @@ export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, 
 export function canManageAcademicContent(user: RoleLikeUser): boolean {
   const role = normalizeRole(user.role);
   if (isOwnerRole(role)) return true;
-  if (role === "teacher") return !isTeacherPendingReview(user);
+  if (role === "teacher") return !isTeacherRestricted(user);
   return hasManagerStaffRole(user);
 }
 
@@ -98,7 +104,7 @@ export function canAccessManager(user: RoleLikeUser): boolean {
 export function canUseStaffAI(user: RoleLikeUser): boolean {
   const role = normalizeRole(user.role);
   if (isOwnerRole(role)) return true;
-  if (role === "teacher") return !isTeacherPendingReview(user);
+  if (role === "teacher") return !isTeacherRestricted(user);
   return hasManagerStaffRole(user);
 }
 
