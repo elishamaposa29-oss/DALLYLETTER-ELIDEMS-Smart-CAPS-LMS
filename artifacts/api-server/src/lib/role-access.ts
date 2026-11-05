@@ -15,7 +15,7 @@ export function isOwnerRole(role: unknown): boolean {
 }
 
 function isTeacherPendingReview(user: RoleLikeUser): boolean {
-  return normalizeRole(user.role) === "teacher" && user.teacherApplicationStatus === "pending_review";
+  return normalizeRole(user.role) === "teacher" && typeof user.teacherApplicationStatus === "string" && user.teacherApplicationStatus.trim().toLowerCase() === "pending_review";
 }
 
 function normalizedManagerLevel(user: RoleLikeUser): string {
@@ -58,10 +58,19 @@ function hasManagerStaffRole(user: RoleLikeUser): boolean {
 /** API-level allowlist for applicants who have not yet been authorized to teach. */
 export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, methodValue: string, rawPath: string): boolean {
   if (!isTeacherPendingReview(user)) return true;
-  const method = methodValue.toUpperCase();
-  const path = rawPath.startsWith("/api/") ? rawPath.slice(4) : rawPath;
+  const method = methodValue.trim().toUpperCase();
+  // Match Express route semantics: ignore query strings, duplicate separators and
+  // optional trailing slashes so applicants are not randomly locked out by URL form.
+  const requestPath = rawPath.split("?")[0].replace(/\\+/g, "/").replace(/\/{2,}/g, "/").replace(/\/$/, "") || "/";
+  const path = requestPath.startsWith("/api/") ? requestPath.slice(4) : requestPath;
   const selfId = String(user.id ?? "");
-  const cvAllowed =
+  const applicantAllowed =
+    // Keep authenticated applicants able to restore their session and sign out.
+    (method === "GET" && path === "/auth/me") ||
+    (method === "POST" && ["/auth/login", "/auth/google", "/auth/logout"].includes(path)) ||
+    // Personal notifications are part of the signed-in Profile Hub; creation/deletion remain blocked.
+    (method === "GET" && path === "/notifications") ||
+    (method === "PATCH" && /^\/notifications\/\d+\/read$/.test(path)) ||
     (method === "GET" && path === "/users/me/teacher-cv") ||
     (method === "GET" && path === "/users/me/teacher-cv/pdf") ||
     (method === "PATCH" && path === "/users/me/teacher-cv") ||
@@ -79,9 +88,31 @@ export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, 
     ((method === "GET" || method === "POST") && path === "/teacher-cv-workspace/" + selfId + "/chat") ||
     (method === "PUT" && path === "/users/me/payout-preferences") ||
     (method === "POST" && ["/users/me/notification-email/request","/users/me/notification-email/verify","/users/me/recovery-email/request-verification","/users/me/recovery-email/confirm","/users/me/phone/request-verification","/users/me/phone/confirm","/users/me/avatar","/users/me/cover","/auth/email-change/request","/auth/email-change/confirm"].includes(path)) ||
-    (method === "PATCH" && path === "/users/me/recovery-profile");
+    (method === "PATCH" && path === "/users/me/recovery-profile") ||
+    // Own-account Profile Hub data and settings; no other user's private data is exposed.
+    (method === "GET" && [
+      "/users/me/recovery-profile",
+      "/users/me/notification-email",
+      "/users/me/enrollments",
+      "/users/me/enrollments-summary",
+      "/users/me/subjects",
+      "/users/me/payout-preferences",
+      "/subjects/catalog",
+      "/profile/connections/friends",
+      "/profile/connections/requests",
+    ].includes(path)) ||
+    (method === "PUT" && ["/users/me/subjects", "/profile/me/privacy"].includes(path)) ||
+    (method === "POST" && [
+      "/users/me/phone/request-verification",
+      "/users/me/recovery-question/verify",
+      "/daily-attendance/open",
+    ].includes(path)) ||
+    (method === "GET" && path === "/profile/" + selfId + "/social") ||
+    (method === "GET" && new RegExp("^/profile/" + selfId + "/section/[a-zA-Z0-9_-]+$").test(path)) ||
+    (method === "POST" && /^\/profile\/\d+\/connect$/.test(path)) ||
+    (method === "PATCH" && /^\/profile\/connections\/\d+$/.test(path));
   const profileWrite = method === "PATCH" && path === "/users/" + selfId;
-  return cvAllowed || profileWrite;
+  return applicantAllowed || profileWrite;
 }
 
 export function canManageAcademicContent(user: RoleLikeUser): boolean {
