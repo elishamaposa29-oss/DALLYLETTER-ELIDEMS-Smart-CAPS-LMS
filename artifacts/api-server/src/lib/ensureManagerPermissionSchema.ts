@@ -1,0 +1,44 @@
+import { pool } from "@workspace/db";
+
+/**
+ * Idempotently provision the additive manager-permission schema before routes
+ * are served. This is intentionally limited to CREATE TABLE/INDEX IF NOT EXISTS;
+ * it does not rewrite existing grants or user roles.
+ */
+export async function ensureManagerPermissionSchema(): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(`CREATE TABLE IF NOT EXISTS public.manager_permission_grants (
+      manager_user_id integer NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+      permission_key text NOT NULL,
+      granted boolean NOT NULL,
+      changed_by integer NOT NULL REFERENCES public.users(id),
+      changed_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (manager_user_id, permission_key)
+    )`);
+    await client.query("CREATE INDEX IF NOT EXISTS manager_permission_grants_changed_by_idx ON public.manager_permission_grants(changed_by, changed_at DESC)");
+    await client.query(`CREATE TABLE IF NOT EXISTS public.manager_permission_history (
+      id bigserial PRIMARY KEY,
+      manager_user_id integer NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+      permission_key text NOT NULL,
+      previous_granted boolean,
+      granted boolean NOT NULL,
+      changed_by integer NOT NULL REFERENCES public.users(id),
+      changed_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query("CREATE INDEX IF NOT EXISTS manager_permission_history_manager_idx ON public.manager_permission_history(manager_user_id, changed_at DESC)");
+    await client.query(`CREATE TABLE IF NOT EXISTS public.manager_role_assignments (
+      manager_user_id integer PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
+      original_role text NOT NULL,
+      assigned_by integer NOT NULL REFERENCES public.users(id),
+      assigned_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
