@@ -190,6 +190,8 @@ test("ordinary teachers and learners retain existing access without manager auth
 test("pending teacher API policy allows only own CV, evidence, Profile Hub and application chat",()=>{
  const applicant={id:41,role:"teacher",teacherApplicationStatus:"pending_review"};
  for(const [method,path] of [
+  ["GET","/api/auth/me"],
+  ["POST","/api/auth/logout"],
   ["GET","/api/users/me/teacher-cv"],
   ["PATCH","/api/users/me/teacher-cv"],
   ["POST","/api/users/me/qualifications"],
