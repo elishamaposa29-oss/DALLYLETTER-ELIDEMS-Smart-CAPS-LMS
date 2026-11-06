@@ -70,8 +70,14 @@ const profilePhoto=await upload("/api/users/me/teacher-documents",approvalApplic
 assert.equal(profilePhoto.status,201,"Applicant can upload a private profile photo");
 const resume=await upload("/api/users/me/teacher-documents",approvalApplicant.token,"file","teacher-resume.pdf","application/pdf",Buffer.from("%PDF-1.4\\n%teacher resume integration test\\n"),{documentType:"resume"});
 assert.equal(resume.status,201,"Applicant can upload the required PDF resume");
-const qualification=await request("/api/users/me/qualifications",{token:approvalApplicant.token,method:"POST",body:{title:"Bachelor of Education",institution:"CI Test University",year:2018}});
-assert.equal(qualification.status,201,"Applicant can create a separate qualification record");
+const qualification=await request("/api/users/me/qualifications",{token:approvalApplicant.token,method:"POST",body:{title:"Bachelor of Education"}});
+assert.equal(qualification.status,201,"Applicant can save an individual qualification title without completing the other fields");
+assert.equal(qualification.data.institution,null,"Incomplete qualification institution remains optional while drafting");
+assert.equal(qualification.data.year,null,"Incomplete qualification year remains optional while drafting");
+const qualificationEdit=await request("/api/users/me/qualifications/"+qualification.data.id,{token:approvalApplicant.token,method:"PATCH",body:{title:"Bachelor of Education",institution:"CI Test University",year:2018}});
+assert.equal(qualificationEdit.status,200,"Applicant can edit and independently persist an existing unverified qualification");
+assert.equal(qualificationEdit.data.institution,"CI Test University");
+assert.equal(Number(qualificationEdit.data.year),2018);
 const certificate=await upload("/api/qualifications/"+qualification.data.id+"/document",approvalApplicant.token,"file","bachelor-certificate.pdf","application/pdf",Buffer.from("%PDF-1.4\n%teacher cv integration test\n"));
 assert.equal(certificate.status,201,"Applicant can upload an individual qualification certificate");
 const cvPayload={professionalSummary:"Qualified test teacher",education:"Bachelor of Education",experience:"3 years",subjects:"Mathematics",address:"Harare",personalDetails:JSON.stringify({fullName:"CV Test approval",idNumber:"CV-TEST-APPROVAL",dob:"1995-06-15",phone:"+263771234567",email:approvalApplicant.email,address:"Harare"}),teachingDetails:JSON.stringify({level:"Secondary",experience:"3-5 years",subjects:"Mathematics",forms:"Form 1-4",bio:"Test teacher"}),surveyAnswers:JSON.stringify({laptop:"Yes",laptopType:"HP",smartphone:"Yes — Android",computer:"Intermediate",online:"Weekdays",internet:"WiFi at home",platforms:["WhatsApp"],power:"Yes",verificationCall:"Yes — call anytime"}),photoDocumentId:String(profilePhoto.data.id)};
