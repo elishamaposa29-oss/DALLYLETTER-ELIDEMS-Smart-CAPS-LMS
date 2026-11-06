@@ -150,6 +150,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   };
 
   const normalizedRole = String(user.role||"").toLowerCase().replace(/[ -]+/g,"_");
+  const pendingTeacher = normalizedRole === "teacher" && ["draft","pending_review","rejected_pending_conversion"].includes(String((user as any).teacherApplicationStatus || "").toLowerCase());
+  const activeTeacherManager = normalizedRole === "teacher" && Boolean((user as any).isManager) && !pendingTeacher;
 
   let navItems: NavItem[] = [];
 
@@ -283,8 +285,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     ];
   }
 
-  const pendingTeacher = normalizedRole === "teacher" && ["draft","pending_review","rejected_pending_conversion"].includes(String((user as any).teacherApplicationStatus || "").toLowerCase());
-  const activeTeacherManager = normalizedRole === "teacher" && Boolean((user as any).isManager) && !pendingTeacher;
   const managerNavigationAccount = ["manager", "senior_manager", "junior_manager"].includes(normalizedRole) || activeTeacherManager;
   if (managerNavigationAccount) {
     // Fail closed while permissions load or if the permission service is unavailable.
