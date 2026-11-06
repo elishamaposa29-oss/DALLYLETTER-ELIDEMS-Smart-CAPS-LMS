@@ -186,6 +186,20 @@ export function TeacherCvEditor() {
     <View style={{ marginHorizontal: 16, marginTop: 18, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card }}>
       <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground, marginBottom: 4 }}>Teacher CV & professional profile</Text>
       <Text style={{ fontSize: 13, color: colors.mutedForeground, marginBottom: 14 }}>Complete the required sections, then upload your resume and certificates. Only the owner can approve your teaching access.</Text>
+      <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "700", marginTop: 8, marginBottom: 6 }}>Legal and contact details</Text>
+      <Text style={{ color: colors.mutedForeground, fontSize: 12, marginBottom: 8 }}>Your legal name comes from your account profile. Complete the remaining details before formal submission.</Text>
+      {([
+        ["idNumber", "National ID / passport number", "Enter your ID or passport number"],
+        ["dob", "Date of birth", "YYYY-MM-DD"],
+        ["phone", "Contact phone", "+263…"],
+        ["email", "Contact email", "you@example.com"],
+      ] as const).map(([key, label, placeholder]) => (
+        <View key={key} style={{ marginBottom: 10 }}>
+          <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "600", marginBottom: 5 }}>{label}</Text>
+          <TextInput testID={"teacher-cv-personal-" + key} accessibilityLabel={label} blurOnSubmit={false} value={personal[key]} onChangeText={value => setPersonal(previous => ({ ...previous, [key]: value }))} placeholder={placeholder} placeholderTextColor={colors.mutedForeground} autoCapitalize={key === "email" ? "none" : "sentences"} keyboardType={key === "email" ? "email-address" : key === "phone" ? "phone-pad" : "default"} style={{ minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 10, color: colors.foreground, backgroundColor: colors.background }} />
+        </View>
+      ))}
+      <Text style={{ color: colors.mutedForeground, fontSize: 12, marginBottom: 8 }}>Profile photo: {cv.photoDocumentId ? "uploaded" : "not linked yet — upload an image under Profile Hub → Qualifications → CV"}</Text>
       {loading ? <ActivityIndicator color={colors.primary} /> : fields.map(field => (
         <View key={field.key} style={{ marginBottom: 12 }}>
           <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "600", marginBottom: 5 }}>{field.label}</Text>
