@@ -107,6 +107,9 @@ export function TeacherCvEditor() {
         <View key={field.key} style={{ marginBottom: 12 }}>
           <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "600", marginBottom: 5 }}>{field.label}</Text>
           <TextInput
+            testID={"teacher-cv-" + field.key}
+            accessibilityLabel={field.label}
+            blurOnSubmit={false}
             value={cv[field.key]}
             onChangeText={value => setCv(previous => ({ ...previous, [field.key]: value }))}
             placeholder={field.placeholder}
