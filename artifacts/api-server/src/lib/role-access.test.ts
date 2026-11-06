@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { defaultManagerPermission, isSeniorOnlyManagerPermission, canAccessManager, canApproveAchievementAwards, canManageAcademicContent, canModerateUser, canPendingTeacherUseRoute, canRecommendAchievementAwards, canReviewAcademicTransfer, canUseStaffAI, enforceAcademicStaffAccess, enforceAuthenticated, enforceOwnerAccess, isJuniorManager, isOwnerRole, isSeniorManager, normalizeRole } from "./role-access.js";
+import { defaultManagerPermission, isSeniorOnlyManagerPermission, canAccessManager, canApproveAchievementAwards, canManageAcademicContent, canModerateUser, canPendingTeacherUseRoute, canRecommendAchievementAwards, canReviewAcademicTransfer, canUseStaffAI, enforceAcademicStaffAccess, enforceAuthenticated, enforceOwnerAccess, isActiveTeacherManager, isJuniorManager, isOwnerRole, isSeniorManager, normalizeRole } from "./role-access.js";
 
 test("normalizes legacy role casing and separators",()=>{
  assert.equal(normalizeRole(" Senior Manager "), "senior_manager");
@@ -19,6 +19,17 @@ test("manager flag grants scoped manager and academic access, not owner access",
  assert.equal(canAccessManager(manager),true);
  assert.equal(canManageAcademicContent(manager),true);
  assert.equal(isOwnerRole(manager.role),false);
+});
+
+test("restricted teacher applications cannot retain manager authority through a legacy manager flag",()=>{
+ for(const teacherApplicationStatus of ["draft","pending_review","rejected_pending_conversion"]){
+  const user={role:"teacher",isManager:true,teacherApplicationStatus};
+  assert.equal(isActiveTeacherManager(user),false,teacherApplicationStatus);
+  assert.equal(canAccessManager(user),false,teacherApplicationStatus);
+ }
+ const approved={role:"teacher",isManager:true,teacherApplicationStatus:"approved"};
+ assert.equal(isActiveTeacherManager(approved),true);
+ assert.equal(canAccessManager(approved),true);
 });
 
 test("learner and unknown roles cannot use staff or academic controls",()=>{
