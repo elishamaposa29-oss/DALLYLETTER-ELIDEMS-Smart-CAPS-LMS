@@ -266,6 +266,10 @@ test("pending teacher API policy allows self-service and privacy-checked Profile
   ["POST","/api/live-classes"],
   ["DELETE","/api/users/41"],
  ]) assert.equal(canPendingTeacherUseRoute(applicant,method,path),false,method+" "+path);
+ const draftApplicant={...applicant,teacherApplicationStatus:"draft"};
+ assert.equal(canPendingTeacherUseRoute(draftApplicant,"GET","/api/users/me/teacher-cv"),true,"Draft teacher can access their own CV workspace");
+ assert.equal(canPendingTeacherUseRoute(draftApplicant,"GET","/api/academic-records/transfer-requests"),false,"Draft teacher cannot access the manager transfer-review queue");
+ assert.equal(canPendingTeacherUseRoute(draftApplicant,"POST","/api/lessons"),false,"Draft teacher cannot perform teaching operations");
  assert.equal(canPendingTeacherUseRoute({...applicant,teacherApplicationStatus:"approved"},"POST","/api/lessons"),true);
  assert.equal(canPendingTeacherUseRoute({...applicant,teacherApplicationStatus:" PENDING_REVIEW "},"GET","/api/auth/me"),true);
 });
