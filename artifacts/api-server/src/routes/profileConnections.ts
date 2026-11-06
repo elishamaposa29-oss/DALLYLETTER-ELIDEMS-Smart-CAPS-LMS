@@ -163,7 +163,7 @@ router.get("/profile/:id/section/:section", requireAuth, async (req,res): Promis
       break;
     case "teacher_documents":{
       const actor=req.currentUser!,actorRole=normalizeRole(actor.role);
-      const privateDocuments=actor.id===targetId||["owner","platform_owner","senior_manager","manager","junior_manager"].includes(actorRole)||(actorRole==="teacher"&&actor.isManager===true&&actor.teacherApplicationStatus!=="pending_review");
+      const privateDocuments=actor.id===targetId||["owner","platform_owner","senior_manager","manager","junior_manager"].includes(actorRole)||(actorRole==="teacher"&&actor.isManager===true&&!["draft","pending_review","rejected_pending_conversion"].includes(String(actor.teacherApplicationStatus||"").toLowerCase()));
       const query=privateDocuments
         ? "SELECT id,document_type,file_name,mime_type,size_bytes,created_at FROM teacher_documents WHERE user_id=$1 ORDER BY created_at DESC"
         : "SELECT id,document_type,file_name,mime_type,size_bytes,created_at FROM teacher_documents WHERE user_id=$1 AND document_type='certificate' ORDER BY created_at DESC";
