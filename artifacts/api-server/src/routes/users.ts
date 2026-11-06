@@ -457,11 +457,12 @@ router.post("/users/me/cover", requireAuth, (req, res, next): void => {
 // Build a private CV PDF from the teacher's saved profile and school-verified qualifications.
 async function sendTeacherCvPdf(userId: number, res: any): Promise<void> {
   await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, cv jsonb NOT NULL DEFAULT '{}'::jsonb, updated_at timestamptz NOT NULL DEFAULT now())");
-  const [userResult, cvResult, qualificationResult, subjectResult] = await Promise.all([
+  const [userResult, cvResult, qualificationResult, subjectResult, documentResult] = await Promise.all([
     pool.query("SELECT id,name,email,role,subject,grade FROM users WHERE id=$1", [userId]),
     pool.query("SELECT cv FROM teacher_profiles WHERE user_id=$1", [userId]),
-    pool.query("SELECT title,institution,year FROM teacher_qualifications WHERE user_id=$1 AND verification_status='verified' AND source='user' ORDER BY created_at DESC", [userId]),
+    pool.query("SELECT q.title,q.institution,q.year,q.verification_status,d.file_name AS certificate_file_name FROM teacher_qualifications q LEFT JOIN teacher_documents d ON d.id=q.document_id AND d.user_id=q.user_id WHERE q.user_id=$1 AND q.source='user' ORDER BY q.created_at DESC", [userId]),
     pool.query("SELECT subjects_to_teach FROM teacher_subjects WHERE user_id=$1", [userId]).catch(() => ({ rows: [] as Array<{subjects_to_teach:string[]}> })),
+    pool.query("SELECT document_type,file_name,mime_type FROM teacher_documents WHERE user_id=$1 ORDER BY created_at DESC", [userId]),
   ]);
   const teacher = userResult.rows[0];
   if (!teacher || String(teacher.role).toLowerCase() !== "teacher") { res.status(404).json({ error: "Teacher profile not found." }); return; }
@@ -473,6 +474,7 @@ async function sendTeacherCvPdf(userId: number, res: any): Promise<void> {
     grade: teacher.grade,
     cv: cvResult.rows[0]?.cv ?? {},
     qualifications: qualificationResult.rows,
+    documents: documentResult.rows,
     subjects,
   });
   res.setHeader("Content-Type", "application/pdf");
