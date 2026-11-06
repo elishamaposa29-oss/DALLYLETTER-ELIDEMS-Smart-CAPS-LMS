@@ -607,7 +607,7 @@ router.patch("/users/:id/teacher-review", requireAuth, requireManagerPermissionF
   if (!canReviewTeacherApplication(actor)) { res.status(403).json({ error: "Owner or Senior Manager approval is required for teacher applications." }); return; }
   const id = Number(req.params.id);
   const action = req.body?.action;
-  if (!Number.isInteger(id) || !["approve", "reject", "convert_to_learner"].includes(action)) { res.status(400).json({ error: "Invalid teacher review action" }); return; }
+  if (!Number.isInteger(id) || !["approve", "reject"].includes(action)) { res.status(400).json({ error: "Invalid teacher review action" }); return; }
   const [target] = await db.select({ id: usersTable.id, role: usersTable.role, teacherApplicationStatus: usersTable.teacherApplicationStatus, name: usersTable.name })
     .from(usersTable).where(eq(usersTable.id, id));
   if (!target || target.role !== "teacher" || target.teacherApplicationStatus !== "pending_review") {
@@ -646,7 +646,7 @@ router.patch("/users/:id/teacher-review", requireAuth, requireManagerPermissionF
     const days = Number.isInteger(configuredDays) && configuredDays >= 1 && configuredDays <= 365 ? configuredDays : 30;
     conversionDeadline = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
   }
-  const nextStatus = action === "approve" ? "approved" : action === "reject" ? "rejected_pending_conversion" : "manual_conversion";
+  const nextStatus = action === "approve" ? "approved" : "rejected_pending_conversion";
   const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 2000) : null;
   await pool.query(`CREATE TABLE IF NOT EXISTS teacher_cv_review_history(
     id bigserial PRIMARY KEY,
@@ -662,10 +662,8 @@ router.patch("/users/:id/teacher-review", requireAuth, requireManagerPermissionF
   try {
     await client.query("BEGIN");
     const updateSql = action === "approve"
-      ? "UPDATE users SET role='teacher',teacher_application_status='approved',teacher_review_deadline=NULL WHERE id=$1 AND lower(role)='teacher' RETURNING id"
-      : action === "reject"
-        ? "UPDATE users SET teacher_application_status='rejected_pending_conversion',teacher_review_deadline=$2,is_manager=false,is_prefect=false WHERE id=$1 AND lower(role)='teacher' RETURNING id"
-        : "UPDATE users SET role='student',teacher_application_status='manual_conversion',teacher_review_deadline=NULL,subject=NULL,is_manager=false,is_prefect=false WHERE id=$1 AND lower(role)='teacher' RETURNING id";
+      ? "UPDATE users SET teacher_application_status='approved',teacher_review_deadline=NULL WHERE id=$1 AND lower(role)='teacher' AND teacher_application_status='pending_review' RETURNING id"
+      : "UPDATE users SET teacher_application_status='rejected_pending_conversion',teacher_review_deadline=$2,is_manager=false,is_prefect=false WHERE id=$1 AND lower(role)='teacher' AND teacher_application_status='pending_review' RETURNING id";
     const updated = await client.query(updateSql, action === "reject" ? [id, conversionDeadline] : [id]);
     if (!updated.rows.length) {
       await client.query("ROLLBACK");
@@ -674,7 +672,7 @@ router.patch("/users/:id/teacher-review", requireAuth, requireManagerPermissionF
     }
     await client.query(
       "INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,$3,$4,$5,$6)",
-      [id, actor.id, action === "convert_to_learner" ? "manual_conversion" : action, target.teacherApplicationStatus || "pending_review", nextStatus, note],
+      [id, actor.id, action, target.teacherApplicationStatus || "pending_review", nextStatus, note],
     );
     await client.query("COMMIT");
   } catch (error) {
@@ -685,9 +683,7 @@ router.patch("/users/:id/teacher-review", requireAuth, requireManagerPermissionF
   }
   const [user] = await db.select(safeUserFields).from(usersTable).where(eq(usersTable.id, id));
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
-  // Keep the rejected applicant's current session alive during the grace period.
-  // Approval and an explicitly requested immediate manual conversion refresh the session role.
-  if (action !== "reject") await revokeUserSessions(id);
+  // Approval and rejection preserve the existing session and credentials. Only scheduled expiry conversion revokes sessions.
 
   const title = action === "approve" ? "Teacher application approved" : action === "reject" ? "Teacher application not approved" : "Account converted to learner";
   const message = action === "approve"
