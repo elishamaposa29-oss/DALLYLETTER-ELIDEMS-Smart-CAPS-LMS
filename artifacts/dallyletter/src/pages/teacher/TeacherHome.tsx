@@ -13,7 +13,7 @@ import { InstallAppCard } from "@/components/InstallAppCard";
 
 export default function TeacherHome() {
   const { user } = useAuth();
-  const restrictedApplicant = String(user?.role||"").toLowerCase()==="teacher" && ["pending_review","rejected_pending_conversion"].includes(String((user as any)?.teacherApplicationStatus||"").toLowerCase());
+  const restrictedApplicant = String(user?.role||"").toLowerCase()==="teacher" && ["draft","pending_review","rejected_pending_conversion"].includes(String((user as any)?.teacherApplicationStatus||"").toLowerCase());
   const { data: stats, isLoading: statsLoading } = useGetDashboardStats({ query: { enabled: !restrictedApplicant } } as any);
   const { data: classes, isLoading: classesLoading } = useListClasses({ query: { enabled: !restrictedApplicant } } as any);
   const { data: activity, isLoading: activityLoading } = useGetRecentActivity({ query: { enabled: !restrictedApplicant } } as any);
