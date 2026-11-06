@@ -9,6 +9,7 @@ type TeacherCvProfile = {
   subjects?: string[] | null;
   qualifications?: VerifiedQualification[] | null;
   documents?: TeacherCvDocument[] | null;
+  reviewerCopy?: boolean;
   generatedAt?: Date;
 };
 
@@ -72,11 +73,12 @@ export function buildTeacherCvPdf(profile: TeacherCvProfile): Buffer {
     "PDF resume: " + String(resume?.file_name || "Not uploaded"),
     "",
     "TEACHER-PROVIDED DETAILS",
+    "TEACHER-PROVIDED DETAILS",
     "PROFESSIONAL PROFILE",
     "Professional summary:",
     ...wrapText(cv.professionalSummary),
     "",
-    "EDUCATION AND QUALIFICATIONS",
+    profile.reviewerCopy ? "QUALIFICATIONS AND VERIFICATION STATUS" : "VERIFIED QUALIFICATIONS",
   ];
   if (qualifications.length) {
     qualifications.forEach((item, index) => {
@@ -130,7 +132,7 @@ export function buildTeacherCvPdf(profile: TeacherCvProfile): Buffer {
       ...pageLines[pageIndex].map((line, index) =>
         "BT /F1 9 Tf 48 " + (710 - index * 14) + " Td (" + pdfText(line) + ") Tj ET"
       ),
-      "BT /F1 7 Tf 48 28 Td (" + pdfText("Verified qualifications only; remaining CV details are teacher-provided and not independently verified.") + ") Tj ET",
+      "BT /F1 7 Tf 48 28 Td (" + pdfText(profile.reviewerCopy ? "Qualification verification status is shown for every submitted record; other details are teacher-provided." : "Verified qualifications only; remaining CV details are teacher-provided and not independently verified.") + ") Tj ET",
       "BT /F1 7 Tf 540 28 Td (" + (pageIndex + 1) + "/" + pageLines.length + ") Tj ET",
     ].join("\n");
     objects[contentId] = "<< /Length " + Buffer.byteLength(pageContent, "binary") + " >>\nstream\n" + pageContent + "\nendstream";
