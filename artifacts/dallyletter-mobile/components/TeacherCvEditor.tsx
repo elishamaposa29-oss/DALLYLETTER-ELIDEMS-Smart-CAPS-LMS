@@ -1,5 +1,4 @@
 import { Feather } from "@expo/vector-icons";
-import { router } from "expo-router";
 import { getApiUrl } from "@workspace/api-client-react";
 import React, { useEffect, useState } from "react";
 import * as FileSystem from "expo-file-system/legacy";
@@ -80,7 +79,7 @@ export function TeacherCvEditor() {
         });
         if (meResponse.ok) {
           const me = await meResponse.json();
-          if (active) { setApplicationStatus(String(me.user?.teacherApplicationStatus || "draft")); setReviewDeadline(me.user?.teacherReviewDeadline || null); }
+          if (active) { setApplicationStatus(String(me.teacherApplicationStatus || me.user?.teacherApplicationStatus || "draft")); setReviewDeadline(me.teacherReviewDeadline || me.user?.teacherReviewDeadline || null); }
         }
         if (historyResponse.ok) { const h = await historyResponse.json(); if (active) setReviewHistory(Array.isArray(h.history) ? h.history : []); }
         if (chatResponse.ok) { const c = await chatResponse.json(); if (active) setChatMessages(Array.isArray(c) ? c : c.messages || []); }
