@@ -218,6 +218,7 @@ test("pending teacher API policy allows self-service and privacy-checked Profile
   ["POST","/api/users/me/phone/request-verification"],
   ["POST","/api/users/me/recovery-question/verify"],
   ["POST","/api/daily-attendance/open"],
+  ["POST","/api/academic-records/transfer-requests"],
   ["GET","/api/auth/me/"],
   ["GET","/api/auth/me?source=profile"],
   ["GET","/api//auth//me/"],
