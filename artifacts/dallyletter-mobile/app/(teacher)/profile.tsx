@@ -65,6 +65,7 @@ export default function TeacherProfile() {
 
   return (
     <View style={s.container}>
+      <ScrollView style={s.scroll} contentContainerStyle={{ paddingBottom: 100 }} keyboardShouldPersistTaps="always" keyboardDismissMode="none" nestedScrollEnabled>
       <View style={s.header}>
         <ProfileAvatarEditor />
         <TouchableOpacity accessibilityRole="button" accessibilityLabel="Open your Profile Hub" onPress={()=>router.push("/profile-hub" as any)}><Text style={s.name}>{user?.name}</Text></TouchableOpacity>
@@ -78,7 +79,7 @@ export default function TeacherProfile() {
       <TeacherCvEditor />
       <TouchableOpacity accessibilityRole="button" accessibilityLabel="Open Profile Hub" onPress={()=>router.push("/profile-hub" as any)} style={{marginHorizontal:16,marginTop:12,marginBottom:8,padding:13,borderRadius:12,backgroundColor:colors.secondary,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:8}}><Feather name="user" size={17} color={colors.primary}/><Text style={{color:colors.primary,fontWeight:"700"}}>Open Profile Hub</Text></TouchableOpacity>
 
-      <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+      <View style={s.content}>
         <Text style={s.sectionTitle}>My Stats</Text>
         <View style={s.statsRow}>
           <View style={s.statCard}>
@@ -127,6 +128,7 @@ export default function TeacherProfile() {
           <Feather name="log-out" size={18} color={colors.destructive} />
           <Text style={s.logoutText}>Sign Out</Text>
         </TouchableOpacity>
+      </View>
       </ScrollView>
     </View>
   );
