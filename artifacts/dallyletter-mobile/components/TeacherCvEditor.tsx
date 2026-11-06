@@ -170,6 +170,8 @@ export function TeacherCvEditor() {
       if (!response.ok) throw new Error((data.error || "Survey could not be submitted.") + (Array.isArray(data.missingFields) ? " Missing: " + data.missingFields.join(", ") : ""));
       setSurveySubmittedAt(String(data.submittedAt || new Date().toISOString()));
       setCv(previous => ({ ...previous, surveySubmittedAt: data.submittedAt } as TeacherCv));
+      const historyResponse = await fetch(getApiUrl("/api/teacher-cv-workspace/" + user?.id + "/history"), { headers: { Authorization: "Bearer " + token } });
+      if (historyResponse.ok) { const h = await historyResponse.json(); setReviewHistory(Array.isArray(h.history) ? h.history : []); }
       Alert.alert("Readiness survey submitted", "Your survey has been submitted independently. Your CV application remains in its current status.");
     } catch (error) { Alert.alert("Survey not submitted", error instanceof Error ? error.message : "Please retry."); }
     finally { setSurveySaving(false); }
