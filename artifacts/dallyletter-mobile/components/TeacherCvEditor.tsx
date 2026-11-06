@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { getApiUrl } from "@workspace/api-client-react";
 import React, { useEffect, useState } from "react";
 import * as FileSystem from "expo-file-system/legacy";
@@ -15,11 +16,13 @@ type TeacherCv = {
   certifications: string;
   languages: string;
   references: string;
+  personalDetails: string;
+  photoDocumentId: string;
 };
 
 const emptyCv: TeacherCv = {
   professionalSummary: "", education: "", experience: "", subjects: "",
-  address: "", certifications: "", languages: "", references: "",
+  address: "", certifications: "", languages: "", references: "", personalDetails: "{}", photoDocumentId: "",
 };
 
 const fields: Array<{ key: keyof TeacherCv; label: string; placeholder: string }> = [
@@ -40,6 +43,14 @@ export function TeacherCvEditor() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [personal, setPersonal] = useState({ idNumber: "", dob: "", phone: "", email: "" });
+  const [applicationStatus, setApplicationStatus] = useState(String((user as any)?.teacherApplicationStatus || "draft"));
+  const [reviewDeadline, setReviewDeadline] = useState<string | null>((user as any)?.teacherReviewDeadline || null);
+  const [reviewHistory, setReviewHistory] = useState<any[]>([]);
+  const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const [chatDraft, setChatDraft] = useState("");
+  const [chatSending, setChatSending] = useState(false);
 
   useEffect(() => {
     let active = true;
