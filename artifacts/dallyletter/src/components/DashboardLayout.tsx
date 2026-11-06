@@ -288,10 +288,11 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     navItems = navItems.filter(item => !item.permissionKey || managerPermissions?.[item.permissionKey] === true);
   }
 
-  const pendingTeacher = normalizedRole === "teacher" && String((user as any).teacherApplicationStatus || "").toLowerCase() === "pending_review";
+  const pendingTeacher = normalizedRole === "teacher" && ["pending_review","rejected_pending_conversion"].includes(String((user as any).teacherApplicationStatus || "").toLowerCase());
   if (pendingTeacher) {
-    // Pending applicants may use only their Profile Hub and CV/qualification workspace.
-    navItems = navItems.filter(item => ["/profile-hub", "/teacher/qualifications"].includes(item.href));
+    // Applicants keep the teacher dashboard shell and full Profile Hub/CV workspace,
+    // while every teaching/manager tool remains hidden until explicit authorization.
+    navItems = navItems.filter(item => ["/teacher", "/profile-hub", "/teacher/qualifications"].includes(item.href));
   }
 
   const homeHref = ["student","prefect"].includes(normalizedRole) ? "/" : normalizedRole === "teacher" ? "/teacher" : ["manager","senior_manager","junior_manager"].includes(normalizedRole) ? "/manager" : normalizedRole === "admin" ? "/features" : "/admin";

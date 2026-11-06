@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { eq, notInArray } from "drizzle-orm";
 import multer from "multer";
-import { db, usersTable, classesTable, pool } from "@workspace/db";
+import { db, usersTable, classesTable, notificationsTable, pool } from "@workspace/db";
 import {
   GetUserParams, UpdateUserParams, UpdateUserBody,
   DeleteUserParams, BlockUserParams, BlockUserBody,
@@ -608,27 +608,31 @@ router.patch("/users/:id/teacher-review", requireAuth, requireManagerPermissionF
   const id = Number(req.params.id);
   const action = req.body?.action;
   if (!Number.isInteger(id) || !["approve", "reject", "convert_to_learner"].includes(action)) { res.status(400).json({ error: "Invalid teacher review action" }); return; }
-  const [target] = await db.select({ id: usersTable.id, role: usersTable.role, teacherApplicationStatus: usersTable.teacherApplicationStatus, paymentInfo: usersTable.paymentInfo })
+  const [target] = await db.select({ id: usersTable.id, role: usersTable.role, teacherApplicationStatus: usersTable.teacherApplicationStatus, name: usersTable.name })
     .from(usersTable).where(eq(usersTable.id, id));
   if (!target || target.role !== "teacher" || target.teacherApplicationStatus !== "pending_review") {
     res.status(409).json({ error: "Only pending teacher applications can be reviewed" }); return;
   }
+
   if (action === "approve") {
     await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, cv jsonb NOT NULL DEFAULT '{}'::jsonb, updated_at timestamptz NOT NULL DEFAULT now())");
     const cvResult = await pool.query("SELECT cv FROM teacher_profiles WHERE user_id = $1", [id]);
     const cv = (cvResult.rows[0]?.cv ?? {}) as Record<string, unknown>;
     const requiredFields = ["professionalSummary", "education", "experience", "subjects", "address"];
     const missingFields = requiredFields.filter((key) => typeof cv[key] !== "string" || (cv[key] as string).trim().length < 2);
-    let personalDetails: Record<string, unknown> = {}; try { personalDetails = JSON.parse(String(cv.personalDetails || "{}")) as Record<string, unknown>; } catch { /* incomplete CV is rejected below */ }
+    let personalDetails: Record<string, unknown> = {}, surveyAnswers: Record<string, unknown> = {}; try { personalDetails = JSON.parse(String(cv.personalDetails || "{}")) as Record<string, unknown>; } catch { /* incomplete CV is rejected below */ }
+    try { surveyAnswers = JSON.parse(String(cv.surveyAnswers || "{}")) as Record<string, unknown>; } catch { /* incomplete CV is rejected below */ }
+    const missingSurvey = ["laptop","laptopType","smartphone","computer","online","internet","power","verificationCall"].filter((key) => typeof surveyAnswers[key] !== "string" || !String(surveyAnswers[key]).trim());
     const photoResult = await pool.query("SELECT id FROM teacher_documents WHERE id=$1 AND user_id=$2 AND document_type=$3 AND mime_type LIKE $4", [Number(cv.photoDocumentId), id, "cv", "image/%"]);
     const hasPhoto = photoResult.rows.length > 0;
     const hasLegalDetails = ["fullName","idNumber","dob","phone","email","address"].every((key) => typeof personalDetails[key] === "string" && String(personalDetails[key]).trim().length > 0);
     const docs = await pool.query("SELECT 1 FROM teacher_documents WHERE user_id = $1 AND document_type IN ('resume','certificate') LIMIT 1", [id]);
     const verifiedQualifications = await pool.query("SELECT count(*)::int AS total, count(*) FILTER (WHERE verification_status=$2 AND document_id IS NOT NULL)::int AS verified FROM teacher_qualifications WHERE user_id=$1", [id, "verified"]);
-    if (missingFields.length || !hasPhoto || !hasLegalDetails || !docs.rows.length || Number(verifiedQualifications.rows[0]?.total||0)===0 || Number(verifiedQualifications.rows[0]?.verified||0)!==Number(verifiedQualifications.rows[0]?.total||0)) {
+    if (missingFields.length || missingSurvey.length || !hasPhoto || !hasLegalDetails || !docs.rows.length || Number(verifiedQualifications.rows[0]?.total||0)===0 || Number(verifiedQualifications.rows[0]?.verified||0)!==Number(verifiedQualifications.rows[0]?.total||0)) {
       res.status(409).json({
-        error: "Teacher application is incomplete. Complete personal/legal CV details, upload a profile photo and supporting CV document, and have every separate qualification certificate verified before authorization.",
+        error: "Teacher application is incomplete. Complete personal/legal CV details, answer every teaching-readiness survey question, upload a profile photo and supporting CV document, and have every separate qualification certificate verified before authorization.",
         missingFields,
+        missingSurveyFields: missingSurvey,
         qualificationVerificationComplete: Number(verifiedQualifications.rows[0]?.total||0)>0 && Number(verifiedQualifications.rows[0]?.verified||0)===Number(verifiedQualifications.rows[0]?.total||0),
         profilePhotoUploaded: hasPhoto,
         legalDetailsComplete: hasLegalDetails,
@@ -637,19 +641,78 @@ router.patch("/users/:id/teacher-review", requireAuth, requireManagerPermissionF
       return;
     }
   }
-  if (action === "reject" || action === "convert_to_learner") {
-    const [applicant] = await db.select({ email: usersTable.email, name: usersTable.name }).from(usersTable).where(eq(usersTable.id, id));
-    try { await sendEmail({ to: [applicant.email], subject: "Dallyletter Elidems teacher application outcome", text: "Hello " + (applicant.name || "applicant") + ", your teacher application was not approved. Your login details remain valid and your account has been converted to a learner account. Sign in again to access the learner dashboard." }); }
-    catch { res.status(503).json({ error: "Notification email could not be accepted. Account remains unchanged; retry after email delivery is restored." }); return; }
+
+  let conversionDeadline: Date | null = null;
+  if (action === "reject") {
+    const setting = await pool.query("SELECT review_duration_days FROM teacher_cv_workflow_settings WHERE id=1");
+    const configuredDays = Number(setting.rows[0]?.review_duration_days || 30);
+    const days = Number.isInteger(configuredDays) && configuredDays >= 1 && configuredDays <= 365 ? configuredDays : 30;
+    conversionDeadline = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
   }
-  const [user] = await db.update(usersTable).set(
-    action === "approve"
-      ? { role: "teacher", teacherApplicationStatus: "approved", teacherReviewDeadline: null }
-      : { role: "student", teacherApplicationStatus: action === "reject" ? "rejected" : "manual_conversion", teacherReviewDeadline: null, subject: null, isManager: false, isPrefect: false },
-  ).where(eq(usersTable.id, id)).returning(safeUserFields);
-  await revokeUserSessions(id);
+  const nextStatus = action === "approve" ? "approved" : action === "reject" ? "rejected_pending_conversion" : "manual_conversion";
+  const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 2000) : null;
+  await pool.query(`CREATE TABLE IF NOT EXISTS teacher_cv_review_history(
+    id bigserial PRIMARY KEY,
+    teacher_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    reviewer_id integer REFERENCES users(id),
+    action text NOT NULL,
+    previous_status text,
+    new_status text NOT NULL,
+    note text,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const updateSql = action === "approve"
+      ? "UPDATE users SET role='teacher',teacher_application_status='approved',teacher_review_deadline=NULL WHERE id=$1 AND lower(role)='teacher' RETURNING id"
+      : action === "reject"
+        ? "UPDATE users SET teacher_application_status='rejected_pending_conversion',teacher_review_deadline=$2,is_manager=false,is_prefect=false WHERE id=$1 AND lower(role)='teacher' RETURNING id"
+        : "UPDATE users SET role='student',teacher_application_status='manual_conversion',teacher_review_deadline=NULL,subject=NULL,is_manager=false,is_prefect=false WHERE id=$1 AND lower(role)='teacher' RETURNING id";
+    const updated = await client.query(updateSql, action === "reject" ? [id, conversionDeadline] : [id]);
+    if (!updated.rows.length) {
+      await client.query("ROLLBACK");
+      res.status(409).json({ error: "Teacher application changed before the review decision could be saved." });
+      return;
+    }
+    await client.query(
+      "INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,$3,$4,$5,$6)",
+      [id, actor.id, action === "convert_to_learner" ? "manual_conversion" : action, target.teacherApplicationStatus || "pending_review", nextStatus, note],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+  const [user] = await db.select(safeUserFields).from(usersTable).where(eq(usersTable.id, id));
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
-  res.json({ ...user, createdAt: user.createdAt.toISOString() });
+  // Keep the rejected applicant's current session alive during the grace period.
+  // Approval and an explicitly requested immediate manual conversion refresh the session role.
+  if (action !== "reject") await revokeUserSessions(id);
+
+  const title = action === "approve" ? "Teacher application approved" : action === "reject" ? "Teacher application not approved" : "Account converted to learner";
+  const message = action === "approve"
+    ? "Your teacher CV has been approved. Your teacher permissions are now active."
+    : action === "reject"
+      ? "Your teacher CV was not approved. Teaching permissions are disabled, but your account and login remain active until " + (conversionDeadline?.toLocaleString() || "the scheduled learner conversion") + ". You may continue using your Profile Hub."
+      : "Your account has been converted to a learner account. Your login email and password remain unchanged.";
+  try {
+    await db.insert(notificationsTable).values({ recipientId: id, title, message, link: "/profile-hub", type: "teacher_cv_decision" });
+  } catch (error) {
+    console.error("[teacher-review] In-app notification failed; account decision remains saved.", error instanceof Error ? error.message : "unknown");
+  }
+  try {
+    await enqueueEmailNotification(id, "Dallyletter Elidems — " + title, message);
+  } catch (error) {
+    console.error("[teacher-review] Email notification could not be queued; account decision remains saved.", error instanceof Error ? error.message : "unknown");
+  }
+  res.json({
+    ...user,
+    createdAt: user.createdAt.toISOString(),
+    conversionDeadline: conversionDeadline?.toISOString() ?? null,
+  });
 });
 
 router.patch("/users/:id/payment-info", requireAuth, async (req, res): Promise<void> => {

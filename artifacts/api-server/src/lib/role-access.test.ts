@@ -187,7 +187,7 @@ test("ordinary teachers and learners retain existing access without manager auth
  }
 });
 
-test("pending teacher API policy allows only own CV, evidence, Profile Hub and application chat",()=>{
+test("pending teacher API policy allows self-service and privacy-checked Profile Hub routes while blocking teaching tools",()=>{
  const applicant={id:41,role:"teacher",teacherApplicationStatus:"pending_review"};
  for(const [method,path] of [
   ["GET","/api/auth/me"],
@@ -268,6 +268,62 @@ test("pending teacher API policy allows only own CV, evidence, Profile Hub and a
  ]) assert.equal(canPendingTeacherUseRoute(applicant,method,path),false,method+" "+path);
  assert.equal(canPendingTeacherUseRoute({...applicant,teacherApplicationStatus:"approved"},"POST","/api/lessons"),true);
  assert.equal(canPendingTeacherUseRoute({...applicant,teacherApplicationStatus:" PENDING_REVIEW "},"GET","/api/auth/me"),true);
+});
+
+test("pending teacher API policy never blocks authentication and permits all self Profile Hub data",()=>{
+ const applicant={id:41,role:"teacher",teacherApplicationStatus:"pending_review"};
+ for(const [method,path] of [
+  ["GET","/api/auth/me"],
+  ["POST","/api/auth/login"],
+  ["POST","/api/auth/register"],
+  ["POST","/api/auth/google"],
+  ["GET","/api/users/me/enrollments-summary"],
+  ["GET","/api/users/me/enrollments"],
+  ["GET","/api/users/me/notification-email"],
+  ["GET","/api/users/me/subjects"],
+  ["GET","/api/users/me/payout-preferences"],
+  ["GET","/api/users/me/recovery-profile"],
+  ["GET","/api/academic-records/reports/me"],
+  ["GET","/api/academic-records/transfer-requests"],
+  ["GET","/api/academic-records/current-year"],
+  ["GET","/api/achievements/my"],
+  ["GET","/api/subjects/catalog"],
+   ["GET","/api/config/currentYear"],
+  ["GET","/api/profile/41/social"],
+  ["GET","/api/profile/41/section/attendance"],
+  ["GET","/api/profile/41/section/qualifications"],
+  ["POST","/api/profile/99/connect"],
+  ["GET","/api/profile/connections/friends"],
+  ["GET","/api/profile/connections/requests"],
+  ["PATCH","/api/profile/connections/123"],
+  ["GET","/api/notifications"],
+  ["PATCH","/api/notifications/123/read"],
+   ["GET","/api/profile/99/social"],
+   ["GET","/api/profile/99/section/reports"],
+   ["GET","/api/users/99/public-profile"],
+   ["GET","/api/users/99/teacher-documents"],
+   ["GET","/api/users/99/teacher-documents/8"],
+   ["GET","/api/achievements/user/99"],
+   ["GET","/api/achievements"],
+   ["GET","/api/messages"],
+   ["POST","/api/messages"],
+   ["DELETE","/api/messages/123"],
+   ["POST","/api/messages/media"],
+   ["GET","/api/messages/media/123e4567-e89b-12d3-a456-426614174000"],
+   ["POST","/api/messages/123/report"],
+  ["GET","/api/profile/connections/friends"],
+  ["GET","/api/profile/connections/requests"],
+  ["PUT","/api/profile/me/privacy"],
+  ["PATCH","/api/profile/connections/123"],
+  ["GET","/api/notifications"],
+  ["PATCH","/api/notifications/123/read"],
+ ]) assert.equal(canPendingTeacherUseRoute(applicant,method,path),true,method+" "+path);
+ const rejected={...applicant,teacherApplicationStatus:"rejected_pending_conversion"};
+ for(const [method,path] of [["GET","/api/auth/me"],["POST","/api/auth/login"],["GET","/api/users/me/notification-email"],["POST","/api/teacher-cv-workspace/submit"]])
+  assert.equal(canPendingTeacherUseRoute(rejected,method,path),true,method+" "+path);
+ assert.equal(canPendingTeacherUseRoute(rejected,"POST","/api/lessons"),false);
+ assert.equal(canPendingTeacherUseRoute(rejected,"POST","/api/notifications"),false,"Applicants may read and mark their own notifications but cannot broadcast/create notifications");
+ assert.equal(canPendingTeacherUseRoute(rejected,"DELETE","/api/notifications/123"),false);
 });
 
 test("manager moderation follows hierarchy and protects Owner, Admin, and senior peers",()=>{
