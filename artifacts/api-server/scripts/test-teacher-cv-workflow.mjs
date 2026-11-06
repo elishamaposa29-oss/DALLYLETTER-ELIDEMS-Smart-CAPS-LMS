@@ -51,6 +51,7 @@ async function registerTeacher(label){
  return {id:created.data.user.id,email,token:created.data.token};
 }
 const approvalApplicant=await registerTeacher("approval");
+const draftOnlyApplicant=await registerTeacher("draft-only");
 const approvalIdentityBefore=(await pool.query("SELECT id,email,password_hash FROM users WHERE id=$1",[approvalApplicant.id])).rows[0];
 const partialDraftSave=await request("/api/users/me/teacher-cv",{token:approvalApplicant.token,method:"PATCH",body:{cv:{personalDetails:JSON.stringify({fullName:"Partial CV draft"})}}});
 assert.equal(partialDraftSave.status,200,"Teacher can persist partial personal details before completing the CV");
@@ -58,8 +59,6 @@ const partialDraftRead=await request("/api/users/me/teacher-cv",{token:approvalA
 assert.equal(JSON.parse(partialDraftRead.data.cv.personalDetails).fullName,"Partial CV draft","Partial draft survives a fresh request");
 const ownerCannotReviewDraft=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/details",{token:ownerToken});
 assert.equal(ownerCannotReviewDraft.status,404,"Unsubmitted drafts are not exposed in the reviewer details workspace");
-const managerCannotReviewDraft=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/details",{token:managerToken});
-assert.equal(managerCannotReviewDraft.status,404,"Managers cannot open unsubmitted drafts even when they know the applicant ID");
 const pendingQueue=await request("/api/teacher-cv-workspace/queue",{token:ownerToken});
 assert.equal(pendingQueue.status,200,"Owner can retrieve the teacher CV review queue");
 assert(!pendingQueue.data.applications.some(item=>Number(item.id)===Number(approvalApplicant.id)),"Unsubmitted teacher registrations must not appear as submitted CV applications");
@@ -126,6 +125,8 @@ const managerToken=managerEncoded+"."+crypto.createHmac("sha256",process.env.JWT
 await pool.query("INSERT INTO auth_sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '90 days')",[crypto.createHash("sha256").update(managerToken).digest("hex"),managerId]);
 const grantView=await request("/api/manager-permissions/"+managerId,{token:ownerToken,method:"PUT",body:{permissions:[{key:"teacher_cv.view",granted:true}]}});
 assert.equal(grantView.status,200,"Owner can grant this manager CV view permission individually");
+const managerCannotReviewDraft=await request("/api/teacher-cv-workspace/"+draftOnlyApplicant.id+"/details",{token:managerToken});
+assert.equal(managerCannotReviewDraft.status,404,"A manager with explicit CV view permission still cannot open an unsubmitted draft");
 const managerQueue=await request("/api/teacher-cv-workspace/queue",{token:managerToken});
 assert.equal(managerQueue.status,200,"Individually authorized Junior Manager can access the CV queue");
 assert(managerQueue.data.applications.some(item=>Number(item.id)===Number(approvalApplicant.id)),"Authorized manager can see the submitted application");
