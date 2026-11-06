@@ -48,6 +48,8 @@ async function registerTeacher(label){
  assert.equal(created.status,201,"Teacher registration must succeed");
  assert.equal(created.data.user.teacherApplicationStatus,"draft","A new teacher registration is a draft, not a submitted application");
  assert.ok(created.data.user.teacherReviewDeadline,"Owner-configured review deadline must be assigned");
+ const configuredDays=(Date.parse(created.data.user.teacherReviewDeadline)-Date.now())/(24*60*60*1000);
+ assert(configuredDays>=0.9&&configuredDays<=1.1,"New applications use the Owner-configured one-day review duration");
  return {id:created.data.user.id,email,token:created.data.token};
 }
 const approvalApplicant=await registerTeacher("approval");
