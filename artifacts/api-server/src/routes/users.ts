@@ -464,7 +464,7 @@ async function sendTeacherCvPdf(userId: number, res: any): Promise<void> {
   const [userResult, cvResult, qualificationResult, subjectResult, documentResult] = await Promise.all([
     pool.query("SELECT id,name,email,role,subject,grade FROM users WHERE id=$1", [userId]),
     pool.query("SELECT cv FROM teacher_profiles WHERE user_id=$1", [userId]),
-    pool.query("SELECT q.title,q.institution,q.year,q.verification_status,d.file_name AS certificate_file_name FROM teacher_qualifications q LEFT JOIN teacher_documents d ON d.id=q.document_id AND d.user_id=q.user_id WHERE q.user_id=$1 AND q.source='user' ORDER BY q.created_at DESC", [userId]),
+    pool.query("SELECT q.title,q.institution,q.year,q.verification_status,d.file_name AS certificate_file_name FROM teacher_qualifications q LEFT JOIN teacher_documents d ON d.id=q.document_id AND d.user_id=q.user_id WHERE q.user_id=$1 AND q.source='user' AND q.verification_status='verified' ORDER BY q.created_at DESC", [userId]),
     pool.query("SELECT subjects_to_teach FROM teacher_subjects WHERE user_id=$1", [userId]).catch(() => ({ rows: [] as Array<{subjects_to_teach:string[]}> })),
     pool.query("SELECT document_type,file_name,mime_type FROM teacher_documents WHERE user_id=$1 ORDER BY created_at DESC", [userId]),
   ]);
