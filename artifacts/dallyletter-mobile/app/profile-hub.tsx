@@ -35,7 +35,7 @@ export default function MobileProfileHub() {
   const isOwn = Boolean(user && targetId === user.id);
   const isOwner = ["owner","admin","platform_owner"].includes(String(user?.role||"").toLowerCase());
   const normalizedUserRole = String(user?.role||"").trim().toLowerCase().replace(/[ -]+/g,"_");
-  const canReviewTransferLetters = ["manager","senior_manager","owner","admin","platform_owner"].includes(normalizedUserRole) || (normalizedUserRole === "teacher" && Boolean((user as any)?.isManager) && String((user as any)?.teacherApplicationStatus||"").toLowerCase() !== "pending_review");
+  const canReviewTransferLetters = ["manager","senior_manager","owner","admin","platform_owner"].includes(normalizedUserRole) || (normalizedUserRole === "teacher" && Boolean((user as any)?.isManager) && !["draft","pending_review","rejected_pending_conversion"].includes(String((user as any)?.teacherApplicationStatus||"").toLowerCase()));
   const [tab,setTab] = useState<Tab>("Overview");
   const [profile,setProfile] = useState<Row|null>(null);
   const [qualifications,setQualifications] = useState<Row[]>([]);
