@@ -57,6 +57,10 @@ function canViewManagerTarget(actor: NonNullable<Express.Request["currentUser"]>
   return false;
 }
 function canReviewTeacherApplication(user: { role: unknown; managerLevel?: unknown; isManager?: unknown; teacherApplicationStatus?: unknown }): boolean { return isSeniorManager(user); }
+async function hasSubmittedTeacherApplication(userId: number): Promise<boolean> {
+  const result = await pool.query("SELECT 1 FROM teacher_cv_review_history WHERE teacher_id=$1 AND action='submitted' LIMIT 1", [userId]);
+  return result.rows.length > 0;
+}
 
 function hasForbiddenPaymentCredentials(body: unknown): boolean {
   if (!body || typeof body !== "object" || Array.isArray(body)) return false;
@@ -501,7 +505,7 @@ router.get("/users/:id/teacher-cv", requireAuth, requireManagerPermission("teach
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid user id." }); return; }
   const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, id));
-  if (!target || normalizeRole(target.role) !== "teacher" || (!isOwnerRole(req.currentUser!.role) && !canModerateUser(req.currentUser!, target))) { res.status(404).json({ error: "Teacher CV not found." }); return; }
+  if (!target || normalizeRole(target.role) !== "teacher" || !(await hasSubmittedTeacherApplication(id)) || (!isOwnerRole(req.currentUser!.role) && !canModerateUser(req.currentUser!, target))) { res.status(404).json({ error: "Teacher CV not found." }); return; }
   await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, cv jsonb NOT NULL DEFAULT '{}'::jsonb, updated_at timestamptz NOT NULL DEFAULT now())");
   const result = await pool.query("SELECT cv, updated_at FROM teacher_profiles WHERE user_id = $1", [id]);
   if (!result.rows.length) { res.status(404).json({ error: "Teacher CV not found." }); return; }
