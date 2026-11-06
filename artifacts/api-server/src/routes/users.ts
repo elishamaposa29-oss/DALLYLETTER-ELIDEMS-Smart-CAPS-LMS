@@ -516,7 +516,7 @@ router.get("/users/:id/teacher-cv/pdf", requireAuth, requireManagerPermission("t
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid user id." }); return; }
   const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, id));
-  if (!target || normalizeRole(target.role) !== "teacher" || (!isOwnerRole(req.currentUser!.role) && !canModerateUser(req.currentUser!, target))) { res.status(404).json({ error: "Teacher CV not found." }); return; }
+  if (!target || normalizeRole(target.role) !== "teacher" || !(await hasSubmittedTeacherApplication(id)) || (!isOwnerRole(req.currentUser!.role) && !canModerateUser(req.currentUser!, target))) { res.status(404).json({ error: "Teacher CV not found." }); return; }
   await sendTeacherCvPdf(id, res);
 });
 
