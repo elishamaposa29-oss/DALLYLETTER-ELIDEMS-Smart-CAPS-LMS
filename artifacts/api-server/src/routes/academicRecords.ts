@@ -651,7 +651,7 @@ router.get("/academic-records/reports/drafts", requireAuth, requireManagerPermis
     const visible=isOwnerRole(user.role)?result.rows:result.rows.filter((row:any)=>canModerateUser(user,{role:row.role,isManager:row.is_manager,managerLevel:row.manager_level}));
     res.json(isOwnerRole(user.role)?visible:visible.map(({role,is_manager,manager_level,...row}:any)=>row)); return;
   }
-  if (String(user.role).toLowerCase() !== "teacher" || user.teacherApplicationStatus === "pending_review") {
+  if (String(user.role).toLowerCase() !== "teacher" || ["draft","pending_review","rejected_pending_conversion"].includes(String(user.teacherApplicationStatus||"").toLowerCase())) {
     res.status(403).json({ error: "Academic reports are available to their learner, assigned teacher, and managers." }); return;
   }
   const result = await pool.query(
