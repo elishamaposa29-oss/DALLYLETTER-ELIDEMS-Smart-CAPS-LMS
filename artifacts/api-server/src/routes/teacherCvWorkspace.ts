@@ -35,15 +35,36 @@ router.post("/submit",async(req,res)=>{
  if(missing.length||!personal.fullName||!personal.idNumber||!personal.dob||!personal.phone||!personal.email||!personal.address||!cv.photoDocumentId||!docs.rows.length||!quals.rows.length||incomplete.length){
   res.status(409).json({error:"Complete the required CV details, upload a PDF resume and profile photo, and attach a separate certificate to every qualification before submitting. The readiness survey is optional and can be saved separately.",missingFields:missing,resumeUploaded:docs.rows.length>0,qualifications:quals.rows.length,certificatesMissing:incomplete.length});return;
  }
- const priorSubmission=await pool.query("SELECT id FROM teacher_cv_review_history WHERE teacher_id=$1 AND action='submitted' LIMIT 1",[actor.id]);
- if(priorSubmission.rows.length){res.json({submitted:true,alreadySubmitted:true,status:"pending_review",message:"Your application has already been submitted and is awaiting review."});return;}
- // Persist the submission first. Email, push and in-app notification delivery are optional
- // communication channels and can never roll back a valid CV submission.
- await pool.query(
-  "INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,NULL,'submitted',$2,'pending_review','CV submission persisted. Notifications are best-effort and do not control workflow.')",
-  [actor.id,(actor as any).teacherApplicationStatus||"pending_review"]
- );
- let reviewerRows:any[]=[];
+ // Serialize submissions for this account. The status transition and submission history
+  // commit together, so a draft cannot appear in the reviewer queue before it is submitted.
+  const submissionClient=await pool.connect();
+  let alreadySubmitted=false;
+  try{
+   await submissionClient.query("BEGIN");
+   const current=await submissionClient.query("SELECT teacher_application_status FROM users WHERE id=$1 AND lower(role)='teacher' FOR UPDATE",[actor.id]);
+   if(!current.rows.length){await submissionClient.query("ROLLBACK");res.status(404).json({error:"Teacher account not found"});return;}
+   const previousStatus=String(current.rows[0].teacher_application_status||"draft");
+   if(["approved","rejected_pending_conversion","auto_converted"].includes(previousStatus)){
+    await submissionClient.query("ROLLBACK");res.status(409).json({error:"This teacher application is no longer eligible for submission."});return;
+   }
+   const priorSubmission=await submissionClient.query("SELECT id FROM teacher_cv_review_history WHERE teacher_id=$1 AND action='submitted' LIMIT 1",[actor.id]);
+   if(priorSubmission.rows.length){
+    await submissionClient.query("UPDATE users SET teacher_application_status='pending_review' WHERE id=$1 AND lower(role)='teacher'",[actor.id]);
+    alreadySubmitted=true;
+   }else{
+    const statusUpdate=await submissionClient.query("UPDATE users SET teacher_application_status='pending_review' WHERE id=$1 AND lower(role)='teacher' AND COALESCE(teacher_application_status,'draft') IN ('draft','pending_review') RETURNING id",[actor.id]);
+    if(!statusUpdate.rows.length){await submissionClient.query("ROLLBACK");res.status(409).json({error:"Teacher application status changed before submission. Refresh and try again."});return;}
+    await submissionClient.query(
+     "INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,NULL,'submitted',$2,'pending_review','CV submission persisted. Notifications are best-effort and do not control workflow.')",
+     [actor.id,previousStatus]
+    );
+   }
+   await submissionClient.query("COMMIT");
+  }catch(error){await submissionClient.query("ROLLBACK").catch(()=>undefined);throw error;}
+  finally{submissionClient.release();}
+  if(alreadySubmitted){res.json({submitted:true,alreadySubmitted:true,status:"pending_review",message:"Your application has already been submitted and is awaiting review."});return;}
+  // Notification delivery follows the committed submission and cannot undo it.
+  let reviewerRows:any[]=[];
  try{
   const reviewerResult=await pool.query(
    "SELECT DISTINCT u.id,u.role FROM users u LEFT JOIN manager_permission_grants g ON g.manager_user_id=u.id AND g.permission_key='teacher_cv.view' AND g.granted=true WHERE (lower(u.role) IN ('owner','platform_owner') OR g.manager_user_id IS NOT NULL) AND u.is_blocked=false AND u.is_suspended=false"
@@ -106,13 +127,15 @@ router.post("/:teacherId/decision",requireManagerPermissionForRequest((req)=>req
  try{
   await client.query("BEGIN");
   if(action==="approve"){
-   await client.query("UPDATE users SET teacher_application_status='approved',teacher_review_deadline=NULL,is_manager=false WHERE id=$1 AND lower(role)='teacher'",[id]);
+   const updated=await client.query("UPDATE users SET teacher_application_status='approved',teacher_review_deadline=NULL WHERE id=$1 AND lower(role)='teacher' AND teacher_application_status='pending_review' RETURNING id",[id]);
+    if(!updated.rows.length){await client.query("ROLLBACK");res.status(409).json({error:"This application is no longer awaiting a decision."});return;}
    await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,'approved',$3,'approved',$4)",[id,req.currentUser!.id,t.teacher_application_status||"pending_review",note||null]);
   }else{
    const setting=await client.query("SELECT review_duration_days FROM teacher_cv_workflow_settings WHERE id=1");
    const days=Number(setting.rows[0]?.review_duration_days||30);
    const safeDays=Number.isInteger(days)&&days>=1&&days<=365?days:30;
-   const deadline=await client.query("UPDATE users SET teacher_application_status='rejected_pending_conversion',teacher_review_deadline=now()+make_interval(days=>$2),is_manager=false,is_prefect=false WHERE id=$1 AND lower(role)='teacher' RETURNING teacher_review_deadline",[id,safeDays]);
+   const deadline=await client.query("UPDATE users SET teacher_application_status='rejected_pending_conversion',teacher_review_deadline=now()+make_interval(days=>$2),is_manager=false,is_prefect=false WHERE id=$1 AND lower(role)='teacher' AND teacher_application_status='pending_review' RETURNING teacher_review_deadline",[id,safeDays]);
+    if(!deadline.rows.length){await client.query("ROLLBACK");res.status(409).json({error:"This application is no longer awaiting a decision."});return;}
    conversionDeadline=deadline.rows[0]?.teacher_review_deadline?new Date(deadline.rows[0].teacher_review_deadline).toISOString():null;
    await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,'rejected',$3,'rejected_pending_conversion',$4)",[id,req.currentUser!.id,t.teacher_application_status||"pending_review",note||null]);
   }
