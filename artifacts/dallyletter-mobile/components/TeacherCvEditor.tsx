@@ -113,8 +113,13 @@ export function TeacherCvEditor() {
     if (!token || saving) return false;
     setSaving(true);
     try {
+      const existingResponse = await fetch(getApiUrl("/api/users/me/teacher-cv"), { headers: { Authorization: "Bearer " + token } });
+      const existingData = existingResponse.ok ? await existingResponse.json() : {};
+      const existingCv = existingData.cv || {};
       const cvToSave = {
+        ...existingCv,
         ...cv,
+        photoDocumentId: cv.photoDocumentId || existingCv.photoDocumentId || "",
         personalDetails: JSON.stringify({
           fullName: user?.name || "",
           idNumber: personal.idNumber.trim(),
