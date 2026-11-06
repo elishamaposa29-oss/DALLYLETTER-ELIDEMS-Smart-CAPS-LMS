@@ -49,7 +49,7 @@ export async function processExpiredTeacherApplications(): Promise<void> {
         `SELECT id,name,email,teacher_application_status
            FROM users
           WHERE lower(role)='teacher'
-            AND COALESCE(teacher_application_status,'pending_review') IN ('pending_review','rejected_pending_conversion')
+            AND COALESCE(teacher_application_status,'pending_review') IN ('draft','pending_review','rejected_pending_conversion')
             AND COALESCE(teacher_review_deadline,created_at+make_interval(days=>$1))<=now()
           ORDER BY teacher_review_deadline NULLS FIRST,created_at
           FOR UPDATE SKIP LOCKED
