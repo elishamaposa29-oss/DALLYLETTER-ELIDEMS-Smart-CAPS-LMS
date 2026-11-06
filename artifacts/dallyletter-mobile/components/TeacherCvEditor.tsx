@@ -196,8 +196,12 @@ export function TeacherCvEditor() {
         throw new Error((data.error || "Your application could not be submitted.") + (missing.length ? " Missing or incomplete: " + missing.join(", ") + "." : ""));
       }
       setApplicationStatus("pending_review");
-      const historyResponse = await fetch(getApiUrl("/api/teacher-cv-workspace/" + user?.id + "/history"), { headers: { Authorization: "Bearer " + token } });
+      const [historyResponse, meResponse] = await Promise.all([
+        fetch(getApiUrl("/api/teacher-cv-workspace/" + user?.id + "/history"), { headers: { Authorization: "Bearer " + token } }),
+        fetch(getApiUrl("/api/auth/me"), { headers: { Authorization: "Bearer " + token } }),
+      ]);
       if (historyResponse.ok) { const h = await historyResponse.json(); setReviewHistory(Array.isArray(h.history) ? h.history : []); }
+      if (meResponse.ok) { const me = await meResponse.json(); setReviewDeadline(me.teacherReviewDeadline || me.user?.teacherReviewDeadline || null); }
       Alert.alert("Application submitted", "Your CV has been saved and sent to the Owner's review queue.");
     } catch (error) {
       Alert.alert("Application not submitted", error instanceof Error ? error.message : "Please retry.");
