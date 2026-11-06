@@ -2,7 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import { getApiUrl } from "@workspace/api-client-react";
 import React, { useEffect, useState } from "react";
 import * as FileSystem from "expo-file-system/legacy";
-import { ActivityIndicator, Alert, Linking, Platform, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Linking, Platform, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
@@ -288,6 +288,23 @@ export function TeacherCvEditor() {
           />
         </View>
       ))}
+      <View style={{ marginTop: 14, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12 }}>
+        <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "700", marginBottom: 8 }}>Live professional CV preview</Text>
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12, marginBottom: 10 }}>
+          {cv.photoDocumentId ? <Image source={{ uri: getApiUrl("/api/users/" + user?.id + "/teacher-documents/" + cv.photoDocumentId), headers: { Authorization: "Bearer " + token } }} style={{ width: 72, height: 88, borderRadius: 8, backgroundColor: colors.secondary }} /> : <View style={{ width: 72, height: 88, borderRadius: 8, backgroundColor: colors.secondary, alignItems: "center", justifyContent: "center" }}><Feather name="user" size={26} color={colors.mutedForeground} /></View>}
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.foreground, fontSize: 17, fontWeight: "800" }}>{user?.name || "Your professional name"}</Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{personal.email || user?.email || "Email not provided"}</Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{personal.phone || user?.phone || "Phone not provided"}</Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{cv.address || "Address not provided"}</Text>
+          </View>
+        </View>
+        {[["Professional summary", cv.professionalSummary], ["Education", cv.education], ["Experience", cv.experience], ["Teaching subjects", cv.subjects], ["Certifications", cv.certifications], ["Languages", cv.languages]].map(([label, value]) => <View key={label} style={{ marginBottom: 7 }}>
+          <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "700" }}>{label}</Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{value || "Not provided yet"}</Text>
+        </View>)}
+        <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>Preview updates as you edit. The reviewer PDF is generated from the saved CV and attached evidence.</Text>
+      </View>
       <View style={{ marginTop: 14, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12 }}>
         <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "700", marginBottom: 4 }}>Readiness survey (optional)</Text>
         <Text style={{ color: colors.mutedForeground, fontSize: 12, marginBottom: 10 }}>Save these answers independently. You can leave questions blank and still save your CV draft.</Text>
