@@ -333,6 +333,7 @@ test("pending teacher API policy never blocks authentication and permits all sel
    ["POST","/api/messages/media"],
    ["GET","/api/messages/media/123e4567-e89b-12d3-a456-426614174000"],
    ["POST","/api/messages/123/report"],
+  ["POST","/api/teacher-cv-workspace/survey/submit"],
   ["GET","/api/profile/connections/friends"],
   ["GET","/api/profile/connections/requests"],
   ["PUT","/api/profile/me/privacy"],
@@ -341,7 +342,7 @@ test("pending teacher API policy never blocks authentication and permits all sel
   ["PATCH","/api/notifications/123/read"],
  ]) assert.equal(canPendingTeacherUseRoute(applicant,method,path),true,method+" "+path);
  const rejected={...applicant,teacherApplicationStatus:"rejected_pending_conversion"};
- for(const [method,path] of [["GET","/api/auth/me"],["POST","/api/auth/login"],["GET","/api/users/me/notification-email"],["POST","/api/teacher-cv-workspace/submit"]])
+ for(const [method,path] of [["GET","/api/auth/me"],["POST","/api/auth/login"],["GET","/api/users/me/notification-email"],["POST","/api/teacher-cv-workspace/submit"],["POST","/api/teacher-cv-workspace/survey/submit"]])
   assert.equal(canPendingTeacherUseRoute(rejected,method,path),true,method+" "+path);
  assert.equal(canPendingTeacherUseRoute(rejected,"POST","/api/lessons"),false);
  assert.equal(canPendingTeacherUseRoute(rejected,"POST","/api/notifications"),false,"Applicants may read and mark their own notifications but cannot broadcast/create notifications");
