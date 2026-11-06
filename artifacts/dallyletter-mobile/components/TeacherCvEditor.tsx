@@ -50,6 +50,8 @@ export function TeacherCvEditor() {
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [chatDraft, setChatDraft] = useState("");
   const [chatSending, setChatSending] = useState(false);
+  const [surveySaving, setSurveySaving] = useState(false);
+  const [survey, setSurvey] = useState({ laptop: "", laptopType: "", smartphone: "", computer: "", online: "", internet: "", platforms: "", power: "", verificationCall: "", extra: "" });
 
   useEffect(() => {
     let active = true;
@@ -68,7 +70,9 @@ export function TeacherCvEditor() {
         const data = await cvResponse.json();
         const nextCv = { ...emptyCv, ...(data.cv ?? {}) };
         let savedPersonal: any = {};
+        let savedSurvey: any = {};
         try { savedPersonal = typeof nextCv.personalDetails === "string" ? JSON.parse(nextCv.personalDetails) : nextCv.personalDetails || {}; } catch {}
+        try { savedSurvey = typeof nextCv.surveyAnswers === "string" ? JSON.parse(nextCv.surveyAnswers) : nextCv.surveyAnswers || {}; } catch {}
         if (!active) return;
         setCv(nextCv);
         setPersonal({
@@ -76,6 +80,18 @@ export function TeacherCvEditor() {
           dob: String(savedPersonal.dob || ""),
           phone: String(savedPersonal.phone || user.phone || ""),
           email: String(savedPersonal.email || user.email || ""),
+        });
+        setSurvey({
+          laptop: String(savedSurvey.laptop || ""),
+          laptopType: String(savedSurvey.laptopType || ""),
+          smartphone: String(savedSurvey.smartphone || ""),
+          computer: String(savedSurvey.computer || ""),
+          online: String(savedSurvey.online || ""),
+          internet: String(savedSurvey.internet || ""),
+          platforms: Array.isArray(savedSurvey.platforms) ? savedSurvey.platforms.join(", ") : String(savedSurvey.platforms || ""),
+          power: String(savedSurvey.power || ""),
+          verificationCall: String(savedSurvey.verificationCall || ""),
+          extra: String(savedSurvey.extra || ""),
         });
         if (meResponse.ok) {
           const me = await meResponse.json();
