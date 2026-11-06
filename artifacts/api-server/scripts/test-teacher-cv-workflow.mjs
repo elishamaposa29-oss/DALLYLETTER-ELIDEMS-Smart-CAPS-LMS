@@ -147,6 +147,7 @@ assert.equal(reviewerCvPdf.status,200,"Owner can download the submitted reviewer
 const reviewerCvPdfText=Buffer.from(await reviewerCvPdf.arrayBuffer()).toString("latin1");
 assert(reviewerCvPdfText.includes("Bachelor of Education"),"Reviewer PDF includes the applicant qualification even while verification is pending");
 assert(reviewerCvPdfText.includes("Verification: pending"),"Reviewer PDF clearly identifies the qualification verification status");
+assert(reviewerCvPdfText.includes("READINESS SURVEY")&&reviewerCvPdfText.includes("Survey status:"),"Reviewer PDF includes readiness survey answers and whether the survey was independently submitted");
 const ownerPhoto=await fetch(base+"/api/users/"+approvalApplicant.id+"/teacher-documents/"+profilePhoto.data.id,{headers:{Authorization:"Bearer "+ownerToken}});
 assert.equal(ownerPhoto.status,200,"Owner can open applicant profile photo");
 assert.match(ownerPhoto.headers.get("content-type")||"",new RegExp("image/png"));
