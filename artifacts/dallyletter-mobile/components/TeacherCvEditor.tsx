@@ -138,6 +138,24 @@ export function TeacherCvEditor() {
     } finally { setSaving(false); }
   };
 
+  const saveSurvey = async () => {
+    if (!token || surveySaving) return;
+    setSurveySaving(true);
+    try {
+      const surveyAnswers = { ...survey, platforms: survey.platforms.split(",").map(value => value.trim()).filter(Boolean) };
+      const response = await fetch(getApiUrl("/api/users/me/teacher-cv"), {
+        method: "PATCH",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify({ cv: { ...cv, surveyAnswers: JSON.stringify(surveyAnswers) } }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Readiness survey could not be saved.");
+      setCv({ ...emptyCv, ...(data.cv ?? { ...cv, surveyAnswers: JSON.stringify(surveyAnswers) }) });
+      Alert.alert("Readiness survey saved", "Your survey answers are saved independently. Completing the survey is optional for CV submission.");
+    } catch (error) { Alert.alert("Survey not saved", error instanceof Error ? error.message : "Please retry."); }
+    finally { setSurveySaving(false); }
+  };
+
   const submitApplication = async () => {
     if (!token || submitting) return;
     const saved = await save(false);
