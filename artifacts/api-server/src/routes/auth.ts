@@ -199,7 +199,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
       email, passwordHash: await hashPassword(password), name, role,
       grade: grade ?? null, subject: subject ?? null, phone: phone ?? null,
       isPrefect: false, isBlocked: false, isSuspended: false,
-      teacherApplicationStatus: role === "teacher" ? "pending_review" : "not_applicable",
+      teacherApplicationStatus: role === "teacher" ? "draft" : "not_applicable",
       teacherReviewDeadline: role === "teacher" ? new Date(Date.now() + teacherReviewDays * 24 * 60 * 60 * 1000) : null,
     }).returning();
 
