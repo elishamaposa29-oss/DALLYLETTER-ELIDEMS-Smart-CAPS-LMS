@@ -106,6 +106,7 @@ export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, 
     (method === "GET" && path === "/users/" + selfId) ||
     (method === "PATCH" && path === "/users/" + selfId) ||
     ((method === "GET" || method === "POST") && path === "/teacher-cv-workspace/" + selfId + "/chat") ||
+    (method === "GET" && path === "/teacher-cv-workspace/" + selfId + "/history") ||
     (method === "PUT" && path === "/users/me/payout-preferences") ||
     (method === "POST" && ["/users/me/notification-email/request","/users/me/notification-email/verify","/users/me/recovery-email/request-verification","/users/me/recovery-email/confirm","/users/me/phone/request-verification","/users/me/phone/confirm","/users/me/avatar","/users/me/cover","/auth/email-change/request","/auth/email-change/confirm"].includes(path)) ||
     (method === "PATCH" && path === "/users/me/recovery-profile");
