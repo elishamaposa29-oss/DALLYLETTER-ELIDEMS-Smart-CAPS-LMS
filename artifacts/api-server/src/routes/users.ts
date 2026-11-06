@@ -612,8 +612,9 @@ router.patch("/users/:id/teacher-review", requireAuth, requireManagerPermissionF
   if (!Number.isInteger(id) || !["approve", "reject"].includes(action)) { res.status(400).json({ error: "Invalid teacher review action" }); return; }
   const [target] = await db.select({ id: usersTable.id, role: usersTable.role, teacherApplicationStatus: usersTable.teacherApplicationStatus, name: usersTable.name })
     .from(usersTable).where(eq(usersTable.id, id));
-  if (!target || target.role !== "teacher" || target.teacherApplicationStatus !== "pending_review") {
-    res.status(409).json({ error: "Only pending teacher applications can be reviewed" }); return;
+  const submittedApplication = await pool.query("SELECT 1 FROM teacher_cv_review_history WHERE teacher_id=$1 AND action='submitted' LIMIT 1", [id]);
+  if (!target || target.role !== "teacher" || !submittedApplication.rows.length || ![null, "pending_review"].includes(target.teacherApplicationStatus ?? null)) {
+    res.status(409).json({ error: "Only formally submitted pending teacher applications can be reviewed" }); return;
   }
 
   if (action === "approve") {
@@ -664,7 +665,7 @@ router.patch("/users/:id/teacher-review", requireAuth, requireManagerPermissionF
   try {
     await client.query("BEGIN");
     const updateSql = action === "approve"
-      ? "UPDATE users SET teacher_application_status='approved',teacher_review_deadline=NULL WHERE id=$1 AND lower(role)='teacher' AND teacher_application_status='pending_review' RETURNING id"
+      ? "UPDATE users SET teacher_application_status='approved',teacher_review_deadline=NULL WHERE id=$1 AND lower(role)='teacher' AND COALESCE(teacher_application_status,'pending_review')='pending_review' RETURNING id"
       : "UPDATE users SET teacher_application_status='rejected_pending_conversion',teacher_review_deadline=$2,is_manager=false,is_prefect=false WHERE id=$1 AND lower(role)='teacher' AND teacher_application_status='pending_review' RETURNING id";
     const updated = await client.query(updateSql, action === "reject" ? [id, conversionDeadline] : [id]);
     if (!updated.rows.length) {
