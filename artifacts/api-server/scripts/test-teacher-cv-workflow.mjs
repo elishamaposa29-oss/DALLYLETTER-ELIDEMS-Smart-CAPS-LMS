@@ -26,6 +26,7 @@ assert.equal(config.status,200,"Owner can open CV workflow settings");
 const defaultReviewEmail="teacher-cv-default-review-"+suffix+"@example.test";
 const defaultReviewSignup=await request("/api/auth/register",{method:"POST",body:{name:"CV Test Default Review",email:defaultReviewEmail,password,role:"teacher",phone:"+263771234568"}});
 assert.equal(defaultReviewSignup.status,201,"Teacher signup must remain available when the Owner has not configured a review duration");
+assert.equal(defaultReviewSignup.data.user.teacherApplicationStatus,"draft","New teacher registration starts as an unsubmitted draft");
 const defaultReviewDays=(Date.parse(defaultReviewSignup.data.user.teacherReviewDeadline)-Date.now())/(24*60*60*1000);
 assert(defaultReviewDays>=29&&defaultReviewDays<=31,"Unconfigured teacher applications receive the safe 30-day default review period");
 const defaultReviewLogin=await request("/api/auth/login",{token:defaultReviewSignup.data.token,method:"POST",body:{email:defaultReviewEmail,password}});
@@ -45,7 +46,7 @@ async function registerTeacher(label){
  const email="teacher-cv-"+label+"-"+suffix+"@example.test";
  const created=await request("/api/auth/register",{method:"POST",body:{name:"CV Test "+label,email,password,role:"teacher",phone:"+263771234567"}});
  assert.equal(created.status,201,"Teacher registration must succeed");
- assert.equal(created.data.user.teacherApplicationStatus,"pending_review");
+ assert.equal(created.data.user.teacherApplicationStatus,"draft","A new teacher registration is a draft, not a submitted application");
  assert.ok(created.data.user.teacherReviewDeadline,"Owner-configured review deadline must be assigned");
  return {id:created.data.user.id,email,token:created.data.token};
 }
@@ -75,6 +76,8 @@ assert.equal(restoredSurveySave.status,200);
 const submitted=await request("/api/teacher-cv-workspace/submit",{token:approvalApplicant.token,method:"POST"});
 assert.equal(submitted.status,200,"Submit CV must notify the applicant and Owner after validating uploaded documents");
 assert.equal(submitted.data.submitted,true);
+const submittedStatus=await request("/api/auth/me",{token:approvalApplicant.token});
+assert.equal(submittedStatus.data.teacherApplicationStatus,"pending_review","Formal submission changes the draft into a submitted review state");
 const ownerQueueAfterSubmit=await request("/api/teacher-cv-workspace/queue",{token:ownerToken});
 assert(ownerQueueAfterSubmit.data.applications.some(item=>Number(item.id)===Number(approvalApplicant.id)),"Submitted CV must appear in the Owner review queue");
 const refreshedCv=await request("/api/users/me/teacher-cv",{token:approvalApplicant.token});
