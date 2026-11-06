@@ -624,16 +624,16 @@ router.patch("/users/:id/teacher-review", requireAuth, requireManagerPermissionF
     const photoResult = await pool.query("SELECT id FROM teacher_documents WHERE id=$1 AND user_id=$2 AND document_type=$3 AND mime_type LIKE $4", [Number(cv.photoDocumentId), id, "cv", "image/%"]);
     const hasPhoto = photoResult.rows.length > 0;
     const hasLegalDetails = ["fullName","idNumber","dob","phone","email","address"].every((key) => typeof personalDetails[key] === "string" && String(personalDetails[key]).trim().length > 0);
-    const docs = await pool.query("SELECT 1 FROM teacher_documents WHERE user_id = $1 AND document_type IN ('resume','certificate') LIMIT 1", [id]);
-    const verifiedQualifications = await pool.query("SELECT count(*)::int AS total, count(*) FILTER (WHERE verification_status=$2 AND document_id IS NOT NULL)::int AS verified FROM teacher_qualifications WHERE user_id=$1", [id, "verified"]);
+    const docs = await pool.query("SELECT 1 FROM teacher_documents WHERE user_id=$1 AND document_type='resume' AND mime_type='application/pdf' LIMIT 1", [id]);
+    const verifiedQualifications = await pool.query("SELECT count(*)::int AS total, count(*) FILTER (WHERE q.verification_status=$2 AND q.document_id IS NOT NULL AND d.document_type='certificate')::int AS verified FROM teacher_qualifications q LEFT JOIN teacher_documents d ON d.id=q.document_id AND d.user_id=q.user_id WHERE q.user_id=$1", [id, "verified"]);
     if (missingFields.length || !hasPhoto || !hasLegalDetails || !docs.rows.length || Number(verifiedQualifications.rows[0]?.total||0)===0 || Number(verifiedQualifications.rows[0]?.verified||0)!==Number(verifiedQualifications.rows[0]?.total||0)) {
       res.status(409).json({
-        error: "Teacher application is incomplete. Complete personal/legal CV details, upload a profile photo and supporting CV document, and have every separate qualification certificate verified before authorization. The readiness survey is optional.",
+        error: "Teacher application is incomplete. Complete personal/legal CV details, upload a profile photo and PDF resume, and have every separate qualification certificate verified before authorization. The readiness survey is optional.",
         missingFields,
         qualificationVerificationComplete: Number(verifiedQualifications.rows[0]?.total||0)>0 && Number(verifiedQualifications.rows[0]?.verified||0)===Number(verifiedQualifications.rows[0]?.total||0),
         profilePhotoUploaded: hasPhoto,
         legalDetailsComplete: hasLegalDetails,
-        qualificationDocumentUploaded: Boolean(docs.rows.length),
+        resumePdfUploaded: Boolean(docs.rows.length),
       });
       return;
     }
@@ -685,12 +685,10 @@ router.patch("/users/:id/teacher-review", requireAuth, requireManagerPermissionF
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   // Approval and rejection preserve the existing session and credentials. Only scheduled expiry conversion revokes sessions.
 
-  const title = action === "approve" ? "Teacher application approved" : action === "reject" ? "Teacher application not approved" : "Account converted to learner";
+  const title = action === "approve" ? "Teacher application approved" : "Teacher application not approved";
   const message = action === "approve"
     ? "Your teacher CV has been approved. Your teacher permissions are now active."
-    : action === "reject"
-      ? "Your teacher CV was not approved. Teaching permissions are disabled, but your account and login remain active until " + (conversionDeadline?.toLocaleString() || "the scheduled learner conversion") + ". You may continue using your Profile Hub."
-      : "Your account has been converted to a learner account. Your login email and password remain unchanged.";
+    : "Your teacher CV was not approved. Teaching permissions are disabled, but your account and login remain active until " + (conversionDeadline?.toLocaleString() || "the scheduled learner conversion") + ". You may continue using your Profile Hub.";
   try {
     await db.insert(notificationsTable).values({ recipientId: id, title, message, link: "/profile-hub", type: "teacher_cv_decision" });
   } catch (error) {
