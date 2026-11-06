@@ -24,7 +24,7 @@ const router: IRouter = Router();
 
 function isProfileOnlyTeacher(user: NonNullable<Express.Request["currentUser"]>): boolean {
   return normalizeRole(user.role) === "teacher" &&
-    ["pending_review","rejected_pending_conversion"].includes(String(user.teacherApplicationStatus ?? "").trim().toLowerCase());
+    ["draft","pending_review","rejected_pending_conversion"].includes(String(user.teacherApplicationStatus ?? "").trim().toLowerCase());
 }
 
 router.get("/manager/owner-contact", requireAuth, requireManagerPermission("owner.chat"), async (req,res):Promise<void> => {
