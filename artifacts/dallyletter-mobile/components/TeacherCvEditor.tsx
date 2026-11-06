@@ -120,6 +120,7 @@ export function TeacherCvEditor() {
         ...existingCv,
         ...cv,
         photoDocumentId: cv.photoDocumentId || existingCv.photoDocumentId || "",
+        surveyAnswers: existingCv.surveyAnswers ?? cv.surveyAnswers,
         personalDetails: JSON.stringify({
           fullName: user?.name || "",
           idNumber: personal.idNumber.trim(),
@@ -333,7 +334,7 @@ export function TeacherCvEditor() {
         </TouchableOpacity>
         {!!surveySubmittedAt && <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 6 }}>Submitted: {new Date(surveySubmittedAt).toLocaleString()}</Text>}
       </View>
-      <TouchableOpacity disabled={saving || loading} onPress={save} style={{ backgroundColor: colors.primary, borderRadius: 10, padding: 13, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, opacity: saving || loading ? 0.65 : 1 }}>
+      <TouchableOpacity disabled={saving || loading || submitting} onPress={save} style={{ backgroundColor: colors.primary, borderRadius: 10, padding: 13, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, opacity: saving || loading || submitting ? 0.65 : 1 }}>
         {saving ? <ActivityIndicator color="#fff" /> : <Feather name="save" size={16} color="#fff" />}
         <Text style={{ color: "#fff", fontWeight: "700" }}>{saving ? "Saving…" : "Save teacher CV"}</Text>
       </TouchableOpacity>
