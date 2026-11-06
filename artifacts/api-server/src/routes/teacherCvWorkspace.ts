@@ -36,6 +36,9 @@ router.post("/submit",async(req,res)=>{
  if(missing.length||!personal.fullName||!personal.idNumber||!personal.dob||!personal.phone||!personal.email||!personal.address||!photo.rows.length||!docs.rows.length||!quals.rows.length||incomplete.length){
   res.status(409).json({error:"Complete the required CV details, upload a PDF resume and profile photo, and attach a separate certificate to every qualification before submitting. The readiness survey is optional and can be saved separately.",missingFields:missing,photoUploaded:Boolean(photo.rows.length),resumeUploaded:docs.rows.length>0,qualifications:quals.rows.length,certificatesMissing:incomplete.length});return;
  }
+ const reviewSetting=await pool.query("SELECT review_duration_days FROM teacher_cv_workflow_settings WHERE id=1");
+ const configuredDays=Number(reviewSetting.rows[0]?.review_duration_days||30);
+ const reviewDays=Number.isInteger(configuredDays)&&configuredDays>=1&&configuredDays<=365?configuredDays:30;
  // Serialize submissions for this account. The status transition and submission history
   // commit together, so a draft cannot appear in the reviewer queue before it is submitted.
   const submissionClient=await pool.connect();
@@ -50,10 +53,10 @@ router.post("/submit",async(req,res)=>{
    }
    const priorSubmission=await submissionClient.query("SELECT id FROM teacher_cv_review_history WHERE teacher_id=$1 AND action='submitted' LIMIT 1",[actor.id]);
    if(priorSubmission.rows.length){
-    await submissionClient.query("UPDATE users SET teacher_application_status='pending_review' WHERE id=$1 AND lower(role)='teacher'",[actor.id]);
+    await submissionClient.query("UPDATE users SET teacher_application_status='pending_review',teacher_review_deadline=COALESCE(teacher_review_deadline,now()+make_interval(days=>$2)) WHERE id=$1 AND lower(role)='teacher'",[actor.id,reviewDays]);
     alreadySubmitted=true;
    }else{
-    const statusUpdate=await submissionClient.query("UPDATE users SET teacher_application_status='pending_review' WHERE id=$1 AND lower(role)='teacher' AND COALESCE(teacher_application_status,'draft') IN ('draft','pending_review','not_applicable') RETURNING id",[actor.id]);
+    const statusUpdate=await submissionClient.query("UPDATE users SET teacher_application_status='pending_review',teacher_review_deadline=COALESCE(teacher_review_deadline,now()+make_interval(days=>$2)) WHERE id=$1 AND lower(role)='teacher' AND COALESCE(teacher_application_status,'draft') IN ('draft','pending_review','not_applicable') RETURNING id",[actor.id,reviewDays]);
     if(!statusUpdate.rows.length){await submissionClient.query("ROLLBACK");res.status(409).json({error:"Teacher application status changed before submission. Refresh and try again."});return;}
     await submissionClient.query(
      "INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,NULL,'submitted',$2,'pending_review','CV submission persisted. Notifications are best-effort and do not control workflow.')",
