@@ -183,6 +183,11 @@ assert.equal(pendingLogin.status,200,"A pending teacher can sign in again even w
 assert.equal(pendingLogin.data.user.role,"teacher","CV review state must not change the login role");
 const pendingMe=await request("/api/auth/me",{token:rejected.token});
 assert.equal(pendingMe.status,200,"Pending teacher can refresh the authenticated session");
+const ownTransferRequest=await request("/api/academic-records/transfer-requests",{token:rejected.token,method:"POST",body:{reason:"Family relocation: isolated Profile Hub ownership test",formData:{learnerName:"CV Test rejected",receivingSchool:"Test Receiving School",guardianName:"Test Guardian",guardianPhone:"+263771234567",reasonDetail:"Family relocation for integration test"}}});
+assert.equal(ownTransferRequest.status,201,"Pending teacher can submit their own Profile Hub transfer request");
+const ownTransferList=await request("/api/academic-records/transfer-requests",{token:rejected.token});
+assert.equal(ownTransferList.status,200,"Pending teacher can read their own transfer requests");
+assert(ownTransferList.data.every(item=>Number(item.learner_id)===Number(rejected.id)),"Non-manager transfer endpoint returns only the applicant own rows");
 const pendingProfileChat=await request("/api/messages",{token:approvalApplicant.token,method:"POST",body:{content:"Private Profile Hub conversation test",type:"text",groupId:null,recipientId:owner.id}});
 assert.equal(pendingProfileChat.status,201,"Pending teacher can start a privacy-checked private Profile Hub conversation");
 const pendingProfileChatHistory=await request("/api/messages?recipientId="+owner.id,{token:approvalApplicant.token});
