@@ -51,6 +51,7 @@ export function TeacherCvEditor() {
   const [chatDraft, setChatDraft] = useState("");
   const [chatSending, setChatSending] = useState(false);
   const [surveySaving, setSurveySaving] = useState(false);
+  const [surveySubmittedAt, setSurveySubmittedAt] = useState<string | null>(null);
   const [survey, setSurvey] = useState({ laptop: "", laptopType: "", smartphone: "", computer: "", online: "", internet: "", platforms: "", power: "", verificationCall: "", extra: "" });
 
   useEffect(() => {
@@ -75,6 +76,7 @@ export function TeacherCvEditor() {
         try { savedSurvey = typeof nextCv.surveyAnswers === "string" ? JSON.parse(nextCv.surveyAnswers) : nextCv.surveyAnswers || {}; } catch {}
         if (!active) return;
         setCv(nextCv);
+        setSurveySubmittedAt(nextCv.surveySubmittedAt ? String(nextCv.surveySubmittedAt) : null);
         setPersonal({
           idNumber: String(savedPersonal.idNumber || ""),
           dob: String(savedPersonal.dob || ""),
@@ -138,8 +140,8 @@ export function TeacherCvEditor() {
     } finally { setSaving(false); }
   };
 
-  const saveSurvey = async () => {
-    if (!token || surveySaving) return;
+  const saveSurvey = async (): Promise<boolean> => {
+    if (!token || surveySaving) return false;
     setSurveySaving(true);
     try {
       const surveyAnswers = { ...survey, platforms: survey.platforms.split(",").map(value => value.trim()).filter(Boolean) };
@@ -152,7 +154,24 @@ export function TeacherCvEditor() {
       if (!response.ok) throw new Error(data.error || "Readiness survey could not be saved.");
       setCv({ ...emptyCv, ...(data.cv ?? { ...cv, surveyAnswers: JSON.stringify(surveyAnswers) }) });
       Alert.alert("Readiness survey saved", "Your survey answers are saved independently. Completing the survey is optional for CV submission.");
-    } catch (error) { Alert.alert("Survey not saved", error instanceof Error ? error.message : "Please retry."); }
+      return true;
+    } catch (error) { Alert.alert("Survey not saved", error instanceof Error ? error.message : "Please retry."); return false; }
+    finally { setSurveySaving(false); }
+  };
+
+  const submitSurvey = async () => {
+    if (!token || surveySubmittedAt) return;
+    const saved = await saveSurvey();
+    if (!saved) return;
+    setSurveySaving(true);
+    try {
+      const response = await fetch(getApiUrl("/api/teacher-cv-workspace/survey/submit"), { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" } });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error((data.error || "Survey could not be submitted.") + (Array.isArray(data.missingFields) ? " Missing: " + data.missingFields.join(", ") : ""));
+      setSurveySubmittedAt(String(data.submittedAt || new Date().toISOString()));
+      setCv(previous => ({ ...previous, surveySubmittedAt: data.submittedAt } as TeacherCv));
+      Alert.alert("Readiness survey submitted", "Your survey has been submitted independently. Your CV application remains in its current status.");
+    } catch (error) { Alert.alert("Survey not submitted", error instanceof Error ? error.message : "Please retry."); }
     finally { setSurveySaving(false); }
   };
 
