@@ -63,9 +63,9 @@ export function TeacherCvEditor() {
       try {
         const [cvResponse, meResponse, historyResponse, chatResponse] = await Promise.all([
           fetch(getApiUrl("/api/users/me/teacher-cv"), { headers }),
-          fetch(getApiUrl("/api/auth/me"), { headers }),
-          fetch(getApiUrl("/api/teacher-cv-workspace/" + user.id + "/history"), { headers }),
-          fetch(getApiUrl("/api/teacher-cv-workspace/" + user.id + "/chat"), { headers }),
+          fetch(getApiUrl("/api/auth/me"), { headers }).catch(() => null),
+          fetch(getApiUrl("/api/teacher-cv-workspace/" + user.id + "/history"), { headers }).catch(() => null),
+          fetch(getApiUrl("/api/teacher-cv-workspace/" + user.id + "/chat"), { headers }).catch(() => null),
         ]);
         if (!cvResponse.ok) throw new Error("Could not load your CV.");
         const data = await cvResponse.json();
@@ -95,12 +95,12 @@ export function TeacherCvEditor() {
           verificationCall: String(savedSurvey.verificationCall || ""),
           extra: String(savedSurvey.extra || ""),
         });
-        if (meResponse.ok) {
+        if (meResponse?.ok) {
           const me = await meResponse.json();
           if (active) { setApplicationStatus(String(me.teacherApplicationStatus || me.user?.teacherApplicationStatus || "draft")); setReviewDeadline(me.teacherReviewDeadline || me.user?.teacherReviewDeadline || null); }
         }
-        if (historyResponse.ok) { const h = await historyResponse.json(); if (active) setReviewHistory(Array.isArray(h.history) ? h.history : []); }
-        if (chatResponse.ok) { const c = await chatResponse.json(); if (active) setChatMessages(Array.isArray(c) ? c : c.messages || []); }
+        if (historyResponse?.ok) { const h = await historyResponse.json(); if (active) setReviewHistory(Array.isArray(h.history) ? h.history : []); }
+        if (chatResponse?.ok) { const c = await chatResponse.json(); if (active) setChatMessages(Array.isArray(c) ? c : c.messages || []); }
       } catch {
         if (active) Alert.alert("Teacher CV", "Your CV could not be loaded. Please retry when online.");
       } finally { if (active) setLoading(false); }
