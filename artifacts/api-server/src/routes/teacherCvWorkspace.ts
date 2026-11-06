@@ -26,12 +26,12 @@ router.post("/submit",async(req,res)=>{
  const [cvResult,docs,quals]=await Promise.all([
   pool.query("SELECT cv FROM teacher_profiles WHERE user_id=$1",[actor.id]),
   pool.query("SELECT id FROM teacher_documents WHERE user_id=$1 AND document_type='resume' AND mime_type='application/pdf'",[actor.id]),
-  pool.query("SELECT id,title,document_id FROM teacher_qualifications WHERE user_id=$1",[actor.id]),
+  pool.query("SELECT q.id,q.title,q.document_id,d.document_type FROM teacher_qualifications q LEFT JOIN teacher_documents d ON d.id=q.document_id AND d.user_id=q.user_id WHERE q.user_id=$1",[actor.id]),
  ]);
  const cv=(cvResult.rows[0]?.cv||{}) as Record<string,unknown>;
  let personal:any={};try{personal=JSON.parse(String(cv.personalDetails||"{}"))}catch{}
  const missing=["professionalSummary","education","experience","subjects","address"].filter(k=>typeof cv[k]!=="string"||String(cv[k]).trim().length<2);
- const incomplete=quals.rows.filter(q=>!q.document_id);
+ const incomplete=quals.rows.filter(q=>!q.document_id||q.document_type!=="certificate");
  if(missing.length||!personal.fullName||!personal.idNumber||!personal.dob||!personal.phone||!personal.email||!personal.address||!cv.photoDocumentId||!docs.rows.length||!quals.rows.length||incomplete.length){
   res.status(409).json({error:"Complete the required CV details, upload a PDF resume and profile photo, and attach a separate certificate to every qualification before submitting. The readiness survey is optional and can be saved separately.",missingFields:missing,resumeUploaded:docs.rows.length>0,qualifications:quals.rows.length,certificatesMissing:incomplete.length});return;
  }
@@ -107,9 +107,10 @@ router.post("/:teacherId/decision",requireManagerPermissionForRequest((req)=>req
  const t=q.rows[0];
  if(!t||normalizeRole(t.role)!=="teacher"||(!isOwner(req.currentUser)&&!canModerateUser(req.currentUser!,{role:t.role,isManager:t.is_manager,managerLevel:t.manager_level}))){res.status(404).json({error:"Teacher application not found"});return;}
  if(action==="approve"){
-  const [cvResult,qualResult]=await Promise.all([
+  const [cvResult,qualResult,resumeResult]=await Promise.all([
    pool.query("SELECT cv FROM teacher_profiles WHERE user_id=$1",[id]),
-   pool.query("SELECT id,title,verification_status,document_id FROM teacher_qualifications WHERE user_id=$1",[id])
+   pool.query("SELECT q.id,q.title,q.verification_status,q.document_id,d.document_type FROM teacher_qualifications q LEFT JOIN teacher_documents d ON d.id=q.document_id AND d.user_id=q.user_id WHERE q.user_id=$1",[id]),
+   pool.query("SELECT id FROM teacher_documents WHERE user_id=$1 AND document_type='resume' AND mime_type='application/pdf' LIMIT 1",[id])
   ]);
   const cv=(cvResult.rows[0]?.cv||{}) as Record<string,unknown>;
   let personal:any={};try{personal=JSON.parse(String(cv.personalDetails||"{}"))}catch{}
@@ -119,7 +120,7 @@ router.post("/:teacherId/decision",requireManagerPermissionForRequest((req)=>req
   const hasPhoto=photoResult.rows.length>0;
   const incomplete=qualResult.rows.filter(q=>q.verification_status!=="verified"||!q.document_id);
   if(missing.length||!hasPhoto||!personal.fullName||!personal.idNumber||!personal.dob||!personal.phone||!personal.email||!personal.address||!qualResult.rows.length||incomplete.length){
-   res.status(409).json({error:"Complete personal/legal details, upload a photo and a separate certificate for every qualification, then verify every qualification before authorizing teaching access. The readiness survey is optional.",missingFields:missing,photoUploaded:hasPhoto,qualificationCount:qualResult.rows.length,unverifiedQualifications:incomplete.map(q=>({id:q.id,title:q.title,status:q.verification_status,documentUploaded:Boolean(q.document_id)}))});return;
+   res.status(409).json({error:"Complete personal/legal details, upload a profile photo and PDF resume, attach a certificate to every qualification, and have every qualification verified before authorizing teaching access. The readiness survey is optional.",missingFields:missing,photoUploaded:hasPhoto,resumePdfUploaded:Boolean(resumeResult.rows.length),qualificationCount:qualResult.rows.length,unverifiedQualifications:incomplete.map(q=>({id:q.id,title:q.title,status:q.verification_status,documentUploaded:Boolean(q.document_id)}))});return;
   }
  }
  const client=await pool.connect();
