@@ -17,6 +17,7 @@ type TeacherCv = {
   references: string;
   personalDetails: string;
   photoDocumentId: string;
+  surveySubmittedAt?: string;
 };
 
 const emptyCv: TeacherCv = {
