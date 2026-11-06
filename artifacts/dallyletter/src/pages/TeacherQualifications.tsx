@@ -18,6 +18,7 @@ export default function TeacherQualifications(){
  const uploadDocument=async(type:string,file:File)=>{const body=new FormData();body.append("file",file);body.append("documentType",type);return request("/api/users/me/teacher-documents",{method:"POST",body})};
  const persistQualification=async(q:Qual):Promise<Qual>=>{
   if(!q.title.trim())throw new Error("Enter a qualification title before saving this record.");
+  if(q.id&&q.verification_status==="verified")return q;
   const payload={title:q.title.trim(),institution:q.institution.trim()||null,year:q.year||null};
   const saved=q.id
    ?await request("/api/users/me/qualifications/"+q.id,{method:"PATCH",body:JSON.stringify(payload)})
