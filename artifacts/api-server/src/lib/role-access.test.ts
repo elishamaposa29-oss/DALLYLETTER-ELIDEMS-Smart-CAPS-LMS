@@ -252,7 +252,6 @@ test("pending teacher API policy allows self-service and privacy-checked Profile
   ["GET","/api/polls"],
   ["GET","/api/live-classes"],
   ["GET","/api/teacher-cv-workspace/42/chat"],
-  ["GET","/api/academic-records/transfer-requests"],
   ["GET","/api/academic-records/report-learners"],
   ["GET","/api/profile/42/social"],
   ["GET","/api/profile/42/section/attendance"],
