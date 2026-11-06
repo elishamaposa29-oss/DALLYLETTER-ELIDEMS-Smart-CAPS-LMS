@@ -59,6 +59,10 @@ const partialDraftRead=await request("/api/users/me/teacher-cv",{token:approvalA
 assert.equal(JSON.parse(partialDraftRead.data.cv.personalDetails).fullName,"Partial CV draft","Partial draft survives a fresh request");
 const ownerCannotReviewDraft=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/details",{token:ownerToken});
 assert.equal(ownerCannotReviewDraft.status,404,"Unsubmitted drafts are not exposed in the reviewer details workspace");
+const ownerCannotDecideDraft=await request("/api/teacher-cv-workspace/"+draftOnlyApplicant.id+"/decision",{token:ownerToken,method:"POST",body:{action:"approve"}});
+assert.equal(ownerCannotDecideDraft.status,404,"Even Owner cannot approve an application that was never formally submitted");
+const ownerLegacyCannotDecideDraft=await request("/api/users/"+draftOnlyApplicant.id+"/teacher-review",{token:ownerToken,method:"PATCH",body:{action:"approve"}});
+assert.equal(ownerLegacyCannotDecideDraft.status,409,"Legacy review endpoint also rejects unsubmitted teacher drafts");
 const ownerLegacyDraftCv=await request("/api/users/"+draftOnlyApplicant.id+"/teacher-cv",{token:ownerToken});
 assert.equal(ownerLegacyDraftCv.status,404,"Legacy reviewer CV endpoint must not expose an unsubmitted draft");
 const ownerLegacyDraftPdf=await request("/api/users/"+draftOnlyApplicant.id+"/teacher-cv/pdf",{token:ownerToken});
