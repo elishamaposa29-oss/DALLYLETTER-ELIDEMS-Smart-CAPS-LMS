@@ -167,8 +167,16 @@ export function TeacherCvEditor() {
         headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "Your application could not be submitted. Check the required details and documents.");
+      if (!response.ok) {
+        const missing = Array.isArray(data.missingFields) ? data.missingFields : [];
+        if (data.photoUploaded === false) missing.push("profile photograph");
+        if (data.resumeUploaded === false) missing.push("PDF resume");
+        if (Number(data.certificatesMissing) > 0) missing.push(Number(data.certificatesMissing) + " qualification certificate(s)");
+        throw new Error((data.error || "Your application could not be submitted.") + (missing.length ? " Missing or incomplete: " + missing.join(", ") + "." : ""));
+      }
       setApplicationStatus("pending_review");
+      const historyResponse = await fetch(getApiUrl("/api/teacher-cv-workspace/" + user?.id + "/history"), { headers: { Authorization: "Bearer " + token } });
+      if (historyResponse.ok) { const h = await historyResponse.json(); setReviewHistory(Array.isArray(h.history) ? h.history : []); }
       Alert.alert("Application submitted", "Your CV has been saved and sent to the Owner's review queue.");
     } catch (error) {
       Alert.alert("Application not submitted", error instanceof Error ? error.message : "Please retry.");
