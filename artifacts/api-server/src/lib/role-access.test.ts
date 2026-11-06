@@ -171,12 +171,15 @@ test("junior_manager role alias retains manager workspace access but not senior 
  assert.equal(canReviewAcademicTransfer(junior),false);
 });
 
-test("pending teacher managers do not gain award authority from stale manager flags",()=>{
- const pending={role:"teacher",isManager:true,managerLevel:"senior",teacherApplicationStatus:"pending_review"};
- assert.equal(isJuniorManager(pending),false);
- assert.equal(isSeniorManager(pending),false);
- assert.equal(canRecommendAchievementAwards(pending),false);
- assert.equal(canApproveAchievementAwards(pending),false);
+test("draft, pending and rejected teacher managers do not gain authority from stale manager flags",()=>{
+ for(const status of ["draft","pending_review","rejected_pending_conversion"]){
+  const pending={role:"teacher",isManager:true,managerLevel:"senior",teacherApplicationStatus:status};
+  assert.equal(isJuniorManager(pending),false,status);
+  assert.equal(isSeniorManager(pending),false,status);
+  assert.equal(canRecommendAchievementAwards(pending),false,status);
+  assert.equal(canApproveAchievementAwards(pending),false,status);
+  assert.equal(canAccessManager(pending),false,status);
+ }
 });
 test("ordinary teachers and learners retain existing access without manager authority",()=>{
  for(const user of [{role:"teacher",isManager:false},{role:"student"},{role:"prefect"}]){
