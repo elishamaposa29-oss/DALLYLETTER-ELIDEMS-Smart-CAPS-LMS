@@ -71,6 +71,7 @@ export function buildTeacherCvPdf(profile: TeacherCvProfile): Buffer {
     "Profile photograph: " + String(photo?.file_name || "Not uploaded"),
     "PDF resume: " + String(resume?.file_name || "Not uploaded"),
     "",
+    "TEACHER-PROVIDED DETAILS",
     "PROFESSIONAL PROFILE",
     "Professional summary:",
     ...wrapText(cv.professionalSummary),
