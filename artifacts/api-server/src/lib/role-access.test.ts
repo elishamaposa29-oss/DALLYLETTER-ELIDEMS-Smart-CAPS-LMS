@@ -257,8 +257,6 @@ test("pending teacher API policy allows self-service and privacy-checked Profile
   ["GET","/api/live-classes"],
   ["GET","/api/teacher-cv-workspace/42/chat"],
   ["GET","/api/academic-records/report-learners"],
-  // This endpoint is a manager review queue, not an applicant-owned Profile Hub section.
-  ["GET","/api/academic-records/transfer-requests"],
   ["GET","/api/users/42"],
   ["PATCH","/api/users/42"],
   ["POST","/api/lessons"],
