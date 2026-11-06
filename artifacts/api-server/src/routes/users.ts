@@ -907,6 +907,24 @@ router.post("/users/me/qualifications", requireAuth, async (req, res): Promise<v
   res.status(201).json(result.rows[0]);
 });
 
+router.patch("/users/me/qualifications/:id", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.currentUser!.id;
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid qualification id." }); return; }
+  if (!["teacher", "manager", "senior_manager"].includes(String(req.currentUser!.role).toLowerCase())) { res.status(403).json({ error: "Teacher or manager account required." }); return; }
+  const { title, institution, year } = req.body ?? {};
+  if (typeof title !== "string" || !title.trim() || title.trim().length > 500) { res.status(400).json({ error: "Qualification title is required (maximum 500 characters)." }); return; }
+  if (institution != null && (typeof institution !== "string" || institution.length > 300)) { res.status(400).json({ error: "Institution must be text up to 300 characters." }); return; }
+  const parsedYear = year == null || year === "" ? null : Number(year);
+  if (parsedYear !== null && (!Number.isInteger(parsedYear) || parsedYear < 1900 || parsedYear > new Date().getFullYear() + 5)) { res.status(400).json({ error: "Enter a valid qualification year." }); return; }
+  const result = await pool.query(
+    "UPDATE teacher_qualifications SET title=$1,institution=$2,year=$3,verification_status='pending' WHERE id=$4 AND user_id=$5 AND source='user' AND verification_status IN ('pending','rejected') RETURNING id,title,institution,year,verification_status,document_id,source,created_at",
+    [title.trim(), typeof institution === "string" ? institution.trim() || null : null, parsedYear, id, userId],
+  );
+  if (!result.rows.length) { res.status(404).json({ error: "Editable qualification not found. Verified qualifications cannot be changed." }); return; }
+  res.json(result.rows[0]);
+});
+
 
 // Owner-only moderation queue for qualifications awaiting verification.
 router.get("/qualifications/pending", requireAuth, requireManagerPermission("qualifications.view"), async(req,res):Promise<void>=>{
