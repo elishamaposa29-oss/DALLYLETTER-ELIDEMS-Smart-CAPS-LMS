@@ -77,6 +77,7 @@ export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, 
     (method === "PATCH" && path === "/users/me/teacher-cv") ||
     (method === "GET" && path === "/users/me/qualifications") ||
     (method === "POST" && path === "/users/me/qualifications") ||
+    (method === "PATCH" && /^\\/users\\/me\\/qualifications\\/\\d+$/.test(path)) ||
     (method === "GET" && ["/users/me/enrollments-summary","/users/me/enrollments","/users/me/notification-email","/users/me/subjects","/users/me/payout-preferences","/users/me/recovery-profile","/academic-records/reports/me","/academic-records/current-year","/academic-records/me","/academic-records/transfer-requests","/daily-attendance/me","/achievements/my","/subjects/catalog","/config/currentYear"].includes(path)) ||
     (method === "PUT" && path === "/users/me/subjects") ||
     (method === "POST" && ["/users/me/phone/request-verification","/users/me/recovery-question/verify","/daily-attendance/open","/academic-records/transfer-requests"].includes(path)) ||
