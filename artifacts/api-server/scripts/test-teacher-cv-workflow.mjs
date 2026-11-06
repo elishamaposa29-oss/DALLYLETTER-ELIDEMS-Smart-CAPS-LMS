@@ -267,6 +267,11 @@ const legacyConverted=await pool.query("SELECT role,teacher_application_status,p
 assert.equal(legacyConverted.rows[0].role,"student","Legacy rejection is also converted by the scheduled expiry processor");
 assert.equal(legacyConverted.rows[0].teacher_application_status,"auto_converted");
 assert.ok(legacyConverted.rows[0].password_hash,"Legacy conversion preserves the original password");
+const convertedHistoryBefore=await pool.query("SELECT count(*)::int AS count FROM teacher_cv_review_history WHERE teacher_id=ANY($1::int[]) AND action='expired'",[[expired.id,legacyRejected.id]]);
+const repeatedExpiry=await request("/api/teacher-cv-workspace/__test/process-expired",{token:ownerToken,method:"POST"});
+assert.equal(repeatedExpiry.status,200,"Repeated expiry processor runs remain safe");
+const convertedHistoryAfter=await pool.query("SELECT count(*)::int AS count FROM teacher_cv_review_history WHERE teacher_id=ANY($1::int[]) AND action='expired'",[[expired.id,legacyRejected.id]]);
+assert.equal(convertedHistoryAfter.rows[0].count,convertedHistoryBefore.rows[0].count,"Repeated scheduler runs do not duplicate conversion history");
 const expiredOldSession=await request("/api/users/me/teacher-cv",{token:expired.token});
 assert.equal(expiredOldSession.status,401,"Expiry conversion revokes existing teacher sessions");
 const expiredLogin=await request("/api/auth/login",{method:"POST",body:{email:expired.email,password}});
