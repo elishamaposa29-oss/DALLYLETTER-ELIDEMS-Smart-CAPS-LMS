@@ -250,6 +250,30 @@ export function TeacherCvEditor() {
           />
         </View>
       ))}
+      <View style={{ marginTop: 14, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12 }}>
+        <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "700", marginBottom: 4 }}>Readiness survey (optional)</Text>
+        <Text style={{ color: colors.mutedForeground, fontSize: 12, marginBottom: 10 }}>Save these answers independently. You can leave questions blank and still save your CV draft.</Text>
+        {([
+          ["laptop", "Laptop access", "Yes / No"],
+          ["laptopType", "Laptop type / specification", "Optional device details"],
+          ["smartphone", "Smartphone access", "Yes / No and device type"],
+          ["computer", "Computer skills", "Beginner / Intermediate / Advanced"],
+          ["online", "Online teaching availability", "Days and times available"],
+          ["internet", "Internet access", "Wi-Fi / mobile data / other"],
+          ["platforms", "Communication platforms", "Separate platforms with commas"],
+          ["power", "Reliable electricity", "Yes / No / Sometimes"],
+          ["verificationCall", "Verification call availability", "Preferred times"],
+          ["extra", "Additional information", "Anything else the reviewer should know"],
+        ] as const).map(([key, label, placeholder]) => (
+          <View key={key} style={{ marginBottom: 9 }}>
+            <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "600", marginBottom: 4 }}>{label}</Text>
+            <TextInput testID={"teacher-cv-survey-" + key} accessibilityLabel={label} blurOnSubmit={false} value={survey[key]} onChangeText={value => setSurvey(previous => ({ ...previous, [key]: value }))} placeholder={placeholder} placeholderTextColor={colors.mutedForeground} style={{ minHeight: 42, borderWidth: 1, borderColor: colors.border, borderRadius: 9, padding: 9, color: colors.foreground, backgroundColor: colors.background }} />
+          </View>
+        ))}
+        <TouchableOpacity disabled={surveySaving || loading} onPress={() => void saveSurvey()} style={{ backgroundColor: colors.secondary, borderRadius: 9, padding: 11, alignItems: "center", opacity: surveySaving || loading ? 0.65 : 1 }}>
+          <Text style={{ color: colors.primary, fontWeight: "700" }}>{surveySaving ? "Saving survey…" : "Save readiness survey separately"}</Text>
+        </TouchableOpacity>
+      </View>
       <TouchableOpacity disabled={saving || loading} onPress={save} style={{ backgroundColor: colors.primary, borderRadius: 10, padding: 13, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, opacity: saving || loading ? 0.65 : 1 }}>
         {saving ? <ActivityIndicator color="#fff" /> : <Feather name="save" size={16} color="#fff" />}
         <Text style={{ color: "#fff", fontWeight: "700" }}>{saving ? "Saving…" : "Save teacher CV"}</Text>
