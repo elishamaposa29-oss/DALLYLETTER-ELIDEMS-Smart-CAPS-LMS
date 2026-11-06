@@ -92,24 +92,71 @@ export function TeacherCvEditor() {
     return () => { active = false; };
   }, [user?.id, token]);
 
-  const save = async () => {
-    if (!token || saving) return;
+  const save = async (showSuccess = true): Promise<boolean> => {
+    if (!token || saving) return false;
     setSaving(true);
     try {
+      const cvToSave = {
+        ...cv,
+        personalDetails: JSON.stringify({
+          fullName: user?.name || "",
+          idNumber: personal.idNumber.trim(),
+          dob: personal.dob.trim(),
+          phone: personal.phone.trim() || user?.phone || "",
+          email: personal.email.trim() || user?.email || "",
+          address: cv.address.trim(),
+        }),
+      };
       const response = await fetch(getApiUrl("/api/users/me/teacher-cv"), {
         method: "PATCH",
         headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-        body: JSON.stringify({ cv }),
+        body: JSON.stringify({ cv: cvToSave }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Could not save your CV.");
-      setCv({ ...emptyCv, ...(data.cv ?? cv) });
-      Alert.alert("CV saved", "Your teacher CV has been saved. Upload your resume/certificates and complete payment information before owner review.");
+      setCv({ ...emptyCv, ...(data.cv ?? cvToSave) });
+      if (showSuccess) Alert.alert("CV saved", "Your draft is saved. Add your photo, PDF resume and qualification certificates in Profile Hub before submitting.");
+      return true;
     } catch (error) {
       Alert.alert("Could not save CV", error instanceof Error ? error.message : "Please retry.");
-    } finally {
-      setSaving(false);
-    }
+      return false;
+    } finally { setSaving(false); }
+  };
+
+  const submitApplication = async () => {
+    if (!token || submitting) return;
+    const saved = await save(false);
+    if (!saved) return;
+    setSubmitting(true);
+    try {
+      const response = await fetch(getApiUrl("/api/teacher-cv-workspace/submit"), {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Your application could not be submitted. Check the required details and documents.");
+      setApplicationStatus("pending_review");
+      Alert.alert("Application submitted", "Your CV has been saved and sent to the Owner's review queue.");
+    } catch (error) {
+      Alert.alert("Application not submitted", error instanceof Error ? error.message : "Please retry.");
+    } finally { setSubmitting(false); }
+  };
+
+  const sendReviewMessage = async () => {
+    if (!token || !user?.id || !chatDraft.trim() || chatSending) return;
+    setChatSending(true);
+    try {
+      const response = await fetch(getApiUrl("/api/teacher-cv-workspace/" + user.id + "/chat"), {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify({ body: chatDraft.trim() }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Message could not be sent.");
+      setChatMessages(previous => [...previous, data.message || data]);
+      setChatDraft("");
+    } catch (error) { Alert.alert("Message not sent", error instanceof Error ? error.message : "Please retry."); }
+    finally { setChatSending(false); }
   };
 
   const downloadPdf = async () => {
