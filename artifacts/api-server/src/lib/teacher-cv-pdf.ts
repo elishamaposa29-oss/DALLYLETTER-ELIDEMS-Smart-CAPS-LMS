@@ -50,6 +50,7 @@ export function buildTeacherCvPdf(profile: TeacherCvProfile): Buffer {
   const cv = profile.cv ?? {};
   const personal = parseRecord(cv.personalDetails);
   const teaching = parseRecord(cv.teachingDetails);
+  const survey = parseRecord(cv.surveyAnswers);
   const qualifications = Array.isArray(profile.qualifications) ? profile.qualifications : [];
   const documents = Array.isArray(profile.documents) ? profile.documents : [];
   const storedSubjects = String(cv.subjects ?? "").trim();
@@ -100,6 +101,10 @@ export function buildTeacherCvPdf(profile: TeacherCvProfile): Buffer {
     "Work experience:",
     ...wrapText(cv.experience),
     "Forms / grades: " + String(teaching.forms || "Not recorded"),
+    "",
+    "READINESS SURVEY",
+    "Survey status: " + (cv.surveySubmittedAt ? "Submitted on " + String(cv.surveySubmittedAt) : "Saved answers only — not submitted"),
+    ...Object.entries(survey).map(([key, value]) => key + ": " + (Array.isArray(value) ? value.join(", ") : String(value ?? "Not answered"))),
     "",
     "SUPPORTING DOCUMENTS",
     ...documents.map(item => String(item.document_type || "document") + ": " + String(item.file_name || "unnamed file")),
