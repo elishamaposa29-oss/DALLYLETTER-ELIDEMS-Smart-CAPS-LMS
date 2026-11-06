@@ -51,6 +51,7 @@ async function registerTeacher(label){
  return {id:created.data.user.id,email,token:created.data.token};
 }
 const approvalApplicant=await registerTeacher("approval");
+const approvalIdentityBefore=(await pool.query("SELECT id,email,password_hash FROM users WHERE id=$1",[approvalApplicant.id])).rows[0];
 const partialDraftSave=await request("/api/users/me/teacher-cv",{token:approvalApplicant.token,method:"PATCH",body:{cv:{personalDetails:JSON.stringify({fullName:"Partial CV draft"})}}});
 assert.equal(partialDraftSave.status,200,"Teacher can persist partial personal details before completing the CV");
 const partialDraftRead=await request("/api/users/me/teacher-cv",{token:approvalApplicant.token});
@@ -166,11 +167,15 @@ assert.equal(certificateView.status,200,"Owner can view the applicant's individu
 assert.match(certificateView.headers.get("content-type")||"",/application\/pdf/);
 const approved=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/decision",{token:seniorToken,method:"POST",body:{action:"approve",note:"All qualification evidence verified by Owner"}});
 assert.equal(approved.status,200,"Owner can authorize a complete CV with verified qualifications");
-const approvedRow=await pool.query("SELECT role,teacher_application_status FROM users WHERE id=$1",[approvalApplicant.id]);
+const approvedRow=await pool.query("SELECT id,email,password_hash,role,teacher_application_status FROM users WHERE id=$1",[approvalApplicant.id]);
+assert.equal(Number(approvedRow.rows[0].id),Number(approvalIdentityBefore.id),"Approval preserves the original account ID");
+assert.equal(approvedRow.rows[0].email,approvalIdentityBefore.email,"Approval preserves the original email");
+assert.equal(approvedRow.rows[0].password_hash,approvalIdentityBefore.password_hash,"Approval preserves the original password hash");
 assert.equal(approvedRow.rows[0].role,"teacher");
 assert.equal(approvedRow.rows[0].teacher_application_status,"approved");
 
 const rejected=await registerTeacher("rejected");
+const rejectedIdentityBefore=(await pool.query("SELECT id,email,password_hash FROM users WHERE id=$1",[rejected.id])).rows[0];
 const grantManagerReview=await request("/api/manager-permissions/"+seniorManagerId,{token:ownerToken,method:"PUT",body:{permissions:[{key:"teacher_cv.review",granted:true}]}});
 assert.equal(grantManagerReview.status,200,"Owner can grant this manager the separate CV review/rejection permission");
 const pendingLogin=await request("/api/auth/login",{token:rejected.token,method:"POST",body:{email:rejected.email,password}});
@@ -220,7 +225,10 @@ assert.equal(ownerMessages.status,200);
 assert.equal(ownerMessages.data.length,1,"Owner can read applicant conversation");
 const rejectedDecision=await request("/api/teacher-cv-workspace/"+rejected.id+"/decision",{token:seniorToken,method:"POST",body:{action:"reject",note:"Test rejection"}});
 assert.equal(rejectedDecision.status,200,"Owner rejection is persisted even if notification delivery is unavailable");
-const rejectedRow=await pool.query("SELECT role,teacher_application_status,password_hash,teacher_review_deadline FROM users WHERE id=$1",[rejected.id]);
+const rejectedRow=await pool.query("SELECT id,email,role,teacher_application_status,password_hash,teacher_review_deadline FROM users WHERE id=$1",[rejected.id]);
+assert.equal(Number(rejectedRow.rows[0].id),Number(rejectedIdentityBefore.id),"Rejection preserves the original account ID");
+assert.equal(rejectedRow.rows[0].email,rejectedIdentityBefore.email,"Rejection preserves the original email");
+assert.equal(rejectedRow.rows[0].password_hash,rejectedIdentityBefore.password_hash,"Rejection preserves the original password hash");
 assert.equal(rejectedRow.rows[0].role,"teacher","Rejected applicant retains the original account role until the scheduled conversion");
 assert.equal(rejectedRow.rows[0].teacher_application_status,"rejected_pending_conversion","Rejection immediately disables teaching through the restricted application state");
 assert.ok(rejectedRow.rows[0].teacher_review_deadline,"Rejected account receives a scheduled learner-conversion deadline");
@@ -235,7 +243,10 @@ assert.equal(deniedAfterRejection.status,403,"Rejected applicant cannot create l
 await pool.query("UPDATE users SET teacher_review_deadline=now()-interval '1 minute' WHERE id=$1",[rejected.id]);
 const rejectedExpiry=await request("/api/teacher-cv-workspace/__test/process-expired",{token:ownerToken,method:"POST"});
 assert.equal(rejectedExpiry.status,200,"Rejected applicant converts after the configured deadline");
-const convertedRejected=await pool.query("SELECT role,teacher_application_status,password_hash FROM users WHERE id=$1",[rejected.id]);
+const convertedRejected=await pool.query("SELECT id,email,role,teacher_application_status,password_hash FROM users WHERE id=$1",[rejected.id]);
+assert.equal(Number(convertedRejected.rows[0].id),Number(rejectedIdentityBefore.id),"Learner conversion preserves the original account ID");
+assert.equal(convertedRejected.rows[0].email,rejectedIdentityBefore.email,"Learner conversion preserves the original email");
+assert.equal(convertedRejected.rows[0].password_hash,rejectedIdentityBefore.password_hash,"Learner conversion preserves the original password hash");
 assert.equal(convertedRejected.rows[0].role,"student","Rejected applicant becomes a learner after the grace period");
 assert.equal(convertedRejected.rows[0].teacher_application_status,"auto_converted");
 assert.ok(convertedRejected.rows[0].password_hash,"Scheduled conversion preserves the login credential");
