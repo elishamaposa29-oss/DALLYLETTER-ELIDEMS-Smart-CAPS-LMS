@@ -72,13 +72,25 @@ export default function TeacherQualifications(){
   }catch(e){setNotice(e instanceof Error?e.message:"Draft could not be saved");return false}
   finally{setBusy(false)}
  };
- const saveSurvey=async()=>{
+ const saveSurvey=async():Promise<boolean>=>{
   setBusy(true);setNotice("");
   try{
    const surveyAnswers={laptop:form.laptop,laptopType:form.laptopType,laptopSpec:form.laptopSpec,smartphone:form.smartphone,computer:form.computer,online:form.online,internet:form.internet,platforms:form.platforms,power:form.power,verificationCall:form.verificationCall,extra:form.extra};
    await request("/api/users/me/teacher-cv",{method:"PATCH",body:JSON.stringify({cv:{surveyAnswers:JSON.stringify(surveyAnswers)}})});
-   setNotice("Optional readiness survey answers saved successfully.");
-  }catch(e){setNotice(e instanceof Error?e.message:"Readiness survey could not be saved")}
+   setNotice("Optional readiness survey answers saved successfully.");return true;
+  }catch(e){setNotice(e instanceof Error?e.message:"Readiness survey could not be saved");return false}
+  finally{setBusy(false)}
+ };
+ const submitSurvey=async()=>{
+  if(surveySubmittedAt)return;
+  const saved=await saveSurvey();if(!saved)return;
+  setBusy(true);
+  try{
+   const result=await request("/api/teacher-cv-workspace/survey/submit",{method:"POST"});
+   setSurveySubmittedAt(result.submittedAt||new Date().toISOString());
+   setNotice("Readiness survey submitted independently. Your CV application status has not changed.");
+   await refresh();
+  }catch(e){setNotice(e instanceof Error?e.message:"Readiness survey submission failed")}
   finally{setBusy(false)}
  };
  const send=async()=>{if(!draft.trim()||!user)return;setBusy(true);try{await request("/api/teacher-cv-workspace/"+user.id+"/chat",{method:"POST",body:JSON.stringify({body:draft})});setDraft("");setChat(await request("/api/teacher-cv-workspace/"+user.id+"/chat"))}catch(e){setNotice(e instanceof Error?e.message:"Message failed")}finally{setBusy(false)}};
