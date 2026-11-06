@@ -58,7 +58,7 @@ function hasManagerStaffRole(user: RoleLikeUser): boolean {
   const role = normalizeRole(user.role);
   // Manager roles remain eligible for existing manager tools at either level.
   if (["manager", "senior_manager", "junior_manager"].includes(role)) return true;
-  return role === "teacher" && user.isManager === true && !isTeacherRestricted(user);
+  return isActiveTeacherManager(user);
 }
 
 /** API-level allowlist for applicants who have not yet been authorized to teach. */
