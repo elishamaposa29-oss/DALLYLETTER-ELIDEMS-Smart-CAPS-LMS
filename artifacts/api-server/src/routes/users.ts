@@ -459,12 +459,12 @@ router.post("/users/me/cover", requireAuth, (req, res, next): void => {
 });
 
 // Build a private CV PDF from the teacher's saved profile and school-verified qualifications.
-async function sendTeacherCvPdf(userId: number, res: any): Promise<void> {
+async function sendTeacherCvPdf(userId: number, res: any, reviewerCopy = false): Promise<void> {
   await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, cv jsonb NOT NULL DEFAULT '{}'::jsonb, updated_at timestamptz NOT NULL DEFAULT now())");
   const [userResult, cvResult, qualificationResult, subjectResult, documentResult] = await Promise.all([
     pool.query("SELECT id,name,email,role,subject,grade FROM users WHERE id=$1", [userId]),
     pool.query("SELECT cv FROM teacher_profiles WHERE user_id=$1", [userId]),
-    pool.query("SELECT q.title,q.institution,q.year,q.verification_status,d.file_name AS certificate_file_name FROM teacher_qualifications q LEFT JOIN teacher_documents d ON d.id=q.document_id AND d.user_id=q.user_id WHERE q.user_id=$1 AND q.source='user' AND q.verification_status='verified' ORDER BY q.created_at DESC", [userId]),
+    pool.query(reviewerCopy ? "SELECT q.title,q.institution,q.year,q.verification_status,d.file_name AS certificate_file_name FROM teacher_qualifications q LEFT JOIN teacher_documents d ON d.id=q.document_id AND d.user_id=q.user_id WHERE q.user_id=$1 AND q.source='user' ORDER BY q.created_at DESC" : "SELECT q.title,q.institution,q.year,q.verification_status,d.file_name AS certificate_file_name FROM teacher_qualifications q LEFT JOIN teacher_documents d ON d.id=q.document_id AND d.user_id=q.user_id WHERE q.user_id=$1 AND q.source='user' AND q.verification_status='verified' ORDER BY q.created_at DESC", [userId]),
     pool.query("SELECT subjects_to_teach FROM teacher_subjects WHERE user_id=$1", [userId]).catch(() => ({ rows: [] as Array<{subjects_to_teach:string[]}> })),
     pool.query("SELECT document_type,file_name,mime_type FROM teacher_documents WHERE user_id=$1 ORDER BY created_at DESC", [userId]),
   ]);
@@ -480,6 +480,7 @@ async function sendTeacherCvPdf(userId: number, res: any): Promise<void> {
     qualifications: qualificationResult.rows,
     documents: documentResult.rows,
     subjects,
+    reviewerCopy,
   });
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Cache-Control", "private, no-store");
@@ -517,7 +518,7 @@ router.get("/users/:id/teacher-cv/pdf", requireAuth, requireManagerPermission("t
   if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid user id." }); return; }
   const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, id));
   if (!target || normalizeRole(target.role) !== "teacher" || !(await hasSubmittedTeacherApplication(id)) || (!isOwnerRole(req.currentUser!.role) && !canModerateUser(req.currentUser!, target))) { res.status(404).json({ error: "Teacher CV not found." }); return; }
-  await sendTeacherCvPdf(id, res);
+  await sendTeacherCvPdf(id, res, true);
 });
 
 router.patch("/users/me/teacher-cv", requireAuth, async (req, res): Promise<void> => {
