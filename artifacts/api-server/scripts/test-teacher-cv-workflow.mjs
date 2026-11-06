@@ -68,8 +68,8 @@ const incompleteSurveyCv={...cvPayload,surveyAnswers:JSON.stringify({laptop:"Yes
 const incompleteSurveySave=await request("/api/users/me/teacher-cv",{token:approvalApplicant.token,method:"PATCH",body:{cv:incompleteSurveyCv}});
 assert.equal(incompleteSurveySave.status,200);
 const incompleteSurveySubmit=await request("/api/teacher-cv-workspace/submit",{token:approvalApplicant.token,method:"POST"});
-assert.equal(incompleteSurveySubmit.status,409,"Server rejects CV submission until every required survey answer is saved");
-assert(incompleteSurveySubmit.data.missingSurveyFields?.includes("verificationCall"));
+assert.equal(incompleteSurveySubmit.status,200,"Readiness survey submission is optional and independent of the formal CV application");
+assert.equal(incompleteSurveySubmit.data.submitted,true,"A complete formal CV can be submitted without completing the optional readiness survey");
 const restoredSurveySave=await request("/api/users/me/teacher-cv",{token:approvalApplicant.token,method:"PATCH",body:{cv:cvPayload}});
 assert.equal(restoredSurveySave.status,200);
 const submitted=await request("/api/teacher-cv-workspace/submit",{token:approvalApplicant.token,method:"POST"});
