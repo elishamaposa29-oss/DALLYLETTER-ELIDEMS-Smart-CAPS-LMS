@@ -55,15 +55,40 @@ export function TeacherCvEditor() {
   useEffect(() => {
     let active = true;
     if (!user || !token || user.role !== "teacher") return;
-    setLoading(true);
-    fetch(getApiUrl("/api/users/me/teacher-cv"), { headers: { Authorization: "Bearer " + token } })
-      .then(async response => {
-        if (!response.ok) throw new Error("Could not load your CV.");
-        return response.json();
-      })
-      .then(data => { if (active) setCv({ ...emptyCv, ...(data.cv ?? {}) }); })
-      .catch(() => { if (active) Alert.alert("Teacher CV", "Your CV could not be loaded. Please retry when online."); })
-      .finally(() => { if (active) setLoading(false); });
+    const headers = { Authorization: "Bearer " + token };
+    const load = async () => {
+      setLoading(true);
+      try {
+        const [cvResponse, meResponse, historyResponse, chatResponse] = await Promise.all([
+          fetch(getApiUrl("/api/users/me/teacher-cv"), { headers }),
+          fetch(getApiUrl("/api/auth/me"), { headers }),
+          fetch(getApiUrl("/api/teacher-cv-workspace/" + user.id + "/history"), { headers }),
+          fetch(getApiUrl("/api/teacher-cv-workspace/" + user.id + "/chat"), { headers }),
+        ]);
+        if (!cvResponse.ok) throw new Error("Could not load your CV.");
+        const data = await cvResponse.json();
+        const nextCv = { ...emptyCv, ...(data.cv ?? {}) };
+        let savedPersonal: any = {};
+        try { savedPersonal = typeof nextCv.personalDetails === "string" ? JSON.parse(nextCv.personalDetails) : nextCv.personalDetails || {}; } catch {}
+        if (!active) return;
+        setCv(nextCv);
+        setPersonal({
+          idNumber: String(savedPersonal.idNumber || ""),
+          dob: String(savedPersonal.dob || ""),
+          phone: String(savedPersonal.phone || user.phone || ""),
+          email: String(savedPersonal.email || user.email || ""),
+        });
+        if (meResponse.ok) {
+          const me = await meResponse.json();
+          if (active) { setApplicationStatus(String(me.user?.teacherApplicationStatus || "draft")); setReviewDeadline(me.user?.teacherReviewDeadline || null); }
+        }
+        if (historyResponse.ok) { const h = await historyResponse.json(); if (active) setReviewHistory(Array.isArray(h.history) ? h.history : []); }
+        if (chatResponse.ok) { const c = await chatResponse.json(); if (active) setChatMessages(Array.isArray(c) ? c : c.messages || []); }
+      } catch {
+        if (active) Alert.alert("Teacher CV", "Your CV could not be loaded. Please retry when online.");
+      } finally { if (active) setLoading(false); }
+    };
+    void load();
     return () => { active = false; };
   }, [user?.id, token]);
 
