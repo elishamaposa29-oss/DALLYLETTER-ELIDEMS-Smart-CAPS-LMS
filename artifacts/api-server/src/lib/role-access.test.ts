@@ -242,6 +242,7 @@ test("pending teacher API policy allows self-service and privacy-checked Profile
   ["GET","/api/users/me/teacher-cv"],
   ["PATCH","/api/users/me/teacher-cv"],
   ["POST","/api/users/me/qualifications"],
+  ["PATCH","/api/users/me/qualifications/99"],
   ["POST","/api/users/me/qualifications/bulk"],
   ["GET","/api/users/41/teacher-documents/99"],
   ["POST","/api/users/me/notification-email/request"],
