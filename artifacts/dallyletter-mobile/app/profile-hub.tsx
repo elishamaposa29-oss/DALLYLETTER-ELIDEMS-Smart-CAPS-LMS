@@ -263,8 +263,18 @@ export default function MobileProfileHub() {
     const asset=picked.assets[0];
     if(asset.size&&asset.size>10*1024*1024)throw new Error("Documents must be 10 MB or smaller.");
     const form=new FormData();form.append("file",{uri:asset.uri,name:asset.name||"profile-document.pdf",type:asset.mimeType||"application/pdf"} as any);form.append("documentType",documentType);
-    await api("/api/users/me/teacher-documents",{method:"POST",body:form});
-    const fresh=await api("/api/users/"+user!.id+"/teacher-documents");setDocuments(Array.isArray(fresh)?fresh:[]);setMessage(documentType.toUpperCase()+" uploaded and saved.");
+    const uploaded=await api("/api/users/me/teacher-documents",{method:"POST",body:form});
+    let photoLinked=false;
+    if(documentType==="cv"&&String(asset.mimeType||"").startsWith("image/")&&uploaded?.id){
+      try{
+        const existing=await api("/api/users/me/teacher-cv");
+        await api("/api/users/me/teacher-cv",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({cv:{...(existing.cv||{}),photoDocumentId:String(uploaded.id)}})});
+        photoLinked=true;
+      }catch{setMessage("Photo uploaded, but it could not be linked to your CV. Retry the upload before submitting.");}
+    }
+    const fresh=await api("/api/users/"+user!.id+"/teacher-documents");setDocuments(Array.isArray(fresh)?fresh:[]);
+    if(photoLinked)setMessage("Profile photo uploaded and linked to your teacher CV.");
+    else if(documentType!=="cv"||!String(asset.mimeType||"").startsWith("image/"))setMessage(documentType.toUpperCase()+" uploaded and saved.");
   });
   const savePayout=async()=>act(async()=>{
     const body:Row={method:payoutMethod};
