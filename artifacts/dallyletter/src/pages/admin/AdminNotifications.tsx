@@ -35,7 +35,7 @@ export default function AdminNotifications() {
   const { user } = useAuth();
   const [permissions,setPermissions]=useState<Record<string,boolean>>({});
   const [permissionLoaded,setPermissionLoaded]=useState(false);
-  const isOwner=user?.role==="owner";
+  const isOwner=["owner","platform_owner"].includes(String(user?.role||"").toLowerCase());
   const canCreate=isOwner||permissions["notifications.create"]===true;
   const canBroadcast=isOwner||permissions["notifications.broadcast"]===true;
   const canViewUsers=isOwner||permissions["users.view"]===true;
@@ -53,7 +53,11 @@ export default function AdminNotifications() {
 
   const recipientType = form.watch("recipientType");
   const recipientRole = form.watch("recipientRole");
-  useEffect(()=>{if(!user)return;fetch(getApiUrl("/api/manager-permissions/me"),{headers:{Authorization:"Bearer "+(localStorage.getItem("dallyletter_token")??"")}}).then(r=>r.json()).then(d=>{setPermissions(d?.permissions??{});if(d?.isOwner){setPermissions({});}if(!d?.isOwner&&d?.permissions?.["notifications.broadcast"]!==true&&d?.permissions?.["users.view"]===true)form.setValue("recipientType","specific");}).catch(()=>setPermissions({})).finally(()=>setPermissionLoaded(true));},[user]);
+  useEffect(()=>{
+    if(!user)return;
+    if(String(user.role).toLowerCase()==="admin"){setPermissions({});setPermissionLoaded(true);return;}
+    fetch(getApiUrl("/api/manager-permissions/me"),{headers:{Authorization:"Bearer "+(localStorage.getItem("dallyletter_token")??"")}}).then(r=>r.json()).then(d=>{setPermissions(d?.permissions??{});if(d?.isOwner){setPermissions({});}if(!d?.isOwner&&d?.permissions?.["notifications.broadcast"]!==true&&d?.permissions?.["users.view"]===true)form.setValue("recipientType","specific");}).catch(()=>setPermissions({})).finally(()=>setPermissionLoaded(true));
+  },[user?.role]);
 
   const onSubmit = (values: z.infer<typeof createNotificationSchema>) => {
     const data = {

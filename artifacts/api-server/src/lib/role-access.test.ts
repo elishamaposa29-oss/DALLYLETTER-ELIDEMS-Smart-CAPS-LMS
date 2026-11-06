@@ -190,6 +190,40 @@ test("ordinary teachers and learners retain existing access without manager auth
 test("pending teacher API policy allows only own CV, evidence, Profile Hub and application chat",()=>{
  const applicant={id:41,role:"teacher",teacherApplicationStatus:"pending_review"};
  for(const [method,path] of [
+  ["GET","/api/auth/me"],
+  ["GET","/api/users/me/recovery-profile"],
+  ["GET","/api/users/me/notification-email"],
+  ["GET","/api/users/me/enrollments"],
+  ["GET","/api/users/me/enrollments-summary"],
+  ["GET","/api/users/me/subjects"],
+  ["PUT","/api/users/me/subjects"],
+  ["GET","/api/users/me/payout-preferences"],
+  // Pending applicants may read only their own academic/profile records.
+  ["GET","/api/academic-records/current-year"],
+  ["GET","/api/academic-records/me"],
+  ["GET","/api/academic-records/reports/me"],
+  ["GET","/api/achievements/my"],
+  ["GET","/api/daily-attendance/me"],
+  ["GET","/api/subjects/catalog"],
+  ["PUT","/api/profile/me/privacy"],
+  ["GET","/api/profile/41/social"],
+  ["GET","/api/profile/41/section/attendance"],
+  ["GET","/api/profile/connections/friends"],
+  ["GET","/api/profile/connections/requests"],
+  ["POST","/api/profile/99/connect"],
+  ["PATCH","/api/profile/connections/123"],
+  ["POST","/api/users/me/phone/request-verification"],
+  ["POST","/api/users/me/recovery-question/verify"],
+  ["POST","/api/daily-attendance/open"],
+  ["GET","/api/auth/me/"],
+  ["GET","/api/auth/me?source=profile"],
+  ["GET","/api//auth//me/"],
+  ["PATCH","/api/notifications/123/read/"],
+  ["POST","/api/auth/login"],
+  ["POST","/api/auth/google"],
+  ["POST","/api/auth/logout"],
+  ["GET","/api/notifications"],
+  ["PATCH","/api/notifications/123/read"],
   ["GET","/api/users/me/teacher-cv"],
   ["PATCH","/api/users/me/teacher-cv"],
   ["POST","/api/users/me/qualifications"],
@@ -208,6 +242,8 @@ test("pending teacher API policy allows only own CV, evidence, Profile Hub and a
   ["POST","/api/teacher-cv-workspace/41/chat"],
  ]) assert.equal(canPendingTeacherUseRoute(applicant,method,path),true,method+" "+path);
  for(const [method,path] of [
+  ["POST","/api/notifications"],
+  ["DELETE","/api/notifications/123"],
   ["GET","/api/dashboard"],
   ["GET","/api/teacher-dashboard"],
   ["GET","/api/lessons"],
@@ -216,6 +252,13 @@ test("pending teacher API policy allows only own CV, evidence, Profile Hub and a
   ["GET","/api/polls"],
   ["GET","/api/live-classes"],
   ["GET","/api/teacher-cv-workspace/42/chat"],
+  ["GET","/api/academic-records/transfer-requests"],
+  ["GET","/api/academic-records/report-learners"],
+  ["GET","/api/profile/42/social"],
+  ["GET","/api/profile/42/section/attendance"],
+  ["GET","/api/users/42"],
+  ["PATCH","/api/users/42"],
+  ["GET","/api/users/42/teacher-documents"],
   ["POST","/api/lessons"],
   ["POST","/api/assignments"],
   ["POST","/api/exercises"],
@@ -224,6 +267,7 @@ test("pending teacher API policy allows only own CV, evidence, Profile Hub and a
   ["DELETE","/api/users/41"],
  ]) assert.equal(canPendingTeacherUseRoute(applicant,method,path),false,method+" "+path);
  assert.equal(canPendingTeacherUseRoute({...applicant,teacherApplicationStatus:"approved"},"POST","/api/lessons"),true);
+ assert.equal(canPendingTeacherUseRoute({...applicant,teacherApplicationStatus:" PENDING_REVIEW "},"GET","/api/auth/me"),true);
 });
 
 test("manager moderation follows hierarchy and protects Owner, Admin, and senior peers",()=>{

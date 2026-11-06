@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { useAuth } from "@/contexts/AuthContext";
 import { useListLessons, useDeleteLesson, getApiUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { getListLessonsQueryKey } from "@workspace/api-client-react";
 
 export default function AdminLessons() {
+  const { user } = useAuth();
   const { data: lessons, isLoading } = useListLessons();
   const deleteLessonMutation = useDeleteLesson();
   const { toast } = useToast();
@@ -19,7 +21,12 @@ export default function AdminLessons() {
   const [search, setSearch] = useState("");
   const [subjectFilter, setSubjectFilter] = useState("all");
   const [canDelete, setCanDelete] = useState(false);
-  useEffect(() => { fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: "Bearer " + (localStorage.getItem("dallyletter_token") ?? "") } }).then(r=>r.json()).then(d=>setCanDelete(Boolean(d?.isOwner||d?.permissions?.["lessons.delete"]))).catch(()=>setCanDelete(false)); }, []);
+  useEffect(() => {
+    // Admin is a separate authority class; manager grants are never queried or inherited here.
+    if (!user) return;
+    if (String(user.role).toLowerCase() === "admin") { setCanDelete(false); return; }
+    fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: "Bearer " + (localStorage.getItem("dallyletter_token") ?? "") } }).then(r=>r.json()).then(d=>setCanDelete(Boolean(d?.isOwner||d?.permissions?.["lessons.delete"]))).catch(()=>setCanDelete(false));
+  }, [user?.role]);
 
   const filteredLessons = lessons?.filter(lesson => {
     const matchesSearch = lesson.title.toLowerCase().includes(search.toLowerCase()) || 

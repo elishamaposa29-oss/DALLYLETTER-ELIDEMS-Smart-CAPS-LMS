@@ -38,10 +38,12 @@ export default function AdminSafety() {
   }
 
   useEffect(() => {
+    if (!user) return;
+    if (String(user.role).toLowerCase() === "admin") { setManagerPermissions({}); setIsOwner(false); setLoading(false); return; }
     void fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: `Bearer ${token()}` } })
       .then(async response => { const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || "Permission access unavailable"); setManagerPermissions(data.permissions ?? {}); setIsOwner(Boolean(data.isOwner)); if (data.isOwner || data.permissions?.["moderation.view"] === true) await load(); else setLoading(false); })
       .catch(() => setLoading(false));
-  }, []);
+  }, [user?.role]);
 
   async function reviewFlag(status: string) {
     if (!reviewing || !canActOnModeration) return;

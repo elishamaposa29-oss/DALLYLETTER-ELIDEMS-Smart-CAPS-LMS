@@ -5,6 +5,7 @@ import { startPushDispatcher } from "./lib/push-service";
 import { startTeacherLifecycle } from "./lib/teacher-lifecycle";
 import { ensureAuthSessionSchema } from "./lib/auth-session-store";
 import { ensureProfileHubSchema } from "./lib/ensureProfileHubSchema";
+import { ensureManagerPermissionSchema } from "./lib/ensureManagerPermissionSchema";
 import { startEmailNotificationDispatcher } from "./lib/email-notification-queue";
 import { startDailyAttendanceLifecycle } from "./lib/daily-attendance-lifecycle";
 
@@ -19,13 +20,15 @@ if (Number.isNaN(port) || port <= 0) {
 async function startServer(): Promise<void> {
   try {
     // Production databases can legitimately lag behind the application bundle.
-    // Ensure the non-destructive Connect/social schema exists before serving traffic
-    // so feature routes never fail because a required table was not provisioned.
+    // Ensure additive feature schemas exist before serving traffic.
     await ensureConnectSchema();
     await ensureAuthSessionSchema();
     await ensureProfileHubSchema();
+    // Manager authorization queries these tables on every protected request.
+    // Empty grant tables are default-deny; schema creation grants no authority.
+    await ensureManagerPermissionSchema();
     startEmailNotificationDispatcher();
-    logger.info("Connect/social schema verified");
+    logger.info("Connect/social and manager-permission schemas verified");
     startPushDispatcher();
     startTeacherLifecycle();
     startDailyAttendanceLifecycle();
@@ -36,7 +39,7 @@ async function startServer(): Promise<void> {
 
   app.listen(port, (err) => {
     if (err) {
-      logger.error({ err }, "Error listening on port");
+      logger.error({ err }, "Error listening for connections");
       process.exit(1);
     }
 
