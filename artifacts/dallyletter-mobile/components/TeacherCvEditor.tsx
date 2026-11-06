@@ -294,12 +294,16 @@ export function TeacherCvEditor() {
         ] as const).map(([key, label, placeholder]) => (
           <View key={key} style={{ marginBottom: 9 }}>
             <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "600", marginBottom: 4 }}>{label}</Text>
-            <TextInput testID={"teacher-cv-survey-" + key} accessibilityLabel={label} blurOnSubmit={false} value={survey[key]} onChangeText={value => setSurvey(previous => ({ ...previous, [key]: value }))} placeholder={placeholder} placeholderTextColor={colors.mutedForeground} style={{ minHeight: 42, borderWidth: 1, borderColor: colors.border, borderRadius: 9, padding: 9, color: colors.foreground, backgroundColor: colors.background }} />
+            <TextInput testID={"teacher-cv-survey-" + key} accessibilityLabel={label} blurOnSubmit={false} editable={!surveySubmittedAt} value={survey[key]} onChangeText={value => setSurvey(previous => ({ ...previous, [key]: value }))} placeholder={placeholder} placeholderTextColor={colors.mutedForeground} style={{ minHeight: 42, borderWidth: 1, borderColor: colors.border, borderRadius: 9, padding: 9, color: colors.foreground, backgroundColor: colors.background }} />
           </View>
         ))}
-        <TouchableOpacity disabled={surveySaving || loading} onPress={() => void saveSurvey()} style={{ backgroundColor: colors.secondary, borderRadius: 9, padding: 11, alignItems: "center", opacity: surveySaving || loading ? 0.65 : 1 }}>
+        <TouchableOpacity disabled={surveySaving || loading || Boolean(surveySubmittedAt)} onPress={() => void saveSurvey()} style={{ backgroundColor: colors.secondary, borderRadius: 9, padding: 11, alignItems: "center", opacity: surveySaving || loading ? 0.65 : 1 }}>
           <Text style={{ color: colors.primary, fontWeight: "700" }}>{surveySaving ? "Saving survey…" : "Save readiness survey separately"}</Text>
         </TouchableOpacity>
+        <TouchableOpacity disabled={surveySaving || loading || Boolean(surveySubmittedAt)} onPress={() => void submitSurvey()} style={{ marginTop: 8, backgroundColor: colors.primary, borderRadius: 9, padding: 11, alignItems: "center", opacity: surveySaving || loading || surveySubmittedAt ? 0.65 : 1 }}>
+          <Text style={{ color: "#fff", fontWeight: "700" }}>{surveySaving ? "Submitting survey…" : surveySubmittedAt ? "Readiness survey submitted" : "Submit readiness survey independently"}</Text>
+        </TouchableOpacity>
+        {!!surveySubmittedAt && <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 6 }}>Submitted: {new Date(surveySubmittedAt).toLocaleString()}</Text>}
       </View>
       <TouchableOpacity disabled={saving || loading} onPress={save} style={{ backgroundColor: colors.primary, borderRadius: 10, padding: 13, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, opacity: saving || loading ? 0.65 : 1 }}>
         {saving ? <ActivityIndicator color="#fff" /> : <Feather name="save" size={16} color="#fff" />}
