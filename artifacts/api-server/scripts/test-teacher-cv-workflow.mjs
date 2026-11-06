@@ -56,6 +56,10 @@ const partialDraftSave=await request("/api/users/me/teacher-cv",{token:approvalA
 assert.equal(partialDraftSave.status,200,"Teacher can persist partial personal details before completing the CV");
 const partialDraftRead=await request("/api/users/me/teacher-cv",{token:approvalApplicant.token});
 assert.equal(JSON.parse(partialDraftRead.data.cv.personalDetails).fullName,"Partial CV draft","Partial draft survives a fresh request");
+const ownerCannotReviewDraft=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/details",{token:ownerToken});
+assert.equal(ownerCannotReviewDraft.status,404,"Unsubmitted drafts are not exposed in the reviewer details workspace");
+const managerCannotReviewDraft=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/details",{token:managerToken});
+assert.equal(managerCannotReviewDraft.status,404,"Managers cannot open unsubmitted drafts even when they know the applicant ID");
 const pendingQueue=await request("/api/teacher-cv-workspace/queue",{token:ownerToken});
 assert.equal(pendingQueue.status,200,"Owner can retrieve the teacher CV review queue");
 assert(!pendingQueue.data.applications.some(item=>Number(item.id)===Number(approvalApplicant.id)),"Unsubmitted teacher registrations must not appear as submitted CV applications");
