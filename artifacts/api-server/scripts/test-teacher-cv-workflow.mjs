@@ -59,6 +59,10 @@ const partialDraftRead=await request("/api/users/me/teacher-cv",{token:approvalA
 assert.equal(JSON.parse(partialDraftRead.data.cv.personalDetails).fullName,"Partial CV draft","Partial draft survives a fresh request");
 const ownerCannotReviewDraft=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/details",{token:ownerToken});
 assert.equal(ownerCannotReviewDraft.status,404,"Unsubmitted drafts are not exposed in the reviewer details workspace");
+const ownerLegacyDraftCv=await request("/api/users/"+draftOnlyApplicant.id+"/teacher-cv",{token:ownerToken});
+assert.equal(ownerLegacyDraftCv.status,404,"Legacy reviewer CV endpoint must not expose an unsubmitted draft");
+const ownerLegacyDraftPdf=await request("/api/users/"+draftOnlyApplicant.id+"/teacher-cv/pdf",{token:ownerToken});
+assert.equal(ownerLegacyDraftPdf.status,404,"Legacy reviewer PDF endpoint must not expose an unsubmitted draft");
 const pendingQueue=await request("/api/teacher-cv-workspace/queue",{token:ownerToken});
 assert.equal(pendingQueue.status,200,"Owner can retrieve the teacher CV review queue");
 assert(!pendingQueue.data.applications.some(item=>Number(item.id)===Number(approvalApplicant.id)),"Unsubmitted teacher registrations must not appear as submitted CV applications");
@@ -127,6 +131,10 @@ const grantView=await request("/api/manager-permissions/"+managerId,{token:owner
 assert.equal(grantView.status,200,"Owner can grant this manager CV view permission individually");
 const managerCannotReviewDraft=await request("/api/teacher-cv-workspace/"+draftOnlyApplicant.id+"/details",{token:managerToken});
 assert.equal(managerCannotReviewDraft.status,404,"A manager with explicit CV view permission still cannot open an unsubmitted draft");
+const managerLegacyDraftCv=await request("/api/users/"+draftOnlyApplicant.id+"/teacher-cv",{token:managerToken});
+assert.equal(managerLegacyDraftCv.status,404,"Legacy manager CV endpoint must not expose an unsubmitted draft");
+const managerLegacyDraftPdf=await request("/api/users/"+draftOnlyApplicant.id+"/teacher-cv/pdf",{token:managerToken});
+assert.equal(managerLegacyDraftPdf.status,404,"Legacy manager PDF endpoint must not expose an unsubmitted draft");
 const managerQueue=await request("/api/teacher-cv-workspace/queue",{token:managerToken});
 assert.equal(managerQueue.status,200,"Individually authorized Junior Manager can access the CV queue");
 assert(managerQueue.data.applications.some(item=>Number(item.id)===Number(approvalApplicant.id)),"Authorized manager can see the submitted application");
