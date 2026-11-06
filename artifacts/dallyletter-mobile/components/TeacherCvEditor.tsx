@@ -221,6 +221,29 @@ export function TeacherCvEditor() {
         {saving ? <ActivityIndicator color="#fff" /> : <Feather name="save" size={16} color="#fff" />}
         <Text style={{ color: "#fff", fontWeight: "700" }}>{saving ? "Saving…" : "Save teacher CV"}</Text>
       </TouchableOpacity>
+      <TouchableOpacity disabled={saving || loading || submitting || !["draft","not_applicable"].includes(applicationStatus)} onPress={() => void submitApplication()} style={{ marginTop: 10, backgroundColor: colors.primary, borderRadius: 10, padding: 13, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, opacity: saving || loading || submitting || !["draft","not_applicable"].includes(applicationStatus) ? 0.65 : 1 }}>
+        {submitting ? <ActivityIndicator color="#fff" /> : <Feather name="send" size={16} color="#fff" />}
+        <Text style={{ color: "#fff", fontWeight: "700" }}>{submitting ? "Submitting…" : applicationStatus === "pending_review" ? "Application submitted" : "Submit CV for review"}</Text>
+      </TouchableOpacity>
+      <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 8 }}>Application status: {applicationStatus.replace(/_/g, " ")}{reviewDeadline ? " · Review deadline: " + new Date(reviewDeadline).toLocaleDateString() : ""}</Text>
+      {!!reviewHistory.length && <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10 }}>
+        <Text style={{ color: colors.foreground, fontWeight: "700", marginBottom: 6 }}>Application review history</Text>
+        {reviewHistory.slice(0, 5).map((item, index) => <View key={String(item.id || item.created_at || index)} style={{ marginBottom: 7 }}>
+          <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "600" }}>{String(item.action || "update").replace(/_/g, " ")} · {item.created_at ? new Date(item.created_at).toLocaleString() : ""}</Text>
+          {!!item.note && <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{item.note}</Text>}
+        </View>)}
+      </View>}
+      <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10 }}>
+        <Text style={{ color: colors.foreground, fontWeight: "700", marginBottom: 6 }}>Reviewer conversation</Text>
+        {chatMessages.slice(-8).map((item, index) => <View key={String(item.id || item.created_at || index)} style={{ backgroundColor: colors.background, borderRadius: 8, padding: 8, marginBottom: 6 }}>
+          <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "700" }}>{item.sender_name || (Number(item.sender_id) === Number(user?.id) ? "You" : "Reviewer")}</Text>
+          <Text style={{ color: colors.foreground, fontSize: 13 }}>{item.body}</Text>
+        </View>)}
+        <TextInput testID="teacher-cv-review-chat" accessibilityLabel="Message your CV reviewer" blurOnSubmit={false} multiline value={chatDraft} onChangeText={setChatDraft} placeholder="Write a private message to the authorized reviewer…" placeholderTextColor={colors.mutedForeground} style={{ minHeight: 70, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 10, color: colors.foreground, backgroundColor: colors.background, textAlignVertical: "top" }} />
+        <TouchableOpacity disabled={!chatDraft.trim() || chatSending} onPress={() => void sendReviewMessage()} style={{ marginTop: 8, backgroundColor: colors.secondary, borderRadius: 9, padding: 10, alignItems: "center", opacity: !chatDraft.trim() || chatSending ? 0.6 : 1 }}>
+          <Text style={{ color: colors.primary, fontWeight: "700" }}>{chatSending ? "Sending…" : "Send reviewer message"}</Text>
+        </TouchableOpacity>
+      </View>
       <TouchableOpacity disabled={saving || loading || downloading} onPress={() => void downloadPdf()} style={{ marginTop: 10, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 13, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, opacity: downloading ? 0.65 : 1 }}>
         {downloading ? <ActivityIndicator color={colors.primary} /> : <Feather name="download" size={16} color={colors.primary} />}
         <Text style={{ color: colors.primary, fontWeight: "700" }}>{downloading ? "Preparing CV PDF…" : "Download verified CV PDF"}</Text>
