@@ -42,7 +42,7 @@ export function isJuniorManager(user: RoleLikeUser): boolean {
   const role = normalizeRole(user.role);
   if (isOwnerRole(role) || isSeniorManager(user)) return false;
   if (role === "manager" || role === "junior_manager") return true;
-  return role === "teacher" && user.isManager === true && !isTeacherRestricted(user);
+  return isActiveTeacherManager(user);
 }
 
 /** Recommendation is available to both manager levels; approval is senior/owner only. */
