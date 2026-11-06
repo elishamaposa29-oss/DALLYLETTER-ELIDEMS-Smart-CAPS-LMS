@@ -16,7 +16,7 @@ export function isOwnerRole(role: unknown): boolean {
 
 function isTeacherRestricted(user: RoleLikeUser): boolean {
   return normalizeRole(user.role) === "teacher" &&
-    ["pending_review", "rejected_pending_conversion"].includes(String(user.teacherApplicationStatus ?? "").trim().toLowerCase());
+    ["draft", "pending_review", "rejected_pending_conversion"].includes(String(user.teacherApplicationStatus ?? "").trim().toLowerCase());
 }
 
 function normalizedManagerLevel(user: RoleLikeUser): string {
