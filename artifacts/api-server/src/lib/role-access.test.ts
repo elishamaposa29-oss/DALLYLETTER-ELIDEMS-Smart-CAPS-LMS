@@ -240,6 +240,7 @@ test("pending teacher API policy allows self-service and privacy-checked Profile
   ["PATCH","/api/users/41"],
   ["GET","/api/teacher-cv-workspace/41/chat"],
   ["POST","/api/teacher-cv-workspace/41/chat"],
+  ["GET","/api/teacher-cv-workspace/41/history"],
  ]) assert.equal(canPendingTeacherUseRoute(applicant,method,path),true,method+" "+path);
  for(const [method,path] of [
   ["POST","/api/notifications"],
