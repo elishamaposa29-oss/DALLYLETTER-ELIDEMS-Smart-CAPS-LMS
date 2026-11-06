@@ -247,6 +247,8 @@ assert.equal(learnerLesson.status,403,"Converted learner cannot create teacher l
 
 const expired=await registerTeacher("expired");
 const legacyRejected=await registerTeacher("legacy-rejected");
+await pool.query("UPDATE users SET teacher_application_status='pending_review' WHERE id=$1",[legacyRejected.id]);
+await pool.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,NULL,'submitted','draft','pending_review','Legacy endpoint fixture submitted through isolated test database')",[legacyRejected.id]);
 const legacyDecision=await request("/api/users/"+legacyRejected.id+"/teacher-review",{token:ownerToken,method:"PATCH",body:{action:"reject",note:"Legacy endpoint scheduled rejection test"}});
 assert.equal(legacyDecision.status,200,"Legacy Owner user-review action also saves rejection without requiring email delivery");
 const legacyRejectedRow=await pool.query("SELECT role,teacher_application_status,teacher_review_deadline,password_hash FROM users WHERE id=$1",[legacyRejected.id]);
