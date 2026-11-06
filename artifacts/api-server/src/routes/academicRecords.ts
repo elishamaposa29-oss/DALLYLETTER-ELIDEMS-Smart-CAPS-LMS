@@ -245,7 +245,7 @@ router.post("/academic-records/transfer-requests", requireAuth, async (req, res)
   // Queue reviewer email alerts; the audit event above is also the admin-dashboard alert.
   try {
     const reviewers = await pool.query(
-      "SELECT id FROM users u WHERE (lower(role) IN ('owner','platform_owner','senior_manager') OR (lower(role)='manager' AND lower(COALESCE(manager_level,'junior'))='senior') OR (lower(role)='teacher' AND is_manager=true AND lower(COALESCE(manager_level,'junior'))='senior' AND COALESCE(teacher_application_status,'')<>'pending_review') OR (lower(role) IN ('manager','junior_manager') AND EXISTS (SELECT 1 FROM manager_permission_grants g WHERE g.manager_user_id=u.id AND g.permission_key IN ('transfers.view','transfers.reject') AND g.granted=true)) OR (lower(role)='teacher' AND is_manager=true AND COALESCE(teacher_application_status,'')<>'pending_review' AND EXISTS (SELECT 1 FROM manager_permission_grants g WHERE g.manager_user_id=u.id AND g.permission_key IN ('transfers.view','transfers.reject') AND g.granted=true))) AND is_blocked=false AND is_suspended=false ORDER BY id",
+      "SELECT id FROM users u WHERE (lower(role) IN ('owner','platform_owner','senior_manager') OR (lower(role)='manager' AND lower(COALESCE(manager_level,'junior'))='senior') OR (lower(role)='teacher' AND is_manager=true AND lower(COALESCE(manager_level,'junior'))='senior' AND COALESCE(teacher_application_status,'') NOT IN ('draft','pending_review','rejected_pending_conversion')) OR (lower(role) IN ('manager','junior_manager') AND EXISTS (SELECT 1 FROM manager_permission_grants g WHERE g.manager_user_id=u.id AND g.permission_key IN ('transfers.view','transfers.reject') AND g.granted=true)) OR (lower(role)='teacher' AND is_manager=true AND COALESCE(teacher_application_status,'')<>'pending_review' AND EXISTS (SELECT 1 FROM manager_permission_grants g WHERE g.manager_user_id=u.id AND g.permission_key IN ('transfers.view','transfers.reject') AND g.granted=true))) AND is_blocked=false AND is_suspended=false ORDER BY id",
     );
     await Promise.all(reviewers.rows.map((reviewer: { id: number }) =>
       enqueueEmailNotification(Number(reviewer.id), "Transfer letter request awaiting review",
@@ -512,7 +512,7 @@ router.get("/academic-records/report-learners", requireAuth, requireManagerPermi
     res.json(isOwnerRole(user.role)?visible:visible.map(({role,is_manager,manager_level,...row}:any)=>row));
     return;
   }
-  if (String(user.role).toLowerCase() !== "teacher" || user.teacherApplicationStatus === "pending_review") {
+  if (String(user.role).toLowerCase() !== "teacher" || ["draft","pending_review","rejected_pending_conversion"].includes(String(user.teacherApplicationStatus||"").toLowerCase())) {
     res.status(403).json({ error: "Academic report creation is available to teachers and managers." }); return;
   }
   const result = await pool.query(
@@ -526,7 +526,7 @@ router.post("/academic-records/reports/drafts", requireAuth, requireManagerPermi
   const creator = req.currentUser!;
   const creatorRole = String(creator.role || "").trim().toLowerCase().replace(/[ -]+/g, "_");
   if (!canAccessManager(creator)) {
-    if (creatorRole !== "teacher" || creator.teacherApplicationStatus === "pending_review") {
+    if (creatorRole !== "teacher" || ["draft","pending_review","rejected_pending_conversion"].includes(String(creator.teacherApplicationStatus||"").toLowerCase())) {
       res.status(403).json({ error: "Academic report creation is available to teachers and managers." }); return;
     }
     const assignment = await pool.query(
