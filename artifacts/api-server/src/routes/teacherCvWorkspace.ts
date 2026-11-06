@@ -118,8 +118,8 @@ router.post("/:teacherId/decision",requireManagerPermissionForRequest((req)=>req
   const missing=required.filter(k=>typeof cv[k]!=="string"||String(cv[k]).trim().length<2);
   const photoResult=await pool.query("SELECT id FROM teacher_documents WHERE id=$1 AND user_id=$2 AND document_type=$3 AND mime_type LIKE $4",[Number(cv.photoDocumentId),id,"cv","image/%"]);
   const hasPhoto=photoResult.rows.length>0;
-  const incomplete=qualResult.rows.filter(q=>q.verification_status!=="verified"||!q.document_id);
-  if(missing.length||!hasPhoto||!personal.fullName||!personal.idNumber||!personal.dob||!personal.phone||!personal.email||!personal.address||!qualResult.rows.length||incomplete.length){
+  const incomplete=qualResult.rows.filter(q=>q.verification_status!=="verified"||!q.document_id||q.document_type!=="certificate");
+  if(missing.length||!hasPhoto||!resumeResult.rows.length||!personal.fullName||!personal.idNumber||!personal.dob||!personal.phone||!personal.email||!personal.address||!qualResult.rows.length||incomplete.length){
    res.status(409).json({error:"Complete personal/legal details, upload a profile photo and PDF resume, attach a certificate to every qualification, and have every qualification verified before authorizing teaching access. The readiness survey is optional.",missingFields:missing,photoUploaded:hasPhoto,resumePdfUploaded:Boolean(resumeResult.rows.length),qualificationCount:qualResult.rows.length,unverifiedQualifications:incomplete.map(q=>({id:q.id,title:q.title,status:q.verification_status,documentUploaded:Boolean(q.document_id)}))});return;
   }
  }
