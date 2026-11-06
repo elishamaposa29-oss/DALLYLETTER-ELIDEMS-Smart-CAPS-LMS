@@ -51,6 +51,10 @@ async function registerTeacher(label){
  return {id:created.data.user.id,email,token:created.data.token};
 }
 const approvalApplicant=await registerTeacher("approval");
+const partialDraftSave=await request("/api/users/me/teacher-cv",{token:approvalApplicant.token,method:"PATCH",body:{cv:{personalDetails:JSON.stringify({fullName:"Partial CV draft"})}}});
+assert.equal(partialDraftSave.status,200,"Teacher can persist partial personal details before completing the CV");
+const partialDraftRead=await request("/api/users/me/teacher-cv",{token:approvalApplicant.token});
+assert.equal(JSON.parse(partialDraftRead.data.cv.personalDetails).fullName,"Partial CV draft","Partial draft survives a fresh request");
 const pendingQueue=await request("/api/teacher-cv-workspace/queue",{token:ownerToken});
 assert.equal(pendingQueue.status,200,"Owner can retrieve the teacher CV review queue");
 assert(!pendingQueue.data.applications.some(item=>Number(item.id)===Number(approvalApplicant.id)),"Unsubmitted teacher registrations must not appear as submitted CV applications");
@@ -71,8 +75,7 @@ assert.equal(incompleteSurveySave.status,200);
 const incompleteSurveySubmit=await request("/api/teacher-cv-workspace/submit",{token:approvalApplicant.token,method:"POST"});
 assert.equal(incompleteSurveySubmit.status,200,"Readiness survey submission is optional and independent of the formal CV application");
 assert.equal(incompleteSurveySubmit.data.submitted,true,"A complete formal CV can be submitted without completing the optional readiness survey");
-const restoredSurveySave=await request("/api/users/me/teacher-cv",{token:approvalApplicant.token,method:"PATCH",body:{cv:cvPayload}});
-assert.equal(restoredSurveySave.status,200);
+// Leave the readiness survey incomplete through approval to prove it is not a hidden prerequisite.
 const submitted=await request("/api/teacher-cv-workspace/submit",{token:approvalApplicant.token,method:"POST"});
 assert.equal(submitted.status,200,"Submit CV must notify the applicant and Owner after validating uploaded documents");
 assert.equal(submitted.data.submitted,true);
