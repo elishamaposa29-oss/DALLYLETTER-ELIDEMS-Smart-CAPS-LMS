@@ -19,6 +19,11 @@ function isTeacherRestricted(user: RoleLikeUser): boolean {
     ["draft", "pending_review", "rejected_pending_conversion"].includes(String(user.teacherApplicationStatus ?? "").trim().toLowerCase());
 }
 
+/** A teacher retains manager authority only after the Owner-approved application is active. */
+export function isActiveTeacherManager(user: RoleLikeUser): boolean {
+  return normalizeRole(user.role) === "teacher" && user.isManager === true && !isTeacherRestricted(user);
+}
+
 function normalizedManagerLevel(user: RoleLikeUser): string {
   return typeof user.managerLevel === "string" ? user.managerLevel.trim().toLowerCase() : "junior";
 }
@@ -29,7 +34,7 @@ export function isSeniorManager(user: RoleLikeUser): boolean {
   if (isOwnerRole(role) || role === "senior_manager") return true;
   if (normalizedManagerLevel(user) !== "senior") return false;
   if (role === "manager") return true;
-  return role === "teacher" && user.isManager === true && !isTeacherRestricted(user);
+  return isActiveTeacherManager(user);
 }
 
 /** Junior managers retain manager access but cannot perform senior-only approvals. */
