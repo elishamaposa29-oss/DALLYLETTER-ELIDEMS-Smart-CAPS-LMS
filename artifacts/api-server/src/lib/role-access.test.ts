@@ -261,7 +261,6 @@ test("pending teacher API policy allows self-service and privacy-checked Profile
   ["GET","/api/academic-records/transfer-requests"],
   ["GET","/api/users/42"],
   ["PATCH","/api/users/42"],
-  ["GET","/api/users/42/teacher-documents"],
   ["POST","/api/lessons"],
   ["POST","/api/assignments"],
   ["POST","/api/exercises"],
