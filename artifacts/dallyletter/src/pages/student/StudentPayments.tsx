@@ -17,7 +17,7 @@ interface Settings {
 }
 
 export default function StudentPayments() {
-  const { data: payments, isLoading } = useListPayments();
+  const { data: payments, isLoading, refetch: refetchPayments } = useListPayments();
   const { toast } = useToast();
   const [notifying, setNotifying] = useState(false);
   const [reported, setReported] = useState(false);
@@ -40,6 +40,23 @@ export default function StudentPayments() {
       .then(async r => { if (!r.ok) throw new Error("PayPal status unavailable"); return r.json(); })
       .then(data => setPaypalReady(data.configured === true))
       .catch(() => setPaypalReady(false));
+    const query = new URLSearchParams(window.location.search);
+    const orderId = query.get("token");
+    if (query.get("paypal") === "return" && orderId) {
+      const authToken = localStorage.getItem("dallyletter_token");
+      fetch(getApiUrl("/api/payments/paypal/capture"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + authToken },
+        body: JSON.stringify({ orderId }),
+      })
+        .then(async response => {
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok || data.captured !== true) throw new Error(data.error || "PayPal capture is not confirmed.");
+          toast({ title: "PayPal payment submitted", description: "PayPal has completed capture. Your school-fee record will update after the verified payment notification is processed." });
+          void refetchPayments();
+        })
+        .catch(error => toast({ variant: "destructive", title: "PayPal confirmation pending", description: error instanceof Error ? error.message : "Refresh payment records after checking with PayPal." }));
+    }
   }, []);
 
   const hasOverdue = payments?.some(p => p.status === "overdue");
@@ -62,9 +79,8 @@ export default function StudentPayments() {
   };
 
   const handlePayPal = async () => {
-    const amount = Number(totalOwed);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      toast({ variant: "destructive", title: "Nothing to pay", description: "There is no outstanding balance." });
+    if (!payments?.some(payment => payment.status === "pending" || payment.status === "overdue")) {
+      toast({ variant: "destructive", title: "Nothing to pay", description: "There is no outstanding fee record." });
       return;
     }
     setPaynowBusy(true);
@@ -73,7 +89,7 @@ export default function StudentPayments() {
       const response = await fetch(getApiUrl("/api/payments/paypal/create"), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
-        body: JSON.stringify({ amount }),
+        body: JSON.stringify({}),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.checkoutUrl) throw new Error(data.error || "Could not start PayPal checkout.");
@@ -159,6 +175,7 @@ export default function StudentPayments() {
         {paypalReady && (
           <Button
             onClick={handlePayPal}
+            disabled={paynowBusy}
             className="h-auto py-3 flex-col gap-1.5 bg-[#003087] hover:bg-[#00256e] text-white"
           >
             <div className="flex items-center gap-2 font-bold">
