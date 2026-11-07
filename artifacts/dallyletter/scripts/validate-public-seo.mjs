@@ -3,7 +3,7 @@ import path from "node:path";
 
 const root = path.resolve("dist/public");
 const base = "https://dallyletter-elidems-onlineschoolbye-two.vercel.app";
-const routes = ["/", "/about", "/learners", "/educators", "/schools", "/resources", "/resources/study-plan"];
+const routes = ["/", "/about", "/learners", "/educators", "/schools", "/organisations", "/resources", "/resources/study-plan"];
 const sitemap = await readFile(path.join(root, "sitemap.xml"), "utf8");
 const robots = await readFile(path.join(root, "robots.txt"), "utf8");
 const app = await readFile(path.resolve("src/App.tsx"), "utf8");
@@ -23,14 +23,21 @@ if (!robots.includes("User-agent: *") || !robots.includes("Allow: /")) throw new
 for (const route of routes.filter(route => route !== "/")) {
   if (!app.includes('path="' + route + '"')) throw new Error("Public route is missing from the application router: " + route);
 }
+const expectedPageRoutes = Object.values(pageRoutes).sort();
+if (JSON.stringify(expectedPageRoutes) !== JSON.stringify(routes.filter(route => route !== "/").sort())) {
+  throw new Error("Public content keys do not map one-to-one to the approved sitemap routes");
+}
 const titles = new Set();
 const descriptions = new Set();
-const pageRoutes = { about: "/about", learners: "/learners", educators: "/educators", schools: "/schools", resources: "/resources", "study-plan": "/resources/study-plan" };
+const pageRoutes = { about: "/about", learners: "/learners", educators: "/educators", schools: "/schools", organisations: "/organisations", resources: "/resources", "study-plan": "/resources/study-plan" };
 for (const [key, page] of Object.entries(publicPages)) {
   const route = pageRoutes[key];
   if (!route || !routes.includes(route)) throw new Error("Public page content has no approved sitemap route: " + key);
   const htmlPath = path.join(root, route.slice(1), "index.html");
   const html = await readFile(htmlPath, "utf8");
+  const escapedTitle = value => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  if (!html.includes("<h1>" + escapedTitle(page.title.split("|")[0].trim()) + "</h1>")) throw new Error(route + " is missing its static page heading");
+  if (!html.includes("<p>" + escapedTitle(page.intro) + "</p>")) throw new Error(route + " is missing its static page introduction");
   for (const section of page.sections) {
     if (!html.includes("<h2>" + section.title.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;") + "</h2>")) {
       throw new Error(route + " static content is missing shared section: " + section.title);
