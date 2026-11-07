@@ -90,7 +90,7 @@ router.get("/payments/paypal/status", (_req, res): void => {
     process.env.PAYPAL_CLIENT_ID?.trim() &&
     process.env.PAYPAL_CLIENT_SECRET?.trim() &&
     process.env.PAYPAL_WEBHOOK_ID?.trim() &&
-    process.env.PUBLIC_APP_URL?.trim()
+    (process.env.PUBLIC_APP_URL || process.env.VITE_PUBLIC_APP_URL)?.trim()
   );
   res.setHeader("Cache-Control", "no-store");
   res.json({ configured, provider: "paypal" });
