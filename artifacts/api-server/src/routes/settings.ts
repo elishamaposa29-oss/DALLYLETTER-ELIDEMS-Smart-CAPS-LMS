@@ -5,7 +5,7 @@ import { requireAuth, requireOwner } from "../lib/auth-middleware";
 
 const router: IRouter = Router();
 
-const PUBLIC_SETTING_KEYS = new Set(["paynow_url", "paypal_url", "trust_wallet", "ecocash_number", "payment_instructions", "docs_url"]);
+const PUBLIC_SETTING_KEYS = new Set(["paynow_url", "paypal_url", "trust_wallet", "ecocash_number", "payment_instructions", "docs_url", "school_fee_amount"]);
 
 const DEFAULT_SETTINGS = {
   paynow_url: "",
@@ -14,6 +14,7 @@ const DEFAULT_SETTINGS = {
   ecocash_number: "",
   payment_instructions: "Pay your school fees using any of the methods below. After paying, click 'I\'ve Paid' to notify the school.",
   docs_url: "/docs",
+  school_fee_amount: "",
 };
 
 // GET /settings — Public settings (payment info visible to all logged-in users)
@@ -30,6 +31,14 @@ router.get("/settings", requireAuth, async (_req, res): Promise<void> => {
 router.patch("/settings", requireAuth, requireOwner, async (req, res): Promise<void> => {
   const updates = Object.entries(req.body as Record<string, unknown>)
     .filter(([key, value]) => PUBLIC_SETTING_KEYS.has(key) && typeof value === "string") as [string, string][];
+  const feeUpdate = updates.find(([key]) => key === "school_fee_amount");
+  if (feeUpdate) {
+    const raw = feeUpdate[1].trim();
+    if (raw && (!/^\\d{1,6}(?:\\.\\d{1,2})?$/.test(raw) || Number(raw) <= 0 || Number(raw) > 100000)) {
+      res.status(400).json({ error: "Default school fee must be a positive amount up to 100000, or blank to leave unset." });
+      return;
+    }
+  }
 
   for (const [key, value] of updates) {
     if (typeof value !== "string") continue;
