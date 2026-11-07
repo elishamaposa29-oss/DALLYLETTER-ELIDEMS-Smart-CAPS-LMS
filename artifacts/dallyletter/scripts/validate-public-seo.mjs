@@ -23,13 +23,13 @@ if (!robots.includes("User-agent: *") || !robots.includes("Allow: /")) throw new
 for (const route of routes.filter(route => route !== "/")) {
   if (!app.includes('path="' + route + '"')) throw new Error("Public route is missing from the application router: " + route);
 }
+const titles = new Set();
+const descriptions = new Set();
+const pageRoutes = { about: "/about", learners: "/learners", educators: "/educators", schools: "/schools", organisations: "/organisations", resources: "/resources", "study-plan": "/resources/study-plan" };
 const expectedPageRoutes = Object.values(pageRoutes).sort();
 if (JSON.stringify(expectedPageRoutes) !== JSON.stringify(routes.filter(route => route !== "/").sort())) {
   throw new Error("Public content keys do not map one-to-one to the approved sitemap routes");
 }
-const titles = new Set();
-const descriptions = new Set();
-const pageRoutes = { about: "/about", learners: "/learners", educators: "/educators", schools: "/schools", organisations: "/organisations", resources: "/resources", "study-plan": "/resources/study-plan" };
 for (const [key, page] of Object.entries(publicPages)) {
   const route = pageRoutes[key];
   if (!route || !routes.includes(route)) throw new Error("Public page content has no approved sitemap route: " + key);
