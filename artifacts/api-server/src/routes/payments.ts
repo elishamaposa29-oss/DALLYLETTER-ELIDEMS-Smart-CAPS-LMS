@@ -784,8 +784,10 @@ router.post("/payments/:id/manual-settlement", requireAuth, async (req, res): Pr
     });
     res.status(200).json({success:true,...result});
   }catch(error){
-    const status=Number((error as {statusCode?:number})?.statusCode)||((error as {code?:string})?.code==="23505"?409:500);
-    res.status(status).json({error:status===500?"The manual payment could not be recorded. No settlement was confirmed.":error instanceof Error?error.message:"Manual payment failed."});
+    const code=(error as {code?:string})?.code;
+    const status=Number((error as {statusCode?:number})?.statusCode)||(code==="23505"?409:500);
+    const message=code==="23505"?"This receipt reference has already been recorded for this invoice.":status===500?"The manual payment could not be recorded. No settlement was confirmed.":error instanceof Error?error.message:"Manual payment failed.";
+    res.status(status).json({error:message});
   }
 });
 
