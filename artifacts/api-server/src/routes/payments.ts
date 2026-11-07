@@ -697,6 +697,10 @@ router.post("/payments/notify-admin", requireAuth, async (req, res): Promise<voi
   }
 
   const amount = Number(req.body?.amount);
+  const method = String(req.body?.method || "other").trim().toLowerCase();
+  const providerReference = typeof req.body?.providerReference === "string" ? req.body.providerReference.trim().slice(0,120) : "";
+  if (!["ecocash","bank_transfer","crypto","cash","other"].includes(method)) { res.status(400).json({error:"Choose a supported manual payment method."}); return; }
+  if (method !== "cash" && providerReference.length > 120) { res.status(400).json({error:"Receipt reference is too long."}); return; }
   if (!Number.isFinite(amount) || amount <= 0 || amount > 100000) {
     res.status(400).json({ error: "Enter a valid payment amount greater than zero." });
     return;
@@ -716,14 +720,14 @@ router.post("/payments/notify-admin", requireAuth, async (req, res): Promise<voi
       await tx.insert(notificationsTable).values({
         recipientId: owner.id,
         title: "💳 Payment Reported by Learner",
-        message: `${currentUser.name} reported a payment of ${amountStr}. The payment method has not been independently verified; please check the transaction and update the ledger.`,
+        message: `${currentUser.name} reported a payment of ${amountStr} using ${method.replace("_"," ")}.${providerReference ? " Receipt/reference: " + providerReference + "." : ""} The payment method has not been independently verified; please check the transaction and update the ledger.`,
         type: "payment_overdue",
         isRead: false,
       });
     }
     await tx.insert(activityLogTable).values({
       type: "payment_recorded",
-      description: `${currentUser.name} self-reported a payment of ${amountStr}. Awaiting Owner verification.`,
+      description: `${currentUser.name} self-reported a ${method} payment of ${amountStr}. Awaiting Owner verification.`,
       actorName: currentUser.name,
     });
   });
