@@ -115,7 +115,24 @@ jobs:
         timeout-minutes: 3
         env:
           API_BASE_URL: https://dallyletter-elidems-smart-caps-lms-4.onrender.com
-        run: node artifacts/api-server/scripts/smoke-post-merge-routes.mjs
+        run: |
+          node artifacts/api-server/scripts/smoke-post-merge-routes.mjs
+          node --input-type=module <<'NODE'
+          const base = process.env.API_BASE_URL.replace(/\\/$/, "");
+          for (const provider of ["paypal", "paynow"]) {
+            try {
+              const response = await fetch(base + "/api/payments/" + provider + "/status", { cache: "no-store" });
+              const data = await response.json().catch(() => ({}));
+              console.log("PRODUCTION_PAYMENT_READINESS", provider, JSON.stringify({
+                httpStatus: response.status,
+                configured: data.configured === true,
+                provider: data.provider || provider,
+              }));
+            } catch {
+              console.log("PRODUCTION_PAYMENT_READINESS", provider, JSON.stringify({ reachable: false, configured: false }));
+            }
+          }
+          NODE
 
       - name: Verify teacher CV restrictions, rejection email, learner conversion and expiry
         run: node artifacts/api-server/scripts/test-teacher-cv-workflow.mjs
