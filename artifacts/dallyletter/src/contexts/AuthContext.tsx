@@ -44,7 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [sessionUser, fetchedUser, queryClient]);
 
   useEffect(() => {
-    if (!token || !error || sessionUser) return;
+    if (!token || !error) return;
     const message = error instanceof Error ? error.message : String(error);
     if (/401|unauthorized|authentication required/i.test(message)) {
       queryClient.clear();
