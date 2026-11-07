@@ -85,6 +85,17 @@ async function getPayPalAccessToken(): Promise<string | null> {
   return data.access_token || null;
 }
 
+router.get("/payments/paypal/status", (_req, res): void => {
+  const configured = Boolean(
+    process.env.PAYPAL_CLIENT_ID?.trim() &&
+    process.env.PAYPAL_CLIENT_SECRET?.trim() &&
+    process.env.PAYPAL_WEBHOOK_ID?.trim() &&
+    process.env.PUBLIC_APP_URL?.trim()
+  );
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ configured, provider: "paypal" });
+});
+
 // Create a PayPal order on the server so each checkout has a verifiable reference.
 router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
