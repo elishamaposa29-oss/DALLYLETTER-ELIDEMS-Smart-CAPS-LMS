@@ -53,7 +53,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!token || !error) return;
     const message = error instanceof Error ? error.message : String(error);
-    if (/401|403|unauthorized|forbidden|authentication required/i.test(message)) {
+    const status = Number((error as any)?.status ?? (error as any)?.statusCode ?? (error as any)?.response?.status ?? 0);
+    if (status === 401 || status === 403 || /401|403|unauthorized|forbidden|authentication required/i.test(message)) {
       queryClient.clear();
       setSessionUser(null);
       setToken(null);
