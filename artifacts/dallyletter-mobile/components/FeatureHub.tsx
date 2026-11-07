@@ -927,6 +927,7 @@ export default function FeatureHub() {
 
   const startPayPal = async () => {
     if (!isStudent || paymentBusy || paymentTotalOwed <= 0) return;
+    if (payableRows[0]?.status === "partially_paid") { Alert.alert("Use Paynow for this balance","PayPal checkout currently settles full fee invoices. Paynow supports partial payments and excess credits for this invoice."); return; }
     setPaymentBusy(true);
     try {
       const result = await request("/api/payments/paypal/create", { method: "POST", body: JSON.stringify({ returnUrl: Linking.createURL("payments/return") }) });
