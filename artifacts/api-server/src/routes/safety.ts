@@ -23,6 +23,7 @@ async function isOwnerContentFlag(flag: { contentType: string; contentId: number
     activity: { table: "audit_logs", column: "performed_by" },
     message: { table: "messages", column: "sender_id" },
     comment: { table: "content_comments", column: "author_id" },
+    poll: { table: "polls", column: "created_by" },
   };
   const source = sources[type];
   if (!source) return false;
@@ -67,6 +68,7 @@ async function isWithinManagerScope(
     exercise: { table: "exercises", column: "created_by" },
     activity: { table: "audit_logs", column: "performed_by" },
     comment: { table: "content_comments", column: "author_id" },
+    poll: { table: "polls", column: "created_by" },
   };
   const source = sources[type];
   if (!source) return false;
