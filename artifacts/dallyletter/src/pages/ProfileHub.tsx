@@ -109,9 +109,10 @@ export default function ProfileHub() {
   const platformOwner = ["owner","platform_owner"].includes(normalizedAccountRole);
   const managerLike = ["manager","senior_manager","junior_manager"].includes(normalizedAccountRole) || (normalizedAccountRole === "teacher" && Boolean((user as any)?.isManager) && ["approved","not_applicable"].includes(String((user as any)?.teacherApplicationStatus||"not_applicable").toLowerCase()));
   const [managerPermissions,setManagerPermissions] = useState<Record<string,boolean>>({});
+  const seniorTransferAuthority = platformOwner || normalizedAccountRole === "senior_manager" || (["manager","teacher"].includes(normalizedAccountRole) && String((user as any)?.managerLevel||"").toLowerCase() === "senior");
   const canReviewTransferLetters = platformOwner || (managerLike && managerPermissions["transfers.view"] === true);
-  const canApproveTransferLetters = platformOwner || managerPermissions["transfers.approve"] === true;
-  const canRejectTransferLetters = platformOwner || managerPermissions["transfers.reject"] === true;
+  const canApproveTransferLetters = seniorTransferAuthority && (platformOwner || managerPermissions["transfers.approve"] === true);
+  const canRejectTransferLetters = seniorTransferAuthority && (platformOwner || managerPermissions["transfers.reject"] === true);
   async function pasteVerificationCode(target: "phone" | "notification" | "recovery") {
     try {
       const clipboard = await navigator.clipboard.readText();
