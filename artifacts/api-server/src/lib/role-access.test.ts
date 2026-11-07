@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { defaultManagerPermission, isSeniorOnlyManagerPermission, canAccessManager, canApproveAchievementAwards, canManageAcademicContent, canModerateUser, canPendingTeacherUseRoute, canRecommendAchievementAwards, canApproveAcademicTransfer, canUseStaffAI, enforceAcademicStaffAccess, enforceAuthenticated, enforceOwnerAccess, isActiveTeacherManager, isJuniorManager, isOwnerRole, isSeniorManager, normalizeRole } from "./role-access.js";
+import { defaultManagerPermission, isSeniorOnlyManagerPermission, canAccessManager, canApproveAchievementAwards, canManageAcademicContent, canModerateUser, canPendingTeacherUseRoute, canRecommendAchievementAwards, canReviewAcademicTransfer, canUseStaffAI, enforceAcademicStaffAccess, enforceAuthenticated, enforceOwnerAccess, isActiveTeacherManager, isJuniorManager, isOwnerRole, isSeniorManager, normalizeRole } from "./role-access.js";
 
 test("normalizes legacy role casing and separators",()=>{
  assert.equal(normalizeRole(" Senior Manager "), "senior_manager");
@@ -144,12 +144,12 @@ test("Senior managers may override Junior Managers and ordinary users but never 
 test("transfer approval is limited to Owner and Senior Manager authority; rejection is separately grantable",()=>{
  assert.equal(isSeniorOnlyManagerPermission("transfers.approve"),true,"transfer approval remains Senior/Owner-only");
  assert.equal(isSeniorOnlyManagerPermission("transfers.reject"),false,"transfer rejection can be granted individually to a Junior Manager");
- for(const role of ["owner","platform_owner","senior_manager"]) assert.equal(canApproveAcademicTransfer({role}),true,role);
- assert.equal(canApproveAcademicTransfer({role:"manager",managerLevel:"senior"}),true,"legacy senior-level managers retain review authority");
- assert.equal(canApproveAcademicTransfer({role:"teacher",isManager:true,managerLevel:"senior"}),true,"legacy senior teacher-managers retain review authority");
- for(const role of ["admin","manager","junior_manager","student","prefect","teacher","unknown"]) assert.equal(canApproveAcademicTransfer({role,isManager:false}),false,role);
- assert.equal(canApproveAcademicTransfer({role:"teacher",isManager:true,managerLevel:"junior"}),false,"junior teacher-managers cannot approve transfers");
- assert.equal(canApproveAcademicTransfer({role:"teacher",isManager:true,managerLevel:"senior",teacherApplicationStatus:"pending_review"}),false,"pending teacher applications cannot review transfers");
+ for(const role of ["owner","platform_owner","senior_manager"]) assert.equal(canReviewAcademicTransfer({role}),true,role);
+ assert.equal(canReviewAcademicTransfer({role:"manager",managerLevel:"senior"}),true,"legacy senior-level managers retain review authority");
+ assert.equal(canReviewAcademicTransfer({role:"teacher",isManager:true,managerLevel:"senior"}),true,"legacy senior teacher-managers retain review authority");
+ for(const role of ["admin","manager","junior_manager","student","prefect","teacher","unknown"]) assert.equal(canReviewAcademicTransfer({role,isManager:false}),false,role);
+ assert.equal(canReviewAcademicTransfer({role:"teacher",isManager:true,managerLevel:"junior"}),false,"junior teacher-managers cannot approve transfers");
+ assert.equal(canReviewAcademicTransfer({role:"teacher",isManager:true,managerLevel:"senior",teacherApplicationStatus:"pending_review"}),false,"pending teacher applications cannot review transfers");
 });
 
 test("explicit hierarchy keeps junior and senior manager permissions while separating approvals",()=>{
@@ -181,7 +181,7 @@ test("junior_manager role alias retains manager workspace access but not senior 
  assert.equal(canManageAcademicContent(junior),true);
  assert.equal(canRecommendAchievementAwards(junior),true);
  assert.equal(canApproveAchievementAwards(junior),false);
- assert.equal(canApproveAcademicTransfer(junior),false);
+ assert.equal(canReviewAcademicTransfer(junior),false);
 });
 
 test("draft, pending and rejected teacher managers do not gain authority from stale manager flags",()=>{
