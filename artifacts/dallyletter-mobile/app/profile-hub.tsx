@@ -398,7 +398,11 @@ export default function MobileProfileHub() {
         {transferRequests.length?transferRequests.map((r:Row)=>{
           const letter=r.form_data&&typeof r.form_data==="object"?r.form_data:{};
           const imageFields:[string,string][]=[["schoolLogoDataUrl","School logo"],["guardianSignatureDataUrl","Guardian signature"],["headmasterSignatureDataUrl","Headmaster signature"]];
-          const detailFields=Object.entries(letter).filter(([key,value])=>!key.endsWith("DataUrl")&&value!==undefined&&value!==null&&String(value).trim()!=="");
+          const letterSections:[string,[string,any][]][]=[
+            ["1. Learner's Details",[["Full name",letter.learnerName||r.learner_name],["Grade / Form",letter.grade],["Admission No",letter.admissionNo],["DOB / Gender",(letter.dob||"—")+" / "+(letter.gender||"—")],["EMIS No",letter.emisNo],["Academic Year",letter.academicYear],["Average / Conduct",(letter.average?String(letter.average)+"%":"—")+" / "+(letter.conduct||"—")]]],
+            ["2. Reason For Transfer",[["Category",letter.reasonType],["Details",letter.reasonDetail||r.reason]]],
+            ["3. Parent's / Guardian's Details",[["Name & relation",(letter.guardianName||"—")+" ("+(letter.relationship||"—")+")"],["ID No",letter.guardianId],["Contact",letter.guardianPhone],["Email",letter.guardianEmail],["Address",letter.address],["Effective Date",letter.effectiveDate]]],
+          ];
           return <View key={r.id} style={{borderTopWidth:1,borderColor:colors.border,paddingVertical:12,gap:8}}>
             <View style={{flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:8}}>
               <Text style={{fontWeight:"900",color:colors.foreground}}>Transfer letter #{r.id}</Text>
@@ -406,12 +410,17 @@ export default function MobileProfileHub() {
             </View>
             {line("Learner",r.learner_name||("Learner #"+r.learner_id))}
             {line("Submitted",r.created_at?new Date(r.created_at).toLocaleString():"—")}
-            {detailFields.map(([key,value])=>line(key.replace(/([A-Z])/g," $1").replace(/^./,v=>v.toUpperCase()),String(value)))}
-            <View style={{flexDirection:"row",flexWrap:"wrap",gap:8}}>
-              {imageFields.filter(([key])=>typeof letter[key]==="string"&&String(letter[key]).startsWith("data:image/")).map(([key,label])=><View key={key} style={{borderWidth:1,borderColor:colors.border,borderRadius:8,padding:8}}>
-                <Text style={{fontSize:11,fontWeight:"800",color:colors.mutedForeground,marginBottom:5}}>{label}</Text>
-                <Image source={{uri:String(letter[key])}} resizeMode="contain" style={{width:130,height:62}}/>
-              </View>)}
+            <View style={{backgroundColor:"#ffffff",borderWidth:1,borderColor:"#d1d5db",borderRadius:10,padding:14,gap:10}}>
+              <View style={{flexDirection:"row",justifyContent:"space-between",alignItems:"flex-start",borderBottomWidth:3,borderBottomColor:"#0f2a5a",paddingBottom:10,gap:8}}>
+                <View style={{flex:1}}><Text style={{fontSize:17,fontWeight:"900",color:"#0f2a5a"}}>{String(letter.currentSchool||"Dallyletter Elidems")}</Text><Text style={{fontSize:11,color:"#64748b"}}>Transfer Clearance &amp; Application{"\n"}Harare, Zimbabwe</Text></View>
+                {typeof letter.schoolLogoDataUrl==="string"&&letter.schoolLogoDataUrl.startsWith("data:image/")?<Image source={{uri:letter.schoolLogoDataUrl}} resizeMode="contain" style={{width:68,height:68,borderWidth:1,borderColor:"#d1d5db"}}/>:<View style={{width:68,height:68,borderWidth:1,borderStyle:"dashed",borderColor:"#d1d5db",alignItems:"center",justifyContent:"center"}}><Text style={{fontSize:9,color:"#94a3b8"}}>NO LOGO</Text></View>}
+              </View>
+              <Text style={{textAlign:"right",fontSize:11,color:"#64748b"}}>{letter.effectiveDate?new Date(String(letter.effectiveDate)+"T00:00:00").toLocaleDateString():"Date not supplied"}</Text>
+              <Text style={{fontSize:12,color:"#334155"}}>The Headmaster{"\n"}{String(letter.receivingSchool||"[Receiving School]")}{"\n"}Dear Sir/Madam,</Text>
+              <Text style={{fontSize:12,fontWeight:"900",color:"#0f2a5a"}}>RE: TRANSFER APPLICATION FOR {String(letter.learnerName||r.learner_name||"LEARNER NAME").toUpperCase()} - {String(letter.grade||"Grade not supplied")}</Text>
+              {letterSections.map(([heading,rows])=><View key={heading} style={{borderWidth:1,borderColor:"#e2e8f0",borderRadius:7,padding:9,gap:5}}><Text style={{fontSize:11,fontWeight:"900",color:"#0f2a5a",borderLeftWidth:3,borderLeftColor:"#b38b00",paddingLeft:7}}>{heading.toUpperCase()}</Text>{rows.filter(([,value])=>value!==undefined&&value!==null&&String(value).trim()!=="").map(([label,value])=><View key={label} style={{flexDirection:"row",gap:8,borderBottomWidth:0.5,borderBottomColor:"#e2e8f0",paddingVertical:4}}><Text style={{width:112,fontSize:10,color:"#64748b"}}>{label}</Text><Text style={{flex:1,fontSize:11,fontWeight:"700",color:"#0f2a5a"}}>{String(value)||"—"}</Text></View>)}</View>)}
+              <View style={{borderWidth:1,borderColor:"#e2e8f0",borderRadius:7,padding:9,gap:8}}><Text style={{fontSize:11,fontWeight:"900",color:"#0f2a5a"}}>4. DECLARATIONS &amp; SIGNATURES</Text><View style={{flexDirection:"row",gap:12}}><View style={{flex:1,borderTopWidth:1,borderTopColor:"#cbd5e1",paddingTop:7}}><Text style={{fontSize:10,color:"#334155"}}>Parent / Guardian signature</Text>{typeof letter.guardianSignatureDataUrl==="string"&&letter.guardianSignatureDataUrl.startsWith("data:image/")?<Image source={{uri:letter.guardianSignatureDataUrl}} resizeMode="contain" style={{width:"100%",height:52}}/>:<Text style={{fontSize:10,color:"#94a3b8"}}>Not supplied</Text>}</View><View style={{flex:1,borderTopWidth:1,borderTopColor:"#cbd5e1",paddingTop:7}}><Text style={{fontSize:10,color:"#334155"}}>Headmaster signature / stamp</Text>{typeof letter.headmasterSignatureDataUrl==="string"&&letter.headmasterSignatureDataUrl.startsWith("data:image/")?<Image source={{uri:letter.headmasterSignatureDataUrl}} resizeMode="contain" style={{width:"100%",height:52}}/>:<Text style={{fontSize:10,color:"#94a3b8"}}>Not supplied</Text>}</View></View></View>
+              <Text style={{fontSize:9,color:"#64748b"}}>Subject to acceptance by receiving school, space availability, and submission of supporting records. Fee clearance and signatures are not assumed.</Text>
             </View>
             {r.review_note?line("Reviewer note",r.review_note):null}
             {r.status==="pending"&&<View style={{flexDirection:"row",gap:8,flexWrap:"wrap"}}>
