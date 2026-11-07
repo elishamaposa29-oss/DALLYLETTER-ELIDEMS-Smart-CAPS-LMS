@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useGetCurrentUser } from "@workspace/api-client-react";
 import type { User } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
@@ -17,6 +18,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem("dallyletter_token"));
   const [sessionUser, setSessionUser] = useState<User | null>(null);
   const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
 
   const { data: fetchedUser, isLoading, refetch, error } = useGetCurrentUser({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -27,10 +29,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!token || !error || sessionUser) return;
     const message = error instanceof Error ? error.message : String(error);
     if (/401|unauthorized|authentication required/i.test(message)) {
+      queryClient.clear();
+      setSessionUser(null);
       setToken(null);
       setLocation("/login");
     }
-  }, [token, error, sessionUser, setLocation]);
+  }, [token, error, sessionUser, setLocation, queryClient]);
 
   useEffect(() => {
     if (token) {
@@ -42,6 +46,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = (newToken: string, authenticatedUser: User) => {
     const previousToken = token;
+    // Never reuse API/query results across sessions, even when the same account
+    // logs in again or its role/permissions changed while the app was closed.
+    queryClient.clear();
     if (previousToken && previousToken !== newToken) {
       void fetch(getApiUrl("/api/auth/logout"), { method: "POST", headers: { Authorization: "Bearer " + previousToken } }).catch(() => undefined);
     }
@@ -61,10 +68,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     if (token) void fetch(getApiUrl("/api/auth/logout"), { method: "POST", headers: { Authorization: "Bearer " + token } }).catch(() => undefined);
+    queryClient.clear();
     setSessionUser(null);
     setToken(null);
     setLocation("/login");
   };
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== "dallyletter_token") return;
+      queryClient.clear();
+      setSessionUser(null);
+      setToken(event.newValue);
+      if (!event.newValue) setLocation("/login");
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [queryClient, setLocation]);
 
   const user = sessionUser ?? fetchedUser;
 
