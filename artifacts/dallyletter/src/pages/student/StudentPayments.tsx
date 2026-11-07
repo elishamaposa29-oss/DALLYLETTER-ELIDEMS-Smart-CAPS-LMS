@@ -220,7 +220,7 @@ export default function StudentPayments() {
               PayPal
             </div>
             <span className="text-[11px] opacity-80 font-normal">
-              {nextPayablePayment ? (nextPayablePayment.status === "partially_paid" ? "Use Paynow for partial balances" : "Next fee: " + nextPayablePayment.month + " " + nextPayablePayment.year + " · $" + Number(nextPayablePayment.amount).toFixed(2)) : "No unpaid fee"}
+              {nextPayablePayment ? (String(nextPayablePayment.status) === "partially_paid" ? "Use Paynow for partial balances" : "Next fee: " + nextPayablePayment.month + " " + nextPayablePayment.year + " · $" + Number(nextPayablePayment.amount).toFixed(2)) : "No unpaid fee"}
             </span>
             <ExternalLink className="h-3 w-3 opacity-70" />
           </Button>
