@@ -9,7 +9,7 @@ Canonical property: `https://dallyletter-elidems-onlineschoolbye-two.vercel.app/
 After the approved branch is deployed:
 1. Verify the URL-prefix property using the HTML verification tag already included in the homepage. Compare the live token with the token displayed by Google before clicking Verify.
 2. Submit `https://dallyletter-elidems-onlineschoolbye-two.vercel.app/sitemap.xml`.
-3. Inspect the homepage and each of the six public pages with URL Inspection.
+3. Inspect the homepage and each of the seven public pages with URL Inspection.
 4. Record any indexing exclusions and fix only causes supported by the report.
 5. Do not report the site as verified or indexed until Search Console shows that result.
 
