@@ -318,13 +318,34 @@ router.post("/payments/paypal/capture", requireAuth, async (req, res): Promise<v
   }
 });
 
-// Only a PayPal-verified CAPTURE.COMPLETED event can mark this checkout paid.
+// PayPal remains authoritative for signature and capture verification.
+// The saved payment transaction is authoritative for invoice ownership and settlement.
 router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
+  await ensurePaymentTransactionSchema();
   const webhookId = process.env.PAYPAL_WEBHOOK_ID?.trim();
-  if (!webhookId) { res.status(503).json({ error: "PayPal webhook verification is not configured." }); return; }
+  const eventId = String(req.body?.id || "").slice(0, 200) || null;
+  const eventType = String(req.body?.event_type || "").slice(0, 160) || null;
+  const resource = req.body?.resource || {};
+  const orderId = String(resource?.supplementary_data?.related_ids?.order_id || "").slice(0, 100) || null;
+  const captureId = String(resource?.id || "").slice(0, 100) || null;
+  const transmissionId = String(req.header("paypal-transmission-id") || "").slice(0, 200) || null;
+  const audit = async (verified: boolean, outcome: string, detail: string): Promise<void> => {
+    await db.execute(sql\`
+      INSERT INTO payment_provider_webhook_audit
+        (provider,event_id,transmission_id,event_type,order_id,capture_id,signature_verified,outcome,detail)
+      VALUES ('paypal',\${eventId},\${transmissionId},\${eventType},\${orderId},\${captureId},\${verified},\${outcome},\${detail.slice(0,500)})
+    \`).catch(() => undefined);
+  };
+  if (!webhookId) {
+    await audit(false, "rejected", "PayPal webhook verification is not configured");
+    res.status(503).json({ error: "PayPal webhook verification is not configured." }); return;
+  }
   try {
     const accessToken = await getPayPalAccessToken();
-    if (!accessToken) { res.status(503).json({ error: "PayPal API credentials are not configured." }); return; }
+    if (!accessToken) {
+      await audit(false, "verification_unavailable", "PayPal API credentials are unavailable");
+      res.status(503).json({ error: "PayPal API credentials are not configured." }); return;
+    }
     const headers = {
       auth_algo: req.header("paypal-auth-algo"),
       cert_url: req.header("paypal-cert-url"),
@@ -332,7 +353,10 @@ router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
       transmission_sig: req.header("paypal-transmission-sig"),
       transmission_time: req.header("paypal-transmission-time"),
     };
-    if (Object.values(headers).some(value => !value)) { res.status(400).json({ error: "PayPal signature headers are incomplete." }); return; }
+    if (Object.values(headers).some(value => !value)) {
+      await audit(false, "rejected", "PayPal signature headers are incomplete");
+      res.status(400).json({ error: "PayPal signature headers are incomplete." }); return;
+    }
     const verification = await fetch(paypalBase() + "/v1/notifications/verify-webhook-signature", {
       method: "POST",
       headers: { Authorization: "Bearer " + accessToken, "Content-Type": "application/json" },
@@ -341,69 +365,105 @@ router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
     });
     const verified = await verification.json().catch(() => ({})) as { verification_status?: string };
     if (!verification.ok || verified.verification_status !== "SUCCESS") {
+      await audit(false, "signature_invalid", "PayPal rejected webhook signature verification");
       res.status(401).json({ error: "PayPal webhook signature is invalid." }); return;
     }
-    const eventType = String(req.body?.event_type || "");
-    if (eventType !== "PAYMENT.CAPTURE.COMPLETED") { res.json({ received: true, updated: false }); return; }
-    const resource = req.body?.resource || {};
-    const orderId = String(resource?.supplementary_data?.related_ids?.order_id || "");
-    if (!orderId) { res.status(400).json({ error: "PayPal capture is missing its order reference." }); return; }
+    if (eventType !== "PAYMENT.CAPTURE.COMPLETED") {
+      await audit(true, "ignored", "Verified PayPal event is not a completed capture");
+      res.json({ received: true, updated: false, ignored: true }); return;
+    }
+    if (!orderId || !captureId || !eventId) {
+      await audit(true, "rejected", "Capture event is missing event, order or capture identity");
+      res.status(400).json({ error: "PayPal capture is missing its event, order or capture reference." }); return;
+    }
     const orderResponse = await fetch(paypalBase() + "/v2/checkout/orders/" + encodeURIComponent(orderId), {
-      headers: { Authorization: "Bearer " + accessToken },
-      signal: AbortSignal.timeout(15000),
+      headers: { Authorization: "Bearer " + accessToken }, signal: AbortSignal.timeout(15000),
     });
-    if (!orderResponse.ok) { res.status(502).json({ error: "Could not verify the PayPal order details." }); return; }
-    const order = await orderResponse.json() as { status?: string; purchase_units?: Array<{ invoice_id?: string; custom_id?: string; amount?: { currency_code?: string; value?: string }; payments?: { captures?: Array<{ id?: string; status?: string; amount?: { currency_code?: string; value?: string } }> } }> };
+    if (!orderResponse.ok) {
+      await audit(true, "provider_lookup_failed", "PayPal order details could not be retrieved");
+      res.status(502).json({ error: "Could not verify the PayPal order details." }); return;
+    }
+    const order = await orderResponse.json() as {
+      id?: string; status?: string;
+      purchase_units?: Array<{
+        invoice_id?: string; custom_id?: string;
+        amount?: { currency_code?: string; value?: string };
+        payments?: { captures?: Array<{ id?: string; status?: string; amount?: { currency_code?: string; value?: string } }> };
+      }>;
+    };
     const unit = order.purchase_units?.[0];
-    const reference = String(unit?.invoice_id || unit?.custom_id || "");
-    const capture = unit?.payments?.captures?.find(item => String(item.id || "") === String(resource.id || ""));
+    const reference = String(unit?.custom_id || unit?.invoice_id || "");
+    const capture = unit?.payments?.captures?.find(item => String(item.id || "") === captureId);
     const capturedAmount = Number(resource?.amount?.value);
-    const orderAmount = Number(unit?.amount?.value);
-    if (order.status !== "COMPLETED" || capture?.status !== "COMPLETED" ||
-        !/^DLP-\d+-\d+-\d+-[a-f0-9]{8}$/i.test(reference) ||
+    const providerCaptureAmount = Number(capture?.amount?.value);
+    if (order.id !== orderId || order.status !== "COMPLETED" || capture?.status !== "COMPLETED" ||
+        !reference || String(unit?.custom_id || "") !== reference ||
         resource?.amount?.currency_code !== "USD" || unit?.amount?.currency_code !== "USD" ||
         capture?.amount?.currency_code !== "USD" || !Number.isFinite(capturedAmount) ||
-        capturedAmount <= 0 || capturedAmount !== orderAmount || Number(capture.amount?.value) !== capturedAmount) {
+        capturedAmount <= 0 || !Number.isFinite(providerCaptureAmount) ||
+        capturedAmount !== providerCaptureAmount || capturedAmount !== Number(unit?.amount?.value)) {
+      await audit(true, "rejected", "PayPal order, capture identity, status, currency or amount did not match");
       res.status(400).json({ error: "PayPal capture does not match a valid school-fee order." }); return;
     }
-    const refMatch = reference.match(/^DLP-(\d+)-(\d+)-\d+-[a-f0-9]{8}$/i);
-    if (!refMatch) { res.status(400).json({ error: "PayPal reference is malformed." }); return; }
+
     const settled = await db.transaction(async (tx) => {
-      const transaction = await tx.execute(sql`
+      const locked = await tx.execute(sql\`
+        SELECT t.payment_id,t.amount,t.currency,t.status AS transaction_status,t.provider_capture_id,
+               p.student_id,p.amount AS invoice_amount,p.amount_paid,p.status AS invoice_status
+        FROM payment_transactions t
+        JOIN payments p ON p.id=t.payment_id
+        WHERE t.provider='paypal' AND t.provider_order_id=\${orderId}
+          AND t.reference=\${reference} AND t.currency='USD'
+        FOR UPDATE OF t,p
+      \`);
+      const lockedRows = (locked as unknown as { rows?: Array<{ payment_id:number;amount:string|number;currency:string;transaction_status:string;provider_capture_id:string|null;student_id:number;invoice_amount:string|number;amount_paid:string|number;invoice_status:string }> }).rows ?? [];
+      const linked = lockedRows[0];
+      if (!linked) return { outcome: "rejected" as const, studentId: null as number | null, detail: "No saved transaction is linked to this exact PayPal order and invoice" };
+      if (linked.transaction_status === "paid") {
+        if (linked.provider_capture_id === captureId) return { outcome: "duplicate" as const, studentId: Number(linked.student_id), detail: "Capture was already settled; no second credit was applied" };
+        return { outcome: "rejected" as const, studentId: null as number | null, detail: "Checkout was already settled by a different capture" };
+      }
+      if (linked.transaction_status !== "pending" || Number(linked.amount) !== capturedAmount || linked.currency !== "USD") {
+        return { outcome: "rejected" as const, studentId: null as number | null, detail: "Capture does not match the pending transaction amount or currency" };
+      }
+      const invoiceAmount = Number(linked.invoice_amount);
+      const alreadyPaid = Number(linked.amount_paid || 0);
+      if (!Number.isFinite(invoiceAmount) || invoiceAmount <= 0 || alreadyPaid < 0 ||
+          alreadyPaid + capturedAmount > invoiceAmount + 0.000001) {
+        return { outcome: "rejected" as const, studentId: null as number | null, detail: "Capture exceeds the invoice's remaining balance" };
+      }
+      const updatedTransaction = await tx.execute(sql\`
         UPDATE payment_transactions
-        SET status='paid', updated_at=now()
-        WHERE provider='paypal' AND reference=${reference} AND status='pending'
-          AND amount::numeric=${capturedAmount}
-          AND payment_id=${Number(refMatch[2])}
-        RETURNING payment_id, amount
-      `);
-      const transactionRows = (transaction as unknown as { rows?: Array<{ payment_id: number; amount: string | number }> }).rows ?? [];
-      if (!transactionRows.length) return { studentId: null as number | null };
-      const transactionAmount = Number(transactionRows[0].amount);
-      const updated = await tx.execute(sql`
+        SET status='paid',provider_capture_id=\${captureId},updated_at=now()
+        WHERE provider='paypal' AND provider_order_id=\${orderId}
+          AND reference=\${reference} AND status='pending'
+        RETURNING payment_id,amount
+      \`);
+      const txRows = (updatedTransaction as unknown as { rows?: Array<{payment_id:number;amount:string|number}> }).rows ?? [];
+      if (!txRows.length) return { outcome: "duplicate" as const, studentId: Number(linked.student_id), detail: "Concurrent delivery already settled this capture" };
+      const appliedAmount = Number(txRows[0].amount);
+      const updatedPayment = await tx.execute(sql\`
         UPDATE payments
-        SET amount_paid=COALESCE(amount_paid,0)+${transactionAmount},
-            status=CASE
-              WHEN COALESCE(amount_paid,0)+${transactionAmount} >= amount THEN 'paid'
-              ELSE 'partially_paid'
-            END,
-            notes=CONCAT(replace(COALESCE(notes,''), ${"PayPal order " + orderId + " reference " + reference}, ''),' | PayPal verified capture ',CAST(${String(resource.id || "")} AS TEXT),' amount ',CAST(${transactionAmount.toFixed(2)} AS TEXT)),
+        SET amount_paid=COALESCE(amount_paid,0)+\${appliedAmount},
+            status=CASE WHEN COALESCE(amount_paid,0)+\${appliedAmount} >= amount THEN 'paid' ELSE 'partially_paid' END,
+            notes=CONCAT(COALESCE(notes,''),' | PayPal verified capture ',CAST(\${captureId} AS TEXT),' order ',CAST(\${orderId} AS TEXT),' amount ',CAST(\${appliedAmount.toFixed(2)} AS TEXT)),
             updated_at=now()
-        WHERE id=${Number(transactionRows[0].payment_id)}
-          AND student_id=${Number(refMatch[1])}
-          AND notes LIKE ${"%PayPal order " + orderId + " reference " + reference + "%"}
-          AND status IN ('pending','overdue','partially_paid','paid')
-        RETURNING student_id
-      `);
-      const rows = (updated as unknown as { rows?: Array<{ student_id: number }> }).rows ?? [];
-      if (!rows.length) throw new Error("Verified PayPal transaction no longer matches its fee invoice");
-      return { studentId: Number(rows[0].student_id) };
+        WHERE id=\${Number(linked.payment_id)} AND student_id=\${Number(linked.student_id)}
+          AND status IN ('pending','overdue','partially_paid')
+        RETURNING student_id,status
+      \`);
+      const paymentRows = (updatedPayment as unknown as { rows?: Array<{student_id:number;status:string}> }).rows ?? [];
+      if (!paymentRows.length) throw new Error("The linked invoice changed before PayPal settlement");
+      await tx.update(usersTable).set({ lastPaymentDate: new Date().toISOString() }).where(eq(usersTable.id, Number(paymentRows[0].student_id)));
+      return { outcome: "accepted" as const, studentId: Number(paymentRows[0].student_id), detail: "Verified PayPal capture applied once to the linked invoice" };
     });
-    if (settled.studentId !== null) {
-      await db.update(usersTable).set({ lastPaymentDate: new Date().toISOString() }).where(eq(usersTable.id, settled.studentId));
+    await audit(true, settled.outcome, settled.detail);
+    if (settled.outcome === "rejected") {
+      res.status(409).json({ error: "The verified PayPal capture could not be matched to an eligible school-fee transaction." }); return;
     }
-    res.json({ received: true, updated: settled.studentId !== null });
+    res.json({ received: true, updated: settled.outcome === "accepted", duplicate: settled.outcome === "duplicate" });
   } catch {
+    await audit(true, "processing_error", "Internal error prevented PayPal capture processing");
     res.status(502).json({ error: "PayPal webhook verification could not be completed." });
   }
 });
