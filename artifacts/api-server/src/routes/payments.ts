@@ -4,7 +4,7 @@ import { eq, inArray, sql } from "drizzle-orm";
 import crypto from "node:crypto";
 import { db, paymentsTable, usersTable, activityLogTable, notificationsTable } from "@workspace/db";
 import { RecordPaymentBody, GetPaymentParams } from "@workspace/api-zod";
-import { requireAuth, requireTeacherOrOwner, isOwnerRole } from "../lib/auth-middleware";
+import { requireAuth, requireOwner, isOwnerRole } from "../lib/auth-middleware";
 
 const router: IRouter = Router();
 
@@ -631,7 +631,7 @@ router.get("/payments", requireAuth, async (req, res): Promise<void> => {
 });
 
 // POST /payments — Record a payment (teacher/owner only)
-router.post("/payments", requireAuth, requireTeacherOrOwner, async (req, res): Promise<void> => {
+router.post("/payments", requireAuth, requireOwner, async (req, res): Promise<void> => {
   await ensurePaymentTransactionSchema();
   const currentUser = req.currentUser!;
 
