@@ -25,6 +25,7 @@ export default function AdminSettings() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [manualReports, setManualReports] = useState<any[]>([]);
+  const [savedSchoolFeeAmount, setSavedSchoolFeeAmount] = useState("");
   const [reviewingReport, setReviewingReport] = useState<number | null>(null);
 
   const [passwordForm, setPasswordForm] = useState({
@@ -41,7 +42,7 @@ export default function AdminSettings() {
     const token = localStorage.getItem("dallyletter_token");
     fetch(getApiUrl("/api/settings"), { headers: { Authorization: `Bearer ${token}` } })
       .then(async r => { const data = await r.json(); if (!r.ok) throw new Error(data.error || "Unable to load settings"); return data; })
-      .then(data => { setSettings(data); setSettingsError(null); setLoadingSettings(false); })
+      .then(data => { setSettings(data); setSavedSchoolFeeAmount(data.school_fee_amount || ""); setSettingsError(null); setLoadingSettings(false); })
       .catch(err => { setSettingsError(err instanceof Error ? err.message : "Unable to load settings"); setLoadingSettings(false); });
   }, []);
 
@@ -91,6 +92,7 @@ export default function AdminSettings() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Failed to save settings.");
       setSettings(data);
+      setSavedSchoolFeeAmount(data.school_fee_amount || "");
       setSettingsError(null);
       toast({ title: "Settings saved", description: "Payment settings have been updated." });
     } catch (err: unknown) {
@@ -108,6 +110,7 @@ export default function AdminSettings() {
       toast({ variant: "destructive", title: "Set the school fee first", description: "Save a valid default school fee before applying it to learner invoices." });
       return;
     }
+    if (settings.school_fee_amount !== savedSchoolFeeAmount) { toast({ variant: "destructive", title: "Save the fee first", description: "Save your changed school-fee amount before applying it to learner invoices." }); return; }
     setApplyingFees(true);
     try {
       const token = localStorage.getItem("dallyletter_token");
@@ -215,7 +218,7 @@ export default function AdminSettings() {
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_120px_auto] sm:items-end">
                     <div className="space-y-1"><Label htmlFor="fee-billing-month">Billing month</Label><Input id="fee-billing-month" value={feeMonth} onChange={e => setFeeMonth(e.target.value)} maxLength={20} /></div>
                     <div className="space-y-1"><Label htmlFor="fee-billing-year">Year</Label><Input id="fee-billing-year" type="number" min="2020" max="2200" value={feeYear} onChange={e => setFeeYear(e.target.value)} /></div>
-                    <Button type="button" onClick={handleApplySchoolFees} disabled={applyingFees || loadingSettings || !settings.school_fee_amount} className="gap-2">
+                    <Button type="button" onClick={handleApplySchoolFees} disabled={applyingFees || loadingSettings || !settings.school_fee_amount || settings.school_fee_amount !== savedSchoolFeeAmount} className="gap-2">
                       {applyingFees ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                       Apply to learners
                     </Button>
