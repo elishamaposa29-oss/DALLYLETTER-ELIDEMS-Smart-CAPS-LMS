@@ -277,11 +277,12 @@ router.post("/lesson-requests", requireAuth, async (req, res): Promise<void> => 
   const [request] = await db.insert(lessonRequestsTable).values({
     prefectId: user.id, teacherId: target.id, topic: topic.trim(), notes: notes?.trim() || null, preferredDate: preferredDate || null,
   }).returning();
+  // The request is already persisted; notification delivery must not make the UI report a false failure.
   await db.insert(notificationsTable).values({
     title: `Lesson request: ${topic.trim()}`,
     message: `Prefect ${user.name} requested "${topic.trim()}". Open Prefect Requests to respond.`,
     type: "lesson_request", recipientId: target.id, isRead: false,
-  });
+  }).catch(() => undefined);
   res.status(201).json(request);
 });
 
