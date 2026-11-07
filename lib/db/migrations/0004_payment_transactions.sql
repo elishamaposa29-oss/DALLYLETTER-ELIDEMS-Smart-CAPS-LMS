@@ -75,6 +75,9 @@ BEGIN
     SELECT 1 FROM information_schema.columns
     WHERE table_schema='public' AND table_name='payment_transactions' AND column_name='provider_capture_id'
   ) OR NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='payment_transactions' AND column_name='currency'
+  ) OR NOT EXISTS (
     SELECT 1 FROM information_schema.tables
     WHERE table_schema='public' AND table_name='payment_provider_webhook_audit'
   ) THEN
