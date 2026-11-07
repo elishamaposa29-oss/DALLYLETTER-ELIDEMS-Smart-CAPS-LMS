@@ -82,9 +82,9 @@ export default function StudentPayments() {
 
   const hasOverdue = payments?.some(p => p.status === "overdue");
   const nextPayablePayment = payments
-    ?.filter(p => p.status === "pending" || p.status === "overdue" || p.status === "partially_paid")
+    ?.filter((p: any) => p.status === "pending" || p.status === "overdue" || p.status === "partially_paid")
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || Number(a.id) - Number(b.id))[0];
-  const totalOwed = payments?.filter(p => p.status === "pending" || p.status === "overdue" || p.status === "partially_paid").reduce((sum, p: any) => sum + Math.max(0, Number(p.amount) - Number(p.amountPaid || 0)), 0) || 0;
+  const totalOwed = payments?.filter((p: any) => p.status === "pending" || p.status === "overdue" || p.status === "partially_paid").reduce((sum, p: any) => sum + Math.max(0, Number(p.amount) - Number(p.amountPaid || 0)), 0) || 0;
   const paidCount = payments?.filter(p => p.status === "paid").length || 0;
   const overdueCount = payments?.filter(p => p.status === "overdue").length || 0;
 
