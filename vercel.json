@@ -17,6 +17,30 @@
   ],
   "rewrites": [
     {
+      "source": "/about",
+      "destination": "/about/index.html"
+    },
+    {
+      "source": "/learners",
+      "destination": "/learners/index.html"
+    },
+    {
+      "source": "/educators",
+      "destination": "/educators/index.html"
+    },
+    {
+      "source": "/schools",
+      "destination": "/schools/index.html"
+    },
+    {
+      "source": "/resources",
+      "destination": "/resources/index.html"
+    },
+    {
+      "source": "/resources/study-plan",
+      "destination": "/resources/study-plan/index.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
