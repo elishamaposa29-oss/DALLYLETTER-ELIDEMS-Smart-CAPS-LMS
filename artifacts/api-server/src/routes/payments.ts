@@ -32,11 +32,10 @@ function parsePaynow(text: string): Record<string, string> {
 async function markPaynowAttempt(reference: string, status: "failed" | "cancelled", detail: string): Promise<void> {
   await db.execute(sql`
     UPDATE payments
-    SET status = ${status},
-        notes = CONCAT(COALESCE(notes, ''), ' | Paynow ', CAST(${status} AS TEXT), ': ', CAST(${detail} AS TEXT)),
+    SET notes = CONCAT(replace(COALESCE(notes, ''), ${"Paynow reference " + reference}, ''), ' | Paynow ', CAST(${status} AS TEXT), ': ', CAST(${detail} AS TEXT)),
         updated_at = now()
     WHERE notes LIKE ${"%Paynow reference " + reference + "%"}
-      AND status = 'pending'
+      AND status IN ('pending','overdue')
   `);
 }
 
@@ -331,12 +330,6 @@ router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
 router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (user.role !== "student") { res.status(403).json({ error: "Learner access required" }); return; }
-  const amount = Number(req.body?.amount);
-  if (!Number.isFinite(amount) || amount <= 0 || amount > 100000) {
-    res.status(400).json({ error: "Enter a valid payment amount" });
-    return;
-  }
-
   const integrationId = process.env.PAYNOW_INTEGRATION_ID?.trim();
   const integrationKey = process.env.PAYNOW_INTEGRATION_KEY?.trim();
   const publicBaseValue = (process.env.PUBLIC_APP_URL || process.env.VITE_PUBLIC_APP_URL || "").trim();
@@ -354,17 +347,34 @@ router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<vo
   const publicBase = new URL(publicBaseValue).toString().replace(/\/$/, "");
   const publicApi = new URL(publicApiValue).toString().replace(/\/$/, "");
   const reference = "DL-" + user.id + "-" + Date.now() + "-" + crypto.randomBytes(4).toString("hex");
-  const now = new Date();
-  const month = now.toLocaleString("en-US", { month: "long" });
-  await db.insert(paymentsTable).values({
-    studentId: user.id, studentName: user.name, amount: amount.toFixed(2),
-    month, year: now.getUTCFullYear(), status: "pending",
-    notes: "Paynow reference " + reference, recordedBy: user.id,
-  });
+  const claimed = await db.execute(sql`
+    WITH candidate AS (
+      SELECT id FROM payments
+      WHERE student_id = ${user.id}
+        AND status IN ('pending', 'overdue')
+        AND COALESCE(notes, '') NOT LIKE '%Paynow reference %'
+      ORDER BY created_at ASC, id ASC
+      FOR UPDATE SKIP LOCKED
+      LIMIT 1
+    )
+    UPDATE payments p
+    SET notes = CONCAT(COALESCE(p.notes, ''), ' | Paynow reference ', CAST(${reference} AS TEXT)), updated_at = now()
+    FROM candidate WHERE p.id = candidate.id
+    RETURNING p.id, p.amount, p.month, p.year
+  `);
+  const claimedRows = (claimed as unknown as { rows?: Array<{ id: number; amount: string | number; month: string; year: number }> }).rows ?? [];
+  const payment = claimedRows[0];
+  if (!payment) { res.status(409).json({ error: "No unpaid school-fee record is available for Paynow checkout." }); return; }
+  const amount = Number(payment.amount);
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 100000) {
+    await markPaynowAttempt(reference, "failed", "Invalid school-fee amount");
+    res.status(409).json({ error: "The unpaid school-fee record has an invalid amount." });
+    return;
+  }
 
   const fields: Record<string, string> = {
     id: integrationId, reference, amount: amount.toFixed(2),
-    additionalinfo: "DallyLetter Elidems school payment",
+    additionalinfo: "DallyLetter Elidems school fees: " + payment.month + " " + payment.year,
     returnurl: publicBase + "/student/payments?reference=" + encodeURIComponent(reference),
     resulturl: publicApi + "/api/payments/paynow/result",
     authemail: user.email, status: "Message",
@@ -422,8 +432,12 @@ router.post("/payments/paynow/result", async (req, res): Promise<void> => {
   const result = await db.transaction(async (tx) => {
     const updated = await tx.execute(sql`
       UPDATE payments
-      SET status = ${normalizedStatus},
-          notes = CONCAT(COALESCE(notes, ''), ' | Paynow callback: ', CAST(${providerStatus} AS TEXT)),
+      SET status = CASE WHEN CAST(${normalizedStatus} AS TEXT) IN ('failed','cancelled') THEN status ELSE ${normalizedStatus} END,
+          notes = CASE
+            WHEN CAST(${normalizedStatus} AS TEXT) IN ('failed','cancelled')
+              THEN CONCAT(replace(COALESCE(notes, ''), ${"Paynow reference " + reference}, ''), ' | Paynow callback: ', CAST(${providerStatus} AS TEXT))
+            ELSE CONCAT(COALESCE(notes, ''), ' | Paynow callback: ', CAST(${providerStatus} AS TEXT))
+          END,
           updated_at = now()
       WHERE notes LIKE ${"%Paynow reference " + reference + "%"}
         AND amount::numeric = ${callbackAmount}
