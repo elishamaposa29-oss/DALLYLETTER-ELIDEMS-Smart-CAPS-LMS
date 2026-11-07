@@ -3,6 +3,8 @@ import { pool } from "@workspace/db";
 import { defaultManagerPermission, isActiveTeacherManager, isOwnerRole, isSeniorManager, isSeniorOnlyManagerPermission, normalizeRole } from "./role-access";
 
 const MANAGER_ROLES = new Set(["junior_manager", "senior_manager", "manager"]);
+const ADMIN_CV_PERMISSION_KEYS = new Set(["teacher_cv.view","teacher_cv.chat","teacher_cv.review","teacher_cv.authorize","qualifications.view","qualifications.verify"]);
+function isAdminCvAuthority(role: unknown, permissionKey: string): boolean { return normalizeRole(role) === "admin" && ADMIN_CV_PERMISSION_KEYS.has(permissionKey); }
 type CurrentAuthority = {
   id: number;
   role: string;
@@ -53,7 +55,7 @@ export function requireManagerPermission(permissionKey: string) {
       const account = await readCurrentAuthority(user.id, permissionKey);
       if (!account) { res.status(401).json({ error: "Account no longer exists" }); return; }
       syncCurrentAuthority(user, account);
-      if (isOwnerRole(account.role)) { next(); return; }
+      if (isOwnerRole(account.role) || isAdminCvAuthority(account.role, permissionKey)) { next(); return; }
       if (!isManagerAccount(account)) {
         res.status(403).json({ error: "Manager access required" });
         return;
@@ -118,7 +120,7 @@ export async function managerHasPermission(user: NonNullable<Request["currentUse
     const account = await readCurrentAuthority(user.id, permissionKey);
     if (!account) return false;
     syncCurrentAuthority(user, account);
-    if (isOwnerRole(account.role)) return true;
+    if (isOwnerRole(account.role) || isAdminCvAuthority(account.role, permissionKey)) return true;
     if (!isManagerAccount(account)) return false;
     if (isSeniorOnlyManagerPermission(permissionKey) && !isSeniorManager({
       role: account.role,
