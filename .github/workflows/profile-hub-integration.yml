@@ -52,6 +52,7 @@ jobs:
       PAYPAL_CLIENT_SECRET: pr84-ci-mock-secret
       PAYPAL_WEBHOOK_ID: pr84-ci-mock-webhook
       PAYPAL_API_BASE: http://paypal.test
+      PAYNOW_INTEGRATION_ID: pr84-ci-paynow-integration-id
       PAYNOW_INTEGRATION_KEY: pr84-ci-paynow-integration-key
       GOOGLE_CLIENT_ID: pr84-ci-google-client-id
       TWILIO_ACCOUNT_SID: ACpr84ci
