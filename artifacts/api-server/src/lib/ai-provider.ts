@@ -26,6 +26,23 @@ export interface ModerationResult {
   categories: string[];
 }
 
+const AI_MODERATION_CATEGORIES = [
+  "cyberbullying", "harassment", "threats", "hate_speech", "explicit_nudity",
+  "sexual_exploitation", "grooming", "self_harm_risk", "personal_data",
+  "credential_theft", "phishing", "scam_fraud", "unapproved_marketing", "spam",
+] as const;
+
+/** Context-aware moderation prompt. Model output is a review signal, never an enforcement decision. */
+function buildModerationPrompt(text: string): string {
+  return `You are a careful content-safety reviewer for a welcoming multi-user education platform used by learners, prefects, teachers and staff. Review the submitted text for:
+- cyberbullying, targeted harassment, intimidation, credible threats and hate speech;
+- explicit sexual content, nudity solicitation, sexual exploitation or grooming (treat suspected exploitation of minors as critical);
+- sharing or requesting passwords, OTPs, recovery codes, payment credentials, identity documents or unnecessary private personal data;
+- phishing, impersonation, scams, fraud, coercive off-platform contact and credential theft;
+- spam and clearly unrelated commercial advertising or repeated promotion that displaces learning/teaching.
+Be context-aware and fair. Do NOT flag ordinary schoolwork, legitimate educational links, curriculum discussion, respectful disagreement, harmless jokes, slang, dialect, quoted examples used for teaching, or a user's ordinary business identity unless it is unsolicited promotional spam. Consider context and intent; do not infer misconduct from identity, disability, language variety or age. If uncertain, use low/medium severity and explain uncertainty. Return ONLY valid JSON with this exact shape: {"flagged":boolean,"reason":"short neutral explanation","severity":"low|medium|high|critical","categories":["one or more category names"]}. A flag only requests human review. Never recommend automatic punishment, account suspension, deletion or public accusation. Text to review (JSON encoded): ${JSON.stringify(text.slice(0, 4000))}`;
+}
+
 export interface AIProvider {
   name: string;
   chat(messages: AIMessage[], systemPrompt?: string): Promise<string>;
@@ -133,8 +150,7 @@ class GeminiProvider implements AIProvider {
   }
 
   async moderateContent(text: string): Promise<ModerationResult> {
-    const prompt = `Analyze this message from an educational platform for harmful content. Return ONLY JSON: {"flagged":boolean,"reason":"string or null","severity":"low|medium|high|critical","categories":["threats","harassment","spam","explicit","hate_speech"]}
-Message: "${text.slice(0, 500)}"`;
+    const prompt = buildModerationPrompt(text);
     const result = await this.call([{ role: "user", content: prompt }]);
     const match = result.match(/\{[\s\S]*\}/);
     if (!match) return { flagged: false, severity: "low", categories: [] };
@@ -174,8 +190,7 @@ class OpenAIProvider implements AIProvider {
   }
 
   async moderateContent(text: string): Promise<ModerationResult> {
-    const prompt = `Analyze this educational platform message for harmful content. Return ONLY JSON: {"flagged":boolean,"reason":"string or null","severity":"low|medium|high|critical","categories":["threats","harassment","spam","explicit","hate_speech"]}
-Message: "${text.slice(0, 500)}"`;
+    const prompt = buildModerationPrompt(text);
     const result = await this.call([{ role: "user", content: prompt }]);
     const match = result.match(/\{[\s\S]*\}/);
     if (!match) return { flagged: false, severity: "low", categories: [] };
@@ -219,8 +234,7 @@ class AnthropicProvider implements AIProvider {
   }
 
   async moderateContent(text: string): Promise<ModerationResult> {
-    const prompt = `Analyze this educational platform message for harmful content. Return ONLY JSON: {"flagged":boolean,"reason":"string or null","severity":"low|medium|high|critical","categories":["threats","harassment","spam","explicit","hate_speech"]}
-Message: "${text.slice(0, 500)}"`;
+    const prompt = buildModerationPrompt(text);
     const result = await this.call([{ role: "user", content: prompt }]);
     const match = result.match(/\{[\s\S]*\}/);
     if (!match) return { flagged: false, severity: "low", categories: [] };
