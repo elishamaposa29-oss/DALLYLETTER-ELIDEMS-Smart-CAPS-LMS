@@ -27,7 +27,7 @@ router.get("/class/:classId", requireAuth, requireManagerPermissionIfManager("at
 });
 
 router.get("/my", requireAuth, async (req, res): Promise<void> => {
-  const user = (req as any).user;
+  const user = req.currentUser!;
   const rows = await db.select().from(attendanceTable)
     .where(eq(attendanceTable.studentId, user.id))
     .orderBy(desc(attendanceTable.joinedAt));
@@ -47,7 +47,7 @@ router.get("/student/:studentId", requireAuth, requireManagerPermissionIfManager
 });
 
 router.post("/join/:classId", requireAuth, async (req, res): Promise<void> => {
-  const user = (req as any).user;
+  const user = req.currentUser!;
   if (user.role !== "student") { res.status(403).json({ error: "Students only" }); return; }
   const classId = parseInt(String(req.params.classId));
   const existing = await db.select().from(attendanceTable)
@@ -62,7 +62,7 @@ router.post("/join/:classId", requireAuth, async (req, res): Promise<void> => {
 });
 
 router.put("/:id/status", requireAuth, requireManagerPermissionIfManager("attendance.edit"), async (req, res): Promise<void> => {
-  const user = (req as any).user;
+  const user = req.currentUser!;
   if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Academic staff access required" }); return; }
   const status = req.body?.status === "absent" ? "absent" : req.body?.status === "present" ? "present" : null;
   const id = parseInt(String(req.params.id));
@@ -92,7 +92,7 @@ router.put("/:id/leave", requireAuth, requireManagerPermissionIfManager("attenda
 });
 
 router.get("/stats", requireAuth, requireManagerPermissionIfManager("attendance.view"), async (req, res): Promise<void> => {
-  const user = (req as any).user;
+  const user = req.currentUser!;
   if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Forbidden" }); return; }
   const rows = await db.select({ classId: attendanceTable.classId, studentId: attendanceTable.studentId, durationMinutes: attendanceTable.durationMinutes, role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel, teacherId: classesTable.teacherId }).from(attendanceTable).innerJoin(usersTable, eq(attendanceTable.studentId, usersTable.id)).innerJoin(classesTable,eq(attendanceTable.classId,classesTable.id));
   const teacherRows=await db.select({id:usersTable.id,role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable);
