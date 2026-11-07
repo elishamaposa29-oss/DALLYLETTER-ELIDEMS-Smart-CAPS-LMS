@@ -472,6 +472,10 @@ router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<vo
   await ensurePaymentTransactionSchema();
   const user = req.currentUser!;
   if (user.role !== "student") { res.status(403).json({ error: "Learner access required" }); return; }
+  const requestedPaymentId = req.body?.paymentId === undefined ? null : Number(req.body.paymentId);
+  if (requestedPaymentId !== null && (!Number.isSafeInteger(requestedPaymentId) || requestedPaymentId <= 0)) {
+    res.status(400).json({ error: "Choose a valid school-fee invoice." }); return;
+  }
   const requestedAmount = req.body?.amount === undefined ? undefined : Number(req.body.amount);
   if (req.body?.amount !== undefined && (!Number.isFinite(requestedAmount) || requestedAmount! <= 0 || requestedAmount! > 100000 || Math.round(requestedAmount! * 100) !== requestedAmount! * 100)) {
     res.status(400).json({ error: "Enter a valid payment amount." });
@@ -499,6 +503,7 @@ router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<vo
       SELECT id FROM payments
       WHERE student_id = ${user.id}
         AND status IN ('pending', 'overdue', 'partially_paid')
+        AND (${requestedPaymentId === null} OR id = ${requestedPaymentId})
         AND COALESCE(notes, '') NOT LIKE '%Paynow reference %'
       ORDER BY created_at ASC, id ASC
       FOR UPDATE SKIP LOCKED
