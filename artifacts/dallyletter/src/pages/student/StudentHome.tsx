@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { useEffect, useState } from "react";
 import { InstallAppCard } from "@/components/InstallAppCard";
+import { DailyAppAttendanceCard } from "@/components/DailyAppAttendanceCard";
 
 export default function StudentHome() {
   const { user } = useAuth();
@@ -60,6 +61,8 @@ export default function StudentHome() {
         </div>
 
         <InstallAppCard />
+
+        <DailyAppAttendanceCard profileId={user?.id} />
 
         {/* Prefect Panel */}
         {user?.isPrefect && (
