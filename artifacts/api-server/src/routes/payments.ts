@@ -255,7 +255,7 @@ router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<vo
         VALUES (${payment!.id}, 'paypal', ${reference}, ${amount.toFixed(2)}, 'pending', ${order.id}, 'USD')
       `);
     });
-    res.status(201).json({ reference, checkoutUrl: approvalUrl, amount, invoiceAmount, amountAlreadyPaid: amountPaid, outstandingBalance, month: payment.month, year: payment.year });
+    res.status(201).json({ paymentId: payment.id, reference, checkoutUrl: approvalUrl, amount, invoiceAmount, amountAlreadyPaid: amountPaid, outstandingBalance, month: payment.month, year: payment.year });
   } catch (error) {
     if (payment) {
       await db.execute(sql`
