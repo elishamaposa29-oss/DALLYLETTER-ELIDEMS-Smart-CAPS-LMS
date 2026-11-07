@@ -306,7 +306,7 @@ test("pending teacher API policy never blocks authentication and permits all sel
   ["GET","/api/users/me/enrollments"],
   ["GET","/api/users/me/notification-email"],
   ["GET","/api/users/me/subjects"],
-  ["GET","/api/users/me/payout-preferences"],
+  // Payout preferences are deliberately excluded for pending applicants.
   ["GET","/api/users/me/recovery-profile"],
   ["GET","/api/academic-records/reports/me"],
   ["GET","/api/academic-records/current-year"],
