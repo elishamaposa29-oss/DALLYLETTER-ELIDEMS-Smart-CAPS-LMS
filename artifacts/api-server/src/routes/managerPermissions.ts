@@ -200,8 +200,7 @@ router.patch("/:userId/role", requireAuth, ownerOnly, async (req, res): Promise<
       );
       const previous = prior.rows[0]?.granted ?? null;
       const revokeSeniorGrantOnDemotion = nextRole === "junior_manager" && wasSeniorManager && (
-        isSeniorOnlyManagerPermission(permission.key) ||
-        ["transfers.approve", "reports.review", "achievements.approve"].includes(permission.key)
+        isSeniorOnlyManagerPermission(permission.key)
       );
       const granted = revokeSeniorGrantOnDemotion ? false : previous === true;
       if (previous === null && !granted) continue;
