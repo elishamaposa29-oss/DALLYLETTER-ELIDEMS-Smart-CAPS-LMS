@@ -160,6 +160,7 @@ router.patch("/polls/:id", requireAuth, requireManagerPermissionIfManager("polls
   if (Object.keys(update).length === 0) { res.status(400).json({ error: "No poll changes supplied" }); return; }
   const [updated] = await db.update(pollsTable).set(update).where(eq(pollsTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+  queueAIContentSafety("poll", Number(updated.id), String(updated.title || ""));
   res.json(updated);
 });
 
