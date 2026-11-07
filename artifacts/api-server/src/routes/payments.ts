@@ -183,7 +183,7 @@ router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<vo
       signal: AbortSignal.timeout(20000),
     });
     const order = await response.json() as { id?: string; links?: Array<{ rel?: string; href?: string }> };
-    const approvalUrl = order.links?.find(link => link.rel === "approve")?.href;
+    const approvalUrl = order.links?.find(link => link.rel === "approve" || link.rel === "payer-action")?.href;
     if (!response.ok || !order.id || !approvalUrl) throw new Error("PayPal could not create a checkout order");
     await db.execute(sql`
       UPDATE payments SET notes = CONCAT(COALESCE(notes, ''), ' | PayPal order ', ${order.id}, ' reference ', ${reference}),
