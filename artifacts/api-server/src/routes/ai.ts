@@ -255,12 +255,21 @@ router.patch("/ai/actions/:id/reverse", requireAuth, async (req, res): Promise<v
 // POST /ai/analyze — AI data analysis
 router.post("/ai/analyze", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
+  const role = normalizeRole(user.role);
   if (!canUseStaffAI(user)) { res.status(403).json({ error: "Authorized staff access required" }); return; }
+  if (["manager","senior_manager","junior_manager"].includes(role) && !(await managerHasPermission(user, "ai.agent.read_academic"))) {
+    res.status(403).json({ error: "The Owner has not granted this manager AI analysis access.", permission: "ai.agent.read_academic" }); return;
+  }
   const { data, prompt } = req.body as { data: object; prompt: string };
-  if (!prompt) { res.status(400).json({ error: "prompt required" }); return; }
+  if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 8000) {
+    res.status(400).json({ error: "Provide a prompt between 1 and 8,000 characters." }); return;
+  }
+  let serializedData = "{}";
+  try { serializedData = JSON.stringify(data ?? {}); } catch { res.status(400).json({ error: "Analysis data must be valid JSON." }); return; }
+  if (serializedData.length > 25000) { res.status(413).json({ error: "Analysis data exceeds the 25,000-character limit." }); return; }
   try {
     const ai = await getAIProvider();
-    const result = await ai.analyzeData(data ?? {}, prompt);
+    const result = await ai.analyzeData(data ?? {}, prompt.trim());
     res.json({ result, provider: ai.name });
   } catch (err) {
     const failure = err instanceof AIProviderError ? err : new AIProviderError("configuration", "provider_unavailable");
