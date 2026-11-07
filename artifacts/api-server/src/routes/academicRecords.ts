@@ -262,7 +262,7 @@ router.get("/academic-records/transfer-requests", requireAuth, requireManagerPer
   const user = req.currentUser!;
   const manager = canAccessManager(user);
   const result = manager
-    ? await pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,u.role,u.is_manager,u.manager_level,r.requested_by,r.reason,r.status,r.review_note,r.reviewed_by,r.reviewed_at,r.created_at FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id ORDER BY r.created_at DESC LIMIT 200")
+    ? await pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,u.role,u.is_manager,u.manager_level,r.requested_by,r.reason,r.form_data,r.status,r.review_note,r.reviewed_by,r.reviewed_at,r.created_at FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id ORDER BY r.created_at DESC LIMIT 200")
     : await pool.query("SELECT id,learner_id,reason,status,review_note,reviewed_at,created_at FROM academic_transfer_requests WHERE learner_id=$1 ORDER BY created_at DESC LIMIT 100", [user.id]);
   const visible=manager&&!isOwnerRole(user.role)?result.rows.filter((row:any)=>canModerateUser(user,{role:row.role,isManager:row.is_manager,managerLevel:row.manager_level})):result.rows;
   res.json(manager&&!isOwnerRole(user.role)?visible.map(({role,is_manager,manager_level,...row}:any)=>row):visible);
