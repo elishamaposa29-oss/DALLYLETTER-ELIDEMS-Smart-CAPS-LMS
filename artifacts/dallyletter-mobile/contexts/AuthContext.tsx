@@ -84,9 +84,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const response = await fetch(getApiUrl("/api/auth/me"), { headers: { Authorization: "Bearer " + storedToken } });
             if (response.ok) {
               const currentUser = await response.json();
+              const cachedUser = JSON.parse(storedUser) as Record<string, unknown>;
+              const authorityFingerprint = (value: Record<string, unknown>) => JSON.stringify({
+                id: value.id,
+                role: value.role,
+                isManager: value.isManager,
+                managerLevel: value.managerLevel,
+                isPrefect: value.isPrefect,
+                teacherApplicationStatus: value.teacherApplicationStatus,
+                isBlocked: value.isBlocked,
+                isSuspended: value.isSuspended,
+              });
+              const authorityChanged = authorityFingerprint(cachedUser) !== authorityFingerprint(currentUser);
+              if (authorityChanged) {
+                // A server-side role, manager grant, or account-state transition
+                // invalidates the old offline cache even when the token is unchanged.
+                cacheEpoch = newAuthCacheEpoch();
+                await AsyncStorage.setItem(AUTH_CACHE_EPOCH_KEY, cacheEpoch);
+              }
               await AsyncStorage.setItem(USER_KEY, JSON.stringify(currentUser));
               setToken(storedToken);
               setUser(currentUser);
+              if (authorityChanged) DeviceEventEmitter.emit("dallyletter-auth-changed");
             } else if (response.status === 401 || response.status === 403) {
               await Promise.all([AsyncStorage.removeItem(TOKEN_KEY), AsyncStorage.removeItem(USER_KEY), AsyncStorage.removeItem(AUTH_CACHE_EPOCH_KEY)]);
               DeviceEventEmitter.emit("dallyletter-auth-changed");
