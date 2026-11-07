@@ -1,10 +1,10 @@
 import { Router } from "express";
-import { requireManagerPermission, requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
+import { requireManagerPermission, requireManagerPermissionIfManager, managerHasPermission } from "../lib/manager-permission-policy";
 import { db, pool, auditLogsTable } from "@workspace/db";
 import { achievementsTable, userAchievementsTable, usersTable, lessonRequestsTable, notificationsTable } from "@workspace/db/schema";
 import { eq, desc, and, inArray } from "drizzle-orm";
 import { requireAuth, isOwnerRole, canAccessManager } from "../lib/auth-middleware";
-import { canApproveAchievementAwards, canRecommendAchievementAwards } from "../lib/role-access";
+import { canRecommendAchievementAwards } from "../lib/role-access";
 import { canViewProfileSection } from "./profileConnections";
 
 const router = Router();
@@ -95,7 +95,7 @@ router.post("/award/recommendations", requireAuth, requireManagerPermissionIfMan
       [learnerId, achievementId, user.id, note || null],
     );
     await db.insert(auditLogsTable).values({ performedBy: user.id, action: "achievement.award_recommended", category: "academic", targetType: "achievement_award_recommendation", targetId: Number(result.rows[0].id), details: JSON.stringify({ learnerId, achievementId }) });
-    const reviewers = await pool.query("SELECT id FROM users WHERE (role IN ('senior_manager','owner','platform_owner') OR (role IN ('manager','teacher') AND manager_level='senior' AND (role <> 'teacher' OR (is_manager=true AND teacher_application_status <> 'pending_review')))) AND COALESCE(is_blocked,false)=false");
+    const reviewers = await pool.query("SELECT u.id FROM users u WHERE (lower(u.role) IN ('owner','platform_owner') OR (lower(u.role) IN ('manager','junior_manager','senior_manager') AND EXISTS (SELECT 1 FROM manager_permission_grants g WHERE g.manager_user_id=u.id AND g.permission_key='achievements.approve' AND g.granted=true)) OR (lower(u.role)='teacher' AND u.is_manager=true AND COALESCE(u.teacher_application_status,'') NOT IN ('draft','pending_review','rejected_pending_conversion') AND EXISTS (SELECT 1 FROM manager_permission_grants g WHERE g.manager_user_id=u.id AND g.permission_key='achievements.approve' AND g.granted=true))) AND COALESCE(u.is_blocked,false)=false AND COALESCE(u.is_suspended,false)=false");
     for (const reviewer of reviewers.rows) {
       await db.insert(notificationsTable).values({ title: "Achievement award recommendation", message: user.name + " recommended an achievement for learner account #" + learnerId + ". Senior review is required.", type: "achievement_award_review", recipientId: Number(reviewer.id), isRead: false });
     }
@@ -109,17 +109,16 @@ router.post("/award/recommendations", requireAuth, requireManagerPermissionIfMan
 router.get("/award/recommendations", requireAuth, requireManagerPermission("achievements.view"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canAccessManager(user)) { res.status(403).json({ error: "Manager access required." }); return; }
-  const senior = canApproveAchievementAwards(user);
+  const canApprove = await managerHasPermission(user, "achievements.approve");
   const result = await pool.query(
     "SELECT r.*,u.name AS learner_name,a.name AS achievement_name,a.icon AS achievement_icon,a.points_value,m.name AS recommender_name,reviewer.name AS reviewer_name FROM achievement_award_recommendations r JOIN users u ON u.id=r.learner_id JOIN achievements a ON a.id=r.achievement_id JOIN users m ON m.id=r.recommended_by LEFT JOIN users reviewer ON reviewer.id=r.reviewed_by WHERE ($1::boolean=true OR r.recommended_by=$2) ORDER BY CASE WHEN r.status='pending_senior_review' THEN 0 ELSE 1 END,r.created_at DESC LIMIT 200",
-    [senior, user.id],
+    [canApprove, user.id],
   );
-  res.json({ items: result.rows, canApprove: senior, canDirectAward: isOwnerRole(user.role), canRecommend: canRecommendAchievementAwards(user) });
+  res.json({ items: result.rows, canApprove, canDirectAward: isOwnerRole(user.role), canRecommend: canRecommendAchievementAwards(user) });
 });
 
 router.post("/award/recommendations/:id/review", requireAuth, requireManagerPermission("achievements.approve"), async (req, res): Promise<void> => {
   const reviewer = req.currentUser!;
-  if (!canApproveAchievementAwards(reviewer)) { res.status(403).json({ error: "Senior manager or owner approval is required." }); return; }
   const id = Number(req.params.id);
   const decision = req.body?.status;
   const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 2000) : "";
