@@ -23,6 +23,7 @@ export default function StudentPayments() {
   const [reported, setReported] = useState(false);
   const [settings, setSettings] = useState<Settings>({ paynow_url: "", paypal_url: "", trust_wallet: "", ecocash_number: "", payment_instructions: "" });
   const [paynowBusy, setPaynowBusy] = useState(false);
+  const [paynowReady, setPaynowReady] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("dallyletter_token");
@@ -30,6 +31,10 @@ export default function StudentPayments() {
       .then(r => r.json())
       .then(data => setSettings(data))
       .catch(() => {});
+    fetch(getApiUrl("/api/payments/paynow/status"), { cache: "no-store" })
+      .then(async r => { if (!r.ok) throw new Error("Paynow status unavailable"); return r.json(); })
+      .then(data => setPaynowReady(data.configured === true))
+      .catch(() => setPaynowReady(false));
   }, []);
 
   const hasOverdue = payments?.some(p => p.status === "overdue");
@@ -118,7 +123,7 @@ export default function StudentPayments() {
     }
   };
 
-  const hasAnyPaymentMethod = settings.paynow_url || settings.paypal_url || settings.trust_wallet || settings.ecocash_number;
+  const hasAnyPaymentMethod = paynowReady || settings.paypal_url || settings.trust_wallet || settings.ecocash_number;
 
   const PaymentMethods = () => (
     <div className="space-y-3">
@@ -128,7 +133,7 @@ export default function StudentPayments() {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* Paynow */}
-      {settings.paynow_url && (<Button onClick={handlePaynowLive} disabled={paynowBusy} className="h-auto py-3 flex-col gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"><div className="font-bold">{paynowBusy ? "Starting…" : "Paynow"}</div><span className="text-[11px] opacity-80 font-normal">Secure live checkout</span><ExternalLink className="h-3 w-3 opacity-70" /></Button>)}
+      {paynowReady && (<Button onClick={handlePaynowLive} disabled={paynowBusy} className="h-auto py-3 flex-col gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"><div className="font-bold">{paynowBusy ? "Starting…" : "Paynow"}</div><span className="text-[11px] opacity-80 font-normal">Secure live checkout</span><ExternalLink className="h-3 w-3 opacity-70" /></Button>)}
 
       {/* PayPal */}
         {settings.paypal_url && (
