@@ -4,6 +4,7 @@ import { db, pool, contentFlagsTable, auditLogsTable, usersTable, notificationsT
 import { eq, desc, and } from "drizzle-orm";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { getAIProvider, AIProviderError } from "../lib/ai-provider";
+import { canModerateUser, normalizeRole } from "../lib/role-access";
 
 const router = Router();
 const moderationRoles = new Set(["teacher", "owner"]);
@@ -27,6 +28,56 @@ async function isOwnerContentFlag(flag: { contentType: string; contentId: number
   if (!source) return false;
   const result = await pool.query(`SELECT ${source.column} AS owner_id FROM ${source.table} WHERE id=$1`, [flag.contentId]);
   return ownerIds.has(Number(result.rows[0]?.owner_id));
+}
+
+/** Managers may review only content authored by accounts below their own authority. */
+async function isWithinManagerScope(
+  flag: { contentType: string; contentId: number },
+  actor: NonNullable<Express.Request["currentUser"]>,
+): Promise<boolean> {
+  const type = String(flag.contentType || "").toLowerCase();
+  const id = Number(flag.contentId);
+  if (!Number.isSafeInteger(id) || id <= 0) return false;
+  if (["user","profile","account"].includes(type)) {
+    const result = await pool.query("SELECT id,role,is_manager,manager_level FROM users WHERE id=$1", [id]);
+    const target = result.rows[0];
+    return Boolean(target && (Number(target.id) === actor.id || canModerateUser(actor, {
+      role: target.role, isManager: target.is_manager, managerLevel: target.manager_level,
+    })));
+  }
+  if (type === "message") {
+    const result = await pool.query(`SELECT s.id AS sender_id,s.role AS sender_role,s.is_manager AS sender_is_manager,s.manager_level AS sender_manager_level,
+      r.id AS recipient_id,r.role AS recipient_role,r.is_manager AS recipient_is_manager,r.manager_level AS recipient_manager_level
+      FROM messages m JOIN users s ON s.id=m.sender_id LEFT JOIN users r ON r.id=m.recipient_id WHERE m.id=$1`, [id]);
+    const row = result.rows[0];
+    if (!row) return false;
+    const senderVisible = Number(row.sender_id) === actor.id || canModerateUser(actor, {
+      role: row.sender_role, isManager: row.sender_is_manager, managerLevel: row.sender_manager_level,
+    });
+    if (!senderVisible) return false;
+    if (row.recipient_id != null && Number(row.recipient_id) !== actor.id && !canModerateUser(actor, {
+      role: row.recipient_role, isManager: row.recipient_is_manager, managerLevel: row.recipient_manager_level,
+    })) return false;
+    return true;
+  }
+  const sources: Record<string, { table: string; column: string }> = {
+    lesson: { table: "lessons", column: "teacher_id" },
+    class: { table: "classes", column: "teacher_id" },
+    assignment: { table: "assignments", column: "teacher_id" },
+    exercise: { table: "exercises", column: "created_by" },
+    activity: { table: "audit_logs", column: "performed_by" },
+    comment: { table: "content_comments", column: "author_id" },
+  };
+  const source = sources[type];
+  if (!source) return false;
+  const result = await pool.query(
+    `SELECT u.id,u.role,u.is_manager,u.manager_level FROM ${source.table} c JOIN users u ON u.id=c.${source.column} WHERE c.id=$1`,
+    [id],
+  );
+  const author = result.rows[0];
+  return Boolean(author && (Number(author.id) === actor.id || canModerateUser(actor, {
+    role: author.role, isManager: author.is_manager, managerLevel: author.manager_level,
+  })));
 }
 
 function canReviewContent(user: { role: string; isManager: boolean }): boolean {
@@ -54,7 +105,11 @@ router.get("/content-flags", requireAuth, requireManagerPermissionIfManager("mod
     .orderBy(desc(contentFlagsTable.createdAt))
     .limit(200);
   const ownerIds = isOwnerRole(user.role) ? new Set<number>() : await getOwnerAccountIds();
-  const visibleFlags = isOwnerRole(user.role) ? flags : (await Promise.all(flags.map(async (flag: any) => (await isOwnerContentFlag(flag, ownerIds)) ? null : flag))).filter(Boolean);
+  const visibleFlags = isOwnerRole(user.role) ? flags : (await Promise.all(flags.map(async (flag: any) => {
+    if (await isOwnerContentFlag(flag, ownerIds)) return null;
+    if (canAccessManager(user) && !(await isWithinManagerScope(flag, user))) return null;
+    return flag;
+  }))).filter(Boolean);
   res.json(visibleFlags);
 });
 
@@ -77,7 +132,7 @@ router.patch("/content-flags/:id", requireAuth, requireManagerPermissionIfManage
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const [existingFlag] = await db.select({ contentType: contentFlagsTable.contentType, contentId: contentFlagsTable.contentId }).from(contentFlagsTable).where(eq(contentFlagsTable.id, id));
   if (!existingFlag) { res.status(404).json({ error: "Not found" }); return; }
-  if (!isOwnerRole(user.role) && await isOwnerContentFlag(existingFlag, await getOwnerAccountIds())) { res.status(404).json({ error: "Not found" }); return; }
+  if (!isOwnerRole(user.role) && (await isOwnerContentFlag(existingFlag, await getOwnerAccountIds()) || (canAccessManager(user) && !(await isWithinManagerScope(existingFlag, user))))) { res.status(404).json({ error: "Not found" }); return; }
   const { status, reviewNote } = req.body as { status: string; reviewNote?: string };
   if (!new Set(["pending", "reviewed", "dismissed", "actioned"]).has(status)) {
     res.status(400).json({ error: "Invalid moderation status" });
