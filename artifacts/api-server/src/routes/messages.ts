@@ -355,6 +355,33 @@ router.post("/messages", requireAuth, async (req, res): Promise<void> => {
     senderRole: currentUser.role,
   }).returning();
 
+  // AI-assisted safety screening is additive: preserve normal chat delivery and
+  // never punish or block a user based only on a model prediction. A positive
+  // finding becomes a reviewable flag in the existing Content Safety dashboard.
+  if (typeof message.content === "string" && message.content.trim().length >= 3) {
+    void (async () => {
+      try {
+        const ai = await getAIProvider();
+        const result = await ai.moderateContent(message.content.slice(0, 4000));
+        const allowedSeverities = new Set(["low", "medium", "high", "critical"]);
+        if (result?.flagged === true) {
+          await db.insert(contentFlagsTable).values({
+            contentType: "message",
+            contentId: message.id,
+            contentText: message.content.slice(0, 500),
+            reason: String(result.reason || "ELIDEMS AI detected content for human review").slice(0, 500),
+            severity: allowedSeverities.has(result.severity) ? result.severity : "medium",
+            detectedBy: "ai:auto",
+            status: "pending",
+          });
+        }
+      } catch {
+        // Moderation-provider outages must not break messaging. User reports
+        // and existing rule-based safety controls remain available.
+      }
+    })();
+  }
+
   // Log activity for group messages
   if (message.groupId != null) {
     await db.insert(activityLogTable).values({
