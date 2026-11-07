@@ -22,6 +22,11 @@ import { canModerateUser } from "../lib/role-access";
 
 const router: IRouter = Router();
 
+function isProfileOnlyTeacher(user: NonNullable<Express.Request["currentUser"]>): boolean {
+  return normalizeRole(user.role) === "teacher" &&
+    ["draft","pending_review","rejected_pending_conversion"].includes(String(user.teacherApplicationStatus ?? "").trim().toLowerCase());
+}
+
 router.get("/manager/owner-contact", requireAuth, requireManagerPermission("owner.chat"), async (req,res):Promise<void> => {
   const [owner]=await db.select({id:usersTable.id,name:usersTable.name}).from(usersTable).where(inArray(usersTable.role,["owner","platform_owner"])).orderBy(usersTable.id).limit(1);
   if(!owner){res.status(404).json({error:"Owner contact is not available."});return;}
@@ -123,6 +128,11 @@ router.post("/messages/media", requireAuth, (req, res): void => {
       const groupId = req.body?.groupId == null || req.body.groupId === "" ? null : Number(req.body.groupId);
       const recipientId = req.body?.recipientId == null || req.body.recipientId === "" ? null : Number(req.body.recipientId);
       const currentUser = req.currentUser!;
+      if (isProfileOnlyTeacher(currentUser) && groupId != null) {
+        await removeStoredMedia(req.file.filename);
+        res.status(403).json({ error: "Applicants may use private Profile Hub conversations only; group chat unlocks after teacher authorization." });
+        return;
+      }
       const validTarget = (groupId != null && recipientId == null) || (groupId == null && recipientId != null);
       const allowed = validTarget
         && (groupId != null
@@ -166,6 +176,7 @@ router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise
     .where(or(eq(messagesTable.mediaUrl, mediaUrl), eq(messagesTable.mediaUrl, messageMediaPath(storageKey))));
   if (!message) { res.status(404).json({ error: "Media not found" }); return; }
   const user = req.currentUser!;
+  if (isProfileOnlyTeacher(user) && message.groupId != null) { res.status(403).json({ error: "Group media is unavailable until teacher authorization." }); return; }
   const allowed = message.groupId != null
     ? await canAccessGroup(message.groupId, user.id, user.role)
     : message.recipientId != null && (isOwnerRole(user.role) || ((message.recipientId === user.id || message.senderId === user.id) && await canViewPrivateConversation(user, message.senderId === user.id ? message.recipientId : message.senderId)));
@@ -207,6 +218,10 @@ router.get("/messages", requireAuth, async (req, res): Promise<void> => {
 
   const { groupId, recipientId } = queryParams.data;
   const currentUser = req.currentUser!;
+  if (isProfileOnlyTeacher(currentUser) && (groupId != null || recipientId == null)) {
+    res.status(403).json({ error: "Applicants may use direct Profile Hub conversations only; group chat unlocks after teacher authorization." });
+    return;
+  }
 
   let messages;
   if (groupId != null) {
@@ -259,6 +274,7 @@ router.delete("/messages/:id", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!, id = Number(req.params.id);
   const [message] = await db.select().from(messagesTable).where(eq(messagesTable.id, id));
   if (!message) { res.status(404).json({ error: "Message not found" }); return; }
+  if (isProfileOnlyTeacher(user) && message.groupId != null) { res.status(403).json({ error: "Group messages are unavailable until teacher authorization." }); return; }
   let allowed = message.senderId === user.id || isOwnerRole(user.role);
   if (message.groupId) {
     const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, message.groupId));
@@ -277,6 +293,10 @@ router.post("/messages", requireAuth, async (req, res): Promise<void> => {
   const parsed = SendMessageBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  if (isProfileOnlyTeacher(currentUser) && parsed.data.groupId != null) {
+    res.status(403).json({ error: "Applicants may use direct Profile Hub conversations only; group chat unlocks after teacher authorization." });
     return;
   }
 

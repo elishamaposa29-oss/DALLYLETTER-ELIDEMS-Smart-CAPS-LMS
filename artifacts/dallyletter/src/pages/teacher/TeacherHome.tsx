@@ -13,13 +13,45 @@ import { InstallAppCard } from "@/components/InstallAppCard";
 
 export default function TeacherHome() {
   const { user } = useAuth();
-  const { data: stats, isLoading: statsLoading } = useGetDashboardStats();
-  const { data: classes, isLoading: classesLoading } = useListClasses();
-  const { data: activity, isLoading: activityLoading } = useGetRecentActivity();
+  const restrictedApplicant = String(user?.role||"").toLowerCase()==="teacher" && ["draft","pending_review","rejected_pending_conversion"].includes(String((user as any)?.teacherApplicationStatus||"").toLowerCase());
+  const { data: stats, isLoading: statsLoading } = useGetDashboardStats({ query: { enabled: !restrictedApplicant } } as any);
+  const { data: classes, isLoading: classesLoading } = useListClasses({ query: { enabled: !restrictedApplicant } } as any);
+  const { data: activity, isLoading: activityLoading } = useGetRecentActivity({ query: { enabled: !restrictedApplicant } } as any);
 
   const isLoading = statsLoading || classesLoading || activityLoading;
   const upcomingClasses = classes?.filter(c => c.status === "upcoming" || c.status === "live").slice(0, 5) ?? [];
   const [selectedActivity, setSelectedActivity] = useState<any | null>(null);
+
+  if (restrictedApplicant) {
+    const rejected = String((user as any)?.teacherApplicationStatus||"").toLowerCase()==="rejected_pending_conversion";
+    const deadline = (user as any)?.teacherReviewDeadline ? new Date((user as any).teacherReviewDeadline).toLocaleString() : null;
+    return (
+      <DashboardLayout>
+        <div className="mx-auto max-w-3xl space-y-5">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">Teacher Portal</h1>
+            <p className="mt-1 text-muted-foreground">Your account is active. Your teacher application status is shown below.</p>
+          </div>
+          <Card className="border-[#b38b00]/40">
+            <CardContent className="space-y-4 p-6">
+              <Badge variant="outline" className="w-fit">{rejected ? "Application not approved" : "Application awaiting review"}</Badge>
+              <h2 className="text-xl font-semibold">{rejected ? "Teaching access is disabled" : "Complete your Profile Hub application"}</h2>
+              <p className="text-sm text-muted-foreground">
+                {rejected
+                  ? "Your application was not approved. Your account, login email and password remain active during the scheduled conversion period. You can continue to use your Profile Hub and view your CV, certificates and messages."
+                  : "You can use every Profile Hub feature, prepare your CV, upload certificates, answer the teaching-readiness survey and communicate with authorized reviewers. Lessons, classes, assignments, polls and other teaching operations unlock only after approval."}
+              </p>
+              {rejected && deadline && <p className="text-sm font-medium">Scheduled learner conversion: {deadline}</p>}
+              <div className="flex flex-wrap gap-2">
+                <Link href="/profile-hub"><Button className="bg-[#0f2a5a] hover:bg-[#173a72]">Open Profile Hub</Button></Link>
+                <Link href="/teacher/qualifications"><Button variant="outline">CV & certificates</Button></Link>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   const statCards = [
     {

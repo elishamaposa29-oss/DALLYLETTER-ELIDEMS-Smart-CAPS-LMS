@@ -17,6 +17,8 @@ export default function Index() {
 
   if (!user) return <Redirect href="/login" />;
   const role = String(user.role || "").toLowerCase().replace(/[ -]+/g, "_");
+  const restrictedTeacher = role === "teacher" && ["draft","pending_review","rejected_pending_conversion"].includes(String((user as any)?.teacherApplicationStatus||"").toLowerCase());
+  if (restrictedTeacher) return <Redirect href="/profile-hub" />;
   if (["owner", "admin"].includes(role)) return <Redirect href="/(admin)/home" />;
   if (["manager", "senior_manager", "junior_manager"].includes(role) || Boolean((user as any).isManager)) return <Redirect href="/(manager)/home" />;
   if (role === "teacher") return <Redirect href="/(teacher)/home" />;

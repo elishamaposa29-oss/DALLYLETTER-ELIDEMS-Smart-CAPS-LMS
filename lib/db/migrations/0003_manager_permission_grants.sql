@@ -1,5 +1,5 @@
 -- Manager permission grants are explicit, per-user, owner-controlled and reversible.
--- This migration is additive and is NOT executed automatically against production.
+-- This migration is additive and is run by the explicit Render production pre-deploy command, not API startup.
 BEGIN;
 CREATE TABLE IF NOT EXISTS public.manager_permission_grants (
   manager_user_id integer NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,

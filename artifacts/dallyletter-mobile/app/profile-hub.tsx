@@ -10,6 +10,7 @@ import { ActivityIndicator, Alert, Image, Linking, Modal, Platform, ScrollView, 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { TeacherCvEditor } from "@/components/TeacherCvEditor";
 
 const TABS = ["Overview","Qualifications","Subjects","Enrollments","Achievements","Reports","Attendance","Payments","Transfer Letters"] as const;
 type Tab = typeof TABS[number];
@@ -33,9 +34,9 @@ export default function MobileProfileHub() {
   const params = useLocalSearchParams<{userId?: string}>();
   const targetId = params.userId ? Number(params.userId) : user?.id;
   const isOwn = Boolean(user && targetId === user.id);
-  const isOwner = ["owner","admin","platform_owner"].includes(String(user?.role||"").toLowerCase());
+  const isOwner = ["owner","platform_owner"].includes(String(user?.role||"").toLowerCase());
   const normalizedUserRole = String(user?.role||"").trim().toLowerCase().replace(/[ -]+/g,"_");
-  const canReviewTransferLetters = ["manager","senior_manager","owner","admin","platform_owner"].includes(normalizedUserRole) || (normalizedUserRole === "teacher" && Boolean((user as any)?.isManager) && String((user as any)?.teacherApplicationStatus||"").toLowerCase() !== "pending_review");
+  const canReviewTransferLetters = ["manager","senior_manager","owner","platform_owner"].includes(normalizedUserRole) || (normalizedUserRole === "teacher" && Boolean((user as any)?.isManager) && !["draft","pending_review","rejected_pending_conversion"].includes(String((user as any)?.teacherApplicationStatus||"").toLowerCase()));
   const [tab,setTab] = useState<Tab>("Overview");
   const [profile,setProfile] = useState<Row|null>(null);
   const [qualifications,setQualifications] = useState<Row[]>([]);
@@ -262,8 +263,18 @@ export default function MobileProfileHub() {
     const asset=picked.assets[0];
     if(asset.size&&asset.size>10*1024*1024)throw new Error("Documents must be 10 MB or smaller.");
     const form=new FormData();form.append("file",{uri:asset.uri,name:asset.name||"profile-document.pdf",type:asset.mimeType||"application/pdf"} as any);form.append("documentType",documentType);
-    await api("/api/users/me/teacher-documents",{method:"POST",body:form});
-    const fresh=await api("/api/users/"+user!.id+"/teacher-documents");setDocuments(Array.isArray(fresh)?fresh:[]);setMessage(documentType.toUpperCase()+" uploaded and saved.");
+    const uploaded=await api("/api/users/me/teacher-documents",{method:"POST",body:form});
+    let photoLinked=false;
+    if(documentType==="cv"&&String(asset.mimeType||"").startsWith("image/")&&uploaded?.id){
+      try{
+        const existing=await api("/api/users/me/teacher-cv");
+        await api("/api/users/me/teacher-cv",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({cv:{...(existing.cv||{}),photoDocumentId:String(uploaded.id)}})});
+        photoLinked=true;
+      }catch{setMessage("Photo uploaded, but it could not be linked to your CV. Retry the upload before submitting.");}
+    }
+    const fresh=await api("/api/users/"+user!.id+"/teacher-documents");setDocuments(Array.isArray(fresh)?fresh:[]);
+    if(photoLinked)setMessage("Profile photo uploaded and linked to your teacher CV.");
+    else if(documentType!=="cv"||!String(asset.mimeType||"").startsWith("image/"))setMessage(documentType.toUpperCase()+" uploaded and saved.");
   });
   const savePayout=async()=>act(async()=>{
     const body:Row={method:payoutMethod};
@@ -322,7 +333,7 @@ export default function MobileProfileHub() {
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{padding:10,gap:6,backgroundColor:colors.card}}>
       {TABS.filter(t=>t!=="Qualifications"||["teacher","manager","senior_manager","owner","admin","platform_owner"].includes(String(profile?.role||user.role).toLowerCase().replace(/[ -]+/g,"_"))).filter(t=>t!=="Enrollments"||isOwn).filter(t=>isOwn||!["Reports","Attendance","Payments"].includes(t)).map(t=><TouchableOpacity key={t} accessibilityRole="tab" accessibilityState={{selected:tab===t}} onPress={()=>setTab(t)} style={{paddingHorizontal:12,paddingVertical:9,borderRadius:10,backgroundColor:tab===t?colors.primary:colors.background,borderColor:colors.border,borderWidth:1}}><Text style={{fontWeight:"700",color:tab===t?"#fff":colors.foreground}}>{t}</Text></TouchableOpacity>)}
     </ScrollView>
-    <ScrollView contentContainerStyle={{padding:14,paddingBottom:50}} keyboardShouldPersistTaps="handled">
+    <ScrollView contentContainerStyle={{padding:14,paddingBottom:50}} keyboardShouldPersistTaps="always" keyboardDismissMode="none" nestedScrollEnabled>
       {!!message&&<Text accessibilityRole="alert" style={{...card,color:colors.foreground}}>{message}</Text>}
       {tab==="Overview"&&<View style={card}>
         {isOwn?<><Text style={{fontWeight:"700",color:colors.foreground,marginBottom:5}}>Legal name</Text><TextInput accessibilityLabel="Legal name" value={nameInput} onChangeText={setNameInput} maxLength={200} placeholder="Enter your legal name" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground,marginBottom:8}}/><Text style={{fontWeight:"700",color:colors.foreground,marginBottom:5}}>Mobile phone number</Text><TextInput accessibilityLabel="Mobile phone number" value={phoneInput} onChangeText={v=>{setPhoneInput(v);setPhoneVerified(false);}} maxLength={40} keyboardType="phone-pad" placeholder="+263…" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground,marginBottom:8}}/><Text style={{fontSize:12,color:phoneVerified?colors.primary:colors.mutedForeground,marginBottom:8}}>{phoneVerified?"Verified — eligible for urgent SMS alerts":"Not verified"}</Text>{button("Save profile details",()=>void saveProfile(),!nameInput.trim())}{button("Send SMS verification code",()=>void requestPhoneCode(),!/^\+[1-9]\d{7,14}$/.test(phoneInput.trim()))}{button("Send WhatsApp verification code",()=>void requestWhatsAppPhoneCode(),!/^\+[1-9]\d{7,14}$/.test(phoneInput.trim()))}<TextInput accessibilityLabel="Six-digit phone verification code" autoComplete="sms-otp" value={phoneOtp} onChangeText={v=>setPhoneOtp(v.replace(/\D/g,"").slice(0,6))} maxLength={6} keyboardType="number-pad" placeholder="6-digit SMS code" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground,marginTop:8}}/>{button("Verify phone",()=>void verifyPhone(),phoneOtp.length!==6)}</>:line("Name",profile?.display_name)}{line("Role",profile?.is_prefect?"Prefect":String(profile?.role||"").toLowerCase()==="student"?"Learner":profile?.role)}{line("Grade",profile?.grade)}{["teacher","manager","senior_manager"].includes(String(profile?.role||user.role).toLowerCase())&&line("Verified qualifications",profile?.verified_qualifications?.length||0)}{line("Subjects",subjects.join(", "))}{!["teacher","manager","senior_manager"].includes(String(profile?.role||user.role).toLowerCase())&&<>{isOwn&&line("School fees",profile?.fees_status==="paid"?"Paid":profile?.fees_status==="overdue"?"Overdue":profile?.fees_status==="pending"?"Pending":"Not recorded")}{line("Leaderboard position",profile?.leaderboard_position?"#"+profile.leaderboard_position:"Not ranked")}{line("Achievements awarded",profile?.achievement_count??achievements.length)}{isOwn&&line("Groups joined",(profile?.groups_joined||[]).map((g:Row)=>g.name).join(", ")||"None recorded")}{isOwn&&profile?.is_prefect&&<>{line("Groups owned",(profile.groups_owned||[]).map((g:Row)=>g.name).join(", ")||"None recorded")}{line("Groups with settings permission",(profile.groups_with_settings_permission||[]).map((g:Row)=>g.name).join(", ")||"None recorded")}{line("Lesson requests",profile.lesson_requests_count??0)}</>}</>}
@@ -330,6 +341,7 @@ export default function MobileProfileHub() {
         {isOwn&&<><Text style={{fontWeight:"800",color:colors.foreground,marginTop:8,marginBottom:6}}>Notification email</Text><TextInput accessibilityLabel="Notification email" autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={v=>{setEmail(v);setEmailVerified(false);}} placeholder="you@example.com" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground}}/><Text style={{color:emailVerified?"#16a34a":colors.mutedForeground,marginTop:6}}>{emailVerified?"Verified":"Not verified"}</Text>{!emailVerified&&button(emailSending?"Sending verification email…":"Send verification code",()=>void requestOtp(),emailSending)}<TextInput accessibilityLabel="Six digit OTP" keyboardType="number-pad" autoComplete="one-time-code" maxLength={6} value={otp} onChangeText={v=>setOtp(v.replace(/\D/g,"").slice(0,6))} placeholder="6-digit code" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground,marginTop:8}}/>{button("Verify email",()=>void verifyOtp(),otp.length!==6)}</>}
       </View>}
       {tab==="Qualifications"&&<View>
+         {isOwn&&normalizedUserRole==="teacher"&&<TeacherCvEditor/>}
         {(qualifications||[]).map((q:Row)=><View key={q.id||q.title} style={card}>{line("Qualification",q.title)}{line("Institution",q.institution)}{line("Year",q.year)}{line("Status",q.verification_status||"verified")}{isOwn&&q.id&&button("Upload PDF/JPG/PNG",()=>void upload(q.id))}</View>)}
         {!qualifications.length&&<View style={card}><Text style={{color:colors.mutedForeground}}>No qualifications listed yet.</Text></View>}
         {isOwn&&["teacher","manager","senior_manager"].includes(String(user.role).toLowerCase())&&<View style={card}><Text style={{fontWeight:"800",color:colors.foreground,marginBottom:8}}>Add multiple qualifications</Text><Text style={{fontSize:12,color:colors.mutedForeground,marginBottom:8}}>Enter one qualification per line. Save all together for verification.</Text><TextInput accessibilityLabel="Qualifications, one per line" value={qualificationInput} onChangeText={setQualificationInput} multiline numberOfLines={4} maxLength={25000} placeholder={"Diploma in Education\nBachelor of Science\nMaster's Degree"} placeholderTextColor={colors.mutedForeground} style={{minHeight:100,textAlignVertical:"top",borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground,marginBottom:8}}/>{button("Save all qualifications",()=>void saveQualificationsBulk(),!qualificationInput.trim())}</View>}{isOwn&&["teacher","manager","senior_manager"].includes(String(user.role).toLowerCase())&&<View style={card}><Text style={{fontWeight:"800",color:colors.foreground,marginBottom:8}}>Add qualification</Text><TextInput accessibilityLabel="Qualification title" value={newQualificationTitle} onChangeText={setNewQualificationTitle} placeholder="Qualification title" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground}}/>{button("Save qualification",()=>void addQualification(),!newQualificationTitle.trim())}</View>}

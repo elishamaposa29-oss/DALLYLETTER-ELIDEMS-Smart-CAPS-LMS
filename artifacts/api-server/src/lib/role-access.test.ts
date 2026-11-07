@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { defaultManagerPermission, isSeniorOnlyManagerPermission, canAccessManager, canApproveAchievementAwards, canManageAcademicContent, canModerateUser, canPendingTeacherUseRoute, canRecommendAchievementAwards, canReviewAcademicTransfer, canUseStaffAI, enforceAcademicStaffAccess, enforceAuthenticated, enforceOwnerAccess, isJuniorManager, isOwnerRole, isSeniorManager, normalizeRole } from "./role-access.js";
+import { defaultManagerPermission, isSeniorOnlyManagerPermission, canAccessManager, canApproveAchievementAwards, canManageAcademicContent, canModerateUser, canPendingTeacherUseRoute, canRecommendAchievementAwards, canReviewAcademicTransfer, canUseStaffAI, enforceAcademicStaffAccess, enforceAuthenticated, enforceOwnerAccess, isActiveTeacherManager, isJuniorManager, isOwnerRole, isSeniorManager, normalizeRole } from "./role-access.js";
 
 test("normalizes legacy role casing and separators",()=>{
  assert.equal(normalizeRole(" Senior Manager "), "senior_manager");
@@ -19,6 +19,17 @@ test("manager flag grants scoped manager and academic access, not owner access",
  assert.equal(canAccessManager(manager),true);
  assert.equal(canManageAcademicContent(manager),true);
  assert.equal(isOwnerRole(manager.role),false);
+});
+
+test("restricted teacher applications cannot retain manager authority through a legacy manager flag",()=>{
+ for(const teacherApplicationStatus of ["draft","pending_review","rejected_pending_conversion"]){
+  const user={role:"teacher",isManager:true,teacherApplicationStatus};
+  assert.equal(isActiveTeacherManager(user),false,teacherApplicationStatus);
+  assert.equal(canAccessManager(user),false,teacherApplicationStatus);
+ }
+ const approved={role:"teacher",isManager:true,teacherApplicationStatus:"approved"};
+ assert.equal(isActiveTeacherManager(approved),true);
+ assert.equal(canAccessManager(approved),true);
 });
 
 test("learner and unknown roles cannot use staff or academic controls",()=>{
@@ -171,12 +182,15 @@ test("junior_manager role alias retains manager workspace access but not senior 
  assert.equal(canReviewAcademicTransfer(junior),false);
 });
 
-test("pending teacher managers do not gain award authority from stale manager flags",()=>{
- const pending={role:"teacher",isManager:true,managerLevel:"senior",teacherApplicationStatus:"pending_review"};
- assert.equal(isJuniorManager(pending),false);
- assert.equal(isSeniorManager(pending),false);
- assert.equal(canRecommendAchievementAwards(pending),false);
- assert.equal(canApproveAchievementAwards(pending),false);
+test("draft, pending and rejected teacher managers do not gain authority from stale manager flags",()=>{
+ for(const status of ["draft","pending_review","rejected_pending_conversion"]){
+  const pending={role:"teacher",isManager:true,managerLevel:"senior",teacherApplicationStatus:status};
+  assert.equal(isJuniorManager(pending),false,status);
+  assert.equal(isSeniorManager(pending),false,status);
+  assert.equal(canRecommendAchievementAwards(pending),false,status);
+  assert.equal(canApproveAchievementAwards(pending),false,status);
+  assert.equal(canAccessManager(pending),false,status);
+ }
 });
 test("ordinary teachers and learners retain existing access without manager authority",()=>{
  for(const user of [{role:"teacher",isManager:false},{role:"student"},{role:"prefect"}]){
@@ -187,7 +201,7 @@ test("ordinary teachers and learners retain existing access without manager auth
  }
 });
 
-test("pending teacher API policy allows only own CV, evidence, Profile Hub and application chat",()=>{
+test("pending teacher API policy allows self-service and privacy-checked Profile Hub routes while blocking teaching tools",()=>{
  const applicant={id:41,role:"teacher",teacherApplicationStatus:"pending_review"};
  for(const [method,path] of [
   ["GET","/api/auth/me"],
@@ -202,6 +216,10 @@ test("pending teacher API policy allows only own CV, evidence, Profile Hub and a
   ["GET","/api/academic-records/current-year"],
   ["GET","/api/academic-records/me"],
   ["GET","/api/academic-records/reports/me"],
+   ["GET","/api/academic-records/reports/drafts/123/download/pdf"],
+   ["GET","/api/academic-records/reports/drafts/123/download"],
+   ["GET","/api/academic-records/transfer-requests/123/download"],
+   ["GET","/api/academic-records/transfer-verification/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"],
   ["GET","/api/achievements/my"],
   ["GET","/api/daily-attendance/me"],
   ["GET","/api/subjects/catalog"],
@@ -215,6 +233,7 @@ test("pending teacher API policy allows only own CV, evidence, Profile Hub and a
   ["POST","/api/users/me/phone/request-verification"],
   ["POST","/api/users/me/recovery-question/verify"],
   ["POST","/api/daily-attendance/open"],
+  ["POST","/api/academic-records/transfer-requests"],
   ["GET","/api/auth/me/"],
   ["GET","/api/auth/me?source=profile"],
   ["GET","/api//auth//me/"],
@@ -227,6 +246,7 @@ test("pending teacher API policy allows only own CV, evidence, Profile Hub and a
   ["GET","/api/users/me/teacher-cv"],
   ["PATCH","/api/users/me/teacher-cv"],
   ["POST","/api/users/me/qualifications"],
+  ["PATCH","/api/users/me/qualifications/99"],
   ["POST","/api/users/me/qualifications/bulk"],
   ["GET","/api/users/41/teacher-documents/99"],
   ["POST","/api/users/me/notification-email/request"],
@@ -240,6 +260,7 @@ test("pending teacher API policy allows only own CV, evidence, Profile Hub and a
   ["PATCH","/api/users/41"],
   ["GET","/api/teacher-cv-workspace/41/chat"],
   ["POST","/api/teacher-cv-workspace/41/chat"],
+  ["GET","/api/teacher-cv-workspace/41/history"],
  ]) assert.equal(canPendingTeacherUseRoute(applicant,method,path),true,method+" "+path);
  for(const [method,path] of [
   ["POST","/api/notifications"],
@@ -252,13 +273,11 @@ test("pending teacher API policy allows only own CV, evidence, Profile Hub and a
   ["GET","/api/polls"],
   ["GET","/api/live-classes"],
   ["GET","/api/teacher-cv-workspace/42/chat"],
-  ["GET","/api/academic-records/transfer-requests"],
   ["GET","/api/academic-records/report-learners"],
-  ["GET","/api/profile/42/social"],
-  ["GET","/api/profile/42/section/attendance"],
+   ["POST","/api/academic-records/transfer-requests/123/review"],
+   ["POST","/api/academic-records/reports/drafts/123/review"],
   ["GET","/api/users/42"],
   ["PATCH","/api/users/42"],
-  ["GET","/api/users/42/teacher-documents"],
   ["POST","/api/lessons"],
   ["POST","/api/assignments"],
   ["POST","/api/exercises"],
@@ -266,8 +285,68 @@ test("pending teacher API policy allows only own CV, evidence, Profile Hub and a
   ["POST","/api/live-classes"],
   ["DELETE","/api/users/41"],
  ]) assert.equal(canPendingTeacherUseRoute(applicant,method,path),false,method+" "+path);
+ const draftApplicant={...applicant,teacherApplicationStatus:"draft"};
+ assert.equal(canPendingTeacherUseRoute(draftApplicant,"GET","/api/users/me/teacher-cv"),true,"Draft teacher can access their own CV workspace");
+ assert.equal(canPendingTeacherUseRoute(draftApplicant,"GET","/api/academic-records/transfer-requests"),true,"Draft teacher can access only their own transfer-request list; the route filters records by authenticated user ownership");
+ assert.equal(canPendingTeacherUseRoute(draftApplicant,"POST","/api/lessons"),false,"Draft teacher cannot perform teaching operations");
  assert.equal(canPendingTeacherUseRoute({...applicant,teacherApplicationStatus:"approved"},"POST","/api/lessons"),true);
  assert.equal(canPendingTeacherUseRoute({...applicant,teacherApplicationStatus:" PENDING_REVIEW "},"GET","/api/auth/me"),true);
+});
+
+test("pending teacher API policy never blocks authentication and permits all self Profile Hub data",()=>{
+ const applicant={id:41,role:"teacher",teacherApplicationStatus:"pending_review"};
+ for(const [method,path] of [
+  ["GET","/api/auth/me"],
+  ["POST","/api/auth/login"],
+  ["POST","/api/auth/register"],
+  ["POST","/api/auth/google"],
+  ["GET","/api/users/me/enrollments-summary"],
+  ["GET","/api/users/me/enrollments"],
+  ["GET","/api/users/me/notification-email"],
+  ["GET","/api/users/me/subjects"],
+  ["GET","/api/users/me/payout-preferences"],
+  ["GET","/api/users/me/recovery-profile"],
+  ["GET","/api/academic-records/reports/me"],
+  ["GET","/api/academic-records/current-year"],
+  ["GET","/api/achievements/my"],
+  ["GET","/api/subjects/catalog"],
+   ["GET","/api/config/currentYear"],
+  ["GET","/api/profile/41/social"],
+  ["GET","/api/profile/41/section/attendance"],
+  ["GET","/api/profile/41/section/qualifications"],
+  ["POST","/api/profile/99/connect"],
+  ["GET","/api/profile/connections/friends"],
+  ["GET","/api/profile/connections/requests"],
+  ["PATCH","/api/profile/connections/123"],
+  ["GET","/api/notifications"],
+  ["PATCH","/api/notifications/123/read"],
+   ["GET","/api/profile/99/social"],
+   ["GET","/api/profile/99/section/reports"],
+   ["GET","/api/users/99/public-profile"],
+   ["GET","/api/users/99/teacher-documents"],
+   ["GET","/api/users/99/teacher-documents/8"],
+   ["GET","/api/achievements/user/99"],
+   ["GET","/api/achievements"],
+   ["GET","/api/messages"],
+   ["POST","/api/messages"],
+   ["DELETE","/api/messages/123"],
+   ["POST","/api/messages/media"],
+   ["GET","/api/messages/media/123e4567-e89b-12d3-a456-426614174000"],
+   ["POST","/api/messages/123/report"],
+  ["POST","/api/teacher-cv-workspace/survey/submit"],
+  ["GET","/api/profile/connections/friends"],
+  ["GET","/api/profile/connections/requests"],
+  ["PUT","/api/profile/me/privacy"],
+  ["PATCH","/api/profile/connections/123"],
+  ["GET","/api/notifications"],
+  ["PATCH","/api/notifications/123/read"],
+ ]) assert.equal(canPendingTeacherUseRoute(applicant,method,path),true,method+" "+path);
+ const rejected={...applicant,teacherApplicationStatus:"rejected_pending_conversion"};
+ for(const [method,path] of [["GET","/api/auth/me"],["POST","/api/auth/login"],["GET","/api/users/me/notification-email"],["POST","/api/teacher-cv-workspace/submit"],["POST","/api/teacher-cv-workspace/survey/submit"]])
+  assert.equal(canPendingTeacherUseRoute(rejected,method,path),true,method+" "+path);
+ assert.equal(canPendingTeacherUseRoute(rejected,"POST","/api/lessons"),false);
+ assert.equal(canPendingTeacherUseRoute(rejected,"POST","/api/notifications"),false,"Applicants may read and mark their own notifications but cannot broadcast/create notifications");
+ assert.equal(canPendingTeacherUseRoute(rejected,"DELETE","/api/notifications/123"),false);
 });
 
 test("manager moderation follows hierarchy and protects Owner, Admin, and senior peers",()=>{

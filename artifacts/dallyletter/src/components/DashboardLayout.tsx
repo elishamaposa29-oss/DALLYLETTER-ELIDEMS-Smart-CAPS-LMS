@@ -128,7 +128,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const role = String(user?.role || "").toLowerCase().replace(/[ -]+/g, "_");
-    const managerAccount = ["manager", "senior_manager", "junior_manager"].includes(role) || (role === "teacher" && Boolean((user as any)?.isManager));
+    const restrictedTeacher = role === "teacher" && ["draft","pending_review","rejected_pending_conversion"].includes(String((user as any)?.teacherApplicationStatus||"").toLowerCase());
+    const managerAccount = ["manager", "senior_manager", "junior_manager"].includes(role) || (role === "teacher" && Boolean((user as any)?.isManager) && !restrictedTeacher);
     if (!user || !managerAccount) { setManagerPermissions(null); return; }
     let active = true;
     const token = localStorage.getItem("dallyletter_token") ?? "";
@@ -140,7 +141,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       })
       .catch(() => { if (active) setManagerPermissions({}); });
     return () => { active = false; };
-  }, [user?.id, user?.role, (user as any)?.isManager]);
+  }, [user?.id, user?.role, (user as any)?.isManager, (user as any)?.teacherApplicationStatus]);
 
   if (!user) return null;
 
@@ -149,6 +150,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   };
 
   const normalizedRole = String(user.role||"").toLowerCase().replace(/[ -]+/g,"_");
+  const pendingTeacher = normalizedRole === "teacher" && ["draft","pending_review","rejected_pending_conversion"].includes(String((user as any).teacherApplicationStatus || "").toLowerCase());
+  const activeTeacherManager = normalizedRole === "teacher" && Boolean((user as any).isManager) && !pendingTeacher;
 
   let navItems: NavItem[] = [];
 
@@ -190,7 +193,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Polls & Quizzes", href: "/teacher/polls", icon: BarChart3 },
       { label: "Chat", href: "/teacher/chat", icon: MessageSquare },
       { label: "Student Payments", href: "/teacher/payments", icon: CreditCard },
-      ...((user as any).isManager ? [
+      ...(activeTeacherManager ? [
         { label: "Manager Panel", href: "/manager", icon: Briefcase, section: "Management", accent: "text-purple-400", permissionKey: "manager.dashboard.view" },
         { label: "Teacher CV Applications", href: "/manager/teacher-cv-workspace", icon: GraduationCap, permissionKey: "teacher_cv.view" },
         { label: "Qualification Verification", href: "/manager/qualifications", icon: FileCheck2, permissionKey: "qualifications.view" },
@@ -282,19 +285,18 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     ];
   }
 
-  const managerNavigationAccount = ["manager", "senior_manager", "junior_manager"].includes(normalizedRole) || (normalizedRole === "teacher" && Boolean((user as any).isManager));
+  const managerNavigationAccount = ["manager", "senior_manager", "junior_manager"].includes(normalizedRole) || activeTeacherManager;
   if (managerNavigationAccount) {
     // Fail closed while permissions load or if the permission service is unavailable.
     navItems = navItems.filter(item => !item.permissionKey || managerPermissions?.[item.permissionKey] === true);
   }
 
-  const pendingTeacher = normalizedRole === "teacher" && String((user as any).teacherApplicationStatus || "").toLowerCase() === "pending_review";
   if (pendingTeacher) {
-    // Pending applicants may use only their Profile Hub and CV/qualification workspace.
-    navItems = navItems.filter(item => ["/profile-hub", "/teacher/qualifications"].includes(item.href));
+    // Applicants retain the full Profile Hub, CV workspace and private direct chat; teaching and manager tools remain locked.
+    navItems = navItems.filter(item => ["/profile-hub", "/teacher/qualifications", "/teacher/chat"].includes(item.href));
   }
 
-  const homeHref = ["student","prefect"].includes(normalizedRole) ? "/" : normalizedRole === "teacher" ? "/teacher" : ["manager","senior_manager","junior_manager"].includes(normalizedRole) ? "/manager" : normalizedRole === "admin" ? "/features" : "/admin";
+  const homeHref = ["student","prefect"].includes(normalizedRole) ? "/" : normalizedRole === "teacher" ? (pendingTeacher ? "/profile-hub" : "/teacher") : ["manager","senior_manager","junior_manager"].includes(normalizedRole) ? "/manager" : normalizedRole === "admin" ? "/features" : "/admin";
 
   const NavLinks = ({ onNav }: { onNav?: () => void }) => {
     let lastSection: string | undefined;
@@ -362,7 +364,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                   <Shield className="w-2.5 h-2.5 mr-0.5" />PREFECT
                 </span>
               )}
-              {(user as any).isManager && (
+              {activeTeacherManager && (
                 <span className="inline-flex items-center text-[9px] font-bold bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded-full border border-purple-500/30">
                   <Briefcase className="w-2.5 h-2.5 mr-0.5" />MGR
                 </span>

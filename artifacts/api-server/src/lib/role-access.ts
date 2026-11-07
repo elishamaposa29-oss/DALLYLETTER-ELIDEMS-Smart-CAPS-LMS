@@ -14,8 +14,14 @@ export function isOwnerRole(role: unknown): boolean {
   return ["owner", "platform_owner"].includes(normalizeRole(role));
 }
 
-function isTeacherPendingReview(user: RoleLikeUser): boolean {
-  return normalizeRole(user.role) === "teacher" && typeof user.teacherApplicationStatus === "string" && user.teacherApplicationStatus.trim().toLowerCase() === "pending_review";
+function isTeacherRestricted(user: RoleLikeUser): boolean {
+  return normalizeRole(user.role) === "teacher" &&
+    ["draft", "pending_review", "rejected_pending_conversion"].includes(String(user.teacherApplicationStatus ?? "").trim().toLowerCase());
+}
+
+/** A teacher retains manager authority only after the Owner-approved application is active. */
+export function isActiveTeacherManager(user: RoleLikeUser): boolean {
+  return normalizeRole(user.role) === "teacher" && user.isManager === true && !isTeacherRestricted(user);
 }
 
 function normalizedManagerLevel(user: RoleLikeUser): string {
@@ -28,7 +34,7 @@ export function isSeniorManager(user: RoleLikeUser): boolean {
   if (isOwnerRole(role) || role === "senior_manager") return true;
   if (normalizedManagerLevel(user) !== "senior") return false;
   if (role === "manager") return true;
-  return role === "teacher" && user.isManager === true && !isTeacherPendingReview(user);
+  return isActiveTeacherManager(user);
 }
 
 /** Junior managers retain manager access but cannot perform senior-only approvals. */
@@ -36,7 +42,7 @@ export function isJuniorManager(user: RoleLikeUser): boolean {
   const role = normalizeRole(user.role);
   if (isOwnerRole(role) || isSeniorManager(user)) return false;
   if (role === "manager" || role === "junior_manager") return true;
-  return role === "teacher" && user.isManager === true && !isTeacherPendingReview(user);
+  return isActiveTeacherManager(user);
 }
 
 /** Recommendation is available to both manager levels; approval is senior/owner only. */
@@ -52,33 +58,57 @@ function hasManagerStaffRole(user: RoleLikeUser): boolean {
   const role = normalizeRole(user.role);
   // Manager roles remain eligible for existing manager tools at either level.
   if (["manager", "senior_manager", "junior_manager"].includes(role)) return true;
-  return role === "teacher" && user.isManager === true && !isTeacherPendingReview(user);
+  return isActiveTeacherManager(user);
 }
 
 /** API-level allowlist for applicants who have not yet been authorized to teach. */
 export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, methodValue: string, rawPath: string): boolean {
-  if (!isTeacherPendingReview(user)) return true;
+  if (!isTeacherRestricted(user)) return true;
   const method = methodValue.trim().toUpperCase();
-  // Match Express route semantics: ignore query strings, duplicate separators and
-  // optional trailing slashes so applicants are not randomly locked out by URL form.
-  const requestPath = rawPath.split("?")[0].replace(/\\+/g, "/").replace(/\/{2,}/g, "/").replace(/\/$/, "") || "/";
-  const path = requestPath.startsWith("/api/") ? requestPath.slice(4) : requestPath;
+  const normalizedPath = rawPath.split("?")[0].replace(/\\+/g, "/").replace(/\/{2,}/g, "/").replace(/\/$/, "") || "/";
+  const path = normalizedPath.startsWith("/api/") ? normalizedPath.slice(4) : normalizedPath;
   const selfId = String(user.id ?? "");
-  const applicantAllowed =
-    // Keep authenticated applicants able to restore their session and sign out.
-    (method === "GET" && path === "/auth/me") ||
-    (method === "POST" && ["/auth/login", "/auth/google", "/auth/logout"].includes(path)) ||
-    // Personal notifications are part of the signed-in Profile Hub; creation/deletion remain blocked.
-    (method === "GET" && path === "/notifications") ||
-    (method === "PATCH" && /^\/notifications\/\d+\/read$/.test(path)) ||
+  // Authentication and account recovery must never be blocked by the teacher CV gate.
+  // A pending applicant must be able to sign in, refresh /auth/me, and switch accounts.
+  if (method === "OPTIONS" || path.startsWith("/auth/")) return true;
+  const cvAllowed =
     (method === "GET" && path === "/users/me/teacher-cv") ||
     (method === "GET" && path === "/users/me/teacher-cv/pdf") ||
     (method === "PATCH" && path === "/users/me/teacher-cv") ||
     (method === "GET" && path === "/users/me/qualifications") ||
     (method === "POST" && path === "/users/me/qualifications") ||
+    (method === "PATCH" && /^\/users\/me\/qualifications\/\d+$/.test(path)) ||
+    (method === "GET" && ["/users/me/enrollments-summary","/users/me/enrollments","/users/me/notification-email","/users/me/subjects","/users/me/payout-preferences","/users/me/recovery-profile","/academic-records/reports/me","/academic-records/current-year","/academic-records/me","/academic-records/transfer-requests","/daily-attendance/me","/achievements/my","/subjects/catalog","/config/currentYear"].includes(path)) ||
+    (method === "GET" && /^\/academic-records\/reports\/drafts\/\d+\/download(?:\/pdf)?$/.test(path)) ||
+    (method === "GET" && /^\/academic-records\/transfer-requests\/\d+\/download$/.test(path)) ||
+    (method === "GET" && /^\/academic-records\/transfer-verification\/[A-Za-z0-9_-]+$/.test(path)) ||
+    (method === "PUT" && path === "/users/me/subjects") ||
+    (method === "POST" && ["/users/me/phone/request-verification","/users/me/recovery-question/verify","/daily-attendance/open","/academic-records/transfer-requests"].includes(path)) ||
+    // Profile Hub public/section endpoints enforce their own visibility and connection rules.
+    (method === "GET" && new RegExp("^/profile/[0-9]+/social$").test(path)) ||
+    (method === "GET" && new RegExp("^/profile/[0-9]+/section/[a-zA-Z0-9_-]+$").test(path)) ||
+    (method === "GET" && new RegExp("^/users/[0-9]+/public-profile$").test(path)) ||
+    (method === "GET" && new RegExp("^/users/[0-9]+/teacher-documents$").test(path)) ||
+    (method === "GET" && new RegExp("^/users/[0-9]+/teacher-documents/[0-9]+$").test(path)) ||
+    (method === "GET" && new RegExp("^/achievements/user/[0-9]+$").test(path)) ||
+    (method === "GET" && path === "/achievements") ||
+    (method === "POST" && new RegExp("^/profile/[0-9]+/connect$").test(path)) ||
+    (method === "GET" && ["/profile/connections/friends","/profile/connections/requests","/notifications"].includes(path)) ||
+    (method === "PUT" && path === "/profile/me/privacy") ||
+    (method === "PATCH" && path.startsWith("/profile/connections/")) ||
+    (method === "PATCH" && path.startsWith("/notifications/") && path.endsWith("/read")) ||
+    // Direct messages are still governed by canMessageUser/canViewPrivateConversation;
+    // the messages router separately denies group-chat access to restricted applicants.
+    (method === "GET" && path === "/messages") ||
+    (method === "POST" && path === "/messages") ||
+    (method === "DELETE" && path.startsWith("/messages/") && !path.startsWith("/messages/media/")) ||
+    (method === "POST" && path === "/messages/media") ||
+    (method === "GET" && path.startsWith("/messages/media/")) ||
+    (method === "POST" && path.startsWith("/messages/") && path.endsWith("/report")) ||
     (method === "POST" && path === "/users/me/qualifications/bulk") ||
     (method === "POST" && path === "/users/me/teacher-documents") ||
     (method === "POST" && path === "/teacher-cv-workspace/submit") ||
+    (method === "POST" && path === "/teacher-cv-workspace/survey/submit") ||
     (method === "POST" && /^\/qualifications\/\d+\/document$/.test(path)) ||
     (method === "GET" && path === "/users/" + selfId + "/teacher-documents") ||
     (method === "GET" && /^\/users\/\d+\/teacher-documents\/\d+$/.test(path) && path.startsWith("/users/" + selfId + "/")) ||
@@ -86,44 +116,18 @@ export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, 
     (method === "GET" && path === "/users/" + selfId) ||
     (method === "PATCH" && path === "/users/" + selfId) ||
     ((method === "GET" || method === "POST") && path === "/teacher-cv-workspace/" + selfId + "/chat") ||
+    (method === "GET" && path === "/teacher-cv-workspace/" + selfId + "/history") ||
     (method === "PUT" && path === "/users/me/payout-preferences") ||
     (method === "POST" && ["/users/me/notification-email/request","/users/me/notification-email/verify","/users/me/recovery-email/request-verification","/users/me/recovery-email/confirm","/users/me/phone/request-verification","/users/me/phone/confirm","/users/me/avatar","/users/me/cover","/auth/email-change/request","/auth/email-change/confirm"].includes(path)) ||
-    (method === "PATCH" && path === "/users/me/recovery-profile") ||
-    // Own-account Profile Hub data and settings; no other user's private data is exposed.
-    (method === "GET" && [
-      "/users/me/recovery-profile",
-      "/users/me/notification-email",
-      "/users/me/enrollments",
-      "/users/me/enrollments-summary",
-      "/users/me/subjects",
-      "/users/me/payout-preferences",
-      "/subjects/catalog",
-      "/academic-records/current-year",
-      "/academic-records/me",
-      "/academic-records/reports/me",
-      "/achievements/my",
-      "/daily-attendance/me",
-      "/profile/connections/friends",
-      "/profile/connections/requests",
-    ].includes(path)) ||
-    (method === "PUT" && ["/users/me/subjects", "/profile/me/privacy"].includes(path)) ||
-    (method === "POST" && [
-      "/users/me/phone/request-verification",
-      "/users/me/recovery-question/verify",
-      "/daily-attendance/open",
-    ].includes(path)) ||
-    (method === "GET" && path === "/profile/" + selfId + "/social") ||
-    (method === "GET" && new RegExp("^/profile/" + selfId + "/section/[a-zA-Z0-9_-]+$").test(path)) ||
-    (method === "POST" && /^\/profile\/\d+\/connect$/.test(path)) ||
-    (method === "PATCH" && /^\/profile\/connections\/\d+$/.test(path));
+    (method === "PATCH" && path === "/users/me/recovery-profile");
   const profileWrite = method === "PATCH" && path === "/users/" + selfId;
-  return applicantAllowed || profileWrite;
+  return cvAllowed || profileWrite;
 }
 
 export function canManageAcademicContent(user: RoleLikeUser): boolean {
   const role = normalizeRole(user.role);
   if (isOwnerRole(role)) return true;
-  if (role === "teacher") return !isTeacherPendingReview(user);
+  if (role === "teacher") return !isTeacherRestricted(user);
   return hasManagerStaffRole(user);
 }
 
@@ -134,7 +138,7 @@ export function canAccessManager(user: RoleLikeUser): boolean {
 export function canUseStaffAI(user: RoleLikeUser): boolean {
   const role = normalizeRole(user.role);
   if (isOwnerRole(role)) return true;
-  if (role === "teacher") return !isTeacherPendingReview(user);
+  if (role === "teacher") return !isTeacherRestricted(user);
   return hasManagerStaffRole(user);
 }
 

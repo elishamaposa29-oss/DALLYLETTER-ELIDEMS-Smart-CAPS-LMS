@@ -14,14 +14,14 @@ export function ProtectedRoute({
 }) {
   const { user, isLoading } = useAuth();
   const [location, setLocation] = useLocation();
-  const pendingTeacher = String(user?.role || "").toLowerCase() === "teacher" && String((user as any)?.teacherApplicationStatus || "").toLowerCase() === "pending_review";
-  const pendingTeacherAllowed = location === "/profile-hub" || location === "/profile/" + String(user?.id ?? "") || location === "/teacher/qualifications";
+  const restrictedTeacher = String(user?.role || "").toLowerCase() === "teacher" && ["draft","pending_review","rejected_pending_conversion"].includes(String((user as any)?.teacherApplicationStatus || "").toLowerCase());
+  const restrictedTeacherAllowed = location === "/profile-hub" || location.startsWith("/profile/") || location === "/teacher/qualifications" || location === "/teacher/chat";
 
   useEffect(() => {
     if (!isLoading) {
       if (!user) {
         setLocation("/login");
-      } else if (pendingTeacher && !pendingTeacherAllowed) {
+      } else if (restrictedTeacher && !restrictedTeacherAllowed) {
         setLocation("/profile-hub");
       } else {
         // The generated API role model is student/teacher/owner.
@@ -39,7 +39,7 @@ export function ProtectedRoute({
         }
       }
     }
-  }, [user, isLoading, allowedRoles, allowManagerStaff, setLocation, pendingTeacher, pendingTeacherAllowed]);
+  }, [user, isLoading, allowedRoles, allowManagerStaff, setLocation, restrictedTeacher, restrictedTeacherAllowed]);
 
   const role = user ? String(user.role).toLowerCase().replace(/[ -]+/g, "_") : undefined;
   const hasAllowedRole =
@@ -47,7 +47,7 @@ export function ProtectedRoute({
     (role !== undefined &&
       (allowedRoles.includes(role) || (["platform_owner"].includes(role) && allowedRoles.includes("owner")) || (allowManagerStaff && role === "teacher" && user?.isManager === true) || (role === "junior_manager" && allowedRoles.some(value => ["manager","senior_manager"].includes(value)))));
 
-  if (isLoading || !user || !hasAllowedRole || user.isBlocked || (pendingTeacher && !pendingTeacherAllowed)) {
+  if (isLoading || !user || !hasAllowedRole || user.isBlocked || (restrictedTeacher && !restrictedTeacherAllowed)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

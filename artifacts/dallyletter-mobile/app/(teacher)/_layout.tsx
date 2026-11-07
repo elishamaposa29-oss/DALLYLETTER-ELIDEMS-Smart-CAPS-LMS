@@ -9,11 +9,13 @@ export default function TeacherTabLayout() {
   const colors = useColors();
   const { user, isLoading } = useAuth();
   const allowed = String(user?.role || "").toLowerCase() === "teacher";
+  const restrictedTeacher = allowed && ["draft","pending_review","rejected_pending_conversion"].includes(String((user as any)?.teacherApplicationStatus||"").toLowerCase());
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
 
   if (isLoading) return <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background }}><ActivityIndicator color={colors.primary} /></View>;
   if (!user) return <Redirect href="/login" />;
+  if (restrictedTeacher) return <Redirect href="/profile-hub" />;
   if (!allowed) return <Redirect href="/" />;
 
   return (

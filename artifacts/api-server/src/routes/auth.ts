@@ -188,14 +188,18 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     await pool.query("ALTER TABLE teacher_cv_workflow_settings ALTER COLUMN review_duration_days DROP DEFAULT");
     await pool.query("UPDATE teacher_cv_workflow_settings SET review_duration_days=NULL WHERE updated_by IS NULL");
     const reviewSetting = await pool.query("SELECT review_duration_days FROM teacher_cv_workflow_settings WHERE id=1");
-    const teacherReviewDays = Number(reviewSetting.rows[0]?.review_duration_days || 0);
-    if (role === "teacher" && (!Number.isInteger(teacherReviewDays) || teacherReviewDays < 1 || teacherReviewDays > 365)) { res.status(503).json({ error: "Teacher applications are temporarily unavailable until the Owner configures the CV review duration." }); return; }
+    const configuredTeacherReviewDays = Number(reviewSetting.rows[0]?.review_duration_days || 30);
+    // A missing Owner setting must not block teacher registration or sign-in.
+    // Thirty days is the safe default until the Owner chooses a review period.
+    const teacherReviewDays = Number.isInteger(configuredTeacherReviewDays) && configuredTeacherReviewDays >= 1 && configuredTeacherReviewDays <= 365
+      ? configuredTeacherReviewDays
+      : 30;
 
     const [user] = await db.insert(usersTable).values({
       email, passwordHash: await hashPassword(password), name, role,
       grade: grade ?? null, subject: subject ?? null, phone: phone ?? null,
       isPrefect: false, isBlocked: false, isSuspended: false,
-      teacherApplicationStatus: role === "teacher" ? "pending_review" : "not_applicable",
+      teacherApplicationStatus: role === "teacher" ? "draft" : "not_applicable",
       teacherReviewDeadline: role === "teacher" ? new Date(Date.now() + teacherReviewDays * 24 * 60 * 60 * 1000) : null,
     }).returning();
 

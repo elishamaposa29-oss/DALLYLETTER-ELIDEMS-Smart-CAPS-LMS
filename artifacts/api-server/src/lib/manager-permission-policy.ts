@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { pool } from "@workspace/db";
-import { defaultManagerPermission, isOwnerRole, isSeniorManager, isSeniorOnlyManagerPermission, normalizeRole } from "./role-access";
+import { defaultManagerPermission, isActiveTeacherManager, isOwnerRole, isSeniorManager, isSeniorOnlyManagerPermission, normalizeRole } from "./role-access";
 
 const MANAGER_ROLES = new Set(["junior_manager", "senior_manager", "manager"]);
 type CurrentAuthority = {
@@ -31,7 +31,7 @@ async function readCurrentAuthority(userId: number, permissionKey: string): Prom
 
 function isManagerAccount(account: CurrentAuthority): boolean {
   const role = normalizeRole(account.role);
-  return MANAGER_ROLES.has(role) || (role === "teacher" && account.is_manager === true && account.teacher_application_status !== "pending_review");
+  return MANAGER_ROLES.has(role) || isActiveTeacherManager({ role: account.role, isManager: account.is_manager, teacherApplicationStatus: account.teacher_application_status });
 }
 
 /** Replace stale JWT role claims with the live database authority for downstream route checks. */

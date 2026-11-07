@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { eq, notInArray } from "drizzle-orm";
 import multer from "multer";
-import { db, usersTable, classesTable, pool } from "@workspace/db";
+import { db, usersTable, classesTable, notificationsTable, pool } from "@workspace/db";
 import {
   GetUserParams, UpdateUserParams, UpdateUserBody,
   DeleteUserParams, BlockUserParams, BlockUserBody,
@@ -57,6 +57,10 @@ function canViewManagerTarget(actor: NonNullable<Express.Request["currentUser"]>
   return false;
 }
 function canReviewTeacherApplication(user: { role: unknown; managerLevel?: unknown; isManager?: unknown; teacherApplicationStatus?: unknown }): boolean { return isSeniorManager(user); }
+async function hasSubmittedTeacherApplication(userId: number): Promise<boolean> {
+  const result = await pool.query("SELECT 1 FROM teacher_cv_review_history WHERE teacher_id=$1 AND action='submitted' LIMIT 1", [userId]);
+  return result.rows.length > 0;
+}
 
 function hasForbiddenPaymentCredentials(body: unknown): boolean {
   if (!body || typeof body !== "object" || Array.isArray(body)) return false;
@@ -455,13 +459,14 @@ router.post("/users/me/cover", requireAuth, (req, res, next): void => {
 });
 
 // Build a private CV PDF from the teacher's saved profile and school-verified qualifications.
-async function sendTeacherCvPdf(userId: number, res: any): Promise<void> {
+async function sendTeacherCvPdf(userId: number, res: any, reviewerCopy = false): Promise<void> {
   await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, cv jsonb NOT NULL DEFAULT '{}'::jsonb, updated_at timestamptz NOT NULL DEFAULT now())");
-  const [userResult, cvResult, qualificationResult, subjectResult] = await Promise.all([
+  const [userResult, cvResult, qualificationResult, subjectResult, documentResult] = await Promise.all([
     pool.query("SELECT id,name,email,role,subject,grade FROM users WHERE id=$1", [userId]),
     pool.query("SELECT cv FROM teacher_profiles WHERE user_id=$1", [userId]),
-    pool.query("SELECT title,institution,year FROM teacher_qualifications WHERE user_id=$1 AND verification_status='verified' AND source='user' ORDER BY created_at DESC", [userId]),
+    pool.query(reviewerCopy ? "SELECT q.title,q.institution,q.year,q.verification_status,d.file_name AS certificate_file_name FROM teacher_qualifications q LEFT JOIN teacher_documents d ON d.id=q.document_id AND d.user_id=q.user_id WHERE q.user_id=$1 AND q.source='user' ORDER BY q.created_at DESC" : "SELECT q.title,q.institution,q.year,q.verification_status,d.file_name AS certificate_file_name FROM teacher_qualifications q LEFT JOIN teacher_documents d ON d.id=q.document_id AND d.user_id=q.user_id WHERE q.user_id=$1 AND q.source='user' AND q.verification_status='verified' ORDER BY q.created_at DESC", [userId]),
     pool.query("SELECT subjects_to_teach FROM teacher_subjects WHERE user_id=$1", [userId]).catch(() => ({ rows: [] as Array<{subjects_to_teach:string[]}> })),
+    pool.query("SELECT document_type,file_name,mime_type FROM teacher_documents WHERE user_id=$1 ORDER BY created_at DESC", [userId]),
   ]);
   const teacher = userResult.rows[0];
   if (!teacher || String(teacher.role).toLowerCase() !== "teacher") { res.status(404).json({ error: "Teacher profile not found." }); return; }
@@ -473,7 +478,9 @@ async function sendTeacherCvPdf(userId: number, res: any): Promise<void> {
     grade: teacher.grade,
     cv: cvResult.rows[0]?.cv ?? {},
     qualifications: qualificationResult.rows,
+    documents: documentResult.rows,
     subjects,
+    reviewerCopy,
   });
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Cache-Control", "private, no-store");
@@ -499,7 +506,7 @@ router.get("/users/:id/teacher-cv", requireAuth, requireManagerPermission("teach
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid user id." }); return; }
   const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, id));
-  if (!target || normalizeRole(target.role) !== "teacher" || (!isOwnerRole(req.currentUser!.role) && !canModerateUser(req.currentUser!, target))) { res.status(404).json({ error: "Teacher CV not found." }); return; }
+  if (!target || normalizeRole(target.role) !== "teacher" || !(await hasSubmittedTeacherApplication(id)) || (!isOwnerRole(req.currentUser!.role) && !canModerateUser(req.currentUser!, target))) { res.status(404).json({ error: "Teacher CV not found." }); return; }
   await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, cv jsonb NOT NULL DEFAULT '{}'::jsonb, updated_at timestamptz NOT NULL DEFAULT now())");
   const result = await pool.query("SELECT cv, updated_at FROM teacher_profiles WHERE user_id = $1", [id]);
   if (!result.rows.length) { res.status(404).json({ error: "Teacher CV not found." }); return; }
@@ -510,8 +517,8 @@ router.get("/users/:id/teacher-cv/pdf", requireAuth, requireManagerPermission("t
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid user id." }); return; }
   const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, id));
-  if (!target || normalizeRole(target.role) !== "teacher" || (!isOwnerRole(req.currentUser!.role) && !canModerateUser(req.currentUser!, target))) { res.status(404).json({ error: "Teacher CV not found." }); return; }
-  await sendTeacherCvPdf(id, res);
+  if (!target || normalizeRole(target.role) !== "teacher" || !(await hasSubmittedTeacherApplication(id)) || (!isOwnerRole(req.currentUser!.role) && !canModerateUser(req.currentUser!, target))) { res.status(404).json({ error: "Teacher CV not found." }); return; }
+  await sendTeacherCvPdf(id, res, true);
 });
 
 router.patch("/users/me/teacher-cv", requireAuth, async (req, res): Promise<void> => {
@@ -607,12 +614,14 @@ router.patch("/users/:id/teacher-review", requireAuth, requireManagerPermissionF
   if (!canReviewTeacherApplication(actor)) { res.status(403).json({ error: "Owner or Senior Manager approval is required for teacher applications." }); return; }
   const id = Number(req.params.id);
   const action = req.body?.action;
-  if (!Number.isInteger(id) || !["approve", "reject", "convert_to_learner"].includes(action)) { res.status(400).json({ error: "Invalid teacher review action" }); return; }
-  const [target] = await db.select({ id: usersTable.id, role: usersTable.role, teacherApplicationStatus: usersTable.teacherApplicationStatus, paymentInfo: usersTable.paymentInfo })
+  if (!Number.isInteger(id) || !["approve", "reject"].includes(action)) { res.status(400).json({ error: "Invalid teacher review action" }); return; }
+  const [target] = await db.select({ id: usersTable.id, role: usersTable.role, teacherApplicationStatus: usersTable.teacherApplicationStatus, name: usersTable.name })
     .from(usersTable).where(eq(usersTable.id, id));
-  if (!target || target.role !== "teacher" || target.teacherApplicationStatus !== "pending_review") {
-    res.status(409).json({ error: "Only pending teacher applications can be reviewed" }); return;
+  const submittedApplication = await pool.query("SELECT 1 FROM teacher_cv_review_history WHERE teacher_id=$1 AND action='submitted' LIMIT 1", [id]);
+  if (!target || target.role !== "teacher" || !submittedApplication.rows.length || ![null, "pending_review", "not_applicable"].includes(target.teacherApplicationStatus ?? null)) {
+    res.status(409).json({ error: "Only formally submitted pending teacher applications can be reviewed" }); return;
   }
+
   if (action === "approve") {
     await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, cv jsonb NOT NULL DEFAULT '{}'::jsonb, updated_at timestamptz NOT NULL DEFAULT now())");
     const cvResult = await pool.query("SELECT cv FROM teacher_profiles WHERE user_id = $1", [id]);
@@ -623,33 +632,86 @@ router.patch("/users/:id/teacher-review", requireAuth, requireManagerPermissionF
     const photoResult = await pool.query("SELECT id FROM teacher_documents WHERE id=$1 AND user_id=$2 AND document_type=$3 AND mime_type LIKE $4", [Number(cv.photoDocumentId), id, "cv", "image/%"]);
     const hasPhoto = photoResult.rows.length > 0;
     const hasLegalDetails = ["fullName","idNumber","dob","phone","email","address"].every((key) => typeof personalDetails[key] === "string" && String(personalDetails[key]).trim().length > 0);
-    const docs = await pool.query("SELECT 1 FROM teacher_documents WHERE user_id = $1 AND document_type IN ('resume','certificate') LIMIT 1", [id]);
-    const verifiedQualifications = await pool.query("SELECT count(*)::int AS total, count(*) FILTER (WHERE verification_status=$2 AND document_id IS NOT NULL)::int AS verified FROM teacher_qualifications WHERE user_id=$1", [id, "verified"]);
+    const docs = await pool.query("SELECT 1 FROM teacher_documents WHERE user_id=$1 AND document_type='resume' AND mime_type='application/pdf' LIMIT 1", [id]);
+    const verifiedQualifications = await pool.query("SELECT count(*)::int AS total, count(*) FILTER (WHERE q.verification_status=$2 AND q.document_id IS NOT NULL AND d.document_type='certificate')::int AS verified FROM teacher_qualifications q LEFT JOIN teacher_documents d ON d.id=q.document_id AND d.user_id=q.user_id WHERE q.user_id=$1", [id, "verified"]);
     if (missingFields.length || !hasPhoto || !hasLegalDetails || !docs.rows.length || Number(verifiedQualifications.rows[0]?.total||0)===0 || Number(verifiedQualifications.rows[0]?.verified||0)!==Number(verifiedQualifications.rows[0]?.total||0)) {
       res.status(409).json({
-        error: "Teacher application is incomplete. Complete personal/legal CV details, upload a profile photo and supporting CV document, and have every separate qualification certificate verified before authorization.",
+        error: "Teacher application is incomplete. Complete personal/legal CV details, upload a profile photo and PDF resume, and have every separate qualification certificate verified before authorization. The readiness survey is optional.",
         missingFields,
         qualificationVerificationComplete: Number(verifiedQualifications.rows[0]?.total||0)>0 && Number(verifiedQualifications.rows[0]?.verified||0)===Number(verifiedQualifications.rows[0]?.total||0),
         profilePhotoUploaded: hasPhoto,
         legalDetailsComplete: hasLegalDetails,
-        qualificationDocumentUploaded: Boolean(docs.rows.length),
+        resumePdfUploaded: Boolean(docs.rows.length),
       });
       return;
     }
   }
-  if (action === "reject" || action === "convert_to_learner") {
-    const [applicant] = await db.select({ email: usersTable.email, name: usersTable.name }).from(usersTable).where(eq(usersTable.id, id));
-    try { await sendEmail({ to: [applicant.email], subject: "Dallyletter Elidems teacher application outcome", text: "Hello " + (applicant.name || "applicant") + ", your teacher application was not approved. Your login details remain valid and your account has been converted to a learner account. Sign in again to access the learner dashboard." }); }
-    catch { res.status(503).json({ error: "Notification email could not be accepted. Account remains unchanged; retry after email delivery is restored." }); return; }
+
+  let conversionDeadline: Date | null = null;
+  if (action === "reject") {
+    const setting = await pool.query("SELECT review_duration_days FROM teacher_cv_workflow_settings WHERE id=1");
+    const configuredDays = Number(setting.rows[0]?.review_duration_days || 30);
+    const days = Number.isInteger(configuredDays) && configuredDays >= 1 && configuredDays <= 365 ? configuredDays : 30;
+    conversionDeadline = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
   }
-  const [user] = await db.update(usersTable).set(
-    action === "approve"
-      ? { role: "teacher", teacherApplicationStatus: "approved", teacherReviewDeadline: null }
-      : { role: "student", teacherApplicationStatus: action === "reject" ? "rejected" : "manual_conversion", teacherReviewDeadline: null, subject: null, isManager: false, isPrefect: false },
-  ).where(eq(usersTable.id, id)).returning(safeUserFields);
-  await revokeUserSessions(id);
+  const nextStatus = action === "approve" ? "approved" : "rejected_pending_conversion";
+  const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 2000) : null;
+  await pool.query(`CREATE TABLE IF NOT EXISTS teacher_cv_review_history(
+    id bigserial PRIMARY KEY,
+    teacher_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    reviewer_id integer REFERENCES users(id),
+    action text NOT NULL,
+    previous_status text,
+    new_status text NOT NULL,
+    note text,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const updateSql = action === "approve"
+      ? "UPDATE users SET teacher_application_status='approved',teacher_review_deadline=NULL WHERE id=$1 AND lower(role)='teacher' AND COALESCE(teacher_application_status,'not_applicable') IN ('pending_review','not_applicable') RETURNING id"
+      : "UPDATE users SET teacher_application_status='rejected_pending_conversion',teacher_review_deadline=$2,is_manager=false,is_prefect=false WHERE id=$1 AND lower(role)='teacher' AND teacher_application_status='pending_review' RETURNING id";
+    const updated = await client.query(updateSql, action === "reject" ? [id, conversionDeadline] : [id]);
+    if (!updated.rows.length) {
+      await client.query("ROLLBACK");
+      res.status(409).json({ error: "Teacher application changed before the review decision could be saved." });
+      return;
+    }
+    await client.query(
+      "INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,$3,$4,$5,$6)",
+      [id, actor.id, action, target.teacherApplicationStatus || "pending_review", nextStatus, note],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+  const [user] = await db.select(safeUserFields).from(usersTable).where(eq(usersTable.id, id));
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
-  res.json({ ...user, createdAt: user.createdAt.toISOString() });
+  // Approval and rejection preserve the existing session and credentials. Only scheduled expiry conversion revokes sessions.
+
+  const title = action === "approve" ? "Teacher application approved" : "Teacher application not approved";
+  const message = action === "approve"
+    ? "Your teacher CV has been approved. Your teacher permissions are now active."
+    : "Your teacher CV was not approved. Teaching permissions are disabled, but your account and login remain active until " + (conversionDeadline?.toLocaleString() || "the scheduled learner conversion") + ". You may continue using your Profile Hub.";
+  try {
+    await db.insert(notificationsTable).values({ recipientId: id, title, message, link: "/profile-hub", type: "teacher_cv_decision" });
+  } catch (error) {
+    console.error("[teacher-review] In-app notification failed; account decision remains saved.", error instanceof Error ? error.message : "unknown");
+  }
+  try {
+    await enqueueEmailNotification(id, "Dallyletter Elidems — " + title, message);
+  } catch (error) {
+    console.error("[teacher-review] Email notification could not be queued; account decision remains saved.", error instanceof Error ? error.message : "unknown");
+  }
+  res.json({
+    ...user,
+    createdAt: user.createdAt.toISOString(),
+    conversionDeadline: conversionDeadline?.toISOString() ?? null,
+  });
 });
 
 router.patch("/users/:id/payment-info", requireAuth, async (req, res): Promise<void> => {
@@ -844,6 +906,24 @@ router.post("/users/me/qualifications", requireAuth, async (req, res): Promise<v
     RETURNING id,title,institution,year,verification_status,document_id,source,created_at`,
     [req.currentUser!.id, title.trim(), typeof institution === "string" ? institution.trim() || null : null, parsedYear, verifiedDocumentId]);
   res.status(201).json(result.rows[0]);
+});
+
+router.patch("/users/me/qualifications/:id", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.currentUser!.id;
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid qualification id." }); return; }
+  if (!["teacher", "manager", "senior_manager"].includes(String(req.currentUser!.role).toLowerCase())) { res.status(403).json({ error: "Teacher or manager account required." }); return; }
+  const { title, institution, year } = req.body ?? {};
+  if (typeof title !== "string" || !title.trim() || title.trim().length > 500) { res.status(400).json({ error: "Qualification title is required (maximum 500 characters)." }); return; }
+  if (institution != null && (typeof institution !== "string" || institution.length > 300)) { res.status(400).json({ error: "Institution must be text up to 300 characters." }); return; }
+  const parsedYear = year == null || year === "" ? null : Number(year);
+  if (parsedYear !== null && (!Number.isInteger(parsedYear) || parsedYear < 1900 || parsedYear > new Date().getFullYear() + 5)) { res.status(400).json({ error: "Enter a valid qualification year." }); return; }
+  const result = await pool.query(
+    "UPDATE teacher_qualifications SET title=$1,institution=$2,year=$3,verification_status='pending' WHERE id=$4 AND user_id=$5 AND source='user' AND verification_status IN ('pending','rejected') RETURNING id,title,institution,year,verification_status,document_id,source,created_at",
+    [title.trim(), typeof institution === "string" ? institution.trim() || null : null, parsedYear, id, userId],
+  );
+  if (!result.rows.length) { res.status(404).json({ error: "Editable qualification not found. Verified qualifications cannot be changed." }); return; }
+  res.json(result.rows[0]);
 });
 
 
