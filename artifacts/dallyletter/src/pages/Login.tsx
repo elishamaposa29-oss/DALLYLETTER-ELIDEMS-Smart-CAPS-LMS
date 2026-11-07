@@ -39,10 +39,13 @@ export default function Login() {
     loginMutation.mutate({ data: values }, {
       onSuccess: (data) => {
         login(data.token, data.user);
-        if (data.user.role === "owner") setLocation("/admin");
+        const requested = new URLSearchParams(window.location.search).get("next");
+        const safeRequested = requested && requested.startsWith("/") && !requested.startsWith("//") && !requested.startsWith("/login") ? requested : null;
+        if (safeRequested) setLocation(safeRequested);
+        else if (data.user.role === "owner") setLocation("/admin");
         else if (data.user.role === "teacher") setLocation("/teacher");
         else if (["manager","senior_manager"].includes(String(data.user.role||"").toLowerCase().replace(/[ -]+/g,"_"))) setLocation("/manager");
-        else setLocation("/");
+        else setLocation("/student");
       },
       onError: (error) => {
         toast({
