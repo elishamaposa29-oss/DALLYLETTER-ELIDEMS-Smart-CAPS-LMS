@@ -439,6 +439,22 @@ router.post("/payments/paynow/result", async (req, res): Promise<void> => {
     return;
   }
 
+  // Resolve the signed reference and compare its authoritative invoice amount before
+  // entering the settlement transaction. A mismatched callback is a client/provider
+  // validation error (400), not a failed database transaction (500).
+  const referencedPayment = await db.execute(sql`
+    SELECT id, amount FROM payments
+    WHERE notes LIKE ${"%Paynow reference " + reference + "%"}
+       OR notes LIKE ${"%Paynow checkout cancelled: " + reference + "%"}
+    LIMIT 1
+  `);
+  const referencedRows = (referencedPayment as unknown as { rows?: Array<{ id: number; amount: string | number }> }).rows ?? [];
+  if (referencedRows.length === 0) { res.status(404).send("Payment reference not found"); return; }
+  if (Number(referencedRows[0].amount) !== callbackAmount) {
+    res.status(400).send("Payment amount does not match reference");
+    return;
+  }
+
   const result = await db.transaction(async (tx) => {
     const updated = await tx.execute(sql`
       UPDATE payments
