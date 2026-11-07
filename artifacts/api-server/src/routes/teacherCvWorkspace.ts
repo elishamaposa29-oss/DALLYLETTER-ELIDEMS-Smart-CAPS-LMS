@@ -11,7 +11,7 @@ async function ensure(){if(!ready)ready=(async()=>{await pool.query(`CREATE TABL
     await pool.query("ALTER TABLE teacher_cv_workflow_settings ALTER COLUMN review_duration_days DROP NOT NULL");
     await pool.query("ALTER TABLE teacher_cv_workflow_settings ALTER COLUMN review_duration_days DROP DEFAULT");
     await pool.query("UPDATE teacher_cv_workflow_settings SET review_duration_days=NULL WHERE updated_by IS NULL");await pool.query(`CREATE TABLE IF NOT EXISTS teacher_cv_review_history(id bigserial PRIMARY KEY,teacher_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,reviewer_id integer REFERENCES users(id),action text NOT NULL,previous_status text,new_status text NOT NULL,note text,created_at timestamptz NOT NULL DEFAULT now())`);await pool.query(`CREATE TABLE IF NOT EXISTS teacher_cv_chat_messages(id bigserial PRIMARY KEY,teacher_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,sender_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,body text NOT NULL CHECK(length(trim(body)) BETWEEN 1 AND 4000),created_at timestamptz NOT NULL DEFAULT now())`);await pool.query("CREATE INDEX IF NOT EXISTS teacher_cv_chat_thread_idx ON teacher_cv_chat_messages(teacher_id,created_at)")})().catch(e=>{ready=null;throw e});return ready}
-function canReview(u:any){return isSeniorManager(u)}
+function canReview(u:any){return isOwner(u)||isSeniorManager(u)}
 function isOwner(u:any){return ["owner","platform_owner"].includes(normalizeRole(u?.role))}
 function idOf(v:unknown){const n=Number(v);return Number.isSafeInteger(n)&&n>0?n:null}
 router.use(requireAuth);
