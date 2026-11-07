@@ -68,7 +68,7 @@ router.get("/ai/status", requireAuth, async (req, res): Promise<void> => {
 router.post("/ai/chat", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   const role = normalizeRole(user.role);
-  const learnerMode = role === "student" || role === "learner" || role === "prefect";
+  const learnerMode = role === "student" || role === "learner" || role === "prefect" || user.isPrefect === true;
   const requestedMode = req.body?.mode === "agent" ? "agent" : "chat";
   if (learnerMode && requestedMode === "agent") { res.status(403).json({ error: "Agent mode is not available to learner or prefect accounts." }); return; }
   if (!learnerMode && !canUseStaffAI(user)) { res.status(403).json({ error: "Access denied. ELIDEMS AI is unavailable for this account." }); return; }
