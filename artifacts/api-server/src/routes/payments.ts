@@ -692,52 +692,98 @@ router.post("/payments", requireAuth, requireTeacherOrOwner, async (req, res): P
   });
 });
 
-// POST /payments/notify-admin — Student self-reports a payment, notifies all owners
+// POST /payments/notify-admin — create an auditable, unverified payment report against one learner invoice.
 router.post("/payments/notify-admin", requireAuth, async (req, res): Promise<void> => {
   const currentUser = req.currentUser!;
-
-  if (!["student","learner","prefect"].includes(String(currentUser.role).toLowerCase())) {
-    res.status(403).json({ error: "Only students can report payments" });
-    return;
+  if (!["student", "learner", "prefect"].includes(String(currentUser.role).toLowerCase())) {
+    res.status(403).json({ error: "Only learners can report a payment." }); return;
   }
-
+  const paymentId = Number(req.body?.paymentId);
   const amount = Number(req.body?.amount);
   const method = String(req.body?.method || "other").trim().toLowerCase();
   const providerReference = typeof req.body?.providerReference === "string" ? req.body.providerReference.trim() : "";
-  if (!["ecocash","bank_transfer","crypto","cash","other"].includes(method)) { res.status(400).json({error:"Choose a supported manual payment method."}); return; }
-  if (method !== "cash" && providerReference.length > 120) { res.status(400).json({error:"Receipt reference is too long."}); return; }
-  if (!Number.isFinite(amount) || amount <= 0 || amount > 100000 || Math.round(amount*100)!==amount*100) {
-    res.status(400).json({ error: "Enter a valid payment amount greater than zero." });
-    return;
+  if (!Number.isSafeInteger(paymentId) || paymentId <= 0 || !Number.isFinite(amount) || amount <= 0 || amount > 100000 || Math.round(amount * 100) !== amount * 100 ||
+      !["ecocash", "bank_transfer", "crypto", "cash", "other"].includes(method) || providerReference.length > 120 ||
+      (method !== "cash" && providerReference.length < 3)) {
+    res.status(400).json({ error: "Choose an invoice, valid amount, payment method and receipt reference (cash may omit the reference)." }); return;
   }
-
-  const owners = await db.select({ id: usersTable.id }).from(usersTable)
-    .where(inArray(usersTable.role, ["owner", "platform_owner"]));
-  if (!owners.length) {
-    res.status(503).json({ error: "No Owner account is available to receive payment reports." });
-    return;
-  }
-  const amountStr = `$${amount.toFixed(2)}`;
-
-  // Record all Owner notifications and the audit activity as one database transaction.
-  await db.transaction(async (tx) => {
-    for (const owner of owners) {
-      await tx.insert(notificationsTable).values({
-        recipientId: owner.id,
-        title: "💳 Payment Reported by Learner",
-        message: `${currentUser.name} reported a payment of ${amountStr} using ${method.replace("_"," ")}.${providerReference ? " Receipt/reference: " + providerReference + "." : ""} The payment method has not been independently verified; please check the transaction and update the ledger.`,
-        type: "payment_overdue",
-        isRead: false,
+  await ensurePaymentTransactionSchema();
+  const owners = await db.select({ id: usersTable.id }).from(usersTable).where(inArray(usersTable.role, ["owner", "platform_owner"]));
+  if (!owners.length) { res.status(503).json({ error: "No Owner account is available to review payment reports." }); return; }
+  const reference = "DLR-" + currentUser.id + "-" + paymentId + "-" + Date.now() + "-" + crypto.randomBytes(4).toString("hex");
+  try {
+    const result = await db.transaction(async (tx) => {
+      const locked = await tx.execute(sql`SELECT id, amount, amount_paid, status FROM payments WHERE id=${paymentId} AND student_id=${currentUser.id} FOR UPDATE`);
+      const rows = (locked as unknown as { rows?: Array<{ id:number; amount:string|number; amount_paid:string|number; status:string }> }).rows ?? [];
+      const invoice = rows[0];
+      if (!invoice || !["pending","overdue","partially_paid"].includes(String(invoice.status))) {
+        throw Object.assign(new Error("That invoice is not available for a payment report."), { statusCode: 404 });
+      }
+      const balance = Math.max(0, Number(invoice.amount) - Number(invoice.amount_paid || 0));
+      if (balance <= 0) throw Object.assign(new Error("This invoice has no outstanding balance."), { statusCode: 409 });
+      await tx.execute(sql`INSERT INTO payment_transactions(payment_id,provider,reference,amount,status,provider_reference)
+        VALUES(${paymentId},${"reported:" + method},${reference},${amount.toFixed(2)},'reported',${providerReference || null})`);
+      for (const owner of owners) {
+        await tx.insert(notificationsTable).values({
+          recipientId: owner.id,
+          title: "Learner payment needs verification",
+          message: currentUser.name + " reported USD " + amount.toFixed(2) + " (" + method + ") for invoice #" + paymentId + ". Report #" + reference + ". " + (providerReference ? "Receipt: " + providerReference : "Cash report; confirm receipt before approval."),
+          type: "payment_overdue",
+          isRead: false,
+        });
+      }
+      await tx.insert(activityLogTable).values({
+        type: "payment_recorded",
+        description: currentUser.name + " submitted payment report " + reference + " for invoice #" + paymentId + "; awaiting Owner verification.",
+        actorName: currentUser.name,
       });
-    }
-    await tx.insert(activityLogTable).values({
-      type: "payment_recorded",
-      description: `${currentUser.name} self-reported a ${method} payment of ${amountStr}. Awaiting Owner verification.`,
-      actorName: currentUser.name,
+      return { reference, paymentId, amount, status: "reported" };
     });
-  });
+    res.status(201).json({ success: true, ...result, notifiedOwners: owners.length });
+  } catch (error) {
+    const status = Number((error as { statusCode?: number })?.statusCode) || 500;
+    res.status(status).json({ error: error instanceof Error ? error.message : "Payment report could not be saved." });
+  }
+});
 
-  res.json({ success: true, notifiedOwners: owners.length });
+// Owner review queue. Reports are not balances until the Owner independently verifies them.
+router.get("/payments/manual-reports", requireAuth, async (req, res): Promise<void> => {
+  if (!isOwnerRole(req.currentUser!.role)) { res.status(403).json({ error: "Owner access required." }); return; }
+  await ensurePaymentTransactionSchema();
+  const result = await db.execute(sql`
+    SELECT t.id AS report_id,t.payment_id,t.reference,t.provider,t.amount,t.provider_reference,t.created_at,
+           p.student_id,p.student_name,p.amount AS invoice_amount,p.amount_paid,p.month,p.year,p.status AS invoice_status,
+           u.name AS learner_name,u.email AS learner_email
+    FROM payment_transactions t
+    JOIN payments p ON p.id=t.payment_id
+    JOIN users u ON u.id=p.student_id
+    WHERE t.status='reported' AND t.provider LIKE 'reported:%'
+    ORDER BY t.created_at ASC
+    LIMIT 250
+  `);
+  const rows = (result as unknown as { rows?: Array<Record<string, unknown>> }).rows ?? [];
+  res.setHeader("Cache-Control", "no-store");
+  res.json(rows);
+});
+
+// Owner rejects an unverified report without changing the fee ledger.
+router.post("/payments/manual-reports/:reportId/reject", requireAuth, async (req, res): Promise<void> => {
+  const actor = req.currentUser!;
+  if (!isOwnerRole(actor.role)) { res.status(403).json({ error: "Owner access required." }); return; }
+  const reportId = Number(req.params.reportId);
+  if (!Number.isSafeInteger(reportId) || reportId <= 0) { res.status(400).json({ error: "Invalid report." }); return; }
+  await ensurePaymentTransactionSchema();
+  const result = await db.transaction(async (tx) => {
+    const locked = await tx.execute(sql`SELECT t.id,t.payment_id,p.student_id FROM payment_transactions t JOIN payments p ON p.id=t.payment_id WHERE t.id=${reportId} AND t.status='reported' AND t.provider LIKE 'reported:%' FOR UPDATE OF t`);
+    const rows = (locked as unknown as { rows?: Array<{id:number;payment_id:number;student_id:number}> }).rows ?? [];
+    if (!rows[0]) return null;
+    await tx.execute(sql`UPDATE payment_transactions SET status='rejected',updated_at=now() WHERE id=${reportId} AND status='reported'`);
+    await tx.insert(notificationsTable).values({ recipientId: rows[0].student_id, title: "Payment report not verified", message: "The Owner could not verify your reported payment. Your school-fee balance has not changed. Contact the school with your receipt if you believe this is incorrect.", type: "system", isRead: false });
+    await tx.insert(activityLogTable).values({ type: "payment_recorded", description: "Owner rejected unverified payment report #" + reportId + " for invoice #" + rows[0].payment_id + ".", actorName: actor.name });
+    return rows[0];
+  });
+  if (!result) { res.status(404).json({ error: "Pending payment report not found." }); return; }
+  res.json({ rejected: true, reportId });
 });
 
 // Owner confirms a manually received EcoCash, bank, cash or wallet payment against an existing invoice.
