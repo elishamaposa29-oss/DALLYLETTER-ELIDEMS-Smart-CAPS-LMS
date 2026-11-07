@@ -1,14 +1,16 @@
 import { build } from "esbuild";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
+const scriptDir = dirname(fileURLToPath(import.meta.url));
 const dir = await mkdtemp(join(tmpdir(), "dallyletter-offline-queue-tests-"));
 try {
   const outfile = join(dir, "QueuedSubmissionStoreCore.test.mjs");
   await build({
-    entryPoints: ["components/QueuedSubmissionStoreCore.test.ts"],
+    entryPoints: [join(scriptDir, "../components/QueuedSubmissionStoreCore.test.ts")],
     outfile,
     bundle: true,
     platform: "node",
