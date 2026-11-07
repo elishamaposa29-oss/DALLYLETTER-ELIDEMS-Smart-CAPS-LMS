@@ -22,7 +22,8 @@ const educatorTools = [
 
 function dashboardFor(role: string) {
   const normalized = role.toLowerCase().replace(/[ -]+/g, "_");
-  if (normalized === "owner" || normalized === "admin" || normalized === "platform_owner") return "/admin";
+  if (normalized === "owner" || normalized === "platform_owner") return "/admin";
+  if (normalized === "admin") return "/features";
   if (normalized.includes("manager")) return "/manager";
   if (normalized === "teacher") return "/teacher";
   return "/student";
