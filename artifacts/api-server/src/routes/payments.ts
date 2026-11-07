@@ -790,7 +790,7 @@ router.post("/payments/manual-reports/:reportId/reject", requireAuth, async (req
 router.post("/payments/:id/manual-settlement", requireAuth, async (req, res): Promise<void> => {
   const actor=req.currentUser!;
   if(!isOwnerRole(actor.role)){res.status(403).json({error:"Only the Owner can verify manually received school-fee payments."});return;}
-  const paymentId=Number(req.params.id), amount=Number(req.body?.amount);
+  const paymentId=Number(req.params.id), amount=Number(req.body?.amount), reportId=req.body?.reportId===undefined?null:Number(req.body.reportId);
   const method=String(req.body?.method||"").trim().toLowerCase();
   const providerReference=typeof req.body?.providerReference==="string"?req.body.providerReference.trim():"";
   const note=typeof req.body?.note==="string"?req.body.note.trim().slice(0,500):"";
@@ -808,12 +808,23 @@ router.post("/payments/:id/manual-settlement", requireAuth, async (req, res): Pr
       const invoice=rows[0];
       if(!invoice)throw Object.assign(new Error("School-fee invoice not found."),{statusCode:404});
       if(!["pending","overdue","partially_paid","paid"].includes(String(invoice.status)))throw Object.assign(new Error("This invoice is not eligible for a manual payment."),{statusCode:409});
-      if(providerReference){
-        const duplicate=await tx.execute(sql`SELECT id FROM payment_transactions WHERE payment_id=${paymentId} AND provider=${"manual:"+method} AND provider_reference=${providerReference} LIMIT 1`);
-        const duplicateRows=(duplicate as unknown as {rows?:Array<{id:number}>}).rows??[];
-        if(duplicateRows.length)throw Object.assign(new Error("This receipt reference has already been recorded for this invoice."),{statusCode:409});
+      if (reportId !== null) {
+        if (!Number.isSafeInteger(reportId) || reportId <= 0) throw Object.assign(new Error("Invalid payment report."), { statusCode: 400 });
+        const reportResult = await tx.execute(sql`SELECT id,provider,amount,provider_reference,status FROM payment_transactions WHERE id=${reportId} AND payment_id=${paymentId} FOR UPDATE`);
+        const reportRows = (reportResult as unknown as {rows?:Array<{id:number;provider:string;amount:string|number;provider_reference:string|null;status:string}>}).rows ?? [];
+        const report = reportRows[0];
+        if (!report || report.status !== "reported" || report.provider !== "reported:" + method || Number(report.amount) !== amount || String(report.provider_reference || "") !== providerReference) {
+          throw Object.assign(new Error("The report does not match this invoice, amount, method and receipt reference."), { statusCode: 409 });
+        }
+        await tx.execute(sql`UPDATE payment_transactions SET provider=${"manual:"+method},status='paid',updated_at=now() WHERE id=${reportId} AND status='reported'`);
+      } else {
+        if(providerReference){
+          const duplicate=await tx.execute(sql`SELECT id FROM payment_transactions WHERE payment_id=${paymentId} AND provider=${"manual:"+method} AND provider_reference=${providerReference} LIMIT 1`);
+          const duplicateRows=(duplicate as unknown as {rows?:Array<{id:number}>}).rows??[];
+          if(duplicateRows.length)throw Object.assign(new Error("This receipt reference has already been recorded for this invoice."),{statusCode:409});
+        }
+        await tx.execute(sql`INSERT INTO payment_transactions(payment_id,provider,reference,amount,status,provider_reference) VALUES(${paymentId},${"manual:"+method},${internalReference},${amount.toFixed(2)},'paid',${providerReference||null})`);
       }
-      await tx.execute(sql`INSERT INTO payment_transactions(payment_id,provider,reference,amount,status,provider_reference) VALUES(${paymentId},${"manual:"+method},${internalReference},${amount.toFixed(2)},'paid',${providerReference||null})`);
       const updated=await tx.execute(sql`
         UPDATE payments SET amount_paid=COALESCE(amount_paid,0)+${amount},
           status=CASE WHEN COALESCE(amount_paid,0)+${amount}>=amount THEN 'paid' ELSE 'partially_paid' END,
