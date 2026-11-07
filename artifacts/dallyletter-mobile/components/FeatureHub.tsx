@@ -145,6 +145,9 @@ export default function FeatureHub() {
   const [paynowReady, setPaynowReady] = useState(false);
   const [paypalReady, setPaypalReady] = useState(false);
   const [paymentReported, setPaymentReported] = useState(false);
+  const [paymentReportAmount, setPaymentReportAmount] = useState("");
+  const [paymentReportMethod, setPaymentReportMethod] = useState("ecocash");
+  const [paymentReportReference, setPaymentReportReference] = useState("");
   const [prefectTeachers, setPrefectTeachers] = useState<Row[]>([]);
   const [prefectLeaderboard, setPrefectLeaderboard] = useState<Row[]>([]);
   const [prefectFollows, setPrefectFollows] = useState<Row[]>([]);
@@ -940,7 +943,10 @@ export default function FeatureHub() {
     if (!isStudent || paymentBusy) return;
     setPaymentBusy(true);
     try {
-      await request("/api/payments/notify-admin", { method: "POST", body: JSON.stringify({ amount: paymentTotalOwed }) });
+      const reportedAmount = paymentReportAmount.trim() ? Number(paymentReportAmount) : paymentTotalOwed;
+      if (!Number.isFinite(reportedAmount) || reportedAmount <= 0 || reportedAmount > 100000) throw new Error("Enter a valid amount paid.");
+      if (paymentReportMethod !== "cash" && paymentReportReference.trim().length < 3) throw new Error("Enter the receipt or transaction reference.");
+      await request("/api/payments/notify-admin", { method: "POST", body: JSON.stringify({ amount: reportedAmount, method: paymentReportMethod, providerReference: paymentReportReference.trim() }) });
       setPaymentReported(true);
       Alert.alert("School notified", "Your school has been asked to verify your payment. This is not confirmation that payment has cleared.");
     } catch (e) { Alert.alert("Could not notify school", e instanceof Error ? e.message : "Please retry when connected."); }
@@ -1327,7 +1333,13 @@ export default function FeatureHub() {
             {isStudent && Number(paymentSettings.school_fee_amount)>0 ? <View style={{padding:10,borderWidth:1,borderColor:colors.border,borderRadius:10,marginTop:8}}><Text style={styles.cardTitle}>School's published standard fee</Text><Text style={styles.body}>USD {Number(paymentSettings.school_fee_amount).toFixed(2)}</Text><Text style={styles.muted}>Your actual outstanding balance is shown in your fee records above; this published fee is a guide and may differ for your class or term.</Text></View>:null}
             {isStudent && paymentSettings.payment_instructions ? <Text style={styles.muted}>{String(paymentSettings.payment_instructions)}</Text>:null}
             {isStudent && (paynowReady || paypalReady) && nextPaymentBalance > 0 ? <View style={{marginTop:8,padding:10,borderWidth:1,borderColor:colors.border,borderRadius:10}}><Text style={styles.cardTitle}>Amount to pay now (USD)</Text><TextInput style={[styles.input,{marginTop:8}]} value={paymentAmountInput} onChangeText={setPaymentAmountInput} keyboardType="decimal-pad" placeholder={nextPaymentBalance.toFixed(2)} placeholderTextColor={colors.mutedForeground}/><Text style={styles.muted}>Pay part of this fee, the full remaining balance, or extra. Verified extra money is recorded as credit. Leave blank to pay the full balance of the next fee record.</Text></View>:null}
-            {isStudent ? ((paynowReady || paypalReady || paymentSettings.ecocash_number || paymentSettings.trust_wallet) ? <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void notifyPayment()} disabled={paymentBusy||paymentReported}><Text style={[styles.buttonText,styles.secondaryText]}>{paymentReported?"School notified":"I have paid — notify school"}</Text></TouchableOpacity> : <Text style={styles.muted}>Payment methods are not configured. Please contact your school.</Text>) : null}
+            {isStudent ? ((paynowReady || paypalReady || paymentSettings.ecocash_number || paymentSettings.trust_wallet) ? <View style={{gap:8,borderWidth:1,borderColor:colors.border,borderRadius:10,padding:10}}>
+              <Text style={styles.cardTitle}>Report a manual payment for Owner verification</Text>
+              <TextInput style={styles.input} value={paymentReportAmount} onChangeText={setPaymentReportAmount} keyboardType="decimal-pad" placeholder={"Amount paid (USD) · balance "+paymentTotalOwed.toFixed(2)} placeholderTextColor={colors.mutedForeground}/>
+              <View style={{flexDirection:"row",flexWrap:"wrap",gap:6}}>{["ecocash","bank_transfer","crypto","cash","other"].map(method=><TouchableOpacity key={method} onPress={()=>setPaymentReportMethod(method)} style={{paddingVertical:7,paddingHorizontal:9,borderRadius:8,borderWidth:1,borderColor:paymentReportMethod===method?colors.primary:colors.border,backgroundColor:paymentReportMethod===method?colors.primary+"18":"transparent"}}><Text style={{fontSize:11,color:colors.foreground,fontWeight:paymentReportMethod===method?"800":"500"}}>{method.replace("_"," ")}</Text></TouchableOpacity>)}</View>
+              <TextInput style={styles.input} value={paymentReportReference} onChangeText={setPaymentReportReference} maxLength={120} placeholder="Receipt / transaction reference (cash optional)" placeholderTextColor={colors.mutedForeground}/>
+              <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void notifyPayment()} disabled={paymentBusy||paymentReported}><Text style={[styles.buttonText,styles.secondaryText]}>{paymentReported?"School notified":"I have paid — notify school"}</Text></TouchableOpacity>
+            </View> : <Text style={styles.muted}>Payment methods are not configured. Please contact your school.</Text>) : null}
             {isStudent ? <Text style={styles.muted}>Payment options need an internet connection. A notification to school is a report, not proof that funds have cleared.</Text> : <Text style={styles.muted}>Staff view: payment records are read-only here.</Text>}
           </View>
           <Text style={styles.sectionTitle}>Payment history</Text>
