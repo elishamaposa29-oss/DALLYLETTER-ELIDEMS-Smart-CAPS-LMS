@@ -156,14 +156,18 @@ router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<vo
   if (!process.env.PAYPAL_WEBHOOK_ID?.trim()) {
     res.status(503).json({ error: "PayPal webhook verification is not configured; checkout is disabled." }); return;
   }
-  let payment: { id: number; amount: string; month: string; year: number } | undefined;
+  const requestedAmount = req.body?.amount === undefined ? undefined : Number(req.body.amount);
+  if (req.body?.amount !== undefined && (!Number.isFinite(requestedAmount) || requestedAmount! <= 0 || requestedAmount! > 100000)) {
+    res.status(400).json({ error: "Enter a valid payment amount." }); return;
+  }
+  let payment: { id: number; amount: string; amount_paid: string | number; month: string; year: number } | undefined;
   const reservation = "PayPal checkout in progress " + crypto.randomBytes(12).toString("hex");
   try {
     const claimed = await db.execute(sql`
       WITH candidate AS (
         SELECT id FROM payments
         WHERE student_id = ${user.id}
-          AND status IN ('pending', 'overdue')
+          AND status IN ('pending', 'overdue', 'partially_paid')
           AND COALESCE(notes, '') NOT LIKE '%PayPal order %'
           AND COALESCE(notes, '') NOT LIKE '%PayPal checkout in progress%'
         ORDER BY created_at ASC, id ASC
@@ -174,11 +178,15 @@ router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<vo
       FROM candidate WHERE p.id = candidate.id
       RETURNING p.id, p.amount, p.amount_paid, p.month, p.year
     `);
-    const claimedRows = (claimed as unknown as { rows?: Array<{ id: number; amount: string; month: string; year: number }> }).rows ?? [];
+    const claimedRows = (claimed as unknown as { rows?: Array<{ id: number; amount: string; amount_paid: string | number; month: string; year: number }> }).rows ?? [];
     payment = claimedRows[0];
     if (!payment) { res.status(409).json({ error: "No unpaid fee record is available for checkout, or another checkout is already in progress." }); return; }
-    const amount = Number(payment.amount);
-    if (!Number.isFinite(amount) || amount <= 0) throw new Error("Invalid fee record amount");
+    const invoiceAmount = Number(payment.amount);
+    const amountPaid = Number(payment.amount_paid || 0);
+    const outstandingBalance = Math.max(0, invoiceAmount - amountPaid);
+    const amount = requestedAmount ?? outstandingBalance;
+    if (!Number.isFinite(invoiceAmount) || invoiceAmount <= 0 || outstandingBalance <= 0 ||
+        !Number.isFinite(amount) || amount <= 0 || amount > 100000) throw new Error("Invalid fee record amount");
     const accessToken = await getPayPalAccessToken();
     if (!accessToken) { throw new Error("PayPal API credentials are not configured"); }
     const reference = "DLP-" + user.id + "-" + payment.id + "-" + Date.now() + "-" + crypto.randomBytes(4).toString("hex");
@@ -210,12 +218,16 @@ router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<vo
     const approvalUrl = order.links?.find(link => link.rel === "approve" || link.rel === "payer-action")?.href;
     if (!response.ok || !order.id || !approvalUrl) throw new Error("PayPal could not create a checkout order");
     await db.execute(sql`
+      INSERT INTO payment_transactions (payment_id, provider, reference, amount, status)
+      VALUES (${payment.id}, 'paypal', ${reference}, ${amount.toFixed(2)}, 'pending')
+    `);
+    await db.execute(sql`
       UPDATE payments SET notes = CONCAT(COALESCE(notes, ''), ' | PayPal order ', CAST(${order.id} AS TEXT), ' reference ', CAST(${reference} AS TEXT)),
         updated_at = now()
-      WHERE id = ${payment.id} AND student_id = ${user.id} AND status IN ('pending', 'overdue')
+      WHERE id = ${payment.id} AND student_id = ${user.id} AND status IN ('pending', 'overdue', 'partially_paid')
         AND notes LIKE ${"%" + reservation + "%"}
     `);
-    res.status(201).json({ reference, checkoutUrl: approvalUrl, amount, month: payment.month, year: payment.year });
+    res.status(201).json({ reference, checkoutUrl: approvalUrl, amount, invoiceAmount, amountAlreadyPaid: amountPaid, outstandingBalance, month: payment.month, year: payment.year });
   } catch (error) {
     if (payment) {
       await db.execute(sql`
