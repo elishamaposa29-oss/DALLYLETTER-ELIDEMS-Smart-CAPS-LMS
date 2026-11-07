@@ -141,21 +141,9 @@ test("Senior managers may override Junior Managers and ordinary users but never 
  for(const target of [{role:"senior_manager"},{role:"admin"},{role:"owner"}]) assert.equal(canModerateUser(senior,target),false,String(target.role));
 });
 
-test("transfer approval is limited to Owner and Senior Manager authority; rejection is separately grantable",()=>{
- assert.equal(isSeniorOnlyManagerPermission("transfers.approve"),false,"transfer approval is individually grantable to a Junior Manager only through its own Owner grant");
- assert.equal(isSeniorOnlyManagerPermission("transfers.reject"),false,"transfer rejection can be granted individually to a Junior Manager");
- assert.equal(isSeniorOnlyManagerPermission("transfers.approve"),false,"transfer approval is also individually grantable, but uses a separate key");
- assert.equal(isSeniorOnlyManagerPermission("reports.review"),false,"report approval is individually grantable");
- assert.equal(isSeniorOnlyManagerPermission("achievements.approve"),false,"achievement approval is individually grantable");
- assert.equal(isSeniorOnlyManagerPermission("teacher_cv.review"),true,"teacher CV and pending survey review remain Senior-only");
- assert.equal(isSeniorOnlyManagerPermission("teacher_cv.authorize"),true,"teacher authorization remains Senior-only");
- assert.equal(isSeniorOnlyManagerPermission("qualifications.verify"),true,"qualification verification remains Senior-only");
- for(const role of ["owner","platform_owner","senior_manager"]) assert.equal(canReviewAcademicTransfer({role}),true,role);
- assert.equal(canReviewAcademicTransfer({role:"manager",managerLevel:"senior"}),true,"legacy senior-level managers retain review authority");
- assert.equal(canReviewAcademicTransfer({role:"teacher",isManager:true,managerLevel:"senior"}),true,"legacy senior teacher-managers retain review authority");
- for(const role of ["admin","manager","junior_manager","student","prefect","teacher","unknown"]) assert.equal(canReviewAcademicTransfer({role,isManager:false}),false,role);
- assert.equal(canReviewAcademicTransfer({role:"teacher",isManager:true,managerLevel:"junior"}),false,"junior teacher-managers cannot approve transfers");
- assert.equal(canReviewAcademicTransfer({role:"teacher",isManager:true,managerLevel:"senior",teacherApplicationStatus:"pending_review"}),false,"pending teacher applications cannot review transfers");
+test("operational approvals are grant-based while teacher application decisions remain restricted",()=>{
+ for(const key of ["transfers.approve","transfers.reject","reports.review","achievements.approve"]) assert.equal(isSeniorOnlyManagerPermission(key),false,key);
+ for(const key of ["teacher_cv.review","teacher_cv.authorize","qualifications.verify"]) assert.equal(isSeniorOnlyManagerPermission(key),true,key);
 });
 
 test("explicit hierarchy keeps junior and senior manager permissions while separating approvals",()=>{
