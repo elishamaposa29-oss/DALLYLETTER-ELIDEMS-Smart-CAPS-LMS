@@ -8,7 +8,7 @@ if (enabled) {
   globalThis.fetch = async (input, init = {}) => {
     const url = new URL(typeof input === "string" || input instanceof URL ? String(input) : input.url);
     const method = String(init.method || "GET").toUpperCase();
-    const bodyText = typeof init.body === "string" ? init.body : "";
+    const bodyText = typeof init.body === "string" ? init.body : init.body instanceof URLSearchParams ? init.body.toString() : "";
     let response;
     if (url.hostname === "www.googleapis.com" && url.pathname === "/oauth2/v3/certs" && method === "GET") {
       const jwks = JSON.parse((await import("node:fs")).readFileSync("/tmp/pr84-google-jwks.json", "utf8"));
@@ -44,11 +44,11 @@ if (enabled) {
       const fields = new URLSearchParams(bodyText);
       const reference = fields.get("reference") || "missing-reference";
       appendFileSync(capturePath, JSON.stringify({ provider: "paynow", fields: Object.fromEntries(fields) }) + "\n");
-      response = { status: 200, body: {
+      response = { status: 200, body: new URLSearchParams({
         status: "Ok",
         browserurl: "https://paynow.test/checkout/" + encodeURIComponent(reference),
         pollurl: "https://paynow.test/poll/" + encodeURIComponent(reference),
-      } };
+      }).toString() };
     } else if (url.hostname === "paypal.test" && url.pathname === "/v1/oauth2/token" && method === "POST") {
       response = { status: 200, body: { access_token: "mock-paypal-access-token", token_type: "Bearer" } };
     } else if (url.hostname === "paypal.test" && url.pathname === "/v1/notifications/verify-webhook-signature" && method === "POST") {
@@ -96,9 +96,10 @@ if (enabled) {
     } else {
       throw new Error("Test provider guard blocked unexpected network request: " + method + " " + url.origin + url.pathname);
     }
-    return new Response(JSON.stringify(response.body), {
+    const responseBody = typeof response.body === "string" ? response.body : JSON.stringify(response.body);
+    return new Response(responseBody, {
       status: response.status,
-      headers: { "content-type": "application/json", "cache-control": "public, max-age=300" },
+      headers: { "content-type": typeof response.body === "string" ? "application/x-www-form-urlencoded" : "application/json", "cache-control": "public, max-age=300" },
     });
   };
 }
