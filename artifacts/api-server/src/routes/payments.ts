@@ -288,8 +288,8 @@ router.post("/payments/paypal/capture", requireAuth, async (req, res): Promise<v
       SELECT t.payment_id,t.amount,t.currency,t.status AS transaction_status,
              p.student_id,p.amount AS invoice_amount,p.amount_paid,p.status AS invoice_status
       FROM payment_transactions t JOIN payments p ON p.id=t.payment_id
-      WHERE t.provider='paypal' AND t.provider_order_id=\${orderId}
-        AND t.reference=\${reference} AND p.student_id=\${user.id}
+      WHERE t.provider='paypal' AND t.provider_order_id=${orderId}
+        AND t.reference=${reference} AND p.student_id=${user.id}
       LIMIT 1
     \`);
     const rows = (result as unknown as { rows?: Array<{ payment_id:number;amount:string|number;currency:string;transaction_status:string;student_id:number;invoice_amount:string|number;amount_paid:string|number;invoice_status:string }> }).rows ?? [];
@@ -333,7 +333,7 @@ router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
     await db.execute(sql\`
       INSERT INTO payment_provider_webhook_audit
         (provider,event_id,transmission_id,event_type,order_id,capture_id,signature_verified,outcome,detail)
-      VALUES ('paypal',\${eventId},\${transmissionId},\${eventType},\${orderId},\${captureId},\${verified},\${outcome},\${detail.slice(0,500)})
+      VALUES ('paypal',${eventId},${transmissionId},${eventType},${orderId},${captureId},${verified},${outcome},${detail.slice(0,500)})
     \`).catch(() => undefined);
   };
   if (!webhookId) {
@@ -412,8 +412,8 @@ router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
                p.student_id,p.amount AS invoice_amount,p.amount_paid,p.status AS invoice_status
         FROM payment_transactions t
         JOIN payments p ON p.id=t.payment_id
-        WHERE t.provider='paypal' AND t.provider_order_id=\${orderId}
-          AND t.reference=\${reference} AND t.currency='USD'
+        WHERE t.provider='paypal' AND t.provider_order_id=${orderId}
+          AND t.reference=${reference} AND t.currency='USD'
         FOR UPDATE OF t,p
       \`);
       const lockedRows = (locked as unknown as { rows?: Array<{ payment_id:number;amount:string|number;currency:string;transaction_status:string;provider_capture_id:string|null;student_id:number;invoice_amount:string|number;amount_paid:string|number;invoice_status:string }> }).rows ?? [];
@@ -434,9 +434,9 @@ router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
       }
       const updatedTransaction = await tx.execute(sql\`
         UPDATE payment_transactions
-        SET status='paid',provider_capture_id=\${captureId},updated_at=now()
-        WHERE provider='paypal' AND provider_order_id=\${orderId}
-          AND reference=\${reference} AND status='pending'
+        SET status='paid',provider_capture_id=${captureId},updated_at=now()
+        WHERE provider='paypal' AND provider_order_id=${orderId}
+          AND reference=${reference} AND status='pending'
         RETURNING payment_id,amount
       \`);
       const txRows = (updatedTransaction as unknown as { rows?: Array<{payment_id:number;amount:string|number}> }).rows ?? [];
@@ -444,11 +444,11 @@ router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
       const appliedAmount = Number(txRows[0].amount);
       const updatedPayment = await tx.execute(sql\`
         UPDATE payments
-        SET amount_paid=COALESCE(amount_paid,0)+\${appliedAmount},
-            status=CASE WHEN COALESCE(amount_paid,0)+\${appliedAmount} >= amount THEN 'paid' ELSE 'partially_paid' END,
-            notes=CONCAT(COALESCE(notes,''),' | PayPal verified capture ',CAST(\${captureId} AS TEXT),' order ',CAST(\${orderId} AS TEXT),' amount ',CAST(\${appliedAmount.toFixed(2)} AS TEXT)),
+        SET amount_paid=COALESCE(amount_paid,0)+${appliedAmount},
+            status=CASE WHEN COALESCE(amount_paid,0)+${appliedAmount} >= amount THEN 'paid' ELSE 'partially_paid' END,
+            notes=CONCAT(COALESCE(notes,''),' | PayPal verified capture ',CAST(${captureId} AS TEXT),' order ',CAST(${orderId} AS TEXT),' amount ',CAST(${appliedAmount.toFixed(2)} AS TEXT)),
             updated_at=now()
-        WHERE id=\${Number(linked.payment_id)} AND student_id=\${Number(linked.student_id)}
+        WHERE id=${Number(linked.payment_id)} AND student_id=${Number(linked.student_id)}
           AND status IN ('pending','overdue','partially_paid')
         RETURNING student_id,status
       \`);
