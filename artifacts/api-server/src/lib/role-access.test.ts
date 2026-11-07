@@ -268,6 +268,7 @@ test("pending teacher API policy allows self-service and privacy-checked Profile
   ["GET","/api/dashboard"],
   ["GET","/api/teacher-dashboard"],
   // Pending applicants cannot access payout preferences until authorization.
+  ["GET","/api/users/me/payout-preferences"],
   ["PUT","/api/users/me/payout-preferences"],
   ["GET","/api/lessons"],
   ["GET","/api/assignments"],
