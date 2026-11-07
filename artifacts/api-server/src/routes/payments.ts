@@ -266,13 +266,13 @@ router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
     const capturedAmount = Number(resource?.amount?.value);
     const orderAmount = Number(unit?.amount?.value);
     if (order.status !== "COMPLETED" || capture?.status !== "COMPLETED" ||
-        !/^DLP-\d+-\d+-[a-f0-9]{8}$/i.test(reference) ||
+        !/^DLP-\d+-\d+-\d+-[a-f0-9]{8}$/i.test(reference) ||
         resource?.amount?.currency_code !== "USD" || unit?.amount?.currency_code !== "USD" ||
         capture?.amount?.currency_code !== "USD" || !Number.isFinite(capturedAmount) ||
         capturedAmount <= 0 || capturedAmount !== orderAmount || Number(capture.amount?.value) !== capturedAmount) {
       res.status(400).json({ error: "PayPal capture does not match a valid school-fee order." }); return;
     }
-    const refMatch = reference.match(/^DLP-(\\d+)-(\\d+)-\\d+-[a-f0-9]{8}$/i);
+    const refMatch = reference.match(/^DLP-(\d+)-(\d+)-\d+-[a-f0-9]{8}$/i);
     if (!refMatch) { res.status(400).json({ error: "PayPal reference is malformed." }); return; }
     const updated = await db.execute(sql`
       UPDATE payments SET status = 'paid',
