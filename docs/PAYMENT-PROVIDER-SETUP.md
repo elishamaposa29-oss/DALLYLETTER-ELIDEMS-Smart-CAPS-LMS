@@ -24,6 +24,7 @@ Create a PayPal REST application in the intended environment and configure these
 - `PAYPAL_CLIENT_ID`
 - `PAYPAL_CLIENT_SECRET`
 - `PAYPAL_WEBHOOK_ID` — the webhook ID returned by PayPal after creating the webhook
+- `PUBLIC_API_URL` — canonical HTTPS API origin used to register the webhook callback
 - `PAYPAL_ENVIRONMENT` — set to `live` for live credentials; otherwise the API uses PayPal Sandbox
 - `PUBLIC_APP_URL` — canonical HTTPS learner-facing web origin
 
