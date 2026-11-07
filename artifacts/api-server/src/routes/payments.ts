@@ -260,7 +260,7 @@ router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<vo
     if (payment) {
       await db.execute(sql`
         UPDATE payments SET notes = replace(COALESCE(notes, ''), ${" | " + reservation}, ''), updated_at = now()
-        WHERE id = ${payment.id} AND student_id = ${user.id} AND status IN ('pending', 'overdue')
+        WHERE id = ${payment.id} AND student_id = ${user.id} AND status IN ('pending', 'overdue', 'partially_paid')
       `).catch(() => undefined);
     }
     res.status(503).json({ error: error instanceof Error ? error.message : "PayPal checkout could not be initialized." });
