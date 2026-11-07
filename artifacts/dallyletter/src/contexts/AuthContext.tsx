@@ -26,7 +26,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    if (!sessionUser || !fetchedUser || sessionUser.id !== fetchedUser.id) return;
+    if (!sessionUser || !fetchedUser) return;
+    if (sessionUser.id !== fetchedUser.id) {
+      // A token resolving to a different account is an identity transition:
+      // discard every cached query before adopting the server-confirmed user.
+      queryClient.clear();
+      setSessionUser(fetchedUser);
+      return;
+    }
     const authorityFingerprint = (value: User) => JSON.stringify({
       id: value.id,
       role: value.role,
@@ -46,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!token || !error) return;
     const message = error instanceof Error ? error.message : String(error);
-    if (/401|unauthorized|authentication required/i.test(message)) {
+    if (/401|403|unauthorized|forbidden|authentication required/i.test(message)) {
       queryClient.clear();
       setSessionUser(null);
       setToken(null);
