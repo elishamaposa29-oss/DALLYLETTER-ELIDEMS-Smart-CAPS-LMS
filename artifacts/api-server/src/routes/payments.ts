@@ -29,6 +29,29 @@ function parsePaynow(text: string): Record<string, string> {
   return out;
 }
 
+let paymentTransactionSchemaReady: Promise<void> | null = null;
+async function ensurePaymentTransactionSchema(): Promise<void> {
+  if (!paymentTransactionSchemaReady) {
+    paymentTransactionSchemaReady = (async () => {
+      await db.execute(sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS amount_paid numeric(10,2) NOT NULL DEFAULT 0`);
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS payment_transactions (
+          id bigserial PRIMARY KEY,
+          payment_id integer NOT NULL REFERENCES payments(id) ON DELETE CASCADE,
+          provider text NOT NULL,
+          reference text NOT NULL UNIQUE,
+          amount numeric(10,2) NOT NULL CHECK (amount > 0),
+          status text NOT NULL DEFAULT 'pending',
+          provider_reference text,
+          created_at timestamptz NOT NULL DEFAULT now(),
+          updated_at timestamptz NOT NULL DEFAULT now()
+        )
+      `);
+    })().catch(error => { paymentTransactionSchemaReady = null; throw error; });
+  }
+  await paymentTransactionSchemaReady;
+}
+
 async function markPaynowAttempt(reference: string, status: "failed" | "cancelled", detail: string): Promise<void> {
   await db.execute(sql`
     UPDATE payments
@@ -41,6 +64,7 @@ async function markPaynowAttempt(reference: string, status: "failed" | "cancelle
 
 // Public capability check: UI visibility must reflect the same server-side requirements as checkout.
 router.get("/payments/paynow/status", (_req, res): void => {
+  await ensurePaymentTransactionSchema();
   const integrationId = process.env.PAYNOW_INTEGRATION_ID?.trim();
   const integrationKey = process.env.PAYNOW_INTEGRATION_KEY?.trim();
   const publicBase = process.env.PUBLIC_APP_URL || process.env.VITE_PUBLIC_APP_URL || "";
@@ -147,7 +171,7 @@ router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<vo
       )
       UPDATE payments p SET notes = CONCAT(COALESCE(p.notes, ''), ' | ', CAST(${reservation} AS TEXT)), updated_at = now()
       FROM candidate WHERE p.id = candidate.id
-      RETURNING p.id, p.amount, p.month, p.year
+      RETURNING p.id, p.amount, p.amount_paid, p.month, p.year
     `);
     const claimedRows = (claimed as unknown as { rows?: Array<{ id: number; amount: string; month: string; year: number }> }).rows ?? [];
     payment = claimedRows[0];
@@ -356,7 +380,7 @@ router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<vo
     WITH candidate AS (
       SELECT id FROM payments
       WHERE student_id = ${user.id}
-        AND status IN ('pending', 'overdue')
+        AND status IN ('pending', 'overdue', 'partially_paid')
         AND COALESCE(notes, '') NOT LIKE '%Paynow reference %'
       ORDER BY created_at ASC, id ASC
       FOR UPDATE SKIP LOCKED
@@ -367,24 +391,33 @@ router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<vo
     FROM candidate WHERE p.id = candidate.id
     RETURNING p.id, p.amount, p.month, p.year
   `);
-  const claimedRows = (claimed as unknown as { rows?: Array<{ id: number; amount: string | number; month: string; year: number }> }).rows ?? [];
+  const claimedRows = (claimed as unknown as { rows?: Array<{ id: number; amount: string | number; amount_paid: string | number; month: string; year: number }> }).rows ?? [];
   const payment = claimedRows[0];
   if (!payment) { res.status(409).json({ error: "No unpaid school-fee record is available for Paynow checkout." }); return; }
-  const amount = Number(payment.amount);
-  if (!Number.isFinite(amount) || amount <= 0 || amount > 100000) {
-    await markPaynowAttempt(reference, "failed", "Invalid school-fee amount");
-    res.status(409).json({ error: "The unpaid school-fee record has an invalid amount." });
+  const invoiceAmount = Number(payment.amount);
+  const alreadyPaid = Number(payment.amount_paid || 0);
+  const outstandingBalance = Math.max(0, invoiceAmount - alreadyPaid);
+  if (!Number.isFinite(invoiceAmount) || invoiceAmount <= 0 || invoiceAmount > 100000 || outstandingBalance <= 0) {
+    await markPaynowAttempt(reference, "failed", "Invalid or settled school-fee amount");
+    res.status(409).json({ error: "The school-fee record has no valid outstanding balance." });
     return;
   }
-  if (requestedAmount !== undefined && Math.abs(requestedAmount - amount) > 0.005) {
-    await markPaynowAttempt(reference, "failed", "Requested amount did not match the stored fee");
-    res.status(409).json({ error: "The requested amount does not match the next outstanding fee. Refresh and try again." });
+  // The learner may pay less, exactly the balance, or more. The callback is
+  // validated against this immutable checkout amount, not against the invoice total.
+  const checkoutAmount = requestedAmount ?? outstandingBalance;
+  if (!Number.isFinite(checkoutAmount) || checkoutAmount <= 0 || checkoutAmount > 100000) {
+    await markPaynowAttempt(reference, "failed", "Invalid requested payment amount");
+    res.status(400).json({ error: "Enter a payment amount greater than zero." });
     return;
   }
+  await db.execute(sql`
+    INSERT INTO payment_transactions (payment_id, provider, reference, amount, status)
+    VALUES (${payment.id}, 'paynow', ${reference}, ${checkoutAmount.toFixed(2)}, 'pending')
+  `);
 
   const fields: Record<string, string> = {
-    id: integrationId, reference, amount: amount.toFixed(2),
-    additionalinfo: "DallyLetter Elidems school fees: " + payment.month + " " + payment.year,
+    id: integrationId, reference, amount: checkoutAmount.toFixed(2),
+    additionalinfo: "DallyLetter Elidems school fees: " + payment.month + " " + payment.year + " (invoice " + payment.id + ")",
     returnurl: publicBase + "/student/payments?reference=" + encodeURIComponent(reference),
     resulturl: publicApi + "/api/payments/paynow/result",
     authemail: user.email, status: "Message",
@@ -401,11 +434,13 @@ router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<vo
     const parsed = parsePaynow(await response.text());
     if (!response.ok || parsed.status?.toLowerCase() === "error" || !parsed.browserurl) {
       const reason = parsed.error || (response.ok ? "Paynow did not return a checkout URL" : "Paynow HTTP " + response.status);
-      await markPaynowAttempt(reference, "failed", reason.slice(0, 300));
+      await db.execute(sql`UPDATE payment_transactions SET status='failed', updated_at=now() WHERE reference=${reference} AND status='pending'`).catch(() => undefined);
+      await db.execute(sql`UPDATE payment_transactions SET status='failed', updated_at=now() WHERE reference=${reference} AND status='pending'`).catch(() => undefined);
+    await markPaynowAttempt(reference, "failed", reason.slice(0, 300));
       res.status(502).json({ error: reason });
       return;
     }
-    res.status(201).json({ reference, checkoutUrl: parsed.browserurl, status: parsed.status || "ok" });
+    res.status(201).json({ reference, checkoutUrl: parsed.browserurl, amount: checkoutAmount, invoiceAmount, amountAlreadyPaid: alreadyPaid, outstandingBalance, status: parsed.status || "ok" });
   } catch (error) {
     const reason = error instanceof Error ? error.message : "Paynow is unavailable";
     await markPaynowAttempt(reference, "failed", reason.slice(0, 300));
@@ -442,65 +477,66 @@ router.post("/payments/paynow/result", async (req, res): Promise<void> => {
   // Resolve the signed reference and compare its authoritative invoice amount before
   // entering the settlement transaction. A mismatched callback is a client/provider
   // validation error (400), not a failed database transaction (500).
-  const referencedPayment = await db.execute(sql`
-    SELECT id, amount FROM payments
-    WHERE notes LIKE ${"%Paynow reference " + reference + "%"}
-       OR notes LIKE ${"%Paynow checkout cancelled: " + reference + "%"}
-    LIMIT 1
+  await ensurePaymentTransactionSchema();
+  const transactionResult = await db.execute(sql`
+    SELECT id, payment_id, amount, status FROM payment_transactions
+    WHERE provider='paynow' AND reference=${reference} LIMIT 1
   `);
-  const referencedRows = (referencedPayment as unknown as { rows?: Array<{ id: number; amount: string | number }> }).rows ?? [];
-  if (referencedRows.length === 0) { res.status(404).send("Payment reference not found"); return; }
-  if (Number(referencedRows[0].amount) !== callbackAmount) {
-    res.status(400).send("Payment amount does not match reference");
+  const transactionRows = (transactionResult as unknown as { rows?: Array<{ id: number; payment_id: number; amount: string | number; status: string }> }).rows ?? [];
+  const paymentAttempt = transactionRows[0];
+  if (!paymentAttempt) { res.status(404).send("Payment reference not found"); return; }
+  if (Number(paymentAttempt.amount) !== callbackAmount) {
+    res.status(400).send("Payment amount does not match this checkout");
     return;
   }
+  if (paymentAttempt.status === "paid") { res.status(200).send("OK"); return; }
+
+  if (normalizedStatus === "failed" || normalizedStatus === "cancelled") {
+    await db.execute(sql`
+      UPDATE payment_transactions SET status=${normalizedStatus}, updated_at=now()
+      WHERE id=${paymentAttempt.id} AND status='pending'
+    `);
+    await db.execute(sql`
+      UPDATE payments
+      SET notes=CONCAT(COALESCE(notes,''),' | Paynow callback: ',CAST(${providerStatus} AS TEXT)), updated_at=now()
+      WHERE id=${paymentAttempt.payment_id}
+    `);
+    res.status(200).send("OK");
+    return;
+  }
+  if (normalizedStatus !== "paid") { res.status(200).send("OK"); return; }
 
   const result = await db.transaction(async (tx) => {
+    const settled = await tx.execute(sql`
+      UPDATE payment_transactions SET status='paid', updated_at=now()
+      WHERE id=${paymentAttempt.id} AND status='pending'
+      RETURNING payment_id, amount
+    `);
+    const settledRows = (settled as unknown as { rows?: Array<{ payment_id: number; amount: string | number }> }).rows ?? [];
+    if (!settledRows.length) return { updated: false };
     const updated = await tx.execute(sql`
       UPDATE payments
-      SET status = CASE
-            WHEN status IN ('failed','refunded') THEN status
-            WHEN status = 'paid' AND CAST(${normalizedStatus} AS TEXT) <> 'refunded' THEN status
-            WHEN CAST(${normalizedStatus} AS TEXT) = 'failed' AND status IN ('pending','overdue') THEN 'failed'
-            WHEN CAST(${normalizedStatus} AS TEXT) IN ('cancelled','pending') THEN status
-            WHEN CAST(${normalizedStatus} AS TEXT) = 'refunded' AND status = 'paid' THEN 'refunded'
-            WHEN CAST(${normalizedStatus} AS TEXT) = 'paid' AND status IN ('pending','overdue') THEN 'paid'
-            ELSE status
+      SET amount_paid=COALESCE(amount_paid,0)+${Number(settledRows[0].amount)},
+          status=CASE
+            WHEN COALESCE(amount_paid,0)+${Number(settledRows[0].amount)} >= amount THEN 'paid'
+            ELSE 'partially_paid'
           END,
-          -- A cancelled checkout releases its temporary reference but leaves the unpaid
-          -- school-fee row pending/overdue so the learner can retry without a new invoice.
-          -- Failed callbacks remain attached for idempotent retries; paid/refunded states never reopen.
-          notes = CASE
-            WHEN CAST(${normalizedStatus} AS TEXT) = 'cancelled' AND status IN ('pending','overdue')
-              THEN CONCAT(replace(COALESCE(notes, ''), ${"Paynow reference " + reference}, ''), ' | Paynow checkout cancelled: ', ${reference})
-            ELSE CONCAT(COALESCE(notes, ''), ' | Paynow callback: ', CAST(${providerStatus} AS TEXT))
-          END,
-          updated_at = now()
-      WHERE notes LIKE ${"%Paynow reference " + reference + "%"}
-        AND amount::numeric = ${callbackAmount}
-        AND status IN ('pending','overdue','failed','paid','refunded')
-      RETURNING student_id
+          notes=CONCAT(COALESCE(notes,''),' | Paynow verified payment ',CAST(${reference} AS TEXT),' amount ',CAST(${Number(settledRows[0].amount).toFixed(2)} AS TEXT)),
+          updated_at=now()
+      WHERE id=${Number(settledRows[0].payment_id)}
+      RETURNING student_id, status
     `);
-    const rows = (updated as unknown as { rows?: Array<{ student_id: number }> }).rows ?? [];
-    if (rows.length > 0 && normalizedStatus === "paid") {
-      await tx.update(usersTable)
-        .set({ lastPaymentDate: new Date().toISOString() })
-        .where(eq(usersTable.id, Number(rows[0].student_id)));
+    const rows = (updated as unknown as { rows?: Array<{ student_id: number; status: string }> }).rows ?? [];
+    if (rows.length && rows[0].status === "paid") {
+      await tx.update(usersTable).set({ lastPaymentDate: new Date().toISOString() }).where(eq(usersTable.id, Number(rows[0].student_id)));
     }
     return { updated: rows.length > 0 };
   });
-
-  if (!result.updated) {
-    const existing = await db.execute(sql`
-      SELECT id, amount FROM payments
-      WHERE notes LIKE ${"%Paynow reference " + reference + "%"}
-         OR notes LIKE ${"%Paynow checkout cancelled: " + reference + "%"}
-      LIMIT 1
-    `);
-    const existingRows = (existing as unknown as { rows?: Array<{ id: number; amount: string | number }> }).rows ?? [];
-    if (existingRows.length === 0) { res.status(404).send("Payment reference not found"); return; }
-    if (Number(existingRows[0].amount) !== callbackAmount) { res.status(400).send("Payment amount does not match reference"); return; }
-    // Duplicate or out-of-order callbacks cannot reopen or reverse a terminal payment.
+  // Repeated provider notifications are idempotent: the transaction row can settle once.
+  if (!result.updated && paymentAttempt.status !== "paid") {
+    const current = await db.execute(sql`SELECT status FROM payment_transactions WHERE id=${paymentAttempt.id}`);
+    const currentRows = (current as unknown as { rows?: Array<{ status: string }> }).rows ?? [];
+    if (!currentRows.length) { res.status(404).send("Payment reference not found"); return; }
   }
   res.status(200).send("OK");
 });
