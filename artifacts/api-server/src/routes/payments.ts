@@ -432,7 +432,7 @@ router.post("/payments/paynow/result", async (req, res): Promise<void> => {
   const result = await db.transaction(async (tx) => {
     const updated = await tx.execute(sql`
       UPDATE payments
-      SET status = CASE WHEN CAST(${normalizedStatus} AS TEXT) IN ('failed','cancelled') THEN status ELSE ${normalizedStatus} END,
+      SET status = CASE WHEN CAST(${normalizedStatus} AS TEXT) IN ('failed','cancelled','pending') THEN status ELSE ${normalizedStatus} END,
           notes = CASE
             WHEN CAST(${normalizedStatus} AS TEXT) IN ('failed','cancelled')
               THEN CONCAT(replace(COALESCE(notes, ''), ${"Paynow reference " + reference}, ''), ' | Paynow callback: ', CAST(${providerStatus} AS TEXT))
@@ -441,7 +441,7 @@ router.post("/payments/paynow/result", async (req, res): Promise<void> => {
           updated_at = now()
       WHERE notes LIKE ${"%Paynow reference " + reference + "%"}
         AND amount::numeric = ${callbackAmount}
-        AND (status = 'pending' OR (CAST(${normalizedStatus} AS TEXT) = 'refunded' AND status = 'paid'))
+        AND (status IN ('pending','overdue') OR (CAST(${normalizedStatus} AS TEXT) = 'refunded' AND status = 'paid'))
       RETURNING student_id
     `);
     const rows = (updated as unknown as { rows?: Array<{ student_id: number }> }).rows ?? [];
