@@ -54,7 +54,18 @@ try {
     error => error instanceof AIProviderError && error.code === "timeout" && error.retryable,
   );
 
-  console.log("AI_PROVIDER_HTTP_FAILURE_INJECTION: PASS (success, 401/403, 429, 5xx, rejected, malformed JSON, network, timeout, redaction)");
+  const callerAbort = new AbortController();
+  globalThis.fetch = async (_url, init) => new Promise((_resolve, reject) => {
+    init.signal.addEventListener("abort", () => reject(new Error("caller cancelled")), { once: true });
+  });
+  const cancelledRequest = requestProviderJson("test", "https://provider.test", { method: "POST", signal: callerAbort.signal });
+  setTimeout(() => callerAbort.abort(), 20);
+  await assert.rejects(
+    cancelledRequest,
+    error => error instanceof AIProviderError && error.code === "cancelled" && !error.retryable,
+  );
+
+  console.log("AI_PROVIDER_HTTP_FAILURE_INJECTION: PASS (success, 401/403, 429, 5xx, rejected, malformed JSON, network, timeout, caller cancellation, redaction)");
 } finally {
   globalThis.fetch = originalFetch;
   if (originalTimeout === undefined) delete process.env.AI_PROVIDER_TIMEOUT_MS;
