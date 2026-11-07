@@ -11,6 +11,7 @@ import { canModerateUser } from "../lib/role-access";
 import { managerHasPermission, requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
 import { getAIProvider } from "../lib/ai-provider";
 import { hasContentPermission } from "../lib/content-permissions";
+import { queueAIContentSafety } from "../lib/ai-content-safety";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, removeStoredMedia } from "../lib/media-storage";
 
 const router = Router();
@@ -189,6 +190,7 @@ router.post("/lessons/:lessonId/exercises",requireAuth,requireManagerPermissionI
   });
   if (created.kind === "missing") { res.status(404).json({error:"Lesson not found"}); return; }
   if (created.kind === "limit") { res.status(409).json({error:"This lesson already has the maximum of 20 exercises.",currentCount:created.count,limit:MAX_EXERCISES_PER_LESSON}); return; }
+  queueAIContentSafety("exercise", Number(created.exercise.id), [created.exercise.title, created.exercise.instructions].filter((value): value is string => typeof value === "string").join("\n"));
   res.status(201).json(created.exercise);
 });
 
@@ -238,6 +240,7 @@ router.post("/:id/questions",requireAuth,requireManagerPermissionIfManager("user
   }
   const [question]=await db.insert(exerciseQuestionsTable).values({exerciseId,prompt:prompt.trim(),type,marksAllocated:marks.toString(),position:Number.isInteger(position)&&position>=0?position:0,config:config&&typeof config==="object"?config:{}}).returning();
   if(type==="poll") await db.insert(exerciseOptionsTable).values(rows.map(r=>({...r,questionId:question.id})));
+  queueAIContentSafety("exercise", Number(exerciseId), [prompt, ...rows.flatMap(row => [row.label, row.value])].join("\n"));
   res.status(201).json(question);
 });
 
