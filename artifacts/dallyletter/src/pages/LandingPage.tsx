@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-import { ArrowRight, BookOpen, BrainCircuit, CalendarDays, CheckCircle2, Landmark, MessageCircle, NotebookTabs, ShieldCheck, Users, Video, Globe2, Sparkles } from "lucide-react";
+import { ArrowRight, BookOpen, BrainCircuit, CalendarDays, CheckCircle2, Landmark, MessageCircle, ClipboardList, ShieldCheck, Users, Video, Globe2, Sparkles } from "lucide-react";
 
 const learningTools = [
   { icon: BookOpen, title: "Curriculum-aware lessons", text: "Open teacher-published lesson notes and learning media.", href: "/student/lessons", action: "Explore lessons" },
