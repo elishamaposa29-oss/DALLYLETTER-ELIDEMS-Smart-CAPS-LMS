@@ -55,4 +55,20 @@ services:
       - key: JWT_SECRET
         sync: false
       - key: CORS_ORIGINS
-        value: https://dallyletter-web.onrender.com,https://your-frontend-domain.com
+        value: https://dallyletter-web.onrender.com,https://dallyletterelidemslearningplatforme-six.vercel.app
+      - key: PUBLIC_APP_URL
+        sync: false
+      - key: PUBLIC_API_URL
+        sync: false
+      - key: PAYNOW_INTEGRATION_ID
+        sync: false
+      - key: PAYNOW_INTEGRATION_KEY
+        sync: false
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      - key: PAYPAL_ENVIRONMENT
+        sync: false
