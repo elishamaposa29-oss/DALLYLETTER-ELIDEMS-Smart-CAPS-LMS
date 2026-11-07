@@ -9,16 +9,10 @@ import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { useEffect, useState } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
 import { InstallAppCard } from "@/components/InstallAppCard";
 
 export default function StudentHome() {
   const { user } = useAuth();
-  const { toast } = useToast();
   const { data: stats, isLoading: statsLoading } = useGetDashboardStats();
   const { data: lessons, isLoading: lessonsLoading } = useListLessons();
   const { data: classes, isLoading: classesLoading } = useListClasses();
