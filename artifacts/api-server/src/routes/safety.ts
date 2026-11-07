@@ -122,7 +122,7 @@ router.post("/content-flags/moderate", requireAuth, requireManagerPermissionIfMa
     res.json(result);
   } catch (err) {
     const failure = err instanceof AIProviderError ? err : new AIProviderError("moderation", "provider_unavailable");
-    const status = failure.code === "timeout" ? 504 : failure.code === "rate_limited" ? 429 : failure.code === "configuration_unavailable" ? 503 : 502;
+    const status = failure.code === "timeout" ? 504 : failure.code === "cancelled" ? 499 : failure.code === "rate_limited" ? 429 : failure.code === "configuration_unavailable" ? 503 : 502;
     res.status(status).json({ error: "AI moderation could not be completed. The content has not been actioned; please retry or use the existing report workflow.", code: failure.code, retryable: failure.retryable });
   }
 });
