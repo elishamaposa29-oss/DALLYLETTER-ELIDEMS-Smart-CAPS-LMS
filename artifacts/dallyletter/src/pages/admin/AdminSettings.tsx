@@ -24,6 +24,8 @@ export default function AdminSettings() {
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [manualReports, setManualReports] = useState<any[]>([]);
+  const [reviewingReport, setReviewingReport] = useState<number | null>(null);
 
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: "",
@@ -43,6 +45,40 @@ export default function AdminSettings() {
       .catch(err => { setSettingsError(err instanceof Error ? err.message : "Unable to load settings"); setLoadingSettings(false); });
   }, []);
 
+  const loadManualReports = async () => {
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const response = await fetch(getApiUrl("/api/payments/manual-reports"), { headers: { Authorization: "Bearer " + token }, cache: "no-store" });
+      if (!response.ok) throw new Error("Could not load payment reports.");
+      setManualReports(await response.json());
+    } catch (error) {
+      toast({ variant: "destructive", title: "Payment review unavailable", description: error instanceof Error ? error.message : "Try again." });
+    }
+  };
+
+  useEffect(() => { void loadManualReports(); }, []);
+
+  const reviewManualReport = async (report: any, approve: boolean) => {
+    setReviewingReport(Number(report.report_id));
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const method = String(report.provider || "").replace(/^reported:/, "");
+      const url = approve ? "/api/payments/" + report.payment_id + "/manual-settlement" : "/api/payments/manual-reports/" + report.report_id + "/reject";
+      const response = await fetch(getApiUrl(url), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify(approve ? { reportId: report.report_id, amount: Number(report.amount), method, providerReference: report.provider_reference || "" } : {}),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Could not update payment report.");
+      toast({ title: approve ? "Payment verified" : "Report rejected", description: approve ? "The verified amount has been applied to invoice #" + report.payment_id + "." : "The invoice balance was left unchanged." });
+      await loadManualReports();
+    } catch (error) {
+      toast({ variant: "destructive", title: "Review failed", description: error instanceof Error ? error.message : "Try again." });
+    } finally {
+      setReviewingReport(null);
+    }
+  };
   const handleSaveSettings = async () => {
     setSavingSettings(true);
     try {
@@ -242,6 +278,20 @@ export default function AdminSettings() {
           </CardContent>
         </Card>
 
+        <Card>
+          <CardHeader className="border-b"><CardTitle>Manual payment verification</CardTitle><CardDescription>Learner reports are unverified until you confirm the receipt. Approving a report applies its amount to the linked invoice; rejecting it does not change the balance.</CardDescription></CardHeader>
+          <CardContent className="space-y-3 pt-6">
+            <div className="flex items-center justify-between gap-3"><p className="text-sm font-medium">{manualReports.length} report(s) awaiting review</p><Button type="button" variant="outline" size="sm" onClick={() => void loadManualReports()}>Refresh</Button></div>
+            {manualReports.length === 0 ? <p className="text-sm text-muted-foreground">No pending manual payment reports.</p> : manualReports.map(report => (
+              <div key={report.report_id} className="rounded-lg border p-3 space-y-2">
+                <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="font-semibold">{report.learner_name} · USD {Number(report.amount).toFixed(2)}</p><p className="text-xs text-muted-foreground">Invoice #{report.payment_id} · {report.month} {report.year} · {String(report.provider).replace(/^reported:/, "").replace(/_/g, " ")}</p></div><span className="text-xs rounded-full border px-2 py-1">Unverified</span></div>
+                <p className="text-sm">Receipt/reference: <span className="font-mono">{report.provider_reference || "Not supplied (cash)"}</span></p>
+                <p className="text-xs text-muted-foreground">Reported {new Date(report.created_at).toLocaleString()} · Current invoice paid: USD {Number(report.amount_paid || 0).toFixed(2)}</p>
+                <div className="flex flex-wrap gap-2"><Button type="button" size="sm" disabled={reviewingReport !== null} onClick={() => void reviewManualReport(report, true)}>{reviewingReport === Number(report.report_id) ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify and apply payment"}</Button><Button type="button" size="sm" variant="outline" disabled={reviewingReport !== null} onClick={() => void reviewManualReport(report, false)}>Reject report</Button></div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
         <Card>
           <CardHeader className="border-b"><CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-purple-500" />ELIDEMS AI</CardTitle><CardDescription>AI provider keys and Live/Development mode are managed separately.</CardDescription></CardHeader>
           <CardContent className="pt-6"><a href="/admin/ai/settings" className="inline-flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted">Open AI Settings <Sparkles className="h-4 w-4" /></a></CardContent>
