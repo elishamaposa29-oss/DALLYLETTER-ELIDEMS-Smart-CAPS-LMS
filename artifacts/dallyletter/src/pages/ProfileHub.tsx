@@ -103,7 +103,7 @@ export default function ProfileHub() {
   const normalizedAccountRole = String(user?.role||"").trim().toLowerCase().replace(/[ -]+/g,"_");
   const canManageOwnPayoutPreferences = Boolean(isOwner && !pendingTeacher && (
     ["owner","platform_owner","student","learner","prefect"].includes(normalizedAccountRole) ||
-    normalizedAccountRole === "teacher"
+    (normalizedAccountRole === "teacher" && ["approved","not_applicable"].includes(String((user as any)?.teacherApplicationStatus ?? "not_applicable").trim().toLowerCase()))
   ));
   const canReviewTransferLetters = ["manager","senior_manager","owner","platform_owner"].includes(String(user?.role||"").trim().toLowerCase().replace(/[ -]+/g,"_"));
   async function pasteVerificationCode(target: "phone" | "notification" | "recovery") {
