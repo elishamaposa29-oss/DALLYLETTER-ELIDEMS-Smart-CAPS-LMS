@@ -259,10 +259,19 @@ export async function getAIProvider(): Promise<AIProvider> {
     anthropicKey ? "anthropic" : "mock"
   );
 
-  if (name === "gemini" && geminiKey) _cached = new GeminiProvider(geminiKey);
-  else if (name === "openai" && openaiKey) _cached = new OpenAIProvider(openaiKey);
-  else if (name === "anthropic" && anthropicKey) _cached = new AnthropicProvider(anthropicKey);
-  else _cached = new MockProvider();
+  if (name === "mock") _cached = new MockProvider();
+  else if (name === "gemini") {
+    if (!geminiKey) throw new AIProviderError("gemini", "invalid_credentials");
+    _cached = new GeminiProvider(geminiKey);
+  } else if (name === "openai") {
+    if (!openaiKey) throw new AIProviderError("openai", "invalid_credentials");
+    _cached = new OpenAIProvider(openaiKey);
+  } else if (name === "anthropic") {
+    if (!anthropicKey) throw new AIProviderError("anthropic", "invalid_credentials");
+    _cached = new AnthropicProvider(anthropicKey);
+  } else {
+    throw new AIProviderError(String(name), "provider_rejected");
+  }
   _cacheTs = Date.now();
   return _cached;
 }
