@@ -21,7 +21,7 @@ if (enabled) {
       const provider = url.hostname === "generativelanguage.googleapis.com" ? "gemini"
         : url.hostname === "api.openai.com" ? "openai" : "anthropic";
       const key = provider === "gemini" ? url.searchParams.get("key")
-        : provider === "openai" ? String(init.headers?.Authorization || "").replace(/^Bearer\\s+/i, "")
+        : provider === "openai" ? String(init.headers?.Authorization || "").replace(/^Bearer\s+/i, "")
         : String(init.headers?.["x-api-key"] || "");
       if (key === "mock-timeout") {
         response = null;
