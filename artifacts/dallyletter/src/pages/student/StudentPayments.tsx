@@ -212,7 +212,7 @@ export default function StudentPayments() {
         {paypalReady && (
           <Button
             onClick={handlePayPal}
-            disabled={paynowBusy || !nextPayablePayment || nextPayablePayment.status === "partially_paid"}
+            disabled={paynowBusy || !nextPayablePayment || String(nextPayablePayment.status) === "partially_paid"}
             className="h-auto py-3 flex-col gap-1.5 bg-[#003087] hover:bg-[#00256e] text-white"
           >
             <div className="flex items-center gap-2 font-bold">
