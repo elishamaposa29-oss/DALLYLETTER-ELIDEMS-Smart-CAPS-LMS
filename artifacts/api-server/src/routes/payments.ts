@@ -284,14 +284,14 @@ router.post("/payments/paypal/capture", requireAuth, async (req, res): Promise<v
     const order = await orderResponse.json() as { id?: string; status?: string; purchase_units?: Array<{ custom_id?: string; invoice_id?: string; amount?: { currency_code?: string; value?: string } }> };
     const unit = order.purchase_units?.[0];
     const reference = String(unit?.custom_id || unit?.invoice_id || "");
-    const result = await db.execute(sql\`
+    const result = await db.execute(sql`
       SELECT t.payment_id,t.amount,t.currency,t.status AS transaction_status,
              p.student_id,p.amount AS invoice_amount,p.amount_paid,p.status AS invoice_status
       FROM payment_transactions t JOIN payments p ON p.id=t.payment_id
       WHERE t.provider='paypal' AND t.provider_order_id=${orderId}
         AND t.reference=${reference} AND p.student_id=${user.id}
       LIMIT 1
-    \`);
+    `);
     const rows = (result as unknown as { rows?: Array<{ payment_id:number;amount:string|number;currency:string;transaction_status:string;student_id:number;invoice_amount:string|number;amount_paid:string|number;invoice_status:string }> }).rows ?? [];
     const linked = rows[0];
     if (!linked || order.id !== orderId) { res.status(403).json({ error: "This PayPal order is not linked to one of your school-fee invoices." }); return; }
@@ -331,11 +331,11 @@ router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
   const transmissionId = String(req.header("paypal-transmission-id") || "").slice(0, 200) || null;
   let signatureVerified = false;
   const audit = async (verified: boolean, outcome: string, detail: string): Promise<void> => {
-    await db.execute(sql\`
+    await db.execute(sql`
       INSERT INTO payment_provider_webhook_audit
         (provider,event_id,transmission_id,event_type,order_id,capture_id,signature_verified,outcome,detail)
       VALUES ('paypal',${eventId},${transmissionId},${eventType},${orderId},${captureId},${verified},${outcome},${detail.slice(0,500)})
-    \`).catch(() => undefined);
+    `).catch(() => undefined);
   };
   if (!webhookId) {
     await audit(false, "rejected", "PayPal webhook verification is not configured");
@@ -409,7 +409,7 @@ router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
     }
 
     const settled = await db.transaction(async (tx) => {
-      const locked = await tx.execute(sql\`
+      const locked = await tx.execute(sql`
         SELECT t.payment_id,t.amount,t.currency,t.status AS transaction_status,t.provider_capture_id,
                p.student_id,p.amount AS invoice_amount,p.amount_paid,p.status AS invoice_status
         FROM payment_transactions t
@@ -417,7 +417,7 @@ router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
         WHERE t.provider='paypal' AND t.provider_order_id=${orderId}
           AND t.reference=${reference} AND t.currency='USD'
         FOR UPDATE OF t,p
-      \`);
+      `);
       const lockedRows = (locked as unknown as { rows?: Array<{ payment_id:number;amount:string|number;currency:string;transaction_status:string;provider_capture_id:string|null;student_id:number;invoice_amount:string|number;amount_paid:string|number;invoice_status:string }> }).rows ?? [];
       const linked = lockedRows[0];
       if (!linked) return { outcome: "rejected" as const, studentId: null as number | null, detail: "No saved transaction is linked to this exact PayPal order and invoice" };
@@ -435,17 +435,17 @@ router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
       }
       // Intentional overpayments are retained as learner credit, matching the existing
       // Owner-verified manual settlement policy. The ledger exposes amount_paid - amount.
-      const updatedTransaction = await tx.execute(sql\`
+      const updatedTransaction = await tx.execute(sql`
         UPDATE payment_transactions
         SET status='paid',provider_capture_id=${captureId},updated_at=now()
         WHERE provider='paypal' AND provider_order_id=${orderId}
           AND reference=${reference} AND status='pending'
         RETURNING payment_id,amount
-      \`);
+      `);
       const txRows = (updatedTransaction as unknown as { rows?: Array<{payment_id:number;amount:string|number}> }).rows ?? [];
       if (!txRows.length) return { outcome: "duplicate" as const, studentId: Number(linked.student_id), detail: "Concurrent delivery already settled this capture" };
       const appliedAmount = Number(txRows[0].amount);
-      const updatedPayment = await tx.execute(sql\`
+      const updatedPayment = await tx.execute(sql`
         UPDATE payments
         SET amount_paid=COALESCE(amount_paid,0)+${appliedAmount},
             status=CASE WHEN COALESCE(amount_paid,0)+${appliedAmount} >= amount THEN 'paid' ELSE 'partially_paid' END,
@@ -454,7 +454,7 @@ router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
         WHERE id=${Number(linked.payment_id)} AND student_id=${Number(linked.student_id)}
           AND status IN ('pending','overdue','partially_paid')
         RETURNING student_id,status
-      \`);
+      `);
       const paymentRows = (updatedPayment as unknown as { rows?: Array<{student_id:number;status:string}> }).rows ?? [];
       if (!paymentRows.length) throw new Error("The linked invoice changed before PayPal settlement");
       await tx.update(usersTable).set({ lastPaymentDate: new Date().toISOString() }).where(eq(usersTable.id, Number(paymentRows[0].student_id)));
