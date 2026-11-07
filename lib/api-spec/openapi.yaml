@@ -1297,7 +1297,7 @@ components:
           type: integer
         status:
           type: string
-          enum: [paid, pending, overdue, partially_paid, failed, cancelled, refunded]
+          enum: [paid, pending, overdue]
         notes:
           type: ["string", "null"]
       required:
