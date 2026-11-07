@@ -403,7 +403,15 @@ router.post("/messages/:id/report", requireAuth, async (req, res): Promise<void>
   }
 
   const [message] = await db.select().from(messagesTable).where(eq(messagesTable.id, messageId));
-  if (!message || message.groupId == null || !(await canAccessGroup(message.groupId, req.currentUser!.id, req.currentUser!.role))) {
+  const reporter = req.currentUser!;
+  const isGroupMessageVisible = Boolean(message && message.groupId != null && await canAccessGroup(message.groupId, reporter.id, reporter.role));
+  const otherParticipantId = message
+    ? Number(message.senderId) === reporter.id ? message.recipientId : message.senderId
+    : null;
+  const isPrivateMessageVisible = Boolean(message && message.groupId == null && message.recipientId != null &&
+    (Number(message.senderId) === reporter.id || Number(message.recipientId) === reporter.id) &&
+    otherParticipantId != null && await canViewPrivateConversation(reporter, Number(otherParticipantId)));
+  if (!message || (!isGroupMessageVisible && !isPrivateMessageVisible)) {
     res.status(404).json({ error: "Message not found" });
     return;
   }
