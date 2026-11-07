@@ -213,7 +213,16 @@ router.post("/academic-records/transfer-requests", requireAuth, async (req, res)
     res.status(400).json({ error: "Enter a valid date of birth that is not after the effective transfer date." });
     return;
   }
-  if (JSON.stringify(formData).length > 180_000) { res.status(413).json({ error: "Transfer application attachments or form data exceed the allowed size." }); return; }
+  const transferImageFields = ["schoolLogoDataUrl", "guardianSignatureDataUrl", "headmasterSignatureDataUrl"];
+  for (const field of transferImageFields) {
+    const image = formData[field];
+    if (image === undefined || image === null || image === "") continue;
+    if (typeof image !== "string" || image.length > 1_250_000 || !/^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(image)) {
+      res.status(400).json({ error: "Transfer letter images must be valid PNG/JPG data under the 900 KB compressed image limit." });
+      return;
+    }
+  }
+  if (JSON.stringify(formData).length > 5_000_000) { res.status(413).json({ error: "Transfer letter fields and attachments exceed the combined 5 MB limit." }); return; }
   // Serialize submissions per learner so rapid taps/retries cannot create duplicate pending requests.
   const client = await pool.connect();
   let requestRow: any;
