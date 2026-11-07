@@ -387,7 +387,7 @@ router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<vo
   const user = req.currentUser!;
   if (user.role !== "student") { res.status(403).json({ error: "Learner access required" }); return; }
   const requestedAmount = req.body?.amount === undefined ? undefined : Number(req.body.amount);
-  if (req.body?.amount !== undefined && (!Number.isFinite(requestedAmount) || requestedAmount! <= 0 || requestedAmount! > 100000)) {
+  if (req.body?.amount !== undefined && (!Number.isFinite(requestedAmount) || requestedAmount! <= 0 || requestedAmount! > 100000 || Math.round(requestedAmount! * 100) !== requestedAmount! * 100)) {
     res.status(400).json({ error: "Enter a valid payment amount." });
     return;
   }
@@ -777,6 +777,7 @@ router.post("/payments/:id/manual-settlement", requireAuth, async (req, res): Pr
       const updatedRows=(updated as unknown as {rows?:Array<{student_id:number;amount:string|number;amount_paid:string|number;status:string}>}).rows??[];
       if(!updatedRows.length)throw new Error("The school-fee ledger could not be updated.");
       const settled=updatedRows[0],balance=Math.max(0,Number(settled.amount)-Number(settled.amount_paid)),credit=Math.max(0,Number(settled.amount_paid)-Number(settled.amount));
+      if(settled.status==="paid")await tx.update(usersTable).set({lastPaymentDate:new Date().toISOString()}).where(eq(usersTable.id,Number(settled.student_id)));
       await tx.insert(activityLogTable).values({type:"payment_recorded",description:"Owner verified "+method+" payment of $"+amount.toFixed(2)+" for invoice #"+paymentId+"; remaining balance $"+balance.toFixed(2)+", credit $"+credit.toFixed(2)+".",actorName:actor.name});
       await tx.insert(notificationsTable).values({recipientId:Number(settled.student_id),title:"School payment verified",message:"The Owner verified your "+method+" payment of USD "+amount.toFixed(2)+". Remaining invoice balance: USD "+balance.toFixed(2)+". Credit: USD "+credit.toFixed(2)+".",type:"system",isRead:false});
       return {paymentId,studentId:Number(settled.student_id),status:settled.status,amountPaid:Number(settled.amount_paid),balance,credit,reference:internalReference};
