@@ -261,8 +261,10 @@ assert.equal(approvedRow.rows[0].role,"teacher");
 assert.equal(approvedRow.rows[0].teacher_application_status,"approved");
 
 // Approval must unlock real teacher operations, not merely change a database status.
-const approvedDashboard=await request("/api/dashboard",{token:approvalApplicant.token});
-assert.equal(approvedDashboard.status,200,"Approved teacher can use the authenticated teacher dashboard API");
+const approvedDashboard=await request("/api/dashboard/stats",{token:approvalApplicant.token});
+assert.equal(approvedDashboard.status,200,"Approved teacher can use the authenticated teacher dashboard statistics API");
+const approvedDashboardActivity=await request("/api/dashboard/activity",{token:approvalApplicant.token});
+assert.equal(approvedDashboardActivity.status,200,"Approved teacher can use the academic dashboard activity API");
 const createdClass=await request("/api/classes",{token:approvalApplicant.token,method:"POST",body:{title:"CV Approval Integration Live Class",description:"Created by the approved teacher API test",subject:"Mathematics",grade:"Form 3",meetLink:"https://meet.google.com/abc-defg-hij",scheduledAt:new Date(Date.now()+86400000).toISOString(),status:"upcoming"}});
 assert.equal(createdClass.status,201,"Approved teacher can schedule a live class through the real API");
 assert.equal((await request("/api/classes/"+createdClass.data.id,{token:approvalApplicant.token})).status,200,"Approved teacher can retrieve the live class they created");
