@@ -44,7 +44,7 @@ router.post("/notifications", requireAuth, requireManagerPermissionIfManager("no
   const isSpecific=hasRecipientId;
   const isBroadcast=!isSpecific&&!recipientRole;
   // Prefects use the dedicated persisted lesson-request workflow; they cannot create role-wide or global broadcasts.
-  if (actor.isPrefect && !managerActor && !isSpecific) {
+  if (actor.isPrefect && !managerActor && (recipientRole || isBroadcast)) {
     res.status(403).json({ error: "Prefects must use the dedicated lesson-request workflow instead of sending broadcasts." });
     return;
   }
