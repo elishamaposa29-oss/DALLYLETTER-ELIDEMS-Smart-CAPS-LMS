@@ -38,6 +38,8 @@ jobs:
     env:
       DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/dallyletter_pr84_test
       NODE_ENV: test
+      FRONTEND_PRODUCTION_ORIGIN: https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app
+      CORS_ORIGINS: https://approved-preview.dallyletter.test
       AI_PROVIDER_TIMEOUT_MS: "1000"
       JWT_SECRET: pr84-ci-only-secret-not-for-deployment
       PORT: "4000"
