@@ -108,6 +108,9 @@ router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<vo
   if (!publicBase || !/^https:\/\//i.test(publicBase)) {
     res.status(503).json({ error: "Secure public application URL is not configured for PayPal." }); return;
   }
+  if (!process.env.PAYPAL_WEBHOOK_ID?.trim()) {
+    res.status(503).json({ error: "PayPal webhook verification is not configured; checkout is disabled until verified notifications are ready." }); return;
+  }
   try {
     const accessToken = await getPayPalAccessToken();
     if (!accessToken) { res.status(503).json({ error: "PayPal checkout is not configured." }); return; }
