@@ -17,6 +17,7 @@ Use this URL-prefix property:
 - `/learners`
 - `/educators`
 - `/schools`
+- `/organisations`
 - `/resources`
 - `/resources/study-plan`
 
