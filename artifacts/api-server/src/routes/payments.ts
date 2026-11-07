@@ -64,7 +64,7 @@ router.get("/payments/paynow/status", (_req, res): void => {
 
 
 function paypalBase(): string {
-  return process.env.PAYPAL_ENVIRONMENT === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com";
+  return (process.env.PAYPAL_API_BASE?.trim() || (process.env.PAYPAL_ENVIRONMENT === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com")).replace(/\\/$/, "");
 }
 
 async function getPayPalAccessToken(): Promise<string | null> {
@@ -106,36 +106,54 @@ router.get("/payments/paypal/status", (_req, res): void => {
 router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (user.role !== "student") { res.status(403).json({ error: "Learner access required." }); return; }
-  const amount = Number(req.body?.amount);
-  if (!Number.isFinite(amount) || amount <= 0 || amount > 100000 || Math.round(amount * 100) !== amount * 100) {
-    res.status(400).json({ error: "Enter a valid payment amount." }); return;
-  }
   const publicBase = process.env.PUBLIC_APP_URL || process.env.VITE_PUBLIC_APP_URL || "";
-  if (!publicBase || !/^https:\/\//i.test(publicBase)) {
-    res.status(503).json({ error: "Secure public application URL is not configured for PayPal." }); return;
+  try {
+    const parsedBase = new URL(publicBase);
+    if (parsedBase.protocol !== "https:" && process.env.NODE_ENV === "production") throw new Error("HTTPS required");
+  } catch {
+    res.status(503).json({ error: "A valid public application URL is required for PayPal." }); return;
   }
   if (!process.env.PAYPAL_WEBHOOK_ID?.trim()) {
-    res.status(503).json({ error: "PayPal webhook verification is not configured; checkout is disabled until verified notifications are ready." }); return;
+    res.status(503).json({ error: "PayPal webhook verification is not configured; checkout is disabled." }); return;
   }
+  let payment: { id: number; amount: string; month: string; year: number } | undefined;
+  const reservation = "PayPal checkout in progress " + crypto.randomBytes(12).toString("hex");
   try {
+    const claimed = await db.execute(sql`
+      WITH candidate AS (
+        SELECT id FROM payments
+        WHERE student_id = ${user.id}
+          AND status IN ('pending', 'overdue')
+          AND COALESCE(notes, '') NOT LIKE '%PayPal order %'
+          AND COALESCE(notes, '') NOT LIKE '%PayPal checkout in progress%'
+        ORDER BY created_at ASC, id ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT 1
+      )
+      UPDATE payments p SET notes = CONCAT(COALESCE(p.notes, ''), ' | ', ${reservation}), updated_at = now()
+      FROM candidate WHERE p.id = candidate.id
+      RETURNING p.id, p.amount, p.month, p.year
+    `);
+    const claimedRows = (claimed as unknown as { rows?: Array<{ id: number; amount: string; month: string; year: number }> }).rows ?? [];
+    payment = claimedRows[0];
+    if (!payment) { res.status(409).json({ error: "No unpaid fee record is available for checkout, or another checkout is already in progress." }); return; }
+    const amount = Number(payment.amount);
+    if (!Number.isFinite(amount) || amount <= 0) throw new Error("Invalid fee record amount");
     const accessToken = await getPayPalAccessToken();
-    if (!accessToken) { res.status(503).json({ error: "PayPal checkout is not configured." }); return; }
-    const reference = "DLP-" + user.id + "-" + Date.now() + "-" + crypto.randomBytes(4).toString("hex");
+    if (!accessToken) { throw new Error("PayPal API credentials are not configured"); }
+    const reference = "DLP-" + user.id + "-" + payment.id + "-" + Date.now() + "-" + crypto.randomBytes(4).toString("hex");
     const response = await fetch(paypalBase() + "/v2/checkout/orders", {
       method: "POST",
       headers: { Authorization: "Bearer " + accessToken, "Content-Type": "application/json", "PayPal-Request-Id": reference },
       body: JSON.stringify({
         intent: "CAPTURE",
         purchase_units: [{
-          reference_id: reference,
-          custom_id: reference,
-          invoice_id: reference,
-          description: "DallyLetter Elidems school fees",
+          reference_id: reference, custom_id: reference, invoice_id: reference,
+          description: "DallyLetter school fees: " + payment.month + " " + payment.year,
           amount: { currency_code: "USD", value: amount.toFixed(2) },
         }],
         application_context: {
-          brand_name: "DallyLetter Elidems",
-          user_action: "PAY_NOW",
+          brand_name: "DallyLetter Elidems", user_action: "PAY_NOW",
           return_url: publicBase.replace(/\/$/, "") + "/student/payments?paypal=return",
           cancel_url: publicBase.replace(/\/$/, "") + "/student/payments?paypal=cancel",
         },
@@ -144,19 +162,54 @@ router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<vo
     });
     const order = await response.json() as { id?: string; links?: Array<{ rel?: string; href?: string }> };
     const approvalUrl = order.links?.find(link => link.rel === "approve")?.href;
-    if (!response.ok || !order.id || !approvalUrl) {
-      res.status(502).json({ error: "PayPal could not create a checkout order." }); return;
+    if (!response.ok || !order.id || !approvalUrl) throw new Error("PayPal could not create a checkout order");
+    await db.execute(sql`
+      UPDATE payments SET notes = CONCAT(COALESCE(notes, ''), ' | PayPal order ', ${order.id}, ' reference ', ${reference}),
+        updated_at = now()
+      WHERE id = ${payment.id} AND student_id = ${user.id} AND status IN ('pending', 'overdue')
+        AND notes LIKE ${"%" + reservation + "%"}
+    `);
+    res.status(201).json({ reference, checkoutUrl: approvalUrl, amount, month: payment.month, year: payment.year });
+  } catch (error) {
+    if (payment) {
+      await db.execute(sql`
+        UPDATE payments SET notes = regexp_replace(COALESCE(notes, ''), ${'\\s*\\|\\s*' + reservation}, '', 'g'), updated_at = now()
+        WHERE id = ${payment.id} AND student_id = ${user.id} AND status IN ('pending', 'overdue')
+      `).catch(() => undefined);
     }
-    const now = new Date();
-    await db.insert(paymentsTable).values({
-      studentId: user.id, studentName: user.name, amount: amount.toFixed(2),
-      month: now.toLocaleString("en-US", { month: "long" }), year: now.getUTCFullYear(),
-      status: "pending", notes: "PayPal order " + order.id + " reference " + reference,
-      recordedBy: user.id,
+    res.status(503).json({ error: error instanceof Error ? error.message : "PayPal checkout could not be initialized." });
+  }
+});
+
+// The payer returns with PayPal's order token; only the authenticated owner of the fee row can capture it.
+router.post("/payments/paypal/capture", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  if (user.role !== "student") { res.status(403).json({ error: "Learner access required." }); return; }
+  const orderId = String(req.body?.orderId || "").trim();
+  if (!/^[A-Z0-9-]{8,64}$/i.test(orderId)) { res.status(400).json({ error: "Invalid PayPal order reference." }); return; }
+  try {
+    const accessToken = await getPayPalAccessToken();
+    if (!accessToken) { res.status(503).json({ error: "PayPal API credentials are not configured." }); return; }
+    const orderResponse = await fetch(paypalBase() + "/v2/checkout/orders/" + encodeURIComponent(orderId), {
+      headers: { Authorization: "Bearer " + accessToken }, signal: AbortSignal.timeout(15000),
     });
-    res.status(201).json({ reference, checkoutUrl: approvalUrl });
+    if (!orderResponse.ok) { res.status(502).json({ error: "Could not retrieve PayPal order." }); return; }
+    const order = await orderResponse.json() as { id?: string; status?: string; purchase_units?: Array<{ custom_id?: string; invoice_id?: string; amount?: { currency_code?: string; value?: string } }> };
+    const unit = order.purchase_units?.[0];
+    const reference = String(unit?.custom_id || unit?.invoice_id || "");
+    const match = reference.match(/^DLP-(\d+)-(\d+)-\d+-[a-f0-9]{8}$/i);
+    if (!match || Number(match[1]) !== user.id || order.id !== orderId) { res.status(403).json({ error: "This PayPal order does not belong to this learner." }); return; }
+    if (order.status === "COMPLETED") { res.json({ captured: true, alreadyCompleted: true }); return; }
+    if (order.status !== "APPROVED") { res.status(409).json({ error: "PayPal has not approved this order yet." }); return; }
+    const captureResponse = await fetch(paypalBase() + "/v2/checkout/orders/" + encodeURIComponent(orderId) + "/capture", {
+      method: "POST", headers: { Authorization: "Bearer " + accessToken, "Content-Type": "application/json" },
+      body: "{}", signal: AbortSignal.timeout(20000),
+    });
+    const captured = await captureResponse.json() as { status?: string };
+    if (!captureResponse.ok || captured.status !== "COMPLETED") { res.status(502).json({ error: "PayPal did not confirm a completed capture." }); return; }
+    res.json({ captured: true });
   } catch {
-    res.status(502).json({ error: "PayPal checkout could not be initialized." });
+    res.status(502).json({ error: "PayPal capture could not be completed." });
   }
 });
 
