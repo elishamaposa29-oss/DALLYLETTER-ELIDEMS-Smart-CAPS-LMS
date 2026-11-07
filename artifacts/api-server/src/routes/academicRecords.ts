@@ -281,8 +281,7 @@ router.post("/academic-records/transfer-requests/:id/review", requireAuth, requi
   const reviewer = req.currentUser!;
   const id = Number(req.params.id);
   const status = req.body?.status;
-  if (status === "approved" && !isSeniorManager(reviewer)) { res.status(403).json({ error: "Only a Senior Manager or Owner can approve a transfer." }); return; }
-  if (status === "rejected" && !isSeniorManager(reviewer) && !isJuniorManager(reviewer)) { res.status(403).json({ error: "Manager access required to reject a transfer." }); return; }
+  if (!isSeniorManager(reviewer)) { res.status(403).json({ error: "Only a Senior Manager or Owner can approve or reject a transfer." }); return; }
   const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 2000) : "";
   if (!Number.isSafeInteger(id) || id < 1 || !["approved","rejected"].includes(status)) { res.status(400).json({ error: "A valid request ID and approved/rejected decision are required." }); return; }
   if (status === "rejected" && note.length < 3) { res.status(400).json({ error: "A clear rejection reason of at least 3 characters is required." }); return; }
