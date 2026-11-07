@@ -87,6 +87,8 @@ const pendingQueue=await request("/api/teacher-cv-workspace/queue",{token:ownerT
 assert.equal(pendingQueue.status,200,"Owner can retrieve the teacher CV review queue");
 assert(!pendingQueue.data.applications.some(item=>Number(item.id)===Number(approvalApplicant.id)),"Unsubmitted teacher registrations must not appear as submitted CV applications");
 assert(pendingQueue.data.applications.some(item=>Number(item.id)===Number(draftOnlyApplicant.id)&&item.has_cv_submission===false&&item.survey_review_status==="pending"),"Independent survey submission must appear separately in the reviewer queue without becoming a CV application");
+const juniorCannotReviewSurvey=await request("/api/teacher-cv-workspace/"+draftOnlyApplicant.id+"/survey/decision",{token:managerToken,method:"POST",body:{action:"approve",note:"Junior review must be denied"}});
+assert.equal(juniorCannotReviewSurvey.status,403,"Junior manager without an explicit senior review grant cannot decide a readiness survey");
 const approvedIndependentSurvey=await request("/api/teacher-cv-workspace/"+draftOnlyApplicant.id+"/survey/decision",{token:ownerToken,method:"POST",body:{action:"approve",note:"Readiness survey reviewed"}});
 assert.equal(approvedIndependentSurvey.status,200,"Owner can approve a submitted readiness survey independently");
 assert.equal(approvedIndependentSurvey.data.status,"approved");
