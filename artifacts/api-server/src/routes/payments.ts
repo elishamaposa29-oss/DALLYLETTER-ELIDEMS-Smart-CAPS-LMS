@@ -803,7 +803,7 @@ router.post("/payments/notify-admin", requireAuth, async (req, res): Promise<voi
   const amount = Number(req.body?.amount);
   const method = String(req.body?.method || "other").trim().toLowerCase();
   const providerReference = typeof req.body?.providerReference === "string" ? req.body.providerReference.trim() : "";
-  if (!Number.isSafeInteger(paymentId) || paymentId <= 0 || !Number.isFinite(amount) || amount <= 0 || amount > 100000 || Math.round(amount * 100) !== amount * 100 ||
+  if (!Number.isSafeInteger(paymentId) || paymentId <= 0 || !Number.isFinite(amount) || amount <= 0 || amount > 100000 || !hasCentPrecision(amount) ||
       !["ecocash", "bank_transfer", "crypto", "cash", "other"].includes(method) || providerReference.length > 120 ||
       (method !== "cash" && providerReference.length < 3)) {
     res.status(400).json({ error: "Choose an invoice, valid amount, payment method and receipt reference (cash may omit the reference)." }); return;
