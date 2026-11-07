@@ -6,8 +6,13 @@ import {
 
 const learnerLinks = [
   { title: "Learner dashboard", detail: "Return to your study overview and current activity.", href: "/login?next=%2F", icon: GraduationCap },
-  { title: "Lessons and classes", detail: "Open the learner lesson library and class workspace.", href: "/login?next=%2Fstudent%2Flessons", icon: BookOpen },
+  { title: "Lessons", detail: "Open the learner lesson library and continue studying.", href: "/login?next=%2Fstudent%2Flessons", icon: BookOpen },
+  { title: "Classes", detail: "View your classes and upcoming learning sessions.", href: "/login?next=%2Fstudent%2Fclasses", icon: School },
   { title: "Exercises and assignments", detail: "Practise, submit work and review returned feedback.", href: "/login?next=%2Fstudent%2Fexercises", icon: ClipboardCheck },
+  { title: "Study groups", detail: "Open your study-group and learner connection workspace.", href: "/login?next=%2Fstudent%2Fstudy-groups", icon: Users },
+  { title: "Achievements", detail: "Review achievements recorded for your learner account.", href: "/login?next=%2Fstudent%2Fachievements", icon: Award },
+  { title: "Academic record and profile", detail: "Open your authorised academic record and Profile Hub.", href: "/login?next=%2Frecord-book", icon: ShieldCheck },
+  { title: "School fee records", detail: "View payment records and any instructions provided by your school.", href: "/login?next=%2Fstudent%2Fpayments", icon: LockKeyhole },
 ];
 
 const capabilityCards = [
