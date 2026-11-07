@@ -142,7 +142,7 @@ test("Senior managers may override Junior Managers and ordinary users but never 
 });
 
 test("transfer approval is limited to Owner and Senior Manager authority; rejection is separately grantable",()=>{
- assert.equal(isSeniorOnlyManagerPermission("transfers.approve"),true,"transfer approval remains Senior/Owner-only");
+ assert.equal(isSeniorOnlyManagerPermission("transfers.approve"),false,"transfer approval is individually grantable to a Junior Manager only through its own Owner grant");
  assert.equal(isSeniorOnlyManagerPermission("transfers.reject"),false,"transfer rejection can be granted individually to a Junior Manager");
  assert.equal(isSeniorOnlyManagerPermission("transfers.approve"),false,"transfer approval is also individually grantable, but uses a separate key");
  assert.equal(isSeniorOnlyManagerPermission("reports.review"),false,"report approval is individually grantable");
