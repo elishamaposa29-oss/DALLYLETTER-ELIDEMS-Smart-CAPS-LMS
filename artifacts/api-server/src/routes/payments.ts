@@ -215,7 +215,11 @@ router.post("/payments/paypal/capture", requireAuth, async (req, res): Promise<v
     }
     if (order.status === "COMPLETED") {
       if (fee.status === "paid") { res.json({ captured: true, alreadyCompleted: true }); return; }
-      res.status(409).json({ error: "PayPal completed this order; the verified webhook is still required to update the school-fee ledger." }); return;
+      if (fee.status === "pending" || fee.status === "overdue") {
+        res.json({ captured: true, awaitingWebhook: true });
+        return;
+      }
+      res.status(409).json({ error: "This school-fee record is no longer eligible for payment." }); return;
     }
     if (fee.status !== "pending" && fee.status !== "overdue") {
       res.status(409).json({ error: "This school-fee record is no longer eligible for payment." }); return;
