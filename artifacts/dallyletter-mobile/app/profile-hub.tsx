@@ -95,6 +95,10 @@ export default function MobileProfileHub() {
   const [accountHolder,setAccountHolder] = useState("");
   const [message,setMessage] = useState("");
   const [loading,setLoading] = useState(false);
+  const [aiMessages,setAiMessages] = useState<{role:"user"|"assistant";content:string}[]>([]);
+  const [aiDraft,setAiDraft] = useState("");
+  const [aiBusy,setAiBusy] = useState(false);
+  const [aiMode,setAiMode] = useState<"chat"|"agent">("chat");
   const [coverBusy,setCoverBusy] = useState(false);
   const [mediaRevision,setMediaRevision] = useState(0);
   const [fullscreenMedia,setFullscreenMedia] = useState<Row|null>(null);
@@ -106,6 +110,23 @@ export default function MobileProfileHub() {
     if(!response.ok)throw new Error(data.error||"Request failed");
     return data;
   },[token]);
+
+  const learnerAIMode = ["student","learner","prefect"].includes(normalizedUserRole) || Boolean(user?.isPrefect);
+  const canRequestAIAgent = !learnerAIMode && ["teacher","manager","senior_manager","junior_manager","owner","platform_owner"].includes(normalizedUserRole);
+  const sendAIMessage = async () => {
+    const content = aiDraft.trim();
+    if (!content || aiBusy) return;
+    const next = [...aiMessages, { role: "user" as const, content }].slice(-20);
+    setAiMessages(next); setAiDraft(""); setAiBusy(true);
+    try {
+      const result = await api("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: next, mode: learnerAIMode ? "chat" : aiMode }) });
+      setAiMessages(current => [...current, { role: "assistant" as const, content: String(result.response || "I could not prepare a response. Please try again.") }].slice(-20));
+    } catch (error) {
+      setAiMessages(current => current.slice(0, -1));
+      setAiDraft(content);
+      setMessage(error instanceof Error ? error.message : "ELIDEMS AI is temporarily unavailable.");
+    } finally { setAiBusy(false); }
+  };
 
   const load=useCallback(async()=>{
     if(!targetId||!Number.isSafeInteger(targetId)||!user)return;
@@ -369,6 +390,25 @@ export default function MobileProfileHub() {
       <View style={{backgroundColor:colors.background,borderWidth:1,borderColor:colors.border,borderRadius:10,padding:12,marginBottom:10}}><Text style={{fontSize:16,fontWeight:"900",color:colors.foreground}}>{transferForm.currentSchool||"Dallyletter Elidems"}</Text><Text style={{fontSize:11,color:colors.mutedForeground}}>TRANSFER CLEARANCE & APPLICATION · HARARE, ZIMBABWE</Text><Text style={{fontWeight:"800",color:colors.foreground,marginTop:12}}>RE: TRANSFER APPLICATION FOR {transferForm.learnerName||"LEARNER NAME"} — {transferForm.grade}</Text>{[["Learner's details",[["Full name",transferForm.learnerName],["Admission No",transferForm.admissionNo],["DOB / Gender",transferForm.dob+" / "+transferForm.gender],["EMIS No",transferForm.emisNo],["Academic Year",transferForm.academicYear],["Average / Conduct",transferForm.average+"% / "+transferForm.conduct]]],["Reason for transfer",[["Category",transferForm.reasonType],["Details",transferForm.reasonDetail]]],["Parent / Guardian details",[["Name / relation",transferForm.guardianName+" / "+transferForm.relationship],["ID",transferForm.guardianId],["Phone",transferForm.guardianPhone],["Email",transferForm.guardianEmail],["Address",transferForm.address],["Effective date",transferForm.effectiveDate]]]].map(([title,rows]:any)=><View key={title} style={{marginTop:12,borderWidth:1,borderColor:colors.border,borderRadius:8,padding:9}}><Text style={{fontWeight:"900",color:colors.primary,marginBottom:6}}>{title}</Text>{rows.map(([k,v]:any)=><Text key={k} style={{fontSize:12,color:colors.foreground,paddingVertical:3}}>{k}: {v||"—"}</Text>)}</View>)}<Text style={{fontWeight:"800",marginTop:12,color:colors.foreground}}>Declarations & signatures</Text><Text style={{fontSize:11,color:colors.mutedForeground}}>Parent/guardian signature and current-school headmaster stamp are completed on the printed official copy. Dallyletter will not invent fee clearance or signatures.</Text></View>
       {button("Submit transfer application",()=>void act(async()=>{if(!String(transferForm.learnerName||"").trim()||!String(transferForm.receivingSchool||"").trim()||String(transferForm.reasonDetail||"").trim().length<3)throw new Error("Complete learner name, receiving school and transfer reason.");const reason=String(transferForm.reasonType)+": "+String(transferForm.reasonDetail);await api("/api/academic-records/transfer-requests",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reason,formData:transferForm})});setTransferRequests(await api("/api/academic-records/transfer-requests"));setMessage("Transfer application submitted for manager / owner approval.");}))}</>}
       {transferRequests.filter((r:Row)=>r.status!=="pending"&&!canReviewTransferLetters).map((r:Row)=><View key={r.id} style={{borderTopWidth:1,borderColor:colors.border,paddingTop:10,marginTop:10}}>{line("Request","#"+r.id)}{line("Status",r.status)}{r.status==="approved"&&button("Download approved PDF",()=>void act(async()=>{const response=await FileSystem.downloadAsync(getApiUrl("/api/academic-records/transfer-requests/"+r.id+"/download"),(FileSystem.documentDirectory||FileSystem.cacheDirectory||"")+"dallyletter-transfer-letter-"+r.id+".pdf",{headers:token?{Authorization:"Bearer "+token}:{}});const uri=Platform.OS==="android"?await FileSystem.getContentUriAsync(response.uri):response.uri;await Linking.openURL(uri);}))}</View>)}
+      </View>}
+      {isOwn&&<View style={{marginHorizontal:12,marginBottom:20,borderWidth:1,borderColor:colors.border,borderRadius:18,overflow:"hidden",backgroundColor:colors.card}}>
+        <View style={{padding:14,backgroundColor:colors.primary,flexDirection:"row",justifyContent:"space-between",alignItems:"center"}}>
+          <View><Text style={{color:"#fff",fontWeight:"900",fontSize:16}}>✦ ELIDEMS AI</Text><Text style={{color:"#fff",opacity:0.8,fontSize:11}}>{learnerAIMode?"Learning companion":aiMode==="agent"?"Staff agent · planning mode":"Staff assistant"}</Text></View>
+          {canRequestAIAgent&&<View style={{flexDirection:"row",gap:6}}>
+            <TouchableOpacity onPress={()=>setAiMode("chat")} style={{paddingHorizontal:10,paddingVertical:6,borderRadius:8,backgroundColor:aiMode==="chat"?"#fff":"rgba(255,255,255,0.15)"}}><Text style={{fontSize:11,fontWeight:"700",color:aiMode==="chat"?colors.primary:"#fff"}}>Chat</Text></TouchableOpacity>
+            <TouchableOpacity onPress={()=>setAiMode("agent")} style={{paddingHorizontal:10,paddingVertical:6,borderRadius:8,backgroundColor:aiMode==="agent"?"#fff":"rgba(255,255,255,0.15)"}}><Text style={{fontSize:11,fontWeight:"700",color:aiMode==="agent"?colors.primary:"#fff"}}>Agent</Text></TouchableOpacity>
+          </View>}
+        </View>
+        <ScrollView style={{maxHeight:240,padding:12}} nestedScrollEnabled>
+          {!aiMessages.length&&<Text style={{color:colors.mutedForeground,fontSize:13}}>{learnerAIMode?"Hi! Ask me about a subject, revision, homework or study planning.":"Ask ELIDEMS AI to help prepare or analyze work available to your role."}</Text>}
+          {aiMessages.map((item,index)=><View key={index} style={{alignSelf:item.role==="user"?"flex-end":"flex-start",maxWidth:"90%",padding:10,marginVertical:4,borderRadius:12,backgroundColor:item.role==="user"?colors.primary:colors.background,borderWidth:item.role==="user"?0:1,borderColor:colors.border}}><Text style={{color:item.role==="user"?"#fff":colors.foreground,fontSize:13}}>{item.content}</Text></View>)}
+          {aiBusy&&<Text style={{color:colors.mutedForeground,fontSize:11}}>ELIDEMS AI is thinking…</Text>}
+        </ScrollView>
+        {aiMode==="agent"&&<Text style={{paddingHorizontal:12,paddingBottom:8,color:colors.mutedForeground,fontSize:10}}>Agent planning is permission-gated. This chat does not execute changes; use the existing authorized workflow and confirmation.</Text>}
+        <View style={{flexDirection:"row",gap:8,padding:10,borderTopWidth:1,borderColor:colors.border}}>
+          <TextInput value={aiDraft} onChangeText={setAiDraft} placeholder={learnerAIMode?"Ask a learning question…":"Message ELIDEMS AI…"} placeholderTextColor={colors.mutedForeground} multiline style={{flex:1,minHeight:42,maxHeight:100,borderWidth:1,borderColor:colors.border,borderRadius:10,padding:10,color:colors.foreground,fontSize:13}}/>
+          <TouchableOpacity disabled={aiBusy||!aiDraft.trim()} onPress={()=>void sendAIMessage()} style={{alignSelf:"flex-end",paddingHorizontal:14,paddingVertical:12,borderRadius:10,backgroundColor:colors.primary,opacity:aiBusy||!aiDraft.trim()?0.5:1}}><Text style={{color:"#fff",fontWeight:"800",fontSize:12}}>{aiBusy?"…":"Send"}</Text></TouchableOpacity>
+        </View>
       </View>}
     </ScrollView>
   </View>;
