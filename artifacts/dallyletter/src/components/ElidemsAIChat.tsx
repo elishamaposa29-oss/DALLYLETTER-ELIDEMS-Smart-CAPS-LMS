@@ -32,7 +32,8 @@ export function ElidemsAIChat({ role }: Props) {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "ELIDEMS AI is temporarily unavailable.");
-      setMessages(current => [...current, { role: "assistant" as const, content: String(data.response || "I could not prepare a response. Please try again.") }].slice(-20));
+      const assistantMessage: ChatMessage = { role: "assistant", content: String(data.response || "I could not prepare a response. Please try again.") };
+      setMessages(current => [...current, assistantMessage].slice(-20));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "ELIDEMS AI is temporarily unavailable.");
       setMessages(current => current.slice(0, -1));
