@@ -261,13 +261,17 @@ router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
         capturedAmount <= 0 || capturedAmount !== orderAmount || Number(capture.amount?.value) !== capturedAmount) {
       res.status(400).json({ error: "PayPal capture does not match a valid school-fee order." }); return;
     }
+    const refMatch = reference.match(/^DLP-(\\d+)-(\\d+)-\\d+-[a-f0-9]{8}$/i);
+    if (!refMatch) { res.status(400).json({ error: "PayPal reference is malformed." }); return; }
     const updated = await db.execute(sql`
       UPDATE payments SET status = 'paid',
         notes = CONCAT(COALESCE(notes, ''), ' | PayPal verified capture ', CAST(${String(resource.id || "")} AS TEXT)),
         updated_at = now()
-      WHERE notes LIKE ${"%PayPal order " + orderId + " reference " + reference + "%"}
+      WHERE id = ${Number(refMatch[2])}
+        AND student_id = ${Number(refMatch[1])}
+        AND notes LIKE ${"%PayPal order " + orderId + " reference " + reference + "%"}
         AND amount::numeric = ${capturedAmount}
-        AND status = 'pending'
+        AND status IN ('pending', 'overdue')
       RETURNING student_id
     `);
     const rows = (updated as unknown as { rows?: Array<{ student_id: number }> }).rows ?? [];
