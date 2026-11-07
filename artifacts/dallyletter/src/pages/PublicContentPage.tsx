@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Link } from "wouter";
-import { ArrowRight, BookOpen, GraduationCap, School, Users, Compass, CheckCircle2, Globe2, Lightbulb, CalendarDays, ShieldCheck } from "lucide-react";
+import { ArrowRight, BookOpen, GraduationCap, School, Users, Compass, CheckCircle2, Globe2 } from "lucide-react";
 
 type PageKey = "about" | "learners" | "educators" | "schools" | "resources" | "study-plan";
 const SITE = "https://dallyletter-elidems-onlineschoolbye-two.vercel.app";
