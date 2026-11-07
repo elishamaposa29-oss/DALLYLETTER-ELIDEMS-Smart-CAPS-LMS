@@ -215,7 +215,7 @@ export default function StudentPayments() {
         {paypalReady && (
           <Button
             onClick={handlePayPal}
-            disabled={paynowBusy || !nextPayablePayment || String(nextPayablePayment.status) === "partially_paid"}
+            disabled={paynowBusy || !nextPayablePayment}
             className="h-auto py-3 flex-col gap-1.5 bg-[#003087] hover:bg-[#00256e] text-white"
           >
             <div className="flex items-center gap-2 font-bold">
@@ -223,7 +223,7 @@ export default function StudentPayments() {
               PayPal
             </div>
             <span className="text-[11px] opacity-80 font-normal">
-              {nextPayablePayment ? (String(nextPayablePayment.status) === "partially_paid" ? "Use Paynow for partial balances" : "Next fee: " + nextPayablePayment.month + " " + nextPayablePayment.year + " · $" + Number(nextPayablePayment.amount).toFixed(2)) : "No unpaid fee"}
+              {nextPayablePayment ? "Next fee balance: $" + Math.max(0,Number(nextPayablePayment.amount)-Number((nextPayablePayment as any).amountPaid||0)).toFixed(2) : "No unpaid fee"}
             </span>
             <ExternalLink className="h-3 w-3 opacity-70" />
           </Button>
