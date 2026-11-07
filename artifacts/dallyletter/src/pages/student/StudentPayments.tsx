@@ -68,12 +68,11 @@ export default function StudentPayments() {
   const overdueCount = payments?.filter(p => p.status === "overdue").length || 0;
 
   const handlePaynowLive = async () => {
-    const amount = Number(totalOwed);
-    if (!Number.isFinite(amount) || amount <= 0) { toast({ variant: "destructive", title: "Nothing to pay", description: "There is no outstanding balance." }); return; }
+    if (!nextPayablePayment) { toast({ variant: "destructive", title: "Nothing to pay", description: "There is no outstanding fee record." }); return; }
     setPaynowBusy(true);
     try {
       const token = localStorage.getItem("dallyletter_token");
-      const r = await fetch(getApiUrl("/api/payments/paynow/create"), { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ amount }) });
+      const r = await fetch(getApiUrl("/api/payments/paynow/create"), { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({}) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || !d.checkoutUrl) throw new Error(d.error || "Could not start Paynow checkout");
       window.location.assign(d.checkoutUrl);
@@ -172,7 +171,7 @@ export default function StudentPayments() {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* Paynow */}
-      {paynowReady && (<Button onClick={handlePaynowLive} disabled={paynowBusy} className="h-auto py-3 flex-col gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"><div className="font-bold">{paynowBusy ? "Starting…" : "Paynow"}</div><span className="text-[11px] opacity-80 font-normal">Secure live checkout</span><ExternalLink className="h-3 w-3 opacity-70" /></Button>)}
+      {paynowReady && (<Button onClick={handlePaynowLive} disabled={paynowBusy || !nextPayablePayment} className="h-auto py-3 flex-col gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"><div className="font-bold">{paynowBusy ? "Starting…" : "Paynow"}</div><span className="text-[11px] opacity-80 font-normal">{nextPayablePayment ? "Next fee: " + nextPayablePayment.month + " " + nextPayablePayment.year + " · $" + Number(nextPayablePayment.amount).toFixed(2) : "No unpaid fee"}</span><ExternalLink className="h-3 w-3 opacity-70" /></Button>)}
 
       {/* PayPal */}
         {paypalReady && (
