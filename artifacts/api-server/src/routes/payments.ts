@@ -33,6 +33,10 @@ function money(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+function hasCentPrecision(value: number): boolean {
+  return Number.isFinite(value) && Math.abs(value * 100 - Math.round(value * 100)) < 1e-7;
+}
+
 let paymentTransactionSchemaReady: Promise<void> | null = null;
 async function ensurePaymentTransactionSchema(): Promise<void> {
   if (!paymentTransactionSchemaReady) {
@@ -181,7 +185,7 @@ router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<vo
     res.status(400).json({ error: "Choose a valid school-fee invoice." }); return;
   }
   const requestedAmount = req.body?.amount === undefined ? undefined : Number(req.body.amount);
-  if (req.body?.amount !== undefined && (!Number.isFinite(requestedAmount) || requestedAmount! <= 0 || requestedAmount! > 100000 || Math.round(requestedAmount! * 100) !== requestedAmount! * 100)) {
+  if (req.body?.amount !== undefined && (!Number.isFinite(requestedAmount) || requestedAmount! <= 0 || requestedAmount! > 100000 || !hasCentPrecision(requestedAmount!))) {
     res.status(400).json({ error: "Enter a valid payment amount." }); return;
   }
   let payment: { id: number; amount: string; amount_paid: string | number; month: string; year: number } | undefined;
@@ -484,7 +488,7 @@ router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<vo
     res.status(400).json({ error: "Choose a valid school-fee invoice." }); return;
   }
   const requestedAmount = req.body?.amount === undefined ? undefined : Number(req.body.amount);
-  if (req.body?.amount !== undefined && (!Number.isFinite(requestedAmount) || requestedAmount! <= 0 || requestedAmount! > 100000 || Math.round(requestedAmount! * 100) !== requestedAmount! * 100)) {
+  if (req.body?.amount !== undefined && (!Number.isFinite(requestedAmount) || requestedAmount! <= 0 || requestedAmount! > 100000 || !hasCentPrecision(requestedAmount!))) {
     res.status(400).json({ error: "Enter a valid payment amount." });
     return;
   }
@@ -737,7 +741,7 @@ router.post("/payments", requireAuth, requireOwner, async (req, res): Promise<vo
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  if (Math.round(parsed.data.amount * 100) !== parsed.data.amount * 100) {
+  if (!hasCentPrecision(parsed.data.amount)) {
     res.status(400).json({ error: "Payment amount must use no more than two decimal places." });
     return;
   }
@@ -891,7 +895,7 @@ router.post("/payments/:id/manual-settlement", requireAuth, async (req, res): Pr
   const method=String(req.body?.method||"").trim().toLowerCase();
   const providerReference=typeof req.body?.providerReference==="string"?req.body.providerReference.trim():"";
   const note=typeof req.body?.note==="string"?req.body.note.trim().slice(0,500):"";
-  if(!Number.isSafeInteger(paymentId)||paymentId<=0||!Number.isFinite(amount)||amount<=0||amount>100000||Math.round(amount*100)!==amount*100||!["ecocash","bank_transfer","crypto","cash","other"].includes(method)){
+  if(!Number.isSafeInteger(paymentId)||paymentId<=0||!Number.isFinite(amount)||amount<=0||amount>100000||!hasCentPrecision(amount)||!["ecocash","bank_transfer","crypto","cash","other"].includes(method)){
     res.status(400).json({error:"Choose a valid invoice, amount and manual payment method."});return;
   }
   if(providerReference.length>120){res.status(400).json({error:"Receipt reference must be no longer than 120 characters."});return;}
