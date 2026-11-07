@@ -125,23 +125,14 @@ export default function AdminSettings() {
               </div>
             ) : (
               <>
-                {/* Paynow */}
-                <div className="space-y-2"><Label className="text-sm font-semibold">Paynow live payment link</Label><Input placeholder="https://www.paynow.co.zw/..." value={settings.paynow_url} onChange={e => setSettings(s => ({ ...s, paynow_url: e.target.value }))} /><p className="text-xs text-muted-foreground">Use a live Paynow merchant link for real payments. Do not use a test-mode link in production.</p></div>
+                <div className="rounded-lg border p-3 text-sm text-muted-foreground">
+                  <p className="font-semibold text-foreground">Paynow secure checkout</p>
+                  <p>Checkout is enabled only when the API has PAYNOW_INTEGRATION_ID, PAYNOW_INTEGRATION_KEY, PUBLIC_APP_URL and PUBLIC_API_URL configured as server secrets. This page does not collect or expose provider credentials.</p>
+                </div>
 
-                {/* PayPal */}
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2 text-sm font-semibold">
-                    <div className="w-5 h-5 rounded bg-[#003087] flex items-center justify-center">
-                      <span className="text-white text-[10px] font-bold">P</span>
-                    </div>
-                    PayPal Link / PayPal.Me URL
-                  </Label>
-                  <Input
-                    placeholder="https://paypal.me/yourname or paypal email"
-                    value={settings.paypal_url}
-                    onChange={e => setSettings(s => ({ ...s, paypal_url: e.target.value }))}
-                  />
-                  <p className="text-xs text-muted-foreground">e.g. https://paypal.me/dallylettersc or your PayPal email address</p>
+                <div className="rounded-lg border p-3 text-sm text-muted-foreground">
+                  <p className="font-semibold text-foreground">PayPal verified checkout</p>
+                  <p>Checkout requires PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, PAYPAL_WEBHOOK_ID and PUBLIC_APP_URL as server secrets. Configure the matching webhook URL at PayPal: /api/payments/paypal/webhook. Learner payments remain pending until PayPal confirms a completed capture.</p>
                 </div>
 
                 {/* Trust Wallet */}
