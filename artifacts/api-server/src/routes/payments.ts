@@ -747,7 +747,7 @@ router.post("/payments/:id/manual-settlement", requireAuth, async (req, res): Pr
   const method=String(req.body?.method||"").trim().toLowerCase();
   const providerReference=typeof req.body?.providerReference==="string"?req.body.providerReference.trim():"";
   const note=typeof req.body?.note==="string"?req.body.note.trim().slice(0,500):"";
-  if(!Number.isSafeInteger(paymentId)||paymentId<=0||!Number.isFinite(amount)||amount<=0||amount>100000||!["ecocash","bank_transfer","crypto","cash","other"].includes(method)){
+  if(!Number.isSafeInteger(paymentId)||paymentId<=0||!Number.isFinite(amount)||amount<=0||amount>100000||Math.round(amount*100)!==amount*100||!["ecocash","bank_transfer","crypto","cash","other"].includes(method)){
     res.status(400).json({error:"Choose a valid invoice, amount and manual payment method."});return;
   }
   if(providerReference.length>120){res.status(400).json({error:"Receipt reference must be no longer than 120 characters."});return;}
@@ -784,7 +784,7 @@ router.post("/payments/:id/manual-settlement", requireAuth, async (req, res): Pr
     });
     res.status(200).json({success:true,...result});
   }catch(error){
-    const status=Number((error as {statusCode?:number})?.statusCode)||500;
+    const status=Number((error as {statusCode?:number})?.statusCode)||((error as {code?:string})?.code==="23505"?409:500);
     res.status(status).json({error:status===500?"The manual payment could not be recorded. No settlement was confirmed.":error instanceof Error?error.message:"Manual payment failed."});
   }
 });
