@@ -9,6 +9,7 @@ import { DailyAppAttendanceCard } from "@/components/DailyAppAttendanceCard";
 import RecordBookWorkspace from "@/components/RecordBookWorkspace";
 import { ProfileSocialControls } from "@/components/ProfileSocialControls";
 import { ProfileSectionViewer } from "@/components/ProfileSectionViewer";
+import { ElidemsAIChat } from "@/components/ElidemsAIChat";
 
 type Tab = "Overview" | "Qualifications" | "Subjects" | "Enrollments" | "Achievements" | "Reports" | "Attendance" | "Payments" | "Transfer Letters" | "Groups" | "Activity" | "Teacher Documents";
 
@@ -686,5 +687,6 @@ export default function ProfileHub() {
     </div>}
     <div ref={fullscreenContainerRef} role="dialog" aria-modal={fullscreenMedia?"true":undefined} aria-label="Fullscreen profile media" className="fixed inset-0 z-[99999] items-center justify-center bg-black" style={{display:fullscreenMedia?"flex":"none",position:"fixed",inset:0,width:"100vw",height:"100vh",background:"#000",padding:0,margin:0}} onClick={closeFullscreenMedia}>{fullscreenMedia&&<><button type="button" aria-label="Close fullscreen media" className="absolute right-4 top-4 z-10 rounded-full bg-white/20 px-4 py-2 text-white" onClick={e=>{e.stopPropagation();closeFullscreenMedia();}}>Close ✕</button><AuthenticatedProfileMedia url={fullscreenMedia.url} type={fullscreenMedia.type} alt="Fullscreen profile media" controls autoPlay className="h-full w-full object-contain" onError={()=>setFullscreenMediaError(true)} onClick={e=>e.stopPropagation()}/>{fullscreenMediaError&&<p role="alert" className="absolute bottom-6 left-4 right-4 rounded-lg bg-white/10 p-4 text-center text-sm text-white">This media could not be loaded from the API. The file may be missing or the current server may not support this profile-media route.</p>}</>}</div>
     <ProfileSocialControls profileId={profileId} isSelf={isOwner} role={user?.role}/>
+    {isOwner && <ElidemsAIChat role={user?.role}/>}
   </main></DashboardLayout>;
 }
