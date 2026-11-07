@@ -20,6 +20,19 @@ const configuredOrigins = [
   .map((value) => value?.trim())
   .filter((value): value is string => Boolean(value));
 
+const invalidConfiguredOrigins = configuredOrigins.filter((value) => {
+  try {
+    const parsed = new URL(value);
+    return parsed.origin !== value || (process.env.NODE_ENV === "production" && parsed.protocol !== "https:");
+  } catch {
+    return true;
+  }
+});
+
+if (invalidConfiguredOrigins.length > 0) {
+  throw new Error("FRONTEND_PRODUCTION_ORIGIN and CORS_ORIGINS must contain exact origins (scheme and hostname only); production origins must use HTTPS.");
+}
+
 const defaultOrigins = [
   "http://localhost:3000",
   "http://127.0.0.1:3000",
