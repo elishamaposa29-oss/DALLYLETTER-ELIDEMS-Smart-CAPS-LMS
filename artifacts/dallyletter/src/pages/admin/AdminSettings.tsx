@@ -31,6 +31,9 @@ export default function AdminSettings() {
     confirmPassword: "",
   });
   const [changingPassword, setChangingPassword] = useState(false);
+  const [applyingFees, setApplyingFees] = useState(false);
+  const [feeMonth, setFeeMonth] = useState(new Date().toLocaleString("en-US", { month: "long" }));
+  const [feeYear, setFeeYear] = useState(String(new Date().getFullYear()));
 
   useEffect(() => {
     const token = localStorage.getItem("dallyletter_token");
@@ -60,6 +63,30 @@ export default function AdminSettings() {
       toast({ variant: "destructive", title: "Error", description: message });
     } finally {
       setSavingSettings(false);
+    }
+  };
+
+
+  const handleApplySchoolFees = async () => {
+    if (!settings.school_fee_amount || Number(settings.school_fee_amount) <= 0) {
+      toast({ variant: "destructive", title: "Set the school fee first", description: "Save a valid default school fee before applying it to learner invoices." });
+      return;
+    }
+    setApplyingFees(true);
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const response = await fetch(getApiUrl("/api/settings/school-fees/apply"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ month: feeMonth, year: Number(feeYear) }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Could not apply school fees.");
+      toast({ title: "School fees applied", description: `${data.created} new learner invoices created for ${data.month} ${data.year} at USD ${Number(data.amount).toFixed(2)}. ${data.unchanged} existing invoices were preserved.` });
+    } catch (error) {
+      toast({ variant: "destructive", title: "Fee application failed", description: error instanceof Error ? error.message : "Try again." });
+    } finally {
+      setApplyingFees(false);
     }
   };
 
@@ -149,6 +176,15 @@ export default function AdminSettings() {
                     onChange={e => setSettings(s => ({ ...s, school_fee_amount: e.target.value }))}
                   />
                   <p className="text-xs text-muted-foreground">This is the Owner-published reference fee learners can see before paying. It does not silently create invoices or overwrite individual learner balances; the actual amount owed remains the amount recorded in each learner's fee ledger.</p>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_120px_auto] sm:items-end">
+                    <div className="space-y-1"><Label htmlFor="fee-billing-month">Billing month</Label><Input id="fee-billing-month" value={feeMonth} onChange={e => setFeeMonth(e.target.value)} maxLength={20} /></div>
+                    <div className="space-y-1"><Label htmlFor="fee-billing-year">Year</Label><Input id="fee-billing-year" type="number" min="2020" max="2200" value={feeYear} onChange={e => setFeeYear(e.target.value)} /></div>
+                    <Button type="button" onClick={handleApplySchoolFees} disabled={applyingFees || loadingSettings || !settings.school_fee_amount} className="gap-2">
+                      {applyingFees ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                      Apply to learners
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Creates a pending invoice for each learner for the selected month. Existing invoices are preserved and skipped, so retrying will not duplicate fees.</p>
                 </div>
 
                 {/* Trust Wallet */}
