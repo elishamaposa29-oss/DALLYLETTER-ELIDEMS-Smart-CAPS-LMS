@@ -76,7 +76,14 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Typecheck shared libraries
         run: pnpm run typecheck:libs
-      # Android build and typecheck are intentionally deferred per the PR owner's explicit release constraint.
+      - name: Verify AI provider timeout, cancellation and error redaction
+        run: pnpm --dir artifacts/api-server run test:ai-provider
+      - name: Typecheck Android application
+        run: pnpm --dir artifacts/dallyletter-mobile run typecheck
+      - name: Test Android offline submission queue
+        run: pnpm --dir artifacts/dallyletter-mobile run test:offline-queue
+      - name: Export production Android JavaScript bundle
+        run: pnpm --dir artifacts/dallyletter-mobile exec expo export --platform android --output-dir /tmp/dallyletter-android-export
       - name: Create schema in isolated ephemeral PostgreSQL
         run: pnpm run db:push
       - name: Build API
