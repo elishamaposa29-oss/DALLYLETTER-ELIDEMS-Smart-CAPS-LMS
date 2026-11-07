@@ -330,6 +330,11 @@ router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
 router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (user.role !== "student") { res.status(403).json({ error: "Learner access required" }); return; }
+  const requestedAmount = req.body?.amount === undefined ? undefined : Number(req.body.amount);
+  if (req.body?.amount !== undefined && (!Number.isFinite(requestedAmount) || requestedAmount! <= 0 || requestedAmount! > 100000)) {
+    res.status(400).json({ error: "Enter a valid payment amount." });
+    return;
+  }
   const integrationId = process.env.PAYNOW_INTEGRATION_ID?.trim();
   const integrationKey = process.env.PAYNOW_INTEGRATION_KEY?.trim();
   const publicBaseValue = (process.env.PUBLIC_APP_URL || process.env.VITE_PUBLIC_APP_URL || "").trim();
@@ -369,6 +374,11 @@ router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<vo
   if (!Number.isFinite(amount) || amount <= 0 || amount > 100000) {
     await markPaynowAttempt(reference, "failed", "Invalid school-fee amount");
     res.status(409).json({ error: "The unpaid school-fee record has an invalid amount." });
+    return;
+  }
+  if (requestedAmount !== undefined && Math.abs(requestedAmount - amount) > 0.005) {
+    await markPaynowAttempt(reference, "failed", "Requested amount did not match the stored fee");
+    res.status(409).json({ error: "The requested amount does not match the next outstanding fee. Refresh and try again." });
     return;
   }
 
