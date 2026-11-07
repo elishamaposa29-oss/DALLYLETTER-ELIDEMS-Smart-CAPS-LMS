@@ -62,6 +62,15 @@ export const MANAGER_PERMISSION_CATALOG = [
   { key: "groups.manage", group: "Communications", label: "Manage study groups", description: "Manage eligible school study groups and Connect spaces." },
   { key: "audit.view_subordinate", group: "Audit", label: "View subordinate audit history", description: "View permitted actions by subordinate users only; never Owner or Admin activity." },
   { key: "owner.chat", group: "Communications", label: "Chat with Owner", description: "Communicate with Owner without access to Owner controls or activity." },
+  { key: "ai.agent.use", group: "ELIDEMS AI Agent", label: "Use ELIDEMS AI Agent", description: "Open staff agent mode. This does not grant any task permission by itself." },
+  { key: "ai.agent.read_academic", group: "ELIDEMS AI Agent", label: "Read academic information", description: "Ask the agent to summarize academic information already visible to this manager." },
+  { key: "ai.agent.read_learners", group: "ELIDEMS AI Agent", label: "Read permitted learner records", description: "Ask the agent to analyze learner records within existing subordinate and school scope." },
+  { key: "ai.agent.create_learning", group: "ELIDEMS AI Agent", label: "Prepare learning activities", description: "Prepare lessons, exercises, polls and assignments through existing authorized workflows." },
+  { key: "ai.agent.communicate", group: "ELIDEMS AI Agent", label: "Prepare communications", description: "Draft messages and notifications; sending still requires existing communication permissions and confirmation." },
+  { key: "ai.agent.moderate", group: "ELIDEMS AI Agent", label: "Assist content moderation", description: "Analyze and summarize permitted moderation cases; human review remains required." },
+  { key: "ai.agent.manage_accounts", seniorOnly: true, group: "ELIDEMS AI Agent", label: "Prepare account actions", description: "Prepare eligible subordinate account actions; existing account permission and confirmation are still required." },
+  { key: "ai.agent.approve_workflows", seniorOnly: true, group: "ELIDEMS AI Agent", label: "Assist approval workflows", description: "Prepare approval recommendations; final approval must use the existing authorized workflow." },
+  { key: "ai.agent.read_financials", seniorOnly: true, group: "ELIDEMS AI Agent", label: "Read permitted financial summaries", description: "Summarize financial information already available to this Senior Manager; no payout execution." },
 ] as const;
 
 const allowedKeys = new Set<string>(MANAGER_PERMISSION_CATALOG.map((permission) => permission.key));
