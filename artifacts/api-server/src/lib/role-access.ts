@@ -177,8 +177,8 @@ export function canModerateUser(actor: RoleLikeUser, target: RoleLikeUser): bool
   return ["teacher", "student", "learner", "prefect"].includes(targetRole);
 }
 
-/** Transfer approval is senior/Owner authority; rejection is independently grantable to Junior Managers. */
-export function canApproveAcademicTransfer(user: RoleLikeUser): boolean {
+/** Role-level transfer approval gate; rejection is separately controlled by the per-user transfers.reject grant. */
+export function canReviewAcademicTransfer(user: RoleLikeUser): boolean {
   return isSeniorManager(user);
 }
 
