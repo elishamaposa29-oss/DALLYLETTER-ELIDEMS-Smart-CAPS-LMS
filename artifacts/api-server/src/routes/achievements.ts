@@ -308,9 +308,8 @@ router.patch("/lesson-requests/:id", requireAuth, async (req, res): Promise<void
       res.status(403).json({ error: "A prefect may only cancel their own pending request." });
       return;
     }
-  }
-  // Only the assigned teacher or Owner can issue a teaching decision or teacher reply.
-  if (!assignedTeacher && !owner && (status !== request.status || req.body?.teacherReply !== undefined)) {
+  } else if (!assignedTeacher && !owner && (status !== request.status || req.body?.teacherReply !== undefined)) {
+    // Only the assigned teacher or Owner can issue a teaching decision or teacher reply.
     res.status(403).json({ error: "Only the assigned teacher or Owner can change request status or reply." });
     return;
   }
