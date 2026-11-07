@@ -57,6 +57,24 @@ export default function StudentPayments() {
         })
         .catch(error => toast({ variant: "destructive", title: "PayPal confirmation pending", description: error instanceof Error ? error.message : "Refresh payment records after checking with PayPal." }));
     }
+    const paynowReference = query.get("reference");
+    if (paynowReference) {
+      toast({ title: "Paynow confirmation pending", description: "Your payment will be marked paid only after Dallyletter receives and verifies Paynow's signed result notification. Do not pay again while confirmation is processing." });
+      let attempts = 0;
+      const timer = window.setInterval(() => {
+        attempts += 1;
+        void refetchPayments().then(result => {
+          const settled = Array.isArray(result.data) && result.data.some((payment: any) => String(payment.notes || "").includes("Paynow reference " + paynowReference) && payment.status === "paid");
+          if (settled) {
+            window.clearInterval(timer);
+            toast({ title: "Paynow payment verified", description: "Your school-fee record has been updated from Paynow's verified confirmation." });
+          } else if (attempts >= 12) {
+            window.clearInterval(timer);
+          }
+        }).catch(() => { if (attempts >= 12) window.clearInterval(timer); });
+      }, 5000);
+      return () => window.clearInterval(timer);
+    }
   }, []);
 
   const hasOverdue = payments?.some(p => p.status === "overdue");
