@@ -40,6 +40,28 @@ async function markPaynowAttempt(reference: string, status: "failed" | "cancelle
   `);
 }
 
+// Public capability check: UI visibility must reflect the same server-side requirements as checkout.
+router.get("/payments/paynow/status", (_req, res): void => {
+  const integrationId = process.env.PAYNOW_INTEGRATION_ID?.trim();
+  const integrationKey = process.env.PAYNOW_INTEGRATION_KEY?.trim();
+  const publicBase = process.env.PUBLIC_APP_URL || process.env.VITE_PUBLIC_APP_URL || "";
+  const publicApi = process.env.PUBLIC_API_URL || "";
+  const validPublicUrl = (value: string): boolean => {
+    try {
+      const parsed = new URL(value);
+      return parsed.protocol === "https:" || process.env.NODE_ENV !== "production";
+    } catch {
+      return false;
+    }
+  };
+  const configured = Boolean(
+    integrationId && integrationKey &&
+    validPublicUrl(publicBase) && validPublicUrl(publicApi)
+  );
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ configured, provider: "paynow" });
+});
+
 router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (user.role !== "student") { res.status(403).json({ error: "Learner access required" }); return; }
