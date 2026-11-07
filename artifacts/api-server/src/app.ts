@@ -29,6 +29,7 @@ const defaultOrigins = [
 
 const requiredOrigins = [
   "https://dallyletterelidemslearningplatforme-six.vercel.app",
+  "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app",
   // Explicit production frontend origin; additional deployment URLs belong in CORS_ORIGINS.
 ];
 
