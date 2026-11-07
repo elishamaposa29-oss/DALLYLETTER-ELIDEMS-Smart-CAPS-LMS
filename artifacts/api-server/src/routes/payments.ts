@@ -50,6 +50,7 @@ async function ensurePaymentTransactionSchema(): Promise<void> {
       `);
       await db.execute(sql`ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS provider_reference text`);
       await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS payment_transactions_manual_receipt_unique ON payment_transactions(payment_id,provider,provider_reference) WHERE provider LIKE 'manual:%' AND provider_reference IS NOT NULL`);
+      await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS payment_transactions_manual_receipt_global_unique ON payment_transactions(provider,provider_reference) WHERE provider LIKE 'manual:%' AND provider_reference IS NOT NULL`);
     })().catch(error => { paymentTransactionSchemaReady = null; throw error; });
   }
   await paymentTransactionSchemaReady;
@@ -819,7 +820,7 @@ router.post("/payments/:id/manual-settlement", requireAuth, async (req, res): Pr
         await tx.execute(sql`UPDATE payment_transactions SET provider=${"manual:"+method},status='paid',updated_at=now() WHERE id=${reportId} AND status='reported'`);
       } else {
         if(providerReference){
-          const duplicate=await tx.execute(sql`SELECT id FROM payment_transactions WHERE payment_id=${paymentId} AND provider=${"manual:"+method} AND provider_reference=${providerReference} LIMIT 1`);
+          const duplicate=await tx.execute(sql`SELECT id FROM payment_transactions WHERE provider=${"manual:"+method} AND provider_reference=${providerReference} LIMIT 1`);
           const duplicateRows=(duplicate as unknown as {rows?:Array<{id:number}>}).rows??[];
           if(duplicateRows.length)throw Object.assign(new Error("This receipt reference has already been recorded for this invoice."),{statusCode:409});
         }
