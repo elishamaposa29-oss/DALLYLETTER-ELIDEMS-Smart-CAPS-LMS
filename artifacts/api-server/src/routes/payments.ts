@@ -345,8 +345,8 @@ router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<vo
     res.status(503).json({ error: "Live Paynow checkout is not configured. Add valid PAYNOW_INTEGRATION_ID, PAYNOW_INTEGRATION_KEY, PUBLIC_APP_URL and PUBLIC_API_URL server secrets." });
     return;
   }
-  const publicBase = new URL(publicBaseValue).toString().replace(/\\/$/, "");
-  const publicApi = new URL(publicApiValue).toString().replace(/\\/$/, "");
+  const publicBase = new URL(publicBaseValue).toString().replace(/\/$/, "");
+  const publicApi = new URL(publicApiValue).toString().replace(/\/$/, "");
   const reference = "DL-" + user.id + "-" + Date.now() + "-" + crypto.randomBytes(4).toString("hex");
   const now = new Date();
   const month = now.toLocaleString("en-US", { month: "long" });
