@@ -395,6 +395,7 @@ router.patch("/lessons/:id", requireAuth, requireManagerPermissionIfManager("les
     return;
   }
 
+  queueAIContentSafety("lesson", Number(lesson.id), [lesson.title, lesson.description, lesson.subject, lesson.content].filter((value): value is string => typeof value === "string").join("\n"));
   res.json({ ...lesson, createdAt: lesson.createdAt.toISOString() });
 });
 
