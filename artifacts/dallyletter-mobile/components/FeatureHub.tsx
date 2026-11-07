@@ -921,7 +921,7 @@ export default function FeatureHub() {
     if (!Number.isFinite(chosenAmount) || chosenAmount <= 0 || chosenAmount > 100000) { Alert.alert("Invalid amount","Enter an amount greater than zero."); return; }
     setPaymentBusy(true);
     try {
-      const result = await request("/api/payments/paynow/create", { method: "POST", body: JSON.stringify({ amount: chosenAmount }) });
+      const result = await request("/api/payments/paynow/create", { method: "POST", body: JSON.stringify({ paymentId: payableRows[0].id, amount: chosenAmount }) });
       if (!result?.checkoutUrl) throw new Error("Secure checkout did not return a link.");
       await Linking.openURL(String(result.checkoutUrl));
     } catch (e) { Alert.alert("Payment could not start", e instanceof Error ? e.message : "Please try again when connected."); }
@@ -932,7 +932,7 @@ export default function FeatureHub() {
     if (!isStudent || paymentBusy || paymentTotalOwed <= 0) return;
      setPaymentBusy(true);
     try {
-      const result = await request("/api/payments/paypal/create", { method: "POST", body: JSON.stringify({ returnUrl: Linking.createURL("payments/return"), amount: paymentAmountInput.trim() ? Number(paymentAmountInput) : undefined }) });
+      const result = await request("/api/payments/paypal/create", { method: "POST", body: JSON.stringify({ paymentId: payableRows[0].id, returnUrl: Linking.createURL("payments/return"), amount: paymentAmountInput.trim() ? Number(paymentAmountInput) : undefined }) });
       if (!result?.checkoutUrl) throw new Error("PayPal checkout did not return a link.");
       await Linking.openURL(String(result.checkoutUrl));
     } catch (e) { Alert.alert("PayPal payment could not start", e instanceof Error ? e.message : "Please retry when connected."); }
