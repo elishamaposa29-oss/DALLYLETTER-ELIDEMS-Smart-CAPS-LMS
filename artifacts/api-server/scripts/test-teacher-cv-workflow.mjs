@@ -290,6 +290,10 @@ assert.equal(createdExerciseList.status,200,"Approved teacher can list exercises
 
 const rejected=await registerTeacher("rejected");
 const rejectedIdentityBefore=(await pool.query("SELECT id,email,password_hash FROM users WHERE id=$1",[rejected.id])).rows[0];
+const revokeManagerAuthorize=await request("/api/manager-permissions/"+seniorManagerId,{token:ownerToken,method:"PUT",body:{permissions:[{key:"teacher_cv.authorize",granted:false}]}});
+assert.equal(revokeManagerAuthorize.status,200,"Owner can revoke Senior Manager authorization independently");
+const seniorAuthorizeAfterRevoke=await request("/api/teacher-cv-workspace/"+rejected.id+"/decision",{token:seniorToken,method:"POST",body:{action:"approve",note:"Revoked authorization must take effect immediately"}});
+assert.equal(seniorAuthorizeAfterRevoke.status,403,"Revoking authorization immediately blocks Senior Manager approval");
 const grantManagerReview=await request("/api/manager-permissions/"+seniorManagerId,{token:ownerToken,method:"PUT",body:{permissions:[{key:"teacher_cv.review",granted:true}]}});
 assert.equal(grantManagerReview.status,200,"Owner can grant this manager the separate CV review/rejection permission");
 const seniorApproveWithoutAuthorizeGrant=await request("/api/teacher-cv-workspace/"+rejected.id+"/decision",{token:seniorToken,method:"POST",body:{action:"approve",note:"Review grant must not imply authorization"}});
