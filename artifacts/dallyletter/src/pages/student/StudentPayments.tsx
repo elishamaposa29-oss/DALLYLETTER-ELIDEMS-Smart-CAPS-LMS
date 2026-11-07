@@ -14,6 +14,7 @@ interface Settings {
   trust_wallet: string;
   ecocash_number: string;
   payment_instructions: string;
+  school_fee_amount: string;
 }
 
 export default function StudentPayments() {
@@ -21,8 +22,9 @@ export default function StudentPayments() {
   const { toast } = useToast();
   const [notifying, setNotifying] = useState(false);
   const [reported, setReported] = useState(false);
-  const [settings, setSettings] = useState<Settings>({ paynow_url: "", paypal_url: "", trust_wallet: "", ecocash_number: "", payment_instructions: "" });
+  const [settings, setSettings] = useState<Settings>({ paynow_url: "", paypal_url: "", trust_wallet: "", ecocash_number: "", payment_instructions: "", school_fee_amount: "" });
   const [paynowBusy, setPaynowBusy] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState("");
   const [paynowReady, setPaynowReady] = useState(false);
   const [paypalReady, setPaypalReady] = useState(false);
 
@@ -80,9 +82,9 @@ export default function StudentPayments() {
 
   const hasOverdue = payments?.some(p => p.status === "overdue");
   const nextPayablePayment = payments
-    ?.filter(p => p.status === "pending" || p.status === "overdue")
+    ?.filter(p => p.status === "pending" || p.status === "overdue" || p.status === "partially_paid")
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || Number(a.id) - Number(b.id))[0];
-  const totalOwed = payments?.filter(p => p.status === "pending" || p.status === "overdue").reduce((sum, p) => sum + p.amount, 0) || 0;
+  const totalOwed = payments?.filter(p => p.status === "pending" || p.status === "overdue" || p.status === "partially_paid").reduce((sum, p: any) => sum + Math.max(0, Number(p.amount) - Number(p.amountPaid || 0)), 0) || 0;
   const paidCount = payments?.filter(p => p.status === "paid").length || 0;
   const overdueCount = payments?.filter(p => p.status === "overdue").length || 0;
 
@@ -91,7 +93,10 @@ export default function StudentPayments() {
     setPaynowBusy(true);
     try {
       const token = localStorage.getItem("dallyletter_token");
-      const r = await fetch(getApiUrl("/api/payments/paynow/create"), { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({}) });
+      const due = Math.max(0, Number((nextPayablePayment as any).amount) - Number((nextPayablePayment as any).amountPaid || 0));
+      const chosenAmount = paymentAmount.trim() ? Number(paymentAmount) : due;
+      if (!Number.isFinite(chosenAmount) || chosenAmount <= 0 || chosenAmount > 100000) throw new Error("Enter a valid payment amount greater than zero.");
+      const r = await fetch(getApiUrl("/api/payments/paynow/create"), { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ amount: chosenAmount }) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || !d.checkoutUrl) throw new Error(d.error || "Could not start Paynow checkout");
       window.location.assign(d.checkoutUrl);
@@ -172,6 +177,7 @@ export default function StudentPayments() {
     switch (status) {
       case "paid": return <Badge className="bg-emerald-500/10 text-emerald-700 border border-emerald-300 font-semibold">✓ Paid</Badge>;
       case "pending": return <Badge className="bg-amber-500/10 text-amber-700 border border-amber-300 font-semibold">⏳ Pending</Badge>;
+      case "partially_paid": return <Badge className="bg-sky-500/10 text-sky-700 border border-sky-300 font-semibold">Partially paid</Badge>;
       case "overdue": return <Badge className="bg-red-500/10 text-red-700 border border-red-300 font-semibold">⚠ Overdue</Badge>;
       case "failed": return <Badge className="bg-red-500/10 text-red-700 border border-red-300 font-semibold">✕ Payment failed</Badge>;
       case "cancelled": return <Badge variant="outline">Cancelled</Badge>;
@@ -184,13 +190,23 @@ export default function StudentPayments() {
 
   const PaymentMethods = () => (
     <div className="space-y-3">
+      {settings.school_fee_amount && Number(settings.school_fee_amount) > 0 && (
+        <p className="text-sm rounded-lg p-3 border bg-muted/50">Owner-published standard school fee: <strong>USD {Number(settings.school_fee_amount).toFixed(2)}</strong>. Your actual fee and remaining balance are shown in your records below.</p>
+      )}
       {settings.payment_instructions && (
         <p className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-3 border">{settings.payment_instructions}</p>
+      )}
+      {nextPayablePayment && (
+        <div className="space-y-2 rounded-lg border p-3">
+          <label htmlFor="school-fee-payment-amount" className="block text-sm font-semibold">Amount to pay now (USD)</label>
+          <input id="school-fee-payment-amount" type="number" min="0.01" max="100000" step="0.01" inputMode="decimal" className="w-full rounded-md border bg-background p-2 text-foreground" placeholder={String(Math.max(0, Number((nextPayablePayment as any).amount)-Number((nextPayablePayment as any).amountPaid||0)).toFixed(2))} value={paymentAmount} onChange={e=>setPaymentAmount(e.target.value)} />
+          <p className="text-xs text-muted-foreground">You may pay part of the balance or pay extra. Verified extra funds are recorded as credit; they are not lost. Leave blank to pay the full remaining balance on the next fee record.</p>
+        </div>
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* Paynow */}
-      {paynowReady && (<Button onClick={handlePaynowLive} disabled={paynowBusy || !nextPayablePayment} className="h-auto py-3 flex-col gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"><div className="font-bold">{paynowBusy ? "Starting…" : "Paynow"}</div><span className="text-[11px] opacity-80 font-normal">{nextPayablePayment ? "Next fee: " + nextPayablePayment.month + " " + nextPayablePayment.year + " · $" + Number(nextPayablePayment.amount).toFixed(2) : "No unpaid fee"}</span><ExternalLink className="h-3 w-3 opacity-70" /></Button>)}
+      {paynowReady && (<Button onClick={handlePaynowLive} disabled={paynowBusy || !nextPayablePayment} className="h-auto py-3 flex-col gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"><div className="font-bold">{paynowBusy ? "Starting…" : "Paynow"}</div><span className="text-[11px] opacity-80 font-normal">{nextPayablePayment ? "Next fee balance: $" + Math.max(0,Number((nextPayablePayment as any).amount)-Number((nextPayablePayment as any).amountPaid||0)).toFixed(2) : "No unpaid fee"}</span><ExternalLink className="h-3 w-3 opacity-70" /></Button>)}
 
       {/* PayPal */}
         {paypalReady && (
@@ -407,6 +423,7 @@ export default function StudentPayments() {
                       </div>
                       <div className="text-right flex flex-col items-end gap-1.5">
                         <p className="font-bold text-2xl tracking-tight">${payment.amount.toFixed(2)}</p>
+                        {Number((payment as any).amountPaid || 0) > 0 && <p className="text-xs text-muted-foreground">Paid: ${Number((payment as any).amountPaid).toFixed(2)} · Balance: ${Math.max(0,Number(payment.amount)-Number((payment as any).amountPaid)).toFixed(2)} · Credit: ${Math.max(0,Number((payment as any).amountPaid)-Number(payment.amount)).toFixed(2)}</p>}
                         {getStatusBadge(payment.status)}
                       </div>
                     </div>
