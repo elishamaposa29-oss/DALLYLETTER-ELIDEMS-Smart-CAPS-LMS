@@ -89,6 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               setUser(currentUser);
             } else if (response.status === 401 || response.status === 403) {
               await Promise.all([AsyncStorage.removeItem(TOKEN_KEY), AsyncStorage.removeItem(USER_KEY), AsyncStorage.removeItem(AUTH_CACHE_EPOCH_KEY)]);
+              DeviceEventEmitter.emit("dallyletter-auth-changed");
             } else {
               setToken(storedToken);
               setUser(JSON.parse(storedUser));
