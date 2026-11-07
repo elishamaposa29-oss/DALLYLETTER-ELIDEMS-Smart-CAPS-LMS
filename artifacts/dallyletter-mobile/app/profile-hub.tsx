@@ -399,6 +399,7 @@ export default function MobileProfileHub() {
             <TouchableOpacity onPress={()=>setAiMode("agent")} style={{paddingHorizontal:10,paddingVertical:6,borderRadius:8,backgroundColor:aiMode==="agent"?"#fff":"rgba(255,255,255,0.15)"}}><Text style={{fontSize:11,fontWeight:"700",color:aiMode==="agent"?colors.primary:"#fff"}}>Agent</Text></TouchableOpacity>
           </View>}
         </View>
+        <Text style={{paddingHorizontal:12,paddingVertical:8,color:colors.mutedForeground,fontSize:10}}>For everyone’s safety, submitted platform text may be screened by ELIDEMS AI. Flags go to authorized human reviewers; AI does not automatically punish users.</Text>
         <ScrollView style={{maxHeight:240,padding:12}} nestedScrollEnabled>
           {!aiMessages.length&&<Text style={{color:colors.mutedForeground,fontSize:13}}>{learnerAIMode?"Hi! Ask me about a subject, revision, homework or study planning.":"Ask ELIDEMS AI to help prepare or analyze work available to your role."}</Text>}
           {aiMessages.map((item,index)=><View key={index} style={{alignSelf:item.role==="user"?"flex-end":"flex-start",maxWidth:"90%",padding:10,marginVertical:4,borderRadius:12,backgroundColor:item.role==="user"?colors.primary:colors.background,borderWidth:item.role==="user"?0:1,borderColor:colors.border}}><Text style={{color:item.role==="user"?"#fff":colors.foreground,fontSize:13}}>{item.content}</Text></View>)}
