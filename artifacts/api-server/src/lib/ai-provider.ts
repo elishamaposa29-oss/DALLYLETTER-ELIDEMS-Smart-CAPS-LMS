@@ -45,7 +45,7 @@ Be context-aware and fair. Do NOT flag ordinary schoolwork, legitimate education
 
 export interface AIProvider {
   name: string;
-  chat(messages: AIMessage[], systemPrompt?: string): Promise<string>;
+  chat(messages: AIMessage[], systemPrompt?: string, signal?: AbortSignal): Promise<string>;
   generatePoll(topic: string, grade?: string, subject?: string, count?: number): Promise<GeneratedPoll>;
   moderateContent(text: string): Promise<ModerationResult>;
   analyzeData(data: object, prompt: string): Promise<string>;
@@ -55,7 +55,7 @@ export interface AIProvider {
 class MockProvider implements AIProvider {
   name = "mock";
 
-  async chat(messages: AIMessage[]): Promise<string> {
+  async chat(messages: AIMessage[], _systemPrompt?: string, _signal?: AbortSignal): Promise<string> {
     const last = messages[messages.length - 1]?.content?.toLowerCase() ?? "";
     if (last.includes("help") || last.includes("what can you do")) {
       return `**ELIDEMS AI — Development Mode** 🟡\n\n**Available Commands (Live Mode):**\n\n🔐 **Account Management**\n• "Block all users with overdue payments"\n• "Suspend inactive accounts"\n• "Unlock learner account for [name]"\n\n📊 **Reports & Analytics**\n• "Generate monthly payment report"\n• "Show attendance analytics for this week"\n• "List top performing students"\n\n🔔 **Notifications**\n• "Send reminder to all Grade 10 students"\n• "Alert teachers about tomorrow's class"\n\n📝 **Polls**\n• "Create a quiz on Algebra for Grade 9"\n• "Show poll results for [topic]"\n\n🛡️ **Safety**\n• "Review flagged content"\n• "Show suspicious activity alerts"\n\n*Add an API key in Admin → Settings → ELIDEMS AI to activate Live Mode.*`;
@@ -123,7 +123,7 @@ class GeminiProvider implements AIProvider {
   name = "gemini";
   constructor(private apiKey: string) {}
 
-  private async call(messages: AIMessage[], system?: string): Promise<string> {
+  private async call(messages: AIMessage[], system?: string, signal?: AbortSignal): Promise<string> {
     const contents = messages
       .filter(m => m.role !== "system")
       .map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] }));
@@ -132,14 +132,14 @@ class GeminiProvider implements AIProvider {
     const j = await requestProviderJson(
       this.name,
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${this.apiKey}`,
-      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal },
     ) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
     const text = j.candidates?.[0]?.content?.parts?.[0]?.text;
     if (typeof text !== "string" || !text.trim()) throw new AIProviderError(this.name, "invalid_response");
     return text;
   }
 
-  async chat(messages: AIMessage[], system?: string) { return this.call(messages, system); }
+  async chat(messages: AIMessage[], system?: string, signal?: AbortSignal) { return this.call(messages, system, signal); }
 
   async generatePoll(topic: string, grade?: string, subject?: string, count = 5): Promise<GeneratedPoll> {
     const prompt = `Generate a CAPS-aligned educational quiz about "${topic}"${grade ? ` for ${grade}` : ""}${subject ? ` in ${subject}` : ""}. Create exactly ${count} multiple choice questions. Return ONLY valid JSON in this exact format:
@@ -168,19 +168,20 @@ class OpenAIProvider implements AIProvider {
   name = "openai";
   constructor(private apiKey: string) {}
 
-  private async call(messages: AIMessage[], system?: string): Promise<string> {
+  private async call(messages: AIMessage[], system?: string, signal?: AbortSignal): Promise<string> {
     const all = system ? [{ role: "system", content: system }, ...messages] : messages;
     const j = await requestProviderJson("openai", "https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.apiKey}` },
       body: JSON.stringify({ model: "gpt-4o-mini", messages: all, max_tokens: 2048 }),
+      signal,
     }) as { choices?: { message?: { content?: string } }[] };
     const text = j.choices?.[0]?.message?.content;
     if (typeof text !== "string" || !text.trim()) throw new AIProviderError(this.name, "invalid_response");
     return text;
   }
 
-  async chat(messages: AIMessage[], system?: string) { return this.call(messages, system); }
+  async chat(messages: AIMessage[], system?: string, signal?: AbortSignal) { return this.call(messages, system, signal); }
 
   async generatePoll(topic: string, grade?: string, subject?: string, count = 5): Promise<GeneratedPoll> {
     const prompt = `Generate a CAPS-aligned educational quiz about "${topic}"${grade ? ` for ${grade}` : ""}${subject ? ` in ${subject}` : ""}. Create exactly ${count} multiple choice questions. Return ONLY valid JSON: {"title":"title","questions":[{"question":"text?","difficulty":"easy|medium|hard","options":[{"text":"A","isCorrect":true},{"text":"B","isCorrect":false},{"text":"C","isCorrect":false},{"text":"D","isCorrect":false}],"explanation":"why correct"}]}`;
@@ -208,7 +209,7 @@ class AnthropicProvider implements AIProvider {
   name = "anthropic";
   constructor(private apiKey: string) {}
 
-  private async call(messages: AIMessage[], system?: string): Promise<string> {
+  private async call(messages: AIMessage[], system?: string, signal?: AbortSignal): Promise<string> {
     const j = await requestProviderJson("anthropic", "https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": this.apiKey, "anthropic-version": "2023-06-01" },
@@ -218,13 +219,14 @@ class AnthropicProvider implements AIProvider {
         ...(system ? { system } : {}),
         messages: messages.filter(m => m.role !== "system"),
       }),
+      signal,
     }) as { content?: { text?: string }[] };
     const text = j.content?.[0]?.text;
     if (typeof text !== "string" || !text.trim()) throw new AIProviderError(this.name, "invalid_response");
     return text;
   }
 
-  async chat(messages: AIMessage[], system?: string) { return this.call(messages, system); }
+  async chat(messages: AIMessage[], system?: string, signal?: AbortSignal) { return this.call(messages, system, signal); }
 
   async generatePoll(topic: string, grade?: string, subject?: string, count = 5): Promise<GeneratedPoll> {
     const prompt = `Generate a CAPS-aligned educational quiz about "${topic}"${grade ? ` for ${grade}` : ""}${subject ? ` in ${subject}` : ""}. Create exactly ${count} multiple choice questions. Return ONLY valid JSON: {"title":"title","questions":[{"question":"text?","difficulty":"easy|medium|hard","options":[{"text":"A","isCorrect":true},{"text":"B","isCorrect":false},{"text":"C","isCorrect":false},{"text":"D","isCorrect":false}],"explanation":"why correct"}]}`;
