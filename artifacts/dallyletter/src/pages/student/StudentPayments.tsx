@@ -60,6 +60,9 @@ export default function StudentPayments() {
   }, []);
 
   const hasOverdue = payments?.some(p => p.status === "overdue");
+  const nextPayablePayment = payments
+    ?.filter(p => p.status === "pending" || p.status === "overdue")
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || Number(a.id) - Number(b.id))[0];
   const totalOwed = payments?.filter(p => p.status === "pending" || p.status === "overdue").reduce((sum, p) => sum + p.amount, 0) || 0;
   const paidCount = payments?.filter(p => p.status === "paid").length || 0;
   const overdueCount = payments?.filter(p => p.status === "overdue").length || 0;
@@ -79,7 +82,7 @@ export default function StudentPayments() {
   };
 
   const handlePayPal = async () => {
-    if (!payments?.some(payment => payment.status === "pending" || payment.status === "overdue")) {
+    if (!nextPayablePayment) {
       toast({ variant: "destructive", title: "Nothing to pay", description: "There is no outstanding fee record." });
       return;
     }
@@ -175,14 +178,16 @@ export default function StudentPayments() {
         {paypalReady && (
           <Button
             onClick={handlePayPal}
-            disabled={paynowBusy}
+            disabled={paynowBusy || !nextPayablePayment}
             className="h-auto py-3 flex-col gap-1.5 bg-[#003087] hover:bg-[#00256e] text-white"
           >
             <div className="flex items-center gap-2 font-bold">
               <span className="text-lg">P</span>
               PayPal
             </div>
-            <span className="text-[11px] opacity-80 font-normal">Pay online</span>
+            <span className="text-[11px] opacity-80 font-normal">
+              {nextPayablePayment ? "Next fee: " + nextPayablePayment.month + " " + nextPayablePayment.year + " · $" + Number(nextPayablePayment.amount).toFixed(2) : "No unpaid fee"}
+            </span>
             <ExternalLink className="h-3 w-3 opacity-70" />
           </Button>
         )}
