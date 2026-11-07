@@ -75,6 +75,7 @@ export default function StudentPayments() {
       }, 5000);
       return () => window.clearInterval(timer);
     }
+    return undefined;
   }, []);
 
   const hasOverdue = payments?.some(p => p.status === "overdue");
