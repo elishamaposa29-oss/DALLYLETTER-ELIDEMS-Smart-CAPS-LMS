@@ -56,7 +56,7 @@ export async function requestProviderJson(
     try {
       return await response.json() as unknown;
     } catch {
-      throw new AIProviderError(provider, "invalid_response", response.status);
+      throw new AIProviderError(provider, controller.signal.aborted ? "timeout" : "invalid_response", response.status);
     }
   } finally {
     clearTimeout(timeout);
