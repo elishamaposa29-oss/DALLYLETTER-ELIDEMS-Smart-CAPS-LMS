@@ -107,11 +107,13 @@ router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<vo
   const user = req.currentUser!;
   if (user.role !== "student") { res.status(403).json({ error: "Learner access required." }); return; }
   const publicBase = process.env.PUBLIC_APP_URL || process.env.VITE_PUBLIC_APP_URL || "";
+  const publicApi = process.env.PUBLIC_API_URL || "";
   try {
     const parsedBase = new URL(publicBase);
-    if (parsedBase.protocol !== "https:" && process.env.NODE_ENV === "production") throw new Error("HTTPS required");
+    const parsedApi = new URL(publicApi);
+    if (process.env.NODE_ENV === "production" && (parsedBase.protocol !== "https:" || parsedApi.protocol !== "https:")) throw new Error("HTTPS required");
   } catch {
-    res.status(503).json({ error: "A valid public application URL is required for PayPal." }); return;
+    res.status(503).json({ error: "Valid public application and API URLs are required for PayPal." }); return;
   }
   if (!process.env.PAYPAL_WEBHOOK_ID?.trim()) {
     res.status(503).json({ error: "PayPal webhook verification is not configured; checkout is disabled." }); return;
@@ -199,6 +201,15 @@ router.post("/payments/paypal/capture", requireAuth, async (req, res): Promise<v
     const reference = String(unit?.custom_id || unit?.invoice_id || "");
     const match = reference.match(/^DLP-(\d+)-(\d+)-\d+-[a-f0-9]{8}$/i);
     if (!match || Number(match[1]) !== user.id || order.id !== orderId) { res.status(403).json({ error: "This PayPal order does not belong to this learner." }); return; }
+    const feeRow = await db.execute(sql`
+      SELECT id FROM payments
+      WHERE id = ${Number(match[2])} AND student_id = ${user.id}
+        AND status IN ('pending', 'overdue')
+        AND notes LIKE ${"%PayPal order " + orderId + " reference " + reference + "%"}
+      LIMIT 1
+    `);
+    const feeRows = (feeRow as unknown as { rows?: Array<{ id: number }> }).rows ?? [];
+    if (!feeRows.length) { res.status(409).json({ error: "The school-fee record for this PayPal order is no longer eligible for settlement." }); return; }
     if (order.status === "COMPLETED") { res.json({ captured: true, alreadyCompleted: true }); return; }
     if (order.status !== "APPROVED") { res.status(409).json({ error: "PayPal has not approved this order yet." }); return; }
     const captureResponse = await fetch(paypalBase() + "/v2/checkout/orders/" + encodeURIComponent(orderId) + "/capture", {
