@@ -1,6 +1,6 @@
 import { db, platformSettingsTable } from "@workspace/db";
-import { AIProviderError, requestProviderJson } from "./ai-provider-http.js";
-export { AIProviderError } from "./ai-provider-http.js";
+import { AIProviderError, requestProviderJson } from "./ai-provider-http";
+export { AIProviderError } from "./ai-provider-http";
 
 export interface AIMessage {
   role: "user" | "assistant" | "system";
