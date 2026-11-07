@@ -90,7 +90,8 @@ function OfflineQueryCache() {
         if (active && sequence === switchSequence) { hydrated = true; persist(); }
       }
     };
-    void loadUserCache();
+    // Wait for AuthProvider to verify the persisted session with /api/auth/me.
+    // Hydrating here would race the auth check and briefly expose stale permissions.
     const authSubscription = DeviceEventEmitter.addListener("dallyletter-auth-changed", () => { void loadUserCache(); });
     return () => {
       active = false;
