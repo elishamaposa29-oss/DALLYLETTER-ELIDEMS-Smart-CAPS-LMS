@@ -695,7 +695,7 @@ router.post("/payments", requireAuth, requireTeacherOrOwner, async (req, res): P
 router.post("/payments/notify-admin", requireAuth, async (req, res): Promise<void> => {
   const currentUser = req.currentUser!;
 
-  if (currentUser.role !== "student") {
+  if (!["student","learner","prefect"].includes(String(currentUser.role).toLowerCase())) {
     res.status(403).json({ error: "Only students can report payments" });
     return;
   }
