@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-# Add the sitemap URL after the canonical public website domain is confirmed.
+Sitemap: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/sitemap.xml
