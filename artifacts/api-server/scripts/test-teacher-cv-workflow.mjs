@@ -73,8 +73,8 @@ const draftStatusAfterSurvey=await request("/api/auth/me",{token:draftOnlyApplic
 assert.equal(draftStatusAfterSurvey.data.teacherApplicationStatus,"draft","Readiness survey submission does not submit or approve the CV application");
 const draftSurveyHistory=await request("/api/teacher-cv-workspace/"+draftOnlyApplicant.id+"/history",{token:draftOnlyApplicant.token});
 assert(draftSurveyHistory.data.history.some(item=>item.action==="survey_submitted"),"Independent survey submission is retained in application history");
-const ownerCannotReviewDraft=await request("/api/teacher-cv-workspace/"+draftOnlyApplicant.id+"/details",{token:ownerToken});
-assert.equal(ownerCannotReviewDraft.status,404,"Unsubmitted drafts are not exposed in the reviewer details workspace");
+const ownerCanReviewIndependentSurvey=await request("/api/teacher-cv-workspace/"+draftOnlyApplicant.id+"/details",{token:ownerToken});
+assert.equal(ownerCanReviewIndependentSurvey.status,200,"An independently submitted readiness survey is visible to authorized reviewers even when the CV remains a draft");
 const ownerCannotDecideDraft=await request("/api/teacher-cv-workspace/"+draftOnlyApplicant.id+"/decision",{token:ownerToken,method:"POST",body:{action:"approve"}});
 assert.equal(ownerCannotDecideDraft.status,404,"Even Owner cannot approve an application that was never formally submitted");
 const ownerLegacyCannotDecideDraft=await request("/api/users/"+draftOnlyApplicant.id+"/teacher-review",{token:ownerToken,method:"PATCH",body:{action:"approve"}});
@@ -86,6 +86,7 @@ assert.equal(ownerLegacyDraftPdf.status,404,"Legacy reviewer PDF endpoint must n
 const pendingQueue=await request("/api/teacher-cv-workspace/queue",{token:ownerToken});
 assert.equal(pendingQueue.status,200,"Owner can retrieve the teacher CV review queue");
 assert(!pendingQueue.data.applications.some(item=>Number(item.id)===Number(approvalApplicant.id)),"Unsubmitted teacher registrations must not appear as submitted CV applications");
+assert(pendingQueue.data.applications.some(item=>Number(item.id)===Number(draftOnlyApplicant.id)&&item.has_cv_submission===false&&item.survey_review_status==="pending"),"Independent survey submission must appear separately in the reviewer queue without becoming a CV application");
 const profilePhoto=await upload("/api/users/me/teacher-documents",approvalApplicant.token,"file","teacher-photo.png","image/png",Buffer.from([137,80,78,71,13,10,26,10]),{documentType:"cv"});
 assert.equal(profilePhoto.status,201,"Applicant can upload a private profile photo");
 const resume=await upload("/api/users/me/teacher-documents",approvalApplicant.token,"file","teacher-resume.pdf","application/pdf",Buffer.from("%PDF-1.4\\n%teacher resume integration test\\n"),{documentType:"resume"});
@@ -166,8 +167,10 @@ const managerToken=managerEncoded+"."+crypto.createHmac("sha256",process.env.JWT
 await pool.query("INSERT INTO auth_sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '90 days')",[crypto.createHash("sha256").update(managerToken).digest("hex"),managerId]);
 const grantView=await request("/api/manager-permissions/"+managerId,{token:ownerToken,method:"PUT",body:{permissions:[{key:"teacher_cv.view",granted:true}]}});
 assert.equal(grantView.status,200,"Owner can grant this manager CV view permission individually");
-const managerCannotReviewDraft=await request("/api/teacher-cv-workspace/"+draftOnlyApplicant.id+"/details",{token:managerToken});
-assert.equal(managerCannotReviewDraft.status,404,"A manager with explicit CV view permission still cannot open an unsubmitted draft");
+const juniorCannotReviewSurvey=await request("/api/teacher-cv-workspace/"+draftOnlyApplicant.id+"/survey/decision",{token:managerToken,method:"POST",body:{action:"approve",note:"Junior review must be denied"}});
+assert.equal(juniorCannotReviewSurvey.status,403,"Junior manager without an explicit senior review grant cannot decide a readiness survey");
+const managerCanReviewIndependentSurvey=await request("/api/teacher-cv-workspace/"+draftOnlyApplicant.id+"/details",{token:managerToken});
+assert.equal(managerCanReviewIndependentSurvey.status,200,"A manager with explicit CV view permission can inspect a separately submitted readiness survey");
 const managerLegacyDraftCv=await request("/api/users/"+draftOnlyApplicant.id+"/teacher-cv",{token:managerToken});
 assert.equal(managerLegacyDraftCv.status,404,"Legacy manager CV endpoint must not expose an unsubmitted draft");
 const managerLegacyDraftPdf=await request("/api/users/"+draftOnlyApplicant.id+"/teacher-cv/pdf",{token:managerToken});
@@ -175,6 +178,16 @@ assert.equal(managerLegacyDraftPdf.status,404,"Legacy manager PDF endpoint must 
 const managerQueue=await request("/api/teacher-cv-workspace/queue",{token:managerToken});
 assert.equal(managerQueue.status,200,"Individually authorized Junior Manager can access the CV queue");
 assert(managerQueue.data.applications.some(item=>Number(item.id)===Number(approvalApplicant.id)),"Authorized manager can see the submitted application");
+const approvedIndependentSurvey=await request("/api/teacher-cv-workspace/"+draftOnlyApplicant.id+"/survey/decision",{token:ownerToken,method:"POST",body:{action:"approve",note:"Readiness survey reviewed"}});
+assert.equal(approvedIndependentSurvey.status,200,"Owner can approve a submitted readiness survey independently");
+assert.equal(approvedIndependentSurvey.data.status,"approved");
+const cvStatusAfterSurveyApproval=await request("/api/auth/me",{token:draftOnlyApplicant.token});
+assert.equal(cvStatusAfterSurveyApproval.data.teacherApplicationStatus,"draft","Survey approval must not authorize or submit the teacher CV application");
+const managerSurveyQueueRow=managerQueue.data.applications.find(item=>Number(item.id)===Number(draftOnlyApplicant.id));
+assert(managerSurveyQueueRow,"Authorized manager can see the independently submitted readiness survey in the review queue");
+const surveyApplicantCvSubmission=await pool.query("SELECT EXISTS(SELECT 1 FROM teacher_cv_review_history WHERE teacher_id=$1 AND action='submitted') AS has_cv_submission",[draftOnlyApplicant.id]);
+assert.equal(surveyApplicantCvSubmission.rows[0].has_cv_submission,false,"Independent readiness survey must not be recorded as a CV application submission");
+assert(managerSurveyQueueRow.survey_submitted_at,"Review queue identifies the independent survey submission timestamp");
 const managerDetail=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/details",{token:managerToken});
 assert.equal(managerDetail.status,200,"Authorized manager can open applicant details");
 const juniorDecision=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/decision",{token:managerToken,method:"POST",body:{action:"approve",note:"Junior must not approve without senior authority"}});

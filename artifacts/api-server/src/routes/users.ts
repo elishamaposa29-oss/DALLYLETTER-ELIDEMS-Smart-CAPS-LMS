@@ -1287,8 +1287,16 @@ router.put("/users/me/subjects", requireAuth, async (req, res): Promise<void> =>
   res.json(result.rows[0]);
 });
 
+function canUseOwnPayoutPreferences(user: NonNullable<Express.Request["currentUser"]>): boolean {
+  const role = normalizeRole(user.role);
+  if (isOwnerRole(role) || ["student", "learner", "prefect"].includes(role)) return true;
+  if (role !== "teacher") return false;
+  const status = String(user.teacherApplicationStatus ?? "not_applicable").trim().toLowerCase();
+  return status === "approved" || status === "not_applicable";
+}
+
 router.get("/users/me/payout-preferences", requireAuth, async(req,res):Promise<void>=>{
-  if(req.currentUser!.role!=="teacher"){res.status(403).json({error:"Teacher account required."});return;}
+  if(!canUseOwnPayoutPreferences(req.currentUser!)){res.status(403).json({error:"Payout preferences are unavailable until your teacher application is approved."});return;}
   const result=await pool.query("SELECT method,ecocash_phone,paypal_email,bank_name,account_name_holder,updated_at FROM payout_preferences WHERE user_id=$1",[req.currentUser!.id]);
   const row=result.rows[0];
   if(!row){res.json({method:null,destination_masked:null,bank_name:null,account_name_holder:null,payout_ready:false});return;}
@@ -1297,7 +1305,7 @@ router.get("/users/me/payout-preferences", requireAuth, async(req,res):Promise<v
 });
 
 router.put("/users/me/payout-preferences", requireAuth, async (req, res): Promise<void> => {
-  if (req.currentUser!.role !== "teacher") { res.status(403).json({ error: "Teacher account required." }); return; }
+  if (!canUseOwnPayoutPreferences(req.currentUser!)) { res.status(403).json({ error: "Payout preferences are unavailable until your teacher application is approved." }); return; }
   const body = req.body ?? {};
   if (hasForbiddenPaymentCredentials(body)) { res.status(400).json({ error: "Payment credentials and card security data must never be submitted or stored." }); return; }
   const { method, ecocash_phone, paypal_email, bank_name, account_name_holder } = body;

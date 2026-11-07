@@ -14,7 +14,8 @@
     "test:media-auth": "node ./scripts/test-media-auth.mjs",
     "test:profile-access": "node ./scripts/test-authorization.mjs",
     "start:api": "pnpm run start",
-    "backfill:enrollments": "node ./scripts/backfill-enrollments.mjs"
+    "backfill:enrollments": "node ./scripts/backfill-enrollments.mjs",
+    "test:ai-provider": "node ./scripts/test-ai-provider-http.mjs"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",

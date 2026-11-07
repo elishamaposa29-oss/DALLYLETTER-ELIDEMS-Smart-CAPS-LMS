@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { db, pool, followsTable, notificationPreferencesTable, notificationsTable, usersTable, lessonsTable, contentCommentsTable, moderationActionsTable, auditLogsTable, chatPollsTable, chatPollOptionsTable, chatPollVotesTable, broadcastsTable, broadcastRecipientsTable, communitiesTable, communityGroupsTable, messagesTable, studyGroupMembersTable, studyGroupsTable, groupSettingsTable } from "@workspace/db";
+import { db, pool, followsTable, notificationPreferencesTable, notificationsTable, usersTable, lessonsTable, contentCommentsTable, moderationActionsTable, auditLogsTable, contentFlagsTable, chatPollsTable, chatPollOptionsTable, chatPollVotesTable, broadcastsTable, broadcastRecipientsTable, communitiesTable, communityGroupsTable, messagesTable, studyGroupMembersTable, studyGroupsTable, groupSettingsTable } from "@workspace/db";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { canModerateUser, isJuniorManager, normalizeRole } from "../lib/role-access";
 import { managerHasPermission, requireManagerPermission, requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
+import { getAIProvider } from "../lib/ai-provider";
 
 const router = Router();
 const manager = (u:any) => canAccessManager(u);
@@ -59,6 +60,14 @@ router.post("/content-comments", requireAuth, requireManagerPermission("content.
  if(!manager(req.currentUser)){res.status(403).json({error:"Staff access required"});return;}
  if (!isOwnerRole(req.currentUser!.role) && await isOwnerOwnedContent(contentType, Number(contentId))) { res.status(404).json({ error: "Content not found" }); return; }
  const [row]=await db.insert(contentCommentsTable).values({authorId:req.currentUser!.id,contentType,contentId:Number(contentId),body:body.trim().slice(0,4000)}).returning();
+ void (async()=>{try{
+  const ai=await getAIProvider();
+  const result=await ai.moderateContent(body.trim().slice(0,4000));
+  if(result?.flagged===true){
+   const severity=new Set(["low","medium","high","critical"]).has(result.severity)?result.severity:"medium";
+   await db.insert(contentFlagsTable).values({contentType:"comment",contentId:Number(row.id),contentText:body.trim().slice(0,500),reason:String(result.reason||"ELIDEMS AI detected content for human review").slice(0,500),severity,detectedBy:"ai:auto",status:"pending"});
+  }
+ }catch{/* Comment creation must continue if the moderation provider is unavailable. */}})();
  if(contentType==="lesson"){const [lesson]=await db.select({teacherId:lessonsTable.teacherId}).from(lessonsTable).where(eq(lessonsTable.id,Number(contentId)));if(lesson) await db.insert(notificationsTable).values({recipientId:lesson.teacherId,title:"New content comment",message:`${req.currentUser!.name} commented on a lesson.`,type:"content_comment"});}
  res.status(201).json(row);
 });

@@ -32,6 +32,7 @@ import {
 import { hasContentPermission } from "../lib/content-permissions";
 import { isObjectStorageConfigured } from "../lib/object-storage";
 import { logger } from "../lib/logger";
+import { queueAIContentSafety } from "../lib/ai-content-safety";
 
 const router: IRouter = Router();
 const mediaShareSecret = () => process.env.JWT_SECRET || process.env.AUTH_SECRET || process.env.SESSION_SECRET || "";
@@ -292,6 +293,11 @@ router.post("/lessons", requireAuth, requireManagerPermissionIfManager("lessons.
     teacherName: currentUser.name,
   }).returning();
 
+  const lessonSafetyText = Object.entries(parsed.data)
+    .filter(([key, value]) => typeof value === "string" && !/(url|media|file|image|video)/i.test(key))
+    .map(([, value]) => String(value)).join("\n");
+  queueAIContentSafety("lesson", Number(lesson.id), lessonSafetyText);
+
   // Log activity
   await db.insert(activityLogTable).values({
     type: "lesson_added",
@@ -389,6 +395,7 @@ router.patch("/lessons/:id", requireAuth, requireManagerPermissionIfManager("les
     return;
   }
 
+  queueAIContentSafety("lesson", Number(lesson.id), [lesson.title, lesson.description, lesson.subject, lesson.content].filter((value): value is string => typeof value === "string").join("\n"));
   res.json({ ...lesson, createdAt: lesson.createdAt.toISOString() });
 });
 

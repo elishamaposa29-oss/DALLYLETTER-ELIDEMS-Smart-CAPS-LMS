@@ -26,33 +26,91 @@ export async function getOfflineMediaUsage(userId: number): Promise<{items:numbe
 }
 function hash(value: string) { let h = 2166136261; for (let i=0;i<value.length;i++) { h ^= value.charCodeAt(i); h = Math.imul(h,16777619); } return (h>>>0).toString(16); }
 export function resolveMediaUrl(url: string) { return /^https?:\/\//i.test(url) ? url : getApiUrl(url); }
-export async function saveOfflineMediaForAccount(userId: number, token: string | undefined, url: string, fileName?: string): Promise<string> {
+const offlineMediaDownloads = new Map<string, Promise<SavedMedia[string]>>();
+
+async function downloadOfflineMediaRecord(
+  userId: number,
+  token: string | undefined,
+  url: string,
+  fileName?: string,
+  onProgress?: (value: number) => void,
+): Promise<SavedMedia[string]> {
   if (!url.trim()) throw new Error("Invalid media URL.");
   const existingUri = await getOfflineMediaUri(userId, url);
-  if (existingUri) return existingUri;
+  if (existingUri) {
+    const raw = await AsyncStorage.getItem(keyFor(userId));
+    const entries = raw ? JSON.parse(raw) as SavedMedia : {};
+    if (entries[url]) return entries[url];
+  }
   if (!FileSystem.documentDirectory) throw new Error("Offline file storage is unavailable on this device.");
   const directory = FileSystem.documentDirectory + "dallyletter-offline/";
   await FileSystem.makeDirectoryAsync(directory, { intermediates: true }).catch(() => undefined);
   const ext = (url.match(/\.([a-z0-9]{2,5})(?:[?#]|$)/i)?.[1] || (url.match(/[?&]type=([^&]+)/)?.[1] || "").split("/").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 5) || "bin";
   const localUri = directory + hash(String(userId) + ":" + url) + "-" + Date.now().toString(36) + "." + ext;
   try {
-    const result = await FileSystem.downloadAsync(resolveMediaUrl(url), localUri, { headers: getApiMediaAuthHeaders(url, token, getApiUrl("/")) });
-    if (result.status < 200 || result.status >= 300) throw new Error("Media server returned HTTP " + result.status + ".");
+    const task = FileSystem.createDownloadResumable(
+      resolveMediaUrl(url),
+      localUri,
+      { headers: getApiMediaAuthHeaders(url, token, getApiUrl("/")) },
+      event => {
+        if (onProgress && event.totalBytesExpectedToWrite > 0) {
+          onProgress(Math.min(100, Math.round(event.totalBytesWritten / event.totalBytesExpectedToWrite * 100)));
+        }
+      },
+    );
+    const result = await task.downloadAsync();
+    if (!result?.uri || result.status < 200 || result.status >= 300) {
+      throw new Error("Media download did not complete successfully" + (result?.status ? " (HTTP " + result.status + ")." : "."));
+    }
     const info = await FileSystem.getInfoAsync(result.uri);
     const bytes = info.exists && "size" in info ? Number(info.size || 0) : 0;
     if (!info.exists || bytes <= 0) throw new Error("Downloaded media could not be verified.");
     const raw = await AsyncStorage.getItem(keyFor(userId));
     const entries = raw ? JSON.parse(raw) as SavedMedia : {};
+    const previous = entries[url];
     const current = await getOfflineMediaUsage(userId);
-    if (!entries[url] && current.items >= MAX_OFFLINE_MEDIA_ITEMS) throw new Error("Offline storage item limit reached (250 files).");
-    if (current.bytes + bytes > MAX_OFFLINE_MEDIA_BYTES) throw new Error("Offline storage limit reached (512 MB).");
-    entries[url] = { localUri: result.uri, fileName: fileName || url.split("/").pop()?.split("?")[0] || "Learning media", downloadedAt: new Date().toISOString(), bytes };
+    const previousBytes = Number(previous?.bytes || 0);
+    if (!previous && current.items >= MAX_OFFLINE_MEDIA_ITEMS) throw new Error("Offline storage item limit reached (250 files).");
+    if (current.bytes - previousBytes + bytes > MAX_OFFLINE_MEDIA_BYTES) throw new Error("Offline storage limit reached (512 MB).");
+    const record = {
+      localUri: result.uri,
+      fileName: fileName || previous?.fileName || url.split("/").pop()?.split("?")[0] || "Learning media",
+      downloadedAt: new Date().toISOString(),
+      bytes,
+    };
+    entries[url] = record;
     await AsyncStorage.setItem(keyFor(userId), JSON.stringify(entries));
-    return result.uri;
+    if (previous?.localUri && previous.localUri !== record.localUri) {
+      await FileSystem.deleteAsync(previous.localUri, { idempotent: true }).catch(() => undefined);
+    }
+    return record;
   } catch (error) {
     await FileSystem.deleteAsync(localUri, { idempotent: true }).catch(() => undefined);
     throw error;
   }
+}
+
+/** Concurrent requests for the same account/media share one download and one registry write. */
+export function downloadOfflineMediaRecordForAccount(
+  userId: number,
+  token: string | undefined,
+  url: string,
+  fileName?: string,
+  onProgress?: (value: number) => void,
+): Promise<SavedMedia[string]> {
+  const key = String(userId) + ":" + url;
+  const existing = offlineMediaDownloads.get(key);
+  if (existing) return existing;
+  const pending = downloadOfflineMediaRecord(userId, token, url, fileName, onProgress);
+  offlineMediaDownloads.set(key, pending);
+  void pending.finally(() => {
+    if (offlineMediaDownloads.get(key) === pending) offlineMediaDownloads.delete(key);
+  }).catch(() => undefined);
+  return pending;
+}
+
+export async function saveOfflineMediaForAccount(userId: number, token: string | undefined, url: string, fileName?: string): Promise<string> {
+  return (await downloadOfflineMediaRecordForAccount(userId, token, url, fileName)).localUri;
 }
 
 export async function getOfflineMediaUri(userId: number | undefined, url: string): Promise<string | null> {
@@ -104,42 +162,12 @@ export default function OfflineMediaDownload({ url, fileName, accessibilityLabel
   const download = async () => {
     if (!user?.id || busy) { if (!user?.id) Alert.alert("Sign in required", "Sign in before saving media for offline use."); return; }
     setBusy(true); setProgress(0);
-    let localUri: string | undefined;
     try {
-      const directory = (FileSystem.documentDirectory || "") + "dallyletter-offline/";
-      if (!FileSystem.documentDirectory) throw new Error("Offline file storage is unavailable on this device.");
-      await FileSystem.makeDirectoryAsync(directory, { intermediates: true }).catch(() => undefined);
-      const ext = (url.match(/\.([a-z0-9]{2,5})(?:[?#]|$)/i)?.[1] || (url.match(/[?&]type=([^&]+)/)?.[1] || "").split("/").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g,"").slice(0,5) || "bin";
-      // Use a unique versioned filename so a failed replacement never destroys
-      // a previously saved offline copy of the same media URL.
-      localUri = directory + hash(String(user.id) + ":" + url) + "-" + Date.now().toString(36) + "." + ext;
-      const task = FileSystem.createDownloadResumable(resolved, localUri, { headers: getApiMediaAuthHeaders(url, token, getApiUrl("/")) }, event => {
-        if (event.totalBytesExpectedToWrite > 0) setProgress(Math.min(100, Math.round(event.totalBytesWritten / event.totalBytesExpectedToWrite * 100)));
-      });
-      const result = await task.downloadAsync();
-      if (!result?.uri) throw new Error("The download did not produce a local file.");
-      const info = await FileSystem.getInfoAsync(result.uri);
-      const raw = await AsyncStorage.getItem(keyFor(user.id));
-      const entries = raw ? JSON.parse(raw) as SavedMedia : {};
-      const previousLocalUri = entries[url]?.localUri;
-      const record = { localUri: result.uri, fileName: fileName || url.split("/").pop()?.split("?")[0] || "Learning media", downloadedAt: new Date().toISOString(), bytes: info.exists && "size" in info ? info.size : undefined };
-      const newBytes = Number(record.bytes || 0);
-      const previousBytes = Number(entries[url]?.bytes || 0);
-      const currentUsage = await getOfflineMediaUsage(user.id);
-      if (!entries[url] && currentUsage.items >= MAX_OFFLINE_MEDIA_ITEMS) throw new Error("Offline download limit reached (250 files). Remove an older download before saving another.");
-      if (currentUsage.bytes - previousBytes + newBytes > MAX_OFFLINE_MEDIA_BYTES) throw new Error("Offline storage limit reached (512 MB). Remove older downloads or choose a smaller file.");
-      if (newBytes <= 0) throw new Error("The downloaded file size could not be verified; it was not saved to the offline library.");
-      entries[url] = record;
-      await AsyncStorage.setItem(keyFor(user.id), JSON.stringify(entries));
-      // Remove the replaced copy only after the new copy and registry are safely saved.
-      if (previousLocalUri && previousLocalUri !== record.localUri) {
-        await FileSystem.deleteAsync(previousLocalUri, { idempotent: true }).catch(() => undefined);
-      }
+      const record = await downloadOfflineMediaRecordForAccount(user.id, token ?? undefined, url, fileName, setProgress);
       setSaved(record);
       await refreshUsage();
       Alert.alert("Saved for offline use", "This file is stored on this device for this account. Open it from the lesson even without internet.");
     } catch (error) {
-      if (localUri) await FileSystem.deleteAsync(localUri, { idempotent: true }).catch(() => undefined);
       Alert.alert("Download failed", error instanceof Error ? error.message : "Reconnect and try again.");
     } finally { setBusy(false); setProgress(0); }
   };

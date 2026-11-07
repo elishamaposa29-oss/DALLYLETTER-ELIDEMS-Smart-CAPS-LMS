@@ -38,10 +38,12 @@ jobs:
     env:
       DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/dallyletter_pr84_test
       NODE_ENV: test
+      AI_PROVIDER_TIMEOUT_MS: "1000"
       JWT_SECRET: pr84-ci-only-secret-not-for-deployment
       PORT: "4000"
       API_BASE_URL: http://127.0.0.1:4000
       PUBLIC_APP_URL: http://127.0.0.1:5173
+      PUBLIC_API_URL: http://127.0.0.1:4000
       MOCK_PROVIDER_MODE: test
       MOCK_PROVIDER_CAPTURE: /tmp/dallyletter-provider-capture.jsonl
       RESEND_API_KEY: pr84-ci-mock-key
@@ -50,6 +52,7 @@ jobs:
       PAYPAL_CLIENT_SECRET: pr84-ci-mock-secret
       PAYPAL_WEBHOOK_ID: pr84-ci-mock-webhook
       PAYPAL_API_BASE: http://paypal.test
+      PAYNOW_INTEGRATION_ID: pr84-ci-paynow-integration-id
       PAYNOW_INTEGRATION_KEY: pr84-ci-paynow-integration-key
       GOOGLE_CLIENT_ID: pr84-ci-google-client-id
       TWILIO_ACCOUNT_SID: ACpr84ci
@@ -73,13 +76,20 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Typecheck shared libraries
         run: pnpm run typecheck:libs
-      # Android build and typecheck are intentionally deferred per the PR owner's explicit release constraint.
+      - name: Verify AI provider timeout, cancellation and error redaction
+        run: pnpm --dir artifacts/api-server run test:ai-provider
+      - name: Typecheck Android application
+        run: pnpm --dir artifacts/dallyletter-mobile run typecheck
+      - name: Test Android offline submission queue
+        run: pnpm --dir artifacts/dallyletter-mobile run test:offline-queue
+      - name: Export production Android JavaScript bundle
+        run: pnpm --dir artifacts/dallyletter-mobile exec expo export --platform android --output-dir /tmp/dallyletter-android-export
       - name: Create schema in isolated ephemeral PostgreSQL
         run: pnpm run db:push
       - name: Build API
         run: pnpm --dir artifacts/api-server run build
       - name: Apply additive transfer form-data migration twice (idempotency check)
-        run: pnpm --dir lib/db run migrate:transfer-form-data && pnpm --dir lib/db run migrate:transfer-form-data
+        run: pnpm --dir lib/db run migrate:transfer-form-data && pnpm --dir lib/db run migrate:transfer-form-data && pnpm --dir lib/db run migrate:payment-transactions && pnpm --dir lib/db run migrate:payment-transactions
       - name: Start API with isolated provider mocks
         shell: bash
         run: |
@@ -112,7 +122,24 @@ jobs:
         timeout-minutes: 3
         env:
           API_BASE_URL: https://dallyletter-elidems-smart-caps-lms-4.onrender.com
-        run: node artifacts/api-server/scripts/smoke-post-merge-routes.mjs
+        run: |
+          node artifacts/api-server/scripts/smoke-post-merge-routes.mjs
+          node --input-type=module <<'NODE'
+          const base = process.env.API_BASE_URL.replace(/\/$/, "");
+          for (const provider of ["paypal", "paynow"]) {
+            try {
+              const response = await fetch(base + "/api/payments/" + provider + "/status", { cache: "no-store" });
+              const data = await response.json().catch(() => ({}));
+              console.log("PRODUCTION_PAYMENT_READINESS", provider, JSON.stringify({
+                httpStatus: response.status,
+                configured: data.configured === true,
+                provider: data.provider || provider,
+              }));
+            } catch {
+              console.log("PRODUCTION_PAYMENT_READINESS", provider, JSON.stringify({ reachable: false, configured: false }));
+            }
+          }
+          NODE
 
       - name: Verify teacher CV restrictions, rejection email, learner conversion and expiry
         run: node artifacts/api-server/scripts/test-teacher-cv-workflow.mjs

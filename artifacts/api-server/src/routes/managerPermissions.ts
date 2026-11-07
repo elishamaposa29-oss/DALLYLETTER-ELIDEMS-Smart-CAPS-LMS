@@ -12,7 +12,7 @@ const router: IRouter = Router();
 /**
  * The catalogue describes actions that can be requested. It does not grant them.
  * No manager receives operational capabilities from role or seniority.
- * Owner grants every permission individually; senior-only actions remain unavailable to Junior Managers.
+ * Owner grants every permission individually; teacher CV review, teacher authorization, qualification verification and elevated monitoring remain Senior-only.
  * Owner-only powers are deliberately absent.
  */
 export const MANAGER_PERMISSION_CATALOG = [
@@ -32,10 +32,10 @@ export const MANAGER_PERMISSION_CATALOG = [
   { key: "recordbook.edit", group: "Academic", label: "Edit RecordBook marks", description: "Correct marks and trigger recalculation with an audit trail." },
   { key: "reports.create", group: "Academic", label: "Create academic reports", description: "Create and submit school-scoped report drafts." },
   { key: "reports.view", group: "Academic", label: "View reports", description: "View school-scoped academic reports." },
-  { key: "reports.review", seniorOnly: true, group: "Academic", label: "Approve or reject reports", description: "Review submitted academic reports and record a decision." },
+  { key: "reports.review", group: "Academic", label: "Approve or reject reports", description: "Review submitted academic reports and record a decision." },
   { key: "transfers.view", group: "Transfers", label: "View transfer requests", description: "View school-scoped transfer requests and documents." },
   { key: "transfers.reject", group: "Transfers", label: "Reject transfer requests", description: "Reject eligible transfer requests with a reason; does not grant approval." },
-  { key: "transfers.approve", seniorOnly: true, group: "Transfers", label: "Approve transfer requests", description: "Approve eligible transfer requests with verification and audit history." },
+  { key: "transfers.approve", group: "Transfers", label: "Approve transfer requests", description: "Approve eligible transfer requests with verification and audit history." },
   { key: "teacher_cv.chat", group: "Teacher CV", label: "Chat with applying teachers", description: "Use the existing private application conversation with applicants." },
   { key: "teacher_cv.view", group: "Teacher applications", label: "View teacher CV applications", description: "Review submitted teacher CV information." },
   { key: "teacher_cv.review", seniorOnly: true, group: "Teacher applications", label: "Review teacher applications", description: "Request corrections or reject an application." },
@@ -44,7 +44,7 @@ export const MANAGER_PERMISSION_CATALOG = [
   { key: "qualifications.verify", seniorOnly: true, group: "Teacher applications", label: "Verify qualifications", description: "Verify or reject individual qualification records." },
   { key: "achievements.view", group: "Achievements", label: "View achievement recommendations", description: "View learner achievement recommendations." },
   { key: "achievements.recommend", group: "Achievements", label: "Recommend achievements", description: "Submit achievement recommendations for review." },
-  { key: "achievements.approve", seniorOnly: true, group: "Achievements", label: "Approve achievements", description: "Approve eligible achievement awards." },
+  { key: "achievements.approve", group: "Achievements", label: "Approve achievements", description: "Approve eligible achievement awards." },
   { key: "moderation.view", group: "Moderation", label: "View moderation queue", description: "Review school-scoped content flags." },
   { key: "moderation.action", group: "Moderation", label: "Take moderation action", description: "Resolve eligible content moderation cases." },
   { key: "notifications.create", group: "Communications", label: "Send notifications", description: "Create school-scoped notifications for permitted recipients." },
@@ -62,6 +62,15 @@ export const MANAGER_PERMISSION_CATALOG = [
   { key: "groups.manage", group: "Communications", label: "Manage study groups", description: "Manage eligible school study groups and Connect spaces." },
   { key: "audit.view_subordinate", group: "Audit", label: "View subordinate audit history", description: "View permitted actions by subordinate users only; never Owner or Admin activity." },
   { key: "owner.chat", group: "Communications", label: "Chat with Owner", description: "Communicate with Owner without access to Owner controls or activity." },
+  { key: "ai.agent.use", group: "ELIDEMS AI Agent", label: "Use ELIDEMS AI Agent", description: "Open staff agent mode. This does not grant any task permission by itself." },
+  { key: "ai.agent.read_academic", group: "ELIDEMS AI Agent", label: "Read academic information", description: "Ask the agent to summarize academic information already visible to this manager." },
+  { key: "ai.agent.read_learners", group: "ELIDEMS AI Agent", label: "Read permitted learner records", description: "Ask the agent to analyze learner records within existing subordinate and school scope." },
+  { key: "ai.agent.create_learning", group: "ELIDEMS AI Agent", label: "Prepare learning activities", description: "Prepare lessons, exercises, polls and assignments through existing authorized workflows." },
+  { key: "ai.agent.communicate", group: "ELIDEMS AI Agent", label: "Prepare communications", description: "Draft messages and notifications; sending still requires existing communication permissions and confirmation." },
+  { key: "ai.agent.moderate", group: "ELIDEMS AI Agent", label: "Assist content moderation", description: "Analyze and summarize permitted moderation cases; human review remains required." },
+  { key: "ai.agent.manage_accounts", seniorOnly: true, group: "ELIDEMS AI Agent", label: "Prepare account actions", description: "Prepare eligible subordinate account actions; existing account permission and confirmation are still required." },
+  { key: "ai.agent.approve_workflows", seniorOnly: true, group: "ELIDEMS AI Agent", label: "Assist approval workflows", description: "Prepare approval recommendations; final approval must use the existing authorized workflow." },
+  { key: "ai.agent.read_financials", seniorOnly: true, group: "ELIDEMS AI Agent", label: "Read permitted financial summaries", description: "Summarize financial information already available to this Senior Manager; no payout execution." },
 ] as const;
 
 const allowedKeys = new Set<string>(MANAGER_PERMISSION_CATALOG.map((permission) => permission.key));
@@ -137,10 +146,11 @@ router.patch("/:userId/role", requireAuth, ownerOnly, async (req, res): Promise<
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const selected = await client.query("SELECT id,name,role,is_manager FROM users WHERE id=$1 FOR UPDATE", [userId]);
-    const target = selected.rows[0] as { id: number; name: string; role: string; is_manager: boolean } | undefined;
+    const selected = await client.query("SELECT id,name,role,is_manager,manager_level FROM users WHERE id=$1 FOR UPDATE", [userId]);
+    const target = selected.rows[0] as { id: number; name: string; role: string; is_manager: boolean; manager_level: string | null } | undefined;
     if (!target) { await client.query("ROLLBACK"); res.status(404).json({ error: "User not found" }); return; }
     const previousRole = normalizeRole(target.role);
+    const wasSeniorManager = isSeniorManager({ role: target.role, managerLevel: target.manager_level ?? undefined, isManager: target.is_manager });
     if (isOwnerRole(previousRole) || previousRole === "admin") {
       await client.query("ROLLBACK");
       res.status(403).json({ error: "Owner and Admin roles cannot be changed through manager assignment." });
@@ -189,9 +199,10 @@ router.patch("/:userId/role", requireAuth, ownerOnly, async (req, res): Promise<
         [userId, permission.key],
       );
       const previous = prior.rows[0]?.granted ?? null;
-      const granted = nextRole === "junior_manager" && isSeniorOnlyManagerPermission(permission.key)
-        ? false
-        : previous === true;
+      const revokeSeniorGrantOnDemotion = nextRole === "junior_manager" && wasSeniorManager && (
+        isSeniorOnlyManagerPermission(permission.key)
+      );
+      const granted = revokeSeniorGrantOnDemotion ? false : previous === true;
       if (previous === null && !granted) continue;
       await client.query(
         "INSERT INTO manager_permission_grants(manager_user_id,permission_key,granted,changed_by,changed_at) VALUES($1,$2,$3,$4,now()) ON CONFLICT(manager_user_id,permission_key) DO UPDATE SET granted=EXCLUDED.granted,changed_by=EXCLUDED.changed_by,changed_at=now()",

@@ -1254,13 +1254,19 @@ components:
           type: string
         amount:
           type: number
+        amountPaid:
+          type: number
+        balance:
+          type: number
+        credit:
+          type: number
         month:
           type: string
         year:
           type: integer
         status:
           type: string
-          enum: [paid, pending, overdue]
+          enum: [paid, pending, overdue, partially_paid, failed, cancelled, refunded]
         notes:
           type: ["string", "null"]
         recordedBy:

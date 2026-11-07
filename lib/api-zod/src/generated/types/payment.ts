@@ -15,6 +15,9 @@ export interface Payment {
   month: string;
   year: number;
   status: PaymentStatus;
+  amountPaid?: number;
+  balance?: number;
+  credit?: number;
   /** @nullable */
   notes?: string | null;
   recordedBy: number;

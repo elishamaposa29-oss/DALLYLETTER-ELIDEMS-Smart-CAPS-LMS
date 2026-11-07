@@ -4,6 +4,7 @@ export * from "./classes";
 export * from "./messages";
 export * from "./studyGroups";
 export * from "./payments";
+export * from "./paymentTransactions";
 export * from "./notifications";
 export * from "./handRaises";
 export * from "./activityLog";

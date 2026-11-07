@@ -19,10 +19,14 @@ export default function AdminSettings() {
     ecocash_number: "",
     payment_instructions: "",
     docs_url: "/docs",
+    school_fee_amount: "",
   });
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [manualReports, setManualReports] = useState<any[]>([]);
+  const [savedSchoolFeeAmount, setSavedSchoolFeeAmount] = useState("");
+  const [reviewingReport, setReviewingReport] = useState<number | null>(null);
 
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: "",
@@ -30,15 +34,52 @@ export default function AdminSettings() {
     confirmPassword: "",
   });
   const [changingPassword, setChangingPassword] = useState(false);
+  const [applyingFees, setApplyingFees] = useState(false);
+  const [feeMonth, setFeeMonth] = useState(new Date().toLocaleString("en-US", { month: "long" }));
+  const [feeYear, setFeeYear] = useState(String(new Date().getFullYear()));
 
   useEffect(() => {
     const token = localStorage.getItem("dallyletter_token");
     fetch(getApiUrl("/api/settings"), { headers: { Authorization: `Bearer ${token}` } })
       .then(async r => { const data = await r.json(); if (!r.ok) throw new Error(data.error || "Unable to load settings"); return data; })
-      .then(data => { setSettings(data); setSettingsError(null); setLoadingSettings(false); })
+      .then(data => { setSettings(data); setSavedSchoolFeeAmount(data.school_fee_amount || ""); setSettingsError(null); setLoadingSettings(false); })
       .catch(err => { setSettingsError(err instanceof Error ? err.message : "Unable to load settings"); setLoadingSettings(false); });
   }, []);
 
+  const loadManualReports = async () => {
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const response = await fetch(getApiUrl("/api/payments/manual-reports"), { headers: { Authorization: "Bearer " + token }, cache: "no-store" });
+      if (!response.ok) throw new Error("Could not load payment reports.");
+      setManualReports(await response.json());
+    } catch (error) {
+      toast({ variant: "destructive", title: "Payment review unavailable", description: error instanceof Error ? error.message : "Try again." });
+    }
+  };
+
+  useEffect(() => { void loadManualReports(); }, []);
+
+  const reviewManualReport = async (report: any, approve: boolean) => {
+    setReviewingReport(Number(report.report_id));
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const method = String(report.provider || "").replace(/^reported:/, "");
+      const url = approve ? "/api/payments/" + report.payment_id + "/manual-settlement" : "/api/payments/manual-reports/" + report.report_id + "/reject";
+      const response = await fetch(getApiUrl(url), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify(approve ? { reportId: report.report_id, amount: Number(report.amount), method, providerReference: report.provider_reference || "" } : {}),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Could not update payment report.");
+      toast({ title: approve ? "Payment verified" : "Report rejected", description: approve ? "The verified amount has been applied to invoice #" + report.payment_id + "." : "The invoice balance was left unchanged." });
+      await loadManualReports();
+    } catch (error) {
+      toast({ variant: "destructive", title: "Review failed", description: error instanceof Error ? error.message : "Try again." });
+    } finally {
+      setReviewingReport(null);
+    }
+  };
   const handleSaveSettings = async () => {
     setSavingSettings(true);
     try {
@@ -51,6 +92,7 @@ export default function AdminSettings() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Failed to save settings.");
       setSettings(data);
+      setSavedSchoolFeeAmount(data.school_fee_amount || "");
       setSettingsError(null);
       toast({ title: "Settings saved", description: "Payment settings have been updated." });
     } catch (err: unknown) {
@@ -59,6 +101,31 @@ export default function AdminSettings() {
       toast({ variant: "destructive", title: "Error", description: message });
     } finally {
       setSavingSettings(false);
+    }
+  };
+
+
+  const handleApplySchoolFees = async () => {
+    if (!settings.school_fee_amount || Number(settings.school_fee_amount) <= 0) {
+      toast({ variant: "destructive", title: "Set the school fee first", description: "Save a valid default school fee before applying it to learner invoices." });
+      return;
+    }
+    if (settings.school_fee_amount !== savedSchoolFeeAmount) { toast({ variant: "destructive", title: "Save the fee first", description: "Save your changed school-fee amount before applying it to learner invoices." }); return; }
+    setApplyingFees(true);
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const response = await fetch(getApiUrl("/api/settings/school-fees/apply"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ month: feeMonth, year: Number(feeYear) }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Could not apply school fees.");
+      toast({ title: "School fees applied", description: `${data.created} new learner invoices created for ${data.month} ${data.year} at USD ${Number(data.amount).toFixed(2)}. ${data.unchanged} existing invoices were preserved.` });
+    } catch (error) {
+      toast({ variant: "destructive", title: "Fee application failed", description: error instanceof Error ? error.message : "Try again." });
+    } finally {
+      setApplyingFees(false);
     }
   };
 
@@ -125,23 +192,38 @@ export default function AdminSettings() {
               </div>
             ) : (
               <>
-                {/* Paynow */}
-                <div className="space-y-2"><Label className="text-sm font-semibold">Paynow live payment link</Label><Input placeholder="https://www.paynow.co.zw/..." value={settings.paynow_url} onChange={e => setSettings(s => ({ ...s, paynow_url: e.target.value }))} /><p className="text-xs text-muted-foreground">Use a live Paynow merchant link for real payments. Do not use a test-mode link in production.</p></div>
+                <div className="rounded-lg border p-3 text-sm text-muted-foreground">
+                  <p className="font-semibold text-foreground">Paynow secure checkout</p>
+                  <p>Checkout is enabled only when the API has PAYNOW_INTEGRATION_ID, PAYNOW_INTEGRATION_KEY, PUBLIC_APP_URL and PUBLIC_API_URL configured as server secrets. This page does not collect or expose provider credentials.</p>
+                </div>
 
-                {/* PayPal */}
+                <div className="rounded-lg border p-3 text-sm text-muted-foreground">
+                  <p className="font-semibold text-foreground">PayPal verified checkout</p>
+                  <p>Checkout requires PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, PAYPAL_WEBHOOK_ID, PUBLIC_APP_URL and PUBLIC_API_URL as server secrets. Register the server's public API URL followed by /api/payments/paypal/webhook in the same PayPal environment as the credentials. Learner payments remain pending until PayPal confirms a completed capture.</p>
+                </div>
+
                 <div className="space-y-2">
-                  <Label className="flex items-center gap-2 text-sm font-semibold">
-                    <div className="w-5 h-5 rounded bg-[#003087] flex items-center justify-center">
-                      <span className="text-white text-[10px] font-bold">P</span>
-                    </div>
-                    PayPal Link / PayPal.Me URL
-                  </Label>
+                  <Label className="text-sm font-semibold">Default school fee (USD)</Label>
                   <Input
-                    placeholder="https://paypal.me/yourname or paypal email"
-                    value={settings.paypal_url}
-                    onChange={e => setSettings(s => ({ ...s, paypal_url: e.target.value }))}
+                    type="number"
+                    min="0.01"
+                    max="100000"
+                    step="0.01"
+                    inputMode="decimal"
+                    placeholder="e.g. 45.00"
+                    value={settings.school_fee_amount}
+                    onChange={e => setSettings(s => ({ ...s, school_fee_amount: e.target.value }))}
                   />
-                  <p className="text-xs text-muted-foreground">e.g. https://paypal.me/dallylettersc or your PayPal email address</p>
+                  <p className="text-xs text-muted-foreground">This is the Owner-published reference fee learners can see before paying. It does not silently create invoices or overwrite individual learner balances; the actual amount owed remains the amount recorded in each learner's fee ledger.</p>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_120px_auto] sm:items-end">
+                    <div className="space-y-1"><Label htmlFor="fee-billing-month">Billing month</Label><Input id="fee-billing-month" value={feeMonth} onChange={e => setFeeMonth(e.target.value)} maxLength={20} /></div>
+                    <div className="space-y-1"><Label htmlFor="fee-billing-year">Year</Label><Input id="fee-billing-year" type="number" min="2020" max="2200" value={feeYear} onChange={e => setFeeYear(e.target.value)} /></div>
+                    <Button type="button" onClick={handleApplySchoolFees} disabled={applyingFees || loadingSettings || !settings.school_fee_amount || settings.school_fee_amount !== savedSchoolFeeAmount} className="gap-2">
+                      {applyingFees ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                      Apply to learners
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Creates a pending invoice for each learner for the selected month. Existing invoices are preserved and skipped, so retrying will not duplicate fees.</p>
                 </div>
 
                 {/* Trust Wallet */}
@@ -199,6 +281,20 @@ export default function AdminSettings() {
           </CardContent>
         </Card>
 
+        <Card>
+          <CardHeader className="border-b"><CardTitle>Manual payment verification</CardTitle><CardDescription>Learner reports are unverified until you confirm the receipt. Approving a report applies its amount to the linked invoice; rejecting it does not change the balance.</CardDescription></CardHeader>
+          <CardContent className="space-y-3 pt-6">
+            <div className="flex items-center justify-between gap-3"><p className="text-sm font-medium">{manualReports.length} report(s) awaiting review</p><Button type="button" variant="outline" size="sm" onClick={() => void loadManualReports()}>Refresh</Button></div>
+            {manualReports.length === 0 ? <p className="text-sm text-muted-foreground">No pending manual payment reports.</p> : manualReports.map(report => (
+              <div key={report.report_id} className="rounded-lg border p-3 space-y-2">
+                <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="font-semibold">{report.learner_name} · USD {Number(report.amount).toFixed(2)}</p><p className="text-xs text-muted-foreground">Invoice #{report.payment_id} · {report.month} {report.year} · {String(report.provider).replace(/^reported:/, "").replace(/_/g, " ")}</p></div><span className="text-xs rounded-full border px-2 py-1">Unverified</span></div>
+                <p className="text-sm">Receipt/reference: <span className="font-mono">{report.provider_reference || "Not supplied (cash)"}</span></p>
+                <p className="text-xs text-muted-foreground">Reported {new Date(report.created_at).toLocaleString()} · Current invoice paid: USD {Number(report.amount_paid || 0).toFixed(2)}</p>
+                <div className="flex flex-wrap gap-2"><Button type="button" size="sm" disabled={reviewingReport !== null} onClick={() => void reviewManualReport(report, true)}>{reviewingReport === Number(report.report_id) ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify and apply payment"}</Button><Button type="button" size="sm" variant="outline" disabled={reviewingReport !== null} onClick={() => void reviewManualReport(report, false)}>Reject report</Button></div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
         <Card>
           <CardHeader className="border-b"><CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-purple-500" />ELIDEMS AI</CardTitle><CardDescription>AI provider keys and Live/Development mode are managed separately.</CardDescription></CardHeader>
           <CardContent className="pt-6"><a href="/admin/ai/settings" className="inline-flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted">Open AI Settings <Sparkles className="h-4 w-4" /></a></CardContent>

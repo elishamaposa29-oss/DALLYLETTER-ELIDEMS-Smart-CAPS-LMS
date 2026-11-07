@@ -15,7 +15,7 @@ export function ProtectedRoute({
   const { user, isLoading } = useAuth();
   const [location, setLocation] = useLocation();
   const restrictedTeacher = String(user?.role || "").toLowerCase() === "teacher" && ["draft","pending_review","rejected_pending_conversion"].includes(String((user as any)?.teacherApplicationStatus || "").toLowerCase());
-  const restrictedTeacherAllowed = location === "/profile-hub" || location.startsWith("/profile/") || location === "/teacher/qualifications" || location === "/teacher/chat";
+  const restrictedTeacherAllowed = location === "/profile-hub" || location.startsWith("/profile/") || location === "/teacher/qualifications";
 
   useEffect(() => {
     if (!isLoading) {
