@@ -31,6 +31,12 @@ const registerSchema = z.object({
   if (data.phone?.trim() && !data.phone.trim().startsWith("+") && data.country === "OTHER" && !/^\+\d{1,4}$/.test(data.dialCode?.trim() || "")) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Enter your international calling code, e.g. +44", path: ["dialCode"] });
   }
+  if (data.phone?.trim()) {
+    const digitCount = data.phone.replace(/\D/g, "").length;
+    if (digitCount < 8 || digitCount > 15) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Enter a valid international phone number", path: ["phone"] });
+    }
+  }
   if (data.role === "student" && !data.grade) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Grade is required for students", path: ["grade"] });
   }
@@ -62,7 +68,8 @@ export default function Register() {
   const gradeOptions = country === "ZW" ? ["Grade 7","Form 1","Form 2","Form 3","Form 4","Form 5","Form 6"] : ["Grade 7","Grade 8","Grade 9","Grade 10","Grade 11","Grade 12"];
 
   function onSubmit(values: z.infer<typeof registerSchema>) {
-    const rawPhone = values.phone?.trim().replace(/[^+\d]/g, "");
+    const enteredPhone = values.phone?.trim();
+    const rawPhone = enteredPhone ? (enteredPhone.startsWith("+") ? `+${enteredPhone.slice(1).replace(/\D/g, "")}` : enteredPhone.replace(/\D/g, "")) : undefined;
     const dialCode = values.country === "ZW" ? "+263" : values.country === "ZA" ? "+27" : values.dialCode?.trim();
     const phone = rawPhone ? (rawPhone.startsWith("+") ? rawPhone : `${dialCode}${rawPhone.replace(/^0+/, "")}`) : undefined;
     const { country: _country, countryName: _countryName, dialCode: _dialCode, phone: _localPhone, ...registrationData } = values;
