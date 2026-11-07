@@ -4,7 +4,7 @@ import { db, pool, contentFlagsTable, auditLogsTable, usersTable, notificationsT
 import { eq, desc, and } from "drizzle-orm";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { getAIProvider, AIProviderError } from "../lib/ai-provider";
-import { canModerateUser, normalizeRole } from "../lib/role-access";
+import { canModerateUser } from "../lib/role-access";
 
 const router = Router();
 const moderationRoles = new Set(["teacher", "owner"]);
