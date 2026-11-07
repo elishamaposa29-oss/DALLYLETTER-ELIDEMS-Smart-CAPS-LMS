@@ -8,7 +8,7 @@ import { Loader2, BookOpen, Video, Bell, Clock, ChevronRight, Shield, Calendar, 
 import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { InstallAppCard } from "@/components/InstallAppCard";
 import { DailyAppAttendanceCard } from "@/components/DailyAppAttendanceCard";
 
@@ -22,18 +22,43 @@ export default function StudentHome() {
   const [assignments, setAssignments] = useState<any[]>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(true);
   const [assignmentsError, setAssignmentsError] = useState(false);
+  const assignmentsRequestRef = useRef<Promise<void> | null>(null);
+  const assignmentsAbortRef = useRef<AbortController | null>(null);
 
+  // Focus events and the periodic refresh can arrive together. Share one
+  // in-flight request so a slow API never creates a queue of duplicate calls.
   const loadAssignments = async (showLoader = true) => {
+    if (assignmentsRequestRef.current) return assignmentsRequestRef.current;
+    const controller = new AbortController();
+    assignmentsAbortRef.current = controller;
     if (showLoader) setAssignmentsLoading(true);
+    const request = (async () => {
+      try {
+        const token = localStorage.getItem("dallyletter_token");
+        const response = await fetch(getApiUrl("/api/assignments"), {
+          headers: token ? { Authorization: "Bearer " + token } : undefined,
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("Assignments request failed (" + response.status + ")");
+        const data = await response.json();
+        if (!controller.signal.aborted) {
+          setAssignments(Array.isArray(data) ? data.slice(0, 3) : []);
+          setAssignmentsError(false);
+        }
+      } catch {
+        if (!controller.signal.aborted) setAssignmentsError(true);
+      } finally {
+        if (!controller.signal.aborted) setAssignmentsLoading(false);
+      }
+    })();
+    assignmentsRequestRef.current = request;
     try {
-      const token = localStorage.getItem("dallyletter_token");
-      const response = await fetch(getApiUrl("/api/assignments"), { headers: token ? { Authorization: "Bearer " + token } : undefined, cache: "no-store" });
-      if (!response.ok) throw new Error("Assignments request failed (" + response.status + ")");
-      const data = await response.json();
-      setAssignments(Array.isArray(data) ? data.slice(0, 3) : []);
-      setAssignmentsError(false);
-    } catch { setAssignmentsError(true); }
-    finally { setAssignmentsLoading(false); }
+      await request;
+    } finally {
+      if (assignmentsRequestRef.current === request) assignmentsRequestRef.current = null;
+      if (assignmentsAbortRef.current === controller) assignmentsAbortRef.current = null;
+    }
   };
 
   useEffect(() => {
@@ -43,7 +68,12 @@ export default function StudentHome() {
     const interval = window.setInterval(run, 30000);
     const onFocus = () => { void run(); };
     window.addEventListener("focus", onFocus);
-    return () => { active = false; window.clearInterval(interval); window.removeEventListener("focus", onFocus); };
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+      assignmentsAbortRef.current?.abort();
+    };
   }, []);
 
   const recentLessons = lessons?.slice(0, 3);
