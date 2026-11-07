@@ -19,6 +19,7 @@ export default function AdminSettings() {
     ecocash_number: "",
     payment_instructions: "",
     docs_url: "/docs",
+    school_fee_amount: "",
   });
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -133,6 +134,21 @@ export default function AdminSettings() {
                 <div className="rounded-lg border p-3 text-sm text-muted-foreground">
                   <p className="font-semibold text-foreground">PayPal verified checkout</p>
                   <p>Checkout requires PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, PAYPAL_WEBHOOK_ID, PUBLIC_APP_URL and PUBLIC_API_URL as server secrets. Register the server's public API URL followed by /api/payments/paypal/webhook in the same PayPal environment as the credentials. Learner payments remain pending until PayPal confirms a completed capture.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Default school fee (USD)</Label>
+                  <Input
+                    type="number"
+                    min="0.01"
+                    max="100000"
+                    step="0.01"
+                    inputMode="decimal"
+                    placeholder="e.g. 45.00"
+                    value={settings.school_fee_amount}
+                    onChange={e => setSettings(s => ({ ...s, school_fee_amount: e.target.value }))}
+                  />
+                  <p className="text-xs text-muted-foreground">This is the Owner-published reference fee learners can see before paying. It does not silently create invoices or overwrite individual learner balances; the actual amount owed remains the amount recorded in each learner's fee ledger.</p>
                 </div>
 
                 {/* Trust Wallet */}
