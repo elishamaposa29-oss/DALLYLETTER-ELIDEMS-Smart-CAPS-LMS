@@ -698,7 +698,7 @@ router.post("/payments/notify-admin", requireAuth, async (req, res): Promise<voi
 
   const amount = Number(req.body?.amount);
   const method = String(req.body?.method || "other").trim().toLowerCase();
-  const providerReference = typeof req.body?.providerReference === "string" ? req.body.providerReference.trim().slice(0,120) : "";
+  const providerReference = typeof req.body?.providerReference === "string" ? req.body.providerReference.trim() : "";
   if (!["ecocash","bank_transfer","crypto","cash","other"].includes(method)) { res.status(400).json({error:"Choose a supported manual payment method."}); return; }
   if (method !== "cash" && providerReference.length > 120) { res.status(400).json({error:"Receipt reference is too long."}); return; }
   if (!Number.isFinite(amount) || amount <= 0 || amount > 100000) {
