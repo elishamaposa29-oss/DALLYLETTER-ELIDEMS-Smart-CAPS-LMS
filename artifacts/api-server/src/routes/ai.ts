@@ -32,26 +32,35 @@ Platform context: Role-based system with Students, Teachers, and Owner/Admin.`;
 router.get("/ai/status", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!["owner", "platform_owner"].includes(normalizeRole(user.role))) { res.status(403).json({ error: "Owner only" }); return; }
-  const ai = await getAIProvider();
-  const rows = await db.select().from(platformSettingsTable);
-  const cfg: Record<string, string> = {};
-  for (const r of rows) cfg[r.key] = r.value ?? "";
-  const environmentProvider = process.env.AI_PROVIDER;
-  const inferredProvider = process.env.GEMINI_API_KEY
-    ? "gemini"
-    : process.env.OPENAI_API_KEY
-      ? "openai"
-      : process.env.ANTHROPIC_API_KEY
-        ? "anthropic"
-        : "mock";
-  res.json({
-    provider: ai.name,
-    isLive: ai.name !== "mock",
-    configuredProvider: cfg["ai_provider"] || environmentProvider || inferredProvider,
-    hasGeminiKey: !!(cfg["gemini_api_key"] || process.env.GEMINI_API_KEY),
-    hasOpenAIKey: !!(cfg["openai_api_key"] || process.env.OPENAI_API_KEY),
-    hasAnthropicKey: !!(cfg["anthropic_api_key"] || process.env.ANTHROPIC_API_KEY),
-  });
+  try {
+    const ai = await getAIProvider();
+    const rows = await db.select().from(platformSettingsTable);
+    const cfg: Record<string, string> = {};
+    for (const r of rows) cfg[r.key] = r.value ?? "";
+    const environmentProvider = process.env.AI_PROVIDER;
+    const inferredProvider = process.env.GEMINI_API_KEY
+      ? "gemini"
+      : process.env.OPENAI_API_KEY
+        ? "openai"
+        : process.env.ANTHROPIC_API_KEY
+          ? "anthropic"
+          : "mock";
+    res.json({
+      provider: ai.name,
+      isLive: ai.name !== "mock",
+      configuredProvider: cfg["ai_provider"] || environmentProvider || inferredProvider,
+      hasGeminiKey: !!(cfg["gemini_api_key"] || process.env.GEMINI_API_KEY),
+      hasOpenAIKey: !!(cfg["openai_api_key"] || process.env.OPENAI_API_KEY),
+      hasAnthropicKey: !!(cfg["anthropic_api_key"] || process.env.ANTHROPIC_API_KEY),
+    });
+  } catch (err) {
+    const failure = err instanceof AIProviderError ? err : new AIProviderError("configuration", "configuration_unavailable");
+    res.status(failure.code === "configuration_unavailable" ? 503 : 502).json({
+      error: "AI provider status is temporarily unavailable. Review provider configuration and retry.",
+      code: failure.code,
+      retryable: failure.retryable,
+    });
+  }
 });
 
 // POST /ai/chat — ELIDEMS AI command center
@@ -61,7 +70,7 @@ router.post("/ai/chat", requireAuth, async (req, res): Promise<void> => {
 
   const { messages } = req.body as { messages: AIMessage[] };
   if (!Array.isArray(messages) || messages.length === 0 || messages.length > 50 ||
-      messages.some(message => !message || !["user", "assistant", "system"].includes(message.role) ||
+      messages.some(message => !message || !["user", "assistant"].includes(message.role) ||
         typeof message.content !== "string" || message.content.length > 20000)) {
     res.status(400).json({ error: "Provide 1–50 valid messages with text content no longer than 20,000 characters each." });
     return;
