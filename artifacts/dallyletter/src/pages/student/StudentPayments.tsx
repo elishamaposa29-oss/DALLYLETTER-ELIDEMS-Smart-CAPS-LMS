@@ -145,18 +145,23 @@ export default function StudentPayments() {
   };
 
   const handleNotifyAdmin = async () => {
+    if (!nextPayablePayment) {
+      toast({ variant: "destructive", title: "No unpaid invoice", description: "There is no outstanding school-fee invoice to attach this report to." });
+      return;
+    }
     setNotifying(true);
     try {
       const token = localStorage.getItem("dallyletter_token");
       const res = await fetch(getApiUrl("/api/payments/notify-admin"), {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ amount: manualReportAmount.trim() ? Number(manualReportAmount) : totalOwed, method: manualReportMethod, providerReference: manualReportReference.trim() }),
+        body: JSON.stringify({ paymentId: nextPayablePayment.id, amount: manualReportAmount.trim() ? Number(manualReportAmount) : Math.max(0, Number((nextPayablePayment as any).amount) - Number((nextPayablePayment as any).amountPaid || 0)), method: manualReportMethod, providerReference: manualReportReference.trim() }),
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setReported(true);
-        toast({ title: "School Notified ✓", description: "Your school has been notified and will confirm your payment shortly." });
-      } else throw new Error("Failed");
+        toast({ title: "Payment report submitted", description: "Report " + data.reference + " is awaiting Owner verification. Your fee balance will not change until it is verified." });
+      } else throw new Error(data.error || "Could not submit payment report.");
     } catch {
       toast({ variant: "destructive", title: "Error", description: "Could not notify the school. Please try again." });
     } finally {
