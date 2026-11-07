@@ -64,7 +64,7 @@ router.get("/payments/paynow/status", (_req, res): void => {
 
 
 function paypalBase(): string {
-  return (process.env.PAYPAL_API_BASE?.trim() || (process.env.PAYPAL_ENVIRONMENT === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com")).replace(/\\/$/, "");
+  return (process.env.PAYPAL_API_BASE?.trim() || (process.env.PAYPAL_ENVIRONMENT === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com")).replace(/\/$/, "");
 }
 
 async function getPayPalAccessToken(): Promise<string | null> {
