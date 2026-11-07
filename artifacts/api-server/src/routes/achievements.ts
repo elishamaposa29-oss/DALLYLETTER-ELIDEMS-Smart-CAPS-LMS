@@ -253,7 +253,7 @@ router.get("/prefect-teachers", requireAuth, async (req, res): Promise<void> => 
 
 router.get("/lesson-requests", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  const authorizedTeacher = user.role === "teacher" && user.teacherApplicationStatus !== "pending_review";
+  const authorizedTeacher = user.role === "teacher" && ["not_applicable", "approved"].includes(String(user.teacherApplicationStatus ?? "not_applicable").trim().toLowerCase());
   const rows = user.isPrefect
     ? await db.select().from(lessonRequestsTable).where(eq(lessonRequestsTable.prefectId, user.id)).orderBy(desc(lessonRequestsTable.createdAt))
     : authorizedTeacher
