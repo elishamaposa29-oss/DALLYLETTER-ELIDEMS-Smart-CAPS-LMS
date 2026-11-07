@@ -428,10 +428,11 @@ router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
       }
       const invoiceAmount = Number(linked.invoice_amount);
       const alreadyPaid = Number(linked.amount_paid || 0);
-      if (!Number.isFinite(invoiceAmount) || invoiceAmount <= 0 || alreadyPaid < 0 ||
-          alreadyPaid + capturedAmount > invoiceAmount + 0.000001) {
-        return { outcome: "rejected" as const, studentId: null as number | null, detail: "Capture exceeds the invoice's remaining balance" };
+      if (!Number.isFinite(invoiceAmount) || invoiceAmount <= 0 || alreadyPaid < 0) {
+        return { outcome: "rejected" as const, studentId: null as number | null, detail: "Invoice amount or previously settled amount is invalid" };
       }
+      // Intentional overpayments are retained as learner credit, matching the existing
+      // Owner-verified manual settlement policy. The ledger exposes amount_paid - amount.
       const updatedTransaction = await tx.execute(sql\`
         UPDATE payment_transactions
         SET status='paid',provider_capture_id=${captureId},updated_at=now()
