@@ -163,7 +163,7 @@ export default function OfflineMediaDownload({ url, fileName, accessibilityLabel
     if (!user?.id || busy) { if (!user?.id) Alert.alert("Sign in required", "Sign in before saving media for offline use."); return; }
     setBusy(true); setProgress(0);
     try {
-      const record = await downloadOfflineMediaRecordForAccount(user.id, token, url, fileName, setProgress);
+      const record = await downloadOfflineMediaRecordForAccount(user.id, token ?? undefined, url, fileName, setProgress);
       setSaved(record);
       await refreshUsage();
       Alert.alert("Saved for offline use", "This file is stored on this device for this account. Open it from the lesson even without internet.");
