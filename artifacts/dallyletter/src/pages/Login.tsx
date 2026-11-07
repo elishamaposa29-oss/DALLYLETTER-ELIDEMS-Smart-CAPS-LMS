@@ -42,10 +42,14 @@ export default function Login() {
         const requested = new URLSearchParams(window.location.search).get("next");
         const safeRequested = requested && requested.startsWith("/") && !requested.startsWith("//") && !requested.startsWith("/login") ? requested : null;
         if (safeRequested) setLocation(safeRequested);
-        else if (data.user.role === "owner") setLocation("/admin");
-        else if (data.user.role === "teacher") setLocation("/teacher");
-        else if (["manager","senior_manager"].includes(String(data.user.role||"").toLowerCase().replace(/[ -]+/g,"_"))) setLocation("/manager");
-        else setLocation("/student");
+        else {
+          const role = String(data.user.role || "").toLowerCase().replace(/[ -]+/g, "_");
+          if (["owner", "platform_owner"].includes(role)) setLocation("/admin");
+          else if (role === "admin") setLocation("/features");
+          else if (role === "teacher") setLocation("/teacher");
+          else if (["manager", "senior_manager", "junior_manager"].includes(role)) setLocation("/manager");
+          else setLocation("/student");
+        }
       },
       onError: (error) => {
         toast({
