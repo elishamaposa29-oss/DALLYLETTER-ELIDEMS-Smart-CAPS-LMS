@@ -166,7 +166,7 @@ router.post("/:teacherId/decision",requireManagerPermissionForRequest((req)=>req
  const q=await pool.query("SELECT id,name,email,role,is_manager,manager_level,teacher_application_status FROM users WHERE id=$1",[id]);
  const t=q.rows[0];
  const submitted=await pool.query("SELECT 1 FROM teacher_cv_review_history WHERE teacher_id=$1 AND action='submitted' LIMIT 1",[id]);
- if(!t||normalizeRole(t.role)!=="teacher"||!submitted.rows.length||(!isOwner(req.currentUser)&&!canModerateUser(req.currentUser!,{role:t.role,isManager:t.is_manager,managerLevel:t.manager_level}))){res.status(404).json({error:"Teacher application not found"});return;}
+ if(!t||normalizeRole(t.role)!=="teacher"||!submitted.rows.length||(!isOwner(req.currentUser)&&!isAdmin(req.currentUser)&&!canModerateUser(req.currentUser!,{role:t.role,isManager:t.is_manager,managerLevel:t.manager_level}))){res.status(404).json({error:"Teacher application not found"});return;}
  if(action==="approve"){
   const [cvResult,qualResult,resumeResult]=await Promise.all([
    pool.query("SELECT cv FROM teacher_profiles WHERE user_id=$1",[id]),
@@ -218,7 +218,7 @@ router.post("/:teacherId/decision",requireManagerPermissionForRequest((req)=>req
 router.get("/:teacherId/history",requireManagerPermissionIfManager("teacher_cv.view"),async(req,res)=>{
  const id=idOf(req.params.teacherId);if(!id){res.status(400).json({error:"Invalid teacher id"});return}
  const actor=req.currentUser!;
- if(actor.id!==id&&!isOwner(actor)){
+ if(actor.id!==id&&!isOwner(actor)&&!isAdmin(actor)){
   const target=await pool.query("SELECT role,is_manager,manager_level,COALESCE(teacher_application_status,'pending_review') AS teacher_application_status FROM users WHERE id=$1 AND lower(role)='teacher'",[id]);
   const submitted=await pool.query("SELECT 1 FROM teacher_cv_review_history WHERE teacher_id=$1 AND action='submitted' LIMIT 1",[id]);
   if(!target.rows.length||!["pending_review","not_applicable"].includes(String(target.rows[0].teacher_application_status||"pending_review"))||!submitted.rows.length||!canAccessManager(actor)||!canModerateUser(actor,{role:target.rows[0].role,isManager:target.rows[0].is_manager,managerLevel:target.rows[0].manager_level})){res.status(404).json({error:"Application history not found"});return}
