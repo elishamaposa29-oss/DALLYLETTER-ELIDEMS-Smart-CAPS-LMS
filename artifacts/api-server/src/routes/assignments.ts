@@ -193,6 +193,7 @@ router.put("/:id", requireAuth, requireManagerPermissionIfManager("users.overrid
     const [assignmentOwner] = await db.select({ teacherId: assignmentsTable.teacherId, title: assignmentsTable.title }).from(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
     if (assignmentOwner?.teacherId) await db.insert(notificationsTable).values({ recipientId: assignmentOwner.teacherId, title: "Assignment updated", message: `Your assignment "${assignmentOwner.title}" was updated by authorized management staff.`, type: "assignment_update", link: `/teacher/assignments` });
   }
+  queueAIContentSafety("assignment", Number(row.id), [row.title, row.description, row.subject].filter((value): value is string => typeof value === "string").join("\n"));
   res.json(row);
 });
 
