@@ -77,7 +77,6 @@ router.post("/ai/chat", requireAuth, async (req, res): Promise<void> => {
   }
 
   const requestId = randomUUID();
-  const lastUserMsg = [...messages].reverse().find(message => message.role === "user")?.content ?? "";
   let stage = "provider_configuration";
   let providerName = "unknown";
 
@@ -93,10 +92,12 @@ router.post("/ai/chat", requireAuth, async (req, res): Promise<void> => {
     stage = "interaction_logging";
     try {
       await db.insert(aiActionsTable).values({
-        command: lastUserMsg.slice(0, 500),
+        // Persist only non-sensitive event metadata. Never persist prompt,
+        // model response, provider credentials, or user-supplied secrets here.
+        command: "AI chat request",
         action: "ai_chat_response",
         performedBy: user.id,
-        result: response.slice(0, 500),
+        result: "Response generated successfully",
       });
     } catch {
       console.error(JSON.stringify({
