@@ -1254,6 +1254,12 @@ components:
           type: string
         amount:
           type: number
+        amountPaid:
+          type: number
+        balance:
+          type: number
+        credit:
+          type: number
         month:
           type: string
         year:
