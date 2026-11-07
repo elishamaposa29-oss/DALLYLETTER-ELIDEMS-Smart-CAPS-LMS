@@ -617,8 +617,53 @@ router.post("/payments/paynow/result", async (req, res): Promise<void> => {
     WHERE provider='paynow' AND reference=${reference} LIMIT 1
   `);
   const transactionRows = (transactionResult as unknown as { rows?: Array<{ id: number; payment_id: number; amount: string | number; status: string }> }).rows ?? [];
-  const paymentAttempt = transactionRows[0];
-  if (!paymentAttempt) { res.status(404).send("Payment reference not found"); return; }
+  let paymentAttempt = transactionRows[0];
+  if (!paymentAttempt) {
+    // Backward compatibility for Paynow checkouts created before the durable
+    // transaction ledger existed. Recover only from the exact saved invoice note.
+    const legacyResult = await db.execute(sql`
+      SELECT id,amount,amount_paid,status,notes
+      FROM payments
+      WHERE notes LIKE ${"%Paynow reference " + reference + "%"}
+      ORDER BY id DESC
+      LIMIT 2
+    `);
+    const legacyRows = (legacyResult as unknown as { rows?: Array<{id:number;amount:string|number;amount_paid:string|number;status:string;notes:string|null}> }).rows ?? [];
+    if (legacyRows.length !== 1) {
+      res.status(legacyRows.length > 1 ? 409 : 404).send(legacyRows.length > 1 ? "Paynow reference is ambiguous" : "Payment reference not found");
+      return;
+    }
+    const legacyInvoice = legacyRows[0];
+    if (!["pending","overdue","partially_paid"].includes(String(legacyInvoice.status))) {
+      res.status(409).send("Legacy Paynow invoice is no longer eligible for settlement");
+      return;
+    }
+    const noteText = String(legacyInvoice.notes || "");
+    const marker = "Paynow reference " + reference;
+    const markerIndex = noteText.lastIndexOf(marker);
+    const markerTail = markerIndex >= 0 ? noteText.slice(markerIndex + marker.length) : "";
+    const storedAmountMatch = markerTail.match(/^\\s+amount\\s+([0-9]+(?:\\.[0-9]{1,2})?)/i);
+    const expectedLegacyAmount = storedAmountMatch
+      ? money(Number(storedAmountMatch[1]))
+      : money(Math.max(0, Number(legacyInvoice.amount) - Number(legacyInvoice.amount_paid || 0)));
+    if (!Number.isFinite(expectedLegacyAmount) || expectedLegacyAmount <= 0 || callbackAmount !== expectedLegacyAmount) {
+      res.status(400).send("Payment amount does not match the saved legacy checkout");
+      return;
+    }
+    await db.execute(sql`
+      INSERT INTO payment_transactions(payment_id,provider,reference,amount,status)
+      VALUES(${Number(legacyInvoice.id)},'paynow',${reference},${expectedLegacyAmount.toFixed(2)},'pending')
+      ON CONFLICT(reference) DO NOTHING
+    `);
+    const recovered = await db.execute(sql`
+      SELECT id,payment_id,amount,status FROM payment_transactions
+      WHERE provider='paynow' AND reference=${reference}
+      LIMIT 1
+    `);
+    const recoveredRows = (recovered as unknown as { rows?: Array<{id:number;payment_id:number;amount:string|number;status:string}> }).rows ?? [];
+    paymentAttempt = recoveredRows[0];
+    if (!paymentAttempt) { res.status(409).send("Legacy Paynow checkout could not be recovered safely"); return; }
+  }
   if (Number(paymentAttempt.amount) !== callbackAmount) {
     res.status(400).send("Payment amount does not match this checkout");
     return;
