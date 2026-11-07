@@ -3,7 +3,7 @@ import { requireManagerPermissionIfManager } from "../lib/manager-permission-pol
 import { db, pool, contentFlagsTable, auditLogsTable, usersTable, notificationsTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
-import { getAIProvider } from "../lib/ai-provider";
+import { getAIProvider, AIProviderError } from "../lib/ai-provider";
 
 const router = Router();
 const moderationRoles = new Set(["teacher", "owner"]);
@@ -121,8 +121,9 @@ router.post("/content-flags/moderate", requireAuth, requireManagerPermissionIfMa
     }
     res.json(result);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Moderation failed";
-    res.status(500).json({ error: msg });
+    const failure = err instanceof AIProviderError ? err : new AIProviderError("moderation", "provider_unavailable");
+    const status = failure.code === "timeout" ? 504 : failure.code === "rate_limited" ? 429 : failure.code === "configuration_unavailable" ? 503 : 502;
+    res.status(status).json({ error: "AI moderation could not be completed. The content has not been actioned; please retry or use the existing report workflow.", code: failure.code, retryable: failure.retryable });
   }
 });
 
