@@ -52,6 +52,7 @@ router.get("/ai/status", requireAuth, async (req, res): Promise<void> => {
       hasAnthropicKey: !!(cfg["anthropic_api_key"] || process.env.ANTHROPIC_API_KEY),
     });
   } catch (err) {
+    if (res.destroyed || res.headersSent) return;
     const failure = err instanceof AIProviderError ? err : new AIProviderError("configuration", "configuration_unavailable");
     res.status(failure.code === "configuration_unavailable" ? 503 : 502).json({
       error: "AI provider status is temporarily unavailable. Review provider configuration and retry.",
@@ -89,6 +90,9 @@ router.post("/ai/chat", requireAuth, async (req, res): Promise<void> => {
   const requestId = randomUUID();
   let stage = "provider_configuration";
   let providerName = "unknown";
+  const providerAbort = new AbortController();
+  req.once("aborted", () => providerAbort.abort());
+  res.once("close", () => { if (!res.writableEnded) providerAbort.abort(); });
 
   try {
     const ai = await getAIProvider();
@@ -99,7 +103,7 @@ router.post("/ai/chat", requireAuth, async (req, res): Promise<void> => {
       : requestedMode === "agent"
         ? `You are ELIDEMS AI Agent for an authorized Dallyletter Elidems staff member. You may help plan and prepare work only within the user's existing role and individually granted capabilities. Never infer permissions from a job title, never access Owner-only information for managers, never act on a different school or user scope, and never execute consequential operations from generated text. This endpoint is currently a planning/conversation interface; tell the user when an operation must be completed in its existing authorized workflow. ${ELIDEMS_SYSTEM_PROMPT}`
         : ELIDEMS_SYSTEM_PROMPT;
-    const response = await ai.chat(messages, systemPrompt);
+    const response = await ai.chat(messages, systemPrompt, providerAbort.signal);
     if (typeof response !== "string" || !response.trim()) throw new AIProviderError(ai.name, "invalid_response");
 
     // Interaction logging is best-effort. A healthy model response must not be
