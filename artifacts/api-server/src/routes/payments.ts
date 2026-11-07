@@ -730,6 +730,54 @@ router.post("/payments/notify-admin", requireAuth, async (req, res): Promise<voi
   res.json({ success: true, notifiedOwners: owners.length });
 });
 
+// Owner confirms a manually received EcoCash, bank, cash or wallet payment against an existing invoice.
+router.post("/payments/:id/manual-settlement", requireAuth, async (req, res): Promise<void> => {
+  const actor=req.currentUser!;
+  if(!isOwnerRole(actor.role)){res.status(403).json({error:"Only the Owner can verify manually received school-fee payments."});return;}
+  const paymentId=Number(req.params.id), amount=Number(req.body?.amount);
+  const method=String(req.body?.method||"").trim().toLowerCase();
+  const providerReference=typeof req.body?.providerReference==="string"?req.body.providerReference.trim().slice(0,120):"";
+  const note=typeof req.body?.note==="string"?req.body.note.trim().slice(0,500):"";
+  if(!Number.isSafeInteger(paymentId)||paymentId<=0||!Number.isFinite(amount)||amount<=0||amount>100000||!["ecocash","bank_transfer","crypto","cash","other"].includes(method)){
+    res.status(400).json({error:"Choose a valid invoice, amount and manual payment method."});return;
+  }
+  if(method!=="cash"&&providerReference.length<3){res.status(400).json({error:"Enter the receipt or transaction reference so the manual payment can be audited."});return;}
+  await ensurePaymentTransactionSchema();
+  const internalReference="DLM-"+actor.id+"-"+paymentId+"-"+Date.now()+"-"+crypto.randomBytes(4).toString("hex");
+  try{
+    const result=await db.transaction(async(tx)=>{
+      const locked=await tx.execute(sql`SELECT id,student_id,amount,amount_paid,status FROM payments WHERE id=${paymentId} FOR UPDATE`);
+      const rows=(locked as unknown as {rows?:Array<{id:number;student_id:number;amount:string|number;amount_paid:string|number;status:string}>}).rows??[];
+      const invoice=rows[0];
+      if(!invoice)throw Object.assign(new Error("School-fee invoice not found."),{statusCode:404});
+      if(!["pending","overdue","partially_paid","paid"].includes(String(invoice.status)))throw Object.assign(new Error("This invoice is not eligible for a manual payment."),{statusCode:409});
+      if(providerReference){
+        const duplicate=await tx.execute(sql`SELECT id FROM payment_transactions WHERE payment_id=${paymentId} AND provider=${"manual:"+method} AND provider_reference=${providerReference} LIMIT 1`);
+        const duplicateRows=(duplicate as unknown as {rows?:Array<{id:number}>}).rows??[];
+        if(duplicateRows.length)throw Object.assign(new Error("This receipt reference has already been recorded for this invoice."),{statusCode:409});
+      }
+      await tx.execute(sql`INSERT INTO payment_transactions(payment_id,provider,reference,amount,status,provider_reference) VALUES(${paymentId},${"manual:"+method},${internalReference},${amount.toFixed(2)},'paid',${providerReference||null})`);
+      const updated=await tx.execute(sql`
+        UPDATE payments SET amount_paid=COALESCE(amount_paid,0)+${amount},
+          status=CASE WHEN COALESCE(amount_paid,0)+${amount}>=amount THEN 'paid' ELSE 'partially_paid' END,
+          notes=CONCAT(COALESCE(notes,''),' | Owner-verified ',CAST(${method} AS TEXT),' payment ',CAST(${internalReference} AS TEXT),' amount ',CAST(${amount.toFixed(2)} AS TEXT),CASE WHEN ${providerReference}='' THEN '' ELSE ' receipt '||CAST(${providerReference} AS TEXT) END,CASE WHEN ${note}='' THEN '' ELSE ' note '||CAST(${note} AS TEXT) END),
+          updated_at=now()
+        WHERE id=${paymentId} RETURNING student_id,amount,amount_paid,status
+      `);
+      const updatedRows=(updated as unknown as {rows?:Array<{student_id:number;amount:string|number;amount_paid:string|number;status:string}>}).rows??[];
+      if(!updatedRows.length)throw new Error("The school-fee ledger could not be updated.");
+      const settled=updatedRows[0],balance=Math.max(0,Number(settled.amount)-Number(settled.amount_paid)),credit=Math.max(0,Number(settled.amount_paid)-Number(settled.amount));
+      await tx.insert(activityLogTable).values({type:"payment_recorded",description:"Owner verified "+method+" payment of $"+amount.toFixed(2)+" for invoice #"+paymentId+"; remaining balance $"+balance.toFixed(2)+", credit $"+credit.toFixed(2)+".",actorName:actor.name});
+      await tx.insert(notificationsTable).values({recipientId:Number(settled.student_id),title:"School payment verified",message:"The Owner verified your "+method+" payment of USD "+amount.toFixed(2)+". Remaining invoice balance: USD "+balance.toFixed(2)+". Credit: USD "+credit.toFixed(2)+".",type:"system",isRead:false});
+      return {paymentId,studentId:Number(settled.student_id),status:settled.status,amountPaid:Number(settled.amount_paid),balance,credit,reference:internalReference};
+    });
+    res.status(200).json({success:true,...result});
+  }catch(error){
+    const status=Number((error as {statusCode?:number})?.statusCode)||500;
+    res.status(status).json({error:status===500?"The manual payment could not be recorded. No settlement was confirmed.":error instanceof Error?error.message:"Manual payment failed."});
+  }
+});
+
 // GET /payments/:id — Get payment by ID
 router.get("/payments/:id", requireAuth, async (req, res): Promise<void> => {
   await ensurePaymentTransactionSchema();
