@@ -1,9 +1,10 @@
 import { Router } from "express";
-import { db, aiActionsTable, auditLogsTable, usersTable, platformSettingsTable, notificationsTable } from "@workspace/db";
+import { randomUUID } from "node:crypto";
+import { db, aiActionsTable, auditLogsTable, usersTable, platformSettingsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { requireAuth } from "../lib/auth-middleware";
 import { normalizeRole, canUseStaffAI } from "../lib/role-access";
-import { getAIProvider, invalidateAICache, type AIMessage } from "../lib/ai-provider";
+import { AIProviderError, getAIProvider, invalidateAICache, type AIMessage } from "../lib/ai-provider";
 
 const router = Router();
 
@@ -58,36 +59,91 @@ router.post("/ai/chat", requireAuth, async (req, res): Promise<void> => {
   const role = normalizeRole(user.role);
   if (!canUseStaffAI(user)) { res.status(403).json({ error: "Access denied. ELIDEMS AI is for authorized staff." }); return; }
 
-  const { messages, sessionId } = req.body as { messages: AIMessage[]; sessionId?: string };
-  if (!messages || !Array.isArray(messages) || messages.length === 0) {
-    res.status(400).json({ error: "messages required" }); return;
+  const { messages } = req.body as { messages: AIMessage[] };
+  if (!Array.isArray(messages) || messages.length === 0 || messages.length > 50 ||
+      messages.some(message => !message || !["user", "assistant", "system"].includes(message.role) ||
+        typeof message.content !== "string" || message.content.length > 20000)) {
+    res.status(400).json({ error: "Provide 1–50 valid messages with text content no longer than 20,000 characters each." });
+    return;
   }
 
-  const lastUserMsg = messages[messages.length - 1]?.content ?? "";
+  const requestId = randomUUID();
+  const lastUserMsg = [...messages].reverse().find(message => message.role === "user")?.content ?? "";
+  let stage = "provider_configuration";
+  let providerName = "unknown";
 
   try {
     const ai = await getAIProvider();
+    providerName = ai.name;
+    stage = "provider_request";
     const response = await ai.chat(messages, ELIDEMS_SYSTEM_PROMPT);
+    if (typeof response !== "string" || !response.trim()) throw new AIProviderError(ai.name, "invalid_response");
 
-    // Log the AI interaction
-    await db.insert(aiActionsTable).values({
-      command: lastUserMsg.slice(0, 500),
-      action: "ai_chat_response",
-      performedBy: user.id,
-      result: response.slice(0, 500),
-    });
-
-    // Auto-detect and execute actions if in live mode
-    // Chat is available to authorized staff, but privileged automatic side effects
-    // (including broadcast notifications) are owner-only.
-    if (ai.name !== "mock" && ["owner", "platform_owner"].includes(role)) {
-      await autoExecuteActions(lastUserMsg, response, user.id);
+    // Interaction logging is best-effort. A healthy model response must not be
+    // converted into an HTTP 500 merely because the audit database is unavailable.
+    stage = "interaction_logging";
+    try {
+      await db.insert(aiActionsTable).values({
+        command: lastUserMsg.slice(0, 500),
+        action: "ai_chat_response",
+        performedBy: user.id,
+        result: response.slice(0, 500),
+      });
+    } catch {
+      console.error(JSON.stringify({
+        event: "ai_interaction_log_failed",
+        requestId,
+        userId: user.id,
+        provider: providerName,
+        stage: "interaction_logging",
+      }));
     }
 
-    res.json({ response, provider: ai.name, isLive: ai.name !== "mock" });
+    // Chat output is advisory only. No privileged action is executed from model
+    // text; consequential actions must be initiated through their separately
+    // authorized UI/API workflow after an explicit human confirmation.
+    res.json({
+      response,
+      provider: ai.name,
+      isLive: ai.name !== "mock",
+      requestId,
+      actionsExecuted: false,
+      consequentialActionsRequireExplicitConfirmation: true,
+    });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "AI request failed";
-    res.status(500).json({ error: msg });
+    const failure = err instanceof AIProviderError
+      ? err
+      : new AIProviderError(providerName, stage === "provider_configuration" ? "configuration_unavailable" : "provider_unavailable");
+    const statusCode = failure.code === "timeout" ? 504
+      : failure.code === "rate_limited" ? 429
+      : failure.code === "configuration_unavailable" ? 503
+      : failure.code === "invalid_credentials" || failure.code === "provider_rejected" ? 502
+      : 502;
+    const publicMessages: Record<string, string> = {
+      timeout: "The AI provider took too long to respond. Please retry.",
+      network_error: "The AI provider could not be reached. Please retry.",
+      rate_limited: "The AI provider is temporarily rate-limiting requests. Please retry shortly.",
+      invalid_credentials: "The configured AI provider credentials were rejected. An Owner should review provider configuration.",
+      provider_unavailable: "The AI provider is temporarily unavailable. Please retry shortly.",
+      invalid_response: "The AI provider returned an unusable response. Please retry.",
+      provider_rejected: "The AI provider rejected this request. Please review the request and provider configuration.",
+      configuration_unavailable: "AI configuration is temporarily unavailable. Please contact the platform Owner.",
+    };
+    console.error(JSON.stringify({
+      event: "ai_chat_failed",
+      requestId,
+      userId: user.id,
+      provider: failure.provider,
+      stage,
+      category: failure.code,
+      providerStatus: failure.statusCode ?? null,
+    }));
+    res.status(statusCode).json({
+      error: publicMessages[failure.code],
+      code: failure.code,
+      requestId,
+      retryable: failure.retryable,
+    });
   }
 });
 
@@ -132,8 +188,9 @@ router.post("/ai/test-connection", requireAuth, async (req, res): Promise<void> 
     const success = response.toLowerCase().includes("elide") || response.toLowerCase().includes("success") || response.length > 10;
     res.json({ success, provider: ai.name, isLive: ai.name !== "mock", response: response.slice(0, 200) });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Connection failed";
-    res.json({ success: false, error: msg });
+    const failure = err instanceof AIProviderError ? err : new AIProviderError("configuration", "provider_unavailable");
+    res.status(failure.code === "timeout" ? 504 : failure.code === "rate_limited" ? 429 : 502)
+      .json({ success: false, code: failure.code, error: "AI provider connection failed safely. Review the provider configuration and retry." });
   }
 });
 
@@ -178,23 +235,14 @@ router.post("/ai/analyze", requireAuth, async (req, res): Promise<void> => {
     const result = await ai.analyzeData(data ?? {}, prompt);
     res.json({ result, provider: ai.name });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Analysis failed";
-    res.status(500).json({ error: msg });
+    const failure = err instanceof AIProviderError ? err : new AIProviderError("configuration", "provider_unavailable");
+    const statusCode = failure.code === "timeout" ? 504 : failure.code === "rate_limited" ? 429 : 502;
+    res.status(statusCode).json({
+      error: "AI analysis could not be completed. Please retry or ask the Owner to review provider configuration.",
+      code: failure.code,
+      retryable: failure.retryable,
+    });
   }
 });
-
-// Helper: auto-execute simple actions detected in the AI response
-async function autoExecuteActions(command: string, _response: string, userId: number): Promise<void> {
-  const lower = command.toLowerCase();
-  if (lower.includes("send reminder") || lower.includes("send notification")) {
-    await db.insert(notificationsTable).values({
-      title: "Reminder from ELIDEMS AI",
-      message: "This is an automated reminder sent by ELIDEMS AI on behalf of the admin.",
-      type: "reminder",
-      recipientId: null,
-    });
-    await db.insert(auditLogsTable).values({ action: "AI auto-sent broadcast notification", category: "ai", performedBy: userId });
-  }
-}
 
 export default router;
