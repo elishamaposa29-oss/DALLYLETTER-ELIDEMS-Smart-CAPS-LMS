@@ -78,10 +78,10 @@
     ]
   },
   "schools": {
-    "title": "Digital Learning and School Workflows | Dallyletter Elidems",
-    "description": "Explore Dallyletter Elidems for schools and educational organisations: role-based workspaces, academic oversight, teacher workflows and operational visibility.",
-    "eyebrow": "For schools and organisations",
-    "intro": "Schools need tools that connect classroom activity with responsible administration. Dallyletter's direction is to support learning communities through role-based workspaces and connected academic and operational workflows.",
+    "title": "Digital Learning and School Workflows for Schools | Dallyletter Elidems",
+    "description": "Explore Dallyletter Elidems for schools: role-aware learner and teacher workspaces, academic oversight, attendance, records and responsible school operations.",
+    "eyebrow": "For schools",
+    "intro": "Schools need tools that connect classroom activity with responsible administration. Dallyletter is being developed to support school learning communities through role-aware workspaces and connected academic and operational workflows.",
     "sections": [
       {
         "title": "Role-aware workspaces",
@@ -101,7 +101,7 @@
       },
       {
         "title": "Start a conversation",
-        "body": "Schools and educational organisations can create an account or sign in to explore the available platform pathways. Institutional scope, access and commercial terms must be confirmed with authorised platform administration; no unverified partnership, accreditation or price is implied."
+        "body": "School leaders can discuss institutional scope, access, support and commercial terms with authorised platform administration. No unverified partnership, accreditation or price is implied."
       }
     ]
   },
@@ -162,6 +162,40 @@
       {
         "title": "Day 7 — Review and plan forward",
         "body": "Summarise what improved, list remaining gaps and choose the next topic. Keep the plan flexible enough to fit your school and home responsibilities."
+      }
+    ]
+  },
+  "organisations": {
+    "title": "Digital Learning Partnerships for Educational Organisations | Dallyletter Elidems",
+    "description": "Explore Dallyletter Elidems for tutoring centres, community learning programmes, education providers and training organisations. Review learner support, role-aware workflows and responsible onboarding.",
+    "eyebrow": "For educational organisations",
+    "intro": "Dallyletter Elidems is being developed for organisations that coordinate learning beyond a single classroom — including tutoring centres, community programmes, education providers and training teams. Zimbabwe and South Africa are the initial focus; organisations elsewhere are welcome to discuss whether the platform fits their needs.",
+    "sections": [
+      {
+        "title": "Who this is for",
+        "body": "This pathway is for teams that organise learning across groups, programmes or locations. Examples include tutoring and extra lessons centres, community education initiatives, non-profit learning programmes, private education providers and skills or training organisations. A conversation should establish whether the current platform capabilities fit the organisation's actual work.",
+        "bullets": [
+          "Tutoring centres coordinating tutors, learners and learning groups.",
+          "Community or non-profit programmes supporting structured learning.",
+          "Education providers managing multiple cohorts or learning services.",
+          "Training teams delivering lessons, practice and learner follow-up."
+        ]
+      },
+      {
+        "title": "Coordinate learning programmes",
+        "body": "Dallyletter's direction is to connect learning materials, lessons, assignments, communication and learner progress in one environment. The exact workflows available depend on the organisation's approved account, enabled features and configured learning space; confirm each required workflow before onboarding."
+      },
+      {
+        "title": "Keep access and learner information responsible",
+        "body": "Different staff members need different access. Role-aware workspaces and individually authorised actions are intended to keep learner information and operational decisions within appropriate boundaries. Organisations should agree who can view records, communicate with learners and approve administrative actions before a programme begins."
+      },
+      {
+        "title": "Make fees and payment status clear",
+        "body": "Any fee or payment workflow depends on the fee rules configured by authorised platform administration and the payment providers enabled for the account. A learner's self-reported payment is not proof of settlement; use verified transaction status and agree how partial payments, balances and receipts will be handled."
+      },
+      {
+        "title": "Plan a practical onboarding conversation",
+        "body": "Before starting, confirm the programme's learner groups, curriculum or subject needs, staff roles, privacy expectations, support arrangements, required workflows and commercial terms. No price, partnership, accreditation or guaranteed outcome is implied by this information page."
       }
     ]
   }
