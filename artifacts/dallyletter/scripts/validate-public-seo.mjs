@@ -7,6 +7,7 @@ const routes = ["/", "/about", "/learners", "/educators", "/schools", "/resource
 const sitemap = await readFile(path.join(root, "sitemap.xml"), "utf8");
 const robots = await readFile(path.join(root, "robots.txt"), "utf8");
 const app = await readFile(path.resolve("src/App.tsx"), "utf8");
+const publicPages = JSON.parse(await readFile(path.resolve("src/content/public-pages.json"), "utf8"));
 const found = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(match => match[1].trim());
 const expected = routes.map(route => base + route);
 if (!sitemap.startsWith('<?xml version="1.0" encoding="UTF-8"?>') || !sitemap.includes("<urlset") || !sitemap.includes("</urlset>")) {
@@ -24,6 +25,18 @@ for (const route of routes.filter(route => route !== "/")) {
 }
 const titles = new Set();
 const descriptions = new Set();
+const pageRoutes = { about: "/about", learners: "/learners", educators: "/educators", schools: "/schools", resources: "/resources", "study-plan": "/resources/study-plan" };
+for (const [key, page] of Object.entries(publicPages)) {
+  const route = pageRoutes[key];
+  if (!route || !routes.includes(route)) throw new Error("Public page content has no approved sitemap route: " + key);
+  const htmlPath = path.join(root, route.slice(1), "index.html");
+  const html = await readFile(htmlPath, "utf8");
+  for (const section of page.sections) {
+    if (!html.includes("<h2>" + section.title.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;") + "</h2>")) {
+      throw new Error(route + " static content is missing shared section: " + section.title);
+    }
+  }
+}
 for (const route of routes) {
   const relative = route === "/" ? "index.html" : path.join(route.slice(1), "index.html");
   const html = await readFile(path.join(root, relative), "utf8");
