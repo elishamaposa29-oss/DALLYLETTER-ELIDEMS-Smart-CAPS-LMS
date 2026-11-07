@@ -51,42 +51,6 @@ export default function StudentHome() {
     return () => { active = false; window.clearInterval(interval); window.removeEventListener("focus", onFocus); };
   }, []);
 
-  const [lessonTopic, setLessonTopic] = useState("");
-  const [lessonDate, setLessonDate] = useState("");
-  const [lessonNotes, setLessonNotes] = useState("");
-  const [schedulingLesson, setSchedulingLesson] = useState(false);
-  const [lessonDialogOpen, setLessonDialogOpen] = useState(false);
-
-  const handleScheduleLesson = async () => {
-    if (!lessonTopic.trim()) {
-      toast({ variant: "destructive", title: "Topic required", description: "Please enter a lesson topic." });
-      return;
-    }
-    setSchedulingLesson(true);
-    try {
-      const token = localStorage.getItem("dallyletter_token");
-      await fetch(getApiUrl("/api/notifications"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          title: `Lesson Request: ${lessonTopic}`,
-          message: `Prefect ${user?.name} has requested a lesson on "${lessonTopic}".${lessonDate ? ` Preferred date: ${lessonDate}.` : ""}${lessonNotes ? ` Notes: ${lessonNotes}` : ""}`,
-          type: "class_starting",
-          recipientId: null,
-        }),
-      });
-      toast({ title: "Lesson request sent!", description: "Your teachers have been notified of the lesson request." });
-      setLessonTopic("");
-      setLessonDate("");
-      setLessonNotes("");
-      setLessonDialogOpen(false);
-    } catch {
-      toast({ variant: "destructive", title: "Error", description: "Could not send the lesson request." });
-    } finally {
-      setSchedulingLesson(false);
-    }
-  };
-
   const recentLessons = lessons?.slice(0, 3);
   const upcomingClasses = classes?.filter(c => c.status === "upcoming" || c.status === "live").slice(0, 3);
   const unreadNotifs = notifications?.filter(n => !n.isRead).slice(0, 3);
@@ -119,63 +83,12 @@ export default function StudentHome() {
                   <p className="text-sm text-amber-700 dark:text-amber-500">As a prefect, you can request lessons on behalf of your class.</p>
                 </div>
               </div>
-              <Dialog open={lessonDialogOpen} onOpenChange={setLessonDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button className="bg-amber-500 hover:bg-amber-600 text-white gap-2 shrink-0 shadow-sm">
-                    <Calendar className="h-4 w-4" />
-                    Schedule a Lesson
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-md">
-                  <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                      <Shield className="h-5 w-5 text-amber-500" />
-                      Request a Lesson
-                    </DialogTitle>
-                    <DialogDescription>
-                      As a prefect, you can request a lesson topic on behalf of your class. Teachers will be notified.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4 py-2">
-                    <div className="space-y-1.5">
-                      <Label>Lesson Topic <span className="text-destructive">*</span></Label>
-                      <Input
-                        placeholder="e.g. Quadratic Equations, Essay Writing..."
-                        value={lessonTopic}
-                        onChange={e => setLessonTopic(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Preferred Date (optional)</Label>
-                      <Input
-                        type="date"
-                        value={lessonDate}
-                        onChange={e => setLessonDate(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Additional Notes (optional)</Label>
-                      <Textarea
-                        placeholder="Any specific areas to focus on, or context for the request..."
-                        value={lessonNotes}
-                        onChange={e => setLessonNotes(e.target.value)}
-                        rows={3}
-                      />
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setLessonDialogOpen(false)}>Cancel</Button>
-                    <Button
-                      onClick={handleScheduleLesson}
-                      disabled={schedulingLesson}
-                      className="bg-amber-500 hover:bg-amber-600 text-white"
-                    >
-                      {schedulingLesson ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                      Send Lesson Request
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+              <Link href="/student/prefect">
+                <Button className="bg-amber-500 hover:bg-amber-600 text-white gap-2 shrink-0 shadow-sm">
+                  <Calendar className="h-4 w-4" />
+                  Open Prefect Dashboard
+                </Button>
+              </Link>
             </CardContent>
           </Card>
         )}
