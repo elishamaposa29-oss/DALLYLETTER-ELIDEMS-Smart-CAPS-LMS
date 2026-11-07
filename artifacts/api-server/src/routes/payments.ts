@@ -202,15 +202,24 @@ router.post("/payments/paypal/capture", requireAuth, async (req, res): Promise<v
     const match = reference.match(/^DLP-(\d+)-(\d+)-\d+-[a-f0-9]{8}$/i);
     if (!match || Number(match[1]) !== user.id || order.id !== orderId) { res.status(403).json({ error: "This PayPal order does not belong to this learner." }); return; }
     const feeRow = await db.execute(sql`
-      SELECT id FROM payments
+      SELECT id, amount, status FROM payments
       WHERE id = ${Number(match[2])} AND student_id = ${user.id}
-        AND status IN ('pending', 'overdue')
         AND notes LIKE ${"%PayPal order " + orderId + " reference " + reference + "%"}
       LIMIT 1
     `);
-    const feeRows = (feeRow as unknown as { rows?: Array<{ id: number }> }).rows ?? [];
-    if (!feeRows.length) { res.status(409).json({ error: "The school-fee record for this PayPal order is no longer eligible for settlement." }); return; }
-    if (order.status === "COMPLETED") { res.json({ captured: true, alreadyCompleted: true }); return; }
+    const feeRows = (feeRow as unknown as { rows?: Array<{ id: number; amount: string | number; status: string }> }).rows ?? [];
+    const fee = feeRows[0];
+    if (!fee) { res.status(409).json({ error: "The school-fee record for this PayPal order could not be found." }); return; }
+    if (unit?.amount?.currency_code !== "USD" || Number(unit.amount.value) !== Number(fee.amount)) {
+      res.status(400).json({ error: "PayPal order amount does not match the learner's school-fee record." }); return;
+    }
+    if (order.status === "COMPLETED") {
+      if (fee.status === "paid") { res.json({ captured: true, alreadyCompleted: true }); return; }
+      res.status(409).json({ error: "PayPal completed this order; the verified webhook is still required to update the school-fee ledger." }); return;
+    }
+    if (fee.status !== "pending" && fee.status !== "overdue") {
+      res.status(409).json({ error: "This school-fee record is no longer eligible for payment." }); return;
+    }
     if (order.status !== "APPROVED") { res.status(409).json({ error: "PayPal has not approved this order yet." }); return; }
     const captureResponse = await fetch(paypalBase() + "/v2/checkout/orders/" + encodeURIComponent(orderId) + "/capture", {
       method: "POST", headers: { Authorization: "Bearer " + accessToken, "Content-Type": "application/json" },
