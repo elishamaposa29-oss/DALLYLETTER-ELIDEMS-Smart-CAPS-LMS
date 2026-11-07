@@ -41,7 +41,9 @@ export default function MobileProfileHub() {
     isOwner || ["student","learner","prefect"].includes(normalizedUserRole) ||
     (normalizedUserRole === "teacher" && ["approved","not_applicable"].includes(payoutApplicationStatus))
   );
-  const canReviewTransferLetters = ["manager","senior_manager","owner","platform_owner"].includes(normalizedUserRole) || (normalizedUserRole === "teacher" && Boolean((user as any)?.isManager) && !["draft","pending_review","rejected_pending_conversion"].includes(String((user as any)?.teacherApplicationStatus||"").toLowerCase()));
+  const managerLike = ["manager","senior_manager","junior_manager"].includes(normalizedUserRole) || (normalizedUserRole === "teacher" && Boolean((user as any)?.isManager) && ["approved","not_applicable"].includes(String((user as any)?.teacherApplicationStatus||"not_applicable").toLowerCase()));
+  const [managerPermissions,setManagerPermissions] = useState<Row>({});
+  const canReviewTransferLetters = isOwner || (managerLike && managerPermissions["transfers.view"] === true);
   const [tab,setTab] = useState<Tab>("Overview");
   const [profile,setProfile] = useState<Row|null>(null);
   const [qualifications,setQualifications] = useState<Row[]>([]);
@@ -127,6 +129,13 @@ export default function MobileProfileHub() {
       setMessage(error instanceof Error ? error.message : "ELIDEMS AI is temporarily unavailable.");
     } finally { setAiBusy(false); }
   };
+
+  useEffect(()=>{
+    if(!managerLike||isOwner){setManagerPermissions({});return;}
+    let active=true;
+    void api("/api/manager-permissions/me").then((result:Row)=>{if(active)setManagerPermissions(result.permissions||{});}).catch(()=>{if(active)setManagerPermissions({});});
+    return()=>{active=false;};
+  },[api,managerLike,isOwner]);
 
   const load=useCallback(async()=>{
     if(!targetId||!Number.isSafeInteger(targetId)||!user)return;
