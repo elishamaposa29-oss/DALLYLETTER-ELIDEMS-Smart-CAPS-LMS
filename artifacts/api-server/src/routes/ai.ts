@@ -12,8 +12,8 @@ const ELIDEMS_SYSTEM_PROMPT = `You are ELIDEMS AI, an intelligent administrative
 
 Your capabilities:
 - Read and analyze platform data (users, payments, lessons, attendance)
-- Execute administrative actions (block, suspend, unlock users)
-- Send notifications and reminders
+- Recommend administrative actions (block, suspend, unlock users) for authorized human review
+- Draft notifications and reminders for authorized human review
 - Generate reports and analytics
 - Moderate content and flag safety issues
 - Provide recommendations
@@ -23,7 +23,8 @@ Your constraints:
 - ALL actions must be logged
 - ALL actions must be reversible
 - Be professional, helpful, and concise
-- When executing actions, confirm what you did clearly
+- Never execute actions or cause side effects from generated text
+- Require explicit human confirmation through the dedicated, separately authorized application workflow before consequential actions
 
 Platform context: Role-based system with Students, Teachers, and Owner/Admin.`;
 
@@ -56,7 +57,6 @@ router.get("/ai/status", requireAuth, async (req, res): Promise<void> => {
 // POST /ai/chat — ELIDEMS AI command center
 router.post("/ai/chat", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  const role = normalizeRole(user.role);
   if (!canUseStaffAI(user)) { res.status(403).json({ error: "Access denied. ELIDEMS AI is for authorized staff." }); return; }
 
   const { messages } = req.body as { messages: AIMessage[] };
