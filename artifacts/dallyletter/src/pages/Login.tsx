@@ -39,10 +39,14 @@ export default function Login() {
     loginMutation.mutate({ data: values }, {
       onSuccess: (data) => {
         login(data.token, data.user);
-        if (data.user.role === "owner") setLocation("/admin");
-        else if (data.user.role === "teacher") setLocation("/teacher");
-        else if (["manager","senior_manager"].includes(String(data.user.role||"").toLowerCase().replace(/[ -]+/g,"_"))) setLocation("/manager");
-        else setLocation("/");
+        const requestedPath = new URLSearchParams(window.location.search).get("next") || "";
+        const role = String(data.user.role || "").toLowerCase().replace(/[ -]+/g, "_");
+        const studentDestinations = ["/", "/student/lessons", "/student/exercises", "/student/assignments", "/student/achievements", "/student/payments", "/student/study-groups", "/student/classes", "/student/notifications", "/record-book"];
+        const teacherDestinations = ["/teacher", "/teacher/lessons", "/teacher/assignments", "/teacher/classes", "/teacher/payments", "/teacher/polls", "/teacher/qualifications", "/record-book"];
+        if (role === "owner" || role === "platform_owner") setLocation(requestedPath === "/admin" || requestedPath.startsWith("/admin/") ? requestedPath : "/admin");
+        else if (role === "teacher") setLocation(teacherDestinations.includes(requestedPath) ? requestedPath : "/teacher");
+        else if (["manager", "senior_manager", "junior_manager"].includes(role)) setLocation(requestedPath === "/manager" || requestedPath.startsWith("/manager/") ? requestedPath : "/manager");
+        else setLocation(studentDestinations.includes(requestedPath) ? requestedPath : "/");
       },
       onError: (error) => {
         toast({
@@ -195,6 +199,7 @@ export default function Login() {
                 Sign up for free
               </Link>
             </p>
+            <p className="text-center text-sm mt-3"><Link href="/welcome" className="font-semibold text-[#a17b00] hover:underline">Explore Dallyletter Elidems</Link></p>
 
             <p className="text-center text-xs text-gray-400 mt-8">
               © {new Date().getFullYear()} Dallyletter Elidems. Founded and solely created by Elisha Maposa. All rights reserved.
