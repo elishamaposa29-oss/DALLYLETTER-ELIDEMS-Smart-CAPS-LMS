@@ -642,7 +642,7 @@ router.post("/payments/paynow/result", async (req, res): Promise<void> => {
     const marker = "Paynow reference " + reference;
     const markerIndex = noteText.lastIndexOf(marker);
     const markerTail = markerIndex >= 0 ? noteText.slice(markerIndex + marker.length) : "";
-    const storedAmountMatch = markerTail.match(/^\\s+amount\\s+([0-9]+(?:\\.[0-9]{1,2})?)/i);
+    const storedAmountMatch = markerTail.match(/^\s+amount\s+([0-9]+(?:\.[0-9]{1,2})?)/i);
     const expectedLegacyAmount = storedAmountMatch
       ? money(Number(storedAmountMatch[1]))
       : money(Math.max(0, Number(legacyInvoice.amount) - Number(legacyInvoice.amount_paid || 0)));
