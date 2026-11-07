@@ -6,6 +6,8 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 const TOKEN_KEY = "dallyletter_token";
 const USER_KEY = "dallyletter_user";
 const NATIVE_PUSH_TOKEN_KEY = "dallyletter_native_expo_push_token_v1";
+const AUTH_CACHE_EPOCH_KEY = "dallyletter_auth_cache_epoch_v1";
+const newAuthCacheEpoch = () => Date.now().toString(36) + "_" + Math.random().toString(36).slice(2);
 
 async function unregisterNativePushForAccount(authToken: string | null, userId?: number) {
   try {
@@ -69,6 +71,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           AsyncStorage.getItem(USER_KEY),
         ]);
         if (storedToken && storedUser) {
+          // Each login receives a fresh cache namespace. A prior session's
+          // offline query data is never hydrated into a later session.
+          let cacheEpoch = await AsyncStorage.getItem(AUTH_CACHE_EPOCH_KEY);
+          if (!cacheEpoch) {
+            cacheEpoch = newAuthCacheEpoch();
+            await AsyncStorage.setItem(AUTH_CACHE_EPOCH_KEY, cacheEpoch);
+          }
           // Revalidate cached credentials on every cold start so expired/revoked
           // sessions cannot restore a stale account into the app.
           try {
@@ -79,7 +88,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               setToken(storedToken);
               setUser(currentUser);
             } else if (response.status === 401 || response.status === 403) {
-              await Promise.all([AsyncStorage.removeItem(TOKEN_KEY), AsyncStorage.removeItem(USER_KEY)]);
+              await Promise.all([AsyncStorage.removeItem(TOKEN_KEY), AsyncStorage.removeItem(USER_KEY), AsyncStorage.removeItem(AUTH_CACHE_EPOCH_KEY)]);
             } else {
               setToken(storedToken);
               setUser(JSON.parse(storedUser));
@@ -103,9 +112,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await fetch(getApiUrl("/api/auth/logout"), { method: "POST", headers: { Authorization: "Bearer " + token } }).catch(() => undefined);
       await unregisterNativePushForAccount(token, user.id);
     }
+    const cacheEpoch = newAuthCacheEpoch();
     await Promise.all([
       AsyncStorage.setItem(TOKEN_KEY, newToken),
       AsyncStorage.setItem(USER_KEY, JSON.stringify(newUser)),
+      AsyncStorage.setItem(AUTH_CACHE_EPOCH_KEY, cacheEpoch),
     ]);
     setToken(newToken);
     setUser(newUser);
@@ -119,6 +130,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       AsyncStorage.removeItem(TOKEN_KEY),
       AsyncStorage.removeItem(USER_KEY),
       AsyncStorage.removeItem(NATIVE_PUSH_TOKEN_KEY),
+      AsyncStorage.removeItem(AUTH_CACHE_EPOCH_KEY),
     ]);
     setToken(null);
     setUser(null);
