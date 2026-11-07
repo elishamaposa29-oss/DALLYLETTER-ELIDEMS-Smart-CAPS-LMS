@@ -43,6 +43,7 @@ const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, sta
 
 const QUERY_CACHE_PREFIX = "dallyletter_mobile_query_cache_v1_user_";
 const USER_KEY = "dallyletter_user";
+const AUTH_CACHE_EPOCH_KEY = "dallyletter_auth_cache_epoch_v1";
 
 function OfflineQueryCache() {
   useEffect(() => {
@@ -66,12 +67,15 @@ function OfflineQueryCache() {
       queryClient.clear();
       cacheKey = null;
       try {
-        const serializedUser = await AsyncStorage.getItem(USER_KEY);
+        const [serializedUser, cacheEpoch] = await Promise.all([
+          AsyncStorage.getItem(USER_KEY),
+          AsyncStorage.getItem(AUTH_CACHE_EPOCH_KEY),
+        ]);
         if (!active || sequence !== switchSequence) return;
-        if (!serializedUser) { hydrated = true; return; }
+        if (!serializedUser || !cacheEpoch) { hydrated = true; return; }
         const user = JSON.parse(serializedUser) as { id?: number };
         if (!Number.isInteger(user.id) || Number(user.id) <= 0) { hydrated = true; return; }
-        cacheKey = QUERY_CACHE_PREFIX + String(user.id);
+        cacheKey = QUERY_CACHE_PREFIX + String(user.id) + "_session_" + cacheEpoch;
         const serializedCache = await AsyncStorage.getItem(cacheKey);
         if (!active || sequence !== switchSequence) return;
         if (serializedCache) {
