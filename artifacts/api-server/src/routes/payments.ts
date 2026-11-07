@@ -365,11 +365,12 @@ router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
         WHERE id=${Number(transactionRows[0].payment_id)}
           AND student_id=${Number(refMatch[1])}
           AND notes LIKE ${"%PayPal order " + orderId + " reference " + reference + "%"}
-          AND status IN ('pending','overdue','partially_paid')
+          AND status IN ('pending','overdue','partially_paid','paid')
         RETURNING student_id
       `);
       const rows = (updated as unknown as { rows?: Array<{ student_id: number }> }).rows ?? [];
-      return { studentId: rows.length ? Number(rows[0].student_id) : null };
+      if (!rows.length) throw new Error("Verified PayPal transaction no longer matches its fee invoice");
+      return { studentId: Number(rows[0].student_id) };
     });
     if (settled.studentId !== null) {
       await db.update(usersTable).set({ lastPaymentDate: new Date().toISOString() }).where(eq(usersTable.id, settled.studentId));
