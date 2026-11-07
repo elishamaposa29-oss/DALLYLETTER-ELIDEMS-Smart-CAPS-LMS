@@ -35,7 +35,7 @@ router.get("/my", requireAuth, async (req, res): Promise<void> => {
 });
 
 router.get("/student/:studentId", requireAuth, requireManagerPermissionIfManager("attendance.view"), async (req, res): Promise<void> => {
-  const studentId = parseInt(String(req.params.studentId));
+  const studentId = Number(req.params.studentId);
   const [target] = Number.isSafeInteger(studentId) ? await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, studentId)) : [];
   const studentClasses = await db.select({ teacherId: classesTable.teacherId }).from(attendanceTable)
     .innerJoin(classesTable, eq(attendanceTable.classId, classesTable.id)).where(eq(attendanceTable.studentId, studentId));
@@ -52,7 +52,7 @@ router.get("/student/:studentId", requireAuth, requireManagerPermissionIfManager
 router.post("/join/:classId", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (user.role !== "student") { res.status(403).json({ error: "Students only" }); return; }
-  const classId = parseInt(String(req.params.classId));
+  const classId = Number(req.params.classId);
   if (!Number.isSafeInteger(classId) || classId <= 0) { res.status(400).json({ error: "Invalid class." }); return; }
   const [classRow] = await db.select({ id: classesTable.id, status: classesTable.status }).from(classesTable).where(eq(classesTable.id, classId));
   if (!classRow) { res.status(404).json({ error: "Class not found." }); return; }
@@ -72,7 +72,7 @@ router.put("/:id/status", requireAuth, requireManagerPermissionIfManager("attend
   const user = req.currentUser!;
   if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Academic staff access required" }); return; }
   const status = req.body?.status === "absent" ? "absent" : req.body?.status === "present" ? "present" : null;
-  const id = parseInt(String(req.params.id));
+  const id = Number(req.params.id);
   if (!status || !Number.isInteger(id)) { res.status(400).json({ error: "status must be present or absent" }); return; }
   const [existing] = await db.select({ studentId: attendanceTable.studentId, classId: attendanceTable.classId }).from(attendanceTable).where(eq(attendanceTable.id, id));
   if (!existing) { res.status(404).json({ error: "Attendance record not found" }); return; }
@@ -103,7 +103,7 @@ router.put("/:id/leave", requireAuth, requireManagerPermissionIfManager("attenda
   const durationMs = leftAt.getTime() - new Date(row.joinedAt).getTime();
   const durationMinutes = Math.round(durationMs / 60000);
   const [updated] = await db.update(attendanceTable)
-    .set({ leftAt, durationMinutes }).where(eq(attendanceTable.id, parseInt(String(req.params.id)))).returning();
+    .set({ leftAt, durationMinutes }).where(eq(attendanceTable.id, id)).returning();
   res.json(updated);
 });
 
