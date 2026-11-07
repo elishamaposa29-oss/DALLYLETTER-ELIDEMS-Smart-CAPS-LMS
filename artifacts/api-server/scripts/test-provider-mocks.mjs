@@ -13,6 +13,29 @@ if (enabled) {
     if (url.hostname === "www.googleapis.com" && url.pathname === "/oauth2/v3/certs" && method === "GET") {
       const jwks = JSON.parse((await import("node:fs")).readFileSync("/tmp/pr84-google-jwks.json", "utf8"));
       response = { status: 200, body: { keys: jwks.keys } };
+    } else if (
+      (url.hostname === "generativelanguage.googleapis.com" && url.pathname.includes(":generateContent") ||
+       url.hostname === "api.openai.com" && url.pathname === "/v1/chat/completions" ||
+       url.hostname === "api.anthropic.com" && url.pathname === "/v1/messages") && method === "POST"
+    ) {
+      const provider = url.hostname === "generativelanguage.googleapis.com" ? "gemini"
+        : url.hostname === "api.openai.com" ? "openai" : "anthropic";
+      const key = provider === "gemini" ? url.searchParams.get("key")
+        : provider === "openai" ? String(init.headers?.Authorization || "").replace(/^Bearer\\s+/i, "")
+        : String(init.headers?.["x-api-key"] || "");
+      if (key === "mock-timeout") {
+        response = null;
+        return await new Promise((resolve, reject) => {
+          const signal = init.signal;
+          if (signal?.aborted) return reject(new Error("mock request aborted"));
+          signal?.addEventListener("abort", () => reject(new Error("mock request aborted")), { once: true });
+        });
+      }
+      if (key === "mock-fail-429") response = { status: 429, body: { error: "SECRET_PROVIDER_BODY_AND_KEY" } };
+      else if (key === "mock-fail-401") response = { status: 401, body: { error: "SECRET_PROVIDER_BODY_AND_KEY" } };
+      else if (provider === "gemini") response = { status: 200, body: { candidates: [{ content: { parts: [{ text: "Mock Gemini response" }] } }] } };
+      else if (provider === "openai") response = { status: 200, body: { choices: [{ message: { content: "Mock OpenAI response" } }] } };
+      else response = { status: 200, body: { content: [{ text: "Mock Anthropic response" }] } };
     } else if (url.hostname === "api.resend.com" && url.pathname === "/emails" && method === "POST") {
       const body = JSON.parse(bodyText || "{}");
       appendFileSync(capturePath, JSON.stringify({ provider: "resend", body }) + "\n");
