@@ -29,10 +29,10 @@ const defaultOrigins = [
 
 const requiredOrigins = [
   "https://dallyletterelidemslearningplatforme-six.vercel.app",
-  ...defaultOrigins,
+  // Explicit production frontend origin; additional deployment URLs belong in CORS_ORIGINS.
 ];
 
-const allowedOrigins = new Set([...configuredOrigins, ...requiredOrigins]);
+const allowedOrigins = new Set([...configuredOrigins, ...requiredOrigins, ...(process.env.NODE_ENV === "production" ? [] : defaultOrigins)]);
 
 app.disable("x-powered-by");
 // Render terminates TLS at its reverse proxy; trust only the nearest proxy hop
