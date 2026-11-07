@@ -331,15 +331,22 @@ router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<vo
     return;
   }
 
-  const integrationId = process.env.PAYNOW_INTEGRATION_ID;
-  const integrationKey = process.env.PAYNOW_INTEGRATION_KEY;
-  const publicBase = (process.env.PUBLIC_APP_URL || process.env.VITE_PUBLIC_APP_URL || "").replace(/\/$/, "");
-  const publicApi = (process.env.PUBLIC_API_URL || "").replace(/\/$/, "");
-  if (!integrationId || !integrationKey || !publicBase || !publicApi) {
-    res.status(503).json({ error: "Live Paynow payments are not configured yet. Add PAYNOW_INTEGRATION_ID, PAYNOW_INTEGRATION_KEY, PUBLIC_APP_URL and PUBLIC_API_URL to the server secrets." });
+  const integrationId = process.env.PAYNOW_INTEGRATION_ID?.trim();
+  const integrationKey = process.env.PAYNOW_INTEGRATION_KEY?.trim();
+  const publicBaseValue = (process.env.PUBLIC_APP_URL || process.env.VITE_PUBLIC_APP_URL || "").trim();
+  const publicApiValue = (process.env.PUBLIC_API_URL || "").trim();
+  const validPublicUrl = (value: string): boolean => {
+    try {
+      const parsed = new URL(value);
+      return (parsed.protocol === "https:" || process.env.NODE_ENV !== "production") && Boolean(parsed.host);
+    } catch { return false; }
+  };
+  if (!integrationId || !integrationKey || !validPublicUrl(publicBaseValue) || !validPublicUrl(publicApiValue)) {
+    res.status(503).json({ error: "Live Paynow checkout is not configured. Add valid PAYNOW_INTEGRATION_ID, PAYNOW_INTEGRATION_KEY, PUBLIC_APP_URL and PUBLIC_API_URL server secrets." });
     return;
   }
-
+  const publicBase = new URL(publicBaseValue).toString().replace(/\\/$/, "");
+  const publicApi = new URL(publicApiValue).toString().replace(/\\/$/, "");
   const reference = "DL-" + user.id + "-" + Date.now() + "-" + crypto.randomBytes(4).toString("hex");
   const now = new Date();
   const month = now.toLocaleString("en-US", { month: "long" });
