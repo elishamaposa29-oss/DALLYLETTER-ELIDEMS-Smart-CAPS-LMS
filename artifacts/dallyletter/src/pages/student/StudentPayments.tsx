@@ -164,6 +164,7 @@ export default function StudentPayments() {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "paid": return <CheckCircle2 className="h-5 w-5 text-emerald-500" />;
+      case "partially_paid": return <Clock className="h-5 w-5 text-sky-600" />;
       case "pending": return <Clock className="h-5 w-5 text-amber-500" />;
       case "overdue": return <AlertTriangle className="h-5 w-5 text-red-500" />;
       case "failed": return <XCircle className="h-5 w-5 text-red-600" />;
@@ -197,13 +198,11 @@ export default function StudentPayments() {
         <p className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-3 border">{settings.payment_instructions}</p>
       )}
       {nextPayablePayment && (
-        <div className="space-y-2 rounded-lg border p-3">
-          <label htmlFor="school-fee-payment-amount" className="block text-sm font-semibold">Amount to pay now (USD)</label>
+        {paynowReady && <div className="space-y-2 rounded-lg border p-3">
+          <label htmlFor="school-fee-payment-amount" className="block text-sm font-semibold">Paynow amount to pay now (USD)</label>
           <input id="school-fee-payment-amount" type="number" min="0.01" max="100000" step="0.01" inputMode="decimal" className="w-full rounded-md border bg-background p-2 text-foreground" placeholder={String(Math.max(0, Number((nextPayablePayment as any).amount)-Number((nextPayablePayment as any).amountPaid||0)).toFixed(2))} value={paymentAmount} onChange={e=>setPaymentAmount(e.target.value)} />
           <p className="text-xs text-muted-foreground">You may pay part of the balance or pay extra. Verified extra funds are recorded as credit; they are not lost. Leave blank to pay the full remaining balance on the next fee record.</p>
-        </div>
-      )}
-
+        </div>}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* Paynow */}
       {paynowReady && (<Button onClick={handlePaynowLive} disabled={paynowBusy || !nextPayablePayment} className="h-auto py-3 flex-col gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"><div className="font-bold">{paynowBusy ? "Starting…" : "Paynow"}</div><span className="text-[11px] opacity-80 font-normal">{nextPayablePayment ? "Next fee balance: $" + Math.max(0,Number((nextPayablePayment as any).amount)-Number((nextPayablePayment as any).amountPaid||0)).toFixed(2) : "No unpaid fee"}</span><ExternalLink className="h-3 w-3 opacity-70" /></Button>)}
@@ -212,7 +211,7 @@ export default function StudentPayments() {
         {paypalReady && (
           <Button
             onClick={handlePayPal}
-            disabled={paynowBusy || !nextPayablePayment}
+            disabled={paynowBusy || !nextPayablePayment || nextPayablePayment.status === "partially_paid"}
             className="h-auto py-3 flex-col gap-1.5 bg-[#003087] hover:bg-[#00256e] text-white"
           >
             <div className="flex items-center gap-2 font-bold">
@@ -220,7 +219,7 @@ export default function StudentPayments() {
               PayPal
             </div>
             <span className="text-[11px] opacity-80 font-normal">
-              {nextPayablePayment ? "Next fee: " + nextPayablePayment.month + " " + nextPayablePayment.year + " · $" + Number(nextPayablePayment.amount).toFixed(2) : "No unpaid fee"}
+              {nextPayablePayment ? (nextPayablePayment.status === "partially_paid" ? "Use Paynow for partial balances" : "Next fee: " + nextPayablePayment.month + " " + nextPayablePayment.year + " · $" + Number(nextPayablePayment.amount).toFixed(2)) : "No unpaid fee"}
             </span>
             <ExternalLink className="h-3 w-3 opacity-70" />
           </Button>
