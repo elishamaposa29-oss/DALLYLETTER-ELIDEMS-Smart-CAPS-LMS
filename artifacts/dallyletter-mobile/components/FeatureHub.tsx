@@ -927,10 +927,9 @@ export default function FeatureHub() {
 
   const startPayPal = async () => {
     if (!isStudent || paymentBusy || paymentTotalOwed <= 0) return;
-    if (payableRows[0]?.status === "partially_paid") { Alert.alert("Use Paynow for this balance","PayPal checkout currently settles full fee invoices. Paynow supports partial payments and excess credits for this invoice."); return; }
-    setPaymentBusy(true);
+     setPaymentBusy(true);
     try {
-      const result = await request("/api/payments/paypal/create", { method: "POST", body: JSON.stringify({ returnUrl: Linking.createURL("payments/return") }) });
+      const result = await request("/api/payments/paypal/create", { method: "POST", body: JSON.stringify({ returnUrl: Linking.createURL("payments/return"), amount: paymentAmountInput.trim() ? Number(paymentAmountInput) : undefined }) });
       if (!result?.checkoutUrl) throw new Error("PayPal checkout did not return a link.");
       await Linking.openURL(String(result.checkoutUrl));
     } catch (e) { Alert.alert("PayPal payment could not start", e instanceof Error ? e.message : "Please retry when connected."); }
@@ -1327,7 +1326,7 @@ export default function FeatureHub() {
             {isStudent && paymentSettings.trust_wallet ? <View style={{padding:10,borderWidth:1,borderColor:colors.border,borderRadius:10,marginTop:8}}><Text style={styles.cardTitle}>Wallet payment address</Text><Text selectable style={styles.body}>{String(paymentSettings.trust_wallet)}</Text></View>:null}
             {isStudent && Number(paymentSettings.school_fee_amount)>0 ? <View style={{padding:10,borderWidth:1,borderColor:colors.border,borderRadius:10,marginTop:8}}><Text style={styles.cardTitle}>School's published standard fee</Text><Text style={styles.body}>USD {Number(paymentSettings.school_fee_amount).toFixed(2)}</Text><Text style={styles.muted}>Your actual outstanding balance is shown in your fee records above; this published fee is a guide and may differ for your class or term.</Text></View>:null}
             {isStudent && paymentSettings.payment_instructions ? <Text style={styles.muted}>{String(paymentSettings.payment_instructions)}</Text>:null}
-            {isStudent && paynowReady && nextPaymentBalance > 0 ? <View style={{marginTop:8,padding:10,borderWidth:1,borderColor:colors.border,borderRadius:10}}><Text style={styles.cardTitle}>Amount to pay now (USD)</Text><TextInput style={[styles.input,{marginTop:8}]} value={paymentAmountInput} onChangeText={setPaymentAmountInput} keyboardType="decimal-pad" placeholder={nextPaymentBalance.toFixed(2)} placeholderTextColor={colors.mutedForeground}/><Text style={styles.muted}>Pay part of this fee, the full remaining balance, or extra. Verified extra money is recorded as credit. Leave blank to pay the full balance of the next fee record.</Text></View>:null}
+            {isStudent && (paynowReady || paypalReady) && nextPaymentBalance > 0 ? <View style={{marginTop:8,padding:10,borderWidth:1,borderColor:colors.border,borderRadius:10}}><Text style={styles.cardTitle}>Amount to pay now (USD)</Text><TextInput style={[styles.input,{marginTop:8}]} value={paymentAmountInput} onChangeText={setPaymentAmountInput} keyboardType="decimal-pad" placeholder={nextPaymentBalance.toFixed(2)} placeholderTextColor={colors.mutedForeground}/><Text style={styles.muted}>Pay part of this fee, the full remaining balance, or extra. Verified extra money is recorded as credit. Leave blank to pay the full balance of the next fee record.</Text></View>:null}
             {isStudent ? ((paynowReady || paypalReady || paymentSettings.ecocash_number || paymentSettings.trust_wallet) ? <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void notifyPayment()} disabled={paymentBusy||paymentReported}><Text style={[styles.buttonText,styles.secondaryText]}>{paymentReported?"School notified":"I have paid — notify school"}</Text></TouchableOpacity> : <Text style={styles.muted}>Payment methods are not configured. Please contact your school.</Text>) : null}
             {isStudent ? <Text style={styles.muted}>Payment options need an internet connection. A notification to school is a report, not proof that funds have cleared.</Text> : <Text style={styles.muted}>Staff view: payment records are read-only here.</Text>}
           </View>
