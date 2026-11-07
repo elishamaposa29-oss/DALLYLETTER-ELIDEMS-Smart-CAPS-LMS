@@ -184,7 +184,6 @@ export function canReviewAcademicTransfer(user: RoleLikeUser): boolean {
 
 /** Senior-only approvals and elevated review operations. */
 export const SENIOR_ONLY_PERMISSION_KEYS = new Set([
-  "transfers.approve", "reports.review", "achievements.approve",
   "teacher_cv.review", "teacher_cv.authorize", "qualifications.verify",
   "users.override.junior_manager", "manager.monitoring.view",
   "ai.agent.manage_accounts", "ai.agent.approve_workflows", "ai.agent.read_financials",
