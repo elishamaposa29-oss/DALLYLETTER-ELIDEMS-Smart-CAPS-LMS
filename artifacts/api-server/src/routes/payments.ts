@@ -86,11 +86,14 @@ async function getPayPalAccessToken(): Promise<string | null> {
 }
 
 router.get("/payments/paypal/status", (_req, res): void => {
+  const publicBase = process.env.PUBLIC_APP_URL || process.env.VITE_PUBLIC_APP_URL || "";
+  let securePublicBase = false;
+  try { securePublicBase = new URL(publicBase).protocol === "https:"; } catch { securePublicBase = false; }
   const configured = Boolean(
     process.env.PAYPAL_CLIENT_ID?.trim() &&
     process.env.PAYPAL_CLIENT_SECRET?.trim() &&
     process.env.PAYPAL_WEBHOOK_ID?.trim() &&
-    (process.env.PUBLIC_APP_URL || process.env.VITE_PUBLIC_APP_URL)?.trim()
+    securePublicBase
   );
   res.setHeader("Cache-Control", "no-store");
   res.json({ configured, provider: "paypal" });
