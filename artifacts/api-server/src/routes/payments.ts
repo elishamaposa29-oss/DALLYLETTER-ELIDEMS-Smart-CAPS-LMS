@@ -341,22 +341,40 @@ router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
     }
     const refMatch = reference.match(/^DLP-(\d+)-(\d+)-\d+-[a-f0-9]{8}$/i);
     if (!refMatch) { res.status(400).json({ error: "PayPal reference is malformed." }); return; }
-    const updated = await db.execute(sql`
-      UPDATE payments SET status = 'paid', amount_paid = amount,
-        notes = CONCAT(COALESCE(notes, ''), ' | PayPal verified capture ', CAST(${String(resource.id || "")} AS TEXT)),
-        updated_at = now()
-      WHERE id = ${Number(refMatch[2])}
-        AND student_id = ${Number(refMatch[1])}
-        AND notes LIKE ${"%PayPal order " + orderId + " reference " + reference + "%"}
-        AND amount::numeric = ${capturedAmount}
-        AND status IN ('pending', 'overdue')
-      RETURNING student_id
-    `);
-    const rows = (updated as unknown as { rows?: Array<{ student_id: number }> }).rows ?? [];
-    if (rows.length) {
-      await db.update(usersTable).set({ lastPaymentDate: new Date().toISOString() }).where(eq(usersTable.id, Number(rows[0].student_id)));
+    const settled = await db.transaction(async (tx) => {
+      const transaction = await tx.execute(sql`
+        UPDATE payment_transactions
+        SET status='paid', updated_at=now()
+        WHERE provider='paypal' AND reference=${reference} AND status='pending'
+          AND amount::numeric=${capturedAmount}
+          AND payment_id=${Number(refMatch[2])}
+        RETURNING payment_id, amount
+      `);
+      const transactionRows = (transaction as unknown as { rows?: Array<{ payment_id: number; amount: string | number }> }).rows ?? [];
+      if (!transactionRows.length) return { studentId: null as number | null };
+      const transactionAmount = Number(transactionRows[0].amount);
+      const updated = await tx.execute(sql`
+        UPDATE payments
+        SET amount_paid=COALESCE(amount_paid,0)+${transactionAmount},
+            status=CASE
+              WHEN COALESCE(amount_paid,0)+${transactionAmount} >= amount THEN 'paid'
+              ELSE 'partially_paid'
+            END,
+            notes=CONCAT(replace(COALESCE(notes,''), ${"PayPal order " + orderId + " reference " + reference}, ''),' | PayPal verified capture ',CAST(${String(resource.id || "")} AS TEXT),' amount ',CAST(${transactionAmount.toFixed(2)} AS TEXT)),
+            updated_at=now()
+        WHERE id=${Number(transactionRows[0].payment_id)}
+          AND student_id=${Number(refMatch[1])}
+          AND notes LIKE ${"%PayPal order " + orderId + " reference " + reference + "%"}
+          AND status IN ('pending','overdue','partially_paid')
+        RETURNING student_id
+      `);
+      const rows = (updated as unknown as { rows?: Array<{ student_id: number }> }).rows ?? [];
+      return { studentId: rows.length ? Number(rows[0].student_id) : null };
+    });
+    if (settled.studentId !== null) {
+      await db.update(usersTable).set({ lastPaymentDate: new Date().toISOString() }).where(eq(usersTable.id, settled.studentId));
     }
-    res.json({ received: true, updated: rows.length > 0 });
+    res.json({ received: true, updated: settled.studentId !== null });
   } catch {
     res.status(502).json({ error: "PayPal webhook verification could not be completed." });
   }
