@@ -99,7 +99,7 @@ export default function StudentPayments() {
       const due = Math.max(0, Number((nextPayablePayment as any).amount) - Number((nextPayablePayment as any).amountPaid || 0));
       const chosenAmount = paymentAmount.trim() ? Number(paymentAmount) : due;
       if (!Number.isFinite(chosenAmount) || chosenAmount <= 0 || chosenAmount > 100000) throw new Error("Enter a valid payment amount greater than zero.");
-      const r = await fetch(getApiUrl("/api/payments/paynow/create"), { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ amount: chosenAmount }) });
+      const r = await fetch(getApiUrl("/api/payments/paynow/create"), { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ paymentId: nextPayablePayment.id, amount: chosenAmount }) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || !d.checkoutUrl) throw new Error(d.error || "Could not start Paynow checkout");
       window.location.assign(d.checkoutUrl);
@@ -118,7 +118,7 @@ export default function StudentPayments() {
       const response = await fetch(getApiUrl("/api/payments/paypal/create"), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
-        body: JSON.stringify({ amount: paymentAmount.trim() ? Number(paymentAmount) : undefined }),
+        body: JSON.stringify({ paymentId: nextPayablePayment.id, amount: paymentAmount.trim() ? Number(paymentAmount) : undefined }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.checkoutUrl) throw new Error(data.error || "Could not start PayPal checkout.");
