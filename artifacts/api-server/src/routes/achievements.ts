@@ -253,9 +253,10 @@ router.get("/prefect-teachers", requireAuth, async (req, res): Promise<void> => 
 
 router.get("/lesson-requests", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
+  const authorizedTeacher = user.role === "teacher" && user.teacherApplicationStatus !== "pending_review";
   const rows = user.isPrefect
     ? await db.select().from(lessonRequestsTable).where(eq(lessonRequestsTable.prefectId, user.id)).orderBy(desc(lessonRequestsTable.createdAt))
-    : user.role === "teacher"
+    : authorizedTeacher
       ? await db.select().from(lessonRequestsTable).where(eq(lessonRequestsTable.teacherId, user.id)).orderBy(desc(lessonRequestsTable.createdAt))
       : [];
   res.json(rows.map(r => ({ ...r, createdAt: r.createdAt.toISOString(), responseAt: r.responseAt?.toISOString() ?? null })));
@@ -294,7 +295,7 @@ router.patch("/lesson-requests/:id", requireAuth, async (req, res): Promise<void
   if (!request) { res.status(404).json({ error: "Lesson request not found" }); return; }
 
   const owner = isOwnerRole(user.role);
-  const assignedTeacher = user.id === request.teacherId;
+  const assignedTeacher = user.id === request.teacherId && user.role === "teacher" && user.teacherApplicationStatus !== "pending_review";
   const requestingPrefect = user.id === request.prefectId;
   if (!owner && !assignedTeacher && !requestingPrefect) { res.status(403).json({ error: "Only the requesting prefect, assigned teacher, or Owner can update this request." }); return; }
 
@@ -353,7 +354,8 @@ router.delete("/lesson-requests/:id", requireAuth, async (req, res): Promise<voi
   if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid request id" }); return; }
   const [request] = await db.select().from(lessonRequestsTable).where(eq(lessonRequestsTable.id, id));
   if (!request) { res.status(404).json({ error: "Lesson request not found" }); return; }
-  if (user.id !== request.teacherId && user.id !== request.prefectId && !isOwnerRole(user.role)) {
+  const assignedTeacher = user.id === request.teacherId && user.role === "teacher" && user.teacherApplicationStatus !== "pending_review";
+  if (!assignedTeacher && user.id !== request.prefectId && !isOwnerRole(user.role)) {
     res.status(403).json({ error: "Only the requesting prefect, assigned teacher, or Owner can delete this request." }); return;
   }
   await db.delete(lessonRequestsTable).where(eq(lessonRequestsTable.id, id));
