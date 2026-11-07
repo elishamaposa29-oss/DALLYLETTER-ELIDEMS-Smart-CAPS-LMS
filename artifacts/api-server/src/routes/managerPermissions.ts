@@ -146,10 +146,11 @@ router.patch("/:userId/role", requireAuth, ownerOnly, async (req, res): Promise<
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const selected = await client.query("SELECT id,name,role,is_manager FROM users WHERE id=$1 FOR UPDATE", [userId]);
-    const target = selected.rows[0] as { id: number; name: string; role: string; is_manager: boolean } | undefined;
+    const selected = await client.query("SELECT id,name,role,is_manager,manager_level FROM users WHERE id=$1 FOR UPDATE", [userId]);
+    const target = selected.rows[0] as { id: number; name: string; role: string; is_manager: boolean; manager_level: string | null } | undefined;
     if (!target) { await client.query("ROLLBACK"); res.status(404).json({ error: "User not found" }); return; }
     const previousRole = normalizeRole(target.role);
+    const wasSeniorManager = isSeniorManager({ role: target.role, managerLevel: target.manager_level ?? undefined, isManager: target.is_manager });
     if (isOwnerRole(previousRole) || previousRole === "admin") {
       await client.query("ROLLBACK");
       res.status(403).json({ error: "Owner and Admin roles cannot be changed through manager assignment." });
@@ -198,9 +199,11 @@ router.patch("/:userId/role", requireAuth, ownerOnly, async (req, res): Promise<
         [userId, permission.key],
       );
       const previous = prior.rows[0]?.granted ?? null;
-      const granted = nextRole === "junior_manager" && isSeniorOnlyManagerPermission(permission.key)
-        ? false
-        : previous === true;
+      const revokeSeniorGrantOnDemotion = nextRole === "junior_manager" && wasSeniorManager && (
+        isSeniorOnlyManagerPermission(permission.key) ||
+        ["transfers.approve", "reports.review", "achievements.approve"].includes(permission.key)
+      );
+      const granted = revokeSeniorGrantOnDemotion ? false : previous === true;
       if (previous === null && !granted) continue;
       await client.query(
         "INSERT INTO manager_permission_grants(manager_user_id,permission_key,granted,changed_by,changed_at) VALUES($1,$2,$3,$4,now()) ON CONFLICT(manager_user_id,permission_key) DO UPDATE SET granted=EXCLUDED.granted,changed_by=EXCLUDED.changed_by,changed_at=now()",
