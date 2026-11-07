@@ -11,6 +11,7 @@ import { normalizeAssignmentAttachmentUrl, validateAssignmentSubmission } from "
 import { getAIProvider } from "../lib/ai-provider";
 import { isObjectStorageConfigured } from "../lib/object-storage";
 import { logger } from "../lib/logger";
+import { queueAIContentSafety } from "../lib/ai-content-safety";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, removeStoredMedia } from "../lib/media-storage";
 
 const router = Router();
@@ -149,6 +150,7 @@ router.post("/", requireAuth, async (req, res): Promise<void> => {
     title: title.trim(), description, subject: subject.trim(), grade: typeof grade === "string" && grade.trim() ? grade.trim() : null, dueDate, totalMarks: parsedMarks,
     teacherId: user.id, teacherName: user.name, attachmentUrl: normalizedAttachmentUrl,
   }).returning();
+  queueAIContentSafety("assignment", Number(row.id), [title, description, subject].filter((value): value is string => typeof value === "string").join("\n"));
   res.status(201).json(row);
 });
 
