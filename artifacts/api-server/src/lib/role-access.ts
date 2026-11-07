@@ -177,14 +177,14 @@ export function canModerateUser(actor: RoleLikeUser, target: RoleLikeUser): bool
   return ["teacher", "student", "learner", "prefect"].includes(targetRole);
 }
 
-/** Transfer decisions are senior authority: junior managers may view the queue but cannot approve or reject. */
-export function canReviewAcademicTransfer(user: RoleLikeUser): boolean {
+/** Transfer approval is senior/Owner authority; rejection is independently grantable to Junior Managers. */
+export function canApproveAcademicTransfer(user: RoleLikeUser): boolean {
   return isSeniorManager(user);
 }
 
 /** Senior-only approvals and elevated review operations. */
 export const SENIOR_ONLY_PERMISSION_KEYS = new Set([
-  "transfers.approve", "transfers.reject", "reports.review", "achievements.approve",
+  "transfers.approve", "reports.review", "achievements.approve",
   "teacher_cv.review", "teacher_cv.authorize", "qualifications.verify",
   "users.override.junior_manager", "manager.monitoring.view",
   "ai.agent.manage_accounts", "ai.agent.approve_workflows", "ai.agent.read_financials",
