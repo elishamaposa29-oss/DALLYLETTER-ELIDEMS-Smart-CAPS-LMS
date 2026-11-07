@@ -34,7 +34,7 @@ router.patch("/settings", requireAuth, requireOwner, async (req, res): Promise<v
   const feeUpdate = updates.find(([key]) => key === "school_fee_amount");
   if (feeUpdate) {
     const raw = feeUpdate[1].trim();
-    if (raw && (!/^\\d{1,6}(?:\\.\\d{1,2})?$/.test(raw) || Number(raw) <= 0 || Number(raw) > 100000)) {
+    if (raw && (!/^\d{1,6}(?:\.\d{1,2})?$/.test(raw) || Number(raw) <= 0 || Number(raw) > 100000)) {
       res.status(400).json({ error: "Default school fee must be a positive amount up to 100000, or blank to leave unset." });
       return;
     }
