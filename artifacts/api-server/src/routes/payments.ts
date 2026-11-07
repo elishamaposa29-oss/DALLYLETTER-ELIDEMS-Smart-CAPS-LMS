@@ -828,7 +828,7 @@ router.post("/payments/notify-admin", requireAuth, async (req, res): Promise<voi
         await tx.insert(notificationsTable).values({
           recipientId: owner.id,
           title: "Learner payment needs verification",
-          message: currentUser.name + " reported USD " + amount.toFixed(2) + " (" + method + ") for invoice #" + paymentId + ". Report #" + reference + ". " + (providerReference ? "Receipt: " + providerReference : "Cash report; confirm receipt before approval."),
+          message: currentUser.name + " reported USD " + amount.toFixed(2) + " (" + method + ") for invoice #" + paymentId + ". This report has not been independently verified and the invoice balance has not changed. Report #" + reference + ". " + (providerReference ? "Receipt: " + providerReference : "Cash report; confirm receipt before approval."),
           type: "payment_overdue",
           isRead: false,
         });
