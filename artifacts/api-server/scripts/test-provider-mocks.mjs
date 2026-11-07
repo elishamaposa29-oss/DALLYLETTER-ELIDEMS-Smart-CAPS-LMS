@@ -28,7 +28,7 @@ if (enabled) {
       const unit = request.purchase_units?.[0] || {};
       const id = "MOCKORDER" + String(paypalOrders.size + 1).padStart(4, "0");
       paypalOrders.set(id, { id, status: "APPROVED", purchase_units: [{ custom_id: unit.custom_id, invoice_id: unit.invoice_id, amount: unit.amount, payments: { captures: [] } }] });
-      response = { status: 201, body: { id, status: "CREATED", links: [{ rel: "approve", href: "https://paypal.test/approve/" + id }] } };
+      response = { status: 201, body: { id, status: "CREATED", links: [{ rel: "payer-action", href: "https://paypal.test/approve/" + id }] } };
     } else if (url.hostname === "paypal.test" && url.pathname.startsWith("/v2/checkout/orders/") && url.pathname.endsWith("/capture") && method === "POST") {
       const id = url.pathname.split("/")[4];
       const order = paypalOrders.get(id);
