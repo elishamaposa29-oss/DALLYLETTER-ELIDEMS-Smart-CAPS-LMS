@@ -43,6 +43,33 @@ function buildModerationPrompt(text: string): string {
 Be context-aware and fair. Do NOT flag ordinary schoolwork, legitimate educational links, curriculum discussion, respectful disagreement, harmless jokes, slang, dialect, quoted examples used for teaching, or a user's ordinary business identity unless it is unsolicited promotional spam. Consider context and intent; do not infer misconduct from identity, disability, language variety or age. If uncertain, use low/medium severity and explain uncertainty. Return ONLY valid JSON with this exact shape: {"flagged":boolean,"reason":"short neutral explanation","severity":"low|medium|high|critical","categories":["category"]}. Choose categories only from: ${AI_MODERATION_CATEGORIES.join(", ")}. A flag only requests human review. Never recommend automatic punishment, account suspension, deletion or public accusation. Text to review (JSON encoded): ${JSON.stringify(text.slice(0, 4000))}`;
 }
 
+function parseModerationResult(raw: string): ModerationResult {
+  const reviewRequired: ModerationResult = {
+    flagged: true,
+    reason: "AI moderation returned an unreadable result; authorized human review is recommended.",
+    severity: "low",
+    categories: ["moderation_parse_failure"],
+  };
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) return reviewRequired;
+  try {
+    const parsed = JSON.parse(match[0]) as Partial<ModerationResult>;
+    if (typeof parsed.flagged !== "boolean") return reviewRequired;
+    const validSeverities = new Set(["low", "medium", "high", "critical"]);
+    const categories = Array.isArray(parsed.categories)
+      ? parsed.categories.filter((value): value is string => typeof value === "string" && (AI_MODERATION_CATEGORIES as readonly string[]).includes(value)).slice(0, 8)
+      : [];
+    return {
+      flagged: parsed.flagged,
+      reason: typeof parsed.reason === "string" ? parsed.reason.slice(0, 500) : undefined,
+      severity: validSeverities.has(String(parsed.severity)) ? parsed.severity as ModerationResult["severity"] : "medium",
+      categories: parsed.flagged && categories.length === 0 ? ["unclassified"] : categories,
+    };
+  } catch {
+    return reviewRequired;
+  }
+}
+
 export interface AIProvider {
   name: string;
   chat(messages: AIMessage[], systemPrompt?: string, signal?: AbortSignal): Promise<string>;
@@ -153,9 +180,7 @@ class GeminiProvider implements AIProvider {
   async moderateContent(text: string): Promise<ModerationResult> {
     const prompt = buildModerationPrompt(text);
     const result = await this.call([{ role: "user", content: prompt }]);
-    const match = result.match(/\{[\s\S]*\}/);
-    if (!match) return { flagged: false, severity: "low", categories: [] };
-    return JSON.parse(match[0]) as ModerationResult;
+    return parseModerationResult(result);
   }
 
   async analyzeData(data: object, prompt: string) {
@@ -194,9 +219,7 @@ class OpenAIProvider implements AIProvider {
   async moderateContent(text: string): Promise<ModerationResult> {
     const prompt = buildModerationPrompt(text);
     const result = await this.call([{ role: "user", content: prompt }]);
-    const match = result.match(/\{[\s\S]*\}/);
-    if (!match) return { flagged: false, severity: "low", categories: [] };
-    return JSON.parse(match[0]) as ModerationResult;
+    return parseModerationResult(result);
   }
 
   async analyzeData(data: object, prompt: string) {
@@ -239,9 +262,7 @@ class AnthropicProvider implements AIProvider {
   async moderateContent(text: string): Promise<ModerationResult> {
     const prompt = buildModerationPrompt(text);
     const result = await this.call([{ role: "user", content: prompt }]);
-    const match = result.match(/\{[\s\S]*\}/);
-    if (!match) return { flagged: false, severity: "low", categories: [] };
-    return JSON.parse(match[0]) as ModerationResult;
+    return parseModerationResult(result);
   }
 
   async analyzeData(data: object, prompt: string) {
