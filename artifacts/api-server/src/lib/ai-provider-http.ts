@@ -1,5 +1,6 @@
 export type AIProviderFailureCode =
   | "timeout"
+  | "cancelled"
   | "network_error"
   | "rate_limited"
   | "invalid_credentials"
@@ -38,9 +39,10 @@ export async function requestProviderJson(
   try {
     let response: Response;
     try {
-      response = await fetch(url, { ...init, signal: controller.signal });
+      const signal = init.signal ? AbortSignal.any([controller.signal, init.signal]) : controller.signal;
+      response = await fetch(url, { ...init, signal });
     } catch {
-      throw new AIProviderError(provider, controller.signal.aborted ? "timeout" : "network_error");
+      throw new AIProviderError(provider, controller.signal.aborted ? "timeout" : init.signal?.aborted ? "cancelled" : "network_error");
     }
     if (!response.ok) {
       const status = response.status;
