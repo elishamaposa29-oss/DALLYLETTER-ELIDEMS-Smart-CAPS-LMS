@@ -332,7 +332,7 @@ router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
     const refMatch = reference.match(/^DLP-(\d+)-(\d+)-\d+-[a-f0-9]{8}$/i);
     if (!refMatch) { res.status(400).json({ error: "PayPal reference is malformed." }); return; }
     const updated = await db.execute(sql`
-      UPDATE payments SET status = 'paid',
+      UPDATE payments SET status = 'paid', amount_paid = amount,
         notes = CONCAT(COALESCE(notes, ''), ' | PayPal verified capture ', CAST(${String(resource.id || "")} AS TEXT)),
         updated_at = now()
       WHERE id = ${Number(refMatch[2])}
