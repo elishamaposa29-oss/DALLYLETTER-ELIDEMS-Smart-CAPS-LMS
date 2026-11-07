@@ -38,6 +38,7 @@ jobs:
     env:
       DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/dallyletter_pr84_test
       NODE_ENV: test
+      AI_PROVIDER_TIMEOUT_MS: "1000"
       JWT_SECRET: pr84-ci-only-secret-not-for-deployment
       PORT: "4000"
       API_BASE_URL: http://127.0.0.1:4000
