@@ -35,7 +35,8 @@ export default function StudentPayments() {
     fetch(getApiUrl("/api/payments/paynow/status"), { cache: "no-store" })
       .then(async r => { if (!r.ok) throw new Error("Paynow status unavailable"); return r.json(); })
       .then(data => setPaynowReady(data.configured === true))
-      .catch(() => setPaynowReady(false));    fetch(getApiUrl("/api/payments/paypal/status"), { cache: "no-store" })
+      .catch(() => setPaynowReady(false));
+    fetch(getApiUrl("/api/payments/paypal/status"), { cache: "no-store" })
       .then(async r => { if (!r.ok) throw new Error("PayPal status unavailable"); return r.json(); })
       .then(data => setPaypalReady(data.configured === true))
       .catch(() => setPaypalReady(false));
