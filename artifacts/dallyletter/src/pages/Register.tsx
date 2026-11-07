@@ -32,10 +32,10 @@ const registerSchema = z.object({
 });
 
 const perks = [
-  "Full access to CAPS-aligned lesson materials",
-  "Live class sessions via Google Meet",
-  "Study groups with fellow learners",
-  "Payment tracking & fee notifications",
+  "Access lessons and resources published for your courses",
+  "Join live classes when educators schedule them",
+  "Collaborate in study groups available to your account",
+  "View fee records and school payment instructions",
 ];
 
 export default function Register() {
@@ -116,7 +116,7 @@ export default function Register() {
               community.
             </h1>
             <p className="text-white/55 leading-relaxed">
-              Create your free account and get instant access to all learning resources on the platform.
+              Create a learner or teacher account for the appropriate Dallyletter workspace. Available tools depend on your role, published resources and approval status.
             </p>
           </div>
 
