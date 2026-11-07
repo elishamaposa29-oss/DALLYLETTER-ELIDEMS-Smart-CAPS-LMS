@@ -1,14 +1,14 @@
 {
   "name": "DallyLetter Elidems",
   "short_name": "DallyLetter",
-  "description": "CAPS Education Platform for Students, Teachers and Admin",
+  "description": "Dallyletter Elidems — digital learning, practice, assessment and school activity.",
   "start_url": "/",
   "scope": "/",
   "id": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "theme_color": "#0a1628",
-  "background_color": "#0a1628",
+  "theme_color": "#0f2a5a",
+  "background_color": "#0f2a5a",
   "icons": [
     {
       "src": "/icons/icon-192.png",
