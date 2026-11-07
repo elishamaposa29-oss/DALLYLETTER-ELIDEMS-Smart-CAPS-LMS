@@ -2,6 +2,7 @@ import { appendFileSync, writeFileSync } from "node:fs";
 
 const enabled = process.env.MOCK_PROVIDER_MODE === "test";
 const capturePath = process.env.MOCK_PROVIDER_CAPTURE || "/tmp/dallyletter-provider-capture.jsonl";
+const paypalOrders = new Map();
 if (enabled) {
   writeFileSync(capturePath, "");
   globalThis.fetch = async (input, init = {}) => {
@@ -22,6 +23,25 @@ if (enabled) {
       const request = JSON.parse(bodyText || "{}");
       const sig = String(request.webhook_event?.id || "");
       response = { status: 200, body: { verification_status: sig === "mock-valid-signature" ? "SUCCESS" : "FAILURE" } };
+    } else if (url.hostname === "paypal.test" && url.pathname === "/v2/checkout/orders" && method === "POST") {
+      const request = JSON.parse(bodyText || "{}");
+      const unit = request.purchase_units?.[0] || {};
+      const id = "MOCKORDER" + String(paypalOrders.size + 1).padStart(4, "0");
+      paypalOrders.set(id, { id, status: "APPROVED", purchase_units: [{ custom_id: unit.custom_id, invoice_id: unit.invoice_id, amount: unit.amount, payments: { captures: [] } }] });
+      response = { status: 201, body: { id, status: "CREATED", links: [{ rel: "approve", href: "https://paypal.test/approve/" + id }] } };
+    } else if (url.hostname === "paypal.test" && url.pathname.startsWith("/v2/checkout/orders/") && url.pathname.endsWith("/capture") && method === "POST") {
+      const id = url.pathname.split("/")[4];
+      const order = paypalOrders.get(id);
+      if (!order) response = { status: 404, body: { message: "order not found" } };
+      else {
+        order.status = "COMPLETED";
+        order.purchase_units[0].payments.captures = [{ id: "MOCKCAPTURE" + id, status: "COMPLETED", amount: order.purchase_units[0].amount }];
+        response = { status: 201, body: { id, status: "COMPLETED", purchase_units: order.purchase_units } };
+      }
+    } else if (url.hostname === "paypal.test" && url.pathname.startsWith("/v2/checkout/orders/") && method === "GET") {
+      const id = url.pathname.split("/").pop();
+      const order = paypalOrders.get(id);
+      response = order ? { status: 200, body: order } : { status: 404, body: { message: "order not found" } };
     } else if (url.hostname === "api.twilio.com" && /^\/2010-04-01\/Accounts\/[^/]+\/Messages\.json$/.test(url.pathname) && method === "POST") {
       const params = new URLSearchParams(bodyText);
       appendFileSync(capturePath, JSON.stringify({ provider: "twilio", body: { to: params.get("To"), from: params.get("From"), text: params.get("Body") } }) + "\n");
