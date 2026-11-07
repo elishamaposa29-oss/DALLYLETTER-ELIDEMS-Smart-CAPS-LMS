@@ -12,7 +12,7 @@ const router: IRouter = Router();
 /**
  * The catalogue describes actions that can be requested. It does not grant them.
  * No manager receives operational capabilities from role or seniority.
- * Owner grants every permission individually; senior-only actions remain unavailable to Junior Managers.
+ * Owner grants every permission individually; teacher CV review, teacher authorization, qualification verification and elevated monitoring remain Senior-only.
  * Owner-only powers are deliberately absent.
  */
 export const MANAGER_PERMISSION_CATALOG = [
@@ -32,10 +32,10 @@ export const MANAGER_PERMISSION_CATALOG = [
   { key: "recordbook.edit", group: "Academic", label: "Edit RecordBook marks", description: "Correct marks and trigger recalculation with an audit trail." },
   { key: "reports.create", group: "Academic", label: "Create academic reports", description: "Create and submit school-scoped report drafts." },
   { key: "reports.view", group: "Academic", label: "View reports", description: "View school-scoped academic reports." },
-  { key: "reports.review", seniorOnly: true, group: "Academic", label: "Approve or reject reports", description: "Review submitted academic reports and record a decision." },
+  { key: "reports.review", group: "Academic", label: "Approve or reject reports", description: "Review submitted academic reports and record a decision." },
   { key: "transfers.view", group: "Transfers", label: "View transfer requests", description: "View school-scoped transfer requests and documents." },
   { key: "transfers.reject", group: "Transfers", label: "Reject transfer requests", description: "Reject eligible transfer requests with a reason; does not grant approval." },
-  { key: "transfers.approve", seniorOnly: true, group: "Transfers", label: "Approve transfer requests", description: "Approve eligible transfer requests with verification and audit history." },
+  { key: "transfers.approve", group: "Transfers", label: "Approve transfer requests", description: "Approve eligible transfer requests with verification and audit history." },
   { key: "teacher_cv.chat", group: "Teacher CV", label: "Chat with applying teachers", description: "Use the existing private application conversation with applicants." },
   { key: "teacher_cv.view", group: "Teacher applications", label: "View teacher CV applications", description: "Review submitted teacher CV information." },
   { key: "teacher_cv.review", seniorOnly: true, group: "Teacher applications", label: "Review teacher applications", description: "Request corrections or reject an application." },
@@ -44,7 +44,7 @@ export const MANAGER_PERMISSION_CATALOG = [
   { key: "qualifications.verify", seniorOnly: true, group: "Teacher applications", label: "Verify qualifications", description: "Verify or reject individual qualification records." },
   { key: "achievements.view", group: "Achievements", label: "View achievement recommendations", description: "View learner achievement recommendations." },
   { key: "achievements.recommend", group: "Achievements", label: "Recommend achievements", description: "Submit achievement recommendations for review." },
-  { key: "achievements.approve", seniorOnly: true, group: "Achievements", label: "Approve achievements", description: "Approve eligible achievement awards." },
+  { key: "achievements.approve", group: "Achievements", label: "Approve achievements", description: "Approve eligible achievement awards." },
   { key: "moderation.view", group: "Moderation", label: "View moderation queue", description: "Review school-scoped content flags." },
   { key: "moderation.action", group: "Moderation", label: "Take moderation action", description: "Resolve eligible content moderation cases." },
   { key: "notifications.create", group: "Communications", label: "Send notifications", description: "Create school-scoped notifications for permitted recipients." },
