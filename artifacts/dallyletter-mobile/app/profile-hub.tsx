@@ -111,7 +111,7 @@ export default function MobileProfileHub() {
     return data;
   },[token]);
 
-  const learnerAIMode = ["student","learner","prefect"].includes(normalizedUserRole) || Boolean(user?.isPrefect);
+  const learnerAIMode = ["student","learner","prefect"].includes(normalizedUserRole) || Boolean((user as any)?.isPrefect);
   const canRequestAIAgent = !learnerAIMode && ["teacher","manager","senior_manager","junior_manager","owner","platform_owner"].includes(normalizedUserRole);
   const sendAIMessage = async () => {
     const content = aiDraft.trim();
