@@ -87,11 +87,6 @@ const pendingQueue=await request("/api/teacher-cv-workspace/queue",{token:ownerT
 assert.equal(pendingQueue.status,200,"Owner can retrieve the teacher CV review queue");
 assert(!pendingQueue.data.applications.some(item=>Number(item.id)===Number(approvalApplicant.id)),"Unsubmitted teacher registrations must not appear as submitted CV applications");
 assert(pendingQueue.data.applications.some(item=>Number(item.id)===Number(draftOnlyApplicant.id)&&item.has_cv_submission===false&&item.survey_review_status==="pending"),"Independent survey submission must appear separately in the reviewer queue without becoming a CV application");
-const approvedIndependentSurvey=await request("/api/teacher-cv-workspace/"+draftOnlyApplicant.id+"/survey/decision",{token:ownerToken,method:"POST",body:{action:"approve",note:"Readiness survey reviewed"}});
-assert.equal(approvedIndependentSurvey.status,200,"Owner can approve a submitted readiness survey independently");
-assert.equal(approvedIndependentSurvey.data.status,"approved");
-const cvStatusAfterSurveyApproval=await request("/api/auth/me",{token:draftOnlyApplicant.token});
-assert.equal(cvStatusAfterSurveyApproval.data.teacherApplicationStatus,"draft","Survey approval must not authorize or submit the teacher CV application");
 const profilePhoto=await upload("/api/users/me/teacher-documents",approvalApplicant.token,"file","teacher-photo.png","image/png",Buffer.from([137,80,78,71,13,10,26,10]),{documentType:"cv"});
 assert.equal(profilePhoto.status,201,"Applicant can upload a private profile photo");
 const resume=await upload("/api/users/me/teacher-documents",approvalApplicant.token,"file","teacher-resume.pdf","application/pdf",Buffer.from("%PDF-1.4\\n%teacher resume integration test\\n"),{documentType:"resume"});
@@ -183,6 +178,11 @@ assert.equal(managerLegacyDraftPdf.status,404,"Legacy manager PDF endpoint must 
 const managerQueue=await request("/api/teacher-cv-workspace/queue",{token:managerToken});
 assert.equal(managerQueue.status,200,"Individually authorized Junior Manager can access the CV queue");
 assert(managerQueue.data.applications.some(item=>Number(item.id)===Number(approvalApplicant.id)),"Authorized manager can see the submitted application");
+const approvedIndependentSurvey=await request("/api/teacher-cv-workspace/"+draftOnlyApplicant.id+"/survey/decision",{token:ownerToken,method:"POST",body:{action:"approve",note:"Readiness survey reviewed"}});
+assert.equal(approvedIndependentSurvey.status,200,"Owner can approve a submitted readiness survey independently");
+assert.equal(approvedIndependentSurvey.data.status,"approved");
+const cvStatusAfterSurveyApproval=await request("/api/auth/me",{token:draftOnlyApplicant.token});
+assert.equal(cvStatusAfterSurveyApproval.data.teacherApplicationStatus,"draft","Survey approval must not authorize or submit the teacher CV application");
 const managerSurveyQueueRow=managerQueue.data.applications.find(item=>Number(item.id)===Number(draftOnlyApplicant.id));
 assert(managerSurveyQueueRow,"Authorized manager can see the independently submitted readiness survey in the review queue");
 const surveyApplicantCvSubmission=await pool.query("SELECT EXISTS(SELECT 1 FROM teacher_cv_review_history WHERE teacher_id=$1 AND action='submitted') AS has_cv_submission",[draftOnlyApplicant.id]);
