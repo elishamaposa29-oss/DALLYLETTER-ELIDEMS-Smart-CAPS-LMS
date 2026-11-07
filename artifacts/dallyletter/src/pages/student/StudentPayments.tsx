@@ -115,7 +115,7 @@ export default function StudentPayments() {
       const response = await fetch(getApiUrl("/api/payments/paypal/create"), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ amount: paymentAmount.trim() ? Number(paymentAmount) : undefined }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.checkoutUrl) throw new Error(data.error || "Could not start PayPal checkout.");
@@ -197,9 +197,9 @@ export default function StudentPayments() {
       {settings.payment_instructions && (
         <p className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-3 border">{settings.payment_instructions}</p>
       )}
-      {paynowReady && nextPayablePayment && (
+      {(paynowReady || paypalReady) && nextPayablePayment && (
         <div className="space-y-2 rounded-lg border p-3">
-          <label htmlFor="school-fee-payment-amount" className="block text-sm font-semibold">Paynow amount to pay now (USD)</label>
+          <label htmlFor="school-fee-payment-amount" className="block text-sm font-semibold">Checkout amount to pay now (USD)</label>
           <input id="school-fee-payment-amount" type="number" min="0.01" max="100000" step="0.01" inputMode="decimal" className="w-full rounded-md border bg-background p-2 text-foreground" placeholder={String(Math.max(0, Number((nextPayablePayment as any).amount)-Number((nextPayablePayment as any).amountPaid||0)).toFixed(2))} value={paymentAmount} onChange={e=>setPaymentAmount(e.target.value)} />
           <p className="text-xs text-muted-foreground">You may pay part of the balance or pay extra. Verified extra funds are recorded as credit; they are not lost. Leave blank to pay the full remaining balance on the next fee record.</p>
         </div>
