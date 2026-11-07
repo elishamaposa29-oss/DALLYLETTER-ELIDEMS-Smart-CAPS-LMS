@@ -543,6 +543,7 @@ router.post("/payments/paynow/result", async (req, res): Promise<void> => {
 
 // GET /payments — List payments (owner sees all, student sees own)
 router.get("/payments", requireAuth, async (req, res): Promise<void> => {
+  await ensurePaymentTransactionSchema();
   const currentUser = req.currentUser!;
 
   let payments;
@@ -556,11 +557,18 @@ router.get("/payments", requireAuth, async (req, res): Promise<void> => {
       .orderBy(paymentsTable.createdAt);
   }
 
-  res.json(payments.map(p => ({
-    ...p,
-    amount: Number(p.amount),
-    createdAt: p.createdAt.toISOString(),
-  })));
+  res.json(payments.map(p => {
+    const amount = Number(p.amount);
+    const amountPaid = Number(p.amountPaid || 0);
+    return {
+      ...p,
+      amount,
+      amountPaid,
+      balance: Math.max(0, amount - amountPaid),
+      credit: Math.max(0, amountPaid - amount),
+      createdAt: p.createdAt.toISOString(),
+    };
+  }));
 });
 
 // POST /payments — Record a payment (teacher/owner only)
