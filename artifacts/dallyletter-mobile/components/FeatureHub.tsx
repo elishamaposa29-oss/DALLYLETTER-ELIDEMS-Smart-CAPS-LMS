@@ -924,7 +924,7 @@ export default function FeatureHub() {
     if (!isStudent || paymentBusy || paymentTotalOwed <= 0) return;
     setPaymentBusy(true);
     try {
-      const result = await request("/api/payments/paypal/create", { method: "POST", body: JSON.stringify({}) });
+      const result = await request("/api/payments/paypal/create", { method: "POST", body: JSON.stringify({ returnUrl: Linking.createURL("payments/return") }) });
       if (!result?.checkoutUrl) throw new Error("PayPal checkout did not return a link.");
       await Linking.openURL(String(result.checkoutUrl));
     } catch (e) { Alert.alert("PayPal payment could not start", e instanceof Error ? e.message : "Please retry when connected."); }
