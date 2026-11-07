@@ -258,26 +258,24 @@ router.post("/payments/paypal/capture", requireAuth, async (req, res): Promise<v
     const match = reference.match(/^DLP-(\d+)-(\d+)-\d+-[a-f0-9]{8}$/i);
     if (!match || Number(match[1]) !== user.id || order.id !== orderId) { res.status(403).json({ error: "This PayPal order does not belong to this learner." }); return; }
     const feeRow = await db.execute(sql`
-      SELECT id, amount, status FROM payments
-      WHERE id = ${Number(match[2])} AND student_id = ${user.id}
-        AND notes LIKE ${"%PayPal order " + orderId + " reference " + reference + "%"}
+      SELECT p.id, p.amount, p.amount_paid, p.status, t.amount AS checkout_amount, t.status AS transaction_status
+      FROM payments p JOIN payment_transactions t ON t.payment_id=p.id
+      WHERE p.id = ${Number(match[2])} AND p.student_id = ${user.id}
+        AND t.provider='paypal' AND t.reference=${reference}
+        AND p.notes LIKE ${"%PayPal order " + orderId + " reference " + reference + "%"}
       LIMIT 1
     `);
-    const feeRows = (feeRow as unknown as { rows?: Array<{ id: number; amount: string | number; status: string }> }).rows ?? [];
+    const feeRows = (feeRow as unknown as { rows?: Array<{ id: number; amount: string | number; amount_paid: string | number; status: string; checkout_amount: string | number; transaction_status: string }> }).rows ?? [];
     const fee = feeRows[0];
-    if (!fee) { res.status(409).json({ error: "The school-fee record for this PayPal order could not be found." }); return; }
-    if (unit?.amount?.currency_code !== "USD" || Number(unit.amount.value) !== Number(fee.amount)) {
-      res.status(400).json({ error: "PayPal order amount does not match the learner's school-fee record." }); return;
+    if (!fee) { res.status(409).json({ error: "The school-fee checkout record could not be found." }); return; }
+    if (unit?.amount?.currency_code !== "USD" || Number(unit.amount.value) !== Number(fee.checkout_amount)) {
+      res.status(400).json({ error: "PayPal order amount does not match this signed checkout." }); return;
     }
     if (order.status === "COMPLETED") {
-      if (fee.status === "paid") { res.json({ captured: true, alreadyCompleted: true }); return; }
-      if (fee.status === "pending" || fee.status === "overdue") {
-        res.json({ captured: true, awaitingWebhook: true });
-        return;
-      }
-      res.status(409).json({ error: "This school-fee record is no longer eligible for payment." }); return;
+      res.json({ captured: true, alreadyCompleted: fee.transaction_status === "paid", awaitingWebhook: fee.transaction_status !== "paid" });
+      return;
     }
-    if (fee.status !== "pending" && fee.status !== "overdue") {
+    if (!["pending","overdue","partially_paid"].includes(fee.status) || fee.transaction_status !== "pending") {
       res.status(409).json({ error: "This school-fee record is no longer eligible for payment." }); return;
     }
     if (order.status !== "APPROVED") { res.status(409).json({ error: "PayPal has not approved this order yet." }); return; }
