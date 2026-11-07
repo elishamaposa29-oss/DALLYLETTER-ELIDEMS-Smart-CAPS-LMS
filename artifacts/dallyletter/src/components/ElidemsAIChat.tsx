@@ -50,6 +50,7 @@ export function ElidemsAIChat({ role }: Props) {
         <button type="button" onClick={() => setMode("agent")} aria-pressed={mode === "agent"} className={`rounded-md px-3 py-1.5 text-xs ${mode === "agent" ? "bg-white text-[#0f2a5a]" : "text-white"}`}>Agent</button>
       </div>}
     </div>
+    <p className="border-b bg-slate-50 px-4 py-2 text-[11px] text-slate-600">For everyone’s safety, submitted platform text may be screened by ELIDEMS AI. Flags go to authorized human reviewers; AI does not automatically punish users.</p>
     <div className="max-h-80 min-h-28 space-y-3 overflow-y-auto bg-slate-50 p-4" aria-live="polite">
       {!messages.length && <p className="text-sm text-slate-600">{learner ? "Hi! I’m here to help you learn, practise, revise and ask questions. What are you studying today?" : "Ask ELIDEMS AI to help prepare, analyze or organize work available to your role."}</p>}
       {messages.map((message, index) => <div key={index} className={`max-w-[90%] whitespace-pre-wrap rounded-xl px-3 py-2 text-sm ${message.role === "user" ? "ml-auto bg-[#0f2a5a] text-white" : "mr-auto border bg-white text-slate-800"}`}>{message.content}</div>)}
