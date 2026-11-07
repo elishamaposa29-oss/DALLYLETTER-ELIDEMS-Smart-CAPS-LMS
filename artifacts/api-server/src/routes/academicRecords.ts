@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { db, auditLogsTable, pool } from "@workspace/db";
 import { getAIProvider } from "../lib/ai-provider";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
-import { isSeniorManager, isJuniorManager, canModerateUser } from "../lib/role-access";
+import { isSeniorManager, canModerateUser } from "../lib/role-access";
 import { requireManagerPermission, requireManagerPermissionForRequest, requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
 import { enqueueEmailNotification } from "../lib/email-notification-queue";
 import { calculateAgeOnDate, getCurrentAcademicYear } from "../lib/academic-year";
