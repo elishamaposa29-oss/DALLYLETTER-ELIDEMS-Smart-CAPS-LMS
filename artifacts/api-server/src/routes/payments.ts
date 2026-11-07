@@ -29,6 +29,10 @@ function parsePaynow(text: string): Record<string, string> {
   return out;
 }
 
+function money(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
 let paymentTransactionSchemaReady: Promise<void> | null = null;
 async function ensurePaymentTransactionSchema(): Promise<void> {
   if (!paymentTransactionSchemaReady) {
@@ -203,9 +207,9 @@ router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<vo
     payment = claimedRows[0];
     if (!payment) { res.status(409).json({ error: "No unpaid fee record is available for checkout, or another checkout is already in progress." }); return; }
     const invoiceAmount = Number(payment.amount);
-    const amountPaid = Number(payment.amount_paid || 0);
-    const outstandingBalance = Math.max(0, invoiceAmount - amountPaid);
-    const amount = requestedAmount ?? outstandingBalance;
+    const amountPaid = money(Number(payment.amount_paid || 0));
+    const outstandingBalance = money(Math.max(0, invoiceAmount - amountPaid));
+    const amount = money(requestedAmount ?? outstandingBalance);
     if (!Number.isFinite(invoiceAmount) || invoiceAmount <= 0 || outstandingBalance <= 0 ||
         !Number.isFinite(amount) || amount <= 0 || amount > 100000) throw new Error("Invalid fee record amount");
     const accessToken = await getPayPalAccessToken();
@@ -522,7 +526,7 @@ router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<vo
   if (!payment) { res.status(409).json({ error: "No unpaid school-fee record is available for Paynow checkout." }); return; }
   const invoiceAmount = Number(payment.amount);
   const alreadyPaid = Number(payment.amount_paid || 0);
-  const outstandingBalance = Math.max(0, invoiceAmount - alreadyPaid);
+  const outstandingBalance = money(Math.max(0, invoiceAmount - alreadyPaid));
   if (!Number.isFinite(invoiceAmount) || invoiceAmount <= 0 || invoiceAmount > 100000 || outstandingBalance <= 0) {
     await markPaynowAttempt(reference, "failed", "Invalid or settled school-fee amount");
     res.status(409).json({ error: "The school-fee record has no valid outstanding balance." });
@@ -715,9 +719,9 @@ router.get("/payments", requireAuth, async (req, res): Promise<void> => {
     return {
       ...p,
       amount,
-      amountPaid,
-      balance: Math.max(0, amount - amountPaid),
-      credit: Math.max(0, amountPaid - amount),
+      amountPaid: money(amountPaid),
+      balance: money(Math.max(0, amount - amountPaid)),
+      credit: money(Math.max(0, amountPaid - amount)),
       createdAt: p.createdAt.toISOString(),
     };
   }));
@@ -812,7 +816,7 @@ router.post("/payments/notify-admin", requireAuth, async (req, res): Promise<voi
       if (!invoice || !["pending","overdue","partially_paid"].includes(String(invoice.status))) {
         throw Object.assign(new Error("That invoice is not available for a payment report."), { statusCode: 404 });
       }
-      const balance = Math.max(0, Number(invoice.amount) - Number(invoice.amount_paid || 0));
+      const balance = money(Math.max(0, Number(invoice.amount) - Number(invoice.amount_paid || 0)));
       if (balance <= 0) throw Object.assign(new Error("This invoice has no outstanding balance."), { statusCode: 409 });
       await tx.execute(sql`INSERT INTO payment_transactions(payment_id,provider,reference,amount,status,provider_reference)
         VALUES(${paymentId},${"reported:" + method},${reference},${amount.toFixed(2)},'reported',${providerReference || null})`);
@@ -927,7 +931,7 @@ router.post("/payments/:id/manual-settlement", requireAuth, async (req, res): Pr
       `);
       const updatedRows=(updated as unknown as {rows?:Array<{student_id:number;amount:string|number;amount_paid:string|number;status:string}>}).rows??[];
       if(!updatedRows.length)throw new Error("The school-fee ledger could not be updated.");
-      const settled=updatedRows[0],balance=Math.max(0,Number(settled.amount)-Number(settled.amount_paid)),credit=Math.max(0,Number(settled.amount_paid)-Number(settled.amount));
+      const settled=updatedRows[0],balance=money(Math.max(0,Number(settled.amount)-Number(settled.amount_paid))),credit=money(Math.max(0,Number(settled.amount_paid)-Number(settled.amount)));
       if(settled.status==="paid")await tx.update(usersTable).set({lastPaymentDate:new Date().toISOString()}).where(eq(usersTable.id,Number(settled.student_id)));
       await tx.insert(activityLogTable).values({type:"payment_recorded",description:"Owner verified "+method+" payment of $"+amount.toFixed(2)+" for invoice #"+paymentId+"; remaining balance $"+balance.toFixed(2)+", credit $"+credit.toFixed(2)+".",actorName:actor.name});
       await tx.insert(notificationsTable).values({recipientId:Number(settled.student_id),title:"School payment verified",message:"The Owner verified your "+method+" payment of USD "+amount.toFixed(2)+". Remaining invoice balance: USD "+balance.toFixed(2)+". Credit: USD "+credit.toFixed(2)+".",type:"system",isRead:false});
