@@ -40,6 +40,15 @@ if (enabled) {
       const body = JSON.parse(bodyText || "{}");
       appendFileSync(capturePath, JSON.stringify({ provider: "resend", body }) + "\n");
       response = { status: 200, body: { id: "mock_resend_" + Date.now() } };
+    } else if (url.hostname === "www.paynow.co.zw" && url.pathname === "/interface/initiatetransaction" && method === "POST") {
+      const fields = new URLSearchParams(bodyText);
+      const reference = fields.get("reference") || "missing-reference";
+      appendFileSync(capturePath, JSON.stringify({ provider: "paynow", fields: Object.fromEntries(fields) }) + "\n");
+      response = { status: 200, body: {
+        status: "Ok",
+        browserurl: "https://paynow.test/checkout/" + encodeURIComponent(reference),
+        pollurl: "https://paynow.test/poll/" + encodeURIComponent(reference),
+      } };
     } else if (url.hostname === "paypal.test" && url.pathname === "/v1/oauth2/token" && method === "POST") {
       response = { status: 200, body: { access_token: "mock-paypal-access-token", token_type: "Bearer" } };
     } else if (url.hostname === "paypal.test" && url.pathname === "/v1/notifications/verify-webhook-signature" && method === "POST") {
