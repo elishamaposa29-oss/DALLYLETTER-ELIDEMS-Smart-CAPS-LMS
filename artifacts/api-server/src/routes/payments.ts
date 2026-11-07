@@ -443,18 +443,26 @@ router.post("/payments/paynow/result", async (req, res): Promise<void> => {
     const updated = await tx.execute(sql`
       UPDATE payments
       SET status = CASE
-            WHEN status IN ('failed','cancelled','refunded') THEN status
-            WHEN CAST(${normalizedStatus} AS TEXT) IN ('failed','cancelled') THEN ${normalizedStatus}
-            WHEN CAST(${normalizedStatus} AS TEXT) = 'pending' THEN status
-            ELSE ${normalizedStatus}
+            WHEN status IN ('failed','refunded') THEN status
+            WHEN status = 'paid' AND CAST(${normalizedStatus} AS TEXT) <> 'refunded' THEN status
+            WHEN CAST(${normalizedStatus} AS TEXT) = 'failed' AND status IN ('pending','overdue') THEN 'failed'
+            WHEN CAST(${normalizedStatus} AS TEXT) IN ('cancelled','pending') THEN status
+            WHEN CAST(${normalizedStatus} AS TEXT) = 'refunded' AND status = 'paid' THEN 'refunded'
+            WHEN CAST(${normalizedStatus} AS TEXT) = 'paid' AND status IN ('pending','overdue') THEN 'paid'
+            ELSE status
           END,
-          -- Keep the provider reference for idempotent retries and late callbacks.
-          -- Terminal states never reopen; a verified refund may transition paid -> refunded.
-          notes = CONCAT(COALESCE(notes, ''), ' | Paynow callback: ', CAST(${providerStatus} AS TEXT)),
+          -- A cancelled checkout releases its temporary reference but leaves the unpaid
+          -- school-fee row pending/overdue so the learner can retry without a new invoice.
+          -- Failed callbacks remain attached for idempotent retries; paid/refunded states never reopen.
+          notes = CASE
+            WHEN CAST(${normalizedStatus} AS TEXT) = 'cancelled' AND status IN ('pending','overdue')
+              THEN CONCAT(replace(COALESCE(notes, ''), ${"Paynow reference " + reference}, ''), ' | Paynow checkout cancelled: ', ${reference})
+            ELSE CONCAT(COALESCE(notes, ''), ' | Paynow callback: ', CAST(${providerStatus} AS TEXT))
+          END,
           updated_at = now()
       WHERE notes LIKE ${"%Paynow reference " + reference + "%"}
         AND amount::numeric = ${callbackAmount}
-        AND status IN ('pending','overdue','failed','cancelled','paid','refunded')
+        AND status IN ('pending','overdue','failed','paid','refunded')
       RETURNING student_id
     `);
     const rows = (updated as unknown as { rows?: Array<{ student_id: number }> }).rows ?? [];
@@ -470,6 +478,7 @@ router.post("/payments/paynow/result", async (req, res): Promise<void> => {
     const existing = await db.execute(sql`
       SELECT id, amount FROM payments
       WHERE notes LIKE ${"%Paynow reference " + reference + "%"}
+         OR notes LIKE ${"%Paynow checkout cancelled: " + reference + "%"}
       LIMIT 1
     `);
     const existingRows = (existing as unknown as { rows?: Array<{ id: number; amount: string | number }> }).rows ?? [];
