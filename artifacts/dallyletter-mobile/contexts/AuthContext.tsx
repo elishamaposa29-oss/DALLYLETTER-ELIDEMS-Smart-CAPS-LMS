@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { DeviceEventEmitter } from "react-native";
+import { AppState, DeviceEventEmitter } from "react-native";
 import { getApiUrl, setAuthTokenGetter } from "@workspace/api-client-react";
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 
@@ -165,6 +165,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     DeviceEventEmitter.emit("dallyletter-auth-changed");
   }, [token, user?.id]);
+
+  useEffect(() => {
+    if (!token || !user) return;
+    const subscription = AppState.addEventListener("change", state => {
+      if (state !== "active") return;
+      void (async () => {
+        try {
+          const response = await fetch(getApiUrl("/api/auth/me"), { headers: { Authorization: "Bearer " + token } });
+          if (response.status === 401 || response.status === 403) {
+            await logout();
+            return;
+          }
+          if (!response.ok) return;
+          const currentUser = await response.json() as User;
+          if (Number(currentUser.id) !== Number(user.id)) {
+            await logout();
+            return;
+          }
+          const fingerprint = (value: Record<string, unknown>) => JSON.stringify({
+            id: value.id, role: value.role, isManager: value.isManager,
+            managerLevel: value.managerLevel, isPrefect: value.isPrefect,
+            teacherApplicationStatus: value.teacherApplicationStatus,
+            isBlocked: value.isBlocked, isSuspended: value.isSuspended,
+          });
+          const authorityChanged = fingerprint(user as unknown as Record<string, unknown>) !==
+            fingerprint(currentUser as unknown as Record<string, unknown>);
+          let cacheEpoch = await AsyncStorage.getItem(AUTH_CACHE_EPOCH_KEY) || newAuthCacheEpoch();
+          if (authorityChanged) cacheEpoch = newAuthCacheEpoch();
+          await Promise.all([
+            AsyncStorage.setItem(USER_KEY, JSON.stringify(currentUser)),
+            AsyncStorage.setItem(AUTH_CACHE_EPOCH_KEY, cacheEpoch),
+            AsyncStorage.setItem(AUTH_CACHE_VERIFIED_KEY, cacheEpoch),
+          ]);
+          setUser(currentUser);
+          DeviceEventEmitter.emit("dallyletter-auth-changed");
+        } catch {
+          // A temporary network failure never grants new authority. The API
+          // continues to enforce current permissions on every protected action.
+        }
+      })();
+    });
+    return () => subscription.remove();
+  }, [token, user, logout]);
 
   return (
     <AuthContext.Provider value={{ user, token, isLoading, login, logout }}>
