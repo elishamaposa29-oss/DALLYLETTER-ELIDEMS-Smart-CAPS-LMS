@@ -89,7 +89,7 @@ router.put("/:id/status", requireAuth, requireManagerPermissionIfManager("attend
 
 router.put("/:id/leave", requireAuth, requireManagerPermissionIfManager("attendance.edit"), async (req, res): Promise<void> => {
   const leftAt = new Date();
-  const id = parseInt(String(req.params.id));
+  const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid attendance record." }); return; }
   const [row] = await db.select().from(attendanceTable).where(eq(attendanceTable.id, id));
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
