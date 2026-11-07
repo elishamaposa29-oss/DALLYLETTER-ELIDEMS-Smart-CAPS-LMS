@@ -90,8 +90,8 @@ router.get("/payments/paypal/status", (_req, res): void => {
   const publicApi = process.env.PUBLIC_API_URL || "";
   let securePublicBase = false;
   let securePublicApi = false;
-  try { securePublicBase = new URL(publicBase).protocol === "https:"; } catch { securePublicBase = false; }
-  try { securePublicApi = new URL(publicApi).protocol === "https:"; } catch { securePublicApi = false; }
+  try { const protocol = new URL(publicBase).protocol; securePublicBase = protocol === "https:" || process.env.NODE_ENV !== "production"; } catch { securePublicBase = false; }
+  try { const protocol = new URL(publicApi).protocol; securePublicApi = protocol === "https:" || process.env.NODE_ENV !== "production"; } catch { securePublicApi = false; }
   const configured = Boolean(
     process.env.PAYPAL_CLIENT_ID?.trim() &&
     process.env.PAYPAL_CLIENT_SECRET?.trim() &&
