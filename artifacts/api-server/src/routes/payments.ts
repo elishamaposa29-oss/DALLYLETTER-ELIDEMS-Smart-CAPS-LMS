@@ -4,7 +4,7 @@ import { eq, inArray, sql } from "drizzle-orm";
 import crypto from "node:crypto";
 import { db, paymentsTable, usersTable, activityLogTable, notificationsTable } from "@workspace/db";
 import { RecordPaymentBody, GetPaymentParams } from "@workspace/api-zod";
-import { requireAuth, requireTeacherOrOwner } from "../lib/auth-middleware";
+import { requireAuth, requireTeacherOrOwner, isOwnerRole } from "../lib/auth-middleware";
 
 const router: IRouter = Router();
 
@@ -575,7 +575,7 @@ router.get("/payments", requireAuth, async (req, res): Promise<void> => {
   const currentUser = req.currentUser!;
 
   let payments;
-  if (currentUser.role === "owner" || currentUser.role === "teacher") {
+  if (isOwnerRole(currentUser.role) || currentUser.role === "teacher") {
     // Owner/teacher sees all payments
     payments = await db.select().from(paymentsTable).orderBy(paymentsTable.createdAt);
   } else {
