@@ -195,7 +195,7 @@ router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
       signal: AbortSignal.timeout(15000),
     });
     if (!orderResponse.ok) { res.status(502).json({ error: "Could not verify the PayPal order details." }); return; }
-    const order = await orderResponse.json() as { status?: string; purchase_units?: Array<{ invoice_id?: string; custom_id?: string; amount?: { currency_code?: string; value?: string } }> };
+    const order = await orderResponse.json() as { status?: string; purchase_units?: Array<{ invoice_id?: string; custom_id?: string; amount?: { currency_code?: string; value?: string }; payments?: { captures?: Array<{ id?: string; status?: string; amount?: { currency_code?: string; value?: string } }> } }> };
     const unit = order.purchase_units?.[0];
     const reference = String(unit?.invoice_id || unit?.custom_id || "");
     const capturedAmount = Number(resource?.amount?.value);
