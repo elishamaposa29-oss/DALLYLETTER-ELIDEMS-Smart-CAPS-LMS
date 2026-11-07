@@ -127,7 +127,7 @@ router.post("/submit",async(req,res)=>{
   let reviewerRows:any[]=[];
  try{
   const reviewerResult=await pool.query(
-   "SELECT DISTINCT u.id,u.role FROM users u LEFT JOIN manager_permission_grants g ON g.manager_user_id=u.id AND g.permission_key='teacher_cv.view' AND g.granted=true WHERE (lower(u.role) IN ('owner','platform_owner') OR g.manager_user_id IS NOT NULL) AND u.is_blocked=false AND u.is_suspended=false"
+    "SELECT DISTINCT u.id,u.role FROM users u LEFT JOIN manager_permission_grants view_grant ON view_grant.manager_user_id=u.id AND view_grant.permission_key='teacher_cv.view' AND view_grant.granted=true LEFT JOIN manager_permission_grants review_grant ON review_grant.manager_user_id=u.id AND review_grant.permission_key='teacher_cv.review' AND review_grant.granted=true WHERE (lower(u.role) IN ('owner','platform_owner','admin') OR (view_grant.manager_user_id IS NOT NULL AND review_grant.manager_user_id IS NOT NULL AND (lower(u.role) IN ('senior_manager','manager') AND lower(COALESCE(u.manager_level,'senior'))='senior' OR lower(u.role)='teacher' AND u.is_manager=true AND lower(COALESCE(u.manager_level,'junior'))='senior' AND COALESCE(u.teacher_application_status,'') NOT IN ('draft','pending_review','rejected_pending_conversion')))) AND COALESCE(u.is_blocked,false)=false AND COALESCE(u.is_suspended,false)=false"
   );
   reviewerRows=reviewerResult.rows;
  }catch(error){
