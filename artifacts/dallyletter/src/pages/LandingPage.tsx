@@ -50,11 +50,11 @@ export default function LandingPage() {
             <span><strong className="block text-base leading-tight tracking-tight">Dallyletter</strong><span className="text-[10px] font-semibold uppercase tracking-[.24em] text-[#e2bd54]">ELIDEMS</span></span>
           </Link>
           <nav className="hidden items-center gap-7 text-sm text-white/75 md:flex">
-            <a href="#learning" className="transition hover:text-white">Learning</a>
-            <a href="#educators" className="transition hover:text-white">Educators</a>
-            <a href="#schools" className="transition hover:text-white">Schools & organisations</a>
-            <a href="#support" className="transition hover:text-white">Help & support</a>
-            <a href="/docs" className="transition hover:text-white">Learner guide</a>
+            <Link href="/about" className="transition hover:text-white">About</Link>
+            <Link href="/learners" className="transition hover:text-white">Learners</Link>
+            <Link href="/educators" className="transition hover:text-white">Educators</Link>
+            <Link href="/schools" className="transition hover:text-white">Schools</Link>
+            <Link href="/resources" className="transition hover:text-white">Resources</Link>
           </nav>
           <div className="flex items-center gap-2">
             <Link href="/login" className="hidden rounded-full px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 sm:inline-flex">Sign in</Link>
@@ -118,7 +118,7 @@ export default function LandingPage() {
       </section>
 
       <section className="bg-[#0b1e3d] px-5 py-16 text-center text-white sm:px-8"><div className="mx-auto max-w-3xl"><p className="text-xs font-bold uppercase tracking-[.22em] text-[#e2bd54]">Your next step</p><h2 className="mt-3 font-serif text-3xl font-bold sm:text-4xl">Make your next learning move count.</h2><p className="mx-auto mt-4 max-w-xl leading-7 text-blue-100/70">Create an account to explore the learner experience, or sign in to return to your existing workspace.</p><div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row"><Link href="/register" className="rounded-xl bg-[#d7ad35] px-6 py-3.5 font-bold text-[#10264a] hover:bg-[#e6c45f]">Create an account</Link><Link href="/login" className="rounded-xl border border-white/20 px-6 py-3.5 font-semibold text-white hover:bg-white/10">Sign in</Link></div></div></section>
-      <footer className="bg-[#07162d] px-5 py-8 text-center text-xs text-blue-100/50"><p className="font-semibold tracking-wide text-white/80">DALLYLETTER ELIDEMS</p><p className="mt-2">Created by Elisha Maposa · Zimbabwe & South Africa in focus · Welcoming learners worldwide</p><p className="mt-2">© {new Date().getFullYear()} Dallyletter Elidems. All rights reserved.</p><div className="mt-4 flex justify-center gap-5"><Link href="/docs" className="hover:text-white">Learner guide</Link><Link href="/#support" className="hover:text-white">Help & support</Link><Link href="/login" className="hover:text-white">Sign in</Link><Link href="/register" className="hover:text-white">Register</Link></div></footer>
+      <footer className="bg-[#07162d] px-5 py-8 text-center text-xs text-blue-100/50"><p className="font-semibold tracking-wide text-white/80">DALLYLETTER ELIDEMS</p><p className="mt-2">Created by Elisha Maposa · Zimbabwe & South Africa in focus · Welcoming learners worldwide</p><p className="mt-2">© {new Date().getFullYear()} Dallyletter Elidems. All rights reserved.</p><div className="mt-4 flex justify-center gap-5"><Link href="/about" className="hover:text-white">About</Link><Link href="/learners" className="hover:text-white">Learners</Link><Link href="/educators" className="hover:text-white">Educators</Link><Link href="/schools" className="hover:text-white">Schools</Link><Link href="/resources" className="hover:text-white">Resources</Link><Link href="/docs" className="hover:text-white">Learner guide</Link><Link href="/login" className="hover:text-white">Sign in</Link><Link href="/register" className="hover:text-white">Register</Link></div></footer>
     </main>
   );
 }
