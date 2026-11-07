@@ -314,6 +314,10 @@ router.patch("/lesson-requests/:id", requireAuth, async (req, res): Promise<void
     res.status(403).json({ error: "Only the assigned teacher or Owner can change request status or reply." });
     return;
   }
+  if (assignedTeacher && !owner && !["accepted", "declined", "completed", "dismissed"].includes(status)) {
+    res.status(403).json({ error: "The assigned teacher can accept, decline, complete, or dismiss this request." });
+    return;
+  }
   const reply = (assignedTeacher || owner) && typeof req.body?.teacherReply === "string"
     ? req.body.teacherReply.trim().slice(0, 2000)
     : request.teacherReply;
