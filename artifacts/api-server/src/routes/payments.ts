@@ -449,7 +449,7 @@ router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
         UPDATE payments
         SET amount_paid=COALESCE(amount_paid,0)+${appliedAmount},
             status=CASE WHEN COALESCE(amount_paid,0)+${appliedAmount} >= amount THEN 'paid' ELSE 'partially_paid' END,
-            notes=CONCAT(COALESCE(notes,''),' | PayPal verified capture ',CAST(${captureId} AS TEXT),' order ',CAST(${orderId} AS TEXT),' amount ',CAST(${appliedAmount.toFixed(2)} AS TEXT)),
+            notes=CONCAT(replace(COALESCE(notes,''), ${" | PayPal order " + orderId + " reference " + reference}, ''),' | PayPal verified capture ',CAST(${captureId} AS TEXT),' order ',CAST(${orderId} AS TEXT),' amount ',CAST(${appliedAmount.toFixed(2)} AS TEXT)),
             updated_at=now()
         WHERE id=${Number(linked.payment_id)} AND student_id=${Number(linked.student_id)}
           AND status IN ('pending','overdue','partially_paid')
