@@ -241,7 +241,7 @@ router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<vo
     await db.transaction(async (tx) => {
       const linked = await tx.execute(sql`
         UPDATE payments
-        SET notes = CONCAT(COALESCE(notes, ''), ' | PayPal order ', CAST(${order.id} AS TEXT), ' reference ', CAST(${reference} AS TEXT)),
+        SET notes = CONCAT(replace(COALESCE(notes, ''), ${" | " + reservation}, ''), ' | PayPal order ', CAST(${order.id} AS TEXT), ' reference ', CAST(${reference} AS TEXT)),
             updated_at = now()
         WHERE id = ${payment!.id} AND student_id = ${user.id}
           AND status IN ('pending', 'overdue', 'partially_paid')
