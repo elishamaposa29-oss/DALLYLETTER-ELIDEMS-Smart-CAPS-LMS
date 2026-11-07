@@ -45,7 +45,7 @@ async function downloadOfflineMediaRecord(
   if (!FileSystem.documentDirectory) throw new Error("Offline file storage is unavailable on this device.");
   const directory = FileSystem.documentDirectory + "dallyletter-offline/";
   await FileSystem.makeDirectoryAsync(directory, { intermediates: true }).catch(() => undefined);
-  const ext = (url.match(/\\.([a-z0-9]{2,5})(?:[?#]|$)/i)?.[1] || (url.match(/[?&]type=([^&]+)/)?.[1] || "").split("/").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 5) || "bin";
+  const ext = (url.match(/\.([a-z0-9]{2,5})(?:[?#]|$)/i)?.[1] || (url.match(/[?&]type=([^&]+)/)?.[1] || "").split("/").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 5) || "bin";
   const localUri = directory + hash(String(userId) + ":" + url) + "-" + Date.now().toString(36) + "." + ext;
   try {
     const task = FileSystem.createDownloadResumable(
