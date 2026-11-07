@@ -211,7 +211,7 @@ test("pending teacher API policy allows self-service and privacy-checked Profile
   ["GET","/api/users/me/enrollments-summary"],
   ["GET","/api/users/me/subjects"],
   ["PUT","/api/users/me/subjects"],
-  ["GET","/api/users/me/payout-preferences"],
+  // Pending applicants cannot access payout preferences until authorization.
   // Pending applicants may read only their own academic/profile records.
   ["GET","/api/academic-records/current-year"],
   ["GET","/api/academic-records/me"],
@@ -267,6 +267,9 @@ test("pending teacher API policy allows self-service and privacy-checked Profile
   ["DELETE","/api/notifications/123"],
   ["GET","/api/dashboard"],
   ["GET","/api/teacher-dashboard"],
+  // Pending applicants cannot access payout preferences until authorization.
+  ["GET","/api/users/me/payout-preferences"],
+  ["PUT","/api/users/me/payout-preferences"],
   ["GET","/api/lessons"],
   ["GET","/api/assignments"],
   ["GET","/api/exercises"],
@@ -304,7 +307,7 @@ test("pending teacher API policy never blocks authentication and permits all sel
   ["GET","/api/users/me/enrollments"],
   ["GET","/api/users/me/notification-email"],
   ["GET","/api/users/me/subjects"],
-  ["GET","/api/users/me/payout-preferences"],
+  // Payout preferences are deliberately excluded for pending applicants.
   ["GET","/api/users/me/recovery-profile"],
   ["GET","/api/academic-records/reports/me"],
   ["GET","/api/academic-records/current-year"],

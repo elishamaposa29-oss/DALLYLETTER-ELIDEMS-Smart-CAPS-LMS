@@ -78,7 +78,7 @@ export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, 
     (method === "GET" && path === "/users/me/qualifications") ||
     (method === "POST" && path === "/users/me/qualifications") ||
     (method === "PATCH" && /^\/users\/me\/qualifications\/\d+$/.test(path)) ||
-    (method === "GET" && ["/users/me/enrollments-summary","/users/me/enrollments","/users/me/notification-email","/users/me/subjects","/users/me/payout-preferences","/users/me/recovery-profile","/academic-records/reports/me","/academic-records/current-year","/academic-records/me","/academic-records/transfer-requests","/daily-attendance/me","/achievements/my","/subjects/catalog","/config/currentYear"].includes(path)) ||
+    (method === "GET" && ["/users/me/enrollments-summary","/users/me/enrollments","/users/me/notification-email","/users/me/subjects","/users/me/recovery-profile","/academic-records/reports/me","/academic-records/current-year","/academic-records/me","/academic-records/transfer-requests","/daily-attendance/me","/achievements/my","/achievements/lesson-requests","/subjects/catalog","/config/currentYear"].includes(path)) ||
     (method === "GET" && /^\/academic-records\/reports\/drafts\/\d+\/download(?:\/pdf)?$/.test(path)) ||
     (method === "GET" && /^\/academic-records\/transfer-requests\/\d+\/download$/.test(path)) ||
     (method === "GET" && /^\/academic-records\/transfer-verification\/[A-Za-z0-9_-]+$/.test(path)) ||
@@ -117,7 +117,6 @@ export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, 
     (method === "PATCH" && path === "/users/" + selfId) ||
     ((method === "GET" || method === "POST") && path === "/teacher-cv-workspace/" + selfId + "/chat") ||
     (method === "GET" && path === "/teacher-cv-workspace/" + selfId + "/history") ||
-    (method === "PUT" && path === "/users/me/payout-preferences") ||
     (method === "POST" && ["/users/me/notification-email/request","/users/me/notification-email/verify","/users/me/recovery-email/request-verification","/users/me/recovery-email/confirm","/users/me/phone/request-verification","/users/me/phone/confirm","/users/me/avatar","/users/me/cover","/auth/email-change/request","/auth/email-change/confirm"].includes(path)) ||
     (method === "PATCH" && path === "/users/me/recovery-profile");
   const profileWrite = method === "PATCH" && path === "/users/" + selfId;
@@ -188,6 +187,7 @@ export const SENIOR_ONLY_PERMISSION_KEYS = new Set([
   "transfers.approve", "reports.review", "achievements.approve",
   "teacher_cv.review", "teacher_cv.authorize", "qualifications.verify",
   "users.override.junior_manager", "manager.monitoring.view",
+  "ai.agent.manage_accounts", "ai.agent.approve_workflows", "ai.agent.read_financials",
 ]);
 
 /** The established Senior Manager operational catalogue; excludes every Owner-only capability. */

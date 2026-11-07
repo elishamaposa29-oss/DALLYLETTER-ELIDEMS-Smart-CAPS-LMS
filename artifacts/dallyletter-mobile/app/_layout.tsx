@@ -43,6 +43,8 @@ const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, sta
 
 const QUERY_CACHE_PREFIX = "dallyletter_mobile_query_cache_v1_user_";
 const USER_KEY = "dallyletter_user";
+const AUTH_CACHE_EPOCH_KEY = "dallyletter_auth_cache_epoch_v1";
+const AUTH_CACHE_VERIFIED_KEY = "dallyletter_auth_cache_verified_v1";
 
 function OfflineQueryCache() {
   useEffect(() => {
@@ -66,12 +68,16 @@ function OfflineQueryCache() {
       queryClient.clear();
       cacheKey = null;
       try {
-        const serializedUser = await AsyncStorage.getItem(USER_KEY);
+        const [serializedUser, cacheEpoch, verifiedEpoch] = await Promise.all([
+          AsyncStorage.getItem(USER_KEY),
+          AsyncStorage.getItem(AUTH_CACHE_EPOCH_KEY),
+          AsyncStorage.getItem(AUTH_CACHE_VERIFIED_KEY),
+        ]);
         if (!active || sequence !== switchSequence) return;
-        if (!serializedUser) { hydrated = true; return; }
+        if (!serializedUser || !cacheEpoch || verifiedEpoch !== cacheEpoch) { hydrated = true; return; }
         const user = JSON.parse(serializedUser) as { id?: number };
         if (!Number.isInteger(user.id) || Number(user.id) <= 0) { hydrated = true; return; }
-        cacheKey = QUERY_CACHE_PREFIX + String(user.id);
+        cacheKey = QUERY_CACHE_PREFIX + String(user.id) + "_session_" + cacheEpoch;
         const serializedCache = await AsyncStorage.getItem(cacheKey);
         if (!active || sequence !== switchSequence) return;
         if (serializedCache) {
@@ -84,7 +90,8 @@ function OfflineQueryCache() {
         if (active && sequence === switchSequence) { hydrated = true; persist(); }
       }
     };
-    void loadUserCache();
+    // Wait for AuthProvider to verify the persisted session with /api/auth/me.
+    // Hydrating here would race the auth check and briefly expose stale permissions.
     const authSubscription = DeviceEventEmitter.addListener("dallyletter-auth-changed", () => { void loadUserCache(); });
     return () => {
       active = false;

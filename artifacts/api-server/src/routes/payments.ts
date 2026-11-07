@@ -40,6 +40,294 @@ async function markPaynowAttempt(reference: string, status: "failed" | "cancelle
   `);
 }
 
+// Public capability check: UI visibility must reflect the same server-side requirements as checkout.
+router.get("/payments/paynow/status", (_req, res): void => {
+  const integrationId = process.env.PAYNOW_INTEGRATION_ID?.trim();
+  const integrationKey = process.env.PAYNOW_INTEGRATION_KEY?.trim();
+  const publicBase = process.env.PUBLIC_APP_URL || process.env.VITE_PUBLIC_APP_URL || "";
+  const publicApi = process.env.PUBLIC_API_URL || "";
+  const validPublicUrl = (value: string): boolean => {
+    try {
+      const parsed = new URL(value);
+      return parsed.protocol === "https:" || process.env.NODE_ENV !== "production";
+    } catch {
+      return false;
+    }
+  };
+  const configured = Boolean(
+    integrationId && integrationKey &&
+    validPublicUrl(publicBase) && validPublicUrl(publicApi)
+  );
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ configured, provider: "paynow" });
+});
+
+
+function paypalBase(): string {
+  return (process.env.PAYPAL_API_BASE?.trim() || (process.env.PAYPAL_ENVIRONMENT === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com")).replace(/\/$/, "");
+}
+
+async function getPayPalAccessToken(): Promise<string | null> {
+  const clientId = process.env.PAYPAL_CLIENT_ID?.trim();
+  const clientSecret = process.env.PAYPAL_CLIENT_SECRET?.trim();
+  if (!clientId || !clientSecret) return null;
+  const response = await fetch(paypalBase() + "/v1/oauth2/token", {
+    method: "POST",
+    headers: {
+      Authorization: "Basic " + Buffer.from(clientId + ":" + clientSecret).toString("base64"),
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: "grant_type=client_credentials",
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!response.ok) return null;
+  const data = await response.json() as { access_token?: string };
+  return data.access_token || null;
+}
+
+router.get("/payments/paypal/status", (_req, res): void => {
+  const publicBase = process.env.PUBLIC_APP_URL || process.env.VITE_PUBLIC_APP_URL || "";
+  const publicApi = process.env.PUBLIC_API_URL || "";
+  let securePublicBase = false;
+  let securePublicApi = false;
+  try { const protocol = new URL(publicBase).protocol; securePublicBase = protocol === "https:" || process.env.NODE_ENV !== "production"; } catch { securePublicBase = false; }
+  try { const protocol = new URL(publicApi).protocol; securePublicApi = protocol === "https:" || process.env.NODE_ENV !== "production"; } catch { securePublicApi = false; }
+  const configured = Boolean(
+    process.env.PAYPAL_CLIENT_ID?.trim() &&
+    process.env.PAYPAL_CLIENT_SECRET?.trim() &&
+    process.env.PAYPAL_WEBHOOK_ID?.trim() &&
+    securePublicBase && securePublicApi
+  );
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ configured, provider: "paypal" });
+});
+
+// Create a PayPal order on the server so each checkout has a verifiable reference.
+router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  if (user.role !== "student") { res.status(403).json({ error: "Learner access required." }); return; }
+  const publicBase = process.env.PUBLIC_APP_URL || process.env.VITE_PUBLIC_APP_URL || "";
+  const publicApi = process.env.PUBLIC_API_URL || "";
+  try {
+    const parsedBase = new URL(publicBase);
+    const parsedApi = new URL(publicApi);
+    if (process.env.NODE_ENV === "production" && (parsedBase.protocol !== "https:" || parsedApi.protocol !== "https:")) throw new Error("HTTPS required");
+  } catch {
+    res.status(503).json({ error: "Valid public application and API URLs are required for PayPal." }); return;
+  }
+  let returnUrl = publicBase.replace(/\/$/, "") + "/student/payments?paypal=return";
+  let cancelUrl = publicBase.replace(/\/$/, "") + "/student/payments?paypal=cancel";
+  if (req.body?.returnUrl) {
+    try {
+      const mobileReturn = new URL(String(req.body.returnUrl));
+      if (mobileReturn.protocol !== "dallyletter:" || mobileReturn.hostname !== "payments" || mobileReturn.pathname !== "/return") {
+        res.status(400).json({ error: "Unsupported PayPal return destination." }); return;
+      }
+      returnUrl = mobileReturn.toString();
+      cancelUrl = mobileReturn.toString() + "?cancel=1";
+    } catch {
+      res.status(400).json({ error: "Invalid PayPal return destination." }); return;
+    }
+  }
+  if (!process.env.PAYPAL_WEBHOOK_ID?.trim()) {
+    res.status(503).json({ error: "PayPal webhook verification is not configured; checkout is disabled." }); return;
+  }
+  let payment: { id: number; amount: string; month: string; year: number } | undefined;
+  const reservation = "PayPal checkout in progress " + crypto.randomBytes(12).toString("hex");
+  try {
+    const claimed = await db.execute(sql`
+      WITH candidate AS (
+        SELECT id FROM payments
+        WHERE student_id = ${user.id}
+          AND status IN ('pending', 'overdue')
+          AND COALESCE(notes, '') NOT LIKE '%PayPal order %'
+          AND COALESCE(notes, '') NOT LIKE '%PayPal checkout in progress%'
+        ORDER BY created_at ASC, id ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT 1
+      )
+      UPDATE payments p SET notes = CONCAT(COALESCE(p.notes, ''), ' | ', CAST(${reservation} AS TEXT)), updated_at = now()
+      FROM candidate WHERE p.id = candidate.id
+      RETURNING p.id, p.amount, p.month, p.year
+    `);
+    const claimedRows = (claimed as unknown as { rows?: Array<{ id: number; amount: string; month: string; year: number }> }).rows ?? [];
+    payment = claimedRows[0];
+    if (!payment) { res.status(409).json({ error: "No unpaid fee record is available for checkout, or another checkout is already in progress." }); return; }
+    const amount = Number(payment.amount);
+    if (!Number.isFinite(amount) || amount <= 0) throw new Error("Invalid fee record amount");
+    const accessToken = await getPayPalAccessToken();
+    if (!accessToken) { throw new Error("PayPal API credentials are not configured"); }
+    const reference = "DLP-" + user.id + "-" + payment.id + "-" + Date.now() + "-" + crypto.randomBytes(4).toString("hex");
+    const response = await fetch(paypalBase() + "/v2/checkout/orders", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + accessToken, "Content-Type": "application/json", "PayPal-Request-Id": reference },
+      body: JSON.stringify({
+        intent: "CAPTURE",
+        purchase_units: [{
+          reference_id: reference, custom_id: reference, invoice_id: reference,
+          description: "DallyLetter school fees: " + payment.month + " " + payment.year,
+          amount: { currency_code: "USD", value: amount.toFixed(2) },
+        }],
+        payment_source: {
+          paypal: {
+            experience_context: {
+              brand_name: "DallyLetter Elidems",
+              user_action: "PAY_NOW",
+              shipping_preference: "NO_SHIPPING",
+              return_url: returnUrl,
+              cancel_url: cancelUrl,
+            },
+          },
+        },
+      }),
+      signal: AbortSignal.timeout(20000),
+    });
+    const order = await response.json() as { id?: string; links?: Array<{ rel?: string; href?: string }> };
+    const approvalUrl = order.links?.find(link => link.rel === "approve" || link.rel === "payer-action")?.href;
+    if (!response.ok || !order.id || !approvalUrl) throw new Error("PayPal could not create a checkout order");
+    await db.execute(sql`
+      UPDATE payments SET notes = CONCAT(COALESCE(notes, ''), ' | PayPal order ', CAST(${order.id} AS TEXT), ' reference ', CAST(${reference} AS TEXT)),
+        updated_at = now()
+      WHERE id = ${payment.id} AND student_id = ${user.id} AND status IN ('pending', 'overdue')
+        AND notes LIKE ${"%" + reservation + "%"}
+    `);
+    res.status(201).json({ reference, checkoutUrl: approvalUrl, amount, month: payment.month, year: payment.year });
+  } catch (error) {
+    if (payment) {
+      await db.execute(sql`
+        UPDATE payments SET notes = replace(COALESCE(notes, ''), ${" | " + reservation}, ''), updated_at = now()
+        WHERE id = ${payment.id} AND student_id = ${user.id} AND status IN ('pending', 'overdue')
+      `).catch(() => undefined);
+    }
+    res.status(503).json({ error: error instanceof Error ? error.message : "PayPal checkout could not be initialized." });
+  }
+});
+
+// The payer returns with PayPal's order token; only the authenticated owner of the fee row can capture it.
+router.post("/payments/paypal/capture", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  if (user.role !== "student") { res.status(403).json({ error: "Learner access required." }); return; }
+  const orderId = String(req.body?.orderId || "").trim();
+  if (!/^[A-Z0-9-]{8,64}$/i.test(orderId)) { res.status(400).json({ error: "Invalid PayPal order reference." }); return; }
+  try {
+    const accessToken = await getPayPalAccessToken();
+    if (!accessToken) { res.status(503).json({ error: "PayPal API credentials are not configured." }); return; }
+    const orderResponse = await fetch(paypalBase() + "/v2/checkout/orders/" + encodeURIComponent(orderId), {
+      headers: { Authorization: "Bearer " + accessToken }, signal: AbortSignal.timeout(15000),
+    });
+    if (!orderResponse.ok) { res.status(502).json({ error: "Could not retrieve PayPal order." }); return; }
+    const order = await orderResponse.json() as { id?: string; status?: string; purchase_units?: Array<{ custom_id?: string; invoice_id?: string; amount?: { currency_code?: string; value?: string } }> };
+    const unit = order.purchase_units?.[0];
+    const reference = String(unit?.custom_id || unit?.invoice_id || "");
+    const match = reference.match(/^DLP-(\d+)-(\d+)-\d+-[a-f0-9]{8}$/i);
+    if (!match || Number(match[1]) !== user.id || order.id !== orderId) { res.status(403).json({ error: "This PayPal order does not belong to this learner." }); return; }
+    const feeRow = await db.execute(sql`
+      SELECT id, amount, status FROM payments
+      WHERE id = ${Number(match[2])} AND student_id = ${user.id}
+        AND notes LIKE ${"%PayPal order " + orderId + " reference " + reference + "%"}
+      LIMIT 1
+    `);
+    const feeRows = (feeRow as unknown as { rows?: Array<{ id: number; amount: string | number; status: string }> }).rows ?? [];
+    const fee = feeRows[0];
+    if (!fee) { res.status(409).json({ error: "The school-fee record for this PayPal order could not be found." }); return; }
+    if (unit?.amount?.currency_code !== "USD" || Number(unit.amount.value) !== Number(fee.amount)) {
+      res.status(400).json({ error: "PayPal order amount does not match the learner's school-fee record." }); return;
+    }
+    if (order.status === "COMPLETED") {
+      if (fee.status === "paid") { res.json({ captured: true, alreadyCompleted: true }); return; }
+      if (fee.status === "pending" || fee.status === "overdue") {
+        res.json({ captured: true, awaitingWebhook: true });
+        return;
+      }
+      res.status(409).json({ error: "This school-fee record is no longer eligible for payment." }); return;
+    }
+    if (fee.status !== "pending" && fee.status !== "overdue") {
+      res.status(409).json({ error: "This school-fee record is no longer eligible for payment." }); return;
+    }
+    if (order.status !== "APPROVED") { res.status(409).json({ error: "PayPal has not approved this order yet." }); return; }
+    const captureResponse = await fetch(paypalBase() + "/v2/checkout/orders/" + encodeURIComponent(orderId) + "/capture", {
+      method: "POST", headers: { Authorization: "Bearer " + accessToken, "Content-Type": "application/json" },
+      body: "{}", signal: AbortSignal.timeout(20000),
+    });
+    const captured = await captureResponse.json() as { status?: string };
+    if (!captureResponse.ok || captured.status !== "COMPLETED") { res.status(502).json({ error: "PayPal did not confirm a completed capture." }); return; }
+    res.json({ captured: true });
+  } catch {
+    res.status(502).json({ error: "PayPal capture could not be completed." });
+  }
+});
+
+// Only a PayPal-verified CAPTURE.COMPLETED event can mark this checkout paid.
+router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
+  const webhookId = process.env.PAYPAL_WEBHOOK_ID?.trim();
+  if (!webhookId) { res.status(503).json({ error: "PayPal webhook verification is not configured." }); return; }
+  try {
+    const accessToken = await getPayPalAccessToken();
+    if (!accessToken) { res.status(503).json({ error: "PayPal API credentials are not configured." }); return; }
+    const headers = {
+      auth_algo: req.header("paypal-auth-algo"),
+      cert_url: req.header("paypal-cert-url"),
+      transmission_id: req.header("paypal-transmission-id"),
+      transmission_sig: req.header("paypal-transmission-sig"),
+      transmission_time: req.header("paypal-transmission-time"),
+    };
+    if (Object.values(headers).some(value => !value)) { res.status(400).json({ error: "PayPal signature headers are incomplete." }); return; }
+    const verification = await fetch(paypalBase() + "/v1/notifications/verify-webhook-signature", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + accessToken, "Content-Type": "application/json" },
+      body: JSON.stringify({ ...headers, webhook_id: webhookId, webhook_event: req.body }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const verified = await verification.json().catch(() => ({})) as { verification_status?: string };
+    if (!verification.ok || verified.verification_status !== "SUCCESS") {
+      res.status(401).json({ error: "PayPal webhook signature is invalid." }); return;
+    }
+    const eventType = String(req.body?.event_type || "");
+    if (eventType !== "PAYMENT.CAPTURE.COMPLETED") { res.json({ received: true, updated: false }); return; }
+    const resource = req.body?.resource || {};
+    const orderId = String(resource?.supplementary_data?.related_ids?.order_id || "");
+    if (!orderId) { res.status(400).json({ error: "PayPal capture is missing its order reference." }); return; }
+    const orderResponse = await fetch(paypalBase() + "/v2/checkout/orders/" + encodeURIComponent(orderId), {
+      headers: { Authorization: "Bearer " + accessToken },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!orderResponse.ok) { res.status(502).json({ error: "Could not verify the PayPal order details." }); return; }
+    const order = await orderResponse.json() as { status?: string; purchase_units?: Array<{ invoice_id?: string; custom_id?: string; amount?: { currency_code?: string; value?: string }; payments?: { captures?: Array<{ id?: string; status?: string; amount?: { currency_code?: string; value?: string } }> } }> };
+    const unit = order.purchase_units?.[0];
+    const reference = String(unit?.invoice_id || unit?.custom_id || "");
+    const capture = unit?.payments?.captures?.find(item => String(item.id || "") === String(resource.id || ""));
+    const capturedAmount = Number(resource?.amount?.value);
+    const orderAmount = Number(unit?.amount?.value);
+    if (order.status !== "COMPLETED" || capture?.status !== "COMPLETED" ||
+        !/^DLP-\d+-\d+-\d+-[a-f0-9]{8}$/i.test(reference) ||
+        resource?.amount?.currency_code !== "USD" || unit?.amount?.currency_code !== "USD" ||
+        capture?.amount?.currency_code !== "USD" || !Number.isFinite(capturedAmount) ||
+        capturedAmount <= 0 || capturedAmount !== orderAmount || Number(capture.amount?.value) !== capturedAmount) {
+      res.status(400).json({ error: "PayPal capture does not match a valid school-fee order." }); return;
+    }
+    const refMatch = reference.match(/^DLP-(\d+)-(\d+)-\d+-[a-f0-9]{8}$/i);
+    if (!refMatch) { res.status(400).json({ error: "PayPal reference is malformed." }); return; }
+    const updated = await db.execute(sql`
+      UPDATE payments SET status = 'paid',
+        notes = CONCAT(COALESCE(notes, ''), ' | PayPal verified capture ', CAST(${String(resource.id || "")} AS TEXT)),
+        updated_at = now()
+      WHERE id = ${Number(refMatch[2])}
+        AND student_id = ${Number(refMatch[1])}
+        AND notes LIKE ${"%PayPal order " + orderId + " reference " + reference + "%"}
+        AND amount::numeric = ${capturedAmount}
+        AND status IN ('pending', 'overdue')
+      RETURNING student_id
+    `);
+    const rows = (updated as unknown as { rows?: Array<{ student_id: number }> }).rows ?? [];
+    if (rows.length) {
+      await db.update(usersTable).set({ lastPaymentDate: new Date().toISOString() }).where(eq(usersTable.id, Number(rows[0].student_id)));
+    }
+    res.json({ received: true, updated: rows.length > 0 });
+  } catch {
+    res.status(502).json({ error: "PayPal webhook verification could not be completed." });
+  }
+});
+
 router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (user.role !== "student") { res.status(403).json({ error: "Learner access required" }); return; }
@@ -49,15 +337,22 @@ router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<vo
     return;
   }
 
-  const integrationId = process.env.PAYNOW_INTEGRATION_ID;
-  const integrationKey = process.env.PAYNOW_INTEGRATION_KEY;
-  const publicBase = (process.env.PUBLIC_APP_URL || process.env.VITE_PUBLIC_APP_URL || "").replace(/\/$/, "");
-  const publicApi = (process.env.PUBLIC_API_URL || "").replace(/\/$/, "");
-  if (!integrationId || !integrationKey || !publicBase || !publicApi) {
-    res.status(503).json({ error: "Live Paynow payments are not configured yet. Add PAYNOW_INTEGRATION_ID, PAYNOW_INTEGRATION_KEY, PUBLIC_APP_URL and PUBLIC_API_URL to the server secrets." });
+  const integrationId = process.env.PAYNOW_INTEGRATION_ID?.trim();
+  const integrationKey = process.env.PAYNOW_INTEGRATION_KEY?.trim();
+  const publicBaseValue = (process.env.PUBLIC_APP_URL || process.env.VITE_PUBLIC_APP_URL || "").trim();
+  const publicApiValue = (process.env.PUBLIC_API_URL || "").trim();
+  const validPublicUrl = (value: string): boolean => {
+    try {
+      const parsed = new URL(value);
+      return (parsed.protocol === "https:" || process.env.NODE_ENV !== "production") && Boolean(parsed.host);
+    } catch { return false; }
+  };
+  if (!integrationId || !integrationKey || !validPublicUrl(publicBaseValue) || !validPublicUrl(publicApiValue)) {
+    res.status(503).json({ error: "Live Paynow checkout is not configured. Add valid PAYNOW_INTEGRATION_ID, PAYNOW_INTEGRATION_KEY, PUBLIC_APP_URL and PUBLIC_API_URL server secrets." });
     return;
   }
-
+  const publicBase = new URL(publicBaseValue).toString().replace(/\/$/, "");
+  const publicApi = new URL(publicApiValue).toString().replace(/\/$/, "");
   const reference = "DL-" + user.id + "-" + Date.now() + "-" + crypto.randomBytes(4).toString("hex");
   const now = new Date();
   const month = now.toLocaleString("en-US", { month: "long" });

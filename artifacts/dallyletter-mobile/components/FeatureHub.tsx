@@ -141,6 +141,8 @@ export default function FeatureHub() {
   const [groupRules, setGroupRules] = useState("");
   const [paymentSettings, setPaymentSettings] = useState<any>({});
   const [paymentBusy, setPaymentBusy] = useState(false);
+  const [paynowReady, setPaynowReady] = useState(false);
+  const [paypalReady, setPaypalReady] = useState(false);
   const [paymentReported, setPaymentReported] = useState(false);
   const [prefectTeachers, setPrefectTeachers] = useState<Row[]>([]);
   const [prefectLeaderboard, setPrefectLeaderboard] = useState<Row[]>([]);
@@ -431,9 +433,15 @@ export default function FeatureHub() {
       }
       else if (target === "payments") {
         setPaymentReported(false);
-        const [paymentRows, settings] = await Promise.all([request("/api/payments"), request("/api/settings")]);
+        const [paymentRows, settings, paynowStatus, paypalStatus] = await Promise.all([
+          request("/api/payments"), request("/api/settings"),
+          request("/api/payments/paynow/status").catch(() => ({ configured: false })),
+          request("/api/payments/paypal/status").catch(() => ({ configured: false })),
+        ]);
         setRows(Array.isArray(paymentRows) ? paymentRows : []);
         setPaymentSettings(settings && typeof settings === "object" ? settings : {});
+        setPaynowReady(paynowStatus?.configured === true);
+        setPaypalReady(paypalStatus?.configured === true);
       }
       else {
         let loadedRows: Row[] = [];
@@ -912,6 +920,17 @@ export default function FeatureHub() {
     finally { setPaymentBusy(false); }
   };
 
+  const startPayPal = async () => {
+    if (!isStudent || paymentBusy || paymentTotalOwed <= 0) return;
+    setPaymentBusy(true);
+    try {
+      const result = await request("/api/payments/paypal/create", { method: "POST", body: JSON.stringify({ returnUrl: Linking.createURL("payments/return") }) });
+      if (!result?.checkoutUrl) throw new Error("PayPal checkout did not return a link.");
+      await Linking.openURL(String(result.checkoutUrl));
+    } catch (e) { Alert.alert("PayPal payment could not start", e instanceof Error ? e.message : "Please retry when connected."); }
+    finally { setPaymentBusy(false); }
+  };
+
   const notifyPayment = async () => {
     if (!isStudent || paymentBusy) return;
     setPaymentBusy(true);
@@ -1296,12 +1315,12 @@ export default function FeatureHub() {
               <Text style={styles.body}>Outstanding: ${paymentTotalOwed.toFixed(2)}</Text>
               <Text style={styles.muted}>{rows.filter((p:any)=>p.status==="paid").length} paid · {rows.filter((p:any)=>p.status==="overdue").length} overdue · {rows.filter((p:any)=>p.status==="pending").length} pending</Text>
             </View>
-            {isStudent && paymentTotalOwed > 0 && paymentSettings.paynow_url && <TouchableOpacity style={styles.button} onPress={()=>void startPaynow()} disabled={paymentBusy}><Text style={styles.buttonText}>{paymentBusy?"Opening secure checkout…":"Pay securely with Paynow"}</Text></TouchableOpacity>}
-            {isStudent && paymentSettings.paypal_url ? <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>{const value=String(paymentSettings.paypal_url);void Linking.openURL(value.startsWith("http")?value:"https://paypal.me/"+value);}}><Text style={[styles.buttonText,styles.secondaryText]}>Open PayPal</Text></TouchableOpacity>:null}
+            {isStudent && paymentTotalOwed > 0 && paynowReady && <TouchableOpacity style={styles.button} onPress={()=>void startPaynow()} disabled={paymentBusy}><Text style={styles.buttonText}>{paymentBusy?"Opening secure checkout…":"Pay securely with Paynow"}</Text></TouchableOpacity>}
+            {isStudent && paypalReady ? <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void startPayPal()} disabled={paymentBusy}><Text style={[styles.buttonText,styles.secondaryText]}>{paymentBusy?"Opening PayPal…":"Pay securely with PayPal"}</Text></TouchableOpacity>:null}
             {isStudent && paymentSettings.ecocash_number ? <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void Linking.openURL("tel:"+String(paymentSettings.ecocash_number))}><Text style={[styles.buttonText,styles.secondaryText]}>Call / open EcoCash: {String(paymentSettings.ecocash_number)}</Text></TouchableOpacity>:null}
             {isStudent && paymentSettings.trust_wallet ? <View style={{padding:10,borderWidth:1,borderColor:colors.border,borderRadius:10,marginTop:8}}><Text style={styles.cardTitle}>Wallet payment address</Text><Text selectable style={styles.body}>{String(paymentSettings.trust_wallet)}</Text></View>:null}
             {isStudent && paymentSettings.payment_instructions ? <Text style={styles.muted}>{String(paymentSettings.payment_instructions)}</Text>:null}
-            {isStudent ? ((paymentSettings.paynow_url || paymentSettings.paypal_url || paymentSettings.ecocash_number || paymentSettings.trust_wallet) ? <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void notifyPayment()} disabled={paymentBusy||paymentReported}><Text style={[styles.buttonText,styles.secondaryText]}>{paymentReported?"School notified":"I have paid — notify school"}</Text></TouchableOpacity> : <Text style={styles.muted}>Payment methods are not configured. Please contact your school.</Text>) : null}
+            {isStudent ? ((paynowReady || paypalReady || paymentSettings.ecocash_number || paymentSettings.trust_wallet) ? <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void notifyPayment()} disabled={paymentBusy||paymentReported}><Text style={[styles.buttonText,styles.secondaryText]}>{paymentReported?"School notified":"I have paid — notify school"}</Text></TouchableOpacity> : <Text style={styles.muted}>Payment methods are not configured. Please contact your school.</Text>) : null}
             {isStudent ? <Text style={styles.muted}>Payment options need an internet connection. A notification to school is a report, not proof that funds have cleared.</Text> : <Text style={styles.muted}>Staff view: payment records are read-only here.</Text>}
           </View>
           <Text style={styles.sectionTitle}>Payment history</Text>

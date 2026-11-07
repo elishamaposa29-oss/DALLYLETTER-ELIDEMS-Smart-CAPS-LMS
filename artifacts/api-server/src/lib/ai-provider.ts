@@ -1,4 +1,6 @@
 import { db, platformSettingsTable } from "@workspace/db";
+import { AIProviderError, requestProviderJson } from "./ai-provider-http";
+export { AIProviderError } from "./ai-provider-http";
 
 export interface AIMessage {
   role: "user" | "assistant" | "system";
@@ -24,9 +26,53 @@ export interface ModerationResult {
   categories: string[];
 }
 
+const AI_MODERATION_CATEGORIES = [
+  "cyberbullying", "harassment", "threats", "hate_speech", "explicit_nudity",
+  "sexual_exploitation", "grooming", "self_harm_risk", "personal_data",
+  "credential_theft", "phishing", "scam_fraud", "unapproved_marketing", "spam",
+] as const;
+
+/** Context-aware moderation prompt. Model output is a review signal, never an enforcement decision. */
+function buildModerationPrompt(text: string): string {
+  return `You are a careful content-safety reviewer for a welcoming multi-user education platform used by learners, prefects, teachers and staff. Review the submitted text for:
+- cyberbullying, targeted harassment, intimidation, credible threats and hate speech;
+- explicit sexual content, nudity solicitation, sexual exploitation or grooming (treat suspected exploitation of minors as critical);
+- sharing or requesting passwords, OTPs, recovery codes, payment credentials, identity documents or unnecessary private personal data;
+- phishing, impersonation, scams, fraud, coercive off-platform contact and credential theft;
+- spam and clearly unrelated commercial advertising or repeated promotion that displaces learning/teaching.
+Be context-aware and fair. Do NOT flag ordinary schoolwork, legitimate educational links, curriculum discussion, respectful disagreement, harmless jokes, slang, dialect, quoted examples used for teaching, or a user's ordinary business identity unless it is unsolicited promotional spam. Consider context and intent; do not infer misconduct from identity, disability, language variety or age. If uncertain, use low/medium severity and explain uncertainty. Return ONLY valid JSON with this exact shape: {"flagged":boolean,"reason":"short neutral explanation","severity":"low|medium|high|critical","categories":["category"]}. Choose categories only from: ${AI_MODERATION_CATEGORIES.join(", ")}. A flag only requests human review. Never recommend automatic punishment, account suspension, deletion or public accusation. Text to review (JSON encoded): ${JSON.stringify(text.slice(0, 4000))}`;
+}
+
+function parseModerationResult(raw: string): ModerationResult {
+  const reviewRequired: ModerationResult = {
+    flagged: true,
+    reason: "AI moderation returned an unreadable result; authorized human review is recommended.",
+    severity: "low",
+    categories: ["moderation_parse_failure"],
+  };
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) return reviewRequired;
+  try {
+    const parsed = JSON.parse(match[0]) as Partial<ModerationResult>;
+    if (typeof parsed.flagged !== "boolean") return reviewRequired;
+    const validSeverities = new Set(["low", "medium", "high", "critical"]);
+    const categories = Array.isArray(parsed.categories)
+      ? parsed.categories.filter((value): value is string => typeof value === "string" && (AI_MODERATION_CATEGORIES as readonly string[]).includes(value)).slice(0, 8)
+      : [];
+    return {
+      flagged: parsed.flagged,
+      reason: typeof parsed.reason === "string" ? parsed.reason.slice(0, 500) : undefined,
+      severity: validSeverities.has(String(parsed.severity)) ? parsed.severity as ModerationResult["severity"] : "medium",
+      categories: parsed.flagged && categories.length === 0 ? ["unclassified"] : categories,
+    };
+  } catch {
+    return reviewRequired;
+  }
+}
+
 export interface AIProvider {
   name: string;
-  chat(messages: AIMessage[], systemPrompt?: string): Promise<string>;
+  chat(messages: AIMessage[], systemPrompt?: string, signal?: AbortSignal): Promise<string>;
   generatePoll(topic: string, grade?: string, subject?: string, count?: number): Promise<GeneratedPoll>;
   moderateContent(text: string): Promise<ModerationResult>;
   analyzeData(data: object, prompt: string): Promise<string>;
@@ -36,7 +82,7 @@ export interface AIProvider {
 class MockProvider implements AIProvider {
   name = "mock";
 
-  async chat(messages: AIMessage[]): Promise<string> {
+  async chat(messages: AIMessage[], _systemPrompt?: string, _signal?: AbortSignal): Promise<string> {
     const last = messages[messages.length - 1]?.content?.toLowerCase() ?? "";
     if (last.includes("help") || last.includes("what can you do")) {
       return `**ELIDEMS AI — Development Mode** 🟡\n\n**Available Commands (Live Mode):**\n\n🔐 **Account Management**\n• "Block all users with overdue payments"\n• "Suspend inactive accounts"\n• "Unlock learner account for [name]"\n\n📊 **Reports & Analytics**\n• "Generate monthly payment report"\n• "Show attendance analytics for this week"\n• "List top performing students"\n\n🔔 **Notifications**\n• "Send reminder to all Grade 10 students"\n• "Alert teachers about tomorrow's class"\n\n📝 **Polls**\n• "Create a quiz on Algebra for Grade 9"\n• "Show poll results for [topic]"\n\n🛡️ **Safety**\n• "Review flagged content"\n• "Show suspicious activity alerts"\n\n*Add an API key in Admin → Settings → ELIDEMS AI to activate Live Mode.*`;
@@ -77,18 +123,19 @@ class MockProvider implements AIProvider {
   }
 
   async moderateContent(text: string): Promise<ModerationResult> {
-    const lower = text.toLowerCase();
-    const critical = ["kill", "murder", "suicide", "bomb", "weapon", "shoot", "stab"];
-    const high = ["hate you", "stupid idiot", "you're ugly", "i'll hurt", "shut up loser", "harass"];
-    const medium = ["spam", "scam", "send money", "whatsapp number", "contact outside", "wire transfer"];
-    for (const p of critical) {
-      if (lower.includes(p)) return { flagged: true, reason: "Threatening or violent language", severity: "critical", categories: ["threats", "violence"] };
-    }
-    for (const p of high) {
-      if (lower.includes(p)) return { flagged: true, reason: "Potentially harmful or harassing language", severity: "high", categories: ["harassment"] };
-    }
-    for (const p of medium) {
-      if (lower.includes(p)) return { flagged: true, reason: "Suspicious content or spam", severity: "medium", categories: ["spam"] };
+    const lower = text.normalize("NFKC").toLowerCase();
+    const rules: Array<{ terms: string[]; severity: ModerationResult["severity"]; category: string; reason: string }> = [
+      { terms: ["i will kill you", "i'm going to kill you", "i am going to kill you", "i will hurt you", "i am coming to hurt you", "i'll shoot you"], severity: "critical", category: "threats", reason: "Possible direct threat requiring human review" },
+      { terms: ["send nudes", "send me nude", "child sexual", "sexual blackmail", "explicit photo of a child"], severity: "critical", category: "sexual_exploitation", reason: "Possible sexual exploitation or explicit solicitation" },
+      { terms: ["send me your password", "share your otp", "give me your verification code", "send your login code", "share your recovery code", "send your bank pin"], severity: "high", category: "credential_theft", reason: "Possible credential or verification-code theft" },
+      { terms: ["pay a fee to claim your prize", "send money to claim", "guaranteed investment profit", "click here to verify your password", "your account will close unless you login"], severity: "high", category: "scam_fraud", reason: "Possible scam or phishing attempt" },
+      { terms: ["buy my products", "order from my business", "limited time sale", "use my affiliate link", "subscribe to my paid channel"], severity: "medium", category: "unapproved_marketing", reason: "Possible unrelated commercial promotion" },
+      { terms: ["hate speech", "i hate all [group]", "you are worthless", "nobody wants you", "i will expose your address"], severity: "high", category: "harassment", reason: "Possible harassment or privacy abuse" },
+    ];
+    for (const rule of rules) {
+      if (rule.terms.some(term => lower.includes(term))) {
+        return { flagged: true, reason: rule.reason, severity: rule.severity, categories: [rule.category] };
+      }
     }
     return { flagged: false, severity: "low", categories: [] };
   }
@@ -103,39 +150,37 @@ class GeminiProvider implements AIProvider {
   name = "gemini";
   constructor(private apiKey: string) {}
 
-  private async call(messages: AIMessage[], system?: string): Promise<string> {
+  private async call(messages: AIMessage[], system?: string, signal?: AbortSignal): Promise<string> {
     const contents = messages
       .filter(m => m.role !== "system")
       .map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] }));
     const body: Record<string, unknown> = { contents };
     if (system) body.systemInstruction = { parts: [{ text: system }] };
-    const r = await fetch(
+    const j = await requestProviderJson(
+      this.name,
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${this.apiKey}`,
-      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
-    );
-    if (!r.ok) throw new Error(`Gemini error ${r.status}: ${await r.text()}`);
-    const j = await r.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-    return j.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal },
+    ) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+    const text = j.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (typeof text !== "string" || !text.trim()) throw new AIProviderError(this.name, "invalid_response");
+    return text;
   }
 
-  async chat(messages: AIMessage[], system?: string) { return this.call(messages, system); }
+  async chat(messages: AIMessage[], system?: string, signal?: AbortSignal) { return this.call(messages, system, signal); }
 
   async generatePoll(topic: string, grade?: string, subject?: string, count = 5): Promise<GeneratedPoll> {
     const prompt = `Generate a CAPS-aligned educational quiz about "${topic}"${grade ? ` for ${grade}` : ""}${subject ? ` in ${subject}` : ""}. Create exactly ${count} multiple choice questions. Return ONLY valid JSON in this exact format:
 {"title":"Quiz title","questions":[{"question":"text?","difficulty":"easy|medium|hard","options":[{"text":"A","isCorrect":true},{"text":"B","isCorrect":false},{"text":"C","isCorrect":false},{"text":"D","isCorrect":false}],"explanation":"why the correct answer is correct"}]}`;
     const result = await this.call([{ role: "user", content: prompt }]);
     const match = result.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("Invalid JSON from Gemini");
+    if (!match) throw new AIProviderError(this.name, "invalid_response");
     return JSON.parse(match[0]) as GeneratedPoll;
   }
 
   async moderateContent(text: string): Promise<ModerationResult> {
-    const prompt = `Analyze this message from an educational platform for harmful content. Return ONLY JSON: {"flagged":boolean,"reason":"string or null","severity":"low|medium|high|critical","categories":["threats","harassment","spam","explicit","hate_speech"]}
-Message: "${text.slice(0, 500)}"`;
+    const prompt = buildModerationPrompt(text);
     const result = await this.call([{ role: "user", content: prompt }]);
-    const match = result.match(/\{[\s\S]*\}/);
-    if (!match) return { flagged: false, severity: "low", categories: [] };
-    return JSON.parse(match[0]) as ModerationResult;
+    return parseModerationResult(result);
   }
 
   async analyzeData(data: object, prompt: string) {
@@ -148,35 +193,33 @@ class OpenAIProvider implements AIProvider {
   name = "openai";
   constructor(private apiKey: string) {}
 
-  private async call(messages: AIMessage[], system?: string): Promise<string> {
+  private async call(messages: AIMessage[], system?: string, signal?: AbortSignal): Promise<string> {
     const all = system ? [{ role: "system", content: system }, ...messages] : messages;
-    const r = await fetch("https://api.openai.com/v1/chat/completions", {
+    const j = await requestProviderJson("openai", "https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.apiKey}` },
       body: JSON.stringify({ model: "gpt-4o-mini", messages: all, max_tokens: 2048 }),
-    });
-    if (!r.ok) throw new Error(`OpenAI error ${r.status}: ${await r.text()}`);
-    const j = await r.json() as { choices?: { message?: { content?: string } }[] };
-    return j.choices?.[0]?.message?.content ?? "";
+      signal,
+    }) as { choices?: { message?: { content?: string } }[] };
+    const text = j.choices?.[0]?.message?.content;
+    if (typeof text !== "string" || !text.trim()) throw new AIProviderError(this.name, "invalid_response");
+    return text;
   }
 
-  async chat(messages: AIMessage[], system?: string) { return this.call(messages, system); }
+  async chat(messages: AIMessage[], system?: string, signal?: AbortSignal) { return this.call(messages, system, signal); }
 
   async generatePoll(topic: string, grade?: string, subject?: string, count = 5): Promise<GeneratedPoll> {
     const prompt = `Generate a CAPS-aligned educational quiz about "${topic}"${grade ? ` for ${grade}` : ""}${subject ? ` in ${subject}` : ""}. Create exactly ${count} multiple choice questions. Return ONLY valid JSON: {"title":"title","questions":[{"question":"text?","difficulty":"easy|medium|hard","options":[{"text":"A","isCorrect":true},{"text":"B","isCorrect":false},{"text":"C","isCorrect":false},{"text":"D","isCorrect":false}],"explanation":"why correct"}]}`;
     const result = await this.call([{ role: "user", content: prompt }]);
     const match = result.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("Invalid JSON from OpenAI");
+    if (!match) throw new AIProviderError(this.name, "invalid_response");
     return JSON.parse(match[0]) as GeneratedPoll;
   }
 
   async moderateContent(text: string): Promise<ModerationResult> {
-    const prompt = `Analyze this educational platform message for harmful content. Return ONLY JSON: {"flagged":boolean,"reason":"string or null","severity":"low|medium|high|critical","categories":["threats","harassment","spam","explicit","hate_speech"]}
-Message: "${text.slice(0, 500)}"`;
+    const prompt = buildModerationPrompt(text);
     const result = await this.call([{ role: "user", content: prompt }]);
-    const match = result.match(/\{[\s\S]*\}/);
-    if (!match) return { flagged: false, severity: "low", categories: [] };
-    return JSON.parse(match[0]) as ModerationResult;
+    return parseModerationResult(result);
   }
 
   async analyzeData(data: object, prompt: string) {
@@ -189,8 +232,8 @@ class AnthropicProvider implements AIProvider {
   name = "anthropic";
   constructor(private apiKey: string) {}
 
-  private async call(messages: AIMessage[], system?: string): Promise<string> {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
+  private async call(messages: AIMessage[], system?: string, signal?: AbortSignal): Promise<string> {
+    const j = await requestProviderJson("anthropic", "https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": this.apiKey, "anthropic-version": "2023-06-01" },
       body: JSON.stringify({
@@ -199,29 +242,27 @@ class AnthropicProvider implements AIProvider {
         ...(system ? { system } : {}),
         messages: messages.filter(m => m.role !== "system"),
       }),
-    });
-    if (!r.ok) throw new Error(`Anthropic error ${r.status}: ${await r.text()}`);
-    const j = await r.json() as { content?: { text?: string }[] };
-    return j.content?.[0]?.text ?? "";
+      signal,
+    }) as { content?: { text?: string }[] };
+    const text = j.content?.[0]?.text;
+    if (typeof text !== "string" || !text.trim()) throw new AIProviderError(this.name, "invalid_response");
+    return text;
   }
 
-  async chat(messages: AIMessage[], system?: string) { return this.call(messages, system); }
+  async chat(messages: AIMessage[], system?: string, signal?: AbortSignal) { return this.call(messages, system, signal); }
 
   async generatePoll(topic: string, grade?: string, subject?: string, count = 5): Promise<GeneratedPoll> {
     const prompt = `Generate a CAPS-aligned educational quiz about "${topic}"${grade ? ` for ${grade}` : ""}${subject ? ` in ${subject}` : ""}. Create exactly ${count} multiple choice questions. Return ONLY valid JSON: {"title":"title","questions":[{"question":"text?","difficulty":"easy|medium|hard","options":[{"text":"A","isCorrect":true},{"text":"B","isCorrect":false},{"text":"C","isCorrect":false},{"text":"D","isCorrect":false}],"explanation":"why correct"}]}`;
     const result = await this.call([{ role: "user", content: prompt }]);
     const match = result.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("Invalid JSON from Anthropic");
+    if (!match) throw new AIProviderError(this.name, "invalid_response");
     return JSON.parse(match[0]) as GeneratedPoll;
   }
 
   async moderateContent(text: string): Promise<ModerationResult> {
-    const prompt = `Analyze this educational platform message for harmful content. Return ONLY JSON: {"flagged":boolean,"reason":"string or null","severity":"low|medium|high|critical","categories":["threats","harassment","spam","explicit","hate_speech"]}
-Message: "${text.slice(0, 500)}"`;
+    const prompt = buildModerationPrompt(text);
     const result = await this.call([{ role: "user", content: prompt }]);
-    const match = result.match(/\{[\s\S]*\}/);
-    if (!match) return { flagged: false, severity: "low", categories: [] };
-    return JSON.parse(match[0]) as ModerationResult;
+    return parseModerationResult(result);
   }
 
   async analyzeData(data: object, prompt: string) {
@@ -235,9 +276,13 @@ let _cacheTs = 0;
 
 export async function getAIProvider(): Promise<AIProvider> {
   if (_cached && Date.now() - _cacheTs < 30_000) return _cached;
-  const rows = await db.select().from(platformSettingsTable);
   const cfg: Record<string, string> = {};
-  for (const r of rows) cfg[r.key] = r.value ?? "";
+  try {
+    const rows = await db.select().from(platformSettingsTable);
+    for (const r of rows) cfg[r.key] = r.value ?? "";
+  } catch {
+    throw new AIProviderError("configuration", "configuration_unavailable");
+  }
 
   // Database settings override deployment environment variables. This keeps
   // owner-configured settings stable while allowing secure server-side setup
@@ -252,10 +297,19 @@ export async function getAIProvider(): Promise<AIProvider> {
     anthropicKey ? "anthropic" : "mock"
   );
 
-  if (name === "gemini" && geminiKey) _cached = new GeminiProvider(geminiKey);
-  else if (name === "openai" && openaiKey) _cached = new OpenAIProvider(openaiKey);
-  else if (name === "anthropic" && anthropicKey) _cached = new AnthropicProvider(anthropicKey);
-  else _cached = new MockProvider();
+  if (name === "mock") _cached = new MockProvider();
+  else if (name === "gemini") {
+    if (!geminiKey) throw new AIProviderError("gemini", "invalid_credentials");
+    _cached = new GeminiProvider(geminiKey);
+  } else if (name === "openai") {
+    if (!openaiKey) throw new AIProviderError("openai", "invalid_credentials");
+    _cached = new OpenAIProvider(openaiKey);
+  } else if (name === "anthropic") {
+    if (!anthropicKey) throw new AIProviderError("anthropic", "invalid_credentials");
+    _cached = new AnthropicProvider(anthropicKey);
+  } else {
+    throw new AIProviderError(String(name), "provider_rejected");
+  }
   _cacheTs = Date.now();
   return _cached;
 }

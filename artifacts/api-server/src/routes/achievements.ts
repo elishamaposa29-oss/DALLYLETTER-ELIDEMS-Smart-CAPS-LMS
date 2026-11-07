@@ -2,7 +2,7 @@ import { Router } from "express";
 import { requireManagerPermission, requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
 import { db, pool, auditLogsTable } from "@workspace/db";
 import { achievementsTable, userAchievementsTable, usersTable, lessonRequestsTable, notificationsTable } from "@workspace/db/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, inArray } from "drizzle-orm";
 import { requireAuth, isOwnerRole, canAccessManager } from "../lib/auth-middleware";
 import { canApproveAchievementAwards, canRecommendAchievementAwards } from "../lib/role-access";
 import { canViewProfileSection } from "./profileConnections";
@@ -253,9 +253,10 @@ router.get("/prefect-teachers", requireAuth, async (req, res): Promise<void> => 
 
 router.get("/lesson-requests", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
+  const authorizedTeacher = user.role === "teacher" && ["not_applicable", "approved"].includes(String(user.teacherApplicationStatus ?? "not_applicable").trim().toLowerCase());
   const rows = user.isPrefect
     ? await db.select().from(lessonRequestsTable).where(eq(lessonRequestsTable.prefectId, user.id)).orderBy(desc(lessonRequestsTable.createdAt))
-    : user.role === "teacher"
+    : authorizedTeacher
       ? await db.select().from(lessonRequestsTable).where(eq(lessonRequestsTable.teacherId, user.id)).orderBy(desc(lessonRequestsTable.createdAt))
       : [];
   res.json(rows.map(r => ({ ...r, createdAt: r.createdAt.toISOString(), responseAt: r.responseAt?.toISOString() ?? null })));
@@ -267,37 +268,72 @@ router.post("/lesson-requests", requireAuth, async (req, res): Promise<void> => 
   const { teacherId, topic, notes, preferredDate } = req.body ?? {};
   const teacher = Number(teacherId);
   if (!Number.isInteger(teacher) || !topic?.trim()) { res.status(400).json({ error: "teacherId and topic are required" }); return; }
-  const [target] = await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable).where(and(eq(usersTable.id, teacher), eq(usersTable.role, "teacher")));
-  if (!target) { res.status(404).json({ error: "Teacher not found" }); return; }
+  const [target] = await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable).where(and(
+    eq(usersTable.id, teacher),
+    eq(usersTable.role, "teacher"),
+    // Pending/rejected applicants are not yet authorized recipients for teaching requests.
+    inArray(usersTable.teacherApplicationStatus, ["not_applicable", "approved"]),
+  ));
+  if (!target) { res.status(404).json({ error: "An authorized teacher was not found" }); return; }
   const [request] = await db.insert(lessonRequestsTable).values({
     prefectId: user.id, teacherId: target.id, topic: topic.trim(), notes: notes?.trim() || null, preferredDate: preferredDate || null,
   }).returning();
+  // The request is already persisted; notification delivery must not make the UI report a false failure.
   await db.insert(notificationsTable).values({
     title: `Lesson request: ${topic.trim()}`,
     message: `Prefect ${user.name} requested "${topic.trim()}". Open Prefect Requests to respond.`,
     type: "lesson_request", recipientId: target.id, isRead: false,
-  });
+  }).catch(() => undefined);
   res.status(201).json(request);
 });
 
 router.patch("/lesson-requests/:id", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid request id" }); return; }
   const [request] = await db.select().from(lessonRequestsTable).where(eq(lessonRequestsTable.id, id));
   if (!request) { res.status(404).json({ error: "Lesson request not found" }); return; }
-  if (user.id !== request.teacherId && user.id !== request.prefectId && user.role !== "owner" && !user.isManager) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const owner = isOwnerRole(user.role);
+  const assignedTeacher = user.id === request.teacherId && user.role === "teacher" && user.teacherApplicationStatus !== "pending_review";
+  const requestingPrefect = user.id === request.prefectId;
+  if (!owner && !assignedTeacher && !requestingPrefect) { res.status(403).json({ error: "Only the requesting prefect, assigned teacher, or Owner can update this request." }); return; }
+
   const status = String(req.body?.status ?? request.status);
-  const allowed = ["pending","accepted","declined","completed","cancelled","dismissed"];
+  const allowed = ["pending", "accepted", "declined", "completed", "cancelled", "dismissed"];
   if (!allowed.includes(status)) { res.status(400).json({ error: "Invalid status" }); return; }
-  const reply = typeof req.body?.teacherReply === "string" ? req.body.teacherReply.trim() : request.teacherReply;
-  const [updated] = await db.update(lessonRequestsTable).set({ status, teacherReply: reply, responseAt: user.id === request.teacherId ? new Date() : request.responseAt }).where(eq(lessonRequestsTable.id,id)).returning();
-  if (user.id === request.teacherId) {
+
+  // The prefect may cancel only their own still-pending request; they cannot impersonate a teacher response.
+  if (requestingPrefect && !owner && !assignedTeacher) {
+    if (request.status !== "pending" || status !== "cancelled" || req.body?.teacherReply !== undefined) {
+      res.status(403).json({ error: "A prefect may only cancel their own pending request." });
+      return;
+    }
+  } else if (!assignedTeacher && !owner && (status !== request.status || req.body?.teacherReply !== undefined)) {
+    // Only the assigned teacher or Owner can issue a teaching decision or teacher reply.
+    res.status(403).json({ error: "Only the assigned teacher or Owner can change request status or reply." });
+    return;
+  }
+  if (assignedTeacher && !owner && !["accepted", "declined", "completed", "dismissed"].includes(status)) {
+    res.status(403).json({ error: "The assigned teacher can accept, decline, complete, or dismiss this request." });
+    return;
+  }
+  const reply = (assignedTeacher || owner) && typeof req.body?.teacherReply === "string"
+    ? req.body.teacherReply.trim().slice(0, 2000)
+    : request.teacherReply;
+  const [updated] = await db.update(lessonRequestsTable)
+    .set({ status, teacherReply: reply, responseAt: assignedTeacher || owner ? new Date() : request.responseAt })
+    .where(eq(lessonRequestsTable.id, id))
+    .returning();
+
+  if (assignedTeacher || owner) {
+    // A notification failure must not turn a successfully saved teacher decision into a false API failure.
     await db.insert(notificationsTable).values({
       title: `Lesson request ${status}`,
       message: reply ? `Teacher reply: ${reply}` : `Your lesson request is now ${status}.`,
       type: "lesson_request", recipientId: request.prefectId, isRead: false,
       link: `/student/prefect?request=${request.id}`,
-    });
+    }).catch(() => undefined);
   }
   res.json(updated);
 });
@@ -318,8 +354,9 @@ router.delete("/lesson-requests/:id", requireAuth, async (req, res): Promise<voi
   if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid request id" }); return; }
   const [request] = await db.select().from(lessonRequestsTable).where(eq(lessonRequestsTable.id, id));
   if (!request) { res.status(404).json({ error: "Lesson request not found" }); return; }
-  if (user.id !== request.teacherId && user.id !== request.prefectId && user.role !== "owner" && !user.isManager) {
-    res.status(403).json({ error: "Forbidden" }); return;
+  const assignedTeacher = user.id === request.teacherId && user.role === "teacher" && user.teacherApplicationStatus !== "pending_review";
+  if (!assignedTeacher && user.id !== request.prefectId && !isOwnerRole(user.role)) {
+    res.status(403).json({ error: "Only the requesting prefect, assigned teacher, or Owner can delete this request." }); return;
   }
   await db.delete(lessonRequestsTable).where(eq(lessonRequestsTable.id, id));
   res.sendStatus(204);

@@ -100,11 +100,25 @@ router.get("/dashboard", requireAuth, requireManager, requireManagerPermission("
     assignment: new Set(assignments.filter((row: any) => ownerIds.has(Number(row.teacherId))).map((row: any) => Number(row.id))),
     exercise: new Set(exercises.filter((row: any) => ownerIds.has(Number(row.createdBy))).map((row: any) => Number(row.id))),
   };
+  const flaggedMessageIds=contentFlags.filter((row:any)=>String(row.contentType).toLowerCase()==="message").map((row:any)=>Number(row.contentId)).filter((id:number)=>Number.isSafeInteger(id)&&id>0);
+  const flaggedCommentIds=contentFlags.filter((row:any)=>String(row.contentType).toLowerCase()==="comment").map((row:any)=>Number(row.contentId)).filter((id:number)=>Number.isSafeInteger(id)&&id>0);
+  const flaggedPollIds=contentFlags.filter((row:any)=>String(row.contentType).toLowerCase()==="poll").map((row:any)=>Number(row.contentId)).filter((id:number)=>Number.isSafeInteger(id)&&id>0);
+  const [flaggedMessages,flaggedComments,flaggedPolls]=await Promise.all([
+    flaggedMessageIds.length?pool.query("SELECT id,sender_id,recipient_id FROM messages WHERE id=ANY($1::int[])",[flaggedMessageIds]):Promise.resolve({rows:[] as any[]}),
+    flaggedCommentIds.length?pool.query("SELECT id,author_id FROM content_comments WHERE id=ANY($1::int[])",[flaggedCommentIds]):Promise.resolve({rows:[] as any[]}),
+    flaggedPollIds.length?pool.query("SELECT id,created_by FROM polls WHERE id=ANY($1::int[])",[flaggedPollIds]):Promise.resolve({rows:[] as any[]}),
+  ]);
+  const visibleMessageIds=new Set(flaggedMessages.rows.filter((row:any)=>canSeeUser(Number(row.sender_id))&&(row.recipient_id==null||canSeeUser(Number(row.recipient_id)))).map((row:any)=>Number(row.id)));
+  const visibleCommentIds=new Set(flaggedComments.rows.filter((row:any)=>canSeeUser(Number(row.author_id))).map((row:any)=>Number(row.id)));
+  const visiblePollIds=new Set(flaggedPolls.rows.filter((row:any)=>canSeeUser(Number(row.created_by))).map((row:any)=>Number(row.id)));
   const visibleContentIds:Record<string,Set<number>>={
     lesson:new Set(visibleLessons.map((row:any)=>Number(row.id))),
     class:new Set(visibleClasses.map((row:any)=>Number(row.id))),
     assignment:new Set(visibleAssignments.map((row:any)=>Number(row.id))),
     exercise:new Set(visibleExercises.map((row:any)=>Number(row.id))),
+    message:visibleMessageIds,
+    comment:visibleCommentIds,
+    poll:visiblePollIds,
   };
   const visibleContentFlags = contentFlags.filter((row: any) => {
     const type=String(row.contentType).toLowerCase(),id=Number(row.contentId);

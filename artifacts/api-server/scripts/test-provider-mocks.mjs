@@ -2,6 +2,7 @@ import { appendFileSync, writeFileSync } from "node:fs";
 
 const enabled = process.env.MOCK_PROVIDER_MODE === "test";
 const capturePath = process.env.MOCK_PROVIDER_CAPTURE || "/tmp/dallyletter-provider-capture.jsonl";
+const paypalOrders = new Map();
 if (enabled) {
   writeFileSync(capturePath, "");
   globalThis.fetch = async (input, init = {}) => {
@@ -12,6 +13,29 @@ if (enabled) {
     if (url.hostname === "www.googleapis.com" && url.pathname === "/oauth2/v3/certs" && method === "GET") {
       const jwks = JSON.parse((await import("node:fs")).readFileSync("/tmp/pr84-google-jwks.json", "utf8"));
       response = { status: 200, body: { keys: jwks.keys } };
+    } else if (
+      (url.hostname === "generativelanguage.googleapis.com" && url.pathname.includes(":generateContent") ||
+       url.hostname === "api.openai.com" && url.pathname === "/v1/chat/completions" ||
+       url.hostname === "api.anthropic.com" && url.pathname === "/v1/messages") && method === "POST"
+    ) {
+      const provider = url.hostname === "generativelanguage.googleapis.com" ? "gemini"
+        : url.hostname === "api.openai.com" ? "openai" : "anthropic";
+      const key = provider === "gemini" ? url.searchParams.get("key")
+        : provider === "openai" ? String(init.headers?.Authorization || "").replace(/^Bearer\s+/i, "")
+        : String(init.headers?.["x-api-key"] || "");
+      if (key === "mock-timeout") {
+        response = null;
+        return await new Promise((resolve, reject) => {
+          const signal = init.signal;
+          if (signal?.aborted) return reject(new Error("mock request aborted"));
+          signal?.addEventListener("abort", () => reject(new Error("mock request aborted")), { once: true });
+        });
+      }
+      if (key === "mock-fail-429") response = { status: 429, body: { error: "SECRET_PROVIDER_BODY_AND_KEY" } };
+      else if (key === "mock-fail-401") response = { status: 401, body: { error: "SECRET_PROVIDER_BODY_AND_KEY" } };
+      else if (provider === "gemini") response = { status: 200, body: { candidates: [{ content: { parts: [{ text: "Mock Gemini response" }] } }] } };
+      else if (provider === "openai") response = { status: 200, body: { choices: [{ message: { content: "Mock OpenAI response" } }] } };
+      else response = { status: 200, body: { content: [{ text: "Mock Anthropic response" }] } };
     } else if (url.hostname === "api.resend.com" && url.pathname === "/emails" && method === "POST") {
       const body = JSON.parse(bodyText || "{}");
       appendFileSync(capturePath, JSON.stringify({ provider: "resend", body }) + "\n");
@@ -22,6 +46,25 @@ if (enabled) {
       const request = JSON.parse(bodyText || "{}");
       const sig = String(request.webhook_event?.id || "");
       response = { status: 200, body: { verification_status: sig === "mock-valid-signature" ? "SUCCESS" : "FAILURE" } };
+    } else if (url.hostname === "paypal.test" && url.pathname === "/v2/checkout/orders" && method === "POST") {
+      const request = JSON.parse(bodyText || "{}");
+      const unit = request.purchase_units?.[0] || {};
+      const id = "MOCKORDER" + String(paypalOrders.size + 1).padStart(4, "0");
+      paypalOrders.set(id, { id, status: "APPROVED", purchase_units: [{ custom_id: unit.custom_id, invoice_id: unit.invoice_id, amount: unit.amount, payments: { captures: [] } }] });
+      response = { status: 201, body: { id, status: "CREATED", links: [{ rel: "payer-action", href: "https://paypal.test/approve/" + id }] } };
+    } else if (url.hostname === "paypal.test" && url.pathname.startsWith("/v2/checkout/orders/") && url.pathname.endsWith("/capture") && method === "POST") {
+      const id = url.pathname.split("/")[4];
+      const order = paypalOrders.get(id);
+      if (!order) response = { status: 404, body: { message: "order not found" } };
+      else {
+        order.status = "COMPLETED";
+        order.purchase_units[0].payments.captures = [{ id: "MOCKCAPTURE" + id, status: "COMPLETED", amount: order.purchase_units[0].amount }];
+        response = { status: 201, body: { id, status: "COMPLETED", purchase_units: order.purchase_units } };
+      }
+    } else if (url.hostname === "paypal.test" && url.pathname.startsWith("/v2/checkout/orders/") && method === "GET") {
+      const id = url.pathname.split("/").pop();
+      const order = paypalOrders.get(id);
+      response = order ? { status: 200, body: order } : { status: 404, body: { message: "order not found" } };
     } else if (url.hostname === "api.twilio.com" && /^\/2010-04-01\/Accounts\/[^/]+\/Messages\.json$/.test(url.pathname) && method === "POST") {
       const params = new URLSearchParams(bodyText);
       appendFileSync(capturePath, JSON.stringify({ provider: "twilio", body: { to: params.get("To"), from: params.get("From"), text: params.get("Body") } }) + "\n");
