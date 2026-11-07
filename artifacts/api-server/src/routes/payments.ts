@@ -48,6 +48,7 @@ async function ensurePaymentTransactionSchema(): Promise<void> {
           updated_at timestamptz NOT NULL DEFAULT now()
         )
       `);
+      await db.execute(sql`ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS provider_reference text`);
       await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS payment_transactions_manual_receipt_unique ON payment_transactions(payment_id,provider,provider_reference) WHERE provider LIKE 'manual:%' AND provider_reference IS NOT NULL`);
     })().catch(error => { paymentTransactionSchemaReady = null; throw error; });
   }
