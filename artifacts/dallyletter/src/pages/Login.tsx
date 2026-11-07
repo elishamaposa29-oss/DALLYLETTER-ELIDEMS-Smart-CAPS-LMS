@@ -17,10 +17,10 @@ const loginSchema = z.object({
 });
 
 const features = [
-  { icon: BookOpen, text: "CAPS-aligned lessons uploaded by qualified teachers" },
-  { icon: Video, text: "Live Google Meet classes with real-time Q&A" },
-  { icon: Users, text: "Collaborative study groups for every subject" },
-  { icon: ShieldCheck, text: "Secure, private platform for your school" },
+  { icon: BookOpen, text: "Teacher-published lessons and learning media" },
+  { icon: Video, text: "Scheduled live classes and teacher-led Q&A" },
+  { icon: Users, text: "Collaborative study groups where enabled" },
+  { icon: ShieldCheck, text: "Role-based workspaces and section-level profile privacy" },
 ];
 
 export default function Login() {
