@@ -267,8 +267,9 @@ router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<vo
   }
 });
 
-// The payer returns with PayPal's order token; only the authenticated owner of the fee row can capture it.
+// The payer returns with PayPal's order token; only the authenticated owner of the exact linked invoice can capture it.
 router.post("/payments/paypal/capture", requireAuth, async (req, res): Promise<void> => {
+  await ensurePaymentTransactionSchema();
   const user = req.currentUser!;
   if (user.role !== "student") { res.status(403).json({ error: "Learner access required." }); return; }
   const orderId = String(req.body?.orderId || "").trim();
@@ -283,28 +284,26 @@ router.post("/payments/paypal/capture", requireAuth, async (req, res): Promise<v
     const order = await orderResponse.json() as { id?: string; status?: string; purchase_units?: Array<{ custom_id?: string; invoice_id?: string; amount?: { currency_code?: string; value?: string } }> };
     const unit = order.purchase_units?.[0];
     const reference = String(unit?.custom_id || unit?.invoice_id || "");
-    const match = reference.match(/^DLP-(\d+)-(\d+)-\d+-[a-f0-9]{8}$/i);
-    if (!match || Number(match[1]) !== user.id || order.id !== orderId) { res.status(403).json({ error: "This PayPal order does not belong to this learner." }); return; }
-    const feeRow = await db.execute(sql`
-      SELECT p.id, p.amount, p.amount_paid, p.status, t.amount AS checkout_amount, t.status AS transaction_status
-      FROM payments p JOIN payment_transactions t ON t.payment_id=p.id
-      WHERE p.id = ${Number(match[2])} AND p.student_id = ${user.id}
-        AND t.provider='paypal' AND t.reference=${reference}
-        AND p.notes LIKE ${"%PayPal order " + orderId + " reference " + reference + "%"}
+    const result = await db.execute(sql\`
+      SELECT t.payment_id,t.amount,t.currency,t.status AS transaction_status,
+             p.student_id,p.amount AS invoice_amount,p.amount_paid,p.status AS invoice_status
+      FROM payment_transactions t JOIN payments p ON p.id=t.payment_id
+      WHERE t.provider='paypal' AND t.provider_order_id=\${orderId}
+        AND t.reference=\${reference} AND p.student_id=\${user.id}
       LIMIT 1
-    `);
-    const feeRows = (feeRow as unknown as { rows?: Array<{ id: number; amount: string | number; amount_paid: string | number; status: string; checkout_amount: string | number; transaction_status: string }> }).rows ?? [];
-    const fee = feeRows[0];
-    if (!fee) { res.status(409).json({ error: "The school-fee checkout record could not be found." }); return; }
-    if (unit?.amount?.currency_code !== "USD" || Number(unit.amount.value) !== Number(fee.checkout_amount)) {
-      res.status(400).json({ error: "PayPal order amount does not match this signed checkout." }); return;
+    \`);
+    const rows = (result as unknown as { rows?: Array<{ payment_id:number;amount:string|number;currency:string;transaction_status:string;student_id:number;invoice_amount:string|number;amount_paid:string|number;invoice_status:string }> }).rows ?? [];
+    const linked = rows[0];
+    if (!linked || order.id !== orderId) { res.status(403).json({ error: "This PayPal order is not linked to one of your school-fee invoices." }); return; }
+    if (unit?.amount?.currency_code !== linked.currency || Number(unit.amount.value) !== Number(linked.amount)) {
+      res.status(400).json({ error: "PayPal order amount does not match its saved checkout transaction." }); return;
     }
     if (order.status === "COMPLETED") {
-      res.json({ captured: true, alreadyCompleted: fee.transaction_status === "paid", awaitingWebhook: fee.transaction_status !== "paid" });
+      res.json({ captured: true, alreadyCompleted: linked.transaction_status === "paid", awaitingWebhook: linked.transaction_status !== "paid" });
       return;
     }
-    if (!["pending","overdue","partially_paid"].includes(fee.status) || fee.transaction_status !== "pending") {
-      res.status(409).json({ error: "This school-fee record is no longer eligible for payment." }); return;
+    if (!["pending","overdue","partially_paid"].includes(linked.invoice_status) || linked.transaction_status !== "pending") {
+      res.status(409).json({ error: "This school-fee checkout is no longer eligible for payment." }); return;
     }
     if (order.status !== "APPROVED") { res.status(409).json({ error: "PayPal has not approved this order yet." }); return; }
     const captureResponse = await fetch(paypalBase() + "/v2/checkout/orders/" + encodeURIComponent(orderId) + "/capture", {
@@ -313,7 +312,7 @@ router.post("/payments/paypal/capture", requireAuth, async (req, res): Promise<v
     });
     const captured = await captureResponse.json() as { status?: string };
     if (!captureResponse.ok || captured.status !== "COMPLETED") { res.status(502).json({ error: "PayPal did not confirm a completed capture." }); return; }
-    res.json({ captured: true });
+    res.json({ captured: true, awaitingWebhook: true });
   } catch {
     res.status(502).json({ error: "PayPal capture could not be completed." });
   }
