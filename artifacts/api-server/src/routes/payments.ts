@@ -58,7 +58,7 @@ async function markPaynowAttempt(reference: string, status: "failed" | "cancelle
     SET notes = CONCAT(replace(COALESCE(notes, ''), ${"Paynow reference " + reference}, ''), ' | Paynow ', CAST(${status} AS TEXT), ': ', CAST(${detail} AS TEXT)),
         updated_at = now()
     WHERE notes LIKE ${"%Paynow reference " + reference + "%"}
-      AND status IN ('pending','overdue')
+      AND status IN ('pending','overdue','partially_paid')
   `);
 }
 
@@ -126,6 +126,7 @@ router.get("/payments/paypal/status", (_req, res): void => {
 
 // Create a PayPal order on the server so each checkout has a verifiable reference.
 router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<void> => {
+  await ensurePaymentTransactionSchema();
   const user = req.currentUser!;
   if (user.role !== "student") { res.status(403).json({ error: "Learner access required." }); return; }
   const publicBase = process.env.PUBLIC_APP_URL || process.env.VITE_PUBLIC_APP_URL || "";
@@ -521,7 +522,7 @@ router.post("/payments/paynow/result", async (req, res): Promise<void> => {
             WHEN COALESCE(amount_paid,0)+${Number(settledRows[0].amount)} >= amount THEN 'paid'
             ELSE 'partially_paid'
           END,
-          notes=CONCAT(COALESCE(notes,''),' | Paynow verified payment ',CAST(${reference} AS TEXT),' amount ',CAST(${Number(settledRows[0].amount).toFixed(2)} AS TEXT)),
+          notes=CONCAT(replace(COALESCE(notes,''), ${"Paynow reference " + reference}, ''),' | Paynow verified payment ',CAST(${reference} AS TEXT),' amount ',CAST(${Number(settledRows[0].amount).toFixed(2)} AS TEXT)),
           updated_at=now()
       WHERE id=${Number(settledRows[0].payment_id)}
       RETURNING student_id, status
@@ -573,6 +574,7 @@ router.get("/payments", requireAuth, async (req, res): Promise<void> => {
 
 // POST /payments — Record a payment (teacher/owner only)
 router.post("/payments", requireAuth, requireTeacherOrOwner, async (req, res): Promise<void> => {
+  await ensurePaymentTransactionSchema();
   const currentUser = req.currentUser!;
 
   const parsed = RecordPaymentBody.safeParse(req.body);
@@ -673,6 +675,7 @@ router.post("/payments/notify-admin", requireAuth, async (req, res): Promise<voi
 
 // GET /payments/:id — Get payment by ID
 router.get("/payments/:id", requireAuth, async (req, res): Promise<void> => {
+  await ensurePaymentTransactionSchema();
   const params = GetPaymentParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
