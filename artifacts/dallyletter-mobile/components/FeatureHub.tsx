@@ -141,6 +141,7 @@ export default function FeatureHub() {
   const [groupRules, setGroupRules] = useState("");
   const [paymentSettings, setPaymentSettings] = useState<any>({});
   const [paymentBusy, setPaymentBusy] = useState(false);
+  const [paymentAmountInput, setPaymentAmountInput] = useState("");
   const [paynowReady, setPaynowReady] = useState(false);
   const [paypalReady, setPaypalReady] = useState(false);
   const [paymentReported, setPaymentReported] = useState(false);
@@ -908,12 +909,16 @@ export default function FeatureHub() {
     ]);
   };
 
-  const paymentTotalOwed = rows.filter((p: any) => p.status === "pending" || p.status === "overdue").reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+  const payableRows = rows.filter((p: any) => p.status === "pending" || p.status === "overdue" || p.status === "partially_paid").sort((a: any,b: any) => new Date(a.createdAt||0).getTime()-new Date(b.createdAt||0).getTime() || Number(a.id)-Number(b.id));
+  const nextPaymentBalance = payableRows.length ? Math.max(0,Number(payableRows[0].amount||0)-Number(payableRows[0].amountPaid||0)) : 0;
+  const paymentTotalOwed = payableRows.reduce((sum: number, p: any) => sum + Math.max(0,Number(p.amount||0)-Number(p.amountPaid||0)), 0);
   const startPaynow = async () => {
-    if (!isStudent || paymentBusy || paymentTotalOwed <= 0) return;
+    if (!isStudent || paymentBusy || nextPaymentBalance <= 0) return;
+    const chosenAmount = paymentAmountInput.trim() ? Number(paymentAmountInput) : nextPaymentBalance;
+    if (!Number.isFinite(chosenAmount) || chosenAmount <= 0 || chosenAmount > 100000) { Alert.alert("Invalid amount","Enter an amount greater than zero."); return; }
     setPaymentBusy(true);
     try {
-      const result = await request("/api/payments/paynow/create", { method: "POST", body: JSON.stringify({ amount: paymentTotalOwed }) });
+      const result = await request("/api/payments/paynow/create", { method: "POST", body: JSON.stringify({ amount: chosenAmount }) });
       if (!result?.checkoutUrl) throw new Error("Secure checkout did not return a link.");
       await Linking.openURL(String(result.checkoutUrl));
     } catch (e) { Alert.alert("Payment could not start", e instanceof Error ? e.message : "Please try again when connected."); }
@@ -1321,6 +1326,7 @@ export default function FeatureHub() {
             {isStudent && paymentSettings.trust_wallet ? <View style={{padding:10,borderWidth:1,borderColor:colors.border,borderRadius:10,marginTop:8}}><Text style={styles.cardTitle}>Wallet payment address</Text><Text selectable style={styles.body}>{String(paymentSettings.trust_wallet)}</Text></View>:null}
             {isStudent && Number(paymentSettings.school_fee_amount)>0 ? <View style={{padding:10,borderWidth:1,borderColor:colors.border,borderRadius:10,marginTop:8}}><Text style={styles.cardTitle}>School's published standard fee</Text><Text style={styles.body}>USD {Number(paymentSettings.school_fee_amount).toFixed(2)}</Text><Text style={styles.muted}>Your actual outstanding balance is shown in your fee records above; this published fee is a guide and may differ for your class or term.</Text></View>:null}
             {isStudent && paymentSettings.payment_instructions ? <Text style={styles.muted}>{String(paymentSettings.payment_instructions)}</Text>:null}
+            {isStudent && nextPaymentBalance > 0 ? <View style={{marginTop:8,padding:10,borderWidth:1,borderColor:colors.border,borderRadius:10}}><Text style={styles.cardTitle}>Amount to pay now (USD)</Text><TextInput style={[styles.input,{marginTop:8}]} value={paymentAmountInput} onChangeText={setPaymentAmountInput} keyboardType="decimal-pad" placeholder={nextPaymentBalance.toFixed(2)} placeholderTextColor={colors.mutedForeground}/><Text style={styles.muted}>Pay part of this fee, the full remaining balance, or extra. Verified extra money is recorded as credit. Leave blank to pay the full balance of the next fee record.</Text></View>:null}
             {isStudent ? ((paynowReady || paypalReady || paymentSettings.ecocash_number || paymentSettings.trust_wallet) ? <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void notifyPayment()} disabled={paymentBusy||paymentReported}><Text style={[styles.buttonText,styles.secondaryText]}>{paymentReported?"School notified":"I have paid — notify school"}</Text></TouchableOpacity> : <Text style={styles.muted}>Payment methods are not configured. Please contact your school.</Text>) : null}
             {isStudent ? <Text style={styles.muted}>Payment options need an internet connection. A notification to school is a report, not proof that funds have cleared.</Text> : <Text style={styles.muted}>Staff view: payment records are read-only here.</Text>}
           </View>
