@@ -741,11 +741,12 @@ router.post("/payments/:id/manual-settlement", requireAuth, async (req, res): Pr
   if(!isOwnerRole(actor.role)){res.status(403).json({error:"Only the Owner can verify manually received school-fee payments."});return;}
   const paymentId=Number(req.params.id), amount=Number(req.body?.amount);
   const method=String(req.body?.method||"").trim().toLowerCase();
-  const providerReference=typeof req.body?.providerReference==="string"?req.body.providerReference.trim().slice(0,120):"";
+  const providerReference=typeof req.body?.providerReference==="string"?req.body.providerReference.trim():"";
   const note=typeof req.body?.note==="string"?req.body.note.trim().slice(0,500):"";
   if(!Number.isSafeInteger(paymentId)||paymentId<=0||!Number.isFinite(amount)||amount<=0||amount>100000||!["ecocash","bank_transfer","crypto","cash","other"].includes(method)){
     res.status(400).json({error:"Choose a valid invoice, amount and manual payment method."});return;
   }
+  if(providerReference.length>120){res.status(400).json({error:"Receipt reference must be no longer than 120 characters."});return;}
   if(method!=="cash"&&providerReference.length<3){res.status(400).json({error:"Enter the receipt or transaction reference so the manual payment can be audited."});return;}
   await ensurePaymentTransactionSchema();
   const internalReference="DLM-"+actor.id+"-"+paymentId+"-"+Date.now()+"-"+crypto.randomBytes(4).toString("hex");
