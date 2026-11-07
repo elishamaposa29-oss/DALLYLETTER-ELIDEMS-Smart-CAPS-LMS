@@ -115,6 +115,20 @@ router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<vo
   } catch {
     res.status(503).json({ error: "Valid public application and API URLs are required for PayPal." }); return;
   }
+  let returnUrl = publicBase.replace(/\/$/, "") + "/student/payments?paypal=return";
+  let cancelUrl = publicBase.replace(/\/$/, "") + "/student/payments?paypal=cancel";
+  if (req.body?.returnUrl) {
+    try {
+      const mobileReturn = new URL(String(req.body.returnUrl));
+      if (mobileReturn.protocol !== "dallyletter:" || mobileReturn.hostname !== "payments" || mobileReturn.pathname !== "/return") {
+        res.status(400).json({ error: "Unsupported PayPal return destination." }); return;
+      }
+      returnUrl = mobileReturn.toString();
+      cancelUrl = mobileReturn.toString() + "?cancel=1";
+    } catch {
+      res.status(400).json({ error: "Invalid PayPal return destination." }); return;
+    }
+  }
   if (!process.env.PAYPAL_WEBHOOK_ID?.trim()) {
     res.status(503).json({ error: "PayPal webhook verification is not configured; checkout is disabled." }); return;
   }
@@ -156,8 +170,8 @@ router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<vo
         }],
         application_context: {
           brand_name: "DallyLetter Elidems", user_action: "PAY_NOW",
-          return_url: publicBase.replace(/\/$/, "") + "/student/payments?paypal=return",
-          cancel_url: publicBase.replace(/\/$/, "") + "/student/payments?paypal=cancel",
+          return_url: returnUrl,
+          cancel_url: cancelUrl,
         },
       }),
       signal: AbortSignal.timeout(20000),
