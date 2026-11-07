@@ -1,4 +1,6 @@
 import { db, platformSettingsTable } from "@workspace/db";
+import { AIProviderError, requestProviderJson } from "./ai-provider-http.js";
+export { AIProviderError } from "./ai-provider-http.js";
 
 export interface AIMessage {
   role: "user" | "assistant" | "system";
@@ -31,9 +33,6 @@ export interface AIProvider {
   moderateContent(text: string): Promise<ModerationResult>;
   analyzeData(data: object, prompt: string): Promise<string>;
 }
-
-import { AIProviderError, requestProviderJson } from "./ai-provider-http.js";
-export { AIProviderError } from "./ai-provider-http.js";
 
 // ─── MOCK PROVIDER ────────────────────────────────────────────────────────────
 class MockProvider implements AIProvider {
