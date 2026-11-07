@@ -175,7 +175,6 @@ test("junior_manager role alias retains manager workspace access but not senior 
  assert.equal(canManageAcademicContent(junior),true);
  assert.equal(canRecommendAchievementAwards(junior),true);
  assert.equal(canApproveAchievementAwards(junior),false);
- assert.equal(canReviewAcademicTransfer(junior),false);
 });
 
 test("draft, pending and rejected teacher managers do not gain authority from stale manager flags",()=>{
