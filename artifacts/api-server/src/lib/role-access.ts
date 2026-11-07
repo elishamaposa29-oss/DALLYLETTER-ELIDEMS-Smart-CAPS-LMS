@@ -177,11 +177,7 @@ export function canModerateUser(actor: RoleLikeUser, target: RoleLikeUser): bool
   return ["teacher", "student", "learner", "prefect"].includes(targetRole);
 }
 
-/** Role-level transfer approval gate; rejection is separately controlled by the per-user transfers.reject grant. */
-export function canReviewAcademicTransfer(user: RoleLikeUser): boolean {
-  return isSeniorManager(user);
-}
-
+/** Transfer review is governed only by the live per-user transfers.approve/transfers.reject grants. */
 /** Senior-only approvals and elevated review operations. */
 export const SENIOR_ONLY_PERMISSION_KEYS = new Set([
   "teacher_cv.review", "teacher_cv.authorize", "qualifications.verify",
