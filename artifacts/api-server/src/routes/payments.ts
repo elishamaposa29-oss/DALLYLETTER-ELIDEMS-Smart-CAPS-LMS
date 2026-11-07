@@ -442,16 +442,19 @@ router.post("/payments/paynow/result", async (req, res): Promise<void> => {
   const result = await db.transaction(async (tx) => {
     const updated = await tx.execute(sql`
       UPDATE payments
-      SET status = CASE WHEN CAST(${normalizedStatus} AS TEXT) IN ('failed','cancelled','pending') THEN status ELSE ${normalizedStatus} END,
-          notes = CASE
-            WHEN CAST(${normalizedStatus} AS TEXT) IN ('failed','cancelled')
-              THEN CONCAT(replace(COALESCE(notes, ''), ${"Paynow reference " + reference}, ''), ' | Paynow callback: ', CAST(${providerStatus} AS TEXT))
-            ELSE CONCAT(COALESCE(notes, ''), ' | Paynow callback: ', CAST(${providerStatus} AS TEXT))
+      SET status = CASE
+            WHEN status IN ('failed','cancelled','refunded') THEN status
+            WHEN CAST(${normalizedStatus} AS TEXT) IN ('failed','cancelled') THEN ${normalizedStatus}
+            WHEN CAST(${normalizedStatus} AS TEXT) = 'pending' THEN status
+            ELSE ${normalizedStatus}
           END,
+          -- Keep the provider reference for idempotent retries and late callbacks.
+          -- Terminal states never reopen; a verified refund may transition paid -> refunded.
+          notes = CONCAT(COALESCE(notes, ''), ' | Paynow callback: ', CAST(${providerStatus} AS TEXT)),
           updated_at = now()
       WHERE notes LIKE ${"%Paynow reference " + reference + "%"}
         AND amount::numeric = ${callbackAmount}
-        AND (status IN ('pending','overdue') OR (CAST(${normalizedStatus} AS TEXT) = 'refunded' AND status = 'paid'))
+        AND status IN ('pending','overdue','failed','cancelled','paid','refunded')
       RETURNING student_id
     `);
     const rows = (updated as unknown as { rows?: Array<{ student_id: number }> }).rows ?? [];
