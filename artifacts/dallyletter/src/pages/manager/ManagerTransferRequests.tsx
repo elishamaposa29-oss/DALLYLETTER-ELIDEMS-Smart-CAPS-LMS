@@ -33,8 +33,10 @@ export default function ManagerTransferRequests() {
       ]);
       const data = await response.json().catch(() => []);
       const permissionData = await permissionResponse.json().catch(() => ({}));
-      setCanApprove(Boolean(permissionResponse.ok && (permissionData?.isOwner || permissionData?.permissions?.["transfers.approve"])));
-      setCanReject(Boolean(permissionResponse.ok && (permissionData?.isOwner || permissionData?.permissions?.["transfers.reject"])));
+      const permissionRole=String(permissionData?.role||"").toLowerCase().replace(/[ -]+/g,"_");
+      const seniorAuthority=permissionData?.isOwner===true || permissionRole==="senior_manager";
+      setCanApprove(Boolean(permissionResponse.ok && seniorAuthority && (permissionData?.isOwner || permissionData?.permissions?.["transfers.approve"])));
+      setCanReject(Boolean(permissionResponse.ok && seniorAuthority && (permissionData?.isOwner || permissionData?.permissions?.["transfers.reject"])));
       if (!response.ok) throw new Error(data.error || "Could not load transfer requests.");
       if (!Array.isArray(data)) throw new Error("The server returned an invalid transfer request list.");
       setRows(data);
