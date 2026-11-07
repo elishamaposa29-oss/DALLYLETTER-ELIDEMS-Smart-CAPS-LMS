@@ -63,7 +63,7 @@ router.post("/:teacherId/survey/decision",requireManagerPermission("teacher_cv.r
   if(!cv.surveySubmittedAt){await client.query("ROLLBACK");res.status(404).json({error:"Readiness survey has not been submitted."});return;}
   const nextStatus=action==="approve"?"approved":"rejected";
   if(cv.surveyReviewStatus===nextStatus){await client.query("COMMIT");res.json({reviewed:true,alreadyReviewed:true,status:nextStatus});return;}
-  if(cv.surveyReviewStatus!=="pending"){await client.query("ROLLBACK");res.status(409).json({error:"This readiness survey has already received a decision."});return;}
+  if(cv.surveyReviewStatus && cv.surveyReviewStatus!=="pending"){await client.query("ROLLBACK");res.status(409).json({error:"This readiness survey has already received a decision."});return;}
   const nextCv={...cv,surveyReviewStatus:nextStatus,surveyReviewNote:note||null,surveyReviewedAt:new Date().toISOString(),surveyReviewedBy:req.currentUser!.id};
   await client.query("UPDATE teacher_profiles SET cv=$2::jsonb,updated_at=now() WHERE user_id=$1",[id,JSON.stringify(nextCv)]);
   await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,$3,'survey_pending',$4,$5)",[id,req.currentUser!.id,action==="approve"?"survey_approved":"survey_rejected",nextStatus,note||null]);
