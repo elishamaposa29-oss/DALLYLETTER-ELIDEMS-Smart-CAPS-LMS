@@ -32,6 +32,71 @@ export interface AIProvider {
   analyzeData(data: object, prompt: string): Promise<string>;
 }
 
+export type AIProviderFailureCode =
+  | "timeout"
+  | "network_error"
+  | "rate_limited"
+  | "invalid_credentials"
+  | "provider_unavailable"
+  | "invalid_response"
+  | "provider_rejected"
+  | "configuration_unavailable";
+
+export class AIProviderError extends Error {
+  constructor(
+    public readonly provider: string,
+    public readonly code: AIProviderFailureCode,
+    public readonly statusCode?: number,
+  ) {
+    super(code);
+    this.name = "AIProviderError";
+  }
+
+  get retryable(): boolean {
+    return ["timeout", "network_error", "rate_limited", "provider_unavailable"].includes(this.code);
+  }
+}
+
+/** Provider responses are never copied into thrown messages or application logs. */
+export async function requestProviderJson(
+  provider: string,
+  url: string,
+  init: RequestInit,
+): Promise<unknown> {
+  const configuredTimeout = Number(process.env.AI_PROVIDER_TIMEOUT_MS || 20000);
+  const timeoutMs = Number.isFinite(configuredTimeout)
+    ? Math.min(60000, Math.max(1000, configuredTimeout))
+    : 20000;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    let response: Response;
+    try {
+      response = await fetch(url, { ...init, signal: controller.signal });
+    } catch {
+      throw new AIProviderError(provider, controller.signal.aborted ? "timeout" : "network_error");
+    }
+    if (!response.ok) {
+      const status = response.status;
+      const code: AIProviderFailureCode = status === 401 || status === 403
+        ? "invalid_credentials"
+        : status === 429
+          ? "rate_limited"
+          : status >= 500
+            ? "provider_unavailable"
+            : "provider_rejected";
+      throw new AIProviderError(provider, code, status);
+    }
+    try {
+      return await response.json() as unknown;
+    } catch {
+      throw new AIProviderError(provider, "invalid_response", response.status);
+    }
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 // ─── MOCK PROVIDER ────────────────────────────────────────────────────────────
 class MockProvider implements AIProvider {
   name = "mock";
@@ -109,13 +174,14 @@ class GeminiProvider implements AIProvider {
       .map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] }));
     const body: Record<string, unknown> = { contents };
     if (system) body.systemInstruction = { parts: [{ text: system }] };
-    const r = await fetch(
+    const j = await requestProviderJson(
+      this.name,
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${this.apiKey}`,
-      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
-    );
-    if (!r.ok) throw new Error(`Gemini error ${r.status}: ${await r.text()}`);
-    const j = await r.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-    return j.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+    ) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+    const text = j.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (typeof text !== "string" || !text.trim()) throw new AIProviderError(this.name, "invalid_response");
+    return text;
   }
 
   async chat(messages: AIMessage[], system?: string) { return this.call(messages, system); }
@@ -125,7 +191,7 @@ class GeminiProvider implements AIProvider {
 {"title":"Quiz title","questions":[{"question":"text?","difficulty":"easy|medium|hard","options":[{"text":"A","isCorrect":true},{"text":"B","isCorrect":false},{"text":"C","isCorrect":false},{"text":"D","isCorrect":false}],"explanation":"why the correct answer is correct"}]}`;
     const result = await this.call([{ role: "user", content: prompt }]);
     const match = result.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("Invalid JSON from Gemini");
+    if (!match) throw new AIProviderError(this.name, "invalid_response");
     return JSON.parse(match[0]) as GeneratedPoll;
   }
 
@@ -150,14 +216,14 @@ class OpenAIProvider implements AIProvider {
 
   private async call(messages: AIMessage[], system?: string): Promise<string> {
     const all = system ? [{ role: "system", content: system }, ...messages] : messages;
-    const r = await fetch("https://api.openai.com/v1/chat/completions", {
+    const j = await requestProviderJson("openai", "https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.apiKey}` },
       body: JSON.stringify({ model: "gpt-4o-mini", messages: all, max_tokens: 2048 }),
-    });
-    if (!r.ok) throw new Error(`OpenAI error ${r.status}: ${await r.text()}`);
-    const j = await r.json() as { choices?: { message?: { content?: string } }[] };
-    return j.choices?.[0]?.message?.content ?? "";
+    }) as { choices?: { message?: { content?: string } }[] };
+    const text = j.choices?.[0]?.message?.content;
+    if (typeof text !== "string" || !text.trim()) throw new AIProviderError(this.name, "invalid_response");
+    return text;
   }
 
   async chat(messages: AIMessage[], system?: string) { return this.call(messages, system); }
@@ -166,7 +232,7 @@ class OpenAIProvider implements AIProvider {
     const prompt = `Generate a CAPS-aligned educational quiz about "${topic}"${grade ? ` for ${grade}` : ""}${subject ? ` in ${subject}` : ""}. Create exactly ${count} multiple choice questions. Return ONLY valid JSON: {"title":"title","questions":[{"question":"text?","difficulty":"easy|medium|hard","options":[{"text":"A","isCorrect":true},{"text":"B","isCorrect":false},{"text":"C","isCorrect":false},{"text":"D","isCorrect":false}],"explanation":"why correct"}]}`;
     const result = await this.call([{ role: "user", content: prompt }]);
     const match = result.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("Invalid JSON from OpenAI");
+    if (!match) throw new AIProviderError(this.name, "invalid_response");
     return JSON.parse(match[0]) as GeneratedPoll;
   }
 
@@ -190,7 +256,7 @@ class AnthropicProvider implements AIProvider {
   constructor(private apiKey: string) {}
 
   private async call(messages: AIMessage[], system?: string): Promise<string> {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
+    const j = await requestProviderJson("anthropic", "https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": this.apiKey, "anthropic-version": "2023-06-01" },
       body: JSON.stringify({
@@ -199,10 +265,10 @@ class AnthropicProvider implements AIProvider {
         ...(system ? { system } : {}),
         messages: messages.filter(m => m.role !== "system"),
       }),
-    });
-    if (!r.ok) throw new Error(`Anthropic error ${r.status}: ${await r.text()}`);
-    const j = await r.json() as { content?: { text?: string }[] };
-    return j.content?.[0]?.text ?? "";
+    }) as { content?: { text?: string }[] };
+    const text = j.content?.[0]?.text;
+    if (typeof text !== "string" || !text.trim()) throw new AIProviderError(this.name, "invalid_response");
+    return text;
   }
 
   async chat(messages: AIMessage[], system?: string) { return this.call(messages, system); }
@@ -211,7 +277,7 @@ class AnthropicProvider implements AIProvider {
     const prompt = `Generate a CAPS-aligned educational quiz about "${topic}"${grade ? ` for ${grade}` : ""}${subject ? ` in ${subject}` : ""}. Create exactly ${count} multiple choice questions. Return ONLY valid JSON: {"title":"title","questions":[{"question":"text?","difficulty":"easy|medium|hard","options":[{"text":"A","isCorrect":true},{"text":"B","isCorrect":false},{"text":"C","isCorrect":false},{"text":"D","isCorrect":false}],"explanation":"why correct"}]}`;
     const result = await this.call([{ role: "user", content: prompt }]);
     const match = result.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("Invalid JSON from Anthropic");
+    if (!match) throw new AIProviderError(this.name, "invalid_response");
     return JSON.parse(match[0]) as GeneratedPoll;
   }
 
@@ -235,7 +301,12 @@ let _cacheTs = 0;
 
 export async function getAIProvider(): Promise<AIProvider> {
   if (_cached && Date.now() - _cacheTs < 30_000) return _cached;
-  const rows = await db.select().from(platformSettingsTable);
+  let rows: Awaited<ReturnType<typeof db.select<typeof platformSettingsTable>>> | undefined;
+  try {
+    rows = await db.select().from(platformSettingsTable);
+  } catch {
+    throw new AIProviderError("configuration", "configuration_unavailable");
+  }
   const cfg: Record<string, string> = {};
   for (const r of rows) cfg[r.key] = r.value ?? "";
 
