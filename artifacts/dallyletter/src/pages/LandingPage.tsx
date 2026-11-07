@@ -29,7 +29,7 @@ function dashboardFor(role: string) {
   if (normalized === "owner" || normalized === "admin" || normalized === "platform_owner") return "/admin";
   if (normalized.includes("manager")) return "/manager";
   if (normalized === "teacher") return "/teacher";
-  return "/";
+  return "/student";
 }
 
 export default function LandingPage() {
@@ -96,7 +96,7 @@ export default function LandingPage() {
       <section className="mx-auto max-w-7xl px-5 py-20 sm:px-8" id="learning">
         <div className="max-w-2xl"><p className="text-xs font-bold uppercase tracking-[.22em] text-[#9a7614]">The learning experience</p><h2 className="mt-3 font-serif text-3xl font-bold tracking-tight text-[#10264a] sm:text-4xl">More than a place to open notes.</h2><p className="mt-4 leading-7 text-slate-600">Learning tools work best when they connect. Dallyletter brings study materials, practice, submissions, teacher feedback and progress records into a single learner journey.</p></div>
         <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{learningTools.map(({icon:Icon,title,text,href,action}) => <article key={title} className="group flex min-h-56 flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:border-[#d7ad35]/60 hover:shadow-xl hover:shadow-slate-900/5"><div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#edf2fa] text-[#0f2a5a]"><Icon className="h-5 w-5" /></div><h3 className="mt-5 font-bold text-[#10264a]">{title}</h3><p className="mt-2 flex-1 text-sm leading-6 text-slate-600">{text}</p><Link href={href} className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-[#0f2a5a] group-hover:text-[#9a7614]">{action} <ArrowRight className="h-4 w-4" /></Link></article>)}</div>
-        <div className="mt-8 flex flex-col items-start justify-between gap-4 rounded-2xl bg-[#edf2fa] p-6 sm:flex-row sm:items-center"><div><p className="font-bold text-[#10264a]">Already part of Dallyletter?</p><p className="mt-1 text-sm text-slate-600">Go straight to your learner dashboard and continue where you left off.</p></div><Link href="/" className="inline-flex items-center gap-2 rounded-xl bg-[#0f2a5a] px-5 py-3 text-sm font-bold text-white hover:bg-[#173a72]">Open learner dashboard <ArrowRight className="h-4 w-4" /></Link></div>
+        <div className="mt-8 flex flex-col items-start justify-between gap-4 rounded-2xl bg-[#edf2fa] p-6 sm:flex-row sm:items-center"><div><p className="font-bold text-[#10264a]">Already part of Dallyletter?</p><p className="mt-1 text-sm text-slate-600">Go straight to your learner dashboard and continue where you left off.</p></div><Link href="/student" className="inline-flex items-center gap-2 rounded-xl bg-[#0f2a5a] px-5 py-3 text-sm font-bold text-white hover:bg-[#173a72]">Open learner dashboard <ArrowRight className="h-4 w-4" /></Link></div>
       </section>
 
       <section className="border-y border-slate-200 bg-white py-20" id="educators">
