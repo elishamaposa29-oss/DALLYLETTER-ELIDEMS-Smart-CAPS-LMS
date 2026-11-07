@@ -2,7 +2,7 @@
 
 **Brand:** Dallyletter Elidems  
 **Founder and sole creator:** Elisha Maposa  
-**Positioning:** Zimbabwe and South Africa in focus; welcoming learners, educators and educational organisations worldwide.  
+**Positioning:** Zimbabwe and South Africa in focus; welcoming learners, educators, schools and educational organisations worldwide.  
 **Website:** https://dallyletter-elidems-onlineschoolbye-two.vercel.app/  
 **Visual identity:** navy #0f2a5a, gold #b38b00, white and warm neutral backgrounds.
 
@@ -64,7 +64,7 @@ Each video needs a plain-language title, useful description, chapters for longer
 
 **About copy:** Dallyletter Elidems is an education-technology initiative developing connected digital learning experiences for learners, educators and educational organisations. Our initial geographic focus is Zimbabwe and South Africa, with a broader ambition to support diverse African educational contexts and international participation. Founded and solely created by Elisha Maposa. We share product progress transparently and welcome informed conversations with educators and institutions.
 
-**Post formats:** monthly founder/product update with evidence; educator workflow explanation; thoughtful article on digital learning access; invitation to discuss institutional needs. Do not claim partnerships, customer adoption, accreditation or measured outcomes without verifiable evidence.
+**Post formats:** monthly founder/product update with evidence; educator workflow explanation; thoughtful article on digital learning access; school operations overview; an organisation-focused post for tutoring centres, community programmes and training teams inviting a fit-and-scope conversation. Do not claim partnerships, customer adoption, accreditation or measured outcomes without verifiable evidence.
 
 ## First 2-week publishing sequence
 | Day | Platform | Content |
