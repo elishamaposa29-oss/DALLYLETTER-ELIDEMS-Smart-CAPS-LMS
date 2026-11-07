@@ -22,7 +22,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const { data: fetchedUser, isLoading, refetch, error } = useGetCurrentUser({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    query: { enabled: !!token, retry: false } as any,
+    query: { enabled: !!token, retry: false, refetchInterval: 60_000, refetchOnWindowFocus: true } as any,
   });
 
   useEffect(() => {
