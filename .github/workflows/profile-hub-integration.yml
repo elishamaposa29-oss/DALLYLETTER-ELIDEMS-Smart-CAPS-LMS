@@ -118,7 +118,7 @@ jobs:
         run: |
           node artifacts/api-server/scripts/smoke-post-merge-routes.mjs
           node --input-type=module <<'NODE'
-          const base = process.env.API_BASE_URL.replace(/\\/$/, "");
+          const base = process.env.API_BASE_URL.replace(/\/$/, "");
           for (const provider of ["paypal", "paynow"]) {
             try {
               const response = await fetch(base + "/api/payments/" + provider + "/status", { cache: "no-store" });
