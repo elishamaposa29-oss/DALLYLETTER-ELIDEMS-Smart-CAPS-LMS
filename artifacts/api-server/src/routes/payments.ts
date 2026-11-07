@@ -49,6 +49,19 @@ async function ensurePaymentTransactionSchema(): Promise<void> {
         )
       `);
       await db.execute(sql`ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS provider_reference text`);
+      await db.execute(sql`ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS provider_order_id text`);
+      await db.execute(sql`ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS provider_capture_id text`);
+      await db.execute(sql`ALTER TABLE payment_transactions ADD COLUMN IF NOT EXISTS currency text NOT NULL DEFAULT 'USD'`);
+      await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS payment_transactions_provider_order_unique ON payment_transactions(provider,provider_order_id) WHERE provider_order_id IS NOT NULL`);
+      await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS payment_transactions_provider_capture_unique ON payment_transactions(provider,provider_capture_id) WHERE provider_capture_id IS NOT NULL`);
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS payment_provider_webhook_audit (
+        id bigserial PRIMARY KEY, provider text NOT NULL, event_id text, transmission_id text,
+        event_type text, order_id text, capture_id text,
+        signature_verified boolean NOT NULL DEFAULT false, outcome text NOT NULL,
+        detail text, created_at timestamptz NOT NULL DEFAULT now()
+      )`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS payment_provider_webhook_audit_created_idx ON payment_provider_webhook_audit(provider,created_at DESC)`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS payment_provider_webhook_audit_event_idx ON payment_provider_webhook_audit(provider,event_id)`);
       await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS payment_transactions_manual_receipt_unique ON payment_transactions(payment_id,provider,provider_reference) WHERE provider LIKE 'manual:%' AND provider_reference IS NOT NULL`);
       await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS payment_transactions_manual_receipt_global_unique ON payment_transactions(provider,provider_reference) WHERE provider LIKE 'manual:%' AND provider_reference IS NOT NULL`);
     })().catch(error => { paymentTransactionSchemaReady = null; throw error; });
@@ -159,6 +172,10 @@ router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<vo
   if (!process.env.PAYPAL_WEBHOOK_ID?.trim()) {
     res.status(503).json({ error: "PayPal webhook verification is not configured; checkout is disabled." }); return;
   }
+  const requestedPaymentId = req.body?.paymentId === undefined ? null : Number(req.body.paymentId);
+  if (requestedPaymentId !== null && (!Number.isSafeInteger(requestedPaymentId) || requestedPaymentId <= 0)) {
+    res.status(400).json({ error: "Choose a valid school-fee invoice." }); return;
+  }
   const requestedAmount = req.body?.amount === undefined ? undefined : Number(req.body.amount);
   if (req.body?.amount !== undefined && (!Number.isFinite(requestedAmount) || requestedAmount! <= 0 || requestedAmount! > 100000 || Math.round(requestedAmount! * 100) !== requestedAmount! * 100)) {
     res.status(400).json({ error: "Enter a valid payment amount." }); return;
@@ -171,6 +188,7 @@ router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<vo
         SELECT id FROM payments
         WHERE student_id = ${user.id}
           AND status IN ('pending', 'overdue', 'partially_paid')
+          AND (${requestedPaymentId === null} OR id = ${requestedPaymentId})
           AND COALESCE(notes, '') NOT LIKE '%PayPal order %'
           AND COALESCE(notes, '') NOT LIKE '%PayPal checkout in progress%'
         ORDER BY created_at ASC, id ASC
@@ -220,16 +238,23 @@ router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<vo
     const order = await response.json() as { id?: string; links?: Array<{ rel?: string; href?: string }> };
     const approvalUrl = order.links?.find(link => link.rel === "approve" || link.rel === "payer-action")?.href;
     if (!response.ok || !order.id || !approvalUrl) throw new Error("PayPal could not create a checkout order");
-    await db.execute(sql`
-      INSERT INTO payment_transactions (payment_id, provider, reference, amount, status)
-      VALUES (${payment.id}, 'paypal', ${reference}, ${amount.toFixed(2)}, 'pending')
-    `);
-    await db.execute(sql`
-      UPDATE payments SET notes = CONCAT(COALESCE(notes, ''), ' | PayPal order ', CAST(${order.id} AS TEXT), ' reference ', CAST(${reference} AS TEXT)),
-        updated_at = now()
-      WHERE id = ${payment.id} AND student_id = ${user.id} AND status IN ('pending', 'overdue', 'partially_paid')
-        AND notes LIKE ${"%" + reservation + "%"}
-    `);
+    await db.transaction(async (tx) => {
+      const linked = await tx.execute(sql`
+        UPDATE payments
+        SET notes = CONCAT(COALESCE(notes, ''), ' | PayPal order ', CAST(${order.id} AS TEXT), ' reference ', CAST(${reference} AS TEXT)),
+            updated_at = now()
+        WHERE id = ${payment!.id} AND student_id = ${user.id}
+          AND status IN ('pending', 'overdue', 'partially_paid')
+          AND notes LIKE ${"%" + reservation + "%"}
+        RETURNING id
+      `);
+      const linkedRows = (linked as unknown as { rows?: Array<{ id: number }> }).rows ?? [];
+      if (!linkedRows.length) throw new Error("The selected school-fee invoice changed during PayPal checkout.");
+      await tx.execute(sql`
+        INSERT INTO payment_transactions (payment_id, provider, reference, amount, status, provider_order_id, currency)
+        VALUES (${payment!.id}, 'paypal', ${reference}, ${amount.toFixed(2)}, 'pending', ${order.id}, 'USD')
+      `);
+    });
     res.status(201).json({ reference, checkoutUrl: approvalUrl, amount, invoiceAmount, amountAlreadyPaid: amountPaid, outstandingBalance, month: payment.month, year: payment.year });
   } catch (error) {
     if (payment) {
