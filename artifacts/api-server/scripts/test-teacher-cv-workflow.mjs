@@ -262,8 +262,8 @@ assert.equal(seniorQualificationViewGrant.status,200,"Owner can grant qualificat
 const seniorQualificationHistory=await request("/api/qualifications/"+qualification.data.id+"/review-history",{token:seniorToken});
 assert.equal(seniorQualificationHistory.status,200,"Senior Manager can read qualification verification history after its separate grant");
 assert(seniorQualificationHistory.data.history.some(item=>item.new_status==="verified"),"Senior Manager sees the persisted qualification verification decision");
-const seniorCertificate=await fetch(base+"/api/qualifications/"+qualification.data.id+"/document",{headers:{Authorization:"Bearer "+seniorToken}});
-assert.equal(seniorCertificate.status,200,"Senior Manager with qualifications.view can open the supporting certificate document");
+const seniorCertificate=await fetch(base+"/api/users/"+approvalApplicant.id+"/teacher-documents/"+certificate.data.document.id,{headers:{Authorization:"Bearer "+seniorToken}});
+assert.equal(seniorCertificate.status,200,"Senior Manager with qualifications.view can open the applicant certificate through the same document endpoint used by the review workspace");
 assert.match(seniorCertificate.headers.get("content-type")||"",/application\/pdf/,"Senior Manager receives the actual certificate file");
 const seniorVerifyRevoke=await request("/api/manager-permissions/"+seniorManagerId,{token:ownerToken,method:"PUT",body:{permissions:[{key:"qualifications.verify",granted:false}]}});
 assert.equal(seniorVerifyRevoke.status,200,"Owner can revoke the qualification verification grant");
