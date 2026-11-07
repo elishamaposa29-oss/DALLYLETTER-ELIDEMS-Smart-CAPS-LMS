@@ -34,18 +34,6 @@ const requiredOrigins = [
 
 const allowedOrigins = new Set([...configuredOrigins, ...requiredOrigins]);
 
-const isTrustedVercelOrigin = (origin: string) => {
-  try {
-    const url = new URL(origin);
-    return (
-      url.protocol === "https:" &&
-      /^[a-z0-9-]+\.vercel\.app$/.test(url.hostname)
-    );
-  } catch {
-    return false;
-  }
-};
-
 app.disable("x-powered-by");
 // Render terminates TLS at its reverse proxy; trust only the nearest proxy hop
 // so IP-based authentication throttles use the client address rather than a shared proxy address.
@@ -73,7 +61,7 @@ app.use(
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.has(origin) || isTrustedVercelOrigin(origin)) {
+      if (!origin || allowedOrigins.has(origin)) {
         callback(null, true);
         return;
       }
