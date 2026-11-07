@@ -26,6 +26,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
+    if (!sessionUser || !fetchedUser || sessionUser.id !== fetchedUser.id) return;
+    const authorityFingerprint = (value: User) => JSON.stringify({
+      id: value.id,
+      role: value.role,
+      isManager: (value as any).isManager,
+      managerLevel: (value as any).managerLevel,
+      isPrefect: (value as any).isPrefect,
+      teacherApplicationStatus: (value as any).teacherApplicationStatus,
+      isBlocked: (value as any).isBlocked,
+      isSuspended: (value as any).isSuspended,
+    });
+    if (authorityFingerprint(sessionUser) !== authorityFingerprint(fetchedUser)) {
+      queryClient.clear();
+      setSessionUser(fetchedUser);
+    }
+  }, [sessionUser, fetchedUser, queryClient]);
+
+  useEffect(() => {
     if (!token || !error || sessionUser) return;
     const message = error instanceof Error ? error.message : String(error);
     if (/401|unauthorized|authentication required/i.test(message)) {
