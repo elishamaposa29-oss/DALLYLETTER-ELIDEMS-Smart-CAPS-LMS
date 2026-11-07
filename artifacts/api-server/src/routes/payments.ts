@@ -62,6 +62,148 @@ router.get("/payments/paynow/status", (_req, res): void => {
   res.json({ configured, provider: "paynow" });
 });
 
+
+function paypalBase(): string {
+  return process.env.PAYPAL_ENVIRONMENT === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com";
+}
+
+async function getPayPalAccessToken(): Promise<string | null> {
+  const clientId = process.env.PAYPAL_CLIENT_ID?.trim();
+  const clientSecret = process.env.PAYPAL_CLIENT_SECRET?.trim();
+  if (!clientId || !clientSecret) return null;
+  const response = await fetch(paypalBase() + "/v1/oauth2/token", {
+    method: "POST",
+    headers: {
+      Authorization: "Basic " + Buffer.from(clientId + ":" + clientSecret).toString("base64"),
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: "grant_type=client_credentials",
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!response.ok) return null;
+  const data = await response.json() as { access_token?: string };
+  return data.access_token || null;
+}
+
+// Create a PayPal order on the server so each checkout has a verifiable reference.
+router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  if (user.role !== "student") { res.status(403).json({ error: "Learner access required." }); return; }
+  const amount = Number(req.body?.amount);
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 100000 || Math.round(amount * 100) !== amount * 100) {
+    res.status(400).json({ error: "Enter a valid payment amount." }); return;
+  }
+  const publicBase = process.env.PUBLIC_APP_URL || process.env.VITE_PUBLIC_APP_URL || "";
+  if (!publicBase || !/^https:\/\//i.test(publicBase)) {
+    res.status(503).json({ error: "Secure public application URL is not configured for PayPal." }); return;
+  }
+  try {
+    const accessToken = await getPayPalAccessToken();
+    if (!accessToken) { res.status(503).json({ error: "PayPal checkout is not configured." }); return; }
+    const reference = "DLP-" + user.id + "-" + Date.now() + "-" + crypto.randomBytes(4).toString("hex");
+    const response = await fetch(paypalBase() + "/v2/checkout/orders", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + accessToken, "Content-Type": "application/json", "PayPal-Request-Id": reference },
+      body: JSON.stringify({
+        intent: "CAPTURE",
+        purchase_units: [{
+          reference_id: reference,
+          custom_id: reference,
+          invoice_id: reference,
+          description: "DallyLetter Elidems school fees",
+          amount: { currency_code: "USD", value: amount.toFixed(2) },
+        }],
+        application_context: {
+          brand_name: "DallyLetter Elidems",
+          user_action: "PAY_NOW",
+          return_url: publicBase.replace(/\/$/, "") + "/student/payments?paypal=return",
+          cancel_url: publicBase.replace(/\/$/, "") + "/student/payments?paypal=cancel",
+        },
+      }),
+      signal: AbortSignal.timeout(20000),
+    });
+    const order = await response.json() as { id?: string; links?: Array<{ rel?: string; href?: string }> };
+    const approvalUrl = order.links?.find(link => link.rel === "approve")?.href;
+    if (!response.ok || !order.id || !approvalUrl) {
+      res.status(502).json({ error: "PayPal could not create a checkout order." }); return;
+    }
+    const now = new Date();
+    await db.insert(paymentsTable).values({
+      studentId: user.id, studentName: user.name, amount: amount.toFixed(2),
+      month: now.toLocaleString("en-US", { month: "long" }), year: now.getUTCFullYear(),
+      status: "pending", notes: "PayPal order " + order.id + " reference " + reference,
+      recordedBy: user.id,
+    });
+    res.status(201).json({ reference, checkoutUrl: approvalUrl });
+  } catch {
+    res.status(502).json({ error: "PayPal checkout could not be initialized." });
+  }
+});
+
+// Only a PayPal-verified CAPTURE.COMPLETED event can mark this checkout paid.
+router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
+  const webhookId = process.env.PAYPAL_WEBHOOK_ID?.trim();
+  if (!webhookId) { res.status(503).json({ error: "PayPal webhook verification is not configured." }); return; }
+  try {
+    const accessToken = await getPayPalAccessToken();
+    if (!accessToken) { res.status(503).json({ error: "PayPal API credentials are not configured." }); return; }
+    const headers = {
+      auth_algo: req.header("paypal-auth-algo"),
+      cert_url: req.header("paypal-cert-url"),
+      transmission_id: req.header("paypal-transmission-id"),
+      transmission_sig: req.header("paypal-transmission-sig"),
+      transmission_time: req.header("paypal-transmission-time"),
+    };
+    if (Object.values(headers).some(value => !value)) { res.status(400).json({ error: "PayPal signature headers are incomplete." }); return; }
+    const verification = await fetch(paypalBase() + "/v1/notifications/verify-webhook-signature", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + accessToken, "Content-Type": "application/json" },
+      body: JSON.stringify({ ...headers, webhook_id: webhookId, webhook_event: req.body }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const verified = await verification.json().catch(() => ({})) as { verification_status?: string };
+    if (!verification.ok || verified.verification_status !== "SUCCESS") {
+      res.status(401).json({ error: "PayPal webhook signature is invalid." }); return;
+    }
+    const eventType = String(req.body?.event_type || "");
+    if (eventType !== "PAYMENT.CAPTURE.COMPLETED") { res.json({ received: true, updated: false }); return; }
+    const resource = req.body?.resource || {};
+    const orderId = String(resource?.supplementary_data?.related_ids?.order_id || "");
+    if (!orderId) { res.status(400).json({ error: "PayPal capture is missing its order reference." }); return; }
+    const orderResponse = await fetch(paypalBase() + "/v2/checkout/orders/" + encodeURIComponent(orderId), {
+      headers: { Authorization: "Bearer " + accessToken },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!orderResponse.ok) { res.status(502).json({ error: "Could not verify the PayPal order details." }); return; }
+    const order = await orderResponse.json() as { status?: string; purchase_units?: Array<{ invoice_id?: string; custom_id?: string; amount?: { currency_code?: string; value?: string } }> };
+    const unit = order.purchase_units?.[0];
+    const reference = String(unit?.invoice_id || unit?.custom_id || "");
+    const capturedAmount = Number(resource?.amount?.value);
+    const orderAmount = Number(unit?.amount?.value);
+    if (order.status !== "COMPLETED" || !/^DLP-\d+-\d+-[a-f0-9]{8}$/i.test(reference) ||
+        resource?.amount?.currency_code !== "USD" || unit?.amount?.currency_code !== "USD" ||
+        !Number.isFinite(capturedAmount) || capturedAmount <= 0 || capturedAmount !== orderAmount) {
+      res.status(400).json({ error: "PayPal capture does not match a valid school-fee order." }); return;
+    }
+    const updated = await db.execute(sql`
+      UPDATE payments SET status = 'paid',
+        notes = CONCAT(COALESCE(notes, ''), ' | PayPal verified capture ', CAST(${String(resource.id || "")} AS TEXT)),
+        updated_at = now()
+      WHERE notes LIKE ${"%PayPal order " + orderId + " reference " + reference + "%"}
+        AND amount::numeric = ${capturedAmount}
+        AND status = 'pending'
+      RETURNING student_id
+    `);
+    const rows = (updated as unknown as { rows?: Array<{ student_id: number }> }).rows ?? [];
+    if (rows.length) {
+      await db.update(usersTable).set({ lastPaymentDate: new Date().toISOString() }).where(eq(usersTable.id, Number(rows[0].student_id)));
+    }
+    res.json({ received: true, updated: rows.length > 0 });
+  } catch {
+    res.status(502).json({ error: "PayPal webhook verification could not be completed." });
+  }
+});
+
 router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (user.role !== "student") { res.status(403).json({ error: "Learner access required" }); return; }
