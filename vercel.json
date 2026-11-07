@@ -33,6 +33,10 @@
       "destination": "/schools/index.html"
     },
     {
+      "source": "/organisations",
+      "destination": "/organisations/index.html"
+    },
+    {
       "source": "/resources",
       "destination": "/resources/index.html"
     },
