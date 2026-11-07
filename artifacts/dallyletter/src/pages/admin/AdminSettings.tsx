@@ -132,7 +132,7 @@ export default function AdminSettings() {
 
                 <div className="rounded-lg border p-3 text-sm text-muted-foreground">
                   <p className="font-semibold text-foreground">PayPal verified checkout</p>
-                  <p>Checkout requires PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, PAYPAL_WEBHOOK_ID and PUBLIC_APP_URL as server secrets. Configure the matching webhook URL at PayPal: /api/payments/paypal/webhook. Learner payments remain pending until PayPal confirms a completed capture.</p>
+                  <p>Checkout requires PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, PAYPAL_WEBHOOK_ID, PUBLIC_APP_URL and PUBLIC_API_URL as server secrets. Register {PUBLIC_API_URL}/api/payments/paypal/webhook in the same PayPal environment as the credentials. Learner payments remain pending until PayPal confirms a completed capture.</p>
                 </div>
 
                 {/* Trust Wallet */}
