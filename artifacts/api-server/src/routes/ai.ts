@@ -4,6 +4,7 @@ import { db, aiActionsTable, auditLogsTable, usersTable, platformSettingsTable }
 import { eq, desc } from "drizzle-orm";
 import { requireAuth } from "../lib/auth-middleware";
 import { normalizeRole, canUseStaffAI } from "../lib/role-access";
+import { managerHasPermission } from "../lib/manager-permission-policy";
 import { AIProviderError, getAIProvider, invalidateAICache, type AIMessage } from "../lib/ai-provider";
 
 const router = Router();
@@ -66,13 +67,25 @@ router.get("/ai/status", requireAuth, async (req, res): Promise<void> => {
 // POST /ai/chat — ELIDEMS AI command center
 router.post("/ai/chat", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  if (!canUseStaffAI(user)) { res.status(403).json({ error: "Access denied. ELIDEMS AI is for authorized staff." }); return; }
+  const role = normalizeRole(user.role);
+  const learnerMode = role === "student" || role === "learner" || role === "prefect";
+  const requestedMode = req.body?.mode === "agent" ? "agent" : "chat";
+  if (learnerMode && requestedMode === "agent") { res.status(403).json({ error: "Agent mode is not available to learner or prefect accounts." }); return; }
+  if (!learnerMode && !canUseStaffAI(user)) { res.status(403).json({ error: "Access denied. ELIDEMS AI is unavailable for this account." }); return; }
+  if (requestedMode === "agent" && ["manager","senior_manager","junior_manager"].includes(role) && !(await managerHasPermission(user, "ai.agent.use"))) {
+    res.status(403).json({ error: "The Owner has not granted ELIDEMS AI Agent access to this manager account.", permission: "ai.agent.use" }); return;
+  }
+  if (requestedMode === "agent" && role === "teacher" && ["draft","pending_review","rejected_pending_conversion"].includes(String(user.teacherApplicationStatus || "").toLowerCase())) {
+    res.status(403).json({ error: "Teacher Agent access begins after teacher authorization." }); return;
+  }
 
   const { messages } = req.body as { messages: AIMessage[] };
-  if (!Array.isArray(messages) || messages.length === 0 || messages.length > 50 ||
+  const messageLimit = learnerMode ? 20 : 50;
+  const characterLimit = learnerMode ? 4000 : 20000;
+  if (!Array.isArray(messages) || messages.length === 0 || messages.length > messageLimit ||
       messages.some(message => !message || !["user", "assistant"].includes(message.role) ||
-        typeof message.content !== "string" || message.content.length > 20000)) {
-    res.status(400).json({ error: "Provide 1–50 valid messages with text content no longer than 20,000 characters each." });
+        typeof message.content !== "string" || message.content.length > characterLimit)) {
+    res.status(400).json({ error: `Provide 1–${messageLimit} valid messages with text content no longer than ${characterLimit} characters each.` });
     return;
   }
 
@@ -84,7 +97,12 @@ router.post("/ai/chat", requireAuth, async (req, res): Promise<void> => {
     const ai = await getAIProvider();
     providerName = ai.name;
     stage = "provider_request";
-    const response = await ai.chat(messages, ELIDEMS_SYSTEM_PROMPT);
+    const systemPrompt = learnerMode
+      ? `You are ELIDEMS AI, a friendly learning companion inside Dallyletter Elidems. Help learners and prefects understand school subjects, practise skills, plan study, and communicate respectfully. Be warm, patient, age-appropriate, and never shame a learner. Do not request passwords, verification codes, payment credentials, home addresses, private contact details, or other unnecessary personal information. Do not reveal platform data, other users' information, internal moderation notes, staff-only tools, or account controls. Never claim to have changed grades, attendance, fees, permissions, or accounts. If a user reports bullying, exploitation, threats, explicit requests, scams, or credential theft, encourage them to use the platform's report/help controls and tell a trusted adult or authorized staff member when appropriate. Do not treat slang, jokes, dialect, disability, or ordinary disagreement as misconduct without context. Platform context: ${ELIDEMS_SYSTEM_PROMPT}`
+      : requestedMode === "agent"
+        ? `You are ELIDEMS AI Agent for an authorized Dallyletter Elidems staff member. You may help plan and prepare work only within the user's existing role and individually granted capabilities. Never infer permissions from a job title, never access Owner-only information for managers, never act on a different school or user scope, and never execute consequential operations from generated text. This endpoint is currently a planning/conversation interface; tell the user when an operation must be completed in its existing authorized workflow. ${ELIDEMS_SYSTEM_PROMPT}`
+        : ELIDEMS_SYSTEM_PROMPT;
+    const response = await ai.chat(messages, systemPrompt);
     if (typeof response !== "string" || !response.trim()) throw new AIProviderError(ai.name, "invalid_response");
 
     // Interaction logging is best-effort. A healthy model response must not be
@@ -119,6 +137,8 @@ router.post("/ai/chat", requireAuth, async (req, res): Promise<void> => {
       requestId,
       actionsExecuted: false,
       consequentialActionsRequireExplicitConfirmation: true,
+      mode: learnerMode ? "learning" : requestedMode,
+      actionsExecuted: false,
     });
   } catch (err) {
     const failure = err instanceof AIProviderError
