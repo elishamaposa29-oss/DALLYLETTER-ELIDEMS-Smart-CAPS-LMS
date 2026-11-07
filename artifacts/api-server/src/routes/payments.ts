@@ -168,10 +168,16 @@ router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<vo
           description: "DallyLetter school fees: " + payment.month + " " + payment.year,
           amount: { currency_code: "USD", value: amount.toFixed(2) },
         }],
-        application_context: {
-          brand_name: "DallyLetter Elidems", user_action: "PAY_NOW",
-          return_url: returnUrl,
-          cancel_url: cancelUrl,
+        payment_source: {
+          paypal: {
+            experience_context: {
+              brand_name: "DallyLetter Elidems",
+              user_action: "PAY_NOW",
+              shipping_preference: "NO_SHIPPING",
+              return_url: returnUrl,
+              cancel_url: cancelUrl,
+            },
+          },
         },
       }),
       signal: AbortSignal.timeout(20000),
