@@ -144,12 +144,14 @@ router.post("/ai/chat", requireAuth, async (req, res): Promise<void> => {
       ? err
       : new AIProviderError(providerName, stage === "provider_configuration" ? "configuration_unavailable" : "provider_unavailable");
     const statusCode = failure.code === "timeout" ? 504
+      : failure.code === "cancelled" ? 499
       : failure.code === "rate_limited" ? 429
       : failure.code === "configuration_unavailable" ? 503
       : failure.code === "invalid_credentials" || failure.code === "provider_rejected" ? 502
       : 502;
     const publicMessages: Record<string, string> = {
       timeout: "The AI provider took too long to respond. Please retry.",
+      cancelled: "The AI request was cancelled before completion.",
       network_error: "The AI provider could not be reached. Please retry.",
       rate_limited: "The AI provider is temporarily rate-limiting requests. Please retry shortly.",
       invalid_credentials: "The configured AI provider credentials were rejected. An Owner should review provider configuration.",
