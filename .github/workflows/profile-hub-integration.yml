@@ -89,7 +89,7 @@ jobs:
       - name: Build API
         run: pnpm --dir artifacts/api-server run build
       - name: Apply additive transfer form-data migration twice (idempotency check)
-        run: pnpm --dir lib/db run migrate:transfer-form-data && pnpm --dir lib/db run migrate:transfer-form-data
+        run: pnpm --dir lib/db run migrate:transfer-form-data && pnpm --dir lib/db run migrate:transfer-form-data && pnpm --dir lib/db run migrate:payment-transactions && pnpm --dir lib/db run migrate:payment-transactions
       - name: Start API with isolated provider mocks
         shell: bash
         run: |
