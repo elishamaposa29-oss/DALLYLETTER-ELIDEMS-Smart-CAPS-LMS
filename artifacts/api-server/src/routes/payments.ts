@@ -329,6 +329,7 @@ router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
   const orderId = String(resource?.supplementary_data?.related_ids?.order_id || "").slice(0, 100) || null;
   const captureId = String(resource?.id || "").slice(0, 100) || null;
   const transmissionId = String(req.header("paypal-transmission-id") || "").slice(0, 200) || null;
+  let signatureVerified = false;
   const audit = async (verified: boolean, outcome: string, detail: string): Promise<void> => {
     await db.execute(sql\`
       INSERT INTO payment_provider_webhook_audit
@@ -368,6 +369,7 @@ router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
       await audit(false, "signature_invalid", "PayPal rejected webhook signature verification");
       res.status(401).json({ error: "PayPal webhook signature is invalid." }); return;
     }
+    signatureVerified = true;
     if (eventType !== "PAYMENT.CAPTURE.COMPLETED") {
       await audit(true, "ignored", "Verified PayPal event is not a completed capture");
       res.json({ received: true, updated: false, ignored: true }); return;
@@ -464,7 +466,7 @@ router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
     }
     res.json({ received: true, updated: settled.outcome === "accepted", duplicate: settled.outcome === "duplicate" });
   } catch {
-    await audit(true, "processing_error", "Internal error prevented PayPal capture processing");
+    await audit(signatureVerified, "processing_error", "Internal error prevented PayPal capture processing");
     res.status(502).json({ error: "PayPal webhook verification could not be completed." });
   }
 });
