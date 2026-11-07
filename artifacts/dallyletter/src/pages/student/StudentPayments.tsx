@@ -22,6 +22,9 @@ export default function StudentPayments() {
   const { toast } = useToast();
   const [notifying, setNotifying] = useState(false);
   const [reported, setReported] = useState(false);
+  const [manualReportAmount, setManualReportAmount] = useState("");
+  const [manualReportMethod, setManualReportMethod] = useState("ecocash");
+  const [manualReportReference, setManualReportReference] = useState("");
   const [settings, setSettings] = useState<Settings>({ paynow_url: "", paypal_url: "", trust_wallet: "", ecocash_number: "", payment_instructions: "", school_fee_amount: "" });
   const [paynowBusy, setPaynowBusy] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState("");
@@ -148,7 +151,7 @@ export default function StudentPayments() {
       const res = await fetch(getApiUrl("/api/payments/notify-admin"), {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ amount: totalOwed }),
+        body: JSON.stringify({ amount: manualReportAmount.trim() ? Number(manualReportAmount) : totalOwed, method: manualReportMethod, providerReference: manualReportReference.trim() }),
       });
       if (res.ok) {
         setReported(true);
@@ -275,7 +278,12 @@ export default function StudentPayments() {
 
       {/* Notify school after paying */}
       {hasAnyPaymentMethod && (
-        <div className="pt-2">
+        <div className="space-y-3 pt-2">
+          <div className="grid gap-2 rounded-lg border p-3 sm:grid-cols-3">
+            <label className="text-xs font-semibold">Amount paid (USD)<input type="number" min="0.01" max="100000" step="0.01" value={manualReportAmount} onChange={e=>setManualReportAmount(e.target.value)} placeholder={totalOwed.toFixed(2)} className="mt-1 w-full rounded-md border bg-background p-2 text-sm"/></label>
+            <label className="text-xs font-semibold">Payment method<select value={manualReportMethod} onChange={e=>setManualReportMethod(e.target.value)} className="mt-1 w-full rounded-md border bg-background p-2 text-sm"><option value="ecocash">EcoCash / Econet</option><option value="bank_transfer">Bank transfer</option><option value="crypto">Crypto / wallet</option><option value="cash">Cash</option><option value="other">Other</option></select></label>
+            <label className="text-xs font-semibold">Receipt / transaction reference<input value={manualReportReference} onChange={e=>setManualReportReference(e.target.value)} maxLength={120} placeholder="Enter receipt reference (cash optional)" className="mt-1 w-full rounded-md border bg-background p-2 text-sm"/></label>
+          </div>
           {!reported ? (
             <Button
               variant="outline"
