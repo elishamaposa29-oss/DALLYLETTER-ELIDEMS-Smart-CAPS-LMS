@@ -158,7 +158,7 @@ router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<vo
     res.status(503).json({ error: "PayPal webhook verification is not configured; checkout is disabled." }); return;
   }
   const requestedAmount = req.body?.amount === undefined ? undefined : Number(req.body.amount);
-  if (req.body?.amount !== undefined && (!Number.isFinite(requestedAmount) || requestedAmount! <= 0 || requestedAmount! > 100000)) {
+  if (req.body?.amount !== undefined && (!Number.isFinite(requestedAmount) || requestedAmount! <= 0 || requestedAmount! > 100000 || Math.round(requestedAmount! * 100) !== requestedAmount! * 100)) {
     res.status(400).json({ error: "Enter a valid payment amount." }); return;
   }
   let payment: { id: number; amount: string; amount_paid: string | number; month: string; year: number } | undefined;
@@ -639,6 +639,10 @@ router.post("/payments", requireAuth, requireTeacherOrOwner, async (req, res): P
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+  if (Math.round(parsed.data.amount * 100) !== parsed.data.amount * 100) {
+    res.status(400).json({ error: "Payment amount must use no more than two decimal places." });
+    return;
+  }
 
   // Get student name
   const [student] = await db.select().from(usersTable).where(eq(usersTable.id, parsed.data.studentId));
@@ -701,7 +705,7 @@ router.post("/payments/notify-admin", requireAuth, async (req, res): Promise<voi
   const providerReference = typeof req.body?.providerReference === "string" ? req.body.providerReference.trim() : "";
   if (!["ecocash","bank_transfer","crypto","cash","other"].includes(method)) { res.status(400).json({error:"Choose a supported manual payment method."}); return; }
   if (method !== "cash" && providerReference.length > 120) { res.status(400).json({error:"Receipt reference is too long."}); return; }
-  if (!Number.isFinite(amount) || amount <= 0 || amount > 100000) {
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 100000 || Math.round(amount*100)!==amount*100) {
     res.status(400).json({ error: "Enter a valid payment amount greater than zero." });
     return;
   }
