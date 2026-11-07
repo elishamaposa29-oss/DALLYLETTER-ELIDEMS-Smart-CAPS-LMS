@@ -64,7 +64,6 @@ async function markPaynowAttempt(reference: string, status: "failed" | "cancelle
 
 // Public capability check: UI visibility must reflect the same server-side requirements as checkout.
 router.get("/payments/paynow/status", (_req, res): void => {
-  await ensurePaymentTransactionSchema();
   const integrationId = process.env.PAYNOW_INTEGRATION_ID?.trim();
   const integrationKey = process.env.PAYNOW_INTEGRATION_KEY?.trim();
   const publicBase = process.env.PUBLIC_APP_URL || process.env.VITE_PUBLIC_APP_URL || "";
@@ -352,6 +351,7 @@ router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
 });
 
 router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<void> => {
+  await ensurePaymentTransactionSchema();
   const user = req.currentUser!;
   if (user.role !== "student") { res.status(403).json({ error: "Learner access required" }); return; }
   const requestedAmount = req.body?.amount === undefined ? undefined : Number(req.body.amount);
@@ -389,7 +389,7 @@ router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<vo
     UPDATE payments p
     SET notes = CONCAT(COALESCE(p.notes, ''), ' | Paynow reference ', CAST(${reference} AS TEXT)), updated_at = now()
     FROM candidate WHERE p.id = candidate.id
-    RETURNING p.id, p.amount, p.month, p.year
+    RETURNING p.id, p.amount, p.amount_paid, p.month, p.year
   `);
   const claimedRows = (claimed as unknown as { rows?: Array<{ id: number; amount: string | number; amount_paid: string | number; month: string; year: number }> }).rows ?? [];
   const payment = claimedRows[0];
@@ -435,14 +435,14 @@ router.post("/payments/paynow/create", requireAuth, async (req, res): Promise<vo
     if (!response.ok || parsed.status?.toLowerCase() === "error" || !parsed.browserurl) {
       const reason = parsed.error || (response.ok ? "Paynow did not return a checkout URL" : "Paynow HTTP " + response.status);
       await db.execute(sql`UPDATE payment_transactions SET status='failed', updated_at=now() WHERE reference=${reference} AND status='pending'`).catch(() => undefined);
-      await db.execute(sql`UPDATE payment_transactions SET status='failed', updated_at=now() WHERE reference=${reference} AND status='pending'`).catch(() => undefined);
-    await markPaynowAttempt(reference, "failed", reason.slice(0, 300));
+      await markPaynowAttempt(reference, "failed", reason.slice(0, 300));
       res.status(502).json({ error: reason });
       return;
     }
     res.status(201).json({ reference, checkoutUrl: parsed.browserurl, amount: checkoutAmount, invoiceAmount, amountAlreadyPaid: alreadyPaid, outstandingBalance, status: parsed.status || "ok" });
   } catch (error) {
     const reason = error instanceof Error ? error.message : "Paynow is unavailable";
+    await db.execute(sql`UPDATE payment_transactions SET status='failed', updated_at=now() WHERE reference=${reference} AND status='pending'`).catch(() => undefined);
     await markPaynowAttempt(reference, "failed", reason.slice(0, 300));
     res.status(502).json({ error: "Paynow checkout could not be initialized" });
   }
