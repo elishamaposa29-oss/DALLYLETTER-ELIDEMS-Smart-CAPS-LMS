@@ -114,7 +114,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               // will use a new namespace if any authority field changed.
               DeviceEventEmitter.emit("dallyletter-auth-changed");
             } else if (response.status === 401 || response.status === 403) {
-              await Promise.all([AsyncStorage.removeItem(TOKEN_KEY), AsyncStorage.removeItem(USER_KEY), AsyncStorage.removeItem(AUTH_CACHE_EPOCH_KEY), AsyncStorage.removeItem(AUTH_CACHE_VERIFIED_KEY)]);
+              // A rejected session must also release the old account's server-side
+              // push subscription and local device token; otherwise a later login
+              // could inherit stale notification ownership on this device.
+              await unregisterNativePushForAccount(storedToken);
+              await Promise.all([AsyncStorage.removeItem(TOKEN_KEY), AsyncStorage.removeItem(USER_KEY), AsyncStorage.removeItem(NATIVE_PUSH_TOKEN_KEY), AsyncStorage.removeItem(AUTH_CACHE_EPOCH_KEY), AsyncStorage.removeItem(AUTH_CACHE_VERIFIED_KEY)]);
               DeviceEventEmitter.emit("dallyletter-auth-changed");
             } else {
               setToken(storedToken);
