@@ -368,6 +368,10 @@ export const PaymentStatus = {
   paid: "paid",
   pending: "pending",
   overdue: "overdue",
+  partially_paid: "partially_paid",
+  failed: "failed",
+  cancelled: "cancelled",
+  refunded: "refunded",
 } as const;
 
 export interface Payment {
