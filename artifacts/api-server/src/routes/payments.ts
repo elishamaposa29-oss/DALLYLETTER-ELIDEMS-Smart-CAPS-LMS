@@ -189,7 +189,7 @@ router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<vo
   } catch (error) {
     if (payment) {
       await db.execute(sql`
-        UPDATE payments SET notes = regexp_replace(COALESCE(notes, ''), ${'\\s*\\|\\s*' + reservation}, '', 'g'), updated_at = now()
+        UPDATE payments SET notes = replace(COALESCE(notes, ''), ${" | " + reservation}, ''), updated_at = now()
         WHERE id = ${payment.id} AND student_id = ${user.id} AND status IN ('pending', 'overdue')
       `).catch(() => undefined);
     }
