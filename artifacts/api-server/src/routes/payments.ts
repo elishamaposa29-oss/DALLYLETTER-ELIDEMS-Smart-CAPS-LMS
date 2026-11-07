@@ -506,6 +506,32 @@ router.post("/payments/paynow/result", async (req, res): Promise<void> => {
     res.status(200).send("OK");
     return;
   }
+  if (normalizedStatus === "refunded") {
+    await db.transaction(async (tx) => {
+      const refunded = await tx.execute(sql`
+        UPDATE payment_transactions SET status='refunded', updated_at=now()
+        WHERE id=${paymentAttempt.id} AND status='paid'
+        RETURNING payment_id, amount
+      `);
+      const refundedRows = (refunded as unknown as { rows?: Array<{ payment_id: number; amount: string | number }> }).rows ?? [];
+      if (!refundedRows.length) return;
+      const refundAmount = Number(refundedRows[0].amount);
+      await tx.execute(sql`
+        UPDATE payments
+        SET amount_paid=GREATEST(0,COALESCE(amount_paid,0)-${refundAmount}),
+            status=CASE
+              WHEN GREATEST(0,COALESCE(amount_paid,0)-${refundAmount}) >= amount THEN 'paid'
+              WHEN GREATEST(0,COALESCE(amount_paid,0)-${refundAmount}) > 0 THEN 'partially_paid'
+              ELSE 'pending'
+            END,
+            notes=CONCAT(COALESCE(notes,''),' | Paynow refund ',CAST(${reference} AS TEXT),' amount ',CAST(${refundAmount.toFixed(2)} AS TEXT)),
+            updated_at=now()
+        WHERE id=${Number(refundedRows[0].payment_id)}
+      `);
+    });
+    res.status(200).send("OK");
+    return;
+  }
   if (normalizedStatus !== "paid") { res.status(200).send("OK"); return; }
 
   const result = await db.transaction(async (tx) => {
