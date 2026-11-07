@@ -7,6 +7,7 @@ const TOKEN_KEY = "dallyletter_token";
 const USER_KEY = "dallyletter_user";
 const NATIVE_PUSH_TOKEN_KEY = "dallyletter_native_expo_push_token_v1";
 const AUTH_CACHE_EPOCH_KEY = "dallyletter_auth_cache_epoch_v1";
+const AUTH_CACHE_VERIFIED_KEY = "dallyletter_auth_cache_verified_v1";
 const newAuthCacheEpoch = () => Date.now().toString(36) + "_" + Math.random().toString(36).slice(2);
 
 async function unregisterNativePushForAccount(authToken: string | null, userId?: number) {
@@ -81,6 +82,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Revalidate cached credentials on every cold start so expired/revoked
           // sessions cannot restore a stale account into the app.
           try {
+            // Do not hydrate private/offline API data until this exact session
+            // has been revalidated by the server on this app launch.
+            await AsyncStorage.removeItem(AUTH_CACHE_VERIFIED_KEY);
             const response = await fetch(getApiUrl("/api/auth/me"), { headers: { Authorization: "Bearer " + storedToken } });
             if (response.ok) {
               const currentUser = await response.json();
@@ -103,11 +107,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 await AsyncStorage.setItem(AUTH_CACHE_EPOCH_KEY, cacheEpoch);
               }
               await AsyncStorage.setItem(USER_KEY, JSON.stringify(currentUser));
+              await AsyncStorage.setItem(AUTH_CACHE_VERIFIED_KEY, cacheEpoch);
               setToken(storedToken);
               setUser(currentUser);
-              if (authorityChanged) DeviceEventEmitter.emit("dallyletter-auth-changed");
+              // Always notify the cache hydrator after server validation. It
+              // will use a new namespace if any authority field changed.
+              DeviceEventEmitter.emit("dallyletter-auth-changed");
             } else if (response.status === 401 || response.status === 403) {
-              await Promise.all([AsyncStorage.removeItem(TOKEN_KEY), AsyncStorage.removeItem(USER_KEY), AsyncStorage.removeItem(AUTH_CACHE_EPOCH_KEY)]);
+              await Promise.all([AsyncStorage.removeItem(TOKEN_KEY), AsyncStorage.removeItem(USER_KEY), AsyncStorage.removeItem(AUTH_CACHE_EPOCH_KEY), AsyncStorage.removeItem(AUTH_CACHE_VERIFIED_KEY)]);
               DeviceEventEmitter.emit("dallyletter-auth-changed");
             } else {
               setToken(storedToken);
@@ -137,6 +144,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       AsyncStorage.setItem(TOKEN_KEY, newToken),
       AsyncStorage.setItem(USER_KEY, JSON.stringify(newUser)),
       AsyncStorage.setItem(AUTH_CACHE_EPOCH_KEY, cacheEpoch),
+      AsyncStorage.setItem(AUTH_CACHE_VERIFIED_KEY, cacheEpoch),
     ]);
     setToken(newToken);
     setUser(newUser);
@@ -151,6 +159,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       AsyncStorage.removeItem(USER_KEY),
       AsyncStorage.removeItem(NATIVE_PUSH_TOKEN_KEY),
       AsyncStorage.removeItem(AUTH_CACHE_EPOCH_KEY),
+      AsyncStorage.removeItem(AUTH_CACHE_VERIFIED_KEY),
     ]);
     setToken(null);
     setUser(null);
