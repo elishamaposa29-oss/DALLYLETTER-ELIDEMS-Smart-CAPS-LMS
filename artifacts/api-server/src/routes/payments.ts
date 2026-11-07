@@ -198,11 +198,14 @@ router.post("/payments/paypal/webhook", async (req, res): Promise<void> => {
     const order = await orderResponse.json() as { status?: string; purchase_units?: Array<{ invoice_id?: string; custom_id?: string; amount?: { currency_code?: string; value?: string }; payments?: { captures?: Array<{ id?: string; status?: string; amount?: { currency_code?: string; value?: string } }> } }> };
     const unit = order.purchase_units?.[0];
     const reference = String(unit?.invoice_id || unit?.custom_id || "");
+    const capture = unit?.payments?.captures?.find(item => String(item.id || "") === String(resource.id || ""));
     const capturedAmount = Number(resource?.amount?.value);
     const orderAmount = Number(unit?.amount?.value);
-    if (order.status !== "COMPLETED" || !/^DLP-\d+-\d+-[a-f0-9]{8}$/i.test(reference) ||
+    if (order.status !== "COMPLETED" || capture?.status !== "COMPLETED" ||
+        !/^DLP-\d+-\d+-[a-f0-9]{8}$/i.test(reference) ||
         resource?.amount?.currency_code !== "USD" || unit?.amount?.currency_code !== "USD" ||
-        !Number.isFinite(capturedAmount) || capturedAmount <= 0 || capturedAmount !== orderAmount) {
+        capture?.amount?.currency_code !== "USD" || !Number.isFinite(capturedAmount) ||
+        capturedAmount <= 0 || capturedAmount !== orderAmount || Number(capture.amount?.value) !== capturedAmount) {
       res.status(400).json({ error: "PayPal capture does not match a valid school-fee order." }); return;
     }
     const updated = await db.execute(sql`
