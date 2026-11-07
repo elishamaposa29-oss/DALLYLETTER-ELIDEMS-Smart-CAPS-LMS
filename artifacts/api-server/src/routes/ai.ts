@@ -220,7 +220,7 @@ router.post("/ai/test-connection", requireAuth, async (req, res): Promise<void> 
     res.json({ success, provider: ai.name, isLive: ai.name !== "mock", response: response.slice(0, 200) });
   } catch (err) {
     const failure = err instanceof AIProviderError ? err : new AIProviderError("configuration", "provider_unavailable");
-    res.status(failure.code === "timeout" ? 504 : failure.code === "rate_limited" ? 429 : 502)
+    res.status(failure.code === "timeout" ? 504 : failure.code === "cancelled" ? 499 : failure.code === "rate_limited" ? 429 : 502)
       .json({ success: false, code: failure.code, error: "AI provider connection failed safely. Review the provider configuration and retry." });
   }
 });
@@ -267,7 +267,7 @@ router.post("/ai/analyze", requireAuth, async (req, res): Promise<void> => {
     res.json({ result, provider: ai.name });
   } catch (err) {
     const failure = err instanceof AIProviderError ? err : new AIProviderError("configuration", "provider_unavailable");
-    const statusCode = failure.code === "timeout" ? 504 : failure.code === "rate_limited" ? 429 : 502;
+    const statusCode = failure.code === "timeout" ? 504 : failure.code === "cancelled" ? 499 : failure.code === "rate_limited" ? 429 : 502;
     res.status(statusCode).json({
       error: "AI analysis could not be completed. Please retry or ask the Owner to review provider configuration.",
       code: failure.code,
