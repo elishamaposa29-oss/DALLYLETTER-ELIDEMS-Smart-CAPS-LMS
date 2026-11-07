@@ -10,7 +10,7 @@ const dir = await mkdtemp(join(tmpdir(), "dallyletter-offline-queue-tests-"));
 try {
   const outfile = join(dir, "QueuedSubmissionStoreCore.test.mjs");
   await build({
-    entryPoints: [join(scriptDir, "../components/QueuedSubmissionStoreCore.test.ts")],
+    entryPoints: [join(scriptDir, "../../api-server/scripts/QueuedSubmissionStoreCore.test.ts")],
     outfile,
     bundle: true,
     platform: "node",
