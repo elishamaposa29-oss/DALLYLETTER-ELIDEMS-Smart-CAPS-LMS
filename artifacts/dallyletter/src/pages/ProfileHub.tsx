@@ -106,7 +106,10 @@ export default function ProfileHub() {
     ["owner","platform_owner","student","learner","prefect"].includes(normalizedAccountRole) ||
     (normalizedAccountRole === "teacher" && ["approved","not_applicable"].includes(String((user as any)?.teacherApplicationStatus ?? "not_applicable").trim().toLowerCase()))
   ));
-  const canReviewTransferLetters = ["manager","senior_manager","owner","platform_owner"].includes(String(user?.role||"").trim().toLowerCase().replace(/[ -]+/g,"_"));
+  const platformOwner = ["owner","platform_owner"].includes(normalizedAccountRole);
+  const managerLike = ["manager","senior_manager","junior_manager"].includes(normalizedAccountRole) || (normalizedAccountRole === "teacher" && Boolean((user as any)?.isManager) && ["approved","not_applicable"].includes(String((user as any)?.teacherApplicationStatus||"not_applicable").toLowerCase()));
+  const [managerPermissions,setManagerPermissions] = useState<Record<string,boolean>>({});
+  const canReviewTransferLetters = platformOwner || (managerLike && managerPermissions["transfers.view"] === true);
   async function pasteVerificationCode(target: "phone" | "notification" | "recovery") {
     try {
       const clipboard = await navigator.clipboard.readText();
@@ -309,6 +312,16 @@ export default function ProfileHub() {
     if(!response.ok) throw new Error(data.error || "Could not load profile information.");
     return data;
   };
+  useEffect(() => {
+    if (!managerLike || platformOwner || !token) { setManagerPermissions({}); return; }
+    let active = true;
+    void fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: "Bearer " + token, "Cache-Control": "no-store" } })
+      .then(async response => { const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || "Manager permissions unavailable"); return data; })
+      .then(data => { if (active) setManagerPermissions(data.permissions || {}); })
+      .catch(() => { if (active) setManagerPermissions({}); });
+    return () => { active = false; };
+  }, [user?.id, managerLike, platformOwner, token]);
+
   const load = async () => {
     if(!profileId || !Number.isSafeInteger(profileId)) return;
     try {
@@ -350,7 +363,7 @@ export default function ProfileHub() {
       }
     } catch(e) { setMessage(e instanceof Error ? e.message : "Profile could not be loaded."); }
   };
-  useEffect(()=>{ void load(); },[profileId,isOwner]);
+  useEffect(()=>{ void load(); },[profileId,isOwner,canReviewTransferLetters]);
   const addQualification = async () => {
     setBusy(true); setMessage("");
     try {
