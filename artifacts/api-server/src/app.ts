@@ -13,10 +13,12 @@ const app: Express = express();
 // Owner-configured teacher CV expiry is checked by the API service on startup and every five minutes.
 startTeacherCvExpiryScheduler();
 
-const configuredOrigins = (process.env.CORS_ORIGINS ?? "")
-  .split(",")
-  .map((value) => value.trim())
-  .filter(Boolean);
+const configuredOrigins = [
+  process.env.FRONTEND_PRODUCTION_ORIGIN,
+  ...(process.env.CORS_ORIGINS ?? "").split(","),
+]
+  .map((value) => value?.trim())
+  .filter((value): value is string => Boolean(value));
 
 const defaultOrigins = [
   "http://localhost:3000",
@@ -27,13 +29,12 @@ const defaultOrigins = [
   "http://127.0.0.1:8081",
 ];
 
-const requiredOrigins = [
-  "https://dallyletterelidemslearningplatforme-six.vercel.app",
-  "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app",
-  // Explicit production frontend origin; additional deployment URLs belong in CORS_ORIGINS.
-];
-
-const allowedOrigins = new Set([...configuredOrigins, ...requiredOrigins, ...(process.env.NODE_ENV === "production" ? [] : defaultOrigins)]);
+// Production trusts only the stable frontend origin and exact, operator-approved
+// preview origins from CORS_ORIGINS. Never use wildcard or suffix matching.
+const allowedOrigins = new Set([
+  ...configuredOrigins,
+  ...(process.env.NODE_ENV === "production" ? [] : defaultOrigins),
+]);
 
 app.disable("x-powered-by");
 // Render terminates TLS at its reverse proxy; trust only the nearest proxy hop
