@@ -34,6 +34,7 @@ async function ensurePaymentTransactionSchema(): Promise<void> {
   if (!paymentTransactionSchemaReady) {
     paymentTransactionSchemaReady = (async () => {
       await db.execute(sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS amount_paid numeric(10,2) NOT NULL DEFAULT 0`);
+      await db.execute(sql`UPDATE payments SET amount_paid=amount WHERE lower(status)='paid' AND COALESCE(amount_paid,0)=0`);
       await db.execute(sql`
         CREATE TABLE IF NOT EXISTS payment_transactions (
           id bigserial PRIMARY KEY,
@@ -499,7 +500,7 @@ router.post("/payments/paynow/result", async (req, res): Promise<void> => {
     `);
     await db.execute(sql`
       UPDATE payments
-      SET notes=CONCAT(COALESCE(notes,''),' | Paynow callback: ',CAST(${providerStatus} AS TEXT)), updated_at=now()
+      SET notes=CONCAT(replace(COALESCE(notes,''), ${"Paynow reference " + reference}, ''),' | Paynow callback: ',CAST(${providerStatus} AS TEXT)), updated_at=now()
       WHERE id=${paymentAttempt.payment_id}
     `);
     res.status(200).send("OK");
@@ -595,6 +596,7 @@ router.post("/payments", requireAuth, requireTeacherOrOwner, async (req, res): P
     studentName: student.name,
     recordedBy: currentUser.id,
     amount: String(parsed.data.amount),
+    amountPaid: parsed.data.status === "paid" ? String(parsed.data.amount) : "0",
   }).returning();
 
   // Update student's lastPaymentDate if status is paid
