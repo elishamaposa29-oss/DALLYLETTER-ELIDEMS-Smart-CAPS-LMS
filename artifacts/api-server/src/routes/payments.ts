@@ -146,7 +146,7 @@ router.post("/payments/paypal/create", requireAuth, async (req, res): Promise<vo
         FOR UPDATE SKIP LOCKED
         LIMIT 1
       )
-      UPDATE payments p SET notes = CONCAT(COALESCE(p.notes, ''), ' | ', ${reservation}), updated_at = now()
+      UPDATE payments p SET notes = CONCAT(COALESCE(p.notes, ''), ' | ', CAST(${reservation} AS TEXT)), updated_at = now()
       FROM candidate WHERE p.id = candidate.id
       RETURNING p.id, p.amount, p.month, p.year
     `);
