@@ -18,7 +18,33 @@ CREATE TABLE IF NOT EXISTS public.payment_transactions (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE public.payment_transactions
-  ADD COLUMN IF NOT EXISTS provider_reference text;
+  ADD COLUMN IF NOT EXISTS provider_reference text,
+  ADD COLUMN IF NOT EXISTS provider_order_id text,
+  ADD COLUMN IF NOT EXISTS provider_capture_id text,
+  ADD COLUMN IF NOT EXISTS currency text NOT NULL DEFAULT 'USD';
+CREATE UNIQUE INDEX IF NOT EXISTS payment_transactions_provider_order_unique
+  ON public.payment_transactions(provider,provider_order_id)
+  WHERE provider_order_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS payment_transactions_provider_capture_unique
+  ON public.payment_transactions(provider,provider_capture_id)
+  WHERE provider_capture_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS public.payment_provider_webhook_audit (
+  id bigserial PRIMARY KEY,
+  provider text NOT NULL,
+  event_id text,
+  transmission_id text,
+  event_type text,
+  order_id text,
+  capture_id text,
+  signature_verified boolean NOT NULL DEFAULT false,
+  outcome text NOT NULL,
+  detail text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS payment_provider_webhook_audit_created_idx
+  ON public.payment_provider_webhook_audit(provider,created_at DESC);
+CREATE INDEX IF NOT EXISTS payment_provider_webhook_audit_event_idx
+  ON public.payment_provider_webhook_audit(provider,event_id);
 CREATE UNIQUE INDEX IF NOT EXISTS payment_transactions_manual_receipt_unique
   ON public.payment_transactions(payment_id, provider, provider_reference)
   WHERE provider LIKE 'manual:%' AND provider_reference IS NOT NULL;
@@ -41,6 +67,18 @@ BEGIN
       AND indexname='payment_transactions_manual_receipt_global_unique'
   ) THEN
     RAISE EXCEPTION 'payment transaction manual receipt uniqueness index missing';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='payment_transactions' AND column_name='provider_order_id'
+  ) OR NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='payment_transactions' AND column_name='provider_capture_id'
+  ) OR NOT EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema='public' AND table_name='payment_provider_webhook_audit'
+  ) THEN
+    RAISE EXCEPTION 'PayPal order/capture audit schema verification failed';
   END IF;
 END $$;
 COMMIT;
