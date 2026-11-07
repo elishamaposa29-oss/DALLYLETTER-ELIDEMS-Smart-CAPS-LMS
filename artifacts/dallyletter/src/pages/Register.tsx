@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, GraduationCap, CheckCircle2 } from "lucide-react";
+import { Loader2, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { RegisterUserBodyRole, getApiUrl } from "@workspace/api-client-react";
 
@@ -99,7 +99,7 @@ export default function Register() {
           {/* Logo */}
           <div className="flex items-center gap-3 mb-auto">
             <div className="bg-gradient-to-br from-amber-400 to-amber-600 p-2.5 rounded-2xl shadow-lg shadow-amber-500/20">
-              <GraduationCap className="h-6 w-6 text-white" />
+              <img src="/icons/icon-192.png" alt="" className="h-6 w-6 rounded-md object-cover" />
             </div>
             <div>
               <span className="text-white font-bold text-xl leading-none block">DallyLetter</span>
@@ -142,7 +142,7 @@ export default function Register() {
         {/* Mobile logo */}
         <div className="lg:hidden flex items-center gap-2.5 px-6 py-5 border-b bg-white">
           <div className="bg-gradient-to-br from-amber-400 to-amber-600 p-2 rounded-xl shadow-md">
-            <GraduationCap className="h-5 w-5 text-white" />
+            <img src="/icons/icon-192.png" alt="" className="h-5 w-5 rounded-md object-cover" />
           </div>
           <div>
             <span className="font-bold text-[#0a1628] text-lg leading-none block">DallyLetter</span>
