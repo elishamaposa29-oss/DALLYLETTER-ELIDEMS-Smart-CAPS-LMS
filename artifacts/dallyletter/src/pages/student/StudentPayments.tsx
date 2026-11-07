@@ -24,6 +24,7 @@ export default function StudentPayments() {
   const [settings, setSettings] = useState<Settings>({ paynow_url: "", paypal_url: "", trust_wallet: "", ecocash_number: "", payment_instructions: "" });
   const [paynowBusy, setPaynowBusy] = useState(false);
   const [paynowReady, setPaynowReady] = useState(false);
+  const [paypalReady, setPaypalReady] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("dallyletter_token");
@@ -34,7 +35,10 @@ export default function StudentPayments() {
     fetch(getApiUrl("/api/payments/paynow/status"), { cache: "no-store" })
       .then(async r => { if (!r.ok) throw new Error("Paynow status unavailable"); return r.json(); })
       .then(data => setPaynowReady(data.configured === true))
-      .catch(() => setPaynowReady(false));
+      .catch(() => setPaynowReady(false));    fetch(getApiUrl("/api/payments/paypal/status"), { cache: "no-store" })
+      .then(async r => { if (!r.ok) throw new Error("PayPal status unavailable"); return r.json(); })
+      .then(data => setPaypalReady(data.configured === true))
+      .catch(() => setPaypalReady(false));
   }, []);
 
   const hasOverdue = payments?.some(p => p.status === "overdue");
@@ -56,12 +60,27 @@ export default function StudentPayments() {
     finally { setPaynowBusy(false); }
   };
 
-  const handlePayPal = () => {
-    if (settings.paypal_url) {
-      const url = settings.paypal_url.startsWith("http") ? settings.paypal_url : `https://paypal.me/${settings.paypal_url}`;
-      window.open(url, "_blank", "noopener,noreferrer");
-    } else {
-      toast({ variant: "destructive", title: "PayPal not configured", description: "Please contact your school administrator." });
+  const handlePayPal = async () => {
+    const amount = Number(totalOwed);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast({ variant: "destructive", title: "Nothing to pay", description: "There is no outstanding balance." });
+      return;
+    }
+    setPaynowBusy(true);
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const response = await fetch(getApiUrl("/api/payments/paypal/create"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify({ amount }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.checkoutUrl) throw new Error(data.error || "Could not start PayPal checkout.");
+      window.location.assign(data.checkoutUrl);
+    } catch (error) {
+      toast({ variant: "destructive", title: "PayPal payment could not start", description: error instanceof Error ? error.message : "Try again." });
+    } finally {
+      setPaynowBusy(false);
     }
   };
 
@@ -123,7 +142,7 @@ export default function StudentPayments() {
     }
   };
 
-  const hasAnyPaymentMethod = paynowReady || settings.paypal_url || settings.trust_wallet || settings.ecocash_number;
+  const hasAnyPaymentMethod = paynowReady || paypalReady || settings.trust_wallet || settings.ecocash_number;
 
   const PaymentMethods = () => (
     <div className="space-y-3">
@@ -136,7 +155,7 @@ export default function StudentPayments() {
       {paynowReady && (<Button onClick={handlePaynowLive} disabled={paynowBusy} className="h-auto py-3 flex-col gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"><div className="font-bold">{paynowBusy ? "Starting…" : "Paynow"}</div><span className="text-[11px] opacity-80 font-normal">Secure live checkout</span><ExternalLink className="h-3 w-3 opacity-70" /></Button>)}
 
       {/* PayPal */}
-        {settings.paypal_url && (
+        {paypalReady && (
           <Button
             onClick={handlePayPal}
             className="h-auto py-3 flex-col gap-1.5 bg-[#003087] hover:bg-[#00256e] text-white"
