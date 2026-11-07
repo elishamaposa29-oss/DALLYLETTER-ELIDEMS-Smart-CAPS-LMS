@@ -491,7 +491,7 @@ router.post("/payments/paynow/result", async (req, res): Promise<void> => {
     res.status(400).send("Payment amount does not match this checkout");
     return;
   }
-  if (paymentAttempt.status === "paid") { res.status(200).send("OK"); return; }
+  if (paymentAttempt.status === "paid" && normalizedStatus !== "refunded") { res.status(200).send("OK"); return; }
 
   if (normalizedStatus === "failed" || normalizedStatus === "cancelled") {
     await db.execute(sql`
