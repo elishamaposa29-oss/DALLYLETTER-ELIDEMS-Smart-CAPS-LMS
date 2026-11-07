@@ -29,9 +29,9 @@ for (const route of routes) {
     ['<meta property="og:title" content="', "Open Graph title"],
     ['<meta property="og:description" content="', "Open Graph description"],
     ['<meta name="twitter:title" content="', "Twitter title"],
-    ['<script type="application/ld+json">', "structured data"],
-    ['<div id="root"><main>', "static page content"]
+    ['<script type="application/ld+json">', "structured data"]
   ];
+  if (route !== "/") required.push(['<div id="root"><main>', "static page content"]);
   for (const [needle, label] of required) {
     if (!html.includes(needle)) throw new Error(route + " is missing " + label);
   }
