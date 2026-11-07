@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://dallyletter-elidems-smart-caps-learning-platfor--elishamaposa29.replit.app/sitemap.xml
+# Add the sitemap URL after the canonical public website domain is confirmed.
