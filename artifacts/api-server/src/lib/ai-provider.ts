@@ -96,18 +96,19 @@ class MockProvider implements AIProvider {
   }
 
   async moderateContent(text: string): Promise<ModerationResult> {
-    const lower = text.toLowerCase();
-    const critical = ["kill", "murder", "suicide", "bomb", "weapon", "shoot", "stab"];
-    const high = ["hate you", "stupid idiot", "you're ugly", "i'll hurt", "shut up loser", "harass"];
-    const medium = ["spam", "scam", "send money", "whatsapp number", "contact outside", "wire transfer"];
-    for (const p of critical) {
-      if (lower.includes(p)) return { flagged: true, reason: "Threatening or violent language", severity: "critical", categories: ["threats", "violence"] };
-    }
-    for (const p of high) {
-      if (lower.includes(p)) return { flagged: true, reason: "Potentially harmful or harassing language", severity: "high", categories: ["harassment"] };
-    }
-    for (const p of medium) {
-      if (lower.includes(p)) return { flagged: true, reason: "Suspicious content or spam", severity: "medium", categories: ["spam"] };
+    const lower = text.normalize("NFKC").toLowerCase();
+    const rules: Array<{ terms: string[]; severity: ModerationResult["severity"]; category: string; reason: string }> = [
+      { terms: ["i will kill you", "i'm going to kill you", "i am going to kill you", "i will hurt you", "i am coming to hurt you", "i'll shoot you"], severity: "critical", category: "threats", reason: "Possible direct threat requiring human review" },
+      { terms: ["send nudes", "send me nude", "child sexual", "sexual blackmail", "explicit photo of a child"], severity: "critical", category: "sexual_exploitation", reason: "Possible sexual exploitation or explicit solicitation" },
+      { terms: ["send me your password", "share your otp", "give me your verification code", "send your login code", "share your recovery code", "send your bank pin"], severity: "high", category: "credential_theft", reason: "Possible credential or verification-code theft" },
+      { terms: ["pay a fee to claim your prize", "send money to claim", "guaranteed investment profit", "click here to verify your password", "your account will close unless you login"], severity: "high", category: "scam_fraud", reason: "Possible scam or phishing attempt" },
+      { terms: ["buy my products", "order from my business", "limited time sale", "use my affiliate link", "subscribe to my paid channel"], severity: "medium", category: "unapproved_marketing", reason: "Possible unrelated commercial promotion" },
+      { terms: ["hate speech", "i hate all [group]", "you are worthless", "nobody wants you", "i will expose your address"], severity: "high", category: "harassment", reason: "Possible harassment or privacy abuse" },
+    ];
+    for (const rule of rules) {
+      if (rule.terms.some(term => lower.includes(term))) {
+        return { flagged: true, reason: rule.reason, severity: rule.severity, categories: [rule.category] };
+      }
     }
     return { flagged: false, severity: "low", categories: [] };
   }
