@@ -17,6 +17,7 @@ type TeacherCv = {
   references: string;
   personalDetails: string;
   photoDocumentId: string;
+  surveyAnswers?: string;
   surveySubmittedAt?: string;
 };
 
@@ -110,7 +111,7 @@ export function TeacherCvEditor() {
     return () => { active = false; };
   }, [user?.id, token]);
 
-  const save = async (showSuccess = true): Promise<boolean> => {
+  const saveCv = async (showSuccess = true): Promise<boolean> => {
     if (!token || saving) return false;
     setSaving(true);
     try {
@@ -186,7 +187,7 @@ export function TeacherCvEditor() {
 
   const submitApplication = async () => {
     if (!token || submitting) return;
-    const saved = await save(false);
+    const saved = await saveCv(false);
     if (!saved) return;
     setSubmitting(true);
     try {
@@ -335,7 +336,9 @@ export function TeacherCvEditor() {
         </TouchableOpacity>
         {!!surveySubmittedAt && <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 6 }}>Submitted: {new Date(surveySubmittedAt).toLocaleString()}</Text>}
       </View>
-      <TouchableOpacity disabled={saving || loading || submitting} onPress={save} style={{ backgroundColor: colors.primary, borderRadius: 10, padding: 13, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, opacity: saving || loading || submitting ? 0.65 : 1 }}>
+      <TouchableOpacity disabled={saving || loading || submitting} onPress={() => {
+          void saveCv(true);
+        }} style={{ backgroundColor: colors.primary, borderRadius: 10, padding: 13, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, opacity: saving || loading || submitting ? 0.65 : 1 }}>
         {saving ? <ActivityIndicator color="#fff" /> : <Feather name="save" size={16} color="#fff" />}
         <Text style={{ color: "#fff", fontWeight: "700" }}>{saving ? "Saving…" : "Save teacher CV"}</Text>
       </TouchableOpacity>
