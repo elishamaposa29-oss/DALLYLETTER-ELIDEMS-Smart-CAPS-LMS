@@ -301,14 +301,13 @@ let _cacheTs = 0;
 
 export async function getAIProvider(): Promise<AIProvider> {
   if (_cached && Date.now() - _cacheTs < 30_000) return _cached;
-  let rows: Awaited<ReturnType<typeof db.select<typeof platformSettingsTable>>> | undefined;
+  const cfg: Record<string, string> = {};
   try {
-    rows = await db.select().from(platformSettingsTable);
+    const rows = await db.select().from(platformSettingsTable);
+    for (const r of rows) cfg[r.key] = r.value ?? "";
   } catch {
     throw new AIProviderError("configuration", "configuration_unavailable");
   }
-  const cfg: Record<string, string> = {};
-  for (const r of rows) cfg[r.key] = r.value ?? "";
 
   // Database settings override deployment environment variables. This keeps
   // owner-configured settings stable while allowing secure server-side setup
