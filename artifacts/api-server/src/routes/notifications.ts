@@ -43,6 +43,11 @@ router.post("/notifications", requireAuth, requireManagerPermissionIfManager("no
   if((hasRecipientId&&(!Number.isSafeInteger(specificId)||specificId<=0))||(req.body?.recipientType==="specific"&&!hasRecipientId)){res.status(400).json({error:"Choose a valid specific recipient."});return;}
   const isSpecific=hasRecipientId;
   const isBroadcast=!isSpecific&&!recipientRole;
+  // Prefects use the dedicated persisted lesson-request workflow; they cannot create role-wide or global broadcasts.
+  if (actor.isPrefect && !managerActor && !isSpecific) {
+    res.status(403).json({ error: "Prefects must use the dedicated lesson-request workflow instead of sending broadcasts." });
+    return;
+  }
   if(managerActor && (recipientRole||isBroadcast) && !(await managerHasPermission(actor,"notifications.broadcast"))){res.status(403).json({error:"Owner has not granted broadcast permission."});return;}
   const parsed = CreateNotificationBody.safeParse({ ...req.body, recipientId: isSpecific ? specificId : null });
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
