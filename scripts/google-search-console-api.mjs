@@ -76,6 +76,16 @@ export async function googleApi(url, token, options = {}) {
 
 export async function createGoogleSession() {
   const account = getServiceAccount();
-  if (!account) return null;
-  return { token: await getAccessToken(account), siteUrl: getSiteUrl() };
+  const token = await getAccessToken(account);
+  const siteUrl = getSiteUrl();
+  const properties = await googleApi("https://www.googleapis.com/webmasters/v3/sites", token);
+  const property = (properties.siteEntry || []).find((entry) => entry.siteUrl === siteUrl);
+  if (!property) {
+    throw new Error("The service account " + account.client_email + " cannot access the Search Console property " + siteUrl + ". Add this service account as a Full user in Search Console > Settings > Users and permissions, and verify the property first.");
+  }
+  if (property.permissionLevel === "siteUnverifiedUser") {
+    throw new Error("The service account is listed as unverified for " + siteUrl + ". Complete property ownership verification before running reports or submitting the sitemap.");
+  }
+  console.log("GSC_PROPERTY_ACCESS_VERIFIED: " + siteUrl + " (" + property.permissionLevel + ") for " + account.client_email);
+  return { token, siteUrl, permissionLevel: property.permissionLevel };
 }
