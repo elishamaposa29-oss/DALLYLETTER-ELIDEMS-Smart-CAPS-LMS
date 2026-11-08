@@ -2,7 +2,7 @@
 
 **Creator: Elisha Maposa**  
 **Origin: Zimbabwe**  
-**Beginning of software development: Early 2026**
+**Began building Dallyletter Elidems: Early 2026, aged 17**
 
 > A reminder to the next generation: your starting circumstances do not have to determine the size of what you can build. Begin with the tools and knowledge you have. Learn, experiment, make mistakes, improve and keep creating.
 
@@ -12,7 +12,7 @@ The educational vision and the logic behind Dallyletter had been in Elisha's min
 
 The first practical project was a calculator. An error in that calculator became part of the beginning: instead of ending the attempt, it became an early lesson in programming and problem-solving. Dallyletter Elidems began as a Python project and grew from that first period of learning and experimentation.
 
-The exact age at the first coding experiment is **not yet confirmed** and must not be guessed. Record it when Elisha confirms the date of birth/age relevant to the first project.
+Elisha confirms that he was **17 years old** when he began Dallyletter Elidems in early 2026.
 
 ## A life shaped by constant change
 
@@ -64,7 +64,7 @@ Start small. Learn the fundamentals. Build something useful. Ask questions. Keep
 
 - This is a founder-provided account, not an independently verified biography.
 - The idea/educational vision predates the software project; early 2026 marks the beginning of coding and the first Python project, not necessarily the birth of the idea.
-- Do not invent or infer Elisha's exact age when coding began.
+- Elisha confirms he was 17 when he began Dallyletter Elidems in early 2026.
 - Do not invent names of schools, dates of transfers, academic awards, financial amounts or exact province/school counts.
 - The 2026 relocation to Zimbabwe, return to Form 3, reported slight decline in academic performance while focusing on Dallyletter, location-independent learning vision, and infrastructure/identity/payment barriers are founder-provided recollections; do not embellish or present them as independently verified.
 - Keep future photographs as pending archival assets until Elisha supplies and approves them.
