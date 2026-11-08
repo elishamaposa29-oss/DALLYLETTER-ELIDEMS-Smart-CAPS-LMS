@@ -67,9 +67,7 @@ export default function Login() {
         <div className="relative z-10 flex flex-col h-full px-14 py-12">
           {/* Logo */}
           <div className="flex items-center gap-3 mb-auto">
-            <div className="bg-gradient-to-br from-amber-400 to-amber-600 p-2.5 rounded-2xl shadow-lg shadow-amber-500/20">
-              <GraduationCap className="h-6 w-6 text-white" />
-            </div>
+            <img src="/favicon.svg" alt="Dallyletter Elidems logo" className="h-12 w-12 rounded-xl shadow-lg" />
             <div>
               <span className="text-white font-bold text-xl leading-none block">DallyLetter</span>
               <span className="text-amber-400/80 text-[10px] uppercase tracking-[0.2em] font-semibold">Elidems</span>
@@ -124,9 +122,7 @@ export default function Login() {
       <div className="flex-1 flex flex-col">
         {/* Mobile logo */}
         <div className="lg:hidden flex items-center gap-2.5 px-6 py-5 border-b bg-white">
-          <div className="bg-gradient-to-br from-amber-400 to-amber-600 p-2 rounded-xl shadow-md">
-            <GraduationCap className="h-5 w-5 text-white" />
-          </div>
+          <img src="/favicon.svg" alt="Dallyletter Elidems logo" className="h-10 w-10 rounded-xl shadow-md" />
           <div>
             <span className="font-bold text-[#0a1628] text-lg leading-none block">DallyLetter</span>
             <span className="text-amber-500 text-[10px] uppercase tracking-widest font-semibold">Elidems</span>
