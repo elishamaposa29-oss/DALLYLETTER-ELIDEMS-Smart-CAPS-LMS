@@ -2,7 +2,7 @@
 
 ## Canonical site property
 Use this URL-prefix property:
-`https://dallyletter-elidems-onlineschoolbye-two.vercel.app/`
+`https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/`
 
 ## Before verification
 1. Merge and deploy the approved SEO branch to the canonical production host. PR #97/#98 changes are not live until that happens.
@@ -35,7 +35,7 @@ A GitHub commit does not verify ownership. Only Google's successful verification
 
 ## Submit the sitemap
 After ownership is verified, open the property's **Sitemaps** report and submit:
-`https://dallyletter-elidems-onlineschoolbye-two.vercel.app/sitemap.xml`
+`https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/sitemap.xml`
 
 Record the submission date, discovered URL count, last read date and any fetch or parsing errors. A submitted sitemap is not a guarantee that every URL will be indexed.
 
