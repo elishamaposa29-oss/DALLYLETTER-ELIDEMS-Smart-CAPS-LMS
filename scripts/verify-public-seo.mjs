@@ -91,7 +91,7 @@ if (manifest.start_url !== "/login/" || manifest.id !== "/login/" || manifest.sc
   throw new Error("PWA manifest must launch the sign-in workspace within the site scope");
 }
 for (const icon of manifest.icons || []) {
-  const iconPath = path.join(root, icon.src.replace(/^\\//, ""));
+  const iconPath = path.join(root, icon.src.startsWith("/") ? icon.src.slice(1) : icon.src);
   if (!fs.existsSync(iconPath)) throw new Error("PWA icon is missing: " + icon.src);
   const header = fs.readFileSync(iconPath).subarray(0, 24);
   if (header.toString("hex", 0, 8) !== "89504e470d0a1a0a") throw new Error("PWA icon is not a PNG: " + icon.src);
