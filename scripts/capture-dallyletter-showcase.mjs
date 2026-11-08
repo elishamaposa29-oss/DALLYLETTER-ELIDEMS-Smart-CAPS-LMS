@@ -150,8 +150,8 @@ try {
   const manifest = {
     site: baseUrl.href,
     capturedAt: new Date().toISOString(),
-    sourceCommit: process.env.GITHUB_SHA || null,
-    workflowRunUrl: process.env.GITHUB_RUN_URL || null,
+    sourceCommit: process.env.SOURCE_COMMIT || null,
+    workflowRunUrl: process.env.SHOWCASE_RUN_URL || null,
     publicPageCount: results.filter((result) => result.type === "public" && result.screenshot).length,
     results
   };
