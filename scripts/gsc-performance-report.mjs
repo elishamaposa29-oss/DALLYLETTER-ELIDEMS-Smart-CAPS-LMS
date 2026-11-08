@@ -52,7 +52,7 @@ const sitemapUrl = new URL("sitemap.xml", session.siteUrl).toString();
 const sitemapResponse = await fetch(sitemapUrl);
 if (!sitemapResponse.ok) throw new Error("Sitemap fetch failed (" + sitemapResponse.status + "): " + sitemapUrl);
 const xml = await sitemapResponse.text();
-const urls = [...xml.matchAll(/<loc>(.*?)<\/loc>/g)].map(match => match[1]).slice(0, 25);
+const urls = [...xml.matchAll(/<loc>(.*?)<\/loc>/g)].map(match => match[1]);
 const inspections = [];
 for (const inspectionUrl of urls) {
   try {
