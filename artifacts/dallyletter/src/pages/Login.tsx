@@ -8,7 +8,7 @@ import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Loader2, GraduationCap, BookOpen, Video, Users, ShieldCheck } from "lucide-react";
+import { Loader2, BookOpen, Video, Users, ShieldCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const loginSchema = z.object({
@@ -17,10 +17,10 @@ const loginSchema = z.object({
 });
 
 const features = [
-  { icon: BookOpen, text: "CAPS-aligned lessons uploaded by qualified teachers" },
-  { icon: Video, text: "Live Google Meet classes with real-time Q&A" },
-  { icon: Users, text: "Collaborative study groups for every subject" },
-  { icon: ShieldCheck, text: "Secure, private platform for your school" },
+  { icon: BookOpen, text: "Teacher-published lessons and learning media" },
+  { icon: Video, text: "Scheduled live classes and teacher-led Q&A" },
+  { icon: Users, text: "Collaborative study groups where enabled" },
+  { icon: ShieldCheck, text: "Role-based workspaces and section-level profile privacy" },
 ];
 
 export default function Login() {
@@ -39,10 +39,17 @@ export default function Login() {
     loginMutation.mutate({ data: values }, {
       onSuccess: (data) => {
         login(data.token, data.user);
-        if (data.user.role === "owner") setLocation("/admin");
-        else if (data.user.role === "teacher") setLocation("/teacher");
-        else if (["manager","senior_manager"].includes(String(data.user.role||"").toLowerCase().replace(/[ -]+/g,"_"))) setLocation("/manager");
-        else setLocation("/");
+        const requested = new URLSearchParams(window.location.search).get("next");
+        const safeRequested = requested && requested.startsWith("/") && !requested.startsWith("//") && !requested.startsWith("/login") ? requested : null;
+        if (safeRequested) setLocation(safeRequested);
+        else {
+          const role = String(data.user.role || "").toLowerCase().replace(/[ -]+/g, "_");
+          if (["owner", "platform_owner"].includes(role)) setLocation("/admin");
+          else if (role === "admin") setLocation("/features");
+          else if (role === "teacher") setLocation("/teacher");
+          else if (["manager", "senior_manager", "junior_manager"].includes(role)) setLocation("/manager");
+          else setLocation("/student");
+        }
       },
       onError: (error) => {
         toast({
@@ -68,7 +75,7 @@ export default function Login() {
           {/* Logo */}
           <div className="flex items-center gap-3 mb-auto">
             <div className="bg-gradient-to-br from-amber-400 to-amber-600 p-2.5 rounded-2xl shadow-lg shadow-amber-500/20">
-              <GraduationCap className="h-6 w-6 text-white" />
+              <img src="/icons/icon-192.png" alt="" className="h-6 w-6 rounded-md object-cover" />
             </div>
             <div>
               <span className="text-white font-bold text-xl leading-none block">DallyLetter</span>
@@ -80,7 +87,7 @@ export default function Login() {
           <div className="space-y-6 mb-12">
             <div className="inline-flex items-center gap-2 bg-white/8 border border-white/10 px-4 py-2 rounded-full text-sm text-white/70">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              CAPS Education Platform · South Africa
+              African learning platform · Zimbabwe & South Africa
             </div>
             <h1 className="text-5xl font-bold text-white leading-[1.1] tracking-tight">
               Empowering the<br />
@@ -89,7 +96,7 @@ export default function Login() {
               </span>
             </h1>
             <p className="text-lg text-white/60 leading-relaxed max-w-md">
-              Premium CAPS curriculum support — connecting passionate educators with ambitious learners across Zimbabwe and South Africa.
+              Curriculum-aware digital learning, designed to support diverse African syllabuses — with Zimbabwe and South Africa in focus and a welcome to learners, educators and schools worldwide.
             </p>
           </div>
 
@@ -105,17 +112,11 @@ export default function Login() {
             ))}
           </div>
 
-          {/* Trust badge */}
+          {/* Geographic focus */}
           <div className="border-t border-white/10 pt-8">
-            <p className="text-xs text-white/30 uppercase tracking-widest font-medium mb-3">Trusted by learners & teachers</p>
-            <div className="flex items-center gap-3">
-              {["S", "T", "A", "M", "G"].map((l, i) => (
-                <div key={i} className="h-9 w-9 rounded-full bg-gradient-to-br from-white/10 to-white/5 border border-white/10 flex items-center justify-center text-white/60 text-sm font-bold">
-                  {l}
-                </div>
-              ))}
-              <span className="text-sm text-white/40 ml-1">+ many more</span>
-            </div>
+            <p className="text-xs text-white/35 uppercase tracking-widest font-medium mb-3">Our reach and ambition</p>
+            <p className="text-sm text-white/65">Zimbabwe · South Africa · African curricula · Worldwide</p>
+            <p className="text-xs text-amber-300/75 mt-4">Founded and solely created by Elisha Maposa</p>
           </div>
         </div>
       </div>
@@ -125,7 +126,7 @@ export default function Login() {
         {/* Mobile logo */}
         <div className="lg:hidden flex items-center gap-2.5 px-6 py-5 border-b bg-white">
           <div className="bg-gradient-to-br from-amber-400 to-amber-600 p-2 rounded-xl shadow-md">
-            <GraduationCap className="h-5 w-5 text-white" />
+            <img src="/icons/icon-192.png" alt="" className="h-5 w-5 rounded-md object-cover" />
           </div>
           <div>
             <span className="font-bold text-[#0a1628] text-lg leading-none block">DallyLetter</span>
@@ -200,10 +201,11 @@ export default function Login() {
               <Link href="/register" className="font-semibold text-[#0a1628] hover:underline transition-colors">
                 Sign up for free
               </Link>
+              <span className="mx-2 text-gray-300">·</span><Link href="/" className="font-semibold text-[#0a1628] hover:underline">Explore Dallyletter</Link>
             </p>
 
             <p className="text-center text-xs text-gray-400 mt-8">
-              © {new Date().getFullYear()} DallyLetter Elidems. All rights reserved.
+              © {new Date().getFullYear()} Dallyletter Elidems. Founded and solely created by Elisha Maposa. All rights reserved.
             </p>
           </div>
         </div>
