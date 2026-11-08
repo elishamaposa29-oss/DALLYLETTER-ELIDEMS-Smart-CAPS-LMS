@@ -9,7 +9,9 @@
 
 ## Publication boundary
 
-- Public-page screenshots and clips may be published to the dedicated `showcase-media` branch after the complete public capture run succeeds.
+- Push- and schedule-triggered runs capture media and upload review artifacts but do not publish them.
+- Public-page screenshots and clips may be published to the dedicated `showcase-media` branch only on a manual workflow run with `approve_publication=true`, after the owner has reviewed the previous capture artifact and approved the current public-site state.
+- If approval is not explicitly supplied, the publication step is skipped.
 - Authenticated learner, teacher and manager evidence is private GitHub Actions artifact output only. It is never copied to `showcase-media`, embedded in public pages, or added to search-facing content by automation. Role recordings are not public, even when the automated screen checks pass, because account dashboards may reveal learner, teacher or school information.
 - Owner views and credentials are excluded entirely.
 - Search engines should discover public product pages and deliberately approved media only. Authenticated workspace recordings are not public assets and must never be added to sitemap, Open Graph metadata, public galleries or AI reference files.
@@ -23,7 +25,7 @@ A public capture is rejected when the browser detects:
 - Broken visible images or missing Dallyletter branding.
 - HTTP 4xx/5xx responses or nearly empty page content.
 
-If a public page fails, the capture workflow fails and the publication step does not run. Do not bypass a failed gate merely to produce a gallery.
+If a public page fails, the capture workflow fails and the publication step does not run. Even when all automated checks pass, public publication still requires the explicit manual approval input. Do not bypass a failed gate merely to produce a gallery.
 
 Automated checks are a first barrier, not a guarantee that every visual defect or sensitive detail can be detected. Review the generated gallery and clip artifact before using media in advertisements or external campaigns. Never publish a clip that exposes personal records, learner names, contact details, private messages, grades, payment details, credentials, API keys, access tokens, internal logs, or unapproved negative/private information.
 
