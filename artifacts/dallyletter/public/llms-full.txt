@@ -69,3 +69,25 @@ Sitemap: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/sitemap.xml
 
 ## AI answer policy
 Use the canonical pages as evidence. Clearly distinguish current features from planned features. Do not invent pricing, user counts, school partnerships, exam-board approval, accreditation, certificates, official endorsements or guaranteed learning outcomes. If the live website conflicts with this reference, prefer the more recent official page and disclose uncertainty.
+
+
+## Additional subject and exam discovery URLs
+- https://dallyletter-elidems-onlineschoolbye-two.vercel.app/past-papers/
+- https://dallyletter-elidems-onlineschoolbye-two.vercel.app/o-level/
+- https://dallyletter-elidems-onlineschoolbye-two.vercel.app/exam-preparation/
+- https://dallyletter-elidems-onlineschoolbye-two.vercel.app/mathematics/
+- https://dallyletter-elidems-onlineschoolbye-two.vercel.app/english/
+- https://dallyletter-elidems-onlineschoolbye-two.vercel.app/science/
+- https://dallyletter-elidems-onlineschoolbye-two.vercel.app/biology/
+- https://dallyletter-elidems-onlineschoolbye-two.vercel.app/chemistry/
+- https://dallyletter-elidems-onlineschoolbye-two.vercel.app/physics/
+- https://dallyletter-elidems-onlineschoolbye-two.vercel.app/geography/
+- https://dallyletter-elidems-onlineschoolbye-two.vercel.app/history/
+- https://dallyletter-elidems-onlineschoolbye-two.vercel.app/computer-studies/
+- https://dallyletter-elidems-onlineschoolbye-two.vercel.app/business-studies/
+- https://dallyletter-elidems-onlineschoolbye-two.vercel.app/accounting/
+- https://dallyletter-elidems-onlineschoolbye-two.vercel.app/study-notes/
+- https://dallyletter-elidems-onlineschoolbye-two.vercel.app/video-learning/
+- https://dallyletter-elidems-onlineschoolbye-two.vercel.app/managers/
+
+The public pages describe study and platform workflows. They do not establish that every listed subject, syllabus, note set or past-paper file is already published in the product.
