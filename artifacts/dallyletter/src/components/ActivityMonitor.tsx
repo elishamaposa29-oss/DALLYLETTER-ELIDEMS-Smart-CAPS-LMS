@@ -30,6 +30,7 @@ export function ActivityMonitor() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewResults, setPreviewResults] = useState<Array<{ item: Activity; data?: any; error?: string }>>([]);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -41,10 +42,16 @@ export function ActivityMonitor() {
       setItems(Array.isArray(data) ? data : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load activity.");
-    } finally { setLoading(false); }
+    } finally { setLastUpdated(new Date()); setLoading(false); }
   };
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    void load();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -64,6 +71,9 @@ export function ActivityMonitor() {
     setPreviewResults([]);
     const paths: Record<string, (id: number) => string> = {
       lesson: id => `/api/lessons/${id}`,
+      teacher_cv: id => `/api/teacher-cv-workspace/${id}/details`,
+      teacher_application: id => `/api/teacher-cv-workspace/${id}/details`,
+      survey: id => `/api/teacher-cv-workspace/${id}/details`,
       exercise: id => `/api/exercises/${id}`,
       assignment: id => `/api/assignments/${id}`,
       class: id => `/api/classes/${id}`,
@@ -92,7 +102,7 @@ export function ActivityMonitor() {
     <Card>
     <CardHeader className="pb-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <CardTitle className="text-base">Live Activity Monitor</CardTitle>
+        <div className="flex flex-wrap items-center gap-2"><CardTitle className="text-base">Live Activity Monitor</CardTitle><Badge variant="outline">LIVE · 15s refresh</Badge><span className="text-[11px] text-muted-foreground">{lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString()}` : "Connecting…"}</span></div>
         <Button size="sm" variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />Refresh</Button>
       </div>
       <div className="flex flex-col sm:flex-row gap-2">
@@ -117,7 +127,7 @@ export function ActivityMonitor() {
       <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Selected resource previews</DialogTitle>
-          <DialogDescription>These are the actual saved learning resources linked to the selected activity records.</DialogDescription>
+          <DialogDescription>Read-only oversight previews. Access is checked by the server for every resource; this view cannot edit or approve records.</DialogDescription>
         </DialogHeader>
         {previewLoading ? <p className="py-8 text-center text-sm text-muted-foreground">Loading selected resources…</p> :
           previewResults.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No resources selected.</p> :
