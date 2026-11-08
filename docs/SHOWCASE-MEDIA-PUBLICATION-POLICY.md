@@ -4,7 +4,7 @@
 
 - Discover public pages from the deployed sitemap and capture full-page screenshots.
 - Record a short, silent public-page walkthrough clip for each successfully screened public page.
-- Capture learner, teacher and manager dashboard screenshots and short recordings only with dedicated showcase accounts. Authenticate in a non-recording browser context; start the recording context only after login so passwords are never recorded. Role clips follow at most three visible same-origin read-only navigation links discovered in that role's actual dashboard.
+- Capture learner, teacher and manager dashboard screenshots and short recordings only with dedicated showcase accounts. Authenticate in a non-recording browser context; start the recording context only after login so passwords are never recorded. Role clips follow up to five visible same-origin read-only navigation links discovered in that role's actual dashboard.
 - Do not capture Owner dashboards or Owner credentials.
 
 ## Publication boundary
