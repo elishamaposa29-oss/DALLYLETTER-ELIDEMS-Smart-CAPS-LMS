@@ -46,8 +46,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
-      SHOWCASE_SITE_URL: ${{ inputs.site_url || vars.GSC_SITE_URL || 'https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/' }}
-      SHOWCASE_AUTH_ALLOWED_ORIGIN: ${{ vars.GSC_SITE_URL || 'https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/' }}
+      SHOWCASE_SITE_URL: ${{ inputs.site_url || 'https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/' }}
+      SHOWCASE_AUTH_ALLOWED_ORIGIN: ${{ 'https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app' }}
       SHOWCASE_LEARNER_EMAIL: ${{ secrets.SHOWCASE_LEARNER_EMAIL }}
       SHOWCASE_LEARNER_PASSWORD: ${{ secrets.SHOWCASE_LEARNER_PASSWORD }}
       SHOWCASE_TEACHER_EMAIL: ${{ secrets.SHOWCASE_TEACHER_EMAIL }}
