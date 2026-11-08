@@ -58,4 +58,4 @@ pnpm build
 
 ## GitHub Actions setup
 
-See [Dallyletter GitHub Actions Setup](docs/GITHUB-ACTIONS-SETUP.md) for the secure Google Search Console configuration, showcase-account secret copy sheets, direct workflow links, and troubleshooting instructions.
+See [Dallyletter GitHub Actions Setup](docs/GITHUB-ACTIONS-SETUP.md) for the secure Google Search Console configuration, showcase-account secret copy sheets, direct workflow links, and troubleshooting instructions. See [PR #101's release checklist](docs/PR-101-RELEASE-CHECKLIST.md) for acceptance criteria, outstanding account setup, and deployment blockers.
