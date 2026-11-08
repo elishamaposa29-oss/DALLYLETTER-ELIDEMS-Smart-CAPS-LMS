@@ -191,6 +191,9 @@ async function captureRole(role, route, email, password) {
   const runtimeErrors = [];
   page.on("pageerror", (error) => runtimeErrors.push(String(error)));
   page.on("console", (message) => { if (message.type() === "error") runtimeErrors.push(message.text()); });
+  page.on("response", (response) => {
+    if (response.status() >= 500) runtimeErrors.push("HTTP " + response.status() + " " + response.url());
+  });
   const video = page.video();
   try {
     const dashboardResponse = await page.goto(url.href, { waitUntil: "domcontentloaded", timeout: 45000 });
@@ -202,12 +205,6 @@ async function captureRole(role, route, email, password) {
     await assertPublishablePage(page, role + " dashboard");
     const screenshot = "dashboard-" + safeName(role) + ".png";
     await page.screenshot({ path: path.join(out, screenshot), fullPage: true, animations: "disabled" });
-    const runtimeFailures = [];
-    page.on("pageerror", (error) => runtimeFailures.push("pageerror: " + error.message));
-    page.on("response", (response) => {
-      if (response.status() >= 500) runtimeFailures.push("HTTP " + response.status() + " " + response.url());
-    });
-
     // Discover real, visible read-only learning/workflow links from this role's own navigation.
     // Never submit forms or open settings, payment, account, approval, delete or logout actions.
     const links = await page.locator("a[href]").evaluateAll((anchors) => anchors.map((anchor) => ({
@@ -237,7 +234,7 @@ async function captureRole(role, route, email, password) {
       await assertPublishablePage(page, role + " " + item.label);
       await page.waitForTimeout(1200);
     }
-    if (runtimeFailures.length) throw new Error("Runtime/API failure during role walkthrough: " + runtimeFailures.slice(0, 5).join(" | ").slice(0, 900));
+    if (runtimeErrors.length) throw new Error("Runtime/browser/API failure during role walkthrough: " + runtimeErrors.slice(0, 5).join(" | ").slice(0, 900));
     await page.waitForTimeout(500);
     results.push({
       type: "dashboard", role, url: url.href, status: "captured-private", screenshot,
