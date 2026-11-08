@@ -156,18 +156,36 @@ async function captureRole(role, route, email, password) {
     results.push({ type: "dashboard", role, url: url.href, status: "skipped", reason: "Dedicated demo-account secrets are not configured." });
     return;
   }
-  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, recordVideo: { dir: out, size: { width: 1440, height: 1000 } } });
+  // Authenticate in a non-recording context so credentials are never written into a video.
+  const loginContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
+  let storageState;
+  try {
+    const loginPage = await loginContext.newPage();
+    await loginPage.goto(new URL("/login", baseUrl).href, { waitUntil: "domcontentloaded", timeout: 45000 });
+    await loginPage.getByLabel("Email address").fill(email);
+    await loginPage.getByLabel("Password", { exact: true }).fill(password);
+    await loginPage.getByRole("button", { name: "Sign In", exact: true }).click();
+    await loginPage.waitForFunction(() => window.location.pathname !== "/login", { timeout: 30000 }).catch(async () => {
+      const feedback = await loginPage.locator('[role="alert"], [data-sonner-toast], [role="status"]').allTextContents().catch(() => []);
+      throw new Error("Login did not leave /login. Visible feedback: " + feedback.join(" | ").slice(0, 500));
+    });
+    storageState = await loginContext.storageState();
+  } catch (error) {
+    results.push({ type: "dashboard", role, url: url.href, error: String(error) });
+    return;
+  } finally {
+    await loginContext.close();
+  }
+
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 1000 },
+    deviceScaleFactor: 1,
+    storageState,
+    recordVideo: { dir: out, size: { width: 1440, height: 1000 } }
+  });
   const page = await context.newPage();
   const video = page.video();
   try {
-    await page.goto(new URL("/login", baseUrl).href, { waitUntil: "domcontentloaded", timeout: 45000 });
-    await page.getByLabel("Email address").fill(email);
-    await page.getByLabel("Password", { exact: true }).fill(password);
-    await page.getByRole("button", { name: "Sign In", exact: true }).click();
-    await page.waitForFunction(() => window.location.pathname !== "/login", { timeout: 30000 }).catch(async () => {
-      const feedback = await page.locator('[role="alert"], [data-sonner-toast], [role="status"]').allTextContents().catch(() => []);
-      throw new Error("Login did not leave /login. Visible feedback: " + feedback.join(" | ").slice(0, 500));
-    });
     const dashboardResponse = await page.goto(url.href, { waitUntil: "domcontentloaded", timeout: 45000 });
     if (dashboardResponse && dashboardResponse.status() >= 400) throw new Error("Dashboard route returned HTTP " + dashboardResponse.status());
     await page.locator("main, body").first().waitFor({ state: "visible", timeout: 15000 });
@@ -188,7 +206,6 @@ async function captureRole(role, route, email, password) {
     }
   }
 }
-
 async function pageFor404Probe() {
   const context = await browser.newContext();
   const page = await context.newPage();
