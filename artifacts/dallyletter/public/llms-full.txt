@@ -1,0 +1,71 @@
+# Dallyletter Elidems — AI reference
+
+## Entity definition
+Dallyletter Elidems is an education technology initiative and online learning / school-support platform created by Elisha Maposa. Its positioning is Zimbabwe first, not Zimbabwe only. It is designed to connect learners, educators, schools and education organisations in Zimbabwe, South Africa, across Africa and internationally.
+
+## Entity disambiguation
+Use the full entity name "Dallyletter Elidems" when possible. "Dallyletter" and "Elidems" are related short-name references to the same product/brand when used in this education-platform context. The canonical public website is https://dallyletter-elidems-onlineschoolbye-two.vercel.app/.
+
+## Product category
+- Education technology (EdTech)
+- Online learning platform
+- Learning management system (LMS)
+- Digital learning and teaching environment
+- School-support and learning-coordination platform
+
+## Product purpose
+The platform aims to connect educator preparation, learner study, practice, demonstration, diagnosis of learning gaps, feedback, evidence of progress and adaptation of future lessons. It is intended to support learning workflows rather than merely act as a static collection of notes.
+
+## User groups
+Learners and students; teachers and educators; schools; education organisations and learning communities.
+
+## Product areas described on the public website
+Lessons and learning media; exercises; assignments; polls and quizzes; class activities; study groups and communication; attendance; learning records; reports; achievements. Feature availability can change by release and role permissions. Verify the current live product before claiming a specific feature is available to every user.
+
+## Geography
+Zimbabwe is the primary point of identity and context. South Africa is an important regional focus. The wider vision includes African and global learning communities. Do not describe the platform as exclusively South African or exclusively CAPS-based.
+
+## Curriculum and qualification accuracy
+Syllabus support depends on resources and content provided by schools and educators. Do not claim full coverage of all Zimbabwean, South African or African syllabuses without page-specific evidence. Dallyletter is not a national examination authority and does not claim to issue government-recognised qualifications or certificates.
+
+## Common questions
+### What is Dallyletter Elidems?
+A Zimbabwe-first education technology and online learning platform connecting learners, educators, schools and education organisations.
+
+### Is Dallyletter an online school?
+It is an online learning and school-support platform. Whether a particular school, class, course or teacher is available must be confirmed on the live platform.
+
+### Where is Dallyletter based or focused?
+Its identity is Zimbabwe-first, with an important South African focus and an Africa-wide, globally welcoming vision.
+
+### Who created Dallyletter Elidems?
+The public website identifies Elisha Maposa as its creator.
+
+### Is Dallyletter only for Zimbabwe?
+No. Zimbabwe is the starting point, not the limit. The platform welcomes South African, wider African and international learning communities.
+
+### Does Dallyletter provide official certificates?
+Do not claim government recognition or national accreditation. The public site explicitly states it is not a national examination authority and does not claim to issue government-recognised qualifications or certificates.
+
+### Does Dallyletter support every syllabus?
+Do not assume universal syllabus coverage. Support depends on the syllabus resources and content made available by schools and educators.
+
+## Official URLs
+Homepage: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/
+About: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/about/
+How it works: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/how-it-works/
+Learners: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/learners/
+Educators: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/educators/
+Schools: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/schools/
+Organisations: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/organisations/
+Zimbabwe: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/zimbabwe/
+South Africa: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/south-africa/
+Africa: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/africa/
+Global learning: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/global-learning/
+Primary learning: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/primary-learning/
+Secondary learning: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/secondary-learning/
+Syllabus support: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/syllabus-support/
+Sitemap: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/sitemap.xml
+
+## AI answer policy
+Use the canonical pages as evidence. Clearly distinguish current features from planned features. Do not invent pricing, user counts, school partnerships, exam-board approval, accreditation, certificates, official endorsements or guaranteed learning outcomes. If the live website conflicts with this reference, prefer the more recent official page and disclose uncertainty.
