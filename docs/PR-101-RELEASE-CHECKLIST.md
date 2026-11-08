@@ -30,6 +30,7 @@ Pull request: [#101](https://github.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-S
 - [ ] Latest-head Android build and smoke test passes.
 - [ ] Latest-head public-page Lighthouse assertions pass.
 - [ ] A deployment of this exact branch is available and the live public-route/404 showcase passes.
+- [ ] The Search Console URL-prefix property is verified (DNS or HTML-tag method); if using HTML-tag verification, the public homepage emits the supplied token.
 - [ ] Google Search Console service account is configured, has access to the exact verified property, and the sitemap workflow succeeds.
 - [ ] Dedicated learner, approved-teacher and manager demo credentials are configured and all three dashboard captures succeed.
 - [ ] Search Console report artifact is generated successfully after credentials are configured.
@@ -40,6 +41,7 @@ Create the following repository variable and secret using [GitHub Actions settin
 
 - `GSC_SITE_URL` — exact verified URL-prefix property, including trailing slash.
 - `GSC_SERVICE_ACCOUNT_JSON` — complete private service-account JSON key file.
+- `GOOGLE_SITE_VERIFICATION` — optional public HTML-tag token if DNS or another ownership-verification method has not already been used. Set the same value in Vercel build environment variables.
 
 Optional role showcase captures require these six repository secrets:
 
