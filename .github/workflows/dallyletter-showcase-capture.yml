@@ -85,7 +85,7 @@ jobs:
           const sourceDir = path.join(process.env.RUNNER_TEMP, "dallyletter-showcase-captures");
           const source = JSON.parse(fs.readFileSync(path.join(sourceDir, "capture-manifest.json"), "utf8"));
           const repo = process.env.GITHUB_REPOSITORY;
-          const pages = source.results.filter((item) => item.type === "public" && item.screenshot);
+          const pages = source.results.filter((item) => item.type === "public" && item.screenshot && item.video);
           const media = (file) => "https://raw.githubusercontent.com/" + repo + "/showcase-media/latest/" + file;
           const manifest = {
             site: source.site,
@@ -93,7 +93,7 @@ jobs:
             deployedBuildCommit: source.sourceCommit,
             workflowCommit: process.env.WORKFLOW_COMMIT,
             publicPageCount: pages.length,
-            pages: pages.map(({ page, url, status, screenshot }) => ({ page, url, status, screenshot, mediaUrl: media(screenshot) }))
+            pages: pages.map(({ page, url, status, screenshot, video }) => ({ page, url, status, screenshot, video, mediaUrl: media(screenshot), videoUrl: media(video) }))
           };
           fs.writeFileSync(path.join("latest", "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
           const lines = [
@@ -105,13 +105,13 @@ jobs:
             "- Workflow commit: " + (process.env.WORKFLOW_COMMIT || "unknown"),
             "- Public pages: " + pages.length,
             "",
-            "These images are refreshed only after all public page captures pass. Authenticated dashboards and Owner views are never published to this branch.",
+            "These images and short clips are refreshed only after all public page captures pass the automated safety gate. Authenticated dashboards and Owner views are never published to this branch.",
             ""
           ];
           for (const item of pages) {
             lines.push("## [" + item.page + "](" + item.url + ")", "");
-            lines.push("![ " + item.page + " ](" + media(item.screenshot) + ")", "");
-            lines.push("[Open live page](" + item.url + ") · [Open screenshot](" + media(item.screenshot) + ")", "");
+            lines.push("![" + item.page + "](" + media(item.screenshot) + ")", "");
+            lines.push("[Open live page](" + item.url + ") · [Open screenshot](" + media(item.screenshot) + ") · [Watch short clip](" + media(item.video) + ")", "");
           }
           fs.writeFileSync(path.join("latest", "README.md"), lines.join("\n") + "\n");
           NODE
