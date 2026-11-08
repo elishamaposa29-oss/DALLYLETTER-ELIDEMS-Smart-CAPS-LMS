@@ -1,12 +1,4 @@
 User-agent: *
 Allow: /
-Disallow: /student
-Disallow: /student/
-Disallow: /teacher/
-Disallow: /manager/
-Disallow: /admin/
-Disallow: /profile-hub
-Disallow: /profile/
-Disallow: /record-book
 
 Sitemap: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/sitemap.xml
