@@ -19,6 +19,11 @@ on:
         description: Optional deployed Dallyletter URL (defaults to production)
         required: false
         default: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/
+      approve_publication:
+        description: Publish public screenshots and clips to showcase-media only after reviewing a previous capture artifact
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -67,7 +72,7 @@ jobs:
           retention-days: 90
 
       - name: Publish current public screenshot media to dedicated branch
-        if: success()
+        if: success() && inputs.approve_publication == true
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
           WORKFLOW_COMMIT: ${{ github.sha }}
