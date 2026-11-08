@@ -38,6 +38,6 @@ for (const page of pages) {
  fs.mkdirSync(dir,{recursive:true});
  fs.writeFileSync(path.join(dir,"index.html"),render(page),"utf8");
 }
-const entries=pages.map(p=>"<url><loc>"+siteUrl+(p.slug?"/"+p.slug+"/":"/")+"</loc></url>").join("");
-fs.writeFileSync(path.join(outputRoot,"sitemap.xml"),'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'+entries+"</urlset>\n","utf8");
-console.log("Prerendered "+pages.length+" public pages and sitemap.");
+const entries=pages.map(p=>{const pageUrl=siteUrl+(p.slug?"/"+p.slug+"/":"/");return "<url><loc>"+pageUrl+"</loc><image:image><image:loc>"+siteUrl+"/social/dallyletter-og.svg</image:loc></image:image></url>";}).join("");
+fs.writeFileSync(path.join(outputRoot,"sitemap.xml"),'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">'+entries+"</urlset>\n","utf8");
+console.log("Prerendered "+pages.length+" public pages and image sitemap.");
