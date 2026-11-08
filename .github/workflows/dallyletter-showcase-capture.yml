@@ -1,9 +1,6 @@
 name: Dallyletter Real UI Showcase Capture
 
 on:
-  push:
-    branches:
-      - feat/public-seo-discovery-2026-11
   workflow_dispatch:
     inputs:
       site_url:
