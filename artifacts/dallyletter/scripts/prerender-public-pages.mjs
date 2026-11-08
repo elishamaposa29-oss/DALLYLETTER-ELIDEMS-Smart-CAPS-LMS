@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const root = path.resolve("dist/public");
-const base = "https://dallyletter-elidems-onlineschoolbye-two.vercel.app";
+const base = "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app";
 const pageContent = JSON.parse(await readFile(path.resolve("src/content/public-pages.json"), "utf8"));
 const routes = { about: "/about", learners: "/learners", educators: "/educators", schools: "/schools", organisations: "/organisations", resources: "/resources", "study-plan": "/resources/study-plan" };
 const template = await readFile(path.join(root, "index.html"), "utf8");
