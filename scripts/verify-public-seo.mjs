@@ -47,6 +47,9 @@ for (const url of urls) {
   if (!html.includes("<h1>") || !html.includes('alt="Dallyletter Elidems logo"')) {
     throw new Error("Missing visible primary heading or Dallyletter logo: " + url);
   }
+  if (!html.includes('<link rel="manifest" href="/manifest.json">') || !html.includes('<link rel="apple-touch-icon" href="/icons/icon-192.png">')) {
+    throw new Error("Public page is missing PWA manifest or touch-icon metadata: " + url);
+  }
   if (ogImage !== twitterImage) throw new Error("Open Graph and Twitter images differ: " + url);
   if (html.includes('"+workspaceLinks+"')) throw new Error("Workspace links were not interpolated into the rendered page: " + url);
 
@@ -81,6 +84,21 @@ if (!fs.existsSync(socialImage)) throw new Error("1200x630 social PNG missing");
 const pngHeader = fs.readFileSync(socialImage).subarray(0, 24);
 if (pngHeader.toString("hex", 0, 8) !== "89504e470d0a1a0a" || pngHeader.readUInt32BE(16) !== 1200 || pngHeader.readUInt32BE(20) !== 630) {
   throw new Error("Social PNG must be 1200x630");
+}
+
+const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
+if (manifest.start_url !== "/login/" || manifest.id !== "/login/" || manifest.scope !== "/") {
+  throw new Error("PWA manifest must launch the sign-in workspace within the site scope");
+}
+for (const icon of manifest.icons || []) {
+  const iconPath = path.join(root, icon.src.replace(/^\\//, ""));
+  if (!fs.existsSync(iconPath)) throw new Error("PWA icon is missing: " + icon.src);
+  const header = fs.readFileSync(iconPath).subarray(0, 24);
+  if (header.toString("hex", 0, 8) !== "89504e470d0a1a0a") throw new Error("PWA icon is not a PNG: " + icon.src);
+  const expectedSize = Number(icon.sizes.split("x")[0]);
+  if (header.readUInt32BE(16) !== expectedSize || header.readUInt32BE(20) !== expectedSize) {
+    throw new Error("PWA icon dimensions do not match manifest: " + icon.src);
+  }
 }
 
 const robots = fs.readFileSync(path.join(root, "robots.txt"), "utf8");
