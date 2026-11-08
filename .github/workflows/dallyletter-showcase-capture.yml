@@ -78,6 +78,7 @@ jobs:
           git rm -rf . >/dev/null 2>&1 || true
           mkdir -p latest
           cp "$RUNNER_TEMP"/dallyletter-showcase-captures/public-*.png latest/
+          cp "$RUNNER_TEMP"/dallyletter-showcase-captures/public-*.webm latest/
           node --input-type=module <<'NODE'
           import fs from "node:fs";
           import path from "node:path";
