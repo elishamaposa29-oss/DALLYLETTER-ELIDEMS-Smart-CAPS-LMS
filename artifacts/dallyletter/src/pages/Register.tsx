@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, GraduationCap, CheckCircle2 } from "lucide-react";
+import { Loader2, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { RegisterUserBodyRole, getApiUrl } from "@workspace/api-client-react";
 
@@ -20,9 +20,23 @@ const registerSchema = z.object({
   role: z.enum([RegisterUserBodyRole.student, RegisterUserBodyRole.teacher]),
   grade: z.string().optional(),
   subject: z.string().optional(),
-  country: z.enum(["ZW","ZA"]),
+  country: z.enum(["ZW","ZA","OTHER"]),
+  countryName: z.string().optional(),
+  dialCode: z.string().optional(),
   phone: z.string().optional(),
 }).superRefine((data, ctx) => {
+  if (data.country === "OTHER" && !data.countryName?.trim()) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Enter your country", path: ["countryName"] });
+  }
+  if (data.phone?.trim() && !data.phone.trim().startsWith("+") && data.country === "OTHER" && !/^\+\d{1,4}$/.test(data.dialCode?.trim() || "")) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Enter your international calling code, e.g. +44", path: ["dialCode"] });
+  }
+  if (data.phone?.trim()) {
+    const digitCount = data.phone.replace(/\D/g, "").length;
+    if (digitCount < 8 || digitCount > 15) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Enter a valid international phone number", path: ["phone"] });
+    }
+  }
   if (data.role === "student" && !data.grade) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Grade is required for students", path: ["grade"] });
   }
@@ -32,10 +46,10 @@ const registerSchema = z.object({
 });
 
 const perks = [
-  "Full access to CAPS-aligned lesson materials",
-  "Live class sessions via Google Meet",
-  "Study groups with fellow learners",
-  "Payment tracking & fee notifications",
+  "Access lessons and resources published for your courses",
+  "Join live classes when educators schedule them",
+  "Collaborate in study groups available to your account",
+  "View fee records and school payment instructions",
 ];
 
 export default function Register() {
@@ -46,7 +60,7 @@ export default function Register() {
 
   const form = useForm<z.infer<typeof registerSchema>>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { name: "", email: "", password: "", role: RegisterUserBodyRole.student, grade: "", subject: "", country: "ZW", phone: "" },
+    defaultValues: { name: "", email: "", password: "", role: RegisterUserBodyRole.student, grade: "", subject: "", country: "ZW", countryName: "", dialCode: "+263", phone: "" },
   });
 
   const role = form.watch("role");
@@ -54,8 +68,11 @@ export default function Register() {
   const gradeOptions = country === "ZW" ? ["Grade 7","Form 1","Form 2","Form 3","Form 4","Form 5","Form 6"] : ["Grade 7","Grade 8","Grade 9","Grade 10","Grade 11","Grade 12"];
 
   function onSubmit(values: z.infer<typeof registerSchema>) {
-    const phone = values.phone?.trim() ? (values.country === "ZW" ? "+263" : "+27") + values.phone.trim().replace(/^0/, "") : undefined;
-    const { country: _country, phone: _localPhone, ...registrationData } = values;
+    const enteredPhone = values.phone?.trim();
+    const rawPhone = enteredPhone ? (enteredPhone.startsWith("+") ? `+${enteredPhone.slice(1).replace(/\D/g, "")}` : enteredPhone.replace(/\D/g, "")) : undefined;
+    const dialCode = values.country === "ZW" ? "+263" : values.country === "ZA" ? "+27" : values.dialCode?.trim();
+    const phone = rawPhone ? (rawPhone.startsWith("+") ? rawPhone : `${dialCode}${rawPhone.replace(/^0+/, "")}`) : undefined;
+    const { country: _country, countryName: _countryName, dialCode: _dialCode, phone: _localPhone, ...registrationData } = values;
     registerMutation.mutate({ data: { ...registrationData, phone } }, {
       onSuccess: async (data) => {
         let verificationMessage = "Your account is ready.";
@@ -74,8 +91,8 @@ export default function Register() {
         }
         login(data.token, data.user);
         toast({ title: "Account created", description: verificationMessage });
-        if (data.user.role === "teacher") setLocation("/teacher");
-        else setLocation("/");
+        if (data.user.role === "teacher") setLocation("/teacher/qualifications");
+        else setLocation("/student");
       },
       onError: (error) => {
         toast({
@@ -99,7 +116,7 @@ export default function Register() {
           {/* Logo */}
           <div className="flex items-center gap-3 mb-auto">
             <div className="bg-gradient-to-br from-amber-400 to-amber-600 p-2.5 rounded-2xl shadow-lg shadow-amber-500/20">
-              <GraduationCap className="h-6 w-6 text-white" />
+              <img src="/icons/icon-192.png" alt="" className="h-6 w-6 rounded-md object-cover" />
             </div>
             <div>
               <span className="text-white font-bold text-xl leading-none block">DallyLetter</span>
@@ -116,7 +133,7 @@ export default function Register() {
               community.
             </h1>
             <p className="text-white/55 leading-relaxed">
-              Create your free account and get instant access to all learning resources on the platform.
+              Create a learner or teacher account for the appropriate Dallyletter workspace. Available tools depend on your role, published resources and approval status.
             </p>
           </div>
 
@@ -142,7 +159,7 @@ export default function Register() {
         {/* Mobile logo */}
         <div className="lg:hidden flex items-center gap-2.5 px-6 py-5 border-b bg-white">
           <div className="bg-gradient-to-br from-amber-400 to-amber-600 p-2 rounded-xl shadow-md">
-            <GraduationCap className="h-5 w-5 text-white" />
+            <img src="/icons/icon-192.png" alt="" className="h-5 w-5 rounded-md object-cover" />
           </div>
           <div>
             <span className="font-bold text-[#0a1628] text-lg leading-none block">DallyLetter</span>
