@@ -19,13 +19,14 @@ The public sitemap intentionally excludes login, registration, dashboards, profi
 ## Google Search Console automation
 
 1. In Google Cloud Console, create or select a project and enable the Google Search Console API.
-2. Create a service account and generate a JSON key. Keep the key private.
-3. In Google Search Console, add the service-account email as a user of the verified URL-prefix property. Grant the access level required to inspect URLs and submit sitemaps.
-4. In GitHub, open **Settings → Secrets and variables → Actions** for this repository.
-5. Add repository secret `GSC_SERVICE_ACCOUNT_JSON` containing the complete service-account JSON key.
-6. Add repository variable `GSC_SITE_URL` with the exact URL-prefix property, including the trailing slash:
+2. Verify the exact URL-prefix property in Search Console (DNS or the HTML-tag method). If using HTML-tag verification, set the public `GOOGLE_SITE_VERIFICATION` variable in GitHub and Vercel; the prerendered homepage will include and verify the token.
+3. Create a service account and generate a JSON key. Keep the key private.
+4. Add the service-account email as a user of the verified URL-prefix property. Grant the access level required to inspect URLs and submit sitemaps.
+5. In GitHub, open **Settings → Secrets and variables → Actions** for this repository.
+6. Add repository secret `GSC_SERVICE_ACCOUNT_JSON` containing the complete service-account JSON key.
+7. Add repository variable `GSC_SITE_URL` with the exact URL-prefix property, including the trailing slash:
    `https://dallyletter-elidems-onlineschoolbye-two.vercel.app/`
-7. After the intended public deployment serves the sitemap, run **Actions → Submit Dallyletter Sitemap to Google → Run workflow**. The workflow first fetches and validates the public XML sitemap, then submits it through the Search Console API.
+8. After the intended public deployment serves the sitemap, run **Actions → Submit Dallyletter Sitemap to Google → Run workflow**. The workflow first fetches and validates the public XML sitemap, then submits it through the Search Console API.
 
 Never commit the service-account key, put it in a client-side environment variable, or paste it into an issue or pull request.
 
