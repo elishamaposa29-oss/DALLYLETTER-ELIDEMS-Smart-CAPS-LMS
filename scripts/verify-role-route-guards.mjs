@@ -16,7 +16,19 @@ if (implicitJuniorManagerGrant.test(source)) {
   throw new Error("Junior managers must not inherit manager/senior-manager route access implicitly.");
 }
 
-console.log("Role route guard verified: junior-manager access requires explicit route allowance.");
+const login = await readFile(
+  new URL("../artifacts/dallyletter/src/pages/Login.tsx", import.meta.url),
+  "utf8"
+);
+
+if (!login.includes('requestedNext.startsWith("/")') || !login.includes('!requestedNext.startsWith("//")') || !login.includes('!requestedNext.includes("\\\\\\\\")')) {
+  throw new Error("Login must reject protocol-relative and backslash-based next redirects.");
+}
+if (!login.includes('["manager", "senior_manager", "junior_manager"].includes(role)')) {
+  throw new Error("Login must send junior and senior managers to the manager workspace.");
+}
+
+console.log("Role route guard and safe post-login redirect verified.");
 
 const login = await readFile(
   new URL("../artifacts/dallyletter/src/pages/Login.tsx", import.meta.url),
