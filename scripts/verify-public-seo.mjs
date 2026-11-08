@@ -19,5 +19,10 @@ for(const url of urls){
  titles.add(title);
  if(!html.includes("<h1>")||!html.includes('property="og:image"')||!html.includes('name="twitter:card" content="summary_large_image"')) throw new Error("Missing page content or social metadata: "+url);
 }
+const socialImage=path.join(root,"social","dallyletter-og.png");
+if(!fs.existsSync(socialImage)) throw new Error("1200x630 social PNG missing");
+const pngHeader=fs.readFileSync(socialImage).subarray(0,24);
+if(pngHeader.toString("hex",0,8)!=="89504e470d0a1a0a"||pngHeader.readUInt32BE(16)!==1200||pngHeader.readUInt32BE(20)!==630) throw new Error("Social PNG must be 1200x630");
+if(!sitemap.includes("<image:image>")) throw new Error("Image sitemap entries missing");
 if(!fs.readFileSync(path.join(root,"robots.txt"),"utf8").includes("/sitemap.xml")) throw new Error("robots.txt sitemap reference missing");
 console.log("SEO verification passed for "+urls.length+" unique prerendered pages.");
