@@ -39,6 +39,58 @@
       "destination": "/public-site/index.html"
     },
     {
+      "source": "/about/",
+      "destination": "/about/index.html"
+    },
+    {
+      "source": "/how-it-works/",
+      "destination": "/how-it-works/index.html"
+    },
+    {
+      "source": "/learners/",
+      "destination": "/learners/index.html"
+    },
+    {
+      "source": "/educators/",
+      "destination": "/educators/index.html"
+    },
+    {
+      "source": "/schools/",
+      "destination": "/schools/index.html"
+    },
+    {
+      "source": "/organisations/",
+      "destination": "/organisations/index.html"
+    },
+    {
+      "source": "/zimbabwe/",
+      "destination": "/zimbabwe/index.html"
+    },
+    {
+      "source": "/south-africa/",
+      "destination": "/south-africa/index.html"
+    },
+    {
+      "source": "/africa/",
+      "destination": "/africa/index.html"
+    },
+    {
+      "source": "/global-learning/",
+      "destination": "/global-learning/index.html"
+    },
+    {
+      "source": "/primary-learning/",
+      "destination": "/primary-learning/index.html"
+    },
+    {
+      "source": "/secondary-learning/",
+      "destination": "/secondary-learning/index.html"
+    },
+    {
+      "source": "/syllabus-support/",
+      "destination": "/syllabus-support/index.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
