@@ -39,6 +39,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build prerendered public pages
+        env:
+          PUBLIC_SITE_URL: ${{ vars.GSC_SITE_URL }}
+          GOOGLE_SITE_VERIFICATION: ${{ vars.GOOGLE_SITE_VERIFICATION }}
         run: pnpm --dir artifacts/dallyletter run build
       - name: Run Lighthouse mobile quality checks
         run: pnpm dlx @lhci/cli autorun --config=./lighthouserc.json
