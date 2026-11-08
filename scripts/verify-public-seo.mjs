@@ -5,6 +5,7 @@ const root = path.resolve("dist/public");
 const siteUrl = (process.env.PUBLIC_SITE_URL || "https://dallyletter-elidems-onlineschoolbye-two.vercel.app").replace(/\/+$/, "");
 const siteOrigin = new URL(siteUrl).origin;
 const verificationToken = (process.env.GOOGLE_SITE_VERIFICATION || "").trim();
+const expectedBuildSha = (process.env.VERCEL_GIT_COMMIT_SHA || "").trim();
 const sitemapPath = path.join(root, "sitemap.xml");
 const sitemap = fs.readFileSync(sitemapPath, "utf8");
 const urls = [...sitemap.matchAll(/<loc>(.*?)<\/loc>/g)].map(match => match[1]);
@@ -31,6 +32,9 @@ for (const url of urls) {
   if (!fs.existsSync(file)) throw new Error("Missing prerendered page: " + url);
 
   const html = fs.readFileSync(file, "utf8");
+  if (expectedBuildSha && !html.includes('<meta name="dallyletter-build-sha" content="' + expectedBuildSha + '">')) {
+    throw new Error("Public page build marker does not match the Vercel deployment commit: " + url);
+  }
   const title = html.match(/<title>(.*?)<\/title>/)?.[1];
   const description = html.match(/<meta name="description" content="([^"]+)"/)?.[1];
   const canonical = html.match(/<link rel="canonical" href="([^"]+)"/)?.[1];
