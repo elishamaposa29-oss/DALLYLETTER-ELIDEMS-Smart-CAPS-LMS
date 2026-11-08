@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/sitemap.xml
+Sitemap: https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/sitemap.xml
