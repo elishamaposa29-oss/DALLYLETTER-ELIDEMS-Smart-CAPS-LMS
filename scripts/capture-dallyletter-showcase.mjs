@@ -114,6 +114,9 @@ async function capturePublicPages() {
       recordVideo: { dir: out, size: { width: 1440, height: 1000 } }
     });
     const page = await context.newPage();
+    const runtimeErrors = [];
+    page.on("pageerror", (error) => runtimeErrors.push(String(error)));
+    page.on("console", (message) => { if (message.type() === "error") runtimeErrors.push(message.text()); });
     const video = page.video();
     try {
       const response = await page.goto(url.href, { waitUntil: "domcontentloaded", timeout: 45000 });
@@ -121,6 +124,7 @@ async function capturePublicPages() {
       await page.locator("body").waitFor({ state: "visible", timeout: 15000 });
       await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
       await verifyBrandLogo(page, url.pathname);
+      if (runtimeErrors.length) throw new Error("Runtime/browser console errors on " + url.pathname + ": " + runtimeErrors.slice(0, 3).join(" | ").slice(0, 400));
       await assertPublishablePage(page, url.pathname);
       const screenshot = "public-" + name + ".png";
       await page.screenshot({ path: path.join(out, screenshot), fullPage: true, animations: "disabled" });
@@ -184,6 +188,9 @@ async function captureRole(role, route, email, password) {
     recordVideo: { dir: out, size: { width: 1440, height: 1000 } }
   });
   const page = await context.newPage();
+  const runtimeErrors = [];
+  page.on("pageerror", (error) => runtimeErrors.push(String(error)));
+  page.on("console", (message) => { if (message.type() === "error") runtimeErrors.push(message.text()); });
   const video = page.video();
   try {
     const dashboardResponse = await page.goto(url.href, { waitUntil: "domcontentloaded", timeout: 45000 });
@@ -191,6 +198,7 @@ async function captureRole(role, route, email, password) {
     await page.locator("main, body").first().waitFor({ state: "visible", timeout: 15000 });
     await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
     await verifyBrandLogo(page, role + " dashboard");
+    if (runtimeErrors.length) throw new Error("Runtime/browser console errors in " + role + " dashboard: " + runtimeErrors.slice(0, 3).join(" | ").slice(0, 400));
     await assertPublishablePage(page, role + " dashboard");
     const screenshot = "dashboard-" + safeName(role) + ".png";
     await page.screenshot({ path: path.join(out, screenshot), fullPage: true, animations: "disabled" });
