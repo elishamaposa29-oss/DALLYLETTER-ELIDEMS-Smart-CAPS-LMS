@@ -20,17 +20,9 @@ const registerSchema = z.object({
   role: z.enum([RegisterUserBodyRole.student, RegisterUserBodyRole.teacher]),
   grade: z.string().optional(),
   subject: z.string().optional(),
-  country: z.enum(["ZW","ZA","OTHER"]),
-  countryName: z.string().optional(),
-  dialCode: z.string().optional(),
+  country: z.enum(["ZW","ZA"]),
   phone: z.string().optional(),
 }).superRefine((data, ctx) => {
-  if (data.country === "OTHER" && !data.countryName?.trim()) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Enter your country", path: ["countryName"] });
-  }
-  if (data.phone?.trim() && !data.phone.trim().startsWith("+") && data.country === "OTHER" && !/^\+\d{1,4}$/.test(data.dialCode?.trim() || "")) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Enter your international calling code, e.g. +44", path: ["dialCode"] });
-  }
   if (data.phone?.trim()) {
     const digitCount = data.phone.replace(/\D/g, "").length;
     if (digitCount < 8 || digitCount > 15) {
@@ -60,7 +52,7 @@ export default function Register() {
 
   const form = useForm<z.infer<typeof registerSchema>>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { name: "", email: "", password: "", role: RegisterUserBodyRole.student, grade: "", subject: "", country: "ZW", countryName: "", dialCode: "+263", phone: "" },
+    defaultValues: { name: "", email: "", password: "", role: RegisterUserBodyRole.student, grade: "", subject: "", country: "ZW", phone: "" },
   });
 
   const role = form.watch("role");
@@ -70,9 +62,9 @@ export default function Register() {
   function onSubmit(values: z.infer<typeof registerSchema>) {
     const enteredPhone = values.phone?.trim();
     const rawPhone = enteredPhone ? (enteredPhone.startsWith("+") ? `+${enteredPhone.slice(1).replace(/\D/g, "")}` : enteredPhone.replace(/\D/g, "")) : undefined;
-    const dialCode = values.country === "ZW" ? "+263" : values.country === "ZA" ? "+27" : values.dialCode?.trim();
+    const dialCode = values.country === "ZW" ? "+263" : "+27";
     const phone = rawPhone ? (rawPhone.startsWith("+") ? rawPhone : `${dialCode}${rawPhone.replace(/^0+/, "")}`) : undefined;
-    const { country: _country, countryName: _countryName, dialCode: _dialCode, phone: _localPhone, ...registrationData } = values;
+    const { country: _country, phone: _localPhone, ...registrationData } = values;
     registerMutation.mutate({ data: { ...registrationData, phone } }, {
       onSuccess: async (data) => {
         let verificationMessage = "Your account is ready.";
