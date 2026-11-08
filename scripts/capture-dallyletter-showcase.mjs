@@ -38,7 +38,7 @@ async function capturePublicPages() {
 
 async function captureRole(role, route, email, password) {
   if (!email || !password) {
-    results.push({ role, skipped: "Demo-account secrets are not configured." });
+    results.push({ role, error: "Required demo-account secrets are missing." });
     return;
   }
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
@@ -47,9 +47,10 @@ async function captureRole(role, route, email, password) {
     await page.goto(base + "/login", { waitUntil: "domcontentloaded", timeout: 45000 });
     await page.getByLabel("Email address").fill(email);
     await page.getByLabel("Password", { exact: true }).fill(password);
-    await page.getByRole("button", { name: "Sign In" }).click();
+    await page.getByRole("button", { name: "Sign In", exact: true }).click();
     await page.waitForURL((url) => !url.pathname.endsWith("/login"), { timeout: 30000 });
-    await page.goto(base + route, { waitUntil: "domcontentloaded", timeout: 45000 });
+    const dashboardResponse = await page.goto(base + route, { waitUntil: "domcontentloaded", timeout: 45000 });
+    if (dashboardResponse && dashboardResponse.status() >= 400) throw new Error(`Dashboard route returned HTTP ${dashboardResponse.status()}`);
     await page.locator("main, body").first().waitFor({ state: "visible", timeout: 15000 });
     await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
     await page.screenshot({ path: path.join(out, `dashboard-${safeName(role)}.png`), fullPage: true, animations: "disabled" });
@@ -69,6 +70,7 @@ try {
   // Owner authentication and private dashboards are deliberately excluded from public showcase automation.
   await fs.writeFile(path.join(out, "capture-manifest.json"), JSON.stringify({ site: base, capturedAt: new Date().toISOString(), results }, null, 2));
   console.log(JSON.stringify(results, null, 2));
+  if (results.some((result) => result.role && result.error)) process.exitCode = 1;
 } finally {
   await browser.close();
 }
