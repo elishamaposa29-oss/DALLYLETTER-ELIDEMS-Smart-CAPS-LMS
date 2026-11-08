@@ -20,7 +20,7 @@ export function ProtectedRoute({
   useEffect(() => {
     if (!isLoading) {
       if (!user) {
-        setLocation("/login");
+        setLocation(`/login?next=${encodeURIComponent(location)}`);
       } else if (restrictedTeacher && !restrictedTeacherAllowed) {
         setLocation("/profile-hub");
       } else {
