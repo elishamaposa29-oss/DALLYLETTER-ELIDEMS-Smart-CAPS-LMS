@@ -30,7 +30,27 @@ https://dallyletter-elidems-onlineschoolbye-two.vercel.app/
 
 The value must exactly match the verified URL-prefix property in Search Console, including protocol and trailing slash.
 
-## 3. Google service-account secret
+## 3. Optional Google Search Console HTML-tag verification
+
+If Search Console asks you to verify the URL-prefix property with an HTML tag:
+
+1. In Google Search Console, open the property verification instructions and choose **HTML tag**.
+2. Copy only the token from the tag's `content="..."` value. Do not copy the full HTML tag.
+3. Create a GitHub repository variable named `GOOGLE_SITE_VERIFICATION` containing that exact token.
+4. Add the same variable in the Vercel project's Environment Variables for the deployment environment being verified (Production, and Preview if needed).
+5. Redeploy the public site, then open the homepage source and confirm the generated `google-site-verification` meta tag is present.
+6. Return to Search Console and select **Verify**.
+
+Copy sheet:
+
+```text
+GOOGLE_SITE_VERIFICATION
+<PASTE ONLY THE CONTENT TOKEN FROM GOOGLE SEARCH CONSOLE>
+```
+
+This is a public verification token, not a private key; it belongs in a variable, not a secret. Never invent or reuse a token from another property. The build verifier checks that the tag is present whenever this variable is configured. DNS verification is an alternative and does not require this HTML-tag variable.
+
+## 4. Google service-account secret
 
 Create this repository secret:
 
@@ -54,7 +74,7 @@ Before running the workflows:
 3. Grant the access required for Search Analytics, URL Inspection and sitemap submission.
 4. Confirm the property URL matches `GSC_SITE_URL`.
 
-## 4. Dedicated showcase-account secrets
+## 5. Dedicated showcase-account secrets
 
 The showcase workflow captures public pages and three non-owner roles only: learner, approved teacher and manager. Use dedicated test accounts on the deployment being tested. Do not use personal accounts or production credentials.
 
@@ -92,7 +112,7 @@ Replace the angle-bracket instructions with actual values in GitHub's secret-val
 
 **Owner access is deliberately excluded.** Do not create or supply Owner credentials for this screenshot workflow. Owner dashboards, owner credentials and private owner data must never enter public showcase artifacts.
 
-## 5. Add each repository secret
+## 6. Add each repository secret
 
 For each secret:
 
@@ -104,7 +124,7 @@ For each secret:
 
 GitHub does not reveal a saved secret's value later. If a value is wrong, update it with the correct value.
 
-## 6. Run the workflows
+## 7. Run the workflows
 
 | Workflow | Direct link | Purpose |
 |---|---|---|
@@ -124,7 +144,7 @@ Run sitemap submission only after the target deployment serves the generated sit
 
 The showcase workflow is manual so it cannot accidentally test an old production deployment every time the feature branch changes. It can capture public pages without demo credentials; role captures are skipped when either secret for that role is missing. Configure all six showcase secrets to capture all three non-owner roles.
 
-## 7. What success looks like
+## 8. What success looks like
 
 - **Search Console report:** a successful run with current and previous 28-day metrics, query/page summaries and URL inspection results.
 - **Sitemap submission:** the deployed sitemap is fetched and validated before Google receives the submission request.
@@ -133,7 +153,7 @@ The showcase workflow is manual so it cannot accidentally test an old production
 
 A successful sitemap submission does not guarantee indexing or search rankings. Google controls crawling, indexing and ranking.
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 - **Google OAuth / 401:** check that the complete JSON key is valid, not revoked, and contains the correct `client_email` and `private_key`.
 - **Search Console 403:** add the service-account email to the exact URL-prefix property with the required permissions.
