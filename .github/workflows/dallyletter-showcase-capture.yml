@@ -34,6 +34,7 @@ jobs:
     timeout-minutes: 25
     env:
       SHOWCASE_SITE_URL: ${{ inputs.site_url || vars.GSC_SITE_URL || 'https://dallyletter-elidems-onlineschoolbye-two.vercel.app/' }}
+      SHOWCASE_AUTH_ALLOWED_ORIGIN: ${{ vars.GSC_SITE_URL || 'https://dallyletter-elidems-onlineschoolbye-two.vercel.app/' }}
       SHOWCASE_LEARNER_EMAIL: ${{ secrets.SHOWCASE_LEARNER_EMAIL }}
       SHOWCASE_LEARNER_PASSWORD: ${{ secrets.SHOWCASE_LEARNER_PASSWORD }}
       SHOWCASE_TEACHER_EMAIL: ${{ secrets.SHOWCASE_TEACHER_EMAIL }}
