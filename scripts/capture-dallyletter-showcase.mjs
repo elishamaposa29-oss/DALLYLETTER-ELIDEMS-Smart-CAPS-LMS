@@ -13,6 +13,33 @@ const safeName = (value) => value.toLowerCase().replace(/[^a-z0-9-]+/g, "-").rep
 const decodeXml = (value) => value.replaceAll("&amp;", "&").replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&quot;", '"').replaceAll("&apos;", "'");
 const expectedDeploymentSha = (process.env.EXPECTED_DEPLOYMENT_SHA || "").trim();
 
+
+async function assertPublishablePage(page, label) {
+  const audit = await page.evaluate(() => {
+    const visible = (element) => {
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+    };
+    const bodyText = (document.body?.innerText || "").slice(0, 120000);
+    const enteredValues = [...document.querySelectorAll("input, textarea, select")]
+      .filter(visible)
+      .map((element) => ({ type: element.getAttribute("type") || element.tagName.toLowerCase(), value: String(element.value || "") }))
+      .filter((item) => item.value.trim().length > 0);
+    const visibleAlerts = [...document.querySelectorAll('[role="alert"], [data-sonner-toast], [data-sonner-toast] [data-description]')]
+      .filter(visible).map((element) => (element.innerText || "").trim()).filter(Boolean);
+    const brokenImages = [...document.images].filter((image) => visible(image) && (!image.complete || image.naturalWidth === 0))
+      .map((image) => image.getAttribute("src") || image.alt || "unnamed image");
+    const forbiddenText = /(internal server error|stack trace|uncaught (?:exception|error)|failed to fetch|something went wrong|database connection failed|api key|secret key|private key|bearer\\s+[a-z0-9._-]{12,}|sk-[a-z0-9]{16,}|gh[pousr]_[a-z0-9]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/i.test(bodyText);
+    return { enteredValues, visibleAlerts, brokenImages, forbiddenText, bodyLength: bodyText.length };
+  });
+  if (audit.enteredValues.length) throw new Error("Capture blocked for " + label + ": visible form fields contain entered values.");
+  if (audit.visibleAlerts.length) throw new Error("Capture blocked for " + label + ": visible alert/error content: " + audit.visibleAlerts.join(" | ").slice(0, 300));
+  if (audit.forbiddenText) throw new Error("Capture blocked for " + label + ": sensitive text or an obvious application error was detected.");
+  if (audit.brokenImages.length) throw new Error("Capture blocked for " + label + ": broken images: " + audit.brokenImages.join(", ").slice(0, 300));
+  if (audit.bodyLength < 120) throw new Error("Capture blocked for " + label + ": page content is too sparse to be useful.");
+}
+
 async function waitForExpectedDeployment() {
   const homepage = new URL("/", baseUrl);
   const deadline = Date.now() + 15 * 60 * 1000;
@@ -78,27 +105,47 @@ async function verifyBrandLogo(page, contextLabel) {
 
 async function capturePublicPages() {
   const pages = await discoverPublicPages();
-  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
-  const page = await context.newPage();
   for (const url of pages) {
     const slug = url.pathname.split("/").filter(Boolean).join("-");
     const name = url.pathname === "/" ? "homepage" : safeName(slug);
+    const context = await browser.newContext({
+      viewport: { width: 1440, height: 1000 },
+      deviceScaleFactor: 1,
+      recordVideo: { dir: out, size: { width: 1440, height: 1000 } }
+    });
+    const page = await context.newPage();
+    const video = page.video();
     try {
       const response = await page.goto(url.href, { waitUntil: "domcontentloaded", timeout: 45000 });
       if (response && response.status() >= 400) throw new Error("HTTP " + response.status() + " for " + url.pathname);
       await page.locator("body").waitFor({ state: "visible", timeout: 15000 });
       await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
       await verifyBrandLogo(page, url.pathname);
+      await assertPublishablePage(page, url.pathname);
       const screenshot = "public-" + name + ".png";
       await page.screenshot({ path: path.join(out, screenshot), fullPage: true, animations: "disabled" });
+      // A short, silent UI walkthrough clip: no form entry, no authentication and no user data.
+      await page.waitForTimeout(1800);
+      await page.evaluate(() => window.scrollTo({ top: Math.min(700, document.body.scrollHeight), behavior: "instant" }));
+      await page.waitForTimeout(1800);
       results.push({ type: "public", page: name, url: url.href, status: response?.status() ?? "unknown", screenshot });
     } catch (error) {
       results.push({ type: "public", page: name, url: url.href, error: String(error) });
+    } finally {
+      await context.close();
+      if (video) {
+        try {
+          const videoPath = "public-" + name + ".webm";
+          await video.saveAs(path.join(out, videoPath));
+          const item = results.find((result) => result.type === "public" && result.page === name);
+          if (item && item.screenshot) item.video = videoPath;
+        } catch (error) {
+          results.push({ type: "public-video", page: name, url: url.href, error: "Video finalization failed: " + String(error) });
+        }
+      }
     }
   }
-  await context.close();
 }
-
 async function captureRole(role, route, email, password) {
   const url = new URL(route, baseUrl);
   if (baseUrl.origin !== authAllowedOrigin) {
@@ -109,8 +156,9 @@ async function captureRole(role, route, email, password) {
     results.push({ type: "dashboard", role, url: url.href, status: "skipped", reason: "Dedicated demo-account secrets are not configured." });
     return;
   }
-  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, recordVideo: { dir: out, size: { width: 1440, height: 1000 } } });
   const page = await context.newPage();
+  const video = page.video();
   try {
     await page.goto(new URL("/login", baseUrl).href, { waitUntil: "domcontentloaded", timeout: 45000 });
     await page.getByLabel("Email address").fill(email);
@@ -125,13 +173,19 @@ async function captureRole(role, route, email, password) {
     await page.locator("main, body").first().waitFor({ state: "visible", timeout: 15000 });
     await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
     await verifyBrandLogo(page, role + " dashboard");
+    await assertPublishablePage(page, role + " dashboard");
     const screenshot = "dashboard-" + safeName(role) + ".png";
     await page.screenshot({ path: path.join(out, screenshot), fullPage: true, animations: "disabled" });
-    results.push({ type: "dashboard", role, url: url.href, status: "captured", screenshot, title: await page.title() });
+    await page.waitForTimeout(2500);
+    results.push({ type: "dashboard", role, url: url.href, status: "captured-private", screenshot, title: await page.title() });
   } catch (error) {
     results.push({ type: "dashboard", role, url: url.href, error: String(error) });
   } finally {
     await context.close();
+    if (video) {
+      try { await video.saveAs(path.join(out, "private-dashboard-" + safeName(role) + ".webm")); }
+      catch (error) { results.push({ type: "dashboard-video", role, url: url.href, error: "Private video finalization failed: " + String(error) }); }
+    }
   }
 }
 
@@ -169,6 +223,7 @@ function buildGallery(manifest) {
   for (const item of manifest.results.filter((result) => result.type === "public")) {
     lines.push("### [" + item.page + "](" + item.url + ")", "");
     if (item.screenshot) lines.push("![" + item.page + "](./" + item.screenshot + ")", "");
+    if (item.video) lines.push("[Watch short walkthrough](./" + item.video + ")", "");
     else lines.push("Capture failed: " + item.error, "");
   }
   lines.push("## Authenticated non-owner dashboards", "");
