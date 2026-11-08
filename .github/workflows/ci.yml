@@ -33,7 +33,9 @@ jobs:
 
       - name: Verify release safety
         env:
-          PUBLIC_SITE_URL: ${{ vars.GSC_SITE_URL }}
+          # Keep build canonical URLs pinned to the verified production hostname.
+          # Do not let a stale GSC_SITE_URL repository variable override the real site.
+          PUBLIC_SITE_URL: https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/
           GOOGLE_SITE_VERIFICATION: ${{ vars.GOOGLE_SITE_VERIFICATION }}
         run: pnpm run ci:verify
 
