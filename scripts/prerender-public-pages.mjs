@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const siteUrl = (process.env.PUBLIC_SITE_URL || "https://dallyletter-elidems-onlineschoolbye-two.vercel.app").replace(/\\/+$/, "");
-const outputRoot = path.resolve("dist/public);
+const siteUrl = (process.env.PUBLIC_SITE_URL || "https://dallyletter-elidems-onlineschoolbye-two.vercel.app").replace(/\/+$/, "");
+const outputRoot = path.resolve("dist/public");
 const publicRoot = path.join(outputRoot, "public-site");
 const pages = [
 {slug:"",title:"Dallyletter Elidems | Online Learning for Zimbabwe, Africa & Beyond",description:"Dallyletter Elidems is a learning platform connecting learners, educators and schools. Zimbabwe first, South Africa focused, built for African syllabuses and global learning.",h1:"Learning opportunities without borders",intro:"Dallyletter Elidems is an online learning and school-support platform built to connect learners, educators, schools and organisations. Our starting point is Zimbabwe, with a strong South African focus and an open door to learning communities across Africa and around the world.",sections:[["A connected learning experience","Learners can access learning activities and resources, take part in classes and study groups, complete assignments and exercises, and keep track of learning progress. Educators can organise lessons, assignments, polls and learner feedback in one connected environment."],["Zimbabwe first, not Zimbabwe only","Dallyletter is being shaped around the realities and opportunities of Zimbabwean education while welcoming South African, African and international learning communities. Curriculum support depends on the syllabus and resources provided by each school or educator."],["For learners, educators and schools","Whether you are learning independently, teaching a class or coordinating a school community, Dallyletter is designed to make learning activity easier to organise, follow and improve."]],links:["about","how-it-works","learners","educators","schools","zimbabwe","south-africa","africa","primary-learning","secondary-learning","syllabus-support"]},
