@@ -3,7 +3,6 @@ import path from "node:path";
 import { chromium } from "playwright";
 
 const baseUrl = new URL(process.env.SHOWCASE_SITE_URL || "https://dallyletter-elidems-onlineschoolbye-two.vercel.app/");
-const base = baseUrl.origin;
 const out = path.resolve("showcase-captures");
 await fs.mkdir(out, { recursive: true });
 
@@ -15,10 +14,10 @@ const decodeXml = (value) => value.replaceAll("&amp;", "&").replaceAll("&lt;", "
 async function discoverPublicPages() {
   const sitemapUrl = new URL("/sitemap.xml", baseUrl);
   const response = await fetch(sitemapUrl, { headers: { accept: "application/xml,text/xml" } });
-  if (!response.ok) throw new Error(`Sitemap request failed: HTTP ${response.status} at ${sitemapUrl}`);
+  if (!response.ok) throw new Error("Sitemap request failed: HTTP " + response.status + " at " + sitemapUrl);
   const xml = await response.text();
-  const locations = [...xml.matchAll(/<loc>\\s*([\\s\\S]*?)\\s*<\\/loc>/gi)].map((match) => decodeXml(match[1].trim()));
-  if (!locations.length) throw new Error(`No <loc> URLs found in ${sitemapUrl}`);
+  const locations = [...xml.matchAll(/<loc>\s*([\s\S]*?)\s*<\/loc>/gi)].map((match) => decodeXml(match[1].trim()));
+  if (!locations.length) throw new Error("No <loc> URLs found in " + sitemapUrl);
 
   const discovered = new Map();
   for (const value of locations) {
@@ -29,8 +28,7 @@ async function discoverPublicPages() {
     discovered.set(url.href, url);
   }
 
-  // Sign-in is intentionally captured separately because authenticated dashboards
-  // are private and must never be inferred from public sitemap content.
+  // Sign-in is captured separately; private dashboards are never inferred from the public sitemap.
   const loginUrl = new URL("/login", baseUrl);
   discovered.set(loginUrl.href, loginUrl);
   return [...discovered.values()].sort((a, b) => a.pathname.localeCompare(b.pathname));
@@ -40,7 +38,7 @@ async function verifyBrandLogo(page, contextLabel) {
   const brandLogo = page.locator('img[alt="Dallyletter Elidems logo"]').first();
   await brandLogo.waitFor({ state: "visible", timeout: 10000 });
   const logoLoaded = await brandLogo.evaluate((img) => img.complete && img.naturalWidth > 0);
-  if (!logoLoaded) throw new Error(`Dallyletter brand logo did not load in ${contextLabel}`);
+  if (!logoLoaded) throw new Error("Dallyletter brand logo did not load in " + contextLabel);
 }
 
 async function capturePublicPages() {
@@ -48,14 +46,15 @@ async function capturePublicPages() {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
   const page = await context.newPage();
   for (const url of pages) {
-    const name = url.pathname === "/" ? "homepage" : safeName(url.pathname.replace(/^\\/+|\\/+$/g, "").replaceAll("/", "-"));
+    const slug = url.pathname.split("/").filter(Boolean).join("-");
+    const name = url.pathname === "/" ? "homepage" : safeName(slug);
     try {
       const response = await page.goto(url.href, { waitUntil: "domcontentloaded", timeout: 45000 });
-      if (response && response.status() >= 400) throw new Error(`HTTP ${response.status()} for ${url.pathname}`);
+      if (response && response.status() >= 400) throw new Error("HTTP " + response.status() + " for " + url.pathname);
       await page.locator("body").waitFor({ state: "visible", timeout: 15000 });
       await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
       await verifyBrandLogo(page, url.pathname);
-      const screenshot = `public-${name}.png`;
+      const screenshot = "public-" + name + ".png";
       await page.screenshot({ path: path.join(out, screenshot), fullPage: true, animations: "disabled" });
       results.push({ type: "public", page: name, url: url.href, status: response?.status() ?? "unknown", screenshot });
     } catch (error) {
@@ -83,11 +82,11 @@ async function captureRole(role, route, email, password) {
       throw new Error("Login did not leave /login. Visible feedback: " + feedback.join(" | ").slice(0, 500));
     });
     const dashboardResponse = await page.goto(url.href, { waitUntil: "domcontentloaded", timeout: 45000 });
-    if (dashboardResponse && dashboardResponse.status() >= 400) throw new Error(`Dashboard route returned HTTP ${dashboardResponse.status()}`);
+    if (dashboardResponse && dashboardResponse.status() >= 400) throw new Error("Dashboard route returned HTTP " + dashboardResponse.status());
     await page.locator("main, body").first().waitFor({ state: "visible", timeout: 15000 });
     await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
-    await verifyBrandLogo(page, `${role} dashboard`);
-    const screenshot = `dashboard-${safeName(role)}.png`;
+    await verifyBrandLogo(page, role + " dashboard");
+    const screenshot = "dashboard-" + safeName(role) + ".png";
     await page.screenshot({ path: path.join(out, screenshot), fullPage: true, animations: "disabled" });
     results.push({ type: "dashboard", role, url: url.href, status: "captured", screenshot, title: await page.title() });
   } catch (error) {
@@ -116,28 +115,28 @@ function buildGallery(manifest) {
   const lines = [
     "# Dallyletter Elidems — latest live UI captures",
     "",
-    `- Site: [${manifest.site}](${manifest.site})`,
-    `- Captured: ${manifest.capturedAt}`,
-    `- Source commit: ${manifest.sourceCommit || "not supplied"}`,
-    `- Workflow run: ${manifest.workflowRunUrl || "not supplied"}`,
-    `- Public URLs discovered from sitemap: ${manifest.publicPageCount}`,
+    "- Site: [" + manifest.site + "](" + manifest.site + ")",
+    "- Captured: " + manifest.capturedAt,
+    "- Source commit: " + (manifest.sourceCommit || "not supplied"),
+    "- Workflow run: [" + (manifest.workflowRunUrl || "not supplied") + "](" + (manifest.workflowRunUrl || "") + ")",
+    "- Public URLs discovered from sitemap: " + manifest.publicPageCount,
     "",
-    "These screenshots are refreshed from the deployed site. The live page links below are canonical URLs; PNG files are included in this workflow artifact.",
+    "Screenshots reflect the deployed site at capture time. Live page links are canonical URLs; PNG files are included in this workflow artifact.",
     "",
     "## Public pages",
     ""
   ];
   for (const item of manifest.results.filter((result) => result.type === "public")) {
-    lines.push(`### [${item.page}](${item.url})`, "");
-    if (item.screenshot) lines.push(`![${item.page}](./${item.screenshot})`, "");
-    else lines.push(`Capture failed: ${item.error}`, "");
+    lines.push("### [" + item.page + "](" + item.url + ")", "");
+    if (item.screenshot) lines.push("![" + item.page + "](./" + item.screenshot + ")", "");
+    else lines.push("Capture failed: " + item.error, "");
   }
   lines.push("## Authenticated non-owner dashboards", "");
   for (const item of manifest.results.filter((result) => result.type === "dashboard")) {
-    lines.push(`- **${item.role}:** [${item.url}](${item.url}) — ${item.status || "failed"}${item.screenshot ? ` — ${item.screenshot}` : ""}${item.error ? ` — ${item.error}` : ""}`);
+    lines.push("- **" + item.role + ":** [" + item.url + "](" + item.url + ") — " + (item.status || "failed") + (item.screenshot ? " — " + item.screenshot : "") + (item.error ? " — " + item.error : ""));
   }
   lines.push("", "Owner dashboards are deliberately excluded. Use dedicated non-production showcase accounts only.", "");
-  return lines.join("\\n");
+  return lines.join("\n");
 }
 
 try {
@@ -162,14 +161,14 @@ try {
     const summary = [
       "# Dallyletter showcase capture",
       "",
-      `- Site: ${manifest.site}`,
-      `- Public pages captured: ${manifest.publicPageCount}`,
-      `- Source commit: ${manifest.sourceCommit || "unknown"}`,
-      `- [Workflow run](${manifest.workflowRunUrl || ""})`,
+      "- Site: " + manifest.site,
+      "- Public pages captured: " + manifest.publicPageCount,
+      "- Source commit: " + (manifest.sourceCommit || "unknown"),
+      "- [Workflow run](" + (manifest.workflowRunUrl || "") + ")",
       "",
-      ...results.map((result) => `- ${result.type || "page"} / ${result.page || result.role}: ${result.error ? "FAILED — " + result.error : result.status || "captured"} — ${result.url || ""}`)
+      ...results.map((result) => "- " + (result.type || "page") + " / " + (result.page || result.role) + ": " + (result.error ? "FAILED — " + result.error : result.status || "captured") + " — " + (result.url || ""))
     ];
-    await fs.appendFile(process.env.GITHUB_STEP_SUMMARY, summary.join("\\n") + "\\n");
+    await fs.appendFile(process.env.GITHUB_STEP_SUMMARY, summary.join("\n") + "\n");
   }
   console.log(JSON.stringify(manifest, null, 2));
   if (results.some((result) => result.error)) process.exitCode = 1;
