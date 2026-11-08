@@ -21,13 +21,13 @@ This checklist is intentionally retained for future work. Do not mark items comp
 - [ ] Further teaching/extra-lesson experiences and examples, with learner privacy protected.
 
 ## Public discovery and display
-- [ ] Add a permanent public founder-history page.
-- [ ] Link it from the homepage, About page, footer and relevant product pages.
-- [ ] Add Person/creator structured data naming Elisha Maposa.
+- [x] Add a permanent public founder-history page at `/founder-story/`.
+- [x] Link it from the homepage navigation, About-page navigation and public footer.
+- [x] Add Person/creator structured data naming Elisha Maposa to each prerendered public page.
 - [ ] Add approved founder portrait to social-sharing/Open Graph artwork.
-- [ ] Add image sitemap entries and descriptive image metadata.
-- [ ] Update `llms.txt` and `llms-full.txt` with the verified founder story and page URL.
-- [ ] Include the approved founder image in relevant Dallyletter demonstrations and brand explanations where it adds context.
+- [ ] Add founder-portrait image sitemap entries and descriptive image metadata after an approved portrait is supplied. The current image sitemap covers the general social preview only.
+- [x] Update `llms.txt` and `llms-full.txt` with the verified founder story and page URL.
+- [ ] Include an approved founder image in relevant Dallyletter demonstrations and brand explanations after the original image is supplied and public use is approved.
 - [ ] Never imply Google or AI assistants are guaranteed to display a particular image.
 
 ## Reminder rule
