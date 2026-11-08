@@ -29,7 +29,8 @@ export function ActivityMonitor() {
   const [error, setError] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewResults, setPreviewResults] = useState<Array<{ item: Activity; data?: any; error?: string }>>([]);\n  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [previewResults, setPreviewResults] = useState<Array<{ item: Activity; data?: any; error?: string }>>([]);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -44,7 +45,13 @@ export function ActivityMonitor() {
     } finally { setLastUpdated(new Date()); setLoading(false); }
   };
 
-  useEffect(() => {\n    void load();\n    const timer = window.setInterval(() => {\n      if (document.visibilityState === "visible") void load();\n    }, 15000);\n    return () => window.clearInterval(timer);\n  }, []);
+  useEffect(() => {
+    void load();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -63,7 +70,10 @@ export function ActivityMonitor() {
     setPreviewLoading(true);
     setPreviewResults([]);
     const paths: Record<string, (id: number) => string> = {
-      lesson: id => `/api/lessons/${id}`,\n      teacher_cv: id => `/api/teacher-cv-workspace/${id}/details`,\n      teacher_application: id => `/api/teacher-cv-workspace/${id}/details`,\n      survey: id => `/api/teacher-cv-workspace/${id}/details`,
+      lesson: id => `/api/lessons/${id}`,
+      teacher_cv: id => `/api/teacher-cv-workspace/${id}/details`,
+      teacher_application: id => `/api/teacher-cv-workspace/${id}/details`,
+      survey: id => `/api/teacher-cv-workspace/${id}/details`,
       exercise: id => `/api/exercises/${id}`,
       assignment: id => `/api/assignments/${id}`,
       class: id => `/api/classes/${id}`,
