@@ -17,10 +17,10 @@ const loginSchema = z.object({
 });
 
 const features = [
-  { icon: BookOpen, text: "CAPS-aligned lessons uploaded by qualified teachers" },
-  { icon: Video, text: "Live Google Meet classes with real-time Q&A" },
-  { icon: Users, text: "Collaborative study groups for every subject" },
-  { icon: ShieldCheck, text: "Secure, private platform for your school" },
+  { icon: BookOpen, text: "Lessons and learning materials shared by schools and educators" },
+  { icon: Video, text: "Class activities and supported learning sessions" },
+  { icon: Users, text: "Study groups and learner communication" },
+  { icon: ShieldCheck, text: "Role-based learning and school-support workspaces" },
 ];
 
 export default function Login() {
@@ -80,7 +80,7 @@ export default function Login() {
           <div className="space-y-6 mb-12">
             <div className="inline-flex items-center gap-2 bg-white/8 border border-white/10 px-4 py-2 rounded-full text-sm text-white/70">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              CAPS Education Platform · South Africa
+              Zimbabwe first · Africa and beyond
             </div>
             <h1 className="text-5xl font-bold text-white leading-[1.1] tracking-tight">
               Empowering the<br />
@@ -89,7 +89,7 @@ export default function Login() {
               </span>
             </h1>
             <p className="text-lg text-white/60 leading-relaxed max-w-md">
-              Premium CAPS curriculum support — connecting passionate educators with ambitious learners across Zimbabwe and South Africa.
+              A friendly digital learning environment connecting learners, educators and schools — starting in Zimbabwe, welcoming South Africa, and open to Africa and beyond.
             </p>
           </div>
 
@@ -107,14 +107,14 @@ export default function Login() {
 
           {/* Trust badge */}
           <div className="border-t border-white/10 pt-8">
-            <p className="text-xs text-white/30 uppercase tracking-widest font-medium mb-3">Trusted by learners & teachers</p>
+            <p className="text-xs text-white/30 uppercase tracking-widest font-medium mb-3">Built for learners, educators & schools</p>
             <div className="flex items-center gap-3">
               {["S", "T", "A", "M", "G"].map((l, i) => (
                 <div key={i} className="h-9 w-9 rounded-full bg-gradient-to-br from-white/10 to-white/5 border border-white/10 flex items-center justify-center text-white/60 text-sm font-bold">
                   {l}
                 </div>
               ))}
-              <span className="text-sm text-white/40 ml-1">+ many more</span>
+              <span className="text-sm text-white/40 ml-1">Explore Dallyletter</span>
             </div>
           </div>
         </div>
