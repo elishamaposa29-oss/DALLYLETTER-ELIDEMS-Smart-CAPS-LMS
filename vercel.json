@@ -91,6 +91,74 @@
       "destination": "/syllabus-support/index.html"
     },
     {
+      "source": "/managers/",
+      "destination": "/managers/index.html"
+    },
+    {
+      "source": "/past-papers/",
+      "destination": "/past-papers/index.html"
+    },
+    {
+      "source": "/o-level/",
+      "destination": "/o-level/index.html"
+    },
+    {
+      "source": "/exam-preparation/",
+      "destination": "/exam-preparation/index.html"
+    },
+    {
+      "source": "/mathematics/",
+      "destination": "/mathematics/index.html"
+    },
+    {
+      "source": "/english/",
+      "destination": "/english/index.html"
+    },
+    {
+      "source": "/science/",
+      "destination": "/science/index.html"
+    },
+    {
+      "source": "/biology/",
+      "destination": "/biology/index.html"
+    },
+    {
+      "source": "/chemistry/",
+      "destination": "/chemistry/index.html"
+    },
+    {
+      "source": "/physics/",
+      "destination": "/physics/index.html"
+    },
+    {
+      "source": "/geography/",
+      "destination": "/geography/index.html"
+    },
+    {
+      "source": "/history/",
+      "destination": "/history/index.html"
+    },
+    {
+      "source": "/computer-studies/",
+      "destination": "/computer-studies/index.html"
+    },
+    {
+      "source": "/business-studies/",
+      "destination": "/business-studies/index.html"
+    },
+    {
+      "source": "/accounting/",
+      "destination": "/accounting/index.html"
+    },
+    {
+      "source": "/study-notes/",
+      "destination": "/study-notes/index.html"
+    },
+    {
+      "source": "/video-learning/",
+      "destination": "/video-learning/index.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
