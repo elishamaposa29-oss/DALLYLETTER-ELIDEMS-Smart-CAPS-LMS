@@ -2,7 +2,7 @@
 
 **Founder / sole creator:** Elisha Maposa  
 **Brand line:** Learning without borders. African educational innovation.  
-**Initial focus:** Zimbabwe and South Africa. **Long-term audience:** learners, educators, schools and organisations worldwide.  
+**Initial focus:** Zimbabwe first, with South Africa as an important early market. **Long-term audience:** learners, educators, schools and organisations worldwide.  
 **Website:** https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/
 
 ## Platform-ready profiles
@@ -12,13 +12,13 @@ Dallyletter Elidems is building digital learning experiences for learners, educa
 
 ### Instagram
 Learning without borders 🌍  
-Zimbabwe 🇿🇼 + South Africa 🇿🇦 in focus  
+Zimbabwe first 🇿🇼 | South Africa and wider Africa welcome  
 African curricula. Global learning community.  
 Founded & solely created by Elisha Maposa.
 
 ### TikTok
 African learning innovation 🌍  
-Zimbabwe + South Africa in focus  
+Zimbabwe first | South Africa and wider Africa welcome  
 Built by Elisha Maposa.
 
 ### X
@@ -49,7 +49,7 @@ Explore the platform: https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.a
 |---|---|---|---|
 | 1 | Introducing Dallyletter and its mission | Branded graphic + short caption | Visit the website |
 | 1 | Founder story: why Elisha Maposa started building it | Founder note / short video | Follow the build |
-| 1 | Zimbabwe and South Africa as initial focus | Map-style graphic | Tell us what learners need |
+| 1 | Zimbabwe first, with South Africa as an important early market | Map-style graphic | Tell us what learners need |
 | 2 | A real learner-facing feature walkthrough | Screen recording | Try the feature if publicly available |
 | 2 | Study tip: turn a topic into a weekly plan | Carousel | Save and share |
 | 2 | What teachers need from digital tools | Question post | Educators: share one challenge |
