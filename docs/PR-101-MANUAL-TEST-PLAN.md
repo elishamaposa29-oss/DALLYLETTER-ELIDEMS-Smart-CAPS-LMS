@@ -53,7 +53,21 @@ Run this plan against the exact deployment built from `feat/public-seo-discovery
 - [ ] Confirm Owner credentials and private Owner dashboards are not captured or included in artifacts.
 - [ ] Inspect artifacts and logs to ensure no passwords, tokens, private keys or personal user data are exposed.
 
-## 7. Performance, accessibility and release
+
+## 7. Authentication continuation and registration
+
+- [ ] Open a protected route while signed out; confirm the app redirects to /login?next=... with the original internal path encoded.
+- [ ] Sign in with an account authorized for that route; confirm the app returns to the requested route.
+- [ ] Try a protocol-relative next value such as //example.com; confirm it is ignored and the user is sent to the role-appropriate workspace.
+- [ ] Confirm role fallback routes: learner → /student, teacher → /teacher, junior/senior manager → /manager, owner/platform owner → /admin.
+- [ ] Register a learner and confirm the destination is /student.
+- [ ] Register a teacher and confirm the destination is /teacher/qualifications, not an unrestricted teaching dashboard.
+- [ ] Confirm a pending teacher can reach Profile Hub and qualification submission but is redirected away from teaching operations.
+- [ ] Confirm a phone number entered in explicit E.164 form (for example, beginning with +263 or +27) is normalized and submitted without duplicating a country prefix.
+- [ ] Confirm public registration does not create privileged roles and that manager permissions remain server-authorized.
+
+## 8. Performance, accessibility and release
+
 
 - [ ] Confirm Lighthouse meets the configured performance, accessibility, best-practices and SEO thresholds on the selected public pages.
 - [ ] Confirm CI, Release Safety, Profile Hub integration and Android build/smoke checks pass on the latest PR head.
