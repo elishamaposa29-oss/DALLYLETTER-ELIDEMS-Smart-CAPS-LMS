@@ -63,7 +63,7 @@ jobs:
         with:
           name: dallyletter-showcase-${{ github.run_number }}
           path: showcase-captures/
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 90
 
       - name: Publish current public screenshot media to dedicated branch
