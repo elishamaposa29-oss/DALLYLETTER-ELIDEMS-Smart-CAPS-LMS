@@ -159,6 +159,10 @@
       "destination": "/video-learning/index.html"
     },
     {
+      "source": "/founder-story/",
+      "destination": "/founder-story/index.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
