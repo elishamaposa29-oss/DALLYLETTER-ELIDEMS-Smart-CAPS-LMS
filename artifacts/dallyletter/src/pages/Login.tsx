@@ -29,6 +29,8 @@ export default function Login() {
   const { toast } = useToast();
   const loginMutation = useLoginUser();
   const passwordChanged = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("passwordChanged") === "1";
+  const requestedNext = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("next") : null;
+  const safeNext = requestedNext && requestedNext.startsWith("/") && !requestedNext.startsWith("//") && !requestedNext.includes("\\") ? requestedNext : null;
 
   const form = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
@@ -39,9 +41,12 @@ export default function Login() {
     loginMutation.mutate({ data: values }, {
       onSuccess: (data) => {
         login(data.token, data.user);
-        if (data.user.role === "owner") setLocation("/admin");
-        else if (data.user.role === "teacher") setLocation("/teacher");
-        else if (["manager","senior_manager"].includes(String(data.user.role||"").toLowerCase().replace(/[ -]+/g,"_"))) setLocation("/manager");
+        const role = String(data.user.role || "").toLowerCase().replace(/[ -]+/g, "_");
+        if (safeNext) setLocation(safeNext);
+        else if (["owner", "platform_owner"].includes(role)) setLocation("/admin");
+        else if (["manager", "senior_manager", "junior_manager"].includes(role)) setLocation("/manager");
+        else if (role === "teacher") setLocation("/teacher");
+        else if (role === "student" || role === "prefect") setLocation("/student");
         else setLocation("/");
       },
       onError: (error) => {
