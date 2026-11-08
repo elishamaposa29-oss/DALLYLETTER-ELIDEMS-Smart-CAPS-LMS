@@ -153,7 +153,7 @@ try {
     capturedAt: new Date().toISOString(),
     sourceCommit: process.env.GITHUB_SHA || null,
     workflowRunUrl: process.env.GITHUB_RUN_URL || null,
-    publicPageCount: results.filter((result) => result.type === "public").length,
+    publicPageCount: results.filter((result) => result.type === "public" && result.screenshot).length,
     results
   };
   await fs.writeFile(path.join(out, "capture-manifest.json"), JSON.stringify(manifest, null, 2));
@@ -165,7 +165,7 @@ try {
       `- Site: ${manifest.site}`,
       `- Public pages captured: ${manifest.publicPageCount}`,
       `- Source commit: ${manifest.sourceCommit || "unknown"}`,
-      `- [Workflow run] (${manifest.workflowRunUrl || ""})`,
+      `- [Workflow run](${manifest.workflowRunUrl || ""})`,
       "",
       ...results.map((result) => `- ${result.type || "page"} / ${result.page || result.role}: ${result.error ? "FAILED — " + result.error : result.status || "captured"} — ${result.url || ""}`)
     ];
