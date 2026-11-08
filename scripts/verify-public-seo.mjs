@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const root = path.resolve("dist/public");
-const siteUrl = (process.env.PUBLIC_SITE_URL || "https://dallyletter-elidems-onlineschoolbye-two.vercel.app").replace(/\/+$/, "");
+const siteUrl = (process.env.PUBLIC_SITE_URL || "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app").replace(/\/+$/, "");
 const siteOrigin = new URL(siteUrl).origin;
 const verificationToken = (process.env.GOOGLE_SITE_VERIFICATION || "").trim();
 const expectedBuildSha = (process.env.VERCEL_GIT_COMMIT_SHA || "").trim();
