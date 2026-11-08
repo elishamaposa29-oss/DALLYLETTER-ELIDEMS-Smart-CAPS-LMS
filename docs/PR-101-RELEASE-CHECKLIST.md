@@ -20,6 +20,11 @@ Pull request: [#101](https://github.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-S
 - [x] Sitemap submission validates the deployed XML before submitting it to Google.
 - [x] Automatic public/learner/approved-teacher/manager showcase capture after relevant changes reach `main`, weekly and on manual dispatch; missing demo credentials skip safely and Owner access is excluded.
 - [x] Sitemap-driven capture discovery, timestamped manifest, Markdown gallery and 90-day screenshot artifact.
+- [x] Silent short WebM walkthrough clips for public discovery pages, published alongside the matching screenshots only after the automated safety gate passes.
+- [x] Learner, teacher and manager walkthrough videos recorded after authentication in a separate recording context; login credentials are never included in recordings.
+- [x] Role walkthroughs follow only visible, same-origin read-only navigation links for learning and teaching workflows; no form submission, payments, approvals, account settings or destructive actions.
+- [x] Authenticated role screenshots and videos remain private in the 90-day workflow artifact; they are not published to the public media branch. Owner views and credentials remain excluded.
+- [x] Public capture safety gate blocks populated form fields, visible alerts, obvious credentials/secrets, broken images and sparse/failed pages before media is eligible for publication.
 - [x] Public pages embed the exact Vercel build SHA; push-triggered captures wait for that exact commit and refuse to capture stale deployments.
 - [x] Successful public captures publish stable image URLs and a current manifest/gallery on the dedicated `showcase-media` branch; authenticated dashboards and Owner screenshots are excluded.
 - [x] Authenticated capture restricted to the configured production origin so preview URLs cannot receive showcase credentials.
@@ -64,7 +69,7 @@ Use dedicated non-production accounts only. Owner credentials are deliberately n
 
 - The latest reported Vercel status is `Deployment rate limited — retry in 24 hours`. This is an external deployment quota, not an application-build result. Do not bypass it by changing deployment settings or upgrading a plan without approval.
 - Search Console and showcase automation cannot produce real account evidence until the required repository secrets/variable and Search Console property permissions are configured.
-- The founder portrait is not present in the accessible file library. Keep the story text and creator attribution, but do not fabricate or publish a replacement portrait. Add the original image only after it is supplied and public-use approval is confirmed.
+- The founder portrait is not present in the accessible file library or current PR branch. The public founder story and Elisha Maposa creator attribution remain linked and accessible; the actual portrait is still pending. Do not fabricate, substitute or remove the creator attribution. Add the original portrait only after the original image is supplied and public-use approval is confirmed.
 
 ## Merge and production policy
 
