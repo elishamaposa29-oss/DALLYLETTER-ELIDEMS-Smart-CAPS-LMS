@@ -69,7 +69,7 @@ async function capturePublicPages() {
 
 async function captureRole(role, route, email, password) {
   if (!email || !password) {
-    results.push({ role, error: "Required demo-account secrets are missing." });
+    results.push({ role, status: "skipped", reason: "Dedicated demo-account secrets are not configured." });
     return;
   }
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
@@ -100,15 +100,30 @@ async function captureRole(role, route, email, password) {
   }
 }
 
+async function pageFor404Probe() {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  try {
+    const response = await page.goto(base + "/__dallyletter-pr-404-probe__/", { waitUntil: "domcontentloaded", timeout: 45000 });
+    if (response?.status() !== 404) {
+      return { page: "unknown-route-404", error: "Expected HTTP 404 for an unknown route; received " + (response?.status() ?? "no response") };
+    }
+    return { page: "unknown-route-404", status: 404 };
+  } finally {
+    await context.close();
+  }
+}
+
 try {
   await capturePublicPages();
   await captureRole("learner", "/student", process.env.SHOWCASE_LEARNER_EMAIL, process.env.SHOWCASE_LEARNER_PASSWORD);
   await captureRole("teacher", "/teacher", process.env.SHOWCASE_TEACHER_EMAIL, process.env.SHOWCASE_TEACHER_PASSWORD);
   await captureRole("manager", "/manager", process.env.SHOWCASE_MANAGER_EMAIL, process.env.SHOWCASE_MANAGER_PASSWORD);
   // Owner authentication and private dashboards are deliberately excluded from public showcase automation.
+  results.push(await pageFor404Probe());
   await fs.writeFile(path.join(out, "capture-manifest.json"), JSON.stringify({ site: base, capturedAt: new Date().toISOString(), results }, null, 2));
   console.log(JSON.stringify(results, null, 2));
-  if (results.some((result) => result.error || (typeof result.status === "number" && result.status >= 400))) process.exitCode = 1;
+  if (results.some((result) => result.error)) process.exitCode = 1;
 } finally {
   await browser.close();
 }
