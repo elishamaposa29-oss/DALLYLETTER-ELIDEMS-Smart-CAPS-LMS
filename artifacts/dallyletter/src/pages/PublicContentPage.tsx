@@ -4,7 +4,7 @@ import { ArrowRight, BookOpen, GraduationCap, School, Users, Compass, CheckCircl
 import pageContent from "@/content/public-pages.json";
 
 type PageKey = keyof typeof pageContent;
-const SITE = "https://dallyletter-elidems-onlineschoolbye-two.vercel.app";
+const SITE = "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app";
 
 function pageKey(pathname: string): PageKey {
   const path = pathname.replace(/\/$/, "") || "/";
