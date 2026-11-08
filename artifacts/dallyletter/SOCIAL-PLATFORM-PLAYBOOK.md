@@ -13,7 +13,7 @@ This playbook prepares copy and content formats. It does not assert that any soc
 **Bio:** Digital learning experiences for learners, educators and schools. Zimbabwe first, with South Africa and the wider African region also welcomed, with a global welcome. Founded and solely created by Elisha Maposa.
 
 **Pinned post:**  
-Welcome to Dallyletter Elidems. We are building connected digital learning experiences for learners, educators and schools, beginning with Zimbabwe and South Africa while welcoming a global learning community. Follow this page for practical study guidance, honest product demonstrations and development updates. Founded and solely created by Elisha Maposa. Explore the platform: [official website]
+Welcome to Dallyletter Elidems. We are building connected digital learning experiences for learners, educators and schools, beginning in Zimbabwe, with South Africa as an important early market and a global learning community welcome. Follow this page for practical study guidance, honest product demonstrations and development updates. Founded and solely created by Elisha Maposa. Explore the platform: [official website]
 
 **Content format:** 1) practical learner tip, 2) short product walkthrough using a verified live feature, 3) question for parents/educators. Invite discussion; never imply a commenter is a customer or partner.
 
@@ -38,7 +38,7 @@ Use captions, clear audio and readable text. Do not use fake testimonials, engag
 
 **Channel trailer outline (45–60 seconds):**
 1. Introduce Dallyletter Elidems and its education purpose.
-2. Explain Zimbabwe and South Africa as the initial focus and the international outlook.
+2. Explain Zimbabwe first, with South Africa as an important early market and a wider African and international outlook.
 3. Show only verified, current product screens.
 4. Explain who the platform is for: learners, educators and schools.
 5. Invite viewers to explore the official website and follow future practical learning guides.
@@ -62,7 +62,7 @@ Each video needs a plain-language title, useful description, chapters for longer
 ## LinkedIn — institutional credibility and founder updates
 **Page tagline:** African-focused education technology | Zimbabwe first, with South Africa and the wider African region also welcomed | Global outlook.
 
-**About copy:** Dallyletter Elidems is an education-technology initiative developing connected digital learning experiences for learners, educators and educational organisations. Our initial geographic focus is Zimbabwe and South Africa, with a broader ambition to support diverse African educational contexts and international participation. Founded and solely created by Elisha Maposa. We share product progress transparently and welcome informed conversations with educators and institutions.
+**About copy:** Dallyletter Elidems is an education-technology initiative developing connected digital learning experiences for learners, educators and educational organisations. Zimbabwe is our initial market focus, with South Africa as an important early market, with a broader ambition to support diverse African educational contexts and international participation. Founded and solely created by Elisha Maposa. We share product progress transparently and welcome informed conversations with educators and institutions.
 
 **Post formats:** monthly founder/product update with evidence; educator workflow explanation; thoughtful article on digital learning access; school operations overview; an organisation-focused post for tutoring centres, community programmes and training teams inviting a fit-and-scope conversation. Do not claim partnerships, customer adoption, accreditation or measured outcomes without verifiable evidence.
 
