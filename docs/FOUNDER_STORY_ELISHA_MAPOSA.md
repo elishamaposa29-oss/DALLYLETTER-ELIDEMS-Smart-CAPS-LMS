@@ -44,6 +44,17 @@ Before Dallyletter became software, Elisha had experience helping younger learne
 
 That experience helped shape the purpose behind Dallyletter: connect learners and educators, make learning more organised, and support a cycle of teaching, practice, demonstration, feedback and improvement.
 
+
+## The phone that kept fighting back — and the projects before Dallyletter
+
+Dallyletter Elidems was not Elisha's first project. Before and alongside it, he worked on dozens of ideas and projects. Some were attempted in parallel; some failed; others became too expensive to maintain or required technical expertise he had not yet developed. He learned to assess what was realistically possible with the resources and skills available, rather than pretending every idea could be sustained at once. Choosing what he could continue was a practical decision, not a lack of ambition.
+
+A major part of this work happened on an old, low-quality Android phone. Elisha describes it as unreliable: it froze, shut down during active work, restarted unexpectedly, sometimes refused to wake, and risked interrupting or losing work. He often had to restart and continue rather than abandon the project. The same phone that made development frustrating also became a tool with which he built meaningful parts of the platform.
+
+These technical difficulties existed alongside poor living standards, financial pressure and responsibilities and duties he still had to carry. The device was not ideal, the working conditions were not ideal, and the resources were limited. He kept making decisions based on what was possible and continued learning and building.
+
+This chapter should not romanticise unreliable hardware or hardship. It records the actual constraints and the resourcefulness required to work through them.
+
 ## Why Dallyletter exists
 
 Dallyletter Elidems is being built as an education technology platform with Zimbabwe as its starting point, a strong South African focus, an African learning vision and an open door to global learning communities.
@@ -69,4 +80,6 @@ Start small. Learn the fundamentals. Build something useful. Ask questions. Keep
 - The 2026 relocation to Zimbabwe, return to Form 3, reported slight decline in academic performance while focusing on Dallyletter, location-independent learning vision, and infrastructure/identity/payment barriers are founder-provided recollections; do not embellish or present them as independently verified.
 - Keep future photographs as pending archival assets until Elisha supplies and approves them.
 - Use captions, alt text and dates only when confirmed.
+- Elisha confirms that Dallyletter was not his first project: he had dozens of previous and parallel projects, with some failing, becoming too expensive to sustain or requiring skills he had not yet acquired.
+- The old Android phone's freezing, unexpected shutdowns/restarts and failure to wake, along with the founder's living conditions and responsibilities, are founder-provided recollections. Do not embellish them.
 - Keep this story editable as Elisha provides more of the history.
