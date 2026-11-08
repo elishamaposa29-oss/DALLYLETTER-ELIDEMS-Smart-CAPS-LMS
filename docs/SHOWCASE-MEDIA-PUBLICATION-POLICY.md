@@ -4,13 +4,13 @@
 
 - Discover public pages from the deployed sitemap and capture full-page screenshots.
 - Record a short, silent public-page walkthrough clip for each successfully screened public page.
-- Capture learner, teacher and manager dashboard screenshots and short recordings only with dedicated showcase accounts. Authenticate in a non-recording browser context; start the recording context only after login so passwords are never recorded.
+- Capture learner, teacher and manager dashboard screenshots and short recordings only with dedicated showcase accounts. Authenticate in a non-recording browser context; start the recording context only after login so passwords are never recorded. Role clips follow at most three visible same-origin read-only navigation links discovered in that role's actual dashboard.
 - Do not capture Owner dashboards or Owner credentials.
 
 ## Publication boundary
 
 - Public-page screenshots and clips may be published to the dedicated `showcase-media` branch after the complete public capture run succeeds.
-- Authenticated learner, teacher and manager evidence is private GitHub Actions artifact output only. It is never copied to `showcase-media`, embedded in public pages, or added to search-facing content by automation.
+- Authenticated learner, teacher and manager evidence is private GitHub Actions artifact output only. It is never copied to `showcase-media`, embedded in public pages, or added to search-facing content by automation. Role recordings are not public, even when the automated screen checks pass, because account dashboards may reveal learner, teacher or school information.
 - Owner views and credentials are excluded entirely.
 - Search engines should discover public product pages and deliberately approved media only. Authenticated workspace recordings are not public assets and must never be added to sitemap, Open Graph metadata, public galleries or AI reference files.
 
@@ -29,7 +29,7 @@ Automated checks are a first barrier, not a guarantee that every visual defect o
 
 ## Product-story coverage
 
-Keep the sitemap-driven public captures current. The public story should show the value proposition for learners, teachers, schools and organisations. Authenticated role recordings are retained privately for review and should cover the real learning cycle when suitable demo data exists: teacher preparation, lesson delivery, learner study, exercises/demonstration, assessment, feedback, progress evidence and follow-up learning. Do not fabricate completed workflows or imply a feature is available if it is not.
+Keep the sitemap-driven public captures current. The public story should show the value proposition for learners, teachers, schools and organisations. Authenticated role recordings are retained privately for review. The automated walkthrough visits only up to three visible read-only routes per role; it does not submit assignments, create lessons, mark work, approve users, change payments or simulate a completed learning cycle. Reviewers should manually verify teacher preparation, lesson delivery, learner study, exercises/demonstration, assessment, feedback, progress evidence and follow-up learning using dedicated demo data. Do not fabricate completed workflows or imply a feature is available if it is not.
 
 ## Founder image and attribution
 
