@@ -104,3 +104,5 @@ The public pages describe study and platform workflows. They do not establish th
 
 - In 2026, Elisha relocated to Zimbabwe and found returning to Form 3 emotionally difficult after earlier interrupted schooling. He decided to build a stable, location-independent learning platform so learners could continue learning at home, while travelling or wherever circumstances placed them.
 - Elisha reports that his academic performance decreased somewhat during this period as he focused on building Dallyletter. He also faced infrastructure/hosting costs and services requiring identity verification or payment credentials he did not have at the time, but continued development.
+
+- Elisha Maposa confirms he was 17 years old when he began building Dallyletter Elidems in early 2026.
