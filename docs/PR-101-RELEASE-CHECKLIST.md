@@ -20,6 +20,7 @@ Pull request: [#101](https://github.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-S
 - [x] Sitemap submission validates the deployed XML before submitting it to Google.
 - [x] Automatic public/learner/approved-teacher/manager showcase capture after relevant changes reach `main`, weekly and on manual dispatch; missing demo credentials skip safely and Owner access is excluded.
 - [x] Sitemap-driven capture discovery, timestamped manifest, Markdown gallery and 90-day screenshot artifact.
+- [x] Public pages embed the exact Vercel build SHA; push-triggered captures wait for that exact commit and refuse to capture stale deployments.
 - [x] Authenticated capture restricted to the configured production origin so preview URLs cannot receive showcase credentials.
 - [x] Unknown-route HTTP 404 probe in the live showcase capture.
 - [x] PR #100's useful launch, social publishing and search measurement documents selectively preserved; stale preview-host sitemap/prerender code deliberately excluded because PR #101 has a newer 33-page canonical implementation.
