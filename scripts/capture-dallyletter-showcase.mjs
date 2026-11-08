@@ -8,14 +8,48 @@ if (baseUrl.protocol !== "https:" || baseUrl.username || baseUrl.password) throw
 const out = path.resolve("showcase-captures");
 await fs.mkdir(out, { recursive: true });
 
-const browser = await chromium.launch({ headless: true });
 const results = [];
 const safeName = (value) => value.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "") || "page";
 const decodeXml = (value) => value.replaceAll("&amp;", "&").replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&quot;", '"').replaceAll("&apos;", "'");
+const expectedDeploymentSha = (process.env.EXPECTED_DEPLOYMENT_SHA || "").trim();
+
+async function waitForExpectedDeployment() {
+  const homepage = new URL("/", baseUrl);
+  const deadline = Date.now() + 15 * 60 * 1000;
+  let lastObservation = "homepage has not been checked";
+
+  while (true) {
+    try {
+      const response = await fetch(homepage, { cache: "no-store", headers: { "cache-control": "no-cache" } });
+      if (!response.ok) {
+        lastObservation = "homepage returned HTTP " + response.status;
+      } else {
+        const html = await response.text();
+        const actual = html.match(/<meta\s+name=["']dallyletter-build-sha["']\s+content=["']([^"']+)["']/i)?.[1] || null;
+        if (!expectedDeploymentSha) return actual;
+        if (actual === expectedDeploymentSha) {
+          console.log("Confirmed deployed Dallyletter build " + actual);
+          return actual;
+        }
+        lastObservation = "expected " + expectedDeploymentSha + "; live build marker is " + (actual || "missing");
+      }
+    } catch (error) {
+      lastObservation = String(error);
+    }
+
+    if (Date.now() >= deadline) {
+      throw new Error("Timed out waiting for the exact deployed commit. " + lastObservation + ". No screenshots were captured, preventing stale evidence.");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 15000));
+  }
+}
+
+const deployedBuildSha = await waitForExpectedDeployment();
+const browser = await chromium.launch({ headless: true });
 
 async function discoverPublicPages() {
   const sitemapUrl = new URL("/sitemap.xml", baseUrl);
-  const response = await fetch(sitemapUrl, { headers: { accept: "application/xml,text/xml" } });
+  const response = await fetch(sitemapUrl, { cache: "no-store", headers: { accept: "application/xml,text/xml", "cache-control": "no-cache" } });
   if (!response.ok) throw new Error("Sitemap request failed: HTTP " + response.status + " at " + sitemapUrl);
   const xml = await response.text();
   const locations = [...xml.matchAll(/<loc>\s*([\s\S]*?)\s*<\/loc>/gi)].map((match) => decodeXml(match[1].trim()));
@@ -30,7 +64,6 @@ async function discoverPublicPages() {
     discovered.set(url.href, url);
   }
 
-  // Sign-in is captured separately; private dashboards are never inferred from the public sitemap.
   const loginUrl = new URL("/login", baseUrl);
   discovered.set(loginUrl.href, loginUrl);
   return [...discovered.values()].sort((a, b) => a.pathname.localeCompare(b.pathname));
@@ -123,11 +156,12 @@ function buildGallery(manifest) {
     "",
     "- Site: [" + manifest.site + "](" + manifest.site + ")",
     "- Captured: " + manifest.capturedAt,
-    "- Source commit: " + (manifest.sourceCommit || "not supplied"),
+    "- Deployed build commit: " + (manifest.sourceCommit || "not exposed by deployed site"),
+    "- Workflow commit: " + (manifest.workflowCommit || "not supplied"),
     "- Workflow run: [" + (manifest.workflowRunUrl || "not supplied") + "](" + (manifest.workflowRunUrl || "") + ")",
-    "- Public URLs discovered from sitemap: " + manifest.publicPageCount,
+    "- Public pages successfully captured: " + manifest.publicPageCount + " / " + manifest.publicUrlCount + " discovered",
     "",
-    "Screenshots reflect the deployed site at capture time. Live page links are canonical URLs; PNG files are included in this workflow artifact.",
+    "On push-triggered runs, the capture waits for the deployed build marker to match the pushed commit. Screenshots are not taken from an older deployment.",
     "",
     "## Public pages",
     ""
@@ -150,14 +184,15 @@ try {
   await captureRole("learner", "/student", process.env.SHOWCASE_LEARNER_EMAIL, process.env.SHOWCASE_LEARNER_PASSWORD);
   await captureRole("teacher", "/teacher", process.env.SHOWCASE_TEACHER_EMAIL, process.env.SHOWCASE_TEACHER_PASSWORD);
   await captureRole("manager", "/manager", process.env.SHOWCASE_MANAGER_EMAIL, process.env.SHOWCASE_MANAGER_PASSWORD);
-  // Owner authentication and private dashboards are deliberately excluded from showcase automation.
   results.push(await pageFor404Probe());
 
   const manifest = {
     site: baseUrl.href,
     capturedAt: new Date().toISOString(),
-    sourceCommit: process.env.SOURCE_COMMIT || null,
+    sourceCommit: deployedBuildSha,
+    workflowCommit: process.env.SOURCE_COMMIT || null,
     workflowRunUrl: process.env.SHOWCASE_RUN_URL || null,
+    publicUrlCount: results.filter((result) => result.type === "public").length,
     publicPageCount: results.filter((result) => result.type === "public" && result.screenshot).length,
     results
   };
@@ -168,8 +203,9 @@ try {
       "# Dallyletter showcase capture",
       "",
       "- Site: " + manifest.site,
-      "- Public pages captured: " + manifest.publicPageCount,
-      "- Source commit: " + (manifest.sourceCommit || "unknown"),
+      "- Public pages captured: " + manifest.publicPageCount + " / " + manifest.publicUrlCount,
+      "- Deployed build commit: " + (manifest.sourceCommit || "not exposed"),
+      "- Workflow commit: " + (manifest.workflowCommit || "unknown"),
       "- [Workflow run](" + (manifest.workflowRunUrl || "") + ")",
       "",
       ...results.map((result) => "- " + (result.type || "page") + " / " + (result.page || result.role) + ": " + (result.error ? "FAILED — " + result.error : result.status || "captured") + " — " + (result.url || ""))
