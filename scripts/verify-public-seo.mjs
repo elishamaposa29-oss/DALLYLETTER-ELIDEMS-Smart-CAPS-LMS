@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-const root=path.resolve("dist/public);
+const root=path.resolve("dist/public");
 const sitemap=fs.readFileSync(path.join(root,"sitemap.xml"),"utf8");
 const urls=[...sitemap.matchAll(/<loc>(.*?)<\/loc>/g)].map(m=>m[1]);
 if(urls.length<10) throw new Error("Expected at least 10 sitemap URLs; got "+urls.length);
