@@ -4,7 +4,7 @@
 
 Use the URL-prefix property:
 
-`https://dallyletter-elidems-onlineschoolbye-two.vercel.app/`
+`https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/`
 
 ## Before verification
 
@@ -31,7 +31,7 @@ A GitHub commit or passing CI check does not verify ownership. Only Google's suc
 
 After ownership is verified and the deployed sitemap has been checked, submit:
 
-`https://dallyletter-elidems-onlineschoolbye-two.vercel.app/sitemap.xml`
+`https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/sitemap.xml`
 
 The repository includes an optional authenticated submission workflow. It requires the Search Console service-account JSON secret and the exact site URL variable, with the service-account email granted access to the verified property. Never commit or expose the service-account key.
 
