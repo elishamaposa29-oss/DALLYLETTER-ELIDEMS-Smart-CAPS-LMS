@@ -2,7 +2,7 @@
 
 ## Canonical public site
 
-The public-site canonical base is `https://dallyletter-elidems-onlineschoolbye-two.vercel.app/`. If the public domain changes, update the default in `scripts/google-search-console-api.mjs`, `artifacts/dallyletter/public/robots.txt`, the prerender build environment and the verified Search Console property together.
+The public-site canonical base is `https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/`. If the public domain changes, update the default in `scripts/google-search-console-api.mjs`, `artifacts/dallyletter/public/robots.txt`, the prerender build environment and the verified Search Console property together.
 
 The frontend build prerenders the public content pages, creates `sitemap.xml`, and generates the 1200 × 630 social preview PNG. Public content is served as crawlable HTML without requiring JavaScript. Authenticated application routes are explicitly rewritten to the app shell, while unknown routes use the branded HTTP 404 page rather than a catch-all SPA rewrite.
 
@@ -25,7 +25,7 @@ The public sitemap intentionally excludes login, registration, dashboards, profi
 5. In GitHub, open **Settings → Secrets and variables → Actions** for this repository.
 6. Add repository secret `GSC_SERVICE_ACCOUNT_JSON` containing the complete service-account JSON key.
 7. Add repository variable `GSC_SITE_URL` with the exact URL-prefix property, including the trailing slash:
-   `https://dallyletter-elidems-onlineschoolbye-two.vercel.app/`
+   `https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/`
 8. After the intended public deployment serves the sitemap, run **Actions → Submit Dallyletter Sitemap to Google → Run workflow**. The workflow first fetches and validates the public XML sitemap, then submits it through the Search Console API.
 
 Never commit the service-account key, put it in a client-side environment variable, or paste it into an issue or pull request.
