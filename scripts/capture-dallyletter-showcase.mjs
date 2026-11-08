@@ -48,7 +48,10 @@ async function captureRole(role, route, email, password) {
     await page.getByLabel("Email address").fill(email);
     await page.getByLabel("Password", { exact: true }).fill(password);
     await page.getByRole("button", { name: "Sign In", exact: true }).click();
-    await page.waitForURL((url) => !url.pathname.endsWith("/login"), { timeout: 30000 });
+    await page.waitForFunction(() => window.location.pathname !== "/login", { timeout: 30000 }).catch(async () => {
+      const feedback = await page.locator('[role="alert"], [data-sonner-toast], [role="status"]').allTextContents().catch(() => []);
+      throw new Error("Login did not leave /login. Visible feedback: " + feedback.join(" | ").slice(0, 500));
+    });
     const dashboardResponse = await page.goto(base + route, { waitUntil: "domcontentloaded", timeout: 45000 });
     if (dashboardResponse && dashboardResponse.status() >= 400) throw new Error(`Dashboard route returned HTTP ${dashboardResponse.status()}`);
     await page.locator("main, body").first().waitFor({ state: "visible", timeout: 15000 });
