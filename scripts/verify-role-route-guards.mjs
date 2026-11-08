@@ -34,11 +34,12 @@ if (!login.includes('["manager", "senior_manager", "junior_manager"]') ||
   throw new Error("All manager role variants must have a role-appropriate fallback destination.");
 }
 
-if (!registration.includes('"OTHER"') ||
+if (!registration.includes('country: z.enum(["ZW","ZA"])') ||
+    registration.includes('"OTHER"') ||
     !registration.includes('enteredPhone.startsWith("+")') ||
     !registration.includes('setLocation("/teacher/qualifications")') ||
     !registration.includes('setLocation("/student")')) {
-  throw new Error("Registration must support international phone entry and role-appropriate destinations.");
+  throw new Error("Registration must support E.164 phone input and role-appropriate destinations without claiming unsupported country persistence.");
 }
 
 console.log("Role guards, safe login continuation and international registration verified.");
