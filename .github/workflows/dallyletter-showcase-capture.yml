@@ -72,7 +72,7 @@ jobs:
           retention-days: 90
 
       - name: Publish current public screenshot media to dedicated branch
-        if: success() && inputs.approve_publication == true
+        if: success() && github.event_name == 'workflow_dispatch' && inputs.approve_publication == true
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
           WORKFLOW_COMMIT: ${{ github.sha }}
