@@ -1,29 +1,47 @@
 name: Dallyletter Real UI Showcase Capture
 
 on:
+  # Refresh evidence after product changes land on main. Captures the currently deployed
+  # public site; scheduled runs also catch deployments made outside GitHub pushes.
+  push:
+    branches: [main]
+    paths:
+      - "artifacts/dallyletter/**"
+      - "scripts/prerender-public-pages.mjs"
+      - "scripts/capture-dallyletter-showcase.mjs"
+      - ".github/workflows/dallyletter-showcase-capture.yml"
+      - "vercel.json"
+  schedule:
+    - cron: "23 6 * * 1"
   workflow_dispatch:
     inputs:
       site_url:
-        description: Public Dallyletter website URL to capture
-        required: true
+        description: Optional deployed Dallyletter URL (defaults to production)
+        required: false
         default: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/
 
 permissions:
   contents: read
 
+concurrency:
+  group: dallyletter-showcase-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   capture:
-    name: Capture public, learner, teacher and manager showcase pages
+    name: Refresh live public pages and non-owner dashboard evidence
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
-      SHOWCASE_SITE_URL: ${{ inputs.site_url || 'https://dallyletter-elidems-onlineschoolbye-two.vercel.app/' }}
+      SHOWCASE_SITE_URL: ${{ inputs.site_url || vars.GSC_SITE_URL || 'https://dallyletter-elidems-onlineschoolbye-two.vercel.app/' }}
       SHOWCASE_LEARNER_EMAIL: ${{ secrets.SHOWCASE_LEARNER_EMAIL }}
       SHOWCASE_LEARNER_PASSWORD: ${{ secrets.SHOWCASE_LEARNER_PASSWORD }}
       SHOWCASE_TEACHER_EMAIL: ${{ secrets.SHOWCASE_TEACHER_EMAIL }}
       SHOWCASE_TEACHER_PASSWORD: ${{ secrets.SHOWCASE_TEACHER_PASSWORD }}
       SHOWCASE_MANAGER_EMAIL: ${{ secrets.SHOWCASE_MANAGER_EMAIL }}
       SHOWCASE_MANAGER_PASSWORD: ${{ secrets.SHOWCASE_MANAGER_PASSWORD }}
+      GITHUB_SHA: ${{ github.sha }}
+      GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -35,13 +53,13 @@ jobs:
         run: |
           npm install --no-save --package-lock=false playwright@1.58.2
           npx playwright install --with-deps chromium
-      - name: Capture public pages and configured non-owner demo dashboards
+      - name: Capture current sitemap pages and configured demo dashboards
         run: node scripts/capture-dallyletter-showcase.mjs
-      - name: Upload non-owner showcase screenshots
+      - name: Upload refreshed screenshot gallery and URL manifest
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dallyletter-non-owner-showcase
+          name: dallyletter-showcase-${{ github.run_number }}
           path: showcase-captures/
-          if-no-files-found: warn
-          retention-days: 30
+          if-no-files-found: error
+          retention-days: 90
