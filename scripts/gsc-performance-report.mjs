@@ -6,13 +6,7 @@ const session = await createGoogleSession();
 const today = new Date().toISOString().slice(0, 10);
 const reportPath = path.resolve("seo-reports/search-console-" + today + ".md");
 fs.mkdirSync(path.dirname(reportPath), { recursive: true });
-if (!session) {
-  const message = "# Dallyletter Google Search Console report\n\nReport skipped because GSC_SERVICE_ACCOUNT_JSON is not configured. Add the service-account JSON as a GitHub Actions secret and grant it access to the verified Search Console property.\n";
-  fs.writeFileSync(reportPath, message);
-  if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, message);
-  console.log(message);
-  process.exit(0);
-}
+if (!session) throw new Error('Google Search Console session could not be created. Verify GSC_SERVICE_ACCOUNT_JSON and GSC_SITE_URL.');
 
 const day = new Date();
 day.setUTCHours(0, 0, 0, 0);
