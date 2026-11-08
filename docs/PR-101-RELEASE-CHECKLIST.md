@@ -24,7 +24,7 @@ Pull request: [#101](https://github.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-S
 - [x] Authenticated capture restricted to the configured production origin so preview URLs cannot receive showcase credentials.
 - [x] Unknown-route HTTP 404 probe in the live showcase capture.
 - [x] PR #100's useful launch, social publishing and search measurement documents selectively preserved; stale preview-host sitemap/prerender code deliberately excluded because PR #101 has a newer 33-page canonical implementation.
-- [x] PR #100's international registration improvements preserved, including E.164 phone normalization and routing pending teachers to qualifications.
+- [x] PR #100's supported registration improvements preserved: E.164 phone input/normalization, current ZW/ZA country choices, and routing pending teachers to qualifications. The unsupported `OTHER` option was excluded because the API does not persist a third-country profile field.
 - [x] Removed implicit junior-manager inheritance of manager/senior-manager route access and added a CI regression check.
 
 ## Validation and release gates
