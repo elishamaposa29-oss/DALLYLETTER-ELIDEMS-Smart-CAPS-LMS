@@ -13,10 +13,25 @@ const app: Express = express();
 // Owner-configured teacher CV expiry is checked by the API service on startup and every five minutes.
 startTeacherCvExpiryScheduler();
 
-const configuredOrigins = (process.env.CORS_ORIGINS ?? "")
-  .split(",")
-  .map((value) => value.trim())
-  .filter(Boolean);
+const configuredOrigins = [
+  process.env.FRONTEND_PRODUCTION_ORIGIN,
+  ...(process.env.CORS_ORIGINS ?? "").split(","),
+]
+  .map((value) => value?.trim())
+  .filter((value): value is string => Boolean(value));
+
+const invalidConfiguredOrigins = configuredOrigins.filter((value) => {
+  try {
+    const parsed = new URL(value);
+    return parsed.origin !== value || (process.env.NODE_ENV === "production" && parsed.protocol !== "https:");
+  } catch {
+    return true;
+  }
+});
+
+if (invalidConfiguredOrigins.length > 0) {
+  throw new Error("FRONTEND_PRODUCTION_ORIGIN and CORS_ORIGINS must contain exact origins (scheme and hostname only); production origins must use HTTPS.");
+}
 
 const defaultOrigins = [
   "http://localhost:3000",
@@ -27,24 +42,12 @@ const defaultOrigins = [
   "http://127.0.0.1:8081",
 ];
 
-const requiredOrigins = [
-  "https://dallyletterelidemslearningplatforme-six.vercel.app",
-  ...defaultOrigins,
-];
-
-const allowedOrigins = new Set([...configuredOrigins, ...requiredOrigins]);
-
-const isTrustedVercelOrigin = (origin: string) => {
-  try {
-    const url = new URL(origin);
-    return (
-      url.protocol === "https:" &&
-      /^[a-z0-9-]+\.vercel\.app$/.test(url.hostname)
-    );
-  } catch {
-    return false;
-  }
-};
+// Production trusts only the stable frontend origin and exact, operator-approved
+// preview origins from CORS_ORIGINS. Never use wildcard or suffix matching.
+const allowedOrigins = new Set([
+  ...configuredOrigins,
+  ...(process.env.NODE_ENV === "production" ? [] : defaultOrigins),
+]);
 
 app.disable("x-powered-by");
 // Render terminates TLS at its reverse proxy; trust only the nearest proxy hop
@@ -73,7 +76,7 @@ app.use(
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.has(origin) || isTrustedVercelOrigin(origin)) {
+      if (!origin || allowedOrigins.has(origin)) {
         callback(null, true);
         return;
       }

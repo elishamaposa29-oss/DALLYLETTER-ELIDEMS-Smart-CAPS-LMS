@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { db, auditLogsTable, pool } from "@workspace/db";
 import { getAIProvider } from "../lib/ai-provider";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
-import { isSeniorManager, isJuniorManager, canModerateUser } from "../lib/role-access";
+import { isSeniorManager, canModerateUser } from "../lib/role-access";
 import { requireManagerPermission, requireManagerPermissionForRequest, requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
 import { enqueueEmailNotification } from "../lib/email-notification-queue";
 import { calculateAgeOnDate, getCurrentAcademicYear } from "../lib/academic-year";
@@ -213,7 +213,16 @@ router.post("/academic-records/transfer-requests", requireAuth, async (req, res)
     res.status(400).json({ error: "Enter a valid date of birth that is not after the effective transfer date." });
     return;
   }
-  if (JSON.stringify(formData).length > 180_000) { res.status(413).json({ error: "Transfer application attachments or form data exceed the allowed size." }); return; }
+  const transferImageFields = ["schoolLogoDataUrl", "guardianSignatureDataUrl", "headmasterSignatureDataUrl"];
+  for (const field of transferImageFields) {
+    const image = formData[field];
+    if (image === undefined || image === null || image === "") continue;
+    if (typeof image !== "string" || image.length > 1_250_000 || !/^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(image)) {
+      res.status(400).json({ error: "Transfer letter images must be valid PNG/JPG data under the 900 KB compressed image limit." });
+      return;
+    }
+  }
+  if (JSON.stringify(formData).length > 5_000_000) { res.status(413).json({ error: "Transfer letter fields and attachments exceed the combined 5 MB limit." }); return; }
   // Serialize submissions per learner so rapid taps/retries cannot create duplicate pending requests.
   const client = await pool.connect();
   let requestRow: any;
@@ -245,7 +254,7 @@ router.post("/academic-records/transfer-requests", requireAuth, async (req, res)
   // Queue reviewer email alerts; the audit event above is also the admin-dashboard alert.
   try {
     const reviewers = await pool.query(
-      "SELECT id FROM users u WHERE (lower(role) IN ('owner','platform_owner','senior_manager') OR (lower(role)='manager' AND lower(COALESCE(manager_level,'junior'))='senior') OR (lower(role)='teacher' AND is_manager=true AND lower(COALESCE(manager_level,'junior'))='senior' AND COALESCE(teacher_application_status,'') NOT IN ('draft','pending_review','rejected_pending_conversion')) OR (lower(role) IN ('manager','junior_manager') AND EXISTS (SELECT 1 FROM manager_permission_grants g WHERE g.manager_user_id=u.id AND g.permission_key IN ('transfers.view','transfers.reject') AND g.granted=true)) OR (lower(role)='teacher' AND is_manager=true AND COALESCE(teacher_application_status,'') NOT IN ('draft','pending_review','rejected_pending_conversion') AND EXISTS (SELECT 1 FROM manager_permission_grants g WHERE g.manager_user_id=u.id AND g.permission_key IN ('transfers.view','transfers.reject') AND g.granted=true))) AND is_blocked=false AND is_suspended=false ORDER BY id",
+      "SELECT id FROM users u WHERE (lower(role) IN ('owner','platform_owner') OR (lower(role) IN ('manager','junior_manager','senior_manager') AND EXISTS (SELECT 1 FROM manager_permission_grants g WHERE g.manager_user_id=u.id AND g.permission_key='transfers.view' AND g.granted=true) AND EXISTS (SELECT 1 FROM manager_permission_grants action_grant WHERE action_grant.manager_user_id=u.id AND action_grant.permission_key IN ('transfers.approve','transfers.reject') AND action_grant.granted=true)) OR (lower(role)='teacher' AND is_manager=true AND COALESCE(teacher_application_status,'') NOT IN ('draft','pending_review','rejected_pending_conversion') AND EXISTS (SELECT 1 FROM manager_permission_grants g WHERE g.manager_user_id=u.id AND g.permission_key='transfers.view' AND g.granted=true) AND EXISTS (SELECT 1 FROM manager_permission_grants action_grant WHERE action_grant.manager_user_id=u.id AND action_grant.permission_key IN ('transfers.approve','transfers.reject') AND action_grant.granted=true))) AND is_blocked=false AND is_suspended=false ORDER BY id",
     );
     await Promise.all(reviewers.rows.map((reviewer: { id: number }) =>
       enqueueEmailNotification(Number(reviewer.id), "Transfer letter request awaiting review",
@@ -262,7 +271,7 @@ router.get("/academic-records/transfer-requests", requireAuth, requireManagerPer
   const user = req.currentUser!;
   const manager = canAccessManager(user);
   const result = manager
-    ? await pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,u.role,u.is_manager,u.manager_level,r.requested_by,r.reason,r.status,r.review_note,r.reviewed_by,r.reviewed_at,r.created_at FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id ORDER BY r.created_at DESC LIMIT 200")
+    ? await pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,u.role,u.is_manager,u.manager_level,r.requested_by,r.reason,r.form_data,r.status,r.review_note,r.reviewed_by,r.reviewed_at,r.created_at FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id ORDER BY r.created_at DESC LIMIT 200")
     : await pool.query("SELECT id,learner_id,reason,status,review_note,reviewed_at,created_at FROM academic_transfer_requests WHERE learner_id=$1 ORDER BY created_at DESC LIMIT 100", [user.id]);
   const visible=manager&&!isOwnerRole(user.role)?result.rows.filter((row:any)=>canModerateUser(user,{role:row.role,isManager:row.is_manager,managerLevel:row.manager_level})):result.rows;
   res.json(manager&&!isOwnerRole(user.role)?visible.map(({role,is_manager,manager_level,...row}:any)=>row):visible);
@@ -272,8 +281,6 @@ router.post("/academic-records/transfer-requests/:id/review", requireAuth, requi
   const reviewer = req.currentUser!;
   const id = Number(req.params.id);
   const status = req.body?.status;
-  if (status === "approved" && !isSeniorManager(reviewer)) { res.status(403).json({ error: "Only a Senior Manager or Owner can approve a transfer." }); return; }
-  if (status === "rejected" && !isSeniorManager(reviewer) && !isJuniorManager(reviewer)) { res.status(403).json({ error: "Manager access required to reject a transfer." }); return; }
   const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 2000) : "";
   if (!Number.isSafeInteger(id) || id < 1 || !["approved","rejected"].includes(status)) { res.status(400).json({ error: "A valid request ID and approved/rejected decision are required." }); return; }
   if (status === "rejected" && note.length < 3) { res.status(400).json({ error: "A clear rejection reason of at least 3 characters is required." }); return; }
@@ -673,7 +680,6 @@ router.post("/academic-records/reports/drafts/:id/review", requireAuth, requireM
     await client.query("BEGIN");
     const pending = await client.query("SELECT d.id,d.learner_id,u.role,u.is_manager,u.manager_level FROM academic_report_drafts d JOIN users u ON u.id=d.learner_id WHERE d.id=$1 AND d.status='pending_review' FOR UPDATE OF d", [id]);
     if(!pending.rowCount){await client.query("ROLLBACK");res.status(404).json({error:"Pending report draft not found or already reviewed."});return;}
-    if (!isSeniorManager(reviewer)) { await client.query("ROLLBACK"); res.status(403).json({ error: "A Senior Manager or Owner must approve or reject this report." }); return; }
     const target=pending.rows[0];
     if(!isOwnerRole(reviewer.role)&&!canModerateUser(reviewer,{role:target.role,isManager:target.is_manager,managerLevel:target.manager_level})){await client.query("ROLLBACK");res.status(404).json({error:"Pending report draft not found."});return;}
     const result = await client.query("UPDATE academic_report_drafts SET status=$1,reviewed_by=$2,review_note=$3,reviewed_at=now(),updated_at=now() WHERE id=$4 AND status='pending_review' RETURNING id,learner_id,report_type,term_label,status,reviewed_by,review_note,reviewed_at", [status, reviewer.id, note, id]);

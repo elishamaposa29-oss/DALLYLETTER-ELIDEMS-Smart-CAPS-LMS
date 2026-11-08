@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, pool } from "@workspace/db";
 import { usersTable, classesTable, lessonsTable, paymentsTable, ownerAlertsTable, assignmentsTable, assignmentSubmissionsTable, pollsTable, exercisesTable, auditLogsTable, attendanceTable, userAchievementsTable, achievementsTable, exerciseSubmissionsTable, pollSubmissionsTable, contentFlagsTable } from "@workspace/db/schema";
 import { eq, desc, and, inArray } from "drizzle-orm";
-import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
+import { requireAuth, isOwnerRole } from "../lib/auth-middleware";
 import { canModerateUser } from "../lib/role-access";
 import { requireManagerPermission, managerHasPermission } from "../lib/manager-permission-policy";
 
@@ -30,15 +30,8 @@ async function visibleManagerAlerts(user: NonNullable<Express.Request["currentUs
   return allowed.filter(Boolean);
 }
 
-function requireManager(req: any, res: any, next: any) {
-  const user = req.currentUser;
-  if (!user || !canAccessManager(user)) {
-    return res.status(403).json({ error: "Manager access required" });
-  }
-  next();
-}
 
-router.get("/dashboard", requireAuth, requireManager, requireManagerPermission("manager.dashboard.view"), async (req, res) => {
+router.get("/dashboard", requireAuth, requireManagerPermission("manager.dashboard.view"), async (req, res) => {
   const [teachers, students, classes, lessons, alerts, assignments, exercises, exerciseSubmissions, assignmentSubmissions, allClasses, learnerAwards] = await Promise.all([
     db.select({ id: usersTable.id, name: usersTable.name, subject: usersTable.subject, performanceScore: usersTable.performanceScore, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel, isBlocked: usersTable.isBlocked, isSuspended: usersTable.isSuspended })
       .from(usersTable).where(eq(usersTable.role, "teacher")),
@@ -100,11 +93,25 @@ router.get("/dashboard", requireAuth, requireManager, requireManagerPermission("
     assignment: new Set(assignments.filter((row: any) => ownerIds.has(Number(row.teacherId))).map((row: any) => Number(row.id))),
     exercise: new Set(exercises.filter((row: any) => ownerIds.has(Number(row.createdBy))).map((row: any) => Number(row.id))),
   };
+  const flaggedMessageIds=contentFlags.filter((row:any)=>String(row.contentType).toLowerCase()==="message").map((row:any)=>Number(row.contentId)).filter((id:number)=>Number.isSafeInteger(id)&&id>0);
+  const flaggedCommentIds=contentFlags.filter((row:any)=>String(row.contentType).toLowerCase()==="comment").map((row:any)=>Number(row.contentId)).filter((id:number)=>Number.isSafeInteger(id)&&id>0);
+  const flaggedPollIds=contentFlags.filter((row:any)=>String(row.contentType).toLowerCase()==="poll").map((row:any)=>Number(row.contentId)).filter((id:number)=>Number.isSafeInteger(id)&&id>0);
+  const [flaggedMessages,flaggedComments,flaggedPolls]=await Promise.all([
+    flaggedMessageIds.length?pool.query("SELECT id,sender_id,recipient_id FROM messages WHERE id=ANY($1::int[])",[flaggedMessageIds]):Promise.resolve({rows:[] as any[]}),
+    flaggedCommentIds.length?pool.query("SELECT id,author_id FROM content_comments WHERE id=ANY($1::int[])",[flaggedCommentIds]):Promise.resolve({rows:[] as any[]}),
+    flaggedPollIds.length?pool.query("SELECT id,created_by FROM polls WHERE id=ANY($1::int[])",[flaggedPollIds]):Promise.resolve({rows:[] as any[]}),
+  ]);
+  const visibleMessageIds=new Set(flaggedMessages.rows.filter((row:any)=>canSeeUser(Number(row.sender_id))&&(row.recipient_id==null||canSeeUser(Number(row.recipient_id)))).map((row:any)=>Number(row.id)));
+  const visibleCommentIds=new Set(flaggedComments.rows.filter((row:any)=>canSeeUser(Number(row.author_id))).map((row:any)=>Number(row.id)));
+  const visiblePollIds=new Set(flaggedPolls.rows.filter((row:any)=>canSeeUser(Number(row.created_by))).map((row:any)=>Number(row.id)));
   const visibleContentIds:Record<string,Set<number>>={
     lesson:new Set(visibleLessons.map((row:any)=>Number(row.id))),
     class:new Set(visibleClasses.map((row:any)=>Number(row.id))),
     assignment:new Set(visibleAssignments.map((row:any)=>Number(row.id))),
     exercise:new Set(visibleExercises.map((row:any)=>Number(row.id))),
+    message:visibleMessageIds,
+    comment:visibleCommentIds,
+    poll:visiblePollIds,
   };
   const visibleContentFlags = contentFlags.filter((row: any) => {
     const type=String(row.contentType).toLowerCase(),id=Number(row.contentId);
@@ -193,7 +200,7 @@ router.get("/dashboard", requireAuth, requireManager, requireManagerPermission("
   });
 });
 
-router.get("/teachers", requireAuth, requireManager, requireManagerPermission("users.view"), async (req, res) => {
+router.get("/teachers", requireAuth, requireManagerPermission("users.view"), async (req, res) => {
   const [teachers, lessonCounts, classCounts, assignments, exercises, assignmentSubmissions, exerciseSubmissions, enrollments, alerts] = await Promise.all([
     db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email, subject: usersTable.subject, performanceScore: usersTable.performanceScore, badgeCount: usersTable.badgeCount, createdAt: usersTable.createdAt, isManager: usersTable.isManager, isBlocked: usersTable.isBlocked, isSuspended: usersTable.isSuspended }).from(usersTable).where(eq(usersTable.role, "teacher")),
     db.select().from(lessonsTable),
@@ -228,7 +235,7 @@ router.get("/teachers", requireAuth, requireManager, requireManagerPermission("u
   res.json(ranked);
 });
 
-router.get("/students", requireAuth, requireManager, requireManagerPermission("users.view"), async (req, res) => {
+router.get("/students", requireAuth, requireManagerPermission("users.view"), async (req, res) => {
   const students = await db.select({
     id: usersTable.id, name: usersTable.name, email: usersTable.email,
     grade: usersTable.grade, isPrefect: usersTable.isPrefect,
@@ -256,13 +263,13 @@ router.get("/students", requireAuth, requireManager, requireManagerPermission("u
   }));
 });
 
-router.get("/prefects", requireAuth, requireManager, requireManagerPermission("users.view"), async (req, res) => {
+router.get("/prefects", requireAuth, requireManagerPermission("users.view"), async (req, res) => {
   const prefects = await db.select().from(usersTable)
     .where(and(eq(usersTable.role, "student"), eq(usersTable.isPrefect, true)));
   res.json(prefects);
 });
 
-router.put("/teacher/:id/score", requireAuth, requireManager, requireManagerPermission("users.override.teacher"), async (req, res): Promise<void> => {
+router.put("/teacher/:id/score", requireAuth, requireManagerPermission("users.override.teacher"), async (req, res): Promise<void> => {
   const targetId = Number(req.params.id);
   const performanceScore = Number(req.body?.performanceScore);
   if (!Number.isSafeInteger(targetId) || targetId < 1) { res.status(400).json({ error: "Invalid teacher ID." }); return; }
@@ -281,7 +288,7 @@ router.put("/teacher/:id/score", requireAuth, requireManager, requireManagerPerm
   res.json(row);
 });
 
-router.get("/users/:id/activity", requireAuth, requireManager, requireManagerPermission("audit.view_subordinate"), async (req, res): Promise<void> => {
+router.get("/users/:id/activity", requireAuth, requireManagerPermission("audit.view_subordinate"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid user id" }); return; }
   const [target] = await db.select({
@@ -319,7 +326,7 @@ router.get("/users/:id/activity", requireAuth, requireManager, requireManagerPer
   res.json({ user: target, activities: audit, learning: { attendance, achievements, exerciseResults, pollResults, leaderboardPosition }, counts: { attendance: attendance.length, achievements: achievements.length, exerciseResults: exerciseResults.length, pollResults: pollResults.length } });
 });
 
-router.get("/reports/overview", requireAuth, requireManager, requireManagerPermission("reports.view"), async (req, res) => {
+router.get("/reports/overview", requireAuth, requireManagerPermission("reports.view"), async (req, res) => {
   const [users, payments, lessons, classes, assignments, exercises, assignmentSubmissions, exerciseSubmissions, awards, attendance, alerts, pendingFlags] = await Promise.all([
     db.select({ id: usersTable.id, role: usersTable.role, isManager: usersTable.isManager, isPrefect: usersTable.isPrefect }).from(usersTable),
     db.select().from(paymentsTable),

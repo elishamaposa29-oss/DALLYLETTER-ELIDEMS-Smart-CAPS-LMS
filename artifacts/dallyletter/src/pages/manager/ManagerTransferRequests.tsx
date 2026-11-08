@@ -10,6 +10,7 @@ import { RefreshCw, FileCheck2, FileDown, CheckCircle2, XCircle, Clock3 } from "
 type TransferRequest = {
   id: number; learner_id: number; learner_name?: string; reason: string; status: string;
   review_note?: string | null; reviewed_at?: string | null; created_at: string;
+  form_data?: Record<string, unknown> | null;
 };
 const token = () => localStorage.getItem("dallyletter_token") ?? "";
 
@@ -32,8 +33,10 @@ export default function ManagerTransferRequests() {
       ]);
       const data = await response.json().catch(() => []);
       const permissionData = await permissionResponse.json().catch(() => ({}));
-      setCanApprove(Boolean(permissionResponse.ok && (permissionData?.isOwner || permissionData?.permissions?.["transfers.approve"])));
-      setCanReject(Boolean(permissionResponse.ok && (permissionData?.isOwner || permissionData?.permissions?.["transfers.reject"])));
+      const permissionRole=String(permissionData?.role||"").toLowerCase().replace(/[ -]+/g,"_");
+      const seniorAuthority=permissionData?.isOwner===true || permissionRole==="senior_manager";
+      setCanApprove(Boolean(permissionResponse.ok && seniorAuthority && (permissionData?.isOwner || permissionData?.permissions?.["transfers.approve"])));
+      setCanReject(Boolean(permissionResponse.ok && seniorAuthority && (permissionData?.isOwner || permissionData?.permissions?.["transfers.reject"])));
       if (!response.ok) throw new Error(data.error || "Could not load transfer requests.");
       if (!Array.isArray(data)) throw new Error("The server returned an invalid transfer request list.");
       setRows(data);
@@ -88,6 +91,11 @@ export default function ManagerTransferRequests() {
     {message && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</div>}
     {loading ? <p className="py-12 text-center text-muted-foreground">Loading transfer requests…</p> : rows.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">No transfer requests have been submitted.</CardContent></Card> :
       <div className="space-y-4">{rows.map(row => <Card key={row.id} className="overflow-hidden"><CardHeader className="pb-3"><div className="flex flex-wrap items-start justify-between gap-3"><div><CardTitle className="flex items-center gap-2 text-base"><FileCheck2 className="h-5 w-5"/>Request #{row.id} · {row.learner_name || `Learner #${row.learner_id}`}</CardTitle><p className="mt-1 text-xs text-muted-foreground">Submitted {new Date(row.created_at).toLocaleString()}</p></div><Badge variant={row.status==="approved"?"default":row.status==="rejected"?"destructive":"secondary"}>{row.status}</Badge></div></CardHeader><CardContent className="space-y-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Transfer reason</p><p className="whitespace-pre-wrap text-sm">{row.reason}</p></div>
+      <section className="space-y-3 rounded-lg border p-3">
+        <div><h3 className="font-semibold">Original submitted transfer form</h3><p className="text-xs text-muted-foreground">Reviewer view of the learner's saved form fields and uploaded signature/logo images. Nothing is reconstructed from a summary.</p></div>
+        <div className="grid gap-2 sm:grid-cols-2">{Object.entries(row.form_data || {}).filter(([key,value])=>!key.endsWith("DataUrl")&&value!==null&&value!==undefined&&String(value).trim()!=="").map(([key,value])=><div key={key} className="rounded-md bg-muted/40 p-2"><p className="text-[11px] font-semibold uppercase text-muted-foreground">{key.replace(/([A-Z])/g," $1").replace(/^./,x=>x.toUpperCase())}</p><p className="whitespace-pre-wrap break-words text-sm">{String(value)}</p></div>)}</div>
+        <div className="grid gap-3 sm:grid-cols-3">{(["schoolLogoDataUrl","guardianSignatureDataUrl","headmasterSignatureDataUrl"] as const).map(key=>{const value=row.form_data?.[key];return typeof value==="string"&&/^data:image\/(png|jpeg);base64,/.test(value)?<figure key={key} className="rounded-md border p-2"><img src={value} alt={key==="schoolLogoDataUrl"?"Submitted school logo":key==="guardianSignatureDataUrl"?"Submitted guardian signature":"Submitted headmaster signature"} className="h-24 w-full object-contain"/><figcaption className="mt-1 text-xs text-muted-foreground">{key==="schoolLogoDataUrl"?"School logo":key==="guardianSignatureDataUrl"?"Guardian signature":"Headmaster signature"}</figcaption></figure>:<div key={key} className="rounded-md border p-2 text-xs text-muted-foreground">{key==="schoolLogoDataUrl"?"No school logo submitted":key==="guardianSignatureDataUrl"?"No guardian signature submitted":"No headmaster signature submitted"}</div>;})}</div>
+      </section>
       {row.review_note && <div className="rounded-md bg-muted p-3 text-sm"><strong>Review note:</strong> {row.review_note}</div>}
       {row.status==="pending" && (canApprove || canReject) ? <><label className="block text-sm font-medium" htmlFor={`note-${row.id}`}>Review note / rejection reason</label><Textarea id={`note-${row.id}`} value={notes[row.id]||""} onChange={e=>setNotes(current=>({...current,[row.id]:e.target.value}))} maxLength={2000} placeholder="Record the reason for your decision (required for rejection)." />
       <div className="flex flex-wrap gap-2">{canApprove && <Button disabled={busy===row.id} onClick={()=>void review(row,"approved")}><CheckCircle2 className="mr-2 h-4 w-4"/>Approve request</Button>}{canReject && <Button variant="destructive" disabled={busy===row.id} onClick={()=>void review(row,"rejected")}><XCircle className="mr-2 h-4 w-4"/>Reject request</Button>}</div></> : row.status==="pending" ? <p className="text-sm text-muted-foreground">Visible for monitoring. Your Owner-assigned permissions currently allow monitoring only; request the appropriate decision permission from the Owner.</p> : <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-muted-foreground"><Clock3 className="mr-1 inline h-3 w-3"/>Reviewed {row.reviewed_at ? new Date(row.reviewed_at).toLocaleString() : "date not recorded"}</p>{row.status==="approved" && <Button variant="outline" disabled={busy===row.id} onClick={()=>void download(row)}><FileDown className="mr-2 h-4 w-4"/>Download approved PDF</Button>}</div>}

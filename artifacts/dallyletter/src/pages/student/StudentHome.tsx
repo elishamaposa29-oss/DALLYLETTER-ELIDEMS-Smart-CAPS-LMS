@@ -8,17 +8,12 @@ import { Loader2, BookOpen, Video, Bell, Clock, ChevronRight, Shield, Calendar, 
 import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
-import { useEffect, useState } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
+import { useEffect, useRef, useState } from "react";
 import { InstallAppCard } from "@/components/InstallAppCard";
+import { DailyAppAttendanceCard } from "@/components/DailyAppAttendanceCard";
 
 export default function StudentHome() {
   const { user } = useAuth();
-  const { toast } = useToast();
   const { data: stats, isLoading: statsLoading } = useGetDashboardStats();
   const { data: lessons, isLoading: lessonsLoading } = useListLessons();
   const { data: classes, isLoading: classesLoading } = useListClasses();
@@ -27,18 +22,43 @@ export default function StudentHome() {
   const [assignments, setAssignments] = useState<any[]>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(true);
   const [assignmentsError, setAssignmentsError] = useState(false);
+  const assignmentsRequestRef = useRef<Promise<void> | null>(null);
+  const assignmentsAbortRef = useRef<AbortController | null>(null);
 
+  // Focus events and the periodic refresh can arrive together. Share one
+  // in-flight request so a slow API never creates a queue of duplicate calls.
   const loadAssignments = async (showLoader = true) => {
+    if (assignmentsRequestRef.current) return assignmentsRequestRef.current;
+    const controller = new AbortController();
+    assignmentsAbortRef.current = controller;
     if (showLoader) setAssignmentsLoading(true);
+    const request = (async () => {
+      try {
+        const token = localStorage.getItem("dallyletter_token");
+        const response = await fetch(getApiUrl("/api/assignments"), {
+          headers: token ? { Authorization: "Bearer " + token } : undefined,
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("Assignments request failed (" + response.status + ")");
+        const data = await response.json();
+        if (!controller.signal.aborted) {
+          setAssignments(Array.isArray(data) ? data.slice(0, 3) : []);
+          setAssignmentsError(false);
+        }
+      } catch {
+        if (!controller.signal.aborted) setAssignmentsError(true);
+      } finally {
+        if (!controller.signal.aborted) setAssignmentsLoading(false);
+      }
+    })();
+    assignmentsRequestRef.current = request;
     try {
-      const token = localStorage.getItem("dallyletter_token");
-      const response = await fetch(getApiUrl("/api/assignments"), { headers: token ? { Authorization: "Bearer " + token } : undefined, cache: "no-store" });
-      if (!response.ok) throw new Error("Assignments request failed (" + response.status + ")");
-      const data = await response.json();
-      setAssignments(Array.isArray(data) ? data.slice(0, 3) : []);
-      setAssignmentsError(false);
-    } catch { setAssignmentsError(true); }
-    finally { setAssignmentsLoading(false); }
+      await request;
+    } finally {
+      if (assignmentsRequestRef.current === request) assignmentsRequestRef.current = null;
+      if (assignmentsAbortRef.current === controller) assignmentsAbortRef.current = null;
+    }
   };
 
   useEffect(() => {
@@ -48,44 +68,13 @@ export default function StudentHome() {
     const interval = window.setInterval(run, 30000);
     const onFocus = () => { void run(); };
     window.addEventListener("focus", onFocus);
-    return () => { active = false; window.clearInterval(interval); window.removeEventListener("focus", onFocus); };
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+      assignmentsAbortRef.current?.abort();
+    };
   }, []);
-
-  const [lessonTopic, setLessonTopic] = useState("");
-  const [lessonDate, setLessonDate] = useState("");
-  const [lessonNotes, setLessonNotes] = useState("");
-  const [schedulingLesson, setSchedulingLesson] = useState(false);
-  const [lessonDialogOpen, setLessonDialogOpen] = useState(false);
-
-  const handleScheduleLesson = async () => {
-    if (!lessonTopic.trim()) {
-      toast({ variant: "destructive", title: "Topic required", description: "Please enter a lesson topic." });
-      return;
-    }
-    setSchedulingLesson(true);
-    try {
-      const token = localStorage.getItem("dallyletter_token");
-      await fetch(getApiUrl("/api/notifications"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          title: `Lesson Request: ${lessonTopic}`,
-          message: `Prefect ${user?.name} has requested a lesson on "${lessonTopic}".${lessonDate ? ` Preferred date: ${lessonDate}.` : ""}${lessonNotes ? ` Notes: ${lessonNotes}` : ""}`,
-          type: "class_starting",
-          recipientId: null,
-        }),
-      });
-      toast({ title: "Lesson request sent!", description: "Your teachers have been notified of the lesson request." });
-      setLessonTopic("");
-      setLessonDate("");
-      setLessonNotes("");
-      setLessonDialogOpen(false);
-    } catch {
-      toast({ variant: "destructive", title: "Error", description: "Could not send the lesson request." });
-    } finally {
-      setSchedulingLesson(false);
-    }
-  };
 
   const recentLessons = lessons?.slice(0, 3);
   const upcomingClasses = classes?.filter(c => c.status === "upcoming" || c.status === "live").slice(0, 3);
@@ -103,6 +92,8 @@ export default function StudentHome() {
 
         <InstallAppCard />
 
+        <DailyAppAttendanceCard profileId={user?.id} />
+
         {/* Prefect Panel */}
         {user?.isPrefect && (
           <Card className="border-amber-300 dark:border-amber-700 bg-gradient-to-r from-amber-50 to-amber-100 dark:from-amber-950/30 dark:to-amber-900/20">
@@ -119,63 +110,12 @@ export default function StudentHome() {
                   <p className="text-sm text-amber-700 dark:text-amber-500">As a prefect, you can request lessons on behalf of your class.</p>
                 </div>
               </div>
-              <Dialog open={lessonDialogOpen} onOpenChange={setLessonDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button className="bg-amber-500 hover:bg-amber-600 text-white gap-2 shrink-0 shadow-sm">
-                    <Calendar className="h-4 w-4" />
-                    Schedule a Lesson
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-md">
-                  <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                      <Shield className="h-5 w-5 text-amber-500" />
-                      Request a Lesson
-                    </DialogTitle>
-                    <DialogDescription>
-                      As a prefect, you can request a lesson topic on behalf of your class. Teachers will be notified.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4 py-2">
-                    <div className="space-y-1.5">
-                      <Label>Lesson Topic <span className="text-destructive">*</span></Label>
-                      <Input
-                        placeholder="e.g. Quadratic Equations, Essay Writing..."
-                        value={lessonTopic}
-                        onChange={e => setLessonTopic(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Preferred Date (optional)</Label>
-                      <Input
-                        type="date"
-                        value={lessonDate}
-                        onChange={e => setLessonDate(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Additional Notes (optional)</Label>
-                      <Textarea
-                        placeholder="Any specific areas to focus on, or context for the request..."
-                        value={lessonNotes}
-                        onChange={e => setLessonNotes(e.target.value)}
-                        rows={3}
-                      />
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setLessonDialogOpen(false)}>Cancel</Button>
-                    <Button
-                      onClick={handleScheduleLesson}
-                      disabled={schedulingLesson}
-                      className="bg-amber-500 hover:bg-amber-600 text-white"
-                    >
-                      {schedulingLesson ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                      Send Lesson Request
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+              <Link href="/student/prefect">
+                <Button className="bg-amber-500 hover:bg-amber-600 text-white gap-2 shrink-0 shadow-sm">
+                  <Calendar className="h-4 w-4" />
+                  Open Prefect Dashboard
+                </Button>
+              </Link>
             </CardContent>
           </Card>
         )}

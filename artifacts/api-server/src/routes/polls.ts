@@ -5,6 +5,7 @@ import { eq, desc, and } from "drizzle-orm";
 import { canManageAcademicContent, requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { canModerateUser } from "../lib/role-access";
 import { getAIProvider } from "../lib/ai-provider";
+import { queueAIContentSafety } from "../lib/ai-content-safety";
 import { logger } from "../lib/logger";
 
 const router = Router();
@@ -66,6 +67,8 @@ router.post("/polls", requireAuth, requireManagerPermissionIfManager("polls.mana
   }
 
   await db.insert(auditLogsTable).values({ action: `Created poll: ${title}`, category: "admin", performedBy: user.id, targetType: "poll", targetId: poll.id, details: JSON.stringify({ type, mode }) });
+  const pollSafetyText = [title, topic, subject, ...questions.flatMap(question => [question.question, question.explanation, ...question.options.map(option => option.text)])].filter((value): value is string => typeof value === "string").join("\n");
+  queueAIContentSafety("poll", Number(poll.id), pollSafetyText);
   res.status(201).json(poll);
 });
 
@@ -157,6 +160,7 @@ router.patch("/polls/:id", requireAuth, requireManagerPermissionIfManager("polls
   if (Object.keys(update).length === 0) { res.status(400).json({ error: "No poll changes supplied" }); return; }
   const [updated] = await db.update(pollsTable).set(update).where(eq(pollsTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+  queueAIContentSafety("poll", Number(updated.id), String(updated.title || ""));
   res.json(updated);
 });
 

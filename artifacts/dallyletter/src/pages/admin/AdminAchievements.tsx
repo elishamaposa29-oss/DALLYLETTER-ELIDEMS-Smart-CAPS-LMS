@@ -180,7 +180,7 @@ export default function AdminAchievements() {
         {recommendations.length > 0 && (
           <Card>
             <CardContent className="p-4 space-y-3">
-              <div><h2 className="font-semibold text-slate-900">Achievement approval workflow</h2><p className="text-sm text-slate-500">Junior manager recommendations require independent senior-manager or owner review. Points and badges are applied only after approval.</p></div>
+              <div><h2 className="font-semibold text-slate-900">Achievement approval workflow</h2><p className="text-sm text-slate-500">Recommendations require an Owner-authorized manager with the separate achievement approval permission. Points and badges are applied only after approval.</p></div>
               {recommendations.map(item => (
                 <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
                   <div className="min-w-0"><p className="font-medium">{item.achievement_icon || "🏆"} {item.achievement_name} · {item.learner_name}</p><p className="text-xs text-slate-500">Recommended by {item.recommender_name} · {item.status.replace(/_/g, " ")}</p>{item.recommendation_note && <p className="text-sm mt-1">{item.recommendation_note}</p>}</div>

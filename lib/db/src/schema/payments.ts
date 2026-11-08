@@ -9,6 +9,7 @@ export const paymentsTable = pgTable("payments", {
   studentId: integer("student_id").notNull().references(() => usersTable.id),
   studentName: text("student_name").notNull(),
   amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  amountPaid: numeric("amount_paid", { precision: 10, scale: 2 }).notNull().default("0"),
   month: text("month").notNull(),
   year: integer("year").notNull(),
   // Status: paid, pending, overdue

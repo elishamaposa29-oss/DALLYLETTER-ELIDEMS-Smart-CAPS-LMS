@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { defaultManagerPermission, isSeniorOnlyManagerPermission, canAccessManager, canApproveAchievementAwards, canManageAcademicContent, canModerateUser, canPendingTeacherUseRoute, canRecommendAchievementAwards, canReviewAcademicTransfer, canUseStaffAI, enforceAcademicStaffAccess, enforceAuthenticated, enforceOwnerAccess, isActiveTeacherManager, isJuniorManager, isOwnerRole, isSeniorManager, normalizeRole } from "./role-access.js";
+import { defaultManagerPermission, isSeniorOnlyManagerPermission, canAccessManager, canApproveAchievementAwards, canManageAcademicContent, canModerateUser, canPendingTeacherUseRoute, canRecommendAchievementAwards, canUseStaffAI, enforceAcademicStaffAccess, enforceAuthenticated, enforceOwnerAccess, isActiveTeacherManager, isJuniorManager, isOwnerRole, isSeniorManager, normalizeRole } from "./role-access.js";
 
 test("normalizes legacy role casing and separators",()=>{
  assert.equal(normalizeRole(" Senior Manager "), "senior_manager");
@@ -141,13 +141,9 @@ test("Senior managers may override Junior Managers and ordinary users but never 
  for(const target of [{role:"senior_manager"},{role:"admin"},{role:"owner"}]) assert.equal(canModerateUser(senior,target),false,String(target.role));
 });
 
-test("transfer review access is limited to Owner and Senior Manager authority; Admin is excluded",()=>{
- for(const role of ["owner","platform_owner","senior_manager"]) assert.equal(canReviewAcademicTransfer({role}),true,role);
- assert.equal(canReviewAcademicTransfer({role:"manager",managerLevel:"senior"}),true,"legacy senior-level managers retain review authority");
- assert.equal(canReviewAcademicTransfer({role:"teacher",isManager:true,managerLevel:"senior"}),true,"legacy senior teacher-managers retain review authority");
- for(const role of ["admin","manager","junior_manager","student","prefect","teacher","unknown"]) assert.equal(canReviewAcademicTransfer({role,isManager:false}),false,role);
- assert.equal(canReviewAcademicTransfer({role:"teacher",isManager:true,managerLevel:"junior"}),false,"junior teacher-managers cannot approve transfers");
- assert.equal(canReviewAcademicTransfer({role:"teacher",isManager:true,managerLevel:"senior",teacherApplicationStatus:"pending_review"}),false,"pending teacher applications cannot review transfers");
+test("operational approvals are grant-based while teacher application decisions remain restricted",()=>{
+ for(const key of ["transfers.approve","transfers.reject","reports.review","achievements.approve"]) assert.equal(isSeniorOnlyManagerPermission(key),false,key);
+ for(const key of ["teacher_cv.review","teacher_cv.authorize","qualifications.verify"]) assert.equal(isSeniorOnlyManagerPermission(key),true,key);
 });
 
 test("explicit hierarchy keeps junior and senior manager permissions while separating approvals",()=>{
@@ -179,7 +175,6 @@ test("junior_manager role alias retains manager workspace access but not senior 
  assert.equal(canManageAcademicContent(junior),true);
  assert.equal(canRecommendAchievementAwards(junior),true);
  assert.equal(canApproveAchievementAwards(junior),false);
- assert.equal(canReviewAcademicTransfer(junior),false);
 });
 
 test("draft, pending and rejected teacher managers do not gain authority from stale manager flags",()=>{
@@ -211,7 +206,7 @@ test("pending teacher API policy allows self-service and privacy-checked Profile
   ["GET","/api/users/me/enrollments-summary"],
   ["GET","/api/users/me/subjects"],
   ["PUT","/api/users/me/subjects"],
-  ["GET","/api/users/me/payout-preferences"],
+  // Pending applicants cannot access payout preferences until authorization.
   // Pending applicants may read only their own academic/profile records.
   ["GET","/api/academic-records/current-year"],
   ["GET","/api/academic-records/me"],
@@ -267,6 +262,9 @@ test("pending teacher API policy allows self-service and privacy-checked Profile
   ["DELETE","/api/notifications/123"],
   ["GET","/api/dashboard"],
   ["GET","/api/teacher-dashboard"],
+  // Pending applicants cannot access payout preferences until authorization.
+  ["GET","/api/users/me/payout-preferences"],
+  ["PUT","/api/users/me/payout-preferences"],
   ["GET","/api/lessons"],
   ["GET","/api/assignments"],
   ["GET","/api/exercises"],
@@ -304,7 +302,7 @@ test("pending teacher API policy never blocks authentication and permits all sel
   ["GET","/api/users/me/enrollments"],
   ["GET","/api/users/me/notification-email"],
   ["GET","/api/users/me/subjects"],
-  ["GET","/api/users/me/payout-preferences"],
+  // Payout preferences are deliberately excluded for pending applicants.
   ["GET","/api/users/me/recovery-profile"],
   ["GET","/api/academic-records/reports/me"],
   ["GET","/api/academic-records/current-year"],

@@ -368,6 +368,10 @@ export const PaymentStatus = {
   paid: "paid",
   pending: "pending",
   overdue: "overdue",
+  partially_paid: "partially_paid",
+  failed: "failed",
+  cancelled: "cancelled",
+  refunded: "refunded",
 } as const;
 
 export interface Payment {
@@ -378,6 +382,9 @@ export interface Payment {
   month: string;
   year: number;
   status: PaymentStatus;
+  amountPaid?: number;
+  balance?: number;
+  credit?: number;
   /** @nullable */
   notes?: string | null;
   recordedBy: number;

@@ -141,7 +141,13 @@ export default function FeatureHub() {
   const [groupRules, setGroupRules] = useState("");
   const [paymentSettings, setPaymentSettings] = useState<any>({});
   const [paymentBusy, setPaymentBusy] = useState(false);
+  const [paymentAmountInput, setPaymentAmountInput] = useState("");
+  const [paynowReady, setPaynowReady] = useState(false);
+  const [paypalReady, setPaypalReady] = useState(false);
   const [paymentReported, setPaymentReported] = useState(false);
+  const [paymentReportAmount, setPaymentReportAmount] = useState("");
+  const [paymentReportMethod, setPaymentReportMethod] = useState("ecocash");
+  const [paymentReportReference, setPaymentReportReference] = useState("");
   const [prefectTeachers, setPrefectTeachers] = useState<Row[]>([]);
   const [prefectLeaderboard, setPrefectLeaderboard] = useState<Row[]>([]);
   const [prefectFollows, setPrefectFollows] = useState<Row[]>([]);
@@ -431,9 +437,15 @@ export default function FeatureHub() {
       }
       else if (target === "payments") {
         setPaymentReported(false);
-        const [paymentRows, settings] = await Promise.all([request("/api/payments"), request("/api/settings")]);
+        const [paymentRows, settings, paynowStatus, paypalStatus] = await Promise.all([
+          request("/api/payments"), request("/api/settings"),
+          request("/api/payments/paynow/status").catch(() => ({ configured: false })),
+          request("/api/payments/paypal/status").catch(() => ({ configured: false })),
+        ]);
         setRows(Array.isArray(paymentRows) ? paymentRows : []);
         setPaymentSettings(settings && typeof settings === "object" ? settings : {});
+        setPaynowReady(paynowStatus?.configured === true);
+        setPaypalReady(paypalStatus?.configured === true);
       }
       else {
         let loadedRows: Row[] = [];
@@ -900,15 +912,30 @@ export default function FeatureHub() {
     ]);
   };
 
-  const paymentTotalOwed = rows.filter((p: any) => p.status === "pending" || p.status === "overdue").reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+  const payableRows = rows.filter((p: any) => p.status === "pending" || p.status === "overdue" || p.status === "partially_paid").sort((a: any,b: any) => new Date(a.createdAt||0).getTime()-new Date(b.createdAt||0).getTime() || Number(a.id)-Number(b.id));
+  const nextPaymentBalance = payableRows.length ? Math.max(0,Number(payableRows[0].amount||0)-Number(payableRows[0].amountPaid||0)) : 0;
+  const paymentTotalOwed = payableRows.reduce((sum: number, p: any) => sum + Math.max(0,Number(p.amount||0)-Number(p.amountPaid||0)), 0);
   const startPaynow = async () => {
-    if (!isStudent || paymentBusy || paymentTotalOwed <= 0) return;
+    if (!isStudent || paymentBusy || nextPaymentBalance <= 0) return;
+    const chosenAmount = paymentAmountInput.trim() ? Number(paymentAmountInput) : nextPaymentBalance;
+    if (!Number.isFinite(chosenAmount) || chosenAmount <= 0 || chosenAmount > 100000) { Alert.alert("Invalid amount","Enter an amount greater than zero."); return; }
     setPaymentBusy(true);
     try {
-      const result = await request("/api/payments/paynow/create", { method: "POST", body: JSON.stringify({ amount: paymentTotalOwed }) });
+      const result = await request("/api/payments/paynow/create", { method: "POST", body: JSON.stringify({ paymentId: payableRows[0].id, amount: chosenAmount }) });
       if (!result?.checkoutUrl) throw new Error("Secure checkout did not return a link.");
       await Linking.openURL(String(result.checkoutUrl));
     } catch (e) { Alert.alert("Payment could not start", e instanceof Error ? e.message : "Please try again when connected."); }
+    finally { setPaymentBusy(false); }
+  };
+
+  const startPayPal = async () => {
+    if (!isStudent || paymentBusy || paymentTotalOwed <= 0) return;
+     setPaymentBusy(true);
+    try {
+      const result = await request("/api/payments/paypal/create", { method: "POST", body: JSON.stringify({ paymentId: payableRows[0].id, returnUrl: Linking.createURL("payments/return"), amount: paymentAmountInput.trim() ? Number(paymentAmountInput) : undefined }) });
+      if (!result?.checkoutUrl) throw new Error("PayPal checkout did not return a link.");
+      await Linking.openURL(String(result.checkoutUrl));
+    } catch (e) { Alert.alert("PayPal payment could not start", e instanceof Error ? e.message : "Please retry when connected."); }
     finally { setPaymentBusy(false); }
   };
 
@@ -916,7 +943,10 @@ export default function FeatureHub() {
     if (!isStudent || paymentBusy) return;
     setPaymentBusy(true);
     try {
-      await request("/api/payments/notify-admin", { method: "POST", body: JSON.stringify({ amount: paymentTotalOwed }) });
+      const reportedAmount = paymentReportAmount.trim() ? Number(paymentReportAmount) : paymentTotalOwed;
+      if (!Number.isFinite(reportedAmount) || reportedAmount <= 0 || reportedAmount > 100000) throw new Error("Enter a valid amount paid.");
+      if (paymentReportMethod !== "cash" && paymentReportReference.trim().length < 3) throw new Error("Enter the receipt or transaction reference.");
+      await request("/api/payments/notify-admin", { method: "POST", body: JSON.stringify({ amount: reportedAmount, method: paymentReportMethod, providerReference: paymentReportReference.trim() }) });
       setPaymentReported(true);
       Alert.alert("School notified", "Your school has been asked to verify your payment. This is not confirmation that payment has cleared.");
     } catch (e) { Alert.alert("Could not notify school", e instanceof Error ? e.message : "Please retry when connected."); }
@@ -1296,16 +1326,24 @@ export default function FeatureHub() {
               <Text style={styles.body}>Outstanding: ${paymentTotalOwed.toFixed(2)}</Text>
               <Text style={styles.muted}>{rows.filter((p:any)=>p.status==="paid").length} paid · {rows.filter((p:any)=>p.status==="overdue").length} overdue · {rows.filter((p:any)=>p.status==="pending").length} pending</Text>
             </View>
-            {isStudent && paymentTotalOwed > 0 && paymentSettings.paynow_url && <TouchableOpacity style={styles.button} onPress={()=>void startPaynow()} disabled={paymentBusy}><Text style={styles.buttonText}>{paymentBusy?"Opening secure checkout…":"Pay securely with Paynow"}</Text></TouchableOpacity>}
-            {isStudent && paymentSettings.paypal_url ? <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>{const value=String(paymentSettings.paypal_url);void Linking.openURL(value.startsWith("http")?value:"https://paypal.me/"+value);}}><Text style={[styles.buttonText,styles.secondaryText]}>Open PayPal</Text></TouchableOpacity>:null}
+            {isStudent && paymentTotalOwed > 0 && paynowReady && <TouchableOpacity style={styles.button} onPress={()=>void startPaynow()} disabled={paymentBusy}><Text style={styles.buttonText}>{paymentBusy?"Opening secure checkout…":"Pay securely with Paynow"}</Text></TouchableOpacity>}
+            {isStudent && paypalReady ? <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void startPayPal()} disabled={paymentBusy}><Text style={[styles.buttonText,styles.secondaryText]}>{paymentBusy?"Opening PayPal…":"Pay securely with PayPal"}</Text></TouchableOpacity>:null}
             {isStudent && paymentSettings.ecocash_number ? <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void Linking.openURL("tel:"+String(paymentSettings.ecocash_number))}><Text style={[styles.buttonText,styles.secondaryText]}>Call / open EcoCash: {String(paymentSettings.ecocash_number)}</Text></TouchableOpacity>:null}
             {isStudent && paymentSettings.trust_wallet ? <View style={{padding:10,borderWidth:1,borderColor:colors.border,borderRadius:10,marginTop:8}}><Text style={styles.cardTitle}>Wallet payment address</Text><Text selectable style={styles.body}>{String(paymentSettings.trust_wallet)}</Text></View>:null}
+            {isStudent && Number(paymentSettings.school_fee_amount)>0 ? <View style={{padding:10,borderWidth:1,borderColor:colors.border,borderRadius:10,marginTop:8}}><Text style={styles.cardTitle}>School's published standard fee</Text><Text style={styles.body}>USD {Number(paymentSettings.school_fee_amount).toFixed(2)}</Text><Text style={styles.muted}>Your actual outstanding balance is shown in your fee records above; this published fee is a guide and may differ for your class or term.</Text></View>:null}
             {isStudent && paymentSettings.payment_instructions ? <Text style={styles.muted}>{String(paymentSettings.payment_instructions)}</Text>:null}
-            {isStudent ? ((paymentSettings.paynow_url || paymentSettings.paypal_url || paymentSettings.ecocash_number || paymentSettings.trust_wallet) ? <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void notifyPayment()} disabled={paymentBusy||paymentReported}><Text style={[styles.buttonText,styles.secondaryText]}>{paymentReported?"School notified":"I have paid — notify school"}</Text></TouchableOpacity> : <Text style={styles.muted}>Payment methods are not configured. Please contact your school.</Text>) : null}
+            {isStudent && (paynowReady || paypalReady) && nextPaymentBalance > 0 ? <View style={{marginTop:8,padding:10,borderWidth:1,borderColor:colors.border,borderRadius:10}}><Text style={styles.cardTitle}>Amount to pay now (USD)</Text><TextInput style={[styles.input,{marginTop:8}]} value={paymentAmountInput} onChangeText={setPaymentAmountInput} keyboardType="decimal-pad" placeholder={nextPaymentBalance.toFixed(2)} placeholderTextColor={colors.mutedForeground}/><Text style={styles.muted}>Pay part of this fee, the full remaining balance, or extra. Verified extra money is recorded as credit. Leave blank to pay the full balance of the next fee record.</Text></View>:null}
+            {isStudent ? ((paynowReady || paypalReady || paymentSettings.ecocash_number || paymentSettings.trust_wallet) ? <View style={{gap:8,borderWidth:1,borderColor:colors.border,borderRadius:10,padding:10}}>
+              <Text style={styles.cardTitle}>Report a manual payment for Owner verification</Text>
+              <TextInput style={styles.input} value={paymentReportAmount} onChangeText={setPaymentReportAmount} keyboardType="decimal-pad" placeholder={"Amount paid (USD) · balance "+paymentTotalOwed.toFixed(2)} placeholderTextColor={colors.mutedForeground}/>
+              <View style={{flexDirection:"row",flexWrap:"wrap",gap:6}}>{["ecocash","bank_transfer","crypto","cash","other"].map(method=><TouchableOpacity key={method} onPress={()=>setPaymentReportMethod(method)} style={{paddingVertical:7,paddingHorizontal:9,borderRadius:8,borderWidth:1,borderColor:paymentReportMethod===method?colors.primary:colors.border,backgroundColor:paymentReportMethod===method?colors.primary+"18":"transparent"}}><Text style={{fontSize:11,color:colors.foreground,fontWeight:paymentReportMethod===method?"800":"500"}}>{method.replace("_"," ")}</Text></TouchableOpacity>)}</View>
+              <TextInput style={styles.input} value={paymentReportReference} onChangeText={setPaymentReportReference} maxLength={120} placeholder="Receipt / transaction reference (cash optional)" placeholderTextColor={colors.mutedForeground}/>
+              <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void notifyPayment()} disabled={paymentBusy||paymentReported}><Text style={[styles.buttonText,styles.secondaryText]}>{paymentReported?"School notified":"I have paid — notify school"}</Text></TouchableOpacity>
+            </View> : <Text style={styles.muted}>Payment methods are not configured. Please contact your school.</Text>) : null}
             {isStudent ? <Text style={styles.muted}>Payment options need an internet connection. A notification to school is a report, not proof that funds have cleared.</Text> : <Text style={styles.muted}>Staff view: payment records are read-only here.</Text>}
           </View>
           <Text style={styles.sectionTitle}>Payment history</Text>
-          {rows.length===0 ? <Text style={styles.muted}>No payment records are available.</Text> : rows.map((payment:any)=><View key={payment.id} style={styles.card}><View style={styles.grow}><Text style={styles.cardTitle}>{payment.month} {payment.year}</Text><Text style={styles.muted}>{payment.createdAt?new Date(payment.createdAt).toLocaleDateString():""}{payment.notes?" · "+payment.notes:""}</Text></View><View style={{alignItems:"flex-end"}}><Text style={styles.cardTitle}>${Number(payment.amount||0).toFixed(2)}</Text><Text style={[styles.pill,{color:payment.status==="paid"?"#15803d":payment.status==="overdue"||payment.status==="failed"?"#b91c1c":payment.status==="cancelled"?"#64748b":payment.status==="refunded"?"#0ea5e9":"#a16207"}]}>{String(payment.status||"unknown").toUpperCase()}</Text></View></View>)}
+          {rows.length===0 ? <Text style={styles.muted}>No payment records are available.</Text> : rows.map((payment:any)=><View key={payment.id} style={styles.card}><View style={styles.grow}><Text style={styles.cardTitle}>{payment.month} {payment.year}</Text><Text style={styles.muted}>{payment.createdAt?new Date(payment.createdAt).toLocaleDateString():""}{payment.notes?" · "+payment.notes:""}</Text><Text style={styles.muted}>Paid: USD {Number(payment.amountPaid||0).toFixed(2)} · Balance: USD {Math.max(0,Number(payment.amount||0)-Number(payment.amountPaid||0)).toFixed(2)} · Credit: USD {Math.max(0,Number(payment.amountPaid||0)-Number(payment.amount||0)).toFixed(2)}</Text></View><View style={{alignItems:"flex-end"}}><Text style={styles.cardTitle}>${Number(payment.amount||0).toFixed(2)}</Text><Text style={[styles.pill,{color:payment.status==="paid"?"#15803d":payment.status==="overdue"||payment.status==="failed"?"#b91c1c":payment.status==="cancelled"?"#64748b":payment.status==="refunded"?"#0ea5e9":"#a16207"}]}>{String(payment.status||"unknown").toUpperCase()}</Text></View></View>)}
         </View>}
         {section === "groups" && selectedChatGroup && <View style={[styles.card,{alignItems:"stretch",marginTop:10}]}><View style={styles.grow}><View style={{flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:8}}><Text style={styles.sectionTitle}>{selectedChatGroup.name} · Chat</Text><TouchableOpacity onPress={()=>setSelectedChatGroup(null)} accessibilityRole="button" accessibilityLabel="Close group chat"><Feather name="x" size={20} color={colors.mutedForeground}/></TouchableOpacity></View><Text style={styles.muted}>Messages are visible to members of this group only.</Text>{canManageSelectedGroup && <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void loadGroupSettings()} disabled={groupSettingsBusy}><Text style={[styles.buttonText,styles.secondaryText]}>{groupSettingsBusy?"Loading settings…":"Group settings"}</Text></TouchableOpacity>}{groupSettingsOpen && groupSettings && <View style={{padding:12,borderWidth:1,borderColor:colors.border,borderRadius:10,marginTop:8}}><Text style={styles.cardTitle}>Group rules</Text><TextInput style={[styles.input,styles.textArea,{marginTop:8}]} multiline value={groupRules} onChangeText={setGroupRules} editable={!groupSettingsBusy} placeholder="Add group rules…" placeholderTextColor={colors.mutedForeground}/><TouchableOpacity style={styles.button} onPress={()=>void saveGroupSettings({rules:groupRules})} disabled={groupSettingsBusy}><Text style={styles.buttonText}>Save rules</Text></TouchableOpacity>{([{key:"announcementsOnly",label:"Announcements only"},{key:"allowPolls",label:"Allow polls"},{key:"allowMedia",label:"Allow image/video media"}] as const).map(setting=><TouchableOpacity key={setting.key} style={[styles.button,styles.secondary,{flexDirection:"row",justifyContent:"space-between"}]} disabled={groupSettingsBusy} onPress={()=>void saveGroupSettings({[setting.key]:!groupSettings[setting.key]})}><Text style={[styles.buttonText,styles.secondaryText]}>{setting.label}</Text><Text style={{color:groupSettings[setting.key]?"#16a34a":"#dc2626",fontWeight:"700"}}>{groupSettings[setting.key]?"ON":"OFF"}</Text></TouchableOpacity>)}</View>}<TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void refreshGroupMessages(selectedChatGroup.id)} disabled={chatLoading}><Text style={[styles.buttonText,styles.secondaryText]}>{chatLoading?"Refreshing…":"Refresh messages"}</Text></TouchableOpacity>{chatError ? <Text style={{color:"#dc2626",marginTop:8}}>{chatError}</Text> : null}{chatLoading && chatMessages.length===0 ? <ActivityIndicator color={colors.primary} style={{margin:14}}/> : chatMessages.length===0 ? <Text style={styles.muted}>No messages yet. Start the conversation.</Text> : chatMessages.map(message=><View key={message.id} style={{paddingVertical:10,borderBottomWidth:1,borderBottomColor:colors.border}}><Text style={styles.cardTitle}>{message.senderName || "Group member"}</Text><Text style={styles.body}>{message.type==="media"?"Shared learning media":message.content}</Text>{message.type==="voice" && message.mediaUrl ? <AuthenticatedAudioMessage url={String(message.mediaUrl)}/> : message.type==="media" && message.mediaUrl ? <View style={{marginTop:8}}><AuthenticatedMediaPreview url={String(message.mediaUrl)} height={160} accessibilityLabel="Group message media"/><TouchableOpacity onPress={()=>openUrl(String(message.mediaUrl))}><Text style={{color:colors.primary,marginTop:5}}>Open attachment</Text></TouchableOpacity></View>:null}<Text style={styles.muted}>{message.createdAt ? new Date(message.createdAt).toLocaleString() : ""}</Text></View>)}<TextInput style={[styles.input,styles.textArea,{marginTop:12}]} multiline value={chatDraft} onChangeText={value=>{setChatDraft(value);if(user?.id&&selectedChatGroup?.id)void AsyncStorage.setItem("dallyletter_group_draft_"+user.id+"_"+selectedChatGroup.id,value).catch(()=>undefined);}} placeholder="Write a group message…" placeholderTextColor={colors.mutedForeground}/><TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void uploadGroupMessageMedia()} disabled={chatMediaBusy}><Text style={[styles.buttonText,styles.secondaryText]}>{chatMediaBusy?"Uploading media…":"Attach image/video"}</Text></TouchableOpacity>
             <TouchableOpacity style={[styles.button,styles.secondary]} onPress={()=>void uploadGroupMessageMedia(true)} disabled={chatMediaBusy}><Text style={[styles.buttonText,styles.secondaryText]}>{chatMediaBusy?"Uploading media…":"Attach PDF/Word document"}</Text></TouchableOpacity>
