@@ -2,12 +2,13 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 const root = path.resolve("dist/public");
-const base = "https://dallyletter-elidems-onlineschoolbye-two.vercel.app";
+const base = "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app";
 const routes = ["/", "/about", "/learners", "/educators", "/schools", "/organisations", "/resources", "/resources/study-plan"];
 const sitemap = await readFile(path.join(root, "sitemap.xml"), "utf8");
 const robots = await readFile(path.join(root, "robots.txt"), "utf8");
 const app = await readFile(path.resolve("src/App.tsx"), "utf8");
 const publicPages = JSON.parse(await readFile(path.resolve("src/content/public-pages.json"), "utf8"));
+const pageRoutes = { about: "/about", learners: "/learners", educators: "/educators", schools: "/schools", organisations: "/organisations", resources: "/resources", "study-plan": "/resources/study-plan" };
 const found = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(match => match[1].trim());
 const expected = routes.map(route => base + route);
 if (!sitemap.startsWith('<?xml version="1.0" encoding="UTF-8"?>') || !sitemap.includes("<urlset") || !sitemap.includes("</urlset>")) {
@@ -29,7 +30,6 @@ if (JSON.stringify(expectedPageRoutes) !== JSON.stringify(routes.filter(route =>
 }
 const titles = new Set();
 const descriptions = new Set();
-const pageRoutes = { about: "/about", learners: "/learners", educators: "/educators", schools: "/schools", organisations: "/organisations", resources: "/resources", "study-plan": "/resources/study-plan" };
 for (const [key, page] of Object.entries(publicPages)) {
   const route = pageRoutes[key];
   if (!route || !routes.includes(route)) throw new Error("Public page content has no approved sitemap route: " + key);
