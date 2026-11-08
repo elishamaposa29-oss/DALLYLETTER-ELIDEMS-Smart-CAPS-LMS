@@ -40,7 +40,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build prerendered public pages
         env:
-          PUBLIC_SITE_URL: ${{ vars.GSC_SITE_URL }}
+          # Use the canonical production origin; a stale repository variable must not break sitemap validation.
+          PUBLIC_SITE_URL: https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/
           GOOGLE_SITE_VERIFICATION: ${{ vars.GOOGLE_SITE_VERIFICATION }}
         run: pnpm --dir artifacts/dallyletter run build
       - name: Run Lighthouse mobile quality checks
