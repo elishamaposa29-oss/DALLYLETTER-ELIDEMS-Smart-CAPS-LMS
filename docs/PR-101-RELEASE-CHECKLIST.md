@@ -18,9 +18,13 @@ Pull request: [#101](https://github.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-S
 - [x] Build-time verification for sitemap coverage, canonical metadata, unique titles, internal links, static assets, JSON-LD, PWA assets, robots rules and 404 routing.
 - [x] Search Console report covering every URL in the sitemap, with current-versus-previous 28-day metrics.
 - [x] Sitemap submission validates the deployed XML before submitting it to Google.
-- [x] Manual public/learner/approved-teacher/manager capture workflow; missing demo credentials skip safely and Owner access is excluded.
+- [x] Automatic public/learner/approved-teacher/manager showcase capture after relevant changes reach `main`, weekly and on manual dispatch; missing demo credentials skip safely and Owner access is excluded.
+- [x] Sitemap-driven capture discovery, timestamped manifest, Markdown gallery and 90-day screenshot artifact.
+- [x] Authenticated capture restricted to the configured production origin so preview URLs cannot receive showcase credentials.
 - [x] Unknown-route HTTP 404 probe in the live showcase capture.
-- [x] Latest changes from merged PR #102 incorporated without resetting the feature branch.
+- [x] PR #100's useful launch, social publishing and search measurement documents selectively preserved; stale preview-host sitemap/prerender code deliberately excluded because PR #101 has a newer 33-page canonical implementation.
+- [x] PR #100's international registration improvements preserved, including E.164 phone normalization and routing pending teachers to qualifications.
+- [x] Removed implicit junior-manager inheritance of manager/senior-manager route access and added a CI regression check.
 
 ## Validation and release gates
 
@@ -29,7 +33,7 @@ Pull request: [#101](https://github.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-S
 - [ ] Latest-head Profile Hub integration workflow passes.
 - [ ] Latest-head Android build and smoke test passes.
 - [ ] Latest-head public-page Lighthouse assertions pass.
-- [ ] A deployment of this exact branch is available and the live public-route/404 showcase passes.
+- [ ] A successful deployment of this exact branch is available and the live public-route/404 showcase passes.
 - [ ] The Search Console URL-prefix property is verified (DNS or HTML-tag method); if using HTML-tag verification, the public homepage emits the supplied token.
 - [ ] Google Search Console service account is configured, has access to the exact verified property, and the sitemap workflow succeeds.
 - [ ] Dedicated learner, approved-teacher and manager demo credentials are configured and all three dashboard captures succeed.
@@ -62,6 +66,8 @@ Use dedicated non-production accounts only. Owner credentials are deliberately n
 
 ## Merge and production policy
 
-Do not merge PR #101 or change production deployment settings as part of this checklist. Merge only after all latest-head automated checks pass, the deployment quota is available, the exact branch has been verified, and the remaining external account setup is complete or explicitly accepted as a post-merge task.
+**Merge gate:** require all latest-head CI, Release Safety, Profile Hub integration, Android smoke and Lighthouse checks to pass. Resolve any new review comments and re-check the exact PR head SHA immediately before merging. A Vercel rate-limit failure is an external deployment blocker; do not bypass branch protection or change plans/settings to force a deployment.
 
-A successful build, sitemap submission or Lighthouse run is not proof of Google indexing, search ranking, user conversion or production readiness. Those outcomes must be measured separately.
+**Production gate:** after the deployment quota resets, verify the exact deployed commit, all public sitemap URLs, 404 behavior, login/registration, role-based dashboard access, and learner/teacher/manager showcase captures. Complete Search Console ownership verification and sitemap submission with the account owner's authorization. Keep production database changes, secrets and deployment configuration unchanged unless separately authorized.
+
+A successful build, sitemap submission or Lighthouse run is not proof of Google indexing, search ranking, user conversion or full product completion. Those outcomes must be measured separately.
