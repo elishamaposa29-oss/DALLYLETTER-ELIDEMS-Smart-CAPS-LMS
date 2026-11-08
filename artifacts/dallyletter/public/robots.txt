@@ -1,4 +1,14 @@
 User-agent: *
 Allow: /
+Disallow: /login
+Disallow: /register
+Disallow: /student
+Disallow: /student/
+Disallow: /teacher/
+Disallow: /manager/
+Disallow: /admin/
+Disallow: /profile-hub
+Disallow: /profile/
+Disallow: /record-book
 
-Sitemap: https://dallyletter-elidems-smart-caps-learning-platfor--elishamaposa29.replit.app/sitemap.xml
+Sitemap: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/sitemap.xml
