@@ -30,7 +30,7 @@ async function assertPublishablePage(page, label) {
       .filter(visible).map((element) => (element.innerText || "").trim()).filter(Boolean);
     const brokenImages = [...document.images].filter((image) => visible(image) && (!image.complete || image.naturalWidth === 0))
       .map((image) => image.getAttribute("src") || image.alt || "unnamed image");
-    const forbiddenText = /(internal server error|stack trace|uncaught (?:exception|error)|failed to fetch|something went wrong|database connection failed|api key|secret key|private key|bearer\\s+[a-z0-9._-]{12,}|sk-[a-z0-9]{16,}|gh[pousr]_[a-z0-9]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/i.test(bodyText);
+    const forbiddenText = /(internal server error|stack trace|uncaught (?:exception|error)|failed to fetch|something went wrong|database connection failed|api key|secret key|private key|bearer\s+[a-z0-9._-]{12,}|sk-[a-z0-9]{16,}|gh[pousr]_[a-z0-9]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/i.test(bodyText);
     return { enteredValues, visibleAlerts, brokenImages, forbiddenText, bodyLength: bodyText.length };
   });
   if (audit.enteredValues.length) throw new Error("Capture blocked for " + label + ": visible form fields contain entered values.");
