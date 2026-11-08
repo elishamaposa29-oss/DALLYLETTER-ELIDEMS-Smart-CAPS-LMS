@@ -212,7 +212,7 @@ async function captureRole(role, route, email, password) {
       label: (anchor.innerText || anchor.getAttribute("aria-label") || "").trim().toLowerCase(),
       visible: !!(anchor.offsetWidth || anchor.offsetHeight || anchor.getClientRects().length)
     })));
-    const allow = /lesson|class|assignment|quiz|exercise|study|group|attendance|record.?book|report|progress|achievement|resource|subject|dashboard|calendar|timetable/i;
+    const allow = /lesson|class|assignment|quiz|exercise|study|group|attendance|record.?book|report|progress|achievement|resource|subject|dashboard|calendar|timetable|live|video|course|material|library/i;
     const deny = /logout|sign out|delete|remove|edit|settings|profile|password|payment|billing|wallet|payout|transfer|approve|reject|submit|upload|invite|user management|owner|admin/i;
     const seen = new Set([url.pathname]);
     const walkthrough = [];
@@ -222,7 +222,7 @@ async function captureRole(role, route, email, password) {
       if (target.origin !== baseUrl.origin || target.search || target.hash || seen.has(target.pathname)) continue;
       seen.add(target.pathname);
       walkthrough.push({ href: target.href, label: link.label });
-      if (walkthrough.length === 3) break;
+      if (walkthrough.length === 5) break;
     }
 
     for (const item of walkthrough) {
