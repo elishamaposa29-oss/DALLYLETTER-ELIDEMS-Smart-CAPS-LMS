@@ -10,7 +10,7 @@ Do not describe the platform as government-accredited, nationally certified, or 
 ## Core message
 **Learning without borders. African educational innovation.**
 
-Supporting line: **Zimbabwe and South Africa in focus. African curricula in view. Open to the world.**
+Supporting line: **Zimbabwe first, with South Africa and the wider African region also welcomed. African curricula in view. Open to the world.**
 
 ## Audience
 - Learners seeking accessible digital learning support.
@@ -34,10 +34,10 @@ Supporting line: **Zimbabwe and South Africa in focus. African curricula in view
 ## Suggested profile bios
 
 ### Short
-Dallyletter Elidems is an African-focused learning platform, with Zimbabwe and South Africa in focus and a global welcome. Founded and solely created by Elisha Maposa.
+Dallyletter Elidems is an African-focused learning platform, with Zimbabwe first, with South Africa and the wider African region also welcomed and a global welcome. Founded and solely created by Elisha Maposa.
 
 ### Medium
-Learning without borders. Dallyletter Elidems is building digital learning experiences for learners, educators and schools. Zimbabwe and South Africa are our initial focus; our ambition is to support diverse African syllabuses and welcome the world. Founded and solely created by Elisha Maposa.
+Learning without borders. Dallyletter Elidems is building digital learning experiences for learners, educators and schools. Zimbabwe is our initial focus, with South Africa as an important early market; our ambition is to support diverse African syllabuses and welcome the world. Founded and solely created by Elisha Maposa.
 
 ### Professional / LinkedIn
 Dallyletter Elidems is an ambitious education-technology initiative focused initially on Zimbabwe and South Africa, with a broader commitment to African educational contexts and global participation. We are developing digital tools for learners, educators and educational organisations. Founded and solely created by Elisha Maposa.
@@ -56,13 +56,13 @@ Dallyletter Elidems is an ambitious education-technology initiative focused init
 
 Learning without borders. African educational innovation.
 
-Dallyletter Elidems is an ambitious education-technology platform being built with Zimbabwe and South Africa in focus, while welcoming learners, educators, schools and organisations from around the world.
+Dallyletter Elidems is an ambitious education-technology platform being built with Zimbabwe first, with South Africa and the wider African region also welcomed, while welcoming learners, educators, schools and organisations from around the world.
 
 Our direction is to support diverse African educational syllabuses and make useful digital learning experiences more accessible. We will share product progress honestly: what is available now, what is being improved, and what is still being built.
 
 Founded and solely created by **Elisha Maposa**.
 
-Explore: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/
+Explore: https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/
 
 #DallyletterElidems #AfricanEdTech #ZimbabweEducation #SouthAfricaEducation #DigitalLearning #EducationInnovation
 
