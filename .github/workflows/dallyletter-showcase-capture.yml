@@ -18,7 +18,7 @@ on:
       site_url:
         description: Optional deployed Dallyletter URL (defaults to production)
         required: false
-        default: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/
+        default: https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/
       approve_publication:
         description: Publish public screenshots and clips to showcase-media only after reviewing a previous capture artifact
         required: false
@@ -38,8 +38,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
-      SHOWCASE_SITE_URL: ${{ inputs.site_url || vars.GSC_SITE_URL || 'https://dallyletter-elidems-onlineschoolbye-two.vercel.app/' }}
-      SHOWCASE_AUTH_ALLOWED_ORIGIN: ${{ vars.GSC_SITE_URL || 'https://dallyletter-elidems-onlineschoolbye-two.vercel.app/' }}
+      SHOWCASE_SITE_URL: ${{ inputs.site_url || vars.GSC_SITE_URL || 'https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/' }}
+      SHOWCASE_AUTH_ALLOWED_ORIGIN: ${{ vars.GSC_SITE_URL || 'https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/' }}
       SHOWCASE_LEARNER_EMAIL: ${{ secrets.SHOWCASE_LEARNER_EMAIL }}
       SHOWCASE_LEARNER_PASSWORD: ${{ secrets.SHOWCASE_LEARNER_PASSWORD }}
       SHOWCASE_TEACHER_EMAIL: ${{ secrets.SHOWCASE_TEACHER_EMAIL }}
