@@ -24,6 +24,20 @@ The transitions continued through secondary education. Between Grade 10 Term 2 a
 
 These details are shared as part of the founder's own account. They should be preserved respectfully and not embellished with invented dates, school names, rankings, locations or personal details.
 
+## Returning to Zimbabwe and deciding to build a stable learning home
+
+In 2026, Elisha relocated to Zimbabwe. Returning to Form 3—after having already been at that level in 2024—was emotionally difficult. After years of disrupted schooling and repeated transfers, he wanted to build something more stable: a learning platform that could remain with a learner even when their location or circumstances changed.
+
+His vision was for learning to continue whether someone was studying at home, beside a swimming pool, travelling on a flight or somewhere else. The point was continuity and access: a learner should not have to start their educational life over every time their surroundings change.
+
+Elisha says his academic performance decreased somewhat during this period as his attention shifted toward building Dallyletter Elidems. This is part of the honest story, not something to disguise as an academic achievement. The platform became a major focus while he was navigating the emotional impact of returning to Form 3 and relocating.
+
+## Building with limited resources
+
+The work was repeatedly challenged by a lack of money. Infrastructure and hosting costs were difficult to meet, and some services required identity verification or payment credentials that Elisha did not have access to at the time. These barriers slowed development and limited which tools and services he could use.
+
+He continued working despite those constraints. The story is not that every obstacle was overcome immediately; it is that the obstacles did not make him abandon the project.
+
 ## Teaching before building the platform
 
 Before Dallyletter became software, Elisha had experience helping younger learners through in-person extra lessons. He saw learners improve and excel through that support, and he developed a strong interest in education and teaching.
@@ -52,6 +66,7 @@ Start small. Learn the fundamentals. Build something useful. Ask questions. Keep
 - The idea/educational vision predates the software project; early 2026 marks the beginning of coding and the first Python project, not necessarily the birth of the idea.
 - Do not invent or infer Elisha's exact age when coding began.
 - Do not invent names of schools, dates of transfers, academic awards, financial amounts or exact province/school counts.
+- The 2026 relocation to Zimbabwe, return to Form 3, reported slight decline in academic performance while focusing on Dallyletter, location-independent learning vision, and infrastructure/identity/payment barriers are founder-provided recollections; do not embellish or present them as independently verified.
 - Keep future photographs as pending archival assets until Elisha supplies and approves them.
 - Use captions, alt text and dates only when confirmed.
 - Keep this story editable as Elisha provides more of the history.
