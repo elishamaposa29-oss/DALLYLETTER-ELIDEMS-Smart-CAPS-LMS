@@ -1,6 +1,9 @@
 name: Google Search Console Performance Report
 
 on:
+  push:
+    branches: [feat/public-seo-discovery-2026-11]
+    paths: [.github/workflows/gsc-performance-report.yml]
   workflow_dispatch:
   schedule:
     - cron: "0 7 * * 1"

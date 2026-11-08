@@ -36,9 +36,9 @@ async function capturePublicPages() {
   await context.close();
 }
 
-async function captureRole(role, route, email, password, extraRoutes = []) {
+async function captureRole(role, route, email, password) {
   if (!email || !password) {
-    results.push({ role, skipped: "Dedicated demo-account secrets are not configured." });
+    results.push({ role, skipped: "Demo-account secrets are not configured." });
     return;
   }
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
@@ -54,13 +54,6 @@ async function captureRole(role, route, email, password, extraRoutes = []) {
     await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
     await page.screenshot({ path: path.join(out, `dashboard-${safeName(role)}.png`), fullPage: true, animations: "disabled" });
     results.push({ role, route, screenshot: `dashboard-${safeName(role)}.png`, title: await page.title() });
-    for (const extra of extraRoutes) {
-      await page.goto(base + extra, { waitUntil: "domcontentloaded", timeout: 45000 });
-      await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
-      const filename = `dashboard-${safeName(role)}-${safeName(extra.replaceAll("/", "-"))}.png`;
-      await page.screenshot({ path: path.join(out, filename), fullPage: true, animations: "disabled" });
-      results.push({ role, route: extra, screenshot: filename });
-    }
   } catch (error) {
     results.push({ role, route, error: String(error) });
   } finally {
@@ -73,7 +66,7 @@ try {
   await captureRole("learner", "/", process.env.SHOWCASE_LEARNER_EMAIL, process.env.SHOWCASE_LEARNER_PASSWORD);
   await captureRole("teacher", "/teacher", process.env.SHOWCASE_TEACHER_EMAIL, process.env.SHOWCASE_TEACHER_PASSWORD);
   await captureRole("manager", "/manager", process.env.SHOWCASE_MANAGER_EMAIL, process.env.SHOWCASE_MANAGER_PASSWORD);
-  await captureRole("owner", "/admin", process.env.SHOWCASE_OWNER_EMAIL, process.env.SHOWCASE_OWNER_PASSWORD, ["/admin/command-center"]);
+  // Owner authentication and private dashboards are deliberately excluded from public showcase automation.
   await fs.writeFile(path.join(out, "capture-manifest.json"), JSON.stringify({ site: base, capturedAt: new Date().toISOString(), results }, null, 2));
   console.log(JSON.stringify(results, null, 2));
 } finally {

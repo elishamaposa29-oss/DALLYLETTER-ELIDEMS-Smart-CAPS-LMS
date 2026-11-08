@@ -1,6 +1,9 @@
 name: Submit Dallyletter Sitemap to Google
 
 on:
+  push:
+    branches: [feat/public-seo-discovery-2026-11]
+    paths: [.github/workflows/gsc-submit-sitemap.yml]
   workflow_dispatch:
 
 permissions:
