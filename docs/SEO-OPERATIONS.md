@@ -38,7 +38,7 @@ A URL inspection result is a point-in-time diagnostic. A page can be technically
 
 ## Showcase and release evidence
 
-The **Dallyletter Real UI Showcase Capture** workflow is manual by design. Select the exact public or preview deployment to test. It checks all public discovery pages, confirms the Dallyletter logo loads, captures configured learner/approved-teacher/manager demo dashboards, and verifies that an unknown route returns HTTP 404.
+The **Dallyletter Real UI Showcase Capture** workflow refreshes automatically after relevant changes reach `main`, runs weekly, and supports manual dispatch. Public page URLs are discovered from the deployed sitemap so new and removed pages are reflected without maintaining a hardcoded capture list. Authenticated learner/teacher/manager captures are restricted to the configured production origin and dedicated showcase credentials; arbitrary preview URLs cannot receive those credentials. The workflow records the capture manifest and uploads screenshots as a 90-day artifact. Owner dashboards remain excluded.
 
 Use dedicated non-production demo accounts only. Missing demo credentials skip that role; login failures or broken pages fail the capture. Owner authentication and private Owner dashboards are deliberately excluded from showcase artifacts.
 
