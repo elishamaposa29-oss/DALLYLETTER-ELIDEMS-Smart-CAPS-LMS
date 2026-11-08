@@ -3,12 +3,12 @@
 **Founder / sole creator:** Elisha Maposa  
 **Brand line:** Learning without borders. African educational innovation.  
 **Initial focus:** Zimbabwe and South Africa. **Long-term audience:** learners, educators, schools and organisations worldwide.  
-**Website:** https://dallyletter-elidems-onlineschoolbye-two.vercel.app/
+**Website:** https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/
 
 ## Platform-ready profiles
 
 ### Facebook
-Dallyletter Elidems is building digital learning experiences for learners, educators and schools. Zimbabwe and South Africa are our initial focus, with an ambition to support diverse African syllabuses and welcome the world. Founded and solely created by Elisha Maposa.
+Dallyletter Elidems is building digital learning experiences for learners, educators and schools. Zimbabwe is our initial focus, with South Africa as an important early market, with an ambition to support diverse African syllabuses and welcome the world. Founded and solely created by Elisha Maposa.
 
 ### Instagram
 Learning without borders 🌍  
@@ -22,7 +22,7 @@ Zimbabwe + South Africa in focus
 Built by Elisha Maposa.
 
 ### X
-Dallyletter Elidems | African-focused learning technology. Zimbabwe and South Africa in focus; open to learners, educators and schools worldwide. Founded and solely created by Elisha Maposa.
+Dallyletter Elidems | African-focused learning technology. Zimbabwe first, with South Africa and the wider African region also welcomed; open to learners, educators and schools worldwide. Founded and solely created by Elisha Maposa.
 
 ### LinkedIn
 Dallyletter Elidems is an education-technology initiative focused initially on Zimbabwe and South Africa, with a wider ambition to support diverse African educational contexts and global participation. Founded and solely created by Elisha Maposa.
@@ -39,7 +39,7 @@ Our ambition is to support diverse African syllabuses and make useful learning a
 
 Founded and solely created by **Elisha Maposa**.
 
-Explore the platform: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/
+Explore the platform: https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/
 
 #DallyletterElidems #AfricanEdTech #ZimbabweEducation #SouthAfricaEducation #DigitalLearning
 
