@@ -21,7 +21,7 @@ on:
         default: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: dallyletter-showcase-${{ github.ref }}
@@ -65,3 +65,57 @@ jobs:
           path: showcase-captures/
           if-no-files-found: error
           retention-days: 90
+
+      - name: Publish current public screenshot media to dedicated branch
+        if: success()
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          cp -R showcase-captures "$RUNNER_TEMP/dallyletter-showcase-captures"
+          git checkout --orphan showcase-media-refresh
+          git rm -rf . >/dev/null 2>&1 || true
+          mkdir -p latest
+          cp "$RUNNER_TEMP"/dallyletter-showcase-captures/public-*.png latest/
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          import path from "node:path";
+          const sourceDir = path.join(process.env.RUNNER_TEMP, "dallyletter-showcase-captures");
+          const source = JSON.parse(fs.readFileSync(path.join(sourceDir, "capture-manifest.json"), "utf8"));
+          const repo = process.env.GITHUB_REPOSITORY;
+          const pages = source.results.filter((item) => item.type === "public" && item.screenshot);
+          const media = (file) => "https://raw.githubusercontent.com/" + repo + "/showcase-media/latest/" + file;
+          const manifest = {
+            site: source.site,
+            capturedAt: source.capturedAt,
+            deployedBuildCommit: source.sourceCommit,
+            workflowCommit: process.env.WORKFLOW_COMMIT,
+            publicPageCount: pages.length,
+            pages: pages.map(({ page, url, status, screenshot }) => ({ page, url, status, screenshot, mediaUrl: media(screenshot) }))
+          };
+          fs.writeFileSync(path.join("latest", "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
+          const lines = [
+            "# Dallyletter Elidems — current public UI screenshots",
+            "",
+            "- Site: [" + source.site + "](" + source.site + ")",
+            "- Captured: " + source.capturedAt,
+            "- Deployed build: " + (source.sourceCommit || "not exposed"),
+            "- Workflow commit: " + (process.env.WORKFLOW_COMMIT || "unknown"),
+            "- Public pages: " + pages.length,
+            "",
+            "These images are refreshed only after all public page captures pass. Authenticated dashboards and Owner views are never published to this branch.",
+            ""
+          ];
+          for (const item of pages) {
+            lines.push("## [" + item.page + "](" + item.url + ")", "");
+            lines.push("![ " + item.page + " ](" + media(item.screenshot) + ")", "");
+            lines.push("[Open live page](" + item.url + ") · [Open screenshot](" + media(item.screenshot) + ")", "");
+          }
+          fs.writeFileSync(path.join("latest", "README.md"), lines.join("\n") + "\n");
+          NODE
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add latest
+          git commit -m "Refresh public Dallyletter screenshots for ${{ github.sha }}"
+          git push origin HEAD:refs/heads/showcase-media --force
