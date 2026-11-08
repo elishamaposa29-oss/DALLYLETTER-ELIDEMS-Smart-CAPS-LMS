@@ -65,6 +65,10 @@ for (const url of urls) {
     if (!href.startsWith("/") || href.startsWith("//")) continue;
     const linkPath = new URL(href, siteUrl).pathname;
     if (appRoutePrefixes.some(prefix => linkPath === prefix || linkPath.startsWith(prefix + "/"))) continue;
+    if (linkPath === "/favicon.svg" || linkPath === "/manifest.json" || linkPath.startsWith("/social/") || linkPath.startsWith("/assets/")) {
+      if (!fs.existsSync(path.join(root, linkPath))) throw new Error("Missing linked static asset " + linkPath + " on " + url);
+      continue;
+    }
     const normalized = linkPath.endsWith("/") ? linkPath : linkPath + "/";
     if (!publicRoutes.has(normalized) && normalized !== "/") {
       throw new Error("Broken internal public link " + href + " found on " + url);
