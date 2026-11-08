@@ -163,7 +163,103 @@
       "destination": "/founder-story/index.html"
     },
     {
-      "source": "/(.*)",
+      "source": "/login/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/forgot-password/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/reset-password/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/verify/transfer/:token/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/verify-email/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/confirm-email-change/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/features/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/register/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/resource-unavailable/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/docs/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/preview/lesson/:id/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/teacher/qualifications/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/suspended/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/shared-media/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/record-book/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/profile-hub/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/profile/:id/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/student/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/student/:path*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/teacher/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/teacher/:path*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/manager/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/manager/:path*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/admin/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/admin/:path*",
       "destination": "/index.html"
     }
   ],
