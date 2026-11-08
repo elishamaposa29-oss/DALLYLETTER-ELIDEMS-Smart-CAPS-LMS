@@ -1,3 +1,8 @@
-<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="180" height="180" rx="36" fill="#FF3C00"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" role="img" aria-label="Dallyletter Elidems">
+  <rect width="180" height="180" rx="38" fill="#0f2a5a"/>
+  <path d="M28 72 90 42l62 30-62 30-62-30Z" fill="#d7ad35" stroke="#f3d77c" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M52 86v27c21 17 55 17 76 0V86L90 104 52 86Z" fill="#fff8e8" stroke="#d7ad35" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M151 74v40" stroke="#f3d77c" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="151" cy="121" r="7" fill="#d7ad35"/>
+  <path d="M72 131h36" stroke="#d7ad35" stroke-width="7" stroke-linecap="round"/>
 </svg>
