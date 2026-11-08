@@ -300,9 +300,10 @@ function buildGallery(manifest) {
   }
   lines.push("## Authenticated non-owner dashboards", "");
   for (const item of manifest.results.filter((result) => result.type === "dashboard")) {
-    lines.push("- **" + item.role + ":** [" + item.url + "](" + item.url + ") — " + (item.status || "failed") + (item.screenshot ? " — " + item.screenshot : "") + (item.error ? " — " + item.error : ""));
+    lines.push("- **" + item.role + ":** [" + item.url + "](" + item.url + ") — " + (item.status || "failed") + (item.screenshot ? " — " + item.screenshot : "") + (item.video ? " — private walkthrough: " + item.video : "") + (item.error ? " — " + item.error : ""));
+    if (item.walkthroughPages?.length) lines.push("  - Read-only routes shown: " + item.walkthroughPages.join(", "));
   }
-  lines.push("", "Owner dashboards are deliberately excluded. Use dedicated non-production showcase accounts only.", "");
+  lines.push("", "Role screenshots and walkthrough videos are private workflow artifacts only. They are not published to the public media branch. Owner dashboards, Owner credentials and Owner-only views are deliberately excluded. Use dedicated showcase accounts only.", "");
   return lines.join("\n");
 }
 
