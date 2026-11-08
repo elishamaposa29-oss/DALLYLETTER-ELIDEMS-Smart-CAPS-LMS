@@ -26,11 +26,11 @@ const nav = [["About","/about/"],["How it works","/how-it-works/"],["Learners","
 function render(page) {
  const route = page.slug ? "/" + page.slug + "/" : "/";
  const canonical = siteUrl + route;
- const image = siteUrl + "/social/dallyletter-og.svg";
+ const image = siteUrl + "/social/dallyletter-og.png";
  const sections = page.sections.map(s => "<section><h2>"+esc(s[0])+"</h2><p>"+esc(s[1])+"</p></section>").join("");
  const related = page.links.map(slug => { const item=pages.find(p=>p.slug===slug); return item ? '<a href="/'+slug+'/">'+esc(item.h1)+'</a>' : ""; }).join("");
  const jsonLd = JSON.stringify({"@context":"https://schema.org","@type":"WebPage",name:page.title,description:page.description,url:canonical,isPartOf:{"@type":"WebSite",name:"Dallyletter Elidems",url:siteUrl+"/"},about:{"@type":"Organization",name:"Dallyletter Elidems",url:siteUrl+"/"}});
- return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(page.title)+'</title><meta name="description" content="'+esc(page.description)+'"><meta name="robots" content="index,follow,max-image-preview:large"><meta name="author" content="Dallyletter Elidems"><link rel="canonical" href="'+canonical+'"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><meta name="theme-color" content="#0f2a5a"><meta property="og:type" content="website"><meta property="og:site_name" content="Dallyletter Elidems"><meta property="og:title" content="'+esc(page.title)+'"><meta property="og:description" content="'+esc(page.description)+'"><meta property="og:url" content="'+canonical+'"><meta property="og:image" content="'+image+'"><meta property="og:image:type" content="image/svg+xml"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="Dallyletter Elidems — connected learning for Zimbabwe, Africa and beyond"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="'+esc(page.title)+'"><meta name="twitter:description" content="'+esc(page.description)+'"><meta name="twitter:image" content="'+image+'"><script type="application/ld+json">'+jsonLd+'</script><style>:root{--navy:#0f2a5a;--gold:#b38b00;--ink:#17243a;--paper:#f6f8fc}*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,sans-serif;color:var(--ink);background:var(--paper);line-height:1.65}a{color:var(--navy)}.top{background:var(--navy);color:white}.nav{max-width:1120px;margin:auto;padding:1rem 1.25rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap}.brand{color:white;text-decoration:none;font-weight:800}.navlinks{display:flex;gap:1rem;flex-wrap:wrap}.navlinks a{color:white;text-decoration:none;font-size:.9rem}.hero{background:linear-gradient(135deg,#0f2a5a,#173e78);color:white;padding:4.5rem 1.25rem}.wrap{max-width:900px;margin:auto}.eyebrow{color:#f2d56b;text-transform:uppercase;font-size:.78rem;font-weight:800;letter-spacing:.13em}.hero h1{font-size:clamp(2.2rem,6vw,4rem);line-height:1.08;max-width:850px;margin:.7rem 0 1rem}.hero p{font-size:1.12rem;max-width:760px;color:#e7edf8}.actions{display:flex;gap:.8rem;flex-wrap:wrap;margin-top:1.5rem}.btn{display:inline-block;border-radius:9px;padding:.8rem 1.15rem;text-decoration:none;font-weight:700;background:#f2d56b;color:#17243a}.btn.secondary{background:transparent;border:1px solid #dbe5f5;color:white}.content{max-width:900px;margin:2.5rem auto;padding:0 1.25rem}.content section{background:white;border:1px solid #e2e8f0;border-radius:14px;padding:1.4rem 1.5rem;margin:1rem 0}.content h2{color:var(--navy);margin:.1rem 0 .4rem;font-size:1.25rem}.content p{margin:.35rem 0;color:#43516a}.more{margin:2rem 0}.more h2{color:var(--navy)}.links{display:flex;flex-wrap:wrap;gap:.65rem}.links a{background:white;border:1px solid #d9e1ee;border-radius:999px;padding:.5rem .8rem;text-decoration:none;font-size:.9rem}.footer{background:#0b1e40;color:#d9e3f4;padding:2rem 1.25rem}.footer .wrap{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap}.footer a{color:#f2d56b}.small{font-size:.88rem;color:#b8c7df}@media(max-width:600px){.hero{padding:3rem 1.1rem}.navlinks{gap:.65rem}.content section{padding:1.1rem}}</style></head><body><header class="top"><nav class="nav" aria-label="Main navigation"><a class="brand" href="/">DALLYLETTER ELIDEMS</a><div class="navlinks">'+nav.map(n=>'<a href="'+n[1]+'">'+n[0]+'</a>').join("")+'</div></nav></header><main><div class="hero"><div class="wrap"><div class="eyebrow">Zimbabwe first · Africa and beyond</div><h1>'+esc(page.h1)+'</h1><p>'+esc(page.intro)+'</p><div class="actions"><a class="btn" href="/register">Join Dallyletter</a><a class="btn secondary" href="/login">Sign in</a></div></div></div><div class="content">'+sections+'<section><h2>Built by its creator</h2><p>Dallyletter Elidems is created by Elisha Maposa, with a long-term commitment to building useful education technology for learners and educators.</p></section><div class="more"><h2>Explore Dallyletter</h2><div class="links">'+related+'</div></div></div></main><footer class="footer"><div class="wrap"><div><strong>Dallyletter Elidems</strong><div class="small">Zimbabwe first, not Zimbabwe only.</div></div><div class="small">Learning tools for learners, educators, schools and organisations. <a href="/about/">About us</a></div></div></footer></body></html>';
+ return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(page.title)+'</title><meta name="description" content="'+esc(page.description)+'"><meta name="robots" content="index,follow,max-image-preview:large"><meta name="author" content="Dallyletter Elidems"><link rel="canonical" href="'+canonical+'"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><meta name="theme-color" content="#0f2a5a"><meta property="og:type" content="website"><meta property="og:site_name" content="Dallyletter Elidems"><meta property="og:title" content="'+esc(page.title)+'"><meta property="og:description" content="'+esc(page.description)+'"><meta property="og:url" content="'+canonical+'"><meta property="og:image" content="'+image+'"><meta property="og:image:type" content="image/png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="Dallyletter Elidems — connected learning for Zimbabwe, Africa and beyond"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="'+esc(page.title)+'"><meta name="twitter:description" content="'+esc(page.description)+'"><meta name="twitter:image" content="'+image+'"><script type="application/ld+json">'+jsonLd+'</script><style>:root{--navy:#0f2a5a;--gold:#b38b00;--ink:#17243a;--paper:#f6f8fc}*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,sans-serif;color:var(--ink);background:var(--paper);line-height:1.65}a{color:var(--navy)}.top{background:var(--navy);color:white}.nav{max-width:1120px;margin:auto;padding:1rem 1.25rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap}.brand{color:white;text-decoration:none;font-weight:800}.navlinks{display:flex;gap:1rem;flex-wrap:wrap}.navlinks a{color:white;text-decoration:none;font-size:.9rem}.hero{background:linear-gradient(135deg,#0f2a5a,#173e78);color:white;padding:4.5rem 1.25rem}.wrap{max-width:900px;margin:auto}.eyebrow{color:#f2d56b;text-transform:uppercase;font-size:.78rem;font-weight:800;letter-spacing:.13em}.hero h1{font-size:clamp(2.2rem,6vw,4rem);line-height:1.08;max-width:850px;margin:.7rem 0 1rem}.hero p{font-size:1.12rem;max-width:760px;color:#e7edf8}.actions{display:flex;gap:.8rem;flex-wrap:wrap;margin-top:1.5rem}.btn{display:inline-block;border-radius:9px;padding:.8rem 1.15rem;text-decoration:none;font-weight:700;background:#f2d56b;color:#17243a}.btn.secondary{background:transparent;border:1px solid #dbe5f5;color:white}.content{max-width:900px;margin:2.5rem auto;padding:0 1.25rem}.content section{background:white;border:1px solid #e2e8f0;border-radius:14px;padding:1.4rem 1.5rem;margin:1rem 0}.content h2{color:var(--navy);margin:.1rem 0 .4rem;font-size:1.25rem}.content p{margin:.35rem 0;color:#43516a}.more{margin:2rem 0}.more h2{color:var(--navy)}.links{display:flex;flex-wrap:wrap;gap:.65rem}.links a{background:white;border:1px solid #d9e1ee;border-radius:999px;padding:.5rem .8rem;text-decoration:none;font-size:.9rem}.footer{background:#0b1e40;color:#d9e3f4;padding:2rem 1.25rem}.footer .wrap{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap}.footer a{color:#f2d56b}.small{font-size:.88rem;color:#b8c7df}@media(max-width:600px){.hero{padding:3rem 1.1rem}.navlinks{gap:.65rem}.content section{padding:1.1rem}}</style></head><body><header class="top"><nav class="nav" aria-label="Main navigation"><a class="brand" href="/">DALLYLETTER ELIDEMS</a><div class="navlinks">'+nav.map(n=>'<a href="'+n[1]+'">'+n[0]+'</a>').join("")+'</div></nav></header><main><div class="hero"><div class="wrap"><div class="eyebrow">Zimbabwe first · Africa and beyond</div><h1>'+esc(page.h1)+'</h1><p>'+esc(page.intro)+'</p><div class="actions"><a class="btn" href="/register">Join Dallyletter</a><a class="btn secondary" href="/login">Sign in</a></div></div></div><div class="content">'+sections+'<section><h2>Built by its creator</h2><p>Dallyletter Elidems is created by Elisha Maposa, with a long-term commitment to building useful education technology for learners and educators.</p></section><div class="more"><h2>Explore Dallyletter</h2><div class="links">'+related+'</div></div></div></main><footer class="footer"><div class="wrap"><div><strong>Dallyletter Elidems</strong><div class="small">Zimbabwe first, not Zimbabwe only.</div></div><div class="small">Learning tools for learners, educators, schools and organisations. <a href="/about/">About us</a></div></div></footer></body></html>';
 }
 fs.mkdirSync(publicRoot,{recursive:true});
 for (const page of pages) {
@@ -38,6 +38,61 @@ for (const page of pages) {
  fs.mkdirSync(dir,{recursive:true});
  fs.writeFileSync(path.join(dir,"index.html"),render(page),"utf8");
 }
-const entries=pages.map(p=>{const pageUrl=siteUrl+(p.slug?"/"+p.slug+"/":"/");return "<url><loc>"+pageUrl+"</loc><image:image><image:loc>"+siteUrl+"/social/dallyletter-og.svg</image:loc></image:image></url>";}).join("");
+const entries=pages.map(p=>{const pageUrl=siteUrl+(p.slug?"/"+p.slug+"/":"/");return "<url><loc>"+pageUrl+"</loc><image:image><image:loc>"+siteUrl+"/social/dallyletter-og.png</image:loc></image:image></url>";}).join("");
 fs.writeFileSync(path.join(outputRoot,"sitemap.xml"),'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">'+entries+"</urlset>\n","utf8");
 console.log("Prerendered "+pages.length+" public pages and image sitemap.");
+
+
+import { deflateSync } from "node:zlib";
+
+const WIDTH=1200, HEIGHT=630;
+const rgba=Buffer.alloc(WIDTH*HEIGHT*4);
+for(let y=0;y<HEIGHT;y++){
+ for(let x=0;x<WIDTH;x++){
+  const t=(x/WIDTH+y/HEIGHT)*0.5;
+  const i=(y*WIDTH+x)*4;
+  rgba[i]=Math.round(11+(29-11)*t);
+  rgba[i+1]=Math.round(30+(75-30)*t);
+  rgba[i+2]=Math.round(64+(134-64)*t);
+  rgba[i+3]=255;
+ }
+}
+function rect(x,y,w,h,color){
+ for(let yy=Math.max(0,y);yy<Math.min(HEIGHT,y+h);yy++){
+  for(let xx=Math.max(0,x);xx<Math.min(WIDTH,x+w);xx++){
+   const i=(yy*WIDTH+xx)*4;
+   rgba[i]=color[0];rgba[i+1]=color[1];rgba[i+2]=color[2];rgba[i+3]=255;
+  }
+ }
+}
+const font={
+A:["01110","10001","10001","11111","10001","10001","10001"],B:["11110","10001","10001","11110","10001","10001","11110"],C:["01111","10000","10000","10000","10000","10000","01111"],D:["11110","10001","10001","10001","10001","10001","11110"],E:["11111","10000","10000","11110","10000","10000","11111"],F:["11111","10000","10000","11110","10000","10000","10000"],G:["01111","10000","10000","10111","10001","10001","01111"],H:["10001","10001","10001","11111","10001","10001","10001"],I:["11111","00100","00100","00100","00100","00100","11111"],J:["00111","00010","00010","00010","10010","10010","01100"],K:["10001","10010","10100","11000","10100","10010","10001"],L:["10000","10000","10000","10000","10000","10000","11111"],M:["10001","11011","10101","10101","10001","10001","10001"],N:["10001","11001","10101","10011","10001","10001","10001"],O:["01110","10001","10001","10001","10001","10001","01110"],P:["11110","10001","10001","11110","10000","10000","10000"],Q:["01110","10001","10001","10001","10101","10010","01101"],R:["11110","10001","10001","11110","10100","10010","10001"],S:["01111","10000","10000","01110","00001","00001","11110"],T:["11111","00100","00100","00100","00100","00100","00100"],U:["10001","10001","10001","10001","10001","10001","01110"],V:["10001","10001","10001","10001","10001","01010","00100"],W:["10001","10001","10001","10101","10101","10101","01010"],X:["10001","10001","01010","00100","01010","10001","10001"],Y:["10001","10001","01010","00100","00100","00100","00100"],Z:["11111","00001","00010","00100","01000","10000","11111"]," ":["00000","00000","00000","00000","00000","00000","00000"],"·":["00000","00100","00100","00000","00100","00100","00000"]};
+function textPixels(value,x,y,scale,color){
+ let cursor=x;
+ for(const ch of value){
+  const glyph=font[ch]||font[" "];
+  for(let row=0;row<7;row++)for(let col=0;col<5;col++)if(glyph[row][col]==="1")rect(cursor+col*scale,y+row*scale,scale,scale,color);
+  cursor+=6*scale;
+ }
+}
+rect(92,88,74,8,[233,198,79]);
+textPixels("DALLYLETTER ELIDEMS",92,125,5,[241,214,109]);
+textPixels("LEARNING",92,225,12,[255,255,255]);
+textPixels("WITHOUT BORDERS",92,330,10,[255,255,255]);
+rect(92,425,430,3,[179,139,0]);
+textPixels("ZIMBABWE FIRST",92,465,5,[220,231,247]);
+textPixels("AFRICA AND BEYOND",92,515,5,[220,231,247]);
+rect(900,220,210,150,[39,75,125]);
+rect(935,260,140,8,[241,214,109]);
+rect(935,295,105,8,[241,214,109]);
+rect(935,330,122,8,[241,214,109]);
+const raw=Buffer.alloc(HEIGHT*(1+WIDTH*4));
+for(let y=0;y<HEIGHT;y++){const row=y*(1+WIDTH*4);raw[row]=0;rgba.copy(raw,row+1,y*WIDTH*4,(y+1)*WIDTH*4);}
+const crcTable=new Uint32Array(256);
+for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=(c&1)?(0xedb88320^(c>>>1)):(c>>>1);crcTable[n]=c>>>0;}
+function crc32(buf){let c=0xffffffff;for(const byte of buf)c=crcTable[(c^byte)&255]^(c>>>8);return (c^0xffffffff)>>>0;}
+function chunk(type,data){const name=Buffer.from(type);const body=Buffer.concat([name,data]);const out=Buffer.alloc(data.length+12);out.writeUInt32BE(data.length,0);name.copy(out,4);data.copy(out,8);out.writeUInt32BE(crc32(body),data.length+8);return out;}
+const ihdr=Buffer.alloc(13);ihdr.writeUInt32BE(WIDTH,0);ihdr.writeUInt32BE(HEIGHT,4);ihdr[8]=8;ihdr[9]=6;
+const png=Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk("IHDR",ihdr),chunk("IDAT",deflateSync(raw,{level:9})),chunk("IEND",Buffer.alloc(0))]);
+fs.mkdirSync(path.join(outputRoot,"social"),{recursive:true});
+fs.writeFileSync(path.join(outputRoot,"social","dallyletter-og.png"),png);
