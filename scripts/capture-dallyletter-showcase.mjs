@@ -3,6 +3,8 @@ import path from "node:path";
 import { chromium } from "playwright";
 
 const baseUrl = new URL(process.env.SHOWCASE_SITE_URL || "https://dallyletter-elidems-onlineschoolbye-two.vercel.app/");
+const authAllowedOrigin = new URL(process.env.SHOWCASE_AUTH_ALLOWED_ORIGIN || "https://dallyletter-elidems-onlineschoolbye-two.vercel.app/").origin;
+if (baseUrl.protocol !== "https:" || baseUrl.username || baseUrl.password) throw new Error("SHOWCASE_SITE_URL must be a public HTTPS URL without embedded credentials.");
 const out = path.resolve("showcase-captures");
 await fs.mkdir(out, { recursive: true });
 
@@ -66,6 +68,10 @@ async function capturePublicPages() {
 
 async function captureRole(role, route, email, password) {
   const url = new URL(route, baseUrl);
+  if (baseUrl.origin !== authAllowedOrigin) {
+    results.push({ type: "dashboard", role, url: url.href, status: "skipped", reason: "Authenticated capture is restricted to the configured production origin." });
+    return;
+  }
   if (!email || !password) {
     results.push({ type: "dashboard", role, url: url.href, status: "skipped", reason: "Dedicated demo-account secrets are not configured." });
     return;
