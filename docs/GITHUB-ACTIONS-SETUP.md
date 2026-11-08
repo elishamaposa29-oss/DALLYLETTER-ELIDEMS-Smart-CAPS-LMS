@@ -19,13 +19,13 @@ Create one repository variable:
 | Field | Exact value |
 |---|---|
 | Name | `GSC_SITE_URL` |
-| Value | `https://dallyletter-elidems-onlineschoolbye-two.vercel.app/` |
+| Value | `https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/` |
 
 Copy sheet:
 
 ```text
 GSC_SITE_URL
-https://dallyletter-elidems-onlineschoolbye-two.vercel.app/
+https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/
 ```
 
 The value must exactly match the verified URL-prefix property in Search Console, including protocol and trailing slash.
