@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-export const DEFAULT_SITE_URL = "https://dallyletter-elidems-onlineschoolbye-two.vercel.app/";
+export const DEFAULT_SITE_URL = "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/";
 
 export function getSiteUrl() {
   const value = process.env.GSC_SITE_URL || DEFAULT_SITE_URL;
@@ -9,7 +9,7 @@ export function getSiteUrl() {
 
 export function getServiceAccount() {
   const raw = process.env.GSC_SERVICE_ACCOUNT_JSON;
-  if (!raw) return null;
+  if (!raw) throw new Error('GSC_SERVICE_ACCOUNT_JSON is not configured. Add the complete service-account JSON key as a GitHub Actions secret.');
   const account = JSON.parse(raw);
   if (!account.client_email || !account.private_key) throw new Error("GSC_SERVICE_ACCOUNT_JSON must contain client_email and private_key");
   // Accept both standard JSON PEM newlines and secrets pasted with literal \\n sequences.
