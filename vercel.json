@@ -10,15 +10,258 @@
       "headers": [
         {
           "key": "Cache-Control",
-          "value": "public, max-age=0, must-revalidate"
+          "value": "public, max-age=3600, stale-while-revalidate=86400"
+        }
+      ]
+    },
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/social/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400, stale-while-revalidate=604800"
         }
       ]
     }
   ],
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/",
+      "destination": "/public-site/index.html"
+    },
+    {
+      "source": "/about/",
+      "destination": "/about/index.html"
+    },
+    {
+      "source": "/how-it-works/",
+      "destination": "/how-it-works/index.html"
+    },
+    {
+      "source": "/learners/",
+      "destination": "/learners/index.html"
+    },
+    {
+      "source": "/educators/",
+      "destination": "/educators/index.html"
+    },
+    {
+      "source": "/schools/",
+      "destination": "/schools/index.html"
+    },
+    {
+      "source": "/organisations/",
+      "destination": "/organisations/index.html"
+    },
+    {
+      "source": "/zimbabwe/",
+      "destination": "/zimbabwe/index.html"
+    },
+    {
+      "source": "/south-africa/",
+      "destination": "/south-africa/index.html"
+    },
+    {
+      "source": "/africa/",
+      "destination": "/africa/index.html"
+    },
+    {
+      "source": "/global-learning/",
+      "destination": "/global-learning/index.html"
+    },
+    {
+      "source": "/primary-learning/",
+      "destination": "/primary-learning/index.html"
+    },
+    {
+      "source": "/secondary-learning/",
+      "destination": "/secondary-learning/index.html"
+    },
+    {
+      "source": "/syllabus-support/",
+      "destination": "/syllabus-support/index.html"
+    },
+    {
+      "source": "/managers/",
+      "destination": "/managers/index.html"
+    },
+    {
+      "source": "/past-papers/",
+      "destination": "/past-papers/index.html"
+    },
+    {
+      "source": "/o-level/",
+      "destination": "/o-level/index.html"
+    },
+    {
+      "source": "/exam-preparation/",
+      "destination": "/exam-preparation/index.html"
+    },
+    {
+      "source": "/mathematics/",
+      "destination": "/mathematics/index.html"
+    },
+    {
+      "source": "/english/",
+      "destination": "/english/index.html"
+    },
+    {
+      "source": "/science/",
+      "destination": "/science/index.html"
+    },
+    {
+      "source": "/biology/",
+      "destination": "/biology/index.html"
+    },
+    {
+      "source": "/chemistry/",
+      "destination": "/chemistry/index.html"
+    },
+    {
+      "source": "/physics/",
+      "destination": "/physics/index.html"
+    },
+    {
+      "source": "/geography/",
+      "destination": "/geography/index.html"
+    },
+    {
+      "source": "/history/",
+      "destination": "/history/index.html"
+    },
+    {
+      "source": "/computer-studies/",
+      "destination": "/computer-studies/index.html"
+    },
+    {
+      "source": "/business-studies/",
+      "destination": "/business-studies/index.html"
+    },
+    {
+      "source": "/accounting/",
+      "destination": "/accounting/index.html"
+    },
+    {
+      "source": "/study-notes/",
+      "destination": "/study-notes/index.html"
+    },
+    {
+      "source": "/video-learning/",
+      "destination": "/video-learning/index.html"
+    },
+    {
+      "source": "/founder-story/",
+      "destination": "/founder-story/index.html"
+    },
+    {
+      "source": "/login/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/forgot-password/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/reset-password/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/verify/transfer/:token/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/verify-email/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/confirm-email-change/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/features/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/register/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/resource-unavailable/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/docs/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/preview/lesson/:id/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/teacher/qualifications/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/suspended/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/shared-media/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/record-book/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/profile-hub/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/profile/:id/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/student/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/student/:path*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/teacher/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/teacher/:path*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/manager/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/manager/:path*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/admin/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/admin/:path*",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "trailingSlash": true
 }

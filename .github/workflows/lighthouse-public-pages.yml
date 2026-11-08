@@ -1,0 +1,55 @@
+name: Public Pages Lighthouse Quality
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "artifacts/dallyletter/**"
+      - "scripts/prerender-public-pages.mjs"
+      - "scripts/verify-public-seo.mjs"
+      - "vercel.json"
+      - "lighthouserc.json"
+  push:
+    branches: [main]
+    paths:
+      - "artifacts/dallyletter/**"
+      - "scripts/prerender-public-pages.mjs"
+      - "scripts/verify-public-seo.mjs"
+      - "vercel.json"
+      - "lighthouserc.json"
+
+permissions:
+  contents: read
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build prerendered public pages
+        env:
+          PUBLIC_SITE_URL: ${{ vars.GSC_SITE_URL }}
+          GOOGLE_SITE_VERIFICATION: ${{ vars.GOOGLE_SITE_VERIFICATION }}
+        run: pnpm --dir artifacts/dallyletter run build
+      - name: Run Lighthouse mobile quality checks
+        run: pnpm dlx @lhci/cli autorun --config=./lighthouserc.json
+      - name: Upload Lighthouse report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dallyletter-public-lighthouse-report
+          path: .lighthouseci
+          if-no-files-found: ignore
+          retention-days: 30

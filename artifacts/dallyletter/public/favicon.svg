@@ -1,3 +1,10 @@
-<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="180" height="180" rx="36" fill="#FF3C00"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 180 180" role="img" aria-labelledby="title desc">
+<title id="title">Dallyletter Elidems logo</title><desc id="desc">A gold graduation cap above an open book on a deep navy background.</desc>
+<rect width="180" height="180" rx="36" fill="#0f2a5a"/>
+<path d="M30 66 90 40l60 26-60 27L30 66Z" fill="#f2d56b" stroke="#fff1b8" stroke-width="3" stroke-linejoin="round"/>
+<path d="M54 78v24c20 15 52 15 72 0V78L90 94 54 78Z" fill="#b38b00"/>
+<path d="M150 67v36" stroke="#f2d56b" stroke-width="5" stroke-linecap="round"/>
+<circle cx="150" cy="108" r="6" fill="#f2d56b"/>
+<path d="M42 119c17-10 33-10 48 0 15-10 31-10 48 0v26c-17-9-33-9-48 1-15-10-31-10-48-1v-26Z" fill="#fff" stroke="#dce7f7" stroke-width="3" stroke-linejoin="round"/>
+<path d="M90 120v25" stroke="#b38b00" stroke-width="3"/>
 </svg>

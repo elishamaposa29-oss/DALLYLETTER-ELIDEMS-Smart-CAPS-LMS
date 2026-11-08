@@ -32,6 +32,9 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Verify release safety
+        env:
+          PUBLIC_SITE_URL: ${{ vars.GSC_SITE_URL }}
+          GOOGLE_SITE_VERIFICATION: ${{ vars.GOOGLE_SITE_VERIFICATION }}
         run: pnpm run ci:verify
 
       # Publish the exact legacy status context required by branch protection.

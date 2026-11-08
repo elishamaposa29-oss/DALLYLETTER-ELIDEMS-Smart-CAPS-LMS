@@ -1,0 +1,127 @@
+name: Dallyletter Real UI Showcase Capture
+
+on:
+  # Refresh evidence after product changes land on main. Captures the currently deployed
+  # public site; scheduled runs also catch deployments made outside GitHub pushes.
+  push:
+    branches: [main]
+    paths:
+      - "artifacts/dallyletter/**"
+      - "scripts/prerender-public-pages.mjs"
+      - "scripts/capture-dallyletter-showcase.mjs"
+      - ".github/workflows/dallyletter-showcase-capture.yml"
+      - "vercel.json"
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      site_url:
+        description: Optional deployed Dallyletter URL (defaults to production)
+        required: false
+        default: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/
+      approve_publication:
+        description: Publish public screenshots and clips to showcase-media only after reviewing a previous capture artifact
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dallyletter-showcase-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    name: Refresh live public pages and non-owner dashboard evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      SHOWCASE_SITE_URL: ${{ inputs.site_url || vars.GSC_SITE_URL || 'https://dallyletter-elidems-onlineschoolbye-two.vercel.app/' }}
+      SHOWCASE_AUTH_ALLOWED_ORIGIN: ${{ vars.GSC_SITE_URL || 'https://dallyletter-elidems-onlineschoolbye-two.vercel.app/' }}
+      SHOWCASE_LEARNER_EMAIL: ${{ secrets.SHOWCASE_LEARNER_EMAIL }}
+      SHOWCASE_LEARNER_PASSWORD: ${{ secrets.SHOWCASE_LEARNER_PASSWORD }}
+      SHOWCASE_TEACHER_EMAIL: ${{ secrets.SHOWCASE_TEACHER_EMAIL }}
+      SHOWCASE_TEACHER_PASSWORD: ${{ secrets.SHOWCASE_TEACHER_PASSWORD }}
+      SHOWCASE_MANAGER_EMAIL: ${{ secrets.SHOWCASE_MANAGER_EMAIL }}
+      SHOWCASE_MANAGER_PASSWORD: ${{ secrets.SHOWCASE_MANAGER_PASSWORD }}
+      SOURCE_COMMIT: ${{ github.sha }}
+      EXPECTED_DEPLOYMENT_SHA: ${{ github.event_name == 'push' && github.sha || '' }}
+      SHOWCASE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install browser automation
+        run: |
+          npm install --no-save --package-lock=false playwright@1.58.2
+          npx playwright install --with-deps chromium
+      - name: Wait for exact deployed commit, then capture sitemap pages and configured demo dashboards
+        run: node scripts/capture-dallyletter-showcase.mjs
+      - name: Upload refreshed screenshot gallery and URL manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dallyletter-showcase-${{ github.run_number }}
+          path: showcase-captures/
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Publish current public screenshot media to dedicated branch
+        if: success() && github.event_name == 'workflow_dispatch' && inputs.approve_publication == true
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          cp -R showcase-captures "$RUNNER_TEMP/dallyletter-showcase-captures"
+          git checkout --orphan showcase-media-refresh
+          git rm -rf . >/dev/null 2>&1 || true
+          mkdir -p latest
+          cp "$RUNNER_TEMP"/dallyletter-showcase-captures/public-*.png latest/
+          cp "$RUNNER_TEMP"/dallyletter-showcase-captures/public-*.webm latest/
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          import path from "node:path";
+          const sourceDir = path.join(process.env.RUNNER_TEMP, "dallyletter-showcase-captures");
+          const source = JSON.parse(fs.readFileSync(path.join(sourceDir, "capture-manifest.json"), "utf8"));
+          const repo = process.env.GITHUB_REPOSITORY;
+          const pages = source.results.filter((item) => item.type === "public" && item.screenshot && item.video);
+          const media = (file) => "https://raw.githubusercontent.com/" + repo + "/showcase-media/latest/" + file;
+          const manifest = {
+            site: source.site,
+            capturedAt: source.capturedAt,
+            deployedBuildCommit: source.sourceCommit,
+            workflowCommit: process.env.WORKFLOW_COMMIT,
+            publicPageCount: pages.length,
+            pages: pages.map(({ page, url, status, screenshot, video }) => ({ page, url, status, screenshot, video, mediaUrl: media(screenshot), videoUrl: media(video) }))
+          };
+          fs.writeFileSync(path.join("latest", "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
+          const lines = [
+            "# Dallyletter Elidems — current public UI screenshots",
+            "",
+            "- Site: [" + source.site + "](" + source.site + ")",
+            "- Captured: " + source.capturedAt,
+            "- Deployed build: " + (source.sourceCommit || "not exposed"),
+            "- Workflow commit: " + (process.env.WORKFLOW_COMMIT || "unknown"),
+            "- Public pages: " + pages.length,
+            "",
+            "These images and short clips are refreshed only after all public page captures pass the automated safety gate. Authenticated dashboards and Owner views are never published to this branch.",
+            ""
+          ];
+          for (const item of pages) {
+            lines.push("## [" + item.page + "](" + item.url + ")", "");
+            lines.push("![" + item.page + "](" + media(item.screenshot) + ")", "");
+            lines.push("[Open live page](" + item.url + ") · [Open screenshot](" + media(item.screenshot) + ") · [Watch short clip](" + media(item.video) + ")", "");
+          }
+          fs.writeFileSync(path.join("latest", "README.md"), lines.join("\n") + "\n");
+          NODE
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add latest
+          git commit -m "Refresh public Dallyletter screenshots for ${{ github.sha }}"
+          git push origin HEAD:refs/heads/showcase-media --force

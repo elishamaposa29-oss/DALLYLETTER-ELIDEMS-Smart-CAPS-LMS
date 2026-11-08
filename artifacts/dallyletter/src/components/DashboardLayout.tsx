@@ -337,9 +337,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       <div className="px-5 pt-6 pb-4">
         <Link href={homeHref}>
           <div className="flex items-center gap-2.5 cursor-pointer group">
-            <div className="bg-gradient-to-br from-amber-400 to-amber-600 p-2 rounded-xl shadow-lg group-hover:shadow-amber-500/30 transition-shadow">
-              <GraduationCap className="h-5 w-5 text-white" />
-            </div>
+            <img src="/favicon.svg" alt="Dallyletter Elidems logo" className="h-10 w-10 rounded-xl shadow-lg group-hover:shadow-amber-500/30 transition-shadow" />
             <div>
               <span className="text-white font-bold text-lg leading-none tracking-tight font-serif block">Dallyletter</span>
               <span className="text-amber-400/80 text-[10px] uppercase tracking-widest font-medium">Elidems</span>
@@ -402,9 +400,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       <SystemNotificationBridge />
       <header className="md:hidden flex items-center justify-between px-4 py-3 border-b bg-[#0a1628] sticky top-0 z-30">
         <div className="flex items-center gap-2">
-          <div className="bg-gradient-to-br from-amber-400 to-amber-600 p-1.5 rounded-lg">
-            <GraduationCap className="h-4 w-4 text-white" />
-          </div>
+          <img src="/favicon.svg" alt="Dallyletter Elidems logo" className="h-9 w-9 rounded-lg" />
           <span className="text-white font-bold font-serif text-lg">Dallyletter</span>
         </div>
         <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}>

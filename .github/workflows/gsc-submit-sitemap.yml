@@ -1,0 +1,28 @@
+name: Submit Dallyletter Sitemap to Google
+
+on:
+  push:
+    branches: [feat/public-seo-discovery-2026-11]
+    paths:
+      - .github/workflows/gsc-submit-sitemap.yml
+      - scripts/google-search-console-api.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Submit sitemap
+        env:
+          GSC_SERVICE_ACCOUNT_JSON: ${{ secrets.GSC_SERVICE_ACCOUNT_JSON }}
+          GSC_SITE_URL: ${{ vars.GSC_SITE_URL }}
+        run: node scripts/gsc-submit-sitemap.mjs

@@ -55,3 +55,7 @@ pnpm build
 - The project has been updated to remove most Replit-specific startup requirements.
 - The API and web app are now runnable outside Replit with local environment variables.
 - The mobile Expo package can also build locally and does not require Replit-only deployment variables.
+
+## GitHub Actions setup
+
+See [Dallyletter GitHub Actions Setup](docs/GITHUB-ACTIONS-SETUP.md) for the secure Google Search Console configuration, showcase-account secret copy sheets, direct workflow links, and troubleshooting instructions. See [PR #101's release checklist](docs/PR-101-RELEASE-CHECKLIST.md) for acceptance criteria, outstanding account setup, and deployment blockers. Use [PR #101's manual test plan](docs/PR-101-MANUAL-TEST-PLAN.md) for the post-deployment checks.
