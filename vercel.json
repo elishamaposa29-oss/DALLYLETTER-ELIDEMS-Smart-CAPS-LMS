@@ -17,8 +17,13 @@
   ],
   "rewrites": [
     {
+      "source": "/",
+      "destination": "/public-site/index.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "trailingSlash": true
 }
