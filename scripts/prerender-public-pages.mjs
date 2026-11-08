@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const siteUrl = (process.env.PUBLIC_SITE_URL || "https://dallyletter-elidems-onlineschoolbye-two.vercel.app").replace(/\/+$/, "");
+const siteUrl = (process.env.PUBLIC_SITE_URL || "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app").replace(/\/+$/, "");
 const verificationToken = (process.env.GOOGLE_SITE_VERIFICATION || "").trim();
 const buildSha = (process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || "").trim() || "unknown";
 const outputRoot = path.resolve("dist/public");
