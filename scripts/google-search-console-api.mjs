@@ -12,6 +12,11 @@ export function getServiceAccount() {
   if (!raw) return null;
   const account = JSON.parse(raw);
   if (!account.client_email || !account.private_key) throw new Error("GSC_SERVICE_ACCOUNT_JSON must contain client_email and private_key");
+  // Accept both standard JSON PEM newlines and secrets pasted with literal \\n sequences.
+  account.private_key = account.private_key
+    .replace(/\\r?\\n/g, "\n")
+    .replace(/\r\n/g, "\n")
+    .trim();
   return account;
 }
 
@@ -33,7 +38,13 @@ export async function getAccessToken(account) {
   const signer = crypto.createSign("RSA-SHA256");
   signer.update(unsigned);
   signer.end();
-  const assertion = unsigned + "." + signer.sign(account.private_key, "base64url");
+  let privateKey;
+  try {
+    privateKey = crypto.createPrivateKey(account.private_key);
+  } catch {
+    throw new Error("GSC_SERVICE_ACCOUNT_JSON contains an invalid private_key PEM. Replace the secret with the complete, unmodified Google service-account JSON key file.");
+  }
+  const assertion = unsigned + "." + signer.sign(privateKey, "base64url");
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
