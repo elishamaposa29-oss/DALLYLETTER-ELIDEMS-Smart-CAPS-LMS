@@ -194,15 +194,62 @@ async function captureRole(role, route, email, password) {
     await assertPublishablePage(page, role + " dashboard");
     const screenshot = "dashboard-" + safeName(role) + ".png";
     await page.screenshot({ path: path.join(out, screenshot), fullPage: true, animations: "disabled" });
-    await page.waitForTimeout(2500);
-    results.push({ type: "dashboard", role, url: url.href, status: "captured-private", screenshot, title: await page.title() });
+    const runtimeFailures = [];
+    page.on("pageerror", (error) => runtimeFailures.push("pageerror: " + error.message));
+    page.on("response", (response) => {
+      if (response.status() >= 500) runtimeFailures.push("HTTP " + response.status() + " " + response.url());
+    });
+
+    // Discover real, visible read-only learning/workflow links from this role's own navigation.
+    // Never submit forms or open settings, payment, account, approval, delete or logout actions.
+    const links = await page.locator("a[href]").evaluateAll((anchors) => anchors.map((anchor) => ({
+      href: anchor.href,
+      label: (anchor.innerText || anchor.getAttribute("aria-label") || "").trim().toLowerCase(),
+      visible: !!(anchor.offsetWidth || anchor.offsetHeight || anchor.getClientRects().length)
+    })));
+    const allow = /lesson|class|assignment|quiz|exercise|study|group|attendance|record.?book|report|progress|achievement|resource|subject|dashboard|calendar|timetable/i;
+    const deny = /logout|sign out|delete|remove|edit|settings|profile|password|payment|billing|wallet|payout|transfer|approve|reject|submit|upload|invite|user management|owner|admin/i;
+    const seen = new Set([url.pathname]);
+    const walkthrough = [];
+    for (const link of links) {
+      if (!link.visible || !allow.test(link.label) || deny.test(link.label)) continue;
+      const target = new URL(link.href, baseUrl);
+      if (target.origin !== baseUrl.origin || target.search || target.hash || seen.has(target.pathname)) continue;
+      seen.add(target.pathname);
+      walkthrough.push({ href: target.href, label: link.label });
+      if (walkthrough.length === 3) break;
+    }
+
+    for (const item of walkthrough) {
+      const response = await page.goto(item.href, { waitUntil: "domcontentloaded", timeout: 30000 });
+      if (response && response.status() >= 400) throw new Error("Role walkthrough route returned HTTP " + response.status() + ": " + item.href);
+      await page.locator("main, body").first().waitFor({ state: "visible", timeout: 12000 });
+      await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
+      await verifyBrandLogo(page, role + " " + item.label);
+      await assertPublishablePage(page, role + " " + item.label);
+      await page.waitForTimeout(1200);
+    }
+    if (runtimeFailures.length) throw new Error("Runtime/API failure during role walkthrough: " + runtimeFailures.slice(0, 5).join(" | ").slice(0, 900));
+    await page.waitForTimeout(500);
+    results.push({
+      type: "dashboard", role, url: url.href, status: "captured-private", screenshot,
+      video: "private-dashboard-" + safeName(role) + ".webm",
+      walkthroughPages: [url.pathname, ...walkthrough.map((item) => new URL(item.href).pathname)],
+      title: await page.title()
+    });
   } catch (error) {
     results.push({ type: "dashboard", role, url: url.href, error: String(error) });
   } finally {
     await context.close();
+    const videoPath = path.join(out, "private-dashboard-" + safeName(role) + ".webm");
     if (video) {
-      try { await video.saveAs(path.join(out, "private-dashboard-" + safeName(role) + ".webm")); }
-      catch (error) { results.push({ type: "dashboard-video", role, url: url.href, error: "Private video finalization failed: " + String(error) }); }
+      try {
+        await video.saveAs(videoPath);
+        const roleResult = results.find((item) => item.type === "dashboard" && item.role === role);
+        if (!roleResult || roleResult.error) await fs.rm(videoPath, { force: true });
+      } catch (error) {
+        results.push({ type: "dashboard-video", role, url: url.href, error: "Private video finalization failed: " + String(error) });
+      }
     }
   }
 }
