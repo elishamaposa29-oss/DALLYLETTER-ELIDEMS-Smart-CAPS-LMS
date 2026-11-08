@@ -11,6 +11,14 @@ on:
       - "scripts/capture-dallyletter-showcase.mjs"
       - ".github/workflows/dallyletter-showcase-capture.yml"
       - "vercel.json"
+  pull_request:
+    branches: [main]
+    paths:
+      - "artifacts/dallyletter/**"
+      - "scripts/prerender-public-pages.mjs"
+      - "scripts/capture-dallyletter-showcase.mjs"
+      - ".github/workflows/dallyletter-showcase-capture.yml"
+      - "vercel.json"
   schedule:
     - cron: "23 6 * * 1"
   workflow_dispatch:
