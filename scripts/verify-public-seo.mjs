@@ -4,6 +4,7 @@ import path from "node:path";
 const root = path.resolve("dist/public");
 const siteUrl = (process.env.PUBLIC_SITE_URL || "https://dallyletter-elidems-onlineschoolbye-two.vercel.app").replace(/\/+$/, "");
 const siteOrigin = new URL(siteUrl).origin;
+const verificationToken = (process.env.GOOGLE_SITE_VERIFICATION || "").trim();
 const sitemapPath = path.join(root, "sitemap.xml");
 const sitemap = fs.readFileSync(sitemapPath, "utf8");
 const urls = [...sitemap.matchAll(/<loc>(.*?)<\/loc>/g)].map(match => match[1]);
@@ -41,6 +42,9 @@ for (const url of urls) {
     throw new Error("Missing required SEO or social metadata: " + url);
   }
   if (canonical !== url) throw new Error("Canonical mismatch: " + url + " -> " + canonical);
+  if (route === "/" && verificationToken && !html.includes('<meta name="google-site-verification" content="' + verificationToken + '">')) {
+    throw new Error("Google Search Console HTML-tag verification meta is missing from the public homepage");
+  }
   if (!robots.includes("index") || robots.includes("noindex")) throw new Error("Public page is not indexable: " + url);
   if (titles.has(title)) throw new Error("Duplicate title: " + title);
   titles.add(title);
