@@ -23,10 +23,6 @@ on:
     - cron: "23 6 * * 1"
   workflow_dispatch:
     inputs:
-      site_url:
-        description: Optional deployed Dallyletter URL (defaults to production)
-        required: false
-        default: https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/
       approve_publication:
         description: Publish public screenshots and clips to showcase-media only after reviewing a previous capture artifact
         required: false
@@ -46,7 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
-      SHOWCASE_SITE_URL: ${{ inputs.site_url || 'https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/' }}
+      SHOWCASE_SITE_URL: https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/
       SHOWCASE_AUTH_ALLOWED_ORIGIN: ${{ 'https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app' }}
       SHOWCASE_LEARNER_EMAIL: ${{ secrets.SHOWCASE_LEARNER_EMAIL }}
       SHOWCASE_LEARNER_PASSWORD: ${{ secrets.SHOWCASE_LEARNER_PASSWORD }}
