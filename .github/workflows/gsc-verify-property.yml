@@ -10,6 +10,8 @@ on:
       - "scripts/google-search-console-api.mjs"
   workflow_dispatch:
 
+# Read-only check: validates the stored service-account credential and exact URL-prefix property access.
+
 permissions:
   contents: read
 
