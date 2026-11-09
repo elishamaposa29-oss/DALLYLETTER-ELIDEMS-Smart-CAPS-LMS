@@ -43,9 +43,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build prerendered public pages
         env:
-          # Exercise the production-only Search Console verification gate in CI.
-          VERCEL_ENV: production
-          # Use the canonical production origin; a stale repository variable must not break sitemap validation.
+          # Lighthouse validates public HTML, canonical URLs and crawler assets independently of owner-controlled Search Console verification.
+          # Vercel production builds still enforce GOOGLE_SITE_VERIFICATION when HTML-tag verification is selected.
           PUBLIC_SITE_URL: https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/
           GOOGLE_SITE_VERIFICATION: ${{ vars.GOOGLE_SITE_VERIFICATION }}
         run: pnpm --dir artifacts/dallyletter run build
