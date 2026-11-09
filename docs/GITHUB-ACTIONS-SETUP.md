@@ -137,8 +137,8 @@ For a manual run:
 1. Open the workflow link.
 2. Select **Run workflow**.
 3. Select the branch containing the workflow.
-4. For showcase capture, supply the exact deployed preview or public site URL being tested.
-5. Start the run and inspect its result and downloadable artifacts.
+4. For production showcase capture, leave the configured production origin unchanged. Do not paste a deployment-specific `.vercel.app` URL: the stable project domain remains the same across production deployments.
+5. Start the run and inspect its result and downloadable artifacts. Preview deployments are not production and must not receive production demo credentials.
 
 Run sitemap submission only after the target deployment serves the generated sitemap. The performance report is scheduled for Mondays at 07:00 UTC after this workflow is merged into the default branch. Its Markdown report is uploaded as an Actions artifact and included in the run summary.
 
