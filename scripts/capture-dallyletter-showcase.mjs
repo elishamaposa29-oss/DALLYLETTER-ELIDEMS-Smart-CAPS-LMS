@@ -9,6 +9,25 @@ const out = path.resolve("showcase-captures");
 await fs.mkdir(out, { recursive: true });
 
 const results = [];
+const googleIdentityErrors = [];
+const isGoogleIdentityConsoleError = (value) => /\\[GSI_LOGGER\\].*given origin is not allowed for the given client ID/i.test(String(value));
+const isGenericGoogle403ConsoleError = (value) => /Failed to load resource:.*status of 403/i.test(String(value));
+function classifyRuntimeErrors(runtimeErrors, google403Responses, pageLabel) {
+  const googleConsoleErrors = runtimeErrors.filter(isGoogleIdentityConsoleError);
+  let generic403Budget = google403Responses.length;
+  const remaining = runtimeErrors.filter((error) => {
+    if (isGoogleIdentityConsoleError(error)) return false;
+    if (generic403Budget > 0 && isGenericGoogle403ConsoleError(error)) {
+      generic403Budget -= 1;
+      return false;
+    }
+    return true;
+  });
+  if (googleConsoleErrors.length || google403Responses.length) {
+    googleIdentityErrors.push({ page: pageLabel, occurrences: googleConsoleErrors.length + google403Responses.length });
+  }
+  return remaining;
+}
 const safeName = (value) => value.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "") || "page";
 const decodeXml = (value) => value.replaceAll("&amp;", "&").replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&quot;", '"').replaceAll("&apos;", "'");
 const expectedDeploymentSha = (process.env.EXPECTED_DEPLOYMENT_SHA || "").trim();
@@ -115,8 +134,12 @@ async function capturePublicPages() {
     });
     const page = await context.newPage();
     const runtimeErrors = [];
+    const google403Responses = [];
     page.on("pageerror", (error) => runtimeErrors.push(String(error)));
     page.on("console", (message) => { if (message.type() === "error") runtimeErrors.push(message.text()); });
+    page.on("response", (response) => {
+      if (response.status() === 403 && /accounts\\.google\\.com|gsi/i.test(response.url())) google403Responses.push(response.url());
+    });
     const video = page.video();
     try {
       const response = await page.goto(url.href, { waitUntil: "domcontentloaded", timeout: 45000 });
@@ -124,7 +147,8 @@ async function capturePublicPages() {
       await page.locator("body").waitFor({ state: "visible", timeout: 15000 });
       await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
       await verifyBrandLogo(page, url.pathname);
-      if (runtimeErrors.length) throw new Error("Runtime/browser console errors on " + url.pathname + ": " + runtimeErrors.slice(0, 3).join(" | ").slice(0, 400));
+      const unexpectedErrors = classifyRuntimeErrors(runtimeErrors, google403Responses, url.pathname);
+      if (unexpectedErrors.length) throw new Error("Runtime/browser console errors on " + url.pathname + ": " + unexpectedErrors.slice(0, 3).join(" | ").slice(0, 400));
       await assertPublishablePage(page, url.pathname);
       const screenshot = "public-" + name + ".png";
       await page.screenshot({ path: path.join(out, screenshot), fullPage: true, animations: "disabled" });
@@ -189,9 +213,11 @@ async function captureRole(role, route, email, password) {
   });
   const page = await context.newPage();
   const runtimeErrors = [];
+  const google403Responses = [];
   page.on("pageerror", (error) => runtimeErrors.push(String(error)));
   page.on("console", (message) => { if (message.type() === "error") runtimeErrors.push(message.text()); });
   page.on("response", (response) => {
+    if (response.status() === 403 && /accounts\\.google\\.com|gsi/i.test(response.url())) google403Responses.push(response.url());
     if (response.status() >= 500) runtimeErrors.push("HTTP " + response.status() + " " + response.url());
   });
   const video = page.video();
@@ -201,7 +227,8 @@ async function captureRole(role, route, email, password) {
     await page.locator("main, body").first().waitFor({ state: "visible", timeout: 15000 });
     await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
     await verifyBrandLogo(page, role + " dashboard");
-    if (runtimeErrors.length) throw new Error("Runtime/browser console errors in " + role + " dashboard: " + runtimeErrors.slice(0, 3).join(" | ").slice(0, 400));
+    const unexpectedErrors = classifyRuntimeErrors(runtimeErrors, google403Responses, role + " dashboard");
+    if (unexpectedErrors.length) throw new Error("Runtime/browser console errors in " + role + " dashboard: " + unexpectedErrors.slice(0, 3).join(" | ").slice(0, 400));
     await assertPublishablePage(page, role + " dashboard");
     const screenshot = "dashboard-" + safeName(role) + ".png";
     await page.screenshot({ path: path.join(out, screenshot), fullPage: true, animations: "disabled" });
@@ -234,7 +261,8 @@ async function captureRole(role, route, email, password) {
       await assertPublishablePage(page, role + " " + item.label);
       await page.waitForTimeout(1200);
     }
-    if (runtimeErrors.length) throw new Error("Runtime/browser/API failure during role walkthrough: " + runtimeErrors.slice(0, 5).join(" | ").slice(0, 900));
+    const unexpectedWalkthroughErrors = classifyRuntimeErrors(runtimeErrors, google403Responses, role + " walkthrough");
+    if (unexpectedWalkthroughErrors.length) throw new Error("Runtime/browser/API failure during role walkthrough: " + unexpectedWalkthroughErrors.slice(0, 5).join(" | ").slice(0, 900));
     await page.waitForTimeout(500);
     results.push({
       type: "dashboard", role, url: url.href, status: "captured-private", screenshot,
@@ -309,6 +337,15 @@ try {
   await captureRole("learner", "/student", process.env.SHOWCASE_LEARNER_EMAIL, process.env.SHOWCASE_LEARNER_PASSWORD);
   await captureRole("teacher", "/teacher", process.env.SHOWCASE_TEACHER_EMAIL, process.env.SHOWCASE_TEACHER_PASSWORD);
   await captureRole("manager", "/manager", process.env.SHOWCASE_MANAGER_EMAIL, process.env.SHOWCASE_MANAGER_PASSWORD);
+  if (googleIdentityErrors.length) {
+    results.push({
+      type: "integration",
+      page: "google-sign-in",
+      status: "blocked",
+      occurrences: googleIdentityErrors.length,
+      error: "Google Identity Services rejected the configured production origin. Password-authenticated dashboard captures were allowed to continue; Google sign-in remains unverified."
+    });
+  }
   results.push(await pageFor404Probe());
 
   const manifest = {
