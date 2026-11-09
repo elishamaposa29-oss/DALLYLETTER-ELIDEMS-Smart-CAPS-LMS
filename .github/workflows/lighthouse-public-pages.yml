@@ -9,6 +9,7 @@ on:
       - "scripts/verify-public-seo.mjs"
       - "vercel.json"
       - "lighthouserc.json"
+      - ".github/workflows/lighthouse-public-pages.yml"
   push:
     branches: [main, fix/production-gsc-showcase-host-android-evidence-2026-11-08]
     paths:
