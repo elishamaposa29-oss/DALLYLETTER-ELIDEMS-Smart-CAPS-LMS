@@ -103,6 +103,8 @@ jobs:
         run: pnpm --dir artifacts/api-server run build
       - name: Apply additive transfer form-data migration twice (idempotency check)
         run: pnpm --dir lib/db run migrate:transfer-form-data && pnpm --dir lib/db run migrate:transfer-form-data && pnpm --dir lib/db run migrate:payment-transactions && pnpm --dir lib/db run migrate:payment-transactions
+      - name: Test payment ledger reconciliation against legacy balances and transaction drift
+        run: pnpm --dir lib/db run test:payment-ledger-reconciliation
       - name: Start API with isolated provider mocks
         shell: bash
         run: |
