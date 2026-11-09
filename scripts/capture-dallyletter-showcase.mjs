@@ -10,7 +10,7 @@ await fs.mkdir(out, { recursive: true });
 
 const results = [];
 const googleIdentityErrors = [];
-const isGoogleIdentityConsoleError = (value) => /\\[GSI_LOGGER\\].*given origin is not allowed for the given client ID/i.test(String(value));
+const isGoogleIdentityConsoleError = (value) => /\[GSI_LOGGER\].*given origin is not allowed for the given client ID/i.test(String(value));
 const isGenericGoogle403ConsoleError = (value) => /Failed to load resource:.*status of 403/i.test(String(value));
 function classifyRuntimeErrors(runtimeErrors, google403Responses, pageLabel) {
   const googleConsoleErrors = runtimeErrors.filter(isGoogleIdentityConsoleError);
@@ -138,7 +138,7 @@ async function capturePublicPages() {
     page.on("pageerror", (error) => runtimeErrors.push(String(error)));
     page.on("console", (message) => { if (message.type() === "error") runtimeErrors.push(message.text()); });
     page.on("response", (response) => {
-      if (response.status() === 403 && /accounts\\.google\\.com|gsi/i.test(response.url())) google403Responses.push(response.url());
+      if (response.status() === 403 && /accounts\.google\.com|gsi/i.test(response.url())) google403Responses.push(response.url());
     });
     const video = page.video();
     try {
