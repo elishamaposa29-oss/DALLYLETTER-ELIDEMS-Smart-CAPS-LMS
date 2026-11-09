@@ -2,6 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 
 const root = path.resolve("dist/public");
+const appShellPath = path.join(root, "app.html");
+if (!fs.existsSync(appShellPath)) throw new Error("Authenticated SPA shell app.html is missing from the production build");
+if (fs.existsSync(path.join(root, "index.html"))) throw new Error("Authenticated SPA shell must not occupy /index.html; Vercel needs the root path for the prerendered public homepage");
 const siteUrl = (process.env.PUBLIC_SITE_URL || "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app").replace(/\/+$/, "");
 const siteOrigin = new URL(siteUrl).origin;
 const verificationToken = (process.env.GOOGLE_SITE_VERIFICATION || "").trim();
