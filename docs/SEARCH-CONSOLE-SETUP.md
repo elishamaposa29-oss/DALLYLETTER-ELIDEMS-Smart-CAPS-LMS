@@ -23,7 +23,9 @@ The prerender build can insert the Search Console HTML verification token from t
 2. Open https://search.google.com/search-console and add the URL-prefix property above.
 3. Select HTML tag verification and compare the token Google displays with the token injected into the deployed public homepage.
 4. Click **Verify** only when the tokens match.
-5. Keep the verification token configured in the production build environment.
+5. Set the token as `GOOGLE_SITE_VERIFICATION` in the Vercel project's **Production** environment.
+6. Set the same non-secret token as a GitHub Actions repository variable named `GOOGLE_SITE_VERIFICATION`; the public-page CI build exercises the production verification gate and must fail if this variable is missing.
+7. Redeploy the production build and confirm the exact meta tag is present in the served homepage before clicking **Verify** in Search Console.
 
 A GitHub commit or passing CI check does not verify ownership. Only Google's successful verification result does.
 
