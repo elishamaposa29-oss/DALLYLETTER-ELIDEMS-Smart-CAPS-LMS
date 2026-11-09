@@ -2,7 +2,8 @@ name: Verify Google Search Console Property Access
 
 on:
   push:
-    branches: [main, fix/production-gsc-showcase-host-android-evidence-2026-11-08]
+    branches:
+      [main, fix/production-gsc-showcase-host-android-evidence-2026-11-08]
     paths:
       - ".github/workflows/gsc-verify-property.yml"
       - "scripts/gsc-verify-property.mjs"
