@@ -5,6 +5,9 @@ const root = path.resolve("dist/public");
 const siteUrl = (process.env.PUBLIC_SITE_URL || "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app").replace(/\/+$/, "");
 const siteOrigin = new URL(siteUrl).origin;
 const verificationToken = (process.env.GOOGLE_SITE_VERIFICATION || "").trim();
+if (process.env.VERCEL_ENV === "production" && !verificationToken) {
+  throw new Error("GOOGLE_SITE_VERIFICATION is missing from the Vercel production environment. Add the HTML-tag token from the verified Search Console URL-prefix property before releasing.");
+}
 const expectedBuildSha = (process.env.VERCEL_GIT_COMMIT_SHA || "").trim();
 const sitemapPath = path.join(root, "sitemap.xml");
 const sitemap = fs.readFileSync(sitemapPath, "utf8");
