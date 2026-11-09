@@ -38,23 +38,13 @@ The previously documented URL-prefix property `https://dallyletter-elidems-onlin
 - Use **Repository secrets** for passwords and private JSON keys.
 - Use **Repository variables** for non-secret configuration such as the public Search Console property URL.
 
-## 2. Google Search Console property variable
+## 2. Google Search Console property URL
 
-Create one repository variable:
+The trusted Search Console workflows and helper default already pin `GSC_SITE_URL` to this exact URL-prefix property:
 
-| Field | Exact value |
-|---|---|
-| Name | `GSC_SITE_URL` |
-| Value | `https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/` |
+`https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/`
 
-Copy sheet:
-
-```text
-GSC_SITE_URL
-https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/
-```
-
-The value must exactly match the verified URL-prefix property in Search Console, including protocol and trailing slash.
+**Do not create or change a `GSC_SITE_URL` repository variable for routine releases.** The workflow supplies the canonical URL directly so a stale variable cannot silently redirect verification or sitemap submission to an old host. The URL must match the verified Search Console property exactly, including protocol and trailing slash.
 
 ## 3. Optional Google Search Console HTML-tag verification
 
