@@ -5,6 +5,15 @@ const root = path.resolve("dist/public");
 const appShellPath = path.join(root, "app.html");
 if (!fs.existsSync(appShellPath)) throw new Error("Authenticated SPA shell app.html is missing from the production build");
 if (fs.existsSync(path.join(root, "index.html"))) throw new Error("Authenticated SPA shell must not occupy /index.html; Vercel needs the root path for the prerendered public homepage");
+const vercelConfig = JSON.parse(fs.readFileSync(path.resolve("../../vercel.json"), "utf8"));
+const rootRewrite = (vercelConfig.rewrites || []).find((route) => route.source === "/");
+if (rootRewrite?.destination !== "/public-site/index.html") {
+  throw new Error("Vercel root route must serve /public-site/index.html so the public homepage is indexable");
+}
+const appRewrites = (vercelConfig.rewrites || []).filter((route) => route.destination === "/app.html");
+if (appRewrites.length < 20 || (vercelConfig.rewrites || []).some((route) => route.destination === "/index.html")) {
+  throw new Error("Vercel authenticated app routes must resolve to /app.html, not the public homepage or a missing /index.html");
+}
 const siteUrl = (process.env.PUBLIC_SITE_URL || "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app").replace(/\/+$/, "");
 const siteOrigin = new URL(siteUrl).origin;
 const verificationToken = (process.env.GOOGLE_SITE_VERIFICATION || "").trim();
