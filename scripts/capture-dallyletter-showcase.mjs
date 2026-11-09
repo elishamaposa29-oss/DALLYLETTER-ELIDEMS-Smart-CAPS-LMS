@@ -210,6 +210,20 @@ async function captureRole(role, route, email, password) {
   let authenticatedRole;
   try {
     const loginPage = await loginContext.newPage();
+    const loginApiResponses = [];
+    const loginRequestFailures = [];
+    loginPage.on("response", (response) => {
+      const pathname = new URL(response.url()).pathname;
+      if (pathname.endsWith("/api/auth/login") || pathname.endsWith("/auth/login")) {
+        loginApiResponses.push({ status: response.status(), path: pathname });
+      }
+    });
+    loginPage.on("requestfailed", (request) => {
+      const pathname = new URL(request.url()).pathname;
+      if (pathname.endsWith("/api/auth/login") || pathname.endsWith("/auth/login")) {
+        loginRequestFailures.push({ path: pathname, reason: request.failure()?.errorText || "request failed" });
+      }
+    });
     await loginPage.goto(new URL("/login", baseUrl).href, { waitUntil: "domcontentloaded", timeout: 45000 });
     await loginPage.getByLabel("Email address").fill(email);
     await loginPage.getByLabel("Password", { exact: true }).fill(password);
@@ -219,7 +233,17 @@ async function captureRole(role, route, email, password) {
       return normalizedPath !== "/login" && Boolean(localStorage.getItem("dallyletter_token"));
     }, { timeout: 30000 }).catch(async () => {
       const feedback = await loginPage.locator('[role="alert"], [data-sonner-toast], [role="status"]').allTextContents().catch(() => []);
-      throw new Error("Login did not establish a session and leave /login. Visible feedback: " + feedback.join(" | ").slice(0, 500));
+      const formState = await loginPage.evaluate(() => ({
+        emailLength: document.querySelector('input[name="email"]')?.value?.length ?? 0,
+        passwordLength: document.querySelector('input[name="password"]')?.value?.length ?? 0,
+        submitDisabled: document.querySelector('button[type="submit"]')?.disabled ?? null
+      })).catch(() => ({ emailLength: null, passwordLength: null, submitDisabled: null }));
+      throw new Error("Login did not establish a session and leave /login. Safe diagnostics: " + JSON.stringify({
+        formState,
+        loginApiResponses,
+        loginRequestFailures,
+        visibleFeedback: feedback.join(" | ").slice(0, 300)
+      }));
     });
     const loginState = await loginPage.evaluate(() => ({
       token: localStorage.getItem("dallyletter_token"),
