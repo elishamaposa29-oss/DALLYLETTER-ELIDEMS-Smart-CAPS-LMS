@@ -133,7 +133,7 @@ const sitemapDirectives = robots.split(/\r?\n/).filter(line => /^\s*Sitemap:/i.t
 if (sitemapDirectives.length !== 1 || sitemapDirectives[0].trim() !== "Sitemap: " + siteUrl + "/sitemap.xml") {
   throw new Error("robots.txt must contain exactly one sitemap directive on the canonical production hostname");
 }
-for (const crawler of ["OAI-SearchBot", "ChatGPT-User", "GPTBot", "ClaudeBot", "Claude-SearchBot", "PerplexityBot", "Googlebot"]) {
+for (const crawler of ["OAI-SearchBot", "ChatGPT-User", "GPTBot", "ClaudeBot", "Claude-SearchBot", "PerplexityBot", "Googlebot", "Bingbot"]) {
   if (!robots.includes("User-agent: " + crawler)) throw new Error("robots.txt is missing the public discovery rule for " + crawler);
 }
 for (const match of sitemap.matchAll(/<loc>(.*?)<\/loc>/g)) {
