@@ -217,7 +217,7 @@ async function captureRole(role, route, email, password) {
   page.on("pageerror", (error) => runtimeErrors.push(String(error)));
   page.on("console", (message) => { if (message.type() === "error") runtimeErrors.push(message.text()); });
   page.on("response", (response) => {
-    if (response.status() === 403 && /accounts\\.google\\.com|gsi/i.test(response.url())) google403Responses.push(response.url());
+    if (response.status() === 403 && /accounts\.google\.com|gsi/i.test(response.url())) google403Responses.push(response.url());
     if (response.status() >= 500) runtimeErrors.push("HTTP " + response.status() + " " + response.url());
   });
   const video = page.video();
