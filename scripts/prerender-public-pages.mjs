@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
+import { normalizeGoogleSiteVerificationToken } from "./google-site-verification.mjs";
 
 const siteUrl = (process.env.PUBLIC_SITE_URL || "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app").replace(/\/+$/, "");
-const verificationToken = (process.env.GOOGLE_SITE_VERIFICATION || "").trim();
+const verificationToken = normalizeGoogleSiteVerificationToken(process.env.GOOGLE_SITE_VERIFICATION);
 const buildSha = (process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || "").trim() || "unknown";
 const outputRoot = path.resolve("dist/public");
 const publicRoot = path.join(outputRoot, "public-site");
