@@ -305,8 +305,7 @@ async function captureRole(role, route, email, password) {
     if (unexpectedWalkthroughErrors.length) throw new Error("Runtime/browser/API failure during role walkthrough: " + unexpectedWalkthroughErrors.slice(0, 5).join(" | ").slice(0, 900));
     await page.waitForTimeout(500);
     results.push({
-      type: "dashboard", role, url: url.href, status: "captured-private", authenticatedRole, screenshot,
-      
+      type: "dashboard", role, url: url.href, status: "verified-private", authenticatedRole,
       walkthroughPages: [url.pathname, ...walkthrough.map((item) => new URL(item.href).pathname)],
       title: await page.title()
     });
