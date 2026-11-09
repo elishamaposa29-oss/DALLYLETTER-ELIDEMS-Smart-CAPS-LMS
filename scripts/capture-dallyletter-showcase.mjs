@@ -6,7 +6,11 @@ const baseUrl = new URL(process.env.SHOWCASE_SITE_URL || "https://elishamaposa29
 const authAllowedOrigin = new URL(process.env.SHOWCASE_AUTH_ALLOWED_ORIGIN || "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/").origin;
 if (baseUrl.protocol !== "https:" || baseUrl.username || baseUrl.password) throw new Error("SHOWCASE_SITE_URL must be a public HTTPS URL without embedded credentials.");
 const out = path.resolve("showcase-captures");
+const privateOut = path.join(process.env.RUNNER_TEMP || "/tmp", "dallyletter-private-showcase");
+await fs.rm(out, { recursive: true, force: true });
 await fs.mkdir(out, { recursive: true });
+await fs.rm(privateOut, { recursive: true, force: true });
+await fs.mkdir(privateOut, { recursive: true });
 
 const results = [];
 const googleIdentityErrors = [];
@@ -146,7 +150,7 @@ async function capturePublicPages() {
     const context = await browser.newContext({
       viewport: { width: 1440, height: 1000 },
       deviceScaleFactor: 1,
-      recordVideo: { dir: out, size: { width: 1440, height: 1000 } }
+      recordVideo: { dir: privateOut, size: { width: 1440, height: 1000 } }
     });
     const page = await context.newPage();
     const runtimeErrors = [];
@@ -267,7 +271,7 @@ async function captureRole(role, route, email, password) {
     if (unexpectedErrors.length) throw new Error("Runtime/browser console errors in " + role + " dashboard: " + unexpectedErrors.slice(0, 3).join(" | ").slice(0, 400));
     await assertPublishablePage(page, role + " dashboard");
     const screenshot = "dashboard-" + safeName(role) + ".png";
-    await page.screenshot({ path: path.join(out, screenshot), fullPage: true, animations: "disabled" });
+    await page.screenshot({ path: path.join(privateOut, screenshot), fullPage: true, animations: "disabled" });
     // Discover real, visible read-only learning/workflow links from this role's own navigation.
     // Never submit forms or open settings, payment, account, approval, delete or logout actions.
     const links = await page.locator("a[href]").evaluateAll((anchors) => anchors.map((anchor) => ({
@@ -302,7 +306,7 @@ async function captureRole(role, route, email, password) {
     await page.waitForTimeout(500);
     results.push({
       type: "dashboard", role, url: url.href, status: "captured-private", authenticatedRole, screenshot,
-      video: "private-dashboard-" + safeName(role) + ".webm",
+      
       walkthroughPages: [url.pathname, ...walkthrough.map((item) => new URL(item.href).pathname)],
       title: await page.title()
     });
@@ -310,7 +314,7 @@ async function captureRole(role, route, email, password) {
     results.push({ type: "dashboard", role, url: url.href, error: String(error) });
   } finally {
     await context.close();
-    const videoPath = path.join(out, "private-dashboard-" + safeName(role) + ".webm");
+    const videoPath = path.join(privateOut, "private-dashboard-" + safeName(role) + ".webm");
     if (video) {
       try {
         await video.saveAs(videoPath);
@@ -361,10 +365,10 @@ function buildGallery(manifest) {
   }
   lines.push("## Authenticated non-owner dashboards", "");
   for (const item of manifest.results.filter((result) => result.type === "dashboard")) {
-    lines.push("- **" + item.role + ":** [" + item.url + "](" + item.url + ") — " + (item.status || "failed") + (item.screenshot ? " — " + item.screenshot : "") + (item.video ? " — private walkthrough: " + item.video : "") + (item.error ? " — " + item.error : ""));
+    lines.push("- **" + item.role + ":** [" + item.url + "](" + item.url + ") — " + (item.status || "failed") + (item.authenticatedRole ? " — API-confirmed role: " + item.authenticatedRole : "") + (item.error ? " — " + item.error : ""));
     if (item.walkthroughPages?.length) lines.push("  - Read-only routes shown: " + item.walkthroughPages.join(", "));
   }
-  lines.push("", "Role screenshots and walkthrough videos are private workflow artifacts only. They are not published to the public media branch. Owner dashboards, Owner credentials and Owner-only views are deliberately excluded. Use dedicated showcase accounts only.", "");
+  lines.push("", "Authenticated dashboard screenshots and videos are used only for in-run verification, stored in ephemeral runner storage, and deleted before artifact upload. Public artifacts contain no private dashboard imagery, credentials, or Owner-only views. Use dedicated showcase accounts only.", "");
   return lines.join("\n");
 }
 
@@ -414,4 +418,5 @@ try {
   if (results.some((result) => result.error)) process.exitCode = 1;
 } finally {
   await browser.close();
+  await fs.rm(privateOut, { recursive: true, force: true });
 }
