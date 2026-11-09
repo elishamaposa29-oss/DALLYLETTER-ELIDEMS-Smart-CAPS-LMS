@@ -10,7 +10,7 @@ on:
       - "vercel.json"
       - "lighthouserc.json"
   push:
-    branches: [main]
+    branches: [main, fix/production-gsc-showcase-host-android-evidence-2026-11-08]
     paths:
       - "artifacts/dallyletter/**"
       - "scripts/prerender-public-pages.mjs"
