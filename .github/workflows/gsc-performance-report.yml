@@ -2,7 +2,7 @@ name: Google Search Console Performance Report
 
 on:
   push:
-    branches: [main, fix/production-gsc-showcase-host-android-evidence-2026-11-08]
+    branches: [main]
     paths:
       - .github/workflows/gsc-performance-report.yml
       - scripts/google-search-console-api.mjs
