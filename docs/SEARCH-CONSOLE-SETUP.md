@@ -21,11 +21,21 @@ The prerender build can insert the Search Console HTML verification token from t
 
 1. Sign in to the Google account that should own the property.
 2. Open https://search.google.com/search-console and add the URL-prefix property above.
-3. Select HTML tag verification and compare the token Google displays with the token injected into the deployed public homepage.
-4. Click **Verify** only when the tokens match.
-5. Set the token as `GOOGLE_SITE_VERIFICATION` in the Vercel project's **Production** environment.
-6. Set the same non-secret token as a GitHub Actions repository variable named `GOOGLE_SITE_VERIFICATION`; the public-page CI build exercises the production verification gate and must fail if this variable is missing.
-7. Redeploy the production build and confirm the exact meta tag is present in the served homepage before clicking **Verify** in Search Console.
+3. Select HTML tag verification and copy only the `content` token value from Google's meta tag.
+4. Set that non-secret value as `GOOGLE_SITE_VERIFICATION` in the Vercel project's **Production** environment.
+5. Set the same value as a GitHub Actions repository variable named `GOOGLE_SITE_VERIFICATION`; the public-page CI build exercises the production verification gate and fails if this variable is missing.
+6. Redeploy the production build, then confirm the exact `<meta name="google-site-verification">` tag is present in the served homepage.
+7. Click **Verify** in Search Console only after the deployed tag matches Google's token.
+
+## Service-account access
+
+1. In Google Cloud Console, open IAM & Admin → Service Accounts → the Dallyletter Search Console service account → Keys.
+2. Download a fresh JSON key if the existing key is malformed or revoked.
+3. In GitHub repository Settings → Secrets and variables → Actions, replace `GSC_SERVICE_ACCOUNT_JSON` with the complete raw contents of that JSON file. Do not add Markdown fences, outer quotes, or manually edit the PEM. Never paste the private key into chat.
+4. In Search Console → Settings → Users and permissions for the exact URL-prefix property, add the JSON key's `client_email` as a **Full user**.
+5. Run the **Verify Google Search Console Property Access** workflow. It must report `siteFullUser` or `siteOwner` for the exact production property.
+
+If the workflow reports an invalid private-key PEM, replace the secret with a newly downloaded, complete service-account JSON key. Do not try to repair or share the private key manually.
 
 A GitHub commit or passing CI check does not verify ownership. Only Google's successful verification result does.
 
