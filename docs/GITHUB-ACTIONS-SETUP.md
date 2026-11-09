@@ -20,6 +20,17 @@ Use this exact origin (without a trailing slash) for:
 
 Do not add a new generated `*.vercel.app` deployment URL after each merge. Do not authorize all Vercel subdomains. Preview deployments remain separate and are not production OAuth/CORS origins. Change these integrations only during an intentional domain migration.
 
+### Google sign-in callback — no redirect URI for the current flow
+
+The current web client uses Google Identity Services' credential (popup/button) flow. Google returns an ID credential to the page callback, and Dallyletter then sends it to the API with `POST /api/auth/google`. This is **not** an OAuth redirect flow.
+
+For the existing client ID, configure the permanent production origin above under **Authorized JavaScript origins**. Do **not** invent or add an Authorized redirect URI for this implementation; there is no browser OAuth redirect URI in the current flow. The API endpoint `/api/auth/google` is a server-side credential exchange endpoint, not a Google redirect URI. Only add a redirect URI if the implementation is deliberately changed to Google's redirect-based authorization flow.
+
+### Previously used Search Console hostname
+
+The previously documented URL-prefix property `https://dallyletter-elidems-onlineschoolbye-two.vercel.app/` is attached to a separate Vercel project. It is not the permanent domain of the current primary project. Keep that old Search Console property as a legacy property; do not copy its verification token or sitemap URL into the current production configuration. The current primary project's permanent domain is the `...elid-gamma.vercel.app` hostname above. Verify that hostname once as its own URL-prefix property. Do not delete the older property or move domains as part of routine releases.
+
+
 ## 1. Open GitHub Actions secrets and variables
 
 [OPEN GITHUB ACTIONS SECRETS & VARIABLES](https://github.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/settings/secrets/actions)
