@@ -42,7 +42,15 @@ export async function getAccessToken(account) {
   try {
     privateKey = crypto.createPrivateKey(account.private_key);
   } catch {
-    throw new Error("GSC_SERVICE_ACCOUNT_JSON contains an invalid private_key PEM. Replace the secret with the complete, unmodified Google service-account JSON key file.");
+    const keyText = account.private_key;
+    const headerPresent = /^-----BEGIN (?:PRIVATE KEY|RSA PRIVATE KEY)-----/.test(keyText);
+    const footerPresent = /-----END (?:PRIVATE KEY|RSA PRIVATE KEY)-----$/.test(keyText);
+    const lineCount = keyText.split("\n").length;
+    throw new Error(
+      "GSC_SERVICE_ACCOUNT_JSON.private_key is not a valid PEM key. Safe format diagnostics: " +
+      JSON.stringify({ headerPresent, footerPresent, characterCount: keyText.length, lineCount }) +
+      ". Re-download a new JSON key for the intended Google service account and replace the entire GitHub Actions secret with the raw JSON file contents. Do not paste only client_email/private_key_id, add quotes or Markdown fences, or manually edit the private_key. Never send the private key in chat."
+    );
   }
   const assertion = unsigned + "." + signer.sign(privateKey, "base64url");
   const response = await fetch("https://oauth2.googleapis.com/token", {
