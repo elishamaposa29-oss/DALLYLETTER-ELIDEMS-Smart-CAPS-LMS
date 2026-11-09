@@ -86,7 +86,21 @@ export async function createGoogleSession() {
   const account = getServiceAccount();
   const token = await getAccessToken(account);
   const siteUrl = getSiteUrl();
-  const properties = await googleApi("https://www.googleapis.com/webmasters/v3/sites", token);
+  // Google API enablement can take several minutes to propagate after the owner enables it.
+  // Retry only the explicit SERVICE_DISABLED response; never retry authentication or permission failures.
+  let properties;
+  for (let attempt = 1; attempt <= 7; attempt += 1) {
+    try {
+      properties = await googleApi("https://www.googleapis.com/webmasters/v3/sites", token);
+      break;
+    } catch (error) {
+      const serviceDisabled = /SERVICE_DISABLED|accessNotConfigured|has not been used in project .* or it is disabled/i.test(String(error));
+      if (!serviceDisabled || attempt === 7) throw error;
+      const delayMs = 15000;
+      console.log("Search Console API enablement is not yet visible to Google (attempt " + attempt + "/7); retrying in " + delayMs / 1000 + " seconds.");
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
   const property = (properties.siteEntry || []).find((entry) => entry.siteUrl === siteUrl);
   if (!property) {
     throw new Error("The service account " + account.client_email + " cannot access the Search Console property " + siteUrl + ". Add this service account as a Full user in Search Console > Settings > Users and permissions, and verify the property first.");
