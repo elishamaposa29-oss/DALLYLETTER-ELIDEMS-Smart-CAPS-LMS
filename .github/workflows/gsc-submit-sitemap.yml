@@ -2,7 +2,7 @@ name: Submit Dallyletter Sitemap to Google
 
 on:
   push:
-    branches: [main]
+    branches: [main, fix/production-gsc-showcase-host-android-evidence-2026-11-08]
     paths:
       - .github/workflows/gsc-submit-sitemap.yml
       - scripts/google-search-console-api.mjs
