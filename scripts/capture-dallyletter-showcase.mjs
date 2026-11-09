@@ -239,7 +239,7 @@ async function captureRole(role, route, email, password) {
     viewport: { width: 1440, height: 1000 },
     deviceScaleFactor: 1,
     storageState,
-    recordVideo: { dir: out, size: { width: 1440, height: 1000 } }
+    recordVideo: { dir: privateOut, size: { width: 1440, height: 1000 } }
   });
   const page = await context.newPage();
   const runtimeErrors = [];
