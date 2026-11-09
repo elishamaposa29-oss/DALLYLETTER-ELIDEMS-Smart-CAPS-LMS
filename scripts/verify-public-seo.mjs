@@ -129,18 +129,18 @@ for (const privatePath of ["/student", "/teacher", "/manager", "/admin", "/profi
   if (!robots.includes("Disallow: " + privatePath)) throw new Error("robots.txt must disallow private route " + privatePath);
 }
 if (!robots.includes(siteUrl + "/sitemap.xml")) throw new Error("robots.txt sitemap reference missing");
-const sitemapDirectives = robots.split(/\\r?\\n/).filter(line => /^\\s*Sitemap:/i.test(line));
+const sitemapDirectives = robots.split(/\r?\n/).filter(line => /^\s*Sitemap:/i.test(line));
 if (sitemapDirectives.length !== 1 || sitemapDirectives[0].trim() !== "Sitemap: " + siteUrl + "/sitemap.xml") {
   throw new Error("robots.txt must contain exactly one sitemap directive on the canonical production hostname");
 }
 for (const crawler of ["OAI-SearchBot", "ChatGPT-User", "GPTBot", "ClaudeBot", "Claude-SearchBot", "PerplexityBot", "Googlebot"]) {
   if (!robots.includes("User-agent: " + crawler)) throw new Error("robots.txt is missing the public discovery rule for " + crawler);
 }
-for (const match of sitemap.matchAll(/<loc>(.*?)<\\/loc>/g)) {
+for (const match of sitemap.matchAll(/<loc>(.*?)<\/loc>/g)) {
   const location = new URL(match[1]);
   if (location.origin !== siteOrigin) throw new Error("Sitemap contains a URL on a stale or non-canonical hostname: " + match[1]);
 }
-for (const match of sitemap.matchAll(/<image:loc>(.*?)<\\/image:loc>/g)) {
+for (const match of sitemap.matchAll(/<image:loc>(.*?)<\/image:loc>/g)) {
   const imageUrl = new URL(match[1]);
   if (imageUrl.origin !== siteOrigin) throw new Error("Sitemap social image points to a stale or non-canonical hostname: " + match[1]);
 }
@@ -151,7 +151,7 @@ for (const fileName of ["llms.txt", "llms-full.txt"]) {
   if (!text.includes(siteUrl) || text.includes("dallyletter-elidems-onlineschoolbye-two.vercel.app")) {
     throw new Error(fileName + " must reference the canonical production hostname and contain no legacy Vercel hostname");
   }
-  for (const match of text.matchAll(/https?:\\/\\/[^\\s)\\]>]+/g)) {
+  for (const match of text.matchAll(/https?:\/\/[^\s)\]>]+/g)) {
     const candidate = match[0].replace(/[.,;]+$/, "");
     if (candidate.includes("elishamaposa29-oss-dallyletter-elid-gamma.vercel.app") && new URL(candidate).origin !== siteOrigin) {
       throw new Error(fileName + " contains a non-canonical Dallyletter URL: " + candidate);
