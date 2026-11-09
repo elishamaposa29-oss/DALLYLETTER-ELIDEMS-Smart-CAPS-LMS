@@ -29,6 +29,22 @@ function classifyRuntimeErrors(runtimeErrors, google403Responses, pageLabel) {
   return remaining;
 }
 const safeName = (value) => value.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "") || "page";
+const apiBaseUrl = process.env.SHOWCASE_API_BASE_URL || "https://dallyletter-elidems-smart-caps-lms-4.onrender.com";
+async function verifyAuthenticatedRole(token, expectedRole) {
+  const response = await fetch(new URL("/api/auth/me", apiBaseUrl), {
+    headers: { Authorization: "Bearer " + token }
+  });
+  if (!response.ok) throw new Error("The API rejected the showcase session token: HTTP " + response.status);
+  const user = await response.json();
+  const actualRole = String(user.role || "").toLowerCase().replace(/[ -]+/g, "_");
+  const validRole =
+    expectedRole === "learner" ? ["student", "prefect"].includes(actualRole) :
+    expectedRole === "teacher" ? actualRole === "teacher" :
+    expectedRole === "manager" ? ["manager", "senior_manager", "junior_manager"].includes(actualRole) || user.isManager === true :
+    false;
+  if (!validRole) throw new Error("Expected a " + expectedRole + " showcase account, but the API confirmed role " + (actualRole || "missing"));
+  return actualRole;
+}
 const decodeXml = (value) => value.replaceAll("&amp;", "&").replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&quot;", '"').replaceAll("&apos;", "'");
 const expectedDeploymentSha = (process.env.EXPECTED_DEPLOYMENT_SHA || "").trim();
 
@@ -187,16 +203,26 @@ async function captureRole(role, route, email, password) {
   // Authenticate in a non-recording context so credentials are never written into a video.
   const loginContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
   let storageState;
+  let authenticatedRole;
   try {
     const loginPage = await loginContext.newPage();
     await loginPage.goto(new URL("/login", baseUrl).href, { waitUntil: "domcontentloaded", timeout: 45000 });
     await loginPage.getByLabel("Email address").fill(email);
     await loginPage.getByLabel("Password", { exact: true }).fill(password);
     await loginPage.getByRole("button", { name: "Sign In", exact: true }).click();
-    await loginPage.waitForFunction(() => window.location.pathname !== "/login", { timeout: 30000 }).catch(async () => {
+    await loginPage.waitForFunction(() => {
+      const normalizedPath = window.location.pathname.replace(/\/+$/, "") || "/";
+      return normalizedPath !== "/login" && Boolean(localStorage.getItem("dallyletter_token"));
+    }, { timeout: 30000 }).catch(async () => {
       const feedback = await loginPage.locator('[role="alert"], [data-sonner-toast], [role="status"]').allTextContents().catch(() => []);
-      throw new Error("Login did not leave /login. Visible feedback: " + feedback.join(" | ").slice(0, 500));
+      throw new Error("Login did not establish a session and leave /login. Visible feedback: " + feedback.join(" | ").slice(0, 500));
     });
+    const loginState = await loginPage.evaluate(() => ({
+      token: localStorage.getItem("dallyletter_token"),
+      pathname: window.location.pathname
+    }));
+    if (!loginState.token) throw new Error("Login page navigated without persisting an authentication token");
+    authenticatedRole = await verifyAuthenticatedRole(loginState.token, role);
     storageState = await loginContext.storageState();
   } catch (error) {
     results.push({ type: "dashboard", role, url: url.href, error: String(error) });
@@ -226,6 +252,16 @@ async function captureRole(role, route, email, password) {
     if (dashboardResponse && dashboardResponse.status() >= 400) throw new Error("Dashboard route returned HTTP " + dashboardResponse.status());
     await page.locator("main, body").first().waitFor({ state: "visible", timeout: 15000 });
     await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+    const actualPath = new URL(page.url()).pathname.replace(/\/+$/, "") || "/";
+    const expectedPath = url.pathname.replace(/\/+$/, "") || "/";
+    if (actualPath !== expectedPath) throw new Error("Expected " + expectedPath + " but authentication redirected to " + actualPath);
+    const dashboardToken = await page.evaluate(() => localStorage.getItem("dallyletter_token"));
+    if (!dashboardToken) throw new Error("Dashboard page has no persisted authenticated session");
+    if (await page.locator('input[type="password"]').count()) throw new Error("Login form is still visible; dashboard authentication was not established");
+    const dashboardRole = await verifyAuthenticatedRole(dashboardToken, role);
+    if (dashboardRole !== authenticatedRole) throw new Error("Authenticated role changed between login and dashboard capture");
+    const dashboardContent = await page.locator("main").innerText().catch(() => "");
+    if (!dashboardContent.trim()) throw new Error("Authenticated dashboard has no visible main content");
     await verifyBrandLogo(page, role + " dashboard");
     const unexpectedErrors = classifyRuntimeErrors(runtimeErrors, google403Responses, role + " dashboard");
     if (unexpectedErrors.length) throw new Error("Runtime/browser console errors in " + role + " dashboard: " + unexpectedErrors.slice(0, 3).join(" | ").slice(0, 400));
@@ -265,7 +301,7 @@ async function captureRole(role, route, email, password) {
     if (unexpectedWalkthroughErrors.length) throw new Error("Runtime/browser/API failure during role walkthrough: " + unexpectedWalkthroughErrors.slice(0, 5).join(" | ").slice(0, 900));
     await page.waitForTimeout(500);
     results.push({
-      type: "dashboard", role, url: url.href, status: "captured-private", screenshot,
+      type: "dashboard", role, url: url.href, status: "captured-private", authenticatedRole, screenshot,
       video: "private-dashboard-" + safeName(role) + ".webm",
       walkthroughPages: [url.pathname, ...walkthrough.map((item) => new URL(item.href).pathname)],
       title: await page.title()
