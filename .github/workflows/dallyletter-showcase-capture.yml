@@ -38,7 +38,7 @@ permissions:
 
 concurrency:
   group: dallyletter-showcase-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   capture:
