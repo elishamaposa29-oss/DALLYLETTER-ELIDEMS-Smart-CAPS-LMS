@@ -164,103 +164,103 @@
     },
     {
       "source": "/login/",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/forgot-password/",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/reset-password/",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/verify/transfer/:token/",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/verify-email/",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/confirm-email-change/",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/features/",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/register/",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/resource-unavailable/",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/docs/",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/preview/lesson/:id/",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/teacher/qualifications/",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/suspended/",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/shared-media/",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/record-book/",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/profile-hub/",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/profile/:id/",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/student/",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/student/:path*",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/teacher/",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/teacher/:path*",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/manager/",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/manager/:path*",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/admin/",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/admin/:path*",
-      "destination": "/index.html"
+      "destination": "/app.html"
     }
   ],
   "trailingSlash": true
