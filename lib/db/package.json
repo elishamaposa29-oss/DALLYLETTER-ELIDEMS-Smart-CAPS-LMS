@@ -14,7 +14,8 @@
     "migrate:transfer-form-data": "node ./scripts/migrate-transfer-form-data.mjs",
     "migrate:manager-permissions": "node ./scripts/migrate-manager-permissions.mjs",
     "migrate:payment-transactions": "node ./scripts/migrate-payment-transactions.mjs",
-    "reconcile:payment-ledger": "node ./scripts/reconcile-payment-ledger.mjs"
+    "reconcile:payment-ledger": "node ./scripts/reconcile-payment-ledger.mjs",
+    "test:payment-ledger-reconciliation": "node ./scripts/test-payment-ledger-reconciliation.mjs"
   },
   "dependencies": {
     "drizzle-orm": "catalog:",
