@@ -68,13 +68,13 @@ The invoice summary column `payments.amount_paid` is reconciled against the sum 
 Before a production reconciliation, take and verify a database backup, then run the report-only command:
 
 ```sh
-pnpm --dir lib/db run reconcile:payment-ledger
+PGSSLMODE=require pnpm --dir lib/db run reconcile:payment-ledger
 ```
 
-Review both discrepancy totals. The apply operation requires an explicit confirmation variable:
+Review both discrepancy totals. The `PGSSLMODE=require` option enables the SSL/TLS connection required by Render PostgreSQL. The apply operation requires an explicit confirmation variable:
 
 ```sh
-PAYMENT_LEDGER_RECONCILIATION_CONFIRM=YES pnpm --dir lib/db run reconcile:payment-ledger -- --apply
+PGSSLMODE=require PAYMENT_LEDGER_RECONCILIATION_CONFIRM=YES pnpm --dir lib/db run reconcile:payment-ledger -- --apply
 ```
 
 Legacy balances already recorded in `payments.amount_paid` but lacking transaction rows are preserved as `opening_balance` ledger entries; they are not treated as new provider receipts. Where settled transaction rows exceed the summary column, the summary is restored from those immutable transactions. The migration writes an audit row for each discrepancy and verifies that eligible invoice summaries equal their settled transaction totals.
