@@ -39,6 +39,11 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    // Keep the authenticated SPA shell off the root filename so Vercel can
+    // serve the prerendered, indexable public homepage at /.
+    rollupOptions: {
+      input: path.resolve(import.meta.dirname, "app.html"),
+    },
   },
   server: {
     port,

@@ -62,7 +62,7 @@ Our direction is to support diverse African educational syllabuses and make usef
 
 Founded and solely created by **Elisha Maposa**.
 
-Explore: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/
+Explore: https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/
 
 #DallyletterElidems #AfricanEdTech #ZimbabweEducation #SouthAfricaEducation #DigitalLearning #EducationInnovation
 

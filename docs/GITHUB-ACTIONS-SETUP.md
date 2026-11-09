@@ -5,6 +5,32 @@
 
 This guide configures the repository variable and secrets used by Dallyletter's GitHub Actions. Use dedicated non-production demo accounts. Never put passwords or private keys in source files, commits, issues, pull requests, screenshots, or logs.
 
+## 0. Permanent production origin — configure once
+
+Dallyletter's permanent production frontend origin is:
+
+`https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app`
+
+This is the Vercel project domain, not a deployment-specific URL. Production deployments change the code served at this address; they do not change the address.
+
+Use this exact origin (without a trailing slash) for:
+- Google Cloud OAuth 2.0 Client ID → Authorized JavaScript origins.
+- Render API `FRONTEND_PRODUCTION_ORIGIN`.
+- The frontend's public canonical URL is the same origin with a trailing slash where a URL-prefix property is required.
+
+Do not add a new generated `*.vercel.app` deployment URL after each merge. Do not authorize all Vercel subdomains. Preview deployments remain separate and are not production OAuth/CORS origins. Change these integrations only during an intentional domain migration.
+
+### Google sign-in callback — no redirect URI for the current flow
+
+The current web client uses Google Identity Services' credential (popup/button) flow. Google returns an ID credential to the page callback, and Dallyletter then sends it to the API with `POST /api/auth/google`. This is **not** an OAuth redirect flow.
+
+For the existing client ID, configure the permanent production origin above under **Authorized JavaScript origins**. Do **not** invent or add an Authorized redirect URI for this implementation; there is no browser OAuth redirect URI in the current flow. The API endpoint `/api/auth/google` is a server-side credential exchange endpoint, not a Google redirect URI. Only add a redirect URI if the implementation is deliberately changed to Google's redirect-based authorization flow.
+
+### Previously used Search Console hostname
+
+The previously documented URL-prefix property `https://dallyletter-elidems-onlineschoolbye-two.vercel.app/` is attached to a separate Vercel project. It is not the permanent domain of the current primary project. Keep that old Search Console property as a legacy property; do not copy its verification token or sitemap URL into the current production configuration. The current primary project's permanent domain is the `...elid-gamma.vercel.app` hostname above. Verify that hostname once as its own URL-prefix property. Do not delete the older property or move domains as part of routine releases.
+
+
 ## 1. Open GitHub Actions secrets and variables
 
 [OPEN GITHUB ACTIONS SECRETS & VARIABLES](https://github.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/settings/secrets/actions)
@@ -12,23 +38,13 @@ This guide configures the repository variable and secrets used by Dallyletter's 
 - Use **Repository secrets** for passwords and private JSON keys.
 - Use **Repository variables** for non-secret configuration such as the public Search Console property URL.
 
-## 2. Google Search Console property variable
+## 2. Google Search Console property URL
 
-Create one repository variable:
+The trusted Search Console workflows and helper default already pin `GSC_SITE_URL` to this exact URL-prefix property:
 
-| Field | Exact value |
-|---|---|
-| Name | `GSC_SITE_URL` |
-| Value | `https://dallyletter-elidems-onlineschoolbye-two.vercel.app/` |
+`https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/`
 
-Copy sheet:
-
-```text
-GSC_SITE_URL
-https://dallyletter-elidems-onlineschoolbye-two.vercel.app/
-```
-
-The value must exactly match the verified URL-prefix property in Search Console, including protocol and trailing slash.
+**Do not create or change a `GSC_SITE_URL` repository variable for routine releases.** The workflow supplies the canonical URL directly so a stale variable cannot silently redirect verification or sitemap submission to an old host. The URL must match the verified Search Console property exactly, including protocol and trailing slash.
 
 ## 3. Optional Google Search Console HTML-tag verification
 
@@ -137,8 +153,8 @@ For a manual run:
 1. Open the workflow link.
 2. Select **Run workflow**.
 3. Select the branch containing the workflow.
-4. For showcase capture, supply the exact deployed preview or public site URL being tested.
-5. Start the run and inspect its result and downloadable artifacts.
+4. For production showcase capture, leave the configured production origin unchanged. Do not paste a deployment-specific `.vercel.app` URL: the stable project domain remains the same across production deployments.
+5. Start the run and inspect its result and downloadable artifacts. Preview deployments are not production and must not receive production demo credentials.
 
 Run sitemap submission only after the target deployment serves the generated sitemap. The performance report is scheduled for Mondays at 07:00 UTC after this workflow is merged into the default branch. Its Markdown report is uploaded as an Actions artifact and included in the run summary.
 

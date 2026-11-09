@@ -3,7 +3,7 @@
 **Founder / sole creator:** Elisha Maposa  
 **Brand line:** Learning without borders. African educational innovation.  
 **Initial focus:** Zimbabwe first, with South Africa as an important early market. **Long-term audience:** learners, educators, schools and organisations worldwide.  
-**Website:** https://dallyletter-elidems-onlineschoolbye-two.vercel.app/
+**Website:** https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/
 
 ## Platform-ready profiles
 
@@ -39,7 +39,7 @@ Our ambition is to support diverse African syllabuses and make useful learning a
 
 Founded and solely created by **Elisha Maposa**.
 
-Explore the platform: https://dallyletter-elidems-onlineschoolbye-two.vercel.app/
+Explore the platform: https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/
 
 #DallyletterElidems #AfricanEdTech #ZimbabweEducation #SouthAfricaEducation #DigitalLearning
 

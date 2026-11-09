@@ -60,3 +60,29 @@ Do not use wildcard hosts such as `https://*.vercel.app`. Add a preview origin o
 ## Known ledger limitation
 
 Provider verification is not the same as invoice allocation. This implementation verifies a checkout record and records the captured amount; it does not yet allocate partial or full receipts across pre-existing monthly invoice rows, handle refunds against those allocations, or prevent the current balance summary from counting legacy invoice rows separately. Do not treat the school-fee ledger as fully reconciled until that separate ledger design and migration are reviewed and tested.
+
+## Payment ledger reconciliation
+
+The invoice summary column `payments.amount_paid` is reconciled against the sum of settled (`status='paid'`) rows in `payment_transactions`.
+
+Before a production reconciliation, take and verify a database backup, then run the report-only command:
+
+```sh
+PGSSLMODE=require pnpm --dir lib/db run reconcile:payment-ledger
+```
+
+Review both discrepancy totals. The `PGSSLMODE=require` option enables the SSL/TLS connection required by Render PostgreSQL. The apply operation requires an explicit confirmation variable:
+
+```sh
+PGSSLMODE=require PAYMENT_LEDGER_RECONCILIATION_CONFIRM=YES pnpm --dir lib/db run reconcile:payment-ledger -- --apply
+```
+
+Legacy balances already recorded in `payments.amount_paid` but lacking transaction rows are preserved as `opening_balance` ledger entries; they are not treated as new provider receipts. Where settled transaction rows exceed the summary column, the summary is restored from those immutable transactions. The migration writes an audit row for each discrepancy and verifies that eligible invoice summaries equal their settled transaction totals.
+
+The migration is idempotent and is covered by the isolated PostgreSQL regression test:
+
+```sh
+pnpm --dir lib/db run test:payment-ledger-reconciliation
+```
+
+Do not run the apply command against production until the dry-run report has been reviewed and a restorable backup has been confirmed. This repository change does not itself modify the production database.

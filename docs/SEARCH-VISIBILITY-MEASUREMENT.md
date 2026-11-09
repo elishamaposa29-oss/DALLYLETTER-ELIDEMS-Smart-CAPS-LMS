@@ -4,11 +4,11 @@ This document defines how to measure discovery after the public pages are deploy
 
 ## 1. Google Search Console setup gate
 
-Canonical property: `https://dallyletter-elidems-onlineschoolbye-two.vercel.app/`
+Canonical property: `https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/`
 
 After the approved branch is deployed:
 1. Verify the URL-prefix property using the HTML verification tag already included in the homepage. Compare the live token with the token displayed by Google before clicking Verify.
-2. Submit `https://dallyletter-elidems-onlineschoolbye-two.vercel.app/sitemap.xml`.
+2. Submit `https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/sitemap.xml`.
 3. Inspect the homepage and each of the all public pages discovered from the deployed sitemap with URL Inspection.
 4. Record any indexing exclusions and fix only causes supported by the report.
 5. Do not report the site as verified or indexed until Search Console shows that result.
@@ -45,7 +45,7 @@ Copy one row per week. Keep the date range identical when comparing periods.
 Use consistent UTM tags on links shared in social posts. Keep the canonical page URL unchanged; add tags only to campaign links.
 
 Example:
-`https://dallyletter-elidems-onlineschoolbye-two.vercel.app/learners?utm_source=facebook&utm_medium=social&utm_campaign=brand_launch_2026_11`
+`https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/learners?utm_source=facebook&utm_medium=social&utm_campaign=brand_launch_2026_11`
 
 Approved values:
 - `utm_source`: facebook, instagram, tiktok, youtube, linkedin

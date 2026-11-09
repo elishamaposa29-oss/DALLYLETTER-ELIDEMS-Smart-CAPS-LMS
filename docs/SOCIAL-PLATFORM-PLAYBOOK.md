@@ -3,7 +3,7 @@
 **Brand:** Dallyletter Elidems  
 **Founder and sole creator:** Elisha Maposa  
 **Positioning:** Zimbabwe first, with South Africa and the wider African region also welcomed; welcoming learners, educators, schools and educational organisations worldwide.  
-**Website:** https://dallyletter-elidems-onlineschoolbye-two.vercel.app/  
+**Website:** https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/  
 **Visual identity:** navy #0f2a5a, gold #b38b00, white and warm neutral backgrounds.
 
 This playbook prepares copy and content formats. It does not assert that any social account or handle has been created. Add the real profile URL only after the founder creates, secures and verifies the account.

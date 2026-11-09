@@ -4,7 +4,17 @@
 
 Use the URL-prefix property:
 
-`https://dallyletter-elidems-onlineschoolbye-two.vercel.app/`
+`https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/`
+
+The previously used URL-prefix property `https://dallyletter-elidems-onlineschoolbye-two.vercel.app/` belongs to a separate Vercel project. Keep it as a legacy Search Console property; it is not the current primary project's production hostname. Do not reuse its verification token for this property. The gamma hostname is the permanent production URL for the current primary project and must be verified as its own URL-prefix property. Routine deployments must not change either hostname or property.
+
+
+## One-time Google Cloud API prerequisite
+
+The service account must be able to call the Search Console API. In the Google Cloud project that owns the service account, enable **Google Search Console API** (service name `searchconsole.googleapis.com`). The latest automated check returned `403 SERVICE_DISABLED` for project `761496894354`, with Google's activation page:
+https://console.developers.google.com/apis/api/searchconsole.googleapis.com/overview?project=761496894354
+
+Enable the API once, wait for Google to propagate the change, then rerun the read-only property-access workflow. This is a Google Cloud project setting; it is not fixed by changing the website hostname, OAuth redirect settings, or the service-account JSON key.
 
 ## Before verification
 
@@ -21,9 +31,21 @@ The prerender build can insert the Search Console HTML verification token from t
 
 1. Sign in to the Google account that should own the property.
 2. Open https://search.google.com/search-console and add the URL-prefix property above.
-3. Select HTML tag verification and compare the token Google displays with the token injected into the deployed public homepage.
-4. Click **Verify** only when the tokens match.
-5. Keep the verification token configured in the production build environment.
+3. Select HTML tag verification and copy only the `content` token value from Google's meta tag.
+4. Set that non-secret value as `GOOGLE_SITE_VERIFICATION` in the Vercel project's **Production** environment.
+5. Set the same value as a GitHub Actions repository variable named `GOOGLE_SITE_VERIFICATION`; the public-page CI build exercises the production verification gate and fails if this variable is missing.
+6. Redeploy the production build, then confirm the exact `<meta name="google-site-verification">` tag is present in the served homepage.
+7. Click **Verify** in Search Console only after the deployed tag matches Google's token.
+
+## Service-account access
+
+1. In Google Cloud Console, open IAM & Admin → Service Accounts → the Dallyletter Search Console service account → Keys.
+2. Download a fresh JSON key if the existing key is malformed or revoked.
+3. In GitHub repository Settings → Secrets and variables → Actions, replace `GSC_SERVICE_ACCOUNT_JSON` with the complete raw contents of that JSON file. Do not add Markdown fences, outer quotes, or manually edit the PEM. Never paste the private key into chat.
+4. In Search Console → Settings → Users and permissions for the exact URL-prefix property, add the JSON key's `client_email` as a **Full user**.
+5. Run the **Verify Google Search Console Property Access** workflow. It must report `siteFullUser` or `siteOwner` for the exact production property.
+
+If the workflow reports an invalid private-key PEM, replace the secret with a newly downloaded, complete service-account JSON key. Do not try to repair or share the private key manually.
 
 A GitHub commit or passing CI check does not verify ownership. Only Google's successful verification result does.
 
@@ -31,7 +53,7 @@ A GitHub commit or passing CI check does not verify ownership. Only Google's suc
 
 After ownership is verified and the deployed sitemap has been checked, submit:
 
-`https://dallyletter-elidems-onlineschoolbye-two.vercel.app/sitemap.xml`
+`https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/sitemap.xml`
 
 The repository includes an optional authenticated submission workflow. It requires the Search Console service-account JSON secret and the exact site URL variable, with the service-account email granted access to the verified property. Never commit or expose the service-account key.
 

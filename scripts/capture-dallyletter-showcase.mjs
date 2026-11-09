@@ -2,14 +2,53 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
 
-const baseUrl = new URL(process.env.SHOWCASE_SITE_URL || "https://dallyletter-elidems-onlineschoolbye-two.vercel.app/");
-const authAllowedOrigin = new URL(process.env.SHOWCASE_AUTH_ALLOWED_ORIGIN || "https://dallyletter-elidems-onlineschoolbye-two.vercel.app/").origin;
+const baseUrl = new URL(process.env.SHOWCASE_SITE_URL || "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/");
+const authAllowedOrigin = new URL(process.env.SHOWCASE_AUTH_ALLOWED_ORIGIN || "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/").origin;
 if (baseUrl.protocol !== "https:" || baseUrl.username || baseUrl.password) throw new Error("SHOWCASE_SITE_URL must be a public HTTPS URL without embedded credentials.");
 const out = path.resolve("showcase-captures");
+const privateOut = path.join(process.env.RUNNER_TEMP || "/tmp", "dallyletter-private-showcase");
+await fs.rm(out, { recursive: true, force: true });
 await fs.mkdir(out, { recursive: true });
+await fs.rm(privateOut, { recursive: true, force: true });
+await fs.mkdir(privateOut, { recursive: true });
 
 const results = [];
+const googleIdentityErrors = [];
+const isGoogleIdentityConsoleError = (value) => /\[GSI_LOGGER\].*given origin is not allowed for the given client ID/i.test(String(value));
+const isGenericGoogle403ConsoleError = (value) => /Failed to load resource:.*status of 403/i.test(String(value));
+function classifyRuntimeErrors(runtimeErrors, google403Responses, pageLabel) {
+  const googleConsoleErrors = runtimeErrors.filter(isGoogleIdentityConsoleError);
+  let generic403Budget = google403Responses.length;
+  const remaining = runtimeErrors.filter((error) => {
+    if (isGoogleIdentityConsoleError(error)) return false;
+    if (generic403Budget > 0 && isGenericGoogle403ConsoleError(error)) {
+      generic403Budget -= 1;
+      return false;
+    }
+    return true;
+  });
+  if (googleConsoleErrors.length || google403Responses.length) {
+    googleIdentityErrors.push({ page: pageLabel, occurrences: googleConsoleErrors.length + google403Responses.length });
+  }
+  return remaining;
+}
 const safeName = (value) => value.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "") || "page";
+const apiBaseUrl = process.env.SHOWCASE_API_BASE_URL || "https://dallyletter-elidems-smart-caps-lms-4.onrender.com";
+async function verifyAuthenticatedRole(token, expectedRole) {
+  const response = await fetch(new URL("/api/auth/me", apiBaseUrl), {
+    headers: { Authorization: "Bearer " + token }
+  });
+  if (!response.ok) throw new Error("The API rejected the showcase session token: HTTP " + response.status);
+  const user = await response.json();
+  const actualRole = String(user.role || "").toLowerCase().replace(/[ -]+/g, "_");
+  const validRole =
+    expectedRole === "learner" ? ["student", "prefect"].includes(actualRole) :
+    expectedRole === "teacher" ? actualRole === "teacher" :
+    expectedRole === "manager" ? ["manager", "senior_manager", "junior_manager"].includes(actualRole) || user.isManager === true :
+    false;
+  if (!validRole) throw new Error("Expected a " + expectedRole + " showcase account, but the API confirmed role " + (actualRole || "missing"));
+  return actualRole;
+}
 const decodeXml = (value) => value.replaceAll("&amp;", "&").replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&quot;", '"').replaceAll("&apos;", "'");
 const expectedDeploymentSha = (process.env.EXPECTED_DEPLOYMENT_SHA || "").trim();
 
@@ -111,12 +150,16 @@ async function capturePublicPages() {
     const context = await browser.newContext({
       viewport: { width: 1440, height: 1000 },
       deviceScaleFactor: 1,
-      recordVideo: { dir: out, size: { width: 1440, height: 1000 } }
+      recordVideo: { dir: privateOut, size: { width: 1440, height: 1000 } }
     });
     const page = await context.newPage();
     const runtimeErrors = [];
+    const google403Responses = [];
     page.on("pageerror", (error) => runtimeErrors.push(String(error)));
     page.on("console", (message) => { if (message.type() === "error") runtimeErrors.push(message.text()); });
+    page.on("response", (response) => {
+      if (response.status() === 403 && /accounts\.google\.com|gsi/i.test(response.url())) google403Responses.push(response.url());
+    });
     const video = page.video();
     try {
       const response = await page.goto(url.href, { waitUntil: "domcontentloaded", timeout: 45000 });
@@ -124,7 +167,8 @@ async function capturePublicPages() {
       await page.locator("body").waitFor({ state: "visible", timeout: 15000 });
       await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
       await verifyBrandLogo(page, url.pathname);
-      if (runtimeErrors.length) throw new Error("Runtime/browser console errors on " + url.pathname + ": " + runtimeErrors.slice(0, 3).join(" | ").slice(0, 400));
+      const unexpectedErrors = classifyRuntimeErrors(runtimeErrors, google403Responses, url.pathname);
+      if (unexpectedErrors.length) throw new Error("Runtime/browser console errors on " + url.pathname + ": " + unexpectedErrors.slice(0, 3).join(" | ").slice(0, 400));
       await assertPublishablePage(page, url.pathname);
       const screenshot = "public-" + name + ".png";
       await page.screenshot({ path: path.join(out, screenshot), fullPage: true, animations: "disabled" });
@@ -163,16 +207,50 @@ async function captureRole(role, route, email, password) {
   // Authenticate in a non-recording context so credentials are never written into a video.
   const loginContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
   let storageState;
+  let authenticatedRole;
   try {
     const loginPage = await loginContext.newPage();
+    const loginApiResponses = [];
+    const loginRequestFailures = [];
+    loginPage.on("response", (response) => {
+      const pathname = new URL(response.url()).pathname;
+      if (pathname.endsWith("/api/auth/login") || pathname.endsWith("/auth/login")) {
+        loginApiResponses.push({ status: response.status(), path: pathname });
+      }
+    });
+    loginPage.on("requestfailed", (request) => {
+      const pathname = new URL(request.url()).pathname;
+      if (pathname.endsWith("/api/auth/login") || pathname.endsWith("/auth/login")) {
+        loginRequestFailures.push({ path: pathname, reason: request.failure()?.errorText || "request failed" });
+      }
+    });
     await loginPage.goto(new URL("/login", baseUrl).href, { waitUntil: "domcontentloaded", timeout: 45000 });
     await loginPage.getByLabel("Email address").fill(email);
     await loginPage.getByLabel("Password", { exact: true }).fill(password);
     await loginPage.getByRole("button", { name: "Sign In", exact: true }).click();
-    await loginPage.waitForFunction(() => window.location.pathname !== "/login", { timeout: 30000 }).catch(async () => {
+    await loginPage.waitForFunction(() => {
+      const normalizedPath = window.location.pathname.replace(/\/+$/, "") || "/";
+      return normalizedPath !== "/login" && Boolean(localStorage.getItem("dallyletter_token"));
+    }, { timeout: 30000 }).catch(async () => {
       const feedback = await loginPage.locator('[role="alert"], [data-sonner-toast], [role="status"]').allTextContents().catch(() => []);
-      throw new Error("Login did not leave /login. Visible feedback: " + feedback.join(" | ").slice(0, 500));
+      const formState = await loginPage.evaluate(() => ({
+        emailLength: document.querySelector('input[name="email"]')?.value?.length ?? 0,
+        passwordLength: document.querySelector('input[name="password"]')?.value?.length ?? 0,
+        submitDisabled: document.querySelector('button[type="submit"]')?.disabled ?? null
+      })).catch(() => ({ emailLength: null, passwordLength: null, submitDisabled: null }));
+      throw new Error("Login did not establish a session and leave /login. Safe diagnostics: " + JSON.stringify({
+        formState,
+        loginApiResponses,
+        loginRequestFailures,
+        visibleFeedback: feedback.join(" | ").slice(0, 300)
+      }));
     });
+    const loginState = await loginPage.evaluate(() => ({
+      token: localStorage.getItem("dallyletter_token"),
+      pathname: window.location.pathname
+    }));
+    if (!loginState.token) throw new Error("Login page navigated without persisting an authentication token");
+    authenticatedRole = await verifyAuthenticatedRole(loginState.token, role);
     storageState = await loginContext.storageState();
   } catch (error) {
     results.push({ type: "dashboard", role, url: url.href, error: String(error) });
@@ -185,13 +263,15 @@ async function captureRole(role, route, email, password) {
     viewport: { width: 1440, height: 1000 },
     deviceScaleFactor: 1,
     storageState,
-    recordVideo: { dir: out, size: { width: 1440, height: 1000 } }
+    recordVideo: { dir: privateOut, size: { width: 1440, height: 1000 } }
   });
   const page = await context.newPage();
   const runtimeErrors = [];
+  const google403Responses = [];
   page.on("pageerror", (error) => runtimeErrors.push(String(error)));
   page.on("console", (message) => { if (message.type() === "error") runtimeErrors.push(message.text()); });
   page.on("response", (response) => {
+    if (response.status() === 403 && /accounts\.google\.com|gsi/i.test(response.url())) google403Responses.push(response.url());
     if (response.status() >= 500) runtimeErrors.push("HTTP " + response.status() + " " + response.url());
   });
   const video = page.video();
@@ -200,11 +280,22 @@ async function captureRole(role, route, email, password) {
     if (dashboardResponse && dashboardResponse.status() >= 400) throw new Error("Dashboard route returned HTTP " + dashboardResponse.status());
     await page.locator("main, body").first().waitFor({ state: "visible", timeout: 15000 });
     await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+    const actualPath = new URL(page.url()).pathname.replace(/\/+$/, "") || "/";
+    const expectedPath = url.pathname.replace(/\/+$/, "") || "/";
+    if (actualPath !== expectedPath) throw new Error("Expected " + expectedPath + " but authentication redirected to " + actualPath);
+    const dashboardToken = await page.evaluate(() => localStorage.getItem("dallyletter_token"));
+    if (!dashboardToken) throw new Error("Dashboard page has no persisted authenticated session");
+    if (await page.locator('input[type="password"]').count()) throw new Error("Login form is still visible; dashboard authentication was not established");
+    const dashboardRole = await verifyAuthenticatedRole(dashboardToken, role);
+    if (dashboardRole !== authenticatedRole) throw new Error("Authenticated role changed between login and dashboard capture");
+    const dashboardContent = await page.locator("main").innerText().catch(() => "");
+    if (!dashboardContent.trim()) throw new Error("Authenticated dashboard has no visible main content");
     await verifyBrandLogo(page, role + " dashboard");
-    if (runtimeErrors.length) throw new Error("Runtime/browser console errors in " + role + " dashboard: " + runtimeErrors.slice(0, 3).join(" | ").slice(0, 400));
+    const unexpectedErrors = classifyRuntimeErrors(runtimeErrors, google403Responses, role + " dashboard");
+    if (unexpectedErrors.length) throw new Error("Runtime/browser console errors in " + role + " dashboard: " + unexpectedErrors.slice(0, 3).join(" | ").slice(0, 400));
     await assertPublishablePage(page, role + " dashboard");
     const screenshot = "dashboard-" + safeName(role) + ".png";
-    await page.screenshot({ path: path.join(out, screenshot), fullPage: true, animations: "disabled" });
+    await page.screenshot({ path: path.join(privateOut, screenshot), fullPage: true, animations: "disabled" });
     // Discover real, visible read-only learning/workflow links from this role's own navigation.
     // Never submit forms or open settings, payment, account, approval, delete or logout actions.
     const links = await page.locator("a[href]").evaluateAll((anchors) => anchors.map((anchor) => ({
@@ -234,11 +325,11 @@ async function captureRole(role, route, email, password) {
       await assertPublishablePage(page, role + " " + item.label);
       await page.waitForTimeout(1200);
     }
-    if (runtimeErrors.length) throw new Error("Runtime/browser/API failure during role walkthrough: " + runtimeErrors.slice(0, 5).join(" | ").slice(0, 900));
+    const unexpectedWalkthroughErrors = classifyRuntimeErrors(runtimeErrors, google403Responses, role + " walkthrough");
+    if (unexpectedWalkthroughErrors.length) throw new Error("Runtime/browser/API failure during role walkthrough: " + unexpectedWalkthroughErrors.slice(0, 5).join(" | ").slice(0, 900));
     await page.waitForTimeout(500);
     results.push({
-      type: "dashboard", role, url: url.href, status: "captured-private", screenshot,
-      video: "private-dashboard-" + safeName(role) + ".webm",
+      type: "dashboard", role, url: url.href, status: "verified-private", authenticatedRole,
       walkthroughPages: [url.pathname, ...walkthrough.map((item) => new URL(item.href).pathname)],
       title: await page.title()
     });
@@ -246,7 +337,7 @@ async function captureRole(role, route, email, password) {
     results.push({ type: "dashboard", role, url: url.href, error: String(error) });
   } finally {
     await context.close();
-    const videoPath = path.join(out, "private-dashboard-" + safeName(role) + ".webm");
+    const videoPath = path.join(privateOut, "private-dashboard-" + safeName(role) + ".webm");
     if (video) {
       try {
         await video.saveAs(videoPath);
@@ -297,10 +388,10 @@ function buildGallery(manifest) {
   }
   lines.push("## Authenticated non-owner dashboards", "");
   for (const item of manifest.results.filter((result) => result.type === "dashboard")) {
-    lines.push("- **" + item.role + ":** [" + item.url + "](" + item.url + ") — " + (item.status || "failed") + (item.screenshot ? " — " + item.screenshot : "") + (item.video ? " — private walkthrough: " + item.video : "") + (item.error ? " — " + item.error : ""));
+    lines.push("- **" + item.role + ":** [" + item.url + "](" + item.url + ") — " + (item.status || "failed") + (item.authenticatedRole ? " — API-confirmed role: " + item.authenticatedRole : "") + (item.error ? " — " + item.error : ""));
     if (item.walkthroughPages?.length) lines.push("  - Read-only routes shown: " + item.walkthroughPages.join(", "));
   }
-  lines.push("", "Role screenshots and walkthrough videos are private workflow artifacts only. They are not published to the public media branch. Owner dashboards, Owner credentials and Owner-only views are deliberately excluded. Use dedicated showcase accounts only.", "");
+  lines.push("", "Authenticated dashboard screenshots and videos are used only for in-run verification, stored in ephemeral runner storage, and deleted before artifact upload. Public artifacts contain no private dashboard imagery, credentials, or Owner-only views. Use dedicated showcase accounts only.", "");
   return lines.join("\n");
 }
 
@@ -309,6 +400,15 @@ try {
   await captureRole("learner", "/student", process.env.SHOWCASE_LEARNER_EMAIL, process.env.SHOWCASE_LEARNER_PASSWORD);
   await captureRole("teacher", "/teacher", process.env.SHOWCASE_TEACHER_EMAIL, process.env.SHOWCASE_TEACHER_PASSWORD);
   await captureRole("manager", "/manager", process.env.SHOWCASE_MANAGER_EMAIL, process.env.SHOWCASE_MANAGER_PASSWORD);
+  if (googleIdentityErrors.length) {
+    results.push({
+      type: "integration",
+      page: "google-sign-in",
+      status: "blocked",
+      occurrences: googleIdentityErrors.length,
+      error: "Google Identity Services rejected the configured production origin. Password-authenticated dashboard captures were allowed to continue; Google sign-in remains unverified."
+    });
+  }
   results.push(await pageFor404Probe());
 
   const manifest = {
@@ -341,4 +441,5 @@ try {
   if (results.some((result) => result.error)) process.exitCode = 1;
 } finally {
   await browser.close();
+  await fs.rm(privateOut, { recursive: true, force: true });
 }

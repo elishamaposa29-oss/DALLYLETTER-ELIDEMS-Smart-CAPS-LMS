@@ -1,10 +1,60 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 180 180" role="img" aria-labelledby="title desc">
-<title id="title">Dallyletter Elidems logo</title><desc id="desc">A gold graduation cap above an open book on a deep navy background.</desc>
-<rect width="180" height="180" rx="36" fill="#0f2a5a"/>
-<path d="M30 66 90 40l60 26-60 27L30 66Z" fill="#f2d56b" stroke="#fff1b8" stroke-width="3" stroke-linejoin="round"/>
-<path d="M54 78v24c20 15 52 15 72 0V78L90 94 54 78Z" fill="#b38b00"/>
-<path d="M150 67v36" stroke="#f2d56b" stroke-width="5" stroke-linecap="round"/>
-<circle cx="150" cy="108" r="6" fill="#f2d56b"/>
-<path d="M42 119c17-10 33-10 48 0 15-10 31-10 48 0v26c-17-9-33-9-48 1-15-10-31-10-48-1v-26Z" fill="#fff" stroke="#dce7f7" stroke-width="3" stroke-linejoin="round"/>
-<path d="M90 120v25" stroke="#b38b00" stroke-width="3"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" role="img" aria-labelledby="title desc">
+  <title id="title">Dallyletter Elidems</title>
+  <desc id="desc">A refined gold and platinum Dallyletter monogram on a deep navy field, representing connected knowledge and forward progress.</desc>
+  <defs>
+    <linearGradient id="base" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#173b72"/>
+      <stop offset=".52" stop-color="#0b2044"/>
+      <stop offset="1" stop-color="#07152f"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff4c6"/>
+      <stop offset=".2" stop-color="#e7c66c"/>
+      <stop offset=".48" stop-color="#a97818"/>
+      <stop offset=".72" stop-color="#f8e5a0"/>
+      <stop offset="1" stop-color="#9a6a12"/>
+    </linearGradient>
+    <linearGradient id="platinum" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset=".48" stop-color="#c8d7ed"/>
+      <stop offset="1" stop-color="#7189aa"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fff" stop-opacity="0"/>
+      <stop offset=".48" stop-color="#fff" stop-opacity=".78"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+      <animate attributeName="x1" values="-1;1.4" dur="5.8s" repeatCount="indefinite"/>
+      <animate attributeName="x2" values="0;2.4" dur="5.8s" repeatCount="indefinite"/>
+    </linearGradient>
+    <filter id="depth" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3" result="blur"/>
+      <feOffset dy="3" result="offset"/>
+      <feComponentTransfer><feFuncA type="linear" slope=".42"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <clipPath id="markClip"><rect x="27" y="27" width="126" height="126" rx="30"/></clipPath>
+  </defs>
+
+  <rect x="3" y="3" width="174" height="174" rx="39" fill="#06142c"/>
+  <rect x="8" y="8" width="164" height="164" rx="34" fill="url(#base)" stroke="#d6b45e" stroke-opacity=".48" stroke-width="1.4"/>
+  <path d="M20 58V42Q20 20 42 20H138Q160 20 160 42V138Q160 160 138 160H42Q20 160 20 138V122" fill="none" stroke="#ffffff" stroke-opacity=".08" stroke-width="1.5"/>
+
+  <g filter="url(#depth)">
+    <!-- The open, continuous D is the signature mark. -->
+    <path d="M58 43H91C119 43 139 63 139 90S119 137 91 137H58V43Z"
+          fill="none" stroke="url(#gold)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M58 43V137" stroke="url(#platinum)" stroke-width="5" stroke-linecap="round"/>
+    <!-- Three ascending knowledge lines form a forward arrow. -->
+    <path d="M72 108H96M72 90H108M72 72H119"
+          fill="none" stroke="url(#platinum)" stroke-width="6" stroke-linecap="round"/>
+    <path d="M109 62L124 47L139 62" fill="none" stroke="url(#gold)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="139" cy="47" r="4.5" fill="#fff1bd"/>
+  </g>
+
+  <g clip-path="url(#markClip)" opacity=".34">
+    <path d="M-20 42L75 -20H105L10 42Z" fill="url(#shine)">
+      <animateTransform attributeName="transform" type="translate" values="-100 0;210 0" dur="5.8s" repeatCount="indefinite"/>
+    </path>
+  </g>
+  <path d="M24 146Q90 166 156 146" fill="none" stroke="#e8c96f" stroke-opacity=".16" stroke-width="1.2"/>
 </svg>

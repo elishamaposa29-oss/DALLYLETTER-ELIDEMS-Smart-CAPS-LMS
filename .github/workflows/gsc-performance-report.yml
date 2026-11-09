@@ -2,7 +2,7 @@ name: Google Search Console Performance Report
 
 on:
   push:
-    branches: [feat/public-seo-discovery-2026-11]
+    branches: [main]
     paths:
       - .github/workflows/gsc-performance-report.yml
       - scripts/google-search-console-api.mjs
@@ -26,7 +26,7 @@ jobs:
       - name: Generate 28-day performance and indexing report
         env:
           GSC_SERVICE_ACCOUNT_JSON: ${{ secrets.GSC_SERVICE_ACCOUNT_JSON }}
-          GSC_SITE_URL: ${{ vars.GSC_SITE_URL }}
+          GSC_SITE_URL: https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/
         run: node scripts/gsc-performance-report.mjs
       - name: Upload report
         if: always()
