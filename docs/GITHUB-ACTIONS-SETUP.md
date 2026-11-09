@@ -5,6 +5,21 @@
 
 This guide configures the repository variable and secrets used by Dallyletter's GitHub Actions. Use dedicated non-production demo accounts. Never put passwords or private keys in source files, commits, issues, pull requests, screenshots, or logs.
 
+## 0. Permanent production origin — configure once
+
+Dallyletter's permanent production frontend origin is:
+
+`https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app`
+
+This is the Vercel project domain, not a deployment-specific URL. Production deployments change the code served at this address; they do not change the address.
+
+Use this exact origin (without a trailing slash) for:
+- Google Cloud OAuth 2.0 Client ID → Authorized JavaScript origins.
+- Render API `FRONTEND_PRODUCTION_ORIGIN`.
+- The frontend's public canonical URL is the same origin with a trailing slash where a URL-prefix property is required.
+
+Do not add a new generated `*.vercel.app` deployment URL after each merge. Do not authorize all Vercel subdomains. Preview deployments remain separate and are not production OAuth/CORS origins. Change these integrations only during an intentional domain migration.
+
 ## 1. Open GitHub Actions secrets and variables
 
 [OPEN GITHUB ACTIONS SECRETS & VARIABLES](https://github.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/settings/secrets/actions)
