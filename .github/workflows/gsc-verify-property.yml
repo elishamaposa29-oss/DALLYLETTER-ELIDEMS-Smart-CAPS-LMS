@@ -31,6 +31,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Report whether the HTML verification token variable is configured (never print its value)
+        env:
+          GOOGLE_SITE_VERIFICATION: ${{ vars.GOOGLE_SITE_VERIFICATION }}
+        run: |
+          if [ -n "$GOOGLE_SITE_VERIFICATION" ]; then
+            echo "GSC_HTML_VERIFICATION_TOKEN_CONFIGURED=true"
+          else
+            echo "::warning::GSC_HTML_VERIFICATION_TOKEN_CONFIGURED=false; configure the non-secret token as a GitHub Actions repository variable."
+          fi
       - name: Verify service-account access to the exact production URL-prefix property
         env:
           GSC_SERVICE_ACCOUNT_JSON: ${{ secrets.GSC_SERVICE_ACCOUNT_JSON }}
