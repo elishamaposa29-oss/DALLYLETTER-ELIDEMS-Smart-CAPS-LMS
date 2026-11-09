@@ -106,7 +106,8 @@ export async function createGoogleSession() {
     try {
       const parsed = new URL(value);
       if (parsed.protocol !== "https:" || parsed.username || parsed.password) return null;
-      return parsed.origin + (parsed.pathname.replace(/\\/+$/, "") || "") + (parsed.search || "");
+      const pathname = parsed.pathname.endsWith("/") ? parsed.pathname.slice(0, -1) : parsed.pathname;
+      return parsed.origin + pathname + (parsed.search || "");
     } catch {
       return null;
     }
