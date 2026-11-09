@@ -1,0 +1,29 @@
+name: Verify Google Search Console Property Access
+
+on:
+  push:
+    branches: [main, fix/production-gsc-showcase-host-android-evidence-2026-11-08]
+    paths:
+      - ".github/workflows/gsc-verify-property.yml"
+      - "scripts/gsc-verify-property.mjs"
+      - "scripts/google-search-console-api.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-property:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trusted release branch
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify service-account access to the exact production URL-prefix property
+        env:
+          GSC_SERVICE_ACCOUNT_JSON: ${{ secrets.GSC_SERVICE_ACCOUNT_JSON }}
+          GSC_SITE_URL: https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/
+        run: node scripts/gsc-verify-property.mjs
