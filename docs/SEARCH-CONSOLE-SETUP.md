@@ -9,6 +9,13 @@ Use the URL-prefix property:
 The previously used URL-prefix property `https://dallyletter-elidems-onlineschoolbye-two.vercel.app/` belongs to a separate Vercel project. Keep it as a legacy Search Console property; it is not the current primary project's production hostname. Do not reuse its verification token for this property. The gamma hostname is the permanent production URL for the current primary project and must be verified as its own URL-prefix property. Routine deployments must not change either hostname or property.
 
 
+## One-time Google Cloud API prerequisite
+
+The service account must be able to call the Search Console API. In the Google Cloud project that owns the service account, enable **Google Search Console API** (service name `searchconsole.googleapis.com`). The latest automated check returned `403 SERVICE_DISABLED` for project `761496894354`, with Google's activation page:
+https://console.developers.google.com/apis/api/searchconsole.googleapis.com/overview?project=761496894354
+
+Enable the API once, wait for Google to propagate the change, then rerun the read-only property-access workflow. This is a Google Cloud project setting; it is not fixed by changing the website hostname, OAuth redirect settings, or the service-account JSON key.
+
 ## Before verification
 
 1. Merge and deploy the approved PR to the canonical production host.
