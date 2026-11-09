@@ -6,6 +6,9 @@ Use the URL-prefix property:
 
 `https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/`
 
+The previously used URL-prefix property `https://dallyletter-elidems-onlineschoolbye-two.vercel.app/` belongs to a separate Vercel project. Keep it as a legacy Search Console property; it is not the current primary project's production hostname. Do not reuse its verification token for this property. The gamma hostname is the permanent production URL for the current primary project and must be verified as its own URL-prefix property. Routine deployments must not change either hostname or property.
+
+
 ## Before verification
 
 1. Merge and deploy the approved PR to the canonical production host.
