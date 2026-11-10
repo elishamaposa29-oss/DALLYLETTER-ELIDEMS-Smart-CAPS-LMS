@@ -1,4 +1,3 @@
-import { SystemNotificationBridge } from "@/components/SystemNotificationBridge";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -397,7 +396,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background flex flex-col md:flex-row">
-      <SystemNotificationBridge />
       <header className="md:hidden flex items-center justify-between px-4 py-3 border-b bg-[#0a1628] sticky top-0 z-30">
         <div className="flex items-center gap-2">
           <img src="/favicon.svg" alt="Dallyletter Elidems logo" className="h-9 w-9 rounded-lg" />

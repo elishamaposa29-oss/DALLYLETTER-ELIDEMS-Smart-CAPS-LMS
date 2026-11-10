@@ -223,7 +223,13 @@ router.delete("/:id", requireAuth, requireManagerPermissionIfManager("users.over
     const key = url.match(/\/api\/(?:lessons|messages)\/media\/([a-f0-9-]{36})/i)?.[1];
     if (key) storageKeys.add(key);
   }
-  await db.delete(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
+  // Submissions reference assignments without ON DELETE CASCADE. Delete both
+  // levels atomically so a foreign-key constraint cannot leave a partial deletion.
+  await db.transaction(async (tx) => {
+    await tx.delete(assignmentSubmissionsTable)
+      .where(eq(assignmentSubmissionsTable.assignmentId, assignmentId));
+    await tx.delete(assignmentsTable).where(eq(assignmentsTable.id, assignmentId));
+  });
   const failedCleanup: string[] = [];
   for (const key of storageKeys) {
     try { await removeStoredMedia(key); }

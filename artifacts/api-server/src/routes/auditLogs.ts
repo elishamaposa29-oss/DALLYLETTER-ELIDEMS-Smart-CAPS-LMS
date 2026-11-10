@@ -8,7 +8,7 @@ import { requireManagerPermission } from "../lib/manager-permission-policy";
 
 const router = Router();
 
-// GET /audit-logs — list audit logs (owner only)
+// GET /audit-logs — Owner sees all; granted managers see filtered subordinate activity.
 router.get("/audit-logs", requireAuth, requireManagerPermission("audit.view_subordinate"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!canAccessManager(user)) { res.status(403).json({ error: "Manager or owner access required" }); return; }
