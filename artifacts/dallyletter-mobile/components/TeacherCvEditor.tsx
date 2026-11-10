@@ -108,7 +108,21 @@ export function TeacherCvEditor() {
       } finally { if (active) setLoading(false); }
     };
     void load();
-    return () => { active = false; };
+    let polling = false;
+    const chatPoll = setInterval(async () => {
+      if (!active || polling) return;
+      polling = true;
+      try {
+        const response = await fetch(getApiUrl("/api/teacher-cv-workspace/" + user.id + "/chat"), { headers });
+        if (response.ok) {
+          const latest = await response.json();
+          if (active) setChatMessages(Array.isArray(latest) ? latest : latest.messages || []);
+        }
+      } catch {
+        // Preserve the last delivered conversation while temporarily offline.
+      } finally { polling = false; }
+    }, 10000);
+    return () => { active = false; clearInterval(chatPoll); };
   }, [user?.id, token]);
 
   const saveCv = async (showSuccess = true): Promise<boolean> => {
