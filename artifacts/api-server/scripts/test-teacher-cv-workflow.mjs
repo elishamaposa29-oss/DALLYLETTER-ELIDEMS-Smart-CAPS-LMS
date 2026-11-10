@@ -267,6 +267,13 @@ assert((await seniorCvResumePreview.arrayBuffer()).byteLength>0,"Senior Manager 
 const seniorCvPhotoPreview=await fetch(base+"/api/users/"+seniorCvNotifyApplicant.id+"/teacher-documents/"+seniorCvPhoto.data.id,{headers:{Authorization:"Bearer "+seniorToken}});
 assert.equal(seniorCvPhotoPreview.status,200,"Senior Manager can open the actual submitted photo bytes");
 assert((await seniorCvPhotoPreview.arrayBuffer()).byteLength>0,"Senior Manager receives non-empty photo bytes for preview");
+const seniorCvCertificatePreview=await fetch(base+"/api/users/"+seniorCvNotifyApplicant.id+"/teacher-documents/"+seniorCvCertificate.data.id,{headers:{Authorization:"Bearer "+seniorToken}});
+assert.equal(seniorCvCertificatePreview.status,200,"Senior Manager with CV view permission can open attached qualification certificates");
+assert.match(seniorCvCertificatePreview.headers.get("content-type")||"",/application\\/pdf/);
+const seniorCvPdf=await fetch(base+"/api/users/"+seniorCvNotifyApplicant.id+"/teacher-cv/pdf",{headers:{Authorization:"Bearer "+seniorToken}});
+assert.equal(seniorCvPdf.status,200,"Senior Manager can generate the complete formatted CV PDF");
+assert.match(seniorCvPdf.headers.get("content-type")||"",/application\\/pdf/);
+assert((await seniorCvPdf.arrayBuffer()).byteLength>0,"Generated CV PDF contains readable document bytes");
 const seniorCvAlert=await pool.query("SELECT id FROM notifications WHERE recipient_id=$1 AND type='teacher_cv_submission' ORDER BY id DESC LIMIT 1",[seniorManagerId]);
 assert(seniorCvAlert.rows.length>0,"Senior Manager with view plus authorize grants receives CV submission alerts without the separate review grant");
 const seniorCvEmail=await pool.query("SELECT id FROM email_notification_queue WHERE recipient_user_id=$1 AND subject LIKE '%teacher CV submitted%' ORDER BY id DESC LIMIT 1",[seniorManagerId]);
