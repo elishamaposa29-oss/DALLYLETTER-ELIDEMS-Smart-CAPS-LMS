@@ -51,10 +51,23 @@ async function drainQueue(): Promise<void> {
       } catch (error) {
         const attempts = Number(item.attempts ?? 0) + 1;
         const message = error instanceof Error ? error.message.slice(0, 1000) : "Email delivery failed";
-        await pool.query(`UPDATE email_notification_queue
-          SET attempts=$2,status=CASE WHEN $2>=5 THEN 'failed' ELSE 'pending' END,
-              available_at=now()+(LEAST(3600, 30 * power(2,$2)) * interval '1 second'),last_error=$3
-          WHERE id=$1`, [item.id, attempts, message]);
+        if (/no verified notification email configured/i.test(message)) {
+          // Missing user verification is an account setup state, not a delivery
+          // failure. Keep the message pending without burning retries; verification
+          // will wake it immediately. Recheck here to cover verification racing
+          // with an in-flight dispatcher attempt.
+          const verified = await pool.query("SELECT notification_email_verified_at FROM users WHERE id=$1", [Number(item.recipient_user_id)]);
+          const isVerified = Boolean(verified.rows[0]?.notification_email_verified_at);
+          await pool.query(
+            "UPDATE email_notification_queue SET attempts=0,status='pending',available_at=CASE WHEN $2 THEN now() ELSE now()+interval '1 day' END,last_error=CASE WHEN $2 THEN NULL ELSE $3 END WHERE id=$1",
+            [item.id, isVerified, message],
+          );
+        } else {
+          await pool.query(`UPDATE email_notification_queue
+            SET attempts=$2,status=CASE WHEN $2>=5 THEN 'failed' ELSE 'pending' END,
+                available_at=now()+(LEAST(3600, 30 * power(2,$2)) * interval '1 second'),last_error=$3
+            WHERE id=$1`, [item.id, attempts, message]);
+        }
       }
     }
   } catch (error) {
