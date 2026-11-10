@@ -11,6 +11,8 @@ const capture=process.env.MOCK_PROVIDER_CAPTURE||"/tmp/dallyletter-provider-capt
 const suffix=crypto.randomBytes(6).toString("hex");
 const ownerEmail="teacher-cv-owner-"+suffix+"@example.test";
 const password="Teacher-CV-Test-Password-938!";
+const apiEntry=readFileSync(new URL("../src/index.ts",import.meta.url),"utf8");
+assert(apiEntry.includes("startTeacherCvExpiryScheduler")&&!apiEntry.includes("startTeacherLifecycle()"),"Production startup must run the complete five-minute teacher expiry and rejection-conversion scheduler, not the legacy pending-review-only timer");
 async function request(path,{token,method="GET",body}={}){
  const response=await fetch(base+path,{method,headers:{...(token?{Authorization:"Bearer "+token}:{}),...(body?{"Content-Type":"application/json"}:{})},body:body?JSON.stringify(body):undefined});
  const data=await response.json().catch(()=>({}));
