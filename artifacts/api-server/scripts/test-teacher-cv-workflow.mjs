@@ -215,6 +215,12 @@ assert(managerChatEmail.rows.length>0,"A reviewer message is queued for applican
 const applicantChatHistory=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/chat",{token:approvalApplicant.token});
 assert.equal(applicantChatHistory.status,200);
 assert(applicantChatHistory.data.some(message=>message.body==="Your submitted application is being reviewed."),"Applicant can read the manager's persisted conversation message");
+const applicantReply=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/chat",{token:approvalApplicant.token,method:"POST",body:{body:"Thank you, I can provide any missing documents."}});
+assert.equal(applicantReply.status,201,"Applicant can reply through the same private conversation");
+const ownerChatNotification=await pool.query("SELECT id FROM notifications WHERE recipient_id=$1 AND type='teacher_cv_message' ORDER BY id DESC LIMIT 1",[owner.id]);
+assert(ownerChatNotification.rows.length>0,"Applicant replies notify the Owner/reviewer side in-app");
+const ownerChatEmail=await pool.query("SELECT id FROM email_notification_queue WHERE recipient_user_id=$1 AND subject LIKE '%New teacher application message%' ORDER BY id DESC LIMIT 1",[owner.id]);
+assert(ownerChatEmail.rows.length>0,"Applicant replies queue an email to the reviewer side");
 const seniorQueueWithoutGrant=await request("/api/teacher-cv-workspace/queue",{token:seniorToken});
 assert.equal(seniorQueueWithoutGrant.status,403,"Senior Manager cannot view applications without an explicit view grant");
 const seniorApproveWithoutGrant=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/decision",{token:seniorToken,method:"POST",body:{action:"approve"}});
@@ -225,6 +231,14 @@ const grantManagerAuthorize=await request("/api/manager-permissions/"+seniorMana
 assert.equal(grantManagerAuthorize.status,200,"Owner can grant the Senior Manager CV authorization permission individually");
 const grantSeniorView=await request("/api/manager-permissions/"+seniorManagerId,{token:ownerToken,method:"PUT",body:{permissions:[{key:"teacher_cv.view",granted:true}]}});
 assert.equal(grantSeniorView.status,200,"Owner can grant the second manager CV view permission independently");
+const seniorNotifyApplicant=await registerTeacher("senior-notify");
+const seniorSurveyAnswers={laptop:"Yes",laptopType:"Laptop",smartphone:"Yes",computer:"Intermediate",online:"Weekdays",internet:"WiFi",platforms:["WhatsApp"],power:"Yes",verificationCall:"Yes"};
+const seniorSurveySave=await request("/api/users/me/teacher-cv",{token:seniorNotifyApplicant.token,method:"PATCH",body:{cv:{surveyAnswers:JSON.stringify(seniorSurveyAnswers)}}});
+assert.equal(seniorSurveySave.status,200,"Applicant can save the readiness survey before independent submission");
+const seniorSurveySubmit=await request("/api/teacher-cv-workspace/survey/submit",{token:seniorNotifyApplicant.token,method:"POST"});
+assert.equal(seniorSurveySubmit.status,200,"Applicant can submit the readiness survey independently");
+const seniorAuthorizeAlert=await pool.query("SELECT id FROM notifications WHERE recipient_id=$1 AND type='teacher_survey_submission' ORDER BY id DESC LIMIT 1",[seniorManagerId]);
+assert(seniorAuthorizeAlert.rows.length>0,"Senior Manager with view plus authorize grants receives application/survey alerts even without the separate review grant");
 const seniorQueue=await request("/api/teacher-cv-workspace/queue",{token:seniorToken});
 assert.equal(seniorQueue.status,200,"A second explicitly authorized manager can access the same queue");
 const seniorApplicantDetails=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/details",{token:seniorToken});
