@@ -181,6 +181,10 @@ assert(managerQueue.data.applications.some(item=>Number(item.id)===Number(approv
 const approvedIndependentSurvey=await request("/api/teacher-cv-workspace/"+draftOnlyApplicant.id+"/survey/decision",{token:ownerToken,method:"POST",body:{action:"approve",note:"Readiness survey reviewed"}});
 assert.equal(approvedIndependentSurvey.status,200,"Owner can approve a submitted readiness survey independently");
 assert.equal(approvedIndependentSurvey.data.status,"approved");
+const surveyDecisionNotification=await pool.query("SELECT id FROM notifications WHERE recipient_id=$1 AND type='teacher_survey_decision' ORDER BY id DESC LIMIT 1",[draftOnlyApplicant.id]);
+assert(surveyDecisionNotification.rows.length>0,"An independent survey decision notifies the applicant in-app");
+const surveyDecisionEmail=await pool.query("SELECT id FROM email_notification_queue WHERE recipient_user_id=$1 AND subject LIKE '%Readiness survey approved%' ORDER BY id DESC LIMIT 1",[draftOnlyApplicant.id]);
+assert(surveyDecisionEmail.rows.length>0,"An independent survey decision queues an applicant email");
 const cvStatusAfterSurveyApproval=await request("/api/auth/me",{token:draftOnlyApplicant.token});
 assert.equal(cvStatusAfterSurveyApproval.data.teacherApplicationStatus,"draft","Survey approval must not authorize or submit the teacher CV application");
 const managerSurveyQueueRow=managerQueue.data.applications.find(item=>Number(item.id)===Number(draftOnlyApplicant.id));
@@ -204,6 +208,10 @@ const grantManagerChat=await request("/api/manager-permissions/"+managerId,{toke
 assert.equal(grantManagerChat.status,200,"Owner can grant the existing applicant chat capability individually");
 const managerChatMessage=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/chat",{token:managerToken,method:"POST",body:{body:"Your submitted application is being reviewed."}});
 assert.equal(managerChatMessage.status,201,"Junior Manager with explicit chat grant can use the existing applicant conversation");
+const managerChatNotification=await pool.query("SELECT id FROM notifications WHERE recipient_id=$1 AND type='teacher_cv_message' ORDER BY id DESC LIMIT 1",[approvalApplicant.id]);
+assert(managerChatNotification.rows.length>0,"A reviewer message creates an in-app notification for the applicant");
+const managerChatEmail=await pool.query("SELECT id FROM email_notification_queue WHERE recipient_user_id=$1 AND subject LIKE '%New teacher application message%' ORDER BY id DESC LIMIT 1",[approvalApplicant.id]);
+assert(managerChatEmail.rows.length>0,"A reviewer message is queued for applicant email delivery");
 const applicantChatHistory=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/chat",{token:approvalApplicant.token});
 assert.equal(applicantChatHistory.status,200);
 assert(applicantChatHistory.data.some(message=>message.body==="Your submitted application is being reviewed."),"Applicant can read the manager's persisted conversation message");
@@ -268,6 +276,10 @@ const seniorVerifyGrant=await request("/api/manager-permissions/"+seniorManagerI
 assert.equal(seniorVerifyGrant.status,200,"Owner can grant qualification verification separately");
 const verified=await request("/api/qualifications/"+qualification.data.id+"/verify",{token:seniorToken,method:"PATCH",body:{status:"verified"}});
 assert.equal(verified.status,200,"Senior Manager can verify an individual qualification only after its separate grant");
+const qualificationNotification=await pool.query("SELECT id FROM notifications WHERE recipient_id=$1 AND type='teacher_qualification_decision' ORDER BY id DESC LIMIT 1",[approvalApplicant.id]);
+assert(qualificationNotification.rows.length>0,"Qualification verification sends an in-app decision notification to the applicant");
+const qualificationEmail=await pool.query("SELECT id FROM email_notification_queue WHERE recipient_user_id=$1 AND subject LIKE '%Qualification verified%' ORDER BY id DESC LIMIT 1",[approvalApplicant.id]);
+assert(qualificationEmail.rows.length>0,"Qualification verification queues an applicant email");
 const seniorQualificationHistoryWithoutView=await request("/api/qualifications/"+qualification.data.id+"/review-history",{token:seniorToken});
 assert.equal(seniorQualificationHistoryWithoutView.status,403,"Senior Manager cannot read qualification verification history without its separate view grant");
 const seniorQualificationViewGrant=await request("/api/manager-permissions/"+seniorManagerId,{token:ownerToken,method:"PUT",body:{permissions:[{key:"qualifications.view",granted:true}]}});
