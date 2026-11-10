@@ -238,7 +238,7 @@ const seniorCvQualification=await request("/api/users/me/qualifications",{token:
 assert.equal(seniorCvQualification.status,201);
 const seniorCvCertificate=await upload("/api/qualifications/"+seniorCvQualification.data.id+"/document",seniorCvNotifyApplicant.token,"file","senior-notify-certificate.pdf","application/pdf",Buffer.from("%PDF-1.4\\n%senior notification certificate\\n"));
 assert.equal(seniorCvCertificate.status,201);
-const seniorCvPayload={professionalSummary:"Experienced test teacher",education:"Diploma in Education",experience:"2 years",subjects:"English",address:"Harare",personalDetails:JSON.stringify({fullName:"Senior Notification Applicant",idNumber:"CV-SENIOR-NOTIFY",dob:"1994-04-10",phone:"+263771234569",email:seniorCvNotifyApplicant.email,address:"Harare"}),photoDocumentId:String(seniorCvPhoto.data.document.id)};
+const seniorCvPayload={professionalSummary:"Experienced test teacher",education:"Diploma in Education",experience:"2 years",subjects:"English",address:"Harare",personalDetails:JSON.stringify({fullName:"Senior Notification Applicant",idNumber:"CV-SENIOR-NOTIFY",dob:"1994-04-10",phone:"+263771234569",email:seniorCvNotifyApplicant.email,address:"Harare"}),photoDocumentId:String(seniorCvPhoto.data.id)};
 const seniorCvSave=await request("/api/users/me/teacher-cv",{token:seniorCvNotifyApplicant.token,method:"PATCH",body:{cv:seniorCvPayload}});
 assert.equal(seniorCvSave.status,200);
 const seniorCvSubmit=await request("/api/teacher-cv-workspace/submit",{token:seniorCvNotifyApplicant.token,method:"POST"});
