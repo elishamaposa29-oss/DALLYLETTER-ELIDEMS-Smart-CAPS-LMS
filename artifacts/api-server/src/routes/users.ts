@@ -1100,6 +1100,12 @@ router.post("/users/me/notification-email/verify", requireAuth, async(req,res):P
   const consumed=await pool.query("DELETE FROM notification_email_verifications WHERE user_id=$1 AND email=$2 AND otp_hash=$3 AND expires_at>now() AND attempts<8 RETURNING email",[req.currentUser!.id,email,saved.otp_hash]);
   if(!consumed.rows.length){res.status(400).json({error:"Verification code has already been used or expired."});return;}
   await pool.query("UPDATE users SET notification_email=$2,notification_email_verified_at=now() WHERE id=$1",[req.currentUser!.id,email]);
+  // Resume workflow notifications that were deferred only because this account
+  // had not yet verified a notification address. Do not reset unrelated failures.
+  await pool.query(
+    "UPDATE email_notification_queue SET status='pending',attempts=0,available_at=now(),last_error=NULL WHERE recipient_user_id=$1 AND status IN ('pending','failed') AND last_error ILIKE '%no verified notification email configured%'",
+    [req.currentUser!.id],
+  );
   res.json({message:"Notification email verified.",notification_email:email,verified:true});
 });
 
