@@ -2,7 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { ensureConnectSchema } from "./lib/ensureConnectSchema";
 import { startPushDispatcher } from "./lib/push-service";
-import { startTeacherLifecycle } from "./lib/teacher-lifecycle";
+import { startTeacherCvExpiryScheduler } from "./lib/teacher-cv-expiry";
 import { ensureAuthSessionSchema } from "./lib/auth-session-store";
 import { ensureProfileHubSchema } from "./lib/ensureProfileHubSchema";
 import { ensureManagerPermissionSchema } from "./lib/ensureManagerPermissionSchema";
@@ -30,7 +30,7 @@ async function startServer(): Promise<void> {
     startEmailNotificationDispatcher();
     logger.info("Connect/social and manager-permission schemas verified");
     startPushDispatcher();
-    startTeacherLifecycle();
+    startTeacherCvExpiryScheduler();
     startDailyAttendanceLifecycle();
   } catch (error) {
     logger.error({ err: error }, "Database schema verification failed; refusing to serve traffic");
