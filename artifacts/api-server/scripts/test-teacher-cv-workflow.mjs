@@ -256,6 +256,17 @@ const seniorCvSave=await request("/api/users/me/teacher-cv",{token:seniorCvNotif
 assert.equal(seniorCvSave.status,200);
 const seniorCvSubmit=await request("/api/teacher-cv-workspace/submit",{token:seniorCvNotifyApplicant.token,method:"POST"});
 assert.equal(seniorCvSubmit.status,200,"A complete CV can be submitted while a Senior Manager has only view plus authorization grants");
+const seniorCvDocuments=await request("/api/users/"+seniorCvNotifyApplicant.id+"/teacher-documents",{token:seniorToken});
+assert.equal(seniorCvDocuments.status,200,"Senior Manager with teacher_cv.view can list all files attached to the submitted CV");
+assert(seniorCvDocuments.data.some(doc=>doc.document_type==="resume"),"Senior Manager can see the PDF resume in the CV file list");
+assert(seniorCvDocuments.data.some(doc=>doc.document_type==="cv"),"Senior Manager can see the submitted profile photo in the CV file list");
+const seniorCvResumePreview=await fetch(base+"/api/users/"+seniorCvNotifyApplicant.id+"/teacher-documents/"+seniorCvResume.data.id,{headers:{Authorization:"Bearer "+seniorToken}});
+assert.equal(seniorCvResumePreview.status,200,"Senior Manager can open the actual PDF resume bytes, not only metadata");
+assert.match(seniorCvResumePreview.headers.get("content-type")||"",/application\\/pdf/);
+assert((await seniorCvResumePreview.arrayBuffer()).byteLength>0,"Senior Manager receives non-empty PDF bytes for preview");
+const seniorCvPhotoPreview=await fetch(base+"/api/users/"+seniorCvNotifyApplicant.id+"/teacher-documents/"+seniorCvPhoto.data.id,{headers:{Authorization:"Bearer "+seniorToken}});
+assert.equal(seniorCvPhotoPreview.status,200,"Senior Manager can open the actual submitted photo bytes");
+assert((await seniorCvPhotoPreview.arrayBuffer()).byteLength>0,"Senior Manager receives non-empty photo bytes for preview");
 const seniorCvAlert=await pool.query("SELECT id FROM notifications WHERE recipient_id=$1 AND type='teacher_cv_submission' ORDER BY id DESC LIMIT 1",[seniorManagerId]);
 assert(seniorCvAlert.rows.length>0,"Senior Manager with view plus authorize grants receives CV submission alerts without the separate review grant");
 const seniorCvEmail=await pool.query("SELECT id FROM email_notification_queue WHERE recipient_user_id=$1 AND subject LIKE '%teacher CV submitted%' ORDER BY id DESC LIMIT 1",[seniorManagerId]);
