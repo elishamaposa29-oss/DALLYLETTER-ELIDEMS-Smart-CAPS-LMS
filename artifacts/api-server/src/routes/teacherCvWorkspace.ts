@@ -44,7 +44,21 @@ router.post("/survey/submit",async(req,res)=>{
   const status=String(current.rows[0]?.status||"draft");
   await client.query("INSERT INTO teacher_cv_review_history(teacher_id,action,previous_status,new_status,note) VALUES($1,'survey_submitted',$2,$2,'Readiness survey submitted independently')",[actor.id,status]);
   await client.query("COMMIT");
-  res.json({submitted:true,alreadySubmitted:false,submittedAt});
+  const surveyTitle="Teacher readiness survey submitted";
+  const surveyMessage=(actor.name||"A teacher applicant")+" submitted a readiness survey for review. Open the Teacher CV Approval Workspace to inspect the answers.";
+  let surveyReviewers:any[]=[];
+  try{
+   const reviewers=await pool.query(
+    "SELECT DISTINCT u.id,u.role FROM users u LEFT JOIN manager_permission_grants view_grant ON view_grant.manager_user_id=u.id AND view_grant.permission_key='teacher_cv.view' AND view_grant.granted=true LEFT JOIN manager_permission_grants review_grant ON review_grant.manager_user_id=u.id AND review_grant.permission_key='teacher_cv.review' AND review_grant.granted=true LEFT JOIN manager_permission_grants authorize_grant ON authorize_grant.manager_user_id=u.id AND authorize_grant.permission_key='teacher_cv.authorize' AND authorize_grant.granted=true WHERE (lower(u.role) IN ('owner','platform_owner','admin') OR (view_grant.manager_user_id IS NOT NULL AND (review_grant.manager_user_id IS NOT NULL OR authorize_grant.manager_user_id IS NOT NULL) AND (lower(u.role) IN ('senior_manager','manager') AND lower(COALESCE(u.manager_level,'senior'))='senior' OR lower(u.role)='teacher' AND u.is_manager=true AND lower(COALESCE(u.manager_level,'junior'))='senior' AND COALESCE(u.teacher_application_status,'') NOT IN ('draft','pending_review','rejected_pending_conversion')))) AND COALESCE(u.is_blocked,false)=false AND COALESCE(u.is_suspended,false)=false"
+   );
+   surveyReviewers=reviewers.rows.filter((reviewer:any)=>Number(reviewer.id)!==actor.id);
+  }catch(error){console.error("[teacher-cv] Survey reviewer lookup failed after submission.",error instanceof Error?error.message:"unknown");}
+  try{await db.insert(notificationsTable).values([
+   {recipientId:actor.id,title:surveyTitle,message:"Your readiness survey was submitted independently. Your CV application and teaching permissions have not changed.",link:"/profile-hub",type:"teacher_survey_submission"},
+   ...surveyReviewers.map((reviewer:any)=>({recipientId:Number(reviewer.id),title:surveyTitle,message:surveyMessage,link:["owner","platform_owner","admin"].includes(String(reviewer.role||"").toLowerCase())?"/admin/teacher-cv-workspace":"/manager/teacher-cv-workspace",type:"teacher_survey_submission"}))
+  ]);}catch(error){console.error("[teacher-cv] Survey submission in-app notification failed.",error instanceof Error?error.message:"unknown");}
+  await Promise.allSettled([actor.id,...surveyReviewers.map((r:any)=>Number(r.id))].map(recipientId=>enqueueEmailNotification(recipientId,"Dallyletter Elidems — "+surveyTitle,recipientId===actor.id?"Your readiness survey was submitted. This is separate from your CV application; teaching permissions remain unchanged.":surveyMessage+" Sign in to review it.")));
+  res.json({submitted:true,alreadySubmitted:false,submittedAt,reviewerCount:surveyReviewers.length});
  }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}
  finally{client.release();}
 });
@@ -58,7 +72,7 @@ router.post("/:teacherId/survey/decision",requireManagerPermission("teacher_cv.r
  const client=await pool.connect();
  try{
   await client.query("BEGIN");
-  const target=await client.query("SELECT u.role,u.is_manager,u.manager_level,tp.cv FROM users u JOIN teacher_profiles tp ON tp.user_id=u.id WHERE u.id=$1 AND lower(u.role)='teacher' FOR UPDATE OF u,tp",[id]);
+  const target=await client.query("SELECT u.name,u.role,u.is_manager,u.manager_level,tp.cv FROM users u JOIN teacher_profiles tp ON tp.user_id=u.id WHERE u.id=$1 AND lower(u.role)='teacher' FOR UPDATE OF u,tp",[id]);
   if(!target.rows.length||(!isOwner(req.currentUser)&&!isAdmin(req.currentUser)&&!canModerateUser(req.currentUser!,{role:target.rows[0].role,isManager:target.rows[0].is_manager,managerLevel:target.rows[0].manager_level}))){await client.query("ROLLBACK");res.status(404).json({error:"Submitted readiness survey not found."});return;}
   const cv=target.rows[0].cv&&typeof target.rows[0].cv==="object"?target.rows[0].cv:{};
   if(!cv.surveySubmittedAt){await client.query("ROLLBACK");res.status(404).json({error:"Readiness survey has not been submitted."});return;}
@@ -69,7 +83,11 @@ router.post("/:teacherId/survey/decision",requireManagerPermission("teacher_cv.r
   await client.query("UPDATE teacher_profiles SET cv=$2::jsonb,updated_at=now() WHERE user_id=$1",[id,JSON.stringify(nextCv)]);
   await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,$3,'survey_pending',$4,$5)",[id,req.currentUser!.id,action==="approve"?"survey_approved":"survey_rejected",nextStatus,note||null]);
   await client.query("COMMIT");
-  res.json({reviewed:true,status:nextStatus});
+  const title=action==="approve"?"Readiness survey approved":"Readiness survey needs changes";
+  const message=action==="approve"?"Your readiness survey has been approved. This does not by itself authorize teaching; your CV application must also be approved.":"Your readiness survey was not approved. Review the note in your Profile Hub and contact the reviewer if clarification is needed. Your CV application status has not changed.";
+  try{await db.insert(notificationsTable).values({recipientId:id,title,message,link:"/profile-hub",type:"teacher_survey_decision"});}catch(error){console.error("[teacher-cv] Survey decision notification failed.",error instanceof Error?error.message:"unknown");}
+  try{await enqueueEmailNotification(id,"Dallyletter Elidems — "+title,message+(note?" Reviewer note: "+note:""));}catch(error){console.error("[teacher-cv] Survey decision email queue failed.",error instanceof Error?error.message:"unknown");}
+  res.json({reviewed:true,status:nextStatus,notificationQueued:true});
  }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}
  finally{client.release();}
 });
@@ -127,7 +145,7 @@ router.post("/submit",async(req,res)=>{
   let reviewerRows:any[]=[];
  try{
   const reviewerResult=await pool.query(
-    "SELECT DISTINCT u.id,u.role FROM users u LEFT JOIN manager_permission_grants view_grant ON view_grant.manager_user_id=u.id AND view_grant.permission_key='teacher_cv.view' AND view_grant.granted=true LEFT JOIN manager_permission_grants review_grant ON review_grant.manager_user_id=u.id AND review_grant.permission_key='teacher_cv.review' AND review_grant.granted=true WHERE (lower(u.role) IN ('owner','platform_owner','admin') OR (view_grant.manager_user_id IS NOT NULL AND review_grant.manager_user_id IS NOT NULL AND (lower(u.role) IN ('senior_manager','manager') AND lower(COALESCE(u.manager_level,'senior'))='senior' OR lower(u.role)='teacher' AND u.is_manager=true AND lower(COALESCE(u.manager_level,'junior'))='senior' AND COALESCE(u.teacher_application_status,'') NOT IN ('draft','pending_review','rejected_pending_conversion')))) AND COALESCE(u.is_blocked,false)=false AND COALESCE(u.is_suspended,false)=false"
+    "SELECT DISTINCT u.id,u.role FROM users u LEFT JOIN manager_permission_grants view_grant ON view_grant.manager_user_id=u.id AND view_grant.permission_key='teacher_cv.view' AND view_grant.granted=true LEFT JOIN manager_permission_grants review_grant ON review_grant.manager_user_id=u.id AND review_grant.permission_key='teacher_cv.review' AND review_grant.granted=true LEFT JOIN manager_permission_grants authorize_grant ON authorize_grant.manager_user_id=u.id AND authorize_grant.permission_key='teacher_cv.authorize' AND authorize_grant.granted=true WHERE (lower(u.role) IN ('owner','platform_owner','admin') OR (view_grant.manager_user_id IS NOT NULL AND (review_grant.manager_user_id IS NOT NULL OR authorize_grant.manager_user_id IS NOT NULL) AND (lower(u.role) IN ('senior_manager','manager') AND lower(COALESCE(u.manager_level,'senior'))='senior' OR lower(u.role)='teacher' AND u.is_manager=true AND lower(COALESCE(u.manager_level,'junior'))='senior' AND COALESCE(u.teacher_application_status,'') NOT IN ('draft','pending_review','rejected_pending_conversion')))) AND COALESCE(u.is_blocked,false)=false AND COALESCE(u.is_suspended,false)=false"
   );
   reviewerRows=reviewerResult.rows;
  }catch(error){
@@ -228,7 +246,29 @@ router.get("/:teacherId/history",requireManagerPermissionIfManager("teacher_cv.v
  res.json({history:result.rows});
 });
 router.get("/:teacherId/chat",requireManagerPermissionIfManager("teacher_cv.chat"),async(req,res)=>{const id=idOf(req.params.teacherId);if(!id){res.status(400).json({error:"Invalid teacher id"});return}const actor=req.currentUser!,role=normalizeRole(actor.role);if(!canAccessManager(actor)&&!(actor.id===id&&role==="teacher")){res.status(403).json({error:"Application chat access denied"});return}await ensure();const target=await pool.query("SELECT role,is_manager,manager_level FROM users WHERE id=$1 AND lower(role)='teacher'",[id]);if(!target.rows.length||(actor.id!==id&&!isOwner(actor)&&!canModerateUser(actor,{role:target.rows[0].role,isManager:target.rows[0].is_manager,managerLevel:target.rows[0].manager_level}))){res.status(404).json({error:"Application chat is closed"});return}const r=await pool.query("SELECT m.id,m.sender_id,m.body,m.created_at,u.name sender_name,u.role sender_role FROM teacher_cv_chat_messages m JOIN users u ON u.id=m.sender_id WHERE m.teacher_id=$1 ORDER BY m.created_at ASC LIMIT 500",[id]);res.json(r.rows)});
-router.post("/:teacherId/chat",requireManagerPermissionIfManager("teacher_cv.chat"),async(req,res)=>{const id=idOf(req.params.teacherId),body=typeof req.body?.body==="string"?req.body.body.trim():"";if(!id||!body||body.length>4000){res.status(400).json({error:"Message must contain 1–4000 characters"});return}const role=normalizeRole(req.currentUser!.role);if(!canAccessManager(req.currentUser!)&&!(req.currentUser!.id===id&&role==="teacher")){res.status(403).json({error:"Application chat access denied"});return}await ensure();const target=await pool.query("SELECT id,role,is_manager,manager_level FROM users WHERE id=$1 AND lower(role)='teacher'",[id]);if(!target.rows.length||(req.currentUser!.id!==id&&!isOwner(req.currentUser)&&!canModerateUser(req.currentUser!,{role:target.rows[0].role,isManager:target.rows[0].is_manager,managerLevel:target.rows[0].manager_level}))){res.status(404).json({error:"Application chat is closed"});return}const r=await pool.query("INSERT INTO teacher_cv_chat_messages(teacher_id,sender_id,body) VALUES($1,$2,$3) RETURNING id,sender_id,body,created_at",[id,req.currentUser!.id,body]);res.status(201).json(r.rows[0])});
+router.post("/:teacherId/chat",requireManagerPermissionIfManager("teacher_cv.chat"),async(req,res)=>{
+ const id=idOf(req.params.teacherId),body=typeof req.body?.body==="string"?req.body.body.trim():"";
+ if(!id||!body||body.length>4000){res.status(400).json({error:"Message must contain 1–4000 characters"});return}
+ const actor=req.currentUser!,role=normalizeRole(actor.role);
+ if(!canAccessManager(actor)&&!(actor.id===id&&role==="teacher")){res.status(403).json({error:"Application chat access denied"});return}
+ await ensure();
+ const target=await pool.query("SELECT id,role,is_manager,manager_level FROM users WHERE id=$1 AND lower(role)='teacher'",[id]);
+ if(!target.rows.length||(actor.id!==id&&!isOwner(actor)&&!canModerateUser(actor,{role:target.rows[0].role,isManager:target.rows[0].is_manager,managerLevel:target.rows[0].manager_level}))){res.status(404).json({error:"Application chat is closed"});return}
+ const r=await pool.query("INSERT INTO teacher_cv_chat_messages(teacher_id,sender_id,body) VALUES($1,$2,$3) RETURNING id,sender_id,body,created_at",[id,actor.id,body]);
+ let recipients:number[]=[];
+ if(actor.id!==id){recipients=[id];}
+ else{
+  const reviewerResult=await pool.query("SELECT DISTINCT u.id,u.role,u.is_manager,u.manager_level FROM users u LEFT JOIN manager_permission_grants view_grant ON view_grant.manager_user_id=u.id AND view_grant.permission_key='teacher_cv.view' AND view_grant.granted=true LEFT JOIN manager_permission_grants chat_grant ON chat_grant.manager_user_id=u.id AND chat_grant.permission_key='teacher_cv.chat' AND chat_grant.granted=true WHERE (lower(u.role) IN ('owner','platform_owner','admin') OR (view_grant.manager_user_id IS NOT NULL AND chat_grant.manager_user_id IS NOT NULL AND (lower(u.role) IN ('manager','senior_manager') OR lower(u.role)='teacher' AND u.is_manager=true AND COALESCE(u.teacher_application_status,'') NOT IN ('draft','pending_review','rejected_pending_conversion')))) AND COALESCE(u.is_blocked,false)=false AND COALESCE(u.is_suspended,false)=false");
+  recipients=reviewerResult.rows.filter((reviewer:any)=>Number(reviewer.id)!==id&&(isOwner(reviewer)||isAdmin(reviewer)||canModerateUser(reviewer,{role:target.rows[0].role,isManager:target.rows[0].is_manager,managerLevel:target.rows[0].manager_level}))).map((reviewer:any)=>Number(reviewer.id));
+ }
+ const title="New teacher application message";
+ const message=(actor.name||"A Dallyletter reviewer")+" sent a message in your teacher application conversation: "+body.slice(0,1000);
+ for(const recipientId of recipients){
+  try{await db.insert(notificationsTable).values({recipientId,title,message,link:recipientId===id?"/profile-hub":"/manager/teacher-cv-workspace?teacherId="+id,type:"teacher_cv_message"});}catch(error){console.error("[teacher-cv] Chat notification failed.",error instanceof Error?error.message:"unknown");}
+ }
+ const emailResults=await Promise.allSettled(recipients.map(recipientId=>enqueueEmailNotification(recipientId,"Dallyletter Elidems — "+title,message)));
+ res.status(201).json({...r.rows[0],notificationsQueued:recipients.length,emailNotificationsQueued:emailResults.filter(result=>result.status==="fulfilled").length});
+});
 if(process.env.NODE_ENV==="test"){router.post("/__test/process-expired",async(req,res)=>{if(!isOwner(req.currentUser)){res.status(403).json({error:"Owner access required"});return}await processExpiredTeacherApplications();res.json({processed:true})})}
 
 export default router;
