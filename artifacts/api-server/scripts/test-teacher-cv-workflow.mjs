@@ -541,5 +541,5 @@ assert.equal(expiredLogin.status,200,"Expired applicant can sign in with origina
 assert.equal(expiredLogin.data.user.role,"student","Expired applicant's next login is learner experience");
 
 const records=readFileSync(capture,"utf8").split("\n").filter(Boolean).map(line=>JSON.parse(line));
-const emails=records.filter(record=>record.provider==="resend"&&record.body?.subject?.includes("teacher application"));
+const emails=records.filter(record=>record.provider==="resend"&&/teacher cv|teacher application|teacher account converted|readiness survey|qualification/i.test(String(record.body?.subject||"")));
 console.log("TEACHER_CV_WORKFLOW_E2E:",JSON.stringify({pendingTeacherRestrictions:"PASS",pendingLoginAndAuthMe:"PASS",profileHubSettings:"PASS",ownCvAccess:"PASS",applicantChat:"PASS",ownerDurationSetting:"PASS",rejectionWithoutNotificationDependency:"PASS",scheduledRejectionConversion:"PASS",originalCredentialsPreserved:"PASS",nextLoginLearner:"PASS",expiryConversionWithoutNotificationDependency:"PASS",expiryNextLoginLearner:"PASS",emailProvider:"isolated Resend mock; email delivery is best-effort and not a workflow gate",mockedEmailEvents:emails.length}));
