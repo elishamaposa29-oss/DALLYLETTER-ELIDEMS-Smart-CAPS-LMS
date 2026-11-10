@@ -1023,6 +1023,15 @@ router.patch("/qualifications/:id/verify", requireAuth, requireManagerPermission
     const updated=await client.query("UPDATE teacher_qualifications SET verification_status=$1 WHERE id=$2 RETURNING id,user_id,title,institution,year,verification_status,document_id,created_at",[status,id]);
     await client.query("INSERT INTO teacher_qualification_review_history(qualification_id,reviewed_by,previous_status,new_status,review_note) VALUES($1,$2,$3,$4,$5)",[id,reviewer.id,previousStatus,status,reviewNote]);
     await client.query("COMMIT");
+    const applicant=await pool.query("SELECT id,name FROM users WHERE id=$1",[Number(updated.rows[0].user_id)]);
+    if(applicant.rows.length){
+      const title=status==="verified"?"Qualification verified":"Qualification needs correction";
+      const message=status==="verified"
+        ?"Your qualification \""+String(updated.rows[0].title||"")+" \" has been verified. Your teacher application can now proceed when all requirements are complete."
+        :"Your qualification \""+String(updated.rows[0].title||"")+" \" was not verified. Review the note in your Profile Hub and upload corrected evidence if needed.";
+      try{await db.insert(notificationsTable).values({recipientId:Number(applicant.rows[0].id),title,message,link:"/profile-hub",type:"teacher_qualification_decision"});}catch(error){console.error("[qualifications] Applicant notification failed.",error instanceof Error?error.message:"unknown");}
+      try{await enqueueEmailNotification(Number(applicant.rows[0].id),"Dallyletter Elidems — "+title,message+(reviewNote?" Reviewer note: "+reviewNote:""));}catch(error){console.error("[qualifications] Applicant email queue failed.",error instanceof Error?error.message:"unknown");}
+    }
     res.json(updated.rows[0]);
   } catch(error) {
     await client.query("ROLLBACK");
