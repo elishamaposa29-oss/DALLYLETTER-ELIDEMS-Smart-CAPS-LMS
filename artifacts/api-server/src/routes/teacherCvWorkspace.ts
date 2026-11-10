@@ -262,7 +262,7 @@ router.post("/:teacherId/chat",requireManagerPermissionIfManager("teacher_cv.cha
   recipients=reviewerResult.rows.filter((reviewer:any)=>Number(reviewer.id)!==id&&(isOwner(reviewer)||isAdmin(reviewer)||canModerateUser(reviewer,{role:target.rows[0].role,isManager:target.rows[0].is_manager,managerLevel:target.rows[0].manager_level}))).map((reviewer:any)=>Number(reviewer.id));
  }
  const title="New teacher application message";
- const message=(actor.name||"A Dallyletter reviewer")+" sent a message in your teacher application conversation: "+body.slice(0,1000);
+ const message=(actor.id===id?(actor.name||"The teacher applicant"):(actor.name||"A Dallyletter reviewer"))+" sent a message in the teacher application conversation: "+body.slice(0,1000);
  for(const recipientId of recipients){
   try{await db.insert(notificationsTable).values({recipientId,title,message,link:recipientId===id?"/profile-hub":"/manager/teacher-cv-workspace?teacherId="+id,type:"teacher_cv_message"});}catch(error){console.error("[teacher-cv] Chat notification failed.",error instanceof Error?error.message:"unknown");}
  }
