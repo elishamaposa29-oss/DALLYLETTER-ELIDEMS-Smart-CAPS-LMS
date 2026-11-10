@@ -33,7 +33,6 @@ function classifyRuntimeErrors(runtimeErrors, google403Responses, pageLabel) {
   return remaining;
 }
 const safeName = (value) => value.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "") || "page";
-const apiBaseUrl = process.env.SHOWCASE_API_BASE_URL || "https://dallyletter-elidems-smart-caps-lms-4.onrender.com";
 async function verifyAuthenticatedRole(token, expectedRole, authenticatedApiOrigin) {
   // Verify against the exact API origin that accepted the browser's login request.
   // This avoids validating a session against a different/legacy backend.
