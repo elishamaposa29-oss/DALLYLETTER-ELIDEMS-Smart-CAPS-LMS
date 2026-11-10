@@ -61,6 +61,8 @@ app.use(
       req(req) {
         return {
           id: req.id,
+          userId: req.currentUser?.id ?? null,
+          role: req.currentUser?.role ?? null,
           method: req.method,
           url: req.url?.split("?")[0],
         };
@@ -73,6 +75,12 @@ app.use(
     },
   }),
 );
+// Return the same request identifier to clients so browser/device actions can be
+// correlated with Render logs without exposing credentials or personal data.
+app.use((req, res, next) => {
+  res.setHeader("X-Request-ID", String(req.id));
+  next();
+});
 app.use(
   cors({
     origin(origin, callback) {
@@ -84,6 +92,7 @@ app.use(
       callback(new Error(`Origin ${origin} not allowed by CORS`));
     },
     credentials: true,
+    exposedHeaders: ["X-Request-ID"],
     methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
     allowedHeaders: [
       "Content-Type",

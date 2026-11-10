@@ -101,9 +101,28 @@ export async function createGoogleSession() {
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
-  const property = (properties.siteEntry || []).find((entry) => entry.siteUrl === siteUrl);
+  const entries = properties.siteEntry || [];
+  const normalizePropertyUrl = (value) => {
+    try {
+      const parsed = new URL(value);
+      if (parsed.protocol !== "https:" || parsed.username || parsed.password) return null;
+      const pathname = parsed.pathname.endsWith("/") ? parsed.pathname.slice(0, -1) : parsed.pathname;
+      return parsed.origin + pathname + (parsed.search || "");
+    } catch {
+      return null;
+    }
+  };
+  const expectedProperty = normalizePropertyUrl(siteUrl);
+  const property = entries.find((entry) => normalizePropertyUrl(entry.siteUrl) === expectedProperty);
   if (!property) {
-    throw new Error("The service account " + account.client_email + " cannot access the Search Console property " + siteUrl + ". Add this service account as a Full user in Search Console > Settings > Users and permissions, and verify the property first.");
+    // Google returns only properties visible to this service account. Report URLs and
+    // permission levels (never credentials) so an incorrect property grant is diagnosable.
+    const visibleProperties = entries.map((entry) => ({
+      siteUrl: entry.siteUrl,
+      permissionLevel: entry.permissionLevel
+    }));
+    console.error("GSC_VISIBLE_PROPERTIES_FOR_SERVICE_ACCOUNT:", JSON.stringify(visibleProperties));
+    throw new Error("The service account " + account.client_email + " has no access to the expected Search Console property " + siteUrl + ". The visible property list above identifies which exact URL-prefix or domain property is currently granted. Add this account as a Full user to the expected gamma URL-prefix property, and complete ownership verification.");
   }
   if (property.permissionLevel === "siteUnverifiedUser") {
     throw new Error("The service account is listed as unverified for " + siteUrl + ". Complete property ownership verification before running reports or submitting the sitemap.");
