@@ -33,9 +33,10 @@ function classifyRuntimeErrors(runtimeErrors, google403Responses, pageLabel) {
   return remaining;
 }
 const safeName = (value) => value.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "") || "page";
-const apiBaseUrl = process.env.SHOWCASE_API_BASE_URL || "https://dallyletter-elidems-smart-caps-lms-4.onrender.com";
-async function verifyAuthenticatedRole(token, expectedRole) {
-  const response = await fetch(new URL("/api/auth/me", apiBaseUrl), {
+async function verifyAuthenticatedRole(token, expectedRole, authenticatedApiOrigin) {
+  // Verify against the exact API origin that accepted the browser's login request.
+  // This avoids validating a session against a different/legacy backend.
+  const response = await fetch(new URL("/api/auth/me", authenticatedApiOrigin), {
     headers: { Authorization: "Bearer " + token }
   });
   if (!response.ok) throw new Error("The API rejected the showcase session token: HTTP " + response.status);
@@ -215,7 +216,7 @@ async function captureRole(role, route, email, password) {
     loginPage.on("response", (response) => {
       const pathname = new URL(response.url()).pathname;
       if (pathname.endsWith("/api/auth/login") || pathname.endsWith("/auth/login")) {
-        loginApiResponses.push({ status: response.status(), path: pathname });
+        loginApiResponses.push({ status: response.status(), path: pathname, origin: new URL(response.url()).origin });
       }
     });
     loginPage.on("requestfailed", (request) => {
@@ -250,7 +251,13 @@ async function captureRole(role, route, email, password) {
       pathname: window.location.pathname
     }));
     if (!loginState.token) throw new Error("Login page navigated without persisting an authentication token");
-    authenticatedRole = await verifyAuthenticatedRole(loginState.token, role);
+    const successfulLoginOrigins = [...new Set(loginApiResponses
+      .filter((item) => item.status >= 200 && item.status < 300)
+      .map((item) => item.origin))];
+    if (successfulLoginOrigins.length !== 1) {
+      throw new Error("Expected exactly one successful login API origin; observed " + JSON.stringify(loginApiResponses));
+    }
+    authenticatedRole = await verifyAuthenticatedRole(loginState.token, role, successfulLoginOrigins[0]);
     storageState = await loginContext.storageState();
   } catch (error) {
     results.push({ type: "dashboard", role, url: url.href, error: String(error) });
@@ -397,9 +404,18 @@ function buildGallery(manifest) {
 
 try {
   await capturePublicPages();
-  await captureRole("learner", "/student", process.env.SHOWCASE_LEARNER_EMAIL, process.env.SHOWCASE_LEARNER_PASSWORD);
-  await captureRole("teacher", "/teacher", process.env.SHOWCASE_TEACHER_EMAIL, process.env.SHOWCASE_TEACHER_PASSWORD);
-  await captureRole("manager", "/manager", process.env.SHOWCASE_MANAGER_EMAIL, process.env.SHOWCASE_MANAGER_PASSWORD);
+  if (process.env.SHOWCASE_CAPTURE_AUTHENTICATED === "false") {
+    results.push({
+      type: "dashboard",
+      role: "all",
+      status: "skipped",
+      reason: "Pull-request runs capture the live public site only. Authenticated production accounts are tested only after the matching commit is deployed."
+    });
+  } else {
+    await captureRole("learner", "/student", process.env.SHOWCASE_LEARNER_EMAIL, process.env.SHOWCASE_LEARNER_PASSWORD);
+    await captureRole("teacher", "/teacher", process.env.SHOWCASE_TEACHER_EMAIL, process.env.SHOWCASE_TEACHER_PASSWORD);
+    await captureRole("manager", "/manager", process.env.SHOWCASE_MANAGER_EMAIL, process.env.SHOWCASE_MANAGER_PASSWORD);
+  }
   if (googleIdentityErrors.length) {
     results.push({
       type: "integration",
