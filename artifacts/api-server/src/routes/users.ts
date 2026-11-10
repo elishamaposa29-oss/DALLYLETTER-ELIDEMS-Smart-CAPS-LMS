@@ -566,8 +566,11 @@ router.get("/users/:id/teacher-documents", requireAuth, async (req, res): Promis
   const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, id));
   if (!target || (isOwnerRole(target.role) && !isOwnerRole(actor.role))) { res.status(404).json({ error: "User not found." }); return; }
   if (actor.id !== id && !isOwnerRole(actor.role) && !canModerateUser(actor, target)) { res.status(403).json({ error: "You are not authorized to access this user's teacher documents." }); return; }
-  if (!(await canViewProfileSection(actor,id,"teacher_documents"))) { res.status(403).json({ error: "Teacher document visibility is restricted by this profile's privacy settings." }); return; }
-  const selfOrManager = actor.id === id || isOwnerRole(actor.role) || (canAccessManager(actor) && await managerHasPermission(actor, "qualifications.view"));
+  const cvReviewAccess = actor.id !== id && canAccessManager(actor)
+    && await managerHasPermission(actor, "teacher_cv.view")
+    && (await pool.query("SELECT EXISTS(SELECT 1 FROM teacher_cv_review_history h JOIN users u ON u.id=h.teacher_id WHERE h.teacher_id=$1 AND h.action='submitted' AND u.teacher_application_status='pending_review') AS allowed", [id])).rows[0]?.allowed === true;
+  if (!cvReviewAccess && !(await canViewProfileSection(actor,id,"teacher_documents"))) { res.status(403).json({ error: "Teacher document visibility is restricted by this profile's privacy settings." }); return; }
+  const selfOrManager = actor.id === id || isOwnerRole(actor.role) || cvReviewAccess || (canAccessManager(actor) && await managerHasPermission(actor, "qualifications.view"));
   if (canAccessManager(actor) && !isOwnerRole(actor.role) && actor.id !== id && !selfOrManager) { res.status(403).json({ error: "Individual qualifications.view permission is required for teacher document access." }); return; }
   const professional = ["teacher", "manager", "senior_manager"].includes(String(target.role).toLowerCase());
   if (!selfOrManager && !professional) { res.status(403).json({ error: "Access denied" }); return; }
@@ -583,10 +586,13 @@ router.get("/users/:id/teacher-documents/:docId", requireAuth, async (req, res):
   const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, id));
   if (!target || (isOwnerRole(target.role) && !isOwnerRole(actor.role))) { res.status(404).json({ error: "User not found." }); return; }
   if (actor.id !== id && !isOwnerRole(actor.role) && !canModerateUser(actor, target)) { res.status(403).json({ error: "You are not authorized to access this user's teacher documents." }); return; }
-  if (!(await canViewProfileSection(actor, id, "teacher_documents"))) {
+  const cvReviewAccess = actor.id !== id && canAccessManager(actor)
+    && await managerHasPermission(actor, "teacher_cv.view")
+    && (await pool.query("SELECT EXISTS(SELECT 1 FROM teacher_cv_review_history h JOIN users u ON u.id=h.teacher_id WHERE h.teacher_id=$1 AND h.action='submitted' AND u.teacher_application_status='pending_review') AS allowed", [id])).rows[0]?.allowed === true;
+  if (!cvReviewAccess && !(await canViewProfileSection(actor, id, "teacher_documents"))) {
     res.status(403).json({ error: "Teacher document visibility is restricted by this profile's privacy settings." }); return;
   }
-  const selfOrManager = actor.id === id || isOwnerRole(actor.role) || (canAccessManager(actor) && await managerHasPermission(actor, "qualifications.view"));
+  const selfOrManager = actor.id === id || isOwnerRole(actor.role) || cvReviewAccess || (canAccessManager(actor) && await managerHasPermission(actor, "qualifications.view"));
   const professional = ["teacher", "manager", "senior_manager"].includes(String(target.role).toLowerCase());
   const result = selfOrManager
     ? await pool.query("SELECT file_name, mime_type, size_bytes, data, storage_key FROM teacher_documents WHERE id = $1 AND user_id = $2 LIMIT 1", [docId, id])
