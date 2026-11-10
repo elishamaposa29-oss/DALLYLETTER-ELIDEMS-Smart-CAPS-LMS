@@ -53,6 +53,7 @@ async function registerTeacher(label){
  return {id:created.data.user.id,email,token:created.data.token};
 }
 const approvalApplicant=await registerTeacher("approval");
+await pool.query("UPDATE users SET created_at=now()-interval '10 days',teacher_review_deadline=now()+interval '30 days' WHERE id=$1",[approvalApplicant.id]);
 const draftOnlyApplicant=await registerTeacher("draft-only");
 const approvalIdentityBefore=(await pool.query("SELECT id,email,password_hash FROM users WHERE id=$1",[approvalApplicant.id])).rows[0];
 const partialDraftSave=await request("/api/users/me/teacher-cv",{token:approvalApplicant.token,method:"PATCH",body:{cv:{personalDetails:JSON.stringify({fullName:"Partial CV draft"})}}});
@@ -116,6 +117,16 @@ assert.equal(incompleteSurveySave.status,200);
 const cvSubmitWithIncompleteSurvey=await request("/api/teacher-cv-workspace/submit",{token:approvalApplicant.token,method:"POST"});
 assert.equal(cvSubmitWithIncompleteSurvey.status,200,"Formal CV submission succeeds without completing the optional readiness survey");
 assert.equal(cvSubmitWithIncompleteSurvey.data.submitted,true,"The optional readiness survey is not a prerequisite for formal CV submission");
+const submittedDeadlineCheck=await pool.query("SELECT u.teacher_review_deadline,(SELECT max(h.created_at) FROM teacher_cv_review_history h WHERE h.teacher_id=u.id AND h.action='submitted') AS submitted_at FROM users u WHERE u.id=$1",[approvalApplicant.id]);
+const initialReviewWindow=(new Date(submittedDeadlineCheck.rows[0].teacher_review_deadline).getTime()-new Date(submittedDeadlineCheck.rows[0].submitted_at).getTime())/(24*60*60*1000);
+assert(initialReviewWindow>=0.99&&initialReviewWindow<=1.01,"Owner review duration starts at formal CV submission, not the earlier teacher registration date or stale draft deadline");
+const ownerExtendsReview=await request("/api/teacher-cv-workspace/config",{token:ownerToken,method:"PATCH",body:{reviewDurationDays:2}});
+assert.equal(ownerExtendsReview.status,200,"Owner can extend the review duration for an already-submitted application");
+const extendedDeadline=await pool.query("SELECT teacher_review_deadline,(SELECT max(h.created_at) FROM teacher_cv_review_history h WHERE h.teacher_id=users.id AND h.action='submitted') AS submitted_at FROM users WHERE id=$1",[approvalApplicant.id]);
+const extendedWindow=(new Date(extendedDeadline.rows[0].teacher_review_deadline).getTime()-new Date(extendedDeadline.rows[0].submitted_at).getTime())/(24*60*60*1000);
+assert(extendedWindow>=1.99&&extendedWindow<=2.01,"Owner duration changes recalculate pending deadlines from the actual submission timestamp");
+const restoreReviewDuration=await request("/api/teacher-cv-workspace/config",{token:ownerToken,method:"PATCH",body:{reviewDurationDays:1}});
+assert.equal(restoreReviewDuration.status,200,"Owner can restore the configured review duration");
 const repeatedSubmit=await request("/api/teacher-cv-workspace/submit",{token:approvalApplicant.token,method:"POST"});
 assert.equal(repeatedSubmit.status,200,"Repeated CV submission is idempotent");
 assert.equal(repeatedSubmit.data.submitted,true);
