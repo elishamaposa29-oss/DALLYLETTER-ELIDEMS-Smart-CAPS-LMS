@@ -51,7 +51,8 @@ jobs:
       SHOWCASE_MANAGER_EMAIL: ${{ secrets.SHOWCASE_MANAGER_EMAIL }}
       SHOWCASE_MANAGER_PASSWORD: ${{ secrets.SHOWCASE_MANAGER_PASSWORD }}
       SOURCE_COMMIT: ${{ github.sha }}
-      EXPECTED_DEPLOYMENT_SHA: ${{ github.event_name == 'push' && github.sha || '' }}
+      EXPECTED_DEPLOYMENT_SHA: ${{ github.event_name == 'pull_request' && '' || github.sha }}
+      SHOWCASE_CAPTURE_AUTHENTICATED: ${{ github.event_name != 'pull_request' }}
       SHOWCASE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - name: Checkout repository
