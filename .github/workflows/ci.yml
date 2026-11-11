@@ -13,6 +13,7 @@ concurrency:
 permissions:
   contents: read
   statuses: write
+  actions: write
 
 jobs:
   verify:
@@ -20,6 +21,41 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Cancel superseded PR runs and skip long Android build
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branch = context.payload.pull_request.head.ref;
+            const headSha = context.payload.pull_request.head.sha;
+            const { data } = await github.rest.actions.listWorkflowRunsForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              branch,
+              per_page: 100
+            });
+            const active = new Set(['queued', 'in_progress', 'waiting', 'requested', 'pending']);
+            const obsolete = data.workflow_runs.filter(run =>
+              run.id !== context.runId &&
+              run.event === 'pull_request' &&
+              run.head_branch === branch &&
+              active.has(run.status) &&
+              (run.head_sha !== headSha || run.name === 'Mobile Android Build and Smoke Test')
+            );
+            for (const run of obsolete) {
+              try {
+                await github.rest.actions.cancelWorkflowRun({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  run_id: run.id
+                });
+                core.info(`Cancelled superseded ${run.name} run #${run.run_number} (${run.head_sha.slice(0, 8)}).`);
+              } catch (error) {
+                if (![409, 422, 404].includes(error.status)) throw error;
+                core.info(`Run #${run.run_number} already finished or cannot be cancelled: ${error.message}`);
+              }
+            }
+            core.info(`Preserved current PR head ${headSha.slice(0, 8)} and its non-Android checks; cancelled ${obsolete.length} obsolete/Android run(s).`);
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
