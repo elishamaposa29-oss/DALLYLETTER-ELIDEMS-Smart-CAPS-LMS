@@ -3,12 +3,14 @@ import { readFileSync } from "node:fs";
 
 const read = path => readFileSync(new URL("../" + path, import.meta.url), "utf8");
 const cvApi = read("artifacts/api-server/src/routes/teacherCvWorkspace.ts");
+const contentPermissionApi = read("artifacts/api-server/src/routes/contentPermissions.ts");
 const mobileReview = read("artifacts/dallyletter-mobile/components/TeacherCvReviewWorkspace.tsx");
 const adminEntry = read("artifacts/dallyletter-mobile/components/AdminMore.tsx");
 const managerEntry = read("artifacts/dallyletter-mobile/components/ManagerMore.tsx");
 const adminLayout = read("artifacts/dallyletter-mobile/app/(admin)/_layout.tsx");
 const managerRoute = read("artifacts/dallyletter-mobile/app/(manager)/teacher-cv-workspace.tsx");
 const mobileOperations = read("artifacts/dallyletter-mobile/components/MobileOperationsWorkspace.tsx");
+const webOperations = read("artifacts/dallyletter/src/pages/OperationsWorkspace.tsx");
 const webLessons = read("artifacts/dallyletter/src/pages/teacher/TeacherLessons.tsx");
 const webOperations = read("artifacts/dallyletter/src/pages/OperationsWorkspace.tsx");
 
@@ -64,5 +66,9 @@ for (const operation of [
   'getApiUrl(`/api/content-permissions/${id}`)',
 ]) assert.ok(webLessons.includes(operation), "Web teacher lesson workflow missing content-permission operation: " + operation);
 assert.ok(webOperations.includes('api(`/api/content-permissions/${id}/report`'), "Web operations workspace missing content-permission escalation/report action");
+assert.ok(contentPermissionApi.includes('router.get("/content-permissions/reports"'), "Backend management escalation report list is missing");
+assert.ok(contentPermissionApi.includes('router.post("/content-permissions/:id/report/review"'), "Backend management escalation review action is missing");
+assert.ok(webOperations.includes('/api/content-permissions/reports') && webOperations.includes("Management escalation reports") && webOperations.includes("report/review"), "Web escalation report list/review UI is missing");
+assert.ok(mobileOperations.includes('/api/content-permissions/reports') && mobileOperations.includes("Management escalation reports") && mobileOperations.includes("report/review"), "Android escalation report list/review UI is missing");
 
 console.log("Role workflow parity static regression checks passed.");
