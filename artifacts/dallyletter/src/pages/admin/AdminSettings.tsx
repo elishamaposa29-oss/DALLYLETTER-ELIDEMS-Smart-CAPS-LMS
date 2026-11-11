@@ -25,6 +25,7 @@ export default function AdminSettings() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [manualReports, setManualReports] = useState<any[]>([]);
+  const [manualReportHistory, setManualReportHistory] = useState<any[]>([]);
   const [savedSchoolFeeAmount, setSavedSchoolFeeAmount] = useState("");
   const [reviewingReport, setReviewingReport] = useState<number | null>(null);
 
@@ -49,9 +50,15 @@ export default function AdminSettings() {
   const loadManualReports = async () => {
     try {
       const token = localStorage.getItem("dallyletter_token");
-      const response = await fetch(getApiUrl("/api/payments/manual-reports"), { headers: { Authorization: "Bearer " + token }, cache: "no-store" });
+      const [response, historyResponse] = await Promise.all([
+        fetch(getApiUrl("/api/payments/manual-reports"), { headers: { Authorization: "Bearer " + token }, cache: "no-store" }),
+        fetch(getApiUrl("/api/payments/manual-reports/history"), { headers: { Authorization: "Bearer " + token }, cache: "no-store" }),
+      ]);
       if (!response.ok) throw new Error("Could not load payment reports.");
-      setManualReports(await response.json());
+      if (!historyResponse.ok) throw new Error("Could not load payment report decision history.");
+      const [pending, history] = await Promise.all([response.json(), historyResponse.json()]);
+      setManualReports(Array.isArray(pending) ? pending : []);
+      setManualReportHistory(Array.isArray(history) ? history : []);
     } catch (error) {
       toast({ variant: "destructive", title: "Payment review unavailable", description: error instanceof Error ? error.message : "Try again." });
     }
@@ -291,6 +298,17 @@ export default function AdminSettings() {
                 <p className="text-sm">Receipt/reference: <span className="font-mono">{report.provider_reference || "Not supplied (cash)"}</span></p>
                 <p className="text-xs text-muted-foreground">Reported {new Date(report.created_at).toLocaleString()} · Current invoice paid: USD {Number(report.amount_paid || 0).toFixed(2)}</p>
                 <div className="flex flex-wrap gap-2"><Button type="button" size="sm" disabled={reviewingReport !== null} onClick={() => void reviewManualReport(report, true)}>{reviewingReport === Number(report.report_id) ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify and apply payment"}</Button><Button type="button" size="sm" variant="outline" disabled={reviewingReport !== null} onClick={() => void reviewManualReport(report, false)}>Reject report</Button></div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="border-b"><CardTitle>Manual payment report history</CardTitle><CardDescription>Owner audit history of rejected reports and verified manual settlements.</CardDescription></CardHeader>
+          <CardContent className="space-y-3 pt-6">
+            {manualReportHistory.length === 0 ? <p className="text-sm text-muted-foreground">No completed manual payment report decisions yet.</p> : manualReportHistory.map(report => (
+              <div key={report.report_id} className="rounded-lg border p-3 space-y-1">
+                <div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold">{report.learner_name} · USD {Number(report.amount).toFixed(2)} · Invoice #{report.payment_id}</p><span className="rounded-full border px-2 py-1 text-xs">{report.status === "rejected" ? "Rejected" : "Verified / settled"}</span></div>
+                <p className="text-xs text-muted-foreground">{String(report.provider || "").replace(/^reported:/, "").replace(/^manual:/, "").replace(/_/g, " ")} · Receipt/reference: {report.provider_reference || "Not supplied"} · {report.updated_at ? new Date(report.updated_at).toLocaleString() : ""}</p>
               </div>
             ))}
           </CardContent>
