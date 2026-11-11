@@ -158,6 +158,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     navItems = [
       { label: "Dashboard", href: "/", icon: Home, section: "Main" },
       { label: "Profile Hub", href: "/profile-hub", icon: Users },
+      { label: "Class & Learning Operations", href: "/operations", icon: CalendarDays },
       { label: "Feature Preview Center", href: "/features", icon: Sparkles },
       { label: "My RecordBook & Reports", href: "/record-book", icon: ScrollText },
       { label: "Lessons", href: "/student/lessons", icon: BookOpen },
@@ -184,7 +185,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Profile Hub", href: "/profile-hub", icon: Users },
       { label: "Feature Preview Center", href: "/features", icon: Sparkles },
       { label: "Teacher RecordBook", href: "/record-book", icon: ScrollText },
+      { label: "Class & Learning Operations", href: "/operations", icon: CalendarDays },
       { label: "My Lessons", href: "/teacher/lessons", icon: BookOpen },
+      { label: "Exercise Marking Queue", href: "/teacher/exercises", icon: ClipboardList },
       { label: "Qualifications & CV", href: "/teacher/qualifications", icon: GraduationCap },
       { label: "My Classes", href: "/teacher/classes", icon: Video },
       { label: "Assignments", href: "/teacher/assignments", icon: ClipboardList },
@@ -219,6 +222,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   } else if (["manager","senior_manager","junior_manager"].includes(normalizedRole)) {
     navItems = [
       { label: "Manager Dashboard", href: "/manager", icon: Home, section: "Management", permissionKey: "manager.dashboard.view" },
+      { label: "Class & Learning Operations", href: "/operations", icon: CalendarDays },
       { label: "Profile Hub", href: "/profile-hub", icon: Users },
       { label: "RecordBook & Academic Records", href: "/record-book", icon: ScrollText, permissionKey: "recordbook.view" },
       { label: "Teacher CV Applications", href: "/manager/teacher-cv-workspace", icon: GraduationCap, permissionKey: "teacher_cv.view" },
@@ -252,6 +256,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   } else if (["owner","platform_owner"].includes(normalizedRole)) {
     navItems = [
       { label: "Overview", href: "/admin", icon: Home, section: "Platform" },
+      { label: "Class & Learning Operations", href: "/operations", icon: CalendarDays },
       { label: "Profile Hub", href: "/profile-hub", icon: Users },
       { label: "Feature Preview Center", href: "/features", icon: Sparkles },
       { label: "Owner Command Center", href: "/admin/command-center", icon: Briefcase },
