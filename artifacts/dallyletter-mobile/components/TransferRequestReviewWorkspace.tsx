@@ -11,9 +11,9 @@ export default function TransferRequestReviewWorkspace() {
  const colors=useColors(); const {user,token}=useAuth();
  const [rows,setRows]=useState<Row[]>([]); const [loading,setLoading]=useState(false); const [busy,setBusy]=useState<number|null>(null);
  const [error,setError]=useState(""); const [notes,setNotes]=useState<Record<number,string>>({});
- const [permissions,setPermissions]=useState<Record<string,boolean>>({}); const [isOwner,setIsOwner]=useState(false); const [role,setRole]=useState("");
+ const [permissions,setPermissions]=useState<Record<string,boolean>>({}); const [isOwner,setIsOwner]=useState(false);
  const api=useCallback(async(path:string,method="GET",body?:any)=>{const response=await fetch(getApiUrl(path),{method,headers:{...(token?{Authorization:"Bearer "+token}:{}),...(body===undefined?{}:{"Content-Type":"application/json"})},...(body===undefined?{}:{body:JSON.stringify(body)}),cache:"no-store"});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"Request failed ("+response.status+")");return data;},[token]);
- const load=useCallback(async()=>{if(!token)return;setLoading(true);setError("");try{const [data,authority]=await Promise.all([api("/api/academic-records/transfer-requests"),api("/api/manager-permissions/me")]);setRows(Array.isArray(data)?data:[]);setPermissions(authority.permissions||{});setIsOwner(authority.isOwner===true);setRole(String(authority.role||"").toLowerCase().replace(/[ -]+/g,"_"));}catch(e){setError(e instanceof Error?e.message:"Transfer requests could not be loaded.");}finally{setLoading(false);}},[api,token]);
+ const load=useCallback(async()=>{if(!token)return;setLoading(true);setError("");try{const [data,authority]=await Promise.all([api("/api/academic-records/transfer-requests"),api("/api/manager-permissions/me")]);setRows(Array.isArray(data)?data:[]);setPermissions(authority.permissions||{});setIsOwner(authority.isOwner===true);}catch(e){setError(e instanceof Error?e.message:"Transfer requests could not be loaded.");}finally{setLoading(false);}},[api,token]);
  useEffect(()=>{void load();},[load]);
  const canApprove=isOwner||permissions["transfers.approve"]===true;
  const canReject=isOwner||permissions["transfers.reject"]===true;
