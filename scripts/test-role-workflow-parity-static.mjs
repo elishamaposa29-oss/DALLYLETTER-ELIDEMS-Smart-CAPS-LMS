@@ -121,7 +121,7 @@ for (const operation of [
   'Review note',
   'Download approved PDF',
 ]) assert.ok(reportReview.includes(operation), "Android academic report review operation missing: " + operation);
-assert.ok(managerMore.includes('permissions?.["reports.view"]') && managerMore.includes("/(manager)/academic-reports"), "Manager academic report review entry is not gated by reports.view");
+assert.ok(managerMore.includes('permissions?.["reports.view"]') && managerMore.includes('permissions?.["reports.create"]') && managerMore.includes("/(manager)/academic-reports"), "Manager academic report workspace is not gated by reports.view or reports.create");
 assert.ok(adminEntry.includes("/(admin)/academic-reports"), "Owner academic report review entry is missing");
 assert.ok(managerLayout.includes('name="academic-reports"') && adminLayout.includes('name="academic-reports"'), "Academic report review routes are not registered");
 
