@@ -56,7 +56,8 @@ Status labels:
 10. Added an Android academic-report reviewer workspace for Managers with `reports.view` and Owners, with `reports.review`-gated approve/reject, saved reviewer notes, recorded mark/attendance evidence and authenticated approved-PDF download.
 11. Added Owner-only Android manager-role and individual-permission controls from the Users screen, including Junior/Senior assignment, per-capability Grant/Deny, Senior-only restrictions, removal/revocation and permission-change history.
 12. Added Owner-only Android manual-payment report review: list unverified reports, verify and settle against the referenced invoice, or reject without changing the fee ledger; requester notifications remain server-controlled.
-13. Completed the qualification-review segment of the Android teacher application workspace and added a standalone Manager/Owner pending-qualification queue: open protected certificate files, inspect review history, verify or reject each qualification with a recorded note, using the distinct Owner/Senior permission gates.\n14. Added a Manager Android achievement recommendation queue, with the existing achievements.view/achievements.approve permissions, own-recommendation denial, approve-and-award and reject-with-note actions.
+13. Completed the qualification-review segment of the Android teacher application workspace and added a standalone Manager/Owner pending-qualification queue: open protected certificate files, inspect review history, verify or reject each qualification with a recorded note, using the distinct Owner/Senior permission gates.
+14. Added a Manager Android achievement recommendation queue, with the existing achievements.view/achievements.approve permissions, own-recommendation denial, approve-and-award and reject-with-note actions.
 
 ## Exact verification still required
 
