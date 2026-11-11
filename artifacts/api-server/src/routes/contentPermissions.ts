@@ -9,6 +9,7 @@ const contentTypes=new Set(["lesson","exercise"]);
 
 router.post("/content-permissions",requireAuth,async(req,res):Promise<void>=>{
   const actor=req.currentUser!;
+  if(actor.role!=="teacher"&&!isOwnerRole(actor.role)&&!canAccessManager(actor)){res.status(403).json({error:"Teacher or authorized academic staff access required"});return;}
   const contentType=String(req.body?.contentType||"");
   const contentId=Number(req.body?.contentId);
   const requestedAction=String(req.body?.requestedAction||"");
