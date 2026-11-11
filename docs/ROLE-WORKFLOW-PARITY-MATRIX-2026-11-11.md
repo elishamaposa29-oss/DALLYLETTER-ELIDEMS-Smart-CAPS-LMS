@@ -56,7 +56,7 @@ Status labels:
 10. Added an Android academic-report reviewer workspace for Managers with `reports.view` and Owners, with `reports.review`-gated approve/reject, saved reviewer notes, recorded mark/attendance evidence and authenticated approved-PDF download.
 11. Added Owner-only Android manager-role and individual-permission controls from the Users screen, including Junior/Senior assignment, per-capability Grant/Deny, Senior-only restrictions, removal/revocation and permission-change history.
 12. Added Owner-only Android manual-payment report review: list unverified reports, verify and settle against the referenced invoice, or reject without changing the fee ledger; requester notifications remain server-controlled.
-13. Completed the qualification-review segment of the Android teacher application workspace and added a standalone Manager/Owner pending-qualification queue: open protected certificate files, inspect review history, verify or reject each qualification with a recorded note, using the distinct Owner/Senior permission gates.
+13. Completed the qualification-review segment of the Android teacher application workspace and added a standalone Manager/Owner pending-qualification queue: open protected certificate files, inspect review history, verify or reject each qualification with a recorded note, using the distinct Owner/Senior permission gates.\n14. Added a Manager Android achievement recommendation queue, with the existing achievements.view/achievements.approve permissions, own-recommendation denial, approve-and-award and reject-with-note actions.
 
 ## Exact verification still required
 
@@ -85,7 +85,7 @@ Status labels:
 | Content permission (Teacher requester → Content owner) | Present | Present | Present | Present | Requester history | Escalation report | Present | Present |
 | Content-permission escalation (Requester → Owner / granted Manager) | Present | Present | Record management review; does not overwrite original owner decision | Not a second owner decision | Audit event + reviewed state | Report list + requester notification | Added | Added |
 | Manual payment report (Learner → Owner) | Present | Present | Verify and settle against invoice ledger | Reject without ledger mutation | Invoice/ledger records | Receipt reference | Present | Added to Owner financial tools |
-| Achievement recommendation (Teacher / learner → authorized reviewer) | Present | Present | Present; explicit approval grant | Present where API supports rejection | Recommendation records | Award/report evidence | Present | Present in Admin tools |
+| Achievement recommendation (Teacher / learner → authorized reviewer) | Present | Present | Present; explicit achievements.approve grant; recommender cannot approve own item | Present; rejection note required | Recommendation records | Award/report evidence | Present | Present in Admin tools and new Manager review route gated by achievements.view |
 | Attendance register (Teacher / authorized staff ↔ Learner) | Join / mark | Class roster + register | Not an approval workflow | Not an approval workflow | Attendance records + statistics | Attendance reports | Present | Present |
 | Manager role and grants (Owner → Manager) | Role assignment | Permission catalogue + user grants | Grant individual capabilities | Deny / revoke individual capabilities | Permission-change history | Audit log | Present | Added |
 
