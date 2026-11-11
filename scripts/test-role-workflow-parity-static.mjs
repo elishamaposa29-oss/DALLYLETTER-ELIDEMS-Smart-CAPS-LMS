@@ -13,6 +13,7 @@ const managerLayout = read("artifacts/dallyletter-mobile/app/(manager)/_layout.t
 const transferReview = read("artifacts/dallyletter-mobile/components/TransferRequestReviewWorkspace.tsx");
 const reportReview = read("artifacts/dallyletter-mobile/components/AcademicReportReviewWorkspace.tsx");
 const permissionMobile = read("artifacts/dallyletter-mobile/components/ManagerPermissionControlsMobile.tsx");
+const qualificationReview = read("artifacts/dallyletter-mobile/components/QualificationReviewWorkspaceMobile.tsx");
 const adminUsers = read("artifacts/dallyletter-mobile/app/(admin)/users.tsx");
 const ownerTools = read("artifacts/dallyletter-mobile/app/(admin)/tools.tsx");
 const managerMore = read("artifacts/dallyletter-mobile/components/ManagerMore.tsx");
@@ -169,5 +170,11 @@ for (const operation of [
   'Verify qualification',
   'Reject qualification',
 ]) assert.ok(mobileReview.includes(operation), "Android teacher qualification review operation missing: " + operation);
+
+
+assert.ok(qualificationReview.includes('"/api/qualifications/pending"') && qualificationReview.includes('"/api/qualifications/"+row.document_id+"/document"') && qualificationReview.includes('"/api/qualifications/"+row.id+"/review-history"') && qualificationReview.includes('"/api/qualifications/"+row.id+"/verify"'), "Android standalone qualification review lifecycle is incomplete");
+assert.ok(managerMore.includes('permissions?.["qualifications.view"]') && managerMore.includes("/(manager)/qualifications"), "Manager qualification review entry is not gated by qualifications.view");
+assert.ok(adminEntry.includes("/(admin)/qualifications"), "Owner qualification review entry is missing");
+assert.ok(managerLayout.includes('name="qualifications"') && adminLayout.includes('name="qualifications"'), "Qualification review routes are not registered");
 
 console.log("Role workflow parity static regression checks passed.");
