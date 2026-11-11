@@ -2,7 +2,7 @@ import { Router } from "express";
 import { pool } from "@workspace/db";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { managerHasPermission } from "../lib/manager-permission-policy";
-import { canModerateUser } from "../lib/role-access";
+import { canModerateUser, isTeacherRestricted } from "../lib/role-access";
 
 const router=Router();
 const actions=new Set(["edit","create_exercise","delete","notify"]);
@@ -10,6 +10,7 @@ const contentTypes=new Set(["lesson","exercise"]);
 
 router.post("/content-permissions",requireAuth,async(req,res):Promise<void>=>{
   const actor=req.currentUser!;
+  if(actor.role==="teacher"&&isTeacherRestricted(actor)){res.status(403).json({error:"Pending teachers cannot request teaching-content permissions until their application is approved."});return;}
   if(actor.role!=="teacher"&&!isOwnerRole(actor.role)&&!canAccessManager(actor)){res.status(403).json({error:"Teacher or authorized academic staff access required"});return;}
   const contentType=String(req.body?.contentType||"");
   const contentId=Number(req.body?.contentId);
