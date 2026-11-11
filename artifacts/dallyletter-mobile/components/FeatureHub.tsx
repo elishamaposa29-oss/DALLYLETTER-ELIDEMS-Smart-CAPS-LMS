@@ -178,7 +178,7 @@ export default function FeatureHub() {
   const isStudent = role === "student" || role === "prefect";
   const managerRole = ["manager", "senior_manager", "junior_manager"].includes(role) || Boolean((user as any)?.isManager);
   const canManagerPermission = (key: string) => ["owner", "platform_owner"].includes(role) || managerPermissions[key] === true;
-  const visibleSections = sections.filter(item => (item.id !== "achievements" || isStudent) && (item.id !== "prefect" || Boolean((user as any)?.isPrefect)) && (item.id !== "reports" || isStudent) && (item.id !== "audit" || canManagerPermission("audit.view_subordinate")));
+  const visibleSections = sections.filter(item => (item.id !== "achievements" || isStudent) && (item.id !== "prefect" || Boolean((user as any)?.isPrefect)) && (item.id !== "reports" || isStudent) && (item.id !== "audit" || canManagerPermission("audit.view_subordinate")) && (!managerRole || !["assignments","exercises"].includes(item.id) || canManagerPermission("recordbook.view")) && (!managerRole || item.id !== "polls" || canManagerPermission("polls.manage")));
   const isTeacher = role === "teacher";
   const canManageExercises = (isTeacher && !managerRole) || ["owner","platform_owner"].includes(role) || (managerRole && canManagerPermission("recordbook.edit"));
   const canViewExercises = (isTeacher && !managerRole) || ["owner","platform_owner"].includes(role) || (managerRole && canManagerPermission("recordbook.view"));
@@ -498,7 +498,7 @@ export default function FeatureHub() {
       }
       setError(e instanceof Error ? e.message : "Could not load content. Retry when connected.");
     } finally { setLoading(false); }
-  }, [request, refetchNotifications, refetchGroups, user?.id, role, isStudent]);
+  }, [request, refetchNotifications, refetchGroups, user?.id, role, isStudent, managerRole, canManagerPermission, canCreateExercises]);
 
   useEffect(() => {
     if ((routeParams.section === "notifications" || routeParams.section === "payments" || routeParams.section === "achievements" || routeParams.section === "prefect" || routeParams.section === "reports" || routeParams.section === "messages" || routeParams.section === "audit" || routeParams.section === "assignments" || routeParams.section === "exercises" || routeParams.section === "polls") && section !== routeParams.section) void loadSection(routeParams.section as Section);
