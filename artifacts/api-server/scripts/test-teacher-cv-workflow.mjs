@@ -267,9 +267,14 @@ assert((await seniorCvResumePreview.arrayBuffer()).byteLength>0,"Senior Manager 
 const seniorCvPhotoPreview=await fetch(base+"/api/users/"+seniorCvNotifyApplicant.id+"/teacher-documents/"+seniorCvPhoto.data.id,{headers:{Authorization:"Bearer "+seniorToken}});
 assert.equal(seniorCvPhotoPreview.status,200,"Senior Manager can open the actual submitted photo bytes");
 assert((await seniorCvPhotoPreview.arrayBuffer()).byteLength>0,"Senior Manager receives non-empty photo bytes for preview");
-const seniorCvCertificatePreview=await fetch(base+"/api/users/"+seniorCvNotifyApplicant.id+"/teacher-documents/"+seniorCvCertificate.data.id,{headers:{Authorization:"Bearer "+seniorToken}});
-assert.equal(seniorCvCertificatePreview.status,200,"Senior Manager with CV view permission can open attached qualification certificates");
-assert.match(seniorCvCertificatePreview.headers.get("content-type")||"",/application\/pdf/);
+const seniorCvCertificateDocumentId=Number(seniorCvCertificate.data?.document?.id);
+assert(Number.isSafeInteger(seniorCvCertificateDocumentId)&&seniorCvCertificateDocumentId>0,"Qualification upload exposes its stored file ID at data.document.id");
+const seniorCvCertificatePreview=await fetch(base+"/api/users/"+seniorCvNotifyApplicant.id+"/teacher-documents/"+seniorCvCertificateDocumentId,{headers:{Authorization:"Bearer "+seniorToken}});
+const seniorCvCertificatePreviewType=seniorCvCertificatePreview.headers.get("content-type")||"";
+const seniorCvCertificatePreviewBytes=await seniorCvCertificatePreview.arrayBuffer();
+assert.equal(seniorCvCertificatePreview.status,200,"Senior Manager with teacher_cv.view permission can open attached qualification certificates; response content-type="+seniorCvCertificatePreviewType+", bytes="+seniorCvCertificatePreviewBytes.byteLength);
+assert.match(seniorCvCertificatePreviewType,/application\/pdf/);
+assert(seniorCvCertificatePreviewBytes.byteLength>0,"Senior Manager receives non-empty certificate PDF bytes");
 const seniorCvPdf=await fetch(base+"/api/users/"+seniorCvNotifyApplicant.id+"/teacher-cv/pdf",{headers:{Authorization:"Bearer "+seniorToken}});
 assert.equal(seniorCvPdf.status,200,"Senior Manager can generate the complete formatted CV PDF");
 assert.match(seniorCvPdf.headers.get("content-type")||"",/application\/pdf/);
