@@ -156,7 +156,9 @@ router.post("/chat/polls/:pollId/vote", requireAuth, async(req,res):Promise<void
 
 router.get("/communities", requireAuth, async(_req,res)=>{
  const rows=await db.select().from(communitiesTable).orderBy(desc(communitiesTable.createdAt));
- res.json(rows);
+ const ids=rows.map(row=>row.id);
+ const links=ids.length?await db.select({communityId:communityGroupsTable.communityId,groupId:studyGroupsTable.id,groupName:studyGroupsTable.name,subject:studyGroupsTable.subject,grade:studyGroupsTable.grade}).from(communityGroupsTable).innerJoin(studyGroupsTable,eq(communityGroupsTable.groupId,studyGroupsTable.id)).where(inArray(communityGroupsTable.communityId,ids)):[];
+ res.json(rows.map(row=>({...row,groups:links.filter(link=>link.communityId===row.id)})));
 });
 router.post("/communities", requireAuth, async(req,res):Promise<void>=>{
  const user=req.currentUser!; if(!canAccessManager(user)||!(await managerHasPermission(user,"groups.manage"))){res.status(403).json({error:"Study group management permission required."});return;}
@@ -165,7 +167,12 @@ router.post("/communities", requireAuth, async(req,res):Promise<void>=>{
 });
 router.post("/communities/:id/groups", requireAuth, async(req,res):Promise<void>=>{
  const user=req.currentUser!; if(!canAccessManager(user)||!(await managerHasPermission(user,"groups.manage"))){res.status(403).json({error:"Study group management permission required."});return;}
- const communityId=Number(req.params.id),groupId=Number(req.body?.groupId); if(!groupId){res.status(400).json({error:"groupId required"});return;}
+ const communityId=Number(req.params.id),groupId=Number(req.body?.groupId); if(!Number.isSafeInteger(communityId)||communityId<=0||!Number.isSafeInteger(groupId)||groupId<=0){res.status(400).json({error:"Valid community and group IDs are required"});return;}
+ const [community]=await db.select({id:communitiesTable.id}).from(communitiesTable).where(eq(communitiesTable.id,communityId));
+ const [group]=await db.select({id:studyGroupsTable.id}).from(studyGroupsTable).where(eq(studyGroupsTable.id,groupId));
+ if(!community||!group){res.status(404).json({error:"Community or study group not found"});return;}
+ const [existing]=await db.select().from(communityGroupsTable).where(and(eq(communityGroupsTable.communityId,communityId),eq(communityGroupsTable.groupId,groupId)));
+ if(existing){res.json({...existing,alreadyLinked:true});return;}
  const [row]=await db.insert(communityGroupsTable).values({communityId,groupId}).returning();res.status(201).json(row);
 });
 
