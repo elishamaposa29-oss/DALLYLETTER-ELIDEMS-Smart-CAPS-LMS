@@ -160,7 +160,7 @@ router.get("/:id",requireAuth,requireManagerPermissionIfManager("recordbook.view
   const user=req.currentUser!;
   const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));
   if(!exercise){res.status(404).json({error:"Exercise not found"});return;}
-  if (canAccessManager(user) && !isOwnerRole(user.role) && !(await canManageExerciseForUser(user, exercise.createdBy, "recordbook.view"))) { res.status(404).json({error:"Exercise not found"}); return; }
+  if (canAccessManager(user) && !isOwnerRole(user.role) && !(await canManageExerciseForUser(user, exercise.createdBy, "recordbook.view", exercise.id, "edit"))) { res.status(404).json({error:"Exercise not found"}); return; }
   if(exercise.status!=="published"){
     if(!canManageAcademicContent(user)){res.status(404).json({error:"Exercise not found"});return;}
     if(!(await canManageExerciseForUser(user,exercise.createdBy,"recordbook.view",exercise.id,"edit"))){res.status(404).json({error:"Exercise not found"});return;}
@@ -247,7 +247,7 @@ router.post("/:id/publish",requireAuth,requireManagerPermissionIfManager("users.
   const user=req.currentUser!;if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}
   const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}
   const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));if(!exercise){res.status(404).json({error:"Exercise not found"});return;}
-  if(!(await canManageExerciseForUser(user,exercise.createdBy,"users.override.teacher"))){res.status(403).json({error:"You can only publish your own exercise"});return;}
+  if(!(await canManageExerciseForUser(user,exercise.createdBy,"users.override.teacher",exerciseId,"edit"))){res.status(403).json({error:"You can only publish an exercise you own or have explicit edit permission for"});return;}
   const questions=await db.select().from(exerciseQuestionsTable).where(eq(exerciseQuestionsTable.exerciseId,exercise.id));
   if(!questions.length){res.status(409).json({error:"Add at least one question before publishing"});return;}
   for(const q of questions){if(q.type==="poll"){const opts=await db.select().from(exerciseOptionsTable).where(eq(exerciseOptionsTable.questionId,q.id));if(opts.length<2||!opts.some(o=>o.isCorrect)){res.status(409).json({error:`Poll question ${q.position+1} needs at least two options and one correct option`});return;}}}
@@ -269,7 +269,7 @@ router.post("/:id/ai-marking/check",requireAuth,requireManagerPermissionIfManage
   if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}
   const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}
   const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));
-  if(!exercise||!(await canManageExerciseForUser(user,exercise.createdBy,"recordbook.edit"))){res.status(404).json({error:"Exercise not found"});return;}
+  if(!exercise||!(await canManageExerciseForUser(user,exercise.createdBy,"recordbook.edit",exerciseId,"edit"))){res.status(404).json({error:"Exercise not found"});return;}
   const questions=await db.select().from(exerciseQuestionsTable).where(eq(exerciseQuestionsTable.exerciseId,exerciseId)).orderBy(asc(exerciseQuestionsTable.position));
   if(!questions.length){res.status(409).json({error:"Add at least one question before checking AI marking"});return;}
   const teacherClarification=typeof req.body?.teacherClarification==="string"?req.body.teacherClarification.trim():"";
