@@ -71,3 +71,31 @@ Status labels:
 ## Certification
 
 **Not certified yet.** This branch adds a previously missing Android teacher-CV reviewer workflow and regression coverage, but broad platform parity is not proven until the remaining route inventory is classified and all role/action lifecycles pass the tests above. No production deployment, database mutation, permanent URL change, environment-variable change or secret change is included.
+
+## Lifecycle action matrix
+
+"Present" means a code path is wired in that client; it does **not** mean a live authenticated device test has passed. API integration tests and final CI are tracked separately.
+
+| Workflow / roles | Submit | List / inbox | Approve / verify | Decline / reject | History | Report / document | Web | Android |
+|---|---|---|---|---|---|---|---|---|
+| Teacher CV application (Teacher → Owner / Admin / granted Senior Manager) | Present | Present | Present; Owner/Admin authority as defined by API | Present | Present | Protected CV and certificate files; applicant chat | Present | Present |
+| Qualification verification (Teacher → Owner / granted Senior Manager) | Present | Present | Present; Senior-only qualifications.verify | Present; Senior-only qualifications.verify | Present | Protected certificate and review history | Present | Added standalone queue and CV-detail controls |
+| Transfer letter (Learner → Owner / granted Manager) | Present | Present | Present; transfers.approve | Present; transfers.reject | Present | Approved PDF | Present | Added |
+| Academic report (Teacher / authorized staff → Learner) | Present | Present | Present; reports.review | Present; reports.review | Present | Approved JSON and PDF | Present | Added reviewer; teacher draft workflow already present |
+| Content permission (Teacher requester → Content owner) | Present | Present | Present | Present | Requester history | Escalation report | Present | Present |
+| Content-permission escalation (Requester → Owner / granted Manager) | Present | Present | Record management review; does not overwrite original owner decision | Not a second owner decision | Audit event + reviewed state | Report list + requester notification | Added | Added |
+| Manual payment report (Learner → Owner) | Present | Present | Verify and settle against invoice ledger | Reject without ledger mutation | Invoice/ledger records | Receipt reference | Present | Added to Owner financial tools |
+| Achievement recommendation (Teacher / learner → authorized reviewer) | Present | Present | Present; explicit approval grant | Present where API supports rejection | Recommendation records | Award/report evidence | Present | Present in Admin tools |
+| Attendance register (Teacher / authorized staff ↔ Learner) | Join / mark | Class roster + register | Not an approval workflow | Not an approval workflow | Attendance records + statistics | Attendance reports | Present | Present |
+| Manager role and grants (Owner → Manager) | Role assignment | Permission catalogue + user grants | Grant individual capabilities | Deny / revoke individual capabilities | Permission-change history | Audit log | Present | Added |
+
+### Remaining certification gates
+
+- Re-run all CI on the current PR head after the latest lifecycle additions.
+- Pass the isolated authenticated integration suite, including the new escalation-list/review/idempotency/notification assertions.
+- Pass Android typecheck and production bundle export on the current PR head.
+- Test Owner, Admin, Senior Manager, Junior Manager, Teacher and Learner accounts against direct API denial as well as visible UI controls.
+- Verify protected document/PDF opening on an actual Android device and a real authenticated web session.
+- Verify notification delivery and persisted audit/history records after logout/login and app restart.
+
+No platform-wide 100% certification is issued until these gates pass. A route inventory or successful build alone is not enough.
