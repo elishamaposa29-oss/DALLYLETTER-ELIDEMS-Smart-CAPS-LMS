@@ -1,0 +1,32 @@
+name: Live public discovery audit
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 5 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-public-discovery-audit
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Audit deployed public discovery surfaces
+        env:
+          PUBLIC_SITE_URL: https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app
+          PUBLIC_AUDIT_TIMEOUT_MS: "15000"
+        run: node scripts/audit-live-public-discovery.mjs
