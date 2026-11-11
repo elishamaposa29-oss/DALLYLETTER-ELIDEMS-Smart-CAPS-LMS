@@ -68,6 +68,7 @@ export default function FeatureCenter(){
  },[user?.id,user?.role,(user as any)?.isManager]);
  const permissionForTitle:Record<string,string>={
   "Manager dashboard":"manager.dashboard.view",
+  "Exercise marking":"recordbook.view",
   "Monitor teachers":"users.view",
   "Monitor learners":"users.view",
   "Manager reports":"reports.view",
