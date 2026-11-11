@@ -62,7 +62,7 @@ router.get("/content-permissions",requireAuth,async(req,res):Promise<void>=>{
 router.get("/content-permissions/mine",requireAuth,async(req,res):Promise<void>=>{
   const actor=req.currentUser!;
   const rows=await pool.query(
-    "SELECT cp.*, owner.name AS owner_name, CASE WHEN cp.content_type='lesson' THEN lesson.title ELSE exercise.title END AS content_title, EXISTS(SELECT 1 FROM activity_log al WHERE al.type='content_permission_reported_to_manager' AND position('Manager review requested for declined permission: {"requestId":' || cp.id::text || ',' in al.description)>0) AS reported FROM content_permission_requests cp LEFT JOIN users owner ON owner.id=cp.owner_id LEFT JOIN lessons lesson ON cp.content_type='lesson' AND lesson.id=cp.content_id LEFT JOIN exercises exercise ON cp.content_type='exercise' AND exercise.id=cp.content_id WHERE cp.requester_id=$1 ORDER BY cp.created_at DESC LIMIT 100",
+    "SELECT cp.*, owner.name AS owner_name, CASE WHEN cp.content_type='lesson' THEN lesson.title ELSE exercise.title END AS content_title, EXISTS(SELECT 1 FROM activity_log al WHERE al.type='content_permission_reported_to_manager' AND position('Manager review requested for declined permission: {\"requestId\":' || cp.id::text || ',' in al.description)>0) AS reported FROM content_permission_requests cp LEFT JOIN users owner ON owner.id=cp.owner_id LEFT JOIN lessons lesson ON cp.content_type='lesson' AND lesson.id=cp.content_id LEFT JOIN exercises exercise ON cp.content_type='exercise' AND exercise.id=cp.content_id WHERE cp.requester_id=$1 ORDER BY cp.created_at DESC LIMIT 100",
     [actor.id]
   );
   res.json(rows.rows);
