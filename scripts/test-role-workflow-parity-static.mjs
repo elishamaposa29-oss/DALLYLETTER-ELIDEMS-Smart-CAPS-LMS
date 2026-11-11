@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 
 const read = path => readFileSync(new URL("../" + path, import.meta.url), "utf8");
 const cvApi = read("artifacts/api-server/src/routes/teacherCvWorkspace.ts");
+const usersApi = read("artifacts/api-server/src/routes/users.ts");
 const contentPermissionApi = read("artifacts/api-server/src/routes/contentPermissions.ts");
 const mobileReview = read("artifacts/dallyletter-mobile/components/TeacherCvReviewWorkspace.tsx");
 const adminEntry = read("artifacts/dallyletter-mobile/components/AdminMore.tsx");
@@ -153,5 +154,20 @@ for (const operation of [
   'Reject report',
   'canReviewManualPayments ? request("/api/payments/manual-reports") : Promise.resolve([])',
 ]) assert.ok(ownerTools.includes(operation), "Android Owner manual payment report operation missing: " + operation);
+
+
+for (const operation of [
+  'router.get("/qualifications/pending"',
+  'router.get("/qualifications/:id/document"',
+  'router.get("/qualifications/:id/review-history"',
+  'router.patch("/qualifications/:id/verify"',
+]) assert.ok(usersApi.includes(operation), "Qualification review API lifecycle missing: " + operation);
+for (const operation of [
+  '"/api/qualifications/" + qualification.document_id + "/document"',
+  '"/api/qualifications/" + qualificationId + "/review-history"',
+  '"/api/qualifications/" + qualification.id + "/verify"',
+  'Verify qualification',
+  'Reject qualification',
+]) assert.ok(mobileReview.includes(operation), "Android teacher qualification review operation missing: " + operation);
 
 console.log("Role workflow parity static regression checks passed.");
