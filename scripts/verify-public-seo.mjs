@@ -18,8 +18,14 @@ if (appRewrites.length < 20 || (vercelConfig.rewrites || []).some((route) => rou
 const siteUrl = (process.env.PUBLIC_SITE_URL || "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app").replace(/\/+$/, "");
 const siteOrigin = new URL(siteUrl).origin;
 const verificationToken = normalizeGoogleSiteVerificationToken(process.env.GOOGLE_SITE_VERIFICATION);
-if (process.env.VERCEL_ENV === "production" && !verificationToken) {
-  throw new Error("GOOGLE_SITE_VERIFICATION is missing from the Vercel production environment. Add the HTML-tag token from the verified Search Console URL-prefix property before releasing.");
+// Enforce the HTML-tag token only for the permanent, canonical Vercel production project.
+// Other legacy/duplicate Vercel projects may still build this repository, but they do not
+// own the canonical gamma hostname and must not block its release for missing project-local env.
+const canonicalVercelProjectId = "prj_Xyxmr1MPPOnmRHzUMjGaBpiuYfwf";
+const isCanonicalProductionBuild = process.env.VERCEL_ENV === "production"
+  && process.env.VERCEL_PROJECT_ID === canonicalVercelProjectId;
+if (isCanonicalProductionBuild && !verificationToken) {
+  throw new Error("GOOGLE_SITE_VERIFICATION is missing from the canonical Dallyletter production project. Preserve the existing Search Console token in that project's Production environment.");
 }
 const expectedBuildSha = (process.env.VERCEL_GIT_COMMIT_SHA || "").trim();
 const sitemapPath = path.join(root, "sitemap.xml");
