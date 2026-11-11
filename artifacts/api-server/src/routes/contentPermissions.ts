@@ -60,6 +60,7 @@ router.patch("/content-permissions/:id",requireAuth,async(req,res):Promise<void>
   if(!result.rows[0]){res.status(404).json({error:"Permission request not found"});return;}
   const decision=result.rows[0];
   await pool.query("INSERT INTO activity_log(type,description,actor_name) VALUES($1,$2,$3)",[status==="approved"?"content_permission_approved":"content_permission_declined","Permission request #"+id+": "+decision.content_type+" #"+decision.content_id+", action "+decision.requested_action+", "+status,actor.name]);
+  await pool.query("INSERT INTO notifications(recipient_id,title,message,type,is_read,link) VALUES($1,$2,$3,$4,false,$5)",[Number(decision.requester_id),"approved"===status?"Content permission approved":"Content permission declined","Your request to "+decision.requested_action.replace(/_/g," ")+" "+decision.content_type+" #"+decision.content_id+" was "+status+".","content_permission","/operations"]);
   res.json(decision);
 });
 
