@@ -32,6 +32,7 @@ router.post("/content-permissions",requireAuth,async(req,res):Promise<void>=>{
   const managerAuthorized=canAccessManager(actor)&&Boolean(managerPermission)&&managerInScope&&await managerHasPermission(actor,managerPermission);
   if(Number(ownerId)===actor.id||isOwnerRole(actor.role)||managerAuthorized){res.status(200).json({ok:true,alreadyAuthorized:true});return;}
   if(canAccessManager(actor)&&!managerInScope){res.status(403).json({error:"This content owner is outside your management authority. You cannot request or receive delegated access to this content."});return;}
+  if(canAccessManager(actor)){res.status(403).json({error:"Content-owner approval cannot replace an Owner-granted manager permission. Ask the Owner to grant the required manager capability directly.",permission:managerPermission});return;}
   const existing=await pool.query("SELECT id,status FROM content_permission_requests WHERE requester_id=$1 AND content_type=$2 AND content_id=$3 AND requested_action=$4 AND status='pending' LIMIT 1",[actor.id,contentType,contentId,requestedAction]);
   if(existing.rows[0]){res.json({ok:true,pending:true,id:existing.rows[0].id});return;}
   const inserted=await pool.query("INSERT INTO content_permission_requests(requester_id,owner_id,content_type,content_id,requested_action) VALUES($1,$2,$3,$4,$5) RETURNING id",[actor.id,ownerId,contentType,contentId,requestedAction]);
