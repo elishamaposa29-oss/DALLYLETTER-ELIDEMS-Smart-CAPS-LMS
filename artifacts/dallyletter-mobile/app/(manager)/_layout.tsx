@@ -15,5 +15,5 @@ export default function ManagerLayout() {
   if (restrictedTeacher) return <Redirect href="/profile-hub" />;
   if (!allowed) return <Redirect href="/" />;
 
-  return <Stack screenOptions={{ headerShown: false }}><Stack.Screen name="transfer-requests" options={{ headerShown: false }} /><Stack.Screen name="teacher-cv-workspace" options={{ headerShown: false }} /><Stack.Screen name="academic-reports" options={{ headerShown: false }} /><Stack.Screen name="qualifications" options={{ headerShown: false }} /></Stack>;
+  return <Stack screenOptions={{ headerShown: false }}><Stack.Screen name="transfer-requests" options={{ headerShown: false }} /><Stack.Screen name="teacher-cv-workspace" options={{ headerShown: false }} /><Stack.Screen name="academic-reports" options={{ headerShown: false }} /><Stack.Screen name="qualifications" options={{ headerShown: false }} /><Stack.Screen name="achievement-recommendations" options={{ headerShown: false }} /></Stack>;
 }
