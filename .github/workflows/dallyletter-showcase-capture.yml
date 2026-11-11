@@ -73,7 +73,7 @@ jobs:
       - name: Install browser automation
         run: |
           npm install --no-save --package-lock=false playwright@1.58.2
-          npx playwright install --with-deps chromium
+          npx playwright install chromium
       - name: Verify deployment, then capture every role dashboard and accessible feature route
         run: node scripts/capture-dallyletter-showcase.mjs
       - name: Upload refreshed screenshot gallery and URL manifest
