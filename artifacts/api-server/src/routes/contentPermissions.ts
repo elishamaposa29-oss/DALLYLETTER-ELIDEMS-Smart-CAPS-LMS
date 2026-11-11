@@ -2,6 +2,7 @@ import { Router } from "express";
 import { pool } from "@workspace/db";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { managerHasPermission } from "../lib/manager-permission-policy";
+import { canModerateUser } from "../lib/role-access";
 
 const router=Router();
 const actions=new Set(["edit","create_exercise","delete","notify"]);
@@ -24,8 +25,12 @@ router.post("/content-permissions",requireAuth,async(req,res):Promise<void>=>{
     ? {edit:"lessons.edit",create_exercise:"users.override.teacher",delete:"lessons.delete",notify:"lessons.notify"}
     : {edit:"users.override.teacher",delete:"users.override.teacher"};
   const managerPermission=managerPermissionByAction[requestedAction];
-  const managerAuthorized=canAccessManager(actor)&&Boolean(managerPermission)&&await managerHasPermission(actor,managerPermission);
+  const ownerResult=canAccessManager(actor)&&Number(ownerId)!==actor.id?await pool.query("SELECT role,is_manager AS \"isManager\",manager_level AS \"managerLevel\" FROM users WHERE id=$1 LIMIT 1",[Number(ownerId)]):{rows:[]};
+  const contentOwner=ownerResult.rows[0];
+  const managerInScope=Boolean(contentOwner&&canModerateUser(actor,{role:contentOwner.role,isManager:contentOwner.isManager,managerLevel:contentOwner.managerLevel}));
+  const managerAuthorized=canAccessManager(actor)&&Boolean(managerPermission)&&managerInScope&&await managerHasPermission(actor,managerPermission);
   if(Number(ownerId)===actor.id||isOwnerRole(actor.role)||managerAuthorized){res.status(200).json({ok:true,alreadyAuthorized:true});return;}
+  if(canAccessManager(actor)&&!managerInScope){res.status(403).json({error:"This content owner is outside your management authority. You cannot request or receive delegated access to this content."});return;}
   const existing=await pool.query("SELECT id,status FROM content_permission_requests WHERE requester_id=$1 AND content_type=$2 AND content_id=$3 AND requested_action=$4 AND status='pending' LIMIT 1",[actor.id,contentType,contentId,requestedAction]);
   if(existing.rows[0]){res.json({ok:true,pending:true,id:existing.rows[0].id});return;}
   const inserted=await pool.query("INSERT INTO content_permission_requests(requester_id,owner_id,content_type,content_id,requested_action) VALUES($1,$2,$3,$4,$5) RETURNING id",[actor.id,ownerId,contentType,contentId,requestedAction]);
