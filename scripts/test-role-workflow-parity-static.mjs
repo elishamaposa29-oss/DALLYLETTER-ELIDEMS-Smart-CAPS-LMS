@@ -60,7 +60,7 @@ for (const operation of [
   'getApiUrl("/api/content-permissions")',
   'getApiUrl("/api/content-permissions/mine")',
   'getApiUrl(`/api/content-permissions/${id}`)',
-  'getApiUrl(`/api/content-permissions/${id}/report`)',
 ]) assert.ok(webLessons.includes(operation), "Web teacher lesson workflow missing content-permission operation: " + operation);
+assert.ok(webOperations.includes('api(`/api/content-permissions/${id}/report`'), "Web operations workspace missing content-permission escalation/report action");
 
 console.log("Role workflow parity static regression checks passed.");
