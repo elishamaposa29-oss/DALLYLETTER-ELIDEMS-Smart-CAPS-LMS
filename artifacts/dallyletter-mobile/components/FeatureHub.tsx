@@ -1105,7 +1105,7 @@ export default function FeatureHub() {
   };
 
   const loadExerciseSubmission = async (submission: Row) => {
-    if (!isTeacher || !selected) return;
+    if (!canViewExercises || !selected) return;
     setSelectedSubmission(submission); setSubmissionDetail(null); setExerciseMarks({}); setExerciseNotes({}); setExerciseMarkingData({}); setOverallComment("");
     try {
       const data = await request(`/api/exercises/${selected.id}/submissions/${submission.id}`);
