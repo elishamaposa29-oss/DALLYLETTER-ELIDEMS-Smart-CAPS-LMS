@@ -151,6 +151,7 @@ for (const operation of [
   'Unverified learner payment reports',
   'Verify & settle',
   'Reject report',
+  'canReviewManualPayments ? request("/api/payments/manual-reports") : Promise.resolve([])',
 ]) assert.ok(ownerTools.includes(operation), "Android Owner manual payment report operation missing: " + operation);
 
 console.log("Role workflow parity static regression checks passed.");
