@@ -25,7 +25,8 @@ export default function OperationsWorkspace(){
  const isStudent=["student","prefect"].includes(role);
  const isTeacher=role==="teacher";
  const isStaff=["owner","platform_owner","manager","senior_manager","junior_manager"].includes(role)||Boolean((user as any)?.isManager);
- const isManagerRole=["manager","senior_manager","junior_manager"].includes(role)||Boolean((user as any)?.isManager);\n const isOwnerRoleForUi=(value:string)=>["owner","platform_owner"].includes(value);
+ const isManagerRole=["manager","senior_manager","junior_manager"].includes(role)||Boolean((user as any)?.isManager);
+ const isOwnerRoleForUi=(value:string)=>["owner","platform_owner"].includes(value);
  const [tab,setTab]=useState<Tab>(isStudent?"attendance":"attendance");
  const [busy,setBusy]=useState(false); const [error,setError]=useState("");
  const [classes,setClasses]=useState<Row[]>([]); const [selectedClass,setSelectedClass]=useState("");
