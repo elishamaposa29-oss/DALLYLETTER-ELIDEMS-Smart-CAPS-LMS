@@ -180,8 +180,8 @@ export default function FeatureHub() {
   const canManagerPermission = (key: string) => ["owner", "platform_owner"].includes(role) || managerPermissions[key] === true;
   const visibleSections = sections.filter(item => (item.id !== "achievements" || isStudent) && (item.id !== "prefect" || Boolean((user as any)?.isPrefect)) && (item.id !== "reports" || isStudent) && (item.id !== "audit" || canManagerPermission("audit.view_subordinate")));
   const isTeacher = role === "teacher";
-  const canManageExercises = isTeacher || ["owner","admin","platform_owner"].includes(role) || Boolean((user as any)?.isManager);
-  const canCreateGroups = isTeacher || Boolean((user as any)?.isPrefect) || canManagerPermission("groups.manage") || ["admin"].includes(role);
+  const canManageExercises = (isTeacher && !managerRole) || ["owner","platform_owner"].includes(role) || (managerRole && canManagerPermission("recordbook.edit"));
+  const canCreateGroups = isTeacher || Boolean((user as any)?.isPrefect) || canManagerPermission("groups.manage");
   const exerciseLocked = Boolean(exerciseResult?.submission?.status) && !newAttempt;
 
   const styles = StyleSheet.create({
