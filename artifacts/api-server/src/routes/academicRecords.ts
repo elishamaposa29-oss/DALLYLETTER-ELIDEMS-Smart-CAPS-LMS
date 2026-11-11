@@ -9,7 +9,9 @@ import { enqueueEmailNotification } from "../lib/email-notification-queue";
 import { calculateAgeOnDate, getCurrentAcademicYear } from "../lib/academic-year";
 import { canViewProfileSection } from "./profileConnections";
 
-const router = Router();\n\ntype BrandedPdfSection = { heading: string; rows: string[] };
+const router = Router();
+
+type BrandedPdfSection = { heading: string; rows: string[] };
 function buildBrandedDocumentPdf(title: string, subtitle: string, reference: string, sections: BrandedPdfSection[]): Buffer {
   const esc=(value:unknown)=>String(value??"—").normalize("NFKD").replace(/[^\x20-\xFF]/g,"?").replace(/\\/g,"\\\\").replace(/\(/g,"\\(").replace(/\)/g,"\\)");
   const pages: Array<Array<{kind:"section"|"line";text:string}>>=[[]];
