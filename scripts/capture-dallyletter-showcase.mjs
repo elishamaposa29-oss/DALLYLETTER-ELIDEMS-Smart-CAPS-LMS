@@ -49,7 +49,7 @@ async function verifyAuthenticatedRole(token, expectedRole) {
     junior_manager: ["junior_manager"],
     senior_manager: ["senior_manager"],
     admin: ["admin"],
-    owner: ["owner", "platform_owner"]
+    owner: ["owner"],\n    platform_owner: ["platform_owner"]
   };
   const validRole = (expectedRoles[expectedRole] || []).includes(actualRole) ||
     (expectedRole === "manager" && user.isManager === true);
@@ -456,7 +456,7 @@ try {
     ["senior_manager", "/manager", process.env.SHOWCASE_SENIOR_MANAGER_EMAIL, process.env.SHOWCASE_SENIOR_MANAGER_PASSWORD],
     ["manager", "/manager", process.env.SHOWCASE_MANAGER_EMAIL, process.env.SHOWCASE_MANAGER_PASSWORD],
     ["admin", "/record-book", process.env.SHOWCASE_ADMIN_EMAIL, process.env.SHOWCASE_ADMIN_PASSWORD],
-    ["owner", "/admin", process.env.SHOWCASE_OWNER_EMAIL, process.env.SHOWCASE_OWNER_PASSWORD]
+    ["owner", "/admin", process.env.SHOWCASE_OWNER_EMAIL, process.env.SHOWCASE_OWNER_PASSWORD],\n    ["platform_owner", "/record-book", process.env.SHOWCASE_PLATFORM_OWNER_EMAIL, process.env.SHOWCASE_PLATFORM_OWNER_PASSWORD]
   ];
   for (const account of roleAccounts) await captureRole(...account);
   if (googleIdentityErrors.length) {
