@@ -12,7 +12,8 @@ router.post("/content-permissions",requireAuth,async(req,res):Promise<void>=>{
   const contentType=String(req.body?.contentType||"");
   const contentId=Number(req.body?.contentId);
   const requestedAction=String(req.body?.requestedAction||"");
-  if(!contentTypes.has(contentType)||!Number.isInteger(contentId)||contentId<=0||!actions.has(requestedAction)){res.status(400).json({error:"Invalid permission request"});return;}
+  const allowedActions=contentType==="lesson"?actions:new Set(["edit","delete"]);
+  if(!contentTypes.has(contentType)||!Number.isInteger(contentId)||contentId<=0||!allowedActions.has(requestedAction)){res.status(400).json({error:"Invalid permission request"});return;}
   const table=contentType==="lesson"?"lessons":"exercises";
   const ownerColumn=contentType==="lesson"?"teacher_id":"created_by";
   const result=await pool.query(`SELECT ${ownerColumn} AS owner_id FROM ${table} WHERE id=$1 LIMIT 1`,[contentId]);
