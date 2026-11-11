@@ -1,4 +1,3 @@
-import { Feather } from "@expo/vector-icons";
 import { getApiUrl } from "@workspace/api-client-react";
 import * as FileSystem from "expo-file-system/legacy";
 import { useCallback, useEffect, useState } from "react";
