@@ -80,7 +80,7 @@ Status labels:
 |---|---|---|---|---|---|---|---|---|
 | Teacher CV application (Teacher → Owner / Admin / granted Senior Manager) | Present | Present | Present; Owner/Admin authority as defined by API | Present | Present | Protected CV and certificate files; applicant chat | Present | Present |
 | Qualification verification (Teacher → Owner / granted Senior Manager) | Present | Present | Present; Senior-only qualifications.verify | Present; Senior-only qualifications.verify | Present | Protected certificate and review history | Present | Added standalone queue and CV-detail controls |
-| Transfer letter (Learner → Owner / granted Manager) | Present | Present | Present; transfers.approve | Present; transfers.reject | Present | Approved PDF | Present | Added |
+| Transfer letter (Learner → Owner / granted Manager) | Present | Present | Present; Senior Manager / Owner with transfers.approve | Present; independently grantable transfers.reject | Present | Approved PDF | Present | Added; controls mirror separate approval/rejection grants |
 | Academic report (Teacher / authorized staff → Learner) | Present | Present | Present; reports.review | Present; reports.review | Present | Approved JSON and PDF | Present | Added reviewer; teacher draft workflow already present |
 | Content permission (Teacher requester → Content owner) | Present | Present | Present | Present | Requester history | Escalation report | Present | Present |
 | Content-permission escalation (Requester → Owner / granted Manager) | Present | Present | Record management review; does not overwrite original owner decision | Not a second owner decision | Audit event + reviewed state | Report list + requester notification | Added | Added |
