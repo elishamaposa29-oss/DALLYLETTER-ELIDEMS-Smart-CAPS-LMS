@@ -112,4 +112,40 @@ router.post("/content-permissions/:id/report",requireAuth,async(req,res):Promise
   res.status(201).json({ok:true,reported:true});
 });
 
+
+router.get("/content-permissions/reports",requireAuth,async(req,res):Promise<void>=>{
+ const actor=req.currentUser!,owner=isOwnerRole(actor.role);
+ if(!owner&&(!canAccessManager(actor)||!(await managerHasPermission(actor,"moderation.view"))||!(await managerHasPermission(actor,"notifications.view")))){res.status(403).json({error:"Owner or manager with moderation.view and notifications.view is required."});return;}
+ const reports=await pool.query("SELECT id,description,actor_name,created_at FROM activity_log WHERE type='content_permission_reported_to_manager' ORDER BY created_at DESC LIMIT 250");
+ const rows=[];
+ for(const report of reports.rows){
+  const prefix="Manager review requested for declined permission: ",raw=String(report.description||"");
+  if(!raw.startsWith(prefix))continue;
+  let details:any;try{details=JSON.parse(raw.slice(prefix.length));}catch{continue;}
+  const requesterId=Number(details.requesterId),requestId=Number(details.requestId);
+  if(!Number.isSafeInteger(requesterId)||!Number.isSafeInteger(requestId))continue;
+  const target=await pool.query("SELECT id,role,is_manager AS \"isManager\",manager_level AS \"managerLevel\",name FROM users WHERE id=$1 LIMIT 1",[requesterId]);
+  if(!target.rows[0]||(!owner&&!canModerateUser(actor,target.rows[0])))continue;
+  const reviewed=await pool.query("SELECT description,created_at FROM activity_log WHERE type='content_permission_report_reviewed' AND position($1 in description)>0 ORDER BY created_at DESC LIMIT 1",['"requestId":'+requestId+',']);
+  rows.push({...details,reportId:Number(report.id),reportedBy:report.actor_name,reportedAt:report.created_at,requesterName:target.rows[0].name,reviewed:Boolean(reviewed.rows[0]),reviewedAt:reviewed.rows[0]?.created_at||null,reviewNote:reviewed.rows[0]?.description||null});
+ }
+ res.setHeader("Cache-Control","private,no-store");res.json(rows);
+});
+router.post("/content-permissions/:id/report/review",requireAuth,async(req,res):Promise<void>=>{
+ const actor=req.currentUser!,owner=isOwnerRole(actor.role),id=Number(req.params.id),note=typeof req.body?.note==="string"?req.body.note.trim().slice(0,1000):"";
+ if(!Number.isInteger(id)||id<=0||note.length<3){res.status(400).json({error:"A valid request ID and review note of at least 3 characters are required."});return;}
+ if(!owner&&(!canAccessManager(actor)||!(await managerHasPermission(actor,"moderation.view"))||!(await managerHasPermission(actor,"notifications.view")))){res.status(403).json({error:"Owner or manager with moderation.view and notifications.view is required."});return;}
+ const prefix="Manager review requested for declined permission: ";
+ const report=await pool.query("SELECT description FROM activity_log WHERE type='content_permission_reported_to_manager' AND position($1 in description)>0 ORDER BY created_at DESC LIMIT 1",['"requestId":'+id+',']);
+ if(!report.rows[0]){res.status(404).json({error:"Escalated permission report not found."});return;}
+ let details:any;try{details=JSON.parse(String(report.rows[0].description).slice(prefix.length));}catch{res.status(409).json({error:"The escalation record is invalid."});return;}
+ const target=await pool.query("SELECT id,role,is_manager AS \"isManager\",manager_level AS \"managerLevel\" FROM users WHERE id=$1 LIMIT 1",[Number(details.requesterId)]);
+ if(!target.rows[0]||(!owner&&!canModerateUser(actor,target.rows[0]))){res.status(404).json({error:"Escalated report is outside your management scope."});return;}
+ const prior=await pool.query("SELECT id FROM activity_log WHERE type='content_permission_report_reviewed' AND position($1 in description)>0 LIMIT 1",['"requestId":'+id+',']);
+ if(prior.rows[0]){res.status(200).json({ok:true,reviewed:true,alreadyReviewed:true});return;}
+ await pool.query("INSERT INTO activity_log(type,description,actor_name) VALUES($1,$2,$3)",["content_permission_report_reviewed","Manager review completed: "+JSON.stringify({requestId:id,reviewerId:actor.id,note}),actor.name]);
+ await pool.query("INSERT INTO notifications(recipient_id,title,message,type,is_read,link) VALUES($1,$2,$3,$4,false,$5)",[Number(details.requesterId),"Permission report reviewed","Management reviewed your report for declined content permission request #"+id+". Note: "+note,"content_permission_report_reviewed","/operations"]);
+ res.status(201).json({ok:true,reviewed:true});
+});
+
 export default router;
