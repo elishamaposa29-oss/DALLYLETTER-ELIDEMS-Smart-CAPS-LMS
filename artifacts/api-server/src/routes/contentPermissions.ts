@@ -127,7 +127,8 @@ router.get("/content-permissions/reports",requireAuth,async(req,res):Promise<voi
   const target=await pool.query("SELECT id,role,is_manager AS \"isManager\",manager_level AS \"managerLevel\",name FROM users WHERE id=$1 LIMIT 1",[requesterId]);
   if(!target.rows[0]||(!owner&&!canModerateUser(actor,target.rows[0])))continue;
   const reviewed=await pool.query("SELECT description,created_at FROM activity_log WHERE type='content_permission_report_reviewed' AND position($1 in description)>0 ORDER BY created_at DESC LIMIT 1",['"requestId":'+requestId+',']);
-  rows.push({...details,reportId:Number(report.id),reportedBy:report.actor_name,reportedAt:report.created_at,requesterName:target.rows[0].name,reviewed:Boolean(reviewed.rows[0]),reviewedAt:reviewed.rows[0]?.created_at||null,reviewNote:reviewed.rows[0]?.description||null});
+  let reviewNote:string|null=null;if(reviewed.rows[0]){try{reviewNote=String(JSON.parse(String(reviewed.rows[0].description).replace("Manager review completed: ","")).note||"Review recorded");}catch{reviewNote="Review recorded";}}
+  rows.push({...details,reportId:Number(report.id),reportedBy:report.actor_name,reportedAt:report.created_at,requesterName:target.rows[0].name,reviewed:Boolean(reviewed.rows[0]),reviewedAt:reviewed.rows[0]?.created_at||null,reviewNote});
  }
  res.setHeader("Cache-Control","private,no-store");res.json(rows);
 });
