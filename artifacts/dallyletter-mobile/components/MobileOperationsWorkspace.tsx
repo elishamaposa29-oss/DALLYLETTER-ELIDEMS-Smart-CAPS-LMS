@@ -22,7 +22,7 @@ export default function MobileOperationsWorkspace(){
   const [com,gr,pref]=await Promise.all([call("/api/communities"),call("/api/study-groups"),call("/api/notification-preferences")]);
   setCommunities(Array.isArray(com)?com:[]);setGroups(Array.isArray(gr)?gr:[]);setPrefs({pushEnabled:pref.pushEnabled!==false,soundEnabled:pref.soundEnabled!==false,followNotificationsEnabled:pref.followNotificationsEnabled!==false});
   if(managerRole){const x=await call("/api/manager-permissions/me");setPermissionMap(x.permissions||{});}
- }catch(e){setError(e instanceof Error?e.message:"Could not load operations");}finally{setLoading(false);}},[auth,student,staff,role]);
+ }catch(e){setError(e instanceof Error?e.message:"Could not load operations");}finally{setLoading(false);}},[auth,student,staff,role,managerRole,user?.id]);
  useEffect(()=>{void load();},[load]);
  useEffect(()=>{if(classId)void call("/api/attendance/class/"+classId+"/register").then(d=>setAttendance(Array.isArray(d.learners)?d.learners:[])).catch(e=>setError(e.message));},[classId,auth]);
  const manageCommunities=["owner","platform_owner"].includes(role)||(managerRole&&permissionMap["groups.manage"]===true);
