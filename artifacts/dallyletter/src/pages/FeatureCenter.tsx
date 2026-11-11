@@ -55,6 +55,7 @@ export default function FeatureCenter(){
  const normalizedRole=String(user?.role||"").toLowerCase().replace(/[ -]+/g,"_");
  const isManager=Boolean((user as any)?.isManager)||["manager","senior_manager","junior_manager"].includes(normalizedRole);
  const isOwner=["owner","platform_owner"].includes(normalizedRole);
+ const pendingTeacher=normalizedRole==="teacher"&&["draft","pending_review","rejected_pending_conversion"].includes(String((user as any)?.teacherApplicationStatus||"").toLowerCase());
  const [managerPermissions,setManagerPermissions]=useState<Record<string,boolean>|null>(null);
  useEffect(()=>{
   if(!user||!isManager){setManagerPermissions(null);return;}
@@ -89,7 +90,7 @@ export default function FeatureCenter(){
   "Manager audit history":"audit.view_subordinate",
  };
  const visible=features.filter(f=>{
-  const roleAllowed=!f.roles || (user && (f.roles.includes(normalizedRole)||(isOwner&&f.roles.includes("owner"))||(isManager&&f.roles.some(role=>["manager","senior_manager","junior_manager"].includes(role)))));
+  const roleAllowed=(!f.roles || (user && (f.roles.includes(normalizedRole)||(isOwner&&f.roles.includes("owner"))||(isManager&&f.roles.some(role=>["manager","senior_manager","junior_manager"].includes(role)))))&&(!pendingTeacher||["Teacher qualifications","Qualification review history","Teacher CV PDF"].includes(f.title));
   if(!roleAllowed)return false;
   const key=permissionForTitle[f.title];
   return !isManager||!key||managerPermissions?.[key]===true;
