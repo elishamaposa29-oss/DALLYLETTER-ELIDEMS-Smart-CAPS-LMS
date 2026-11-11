@@ -81,7 +81,7 @@ for (const url of urls) {
   const jsonLdMatch = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
   if (!jsonLdMatch) throw new Error("Missing JSON-LD structured data: " + url);
   const jsonLd = JSON.parse(jsonLdMatch[1]);
-  const expectedKeywords = getPageSeoTags(route.replace(/^\\/|\\/$/g, ""));
+  const expectedKeywords = getPageSeoTags(route.split("/").filter(Boolean).join(""));
   if (JSON.stringify(jsonLd.keywords || []) !== JSON.stringify(expectedKeywords)) {
     throw new Error("Structured SEO keyword tags do not match the approved page taxonomy: " + url);
   }
