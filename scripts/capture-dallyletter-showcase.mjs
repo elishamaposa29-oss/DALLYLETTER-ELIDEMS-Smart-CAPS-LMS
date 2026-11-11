@@ -207,12 +207,12 @@ async function capturePublicPages() {
 }
 async function discoverRoleRoutes(role) {
   const source = await fs.readFile(path.resolve("artifacts/dallyletter/src/App.tsx"), "utf8");
-  const routePattern = /<Route path="([^"]+)"([\\s\\S]*?)(?=<Route path="|<Route component=|<\\/Switch>)/g;
+  const routePattern = /<Route path="([^"]+)"([\s\S]*?)(?=<Route path="|<Route component=|<\/Switch>)/g;
   const normalizedRole = role === "learner" ? "student" : role;
   const routes = new Map();
   for (const match of source.matchAll(routePattern)) {
     const routePath = match[1];
-    const allowed = match[2].match(/allowedRoles=\\{\\[([^\\]]+)\\]\\}/);
+    const allowed = match[2].match(/allowedRoles=\{\[([^\]]+)\]\}/);
     if (!allowed) continue;
     const roles = [...allowed[1].matchAll(/"([^"]+)"/g)].map((item) => item[1]);
     if (!roles.includes(normalizedRole)) continue;
@@ -221,6 +221,29 @@ async function discoverRoleRoutes(role) {
     routes.set(routePath, { path: routePath, label: routePath.split("/").filter(Boolean).at(-1) || "dashboard", source: "route-registry" });
   }
   return [...routes.values()];
+}
+
+async function redactScreenshotContent(page) {
+  await page.addStyleTag({ content: `
+    input:not([type="checkbox"]):not([type="radio"]), textarea, [contenteditable="true"],
+    [data-sensitive], [data-private], [data-testid*="email"], [data-testid*="phone"],
+    [data-testid*="balance"], [data-testid*="amount"], [class*="email"], [class*="phone"],
+    [class*="balance"], [class*="amount"], table tbody td, [role="grid"] [role="gridcell"] {
+      filter: blur(8px) !important;
+      user-select: none !important;
+    }
+  ` });
+  await page.evaluate(() => {
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    for (const node of nodes) {
+      const value = node.nodeValue || "";
+      node.nodeValue = value
+        .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, "[email redacted]")
+        .replace(/(?:\\+?\\d[\\d .()/-]{7,}\\d)/g, "[phone redacted]");
+    }
+  });
 }
 
 async function captureRole(role, route, email, password) {
@@ -255,7 +278,7 @@ async function captureRole(role, route, email, password) {
     await loginPage.getByLabel("Password", { exact: true }).fill(password);
     await loginPage.getByRole("button", { name: "Sign In", exact: true }).click();
     await loginPage.waitForFunction(() => {
-      const normalizedPath = window.location.pathname.replace(/\\/+$/, "") || "/";
+      const normalizedPath = window.location.pathname.replace(/\/+$/, "") || "/";
       return normalizedPath !== "/login" && Boolean(localStorage.getItem("dallyletter_token"));
     }, { timeout: 30000 }).catch(async () => {
       const feedback = await loginPage.locator('[role="alert"], [data-sonner-toast], [role="status"]').allTextContents().catch(() => []);
@@ -285,7 +308,7 @@ async function captureRole(role, route, email, password) {
   page.on("pageerror", (error) => runtimeErrors.push(String(error)));
   page.on("console", (message) => { if (message.type() === "error") runtimeErrors.push(message.text()); });
   page.on("response", (response) => {
-    if (response.status() === 403 && /accounts\\.google\\.com|gsi/i.test(response.url())) google403Responses.push(response.url());
+    if (response.status() === 403 && /accounts\.google\.com|gsi/i.test(response.url())) google403Responses.push(response.url());
     if (response.status() >= 500) runtimeErrors.push("HTTP " + response.status() + " " + response.url());
   });
 
@@ -300,7 +323,7 @@ async function captureRole(role, route, email, password) {
       const item = queue.shift();
       const target = new URL(item.path, baseUrl);
       if (target.origin !== baseUrl.origin || target.search || target.hash) continue;
-      const pathname = target.pathname.replace(/\\/+$/, "") || "/";
+      const pathname = target.pathname.replace(/\/+$/, "") || "/";
       if (seen.has(pathname)) continue;
       seen.add(pathname);
 
@@ -310,7 +333,7 @@ async function captureRole(role, route, email, password) {
         if (response && response.status() >= 500) throw new Error("HTTP " + response.status());
         await page.locator("body").waitFor({ state: "visible", timeout: 15000 });
         await page.waitForLoadState("networkidle", { timeout: 7000 }).catch(() => {});
-        const actualPath = new URL(page.url()).pathname.replace(/\\/+$/, "") || "/";
+        const actualPath = new URL(page.url()).pathname.replace(/\/+$/, "") || "/";
         if (actualPath !== pathname) {
           routeResults.push({ path: pathname, status: "restricted-or-redirected", actualPath });
           continue;
@@ -323,8 +346,8 @@ async function captureRole(role, route, email, password) {
         if (!mainText.trim()) throw new Error("No visible main dashboard content");
         await verifyBrandLogo(page, role + " " + pathname);
         await assertPublishablePage(page, role + " " + pathname);
-        const screenshot = safeName("dashboard-" + role + "-" + pathname.replace(/^\\//, "").replaceAll("/", "-")) + ".png";
-        await page.screenshot({ path: path.join(privateOut, screenshot), fullPage: true, animations: "disabled" });
+        const screenshot = safeName("dashboard-" + role + "-" + pathname.replace(/^\//, "").replaceAll("/", "-")) + ".png";
+        await redactScreenshotContent(page);\n        await page.screenshot({ path: path.join(privateOut, screenshot), fullPage: true, animations: "disabled" });
         screenshots.push({ path: pathname, label: item.label, screenshot });
         routeResults.push({ path: pathname, status: "captured", screenshot });
 
@@ -339,9 +362,9 @@ async function captureRole(role, route, email, password) {
           if (!link.visible || deny.test(link.label)) continue;
           const linked = new URL(link.href, baseUrl);
           if (linked.origin !== baseUrl.origin || linked.search || linked.hash) continue;
-          const linkedPath = linked.pathname.replace(/\\/+$/, "") || "/";
+          const linkedPath = linked.pathname.replace(/\/+$/, "") || "/";
           if (seen.has(linkedPath) || queue.some((candidate) => candidate.path === linkedPath)) continue;
-          if (/^\\/(login|register|forgot-password|reset-password|verify-email|suspended)(\\/|$)/.test(linkedPath)) continue;
+          if (/^\/(login|register|forgot-password|reset-password|verify-email|suspended)(\/|$)/.test(linkedPath)) continue;
           queue.push({ path: linkedPath, label: link.label || linkedPath, source: "visible-navigation" });
         }
       } catch (error) {
@@ -352,7 +375,7 @@ async function captureRole(role, route, email, password) {
     const unexpectedErrors = classifyRuntimeErrors(runtimeErrors, google403Responses, role + " dashboard suite");
     if (unexpectedErrors.length) throw new Error("Runtime/browser/API failures: " + unexpectedErrors.slice(0, 5).join(" | ").slice(0, 900));
     results.push({
-      type: "dashboard", role, url: homeUrl.href, status: "captured",
+      type: "dashboard", role, url: homeUrl.href, status: routeResults.some((item) => item.status === "capture-error") ? "partial" : "captured",
       authenticatedRole, pagesCaptured: screenshots.length, routeInventoryCount: routeInventory.length,
       screenshots, routes: routeResults, pageLimitReached: queue.length > 0
     });
@@ -411,7 +434,7 @@ function buildGallery(manifest) {
   lines.push("",
     "## Private authenticated dashboard and feature screenshots",
     "",
-    "These images are included only in the access-controlled GitHub Actions artifact under `authenticated/`. They are never copied to the public showcase-media branch.",
+    "This repository is public, so authenticated screenshots are redacted before being included in the workflow artifact under `authenticated/`. They are never copied to the public showcase-media branch. Use dedicated demo accounts populated only with synthetic data; never point this capture at real learner records.",
     "");
   for (const item of manifest.results.filter((result) => result.type === "dashboard")) {
     lines.push("### " + item.role + " — " + (item.pagesCaptured ?? 0) + " pages", "");
