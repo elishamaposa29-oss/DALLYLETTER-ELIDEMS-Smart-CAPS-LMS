@@ -62,7 +62,7 @@ router.get("/content-permissions",requireAuth,async(req,res):Promise<void>=>{
 router.get("/content-permissions/mine",requireAuth,async(req,res):Promise<void>=>{
   const actor=req.currentUser!;
   const rows=await pool.query(
-    "SELECT cp.*, owner.name AS owner_name, CASE WHEN cp.content_type='lesson' THEN lesson.title ELSE exercise.title END AS content_title, EXISTS(SELECT 1 FROM activity_log al WHERE al.type='content_permission_reported_to_manager' AND position('"requestId":' || cp.id::text in al.description)>0) AS reported FROM content_permission_requests cp LEFT JOIN users owner ON owner.id=cp.owner_id LEFT JOIN lessons lesson ON cp.content_type='lesson' AND lesson.id=cp.content_id LEFT JOIN exercises exercise ON cp.content_type='exercise' AND exercise.id=cp.content_id WHERE cp.requester_id=$1 ORDER BY cp.created_at DESC LIMIT 100",
+    "SELECT cp.*, owner.name AS owner_name, CASE WHEN cp.content_type='lesson' THEN lesson.title ELSE exercise.title END AS content_title, EXISTS(SELECT 1 FROM activity_log al WHERE al.type='content_permission_reported_to_manager' AND position('Manager review requested for declined permission: {"requestId":' || cp.id::text || ',' in al.description)>0) AS reported FROM content_permission_requests cp LEFT JOIN users owner ON owner.id=cp.owner_id LEFT JOIN lessons lesson ON cp.content_type='lesson' AND lesson.id=cp.content_id LEFT JOIN exercises exercise ON cp.content_type='exercise' AND exercise.id=cp.content_id WHERE cp.requester_id=$1 ORDER BY cp.created_at DESC LIMIT 100",
     [actor.id]
   );
   res.json(rows.rows);
@@ -89,7 +89,7 @@ router.post("/content-permissions/:id/report",requireAuth,async(req,res):Promise
   const item=found.rows[0];
   if(!item||Number(item.requester_id)!==actor.id){res.status(404).json({error:"Permission request not found"});return;}
   if(item.status!=="declined"){res.status(409).json({error:"Only declined requests can be reported"});return;}
-  const priorReport=await pool.query("SELECT id FROM activity_log WHERE type=$1 AND position($2 in description)>0 LIMIT 1",["content_permission_reported_to_manager",'"requestId":'+id]);
+  const priorReport=await pool.query("SELECT id FROM activity_log WHERE type=$1 AND position($2 in description)>0 LIMIT 1",["content_permission_reported_to_manager",'Manager review requested for declined permission: {"requestId":'+id+',']);
   if(priorReport.rows.length){res.status(200).json({ok:true,reported:true,alreadyReported:true});return;}
   const details={requestId:id,requesterId:actor.id,ownerId:Number(item.owner_id),contentType:item.content_type,contentId:Number(item.content_id),requestedAction:item.requested_action,message};
   await pool.query("INSERT INTO activity_log(type,description,actor_name) VALUES($1,$2,$3)",["content_permission_reported_to_manager","Manager review requested for declined permission: "+JSON.stringify(details),actor.name]);
