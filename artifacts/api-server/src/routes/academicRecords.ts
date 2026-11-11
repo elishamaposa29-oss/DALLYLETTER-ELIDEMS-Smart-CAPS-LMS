@@ -104,7 +104,37 @@ function summarizeAcademicMarks(assignmentRows: any[], exerciseRows: any[]) {
   };
 }
 
-function buildAcademicReportPdf(input: { id: number; reportType: string; termLabel: string; periodStart?: unknown; periodEnd?: unknown; learnerName: string; reviewedAt: unknown; reviewedBy: unknown; reviewNote?: unknown; report: unknown }
+function buildAcademicReportPdf(input: { id: number; reportType: string; termLabel: string; periodStart?: unknown; periodEnd?: unknown; learnerName: string; reviewedAt: unknown; reviewedBy: unknown; reviewNote?: unknown; report: unknown }): Buffer {
+ const report=input.report&&typeof input.report==="object"?input.report as Record<string,any>:{};
+ const facts=report.factualRecords&&typeof report.factualRecords==="object"?report.factualRecords:{};
+ const summary=facts.markSummary?.overall||report.markSummary?.overall||{};
+ const assignments=Array.isArray(facts.assignmentMarks)?facts.assignmentMarks:[];
+ const exercises=Array.isArray(facts.exerciseMarks)?facts.exerciseMarks:[];
+ const fmt=(v:unknown)=>v===null||v===undefined||v===""?"Not recorded":String(v);
+ const date=(v:unknown)=>{if(!v)return "Not recorded";const d=new Date(String(v));return Number.isNaN(d.getTime())?String(v):d.toISOString().slice(0,10);};
+ const sections:BrandedPdfSection[]=[
+  {heading:"Learner details",rows:["Learner: "+input.learnerName,"Grade / Form: "+fmt(report.learnerGrade)+" · Admission number: "+fmt(report.admissionNumber),"Date of birth: "+fmt(report.dateOfBirth)+" · Age at period end: "+fmt(report.ageOnPeriodEnd),"Academic year: "+fmt(report.academicYear)+" · Report type: "+input.reportType.replace(/_/g," "),"Term: "+input.termLabel,"Period: "+date(input.periodStart)+" to "+date(input.periodEnd),"Document reference: DL-AR-"+input.id+" · Approved: "+date(input.reviewedAt)]}
+ ];
+ if(input.reportType==="attendance_register"){
+  const rows=Array.isArray(report.records)?report.records:[];
+  sections.push({heading:"Attendance summary",rows:rows.length?["Class ID | Sessions | Present | Absent | Late",...rows.map((r:any)=>[r.classId,r.sessions,r.present,r.absent,r.late].map(fmt).join(" | "))]:["No attendance sessions were recorded in this period."]});
+ }else{
+  const enrollments=Array.isArray(facts.enrollments)?facts.enrollments:[];
+  const polls=Array.isArray(facts.pollSubmissions)?facts.pollSubmissions:[];
+  const awards=Array.isArray(facts.awards)?facts.awards:[];
+  sections.push(
+   {heading:"Academic performance",rows:["Marked activities: "+fmt(summary.markedCount),"Earned marks: "+fmt(summary.earnedMarks)+" / "+fmt(summary.possibleMarks),"Overall percentage: "+(summary.percentage==null?"Not available":summary.percentage+"%")]},
+   {heading:"Subjects and class progress",rows:enrollments.length?enrollments.map((e:any)=>[e.subject||"Subject not recorded",e.class_title||"Class not recorded",e.grade?"Grade "+e.grade:"",e.progress_percent==null?"Progress not recorded":e.progress_percent+"%",e.status||""].filter(Boolean).join(" · ")):["No subject or class enrollment was recorded."]},
+   {heading:"Assignment marks",rows:assignments.length?assignments.map((r:any)=>[r.subject||r.title||"Assignment",r.marks==null?"Not marked":r.marks+" / "+(r.total_marks??"?"),r.status||"Recorded"].join(" · ")):["No assignment marks were recorded."]},
+   {heading:"Exercise marks",rows:exercises.length?exercises.map((r:any)=>[r.title||"Exercise",r.total_score==null?"Not marked":r.total_score+" / "+(r.total_marks??"?"),r.status||"Recorded"].join(" · ")):["No marked report-enabled exercises were recorded."]},
+   {heading:"Learning polls and quizzes",rows:polls.length?polls.map((p:any)=>[p.title||"Learning poll",p.subject||"Subject not recorded",p.score==null||p.total_questions==null?"Score unavailable":p.score+" / "+p.total_questions,date(p.completed_at)].join(" · ")):["No completed learning polls were recorded."]},
+   {heading:"Attendance",rows:["Sessions: "+fmt(facts.attendanceSummary?.sessions??facts.attendanceCount),"Present: "+fmt(facts.attendanceSummary?.present),"Absent: "+fmt(facts.attendanceSummary?.absent),"Late: "+fmt(facts.attendanceSummary?.late)]},
+   {heading:"Achievements",rows:awards.length?awards.map((a:any)=>a.name||"Achievement"):["No achievements recorded in this period."]}
+  );
+ }
+ sections.push({heading:"Comments and decisions",rows:["Academic commentary: "+fmt(report.commentary),"Teacher comment: "+fmt(report.teacherComment),"Conduct / behaviour: "+fmt(report.conduct),"Term result / promotion: "+fmt(report.result),"Reviewer / headmaster comment: "+fmt(input.reviewNote),"Teacher signature: Not digitally recorded","Headmaster signature / school stamp: Not recorded","Record integrity: only saved records are included; unmarked work is not counted as zero."]});
+ return buildBrandedDocumentPdf("OFFICIAL ACADEMIC REPORT",input.termLabel,"DL-AR-"+input.id,sections);
+}
 // Academic documents are built only from authoritative records. Transfer letters and
 // AI-assisted reports remain unavailable to learners until an authorized manager approves.
 router.post("/academic-records/transfer-requests", requireAuth, async (req, res): Promise<void> => {
