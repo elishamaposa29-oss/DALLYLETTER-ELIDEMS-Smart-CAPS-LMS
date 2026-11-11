@@ -38,10 +38,11 @@ router.get("/class/:classId/register", requireAuth, requireManagerPermissionIfMa
     if(!teacher||!canModerateUser(actor,teacher)){res.status(404).json({error:"Class not found"});return;}
   }
   const result=await pool.query(
-    "SELECT DISTINCT ON (u.id) u.id AS \"studentId\",u.name AS \"studentName\",a.id,a.status,a.joined_at AS \"joinedAt\",a.is_late AS \"isLate\" FROM enrollments e JOIN users u ON u.id=e.learner_id LEFT JOIN attendance a ON a.class_id=e.class_id AND a.student_id=e.learner_id WHERE e.class_id=$1 AND lower(u.role) IN ('student','learner') AND u.is_blocked=false ORDER BY u.id,a.joined_at DESC NULLS LAST",
+    "SELECT DISTINCT ON (u.id) u.id AS \"studentId\",u.name AS \"studentName\",a.id,a.status,a.joined_at AS \"joinedAt\",a.is_late AS \"isLate\" FROM enrollments e JOIN users u ON u.id=e.learner_id LEFT JOIN attendance a ON a.class_id=e.class_id AND a.student_id=e.learner_id WHERE e.class_id=$1 AND e.status='active' AND lower(u.role) IN ('student','learner') AND u.is_blocked=false ORDER BY u.id,a.joined_at DESC NULLS LAST",
     [classId]
   );
-  const visible=await Promise.all(result.rows.map(async(row:any)=>await canViewProfileSection(actor,Number(row.studentId),"attendance")?row:null));
+  const isAssignedTeacher=Number(classRow.teacherId)===actor.id;
+  const visible=await Promise.all(result.rows.map(async(row:any)=>(isAssignedTeacher||isOwnerRole(actor.role)||await canViewProfileSection(actor,Number(row.studentId),"attendance"))?row:null));
   res.json({classId,classTitle:classRow.title,learners:visible.filter(Boolean)});
 });
 
@@ -61,7 +62,7 @@ router.post("/class/:classId/mark", requireAuth, requireManagerPermissionIfManag
   if(!isAuthorized){res.status(403).json({error:"You are not authorized to manage this class register"});return;}
   const enrolled=await pool.query("SELECT 1 FROM enrollments WHERE class_id=$1 AND learner_id=$2 LIMIT 1",[classId,studentId]);
   if(!enrolled.rows.length){res.status(404).json({error:"This learner is not enrolled in the selected class"});return;}
-  if(!(await canViewProfileSection(actor,studentId,"attendance"))){res.status(403).json({error:"Attendance visibility is restricted by this learner's privacy settings"});return;}
+  if(!isAssignedTeacher&&!isOwnerRole(actor.role)&&!(await canViewProfileSection(actor,studentId,"attendance"))){res.status(403).json({error:"Attendance visibility is restricted by this learner's privacy settings"});return;}
   const [existing]=await db.select({id:attendanceTable.id}).from(attendanceTable).where(and(eq(attendanceTable.classId,classId),eq(attendanceTable.studentId,studentId))).orderBy(desc(attendanceTable.joinedAt)).limit(1);
   const [row]=existing
     ? await db.update(attendanceTable).set({status}).where(eq(attendanceTable.id,existing.id)).returning()
