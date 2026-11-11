@@ -25,7 +25,7 @@ export default function OperationsWorkspace(){
  const isStudent=["student","prefect"].includes(role);
  const isTeacher=role==="teacher";
  const isStaff=["owner","platform_owner","manager","senior_manager","junior_manager"].includes(role)||Boolean((user as any)?.isManager);
- const isManagerRole=["manager","senior_manager","junior_manager"].includes(role)||Boolean((user as any)?.isManager);
+ const isManagerRole=["manager","senior_manager","junior_manager"].includes(role)||Boolean((user as any)?.isManager);\n const isOwnerRoleForUi=(value:string)=>["owner","platform_owner"].includes(value);
  const [tab,setTab]=useState<Tab>(isStudent?"attendance":"attendance");
  const [busy,setBusy]=useState(false); const [error,setError]=useState("");
  const [classes,setClasses]=useState<Row[]>([]); const [selectedClass,setSelectedClass]=useState("");
@@ -40,7 +40,7 @@ export default function OperationsWorkspace(){
  const canManageCommunities=isStaff&&(["owner","platform_owner"].includes(role)||(isManagerRole&&managerPermissions["groups.manage"]===true));
  const canEditAttendance=isTeacher||["owner","platform_owner"].includes(role)||(isManagerRole&&managerPermissions["attendance.edit"]===true);
  const selected=useMemo(()=>classes.find(c=>String(c.id)===selectedClass),[classes,selectedClass]);
- const loadClasses=useCallback(async()=>{if(!isTeacher&&!isStaff&&!isStudent)return;const rows=await api<Row[]>(isStudent?"/api/classes":"/api/attendance/classes");setClasses((Array.isArray(rows)?rows:[]).filter(row=>!isTeacher||Number(row.teacherId)===Number(user?.id)));},[isTeacher,isStaff,isStudent,user?.id]);
+ const loadClasses=useCallback(async()=>{if(!isTeacher&&!isStaff&&!isStudent)return;if(isManagerRole&&!isOwnerRoleForUi(role)&&managerPermissions["attendance.view"]!==true)return;const rows=await api<Row[]>(isStudent?"/api/classes":"/api/attendance/classes");setClasses((Array.isArray(rows)?rows:[]).filter(row=>!isTeacher||Number(row.teacherId)===Number(user?.id)));},[isTeacher,isStaff,isStudent,isManagerRole,managerPermissions,role,user?.id]);
  const loadAttendance=useCallback(async()=>{if(isStudent){const [rows,enrollments]=await Promise.all([api<Row[]>("/api/attendance/my"),api<Row[]>("/api/users/me/enrollments")]);setMyAttendance(Array.isArray(rows)?rows:[]);setMyEnrollments(Array.isArray(enrollments)?enrollments:[]);return;}if(selectedClass){const payload=await api<Row>(`/api/attendance/class/${selectedClass}/register`);setAttendance(Array.isArray(payload.learners)?payload.learners:[]);}},[isStudent,selectedClass]);
  const loadPermissions=useCallback(async()=>{const [a,b]=await Promise.all([api<Row[]>("/api/content-permissions"),api<Row[]>("/api/content-permissions/mine")]);setIncoming(Array.isArray(a)?a:[]);setMine(Array.isArray(b)?b:[]);},[]);
  const loadCommunities=useCallback(async()=>{const [a,b]=await Promise.all([api<Row[]>("/api/communities"),api<Row[]>("/api/study-groups")]);setCommunities(Array.isArray(a)?a:[]);setGroups(Array.isArray(b)?b:[]);},[]);
