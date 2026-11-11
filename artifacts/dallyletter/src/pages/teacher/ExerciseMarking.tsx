@@ -3,6 +3,7 @@ import { Sparkles, AlertTriangle, CheckCircle2, Clock3, RotateCcw, XCircle } fro
 import { useRoute } from "wouter";
 import { getApiUrl } from "@workspace/api-client-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -311,6 +312,7 @@ function SubmissionStatus({ status }: { status: string }) {
 }
 
 export default function ExerciseMarking() {
+  const {user}=useAuth();
   const [, params] = useRoute("/teacher/exercises/:id/mark");
   const id = params?.id;
   const [exercise, setExercise] = useState<Exercise | null>(null);
@@ -328,10 +330,13 @@ export default function ExerciseMarking() {
   const [aiMessage, setAiMessage] = useState("");
   const [aiState, setAiState] = useState<"idle"|"checking"|"partially_marked"|"awaiting_teacher"|"returned">("idle");
   const [loading, setLoading] = useState(false);
+  const [canEdit,setCanEdit]=useState(true);
   const [learnerPreviewOpen, setLearnerPreviewOpen] = useState(false);
 
   const token = localStorage.getItem("dallyletter_token");
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  const role=String(user?.role||"").toLowerCase();
+  const managerAccount=["manager","senior_manager","junior_manager"].includes(role)||Boolean((user as any)?.isManager);
 
   const selectedSubmission = useMemo(
     () => subs.find((s) => s.id === selected) ?? null,
@@ -339,13 +344,30 @@ export default function ExerciseMarking() {
   );
 
   useEffect(() => {
+    if(!managerAccount){setCanEdit(true);return;}
+    let cancelled=false;
+    fetch(getApiUrl("/api/manager-permissions/me"),{headers,cache:"no-store"}).then(async response=>{
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(data.error||"Manager permissions unavailable");
+      if(!cancelled)setCanEdit(data.permissions?.["recordbook.edit"]===true);
+    }).catch(()=>{if(!cancelled)setCanEdit(false);});
+    return ()=>{cancelled=true;};
+  },[user?.id,managerAccount,token]);
+
+  useEffect(() => {
     if (!id) return;
     let cancelled = false;
     setLoading(true);
     Promise.all([
-      fetch(getApiUrl(`/api/exercises/${id}`), { headers }).then((r) => r.json()),
-      fetch(getApiUrl(`/api/exercises/${id}/submissions`), { headers }).then((r) => r.json()),
+      fetch(getApiUrl(`/api/exercises/${id}`), { headers,cache:"no-store" }),
+      fetch(getApiUrl(`/api/exercises/${id}/submissions`), { headers,cache:"no-store" }),
     ])
+      .then(async ([exerciseResponse,submissionResponse])=>{
+        const [exerciseData,submissionData]=await Promise.all([exerciseResponse.json().catch(()=>({})),submissionResponse.json().catch(()=>({}))]);
+        if(!exerciseResponse.ok)throw new Error(exerciseData.error||"Exercise access denied");
+        if(!submissionResponse.ok)throw new Error(submissionData.error||"Submission access denied");
+        return [exerciseData,submissionData];
+      })
       .then(([exerciseData, submissionData]) => {
         if (cancelled) return;
         if (exerciseData?.exercise) setExercise(exerciseData.exercise);
@@ -383,7 +405,7 @@ export default function ExerciseMarking() {
   };
 
   const runAIMarking = async () => {
-    if (!id || selected === null) return;
+    if (!canEdit || !id || selected === null) return;
     setAiBusy(true);
     setAiState("checking");
     setAiMessage("Checking learner work with ELIDEMS AI…");
@@ -415,7 +437,7 @@ export default function ExerciseMarking() {
   };
 
   const save = async () => {
-    if (!id || selected === null) return;
+    if (!canEdit || !id || selected === null) return;
     setMessage("");
     const r = await fetch(getApiUrl(`/api/exercises/${id}/submissions/${selected}/mark`), {
       method: "POST",
@@ -454,6 +476,7 @@ export default function ExerciseMarking() {
         <Card>
           <CardHeader>
             <CardTitle>{exercise?.title ?? "Exercise submissions"}</CardTitle>
+            {!canEdit&&<p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">Read-only access. Your Owner-granted recordbook.edit permission is required to mark, annotate, use AI marking or return results.</p>}
             <p className="text-sm text-muted-foreground">
               Review learner work, use AI only as an assistant, then explicitly return the final result.
             </p>
@@ -506,7 +529,7 @@ export default function ExerciseMarking() {
               {answers.map((a, i) => {
                 const q = selectedQuestion(a);
                 return (
-                  <div key={a.id} className="relative space-y-3 rounded-xl border p-4">{selectedSubmission.status === "marked" ? <Badge className="absolute right-3 top-3 gap-1 bg-emerald-600 text-white"><CheckCircle2 className="h-3.5 w-3.5" />Mark submitted</Badge> : <FloatingMark value={marks[a.id] ?? "0"} max={undefined} onChange={value=>setMarks(m=>({...m,[a.id]:value}))}/>}
+                  <div key={a.id} className="relative space-y-3 rounded-xl border p-4">{selectedSubmission.status === "marked" ? <Badge className="absolute right-3 top-3 gap-1 bg-emerald-600 text-white"><CheckCircle2 className="h-3.5 w-3.5" />Mark submitted</Badge> : {canEdit?<FloatingMark value={marks[a.id] ?? "0"} max={undefined} onChange={value=>setMarks(m=>({...m,[a.id]:value}))}/>:null}}
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
                         <div className="font-medium">Question {q?.position != null ? q.position + 1 : i + 1}</div>
@@ -517,13 +540,14 @@ export default function ExerciseMarking() {
 
                     <div className="rounded-lg bg-muted p-3 text-sm">
                       <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Learner answer · teacher annotations are saved with the returned result</div>
-                      {a.drawData ? <div data-marking-surface className="relative overflow-hidden rounded-lg border bg-white"><DrawAnswer data={a.drawData} /><MediaMarkOverlay data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/><div className="pointer-events-none absolute inset-0"><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div></div> : a.mediaReference ? <div data-marking-surface className="relative overflow-hidden rounded-lg border bg-background"><AuthenticatedMedia url={a.mediaReference} type={mediaTypeFor(a.mediaReference)} title={`Question ${i+1} learner media`} /><MediaMarkOverlay data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/><div className="pointer-events-none absolute inset-0"><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div></div> : q?.type==="poll" && a.selectedValue ? <div className={`rounded-lg border p-3 font-semibold ${optionsFor(q.id).find(o=>o.value===a.selectedValue)?.isCorrect ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-red-300 bg-red-50 text-red-800"}`}>Selected: {optionsFor(q.id).find(o=>o.value===a.selectedValue)?.label ?? a.selectedValue} {optionsFor(q.id).find(o=>o.value===a.selectedValue)?.isCorrect ? "✓ Correct" : "✕ Wrong"}</div> : (a.textAnswer || "No answer")}
+                      {a.drawData ? <div data-marking-surface className="relative overflow-hidden rounded-lg border bg-white"><DrawAnswer data={a.drawData} />{canEdit?<><MediaMarkOverlay data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/><div className="pointer-events-none absolute inset-0"><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div></>:null}</div> : a.mediaReference ? <div data-marking-surface className="relative overflow-hidden rounded-lg border bg-background"><AuthenticatedMedia url={a.mediaReference} type={mediaTypeFor(a.mediaReference)} title={`Question ${i+1} learner media`} /><MediaMarkOverlay data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/><div className="pointer-events-none absolute inset-0"><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div></div> : q?.type==="poll" && a.selectedValue ? <div className={`rounded-lg border p-3 font-semibold ${optionsFor(q.id).find(o=>o.value===a.selectedValue)?.isCorrect ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-red-300 bg-red-50 text-red-800"}`}>Selected: {optionsFor(q.id).find(o=>o.value===a.selectedValue)?.label ?? a.selectedValue} {optionsFor(q.id).find(o=>o.value===a.selectedValue)?.isCorrect ? "✓ Correct" : "✕ Wrong"}</div> : (a.textAnswer || "No answer")}
                     </div>
 
                     <div className="grid items-start gap-3 pt-1 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]">
                       <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1"><Button type="button" size="sm" variant="outline" className="text-emerald-600 border-emerald-300 hover:bg-emerald-50" onClick={()=>setMarks((m)=>({...m,[a.id]:q?.marksAllocated??"0"}))} aria-label={`Mark question ${i+1} correct`}><CheckCircle2 className="h-4 w-4" /></Button><Button type="button" size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50" onClick={()=>setMarks((m)=>({...m,[a.id]:"0"}))} aria-label={`Mark question ${i+1} incorrect`}><XCircle className="h-4 w-4" /></Button><Input
+                        <div className="flex items-center gap-1"><Button type="button" size="sm" variant="outline" disabled={!canEdit} className="text-emerald-600 border-emerald-300 hover:bg-emerald-50" onClick={()=>setMarks((m)=>({...m,[a.id]:q?.marksAllocated??"0"}))} aria-label={`Mark question ${i+1} correct`}><CheckCircle2 className="h-4 w-4" /></Button><Button type="button" size="sm" variant="outline" disabled={!canEdit} className="text-red-600 border-red-300 hover:bg-red-50" onClick={()=>setMarks((m)=>({...m,[a.id]:"0"}))} aria-label={`Mark question ${i+1} incorrect`}><XCircle className="h-4 w-4" /></Button><Input
                           type="number"
+                          disabled={!canEdit}
                           min="0"
                           max={undefined}
                           step="0.01"
@@ -535,6 +559,7 @@ export default function ExerciseMarking() {
                         <span className="text-sm text-muted-foreground">/ {q?.marksAllocated ?? "—"} • any numeric mark; server validates the allocation</span>
                       </div>
                       <Textarea
+                        disabled={!canEdit}
                         className="min-h-24 w-full"
                         value={notes[a.id] ?? ""}
                         onChange={(e) => setNotes((n) => ({ ...n, [a.id]: e.target.value }))}
@@ -550,7 +575,7 @@ export default function ExerciseMarking() {
                   <div><p className="text-xs font-semibold uppercase tracking-widest text-amber-700">Final result</p><p className="mt-1 text-3xl font-black text-slate-900">{answers.reduce((sum,a)=>sum+Number(marks[a.id]??0),0).toFixed(2)} <span className="text-base font-semibold text-slate-500">/ {exercise?.totalMarks ?? "—"}</span></p></div>
                   <Badge className="bg-amber-500 text-slate-950">{exercise?.totalMarks ? ((answers.reduce((sum,a)=>sum+Number(marks[a.id]??0),0)/Number(exercise.totalMarks))*100).toFixed(1)+"%" : "—"}</Badge>
                 </div>
-                <Textarea className="mt-4 min-h-28 w-full bg-white" value={overallComment} onChange={e=>setOverallComment(e.target.value)} placeholder="Final teacher comment for the whole exercise — celebrate strengths, explain the main improvement point, and encourage the learner." />
+                <Textarea disabled={!canEdit} className="mt-4 min-h-28 w-full bg-white" value={overallComment} onChange={e=>setOverallComment(e.target.value)} placeholder="Final teacher comment for the whole exercise — celebrate strengths, explain the main improvement point, and encourage the learner." />
               </div>
 
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
@@ -563,7 +588,7 @@ export default function ExerciseMarking() {
                       AI can propose marks and feedback, including partial marking. Teacher review and confirmation are always required before return.
                     </p>
                   </div>
-                  <Button onClick={runAIMarking} disabled={aiBusy || !selected || selectedSubmission.status === "marked"} variant="outline">
+                  <Button onClick={runAIMarking} disabled={!canEdit || aiBusy || !selected || selectedSubmission.status === "marked"} variant="outline">
                     <Sparkles className="mr-2 h-4 w-4" />
                     {aiBusy ? "Checking…" : "Ask ELIDEMS AI to mark"}
                   </Button>
@@ -582,7 +607,7 @@ export default function ExerciseMarking() {
               </div>
 
               <div className="flex flex-wrap items-center gap-3 border-t pt-4"><Button type="button" variant="outline" onClick={()=>setLearnerPreviewOpen(true)}>Preview as learner</Button>
-                <Button onClick={save} disabled={!answers.length || selectedSubmission.status === "marked"}>
+                <Button onClick={save} disabled={!canEdit || !answers.length || selectedSubmission.status === "marked"}>
                   <CheckCircle2 className="mr-2 h-4 w-4" />
                   Save marks & return result
                 </Button>
