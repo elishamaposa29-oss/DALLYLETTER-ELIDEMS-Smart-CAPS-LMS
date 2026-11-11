@@ -223,7 +223,20 @@ export default function TeacherCvReviewWorkspace() {
           <Feather name="file-text" size={18} color={colors.primary} /><View style={{ flex: 1 }}><Text style={body}>{doc.original_filename || doc.file_name || ("Document #" + doc.id)}</Text><Text style={muted}>{doc.document_type || doc.mime_type || "Document"}</Text></View><Text style={{ color: colors.primary, fontWeight: "800" }}>Open</Text>
         </TouchableOpacity>)}
         <Text style={{ ...heading, marginTop: 12 }}>Qualifications & verification</Text>
-        {(detail.qualifications || []).map((q: Row) => <View key={String(q.id)} style={{ paddingVertical: 8, borderTopWidth: 1, borderColor: colors.border }}><Text style={body}>{q.title || "Qualification"}</Text><Text style={muted}>{q.institution || "Institution not supplied"} · {q.verification_status || "pending"} · {q.document_id ? "Certificate attached" : "Certificate missing"}</Text></View>)}
+        {(detail.qualifications || []).map((q: Row) => <View key={String(q.id)} style={{ paddingVertical: 9, borderTopWidth: 1, borderColor: colors.border }}>
+          <Text style={body}>{q.title || "Qualification"}</Text>
+          <Text style={muted}>{q.institution || "Institution not supplied"} · {q.year || "Year not supplied"} · {q.verification_status || "pending"} · {q.document_id ? (q.document_file_name || "Certificate attached") : "Certificate missing"}</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 7, marginTop: 7 }}>
+            {q.document_id && canViewQualificationDocuments ? <TouchableOpacity onPress={() => void openQualificationDocument(q)} style={[button, { paddingVertical: 7 }]}><Text style={buttonText}>Open certificate</Text></TouchableOpacity> : null}
+            {canViewQualificationDocuments ? <TouchableOpacity onPress={() => void loadQualificationHistory(Number(q.id))} style={[button, { paddingVertical: 7, backgroundColor: colors.secondary }]}><Text style={{ ...buttonText, color: colors.foreground }}>Review history</Text></TouchableOpacity> : null}
+          </View>
+          {(qualificationHistory[Number(q.id)] || []).map((entry: Row) => <View key={String(entry.id)} style={{ marginTop: 6, padding: 8, backgroundColor: colors.background, borderRadius: 7 }}><Text style={muted}>{entry.reviewer_name || "Reviewer"} · {entry.previous_status} → {entry.new_status} · {entry.created_at ? new Date(entry.created_at).toLocaleString() : ""}</Text>{entry.review_note ? <Text style={body}>{entry.review_note}</Text> : null}</View>)}
+          {q.verification_status === "pending" && canVerifyQualifications ? <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+            <TouchableOpacity disabled={busy} onPress={() => void verifyQualification(q, "verified")} style={[button, { flex: 1, backgroundColor: "#15803d" }]}><Text style={buttonText}>Verify qualification</Text></TouchableOpacity>
+            <TouchableOpacity disabled={busy} onPress={() => void verifyQualification(q, "rejected")} style={[button, { flex: 1, backgroundColor: "#b91c1c" }]}><Text style={buttonText}>Reject qualification</Text></TouchableOpacity>
+          </View> : null}
+          {!canVerifyQualifications ? <Text style={muted}>Qualification verification requires the Owner or an individually authorized Senior Manager.</Text> : null}
+        </View>)}
         <Text style={{ ...heading, marginTop: 12 }}>Readiness survey</Text>
         <Text style={muted}>Submitted: {cv.surveySubmittedAt ? String(cv.surveySubmittedAt) : "Not submitted"} · Review: {cv.surveyReviewStatus || "pending"}</Text>
         {Object.entries(survey).map(([key, value]) => <Text key={key} style={body}>{key}: {Array.isArray(value) ? value.join(", ") : String(value ?? "—")}</Text>)}
