@@ -15,6 +15,7 @@ export default function TeacherCvReviewWorkspace() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<any>(null);
   const [history, setHistory] = useState<Row[]>([]);
+  const [qualificationHistory, setQualificationHistory] = useState<Record<number, Row[]>>({});
   const [chat, setChat] = useState<Row[]>([]);
   const [draft, setDraft] = useState("");
   const [note, setNote] = useState("");
@@ -30,6 +31,8 @@ export default function TeacherCvReviewWorkspace() {
   const canReview = isOwner || isAdmin || managerGrants["teacher_cv.review"] === true;
   const canAuthorize = isOwner || isAdmin || managerGrants["teacher_cv.authorize"] === true;
   const canChat = isOwner || isAdmin || managerGrants["teacher_cv.chat"] === true;
+  const canViewQualificationDocuments = isOwner || managerGrants["qualifications.view"] === true;
+  const canVerifyQualifications = isOwner || managerGrants["qualifications.verify"] === true;
 
   const api = useCallback(async (path: string, method = "GET", body?: any) => {
     const response = await fetch(getApiUrl("/api/teacher-cv-workspace" + path), {
