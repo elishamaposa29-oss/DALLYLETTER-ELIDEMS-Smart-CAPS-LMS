@@ -455,7 +455,7 @@ try {
     ["junior_manager", "/manager", process.env.SHOWCASE_JUNIOR_MANAGER_EMAIL, process.env.SHOWCASE_JUNIOR_MANAGER_PASSWORD],
     ["senior_manager", "/manager", process.env.SHOWCASE_SENIOR_MANAGER_EMAIL, process.env.SHOWCASE_SENIOR_MANAGER_PASSWORD],
     ["manager", "/manager", process.env.SHOWCASE_MANAGER_EMAIL, process.env.SHOWCASE_MANAGER_PASSWORD],
-    ["admin", "/admin", process.env.SHOWCASE_ADMIN_EMAIL, process.env.SHOWCASE_ADMIN_PASSWORD],
+    ["admin", "/record-book", process.env.SHOWCASE_ADMIN_EMAIL, process.env.SHOWCASE_ADMIN_PASSWORD],
     ["owner", "/admin", process.env.SHOWCASE_OWNER_EMAIL, process.env.SHOWCASE_OWNER_PASSWORD]
   ];
   for (const account of roleAccounts) await captureRole(...account);
@@ -497,7 +497,7 @@ try {
     await fs.appendFile(process.env.GITHUB_STEP_SUMMARY, summary.join("\n") + "\n");
   }
   console.log(JSON.stringify(manifest, null, 2));
-  if (results.some((result) => result.error)) process.exitCode = 1;
+  if (results.some((result) => result.error || ["missing-demo-account", "login-failed", "capture-failed", "partial"].includes(result.status) || result.pageLimitReached)) process.exitCode = 1;
 } finally {
   await browser.close();
   // Keep authenticated screenshots inside the private GitHub Actions artifact; never publish them to showcase-media.
