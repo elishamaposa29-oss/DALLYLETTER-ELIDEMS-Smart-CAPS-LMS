@@ -8,6 +8,9 @@ const mobileReview = read("artifacts/dallyletter-mobile/components/TeacherCvRevi
 const adminEntry = read("artifacts/dallyletter-mobile/components/AdminMore.tsx");
 const managerEntry = read("artifacts/dallyletter-mobile/components/ManagerMore.tsx");
 const adminLayout = read("artifacts/dallyletter-mobile/app/(admin)/_layout.tsx");
+const managerLayout = read("artifacts/dallyletter-mobile/app/(manager)/_layout.tsx");
+const transferReview = read("artifacts/dallyletter-mobile/components/TransferRequestReviewWorkspace.tsx");
+const managerMore = read("artifacts/dallyletter-mobile/components/ManagerMore.tsx");
 const managerRoute = read("artifacts/dallyletter-mobile/app/(manager)/teacher-cv-workspace.tsx");
 const mobileOperations = read("artifacts/dallyletter-mobile/components/MobileOperationsWorkspace.tsx");
 const webOperations = read("artifacts/dallyletter/src/pages/OperationsWorkspace.tsx");
@@ -70,5 +73,26 @@ assert.ok(contentPermissionApi.includes('router.get("/content-permissions/report
 assert.ok(contentPermissionApi.includes('router.post("/content-permissions/:id/report/review"'), "Backend management escalation review action is missing");
 assert.ok(webOperations.includes('/api/content-permissions/reports') && webOperations.includes("Management escalation reports") && webOperations.includes("report/review"), "Web escalation report list/review UI is missing");
 assert.ok(mobileOperations.includes('/api/content-permissions/reports') && mobileOperations.includes("Management escalation reports") && mobileOperations.includes("report/review"), "Android escalation report list/review UI is missing");
+
+
+const transferApi = read("artifacts/api-server/src/routes/academicRecords.ts");
+for (const operation of [
+  'router.get("/academic-records/transfer-requests"',
+  'router.post("/academic-records/transfer-requests/:id/review"',
+  'router.get("/academic-records/transfer-requests/:id/download"',
+]) assert.ok(transferApi.includes(operation), "Transfer request backend lifecycle missing: " + operation);
+for (const operation of [
+  '"/api/academic-records/transfer-requests"',
+  '"/api/academic-records/transfer-requests/"+row.id+"/review"',
+  '"/api/academic-records/transfer-requests/"+row.id+"/download"',
+  'Approve request',
+  'Reject request',
+  'Original submitted form',
+  'Download approved PDF',
+]) assert.ok(transferReview.includes(operation), "Android transfer review operation missing: " + operation);
+assert.ok(adminLayout.includes('name="transfer-requests"'), "Owner transfer review route is not registered");
+assert.ok(managerLayout.includes('name="transfer-requests"'), "Manager transfer review route is not registered");
+assert.ok(managerMore.includes('permissions?.["transfers.view"]') && managerMore.includes("/(manager)/transfer-requests"), "Manager transfer review entry is not gated by transfers.view");
+assert.ok(adminEntry.includes("/(admin)/transfer-requests"), "Owner transfer review entry is missing");
 
 console.log("Role workflow parity static regression checks passed.");
