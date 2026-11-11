@@ -91,7 +91,14 @@ export default function FeatureCenter(){
   "Manager audit history":"audit.view_subordinate",
  };
  const visible=features.filter(f=>{
-  const roleAllowed=(!f.roles || (user && (f.roles.includes(normalizedRole)||(isOwner&&f.roles.includes("owner"))||(isManager&&f.roles.some(role=>["manager","senior_manager","junior_manager"].includes(role)))))&&(!pendingTeacher||["Teacher qualifications","Qualification review history","Teacher CV PDF"].includes(f.title));
+  const roleAllowed =
+    (!f.roles ||
+      (user &&
+        (f.roles.includes(normalizedRole) ||
+          (isOwner && f.roles.includes("owner")) ||
+          (isManager && f.roles.some(role => ["manager", "senior_manager", "junior_manager"].includes(role)))))
+    ) &&
+    (!pendingTeacher || ["Teacher qualifications", "Qualification review history", "Teacher CV PDF"].includes(f.title));
   if(!roleAllowed)return false;
   const key=permissionForTitle[f.title];
   return !isManager||!key||managerPermissions?.[key]===true;
