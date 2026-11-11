@@ -24,7 +24,7 @@ export default function MobileOperationsWorkspace(){
   if(staff||role==="teacher"){if(!managerRole||grants["attendance.view"]===true){const c=await call("/api/attendance/classes");setClasses((Array.isArray(c)?c:[]).filter((x:Row)=>role!=="teacher"||Number(x.teacherId)===Number(user?.id)));}const p=await call("/api/content-permissions");setIncoming(Array.isArray(p)?p:[]);}
   const m=await call("/api/content-permissions/mine");setRequests(Array.isArray(m)?m:[]);
   const [com,gr,pref]=await Promise.all([call("/api/communities"),call("/api/study-groups"),call("/api/notification-preferences")]);
-
+  setCommunities(Array.isArray(com)?com:[]);setGroups(Array.isArray(gr)?gr:[]);setPrefs({pushEnabled:pref.pushEnabled!==false,soundEnabled:pref.soundEnabled!==false,followNotificationsEnabled:pref.followNotificationsEnabled!==false});
  }catch(e){setError(e instanceof Error?e.message:"Could not load operations");}finally{setLoading(false);}},[auth,student,staff,role,managerRole,user?.id]);
  useEffect(()=>{void load();},[load]);
  useEffect(()=>{if(classId)void call("/api/attendance/class/"+classId+"/register").then(d=>setAttendance(Array.isArray(d.learners)?d.learners:[])).catch(e=>setError(e.message));},[classId,auth]);
