@@ -11,7 +11,7 @@ type Tool = "pen" | "paint" | "eraser" | "pointer" | "text" | "select";
 const PALETTE = ["#111827", "#dc2626", "#2563eb", "#15803d", "#9333ea", "#d97706"];
 const cloneDrawing = (drawing: Drawing): Drawing => ({ ...drawing, strokes: [...(drawing.strokes ?? [])], paintStrokes: [...(drawing.paintStrokes ?? [])], mediaStrokes:[...(drawing.mediaStrokes??[])],ticks:[...(drawing.ticks??[])], pointers: [...(drawing.pointers ?? [])], labels: [...(drawing.labels ?? [])] });
 
-export default function MobileDrawAnswer({ value, onChange, disabled = false, backgroundDrawing }: { value?: Drawing; onChange: (value: Drawing) => void; disabled?: boolean; backgroundDrawing?: Drawing }) {
+export default function MobileDrawAnswer({ value, onChange, disabled = false, backgroundDrawing, label }: { value?: Drawing; onChange: (value: Drawing) => void; disabled?: boolean; backgroundDrawing?: Drawing; label?: string }) {
   const colors = useColors();
   const valueRef = useRef<Drawing>(value ?? {});
   const onChangeRef = useRef(onChange);
@@ -167,7 +167,7 @@ export default function MobileDrawAnswer({ value, onChange, disabled = false, ba
   const chooseTool = (next: Tool) => setTool(next);
 
   return <View style={{ marginTop: 8, borderWidth: 1, borderColor: colors.border, borderRadius: 12, overflow: "hidden", backgroundColor: "#fff" }}>
-    <View style={{ padding: 10, backgroundColor: "#f8fafc" }}><Text style={{ color: "#334155", fontSize: 12, fontWeight: "600" }}>Drawing answer · Finger or stylus</Text></View>
+    <View style={{ padding: 10, backgroundColor: "#f8fafc" }}><Text style={{ color: "#334155", fontSize: 12, fontWeight: "600" }}>{label||"Drawing answer · Finger or stylus"}</Text></View>
     {!disabled && <View style={{ paddingHorizontal: 10, paddingTop: 10, gap: 10 }}>
       <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         {PALETTE.map(color => <TouchableOpacity key={color} accessibilityRole="button" accessibilityLabel={`Pen color ${color}`} onPress={() => setPenColor(color)} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: color, borderWidth: penColor === color ? 3 : 1, borderColor: penColor === color ? "#0f172a" : "#cbd5e1" }} />)}
