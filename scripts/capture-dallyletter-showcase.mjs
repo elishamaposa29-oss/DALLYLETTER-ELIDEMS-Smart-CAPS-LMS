@@ -432,9 +432,9 @@ function buildGallery(manifest) {
     if (item.walkthroughPages?.length) lines.push("  - Read-only routes shown: " + item.walkthroughPages.join(", "));
   }
   lines.push("",
-    "## Private authenticated dashboard and feature screenshots",
+    "## Private role dashboard and feature screenshots",
     "",
-    "This repository is public, so authenticated screenshots are redacted before being included in the workflow artifact under `authenticated/`. They are never copied to the public showcase-media branch. Use dedicated demo accounts populated only with synthetic data; never point this capture at real learner records.",
+    "This repository is public, so role screenshots are redacted before being included in the workflow artifact under `role-feature-screenshots/`. They are never copied to the public showcase-media branch. Use dedicated demo accounts populated only with synthetic data; never point this capture at real learner records.",
     "");
   for (const item of manifest.results.filter((result) => result.type === "dashboard")) {
     lines.push("### " + item.role + " — " + (item.pagesCaptured ?? 0) + " pages", "");
@@ -465,7 +465,7 @@ try {
       page: "google-sign-in",
       status: "blocked",
       occurrences: googleIdentityErrors.length,
-      error: "Google Identity Services rejected the configured production origin. Password-authenticated dashboard captures were allowed to continue; Google sign-in remains unverified."
+      error: "Google Identity Services rejected the configured production origin. Password-role dashboard captures were allowed to continue; Google sign-in remains unverified."
     });
   }
   results.push(await pageFor404Probe());
@@ -500,5 +500,5 @@ try {
   if (results.some((result) => result.error || ["missing-demo-account", "login-failed", "capture-failed", "partial"].includes(result.status) || result.pageLimitReached)) process.exitCode = 1;
 } finally {
   await browser.close();
-  // Keep authenticated screenshots inside the private GitHub Actions artifact; never publish them to showcase-media.
+  // Keep role screenshots inside the private GitHub Actions artifact; never publish them to showcase-media.
 }
