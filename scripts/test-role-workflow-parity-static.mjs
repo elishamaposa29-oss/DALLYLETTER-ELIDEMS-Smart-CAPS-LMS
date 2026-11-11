@@ -94,6 +94,9 @@ for (const operation of [
   'Approve request',
   'Reject request',
   'Original submitted form',
+  'Submit report draft',
+  '/api/academic-records/report-learners',
+  '/api/academic-records/reports/drafts',
   'Download approved PDF',
 ]) assert.ok(transferReview.includes(operation), "Android transfer review operation missing: " + operation);
 assert.ok(transferReview.includes('const canApprove=isOwner||(role==="senior_manager"&&permissions["transfers.approve"]===true)') && transferReview.includes('const canReject=isOwner||permissions["transfers.reject"]===true'), "Android transfer review must preserve Senior-only approval and separately grantable rejection");
