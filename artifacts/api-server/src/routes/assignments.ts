@@ -295,6 +295,7 @@ router.post("/submissions/:subId/ai-grade", requireAuth, requireManagerPermissio
   }).from(assignmentSubmissionsTable).innerJoin(assignmentsTable, eq(assignmentSubmissionsTable.assignmentId, assignmentsTable.id))
     .where(eq(assignmentSubmissionsTable.id, submissionId));
   if (!row) { res.status(404).json({ error: "Submission not found" }); return; }
+  if (row.submission.status === "graded") { res.status(409).json({ error: "This assignment has already been graded and returned. A new submission is required for another marking cycle." }); return; }
   if (canAccessManager(user) && !isOwnerRole(user.role) && !(await canManagerAccessTeacherRecord(user, row.assignment.teacherId, "recordbook.edit"))) { res.status(403).json({ error: "You do not have permission to mark this teacher's assignment." }); return; }
   if (user.role === "teacher" && row.assignment.teacherId !== user.id) { res.status(403).json({ error: "You can only mark your own assignments" }); return; }
   try {
@@ -323,10 +324,11 @@ router.put("/submissions/:subId/grade", requireAuth, requireManagerPermissionIfM
   if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Forbidden" }); return; }
   const { marks, feedback } = req.body;
   const submissionId = parseInt(String(req.params.subId));
-  const [submission] = await db.select({ teacherId: assignmentsTable.teacherId, totalMarks: assignmentsTable.totalMarks }).from(assignmentSubmissionsTable)
+  const [submission] = await db.select({ teacherId: assignmentsTable.teacherId, totalMarks: assignmentsTable.totalMarks, status: assignmentSubmissionsTable.status }).from(assignmentSubmissionsTable)
     .innerJoin(assignmentsTable, eq(assignmentSubmissionsTable.assignmentId, assignmentsTable.id))
     .where(eq(assignmentSubmissionsTable.id, submissionId));
   if (!submission) { res.status(404).json({ error: "Not found" }); return; }
+  if (submission.status === "graded") { res.status(409).json({ error: "This assignment has already been graded and returned. A new submission is required for another marking cycle." }); return; }
   if (canAccessManager(user) && !isOwnerRole(user.role) && !(await canManagerAccessTeacherRecord(user, submission.teacherId, "recordbook.edit"))) { res.status(403).json({ error: "You do not have permission to grade this teacher's assignment." }); return; }
   if (user.role === "teacher" && submission.teacherId !== user.id) { res.status(403).json({ error: "You can only grade your own assignments" }); return; }
   const numericMarks = typeof marks === "number" ? marks : Number(marks);
