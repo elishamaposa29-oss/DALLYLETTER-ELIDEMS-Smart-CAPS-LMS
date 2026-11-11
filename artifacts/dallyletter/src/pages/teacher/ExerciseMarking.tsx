@@ -332,7 +332,7 @@ export default function ExerciseMarking() {
   const [aiMessage, setAiMessage] = useState("");
   const [aiState, setAiState] = useState<"idle"|"checking"|"partially_marked"|"awaiting_teacher"|"returned">("idle");
   const [loading, setLoading] = useState(false);
-  const [canEdit,setCanEdit]=useState(!managerAccount);
+  const [canEdit,setCanEdit]=useState(false);
   const [learnerPreviewOpen, setLearnerPreviewOpen] = useState(false);
 
   const token = localStorage.getItem("dallyletter_token");
@@ -344,6 +344,7 @@ export default function ExerciseMarking() {
   );
 
   useEffect(() => {
+    if(!user){setCanEdit(false);return;}
     if(!managerAccount){setCanEdit(true);return;}
     let cancelled=false;
     fetch(getApiUrl("/api/manager-permissions/me"),{headers,cache:"no-store"}).then(async response=>{
