@@ -50,7 +50,7 @@ for (const operation of [
   'call("/api/content-permissions/mine")',
   'call("/api/content-permissions", "POST"',
   '"/api/content-permissions/" + id, "PATCH"',
-  '"/api/content-permissions/" + id + "/report"',
+  '"/api/content-permissions/"+id+"/report"',
   'My submitted requests',
   'Report decision to management',
 ]) assert.ok(mobileOperations.includes(operation), "Android operations workspace missing content-permission operation: " + operation);
