@@ -11,6 +11,7 @@ const managerEntry = read("artifacts/dallyletter-mobile/components/ManagerMore.t
 const adminLayout = read("artifacts/dallyletter-mobile/app/(admin)/_layout.tsx");
 const managerLayout = read("artifacts/dallyletter-mobile/app/(manager)/_layout.tsx");
 const transferReview = read("artifacts/dallyletter-mobile/components/TransferRequestReviewWorkspace.tsx");
+const teacherReports = read("artifacts/dallyletter-mobile/app/(teacher)/reports.tsx");
 const reportReview = read("artifacts/dallyletter-mobile/components/AcademicReportReviewWorkspace.tsx");
 const permissionMobile = read("artifacts/dallyletter-mobile/components/ManagerPermissionControlsMobile.tsx");
 const qualificationReview = read("artifacts/dallyletter-mobile/components/QualificationReviewWorkspaceMobile.tsx");
@@ -95,12 +96,18 @@ for (const operation of [
   'Approve request',
   'Reject request',
   'Original submitted form',
-  'Submit report draft',
-  '/api/academic-records/report-learners',
-  '/api/academic-records/reports/drafts',
   'Download approved PDF',
 ]) assert.ok(transferReview.includes(operation), "Android transfer review operation missing: " + operation);
 assert.ok(transferReview.includes('const canApprove=isOwner||permissions["transfers.approve"]===true') && transferReview.includes('const canReject=isOwner||permissions["transfers.reject"]===true'), "Android transfer review must preserve Senior-only approval and separately grantable rejection");
+for (const operation of [
+  'api("/api/academic-records/report-learners")',
+  'api("/api/academic-records/reports/drafts")',
+  'api("/api/academic-records/reports/drafts", {',
+  'method: "POST"',
+  "Create report draft",
+  "Saved report drafts",
+  "Download official PDF",
+]) assert.ok(teacherReports.includes(operation), "Android teacher report builder missing operation: " + operation);
 assert.ok(adminLayout.includes('name="transfer-requests"'), "Owner transfer review route is not registered");
 assert.ok(managerLayout.includes('name="transfer-requests"'), "Manager transfer review route is not registered");
 assert.ok(managerMore.includes('permissions?.["transfers.view"]') && managerMore.includes("/(manager)/transfer-requests"), "Manager transfer review entry is not gated by transfers.view");
