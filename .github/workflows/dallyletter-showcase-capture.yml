@@ -83,10 +83,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dallyletter-showcase-${{ github.run_number }}
+          name: dallyletter-full-role-feature-captures-${{ github.run_number }}
           path: showcase-captures/
           if-no-files-found: warn
-          retention-days: 90
+          retention-days: 14
 
       - name: Publish current public screenshot media to dedicated branch
         if: success() && github.event_name == 'workflow_dispatch' && inputs.approve_publication == true
