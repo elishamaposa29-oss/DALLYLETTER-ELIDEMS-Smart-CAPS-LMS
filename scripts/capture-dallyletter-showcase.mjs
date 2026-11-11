@@ -50,7 +50,11 @@ async function verifyAuthenticatedRole(token, expectedRole) {
   return actualRole;
 }
 const decodeXml = (value) => value.replaceAll("&amp;", "&").replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&quot;", '"').replaceAll("&apos;", "'");
-const expectedDeploymentSha = (process.env.EXPECTED_DEPLOYMENT_SHA || "").trim();
+const isProductionPush = process.env.GITHUB_EVENT_NAME === "push" && process.env.GITHUB_REF === "refs/heads/main";
+const expectedDeploymentSha = isProductionPush ? (process.env.EXPECTED_DEPLOYMENT_SHA || "").trim() : "";
+if (!isProductionPush && process.env.EXPECTED_DEPLOYMENT_SHA) {
+  console.log("Skipping exact-production-commit wait for " + (process.env.GITHUB_EVENT_NAME || "local") + " event; PR commits are not deployed to the permanent production hostname.");
+}
 
 
 async function assertPublishablePage(page, label) {
