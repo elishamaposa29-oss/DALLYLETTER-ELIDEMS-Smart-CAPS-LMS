@@ -178,7 +178,7 @@ export default function FeatureHub() {
   const isStudent = role === "student" || role === "prefect";
   const managerRole = ["manager", "senior_manager", "junior_manager"].includes(role) || Boolean((user as any)?.isManager);
   const canManagerPermission = (key: string) => ["owner", "platform_owner"].includes(role) || managerPermissions[key] === true;
-  const visibleSections = sections.filter(item => (item.id !== "achievements" || isStudent) && (item.id !== "prefect" || Boolean((user as any)?.isPrefect)) && (item.id !== "reports" || isStudent) && (item.id !== "audit" || canManagerPermission("audit.view_subordinate")) && (!managerRole || !["assignments","exercises"].includes(item.id) || canManagerPermission("recordbook.view")) && (!managerRole || item.id !== "polls" || canManagerPermission("polls.manage")));
+  const visibleSections = sections.filter(item => (item.id !== "achievements" || isStudent) && (item.id !== "prefect" || Boolean((user as any)?.isPrefect)) && (item.id !== "reports" || isStudent) && (item.id !== "audit" || canManagerPermission("audit.view_subordinate")) && (!["assignments","exercises","polls"].includes(item.id) || isStudent || (isTeacher && !managerRole) || ["owner","platform_owner"].includes(role) || (managerRole && (["assignments","exercises"].includes(item.id) ? canManagerPermission("recordbook.view") : canManagerPermission("polls.manage")))));
   const isTeacher = role === "teacher";
   const canManageExercises = (isTeacher && !managerRole) || ["owner","platform_owner"].includes(role) || (managerRole && canManagerPermission("recordbook.edit"));
   const canViewExercises = (isTeacher && !managerRole) || ["owner","platform_owner"].includes(role) || (managerRole && canManagerPermission("recordbook.view"));
