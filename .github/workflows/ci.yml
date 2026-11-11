@@ -41,6 +41,14 @@ jobs:
 
       # Publish the exact legacy status context required by branch protection.
       # The status reflects this job's result and is attached to the PR head SHA.
+      - name: Upload role workflow parity inventory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: role-workflow-parity-inventory
+          path: docs/role-workflow-api-client-static-inventory.md
+          if-no-files-found: warn
+
       - name: Report required verify status
         if: always()
         uses: actions/github-script@v7
