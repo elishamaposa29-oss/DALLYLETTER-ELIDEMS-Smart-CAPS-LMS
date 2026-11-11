@@ -6,7 +6,7 @@ const baseUrl = new URL(process.env.SHOWCASE_SITE_URL || "https://elishamaposa29
 const authAllowedOrigin = new URL(process.env.SHOWCASE_AUTH_ALLOWED_ORIGIN || "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/").origin;
 if (baseUrl.protocol !== "https:" || baseUrl.username || baseUrl.password) throw new Error("SHOWCASE_SITE_URL must be a public HTTPS URL without embedded credentials.");
 const out = path.resolve("showcase-captures");
-const privateOut = path.join(process.env.RUNNER_TEMP || "/tmp", "dallyletter-private-showcase");
+const privateOut = path.join(out, "authenticated");
 await fs.rm(out, { recursive: true, force: true });
 await fs.mkdir(out, { recursive: true });
 await fs.rm(privateOut, { recursive: true, force: true });
