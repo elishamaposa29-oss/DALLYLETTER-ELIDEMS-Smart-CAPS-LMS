@@ -189,12 +189,13 @@ router.get("/stats", requireAuth, requireManagerPermissionIfManager("attendance.
   const rows = await db.select({ classId: attendanceTable.classId, studentId: attendanceTable.studentId, durationMinutes: attendanceTable.durationMinutes, role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel, teacherId: classesTable.teacherId }).from(attendanceTable).innerJoin(usersTable, eq(attendanceTable.studentId, usersTable.id)).innerJoin(classesTable,eq(attendanceTable.classId,classesTable.id));
   const teacherRows=await db.select({id:usersTable.id,role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable);
   const teacherById=new Map(teacherRows.map(row=>[row.id,row]));
-  const scopedRows = isOwnerRole(user.role) ? rows : rows.filter(row => {
-    const studentAllowed=Number(row.studentId)===user.id||Number(row.teacherId)===user.id||canModerateUser(user,row);
+  const scopedRows = isOwnerRole(user.role) ? rows : (await Promise.all(rows.map(async row => {
     const teacher=teacherById.get(row.teacherId);
     const teacherAllowed=Number(row.teacherId)===user.id||Boolean(teacher&&canModerateUser(user,teacher));
-    return studentAllowed&&teacherAllowed;
-  });
+    if(!teacherAllowed)return null;
+    const studentAllowed=Number(row.teacherId)===user.id||await canViewProfileSection(user,Number(row.studentId),"attendance");
+    return studentAllowed?row:null;
+  }))).filter(Boolean);
   const totalSessions = new Set(scopedRows.map((r: any) => r.classId)).size;
   const totalAttendances = scopedRows.length;
   const uniqueStudents = new Set(scopedRows.map((r: any) => r.studentId)).size;
