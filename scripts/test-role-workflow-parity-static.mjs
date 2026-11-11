@@ -17,6 +17,7 @@ const qualificationReview = read("artifacts/dallyletter-mobile/components/Qualif
 const achievementReview = read("artifacts/dallyletter-mobile/components/AchievementRecommendationReviewWorkspaceMobile.tsx");
 const adminUsers = read("artifacts/dallyletter-mobile/app/(admin)/users.tsx");
 const ownerTools = read("artifacts/dallyletter-mobile/app/(admin)/tools.tsx");
+const adminSettings = read("artifacts/dallyletter/src/pages/admin/AdminSettings.tsx");
 const managerMore = read("artifacts/dallyletter-mobile/components/ManagerMore.tsx");
 const managerRoute = read("artifacts/dallyletter-mobile/app/(manager)/teacher-cv-workspace.tsx");
 const mobileOperations = read("artifacts/dallyletter-mobile/components/MobileOperationsWorkspace.tsx");
@@ -163,6 +164,7 @@ for (const operation of [
   'Reject report',
   'canReviewManualPayments ? request("/api/payments/manual-reports") : Promise.resolve([])',
 ]) assert.ok(ownerTools.includes(operation), "Android Owner manual payment report operation missing: " + operation);
+assert.ok(adminSettings.includes('"/api/payments/manual-reports/history"') && adminSettings.includes("Manual payment report history"), "Owner web payment report history screen is missing");
 
 
 for (const operation of [
