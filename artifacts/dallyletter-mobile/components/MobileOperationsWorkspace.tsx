@@ -18,7 +18,7 @@ export default function MobileOperationsWorkspace(){
  useEffect(()=>{if(!user){router.replace("/login");return;}if(restrictedTeacher){router.replace("/profile-hub");return;}const allowed=["student","prefect","teacher","owner","platform_owner","admin","manager","senior_manager","junior_manager"].includes(role);if(!allowed)router.replace("/");},[user?.id,restrictedTeacher,role]);
  const auth=token||"";
  const call=async(path:string,method="GET",body?:any)=>{const r=await fetch(getApiUrl(path),{method,headers:{"Authorization":"Bearer "+auth,"Content-Type":"application/json"},...(body?{body:JSON.stringify(body)}:{}),cache:"no-store"});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||"Request failed ("+r.status+")");return d;};
- const load=useCallback(async()=>{setLoading(true);setError("");try{
+ const load=useCallback(async()=>{if(!user||restrictedTeacher)return;setLoading(true);setError("");try{
   let grants:Record<string,boolean>={};if(managerRole){const x=await call("/api/manager-permissions/me");grants=x.permissions||{};setPermissionMap(grants);}
   if(student){const [a,e,available]=await Promise.all([call("/api/attendance/my"),call("/api/users/me/enrollments"),call("/api/classes")]);setMine(Array.isArray(a)?a:[]);setMyEnrollments(Array.isArray(e)?e:[]);setClasses(Array.isArray(available)?available:[]);}
   if(staff||role==="teacher"){if(!managerRole||grants["attendance.view"]===true){const c=await call("/api/attendance/classes");setClasses((Array.isArray(c)?c:[]).filter((x:Row)=>role!=="teacher"||managerRole||Number(x.teacherId)===Number(user?.id)));}const p=await call("/api/content-permissions");setIncoming(Array.isArray(p)?p:[]);}
@@ -26,7 +26,7 @@ export default function MobileOperationsWorkspace(){
   if((staff||role==="teacher")&&(!managerRole||grants["attendance.view"]===true)){const stats=await call("/api/attendance/stats");setAttendanceStats(stats);}
   const [com,gr,pref]=await Promise.all([call("/api/communities"),call("/api/study-groups"),call("/api/notification-preferences")]);
   setCommunities(Array.isArray(com)?com:[]);setGroups(Array.isArray(gr)?gr:[]);setPrefs({pushEnabled:pref.pushEnabled!==false,soundEnabled:pref.soundEnabled!==false,followNotificationsEnabled:pref.followNotificationsEnabled!==false});
- }catch(e){setError(e instanceof Error?e.message:"Could not load operations");}finally{setLoading(false);}},[auth,student,staff,role,managerRole,user?.id]);
+ }catch(e){setError(e instanceof Error?e.message:"Could not load operations");}finally{setLoading(false);}},[auth,student,staff,role,managerRole,user?.id,restrictedTeacher]);
  useEffect(()=>{void load();},[load]);
  useEffect(()=>{if(classId)void call("/api/attendance/class/"+classId+"/register").then(d=>setAttendance(Array.isArray(d.learners)?d.learners:[])).catch(e=>setError(e.message));},[classId,auth]);
  const manageCommunities=["owner","platform_owner"].includes(role)||(managerRole&&permissionMap["groups.manage"]===true);const canEditAttendance=(role==="teacher"&&!managerRole)||["owner","platform_owner"].includes(role)||(managerRole&&permissionMap["attendance.edit"]===true);
