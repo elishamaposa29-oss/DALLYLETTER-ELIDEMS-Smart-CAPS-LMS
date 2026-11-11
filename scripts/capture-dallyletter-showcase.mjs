@@ -228,7 +228,7 @@ async function redactScreenshotContent(page) {
     input:not([type="checkbox"]):not([type="radio"]), textarea, [contenteditable="true"],
     [data-sensitive], [data-private], [data-testid*="email"], [data-testid*="phone"],
     [data-testid*="balance"], [data-testid*="amount"], [class*="email"], [class*="phone"],
-    [class*="balance"], [class*="amount"], table tbody td, [role="grid"] [role="gridcell"] {
+    [class*="balance"], [class*="amount"], [class*="stat"], [class*="metric"], [class*="user-name"], [class*="profile-name"], table tbody, [role="grid"] [role="row"], [class*="card"] p, [class*="card"] strong {
       filter: blur(8px) !important;
       user-select: none !important;
     }
@@ -426,7 +426,7 @@ function buildGallery(manifest) {
     if (item.video) lines.push("[Watch short walkthrough](./" + item.video + ")", "");
     else lines.push("Capture failed: " + item.error, "");
   }
-  lines.push("## Authenticated non-owner dashboards", "");
+  lines.push("## Role dashboards and feature coverage", "");
   for (const item of manifest.results.filter((result) => result.type === "dashboard")) {
     lines.push("- **" + item.role + ":** [" + item.url + "](" + item.url + ") — " + (item.status || "failed") + (item.authenticatedRole ? " — API-confirmed role: " + item.authenticatedRole : "") + (item.error ? " — " + item.error : ""));
     if (item.walkthroughPages?.length) lines.push("  - Read-only routes shown: " + item.walkthroughPages.join(", "));
@@ -442,7 +442,7 @@ function buildGallery(manifest) {
     for (const shot of item.screenshots || []) lines.push("- **" + shot.path + "** — [Open screenshot](./authenticated/" + shot.screenshot + ")");
     lines.push("");
   }
-  lines.push("Only dedicated showcase accounts should be used. Private screenshots stay out of public media publication.", "");
+  lines.push("Only dedicated showcase accounts with synthetic test data should be used. Role screenshots are not copied to the public showcase-media branch.", "");
   return lines.join("\n");
 }
 
