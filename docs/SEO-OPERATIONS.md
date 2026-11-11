@@ -22,6 +22,12 @@ The exact supplied education keyword inventory is maintained in `scripts/educati
 
 Tags that would falsely imply accreditation, certification, free tuition, a diploma, a school service, free downloads, PDF availability, or answers/solutions for resources not verified as published remain stored in the supplied taxonomy but are not emitted as public claims. When real resources are published, populate the template placeholders with their actual subject, topic, level, exam board, year and location before creating resource-specific indexable pages. Do not create thin pages or promise that tags alone guarantee Google rankings; Google ranks useful, crawlable page content, not a raw tag dump.
 
+## Individual education search landing pages
+
+The public homepage remains uncluttered: keyword tags are not added to its hero or main navigation. The public prerenderer generates separate indexable pages for individual search intents (exam papers, specimen papers, marking schemes, topical past papers, practice tests, exam questions, revision notes, study guides, worked examples, flashcards, educational tutorials and syllabus support), plus subject-specific past-paper and revision-note pages. These pages have unique titles, descriptions, explanatory content, canonicals, WebPage structured data and internal links; the prerendered sitemap includes them and `vercel.json` routes each URL to its generated HTML.
+
+The pages clearly state that specific PDFs, memos and past-paper files are only available when published by an educator or school. Do not imply that Dallyletter currently hosts a resource merely because a search-intent page exists. Expand to more subject/topic/exam-board/year combinations only when the corresponding useful resource or original learning content is actually available. Avoid mass-generating thin doorway pages.
+
 ## Google Search Console automation
 
 1. In Google Cloud Console, create or select a project and enable the Google Search Console API.
