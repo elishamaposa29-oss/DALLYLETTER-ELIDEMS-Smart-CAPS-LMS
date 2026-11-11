@@ -9,6 +9,21 @@ import { canViewProfileSection } from "./profileConnections";
 
 const router = Router();
 
+// GET /classes — classes available to this account's attendance workspace.
+// This uses attendance.view, not classes.manage, so attendance-only managers
+// can open registers without receiving class scheduling/edit authority.
+router.get("/classes", requireAuth, requireManagerPermissionIfManager("attendance.view"), async(req,res):Promise<void>=>{
+  const actor=req.currentUser!;
+  if(!canManageAcademicContent(actor)){res.status(403).json({error:"Teacher or authorized academic staff access required"});return;}
+  const rows=await db.select().from(classesTable).orderBy(desc(classesTable.createdAt));
+  if(isOwnerRole(actor.role)){res.json(rows);return;}
+  if(String(actor.role).toLowerCase()==="teacher"){res.json(rows.filter(row=>Number(row.teacherId)===actor.id));return;}
+  const teacherIds=[...new Set(rows.map(row=>row.teacherId))];
+  const teachers=teacherIds.length?await db.select({id:usersTable.id,role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(inArray(usersTable.id,teacherIds)):[];
+  const byId=new Map(teachers.map(row=>[row.id,row]));
+  res.json(rows.filter(row=>{const teacher=byId.get(row.teacherId);return Boolean(teacher&&canModerateUser(actor,teacher));}));
+});
+
 router.get("/class/:classId", requireAuth, requireManagerPermissionIfManager("attendance.view"), async (req, res): Promise<void> => {
   const classId = Number(req.params.classId);
   const [classRow] = await db.select({ teacherId: classesTable.teacherId }).from(classesTable).where(eq(classesTable.id, classId));
