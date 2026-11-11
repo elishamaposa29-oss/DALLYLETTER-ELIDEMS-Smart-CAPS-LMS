@@ -154,11 +154,32 @@ router.post("/chat/polls/:pollId/vote", requireAuth, async(req,res):Promise<void
  res.json({ok:true});
 });
 
-router.get("/communities", requireAuth, async(_req,res)=>{
+router.get("/communities", requireAuth, async(req,res)=>{
+ const actor=req.currentUser!;
  const rows=await db.select().from(communitiesTable).orderBy(desc(communitiesTable.createdAt));
  const ids=rows.map(row=>row.id);
  const links=ids.length?await db.select({communityId:communityGroupsTable.communityId,groupId:studyGroupsTable.id,groupName:studyGroupsTable.name,subject:studyGroupsTable.subject,grade:studyGroupsTable.grade}).from(communityGroupsTable).innerJoin(studyGroupsTable,eq(communityGroupsTable.groupId,studyGroupsTable.id)).where(inArray(communityGroupsTable.communityId,ids)):[];
- res.json(rows.map(row=>({...row,groups:links.filter(link=>link.communityId===row.id)})));
+ const ownerIds=[...new Set(rows.map(row=>Number(row.ownerId)).filter(id=>id>0))];
+ const groupRows=await db.select({id:studyGroupsTable.id,creatorId:studyGroupsTable.creatorId}).from(studyGroupsTable);
+ const creatorIds=[...new Set(groupRows.map(group=>Number(group.creatorId)).filter(id=>id>0))];
+ const profileIds=[...new Set([...ownerIds,...creatorIds])];
+ const profiles=profileIds.length?await db.select({id:usersTable.id,role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(inArray(usersTable.id,profileIds)):[];
+ const profileById=new Map(profiles.map(profile=>[Number(profile.id),profile]));
+ const groupById=new Map(groupRows.map(group=>[Number(group.id),group]));
+ res.json(rows.map(row=>{
+  const owner=profileById.get(Number(row.ownerId));
+  const canManage=isOwnerRole(actor.role)||Number(row.ownerId)===actor.id||(Boolean(owner)&&canAccessManager(actor)&&canModerateUser(actor,owner!));
+  const visibleGroups=links.filter(link=>{
+   if(link.communityId!==row.id)return false;
+   const group=groupById.get(Number(link.groupId));
+   const creator=group?profileById.get(Number(group.creatorId)):undefined;
+   if(isOwnerRole(actor.role))return true;
+   if(Number(group?.creatorId)===actor.id)return true;
+   if(!creator||isOwnerRole(creator.role))return false;
+   return canAccessManager(actor)?canModerateUser(actor,creator):true;
+  });
+  return {...row,canManage,groups:visibleGroups};
+ }));
 });
 router.post("/communities", requireAuth, async(req,res):Promise<void>=>{
  const user=req.currentUser!; if(!canAccessManager(user)||!(await managerHasPermission(user,"groups.manage"))){res.status(403).json({error:"Study group management permission required."});return;}
@@ -168,9 +189,16 @@ router.post("/communities", requireAuth, async(req,res):Promise<void>=>{
 router.post("/communities/:id/groups", requireAuth, async(req,res):Promise<void>=>{
  const user=req.currentUser!; if(!canAccessManager(user)||!(await managerHasPermission(user,"groups.manage"))){res.status(403).json({error:"Study group management permission required."});return;}
  const communityId=Number(req.params.id),groupId=Number(req.body?.groupId); if(!Number.isSafeInteger(communityId)||communityId<=0||!Number.isSafeInteger(groupId)||groupId<=0){res.status(400).json({error:"Valid community and group IDs are required"});return;}
- const [community]=await db.select({id:communitiesTable.id}).from(communitiesTable).where(eq(communitiesTable.id,communityId));
- const [group]=await db.select({id:studyGroupsTable.id}).from(studyGroupsTable).where(eq(studyGroupsTable.id,groupId));
+ const [community]=await db.select({id:communitiesTable.id,ownerId:communitiesTable.ownerId}).from(communitiesTable).where(eq(communitiesTable.id,communityId));
+ const [group]=await db.select({id:studyGroupsTable.id,creatorId:studyGroupsTable.creatorId}).from(studyGroupsTable).where(eq(studyGroupsTable.id,groupId));
  if(!community||!group){res.status(404).json({error:"Community or study group not found"});return;}
+ if(!isOwnerRole(user.role)){
+  const scopeIds=[Number(community.ownerId),Number(group.creatorId)].filter(id=>id>0&&id!==user.id);
+  const scopeProfiles=scopeIds.length?await db.select({id:usersTable.id,role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(inArray(usersTable.id,scopeIds)):[];
+  const scopeById=new Map(scopeProfiles.map(profile=>[Number(profile.id),profile]));
+  const outOfScope=scopeIds.some(id=>{const target=scopeById.get(id);return !target||!canModerateUser(user,target);});
+  if(outOfScope){res.status(403).json({error:"You can only link communities and study groups owned by you or accounts within your Owner-granted management hierarchy."});return;}
+ }
  const [existing]=await db.select().from(communityGroupsTable).where(and(eq(communityGroupsTable.communityId,communityId),eq(communityGroupsTable.groupId,groupId)));
  if(existing){res.json({...existing,alreadyLinked:true});return;}
  const [row]=await db.insert(communityGroupsTable).values({communityId,groupId}).returning();res.status(201).json(row);
