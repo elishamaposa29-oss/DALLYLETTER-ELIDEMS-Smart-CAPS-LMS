@@ -350,8 +350,26 @@ async function captureRole(role, route, email, password) {
         const screenshot = safeName("dashboard-" + role + "-" + pathname.replace(/^\//, "").replaceAll("/", "-")) + ".png";
         await redactScreenshotContent(page);
         await page.screenshot({ path: path.join(roleScreensOut, screenshot), fullPage: true, animations: "disabled" });
-        screenshots.push({ path: pathname, label: item.label, screenshot });
+        screenshots.push({ path: pathname, label: item.label, screenshot, view: "default" });
         routeResults.push({ path: pathname, status: "captured", screenshot });
+
+        // Capture each visible semantic tab as a separate view. Tab clicks only switch local UI panels;
+        // forms, submit buttons, approval actions and destructive controls are never activated.
+        const tabs = page.locator('[role="tab"]');
+        const tabCount = Math.min(await tabs.count(), 20);
+        for (let tabIndex = 0; tabIndex < tabCount && screenshots.length < 200; tabIndex += 1) {
+          const tab = tabs.nth(tabIndex);
+          if (!(await tab.isVisible().catch(() => false)) || !(await tab.isEnabled().catch(() => false))) continue;
+          const tabLabel = (await tab.innerText().catch(() => "")).trim() || (await tab.getAttribute("aria-label")) || ("tab-" + (tabIndex + 1));
+          if (/delete|remove|approve|reject|submit|upload|logout|sign out/i.test(tabLabel)) continue;
+          await tab.click();
+          await page.waitForTimeout(250);
+          await assertPublishablePage(page, role + " " + pathname + " tab " + tabLabel, { allowRedactedFormValues: true });
+          await redactScreenshotContent(page);
+          const tabScreenshot = safeName("dashboard-" + role + "-" + pathname.replace(/^\\//, "").replaceAll("/", "-") + "-tab-" + tabIndex + "-" + tabLabel) + ".png";
+          await page.screenshot({ path: path.join(roleScreensOut, tabScreenshot), fullPage: true, animations: "disabled" });
+          screenshots.push({ path: pathname, label: tabLabel, screenshot: tabScreenshot, view: "tab" });
+        }
 
         // Discover every visible, same-origin, read-only navigation destination from this feature page.
         const links = await page.locator("a[href]").evaluateAll((anchors) => anchors.map((anchor) => ({
