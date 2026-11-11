@@ -22,7 +22,7 @@ export default function AdminMore() {
       <Feather name="chevron-right" size={18} color={colors.mutedForeground}/>
     </TouchableOpacity> : null}
     {isOwner ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Teacher CV and survey approvals" onPress={()=>router.push("/(admin)/teacher-cv-workspace" as any)} style={{marginHorizontal:14,marginTop:8,marginBottom:2,padding:13,borderRadius:12,backgroundColor:colors.card,borderWidth:1,borderColor:colors.border,flexDirection:"row",alignItems:"center",gap:12}}>
-      <View style={{width:42,height:42,borderRadius:10,alignItems:"center",justifyContent:"center",backgroundColor:colors.primary+"18"}}><Feather name="file-check" size={21} color={colors.primary}/></View>
+      <View style={{width:42,height:42,borderRadius:10,alignItems:"center",justifyContent:"center",backgroundColor:colors.primary+"18"}}><Feather name="file-text" size={21} color={colors.primary}/></View>
       <View style={{flex:1}}><Text style={{fontSize:15,fontWeight:"700",color:colors.foreground}}>Teacher CV & survey approvals</Text><Text style={{fontSize:12,color:colors.mutedForeground,marginTop:3}}>Review evidence, qualifications, decisions, history and applicant messages</Text></View><Feather name="chevron-right" size={18} color={colors.mutedForeground}/>
     </TouchableOpacity> : null}
     {isOwner ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Achievements and badges" onPress={()=>router.push({pathname:"/(admin)/tools",params:{section:"achievements"}} as any)} style={{marginHorizontal:14,marginTop:8,marginBottom:2,padding:13,borderRadius:12,backgroundColor:colors.card,borderWidth:1,borderColor:colors.border,flexDirection:"row",alignItems:"center",gap:12}}>
