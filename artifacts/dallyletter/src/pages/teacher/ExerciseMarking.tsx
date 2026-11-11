@@ -288,8 +288,8 @@ function FloatingMark({ value, max, onChange }: { value: string; max?: string; o
         <Input
           type="number"
           min="0"
-          max={undefined}
-          step="0.01"
+          max={max}
+          step="0.5"
           value={value}
           onChange={(event) => onChange(event.target.value)}
           className="h-8 w-20 border-0 bg-transparent text-center font-bold focus-visible:ring-0"
@@ -438,7 +438,9 @@ export default function ExerciseMarking() {
   };
 
   const save = async () => {
-    if (!canEdit || !id || selected === null) return;
+    if (!canEdit || !id || selected === null || selectedSubmission?.status==="marked") return;
+    const invalidMark=answers.some(answer=>{const max=Number(selectedQuestion(answer)?.marksAllocated??0);const value=Number(marks[answer.id]??0);return !Number.isFinite(value)||value<0||value>max||Math.round(value*2)!==value*2;});
+    if(invalidMark){setMessage("Enter marks in 0.5 increments, from zero up to each question's allocation.");return;}
     setMessage("");
     const r = await fetch(getApiUrl(`/api/exercises/${id}/submissions/${selected}/mark`), {
       method: "POST",
@@ -550,14 +552,14 @@ export default function ExerciseMarking() {
                           type="number"
                           disabled={!canEdit || selectedSubmission.status==="marked"}
                           min="0"
-                          max={undefined}
-                          step="0.01"
+                          max={selectedQuestion(a)?.marksAllocated}
+                          step="0.5"
                           value={marks[a.id] ?? "0"}
                           onChange={(e) => { const raw=Number(e.target.value); setMarks((m) => ({ ...m, [a.id]: Number.isFinite(raw)?String(Math.max(0,raw)):"0" })); }}
                           className="w-28"
                           aria-label={`Awarded marks for question ${i + 1}`}
                         /></div>
-                        <span className="text-sm text-muted-foreground">/ {q?.marksAllocated ?? "—"} • any numeric mark; server validates the allocation</span>
+                        <span className="text-sm text-muted-foreground">/ {q?.marksAllocated ?? "—"} • 0.5 increments within the question allocation</span>
                       </div>
                       <Textarea
                         disabled={!canEdit || selectedSubmission.status==="marked"}
