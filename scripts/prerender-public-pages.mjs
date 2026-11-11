@@ -75,6 +75,17 @@ for (const [slug,label] of Object.entries(subjectLabels)) {
   );
 }
 pages.push(...searchIntentPages,...subjectSearchPages);
+const appendRelated = (slug, related) => {
+  const page = pages.find(item => item.slug === slug);
+  if (page) page.links = [...new Set([...(page.links || []), ...related])];
+};
+appendRelated("past-papers", ["exam-papers","specimen-papers","marking-schemes","topical-past-papers","practice-tests","exam-questions"]);
+appendRelated("exam-preparation", ["exam-papers","specimen-papers","marking-schemes","practice-tests","exam-questions","syllabus"]);
+appendRelated("study-notes", ["revision-notes","study-guides","flashcards"]);
+appendRelated("video-learning", ["educational-tutorials","worked-examples"]);
+for (const subjectSlug of Object.keys(subjectLabels)) {
+  appendRelated(subjectSlug, [subjectSlug+"/past-papers",subjectSlug+"/revision-notes"]);
+}
 
 const esc = (s) => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const nav = [["About","/about/"],["Founder story","/founder-story/"],["How it works","/how-it-works/"],["Learners","/learners/"],["Educators","/educators/"],["Managers","/managers/"],["Schools","/schools/"],["Subjects","/mathematics/"],["Past papers","/past-papers/"],["Zimbabwe","/zimbabwe/"],["Africa","/africa/"]];
