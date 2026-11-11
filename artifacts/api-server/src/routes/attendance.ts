@@ -73,7 +73,19 @@ router.post("/class/:classId/mark", requireAuth, requireManagerPermissionIfManag
 
 router.get("/my", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
-  const rows = await db.select().from(attendanceTable)
+  const rows = await db.select({
+    id: attendanceTable.id,
+    classId: attendanceTable.classId,
+    classTitle: classesTable.title,
+    subject: classesTable.subject,
+    status: attendanceTable.status,
+    joinedAt: attendanceTable.joinedAt,
+    leftAt: attendanceTable.leftAt,
+    durationMinutes: attendanceTable.durationMinutes,
+    isLate: attendanceTable.isLate,
+    notes: attendanceTable.notes,
+  }).from(attendanceTable)
+    .innerJoin(classesTable,eq(attendanceTable.classId,classesTable.id))
     .where(eq(attendanceTable.studentId, user.id))
     .orderBy(desc(attendanceTable.joinedAt));
   res.json(rows);
