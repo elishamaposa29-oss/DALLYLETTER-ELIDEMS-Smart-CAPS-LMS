@@ -24,7 +24,7 @@ export default function OperationsWorkspace(){
  const role=String(user?.role||"").toLowerCase();
  const isStudent=["student","prefect"].includes(role);
  const isTeacher=role==="teacher";
- const isStaff=["owner","platform_owner","admin","manager","senior_manager","junior_manager"].includes(role)||Boolean((user as any)?.isManager);
+ const isStaff=["owner","platform_owner","admin","manager","senior_manager","junior_manager"].includes(role)||Boolean((user as any)?.isManager);\n const isManagerRole=["manager","senior_manager","junior_manager"].includes(role)||Boolean((user as any)?.isManager);
  const [tab,setTab]=useState<Tab>(isStudent?"attendance":"attendance");
  const [busy,setBusy]=useState(false); const [error,setError]=useState("");
  const [classes,setClasses]=useState<Row[]>([]); const [selectedClass,setSelectedClass]=useState("");
@@ -35,14 +35,14 @@ export default function OperationsWorkspace(){
  const [communityId,setCommunityId]=useState(""); const [groupId,setGroupId]=useState("");
  const [prefs,setPrefs]=useState({pushEnabled:true,soundEnabled:true,followNotificationsEnabled:true});
  const [managerPermissions,setManagerPermissions]=useState<Record<string,boolean>>({});
- const canManageCommunities=isStaff&&(["owner","platform_owner"].includes(role)||managerPermissions["groups.manage"]===true);
+ const canManageCommunities=isStaff&&(["owner","platform_owner"].includes(role)||(isManagerRole&&managerPermissions["groups.manage"]===true));
  const selected=useMemo(()=>classes.find(c=>String(c.id)===selectedClass),[classes,selectedClass]);
- const loadClasses=useCallback(async()=>{if(!isTeacher&&!isStaff)return;const rows=await api<Row[]>("/api/classes");setClasses(Array.isArray(rows)?rows:[]);},[isTeacher,isStaff]);
+ const loadClasses=useCallback(async()=>{if(!isTeacher&&!isStaff)return;const rows=await api<Row[]>("/api/classes");setClasses((Array.isArray(rows)?rows:[]).filter(row=>!isTeacher||Number(row.teacherId)===Number(user?.id)));},[isTeacher,isStaff,user?.id]);
  const loadAttendance=useCallback(async()=>{if(isStudent){const rows=await api<Row[]>("/api/attendance/my");setMyAttendance(Array.isArray(rows)?rows:[]);return;}if(selectedClass){const payload=await api<Row>(`/api/attendance/class/${selectedClass}/register`);setAttendance(Array.isArray(payload.learners)?payload.learners:[]);}},[isStudent,selectedClass]);
  const loadPermissions=useCallback(async()=>{const [a,b]=await Promise.all([api<Row[]>("/api/content-permissions"),api<Row[]>("/api/content-permissions/mine")]);setIncoming(Array.isArray(a)?a:[]);setMine(Array.isArray(b)?b:[]);},[]);
  const loadCommunities=useCallback(async()=>{const [a,b]=await Promise.all([api<Row[]>("/api/communities"),api<Row[]>("/api/study-groups")]);setCommunities(Array.isArray(a)?a:[]);setGroups(Array.isArray(b)?b:[]);},[]);
  const loadPrefs=useCallback(async()=>{const row=await api<Row>("/api/notification-preferences");setPrefs({pushEnabled:row.pushEnabled!==false,soundEnabled:row.soundEnabled!==false,followNotificationsEnabled:row.followNotificationsEnabled!==false});},[]);
- const refresh=useCallback(async()=>{setBusy(true);setError("");try{await Promise.all([loadClasses(),loadAttendance(),loadPermissions(),loadCommunities(),loadPrefs()]);if(isStaff&&role!=="owner"&&role!=="platform_owner"){const d=await api<Row>("/api/manager-permissions/me");setManagerPermissions(d.permissions||{});}}catch(e){setError(e instanceof Error?e.message:"Unable to load this workspace.");}finally{setBusy(false);}},[loadClasses,loadAttendance,loadPermissions,loadCommunities,loadPrefs,isStaff,role]);
+ const refresh=useCallback(async()=>{setBusy(true);setError("");try{await Promise.all([loadClasses(),loadAttendance(),loadPermissions(),loadCommunities(),loadPrefs()]);if(isManagerRole){const d=await api<Row>("/api/manager-permissions/me");setManagerPermissions(d.permissions||{});}}catch(e){setError(e instanceof Error?e.message:"Unable to load this workspace.");}finally{setBusy(false);}},[loadClasses,loadAttendance,loadPermissions,loadCommunities,loadPrefs,isManagerRole]);
  useEffect(()=>{void refresh();},[refresh]);
  useEffect(()=>{if(selectedClass)void loadAttendance().catch(e=>setError(e instanceof Error?e.message:"Attendance unavailable"));},[selectedClass,loadAttendance]);
  const decide=async(id:number,status:"approved"|"declined")=>{setBusy(true);try{await api(`/api/content-permissions/${id}`,{method:"PATCH",body:JSON.stringify({status})});toast({title:status==="approved"?"Permission granted":"Permission declined"});await loadPermissions();}catch(e){toast({variant:"destructive",title:"Decision failed",description:e instanceof Error?e.message:"Try again"});}finally{setBusy(false);}};
