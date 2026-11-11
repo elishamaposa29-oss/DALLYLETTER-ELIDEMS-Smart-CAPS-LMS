@@ -7,7 +7,7 @@ import { useColors } from "@/hooks/useColors";
 type Row=Record<string,any>;
 type Tab="attendance"|"permissions"|"communities"|"notifications";
 export default function MobileOperationsWorkspace(){
- const colors=useColors();const {user,token}=useAuth();const role=String(user?.role||"").toLowerCase();const student=["student","prefect"].includes(role);const staff=["owner","platform_owner","admin","manager","senior_manager","junior_manager"].includes(role)||Boolean((user as any)?.isManager);
+ const colors=useColors();const {user,token}=useAuth();const role=String(user?.role||"").toLowerCase();const student=["student","prefect"].includes(role);const staff=["owner","platform_owner","admin","manager","senior_manager","junior_manager"].includes(role)||Boolean((user as any)?.isManager);const managerRole=["manager","senior_manager","junior_manager"].includes(role)||Boolean((user as any)?.isManager);
  const [tab,setTab]=useState<Tab>("attendance");const [loading,setLoading]=useState(false);const [error,setError]=useState("");
  const [classes,setClasses]=useState<Row[]>([]);const [classId,setClassId]=useState<number|null>(null);const [attendance,setAttendance]=useState<Row[]>([]);const [mine,setMine]=useState<Row[]>([]);
  const [incoming,setIncoming]=useState<Row[]>([]);const [requests,setRequests]=useState<Row[]>([]);const [communities,setCommunities]=useState<Row[]>([]);const [groups,setGroups]=useState<Row[]>([]);
@@ -17,15 +17,15 @@ export default function MobileOperationsWorkspace(){
  const call=async(path:string,method="GET",body?:any)=>{const r=await fetch(getApiUrl(path),{method,headers:{"Authorization":"Bearer "+auth,"Content-Type":"application/json"},...(body?{body:JSON.stringify(body)}:{}),cache:"no-store"});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||"Request failed ("+r.status+")");return d;};
  const load=useCallback(async()=>{setLoading(true);setError("");try{
   if(student){const a=await call("/api/attendance/my");setMine(Array.isArray(a)?a:[]);}
-  if(staff){const c=await call("/api/classes");setClasses(Array.isArray(c)?c:[]);const p=await call("/api/content-permissions");setIncoming(Array.isArray(p)?p:[]);}
+  if(staff){const c=await call("/api/classes");setClasses((Array.isArray(c)?c:[]).filter((x:Row)=>role!=="teacher"||Number(x.teacherId)===Number(user?.id)));const p=await call("/api/content-permissions");setIncoming(Array.isArray(p)?p:[]);}
   const m=await call("/api/content-permissions/mine");setRequests(Array.isArray(m)?m:[]);
   const [com,gr,pref]=await Promise.all([call("/api/communities"),call("/api/study-groups"),call("/api/notification-preferences")]);
   setCommunities(Array.isArray(com)?com:[]);setGroups(Array.isArray(gr)?gr:[]);setPrefs({pushEnabled:pref.pushEnabled!==false,soundEnabled:pref.soundEnabled!==false,followNotificationsEnabled:pref.followNotificationsEnabled!==false});
-  if(staff&&!["owner","platform_owner"].includes(role)){const x=await call("/api/manager-permissions/me");setPermissionMap(x.permissions||{});}
+  if(managerRole){const x=await call("/api/manager-permissions/me");setPermissionMap(x.permissions||{});}
  }catch(e){setError(e instanceof Error?e.message:"Could not load operations");}finally{setLoading(false);}},[auth,student,staff,role]);
  useEffect(()=>{void load();},[load]);
  useEffect(()=>{if(classId)void call("/api/attendance/class/"+classId+"/register").then(d=>setAttendance(Array.isArray(d.learners)?d.learners:[])).catch(e=>setError(e.message));},[classId,auth]);
- const manageCommunities=["owner","platform_owner"].includes(role)||permissionMap["groups.manage"]===true;
+ const manageCommunities=["owner","platform_owner"].includes(role)||(managerRole&&permissionMap["groups.manage"]===true);
  const saveStatus=async(id:number,status:"present"|"absent")=>{try{const saved=await call("/api/attendance/class/"+classId+"/mark","POST",{studentId:id,status});setAttendance(rows=>rows.map(x=>Number(x.studentId)===id?{...x,...saved,status}:x));}catch(e){Alert.alert("Attendance not updated",e instanceof Error?e.message:"Try again");}};
  const decide=async(id:number,status:"approved"|"declined")=>{try{await call("/api/content-permissions/"+id,"PATCH",{status});await load();Alert.alert("Permission decision saved");}catch(e){Alert.alert("Decision blocked",e instanceof Error?e.message:"Try again");}};
  const report=async(id:number)=>{try{await call("/api/content-permissions/"+id+"/report","POST",{message:"Please review this declined permission request."});Alert.alert("Report sent");await load();}catch(e){Alert.alert("Report failed",e instanceof Error?e.message:"Try again");}};
