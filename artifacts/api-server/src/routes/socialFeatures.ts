@@ -160,7 +160,8 @@ router.get("/communities", requireAuth, async(req,res)=>{
  const ids=rows.map(row=>row.id);
  const links=ids.length?await db.select({communityId:communityGroupsTable.communityId,groupId:studyGroupsTable.id,groupName:studyGroupsTable.name,subject:studyGroupsTable.subject,grade:studyGroupsTable.grade}).from(communityGroupsTable).innerJoin(studyGroupsTable,eq(communityGroupsTable.groupId,studyGroupsTable.id)).where(inArray(communityGroupsTable.communityId,ids)):[];
  const ownerIds=[...new Set(rows.map(row=>Number(row.ownerId)).filter(id=>id>0))];
- const groupRows=await db.select({id:studyGroupsTable.id,creatorId:studyGroupsTable.creatorId}).from(studyGroupsTable);
+ const linkedGroupIds=[...new Set(links.map(link=>Number(link.groupId)).filter(id=>id>0))];
+ const groupRows=linkedGroupIds.length?await db.select({id:studyGroupsTable.id,creatorId:studyGroupsTable.creatorId}).from(studyGroupsTable).where(inArray(studyGroupsTable.id,linkedGroupIds)):[];
  const creatorIds=[...new Set(groupRows.map(group=>Number(group.creatorId)).filter(id=>id>0))];
  const profileIds=[...new Set([...ownerIds,...creatorIds])];
  const profiles=profileIds.length?await db.select({id:usersTable.id,role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(inArray(usersTable.id,profileIds)):[];
