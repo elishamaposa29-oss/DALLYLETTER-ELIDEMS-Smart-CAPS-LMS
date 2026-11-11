@@ -10,6 +10,7 @@ const adminLayout = read("artifacts/dallyletter-mobile/app/(admin)/_layout.tsx")
 const managerRoute = read("artifacts/dallyletter-mobile/app/(manager)/teacher-cv-workspace.tsx");
 const mobileOperations = read("artifacts/dallyletter-mobile/components/MobileOperationsWorkspace.tsx");
 const webLessons = read("artifacts/dallyletter/src/pages/teacher/TeacherLessons.tsx");
+const webOperations = read("artifacts/dallyletter/src/pages/OperationsWorkspace.tsx");
 
 for (const endpoint of [
   'router.get("/queue"',
