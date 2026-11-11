@@ -11,6 +11,8 @@ const adminLayout = read("artifacts/dallyletter-mobile/app/(admin)/_layout.tsx")
 const managerLayout = read("artifacts/dallyletter-mobile/app/(manager)/_layout.tsx");
 const transferReview = read("artifacts/dallyletter-mobile/components/TransferRequestReviewWorkspace.tsx");
 const reportReview = read("artifacts/dallyletter-mobile/components/AcademicReportReviewWorkspace.tsx");
+const permissionMobile = read("artifacts/dallyletter-mobile/components/ManagerPermissionControlsMobile.tsx");
+const adminUsers = read("artifacts/dallyletter-mobile/app/(admin)/users.tsx");
 const managerMore = read("artifacts/dallyletter-mobile/components/ManagerMore.tsx");
 const managerRoute = read("artifacts/dallyletter-mobile/app/(manager)/teacher-cv-workspace.tsx");
 const mobileOperations = read("artifacts/dallyletter-mobile/components/MobileOperationsWorkspace.tsx");
@@ -114,5 +116,24 @@ for (const operation of [
 assert.ok(managerMore.includes('permissions?.["reports.view"]') && managerMore.includes("/(manager)/academic-reports"), "Manager academic report review entry is not gated by reports.view");
 assert.ok(adminEntry.includes("/(admin)/academic-reports"), "Owner academic report review entry is missing");
 assert.ok(managerLayout.includes('name="academic-reports"') && adminLayout.includes('name="academic-reports"'), "Academic report review routes are not registered");
+
+
+const managerPermissionsApi = read("artifacts/api-server/src/routes/managerPermissions.ts");
+for (const operation of [
+  'router.get("/:userId"',
+  'router.put("/:userId"',
+  'router.get("/:userId/history"',
+  'router.patch("/:userId/role"',
+]) assert.ok(managerPermissionsApi.includes(operation), "Owner manager permission API lifecycle missing: " + operation);
+for (const operation of [
+  '"/api/manager-permissions/"+id',
+  '"/api/manager-permissions/"+id+"/role"',
+  '"/api/manager-permissions/"+id+"/history"',
+  'Save individual grants',
+  'View change history',
+  'Senior-only permissions cannot be granted',
+]) assert.ok(permissionMobile.includes(operation), "Android Owner permission editor operation missing: " + operation);
+assert.ok(adminUsers.includes("Manager roles & individual permissions") && adminUsers.includes("/(admin)/manager-permissions"), "Owner Users screen does not expose the Android permission editor");
+assert.ok(adminLayout.includes('name="manager-permissions"'), "Android Owner permission editor route is not registered");
 
 console.log("Role workflow parity static regression checks passed.");
