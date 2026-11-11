@@ -49,7 +49,8 @@ async function verifyAuthenticatedRole(token, expectedRole) {
     junior_manager: ["junior_manager"],
     senior_manager: ["senior_manager"],
     admin: ["admin"],
-    owner: ["owner"],\n    platform_owner: ["platform_owner"]
+    owner: ["owner"],
+    platform_owner: ["platform_owner"]
   };
   const validRole = (expectedRoles[expectedRole] || []).includes(actualRole) ||
     (expectedRole === "manager" && user.isManager === true);
@@ -347,7 +348,8 @@ async function captureRole(role, route, email, password) {
         await verifyBrandLogo(page, role + " " + pathname);
         await assertPublishablePage(page, role + " " + pathname, { allowRedactedFormValues: true });
         const screenshot = safeName("dashboard-" + role + "-" + pathname.replace(/^\//, "").replaceAll("/", "-")) + ".png";
-        await redactScreenshotContent(page);\n        await page.screenshot({ path: path.join(roleScreensOut, screenshot), fullPage: true, animations: "disabled" });
+        await redactScreenshotContent(page);
+        await page.screenshot({ path: path.join(roleScreensOut, screenshot), fullPage: true, animations: "disabled" });
         screenshots.push({ path: pathname, label: item.label, screenshot });
         routeResults.push({ path: pathname, status: "captured", screenshot });
 
@@ -456,7 +458,8 @@ try {
     ["senior_manager", "/manager", process.env.SHOWCASE_SENIOR_MANAGER_EMAIL, process.env.SHOWCASE_SENIOR_MANAGER_PASSWORD],
     ["manager", "/manager", process.env.SHOWCASE_MANAGER_EMAIL, process.env.SHOWCASE_MANAGER_PASSWORD],
     ["admin", "/record-book", process.env.SHOWCASE_ADMIN_EMAIL, process.env.SHOWCASE_ADMIN_PASSWORD],
-    ["owner", "/admin", process.env.SHOWCASE_OWNER_EMAIL, process.env.SHOWCASE_OWNER_PASSWORD],\n    ["platform_owner", "/record-book", process.env.SHOWCASE_PLATFORM_OWNER_EMAIL, process.env.SHOWCASE_PLATFORM_OWNER_PASSWORD]
+    ["owner", "/admin", process.env.SHOWCASE_OWNER_EMAIL, process.env.SHOWCASE_OWNER_PASSWORD],
+    ["platform_owner", "/record-book", process.env.SHOWCASE_PLATFORM_OWNER_EMAIL, process.env.SHOWCASE_PLATFORM_OWNER_PASSWORD]
   ];
   for (const account of roleAccounts) await captureRole(...account);
   if (googleIdentityErrors.length) {
