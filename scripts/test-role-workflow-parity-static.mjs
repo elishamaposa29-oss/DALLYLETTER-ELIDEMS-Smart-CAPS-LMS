@@ -48,9 +48,9 @@ assert.ok(managerRoute.includes("TeacherCvReviewWorkspace"), "Manager route must
 for (const operation of [
   'call("/api/content-permissions")',
   'call("/api/content-permissions/mine")',
-  'call("/api/content-permissions", "POST"',
-  '"/api/content-permissions/" + id, "PATCH"',
-  '"/api/content-permissions/"+id+"/report"',
+  'call("/api/content-permissions","POST"',
+  '"/api/content-permissions/"+id,"PATCH"',
+  '"/api/content-permissions/"+id+"/report","POST"',
   'My submitted requests',
   'Report decision to management',
 ]) assert.ok(mobileOperations.includes(operation), "Android operations workspace missing content-permission operation: " + operation);
