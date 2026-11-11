@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { normalizeGoogleSiteVerificationToken } from "./google-site-verification.mjs";
+import { getPageSeoTags } from "./education-seo-tags.mjs";
 
 const root = path.resolve("dist/public");
 const appShellPath = path.join(root, "app.html");
@@ -80,6 +81,16 @@ for (const url of urls) {
   const jsonLdMatch = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
   if (!jsonLdMatch) throw new Error("Missing JSON-LD structured data: " + url);
   const jsonLd = JSON.parse(jsonLdMatch[1]);
+  const expectedKeywords = getPageSeoTags(route.replace(/^\\/|\\/$/g, ""));
+  if (JSON.stringify(jsonLd.keywords || []) !== JSON.stringify(expectedKeywords)) {
+    throw new Error("Structured SEO keyword tags do not match the approved page taxonomy: " + url);
+  }
+  if (expectedKeywords.length && !html.includes('aria-label="Related search topics"')) {
+    throw new Error("Relevant visible keyword tags are missing: " + url);
+  }
+  for (const keyword of expectedKeywords) {
+    if (!html.includes("<span>" + keyword + "</span>")) throw new Error("Missing visible keyword tag " + keyword + " on " + url);
+  }
   if (jsonLd["@type"] !== "WebPage" || jsonLd.url !== url || jsonLd.creator?.name !== "Elisha Maposa") {
     throw new Error("Invalid WebPage structured data or creator attribution: " + url);
   }
