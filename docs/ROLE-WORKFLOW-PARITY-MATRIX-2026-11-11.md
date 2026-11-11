@@ -17,7 +17,7 @@ Status labels:
 | Role | Workflow family | Backend/API surface | Web surface | Android surface | Current evidence / remaining acceptance |
 |---|---|---|---|---|---|
 | Teacher | Lessons: create, edit, media, notify followers, content permissions | `lessons.ts`, `contentPermissions.ts` | `teacher/TeacherLessons.tsx` | `(teacher)/lessons.tsx`, `MobileOperationsWorkspace` | Source wired. Test own-content authority, other-owner requests, duplicate submission, approval/decline, reload and notification. |
-| Teacher | Content permission request lifecycle: submit, incoming list, approve, decline, requester history, report declined decision | `contentPermissions.ts`: POST/GET/mine/PATCH/report | `teacher/TeacherLessons.tsx` | `MobileOperationsWorkspace.tsx` | Source wired on both clients. Android operations screen already includes incoming decisions, submitted history and escalation. Verify owner-only decision semantics and manager-scope restrictions. |
+| Teacher | Content permission request lifecycle: submit, incoming list, approve, decline, requester history, report declined decision | `contentPermissions.ts`: POST/GET/mine/PATCH/report plus GET reports and POST report review | `teacher/TeacherLessons.tsx`, `OperationsWorkspace.tsx` | `MobileOperationsWorkspace.tsx` | Requester lifecycle is source-wired. This pass adds a scoped management escalation inbox, review-note action and requester notification on web + Android. Runtime scope, persistence and restart tests remain required. |
 | Teacher | Class register, learner roster, present/absent, statistics | `attendance.ts`, `classes.ts` | `teacher/TeacherClasses.tsx`, `OperationsWorkspace.tsx` | `(teacher)/classes.tsx`, `MobileOperationsWorkspace.tsx` | PR #114 adds register endpoints and workspaces. Runtime and assigned-teacher/manager-scope tests remain required. |
 | Teacher | Assignments, submissions, marking, feedback | `assignments.ts` | `teacher/TeacherAssignments.tsx` | `FeatureHub.tsx`, `(teacher)/work.tsx` | Source exists; prove submit/mark/return/resubmit and authenticated attachment retrieval on both clients. |
 | Teacher | Exercises, marking queue, per-question marks, feedback, reports | `exercises.ts`, `academicRecords.ts` | `ExerciseMarking.tsx`, `TeacherExerciseQueue.tsx` | `(teacher)/work.tsx`, `MobileDrawAnswer.tsx` | PR #114 adds teacher-wide queue. Prove published-only scope, marking persistence, learner result visibility and report aggregation. |
@@ -48,13 +48,16 @@ Status labels:
 3. Added Owner and Manager More-screen entry points. Manager access is not granted by the UI; backend grants remain authoritative.
 4. Added static regression checks for the CV review lifecycle and the existing content-permission lifecycle.
 5. Added a static route-to-client inventory generator at `scripts/audit-role-workflow-parity.mjs`.
+6. Added management review of declined content-permission escalations: scoped report listing, idempotent review recording, audit-log history and requester notification. Wired the inbox and review-note action into both web and Android Operations Workspaces.
+7. Exposed the API-authorized Admin CV-review workspace in Android Admin navigation and reviewer controls; corrected invalid Feather icon names that blocked Android typechecking.
+8. Corrected the static parity assertion so the web report action is checked in the Operations Workspace where it is actually implemented.
 
 ## Exact verification still required
 
 - Run the new static regression test and the full CI/typecheck/Android build on the exact branch head.
 - Run the generated route inventory and manually classify every endpoint flagged as missing from Web or Android. Webhooks, internal callbacks, and owner-only server routes must not be turned into inappropriate UI.
 - Use real learner, teacher, Junior Manager, Senior Manager, Admin and Owner accounts. For every operation, test allowed and denied calls directly against the API.
-- Exercise every lifecycle: submit → list → approve/decline → requester notification → history → report/escalation → reload/restart. Verify persistence in the database and correct recipient visibility.
+- Exercise every lifecycle: submit → list → approve/decline → requester notification → history → report/escalation → management report list → review note → requester notification → reload/restart. Verify persistence in the database and correct recipient visibility.
 - Verify all document/media links with authenticated retrieval; verify report PDFs and attachments open on a real Android device.
 - Run both web and Android end-to-end tests for attendance, assignments, exercises, polls, CV/qualifications, transfer letters, reports, achievements, notifications, messages, groups, payments, settings, audit and safety workflows.
 - Capture exact commit SHA, role, environment, API/UI path, expected/actual outcome and sanitized evidence for every pass/fail.
