@@ -40,11 +40,24 @@ const sitemapPath = path.join(root, "sitemap.xml");
 const sitemap = fs.readFileSync(sitemapPath, "utf8");
 const urls = [...sitemap.matchAll(/<loc>(.*?)<\/loc>/g)].map(match => match[1]);
 
-if (urls.length < 30) throw new Error("Expected at least 30 public sitemap URLs; got " + urls.length);
+if (urls.length < 65) throw new Error("Expected at least 65 public sitemap URLs, including individual education search pages; got " + urls.length);
 if (new Set(urls).size !== urls.length) throw new Error("Duplicate URLs found in sitemap.xml");
 
 const titles = new Set();
 const publicRoutes = new Set(urls.map(url => new URL(url).pathname));
+const requiredSearchRoutes = [
+  "/exam-papers/","/specimen-papers/","/marking-schemes/","/topical-past-papers/",
+  "/practice-tests/","/exam-questions/","/revision-notes/","/study-guides/",
+  "/worked-examples/","/flashcards/","/educational-tutorials/","/syllabus/",
+  "/mathematics/past-papers/","/mathematics/revision-notes/",
+  "/biology/past-papers/","/biology/revision-notes/",
+  "/chemistry/past-papers/","/chemistry/revision-notes/",
+  "/physics/past-papers/","/physics/revision-notes/"
+];
+for (const route of requiredSearchRoutes) {
+  if (!publicRoutes.has(route)) throw new Error("Missing individual education search landing page from sitemap: " + route);
+}
+
 const appRoutePrefixes = [
   "/login", "/register", "/forgot-password", "/reset-password", "/verify-email",
   "/confirm-email-change", "/docs", "/resource-unavailable", "/suspended",
@@ -94,7 +107,7 @@ for (const url of urls) {
   const jsonLdMatch = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
   if (!jsonLdMatch) throw new Error("Missing JSON-LD structured data: " + url);
   const jsonLd = JSON.parse(jsonLdMatch[1]);
-  const expectedKeywords = getPageSeoTags(route.split("/").filter(Boolean).join(""));
+  const expectedKeywords = getPageSeoTags(route.split("/").filter(Boolean).join("/"));
   if (JSON.stringify(jsonLd.keywords || []) !== JSON.stringify(expectedKeywords)) {
     throw new Error("Structured SEO keyword tags do not match the approved page taxonomy: " + url);
   }
