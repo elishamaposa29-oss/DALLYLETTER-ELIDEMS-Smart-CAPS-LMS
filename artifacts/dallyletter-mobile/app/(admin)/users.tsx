@@ -201,7 +201,7 @@ export default function AdminUsers() {
                   <Text style={[s.actionText,{color:u.isManager?"#7c3aed":colors.foreground}]}>{u.isManager?"Remove manager":"Make manager"}</Text>
                 </TouchableOpacity>}
               </View>
-              {isOwner && !["admin","owner"].includes(String(u.role)) && <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Manage individual permissions for ${u.name}`} onPress={()=>router.push({pathname:"/(admin)/manager-permissions",params:{userId:String(u.id),name:u.name,email:u.email,role:u.role,isManager:String(Boolean((u as any).isManager))}} as any)} style={{marginTop:9,borderWidth:1,borderColor:"#7c3aed",backgroundColor:"#f5f3ff",borderRadius:9,padding:10,alignItems:"center"}}><Text style={{color:"#6d28d9",fontWeight:"800",fontSize:12}}>Manager roles & individual permissions</Text></TouchableOpacity>}
+              {isOwner && !["admin","owner","platform_owner"].includes(String(u.role).toLowerCase().replace(/[ -]+/g,"_")) && <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Manage individual permissions for ${u.name}`} onPress={()=>router.push({pathname:"/(admin)/manager-permissions",params:{userId:String(u.id),name:u.name,email:u.email,role:u.role,isManager:String(Boolean((u as any).isManager))}} as any)} style={{marginTop:9,borderWidth:1,borderColor:"#7c3aed",backgroundColor:"#f5f3ff",borderRadius:9,padding:10,alignItems:"center"}}><Text style={{color:"#6d28d9",fontWeight:"800",fontSize:12}}>Manager roles & individual permissions</Text></TouchableOpacity>}
             </View>
           );
         }}
