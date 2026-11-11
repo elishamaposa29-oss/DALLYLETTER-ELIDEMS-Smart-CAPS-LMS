@@ -6,7 +6,7 @@ import {
   BookOpen, Users, Video, MessageSquare, CreditCard, Bell, LogOut, Home, FileCheck2,
   Shield, Menu, GraduationCap, Settings, Sparkles, ClipboardList, Star, EllipsisVertical,
   ScrollText, Trophy, AlertTriangle, DollarSign, BarChart3, Briefcase,
-  Flame, Send, ImagePlus,
+  Flame, Send, ImagePlus, CalendarDays,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -197,6 +197,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Student Payments", href: "/teacher/payments", icon: CreditCard },
       ...(activeTeacherManager ? [
         { label: "Manager Panel", href: "/manager", icon: Briefcase, section: "Management", accent: "text-purple-400", permissionKey: "manager.dashboard.view" },
+      { label: "Class & Learning Operations", href: "/operations", icon: CalendarDays },
         { label: "Teacher CV Applications", href: "/manager/teacher-cv-workspace", icon: GraduationCap, permissionKey: "teacher_cv.view" },
         { label: "Qualification Verification", href: "/manager/qualifications", icon: FileCheck2, permissionKey: "qualifications.view" },
         { label: "RecordBook & Academic Records", href: "/record-book", icon: ScrollText, permissionKey: "recordbook.view" },
