@@ -366,7 +366,7 @@ async function captureRole(role, route, email, password) {
           await page.waitForTimeout(250);
           await assertPublishablePage(page, role + " " + pathname + " tab " + tabLabel, { allowRedactedFormValues: true });
           await redactScreenshotContent(page);
-          const tabScreenshot = safeName("dashboard-" + role + "-" + pathname.replace(/^\\//, "").replaceAll("/", "-") + "-tab-" + tabIndex + "-" + tabLabel) + ".png";
+          const tabScreenshot = safeName("dashboard-" + role + "-" + pathname.replace(/^\//, "").replaceAll("/", "-") + "-tab-" + tabIndex + "-" + tabLabel) + ".png";
           await page.screenshot({ path: path.join(roleScreensOut, tabScreenshot), fullPage: true, animations: "disabled" });
           screenshots.push({ path: pathname, label: tabLabel, screenshot: tabScreenshot, view: "tab" });
         }
