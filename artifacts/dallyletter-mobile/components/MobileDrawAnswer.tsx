@@ -11,7 +11,7 @@ type Tool = "pen" | "paint" | "eraser" | "pointer" | "text" | "select";
 const PALETTE = ["#111827", "#dc2626", "#2563eb", "#15803d", "#9333ea", "#d97706"];
 const cloneDrawing = (drawing: Drawing): Drawing => ({ ...drawing, strokes: [...(drawing.strokes ?? [])], paintStrokes: [...(drawing.paintStrokes ?? [])], mediaStrokes:[...(drawing.mediaStrokes??[])],ticks:[...(drawing.ticks??[])], pointers: [...(drawing.pointers ?? [])], labels: [...(drawing.labels ?? [])] });
 
-export default function MobileDrawAnswer({ value, onChange, disabled = false, backgroundDrawing, label }: { value?: Drawing; onChange: (value: Drawing) => void; disabled?: boolean; backgroundDrawing?: Drawing; label?: string }) {
+export default function MobileDrawAnswer({ value, onChange, disabled = false, backgroundDrawing, label, defaultColor }: { value?: Drawing; onChange: (value: Drawing) => void; disabled?: boolean; backgroundDrawing?: Drawing; label?: string; defaultColor?: string }) {
   const colors = useColors();
   const valueRef = useRef<Drawing>(value ?? {});
   const onChangeRef = useRef(onChange);
@@ -21,7 +21,7 @@ export default function MobileDrawAnswer({ value, onChange, disabled = false, ba
   const pointerStart = useRef<{ x: number; y: number; id: string } | null>(null);
   const [liveSegments, setLiveSegments] = useState<Segment[]>([]);
   const [canvasWidth, setCanvasWidth] = useState(320);
-  const [penColor, setPenColor] = useState("#111827");
+  const [penColor, setPenColor] = useState(defaultColor??"#111827");
   const [penWidth, setPenWidth] = useState(3);
   const [penOpacity, setPenOpacity] = useState(1);
   const [magnify, setMagnify] = useState(1);
