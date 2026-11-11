@@ -20,7 +20,7 @@ export default function MobileOperationsWorkspace(){
  const call=async(path:string,method="GET",body?:any)=>{const r=await fetch(getApiUrl(path),{method,headers:{"Authorization":"Bearer "+auth,"Content-Type":"application/json"},...(body?{body:JSON.stringify(body)}:{}),cache:"no-store"});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||"Request failed ("+r.status+")");return d;};
  const load=useCallback(async()=>{setLoading(true);setError("");try{
   if(student){const a=await call("/api/attendance/my");setMine(Array.isArray(a)?a:[]);}
-  if(staff){const c=await call("/api/classes");setClasses((Array.isArray(c)?c:[]).filter((x:Row)=>role!=="teacher"||Number(x.teacherId)===Number(user?.id)));const p=await call("/api/content-permissions");setIncoming(Array.isArray(p)?p:[]);}
+  if(staff){const c=await call("/api/attendance/classes");setClasses((Array.isArray(c)?c:[]).filter((x:Row)=>role!=="teacher"||Number(x.teacherId)===Number(user?.id)));const p=await call("/api/content-permissions");setIncoming(Array.isArray(p)?p:[]);}
   const m=await call("/api/content-permissions/mine");setRequests(Array.isArray(m)?m:[]);
   const [com,gr,pref]=await Promise.all([call("/api/communities"),call("/api/study-groups"),call("/api/notification-preferences")]);
   setCommunities(Array.isArray(com)?com:[]);setGroups(Array.isArray(gr)?gr:[]);setPrefs({pushEnabled:pref.pushEnabled!==false,soundEnabled:pref.soundEnabled!==false,followNotificationsEnabled:pref.followNotificationsEnabled!==false});
