@@ -75,13 +75,12 @@ async function canManagerAccessTeacherRecord(user: NonNullable<Express.Request["
   const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, teacherId));
   return Boolean(target && canModerateUser(user, target));
 }
-async function canManageExerciseForUser(user: NonNullable<Express.Request["currentUser"]>, createdBy: number, permissionKey: string): Promise<boolean> {
+async function canManageExerciseForUser(user: NonNullable<Express.Request["currentUser"]>, createdBy: number, permissionKey: string, exerciseId?: number, contentAction?: "edit"|"delete"): Promise<boolean> {
   if (isOwnerRole(user.role)) return true;
   if (canAccessManager(user)) return canManagerAccessTeacherRecord(user, createdBy, permissionKey);
-  return canEditExercise(user, createdBy);
-}
-function canEditExercise(user: NonNullable<Express.Request["currentUser"]>, createdBy: number): boolean {
-  return isOwnerRole(user.role) || user.isManager === true || (user.role === "teacher" && createdBy === user.id);
+  if (user.role === "teacher" && Number(createdBy) === Number(user.id)) return true;
+  if (exerciseId && contentAction) return hasContentPermission(user.id,"exercise",exerciseId,contentAction);
+  return false;
 }
 router.post("/question-media", requireAuth, requireManagerPermissionIfManager("users.override.teacher"), (req,res,next):void => {
   const user = req.currentUser!;
@@ -98,7 +97,7 @@ router.post("/question-media", requireAuth, requireManagerPermissionIfManager("u
       if (!exerciseId || !questionId) { await discardTemporaryFile(); res.status(400).json({error:"Valid exerciseId and questionId are required"}); return; }
       const [exercise] = await db.select().from(exercisesTable).where(eq(exercisesTable.id, exerciseId));
       if (!exercise) { await discardTemporaryFile(); res.status(404).json({error:"Exercise not found"}); return; }
-      if (!(await canManageExerciseForUser(user, exercise.createdBy, "users.override.teacher"))) { await discardTemporaryFile(); res.status(403).json({error:"You can only attach media to your own exercise"}); return; }
+      if (!(await canManageExerciseForUser(user, exercise.createdBy, "users.override.teacher", exerciseId, "edit"))) { await discardTemporaryFile(); res.status(403).json({error:"You can only attach media to your own exercise"}); return; }
       const [question] = await db.select().from(exerciseQuestionsTable).where(and(eq(exerciseQuestionsTable.id, questionId),eq(exerciseQuestionsTable.exerciseId,exerciseId)));
       if (!question) { await discardTemporaryFile(); res.status(404).json({error:"Question not found in this exercise"}); return; }
       const config = question.config && typeof question.config === "object" && !Array.isArray(question.config) ? question.config as Record<string, unknown> : {};
@@ -144,7 +143,7 @@ router.get("/lessons/:lessonId/exercises", requireAuth, requireManagerPermission
     const user=req.currentUser;
     const rows = await db.select().from(exercisesTable).where(eq(exercisesTable.lessonId,lessonId)).orderBy(desc(exercisesTable.createdAt));
     if (isOwnerRole(user.role)) { res.json(rows); return; }
-    const visibleRows = await Promise.all(rows.map(async exercise => await canManageExerciseForUser(user, exercise.createdBy, "recordbook.view") ? exercise : null));
+    const visibleRows = await Promise.all(rows.map(async exercise => await canManageExerciseForUser(user, exercise.createdBy, "recordbook.view", exercise.id, "edit") ? exercise : null));
     res.json(visibleRows.filter((exercise): exercise is typeof rows[number] => exercise !== null));return;
   }
   const learnerId=req.currentUser?.role===learnerRole ? req.currentUser.id : null;
@@ -164,7 +163,7 @@ router.get("/:id",requireAuth,requireManagerPermissionIfManager("recordbook.view
   if (canAccessManager(user) && !isOwnerRole(user.role) && !(await canManageExerciseForUser(user, exercise.createdBy, "recordbook.view"))) { res.status(404).json({error:"Exercise not found"}); return; }
   if(exercise.status!=="published"){
     if(!canManageAcademicContent(user)){res.status(404).json({error:"Exercise not found"});return;}
-    if(!(await canManageExerciseForUser(user,exercise.createdBy,"recordbook.view"))){res.status(404).json({error:"Exercise not found"});return;}
+    if(!(await canManageExerciseForUser(user,exercise.createdBy,"recordbook.view",exercise.id,"edit"))){res.status(404).json({error:"Exercise not found"});return;}
   }
   const questions=await db.select().from(exerciseQuestionsTable).where(eq(exerciseQuestionsTable.exerciseId,exercise.id)).orderBy(asc(exerciseQuestionsTable.position));
   const allOptionRows=questions.length?(await Promise.all(questions.map(q=>db.select().from(exerciseOptionsTable).where(eq(exerciseOptionsTable.questionId,q.id))))).flat():[];
@@ -200,7 +199,7 @@ router.patch("/:id/reporting",requireAuth,requireManagerPermissionIfManager("use
   if(typeof req.body?.recordForReport!=="boolean"){res.status(400).json({error:"recordForReport must be a boolean"});return;}
   const [existing]=await db.select({createdBy:exercisesTable.createdBy,layout:exercisesTable.layout}).from(exercisesTable).where(eq(exercisesTable.id,exerciseId));
   if(!existing){res.status(404).json({error:"Exercise not found"});return;}
-  if(!(await canManageExerciseForUser(user,existing.createdBy,"users.override.teacher"))){res.status(403).json({error:"You cannot change report-mark settings for this exercise"});return;}
+  if(!(await canManageExerciseForUser(user,existing.createdBy,"users.override.teacher",exerciseId,"edit"))){res.status(403).json({error:"You cannot change report-mark settings for this exercise"});return;}
   const currentLayout=existing.layout&&typeof existing.layout==="object"&&!Array.isArray(existing.layout)?existing.layout as Record<string,unknown>:{};
   const [updated]=await db.update(exercisesTable).set({layout:{...currentLayout,recordForReport:req.body.recordForReport}}).where(eq(exercisesTable.id,exerciseId)).returning({id:exercisesTable.id,layout:exercisesTable.layout});
   if(!updated){res.status(404).json({error:"Exercise not found"});return;}
@@ -213,7 +212,7 @@ router.post("/:id/archive",requireAuth,requireManagerPermissionIfManager("users.
   const outcome=await db.transaction(async tx=>{
     const [exercise]=await tx.select({id:exercisesTable.id,createdBy:exercisesTable.createdBy,status:exercisesTable.status}).from(exercisesTable).where(eq(exercisesTable.id,exerciseId)).for("update");
     if(!exercise)return {kind:"missing" as const};
-    if(!(await canManageExerciseForUser(user,exercise.createdBy,"users.override.teacher")))return {kind:"forbidden" as const};
+    if(!(await canManageExerciseForUser(user,exercise.createdBy,"users.override.teacher",exerciseId,"delete")))return {kind:"forbidden" as const};
     if(exercise.status==="archived")return {kind:"archived" as const,alreadyArchived:true};
     const [updated]=await tx.update(exercisesTable).set({status:"archived"}).where(eq(exercisesTable.id,exerciseId)).returning({id:exercisesTable.id,status:exercisesTable.status});
     await tx.insert(auditLogsTable).values({performedBy:user.id,action:"exercise.archived",category:"academic",targetType:"exercise",targetId:exerciseId,details:JSON.stringify({previousStatus:exercise.status,submissionsPreserved:true})});
@@ -228,7 +227,7 @@ router.post("/:id/questions",requireAuth,requireManagerPermissionIfManager("user
   const user=req.currentUser!;if(!canManageAcademicContent(user)){res.status(403).json({error:"Teacher or owner access required"});return;}
   const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}
   const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));if(!exercise){res.status(404).json({error:"Exercise not found"});return;}
-  if(!(await canManageExerciseForUser(user,exercise.createdBy,"users.override.teacher"))){res.status(403).json({error:"You can only edit your own exercise"});return;}
+  if(!(await canManageExerciseForUser(user,exercise.createdBy,"users.override.teacher",exerciseId,"edit"))){res.status(403).json({error:"You can only edit your own exercise"});return;}
   const {prompt,type,marksAllocated,position,config,options}=req.body??{};
   const marks=Number(marksAllocated??1);
   if(typeof prompt!=="string"||!prompt.trim()||!questionTypes.has(type)||!Number.isFinite(marks)||marks<0||marks>10000||Math.round(marks*2)!==marks*2){res.status(400).json({error:"prompt, type (input|poll|drawbox), and marksAllocated in 0.5 increments are required"});return;}
