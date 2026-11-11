@@ -73,7 +73,8 @@ router.post("/class/:classId/mark", requireAuth, requireManagerPermissionIfManag
   const [target]=await db.select({id:usersTable.id,name:usersTable.name,role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(eq(usersTable.id,studentId));
   if(!target||!["student","learner"].includes(String(target.role).toLowerCase())){res.status(404).json({error:"Enrolled learner not found"});return;}
   const isAssignedTeacher=Number(classRow.teacherId)===actor.id;
-  const isAuthorized=isAssignedTeacher||isOwnerRole(actor.role)||(await canModerateUser(actor,{role:target.role,isManager:target.isManager,managerLevel:target.managerLevel}));
+  const [classTeacher]=await db.select({role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(eq(usersTable.id,classRow.teacherId));
+  const isAuthorized=isAssignedTeacher||isOwnerRole(actor.role)||Boolean(classTeacher&&canModerateUser(actor,classTeacher));
   if(!isAuthorized){res.status(403).json({error:"You are not authorized to manage this class register"});return;}
   const enrolled=await pool.query("SELECT 1 FROM enrollments WHERE class_id=$1 AND learner_id=$2 AND status='active' LIMIT 1",[classId,studentId]);
   if(!enrolled.rows.length){res.status(404).json({error:"This learner is not enrolled in the selected class"});return;}
