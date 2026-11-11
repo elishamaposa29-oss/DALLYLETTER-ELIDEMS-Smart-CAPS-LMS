@@ -23,6 +23,11 @@ export default function TeacherCvReviewWorkspace() {
   const [error, setError] = useState("");
   const [reviewDays, setReviewDays] = useState("");
   const [canEditConfig, setCanEditConfig] = useState(false);
+  const [managerGrants, setManagerGrants] = useState<Record<string, boolean>>({});
+  const isOwner = ["owner", "platform_owner"].includes(String(user?.role || "").toLowerCase().replace(/[ -]+/g, "_"));
+  const canReview = isOwner || managerGrants["teacher_cv.review"] === true;
+  const canAuthorize = isOwner || managerGrants["teacher_cv.authorize"] === true;
+  const canChat = isOwner || managerGrants["teacher_cv.chat"] === true;
 
   const api = useCallback(async (path: string, method = "GET", body?: any) => {
     const response = await fetch(getApiUrl("/api/teacher-cv-workspace" + path), {
@@ -40,10 +45,12 @@ export default function TeacherCvReviewWorkspace() {
     if (!token) return;
     setLoading(true); setError("");
     try {
-      const [result, config] = await Promise.all([
+      const [result, config, permissionResponse] = await Promise.all([
         api("/queue"),
         api("/config").catch(() => null),
+        fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: "Bearer " + token }, cache: "no-store" }).catch(() => null),
       ]);
+      if (permissionResponse?.ok) { const permissionData = await permissionResponse.json().catch(() => ({})); setManagerGrants(permissionData.permissions || {}); }
       const rows = Array.isArray(result?.applications) ? result.applications : [];
       setQueue(rows);
       if (config) { setReviewDays(config.reviewDurationDays == null ? "" : String(config.reviewDurationDays)); setCanEditConfig(config.canEdit === true); }
@@ -183,17 +190,17 @@ export default function TeacherCvReviewWorkspace() {
         {history.map((item: Row, index: number) => <View key={String(item.id || index)} style={{ paddingVertical: 7, borderTopWidth: 1, borderColor: colors.border }}><Text style={body}>{item.action} · {item.new_status}</Text><Text style={muted}>{item.reviewer_name || "System"} · {item.created_at ? new Date(item.created_at).toLocaleString() : ""}</Text>{item.note ? <Text style={muted}>{item.note}</Text> : null}</View>)}
         <TextInput value={note} onChangeText={setNote} multiline placeholder="Reviewer note / reason (required for rejection)" placeholderTextColor={colors.mutedForeground} style={{ minHeight: 76, textAlignVertical: "top", color: colors.foreground, borderColor: colors.border, borderWidth: 1, borderRadius: 8, padding: 10, marginTop: 12 }} />
         <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
-          <TouchableOpacity disabled={busy} onPress={() => void decide("approve")} style={[button, { flex: 1, backgroundColor: "#15803d" }]}><Text style={buttonText}>Approve CV</Text></TouchableOpacity>
-          <TouchableOpacity disabled={busy} onPress={() => void decide("reject")} style={[button, { flex: 1, backgroundColor: "#b91c1c" }]}><Text style={buttonText}>Reject CV</Text></TouchableOpacity>
+          {canAuthorize ? <TouchableOpacity disabled={busy} onPress={() => void decide("approve")} style={[button, { flex: 1, backgroundColor: "#15803d" }]}><Text style={buttonText}>Approve CV</Text></TouchableOpacity> : null}
+          {canReview ? <TouchableOpacity disabled={busy} onPress={() => void decide("reject")} style={[button, { flex: 1, backgroundColor: "#b91c1c" }]}><Text style={buttonText}>Reject CV</Text></TouchableOpacity> : null}
         </View>
-        {cv.surveySubmittedAt && cv.surveyReviewStatus === "pending" ? <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+        {cv.surveySubmittedAt && cv.surveyReviewStatus === "pending" && canReview ? <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
           <TouchableOpacity disabled={busy} onPress={() => void decideSurvey("approve")} style={[button, { flex: 1 }]}><Text style={buttonText}>Approve survey</Text></TouchableOpacity>
           <TouchableOpacity disabled={busy} onPress={() => void decideSurvey("reject")} style={[button, { flex: 1, backgroundColor: "#b91c1c" }]}><Text style={buttonText}>Reject survey</Text></TouchableOpacity>
         </View> : null}
-        <Text style={{ ...heading, marginTop: 14 }}>Private applicant conversation</Text>
+        {canChat ? <><Text style={{ ...heading, marginTop: 14 }}>Private applicant conversation</Text>
         {chat.map((message: Row) => <View key={String(message.id)} style={{ paddingVertical: 6, borderTopWidth: 1, borderColor: colors.border }}><Text style={body}>{message.sender_name || "Participant"}: {message.body}</Text><Text style={muted}>{message.created_at ? new Date(message.created_at).toLocaleString() : ""}</Text></View>)}
         <TextInput value={draft} onChangeText={setDraft} multiline placeholder="Message the applicant…" placeholderTextColor={colors.mutedForeground} style={{ minHeight: 62, textAlignVertical: "top", color: colors.foreground, borderColor: colors.border, borderWidth: 1, borderRadius: 8, padding: 10, marginTop: 8 }} />
-        <TouchableOpacity disabled={busy || !draft.trim()} onPress={() => void sendMessage()} style={[button, { marginTop: 8 }]}><Text style={buttonText}>Send message</Text></TouchableOpacity>
+        <TouchableOpacity disabled={busy || !draft.trim()} onPress={() => void sendMessage()} style={[button, { marginTop: 8 }]}><Text style={buttonText}>Send message</Text></TouchableOpacity></> : null}
         <TouchableOpacity onPress={() => { setDetail(null); setSelectedId(null); setHistory([]); setChat([]); }} style={{ padding: 12, alignItems: "center" }}><Text style={{ color: colors.primary, fontWeight: "800" }}>Close application</Text></TouchableOpacity>
       </View> : null}
     </ScrollView>
