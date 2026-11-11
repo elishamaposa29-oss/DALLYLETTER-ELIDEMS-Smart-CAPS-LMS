@@ -111,11 +111,14 @@ for (const url of urls) {
   if (JSON.stringify(jsonLd.keywords || []) !== JSON.stringify(expectedKeywords)) {
     throw new Error("Structured SEO keyword tags do not match the approved page taxonomy: " + url);
   }
-  if (expectedKeywords.length && !html.includes('aria-label="Related search topics"')) {
-    throw new Error("Relevant visible keyword tags are missing: " + url);
+  const keywordMetaMatch = html.match(/<meta name="keywords" content="([^"]*)">/);
+  const actualMetaKeywords = keywordMetaMatch ? keywordMetaMatch[1] : "";
+  const expectedMetaKeywords = expectedKeywords.join(", ").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  if (actualMetaKeywords !== expectedMetaKeywords) {
+    throw new Error("SEO keyword metadata does not match the approved page taxonomy: " + url);
   }
-  for (const keyword of expectedKeywords) {
-    if (!html.includes("<span>" + keyword + "</span>")) throw new Error("Missing visible keyword tag " + keyword + " on " + url);
+  if (html.includes('aria-label="Related search topics"') || html.includes("keyword-tags")) {
+    throw new Error("Keyword clouds must not be visibly rendered on public landing pages: " + url);
   }
   if (jsonLd["@type"] !== "WebPage" || jsonLd.url !== url || jsonLd.creator?.name !== "Elisha Maposa") {
     throw new Error("Invalid WebPage structured data or creator attribution: " + url);
