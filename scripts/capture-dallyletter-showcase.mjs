@@ -64,7 +64,7 @@ if (!isProductionPush && process.env.EXPECTED_DEPLOYMENT_SHA) {
 }
 
 
-async function assertPublishablePage(page, label) {
+async function assertPublishablePage(page, label, options = {}) {
   const audit = await page.evaluate(() => {
     const visible = (element) => {
       const style = getComputedStyle(element);
@@ -83,7 +83,7 @@ async function assertPublishablePage(page, label) {
     const forbiddenText = /(internal server error|stack trace|uncaught (?:exception|error)|failed to fetch|something went wrong|database connection failed|api key|secret key|private key|bearer\s+[a-z0-9._-]{12,}|sk-[a-z0-9]{16,}|gh[pousr]_[a-z0-9]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/i.test(bodyText);
     return { enteredValues, visibleAlerts, brokenImages, forbiddenText, bodyLength: bodyText.length };
   });
-  if (audit.enteredValues.length) throw new Error("Capture blocked for " + label + ": visible form fields contain entered values.");
+  if (audit.enteredValues.length && !options.allowRedactedFormValues) throw new Error("Capture blocked for " + label + ": visible form fields contain entered values.");
   if (audit.visibleAlerts.length) throw new Error("Capture blocked for " + label + ": visible alert/error content: " + audit.visibleAlerts.join(" | ").slice(0, 300));
   if (audit.forbiddenText) throw new Error("Capture blocked for " + label + ": sensitive text or an obvious application error was detected.");
   if (audit.brokenImages.length) throw new Error("Capture blocked for " + label + ": broken images: " + audit.brokenImages.join(", ").slice(0, 300));
@@ -345,7 +345,7 @@ async function captureRole(role, route, email, password) {
         const mainText = await page.locator("main").innerText().catch(() => "");
         if (!mainText.trim()) throw new Error("No visible main dashboard content");
         await verifyBrandLogo(page, role + " " + pathname);
-        await assertPublishablePage(page, role + " " + pathname);
+        await assertPublishablePage(page, role + " " + pathname, { allowRedactedFormValues: true });
         const screenshot = safeName("dashboard-" + role + "-" + pathname.replace(/^\//, "").replaceAll("/", "-")) + ".png";
         await redactScreenshotContent(page);\n        await page.screenshot({ path: path.join(roleScreensOut, screenshot), fullPage: true, animations: "disabled" });
         screenshots.push({ path: pathname, label: item.label, screenshot });
@@ -375,7 +375,7 @@ async function captureRole(role, route, email, password) {
     const unexpectedErrors = classifyRuntimeErrors(runtimeErrors, google403Responses, role + " dashboard suite");
     if (unexpectedErrors.length) throw new Error("Runtime/browser/API failures: " + unexpectedErrors.slice(0, 5).join(" | ").slice(0, 900));
     results.push({
-      type: "dashboard", role, url: homeUrl.href, status: routeResults.some((item) => item.status === "capture-error") ? "partial" : "captured",
+      type: "dashboard", role, url: homeUrl.href, status: screenshots.length === 0 || routeResults.some((item) => item.status !== "captured") ? "partial" : "captured",
       authenticatedRole, pagesCaptured: screenshots.length, routeInventoryCount: routeInventory.length,
       screenshots, routes: routeResults, pageLimitReached: queue.length > 0
     });
