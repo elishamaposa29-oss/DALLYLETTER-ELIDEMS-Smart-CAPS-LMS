@@ -17,7 +17,7 @@ router.get("/classes", requireAuth, requireManagerPermissionIfManager("attendanc
   if(!canManageAcademicContent(actor)){res.status(403).json({error:"Teacher or authorized academic staff access required"});return;}
   const rows=await db.select().from(classesTable).orderBy(desc(classesTable.createdAt));
   if(isOwnerRole(actor.role)){res.json(rows);return;}
-  if(String(actor.role).toLowerCase()==="teacher"){res.json(rows.filter(row=>Number(row.teacherId)===actor.id));return;}
+  if(String(actor.role).toLowerCase()==="teacher"&&!actor.isManager){res.json(rows.filter(row=>Number(row.teacherId)===actor.id));return;}
   const teacherIds=[...new Set(rows.map(row=>row.teacherId))];
   const teachers=teacherIds.length?await db.select({id:usersTable.id,role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(inArray(usersTable.id,teacherIds)):[];
   const byId=new Map(teachers.map(row=>[row.id,row]));
@@ -109,15 +109,19 @@ router.get("/my", requireAuth, async (req, res): Promise<void> => {
 
 router.get("/student/:studentId", requireAuth, requireManagerPermissionIfManager("attendance.view"), async (req, res): Promise<void> => {
   const studentId = Number(req.params.studentId);
-  const [target] = Number.isSafeInteger(studentId) ? await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, studentId)) : [];
-  const studentClasses = await db.select({ teacherId: classesTable.teacherId }).from(attendanceTable)
-    .innerJoin(classesTable, eq(attendanceTable.classId, classesTable.id)).where(eq(attendanceTable.studentId, studentId));
-  const isAssignedTeacher = studentClasses.some(row => Number(row.teacherId) === req.currentUser!.id);
-  const inAuthority = req.currentUser!.id === studentId || isOwnerRole(req.currentUser!.role) || isAssignedTeacher || Boolean(target && canModerateUser(req.currentUser!, target));
-  if (!Number.isSafeInteger(studentId) || studentId <= 0 || !inAuthority) { res.status(404).json({ error: "User not found." }); return; }
-  if (!(await canViewProfileSection(req.currentUser!,studentId,"attendance"))) { res.status(403).json({ error: "Attendance visibility is restricted by this profile's privacy settings." }); return; }
+  const actor=req.currentUser!;
+  if(!Number.isSafeInteger(studentId)||studentId<=0){res.status(404).json({error:"User not found."});return;}
+  const studentClasses = await db.select({classId:attendanceTable.classId,teacherId:classesTable.teacherId}).from(attendanceTable)
+    .innerJoin(classesTable,eq(attendanceTable.classId,classesTable.id)).where(eq(attendanceTable.studentId,studentId));
+  const teacherIds=[...new Set(studentClasses.map(row=>row.teacherId))];
+  const teachers=teacherIds.length?await db.select({id:usersTable.id,role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(inArray(usersTable.id,teacherIds)):[];
+  const teacherById=new Map(teachers.map(row=>[row.id,row]));
+  const authorizedClassIds=studentClasses.filter(row=>Number(row.teacherId)===actor.id||isOwnerRole(actor.role)||Boolean(teacherById.get(row.teacherId)&&canModerateUser(actor,teacherById.get(row.teacherId)!))).map(row=>row.classId);
+  const selfOrOwner=actor.id===studentId||isOwnerRole(actor.role);
+  if(!selfOrOwner&&!authorizedClassIds.length){res.status(404).json({error:"User not found."});return;}
+  if(!(await canViewProfileSection(actor,studentId,"attendance"))){res.status(403).json({error:"Attendance visibility is restricted by this profile's privacy settings."});return;}
   const rows = await db.select().from(attendanceTable)
-    .where(eq(attendanceTable.studentId, studentId))
+    .where(selfOrOwner?eq(attendanceTable.studentId,studentId):and(eq(attendanceTable.studentId,studentId),inArray(attendanceTable.classId,authorizedClassIds)))
     .orderBy(desc(attendanceTable.joinedAt));
   res.json(rows);
 });
