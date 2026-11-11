@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { normalizeGoogleSiteVerificationToken } from "./google-site-verification.mjs";
+import { educationSeoTags, getEducationSeoTagCounts, getPageSeoTags } from "./education-seo-tags.mjs";
 
 const root = path.resolve("dist/public");
 const appShellPath = path.join(root, "app.html");
@@ -28,6 +29,13 @@ if (isCanonicalProductionBuild && !verificationToken) {
   throw new Error("GOOGLE_SITE_VERIFICATION is missing from the canonical Dallyletter production project. Preserve the existing Search Console token in that project's Production environment.");
 }
 const expectedBuildSha = (process.env.VERCEL_GIT_COMMIT_SHA || "").trim();
+const seoTagCounts = getEducationSeoTagCounts();
+if (seoTagCounts.templateTags !== 58 || seoTagCounts.standaloneTags !== 66) {
+  throw new Error("Education SEO tag inventory is incomplete: " + JSON.stringify(seoTagCounts));
+}
+if (!educationSeoTags.templates.past_papers_and_exams.includes("[Subject] past papers pdf") || !educationSeoTags.templates.online_school_enrollment.includes("accredited online school in [Country/Location]")) {
+  throw new Error("Education SEO templates were altered or lost");
+}
 const sitemapPath = path.join(root, "sitemap.xml");
 const sitemap = fs.readFileSync(sitemapPath, "utf8");
 const urls = [...sitemap.matchAll(/<loc>(.*?)<\/loc>/g)].map(match => match[1]);
@@ -86,6 +94,16 @@ for (const url of urls) {
   const jsonLdMatch = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
   if (!jsonLdMatch) throw new Error("Missing JSON-LD structured data: " + url);
   const jsonLd = JSON.parse(jsonLdMatch[1]);
+  const expectedKeywords = getPageSeoTags(route.split("/").filter(Boolean).join(""));
+  if (JSON.stringify(jsonLd.keywords || []) !== JSON.stringify(expectedKeywords)) {
+    throw new Error("Structured SEO keyword tags do not match the approved page taxonomy: " + url);
+  }
+  if (expectedKeywords.length && !html.includes('aria-label="Related search topics"')) {
+    throw new Error("Relevant visible keyword tags are missing: " + url);
+  }
+  for (const keyword of expectedKeywords) {
+    if (!html.includes("<span>" + keyword + "</span>")) throw new Error("Missing visible keyword tag " + keyword + " on " + url);
+  }
   if (jsonLd["@type"] !== "WebPage" || jsonLd.url !== url || jsonLd.creator?.name !== "Elisha Maposa") {
     throw new Error("Invalid WebPage structured data or creator attribution: " + url);
   }
