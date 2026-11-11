@@ -470,6 +470,7 @@ try {
   }
   results.push(await pageFor404Probe());
 
+  const roleResults = results.filter((result) => result.type === "dashboard");
   const manifest = {
     site: baseUrl.href,
     capturedAt: new Date().toISOString(),
@@ -478,6 +479,10 @@ try {
     workflowRunUrl: process.env.SHOWCASE_RUN_URL || null,
     publicUrlCount: results.filter((result) => result.type === "public").length,
     publicPageCount: results.filter((result) => result.type === "public" && result.screenshot).length,
+    expectedRoleCount: roleAccounts.length,
+    capturedRoleCount: roleResults.filter((result) => result.status === "captured").length,
+    roleScreenshotCount: roleResults.reduce((count, result) => count + (result.screenshots?.length || 0), 0),
+    roleCoverage: roleResults.map(({ role, status, authenticatedRole, pagesCaptured, routeInventoryCount }) => ({ role, status, authenticatedRole, pagesCaptured: pagesCaptured || 0, routeInventoryCount: routeInventoryCount || 0 })),
     results
   };
   await fs.writeFile(path.join(out, "capture-manifest.json"), JSON.stringify(manifest, null, 2));
@@ -488,6 +493,9 @@ try {
       "",
       "- Site: " + manifest.site,
       "- Public pages captured: " + manifest.publicPageCount + " / " + manifest.publicUrlCount,
+      "- Role dashboards captured: " + manifest.capturedRoleCount + " / " + manifest.expectedRoleCount,
+      "- Authenticated feature screenshots: " + manifest.roleScreenshotCount,
+      ...manifest.roleCoverage.map((role) => "- " + role.role + ": " + role.status + " (" + role.pagesCaptured + " pages)"),
       "- Deployed build commit: " + (manifest.sourceCommit || "not exposed"),
       "- Workflow commit: " + (manifest.workflowCommit || "unknown"),
       "- [Workflow run](" + (manifest.workflowRunUrl || "") + ")",
