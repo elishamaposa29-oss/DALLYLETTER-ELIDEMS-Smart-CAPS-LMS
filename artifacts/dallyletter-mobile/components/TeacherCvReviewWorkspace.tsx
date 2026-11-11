@@ -138,6 +138,43 @@ export default function TeacherCvReviewWorkspace() {
     } catch (e) { Alert.alert("Document unavailable", e instanceof Error ? e.message : "Please retry."); }
   };
 
+  const qualificationRequest = async (path: string, method = "GET", body?: any) => {
+    const response = await fetch(getApiUrl(path), { method, headers: { ...(token ? { Authorization: "Bearer " + token } : {}), ...(body === undefined ? {} : { "Content-Type": "application/json" }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), cache: "no-store" });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "Qualification request failed (" + response.status + ")");
+    return payload;
+  };
+  const openQualificationDocument = async (qualification: Row) => {
+    if (!token || !qualification.document_id || !canViewQualificationDocuments) return;
+    try {
+      const mime = String(qualification.document_mime_type || "application/pdf");
+      const extension = mime === "image/png" ? ".png" : mime === "image/jpeg" ? ".jpg" : ".pdf";
+      const destination = (FileSystem.cacheDirectory || FileSystem.documentDirectory || "") + "dallyletter-qualification-" + qualification.document_id + extension;
+      const result = await FileSystem.downloadAsync(getApiUrl("/api/qualifications/" + qualification.document_id + "/document"), destination, { headers: { Authorization: "Bearer " + token } });
+      if (result.status < 200 || result.status >= 300) throw new Error("The protected qualification document could not be downloaded.");
+      await Linking.openURL(result.uri);
+    } catch (e) { Alert.alert("Certificate unavailable", e instanceof Error ? e.message : "Please retry."); }
+  };
+  const loadQualificationHistory = async (qualificationId: number) => {
+    try {
+      const result = await qualificationRequest("/api/qualifications/" + qualificationId + "/review-history");
+      setQualificationHistory(current => ({ ...current, [qualificationId]: Array.isArray(result.history) ? result.history : [] }));
+    } catch (e) { Alert.alert("Review history unavailable", e instanceof Error ? e.message : "Please retry."); }
+  };
+  const verifyQualification = async (qualification: Row, status: "verified" | "rejected") => {
+    if (!canVerifyQualifications) return;
+    const reviewNote = note.trim();
+    if (status === "rejected" && reviewNote.length < 3) { Alert.alert("Reason required", "Enter a qualification rejection reason of at least 3 characters in the reviewer note field."); return; }
+    setBusy(true); setError("");
+    try {
+      await qualificationRequest("/api/qualifications/" + qualification.id + "/verify", "PATCH", { status, reviewNote });
+      Alert.alert(status === "verified" ? "Qualification verified" : "Qualification rejected", "The verification decision and history have been saved.");
+      await openApplication(Number(selectedId));
+      await loadQualificationHistory(Number(qualification.id));
+    } catch (e) { setError(e instanceof Error ? e.message : "Qualification decision could not be saved."); }
+    finally { setBusy(false); }
+  };
+
   const card = { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: 12, padding: 13, marginBottom: 10 };
   const heading = { color: colors.foreground, fontSize: 16, fontWeight: "800" as const };
   const body = { color: colors.foreground, fontSize: 13, lineHeight: 19 };
