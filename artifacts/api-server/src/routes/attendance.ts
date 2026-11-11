@@ -149,10 +149,10 @@ router.put("/:id/status", requireAuth, requireManagerPermissionIfManager("attend
   if (!status || !Number.isInteger(id)) { res.status(400).json({ error: "status must be present or absent" }); return; }
   const [existing] = await db.select({ studentId: attendanceTable.studentId, classId: attendanceTable.classId }).from(attendanceTable).where(eq(attendanceTable.id, id));
   if (!existing) { res.status(404).json({ error: "Attendance record not found" }); return; }
-  const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, existing.studentId));
   const [classRow] = await db.select({ teacherId: classesTable.teacherId }).from(classesTable).where(eq(classesTable.id, existing.classId));
-  if (target && isOwnerRole(target.role) && !isOwnerRole(user.role)) { res.status(404).json({ error: "Attendance record not found" }); return; }
-  if (!canManageAcademicContent(user) || (!isOwnerRole(user.role) && Number(classRow?.teacherId) !== user.id && !(target && canModerateUser(user, target)))) {
+  const [classTeacher] = classRow ? await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, classRow.teacherId)) : [];
+  const isAuthorized = isOwnerRole(user.role) || Number(classRow?.teacherId) === user.id || Boolean(classTeacher && canModerateUser(user, classTeacher));
+  if (!isAuthorized) {
     res.status(403).json({ error: "You are not authorized to edit this class attendance record." }); return;
   }
   const [row] = await db.update(attendanceTable).set({ status }).where(eq(attendanceTable.id, id)).returning();
@@ -167,11 +167,10 @@ router.put("/:id/leave", requireAuth, requireManagerPermissionIfManager("attenda
   const [row] = await db.select().from(attendanceTable).where(eq(attendanceTable.id, id));
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
   const actor = req.currentUser!;
-  const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, row.studentId));
   const [classRow] = await db.select({ teacherId: classesTable.teacherId }).from(classesTable).where(eq(classesTable.id, row.classId));
-  if (target && isOwnerRole(target.role) && !isOwnerRole(actor.role)) { res.status(404).json({ error: "Not found" }); return; }
+  const [classTeacher] = classRow ? await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, classRow.teacherId)) : [];
   const isOwnSession = row.studentId === actor.id;
-  const canCloseClassSession = canManageAcademicContent(actor) && (isOwnerRole(actor.role) || Number(classRow?.teacherId) === actor.id || Boolean(target && canModerateUser(actor, target)));
+  const canCloseClassSession = canManageAcademicContent(actor) && (isOwnerRole(actor.role) || Number(classRow?.teacherId) === actor.id || Boolean(classTeacher && canModerateUser(actor, classTeacher)));
   if (!isOwnSession && !canCloseClassSession) { res.status(403).json({ error: "You cannot close another user attendance session." }); return; }
   const durationMs = leftAt.getTime() - new Date(row.joinedAt).getTime();
   const durationMinutes = Math.round(durationMs / 60000);
