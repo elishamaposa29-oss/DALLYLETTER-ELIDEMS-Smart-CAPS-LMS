@@ -541,14 +541,14 @@ export default function ExerciseMarking() {
 
                     <div className="rounded-lg bg-muted p-3 text-sm">
                       <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Learner answer · teacher annotations are saved with the returned result</div>
-                      {a.drawData ? <div data-marking-surface className="relative overflow-hidden rounded-lg border bg-white"><DrawAnswer data={a.drawData} />{canEdit?<><MediaMarkOverlay data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/><div className="pointer-events-none absolute inset-0"><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div></>:null}</div> : a.mediaReference ? <div data-marking-surface className="relative overflow-hidden rounded-lg border bg-background"><AuthenticatedMedia url={a.mediaReference} type={mediaTypeFor(a.mediaReference)} title={`Question ${i+1} learner media`} />{canEdit?<><MediaMarkOverlay data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/><div className="pointer-events-none absolute inset-0"><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div></>:null}</div> : q?.type==="poll" && a.selectedValue ? <div className={`rounded-lg border p-3 font-semibold ${optionsFor(q.id).find(o=>o.value===a.selectedValue)?.isCorrect ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-red-300 bg-red-50 text-red-800"}`}>Selected: {optionsFor(q.id).find(o=>o.value===a.selectedValue)?.label ?? a.selectedValue} {optionsFor(q.id).find(o=>o.value===a.selectedValue)?.isCorrect ? "✓ Correct" : "✕ Wrong"}</div> : (a.textAnswer || "No answer")}
+                      {a.drawData ? <div data-marking-surface className="relative overflow-hidden rounded-lg border bg-white"><DrawAnswer data={a.drawData} />{canEdit&&selectedSubmission.status!=="marked"?<><MediaMarkOverlay data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/><div className="pointer-events-none absolute inset-0"><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div></>:null}</div> : a.mediaReference ? <div data-marking-surface className="relative overflow-hidden rounded-lg border bg-background"><AuthenticatedMedia url={a.mediaReference} type={mediaTypeFor(a.mediaReference)} title={`Question ${i+1} learner media`} />{canEdit?<><MediaMarkOverlay data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/><div className="pointer-events-none absolute inset-0"><FloatingTicks data={markingData[a.id]} onChange={d=>setMarkingData(m=>({...m,[a.id]:d}))}/></div></>:null}</div> : q?.type==="poll" && a.selectedValue ? <div className={`rounded-lg border p-3 font-semibold ${optionsFor(q.id).find(o=>o.value===a.selectedValue)?.isCorrect ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-red-300 bg-red-50 text-red-800"}`}>Selected: {optionsFor(q.id).find(o=>o.value===a.selectedValue)?.label ?? a.selectedValue} {optionsFor(q.id).find(o=>o.value===a.selectedValue)?.isCorrect ? "✓ Correct" : "✕ Wrong"}</div> : (a.textAnswer || "No answer")}
                     </div>
 
                     <div className="grid items-start gap-3 pt-1 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]">
                       <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1"><Button type="button" size="sm" variant="outline" disabled={!canEdit} className="text-emerald-600 border-emerald-300 hover:bg-emerald-50" onClick={()=>setMarks((m)=>({...m,[a.id]:q?.marksAllocated??"0"}))} aria-label={`Mark question ${i+1} correct`}><CheckCircle2 className="h-4 w-4" /></Button><Button type="button" size="sm" variant="outline" disabled={!canEdit} className="text-red-600 border-red-300 hover:bg-red-50" onClick={()=>setMarks((m)=>({...m,[a.id]:"0"}))} aria-label={`Mark question ${i+1} incorrect`}><XCircle className="h-4 w-4" /></Button><Input
+                        <div className="flex items-center gap-1"><Button type="button" size="sm" variant="outline" disabled={!canEdit || selectedSubmission.status==="marked"} className="text-emerald-600 border-emerald-300 hover:bg-emerald-50" onClick={()=>setMarks((m)=>({...m,[a.id]:q?.marksAllocated??"0"}))} aria-label={`Mark question ${i+1} correct`}><CheckCircle2 className="h-4 w-4" /></Button><Button type="button" size="sm" variant="outline" disabled={!canEdit || selectedSubmission.status==="marked"} className="text-red-600 border-red-300 hover:bg-red-50" onClick={()=>setMarks((m)=>({...m,[a.id]:"0"}))} aria-label={`Mark question ${i+1} incorrect`}><XCircle className="h-4 w-4" /></Button><Input
                           type="number"
-                          disabled={!canEdit}
+                          disabled={!canEdit || selectedSubmission.status==="marked"}
                           min="0"
                           max={undefined}
                           step="0.01"
@@ -560,7 +560,7 @@ export default function ExerciseMarking() {
                         <span className="text-sm text-muted-foreground">/ {q?.marksAllocated ?? "—"} • any numeric mark; server validates the allocation</span>
                       </div>
                       <Textarea
-                        disabled={!canEdit}
+                        disabled={!canEdit || selectedSubmission.status==="marked"}
                         className="min-h-24 w-full"
                         value={notes[a.id] ?? ""}
                         onChange={(e) => setNotes((n) => ({ ...n, [a.id]: e.target.value }))}
@@ -576,7 +576,7 @@ export default function ExerciseMarking() {
                   <div><p className="text-xs font-semibold uppercase tracking-widest text-amber-700">Final result</p><p className="mt-1 text-3xl font-black text-slate-900">{answers.reduce((sum,a)=>sum+Number(marks[a.id]??0),0).toFixed(2)} <span className="text-base font-semibold text-slate-500">/ {exercise?.totalMarks ?? "—"}</span></p></div>
                   <Badge className="bg-amber-500 text-slate-950">{exercise?.totalMarks ? ((answers.reduce((sum,a)=>sum+Number(marks[a.id]??0),0)/Number(exercise.totalMarks))*100).toFixed(1)+"%" : "—"}</Badge>
                 </div>
-                <Textarea disabled={!canEdit} className="mt-4 min-h-28 w-full bg-white" value={overallComment} onChange={e=>setOverallComment(e.target.value)} placeholder="Final teacher comment for the whole exercise — celebrate strengths, explain the main improvement point, and encourage the learner." />
+                <Textarea disabled={!canEdit || selectedSubmission.status==="marked"} className="mt-4 min-h-28 w-full bg-white" value={overallComment} onChange={e=>setOverallComment(e.target.value)} placeholder="Final teacher comment for the whole exercise — celebrate strengths, explain the main improvement point, and encourage the learner." />
               </div>
 
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
