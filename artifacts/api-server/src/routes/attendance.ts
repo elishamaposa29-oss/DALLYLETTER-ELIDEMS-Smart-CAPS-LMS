@@ -195,7 +195,7 @@ router.get("/stats", requireAuth, requireManagerPermissionIfManager("attendance.
     if(!teacherAllowed)return null;
     const studentAllowed=Number(row.teacherId)===user.id||await canViewProfileSection(user,Number(row.studentId),"attendance");
     return studentAllowed?row:null;
-  }))).filter(Boolean);
+  }))).filter((row):row is any=>row!==null);
   const totalSessions = new Set(scopedRows.map((r: any) => r.classId)).size;
   const totalAttendances = scopedRows.length;
   const uniqueStudents = new Set(scopedRows.map((r: any) => r.studentId)).size;
