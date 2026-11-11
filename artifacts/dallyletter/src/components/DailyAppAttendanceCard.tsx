@@ -219,8 +219,8 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
           const isAbsent = !!status && status.absent > 0;
           const isPresent = !!status && status.present > 0;
           const isMixed = isAbsent && isPresent;
-          const isPastUnrecorded = key < today && !status;
           const holidayName = zimbabwePublicHolidays(monthStart.getFullYear()).get(key);
+          const isPastUnrecorded = key < today && !status && !holidayName;
           // The date cell itself communicates the register state; keep the summary
           // cards and the separate fullscreen activity-history dialog untouched.
           const colorClass = isFuture
