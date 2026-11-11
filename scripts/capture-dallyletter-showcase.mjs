@@ -240,8 +240,8 @@ async function redactScreenshotContent(page) {
     for (const node of nodes) {
       const value = node.nodeValue || "";
       node.nodeValue = value
-        .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, "[email redacted]")
-        .replace(/(?:\\+?\\d[\\d .()/-]{7,}\\d)/g, "[phone redacted]");
+        .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email redacted]")
+        .replace(/(?:\+?\d[\d .()/-]{7,}\d)/g, "[phone redacted]");
     }
   });
 }
