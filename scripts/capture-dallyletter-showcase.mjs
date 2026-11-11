@@ -6,11 +6,11 @@ const baseUrl = new URL(process.env.SHOWCASE_SITE_URL || "https://elishamaposa29
 const authAllowedOrigin = new URL(process.env.SHOWCASE_AUTH_ALLOWED_ORIGIN || "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/").origin;
 if (baseUrl.protocol !== "https:" || baseUrl.username || baseUrl.password) throw new Error("SHOWCASE_SITE_URL must be a public HTTPS URL without embedded credentials.");
 const out = path.resolve("showcase-captures");
-const privateOut = path.join(out, "authenticated");
+const roleScreensOut = path.join(out, "role-feature-screenshots");
 await fs.rm(out, { recursive: true, force: true });
 await fs.mkdir(out, { recursive: true });
-await fs.rm(privateOut, { recursive: true, force: true });
-await fs.mkdir(privateOut, { recursive: true });
+await fs.rm(roleScreensOut, { recursive: true, force: true });
+await fs.mkdir(roleScreensOut, { recursive: true });
 
 const results = [];
 const googleIdentityErrors = [];
@@ -161,7 +161,7 @@ async function capturePublicPages() {
     const context = await browser.newContext({
       viewport: { width: 1440, height: 1000 },
       deviceScaleFactor: 1,
-      recordVideo: { dir: privateOut, size: { width: 1440, height: 1000 } }
+      recordVideo: { dir: roleScreensOut, size: { width: 1440, height: 1000 } }
     });
     const page = await context.newPage();
     const runtimeErrors = [];
@@ -347,7 +347,7 @@ async function captureRole(role, route, email, password) {
         await verifyBrandLogo(page, role + " " + pathname);
         await assertPublishablePage(page, role + " " + pathname);
         const screenshot = safeName("dashboard-" + role + "-" + pathname.replace(/^\//, "").replaceAll("/", "-")) + ".png";
-        await redactScreenshotContent(page);\n        await page.screenshot({ path: path.join(privateOut, screenshot), fullPage: true, animations: "disabled" });
+        await redactScreenshotContent(page);\n        await page.screenshot({ path: path.join(roleScreensOut, screenshot), fullPage: true, animations: "disabled" });
         screenshots.push({ path: pathname, label: item.label, screenshot });
         routeResults.push({ path: pathname, status: "captured", screenshot });
 
@@ -439,7 +439,7 @@ function buildGallery(manifest) {
   for (const item of manifest.results.filter((result) => result.type === "dashboard")) {
     lines.push("### " + item.role + " — " + (item.pagesCaptured ?? 0) + " pages", "");
     if (item.status === "missing-demo-account") lines.push("Not captured: configure the dedicated role account secrets.", "");
-    for (const shot of item.screenshots || []) lines.push("- **" + shot.path + "** — [Open screenshot](./authenticated/" + shot.screenshot + ")");
+    for (const shot of item.screenshots || []) lines.push("- **" + shot.path + "** — [Open screenshot](./role-feature-screenshots/" + shot.screenshot + ")");
     lines.push("");
   }
   lines.push("Only dedicated showcase accounts with synthetic test data should be used. Role screenshots are not copied to the public showcase-media branch.", "");
