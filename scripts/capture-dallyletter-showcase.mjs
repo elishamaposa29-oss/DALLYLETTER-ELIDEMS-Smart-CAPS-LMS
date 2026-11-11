@@ -436,6 +436,7 @@ function buildGallery(manifest) {
     "- Public pages successfully captured: " + manifest.publicPageCount + " / " + manifest.publicUrlCount + " discovered",
     "",
     "On push-triggered runs, the capture waits for the deployed build marker to match the pushed commit. Screenshots are not taken from an older deployment.",
+    "For each configured role, the capture reads the protected route registry in App.tsx, visits every route allowed for that role, recursively discovers visible same-origin navigation links, and captures each visible semantic tab. Parameterized routes are captured only when the live UI exposes a real record link; no fake IDs or mutating actions are used.",
     "",
     "## Public pages",
     ""
