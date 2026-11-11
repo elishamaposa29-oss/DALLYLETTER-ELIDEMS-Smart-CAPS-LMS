@@ -566,8 +566,11 @@ router.get("/users/:id/teacher-documents", requireAuth, async (req, res): Promis
   const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, id));
   if (!target || (isOwnerRole(target.role) && !isOwnerRole(actor.role))) { res.status(404).json({ error: "User not found." }); return; }
   if (actor.id !== id && !isOwnerRole(actor.role) && !canModerateUser(actor, target)) { res.status(403).json({ error: "You are not authorized to access this user's teacher documents." }); return; }
-  if (!(await canViewProfileSection(actor,id,"teacher_documents"))) { res.status(403).json({ error: "Teacher document visibility is restricted by this profile's privacy settings." }); return; }
-  const selfOrManager = actor.id === id || isOwnerRole(actor.role) || (canAccessManager(actor) && await managerHasPermission(actor, "qualifications.view"));
+  const cvReviewAccess = actor.id !== id && canAccessManager(actor)
+    && await managerHasPermission(actor, "teacher_cv.view")
+    && (await pool.query("SELECT EXISTS(SELECT 1 FROM teacher_cv_review_history h JOIN users u ON u.id=h.teacher_id WHERE h.teacher_id=$1 AND h.action='submitted' AND u.teacher_application_status='pending_review') AS allowed", [id])).rows[0]?.allowed === true;
+  if (!cvReviewAccess && !(await canViewProfileSection(actor,id,"teacher_documents"))) { res.status(403).json({ error: "Teacher document visibility is restricted by this profile's privacy settings." }); return; }
+  const selfOrManager = actor.id === id || isOwnerRole(actor.role) || cvReviewAccess || (canAccessManager(actor) && await managerHasPermission(actor, "qualifications.view"));
   if (canAccessManager(actor) && !isOwnerRole(actor.role) && actor.id !== id && !selfOrManager) { res.status(403).json({ error: "Individual qualifications.view permission is required for teacher document access." }); return; }
   const professional = ["teacher", "manager", "senior_manager"].includes(String(target.role).toLowerCase());
   if (!selfOrManager && !professional) { res.status(403).json({ error: "Access denied" }); return; }
@@ -583,10 +586,13 @@ router.get("/users/:id/teacher-documents/:docId", requireAuth, async (req, res):
   const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, id));
   if (!target || (isOwnerRole(target.role) && !isOwnerRole(actor.role))) { res.status(404).json({ error: "User not found." }); return; }
   if (actor.id !== id && !isOwnerRole(actor.role) && !canModerateUser(actor, target)) { res.status(403).json({ error: "You are not authorized to access this user's teacher documents." }); return; }
-  if (!(await canViewProfileSection(actor, id, "teacher_documents"))) {
+  const cvReviewAccess = actor.id !== id && canAccessManager(actor)
+    && await managerHasPermission(actor, "teacher_cv.view")
+    && (await pool.query("SELECT EXISTS(SELECT 1 FROM teacher_cv_review_history h JOIN users u ON u.id=h.teacher_id WHERE h.teacher_id=$1 AND h.action='submitted' AND u.teacher_application_status='pending_review') AS allowed", [id])).rows[0]?.allowed === true;
+  if (!cvReviewAccess && !(await canViewProfileSection(actor, id, "teacher_documents"))) {
     res.status(403).json({ error: "Teacher document visibility is restricted by this profile's privacy settings." }); return;
   }
-  const selfOrManager = actor.id === id || isOwnerRole(actor.role) || (canAccessManager(actor) && await managerHasPermission(actor, "qualifications.view"));
+  const selfOrManager = actor.id === id || isOwnerRole(actor.role) || cvReviewAccess || (canAccessManager(actor) && await managerHasPermission(actor, "qualifications.view"));
   const professional = ["teacher", "manager", "senior_manager"].includes(String(target.role).toLowerCase());
   const result = selfOrManager
     ? await pool.query("SELECT file_name, mime_type, size_bytes, data, storage_key FROM teacher_documents WHERE id = $1 AND user_id = $2 LIMIT 1", [docId, id])
@@ -1023,6 +1029,15 @@ router.patch("/qualifications/:id/verify", requireAuth, requireManagerPermission
     const updated=await client.query("UPDATE teacher_qualifications SET verification_status=$1 WHERE id=$2 RETURNING id,user_id,title,institution,year,verification_status,document_id,created_at",[status,id]);
     await client.query("INSERT INTO teacher_qualification_review_history(qualification_id,reviewed_by,previous_status,new_status,review_note) VALUES($1,$2,$3,$4,$5)",[id,reviewer.id,previousStatus,status,reviewNote]);
     await client.query("COMMIT");
+    const applicant=await pool.query("SELECT id,name FROM users WHERE id=$1",[Number(updated.rows[0].user_id)]);
+    if(applicant.rows.length){
+      const title=status==="verified"?"Qualification verified":"Qualification needs correction";
+      const message=status==="verified"
+        ?"Your qualification \""+String(updated.rows[0].title||"")+" \" has been verified. Your teacher application can now proceed when all requirements are complete."
+        :"Your qualification \""+String(updated.rows[0].title||"")+" \" was not verified. Review the note in your Profile Hub and upload corrected evidence if needed.";
+      try{await db.insert(notificationsTable).values({recipientId:Number(applicant.rows[0].id),title,message,link:"/profile-hub",type:"teacher_qualification_decision"});}catch(error){console.error("[qualifications] Applicant notification failed.",error instanceof Error?error.message:"unknown");}
+      try{await enqueueEmailNotification(Number(applicant.rows[0].id),"Dallyletter Elidems — "+title,message+(reviewNote?" Reviewer note: "+reviewNote:""));}catch(error){console.error("[qualifications] Applicant email queue failed.",error instanceof Error?error.message:"unknown");}
+    }
     res.json(updated.rows[0]);
   } catch(error) {
     await client.query("ROLLBACK");
@@ -1091,6 +1106,12 @@ router.post("/users/me/notification-email/verify", requireAuth, async(req,res):P
   const consumed=await pool.query("DELETE FROM notification_email_verifications WHERE user_id=$1 AND email=$2 AND otp_hash=$3 AND expires_at>now() AND attempts<8 RETURNING email",[req.currentUser!.id,email,saved.otp_hash]);
   if(!consumed.rows.length){res.status(400).json({error:"Verification code has already been used or expired."});return;}
   await pool.query("UPDATE users SET notification_email=$2,notification_email_verified_at=now() WHERE id=$1",[req.currentUser!.id,email]);
+  // Resume workflow notifications that were deferred only because this account
+  // had not yet verified a notification address. Do not reset unrelated failures.
+  await pool.query(
+    "UPDATE email_notification_queue SET status='pending',attempts=0,available_at=now(),last_error=NULL WHERE recipient_user_id=$1 AND status IN ('pending','failed') AND last_error ILIKE '%no verified notification email configured%'",
+    [req.currentUser!.id],
+  );
   res.json({message:"Notification email verified.",notification_email:email,verified:true});
 });
 

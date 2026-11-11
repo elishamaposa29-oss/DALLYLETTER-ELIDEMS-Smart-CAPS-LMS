@@ -17,7 +17,7 @@ function canReview(u:any){return isOwner(u)||isAdmin(u)||isSeniorManager(u)}
 function idOf(v:unknown){const n=Number(v);return Number.isSafeInteger(n)&&n>0?n:null}
 router.use(requireAuth);
 router.get("/config",requireManagerPermission("teacher_cv.view"),async(req,res)=>{if(!canReview(req.currentUser)){res.status(403).json({error:"Owner or Senior Manager access required"});return}await ensure();const r=await pool.query("SELECT review_duration_days,updated_at FROM teacher_cv_workflow_settings WHERE id=1");res.json({reviewDurationDays:(r.rows[0]?.review_duration_days==null?null:Number(r.rows[0].review_duration_days)),updatedAt:r.rows[0]?.updated_at||null,canEdit:isOwner(req.currentUser)})});
-router.patch("/config",async(req,res)=>{if(!isOwner(req.currentUser)){res.status(403).json({error:"Only the Owner can set the review duration"});return}const days=Number(req.body?.reviewDurationDays);if(!Number.isInteger(days)||days<1||days>365){res.status(400).json({error:"Choose a whole number from 1 to 365 days"});return}await ensure();const r=await pool.query("UPDATE teacher_cv_workflow_settings SET review_duration_days=$1,updated_by=$2,updated_at=now() WHERE id=1 RETURNING review_duration_days,updated_at",[days,req.currentUser!.id]);await pool.query("UPDATE users SET teacher_review_deadline=created_at+make_interval(days=>$1) WHERE lower(role)=$2 AND teacher_application_status IN ($3,$4)",[days,"teacher","draft","pending_review"]);res.json({reviewDurationDays:r.rows[0].review_duration_days,updatedAt:r.rows[0].updated_at})});
+router.patch("/config",async(req,res)=>{if(!isOwner(req.currentUser)){res.status(403).json({error:"Only the Owner can set the review duration"});return}const days=Number(req.body?.reviewDurationDays);if(!Number.isInteger(days)||days<1||days>365){res.status(400).json({error:"Choose a whole number from 1 to 365 days"});return}await ensure();const r=await pool.query("UPDATE teacher_cv_workflow_settings SET review_duration_days=$1,updated_by=$2,updated_at=now() WHERE id=1 RETURNING review_duration_days,updated_at",[days,req.currentUser!.id]);await pool.query("UPDATE users u SET teacher_review_deadline=COALESCE((SELECT max(h.created_at) FROM teacher_cv_review_history h WHERE h.teacher_id=u.id AND h.action='submitted'),u.created_at)+make_interval(days=>$1) WHERE lower(u.role)=$2 AND u.teacher_application_status IN ($3,$4)",[days,"teacher","draft","pending_review"]);res.json({reviewDurationDays:r.rows[0].review_duration_days,updatedAt:r.rows[0].updated_at})});
 router.get("/queue",requireManagerPermission("teacher_cv.view"),async(req,res)=>{await ensure();const s=await pool.query("SELECT review_duration_days FROM teacher_cv_workflow_settings WHERE id=1");const days=s.rows[0]?.review_duration_days==null?null:Number(s.rows[0].review_duration_days);const r=await pool.query("SELECT u.id,u.name,u.email,u.role,u.is_manager,u.manager_level,u.created_at,(SELECT max(h.created_at) FROM teacher_cv_review_history h WHERE h.teacher_id=u.id AND h.action='submitted') submitted_at,COALESCE(u.teacher_application_status,$1) status,u.teacher_review_deadline deadline,(u.teacher_review_deadline IS NOT NULL AND u.teacher_review_deadline<=now()) overdue,(SELECT count(*)::int FROM teacher_documents d WHERE d.user_id=u.id) document_count,(tp.cv->>'surveySubmittedAt') survey_submitted_at,COALESCE(tp.cv->>'surveyReviewStatus','pending') survey_review_status,EXISTS(SELECT 1 FROM teacher_cv_review_history submitted WHERE submitted.teacher_id=u.id AND submitted.action='submitted') has_cv_submission FROM users u LEFT JOIN teacher_profiles tp ON tp.user_id=u.id WHERE lower(u.role)=$2 AND ((COALESCE(u.teacher_application_status,$3) NOT IN ($4,$5,$6,$7) AND EXISTS (SELECT 1 FROM teacher_cv_review_history submitted WHERE submitted.teacher_id=u.id AND submitted.action='submitted')) OR (tp.cv->>'surveySubmittedAt' IS NOT NULL AND COALESCE(tp.cv->>'surveyReviewStatus','pending')='pending')) ORDER BY u.created_at DESC LIMIT 250",["pending_review","teacher","pending_review","approved","rejected","auto_converted","rejected_pending_conversion"]);const actor=req.currentUser!;const applications=(isOwner(actor)||isAdmin(actor))?r.rows:r.rows.filter((row:any)=>canModerateUser(actor,{role:row.role,isManager:row.is_manager,managerLevel:row.manager_level})).map(({role,is_manager,manager_level,...row}:any)=>row);res.json({reviewDurationDays:days,applications})});
 router.post("/survey/submit",async(req,res)=>{
  await ensure();
@@ -44,7 +44,21 @@ router.post("/survey/submit",async(req,res)=>{
   const status=String(current.rows[0]?.status||"draft");
   await client.query("INSERT INTO teacher_cv_review_history(teacher_id,action,previous_status,new_status,note) VALUES($1,'survey_submitted',$2,$2,'Readiness survey submitted independently')",[actor.id,status]);
   await client.query("COMMIT");
-  res.json({submitted:true,alreadySubmitted:false,submittedAt});
+  const surveyTitle="Teacher readiness survey submitted";
+  const surveyMessage=(actor.name||"A teacher applicant")+" submitted a readiness survey for review. Open the Teacher CV Approval Workspace to inspect the answers.";
+  let surveyReviewers:any[]=[];
+  try{
+   const reviewers=await pool.query(
+    "SELECT DISTINCT u.id,u.role,u.is_manager,u.manager_level FROM users u LEFT JOIN manager_permission_grants view_grant ON view_grant.manager_user_id=u.id AND view_grant.permission_key='teacher_cv.view' AND view_grant.granted=true LEFT JOIN manager_permission_grants review_grant ON review_grant.manager_user_id=u.id AND review_grant.permission_key='teacher_cv.review' AND review_grant.granted=true LEFT JOIN manager_permission_grants authorize_grant ON authorize_grant.manager_user_id=u.id AND authorize_grant.permission_key='teacher_cv.authorize' AND authorize_grant.granted=true WHERE (lower(u.role) IN ('owner','platform_owner','admin') OR (view_grant.manager_user_id IS NOT NULL AND (lower(u.role) IN ('senior_manager','manager','junior_manager') OR lower(u.role)='teacher' AND u.is_manager=true AND lower(COALESCE(u.manager_level,'junior')) IN ('junior','senior') AND COALESCE(u.teacher_application_status,'') NOT IN ('draft','pending_review','rejected_pending_conversion')))) AND COALESCE(u.is_blocked,false)=false AND COALESCE(u.is_suspended,false)=false"
+   );
+   surveyReviewers=reviewers.rows.filter((reviewer:any)=>Number(reviewer.id)!==actor.id&&(isOwner(reviewer)||isAdmin(reviewer)||canModerateUser({role:reviewer.role,isManager:reviewer.is_manager,managerLevel:reviewer.manager_level},{role:actor.role,isManager:actor.isManager,managerLevel:actor.managerLevel})));
+  }catch(error){console.error("[teacher-cv] Survey reviewer lookup failed after submission.",error instanceof Error?error.message:"unknown");}
+  try{await db.insert(notificationsTable).values([
+   {recipientId:actor.id,title:surveyTitle,message:"Your readiness survey was submitted independently. Your CV application and teaching permissions have not changed.",link:"/profile-hub",type:"teacher_survey_submission"},
+   ...surveyReviewers.map((reviewer:any)=>({recipientId:Number(reviewer.id),title:surveyTitle,message:surveyMessage,link:["owner","platform_owner","admin"].includes(String(reviewer.role||"").toLowerCase())?"/admin/teacher-cv-workspace":"/manager/teacher-cv-workspace",type:"teacher_survey_submission"}))
+  ]);}catch(error){console.error("[teacher-cv] Survey submission in-app notification failed.",error instanceof Error?error.message:"unknown");}
+  await Promise.allSettled([actor.id,...surveyReviewers.map((r:any)=>Number(r.id))].map(recipientId=>enqueueEmailNotification(recipientId,"Dallyletter Elidems — "+surveyTitle,recipientId===actor.id?"Your readiness survey was submitted. This is separate from your CV application; teaching permissions remain unchanged.":surveyMessage+" Sign in to review it.")));
+  res.json({submitted:true,alreadySubmitted:false,submittedAt,reviewerCount:surveyReviewers.length});
  }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}
  finally{client.release();}
 });
@@ -58,7 +72,7 @@ router.post("/:teacherId/survey/decision",requireManagerPermission("teacher_cv.r
  const client=await pool.connect();
  try{
   await client.query("BEGIN");
-  const target=await client.query("SELECT u.role,u.is_manager,u.manager_level,tp.cv FROM users u JOIN teacher_profiles tp ON tp.user_id=u.id WHERE u.id=$1 AND lower(u.role)='teacher' FOR UPDATE OF u,tp",[id]);
+  const target=await client.query("SELECT u.name,u.role,u.is_manager,u.manager_level,tp.cv FROM users u JOIN teacher_profiles tp ON tp.user_id=u.id WHERE u.id=$1 AND lower(u.role)='teacher' FOR UPDATE OF u,tp",[id]);
   if(!target.rows.length||(!isOwner(req.currentUser)&&!isAdmin(req.currentUser)&&!canModerateUser(req.currentUser!,{role:target.rows[0].role,isManager:target.rows[0].is_manager,managerLevel:target.rows[0].manager_level}))){await client.query("ROLLBACK");res.status(404).json({error:"Submitted readiness survey not found."});return;}
   const cv=target.rows[0].cv&&typeof target.rows[0].cv==="object"?target.rows[0].cv:{};
   if(!cv.surveySubmittedAt){await client.query("ROLLBACK");res.status(404).json({error:"Readiness survey has not been submitted."});return;}
@@ -69,7 +83,11 @@ router.post("/:teacherId/survey/decision",requireManagerPermission("teacher_cv.r
   await client.query("UPDATE teacher_profiles SET cv=$2::jsonb,updated_at=now() WHERE user_id=$1",[id,JSON.stringify(nextCv)]);
   await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,$3,'survey_pending',$4,$5)",[id,req.currentUser!.id,action==="approve"?"survey_approved":"survey_rejected",nextStatus,note||null]);
   await client.query("COMMIT");
-  res.json({reviewed:true,status:nextStatus});
+  const title=action==="approve"?"Readiness survey approved":"Readiness survey needs changes";
+  const message=action==="approve"?"Your readiness survey has been approved. This does not by itself authorize teaching; your CV application must also be approved.":"Your readiness survey was not approved. Review the note in your Profile Hub and contact the reviewer if clarification is needed. Your CV application status has not changed.";
+  try{await db.insert(notificationsTable).values({recipientId:id,title,message,link:"/profile-hub",type:"teacher_survey_decision"});}catch(error){console.error("[teacher-cv] Survey decision notification failed.",error instanceof Error?error.message:"unknown");}
+  try{await enqueueEmailNotification(id,"Dallyletter Elidems — "+title,message+(note?" Reviewer note: "+note:""));}catch(error){console.error("[teacher-cv] Survey decision email queue failed.",error instanceof Error?error.message:"unknown");}
+  res.json({reviewed:true,status:nextStatus,notificationQueued:true});
  }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}
  finally{client.release();}
 });
@@ -109,10 +127,10 @@ router.post("/submit",async(req,res)=>{
    }
    const priorSubmission=await submissionClient.query("SELECT id FROM teacher_cv_review_history WHERE teacher_id=$1 AND action='submitted' LIMIT 1",[actor.id]);
    if(priorSubmission.rows.length){
-    await submissionClient.query("UPDATE users SET teacher_application_status='pending_review',teacher_review_deadline=COALESCE(teacher_review_deadline,now()+make_interval(days=>$2)) WHERE id=$1 AND lower(role)='teacher'",[actor.id,reviewDays]);
+    await submissionClient.query("UPDATE users SET teacher_application_status='pending_review',teacher_review_deadline=COALESCE((SELECT max(h.created_at) FROM teacher_cv_review_history h WHERE h.teacher_id=users.id AND h.action='submitted'),now())+make_interval(days=>$2) WHERE id=$1 AND lower(role)='teacher'",[actor.id,reviewDays]);
     alreadySubmitted=true;
    }else{
-    const statusUpdate=await submissionClient.query("UPDATE users SET teacher_application_status='pending_review',teacher_review_deadline=COALESCE(teacher_review_deadline,now()+make_interval(days=>$2)) WHERE id=$1 AND lower(role)='teacher' AND COALESCE(teacher_application_status,'draft') IN ('draft','pending_review','not_applicable') RETURNING id",[actor.id,reviewDays]);
+    const statusUpdate=await submissionClient.query("UPDATE users SET teacher_application_status='pending_review',teacher_review_deadline=now()+make_interval(days=>$2) WHERE id=$1 AND lower(role)='teacher' AND COALESCE(teacher_application_status,'draft') IN ('draft','pending_review','not_applicable') RETURNING id",[actor.id,reviewDays]);
     if(!statusUpdate.rows.length){await submissionClient.query("ROLLBACK");res.status(409).json({error:"Teacher application status changed before submission. Refresh and try again."});return;}
     await submissionClient.query(
      "INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,NULL,'submitted',$2,'pending_review','CV submission persisted. Notifications are best-effort and do not control workflow.')",
@@ -127,9 +145,9 @@ router.post("/submit",async(req,res)=>{
   let reviewerRows:any[]=[];
  try{
   const reviewerResult=await pool.query(
-    "SELECT DISTINCT u.id,u.role FROM users u LEFT JOIN manager_permission_grants view_grant ON view_grant.manager_user_id=u.id AND view_grant.permission_key='teacher_cv.view' AND view_grant.granted=true LEFT JOIN manager_permission_grants review_grant ON review_grant.manager_user_id=u.id AND review_grant.permission_key='teacher_cv.review' AND review_grant.granted=true WHERE (lower(u.role) IN ('owner','platform_owner','admin') OR (view_grant.manager_user_id IS NOT NULL AND review_grant.manager_user_id IS NOT NULL AND (lower(u.role) IN ('senior_manager','manager') AND lower(COALESCE(u.manager_level,'senior'))='senior' OR lower(u.role)='teacher' AND u.is_manager=true AND lower(COALESCE(u.manager_level,'junior'))='senior' AND COALESCE(u.teacher_application_status,'') NOT IN ('draft','pending_review','rejected_pending_conversion')))) AND COALESCE(u.is_blocked,false)=false AND COALESCE(u.is_suspended,false)=false"
+    "SELECT DISTINCT u.id,u.role FROM users u LEFT JOIN manager_permission_grants view_grant ON view_grant.manager_user_id=u.id AND view_grant.permission_key='teacher_cv.view' AND view_grant.granted=true LEFT JOIN manager_permission_grants review_grant ON review_grant.manager_user_id=u.id AND review_grant.permission_key='teacher_cv.review' AND review_grant.granted=true LEFT JOIN manager_permission_grants authorize_grant ON authorize_grant.manager_user_id=u.id AND authorize_grant.permission_key='teacher_cv.authorize' AND authorize_grant.granted=true WHERE (lower(u.role) IN ('owner','platform_owner','admin') OR (view_grant.manager_user_id IS NOT NULL AND (lower(u.role) IN ('senior_manager','manager','junior_manager') OR lower(u.role)='teacher' AND u.is_manager=true AND lower(COALESCE(u.manager_level,'junior')) IN ('junior','senior') AND COALESCE(u.teacher_application_status,'') NOT IN ('draft','pending_review','rejected_pending_conversion')))) AND COALESCE(u.is_blocked,false)=false AND COALESCE(u.is_suspended,false)=false"
   );
-  reviewerRows=reviewerResult.rows;
+  reviewerRows=reviewerResult.rows.filter((reviewer:any)=>Number(reviewer.id)!==actor.id&&(isOwner(reviewer)||isAdmin(reviewer)||canModerateUser({role:reviewer.role,isManager:reviewer.is_manager,managerLevel:reviewer.manager_level},{role:actor.role,isManager:actor.isManager,managerLevel:actor.managerLevel})));
  }catch(error){
   // The persisted CV submission is still valid when reviewer-notification lookup is temporarily unavailable.
   console.error("[teacher-cv] Reviewer lookup failed after submission was saved.",error instanceof Error?error.message:"unknown");
@@ -228,7 +246,29 @@ router.get("/:teacherId/history",requireManagerPermissionIfManager("teacher_cv.v
  res.json({history:result.rows});
 });
 router.get("/:teacherId/chat",requireManagerPermissionIfManager("teacher_cv.chat"),async(req,res)=>{const id=idOf(req.params.teacherId);if(!id){res.status(400).json({error:"Invalid teacher id"});return}const actor=req.currentUser!,role=normalizeRole(actor.role);if(!canAccessManager(actor)&&!(actor.id===id&&role==="teacher")){res.status(403).json({error:"Application chat access denied"});return}await ensure();const target=await pool.query("SELECT role,is_manager,manager_level FROM users WHERE id=$1 AND lower(role)='teacher'",[id]);if(!target.rows.length||(actor.id!==id&&!isOwner(actor)&&!canModerateUser(actor,{role:target.rows[0].role,isManager:target.rows[0].is_manager,managerLevel:target.rows[0].manager_level}))){res.status(404).json({error:"Application chat is closed"});return}const r=await pool.query("SELECT m.id,m.sender_id,m.body,m.created_at,u.name sender_name,u.role sender_role FROM teacher_cv_chat_messages m JOIN users u ON u.id=m.sender_id WHERE m.teacher_id=$1 ORDER BY m.created_at ASC LIMIT 500",[id]);res.json(r.rows)});
-router.post("/:teacherId/chat",requireManagerPermissionIfManager("teacher_cv.chat"),async(req,res)=>{const id=idOf(req.params.teacherId),body=typeof req.body?.body==="string"?req.body.body.trim():"";if(!id||!body||body.length>4000){res.status(400).json({error:"Message must contain 1–4000 characters"});return}const role=normalizeRole(req.currentUser!.role);if(!canAccessManager(req.currentUser!)&&!(req.currentUser!.id===id&&role==="teacher")){res.status(403).json({error:"Application chat access denied"});return}await ensure();const target=await pool.query("SELECT id,role,is_manager,manager_level FROM users WHERE id=$1 AND lower(role)='teacher'",[id]);if(!target.rows.length||(req.currentUser!.id!==id&&!isOwner(req.currentUser)&&!canModerateUser(req.currentUser!,{role:target.rows[0].role,isManager:target.rows[0].is_manager,managerLevel:target.rows[0].manager_level}))){res.status(404).json({error:"Application chat is closed"});return}const r=await pool.query("INSERT INTO teacher_cv_chat_messages(teacher_id,sender_id,body) VALUES($1,$2,$3) RETURNING id,sender_id,body,created_at",[id,req.currentUser!.id,body]);res.status(201).json(r.rows[0])});
+router.post("/:teacherId/chat",requireManagerPermissionIfManager("teacher_cv.chat"),async(req,res)=>{
+ const id=idOf(req.params.teacherId),body=typeof req.body?.body==="string"?req.body.body.trim():"";
+ if(!id||!body||body.length>4000){res.status(400).json({error:"Message must contain 1–4000 characters"});return}
+ const actor=req.currentUser!,role=normalizeRole(actor.role);
+ if(!canAccessManager(actor)&&!(actor.id===id&&role==="teacher")){res.status(403).json({error:"Application chat access denied"});return}
+ await ensure();
+ const target=await pool.query("SELECT id,role,is_manager,manager_level FROM users WHERE id=$1 AND lower(role)='teacher'",[id]);
+ if(!target.rows.length||(actor.id!==id&&!isOwner(actor)&&!canModerateUser(actor,{role:target.rows[0].role,isManager:target.rows[0].is_manager,managerLevel:target.rows[0].manager_level}))){res.status(404).json({error:"Application chat is closed"});return}
+ const r=await pool.query("INSERT INTO teacher_cv_chat_messages(teacher_id,sender_id,body) VALUES($1,$2,$3) RETURNING id,sender_id,body,created_at",[id,actor.id,body]);
+ let recipients:number[]=[];
+ if(actor.id!==id){recipients=[id];}
+ else{
+  const reviewerResult=await pool.query("SELECT DISTINCT u.id,u.role,u.is_manager,u.manager_level FROM users u LEFT JOIN manager_permission_grants view_grant ON view_grant.manager_user_id=u.id AND view_grant.permission_key='teacher_cv.view' AND view_grant.granted=true LEFT JOIN manager_permission_grants chat_grant ON chat_grant.manager_user_id=u.id AND chat_grant.permission_key='teacher_cv.chat' AND chat_grant.granted=true WHERE (lower(u.role) IN ('owner','platform_owner','admin') OR (view_grant.manager_user_id IS NOT NULL AND chat_grant.manager_user_id IS NOT NULL AND (lower(u.role) IN ('manager','senior_manager') OR lower(u.role)='teacher' AND u.is_manager=true AND COALESCE(u.teacher_application_status,'') NOT IN ('draft','pending_review','rejected_pending_conversion')))) AND COALESCE(u.is_blocked,false)=false AND COALESCE(u.is_suspended,false)=false");
+  recipients=reviewerResult.rows.filter((reviewer:any)=>Number(reviewer.id)!==id&&(isOwner(reviewer)||isAdmin(reviewer)||canModerateUser({role:reviewer.role,isManager:reviewer.is_manager,managerLevel:reviewer.manager_level},{role:target.rows[0].role,isManager:target.rows[0].is_manager,managerLevel:target.rows[0].manager_level}))).map((reviewer:any)=>Number(reviewer.id));
+ }
+ const title="New teacher application message";
+ const message=(actor.id===id?(actor.name||"The teacher applicant"):(actor.name||"A Dallyletter reviewer"))+" sent a message in the teacher application conversation: "+body.slice(0,1000);
+ for(const recipientId of recipients){
+  try{await db.insert(notificationsTable).values({recipientId,title,message,link:recipientId===id?"/profile-hub":"/manager/teacher-cv-workspace?teacherId="+id,type:"teacher_cv_message"});}catch(error){console.error("[teacher-cv] Chat notification failed.",error instanceof Error?error.message:"unknown");}
+ }
+ const emailResults=await Promise.allSettled(recipients.map(recipientId=>enqueueEmailNotification(recipientId,"Dallyletter Elidems — "+title,message)));
+ res.status(201).json({...r.rows[0],notificationsQueued:recipients.length,emailNotificationsQueued:emailResults.filter(result=>result.status==="fulfilled").length});
+});
 if(process.env.NODE_ENV==="test"){router.post("/__test/process-expired",async(req,res)=>{if(!isOwner(req.currentUser)){res.status(403).json({error:"Owner access required"});return}await processExpiredTeacherApplications();res.json({processed:true})})}
 
 export default router;

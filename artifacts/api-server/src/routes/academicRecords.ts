@@ -11,6 +11,60 @@ import { canViewProfileSection } from "./profileConnections";
 
 const router = Router();
 
+type BrandedPdfSection = { heading: string; rows: string[] };
+function buildBrandedDocumentPdf(title: string, subtitle: string, reference: string, sections: BrandedPdfSection[]): Buffer {
+  const esc=(value:unknown)=>String(value??"—").normalize("NFKD").replace(/[^\x20-\xFF]/g,"?").replace(/\\/g,"\\\\").replace(/\(/g,"\\(").replace(/\)/g,"\\)");
+  const pages: Array<Array<{kind:"section"|"line";text:string}>>=[[]];
+  let page=pages[0], used=0;
+  const push=(kind:"section"|"line",text:string)=>{
+    const words=String(text||"—").split(/\s+/);let line="";
+    const lines:string[]=[];
+    for(const word of words){if((line+" "+word).trim().length>92){if(line)lines.push(line);line=word;}else line=(line+" "+word).trim();}
+    if(line)lines.push(line);
+    for(const part of lines){const cost=kind==="section"?2:1;if(used+cost>48){page=[];pages.push(page);used=0;}page.push({kind,text:part});used+=cost;}
+  };
+  for(const section of sections){push("section",section.heading);for(const row of section.rows)push("line",row);push("line","");}
+  const objects:string[]=[
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids ["+pages.map((_,i)=>(5+i*2)+" 0 R").join(" ")+"] /Count "+pages.length+" >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>"
+  ];
+  pages.forEach((items,i)=>{
+    const commands:string[]=[
+      "0.055 0.13 0.29 rg 0 770 595 72 re f",
+      "1 1 1 rg BT /F2 19 Tf 42 811 Td ("+esc("DALLYLETTER ELIDEMS")+") Tj ET",
+      "1 1 1 rg BT /F2 13 Tf 42 789 Td ("+esc(title)+") Tj ET",
+      "0.72 0.55 0.08 rg 0 764 595 5 re f",
+      "0.25 0.29 0.36 rg BT /F1 9 Tf 42 744 Td ("+esc(subtitle)+") Tj ET"
+    ];
+    let y=718;
+    for(const item of items){
+      if(item.kind==="section"){
+        commands.push("0.94 0.95 0.97 rg 38 "+(y-5)+" 519 19 re f");
+        commands.push("0.72 0.55 0.08 rg 38 "+(y-5)+" 4 19 re f");
+        commands.push("0.055 0.13 0.29 rg BT /F2 10 Tf 50 "+y+" Td ("+esc(item.text.toUpperCase())+") Tj ET");
+        y-=25;
+      }else if(item.text){
+        commands.push("0.12 0.16 0.22 rg BT /F1 9 Tf 50 "+y+" Td ("+esc(item.text)+") Tj ET");
+        y-=14;
+      }else y-=6;
+    }
+    commands.push("0.055 0.13 0.29 rg 38 43 519 1 re f");
+    commands.push("0.25 0.29 0.36 rg BT /F1 8 Tf 42 27 Td ("+esc(reference+" · Official protected document")+") Tj ET");
+    commands.push("0.25 0.29 0.36 rg BT /F1 8 Tf 490 27 Td ("+esc("Page "+(i+1)+" of "+pages.length)+") Tj ET");
+    const stream=commands.join("\n"),pageObj=5+i*2,contentObj=pageObj+1;
+    objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents "+contentObj+" 0 R >>");
+    objects.push("<< /Length "+Buffer.byteLength(stream,"binary")+" >>\nstream\n"+stream+"\nendstream");
+  });
+  let pdf="%PDF-1.4\n";const offsets=[0];
+  for(let i=0;i<objects.length;i++){offsets.push(Buffer.byteLength(pdf,"binary"));pdf+=(i+1)+" 0 obj\n"+objects[i]+"\nendobj\n";}
+  const xref=Buffer.byteLength(pdf,"binary");pdf+="xref\n0 "+(objects.length+1)+"\n0000000000 65535 f \n";
+  for(const offset of offsets.slice(1))pdf+=String(offset).padStart(10,"0")+" 00000 n \n";
+  pdf+="trailer\n<< /Size "+(objects.length+1)+" /Root 1 0 R >>\nstartxref\n"+xref+"\n%%EOF";
+  return Buffer.from(pdf,"binary");
+}
+
 const currentAcademicYearHandler = (_req: Request, res: Response): void => {
   const academicYear = getCurrentAcademicYear();
   // Preserve the numeric field expected by older config clients while exposing
@@ -51,150 +105,36 @@ function summarizeAcademicMarks(assignmentRows: any[], exerciseRows: any[]) {
 }
 
 function buildAcademicReportPdf(input: { id: number; reportType: string; termLabel: string; periodStart?: unknown; periodEnd?: unknown; learnerName: string; reviewedAt: unknown; reviewedBy: unknown; reviewNote?: unknown; report: unknown }): Buffer {
-  const report = input.report && typeof input.report === "object" ? input.report as Record<string, any> : {};
-  const facts = report.factualRecords && typeof report.factualRecords === "object" ? report.factualRecords : {};
-  const summary = facts.markSummary?.overall || report.markSummary?.overall || {};
-  const assignments = Array.isArray(facts.assignmentMarks) ? facts.assignmentMarks : [];
-  const exercises = Array.isArray(facts.exerciseMarks) ? facts.exerciseMarks : [];
-  const attendanceRows = Array.isArray(report.records) ? report.records : [];
-  const formatDate = (value: unknown) => {
-    if (!value) return "Not recorded";
-    const date = value instanceof Date ? value : new Date(String(value));
-    return Number.isNaN(date.getTime()) ? String(value).slice(0, 10) : date.toISOString().slice(0, 10);
-  };
-  // The embedded standard PDF font uses WinAnsi: preserve Latin-1 names/diacritics
-  // and replace unsupported glyphs visibly rather than silently deleting them.
-  const escapePdf = (value: unknown) => String(value ?? "Not recorded")
-    .replace(/[^\x20-\xFF]/g, "?")
-    .replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
-  const raw: string[] = [
-    "DALLYLETTER ELIDEMS",
-    "OFFICIAL ACADEMIC REPORT",
-    "SMART CAPS LEARNER REPORT CARD",
-    "",
-    "LEARNER DETAILS",
-    "Learner name: " + input.learnerName,
-    "Learner grade / form: " + (report.learnerGrade || "Not recorded"),
-    "Admission number: " + (report.admissionNumber || "Not recorded"),
-    "Date of birth: " + (report.dateOfBirth || "Not recorded"),
-    "Age at period end: " + (report.ageOnPeriodEnd == null ? "Not calculated" : report.ageOnPeriodEnd),
-    "Report type: " + input.reportType.replace(/_/g, " "),
-    "Academic year: " + (report.academicYear || "Not recorded"),
-    "Term: " + input.termLabel,
-    "Period dates: " + formatDate(input.periodStart) + " to " + formatDate(input.periodEnd),
-    "Document reference: DL-AR-" + input.id,
-    "Approval date: " + formatDate(input.reviewedAt),
-    "Approved by account: " + (input.reviewedBy ?? "Not recorded"),
-    "",
-  ];
-  if (input.reportType === "attendance_register") {
-    raw.push("ATTENDANCE SUMMARY");
-    raw.push("Class ID | Sessions | Present | Absent | Late");
-    if (attendanceRows.length) {
-      for (const row of attendanceRows) raw.push([row.classId, row.sessions, row.present, row.absent, row.late].map(value => value ?? "0").join(" | "));
-    } else raw.push("No attendance sessions were recorded in this period.");
-    raw.push("Total attendance records: " + (report.sourceCount ?? attendanceRows.reduce((sum: number, row: any) => sum + Number(row.sessions || 0), 0)));
-  } else {
-    raw.push("ACADEMIC PERFORMANCE");
-    raw.push("Recorded marks: " + (summary.markedCount ?? "Not available"));
-    raw.push("Earned marks: " + (summary.earnedMarks ?? "Not available"));
-    raw.push("Possible marks: " + (summary.possibleMarks ?? "Not available"));
-    raw.push("Overall percentage: " + (summary.percentage == null ? "Not available" : summary.percentage + "%"));
-    raw.push("");
-    raw.push("SUBJECTS / CLASSES");
-    const enrollments = Array.isArray(facts.enrollments) ? facts.enrollments : [];
-    if (enrollments.length) for (const entry of enrollments) raw.push([entry.subject || "Subject not recorded", entry.class_title || "Class not recorded", entry.grade ? "Grade " + entry.grade : ""].filter(Boolean).join(" | "));
-    else raw.push("No subject or class enrollment was recorded in this period.");
-    raw.push("ASSIGNMENT MARKS");
-    raw.push("Subject / activity | Mark | Status");
-    if (assignments.length) for (const row of assignments) raw.push([row.subject || row.title || "Assignment", row.marks == null ? "Not marked" : String(row.marks) + " / " + String(row.total_marks ?? "?"), row.status || "Recorded"].join(" | "));
-    else raw.push("No assignment marks were recorded in this period.");
-    raw.push("");
-    raw.push("REPORT-ENABLED EXERCISE MARKS");
-    if (exercises.length) for (const row of exercises) raw.push([row.title || "Exercise", row.total_score == null ? "Not marked" : String(row.total_score) + " / " + String(row.total_marks ?? "?"), row.status || "Recorded"].join(" | "));
-    else raw.push("No marked report-enabled exercises were recorded in this period.");
-    raw.push("");
-    raw.push("");
-    raw.push("POLL / QUIZ ACTIVITIES");
-    const polls = Array.isArray(facts.pollSubmissions) ? facts.pollSubmissions : [];
-    if (polls.length) for (const poll of polls) raw.push([poll.title || "Learning poll", poll.subject || "Subject not recorded", poll.score == null || poll.total_questions == null ? "Score not available" : String(poll.score) + " / " + String(poll.total_questions), poll.completed_at ? formatDate(poll.completed_at) : "Date not recorded"].join(" | "));
-    else raw.push("No completed learning poll submissions were recorded in this period.");
-    raw.push("CLASS PROGRESS");
-    if (enrollments.length) for (const entry of enrollments) raw.push([entry.subject || "Subject not recorded", entry.class_title || "Class not recorded", entry.progress_percent == null ? "Progress not recorded" : String(entry.progress_percent) + "%", entry.status || "Status not recorded"].join(" | "));
-    else raw.push("No active or completed class enrollment was recorded before the end of this period.");
-    raw.push("ATTENDANCE");
-    raw.push("Recorded attendance sessions: " + (facts.attendanceCount ?? "Not available"));
-    raw.push("Present: " + (facts.attendanceSummary?.present ?? "Not available"));
-    raw.push("Absent: " + (facts.attendanceSummary?.absent ?? "Not available"));
-    raw.push("Late: " + (facts.attendanceSummary?.late ?? "Not available"));
-    raw.push("ACHIEVEMENTS");
-    const awards = Array.isArray(facts.awards) ? facts.awards : [];
-    raw.push(awards.length ? awards.map((award: any) => award.name).join(", ") : "No achievements recorded in this period.");
-    raw.push("");
-    raw.push("ACADEMIC COMMENTARY");
-    raw.push(String(report.commentary || "No AI academic commentary was recorded."));
-  }
-  raw.push("Teacher comment: " + (report.teacherComment || "Not recorded"));
-  raw.push("Conduct / behaviour: " + (report.conduct || "Not recorded"));
-  raw.push("Term result / promotion: " + (report.result || "Not recorded"));
-  raw.push("Reviewer / headmaster comment: " + (input.reviewNote || "Not recorded"));
-  raw.push("Teacher signature: Not digitally recorded");
-  raw.push("Learner position: Not calculated (no saved ranking data).");
-  raw.push("Headmaster signature / school stamp: Not recorded");
-  raw.push("", "This report contains only saved records available for the selected period.");
-  raw.push("Unmarked work is not counted as zero. Missing information is shown as unavailable.");
-  if (raw.some(line => /[^\x20-\xFF]/.test(line))) raw.push("Font coverage note: Latin-1 characters are preserved; unsupported Unicode glyphs appear as question marks.");
-  const wrapped = raw.flatMap(line => {
-    const words = String(line).split(/\s+/);
-    const out: string[] = [];
-    let current = "";
-    for (const word of words) {
-      if ((current + " " + word).trim().length > 88) { if (current) out.push(current); current = word; }
-      else current = (current + " " + word).trim();
-    }
-    if (current) out.push(current);
-    return out;
-  });
-  const pageLines = Array.from({ length: Math.max(1, Math.ceil(wrapped.length / 48)) }, (_, index) => wrapped.slice(index * 48, (index + 1) * 48));
-  const objects: string[] = [
-    "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [" + pageLines.map((_, index) => (5 + index * 2) + " 0 R").join(" ") + "] /Count " + pageLines.length + " >>",
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>",
-  ];
-  pageLines.forEach((page, pageIndex) => {
-    const pageObject = 5 + pageIndex * 2;
-    const contentObject = pageObject + 1;
-    const textCommands = page.map((line, index) => {
-      const heading = /^(DALLYLETTER ELIDEMS|OFFICIAL ACADEMIC REPORT|SMART CAPS LEARNER REPORT CARD|LEARNER DETAILS|ATTENDANCE SUMMARY|ACADEMIC PERFORMANCE|SUBJECTS \/ CLASSES|ASSIGNMENT MARKS|REPORT-ENABLED EXERCISE MARKS|ACHIEVEMENTS|ACADEMIC COMMENTARY)$/.test(line);
-      return (index ? "0 -14 Td\n" : "") + (heading ? "/F2 11 Tf\n" : "/F1 9 Tf\n") + "(" + escapePdf(line) + ") Tj";
-    }).join("\n");
-    const stream = [
-      "0.055 0.13 0.29 rg 0 790 595 52 re f",
-      "1 1 1 rg BT /F2 18 Tf 48 808 Td (DALLYLETTER ELIDEMS) Tj ET",
-      "0.72 0.55 0.08 rg 0 786 595 4 re f",
-      "0 0 0 rg BT 48 760 Td",
-      textCommands,
-      "ET",
-      "0.055 0.13 0.29 rg 48 34 499 1 re f",
-      "0 0 0 rg BT /F1 8 Tf 48 20 Td (DL-AR-" + input.id + " | Protected academic report) Tj 440 0 Td (Page " + (pageIndex + 1) + " of " + pageLines.length + ") Tj ET",
-    ].join("\n");
-    objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents " + contentObject + " 0 R >>");
-    objects.push("<< /Length " + Buffer.byteLength(stream, "binary") + " >>\nstream\n" + stream + "\nendstream");
-  });
-  let pdf = "%PDF-1.4\n";
-  const offsets = [0];
-  for (let index = 0; index < objects.length; index++) {
-    offsets.push(Buffer.byteLength(pdf, "binary"));
-    pdf += (index + 1) + " 0 obj\n" + objects[index] + "\nendobj\n";
-  }
-  const xref = Buffer.byteLength(pdf, "binary");
-  pdf += "xref\n0 " + (objects.length + 1) + "\n0000000000 65535 f \n";
-  for (const offset of offsets.slice(1)) pdf += String(offset).padStart(10, "0") + " 00000 n \n";
-  pdf += "trailer\n<< /Size " + (objects.length + 1) + " /Root 1 0 R >>\nstartxref\n" + xref + "\n%%EOF";
-  return Buffer.from(pdf, "binary");
+ const report=input.report&&typeof input.report==="object"?input.report as Record<string,any>:{};
+ const facts=report.factualRecords&&typeof report.factualRecords==="object"?report.factualRecords:{};
+ const summary=facts.markSummary?.overall||report.markSummary?.overall||{};
+ const assignments=Array.isArray(facts.assignmentMarks)?facts.assignmentMarks:[];
+ const exercises=Array.isArray(facts.exerciseMarks)?facts.exerciseMarks:[];
+ const fmt=(v:unknown)=>v===null||v===undefined||v===""?"Not recorded":String(v);
+ const date=(v:unknown)=>{if(!v)return "Not recorded";const d=new Date(String(v));return Number.isNaN(d.getTime())?String(v):d.toISOString().slice(0,10);};
+ const sections:BrandedPdfSection[]=[
+  {heading:"Learner details",rows:["Learner: "+input.learnerName,"Grade / Form: "+fmt(report.learnerGrade)+" · Admission number: "+fmt(report.admissionNumber),"Date of birth: "+fmt(report.dateOfBirth)+" · Age at period end: "+fmt(report.ageOnPeriodEnd),"Academic year: "+fmt(report.academicYear)+" · Report type: "+input.reportType.replace(/_/g," "),"Term: "+input.termLabel,"Period: "+date(input.periodStart)+" to "+date(input.periodEnd),"Document reference: DL-AR-"+input.id+" · Approved: "+date(input.reviewedAt)]}
+ ];
+ if(input.reportType==="attendance_register"){
+  const rows=Array.isArray(report.records)?report.records:[];
+  sections.push({heading:"Attendance summary",rows:rows.length?["Class ID | Sessions | Present | Absent | Late",...rows.map((r:any)=>[r.classId,r.sessions,r.present,r.absent,r.late].map(fmt).join(" | "))]:["No attendance sessions were recorded in this period."]});
+ }else{
+  const enrollments=Array.isArray(facts.enrollments)?facts.enrollments:[];
+  const polls=Array.isArray(facts.pollSubmissions)?facts.pollSubmissions:[];
+  const awards=Array.isArray(facts.awards)?facts.awards:[];
+  sections.push(
+   {heading:"Academic performance",rows:["Marked activities: "+fmt(summary.markedCount),"Earned marks: "+fmt(summary.earnedMarks)+" / "+fmt(summary.possibleMarks),"Overall percentage: "+(summary.percentage==null?"Not available":summary.percentage+"%")]},
+   {heading:"Subjects and class progress",rows:enrollments.length?enrollments.map((e:any)=>[e.subject||"Subject not recorded",e.class_title||"Class not recorded",e.grade?"Grade "+e.grade:"",e.progress_percent==null?"Progress not recorded":e.progress_percent+"%",e.status||""].filter(Boolean).join(" · ")):["No subject or class enrollment was recorded."]},
+   {heading:"Assignment marks",rows:assignments.length?assignments.map((r:any)=>[r.subject||r.title||"Assignment",r.marks==null?"Not marked":r.marks+" / "+(r.total_marks??"?"),r.status||"Recorded"].join(" · ")):["No assignment marks were recorded."]},
+   {heading:"Exercise marks",rows:exercises.length?exercises.map((r:any)=>[r.title||"Exercise",r.total_score==null?"Not marked":r.total_score+" / "+(r.total_marks??"?"),r.status||"Recorded"].join(" · ")):["No marked report-enabled exercises were recorded."]},
+   {heading:"Learning polls and quizzes",rows:polls.length?polls.map((p:any)=>[p.title||"Learning poll",p.subject||"Subject not recorded",p.score==null||p.total_questions==null?"Score unavailable":p.score+" / "+p.total_questions,date(p.completed_at)].join(" · ")):["No completed learning polls were recorded."]},
+   {heading:"Attendance",rows:["Sessions: "+fmt(facts.attendanceSummary?.sessions??facts.attendanceCount),"Present: "+fmt(facts.attendanceSummary?.present),"Absent: "+fmt(facts.attendanceSummary?.absent),"Late: "+fmt(facts.attendanceSummary?.late)]},
+   {heading:"Achievements",rows:awards.length?awards.map((a:any)=>a.name||"Achievement"):["No achievements recorded in this period."]}
+  );
+ }
+ sections.push({heading:"Comments and decisions",rows:["Academic commentary: "+fmt(report.commentary),"Teacher comment: "+fmt(report.teacherComment),"Conduct / behaviour: "+fmt(report.conduct),"Term result / promotion: "+fmt(report.result),"Reviewer / headmaster comment: "+fmt(input.reviewNote),"Teacher signature: Not digitally recorded","Headmaster signature / school stamp: Not recorded","Record integrity: only saved records are included; unmarked work is not counted as zero."]});
+ return buildBrandedDocumentPdf("OFFICIAL ACADEMIC REPORT",input.termLabel,"DL-AR-"+input.id,sections);
 }
-
 // Academic documents are built only from authoritative records. Transfer letters and
 // AI-assisted reports remain unavailable to learners until an authorized manager approves.
 router.post("/academic-records/transfer-requests", requireAuth, async (req, res): Promise<void> => {
@@ -396,105 +336,23 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, requ
     pool.query("SELECT report_type,term_label,reviewed_at,draft_content FROM academic_report_drafts WHERE learner_id=$1 AND status='approved' ORDER BY reviewed_at DESC NULLS LAST,created_at DESC LIMIT 1", [row.learner_id]),
   ]);
   const fmt = (value: unknown) => value == null || value === "" ? "Not recorded" : String(value);
-  const lines = [
-    "DALLYLETTER ELIDEMS",
-    "OFFICIAL TRANSFER LETTER",
-    "",
-    "Learner: " + fmt(row.learner_name),
-    "Account email: " + fmt(row.email),
-    "Grade/Form: " + fmt(row.grade),
-    "Current school: " + fmt(row.form_data?.currentSchool),
-    "Request date: " + new Date(row.created_at).toISOString().slice(0,10),
-    "Approval date: " + (row.reviewed_at ? new Date(row.reviewed_at).toISOString().slice(0,10) : "Not recorded"),
-    "Transfer reason: " + fmt(row.reason),
-    "Receiving school: " + fmt(row.form_data?.receivingSchool),
-    "Learner full name: " + fmt(row.form_data?.learnerName || row.learner_name),
-    "Date of birth: " + fmt(row.form_data?.dob),
-    "Age on effective transfer date: " + (calculateAgeOnDate(row.form_data?.dob, row.form_data?.effectiveDate || row.created_at) ?? "Not recorded"),
-    "Gender: " + fmt(row.form_data?.gender),
-    "Admission number: " + fmt(row.form_data?.admissionNo),
-    "EMIS number: " + fmt(row.form_data?.emisNo),
-    "Academic year: " + fmt(row.form_data?.academicYear),
-    "Last term average: " + fmt(row.form_data?.average),
-    "Conduct: " + fmt(row.form_data?.conduct),
-    "Parent/guardian: " + fmt(row.form_data?.guardianName) + " (" + fmt(row.form_data?.relationship) + ")",
-    "Guardian ID: " + fmt(row.form_data?.guardianId),
-    "Guardian phone: " + fmt(row.form_data?.guardianPhone),
-    "Guardian email: " + fmt(row.form_data?.guardianEmail),
-    "Physical address: " + fmt(row.form_data?.address),
-    "Effective transfer date: " + fmt(row.form_data?.effectiveDate),
-    "Reason details: " + fmt(row.form_data?.reasonDetail),
-    "Parent/guardian signature: " + fmt(row.form_data?.guardianSignatureName),
-    "Current-school headmaster: " + fmt(row.form_data?.headmasterName),
-    "Signature and official stamp: To be completed by the authorized school representative; no signature or stamp is fabricated.",
-    row.review_note ? "Manager note: " + row.review_note : "",
-    "",
-    "ACADEMIC RECORD SUMMARY",
-    "Subjects: " + fmt((subjectRows.rows[0]?.subjects || []).join(", ")),
-    "Latest approved report: " + (reportRows.rows[0] ? String(reportRows.rows[0].term_label) + " (" + String(reportRows.rows[0].report_type) + ", " + (reportRows.rows[0].reviewed_at ? new Date(reportRows.rows[0].reviewed_at).toISOString().slice(0,10) : "approval date unavailable") + ")" : "No approved report recorded"),
-    "Performance/marks: Included only where available in an approved report; no marks are inferred.",
-    "Attendance sessions recorded: " + String(attendanceRows.rows[0]?.sessions ?? 0),
-    "Present sessions: " + String(attendanceRows.rows[0]?.present ?? 0),
-    "Absent sessions recorded: " + String(attendanceRows.rows[0]?.absent ?? 0),
-    "Enrollments: " + (enrollmentRows.rows.length ? enrollmentRows.rows.map((e: any) => [e.title,e.subject,e.grade ? "Grade " + e.grade : "",e.progress_percent + "% complete"].filter(Boolean).join(" | ")).join("; ") : "No enrollment records available"),
-    "Achievements: " + (awardRows.rows.length ? awardRows.rows.map((a: any) => a.name).join(", ") : "No achievements recorded"),
-    "",
-    "Generated from available Dallyletter Elidems account and academic records.",
-    "This document does not certify fee clearance or replace a school stamp/signature not present in the system.",
-    "Approved by authorized reviewer account ID: " + fmt(row.reviewed_by),
-    "Document reference: DL-TR-" + id + " | Protected authenticated download",
-  ].filter(Boolean);
-  const escapePdf = (value: string) => value.normalize("NFKD").replace(/[^\x20-\x7E]/g, "").replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
-  const wrapped = lines.flatMap(line => {
-    const words = line.split(/\s+/); const out: string[] = []; let current = "";
-    for (const word of words) {
-      if ((current + " " + word).trim().length > 88) { if (current) out.push(current); current = word; }
-      else current = (current + " " + word).trim();
-    }
-    if (current) out.push(current);
-    return out;
-  });
-  const pageLines = Array.from({ length: Math.max(1, Math.ceil(wrapped.length / 48)) }, (_, index) => wrapped.slice(index * 48, (index + 1) * 48));
-  const objects: string[] = [
-    "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [" + pageLines.map((_, index) => (5 + index * 2) + " 0 R").join(" ") + "] /Count " + pageLines.length + " >>",
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
+  const form = row.form_data && typeof row.form_data === "object" ? row.form_data : {};
+  const age = calculateAgeOnDate(form.dob, form.effectiveDate || row.created_at);
+
+  const sections:BrandedPdfSection[]=[
+    {heading:"Transfer application",rows:["Reference: DL-TR-"+id,"Application date: "+new Date(row.created_at).toISOString().slice(0,10),"Approval date: "+(row.reviewed_at?new Date(row.reviewed_at).toISOString().slice(0,10):"Not recorded"),"Current school: "+fmt(form.currentSchool),"Receiving school: "+fmt(form.receivingSchool),"Transfer reason: "+fmt(form.reasonType||row.reason),"Reason details: "+fmt(form.reasonDetail)]},
+    {heading:"Learner details",rows:["Full name: "+fmt(form.learnerName||row.learner_name),"Grade / Form: "+fmt(form.grade||row.grade),"Date of birth: "+fmt(form.dob)+" · Age on effective transfer date: "+fmt(age),"Gender: "+fmt(form.gender),"Admission number: "+fmt(form.admissionNo),"EMIS number: "+fmt(form.emisNo),"Academic year: "+fmt(form.academicYear),"Last term average: "+fmt(form.average)+" · Conduct: "+fmt(form.conduct)]},
+    {heading:"Parent / guardian details",rows:["Name: "+fmt(form.guardianName)+" · Relationship: "+fmt(form.relationship),"ID: "+fmt(form.guardianId),"Phone: "+fmt(form.guardianPhone),"Email: "+fmt(form.guardianEmail),"Address: "+fmt(form.address),"Effective transfer date: "+fmt(form.effectiveDate)]},
+    {heading:"Declarations and signatures",rows:["Parent / guardian signature: "+(form.guardianSignatureDataUrl?"Signature image supplied in submitted preview":"Not supplied"),"Current-school headmaster signature / stamp: "+(form.headmasterSignatureDataUrl?"Signature / stamp image supplied in submitted preview":"Not supplied"),"School logo: "+(form.schoolLogoDataUrl?"Logo supplied in submitted preview":"Not supplied"),"A missing signature, stamp or fee clearance is never fabricated."]},
+    {heading:"Academic record summary",rows:["Subjects: "+fmt((subjectRows.rows[0]?.subjects||[]).join(", ")),"Latest approved report: "+(reportRows.rows[0]?String(reportRows.rows[0].term_label)+" ("+String(reportRows.rows[0].report_type)+")":"No approved report recorded"),"Attendance sessions: "+String(attendanceRows.rows[0]?.sessions??0)+" · Present: "+String(attendanceRows.rows[0]?.present??0)+" · Absent: "+String(attendanceRows.rows[0]?.absent??0),"Enrollments: "+(enrollmentRows.rows.length?enrollmentRows.rows.map((e:any)=>[e.title,e.subject,e.grade?"Grade "+e.grade:"",e.progress_percent==null?"Progress not recorded":e.progress_percent+"% complete"].filter(Boolean).join(" · ")).join("; "):"No enrollment records available"),"Achievements: "+(awardRows.rows.length?awardRows.rows.map((a:any)=>a.name).join(", "):"No achievements recorded")]},
+    {heading:"Approval and document integrity",rows:["Reviewer note: "+fmt(row.review_note),"Approved by authorized reviewer account: "+fmt(row.reviewed_by),"Generated from saved Dallyletter Elidems records. This document does not certify fee clearance or replace an absent school stamp or signature."]}
   ];
-  pageLines.forEach((page, pageIndex) => {
-    const pageObject = 5 + pageIndex * 2;
-    const contentObject = pageObject + 1;
-    const textCommands = page.map((line, index) => {
-      const isHeading = /^(DALLYLETTER ELIDEMS|OFFICIAL TRANSFER LETTER|ACADEMIC RECORD SUMMARY)$/.test(line);
-      return (index ? "0 -14 Td\n" : "") + (isHeading ? "/F2 11 Tf\n" : "/F1 9 Tf\n") + "(" + escapePdf(line) + ") Tj";
-    }).join("\n");
-    const stream = [
-      "0.055 0.13 0.29 rg 0 790 595 52 re f",
-      "1 1 1 rg BT /F2 18 Tf 48 808 Td (DALLYLETTER ELIDEMS) Tj ET",
-      "0.72 0.55 0.08 rg 0 786 595 4 re f",
-      "0 0 0 rg BT 48 760 Td",
-      textCommands,
-      "ET",
-      "0.055 0.13 0.29 rg 48 34 499 1 re f",
-      "0 0 0 rg BT /F1 8 Tf 48 20 Td (Protected academic document - DL-TR-" + id + ") Tj 440 0 Td (Page " + (pageIndex + 1) + " of " + pageLines.length + ") Tj ET",
-    ].join("\n");
-    objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents " + contentObject + " 0 R >>");
-    objects.push("<< /Length " + new TextEncoder().encode(stream).length + " >>\nstream\n" + stream + "\nendstream");
-  });
-  let pdf = "%PDF-1.4\n"; const offsets = [0];
-  for (let i = 0; i < objects.length; i++) {
-    offsets.push(new TextEncoder().encode(pdf).length);
-    pdf += (i+1) + " 0 obj\n" + objects[i] + "\nendobj\n";
-  }
-  const xref = new TextEncoder().encode(pdf).length;
-  pdf += "xref\n0 " + (objects.length+1) + "\n0000000000 65535 f \n";
-  for (const offset of offsets.slice(1)) pdf += String(offset).padStart(10,"0") + " 00000 n \n";
-  pdf += "trailer\n<< /Size " + (objects.length+1) + " /Root 1 0 R >>\nstartxref\n" + xref + "\n%%EOF";
+  const pdf=buildBrandedDocumentPdf("OFFICIAL TRANSFER LETTER",String(form.currentSchool||"Transfer clearance and application"),"DL-TR-"+id,sections);
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Content-Disposition", 'attachment; filename="dallyletter-transfer-letter-' + id + '.pdf"');
-  res.send(Buffer.from(pdf, "binary"));
+  res.send(pdf);
 });
 
 router.get("/academic-records/me", requireAuth, async (req, res): Promise<void> => {

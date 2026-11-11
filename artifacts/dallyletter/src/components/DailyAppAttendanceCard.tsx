@@ -217,36 +217,44 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
           const isFuture = key > today;
           const isToday = key === today;
           const isAbsent = !!status && status.absent > 0;
-          const isPresent = !!status && status.present > 0 && !isAbsent;
-          const isPastUnrecorded = key < today && !status;
+          const isPresent = !!status && status.present > 0;
+          const isMixed = isAbsent && isPresent;
           const holidayName = zimbabwePublicHolidays(monthStart.getFullYear()).get(key);
+          const isPastUnrecorded = key < today && !status && !holidayName;
+          // The date cell itself communicates the register state; keep the summary
+          // cards and the separate fullscreen activity-history dialog untouched.
           const colorClass = isFuture
-            ? "bg-card text-foreground border-border"
-            : isPastUnrecorded
-              ? "bg-orange-100 text-orange-900 border-orange-400 dark:bg-orange-950/50 dark:text-orange-200 dark:border-orange-700"
+            ? "bg-slate-50 text-slate-500 border-slate-200 dark:bg-slate-900/60 dark:text-slate-300 dark:border-slate-700"
+            : isMixed
+              ? "bg-amber-100 text-amber-950 border-amber-400 dark:bg-amber-950/60 dark:text-amber-100 dark:border-amber-700"
               : isAbsent
-              ? "bg-red-100 text-red-800 border-red-300 dark:bg-red-950/50 dark:text-red-200 dark:border-red-800"
-              : isPresent
-                ? "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/50 dark:text-emerald-200 dark:border-emerald-800"
-                : "bg-card text-foreground border-border";
+                ? "bg-red-100 text-red-900 border-red-400 dark:bg-red-950/60 dark:text-red-100 dark:border-red-700"
+                : isPresent
+                  ? "bg-emerald-100 text-emerald-950 border-emerald-400 dark:bg-emerald-950/60 dark:text-emerald-100 dark:border-emerald-700"
+                  : isPastUnrecorded
+                    ? "bg-orange-100 text-orange-950 border-orange-400 dark:bg-orange-950/60 dark:text-orange-100 dark:border-orange-700"
+                    : holidayName
+                      ? "bg-violet-100 text-violet-950 border-violet-400 dark:bg-violet-950/60 dark:text-violet-100 dark:border-violet-700"
+                      : "bg-card text-foreground border-border";
           return (
-            <div key={key} aria-label={`${formatDate(key)}: ${isAbsent ? "absence recorded" : isPresent ? "present" : holidayName ? holidayName : isFuture ? "upcoming date" : isPastUnrecorded ? "past day with no record" : "no record"}`} className={`relative flex min-h-[42px] flex-col items-center justify-center rounded-lg border text-sm font-semibold sm:min-h-[54px] ${colorClass} ${isWeekend ? "ring-1 ring-inset ring-violet-300 dark:ring-violet-700" : ""} ${isToday ? "outline outline-2 outline-offset-1 outline-primary" : ""}`}>
+            <div key={key} title={`${formatDate(key)} · ${isMixed ? "Present and absent sessions" : isAbsent ? "Absence recorded" : isPresent ? "Present" : isPastUnrecorded ? "No attendance record" : holidayName || (isFuture ? "Upcoming date" : "No record")}${status ? ` · ${status.present} present, ${status.absent} absent` : ""}`} aria-label={`${formatDate(key)}: ${isMixed ? "mixed attendance, present and absent sessions" : isAbsent ? "absence recorded" : isPresent ? "present" : isPastUnrecorded ? "past day with no record" : holidayName ? holidayName : isFuture ? "upcoming date" : "no record"}`} className={`relative flex min-h-[42px] flex-col items-center justify-center rounded-lg border text-sm font-semibold transition-colors sm:min-h-[54px] ${colorClass} ${isWeekend ? "ring-1 ring-inset ring-violet-400 dark:ring-violet-600" : ""} ${isToday ? "outline outline-2 outline-offset-1 outline-primary" : ""}`}>
               <span>{day}</span>
-              {status && <span className="text-[9px] font-medium leading-3">{status.present + status.absent} {status.present + status.absent === 1 ? "session" : "sessions"}</span>}
-              {isPastUnrecorded && !holidayName && <span className="text-[9px] font-extrabold leading-3 text-orange-800 dark:text-orange-200">D</span>}
-              {holidayName && <span title={holidayName} aria-label={holidayName} className="pointer-events-none absolute inset-0 flex items-center justify-center text-2xl font-black text-amber-500/35">D</span>}
+              {status && <span className="text-[9px] font-bold leading-3">{status.present > 0 && <span>{status.present}P</span>}{status.present > 0 && status.absent > 0 && <span> · </span>}{status.absent > 0 && <span>{status.absent}A</span>}</span>}
+              {isPastUnrecorded && !holidayName && <span className="text-[9px] font-extrabold leading-3">NO MARK</span>}
+              {holidayName && <span title={holidayName} aria-label={holidayName} className="pointer-events-none absolute inset-x-0 bottom-0 truncate px-0.5 text-center text-[8px] font-bold leading-3 text-violet-800 dark:text-violet-200">{holidayName}</span>}
               {isToday && <span className="text-[8px] font-bold uppercase tracking-wide">Today</span>}
             </div>
           );
         })}
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-emerald-400 bg-emerald-100" /> Present record</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-red-400 bg-red-100" /> Absence recorded</span>
-        <span className="inline-flex items-center gap-1.5"><i className="flex h-3 w-3 items-center justify-center rounded-sm border border-orange-400 bg-orange-100 text-[8px] font-bold not-italic text-orange-900">D</i> Unrecorded past day</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-border bg-card" /> Upcoming date (uncoloured)</span>
-        <span className="inline-flex items-center gap-1.5"><i className="flex h-4 w-4 items-center justify-center text-lg font-black not-italic text-amber-500/50">D</i> Public holiday</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-violet-400 bg-card" /> Weekend</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-emerald-500 bg-emerald-200 dark:bg-emerald-900" /> Present (green)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-red-500 bg-red-200 dark:bg-red-900" /> Absent (red)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-amber-500 bg-amber-200 dark:bg-amber-900" /> Mixed sessions (amber)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-orange-500 bg-orange-200 dark:bg-orange-900" /> Past day not marked (orange)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-violet-500 bg-violet-200 dark:bg-violet-900" /> Public holiday (violet)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-slate-300 bg-slate-100 dark:bg-slate-800" /> Upcoming / no record</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-violet-400 bg-card" /> Weekend outline</span>
       </div>
     </div>
   );

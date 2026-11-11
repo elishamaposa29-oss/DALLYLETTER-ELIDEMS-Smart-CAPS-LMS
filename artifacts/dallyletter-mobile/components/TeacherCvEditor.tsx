@@ -54,6 +54,8 @@ export function TeacherCvEditor() {
   const [chatSending, setChatSending] = useState(false);
   const [surveySaving, setSurveySaving] = useState(false);
   const [surveySubmittedAt, setSurveySubmittedAt] = useState<string | null>(null);
+  const [surveyReviewStatus, setSurveyReviewStatus] = useState("pending");
+  const [surveyReviewNote, setSurveyReviewNote] = useState("");
   const [survey, setSurvey] = useState({ laptop: "", laptopType: "", smartphone: "", computer: "", online: "", internet: "", platforms: "", power: "", verificationCall: "", extra: "" });
 
   useEffect(() => {
@@ -79,6 +81,8 @@ export function TeacherCvEditor() {
         if (!active) return;
         setCv(nextCv);
         setSurveySubmittedAt(nextCv.surveySubmittedAt ? String(nextCv.surveySubmittedAt) : null);
+        setSurveyReviewStatus(String(nextCv.surveyReviewStatus || "pending"));
+        setSurveyReviewNote(String(nextCv.surveyReviewNote || ""));
         setPersonal({
           idNumber: String(savedPersonal.idNumber || ""),
           dob: String(savedPersonal.dob || ""),
@@ -108,7 +112,21 @@ export function TeacherCvEditor() {
       } finally { if (active) setLoading(false); }
     };
     void load();
-    return () => { active = false; };
+    let polling = false;
+    const chatPoll = setInterval(async () => {
+      if (!active || polling) return;
+      polling = true;
+      try {
+        const response = await fetch(getApiUrl("/api/teacher-cv-workspace/" + user.id + "/chat"), { headers });
+        if (response.ok) {
+          const latest = await response.json();
+          if (active) setChatMessages(Array.isArray(latest) ? latest : latest.messages || []);
+        }
+      } catch {
+        // Preserve the last delivered conversation while temporarily offline.
+      } finally { polling = false; }
+    }, 10000);
+    return () => { active = false; clearInterval(chatPoll); };
   }, [user?.id, token]);
 
   const saveCv = async (showSuccess = true): Promise<boolean> => {
@@ -334,7 +352,7 @@ export function TeacherCvEditor() {
         <TouchableOpacity disabled={surveySaving || loading || Boolean(surveySubmittedAt)} onPress={() => void submitSurvey()} style={{ marginTop: 8, backgroundColor: colors.primary, borderRadius: 9, padding: 11, alignItems: "center", opacity: surveySaving || loading || surveySubmittedAt ? 0.65 : 1 }}>
           <Text style={{ color: "#fff", fontWeight: "700" }}>{surveySaving ? "Submitting survey…" : surveySubmittedAt ? "Readiness survey submitted" : "Submit readiness survey independently"}</Text>
         </TouchableOpacity>
-        {!!surveySubmittedAt && <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 6 }}>Submitted: {new Date(surveySubmittedAt).toLocaleString()}</Text>}
+        {!!surveySubmittedAt && <View style={{ marginTop: 6, borderWidth: 1, borderColor: colors.border, borderRadius: 9, padding: 9 }}><Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Submitted: {new Date(surveySubmittedAt).toLocaleString()}</Text><Text style={{ color: colors.foreground, fontSize: 12, marginTop: 4 }}>Review decision: {surveyReviewStatus}</Text>{!!surveyReviewNote && <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 4 }}>Reviewer note: {surveyReviewNote}</Text>}</View>}
       </View>
       <TouchableOpacity disabled={saving || loading || submitting} onPress={() => {
           void saveCv(true);

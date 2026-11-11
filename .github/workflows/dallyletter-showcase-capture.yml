@@ -44,15 +44,24 @@ jobs:
     env:
       SHOWCASE_SITE_URL: https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/
       SHOWCASE_AUTH_ALLOWED_ORIGIN: ${{ 'https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app' }}
-      SHOWCASE_LEARNER_EMAIL: ${{ secrets.SHOWCASE_LEARNER_EMAIL }}
-      SHOWCASE_LEARNER_PASSWORD: ${{ secrets.SHOWCASE_LEARNER_PASSWORD }}
-      SHOWCASE_TEACHER_EMAIL: ${{ secrets.SHOWCASE_TEACHER_EMAIL }}
-      SHOWCASE_TEACHER_PASSWORD: ${{ secrets.SHOWCASE_TEACHER_PASSWORD }}
-      SHOWCASE_MANAGER_EMAIL: ${{ secrets.SHOWCASE_MANAGER_EMAIL }}
-      SHOWCASE_MANAGER_PASSWORD: ${{ secrets.SHOWCASE_MANAGER_PASSWORD }}
-      SOURCE_COMMIT: ${{ github.sha }}
-      EXPECTED_DEPLOYMENT_SHA: ${{ github.event_name == 'pull_request' && '' || github.sha }}
+      SHOWCASE_LEARNER_EMAIL: ${{ github.event_name != 'pull_request' && secrets.SHOWCASE_LEARNER_EMAIL || '' }}
+      SHOWCASE_LEARNER_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.SHOWCASE_LEARNER_PASSWORD || '' }}
+      SHOWCASE_TEACHER_EMAIL: ${{ github.event_name != 'pull_request' && secrets.SHOWCASE_TEACHER_EMAIL || '' }}
+      SHOWCASE_TEACHER_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.SHOWCASE_TEACHER_PASSWORD || '' }}
+      SHOWCASE_MANAGER_EMAIL: ${{ github.event_name != 'pull_request' && secrets.SHOWCASE_MANAGER_EMAIL || '' }}
+      SHOWCASE_MANAGER_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.SHOWCASE_MANAGER_PASSWORD || '' }}
+      SHOWCASE_PREFECT_EMAIL: ${{ github.event_name != 'pull_request' && secrets.SHOWCASE_PREFECT_EMAIL || '' }}
+      SHOWCASE_PREFECT_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.SHOWCASE_PREFECT_PASSWORD || '' }}
+      SHOWCASE_JUNIOR_MANAGER_EMAIL: ${{ github.event_name != 'pull_request' && secrets.SHOWCASE_JUNIOR_MANAGER_EMAIL || '' }}
+      SHOWCASE_JUNIOR_MANAGER_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.SHOWCASE_JUNIOR_MANAGER_PASSWORD || '' }}
+      SHOWCASE_SENIOR_MANAGER_EMAIL: ${{ github.event_name != 'pull_request' && secrets.SHOWCASE_SENIOR_MANAGER_EMAIL || '' }}
+      SHOWCASE_SENIOR_MANAGER_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.SHOWCASE_SENIOR_MANAGER_PASSWORD || '' }}
+      SHOWCASE_OWNER_EMAIL: ${{ github.event_name != 'pull_request' && secrets.SHOWCASE_OWNER_EMAIL || '' }}
+      SHOWCASE_OWNER_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.SHOWCASE_OWNER_PASSWORD || '' }}
+      SHOWCASE_MAX_PAGES_PER_ROLE: "100"
       SHOWCASE_CAPTURE_AUTHENTICATED: ${{ github.event_name != 'pull_request' }}
+      SOURCE_COMMIT: ${{ github.sha }}
+      EXPECTED_DEPLOYMENT_SHA: ${{ github.event_name != 'pull_request' && github.sha || '' }}
       SHOWCASE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - name: Checkout repository
@@ -64,17 +73,17 @@ jobs:
       - name: Install browser automation
         run: |
           npm install --no-save --package-lock=false playwright@1.58.2
-          npx playwright install --with-deps chromium
-      - name: Wait for exact deployed commit, then capture sitemap pages and configured demo dashboards
+          npx playwright install chromium
+      - name: Verify deployment, then capture every role dashboard and accessible feature route
         run: node scripts/capture-dallyletter-showcase.mjs
       - name: Upload refreshed screenshot gallery and URL manifest
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dallyletter-showcase-${{ github.run_number }}
+          name: dallyletter-full-role-feature-captures-${{ github.run_number }}
           path: showcase-captures/
           if-no-files-found: warn
-          retention-days: 90
+          retention-days: 14
 
       - name: Publish current public screenshot media to dedicated branch
         if: success() && github.event_name == 'workflow_dispatch' && inputs.approve_publication == true
