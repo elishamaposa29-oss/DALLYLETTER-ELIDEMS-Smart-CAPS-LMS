@@ -273,19 +273,16 @@ export const educationSeoTags = {
   }
 };
 
-// Only emit tags that accurately describe the destination page. Unexpanded templates
-// stay available to content authors and are never published as literal placeholder text.
+const safePlatformTags = new Set(["distance learning", "e-learning", "virtual classroom", "flexible schedule", "interactive", "online classes", "remote learning"]);
 export function getPageSeoTags(slug = "") {
   const groups = educationSeoTags.pageGroups[slug] || [];
   const tags = groups.flatMap((group) => educationSeoTags.standalone[group] || []);
-  return [...new Set(tags)];
+  const unique = [...new Set(tags)];
+  return groups.some((group) => group.startsWith("online_school_"))
+    ? unique.filter((tag) => safePlatformTags.has(tag))
+    : unique;
 }
-
 export function getEducationSeoTagCounts() {
   const count = (groups) => Object.values(groups).reduce((total, values) => total + values.length, 0);
-  return {
-    templateTags: count(educationSeoTags.templates),
-    standaloneTags: count(educationSeoTags.standalone),
-    pageMappings: Object.keys(educationSeoTags.pageGroups).length,
-  };
+  return { templateTags: count(educationSeoTags.templates), standaloneTags: count(educationSeoTags.standalone), pageMappings: Object.keys(educationSeoTags.pageGroups).length };
 }
