@@ -10,6 +10,8 @@ export default function AdminHome() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const roleLabel = String(user?.role || "admin").toLowerCase().replace(/[ -]+/g, "_");
+  const dashboardBadge = roleLabel === "owner" || roleLabel === "platform_owner" ? (roleLabel === "platform_owner" ? "PLATFORM OWNER" : "OWNER") : "ADMIN";
   const { data: stats } = useGetDashboardStats();
   const { data: paymentSummary } = useGetPaymentSummary();
   const { data: activity } = useGetRecentActivity();
@@ -95,7 +97,7 @@ export default function AdminHome() {
       <View style={s.header}>
         <View style={s.ownerBadge}>
           <Feather name="shield" size={11} color={colors.primary} />
-          <Text style={s.ownerBadgeText}>OWNER</Text>
+          <Text style={s.ownerBadgeText}>{dashboardBadge}</Text>
         </View>
         <Text style={s.greeting}>Admin Dashboard</Text>
         <Text style={s.name}>{user?.name}</Text>
