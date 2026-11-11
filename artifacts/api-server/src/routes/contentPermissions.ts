@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
+import { managerHasPermission } from "../lib/manager-permission-policy";
 
 const router=Router();
 const actions=new Set(["edit","create_exercise","delete","notify"]);
@@ -17,7 +18,12 @@ router.post("/content-permissions",requireAuth,async(req,res):Promise<void>=>{
   const result=await pool.query(`SELECT ${ownerColumn} AS owner_id FROM ${table} WHERE id=$1 LIMIT 1`,[contentId]);
   const ownerId=result.rows[0]?.owner_id;
   if(!ownerId){res.status(404).json({error:"Content not found"});return;}
-  if(Number(ownerId)===actor.id||isOwnerRole(actor.role)||(canAccessManager(actor)&&actor.managerLevel==="senior")){res.status(200).json({ok:true,alreadyAuthorized:true});return;}
+  const managerPermissionByAction:Record<string,string>=contentType==="lesson"
+    ? {edit:"lessons.edit",create_exercise:"users.override.teacher",delete:"lessons.delete",notify:"lessons.notify"}
+    : {edit:"users.override.teacher",delete:"users.override.teacher"};
+  const managerPermission=managerPermissionByAction[requestedAction];
+  const managerAuthorized=canAccessManager(actor)&&Boolean(managerPermission)&&await managerHasPermission(actor,managerPermission);
+  if(Number(ownerId)===actor.id||isOwnerRole(actor.role)||managerAuthorized){res.status(200).json({ok:true,alreadyAuthorized:true});return;}
   const existing=await pool.query("SELECT id,status FROM content_permission_requests WHERE requester_id=$1 AND content_type=$2 AND content_id=$3 AND requested_action=$4 AND status='pending' LIMIT 1",[actor.id,contentType,contentId,requestedAction]);
   if(existing.rows[0]){res.json({ok:true,pending:true,id:existing.rows[0].id});return;}
   const inserted=await pool.query("INSERT INTO content_permission_requests(requester_id,owner_id,content_type,content_id,requested_action) VALUES($1,$2,$3,$4,$5) RETURNING id",[actor.id,ownerId,contentType,contentId,requestedAction]);
@@ -77,8 +83,8 @@ router.post("/content-permissions/:id/report",requireAuth,async(req,res):Promise
   const details={requestId:id,requesterId:actor.id,ownerId:Number(item.owner_id),contentType:item.content_type,contentId:Number(item.content_id),requestedAction:item.requested_action,message};
   await pool.query("INSERT INTO activity_log(type,description,actor_name) VALUES($1,$2,$3)",["content_permission_reported_to_manager","Manager review requested for declined permission: "+JSON.stringify(details),actor.name]);
   await pool.query(
-    "INSERT INTO notifications(recipient_id,title,message,type,is_read,link) SELECT id,$1,$2,$3,false,$4 FROM users WHERE role='owner' OR is_manager=true",
-    ["Permission decision needs manager review",actor.name+" reported declined permission request #"+id+". "+(message||"Please review the request."),"content_permission_report","/admin/notifications"]
+    "INSERT INTO notifications(recipient_id,title,message,type,is_read,link) SELECT u.id,$1,$2,$3,false,$4 FROM users u WHERE lower(u.role) IN ('owner','platform_owner') OR ((lower(u.role) IN ('manager','senior_manager','junior_manager') OR u.is_manager=true) AND COALESCE(u.is_blocked,false)=false AND COALESCE(u.is_suspended,false)=false AND (lower(u.role)<>'teacher' OR COALESCE(u.teacher_application_status,'') NOT IN ('draft','pending_review','rejected_pending_conversion')) AND EXISTS (SELECT 1 FROM manager_permission_grants g WHERE g.manager_user_id=u.id AND g.permission_key='moderation.view' AND g.granted=true))",
+    ["Permission decision needs management review",actor.name+" reported declined permission request #"+id+". "+(message||"Please review the request."),"content_permission_report","/admin/notifications"]
   );
   res.status(201).json({ok:true,reported:true});
 });
