@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
-import { db, auditLogsTable } from "@workspace/db";
+import { db, pool, auditLogsTable } from "@workspace/db";
 import { attendanceTable, usersTable, classesTable } from "@workspace/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { canManageAcademicContent, requireAuth, isOwnerRole } from "../lib/auth-middleware";
@@ -24,6 +24,50 @@ router.get("/class/:classId", requireAuth, requireManagerPermissionIfManager("at
     return (req.currentUser!.id === classRow.teacherId || inAuthority) && (await canViewProfileSection(req.currentUser!,row.studentId,"attendance")) ? row : null;
   }));
   res.json(visible.filter(Boolean));
+});
+
+// GET /class/:classId/register — enrolled class roster joined to saved attendance evidence.
+router.get("/class/:classId/register", requireAuth, requireManagerPermissionIfManager("attendance.view"), async (req,res):Promise<void> => {
+  const classId=Number(req.params.classId);
+  if(!Number.isSafeInteger(classId)||classId<=0){res.status(400).json({error:"Invalid class id"});return;}
+  const [classRow]=await db.select({teacherId:classesTable.teacherId,title:classesTable.title}).from(classesTable).where(eq(classesTable.id,classId));
+  if(!classRow){res.status(404).json({error:"Class not found"});return;}
+  const actor=req.currentUser!;
+  if(actor.id!==classRow.teacherId&&!isOwnerRole(actor.role)){
+    const [teacher]=await db.select({role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(eq(usersTable.id,classRow.teacherId));
+    if(!teacher||!canModerateUser(actor,teacher)){res.status(404).json({error:"Class not found"});return;}
+  }
+  const result=await pool.query(
+    "SELECT DISTINCT ON (u.id) u.id AS \"studentId\",u.name AS \"studentName\",a.id,a.status,a.joined_at AS \"joinedAt\",a.is_late AS \"isLate\" FROM enrollments e JOIN users u ON u.id=e.learner_id LEFT JOIN attendance a ON a.class_id=e.class_id AND a.student_id=e.learner_id WHERE e.class_id=$1 AND lower(u.role) IN ('student','learner') AND u.is_blocked=false ORDER BY u.id,a.joined_at DESC NULLS LAST",
+    [classId]
+  );
+  const visible=await Promise.all(result.rows.map(async(row:any)=>await canViewProfileSection(actor,Number(row.studentId),"attendance")?row:null));
+  res.json({classId,classTitle:classRow.title,learners:visible.filter(Boolean)});
+});
+
+// POST /class/:classId/mark — create or update a present/absent record for an enrolled learner.
+router.post("/class/:classId/mark", requireAuth, requireManagerPermissionIfManager("attendance.edit"), async(req,res):Promise<void> => {
+  const actor=req.currentUser!;
+  if(!canManageAcademicContent(actor)){res.status(403).json({error:"Academic staff access required"});return;}
+  const classId=Number(req.params.classId),studentId=Number(req.body?.studentId);
+  const status=req.body?.status==="absent"?"absent":req.body?.status==="present"?"present":null;
+  if(!Number.isSafeInteger(classId)||classId<=0||!Number.isSafeInteger(studentId)||studentId<=0||!status){res.status(400).json({error:"Valid classId, studentId and present/absent status are required"});return;}
+  const [classRow]=await db.select({teacherId:classesTable.teacherId}).from(classesTable).where(eq(classesTable.id,classId));
+  if(!classRow){res.status(404).json({error:"Class not found"});return;}
+  const [target]=await db.select({id:usersTable.id,name:usersTable.name,role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(eq(usersTable.id,studentId));
+  if(!target||!["student","learner"].includes(String(target.role).toLowerCase())){res.status(404).json({error:"Enrolled learner not found"});return;}
+  const isAssignedTeacher=Number(classRow.teacherId)===actor.id;
+  const isAuthorized=isAssignedTeacher||isOwnerRole(actor.role)||(await canModerateUser(actor,{role:target.role,isManager:target.isManager,managerLevel:target.managerLevel}));
+  if(!isAuthorized){res.status(403).json({error:"You are not authorized to manage this class register"});return;}
+  const enrolled=await pool.query("SELECT 1 FROM enrollments WHERE class_id=$1 AND learner_id=$2 LIMIT 1",[classId,studentId]);
+  if(!enrolled.rows.length){res.status(404).json({error:"This learner is not enrolled in the selected class"});return;}
+  if(!(await canViewProfileSection(actor,studentId,"attendance"))){res.status(403).json({error:"Attendance visibility is restricted by this learner's privacy settings"});return;}
+  const [existing]=await db.select({id:attendanceTable.id}).from(attendanceTable).where(and(eq(attendanceTable.classId,classId),eq(attendanceTable.studentId,studentId))).orderBy(desc(attendanceTable.joinedAt)).limit(1);
+  const [row]=existing
+    ? await db.update(attendanceTable).set({status}).where(eq(attendanceTable.id,existing.id)).returning()
+    : await db.insert(attendanceTable).values({classId,studentId,studentName:target.name,status}).returning();
+  await db.insert(auditLogsTable).values({action:"Marked "+target.name+" "+status+" in class register",category:"attendance",performedBy:actor.id,targetType:"attendance",targetId:row.id,details:JSON.stringify({classId,studentId,status})});
+  res.json(row);
 });
 
 router.get("/my", requireAuth, async (req, res): Promise<void> => {
