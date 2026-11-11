@@ -313,6 +313,8 @@ function SubmissionStatus({ status }: { status: string }) {
 
 export default function ExerciseMarking() {
   const {user}=useAuth();
+  const role=String(user?.role||"").toLowerCase();
+  const managerAccount=["manager","senior_manager","junior_manager"].includes(role)||Boolean((user as any)?.isManager);
   const [, params] = useRoute("/teacher/exercises/:id/mark");
   const id = params?.id;
   const [exercise, setExercise] = useState<Exercise | null>(null);
@@ -330,13 +332,11 @@ export default function ExerciseMarking() {
   const [aiMessage, setAiMessage] = useState("");
   const [aiState, setAiState] = useState<"idle"|"checking"|"partially_marked"|"awaiting_teacher"|"returned">("idle");
   const [loading, setLoading] = useState(false);
-  const [canEdit,setCanEdit]=useState(true);
+  const [canEdit,setCanEdit]=useState(!managerAccount);
   const [learnerPreviewOpen, setLearnerPreviewOpen] = useState(false);
 
   const token = localStorage.getItem("dallyletter_token");
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-  const role=String(user?.role||"").toLowerCase();
-  const managerAccount=["manager","senior_manager","junior_manager"].includes(role)||Boolean((user as any)?.isManager);
 
   const selectedSubmission = useMemo(
     () => subs.find((s) => s.id === selected) ?? null,
