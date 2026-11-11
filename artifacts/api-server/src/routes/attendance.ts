@@ -75,7 +75,7 @@ router.post("/class/:classId/mark", requireAuth, requireManagerPermissionIfManag
   const isAssignedTeacher=Number(classRow.teacherId)===actor.id;
   const isAuthorized=isAssignedTeacher||isOwnerRole(actor.role)||(await canModerateUser(actor,{role:target.role,isManager:target.isManager,managerLevel:target.managerLevel}));
   if(!isAuthorized){res.status(403).json({error:"You are not authorized to manage this class register"});return;}
-  const enrolled=await pool.query("SELECT 1 FROM enrollments WHERE class_id=$1 AND learner_id=$2 LIMIT 1",[classId,studentId]);
+  const enrolled=await pool.query("SELECT 1 FROM enrollments WHERE class_id=$1 AND learner_id=$2 AND status='active' LIMIT 1",[classId,studentId]);
   if(!enrolled.rows.length){res.status(404).json({error:"This learner is not enrolled in the selected class"});return;}
   if(!isAssignedTeacher&&!isOwnerRole(actor.role)&&!(await canViewProfileSection(actor,studentId,"attendance"))){res.status(403).json({error:"Attendance visibility is restricted by this learner's privacy settings"});return;}
   const [existing]=await db.select({id:attendanceTable.id}).from(attendanceTable).where(and(eq(attendanceTable.classId,classId),eq(attendanceTable.studentId,studentId))).orderBy(desc(attendanceTable.joinedAt)).limit(1);
