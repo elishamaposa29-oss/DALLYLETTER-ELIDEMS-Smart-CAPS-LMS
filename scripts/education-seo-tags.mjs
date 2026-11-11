@@ -157,6 +157,18 @@ export const educationSeoTags = {
       "past_papers_and_exams",
       "modifiers"
     ],
+    "exam-papers": ["past_papers_and_exams"],
+    "specimen-papers": ["past_papers_and_exams"],
+    "marking-schemes": ["past_papers_and_exams"],
+    "topical-past-papers": ["past_papers_and_exams"],
+    "practice-tests": ["past_papers_and_exams"],
+    "exam-questions": ["past_papers_and_exams"],
+    "revision-notes": ["notes_guides_and_textbooks"],
+    "study-guides": ["notes_guides_and_textbooks"],
+    "worked-examples": ["educational_videos_and_tutorials"],
+    "flashcards": ["notes_guides_and_textbooks"],
+    "educational-tutorials": ["educational_videos_and_tutorials"],
+    "syllabus": ["past_papers_and_exams"],
     "o-level": [
       "past_papers_and_exams",
       "notes_guides_and_textbooks",
@@ -275,7 +287,9 @@ export const educationSeoTags = {
 
 const safePlatformTags = new Set(["distance learning", "e-learning", "virtual classroom", "flexible schedule", "interactive", "online classes", "remote learning"]);
 export function getPageSeoTags(slug = "") {
-  const groups = educationSeoTags.pageGroups[slug] || [];
+  const mappedGroups = educationSeoTags.pageGroups[slug] || [];
+  const inferredGroups = slug.endsWith("/past-papers") ? ["past_papers_and_exams"] : slug.endsWith("/revision-notes") ? ["notes_guides_and_textbooks"] : [];
+  const groups = mappedGroups.length ? mappedGroups : inferredGroups;
   const tags = groups.flatMap((group) => educationSeoTags.standalone[group] || []);
   const unique = [...new Set(tags)];
   const verifiedResourceTags = unique.filter((tag) => !educationSeoTags.standalone.modifiers.includes(tag));
