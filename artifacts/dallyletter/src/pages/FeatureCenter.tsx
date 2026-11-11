@@ -82,6 +82,8 @@ export default function FeatureCenter(){
   "Teacher CV PDF":"teacher_cv.view",
   "Teacher Record Book · Build / Book / Learner":"recordbook.view",
   "Attendance Register & Activity History":"attendance.view",
+  "Attendance register & operations":"attendance.view",
+  "Learning communities":"groups.manage",
   "Teacher CV applications":"teacher_cv.view",
   "Qualification verification":"qualifications.view",
   "Manager audit history":"audit.view_subordinate",
