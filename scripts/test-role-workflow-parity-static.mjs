@@ -147,6 +147,7 @@ assert.ok(adminLayout.includes('name="manager-permissions"'), "Android Owner per
 
 const paymentApi = read("artifacts/api-server/src/routes/payments.ts");
 for (const operation of [
+  'router.get("/payments/manual-reports/history"',
   'router.get("/payments/manual-reports"',
   'router.post("/payments/manual-reports/:reportId/reject"',
   'router.post("/payments/:id/manual-settlement"',
@@ -155,6 +156,8 @@ for (const operation of [
   '"/api/payments/manual-reports"',
   '"/api/payments/"+paymentId+"/manual-settlement"',
   '"/api/payments/manual-reports/"+report.report_id+"/reject"',
+  '"/api/payments/manual-reports/history"',
+  'Manual payment report history',
   'Unverified learner payment reports',
   'Verify & settle',
   'Reject report',
