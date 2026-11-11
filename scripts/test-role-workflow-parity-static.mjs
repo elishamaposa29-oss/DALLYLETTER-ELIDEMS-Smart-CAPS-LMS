@@ -41,7 +41,9 @@ for (const operation of [
   'Private applicant conversation',
 ]) assert.ok(mobileReview.includes(operation), "Android CV review workspace missing operation: " + operation);
 
-assert.ok(adminEntry.includes("/(admin)/teacher-cv-workspace"), "Owner More screen must link to the CV review workspace");
+assert.ok(adminEntry.includes("/(admin)/teacher-cv-workspace"), "Admin/Owner More screen must link to the CV review workspace");
+assert.ok(adminEntry.includes('normalizedRole === "admin"'), "Admin must see the CV review entry because the API explicitly authorizes Admin CV review");
+assert.ok(mobileReview.includes('const isAdmin = normalizedRole === "admin"'), "Android CV review workspace must expose actions allowed to Admin by the API");
 assert.ok(managerEntry.includes("/(manager)/teacher-cv-workspace"), "Manager More screen must link to the permission-gated CV review workspace");
 assert.ok(adminLayout.includes('name="teacher-cv-workspace"'), "Admin route must be registered as a hidden route");
 assert.ok(managerRoute.includes("TeacherCvReviewWorkspace"), "Manager route must render the shared review workspace");
