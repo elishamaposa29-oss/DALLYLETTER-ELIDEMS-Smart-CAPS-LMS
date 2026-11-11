@@ -95,6 +95,7 @@ for (const operation of [
   'Original submitted form',
   'Download approved PDF',
 ]) assert.ok(transferReview.includes(operation), "Android transfer review operation missing: " + operation);
+assert.ok(transferReview.includes('const canApprove=isOwner||(role==="senior_manager"&&permissions["transfers.approve"]===true)') && transferReview.includes('const canReject=isOwner||permissions["transfers.reject"]===true'), "Android transfer review must preserve Senior-only approval and separately grantable rejection");
 assert.ok(adminLayout.includes('name="transfer-requests"'), "Owner transfer review route is not registered");
 assert.ok(managerLayout.includes('name="transfer-requests"'), "Manager transfer review route is not registered");
 assert.ok(managerMore.includes('permissions?.["transfers.view"]') && managerMore.includes("/(manager)/transfer-requests"), "Manager transfer review entry is not gated by transfers.view");
