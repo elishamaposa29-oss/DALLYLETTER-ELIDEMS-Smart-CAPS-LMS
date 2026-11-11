@@ -24,7 +24,7 @@ export default function OperationsWorkspace(){
  const role=String(user?.role||"").toLowerCase();
  const isStudent=["student","prefect"].includes(role);
  const isTeacher=role==="teacher";
- const isStaff=["owner","platform_owner","admin","manager","senior_manager","junior_manager"].includes(role)||Boolean((user as any)?.isManager);\n const isManagerRole=["manager","senior_manager","junior_manager"].includes(role)||Boolean((user as any)?.isManager);
+ const isStaff=["owner","platform_owner","manager","senior_manager","junior_manager"].includes(role)||Boolean((user as any)?.isManager);\n const isManagerRole=["manager","senior_manager","junior_manager"].includes(role)||Boolean((user as any)?.isManager);
  const [tab,setTab]=useState<Tab>(isStudent?"attendance":"attendance");
  const [busy,setBusy]=useState(false); const [error,setError]=useState("");
  const [classes,setClasses]=useState<Row[]>([]); const [selectedClass,setSelectedClass]=useState("");
@@ -53,7 +53,7 @@ export default function OperationsWorkspace(){
  const savePrefs=async(next:typeof prefs)=>{setPrefs(next);try{const saved=await api<Row>("/api/notification-preferences",{method:"PATCH",body:JSON.stringify(next)});setPrefs({pushEnabled:saved.pushEnabled!==false,soundEnabled:saved.soundEnabled!==false,followNotificationsEnabled:saved.followNotificationsEnabled!==false});toast({title:"Notification preferences saved"});}catch(e){toast({variant:"destructive",title:"Preferences not saved",description:e instanceof Error?e.message:"Try again"});void loadPrefs();}};
  const presentCount=attendance.filter(r=>String(r.status).toLowerCase()==="present").length;
  const absentCount=attendance.filter(r=>String(r.status).toLowerCase()==="absent").length;
- const tabs=[{id:"attendance" as const,label:"Attendance",icon:CalendarDays,show:true},{id:"permissions" as const,label:"Content permissions",icon:ShieldCheck,show:true},{id:"communities" as const,label:"Communities",icon:Users,show:isStaff},{id:"notifications" as const,label:"Notifications",icon:Bell,show:true}].filter(x=>x.show);
+ const tabs=[{id:"attendance" as const,label:"Attendance",icon:CalendarDays,show:isStudent||isTeacher||isStaff},{id:"permissions" as const,label:"Content permissions",icon:ShieldCheck,show:true},{id:"communities" as const,label:"Communities",icon:Users,show:isStaff},{id:"notifications" as const,label:"Notifications",icon:Bell,show:true}].filter(x=>x.show);
  return <DashboardLayout><div className="mx-auto max-w-6xl space-y-6">
   <div className="rounded-2xl bg-gradient-to-r from-[#0f2a5a] to-[#173a72] p-6 text-white"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-widest text-amber-300">Dallyletter Elidems</p><h1 className="mt-1 text-2xl font-bold">Operations workspace</h1><p className="mt-1 text-sm text-white/75">Attendance, permission decisions, school communities and notification controls.</p></div><Button variant="secondary" onClick={()=>void refresh()} disabled={busy}><RefreshCw className={`mr-2 h-4 w-4 ${busy?"animate-spin":""}`}/>Refresh data</Button></div></div>
   <div className="flex flex-wrap gap-2" role="tablist" aria-label="Operations workspace">{tabs.map(t=>{const Icon=t.icon;return <Button key={t.id} role="tab" aria-selected={tab===t.id} variant={tab===t.id?"default":"outline"} onClick={()=>setTab(t.id)}><Icon className="mr-2 h-4 w-4"/>{t.label}</Button>;})}</div>
