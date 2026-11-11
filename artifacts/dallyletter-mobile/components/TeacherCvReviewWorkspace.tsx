@@ -24,10 +24,12 @@ export default function TeacherCvReviewWorkspace() {
   const [reviewDays, setReviewDays] = useState("");
   const [canEditConfig, setCanEditConfig] = useState(false);
   const [managerGrants, setManagerGrants] = useState<Record<string, boolean>>({});
-  const isOwner = ["owner", "platform_owner"].includes(String(user?.role || "").toLowerCase().replace(/[ -]+/g, "_"));
-  const canReview = isOwner || managerGrants["teacher_cv.review"] === true;
-  const canAuthorize = isOwner || managerGrants["teacher_cv.authorize"] === true;
-  const canChat = isOwner || managerGrants["teacher_cv.chat"] === true;
+  const normalizedRole = String(user?.role || "").toLowerCase().replace(/[ -]+/g, "_");
+  const isOwner = ["owner", "platform_owner"].includes(normalizedRole);
+  const isAdmin = normalizedRole === "admin";
+  const canReview = isOwner || isAdmin || managerGrants["teacher_cv.review"] === true;
+  const canAuthorize = isOwner || isAdmin || managerGrants["teacher_cv.authorize"] === true;
+  const canChat = isOwner || isAdmin || managerGrants["teacher_cv.chat"] === true;
 
   const api = useCallback(async (path: string, method = "GET", body?: any) => {
     const response = await fetch(getApiUrl("/api/teacher-cv-workspace" + path), {
