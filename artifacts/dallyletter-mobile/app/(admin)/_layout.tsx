@@ -50,6 +50,7 @@ export default function AdminTabLayout() {
       <Tabs.Screen name="teacher-cv-workspace" options={{ href: null }} />
       <Tabs.Screen name="transfer-requests" options={{ href: null }} />
       <Tabs.Screen name="academic-reports" options={{ href: null }} />
+      <Tabs.Screen name="manager-permissions" options={{ href: null }} />
       <Tabs.Screen name="academic" options={{ href: null }} />
       <Tabs.Screen name="break" options={{ href: null }} />
     </Tabs>
