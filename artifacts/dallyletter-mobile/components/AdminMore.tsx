@@ -9,7 +9,8 @@ import BreakElidemsShortcut from "@/components/BreakElidemsShortcut";
 export default function AdminMore() {
   const colors = useColors();
   const { user } = useAuth();
-  const isOwner = String(user?.role || "").toLowerCase() === "owner";
+  const normalizedRole = String(user?.role || "").toLowerCase().replace(/[ -]+/g, "_");
+  const isOwner = ["owner", "platform_owner"].includes(normalizedRole);
   return <View style={{flex:1,backgroundColor:colors.background}}>
     <TouchableOpacity accessibilityRole="button" accessibilityLabel="Open class and learning operations" onPress={()=>router.push("/operations" as any)} style={{marginHorizontal:14,marginTop:8,marginBottom:2,padding:13,borderRadius:12,backgroundColor:colors.card,borderWidth:1,borderColor:colors.border,flexDirection:"row",alignItems:"center",gap:12}}>
       <View style={{width:42,height:42,borderRadius:10,alignItems:"center",justifyContent:"center",backgroundColor:colors.primary+"18"}}><Feather name="calendar" size={21} color={colors.primary}/></View>
