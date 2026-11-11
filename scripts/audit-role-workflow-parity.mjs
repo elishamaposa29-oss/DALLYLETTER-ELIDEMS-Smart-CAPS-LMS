@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Static route-to-client inventory for Dallyletter role workflow parity.
- * This is a discovery aid, not a functional certification: matching a URL in
- * source does not prove the screen is reachable, permission-safe, or working.
+ * Discovery aid only: source matches do not prove reachable UI, authorization,
+ * persistence, or successful runtime behavior.
  */
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -12,15 +12,7 @@ const routeRoot = join(root, "artifacts/api-server/src/routes");
 const webRoot = join(root, "artifacts/dallyletter/src");
 const mobileRoot = join(root, "artifacts/dallyletter-mobile");
 const routerIndex = readFileSync(join(routeRoot, "index.ts"), "utf8");
-const serverCandidates = [
-  "artifacts/api-server/src/index.ts",
-  "artifacts/api-server/src/server.ts",
-  "artifacts/api-server/src/app.ts",
-].filter(path => {
-  try { readFileSync(join(root, path), "utf8"); return true; } catch { return false; }
-});
-const serverMounts = serverCandidates.map(path => readFileSync(join(root, path), "utf8")).join("\n");
-const apiPrefix = serverMounts.match(/app\.use\(\s*["'`]([^"'`]+)["'`]\s*,\s*apiRouter/)?.[1] ?? "/api";
+const apiPrefix = "/api";
 
 function filesUnder(dir) {
   const found = [];
@@ -32,59 +24,57 @@ function filesUnder(dir) {
   return found;
 }
 function readSafe(path) { try { return readFileSync(path, "utf8"); } catch { return ""; } }
-function routeMounts() {
-  const imports = [...routerIndex.matchAll(/import\s+(\w+)\s+from\s+["']\.\/([^"']+)["']/g)];
-  const map = new Map(imports.map(match => [match[1], match[2]]));
-  const mounts = new Map();
-  for (const match of routerIndex.matchAll(/router\.use\(\s*(?:(["'`])([^"'`]+)\1\s*,\s*)?(\w+)\s*\)/g)) {
-    const prefix = match[2] ?? "";
-    const routeFile = map.get(match[3]);
-    if (routeFile) mounts.set(routeFile, prefix);
-  }
-  return mounts;
+function escapeRegex(value) { return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+
+const imports = [...routerIndex.matchAll(/import\s+(\w+)\s+from\s+["']\.\/([^"']+)["']/g)];
+const importMap = new Map(imports.map(match => [match[1], match[2]]));
+const mounts = new Map();
+for (const match of routerIndex.matchAll(/router\.use\(\s*(?:["'`]([^"'`]+)["'`]\s*,\s*)?(\w+)\s*\)/g)) {
+  const routeFile = importMap.get(match[2]);
+  if (routeFile) mounts.set(routeFile, match[1] ?? "");
 }
-const mounts = routeMounts();
-const routeFiles = filesUnder(routeRoot);
 const clients = [
   ...filesUnder(webRoot).map(path => ({ path, kind: "web" })),
   ...filesUnder(join(mobileRoot, "app")).map(path => ({ path, kind: "android" })),
   ...filesUnder(join(mobileRoot, "components")).map(path => ({ path, kind: "android" })),
-];
-const clientText = clients.map(file => ({ ...file, text: readSafe(file.path) }));
+].map(file => ({ ...file, text: readSafe(file.path) }));
+
 const records = [];
-for (const file of routeFiles) {
+for (const file of filesUnder(routeRoot)) {
   const source = readSafe(file);
   const routeName = relative(routeRoot, file).replace(/\.(ts|tsx)$/, "");
   const prefix = mounts.get(routeName) ?? "";
   for (const match of source.matchAll(/router\.(get|post|put|patch|delete)\(\s*["'`]([^"'`]+)["'`]/g)) {
     const method = match[1].toUpperCase();
     const path = (apiPrefix + prefix + match[2]).replace(/\/+/g, "/");
-    const pathPattern = path.replace(/:[A-Za-z0-9_]+/g, "[^/]+");
-    const matcher = new RegExp(pathPattern.replace(/[.*+?^$\\{}()|[\]\\]/g, "\\$&").replace(/\\\[\^\/\+\\\]/g, "[^/]+"));
-    const webRefs = clientText.filter(item => item.kind === "web" && matcher.test(item.text));
-    const androidRefs = clientText.filter(item => item.kind === "android" && matcher.test(item.text));
-    records.push({ method, path, source: relative(root, file), web: webRefs, android: androidRefs });
+    const pattern = path.split("/").map(part => part.startsWith(":") ? "[^/\\s\"'`]+" : escapeRegex(part)).join("/");
+    const matcher = new RegExp(pattern);
+    const web = clients.filter(item => item.kind === "web" && matcher.test(item.text));
+    const android = clients.filter(item => item.kind === "android" && matcher.test(item.text));
+    records.push({ method, path, source: relative(root, file), web, android });
   }
 }
-records.sort((a,b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method));
+records.sort((a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method));
 const lines = [
   "# Role workflow API-to-client static inventory",
   "",
-  `Generated: ${new Date().toISOString()}`,
+  "Generated: " + new Date().toISOString(),
   "",
   "> Static source matching only. A route reference is not proof of a reachable screen, complete action lifecycle, correct role permission, persistence, or runtime success.",
   "",
-  "| Method | API route | Backend source | Web reference | Android reference |",
+  "| Method | API route | Backend source | Web references | Android references |",
   "|---|---|---|---|---|",
-  ...records.map(row => `| ${row.method} | \`\${row.path}\` | \`\${row.source}\` | ${row.web.length ? row.web.map(x => `\`\${relative(root,x.path)}\``).join("<br>") : "**NOT FOUND**"} | ${row.android.length ? row.android.map(x => `\`\${relative(root,x.path)}\``).join("<br>") : "**NOT FOUND**"} |`),
+  ...records.map(row => "| " + row.method + " | `" + row.path + "` | `" + row.source + "` | " +
+    (row.web.length ? row.web.map(item => "`" + relative(root, item.path) + "`").join("<br>") : "**NOT FOUND**") + " | " +
+    (row.android.length ? row.android.map(item => "`" + relative(root, item.path) + "`").join("<br>") : "**NOT FOUND**") + " |"),
   "",
-  `Total route declarations: **${records.length}**.`,
-  `No web source reference: **${records.filter(row => !row.web.length).length}**.`,
-  `No Android source reference: **${records.filter(row => !row.android.length).length}**.`,
+  "Total route declarations: **" + records.length + "**.",
+  "No web source reference: **" + records.filter(row => !row.web.length).length + "**.",
+  "No Android source reference: **" + records.filter(row => !row.android.length).length + "**.",
   "",
   "Review every NOT FOUND row manually. Some endpoints are intentionally server-only, webhook-only, owner-only, or shared through a generic API client; do not add UI solely to eliminate a static warning.",
   "",
 ];
 const output = join(root, "docs/role-workflow-api-client-static-inventory.md");
 writeFileSync(output, lines.join("\n"));
-console.log(`Wrote ${relative(root, output)} with ${records.length} route declarations.`);
+console.log("Wrote " + relative(root, output) + " with " + records.length + " route declarations.");
