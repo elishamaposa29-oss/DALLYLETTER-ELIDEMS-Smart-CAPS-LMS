@@ -15,7 +15,7 @@ export default function MobileOperationsWorkspace(){
  const [name,setName]=useState("");const [description,setDescription]=useState("");const [communityId,setCommunityId]=useState<number|null>(null);const [groupId,setGroupId]=useState<number|null>(null);
  const [prefs,setPrefs]=useState({pushEnabled:true,soundEnabled:true,followNotificationsEnabled:true});const [permissionMap,setPermissionMap]=useState<Record<string,boolean>>({});
  const restrictedTeacher=role==="teacher"&&["draft","pending_review","rejected_pending_conversion"].includes(String((user as any)?.teacherApplicationStatus||"").toLowerCase());
- useEffect(()=>{if(restrictedTeacher)router.replace("/profile-hub");},[restrictedTeacher]);
+ useEffect(()=>{if(!user){router.replace("/login");return;}if(restrictedTeacher){router.replace("/profile-hub");return;}const allowed=["student","prefect","teacher","owner","platform_owner","admin","manager","senior_manager","junior_manager"].includes(role);if(!allowed)router.replace("/");},[user?.id,restrictedTeacher,role]);
  const auth=token||"";
  const call=async(path:string,method="GET",body?:any)=>{const r=await fetch(getApiUrl(path),{method,headers:{"Authorization":"Bearer "+auth,"Content-Type":"application/json"},...(body?{body:JSON.stringify(body)}:{}),cache:"no-store"});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||"Request failed ("+r.status+")");return d;};
  const load=useCallback(async()=>{setLoading(true);setError("");try{
