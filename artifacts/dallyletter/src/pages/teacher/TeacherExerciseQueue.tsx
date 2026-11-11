@@ -16,7 +16,7 @@ export default function TeacherExerciseQueue(){
  const load=async()=>{setLoading(true);setError("");try{
   const token=localStorage.getItem("dallyletter_token")||"";const headers={Authorization:"Bearer "+token};
   const lr=await fetch(getApiUrl("/api/lessons"),{headers,cache:"no-store"});const ld=await lr.json().catch(()=>[]);if(!lr.ok)throw new Error(ld.error||"Lessons could not be loaded");
-  const own=(Array.isArray(ld)?ld:[]).filter((l:Lesson)=>!l.teacherId||Number(l.teacherId)===Number(user?.id));
+  const own=(Array.isArray(ld)?ld:[]).filter((l:Lesson)=>String(user?.role||"").toLowerCase()!=="teacher"||Number(l.teacherId)===Number(user?.id));
   setLessons(own);
   const rows=await Promise.all(own.map(async lesson=>{const r=await fetch(getApiUrl(`/api/exercises/lessons/${lesson.id}/exercises`),{headers,cache:"no-store"});const d=await r.json().catch(()=>[]);if(!r.ok)throw new Error(d.error||`Exercises for ${lesson.title} could not be loaded`);return {lesson,exercises:Array.isArray(d)?d:[]};}));
   setItems(rows);
