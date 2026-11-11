@@ -21,7 +21,7 @@ export default function MobileOperationsWorkspace(){
  const load=useCallback(async()=>{setLoading(true);setError("");try{
   let grants:Record<string,boolean>={};if(managerRole){const x=await call("/api/manager-permissions/me");grants=x.permissions||{};setPermissionMap(grants);}
   if(student){const [a,e,available]=await Promise.all([call("/api/attendance/my"),call("/api/users/me/enrollments"),call("/api/classes")]);setMine(Array.isArray(a)?a:[]);setMyEnrollments(Array.isArray(e)?e:[]);setClasses(Array.isArray(available)?available:[]);}
-  if(staff||role==="teacher"){if(!managerRole||grants["attendance.view"]===true){const c=await call("/api/attendance/classes");setClasses((Array.isArray(c)?c:[]).filter((x:Row)=>role!=="teacher"||Number(x.teacherId)===Number(user?.id)));}const p=await call("/api/content-permissions");setIncoming(Array.isArray(p)?p:[]);}
+  if(staff||role==="teacher"){if(!managerRole||grants["attendance.view"]===true){const c=await call("/api/attendance/classes");setClasses((Array.isArray(c)?c:[]).filter((x:Row)=>role!=="teacher"||managerRole||Number(x.teacherId)===Number(user?.id)));}const p=await call("/api/content-permissions");setIncoming(Array.isArray(p)?p:[]);}
   if(staff||role==="teacher"){const m=await call("/api/content-permissions/mine");setRequests(Array.isArray(m)?m:[]);}else{setIncoming([]);setRequests([]);}
   if((staff||role==="teacher")&&(!managerRole||grants["attendance.view"]===true)){const stats=await call("/api/attendance/stats");setAttendanceStats(stats);}
   const [com,gr,pref]=await Promise.all([call("/api/communities"),call("/api/study-groups"),call("/api/notification-preferences")]);
