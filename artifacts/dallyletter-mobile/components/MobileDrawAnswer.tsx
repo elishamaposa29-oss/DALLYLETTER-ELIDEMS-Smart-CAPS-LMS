@@ -11,7 +11,7 @@ type Tool = "pen" | "paint" | "eraser" | "pointer" | "text" | "select";
 const PALETTE = ["#111827", "#dc2626", "#2563eb", "#15803d", "#9333ea", "#d97706"];
 const cloneDrawing = (drawing: Drawing): Drawing => ({ ...drawing, strokes: [...(drawing.strokes ?? [])], paintStrokes: [...(drawing.paintStrokes ?? [])], pointers: [...(drawing.pointers ?? [])], labels: [...(drawing.labels ?? [])] });
 
-export default function MobileDrawAnswer({ value, onChange, disabled = false }: { value?: Drawing; onChange: (value: Drawing) => void; disabled?: boolean }) {
+export default function MobileDrawAnswer({ value, onChange, disabled = false, backgroundDrawing }: { value?: Drawing; onChange: (value: Drawing) => void; disabled?: boolean; backgroundDrawing?: Drawing }) {
   const colors = useColors();
   const valueRef = useRef<Drawing>(value ?? {});
   const onChangeRef = useRef(onChange);
@@ -121,6 +121,16 @@ export default function MobileDrawAnswer({ value, onChange, disabled = false }: 
     onPanResponderTerminate: () => { pending.current = []; pointerStart.current = null; setLiveSegments([]); },
   }), [disabled, canvasWidth, penColor, penWidth, penOpacity, tool, labelText, magnify, eraseTarget]);
 
+  const backgroundAllSegments=backgroundDrawing?.strokes??[];
+  const backgroundSegments=backgroundAllSegments.filter(segment=>segment.tool!=="paint");
+  const backgroundPaintSegments=[...(backgroundDrawing?.paintStrokes??[]),...backgroundAllSegments.filter(segment=>segment.tool==="paint")];
+  const backgroundPointers=backgroundDrawing?.pointers??[];
+  const backgroundLabels=backgroundDrawing?.labels??[];
+  const backgroundTeacherAll=backgroundDrawing?.teacherDrawing?.strokes??[];
+  const backgroundTeacherSegments=backgroundTeacherAll.filter(segment=>segment.tool!=="paint");
+  const backgroundTeacherPaint=[...(backgroundDrawing?.teacherDrawing?.paintStrokes??[]),...backgroundTeacherAll.filter(segment=>segment.tool==="paint")];
+  const backgroundTeacherPointers=backgroundDrawing?.teacherDrawing?.pointers??[];
+  const backgroundTeacherLabels=backgroundDrawing?.teacherDrawing?.labels??[];
   const teacherAllSegments = value?.teacherDrawing?.strokes ?? [];
   const teacherSegments = teacherAllSegments.filter(segment => segment.tool !== "paint");
   const teacherPaintSegments = [...(value?.teacherDrawing?.paintStrokes ?? []), ...teacherAllSegments.filter(segment => segment.tool === "paint")];
@@ -177,6 +187,14 @@ export default function MobileDrawAnswer({ value, onChange, disabled = false }: 
     </View>}
     <View style={{ height: 220 }} onLayout={event => setCanvasWidth(Math.max(1,event.nativeEvent.layout.width))} {...responder.panHandlers}>
       <Svg width="100%" height="220" viewBox={`${viewX} ${viewY} ${viewWidth} ${viewHeight}`}>
+        {backgroundTeacherPaint.map((segment,index)=><Path key={`bgtpnt${index}`} d={pathFor(segment)} stroke={segment.color||"#64748b"} strokeWidth={segment.width||10} strokeLinecap="round" opacity={segment.opacity??0.4} fill="none"/>)}
+        {backgroundTeacherSegments.map((segment,index)=><Path key={`bgt${index}`} d={pathFor(segment)} stroke={segment.color||"#64748b"} strokeWidth={segment.width||2} strokeLinecap="round" opacity={segment.opacity??0.65} fill="none"/>)}
+        {backgroundTeacherPointers.map((item,index)=><Path key={`bgtp${index}`} d={pointerPath(item)} stroke={item.color||"#64748b"} strokeWidth={item.thickness||2} opacity={0.65} fill="none"/>)}
+        {backgroundTeacherLabels.map((item,index)=><SvgText key={`bgtl${index}`} x={item.x} y={item.y} fill={item.color||"#64748b"} opacity={0.65} fontSize={item.fontSize||14}>{item.text}</SvgText>)}
+        {backgroundPaintSegments.map((segment,index)=><Path key={`bgpnt${index}`} d={pathFor(segment)} stroke={segment.color||"#d97706"} strokeWidth={segment.width||10} strokeLinecap="round" opacity={segment.opacity??0.4} fill="none"/>)}
+        {backgroundSegments.map((segment,index)=><Path key={`bg${index}`} d={pathFor(segment)} stroke={segment.color||"#111827"} strokeWidth={segment.width||3} strokeLinecap="round" opacity={segment.opacity??1} fill="none"/>)}
+        {backgroundPointers.map((item,index)=><Path key={`bgp${index}`} d={pointerPath(item)} stroke={item.color||"#111827"} strokeWidth={item.thickness||3} opacity={item.opacity??1} fill="none"/>)}
+        {backgroundLabels.map((item,index)=><SvgText key={`bgl${index}`} x={item.x} y={item.y} fill={item.color||"#111827"} opacity={item.opacity??1} fontSize={item.fontSize||16}>{item.text}</SvgText>)}
         {teacherPaintSegments.map((segment, index) => <Path key={`tpnt${index}`} d={pathFor(segment)} stroke={segment.color || "#d97706"} strokeWidth={segment.width || 10} strokeLinecap="round" opacity={segment.opacity ?? 0.4} fill="none" />)}
         {teacherSegments.map((segment, index) => <Path key={`t${index}`} d={pathFor(segment)} stroke={segment.color || "#64748b"} strokeWidth={segment.width || 2} strokeLinecap="round" fill="none" opacity={0.65} />)}
         {(value?.teacherDrawing?.pointers ?? []).map((item, index) => <Path key={`tp${index}`} d={pointerPath(item)} stroke={item.color || "#64748b"} strokeWidth={item.thickness || 2} opacity={0.65} fill="none" />)}
