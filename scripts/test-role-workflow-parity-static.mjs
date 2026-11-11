@@ -184,8 +184,9 @@ assert.ok(managerLayout.includes('name="qualifications"') && adminLayout.include
 
 
 const achievementApi = read("artifacts/api-server/src/routes/achievements.ts");
-assert.ok(achievementApi.includes('router.get("/award/recommendations"') && achievementApi.includes('router.post("/award/recommendations/:id/review"'), "Achievement recommendation review API is missing");
-assert.ok(achievementReview.includes('"/api/achievements/award/recommendations"') && achievementReview.includes('"/api/achievements/award/recommendations/"+row.id+"/review"') && achievementReview.includes("Approve & award") && achievementReview.includes("Reject"), "Android Manager achievement recommendation lifecycle is incomplete");
+assert.ok(achievementApi.includes('router.post("/award/recommendations"') && achievementApi.includes('router.get("/award/recommendations"') && achievementApi.includes('router.post("/award/recommendations/:id/review"'), "Achievement recommendation submit/list/review API is missing");
+assert.ok(achievementReview.includes('"/api/achievements/award/recommendations"') && achievementReview.includes('"/api/achievements/award/recommendations/"+row.id+"/review"') && achievementReview.includes('"/api/achievements/award/recommendations","POST"') && achievementReview.includes("Submit recommendation") && achievementReview.includes("Choose learner") && achievementReview.includes("Choose achievement") && achievementReview.includes("Approve & award") && achievementReview.includes("Reject"), "Android Manager achievement recommendation submit/list/approve/reject lifecycle is incomplete");
+assert.ok(achievementReview.includes('authority.permissions?.["achievements.recommend"]===true'), "Android Manager achievement recommendation submission must require achievements.recommend");
 assert.ok(managerMore.includes('permissions?.["achievements.view"]') && managerMore.includes("/(manager)/achievement-recommendations"), "Manager achievement review entry is not gated by achievements.view");
 assert.ok(managerLayout.includes('name="achievement-recommendations"'), "Manager achievement review route is not registered");
 
