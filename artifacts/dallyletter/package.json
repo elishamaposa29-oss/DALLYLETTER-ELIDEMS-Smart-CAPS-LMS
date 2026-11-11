@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
-    "build": "vite build --config vite.config.ts && node ../../scripts/prerender-public-pages.mjs && node ../../scripts/verify-public-seo.mjs",
+    "build": "vite build --config vite.config.ts && node ../../scripts/prerender-public-pages.mjs && node ../../scripts/enhance-public-visuals.mjs && node ../../scripts/add-futuristic-motion.mjs && node ../../scripts/verify-public-seo.mjs",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

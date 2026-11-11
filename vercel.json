@@ -159,6 +159,30 @@
       "destination": "/video-learning/index.html"
     },
     {
+      "source": "/online-learning-zimbabwe/",
+      "destination": "/online-learning-zimbabwe/index.html"
+    },
+    {
+      "source": "/learning-management-system/",
+      "destination": "/learning-management-system/index.html"
+    },
+    {
+      "source": "/digital-classroom/",
+      "destination": "/digital-classroom/index.html"
+    },
+    {
+      "source": "/exam-revision/",
+      "destination": "/exam-revision/index.html"
+    },
+    {
+      "source": "/teacher-tools/",
+      "destination": "/teacher-tools/index.html"
+    },
+    {
+      "source": "/school-learning-platform/",
+      "destination": "/school-learning-platform/index.html"
+    },
+    {
       "source": "/founder-story/",
       "destination": "/founder-story/index.html"
     },

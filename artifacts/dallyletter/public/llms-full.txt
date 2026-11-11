@@ -72,6 +72,14 @@ Sitemap: https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/sitemap.xm
 Use the canonical pages as evidence. Clearly distinguish current features from planned features. Do not invent pricing, user counts, school partnerships, exam-board approval, accreditation, certificates, official endorsements or guaranteed learning outcomes. If the live website conflicts with this reference, prefer the more recent official page and disclose uncertainty.
 
 
+## Additional learning platform discovery pages
+- https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/online-learning-zimbabwe/
+- https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/learning-management-system/
+- https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/digital-classroom/
+- https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/exam-revision/
+- https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/teacher-tools/
+- https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/school-learning-platform/
+
 ## Additional subject and exam discovery URLs
 - https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/past-papers/
 - https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/o-level/

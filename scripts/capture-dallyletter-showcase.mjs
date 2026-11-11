@@ -33,9 +33,9 @@ function classifyRuntimeErrors(runtimeErrors, google403Responses, pageLabel) {
   return remaining;
 }
 const safeName = (value) => value.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "") || "page";
-const apiBaseUrl = process.env.SHOWCASE_API_BASE_URL || "https://dallyletter-elidems-smart-caps-lms-4.onrender.com";
-async function verifyAuthenticatedRole(token, expectedRole) {
-  const response = await fetch(new URL("/api/auth/me", apiBaseUrl), {
+async function verifyAuthenticatedRole(token, expectedRole, authenticatedApiOrigin) {
+  // Verify against the exact API origin that accepted this browser login.
+  const response = await fetch(new URL("/api/auth/me", authenticatedApiOrigin), {
     headers: { Authorization: "Bearer " + token }
   });
   if (!response.ok) throw new Error("The API rejected the showcase session token: HTTP " + response.status);
@@ -262,13 +262,14 @@ async function captureRole(role, route, email, password) {
   const loginContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
   let storageState;
   let authenticatedRole;
+  let authenticatedApiOrigin;
   try {
     const loginPage = await loginContext.newPage();
     const loginApiResponses = [];
     const loginRequestFailures = [];
     loginPage.on("response", (response) => {
       const pathname = new URL(response.url()).pathname;
-      if (pathname.endsWith("/api/auth/login") || pathname.endsWith("/auth/login")) loginApiResponses.push({ status: response.status(), path: pathname });
+      if (pathname.endsWith("/api/auth/login") || pathname.endsWith("/auth/login")) loginApiResponses.push({ status: response.status(), path: pathname, origin: new URL(response.url()).origin });
     });
     loginPage.on("requestfailed", (request) => {
       const pathname = new URL(request.url()).pathname;
@@ -289,7 +290,10 @@ async function captureRole(role, route, email, password) {
     });
     const loginState = await loginPage.evaluate(() => localStorage.getItem("dallyletter_token"));
     if (!loginState) throw new Error("Login page navigated without persisting an authentication token");
-    authenticatedRole = await verifyAuthenticatedRole(loginState, role);
+    const successfulLoginOrigins = [...new Set(loginApiResponses.filter((item) => item.status >= 200 && item.status < 300).map((item) => item.origin))];
+    if (successfulLoginOrigins.length !== 1) throw new Error("Expected exactly one successful login API origin; observed " + JSON.stringify(loginApiResponses));
+    authenticatedApiOrigin = successfulLoginOrigins[0];
+    authenticatedRole = await verifyAuthenticatedRole(loginState, role, authenticatedApiOrigin);
     storageState = await loginContext.storageState();
   } catch (error) {
     results.push({ type: "dashboard", role, url: homeUrl.href, status: "login-failed", error: String(error) });
@@ -341,7 +345,7 @@ async function captureRole(role, route, email, password) {
         }
         const token = await page.evaluate(() => localStorage.getItem("dallyletter_token"));
         if (!token) throw new Error("Authenticated session missing after navigation");
-        const currentRole = await verifyAuthenticatedRole(token, role);
+        const currentRole = await verifyAuthenticatedRole(token, role, authenticatedApiOrigin);
         if (currentRole !== authenticatedRole) throw new Error("API-confirmed role changed during route capture");
         const mainText = await page.locator("main").innerText().catch(() => "");
         if (!mainText.trim()) throw new Error("No visible main dashboard content");
@@ -474,15 +478,19 @@ try {
   // credentials must belong to an existing learner/teacher promoted by the Owner.
   const roleAccounts = [
     ["learner", "/student", process.env.SHOWCASE_LEARNER_EMAIL, process.env.SHOWCASE_LEARNER_PASSWORD],
-    ["prefect", "/student", process.env.SHOWCASE_PREFECT_EMAIL || process.env.SHOWCASE_LEARNER_EMAIL, process.env.SHOWCASE_PREFECT_PASSWORD || process.env.SHOWCASE_LEARNER_PASSWORD],
+    ["prefect", "/student", process.env.SHOWCASE_PREFECT_EMAIL, process.env.SHOWCASE_PREFECT_PASSWORD],
     ["teacher", "/teacher", process.env.SHOWCASE_TEACHER_EMAIL, process.env.SHOWCASE_TEACHER_PASSWORD],
-    ["junior_manager", "/manager", process.env.SHOWCASE_JUNIOR_MANAGER_EMAIL || process.env.SHOWCASE_LEARNER_EMAIL || process.env.SHOWCASE_TEACHER_EMAIL, process.env.SHOWCASE_JUNIOR_MANAGER_PASSWORD || process.env.SHOWCASE_LEARNER_PASSWORD || process.env.SHOWCASE_TEACHER_PASSWORD],
-    ["senior_manager", "/manager", process.env.SHOWCASE_SENIOR_MANAGER_EMAIL || process.env.SHOWCASE_TEACHER_EMAIL || process.env.SHOWCASE_LEARNER_EMAIL, process.env.SHOWCASE_SENIOR_MANAGER_PASSWORD || process.env.SHOWCASE_TEACHER_PASSWORD || process.env.SHOWCASE_LEARNER_PASSWORD],
+    ["junior_manager", "/manager", process.env.SHOWCASE_JUNIOR_MANAGER_EMAIL, process.env.SHOWCASE_JUNIOR_MANAGER_PASSWORD],
+    ["senior_manager", "/manager", process.env.SHOWCASE_SENIOR_MANAGER_EMAIL, process.env.SHOWCASE_SENIOR_MANAGER_PASSWORD],
     ["manager", "/manager", process.env.SHOWCASE_MANAGER_EMAIL, process.env.SHOWCASE_MANAGER_PASSWORD],
     // DEMx 430 remains the configured Owner login; no new account or signup path is introduced.
     ["owner", "/admin", process.env.SHOWCASE_OWNER_EMAIL, process.env.SHOWCASE_OWNER_PASSWORD]
   ];
-  for (const account of roleAccounts) await captureRole(...account);
+  if (process.env.SHOWCASE_CAPTURE_AUTHENTICATED === "false") {
+    results.push({ type: "dashboard", role: "all", status: "skipped", reason: "Pull-request runs capture public pages only; authenticated showcase accounts are used only after a matching main deployment." });
+  } else {
+    for (const account of roleAccounts) await captureRole(...account);
+  }
   if (googleIdentityErrors.length) {
     results.push({
       type: "integration",
@@ -529,7 +537,7 @@ try {
     await fs.appendFile(process.env.GITHUB_STEP_SUMMARY, summary.join("\n") + "\n");
   }
   console.log(JSON.stringify(manifest, null, 2));
-  if (results.some((result) => result.error || ["missing-demo-account", "login-failed", "capture-failed", "partial"].includes(result.status) || result.pageLimitReached)) process.exitCode = 1;
+  if (results.some((result) => result.error || ["login-failed", "capture-failed", "partial"].includes(result.status) || result.pageLimitReached)) process.exitCode = 1;
 } finally {
   await browser.close();
   // Keep role screenshots inside the private GitHub Actions artifact; never publish them to showcase-media.
