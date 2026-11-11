@@ -16,6 +16,12 @@ The SEO verifier checks:
 
 The public sitemap intentionally excludes login, registration, dashboards, profiles, token routes and other private application paths. Robots.txt is a crawl preference, not an authorization boundary; application and API permissions remain authoritative.
 
+## Education keyword taxonomy
+
+The exact supplied education keyword inventory is maintained in `scripts/education-seo-tags.mjs`: 58 phrase templates and 66 standalone tags. Placeholder templates such as `[Subject]`, `[Topic]`, `[Level]`, `[Exam Board]`, `[Year]` and `[Country/Location]` are stored unchanged for future resource tagging; they are not published literally as search snippets. Relevant standalone tags are rendered individually on matching public subject, revision, video and learning-platform pages and included in that page's WebPage structured data. The build verifier checks the inventory counts, key template strings and rendered page tags.
+
+Tags that would falsely imply accreditation, certification, free tuition, a diploma, a school service or other unverified claims remain stored in the supplied taxonomy but are not emitted as public claims. When real resources are published, populate the template placeholders with their actual subject, topic, level, exam board, year and location before creating resource-specific indexable pages. Do not create thin pages or promise that tags alone guarantee Google rankings; Google ranks useful, crawlable page content, not a raw tag dump.
+
 ## Google Search Console automation
 
 1. In Google Cloud Console, create or select a project and enable the Google Search Console API.
