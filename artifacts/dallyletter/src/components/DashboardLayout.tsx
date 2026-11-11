@@ -252,6 +252,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     // ProtectedRoute grants Admin access only to these shared workspaces.
     navItems = [
       { label: "Profile Hub", href: "/profile-hub", icon: Users },
+      { label: "Class & Learning Operations", href: "/operations", icon: CalendarDays },
       { label: "Feature Preview Center", href: "/features", icon: Sparkles },
     ];
   } else if (["owner","platform_owner"].includes(normalizedRole)) {
