@@ -338,13 +338,7 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, requ
   const fmt = (value: unknown) => value == null || value === "" ? "Not recorded" : String(value);
   const form = row.form_data && typeof row.form_data === "object" ? row.form_data : {};
   const age = calculateAgeOnDate(form.dob, form.effectiveDate || row.created_at);
-  const [enrollmentRows, attendanceRows, awardRows, subjectRows, reportRows] = await Promise.all([
-    pool.query("SELECT c.title,c.subject,c.grade,e.enrolled_at,e.progress_percent,e.status FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 ORDER BY e.enrolled_at DESC LIMIT 12", [row.learner_id]),
-    pool.query("SELECT count(*)::int AS sessions,count(*) FILTER (WHERE lower(status)='present')::int AS present,count(*) FILTER (WHERE lower(status)='absent')::int AS absent FROM attendance WHERE student_id=$1", [row.learner_id]),
-    pool.query("SELECT a.name,ua.earned_at FROM user_achievements ua JOIN achievements a ON a.id=ua.achievement_id WHERE ua.user_id=$1 ORDER BY ua.earned_at DESC LIMIT 8", [row.learner_id]),
-    pool.query("SELECT subjects FROM learner_subjects WHERE user_id=$1", [row.learner_id]),
-    pool.query("SELECT report_type,term_label,reviewed_at,draft_content FROM academic_report_drafts WHERE learner_id=$1 AND status='approved' ORDER BY reviewed_at DESC NULLS LAST,created_at DESC LIMIT 1", [row.learner_id]),
-  ]);
+
   const sections:BrandedPdfSection[]=[
     {heading:"Transfer application",rows:["Reference: DL-TR-"+id,"Application date: "+new Date(row.created_at).toISOString().slice(0,10),"Approval date: "+(row.reviewed_at?new Date(row.reviewed_at).toISOString().slice(0,10):"Not recorded"),"Current school: "+fmt(form.currentSchool),"Receiving school: "+fmt(form.receivingSchool),"Transfer reason: "+fmt(form.reasonType||row.reason),"Reason details: "+fmt(form.reasonDetail)]},
     {heading:"Learner details",rows:["Full name: "+fmt(form.learnerName||row.learner_name),"Grade / Form: "+fmt(form.grade||row.grade),"Date of birth: "+fmt(form.dob)+" · Age on effective date: "+fmt(age),"Gender: "+fmt(form.gender),"Admission number: "+fmt(form.admissionNo),"EMIS number: "+fmt(form.emisNo),"Academic year: "+fmt(form.academicYear),"Last term average: "+fmt(form.average)+" · Conduct: "+fmt(form.conduct)]},
