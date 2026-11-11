@@ -187,6 +187,142 @@
       "destination": "/founder-story/index.html"
     },
     {
+      "source": "/exam-papers/",
+      "destination": "/exam-papers/index.html"
+    },
+    {
+      "source": "/specimen-papers/",
+      "destination": "/specimen-papers/index.html"
+    },
+    {
+      "source": "/marking-schemes/",
+      "destination": "/marking-schemes/index.html"
+    },
+    {
+      "source": "/topical-past-papers/",
+      "destination": "/topical-past-papers/index.html"
+    },
+    {
+      "source": "/practice-tests/",
+      "destination": "/practice-tests/index.html"
+    },
+    {
+      "source": "/exam-questions/",
+      "destination": "/exam-questions/index.html"
+    },
+    {
+      "source": "/revision-notes/",
+      "destination": "/revision-notes/index.html"
+    },
+    {
+      "source": "/study-guides/",
+      "destination": "/study-guides/index.html"
+    },
+    {
+      "source": "/worked-examples/",
+      "destination": "/worked-examples/index.html"
+    },
+    {
+      "source": "/flashcards/",
+      "destination": "/flashcards/index.html"
+    },
+    {
+      "source": "/educational-tutorials/",
+      "destination": "/educational-tutorials/index.html"
+    },
+    {
+      "source": "/syllabus/",
+      "destination": "/syllabus/index.html"
+    },
+    {
+      "source": "/mathematics/past-papers/",
+      "destination": "/mathematics/past-papers/index.html"
+    },
+    {
+      "source": "/mathematics/revision-notes/",
+      "destination": "/mathematics/revision-notes/index.html"
+    },
+    {
+      "source": "/english/past-papers/",
+      "destination": "/english/past-papers/index.html"
+    },
+    {
+      "source": "/english/revision-notes/",
+      "destination": "/english/revision-notes/index.html"
+    },
+    {
+      "source": "/science/past-papers/",
+      "destination": "/science/past-papers/index.html"
+    },
+    {
+      "source": "/science/revision-notes/",
+      "destination": "/science/revision-notes/index.html"
+    },
+    {
+      "source": "/biology/past-papers/",
+      "destination": "/biology/past-papers/index.html"
+    },
+    {
+      "source": "/biology/revision-notes/",
+      "destination": "/biology/revision-notes/index.html"
+    },
+    {
+      "source": "/chemistry/past-papers/",
+      "destination": "/chemistry/past-papers/index.html"
+    },
+    {
+      "source": "/chemistry/revision-notes/",
+      "destination": "/chemistry/revision-notes/index.html"
+    },
+    {
+      "source": "/physics/past-papers/",
+      "destination": "/physics/past-papers/index.html"
+    },
+    {
+      "source": "/physics/revision-notes/",
+      "destination": "/physics/revision-notes/index.html"
+    },
+    {
+      "source": "/geography/past-papers/",
+      "destination": "/geography/past-papers/index.html"
+    },
+    {
+      "source": "/geography/revision-notes/",
+      "destination": "/geography/revision-notes/index.html"
+    },
+    {
+      "source": "/history/past-papers/",
+      "destination": "/history/past-papers/index.html"
+    },
+    {
+      "source": "/history/revision-notes/",
+      "destination": "/history/revision-notes/index.html"
+    },
+    {
+      "source": "/computer-studies/past-papers/",
+      "destination": "/computer-studies/past-papers/index.html"
+    },
+    {
+      "source": "/computer-studies/revision-notes/",
+      "destination": "/computer-studies/revision-notes/index.html"
+    },
+    {
+      "source": "/business-studies/past-papers/",
+      "destination": "/business-studies/past-papers/index.html"
+    },
+    {
+      "source": "/business-studies/revision-notes/",
+      "destination": "/business-studies/revision-notes/index.html"
+    },
+    {
+      "source": "/accounting/past-papers/",
+      "destination": "/accounting/past-papers/index.html"
+    },
+    {
+      "source": "/accounting/revision-notes/",
+      "destination": "/accounting/revision-notes/index.html"
+    },
+    {
       "source": "/login/",
       "destination": "/app.html"
     },
