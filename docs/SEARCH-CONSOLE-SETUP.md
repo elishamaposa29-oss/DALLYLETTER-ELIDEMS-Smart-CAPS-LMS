@@ -32,10 +32,10 @@ The prerender build can insert the Search Console HTML verification token from t
 1. Sign in to the Google account that should own the property.
 2. Open https://search.google.com/search-console and add the URL-prefix property above.
 3. Select HTML tag verification and copy only the `content` token value from Google's meta tag.
-4. Set that non-secret value as `GOOGLE_SITE_VERIFICATION` in the Vercel project's **Production** environment.
-5. Set the same value as a GitHub Actions repository variable named `GOOGLE_SITE_VERIFICATION`; the public-page CI build exercises the production verification gate and fails if this variable is missing.
-6. Redeploy the production build, then confirm the exact `<meta name="google-site-verification">` tag is present in the served homepage.
-7. Click **Verify** in Search Console only after the deployed tag matches Google's token.
+4. Keep the existing `GOOGLE_SITE_VERIFICATION` value in the **Production** environment of the one canonical Vercel project that owns `elishamaposa29-oss-dallyletter-elid-gamma.vercel.app`. Do not rotate, replace, revoke or copy it into legacy/duplicate Vercel projects.
+5. Keep the matching GitHub Actions repository variable named `GOOGLE_SITE_VERIFICATION` for CI. The release gate is scoped to the canonical Vercel project; unrelated legacy project builds must not require a duplicate copy of this value.
+6. After an approved release, confirm the exact `<meta name="google-site-verification">` tag remains present in the served homepage. Do not repeat ownership setup when the property is already verified.
+7. Click **Verify** in Search Console only if Google explicitly reports that ownership needs verification again.
 
 ## Service-account access
 
