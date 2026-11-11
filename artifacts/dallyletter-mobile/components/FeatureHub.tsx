@@ -185,7 +185,7 @@ export default function FeatureHub() {
   const canViewExercises = (isTeacher && !managerRole) || ["owner","platform_owner"].includes(role) || (managerRole && canManagerPermission("recordbook.view"));
   const canArchiveExercises = (isTeacher && !managerRole) || ["owner","platform_owner"].includes(role) || (managerRole && canManagerPermission("recordbook.view") && canManagerPermission("users.override.teacher"));
   const canCreateExercises = (isTeacher && !managerRole) || ["owner","platform_owner"].includes(role) || (managerRole && canManagerPermission("recordbook.view") && canManagerPermission("users.override.teacher"));
-  const canCreateGroups = isTeacher || Boolean((user as any)?.isPrefect) || canManagerPermission("groups.manage");
+  const canCreateGroups = (isTeacher && !managerRole) || Boolean((user as any)?.isPrefect) || canManagerPermission("groups.manage");
   const exerciseLocked = Boolean(exerciseResult?.submission?.status) && !newAttempt;
 
   const styles = StyleSheet.create({
