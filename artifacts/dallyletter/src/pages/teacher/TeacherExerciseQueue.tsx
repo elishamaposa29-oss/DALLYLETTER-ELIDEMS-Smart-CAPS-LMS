@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "wouter";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,15 +14,15 @@ type Submission={id:number;status:string;submittedAt?:string|null;returnedAt?:st
 export default function TeacherExerciseQueue(){
  const {user}=useAuth(); const [lessons,setLessons]=useState<Lesson[]>([]); const [items,setItems]=useState<Array<{lesson:Lesson;exercises:Exercise[]}>>([]);
  const [loading,setLoading]=useState(true); const [error,setError]=useState("");
- const load=async()=>{setLoading(true);setError("");try{
+ const load=useCallback(async()=>{setLoading(true);setError("");try{
   const token=localStorage.getItem("dallyletter_token")||"";const headers={Authorization:"Bearer "+token};
   const lr=await fetch(getApiUrl("/api/lessons"),{headers,cache:"no-store"});const ld=await lr.json().catch(()=>[]);if(!lr.ok)throw new Error(ld.error||"Lessons could not be loaded");
   const visibleLessons=Array.isArray(ld)?ld:[];
   setLessons(visibleLessons);
   const rows=await Promise.all(visibleLessons.map(async lesson=>{const r=await fetch(getApiUrl(`/api/exercises/lessons/${lesson.id}/exercises`),{headers,cache:"no-store"});const d=await r.json().catch(()=>[]);if(!r.ok)throw new Error(d.error||`Exercises for ${lesson.title} could not be loaded`);const exercises:Exercise[]=Array.isArray(d)?d:[];const withSubmissions=await Promise.all(exercises.map(async exercise=>{const sr=await fetch(getApiUrl(`/api/exercises/${exercise.id}/submissions`),{headers,cache:"no-store"});const sd=await sr.json().catch(()=>[]);if(!sr.ok)throw new Error(sd.error||`Submissions for ${exercise.title} could not be loaded`);return {...exercise,submissions:Array.isArray(sd)?sd as Submission[]:[]};}));return {lesson,exercises:withSubmissions};}));
   setItems(rows);
- }catch(e){setError(e instanceof Error?e.message:"Unable to load exercise queue");}finally{setLoading(false);}};
- useEffect(()=>{void load();},[user?.id]);
+ }catch(e){setError(e instanceof Error?e.message:"Unable to load exercise queue");}finally{setLoading(false);}},[user?.id]);
+ useEffect(()=>{void load();},[load]);
  const published=items.flatMap(x=>x.exercises.filter(e=>e.status==="published").map(e=>({...e,lesson:x.lesson})));
   const awaitingMarking=published.reduce((n,e)=>n+(e.submissions||[]).filter((s:Submission)=>["submitted","ai_partial","ai_marked_pending_return"].includes(s.status)).length,0);
  return <DashboardLayout><div className="mx-auto max-w-6xl space-y-6">
