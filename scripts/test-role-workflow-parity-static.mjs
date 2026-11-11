@@ -10,6 +10,7 @@ const managerEntry = read("artifacts/dallyletter-mobile/components/ManagerMore.t
 const adminLayout = read("artifacts/dallyletter-mobile/app/(admin)/_layout.tsx");
 const managerLayout = read("artifacts/dallyletter-mobile/app/(manager)/_layout.tsx");
 const transferReview = read("artifacts/dallyletter-mobile/components/TransferRequestReviewWorkspace.tsx");
+const reportReview = read("artifacts/dallyletter-mobile/components/AcademicReportReviewWorkspace.tsx");
 const managerMore = read("artifacts/dallyletter-mobile/components/ManagerMore.tsx");
 const managerRoute = read("artifacts/dallyletter-mobile/app/(manager)/teacher-cv-workspace.tsx");
 const mobileOperations = read("artifacts/dallyletter-mobile/components/MobileOperationsWorkspace.tsx");
@@ -93,5 +94,25 @@ assert.ok(adminLayout.includes('name="transfer-requests"'), "Owner transfer revi
 assert.ok(managerLayout.includes('name="transfer-requests"'), "Manager transfer review route is not registered");
 assert.ok(managerMore.includes('permissions?.["transfers.view"]') && managerMore.includes("/(manager)/transfer-requests"), "Manager transfer review entry is not gated by transfers.view");
 assert.ok(adminEntry.includes("/(admin)/transfer-requests"), "Owner transfer review entry is missing");
+
+
+const academicRecordsApi = read("artifacts/api-server/src/routes/academicRecords.ts");
+for (const operation of [
+  'router.get("/academic-records/reports/drafts"',
+  'router.post("/academic-records/reports/drafts/:id/review"',
+  'router.get("/academic-records/reports/drafts/:id/download/pdf"',
+]) assert.ok(academicRecordsApi.includes(operation), "Academic report backend lifecycle missing: " + operation);
+for (const operation of [
+  '"/api/academic-records/reports/drafts"',
+  '"/api/academic-records/reports/drafts/"+row.id+"/review"',
+  '"/api/academic-records/reports/drafts/"+row.id+"/download/pdf"',
+  'Approve report',
+  'Reject report',
+  'Review note',
+  'Download approved PDF',
+]) assert.ok(reportReview.includes(operation), "Android academic report review operation missing: " + operation);
+assert.ok(managerMore.includes('permissions?.["reports.view"]') && managerMore.includes("/(manager)/academic-reports"), "Manager academic report review entry is not gated by reports.view");
+assert.ok(adminEntry.includes("/(admin)/academic-reports"), "Owner academic report review entry is missing");
+assert.ok(managerLayout.includes('name="academic-reports"') && adminLayout.includes('name="academic-reports"'), "Academic report review routes are not registered");
 
 console.log("Role workflow parity static regression checks passed.");
