@@ -278,9 +278,10 @@ export function getPageSeoTags(slug = "") {
   const groups = educationSeoTags.pageGroups[slug] || [];
   const tags = groups.flatMap((group) => educationSeoTags.standalone[group] || []);
   const unique = [...new Set(tags)];
+  const verifiedResourceTags = unique.filter((tag) => !educationSeoTags.standalone.modifiers.includes(tag));
   return groups.some((group) => group.startsWith("online_school_"))
-    ? unique.filter((tag) => safePlatformTags.has(tag))
-    : unique;
+    ? verifiedResourceTags.filter((tag) => safePlatformTags.has(tag))
+    : verifiedResourceTags;
 }
 export function getEducationSeoTagCounts() {
   const count = (groups) => Object.values(groups).reduce((total, values) => total + values.length, 0);
