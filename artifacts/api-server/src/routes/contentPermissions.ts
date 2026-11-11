@@ -93,10 +93,22 @@ router.post("/content-permissions/:id/report",requireAuth,async(req,res):Promise
   if(priorReport.rows.length){res.status(200).json({ok:true,reported:true,alreadyReported:true});return;}
   const details={requestId:id,requesterId:actor.id,ownerId:Number(item.owner_id),contentType:item.content_type,contentId:Number(item.content_id),requestedAction:item.requested_action,message};
   await pool.query("INSERT INTO activity_log(type,description,actor_name) VALUES($1,$2,$3)",["content_permission_reported_to_manager","Manager review requested for declined permission: "+JSON.stringify(details),actor.name]);
+  const notificationTitle="Permission decision needs management review";
+  const notificationMessage=actor.name+" reported declined permission request #"+id+". "+(message||"Please review the request.");
   await pool.query(
-    "INSERT INTO notifications(recipient_id,title,message,type,is_read,link) SELECT u.id,$1,$2,$3,false,CASE WHEN lower(u.role) IN ('owner','platform_owner') THEN '/admin/notifications' ELSE '/manager/notifications' END FROM users u WHERE lower(u.role) IN ('owner','platform_owner') OR ((lower(u.role) IN ('manager','senior_manager','junior_manager') OR u.is_manager=true) AND COALESCE(u.is_blocked,false)=false AND COALESCE(u.is_suspended,false)=false AND (lower(u.role)<>'teacher' OR COALESCE(u.teacher_application_status,'') NOT IN ('draft','pending_review','rejected_pending_conversion')) AND EXISTS (SELECT 1 FROM manager_permission_grants g WHERE g.manager_user_id=u.id AND g.permission_key='moderation.view' AND g.granted=true) AND EXISTS (SELECT 1 FROM manager_permission_grants notification_grant WHERE notification_grant.manager_user_id=u.id AND notification_grant.permission_key='notifications.view' AND notification_grant.granted=true))",
-    ["Permission decision needs management review",actor.name+" reported declined permission request #"+id+". "+(message||"Please review the request."),"content_permission_report"]
+    "INSERT INTO notifications(recipient_id,title,message,type,is_read,link) SELECT u.id,$1,$2,$3,false,'/admin/notifications' FROM users u WHERE lower(u.role) IN ('owner','platform_owner')",
+    [notificationTitle,notificationMessage,"content_permission_report"]
   );
+  const [contentOwner]= (await pool.query("SELECT id,role,is_manager AS \"isManager\",manager_level AS \"managerLevel\" FROM users WHERE id=$1 LIMIT 1",[Number(item.owner_id)])).rows;
+  if(contentOwner){
+    const managers=(await pool.query("SELECT id,role,is_manager AS \"isManager\",manager_level AS \"managerLevel\" FROM users WHERE (lower(role) IN ('manager','senior_manager','junior_manager') OR is_manager=true) AND COALESCE(is_blocked,false)=false AND COALESCE(is_suspended,false)=false AND (lower(role)<>'teacher' OR COALESCE(teacher_application_status,'') NOT IN ('draft','pending_review','rejected_pending_conversion'))")).rows;
+    for(const manager of managers){
+      const managerActor={id:Number(manager.id),role:manager.role,isManager:manager.isManager===true,managerLevel:manager.managerLevel} as any;
+      if(!canModerateUser(managerActor,contentOwner))continue;
+      if(!(await managerHasPermission(managerActor,"moderation.view"))||!(await managerHasPermission(managerActor,"notifications.view")))continue;
+      await pool.query("INSERT INTO notifications(recipient_id,title,message,type,is_read,link) VALUES($1,$2,$3,$4,false,'/manager/notifications')",[Number(manager.id),notificationTitle,notificationMessage,"content_permission_report"]);
+    }
+  }
   res.status(201).json({ok:true,reported:true});
 });
 
