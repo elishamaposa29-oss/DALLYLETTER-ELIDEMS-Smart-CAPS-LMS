@@ -14,6 +14,7 @@ const transferReview = read("artifacts/dallyletter-mobile/components/TransferReq
 const reportReview = read("artifacts/dallyletter-mobile/components/AcademicReportReviewWorkspace.tsx");
 const permissionMobile = read("artifacts/dallyletter-mobile/components/ManagerPermissionControlsMobile.tsx");
 const qualificationReview = read("artifacts/dallyletter-mobile/components/QualificationReviewWorkspaceMobile.tsx");
+const achievementReview = read("artifacts/dallyletter-mobile/components/AchievementRecommendationReviewWorkspaceMobile.tsx");
 const adminUsers = read("artifacts/dallyletter-mobile/app/(admin)/users.tsx");
 const ownerTools = read("artifacts/dallyletter-mobile/app/(admin)/tools.tsx");
 const managerMore = read("artifacts/dallyletter-mobile/components/ManagerMore.tsx");
@@ -177,5 +178,12 @@ assert.ok(qualificationReview.includes('"/api/qualifications/pending"') && quali
 assert.ok(managerMore.includes('permissions?.["qualifications.view"]') && managerMore.includes("/(manager)/qualifications"), "Manager qualification review entry is not gated by qualifications.view");
 assert.ok(adminEntry.includes("/(admin)/qualifications"), "Owner qualification review entry is missing");
 assert.ok(managerLayout.includes('name="qualifications"') && adminLayout.includes('name="qualifications"'), "Qualification review routes are not registered");
+
+
+const achievementApi = read("artifacts/api-server/src/routes/achievements.ts");
+assert.ok(achievementApi.includes('router.get("/award/recommendations"') && achievementApi.includes('router.post("/award/recommendations/:id/review"'), "Achievement recommendation review API is missing");
+assert.ok(achievementReview.includes('"/api/achievements/award/recommendations"') && achievementReview.includes('"/api/achievements/award/recommendations/"+row.id+"/review"') && achievementReview.includes("Approve & award") && achievementReview.includes("Reject"), "Android Manager achievement recommendation lifecycle is incomplete");
+assert.ok(managerMore.includes('permissions?.["achievements.view"]') && managerMore.includes("/(manager)/achievement-recommendations"), "Manager achievement review entry is not gated by achievements.view");
+assert.ok(managerLayout.includes('name="achievement-recommendations"'), "Manager achievement review route is not registered");
 
 console.log("Role workflow parity static regression checks passed.");
