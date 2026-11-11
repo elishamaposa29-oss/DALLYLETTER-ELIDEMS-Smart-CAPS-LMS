@@ -131,7 +131,7 @@ for (const operation of [
   '"/api/manager-permissions/"+id+"/history"',
   'Save individual grants',
   'View change history',
-  'Senior-only permissions cannot be granted',
+  'p.seniorOnly===true&&role==="junior_manager"',
 ]) assert.ok(permissionMobile.includes(operation), "Android Owner permission editor operation missing: " + operation);
 assert.ok(adminUsers.includes("Manager roles & individual permissions") && adminUsers.includes("/(admin)/manager-permissions"), "Owner Users screen does not expose the Android permission editor");
 assert.ok(adminLayout.includes('name="manager-permissions"'), "Android Owner permission editor route is not registered");
