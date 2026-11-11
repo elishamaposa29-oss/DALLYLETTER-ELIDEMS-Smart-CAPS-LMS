@@ -469,16 +469,18 @@ function buildGallery(manifest) {
 
 try {
   await capturePublicPages();
+  // These are existing promoted accounts, not separate signup types. Prefect reuses the
+  // learner login unless an explicit promoted-learner override is supplied. Manager-tier
+  // credentials must belong to an existing learner/teacher promoted by the Owner.
   const roleAccounts = [
     ["learner", "/student", process.env.SHOWCASE_LEARNER_EMAIL, process.env.SHOWCASE_LEARNER_PASSWORD],
-    ["prefect", "/student", process.env.SHOWCASE_PREFECT_EMAIL, process.env.SHOWCASE_PREFECT_PASSWORD],
+    ["prefect", "/student", process.env.SHOWCASE_PREFECT_EMAIL || process.env.SHOWCASE_LEARNER_EMAIL, process.env.SHOWCASE_PREFECT_PASSWORD || process.env.SHOWCASE_LEARNER_PASSWORD],
     ["teacher", "/teacher", process.env.SHOWCASE_TEACHER_EMAIL, process.env.SHOWCASE_TEACHER_PASSWORD],
-    ["junior_manager", "/manager", process.env.SHOWCASE_JUNIOR_MANAGER_EMAIL, process.env.SHOWCASE_JUNIOR_MANAGER_PASSWORD],
-    ["senior_manager", "/manager", process.env.SHOWCASE_SENIOR_MANAGER_EMAIL, process.env.SHOWCASE_SENIOR_MANAGER_PASSWORD],
+    ["junior_manager", "/manager", process.env.SHOWCASE_JUNIOR_MANAGER_EMAIL || process.env.SHOWCASE_LEARNER_EMAIL || process.env.SHOWCASE_TEACHER_EMAIL, process.env.SHOWCASE_JUNIOR_MANAGER_PASSWORD || process.env.SHOWCASE_LEARNER_PASSWORD || process.env.SHOWCASE_TEACHER_PASSWORD],
+    ["senior_manager", "/manager", process.env.SHOWCASE_SENIOR_MANAGER_EMAIL || process.env.SHOWCASE_TEACHER_EMAIL || process.env.SHOWCASE_LEARNER_EMAIL, process.env.SHOWCASE_SENIOR_MANAGER_PASSWORD || process.env.SHOWCASE_TEACHER_PASSWORD || process.env.SHOWCASE_LEARNER_PASSWORD],
     ["manager", "/manager", process.env.SHOWCASE_MANAGER_EMAIL, process.env.SHOWCASE_MANAGER_PASSWORD],
-    ["admin", "/record-book", process.env.SHOWCASE_ADMIN_EMAIL, process.env.SHOWCASE_ADMIN_PASSWORD],
-    ["owner", "/admin", process.env.SHOWCASE_OWNER_EMAIL, process.env.SHOWCASE_OWNER_PASSWORD],
-    ["platform_owner", "/record-book", process.env.SHOWCASE_PLATFORM_OWNER_EMAIL, process.env.SHOWCASE_PLATFORM_OWNER_PASSWORD]
+    // DEMx 430 remains the configured Owner login; no new account or signup path is introduced.
+    ["owner", "/admin", process.env.SHOWCASE_OWNER_EMAIL, process.env.SHOWCASE_OWNER_PASSWORD]
   ];
   for (const account of roleAccounts) await captureRole(...account);
   if (googleIdentityErrors.length) {
@@ -501,7 +503,7 @@ try {
     workflowRunUrl: process.env.SHOWCASE_RUN_URL || null,
     publicUrlCount: results.filter((result) => result.type === "public").length,
     publicPageCount: results.filter((result) => result.type === "public" && result.screenshot).length,
-    expectedRoleCount: roleAccounts.length,
+    expectedRoleCount: roleAccounts.length,\n    roleModelNotes: { admin: "No separate Admin dashboard exists in App.tsx; /admin and its Owner administration routes are Owner-only. The admin role has only individually permitted shared routes.", platform_owner: "No separate Platform Owner dashboard or multi-school administration route is registered in App.tsx; not treated as an implemented dashboard role." },
     capturedRoleCount: roleResults.filter((result) => result.status === "captured").length,
     roleScreenshotCount: roleResults.reduce((count, result) => count + (result.screenshots?.length || 0), 0),
     roleCoverage: roleResults.map(({ role, status, authenticatedRole, pagesCaptured, routeInventoryCount }) => ({ role, status, authenticatedRole, pagesCaptured: pagesCaptured || 0, routeInventoryCount: routeInventoryCount || 0 })),
