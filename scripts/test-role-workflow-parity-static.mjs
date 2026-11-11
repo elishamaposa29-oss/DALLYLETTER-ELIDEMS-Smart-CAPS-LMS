@@ -13,6 +13,7 @@ const transferReview = read("artifacts/dallyletter-mobile/components/TransferReq
 const reportReview = read("artifacts/dallyletter-mobile/components/AcademicReportReviewWorkspace.tsx");
 const permissionMobile = read("artifacts/dallyletter-mobile/components/ManagerPermissionControlsMobile.tsx");
 const adminUsers = read("artifacts/dallyletter-mobile/app/(admin)/users.tsx");
+const ownerTools = read("artifacts/dallyletter-mobile/app/(admin)/tools.tsx");
 const managerMore = read("artifacts/dallyletter-mobile/components/ManagerMore.tsx");
 const managerRoute = read("artifacts/dallyletter-mobile/app/(manager)/teacher-cv-workspace.tsx");
 const mobileOperations = read("artifacts/dallyletter-mobile/components/MobileOperationsWorkspace.tsx");
@@ -135,5 +136,21 @@ for (const operation of [
 ]) assert.ok(permissionMobile.includes(operation), "Android Owner permission editor operation missing: " + operation);
 assert.ok(adminUsers.includes("Manager roles & individual permissions") && adminUsers.includes("/(admin)/manager-permissions"), "Owner Users screen does not expose the Android permission editor");
 assert.ok(adminLayout.includes('name="manager-permissions"'), "Android Owner permission editor route is not registered");
+
+
+const paymentApi = read("artifacts/api-server/src/routes/payments.ts");
+for (const operation of [
+  'router.get("/payments/manual-reports"',
+  'router.post("/payments/manual-reports/:reportId/reject"',
+  'router.post("/payments/:id/manual-settlement"',
+]) assert.ok(paymentApi.includes(operation), "Owner manual payment report API lifecycle missing: " + operation);
+for (const operation of [
+  '"/api/payments/manual-reports"',
+  '"/api/payments/"+paymentId+"/manual-settlement"',
+  '"/api/payments/manual-reports/"+report.report_id+"/reject"',
+  'Unverified learner payment reports',
+  'Verify & settle',
+  'Reject report',
+]) assert.ok(ownerTools.includes(operation), "Android Owner manual payment report operation missing: " + operation);
 
 console.log("Role workflow parity static regression checks passed.");
