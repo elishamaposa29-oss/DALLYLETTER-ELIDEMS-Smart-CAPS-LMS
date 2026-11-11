@@ -187,7 +187,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Teacher RecordBook", href: "/record-book", icon: ScrollText },
       { label: "Class & Learning Operations", href: "/operations", icon: CalendarDays },
       { label: "My Lessons", href: "/teacher/lessons", icon: BookOpen },
-      { label: "Exercise Marking Queue", href: "/teacher/exercises", icon: ClipboardList },
+      { label: "Exercise Marking Queue", href: "/teacher/exercises", icon: ClipboardList, permissionKey: "recordbook.view" },
       { label: "Qualifications & CV", href: "/teacher/qualifications", icon: GraduationCap },
       { label: "My Classes", href: "/teacher/classes", icon: Video },
       { label: "Assignments", href: "/teacher/assignments", icon: ClipboardList },
