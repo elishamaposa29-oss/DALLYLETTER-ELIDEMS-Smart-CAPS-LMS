@@ -53,6 +53,7 @@ Status labels:
 8. Corrected the static parity assertion so the web report action is checked in the Operations Workspace where it is actually implemented.
 9. Added an Android transfer-letter review workspace for authorized Managers and Owner, including original submitted form/signatures, grant-gated approve/reject, reviewer notes, history/status and authenticated approved-PDF download.
 10. Added an Android academic-report reviewer workspace for Managers with `reports.view` and Owners, with `reports.review`-gated approve/reject, saved reviewer notes, recorded mark/attendance evidence and authenticated approved-PDF download.
+11. Added Owner-only Android manager-role and individual-permission controls from the Users screen, including Junior/Senior assignment, per-capability Grant/Deny, Senior-only restrictions, removal/revocation and permission-change history.
 
 ## Exact verification still required
 
