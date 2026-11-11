@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Alert, ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { getApiUrl } from "@workspace/api-client-react";\nimport { router } from "expo-router";
+import { getApiUrl } from "@workspace/api-client-react";
+import { router } from "expo-router";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
