@@ -156,6 +156,7 @@ router.post("/chat/polls/:pollId/vote", requireAuth, async(req,res):Promise<void
 
 router.get("/communities", requireAuth, async(req,res)=>{
  const actor=req.currentUser!;
+ const canManageCommunities=isOwnerRole(actor.role)||(canAccessManager(actor)&&await managerHasPermission(actor,"groups.manage"));
  const rows=await db.select().from(communitiesTable).orderBy(desc(communitiesTable.createdAt));
  const ids=rows.map(row=>row.id);
  const links=ids.length?await db.select({communityId:communityGroupsTable.communityId,groupId:studyGroupsTable.id,groupName:studyGroupsTable.name,subject:studyGroupsTable.subject,grade:studyGroupsTable.grade}).from(communityGroupsTable).innerJoin(studyGroupsTable,eq(communityGroupsTable.groupId,studyGroupsTable.id)).where(inArray(communityGroupsTable.communityId,ids)):[];
@@ -169,7 +170,7 @@ router.get("/communities", requireAuth, async(req,res)=>{
  const groupById=new Map(groupRows.map(group=>[Number(group.id),group]));
  res.json(rows.map(row=>{
   const owner=profileById.get(Number(row.ownerId));
-  const canManage=isOwnerRole(actor.role)||Number(row.ownerId)===actor.id||(Boolean(owner)&&canAccessManager(actor)&&canModerateUser(actor,owner!));
+  const canManage=canManageCommunities&&(isOwnerRole(actor.role)||Number(row.ownerId)===actor.id||(Boolean(owner)&&canAccessManager(actor)&&canModerateUser(actor,owner!)));
   const visibleGroups=links.filter(link=>{
    if(link.communityId!==row.id)return false;
    const group=groupById.get(Number(link.groupId));
