@@ -42,8 +42,21 @@ const defaultOrigins = [
   "http://127.0.0.1:8081",
 ];
 
-// Production trusts only the stable frontend origin and exact, operator-approved
-// preview origins from CORS_ORIGINS. Never use wildcard or suffix matching.
+// Trust Dallyletter-owned Vercel deployments across production and future preview
+// links. Match the project namespace, not the broad vercel.app domain, so unrelated
+// Vercel tenants remain blocked. Explicit configured origins continue to work.
+function isTrustedDallyletterVercelOrigin(origin: string): boolean {
+  try {
+    const parsed = new URL(origin);
+    return parsed.protocol === "https:"
+      && parsed.origin === origin
+      && parsed.hostname.endsWith(".vercel.app")
+      && /^dallyletter-elidems-[a-z0-9-]+(?:-[a-z0-9]{6,})?\.vercel\.app$/i.test(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
 const allowedOrigins = new Set([
   ...configuredOrigins,
   ...(process.env.NODE_ENV === "production" ? [] : defaultOrigins),
@@ -84,7 +97,7 @@ app.use((req, res, next) => {
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.has(origin)) {
+      if (!origin || allowedOrigins.has(origin) || isTrustedDallyletterVercelOrigin(origin)) {
         callback(null, true);
         return;
       }
