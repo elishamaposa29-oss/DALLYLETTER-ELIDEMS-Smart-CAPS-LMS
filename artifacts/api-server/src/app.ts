@@ -51,7 +51,7 @@ function isTrustedDallyletterVercelOrigin(origin: string): boolean {
     return parsed.protocol === "https:"
       && parsed.origin === origin
       && parsed.hostname.endsWith(".vercel.app")
-      && /^dallyletter-elidems-[a-z0-9-]+(?:-[a-z0-9]{6,})?\.vercel\.app$/i.test(parsed.hostname);
+      && /^(?:dallyletter|elidems)(?:-[a-z0-9]+)*(?:-[a-z0-9]{6,})?\.vercel\.app$/i.test(parsed.hostname);
   } catch {
     return false;
   }
