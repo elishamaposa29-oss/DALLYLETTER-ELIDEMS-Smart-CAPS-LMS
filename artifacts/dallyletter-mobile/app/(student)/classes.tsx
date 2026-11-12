@@ -2,6 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import { useListClasses, useRaiseHand } from "@workspace/api-client-react";
 import * as Haptics from "expo-haptics";
 import * as Linking from "expo-linking";
+import { router } from "expo-router";
 import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
@@ -97,7 +98,7 @@ export default function StudentClasses() {
     <View style={s.container}>
       <View style={s.header}>
         <Text style={s.title}>Live Classes</Text>
-        <Text style={s.subtitle}>Tap "Join" to open Google Meet</Text>
+        <Text style={s.subtitle}>Tap "Join" to open Google Meet</Text><TouchableOpacity onPress={()=>router.push("/operations")} style={{marginTop:12,padding:11,borderRadius:10,backgroundColor:"#b38b00"}}><Text style={{color:"#fff",fontWeight:"800",textAlign:"center"}}>My attendance & statistics</Text></TouchableOpacity>
       </View>
 
       <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>

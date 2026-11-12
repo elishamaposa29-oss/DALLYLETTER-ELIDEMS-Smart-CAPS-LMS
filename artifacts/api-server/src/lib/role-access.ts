@@ -14,7 +14,7 @@ export function isOwnerRole(role: unknown): boolean {
   return ["owner", "platform_owner"].includes(normalizeRole(role));
 }
 
-function isTeacherRestricted(user: RoleLikeUser): boolean {
+export function isTeacherRestricted(user: RoleLikeUser): boolean {
   return normalizeRole(user.role) === "teacher" &&
     ["draft", "pending_review", "rejected_pending_conversion"].includes(String(user.teacherApplicationStatus ?? "").trim().toLowerCase());
 }

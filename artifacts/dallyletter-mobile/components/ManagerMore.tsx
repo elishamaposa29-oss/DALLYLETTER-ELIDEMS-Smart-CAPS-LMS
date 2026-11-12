@@ -1,17 +1,53 @@
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { Text, TouchableOpacity, View } from "react-native";
+import { useEffect, useState } from "react";
+import { getApiUrl } from "@workspace/api-client-react";
+import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import FeatureHub from "@/components/FeatureHub";
 import BreakElidemsShortcut from "@/components/BreakElidemsShortcut";
 
 export default function ManagerMore(){
  const colors=useColors();
+ const { token }=useAuth();
+ const [canReviewCv,setCanReviewCv]=useState(false);
+ const [canViewTransfers,setCanViewTransfers]=useState(false);
+ const [canViewReports,setCanViewReports]=useState(false);
+ const [canViewQualifications,setCanViewQualifications]=useState(false);
+ const [canViewAchievements,setCanViewAchievements]=useState(false);
+ useEffect(()=>{let active=true;if(!token){setCanReviewCv(false);setCanViewTransfers(false);setCanViewReports(false);setCanViewQualifications(false);setCanViewAchievements(false);return;}void fetch(getApiUrl("/api/manager-permissions/me"),{headers:{Authorization:"Bearer "+token},cache:"no-store"}).then(async response=>{const data=await response.json().catch(()=>({}));if(active){setCanReviewCv(response.ok&&data.permissions?.["teacher_cv.view"]===true);setCanViewTransfers(response.ok&&data.permissions?.["transfers.view"]===true);setCanViewReports(response.ok&&(data.permissions?.["reports.view"]===true||data.permissions?.["reports.create"]===true));setCanViewQualifications(response.ok&&data.permissions?.["qualifications.view"]===true);setCanViewAchievements(response.ok&&data.permissions?.["achievements.view"]===true);}}).catch(()=>{if(active){setCanReviewCv(false);setCanViewTransfers(false);setCanViewReports(false);setCanViewQualifications(false);setCanViewAchievements(false);}});return()=>{active=false;}},[token]);
  return <View style={{flex:1,backgroundColor:colors.background}}>
+  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Open class and learning operations" onPress={()=>router.push("/operations" as any)} style={{marginHorizontal:14,marginTop:8,marginBottom:2,padding:13,borderRadius:12,backgroundColor:colors.card,borderWidth:1,borderColor:colors.border,flexDirection:"row",alignItems:"center",gap:12}}>
+   <View style={{width:42,height:42,borderRadius:10,alignItems:"center",justifyContent:"center",backgroundColor:colors.primary+"18"}}><Feather name="calendar" size={21} color={colors.primary}/></View>
+   <View style={{flex:1}}><Text style={{fontSize:15,fontWeight:"700",color:colors.foreground}}>Class & learning operations</Text><Text style={{fontSize:12,color:colors.mutedForeground,marginTop:3}}>Attendance registers, permissions, communities and notification settings</Text></View><Feather name="chevron-right" size={18} color={colors.mutedForeground}/>
+  </TouchableOpacity>
   <TouchableOpacity accessibilityRole="button" onPress={()=>router.push("/(manager)/home" as any)} style={{marginHorizontal:14,marginTop:8,marginBottom:2,padding:13,borderRadius:12,backgroundColor:colors.card,borderWidth:1,borderColor:colors.border,flexDirection:"row",alignItems:"center",gap:12}}>
    <View style={{width:42,height:42,borderRadius:10,alignItems:"center",justifyContent:"center",backgroundColor:colors.primary+"18"}}><Feather name="bar-chart-2" size={21} color={colors.primary}/></View>
    <View style={{flex:1}}><Text style={{fontSize:15,fontWeight:"700",color:colors.foreground}}>Manager dashboard</Text><Text style={{fontSize:12,color:colors.mutedForeground,marginTop:3}}>Teachers, learners, prefects, alerts and reports</Text></View><Feather name="chevron-right" size={18} color={colors.mutedForeground}/>
   </TouchableOpacity>
+  {canViewAchievements ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Review achievement recommendations" onPress={()=>router.push("/(manager)/achievement-recommendations" as any)} style={{marginHorizontal:14,marginTop:8,marginBottom:2,padding:13,borderRadius:12,backgroundColor:colors.card,borderWidth:1,borderColor:colors.border,flexDirection:"row",alignItems:"center",gap:12}}>
+   <View style={{width:42,height:42,borderRadius:10,alignItems:"center",justifyContent:"center",backgroundColor:colors.primary+"18"}}><Feather name="award" size={21} color={colors.primary}/></View>
+   <View style={{flex:1}}><Text style={{fontSize:15,fontWeight:"700",color:colors.foreground}}>Achievement recommendations</Text><Text style={{fontSize:12,color:colors.mutedForeground,marginTop:3}}>Review evidence, approve awards or reject with a note</Text></View><Feather name="chevron-right" size={18} color={colors.mutedForeground}/>
+  </TouchableOpacity> : null}
+  {canViewQualifications ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Review teacher qualifications" onPress={()=>router.push("/(manager)/qualifications" as any)} style={{marginHorizontal:14,marginTop:8,marginBottom:2,padding:13,borderRadius:12,backgroundColor:colors.card,borderWidth:1,borderColor:colors.border,flexDirection:"row",alignItems:"center",gap:12}}>
+   <View style={{width:42,height:42,borderRadius:10,alignItems:"center",justifyContent:"center",backgroundColor:colors.primary+"18"}}><Feather name="award" size={21} color={colors.primary}/></View>
+   <View style={{flex:1}}><Text style={{fontSize:15,fontWeight:"700",color:colors.foreground}}>Qualification verification</Text><Text style={{fontSize:12,color:colors.mutedForeground,marginTop:3}}>Review certificates, verify or reject and inspect history</Text></View><Feather name="chevron-right" size={18} color={colors.mutedForeground}/>
+  </TouchableOpacity> : null}
+  {canViewReports ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Review academic reports" onPress={()=>router.push("/(manager)/academic-reports" as any)} style={{marginHorizontal:14,marginTop:8,marginBottom:2,padding:13,borderRadius:12,backgroundColor:colors.card,borderWidth:1,borderColor:colors.border,flexDirection:"row",alignItems:"center",gap:12}}>
+   <View style={{width:42,height:42,borderRadius:10,alignItems:"center",justifyContent:"center",backgroundColor:colors.primary+"18"}}><Feather name="clipboard" size={21} color={colors.primary}/></View>
+   <View style={{flex:1}}><Text style={{fontSize:15,fontWeight:"700",color:colors.foreground}}>Academic report review</Text><Text style={{fontSize:12,color:colors.mutedForeground,marginTop:3}}>Review report drafts, record decisions and download approved PDFs</Text></View><Feather name="chevron-right" size={18} color={colors.mutedForeground}/>
+  </TouchableOpacity> : null}
+  {canViewTransfers ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Review transfer letter requests" onPress={()=>router.push("/(manager)/transfer-requests" as any)} style={{marginHorizontal:14,marginTop:8,marginBottom:2,padding:13,borderRadius:12,backgroundColor:colors.card,borderWidth:1,borderColor:colors.border,flexDirection:"row",alignItems:"center",gap:12}}>
+   <View style={{width:42,height:42,borderRadius:10,alignItems:"center",justifyContent:"center",backgroundColor:colors.primary+"18"}}><Feather name="file-text" size={21} color={colors.primary}/></View>
+   <View style={{flex:1}}><Text style={{fontSize:15,fontWeight:"700",color:colors.foreground}}>Transfer letter requests</Text><Text style={{fontSize:12,color:colors.mutedForeground,marginTop:3}}>Review original forms, signatures, decisions and approved PDFs</Text></View><Feather name="chevron-right" size={18} color={colors.mutedForeground}/>
+  </TouchableOpacity> : null}
+  {canReviewCv ? <>
+  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Teacher CV and survey approvals" onPress={()=>router.push("/(manager)/teacher-cv-workspace" as any)} style={{marginHorizontal:14,marginTop:8,marginBottom:2,padding:13,borderRadius:12,backgroundColor:colors.card,borderWidth:1,borderColor:colors.border,flexDirection:"row",alignItems:"center",gap:12}}>
+   <View style={{width:42,height:42,borderRadius:10,alignItems:"center",justifyContent:"center",backgroundColor:colors.primary+"18"}}><Feather name="file-text" size={21} color={colors.primary}/></View>
+   <View style={{flex:1}}><Text style={{fontSize:15,fontWeight:"700",color:colors.foreground}}>Teacher CV & survey approvals</Text><Text style={{fontSize:12,color:colors.mutedForeground,marginTop:3}}>Available only with Owner-granted review permissions</Text></View><Feather name="chevron-right" size={18} color={colors.mutedForeground}/>
+  </TouchableOpacity>
+  </> : null}
   <TouchableOpacity accessibilityRole="button" accessibilityLabel="Manager account and security" onPress={()=>router.push("/(manager)/profile" as any)} style={{marginHorizontal:14,marginTop:8,marginBottom:2,padding:13,borderRadius:12,backgroundColor:colors.card,borderWidth:1,borderColor:colors.border,flexDirection:"row",alignItems:"center",gap:12}}>
    <View style={{width:42,height:42,borderRadius:10,alignItems:"center",justifyContent:"center",backgroundColor:colors.primary+"18"}}><Feather name="user" size={21} color={colors.primary}/></View>
    <View style={{flex:1}}><Text style={{fontSize:15,fontWeight:"700",color:colors.foreground}}>Account & security</Text><Text style={{fontSize:12,color:colors.mutedForeground,marginTop:3}}>Edit profile, recovery options and password</Text></View><Feather name="chevron-right" size={18} color={colors.mutedForeground}/>

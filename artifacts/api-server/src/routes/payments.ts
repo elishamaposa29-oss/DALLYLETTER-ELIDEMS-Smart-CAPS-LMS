@@ -893,6 +893,26 @@ router.post("/payments/notify-admin", requireAuth, async (req, res): Promise<voi
 });
 
 // Owner review queue. Reports are not balances until the Owner independently verifies them.
+router.get("/payments/manual-reports/history", requireAuth, async (req, res): Promise<void> => {
+  if (!isOwnerRole(req.currentUser!.role)) { res.status(403).json({ error: "Owner access required." }); return; }
+  await ensurePaymentTransactionSchema();
+  const result = await db.execute(sql`
+    SELECT t.id AS report_id,t.payment_id,t.reference,t.provider,t.amount,t.provider_reference,t.status,t.created_at,t.updated_at,
+           p.student_id,p.student_name,p.amount AS invoice_amount,p.amount_paid,p.status AS invoice_status,
+           u.name AS learner_name,u.email AS learner_email
+    FROM payment_transactions t
+    JOIN payments p ON p.id=t.payment_id
+    JOIN users u ON u.id=p.student_id
+    WHERE (t.provider LIKE 'reported:%' AND t.status='rejected')
+       OR (t.provider LIKE 'manual:%' AND t.status='paid')
+    ORDER BY t.updated_at DESC
+    LIMIT 250
+  `);
+  const rows = (result as unknown as { rows?: Array<Record<string, unknown>> }).rows ?? [];
+  res.setHeader("Cache-Control", "no-store");
+  res.json(rows);
+});
+
 router.get("/payments/manual-reports", requireAuth, async (req, res): Promise<void> => {
   if (!isOwnerRole(req.currentUser!.role)) { res.status(403).json({ error: "Owner access required." }); return; }
   await ensurePaymentTransactionSchema();

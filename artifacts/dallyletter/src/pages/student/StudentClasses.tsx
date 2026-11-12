@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { Link } from "wouter";
 import UserProfileLink from "@/components/UserProfileLink";
 import { useListClasses, useRaiseHand, getApiUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -163,7 +164,7 @@ export default function StudentClasses() {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Live Classes</h1>
-            <p className="text-muted-foreground">Join scheduled live sessions and interact with teachers.</p>
+            <p className="text-muted-foreground">Join scheduled live sessions and interact with teachers.</p><Link href="/operations"><Button variant="outline" className="mt-3">My attendance & statistics</Button></Link>
           </div>
         </div>
 

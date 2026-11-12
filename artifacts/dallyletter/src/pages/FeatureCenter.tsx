@@ -14,10 +14,10 @@ type Feature = { title:string; description:string; href:string; icon:LucideIcon;
 const features:Feature[] = [
  {title:"Clickable notifications",description:"Recent alerts route to the exact lesson, assignment, class, poll or activity instead of a dead end.",href:"/student/notifications",icon:Bell,tone:"bg-amber-50 text-amber-700",tag:"Interactive",roles:["student","prefect"]},
  {title:"Voice & media",description:"Open the authenticated chat/media experience and test playback without replacing the existing message flow.",href:"/student/chat",icon:Headphones,tone:"bg-indigo-50 text-indigo-700",tag:"Media",roles:["student","prefect"]},
- {title:"Lessons & preview",description:"Preview current lessons, video, audio, images and notes before publishing or sharing.",href:"/teacher/lessons",icon:Video,tone:"bg-blue-50 text-blue-700",tag:"Preview",roles:["teacher","owner"]},
+ {title:"Lessons & preview",description:"Preview current lessons, video, audio, images and notes before publishing or sharing.",href:"/teacher/lessons",icon:Video,tone:"bg-blue-50 text-blue-700",tag:"Preview",roles:["teacher","owner","platform_owner","manager","senior_manager","junior_manager"]},
  {title:"Missing resource recovery + Docs",description:"Broken lesson links land on a friendly recovery page with read-only documentation access.",href:"/docs",icon:FileText,tone:"bg-slate-50 text-slate-700",tag:"Recovery"},
  {title:"Interactive assignments",description:"Create assignments, attach reference media, collect submissions and grade returned work.",href:"/teacher/assignments",icon:ClipboardList,tone:"bg-emerald-50 text-emerald-700",tag:"Live UI",roles:["teacher"]},
- {title:"Exercise marking",description:"Open exercise marking, learner results, per-question marks and correction feedback.",href:"/teacher/exercises/1/mark",icon:FileCheck2,tone:"bg-purple-50 text-purple-700",tag:"Marking",roles:["teacher","owner"]},
+ {title:"Exercise marking",description:"Open exercise marking, learner results, per-question marks and correction feedback.",href:"/teacher/exercises",icon:FileCheck2,tone:"bg-purple-50 text-purple-700",tag:"Marking",roles:["teacher","owner","platform_owner","admin"]},
  {title:"Teacher qualifications",description:"Submit CV/resume, certificates and supporting proof for the approval workflow.",href:"/teacher/qualifications",icon:ShieldCheck,tone:"bg-cyan-50 text-cyan-700",tag:"Verification",roles:["teacher"]},
  {title:"Drawing / answer workspace",description:"Open published exercises, answer drawing questions with the native canvas, and review returned marks.",href:"/student/exercises",icon:PenTool,tone:"bg-rose-50 text-rose-700",tag:"Touch",roles:["student","prefect"]},
  {title:"Study groups & Connect",description:"Use group permissions, member previews and the Connect communication experience.",href:"/student/study-groups",icon:Users,tone:"bg-orange-50 text-orange-700",tag:"Social",roles:["student","prefect"]},
@@ -43,6 +43,10 @@ const features:Feature[] = [
  {title:"Teacher Record Book · Build / Book / Learner",description:"Open the shared RecordBook workspace for saved activity marks, attendance evidence, learner records and approval-gated reports.",href:"/record-book",icon:BookOpen,tone:"bg-blue-50 text-blue-700",tag:"Academic records",roles:["student","prefect","teacher","manager","senior_manager","owner"]},
  {title:"Attendance Register & Activity History",description:"Open Profile Hub attendance records and saved fullscreen activity history. Private sections remain controlled independently.",href:"/profile-hub",icon:ClipboardList,tone:"bg-violet-50 text-violet-700",tag:"Attendance",roles:["student","prefect","teacher","manager","senior_manager","owner"]},
  {title:"Profile privacy & connection approvals",description:"Manage each Profile Hub section separately and review connection requests before private chat is unlocked.",href:"/profile-hub",icon:Users,tone:"bg-cyan-50 text-cyan-700",tag:"Privacy",roles:["student","prefect","teacher","manager","senior_manager","owner"]},
+ {title:"Attendance register & operations",description:"Open class registers, review present/absent records, make authorized corrections and see attendance totals.",href:"/operations",icon:ClipboardList,tone:"bg-violet-50 text-violet-700",tag:"Operations",roles:["student","prefect","teacher","owner","platform_owner","manager","senior_manager","junior_manager"]},
+ {title:"Content permission requests",description:"Track submitted requests, review requests for your content and report declined decisions.",href:"/operations",icon:ShieldCheck,tone:"bg-amber-50 text-amber-700",tag:"Permissions",roles:["teacher","owner","platform_owner","manager","senior_manager","junior_manager"]},
+ {title:"Learning communities",description:"Create communities and associate existing study groups where groups.manage authority is granted.",href:"/operations",icon:Users,tone:"bg-orange-50 text-orange-700",tag:"Community",roles:["owner","platform_owner","manager","senior_manager","junior_manager"]},
+ {title:"Notification preferences",description:"Save push, sound and follow-notification preferences to your account.",href:"/operations",icon:Bell,tone:"bg-sky-50 text-sky-700",tag:"Settings",roles:["student","prefect","teacher","owner","platform_owner","admin","manager","senior_manager","junior_manager"]},
 ];
 
 
@@ -51,6 +55,7 @@ export default function FeatureCenter(){
  const normalizedRole=String(user?.role||"").toLowerCase().replace(/[ -]+/g,"_");
  const isManager=Boolean((user as any)?.isManager)||["manager","senior_manager","junior_manager"].includes(normalizedRole);
  const isOwner=["owner","platform_owner"].includes(normalizedRole);
+ const pendingTeacher=normalizedRole==="teacher"&&["draft","pending_review","rejected_pending_conversion"].includes(String((user as any)?.teacherApplicationStatus||"").toLowerCase());
  const [managerPermissions,setManagerPermissions]=useState<Record<string,boolean>|null>(null);
  useEffect(()=>{
   if(!user||!isManager){setManagerPermissions(null);return;}
@@ -63,6 +68,7 @@ export default function FeatureCenter(){
  },[user?.id,user?.role,(user as any)?.isManager]);
  const permissionForTitle:Record<string,string>={
   "Manager dashboard":"manager.dashboard.view",
+  "Exercise marking":"recordbook.view",
   "Monitor teachers":"users.view",
   "Monitor learners":"users.view",
   "Manager reports":"reports.view",
@@ -78,12 +84,21 @@ export default function FeatureCenter(){
   "Teacher CV PDF":"teacher_cv.view",
   "Teacher Record Book · Build / Book / Learner":"recordbook.view",
   "Attendance Register & Activity History":"attendance.view",
+  "Attendance register & operations":"attendance.view",
+  "Learning communities":"groups.manage",
   "Teacher CV applications":"teacher_cv.view",
   "Qualification verification":"qualifications.view",
   "Manager audit history":"audit.view_subordinate",
  };
  const visible=features.filter(f=>{
-  const roleAllowed=!f.roles || (user && (f.roles.includes(normalizedRole)||(isOwner&&f.roles.includes("owner"))||(isManager&&f.roles.some(role=>["manager","senior_manager","junior_manager"].includes(role)))));
+  const roleAllowed =
+    (!f.roles ||
+      (user &&
+        (f.roles.includes(normalizedRole) ||
+          (isOwner && f.roles.includes("owner")) ||
+          (isManager && f.roles.some(role => ["manager", "senior_manager", "junior_manager"].includes(role)))))
+    ) &&
+    (!pendingTeacher || ["Teacher qualifications", "Qualification review history", "Teacher CV PDF"].includes(f.title));
   if(!roleAllowed)return false;
   const key=permissionForTitle[f.title];
   return !isManager||!key||managerPermissions?.[key]===true;

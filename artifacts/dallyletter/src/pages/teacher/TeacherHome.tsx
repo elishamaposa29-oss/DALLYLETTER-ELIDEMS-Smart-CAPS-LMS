@@ -155,7 +155,7 @@ export default function TeacherHome() {
                   <h2 className="font-bold text-[#0f2a5a]">Academic report builder</h2>
                   <p className="mt-1 text-sm text-muted-foreground">Create period-based learner reports using saved attendance, assignment marks and report-enabled exercise results. Reports go to Senior Manager / Owner review.</p>
                 </div>
-                <Link href="/manager/reports/review"><Button className="bg-[#0f2a5a] hover:bg-[#173a72]">Build academic report</Button></Link>
+                <Link href="/record-book"><Button className="bg-[#0f2a5a] hover:bg-[#173a72]">Open RecordBook & build report</Button></Link>
               </CardContent>
             </Card>
 
@@ -284,7 +284,7 @@ export default function TeacherHome() {
             <div className="flex flex-wrap gap-2 border-t pt-3">
               {/lesson|media|resource/i.test(String(selectedActivity.description)) && <Link href="/teacher/lessons"><Button type="button" size="sm" variant="outline"><BookOpen className="mr-1.5 h-4 w-4" />Open lessons</Button></Link>}
               {/assignment|submission|marking/i.test(String(selectedActivity.description)) && <Link href="/teacher/assignments"><Button type="button" size="sm" variant="outline"><Activity className="mr-1.5 h-4 w-4" />Open assignments</Button></Link>}
-              {/exercise|drawbox|question/i.test(String(selectedActivity.description)) && <Link href="/teacher/classes"><Button type="button" size="sm" variant="outline"><Video className="mr-1.5 h-4 w-4" />Open classes</Button></Link>}
+              {/exercise|drawbox|question/i.test(String(selectedActivity.description)) && <Link href="/teacher/exercises"><Button type="button" size="sm" variant="outline"><Activity className="mr-1.5 h-4 w-4" />Open exercise marking</Button></Link>}
               
               {/poll|quiz/i.test(String(selectedActivity.description)) && <Link href="/teacher/polls"><Button type="button" size="sm" variant="outline"><Activity className="mr-1.5 h-4 w-4" />Open polls</Button></Link>}
               {/group|chat|message/i.test(String(selectedActivity.description)) && <Link href="/student/study-groups"><Button type="button" size="sm" variant="outline"><Users className="mr-1.5 h-4 w-4" />Open study groups</Button></Link>}
