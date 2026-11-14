@@ -11,7 +11,7 @@ const mobileOwnerRoute = read("../artifacts/dallyletter-mobile/app/(admin)/teach
 const mobileCv = read("../artifacts/dallyletter-mobile/components/TeacherCvReviewWorkspace.tsx");
 const dashboardLayout = read("../artifacts/dallyletter/src/components/DashboardLayout.tsx");
 const teacherNavigation = dashboardLayout.split('} else if (normalizedRole === "teacher") {')[1]?.split('} else if (["manager","senior_manager","junior_manager"].includes(normalizedRole)) {')[0] || "";
-const teacherNavigationHrefs = [...teacherNavigation.matchAll(/href:\\s*"([^"]+)"/g)].map(match => match[1]);
+const teacherNavigationHrefs = [...teacherNavigation.matchAll(/href:\s*"([^"]+)"/g)].map(match => match[1]);
 assert.equal(new Set(teacherNavigationHrefs).size, teacherNavigationHrefs.length, "Teacher and teacher-manager navigation must not render duplicate destinations.");
 
 
