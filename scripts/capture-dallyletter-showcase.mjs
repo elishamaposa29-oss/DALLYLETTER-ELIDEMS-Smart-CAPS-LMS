@@ -92,7 +92,9 @@ async function assertPublishablePage(page, label, options = {}) {
 
 async function waitForExpectedDeployment() {
   const homepage = new URL("/", baseUrl);
-  const deadline = Date.now() + 15 * 60 * 1000;
+  // Vercel preview builds can take longer than the initial 15-minute window under queue pressure.
+  // Keep the wait below the workflow's 40-minute job timeout so evidence capture can still finish.
+  const deadline = Date.now() + 35 * 60 * 1000;
   let lastObservation = "homepage has not been checked";
 
   while (true) {
