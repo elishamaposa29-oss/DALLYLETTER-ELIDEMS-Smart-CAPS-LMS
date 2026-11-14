@@ -6,11 +6,13 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import QualificationReviewWorkspaceMobile from "@/components/QualificationReviewWorkspaceMobile";
 
 type Row = Record<string, any> & { id?: number };
-export default function TeacherCvReviewWorkspace() {
+export default function TeacherCvReviewWorkspace({initialTab="applications"}:{initialTab?:"applications"|"qualifications"}) {
   const colors = useColors();
   const { user, token } = useAuth();
+  const [activeTab, setActiveTab] = useState<"applications"|"qualifications">(initialTab);
   const [queue, setQueue] = useState<Row[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<any>(null);
@@ -213,7 +215,8 @@ export default function TeacherCvReviewWorkspace() {
       <Text style={{ color: "#fff", fontSize: 21, fontWeight: "900" }}>Teacher CV & Survey Review</Text>
       <Text style={{ color: "#dbeafe", fontSize: 12, marginTop: 5 }}>Review submitted evidence, record decisions, inspect history and message applicants.</Text>
     </View>
-    <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: 100 }}>
+    <View style={{ flexDirection: "row", gap: 8, padding: 12, backgroundColor: colors.background }}><TouchableOpacity onPress={() => setActiveTab("applications")} style={[button, { flex: 1, backgroundColor: activeTab === "applications" ? colors.primary : colors.card, borderWidth: activeTab === "applications" ? 0 : 1, borderColor: colors.border }]}><Text style={[buttonText, activeTab === "applications" ? {} : { color: colors.foreground }]}>CV applications & surveys</Text></TouchableOpacity><TouchableOpacity onPress={() => setActiveTab("qualifications")} style={[button, { flex: 1, backgroundColor: activeTab === "qualifications" ? colors.primary : colors.card, borderWidth: activeTab === "qualifications" ? 0 : 1, borderColor: colors.border }]}><Text style={[buttonText, activeTab === "qualifications" ? {} : { color: colors.foreground }]}>Qualifications & certificates</Text></TouchableOpacity></View>
+    {activeTab === "qualifications" ? <QualificationReviewWorkspaceMobile /> : <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: 100 }}>
       {error ? <View style={[card, { borderColor: "#dc2626" }]}><Text style={{ color: "#dc2626" }}>{error}</Text><TouchableOpacity onPress={() => void loadQueue()}><Text style={{ color: colors.primary, fontWeight: "800", marginTop: 8 }}>Retry</Text></TouchableOpacity></View> : null}
       {canEditConfig ? <View style={card}>
         <Text style={heading}>Owner review configuration</Text>
@@ -282,6 +285,6 @@ export default function TeacherCvReviewWorkspace() {
         <TouchableOpacity disabled={busy || !draft.trim()} onPress={() => void sendMessage()} style={[button, { marginTop: 8 }]}><Text style={buttonText}>Send message</Text></TouchableOpacity></> : null}
         <TouchableOpacity onPress={() => { setDetail(null); setSelectedId(null); setHistory([]); setChat([]); }} style={{ padding: 12, alignItems: "center" }}><Text style={{ color: colors.primary, fontWeight: "800" }}>Close application</Text></TouchableOpacity>
       </View> : null}
-    </ScrollView>
+    </ScrollView>}
   </View>;
 }
