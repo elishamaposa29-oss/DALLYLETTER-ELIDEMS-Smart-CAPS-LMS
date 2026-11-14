@@ -58,10 +58,9 @@ async function verifyAuthenticatedRole(token, expectedRole, authenticatedApiOrig
   return actualRole;
 }
 const decodeXml = (value) => value.replaceAll("&amp;", "&").replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&quot;", '"').replaceAll("&apos;", "'");
-const isProductionPush = process.env.GITHUB_EVENT_NAME === "push" && process.env.GITHUB_REF === "refs/heads/main";
-const expectedDeploymentSha = isProductionPush ? (process.env.EXPECTED_DEPLOYMENT_SHA || "").trim() : "";
-if (!isProductionPush && process.env.EXPECTED_DEPLOYMENT_SHA) {
-  console.log("Skipping exact-production-commit wait for " + (process.env.GITHUB_EVENT_NAME || "local") + " event; PR commits are not deployed to the permanent production hostname.");
+const expectedDeploymentSha = (process.env.EXPECTED_DEPLOYMENT_SHA || "").trim();
+if (expectedDeploymentSha) {
+  console.log("Waiting for the exact deployment commit " + expectedDeploymentSha + " before testing routes.");
 }
 
 
@@ -206,6 +205,37 @@ async function capturePublicPages() {
     }
   }
 }
+async function verifyProtectedRouteShells() {
+  const source = await fs.readFile(path.resolve("artifacts/dallyletter/src/App.tsx"), "utf8");
+  const routePaths = [...source.matchAll(/<Route\s+path=["']([^"']+)["']/g)]
+    .map((match) => match[1])
+    .filter((routePath) => /^\/(student|teacher|manager|admin)(\/|$)/.test(routePath) && !routePath.includes("*"));
+  const routes = [...new Set(routePaths)];
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await context.newPage();
+  try {
+    for (const routePath of routes) {
+      const testPath = routePath.replace(/:([A-Za-z0-9_]+)/g, "showcase-test").replace(/\/+$/, "") + "/";
+      const url = new URL(testPath, baseUrl);
+      const response = await page.goto(url.href, { waitUntil: "domcontentloaded", timeout: 25000 });
+      if (!response || response.status() !== 200) {
+        results.push({ type: "route-shell", path: routePath, url: url.href, status: response?.status() ?? "no-response", error: "Registered protected route did not return the application shell." });
+        continue;
+      }
+      const title = await page.title();
+      const shell = await page.locator("#root, #app, [data-reactroot]").count().catch(() => 0);
+      const html = await page.locator("body").innerText().catch(() => "");
+      if (!/Dallyletter Elidems/i.test(title) || (!shell && html.trim().length < 20) || /page you're looking for doesn't exist|this screen doesn't exist|404 not found/i.test(html)) {
+        results.push({ type: "route-shell", path: routePath, url: url.href, status: "wrong-page", error: "Route returned HTTP 200 but did not render the expected application shell." });
+        continue;
+      }
+      results.push({ type: "route-shell", path: routePath, url: url.href, status: "captured" });
+    }
+  } finally {
+    await context.close();
+  }
+}
+
 async function discoverRoleRoutes(role) {
   const source = await fs.readFile(path.resolve("artifacts/dallyletter/src/App.tsx"), "utf8");
   const routePattern = /<Route path="([^"]+)"([\s\S]*?)(?=<Route path="|<Route component=|<\/Switch>)/g;
@@ -566,6 +596,7 @@ function buildGallery(manifest) {
 
 try {
   await capturePublicPages();
+  await verifyProtectedRouteShells();
   // These are existing promoted accounts, not separate signup types. Prefect reuses the
   // learner login unless an explicit promoted-learner override is supplied. Manager-tier
   // credentials must belong to an existing learner/teacher promoted by the Owner.
@@ -626,12 +657,12 @@ try {
       "- Workflow commit: " + (manifest.workflowCommit || "unknown"),
       "- [Workflow run](" + (manifest.workflowRunUrl || "") + ")",
       "",
-      ...results.map((result) => "- " + (result.type || "page") + " / " + (result.page || result.role) + ": " + (result.error ? "FAILED — " + result.error : result.status || "captured") + " — " + (result.url || ""))
+      ...results.map((result) => "- " + (result.type || "page") + " / " + (result.page || result.role || result.path) + ": " + (result.error ? "FAILED — " + result.error : result.status || "captured") + " — " + (result.url || ""))
     ];
     await fs.appendFile(process.env.GITHUB_STEP_SUMMARY, summary.join("\n") + "\n");
   }
   console.log(JSON.stringify(manifest, null, 2));
-  if (results.some((result) => result.error || ["login-failed", "capture-failed", "partial"].includes(result.status) || result.pageLimitReached)) process.exitCode = 1;
+  if (results.some((result) => result.error || ["login-failed", "capture-failed", "partial", "wrong-page"].includes(result.status) || result.pageLimitReached)) process.exitCode = 1;
 } finally {
   await browser.close();
   // Keep role screenshots inside the private GitHub Actions artifact; never publish them to showcase-media.
