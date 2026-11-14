@@ -221,7 +221,7 @@ router.post("/:teacherId/decision",requireManagerPermissionForRequest((req)=>req
    ?(action==="approve"?"Teacher approved and authorized. The teacher role, full teacher dashboard and teaching API permissions are now active.":"Teaching access denied. The account remains usable and will convert to a learner on the scheduled date.")
    :(action==="approve"?"Readiness survey approved. The CV application remains unchanged; no teacher dashboard access was activated.":"Readiness survey rejected. The CV application remains unchanged.")
  });
-
+});
 
 async function authorizeCvMutation(actor:any,teacherId:number){
  if(Number(actor?.id)===teacherId) return true;
