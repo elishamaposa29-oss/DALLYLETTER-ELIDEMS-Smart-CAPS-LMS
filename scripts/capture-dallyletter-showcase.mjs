@@ -628,9 +628,9 @@ try {
       page: "authenticated-cv-role-coverage",
       status: authenticatedCaptureEnabled ? "blocked" : "skipped",
       missingRoles: missingRequiredRoleAccounts,
-      error: authenticatedCaptureEnabled
-        ? "Authenticated CV role verification is incomplete. Configure dedicated synthetic showcase accounts for: " + missingRequiredRoleAccounts.join(", ") + ". No role is counted as verified without a successful login and API-confirmed role."
-        : "Authenticated role capture is intentionally disabled for pull-request security. These roles are not counted as verified until a trusted post-merge showcase run completes."
+      ...(authenticatedCaptureEnabled
+        ? { error: "Authenticated CV role verification is incomplete. Configure dedicated synthetic showcase accounts for: " + missingRequiredRoleAccounts.join(", ") + ". No role is counted as verified without a successful login and API-confirmed role." }
+        : { reason: "Authenticated role capture is intentionally disabled for pull-request security. These roles are not counted as verified until a trusted post-merge showcase run completes." })
     });
   }
   if (googleIdentityErrors.length) {
