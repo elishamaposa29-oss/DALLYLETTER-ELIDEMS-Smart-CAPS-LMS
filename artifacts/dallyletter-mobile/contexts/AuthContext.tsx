@@ -217,7 +217,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     const interval = setInterval(() => {
       if (AppState.currentState === "active") void revalidate();
-    }, 60_000);
+    }, 15_000);
     return () => {
       subscription.remove();
       clearInterval(interval);
