@@ -82,7 +82,7 @@ assert.match(workspaceApi, /router\.delete\("\/:teacherId\/survey"/, "Authorized
 assert.ok(workspaceApi.includes('router.delete("/:teacherId/application"'), "Teacher must have one atomic full-application deletion endpoint");
 assert.ok(workspaceApi.includes("DELETE FROM teacher_cv_chat_messages WHERE teacher_id=$1"), "Full application deletion must remove all private application chat messages");
 assert.ok(workspaceApi.includes("DELETE FROM teacher_profiles WHERE user_id=$1"), "Full application deletion must remove saved CV and survey drafts");
-assert.ok(workspaceApi.includes("removeStoredMedia(key)"), "Full application deletion must clean external and chunked media storage");
+assert.ok(workspaceApi.includes("removeStoredMedia(String(row.storage_key))") && workspaceApi.includes("teacher_application_media_cleanup"), "Full application deletion must clean external and chunked media storage");
 assert.ok(teacherQualifications.includes("Delete my entire survey / CV / application") && teacherQualifications.includes("deleteOwnApplication"), "Teacher self-service must expose one complete application deletion action");
 
 assert.match(workspaceApi, /router\.delete\("\/bulk\/:scope"/, "Authorized reviewers must have a bulk delete endpoint");
