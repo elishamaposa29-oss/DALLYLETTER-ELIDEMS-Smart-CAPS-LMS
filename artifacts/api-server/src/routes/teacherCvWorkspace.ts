@@ -215,7 +215,7 @@ router.post("/:teacherId/decision",requireManagerPermissionForRequest((req)=>req
 
 async function authorizeCvMutation(actor:any,teacherId:number){
  if(Number(actor?.id)===teacherId) return true;
- if(isOwner(actor)||isAdmin(actor)) return true;
+ if(isOwner(actor)) return true;
  const target=await pool.query("SELECT role,is_manager,manager_level FROM users WHERE id=$1 AND lower(role)='teacher'",[teacherId]);
  return Boolean(target.rows[0]&&canAccessManager(actor)&&canModerateUser(actor,{role:target.rows[0].role,isManager:target.rows[0].is_manager,managerLevel:target.rows[0].manager_level}));
 }
