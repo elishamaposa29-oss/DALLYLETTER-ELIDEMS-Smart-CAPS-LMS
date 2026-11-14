@@ -79,7 +79,8 @@ assert(draftSurveyHistory.data.history.some(item=>item.action==="survey_submitte
 const ownerCanReviewIndependentSurvey=await request("/api/teacher-cv-workspace/"+draftOnlyApplicant.id+"/details",{token:ownerToken});
 assert.equal(ownerCanReviewIndependentSurvey.status,200,"An independently submitted readiness survey is visible to authorized reviewers even when the CV remains a draft");
 const ownerCannotDecideDraft=await request("/api/teacher-cv-workspace/"+draftOnlyApplicant.id+"/decision",{token:ownerToken,method:"POST",body:{action:"approve"}});
-assert.equal(ownerCannotDecideDraft.status,404,"Even Owner cannot approve an application that was never formally submitted");
+assert.equal(ownerCannotDecideDraft.status,200,"The shared decision path can review a submitted survey even when the CV remains a draft");
+assert.equal(ownerCannotDecideDraft.data.teacherApplicationStatus,"draft","Survey-only approval must not activate teacher permissions or change CV status");
 const ownerLegacyCannotDecideDraft=await request("/api/users/"+draftOnlyApplicant.id+"/teacher-review",{token:ownerToken,method:"PATCH",body:{action:"approve"}});
 assert.equal(ownerLegacyCannotDecideDraft.status,409,"Legacy review endpoint also rejects unsubmitted teacher drafts");
 const ownerLegacyDraftCv=await request("/api/users/"+draftOnlyApplicant.id+"/teacher-cv",{token:ownerToken});
