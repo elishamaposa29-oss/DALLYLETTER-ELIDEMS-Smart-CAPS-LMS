@@ -602,12 +602,17 @@ router.get("/users/:id/teacher-documents", requireAuth, async (req, res): Promis
 router.get("/users/:id/teacher-documents/:docId", requireAuth, async (req, res): Promise<void> => {
   const id = Number(req.params.id); const docId = Number(req.params.docId); const actor = req.currentUser!;
   if (!Number.isInteger(id) || id <= 0 || !Number.isInteger(docId) || docId <= 0) { res.status(400).json({ error: "Invalid document reference." }); return; }
-  const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, id));
+  const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel, teacherApplicationStatus: usersTable.teacherApplicationStatus }).from(usersTable).where(eq(usersTable.id, id));
   if (!target || (isOwnerRole(target.role) && !isOwnerRole(actor.role))) { res.status(404).json({ error: "User not found." }); return; }
-  if (actor.id !== id && !isOwnerRole(actor.role) && !canModerateUser(actor, target)) { res.status(403).json({ error: "You are not authorized to access this user's teacher documents." }); return; }
-  const cvReviewAccess = actor.id !== id && canAccessManager(actor)
+  const pendingSubmittedApplication = target.teacherApplicationStatus === "pending_review"
+    && (await pool.query("SELECT EXISTS(SELECT 1 FROM teacher_cv_review_history h WHERE h.teacher_id=$1 AND h.action='submitted') AS allowed", [id])).rows[0]?.allowed === true;
+  const adminCvReviewAccess = normalizeRole(actor.role) === "admin"
+    && pendingSubmittedApplication
+    && await managerHasPermission(actor, "teacher_cv.view");
+  if (actor.id !== id && !isOwnerRole(actor.role) && !adminCvReviewAccess && !canModerateUser(actor, target)) { res.status(403).json({ error: "You are not authorized to access this user's teacher documents." }); return; }
+  const cvReviewAccess = actor.id !== id && (adminCvReviewAccess || (canAccessManager(actor)
     && await managerHasPermission(actor, "teacher_cv.view")
-    && (await pool.query("SELECT EXISTS(SELECT 1 FROM teacher_cv_review_history h JOIN users u ON u.id=h.teacher_id WHERE h.teacher_id=$1 AND h.action='submitted' AND u.teacher_application_status='pending_review') AS allowed", [id])).rows[0]?.allowed === true;
+    && pendingSubmittedApplication));
   if (!cvReviewAccess && !(await canViewProfileSection(actor, id, "teacher_documents"))) {
     res.status(403).json({ error: "Teacher document visibility is restricted by this profile's privacy settings." }); return;
   }
