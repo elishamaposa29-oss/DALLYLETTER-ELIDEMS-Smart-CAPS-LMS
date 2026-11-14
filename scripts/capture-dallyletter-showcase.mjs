@@ -437,7 +437,7 @@ async function captureRole(role, route, email, password) {
         const safeNavigationButton = /^(?:open|view|explore|go to|browse|visit|more)(?:\s|$)/i;
         for (const button of buttons) {
           if (!button.visible || button.disabled || !safeNavigationButton.test(button.label)) continue;
-          const buttonKey = pathname + "|" + button.label.toLowerCase();
+          const buttonKey = pathname + "|" + button.index + "|" + button.label.toLowerCase();
           if (testedNavigationButtons.has(buttonKey)) continue;
           testedNavigationButtons.add(buttonKey);
           const originalUrl = page.url();
