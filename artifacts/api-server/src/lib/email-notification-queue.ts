@@ -6,7 +6,7 @@ let started = false;
 let draining = false;
 let notificationMetadataSchema: Promise<void> | null = null;
 
-async function ensureNotificationMetadataSchema(): Promise<void> {
+export async function ensureNotificationMetadataSchema(): Promise<void> {
   if (!notificationMetadataSchema) {
     notificationMetadataSchema = pool.query("ALTER TABLE email_notification_queue ADD COLUMN IF NOT EXISTS related_entity_type text; ALTER TABLE email_notification_queue ADD COLUMN IF NOT EXISTS related_entity_id integer")
       .then(() => undefined)
