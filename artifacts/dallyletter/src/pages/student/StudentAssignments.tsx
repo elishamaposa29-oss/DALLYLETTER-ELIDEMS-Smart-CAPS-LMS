@@ -140,11 +140,13 @@ export default function StudentAssignments() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <ClipboardList className="h-6 w-6 text-blue-600" /> My Assignments
-          </h1>
-          <p className="text-slate-500 mt-1">Submit your work and track your grades</p>
+        <div className="relative overflow-hidden rounded-2xl border border-primary/15 bg-gradient-to-br from-card via-card to-primary/[0.06] p-5 shadow-sm sm:p-6">
+          <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-cyan-400/10 blur-3xl" />
+          <p className="dallyletter-tech-label text-[10px] font-bold text-primary">Learner workspace · Academic missions</p>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+            <div><h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-foreground sm:text-3xl"><ClipboardList className="h-6 w-6 text-primary" /> My Assignments</h1><p className="mt-1 text-sm text-muted-foreground">Submit your work, monitor deadlines and review teacher feedback.</p></div>
+            {!loading && <span className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-semibold text-primary">{assignments.length} available</span>}
+          </div>
         </div>
 
         {loading ? <p className="text-center text-slate-400 py-10">Loading…</p> : (
@@ -158,8 +160,8 @@ export default function StudentAssignments() {
               const sub = submissions[a.id];
               const overdue = isOverdue(a.dueDate);
               return (
-                <Card key={a.id} className={`border-0 shadow-sm ${overdue && !sub ? "border-l-4 border-l-red-400" : sub ? "border-l-4 border-l-emerald-400" : "border-l-4 border-l-blue-400"}`}>
-                  <CardContent className="p-4">
+                <Card key={a.id} className={`overflow-hidden border-l-4 bg-gradient-to-br from-card via-card to-primary/[0.025] shadow-sm ${overdue && !sub ? "border-l-red-500" : sub ? "border-l-emerald-500" : "border-l-primary"}`}>
+                  <CardContent className="p-4 sm:p-5">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -167,19 +169,19 @@ export default function StudentAssignments() {
                           <Badge variant="outline" className="text-xs">{a.subject}</Badge>
                           {a.grade && <Badge variant="secondary" className="text-xs">{a.grade}</Badge>}
                           {sub ? (
-                            <Badge className={`text-xs ${sub.status === "graded" ? "bg-purple-100 text-purple-700" : "bg-emerald-100 text-emerald-700"}`}>
+                            <Badge className={`text-xs ${sub.status === "graded" ? "border border-primary/20 bg-primary/10 text-primary" : "bg-emerald-100 text-emerald-700"}`}>
                               {sub.status === "graded" ? `Graded: ${sub.marks}/${a.totalMarks}` : "Submitted ✓"}
                             </Badge>
                           ) : overdue ? (
                             <Badge className="text-xs bg-red-100 text-red-700">Overdue</Badge>
                           ) : (
-                            <Badge className="text-xs bg-blue-100 text-blue-700">Pending</Badge>
+                            <Badge className="border border-primary/20 bg-primary/10 text-primary">Pending</Badge>
                           )}
                         </div>
                         {a.description && <p className="text-sm text-slate-500 mb-2">{a.description}</p>}
-                        {a.attachmentUrl && <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50/70 p-3 space-y-2"><p className="text-xs font-semibold uppercase tracking-wide text-blue-800">Reference material</p><AuthenticatedMedia url={a.attachmentUrl} type={referenceMediaType(a.attachmentUrl)} title={`${a.title} reference material`} /><Button type="button" variant="outline" size="sm" onClick={() => void openReference(a.attachmentUrl, a.title)}>Open reference in new tab</Button></div>}
-                        {sub?.feedback && <p className="text-sm text-purple-600 italic mb-2">Feedback: {sub.feedback}</p>}
-                        <div className="flex items-center gap-4 text-xs text-slate-400">
+                        {a.attachmentUrl && <div className="mt-3 space-y-2 rounded-xl border border-primary/15 bg-primary/[0.04] p-3"><p className="dallyletter-tech-label text-[10px] font-semibold text-primary">Reference material</p><AuthenticatedMedia url={a.attachmentUrl} type={referenceMediaType(a.attachmentUrl)} title={`${a.title} reference material`} /><Button type="button" variant="outline" size="sm" onClick={() => void openReference(a.attachmentUrl, a.title)}>Open reference in new tab</Button></div>}
+                        {sub?.feedback && <p className="mb-2 border-l-2 border-primary/30 pl-3 text-sm italic text-primary">Feedback: {sub.feedback}</p>}
+                        <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
                           <span className="flex items-center gap-1">
                             {overdue && !sub ? <AlertTriangle className="h-3 w-3 text-red-500" /> : <Calendar className="h-3 w-3" />}
                             Due: {a.dueDate}
@@ -188,7 +190,7 @@ export default function StudentAssignments() {
                         </div>
                       </div>
                       {!previewOnly && !sub && !overdue && (
-                        <Button size="sm" className="bg-blue-600 text-white gap-1.5" onClick={() => { setSelected(a); setContent(""); setSubmissionFile(null); }}>
+                        <Button size="sm" className="gap-1.5 shadow-sm shadow-primary/20" onClick={() => { setSelected(a); setContent(""); setSubmissionFile(null); }}>
                           <Send className="h-3.5 w-3.5" /> Submit
                         </Button>
                       )}
@@ -211,24 +213,24 @@ export default function StudentAssignments() {
           <DialogContent className="sm:max-w-lg">
             <DialogHeader><DialogTitle>{selected.title}</DialogTitle></DialogHeader>
             <div className="space-y-3">
-              <div className="bg-slate-50 rounded-lg p-3 text-sm text-slate-600 whitespace-pre-wrap">{selected.description || "No description provided."}</div>
+              <div className="rounded-lg border border-primary/10 bg-primary/[0.035] p-3 text-sm text-foreground whitespace-pre-wrap">{selected.description || "No description provided."}</div>
               {selected.attachmentUrl && <div className="rounded-xl border p-3 space-y-2"><p className="text-sm font-semibold">Reference material</p><AuthenticatedMedia url={selected.attachmentUrl} type={referenceMediaType(selected.attachmentUrl)} title={`${selected.title} reference material`} /><Button type="button" variant="outline" size="sm" onClick={() => void openReference(selected.attachmentUrl, selected.title)}>Open in new tab</Button></div>}
               <div>
-                <label className="text-sm font-medium text-slate-700 mb-1 block">Your Answer</label>
+                <label className="mb-1 block text-sm font-medium text-foreground">Your Answer</label>
                 <textarea
-                  className="w-full border rounded-lg px-3 py-2 text-sm min-h-[140px] resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="min-h-[140px] w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   placeholder="Write your answer here…"
                   value={content}
                   onChange={e => setContent(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Optional attachment</label>
+                <label className="text-sm font-medium text-foreground">Optional attachment</label>
                 <Input type="file" accept="video/mp4,video/webm,video/quicktime,video/ogg,audio/mpeg,audio/mp4,audio/ogg,audio/wav,image/jpeg,image/png,image/webp,application/pdf,.doc,.docx" disabled={uploadingSubmissionFile || submitting} onChange={e => uploadSubmissionMaterial(e.target.files?.[0])} />
-                {uploadingSubmissionFile && <p role="status" className="text-xs text-blue-600">Uploading attachment… Please wait before submitting.</p>}
-                {submissionFile && <p className="text-xs text-slate-500">Attached: {submissionFile.fileName}</p>}
+                {uploadingSubmissionFile && <p role="status" className="text-xs text-primary">Uploading attachment… Please wait before submitting.</p>}
+                {submissionFile && <p className="text-xs text-muted-foreground">Attached: {submissionFile.fileName}</p>}
               </div>
-              <Button className="w-full bg-blue-600 text-white gap-2" onClick={submit} disabled={submitting || uploadingSubmissionFile}>
+              <Button className="w-full gap-2 shadow-sm shadow-primary/20" onClick={submit} disabled={submitting || uploadingSubmissionFile}>
                 <Send className="h-4 w-4" /> {submitting ? "Submitting…" : "Submit Assignment"}
               </Button>
             </div>
