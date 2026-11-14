@@ -229,7 +229,8 @@ export default function TeacherCvReviewWorkspace({initialTab="applications"}:{in
       <Text style={{ color: "#dbeafe", fontSize: 12, marginTop: 5 }}>Review submitted evidence, record decisions, inspect history and message applicants.</Text>
     </View>
     {(canViewApplications || canViewQualifications) ? <View style={{ flexDirection: "row", gap: 8, padding: 12, backgroundColor: colors.background }}>{canViewApplications ? <TouchableOpacity onPress={() => setActiveTab("applications")} style={[button, { flex: 1, backgroundColor: activeTab === "applications" ? colors.primary : colors.card, borderWidth: activeTab === "applications" ? 0 : 1, borderColor: colors.border }]}><Text style={[buttonText, activeTab === "applications" ? {} : { color: colors.foreground }]}>CV applications & surveys</Text></TouchableOpacity> : null}{canViewQualifications ? <TouchableOpacity onPress={() => setActiveTab("qualifications")} style={[button, { flex: 1, backgroundColor: activeTab === "qualifications" ? colors.primary : colors.card, borderWidth: activeTab === "qualifications" ? 0 : 1, borderColor: colors.border }]}><Text style={[buttonText, activeTab === "qualifications" ? {} : { color: colors.foreground }]}>Qualifications & certificates</Text></TouchableOpacity> : null}</View> : null}
-    {activeTab === "qualifications" && canViewQualifications ? <QualificationReviewWorkspaceMobile /> : activeTab === "applications" && canViewApplications ? <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: 100 }}> : <View style={{padding:20}}><Text style={{color:colors.mutedForeground}}>The Owner has not granted access to staff verification.</Text></View>}
+    {activeTab === "qualifications" && canViewQualifications ? <QualificationReviewWorkspaceMobile /> : null}
+    {activeTab === "applications" && canViewApplications ? <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: 100 }}> : <View style={{padding:20}}><Text style={{color:colors.mutedForeground}}>The Owner has not granted access to staff verification.</Text></View>}
       {error ? <View style={[card, { borderColor: "#dc2626" }]}><Text style={{ color: "#dc2626" }}>{error}</Text><TouchableOpacity onPress={() => void loadQueue()}><Text style={{ color: colors.primary, fontWeight: "800", marginTop: 8 }}>Retry</Text></TouchableOpacity></View> : null}
       {canEditConfig ? <View style={card}>
         <Text style={heading}>Owner review configuration</Text>
@@ -298,6 +299,7 @@ export default function TeacherCvReviewWorkspace({initialTab="applications"}:{in
         <TouchableOpacity disabled={busy || !draft.trim()} onPress={() => void sendMessage()} style={[button, { marginTop: 8 }]}><Text style={buttonText}>Send message</Text></TouchableOpacity></> : null}
         <TouchableOpacity onPress={() => { setDetail(null); setSelectedId(null); setHistory([]); setChat([]); }} style={{ padding: 12, alignItems: "center" }}><Text style={{ color: colors.primary, fontWeight: "800" }}>Close application</Text></TouchableOpacity>
       </View> : null}
-    </ScrollView>}
+    </ScrollView> : null}
+    {!canViewApplications && !canViewQualifications ? <View style={{padding:20}}><Text style={{color:colors.mutedForeground}}>The Owner has not granted access to staff verification.</Text></View> : null}
   </View>;
 }
