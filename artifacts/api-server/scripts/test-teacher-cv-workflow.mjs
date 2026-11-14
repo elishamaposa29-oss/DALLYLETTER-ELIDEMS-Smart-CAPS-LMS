@@ -196,6 +196,9 @@ assert((await adminCvPdf.arrayBuffer()).byteLength>0,"Admin receives the non-emp
 const adminPhoto=await fetch(base+"/api/users/"+approvalApplicant.id+"/teacher-documents/"+profilePhoto.data.id,{headers:{Authorization:"Bearer "+adminToken}});
 assert.equal(adminPhoto.status,200,"Admin read-only CV access includes the submitted profile photo document");
 assert((await adminPhoto.arrayBuffer()).byteLength>0,"Admin receives the non-empty submitted profile photo bytes");
+const adminCertificate=await fetch(base+"/api/users/"+approvalApplicant.id+"/teacher-documents/"+certificate.data.document.id,{headers:{Authorization:"Bearer "+adminToken}});
+assert.equal(adminCertificate.status,200,"Admin read-only CV access includes submitted qualification certificate documents");
+assert((await adminCertificate.arrayBuffer()).byteLength>0,"Admin receives the non-empty qualification certificate bytes");
 const adminApprove=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/decision",{token:adminToken,method:"POST",body:{action:"approve",note:"Admin approval must be denied"}});
 assert.equal(adminApprove.status,403,"Admin cannot bypass the Owner/Senior Manager authorization grant");
 const adminReject=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/decision",{token:adminToken,method:"POST",body:{action:"reject",note:"Admin rejection must be denied"}});
@@ -244,6 +247,15 @@ assert.equal(surveyApplicantCvSubmission.rows[0].has_cv_submission,false,"Indepe
 assert(managerSurveyQueueRow.survey_submitted_at,"Review queue identifies the independent survey submission timestamp");
 const managerDetail=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/details",{token:managerToken});
 assert.equal(managerDetail.status,200,"Authorized manager can open applicant details");
+const juniorDocument=await fetch(base+"/api/users/"+approvalApplicant.id+"/teacher-documents/"+certificate.data.document.id,{headers:{Authorization:"Bearer "+managerToken}});
+assert.equal(juniorDocument.status,200,"Junior Manager with explicit CV view grant can open submitted certificate documents");
+assert((await juniorDocument.arrayBuffer()).byteLength>0,"Junior Manager receives the actual certificate bytes");
+const juniorHistoryDenied=await request("/api/qualifications/"+qualification.data.id+"/review-history",{token:managerToken});
+assert.equal(juniorHistoryDenied.status,403,"Junior Manager cannot inspect qualification history without its separate Owner grant");
+const juniorHistoryGrant=await request("/api/manager-permissions/"+managerId,{token:ownerToken,method:"PUT",body:{permissions:[{key:"qualifications.view",granted:true}]}});
+assert.equal(juniorHistoryGrant.status,200,"Owner can separately grant qualification history viewing to a Junior Manager");
+const juniorHistoryAllowed=await request("/api/qualifications/"+qualification.data.id+"/review-history",{token:managerToken});
+assert.equal(juniorHistoryAllowed.status,200,"Junior Manager can inspect qualification history only after the explicit Owner grant");
 const juniorDecision=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/decision",{token:managerToken,method:"POST",body:{action:"approve",note:"Junior must not approve without senior authority"}});
 assert.equal(juniorDecision.status,403,"A Junior Manager with view/chat grants cannot approve an application");
 const juniorRejectDecision=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/decision",{token:managerToken,method:"POST",body:{action:"reject",note:"Junior must not reject without senior authority"}});
