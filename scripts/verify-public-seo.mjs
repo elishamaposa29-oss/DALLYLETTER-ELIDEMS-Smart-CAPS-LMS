@@ -1,13 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { normalizeGoogleSiteVerificationToken } from "./google-site-verification.mjs";
 import { educationSeoTags, getEducationSeoTagCounts, getPageSeoTags } from "./education-seo-tags.mjs";
 
-const root = path.resolve("dist/public");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const root = path.join(repoRoot, "artifacts", "dallyletter", "dist", "public");
 const appShellPath = path.join(root, "app.html");
 if (!fs.existsSync(appShellPath)) throw new Error("Authenticated SPA shell app.html is missing from the production build");
 if (fs.existsSync(path.join(root, "index.html"))) throw new Error("Authenticated SPA shell must not occupy /index.html; Vercel needs the root path for the prerendered public homepage");
-const vercelConfig = JSON.parse(fs.readFileSync(path.resolve("../../vercel.json"), "utf8"));
+const vercelConfig = JSON.parse(fs.readFileSync(path.join(repoRoot, "vercel.json"), "utf8"));
 const rootRewrite = (vercelConfig.rewrites || []).find((route) => route.source === "/");
 if (rootRewrite?.destination !== "/public-site/index.html") {
   throw new Error("Vercel root route must serve /public-site/index.html so the public homepage is indexable");
@@ -207,7 +209,7 @@ if (!notFoundHtml.includes('name="robots" content="noindex, follow"') || !notFou
   throw new Error("404 page must be noindex and link back to the public homepage");
 }
 
-const vercel = JSON.parse(fs.readFileSync(path.resolve("../../vercel.json"), "utf8"));
+const vercel = JSON.parse(fs.readFileSync(path.join(repoRoot, "vercel.json"), "utf8"));
 const rewriteSources = new Set(vercel.rewrites.map(rewrite => rewrite.source));
 if (rewriteSources.has("/(.*)") || rewriteSources.has("/:path*")) {
   throw new Error("A catch-all SPA rewrite creates soft 404s for unknown URLs");
