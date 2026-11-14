@@ -8,9 +8,10 @@ let notificationMetadataSchema: Promise<void> | null = null;
 
 export async function ensureNotificationMetadataSchema(): Promise<void> {
   if (!notificationMetadataSchema) {
-    notificationMetadataSchema = pool.query("ALTER TABLE email_notification_queue ADD COLUMN IF NOT EXISTS related_entity_type text; ALTER TABLE email_notification_queue ADD COLUMN IF NOT EXISTS related_entity_id integer")
-      .then(() => undefined)
-      .catch(error => { notificationMetadataSchema = null; throw error; });
+    notificationMetadataSchema = (async () => {
+      await pool.query("ALTER TABLE email_notification_queue ADD COLUMN IF NOT EXISTS related_entity_type text");
+      await pool.query("ALTER TABLE email_notification_queue ADD COLUMN IF NOT EXISTS related_entity_id integer");
+    })().catch(error => { notificationMetadataSchema = null; throw error; });
   }
   return notificationMetadataSchema;
 }
