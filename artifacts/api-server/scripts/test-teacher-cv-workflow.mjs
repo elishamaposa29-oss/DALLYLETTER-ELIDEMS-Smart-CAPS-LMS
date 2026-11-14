@@ -260,6 +260,9 @@ assert.equal((await pool.query("SELECT 1 FROM teacher_profiles WHERE user_id=$1"
 assert.equal((await pool.query("SELECT 1 FROM teacher_documents WHERE user_id=$1",[wholeApplicationDeleteApplicant.id])).rowCount,0,"Whole application deletion removes uploaded document and inline media bytes");
 assert.equal((await pool.query("SELECT 1 FROM teacher_qualifications WHERE user_id=$1",[wholeApplicationDeleteApplicant.id])).rowCount,0,"Whole application deletion removes qualification records and their dependent review history");
 assert.equal((await pool.query("SELECT 1 FROM teacher_cv_chat_messages WHERE teacher_id=$1",[wholeApplicationDeleteApplicant.id])).rowCount,0,"Whole application deletion removes all private application chat messages");
+assert.equal((await pool.query("SELECT 1 FROM notifications WHERE type='teacher_cv_message' AND message LIKE $1",["%Private application message to erase%"])).rowCount,0,"Whole application deletion removes notification copies of private chat messages");
+assert.equal((await pool.query("SELECT 1 FROM email_notification_queue WHERE subject=$1 AND body_text LIKE $2",["Dallyletter Elidems — New teacher application message","%Private application message to erase%"])).rowCount,0,"Whole application deletion removes queued email copies of private chat messages");
+
 const wholeApplicationAudit=await pool.query("SELECT action,new_status FROM teacher_cv_review_history WHERE teacher_id=$1",[wholeApplicationDeleteApplicant.id]);
 assert.equal(wholeApplicationAudit.rowCount,1,"Whole application deletion retains only one minimal deletion audit marker");
 assert.equal(wholeApplicationAudit.rows[0].action,"application_deleted","Application content review history is removed and replaced by a non-content deletion marker");
