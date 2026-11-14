@@ -89,6 +89,7 @@ export default function StudentLessons() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center">
           <div>
+            <p className="dallyletter-tech-label mb-1 text-[10px] font-bold text-primary">Dallyletter learning network · Resource library</p>
             <h1 className="text-3xl font-black tracking-tight text-[#0A1931] dark:text-[#FFF8E1]">Lessons</h1>
             <p className="text-muted-foreground">Browse your course materials and study notes.</p>
           </div>
