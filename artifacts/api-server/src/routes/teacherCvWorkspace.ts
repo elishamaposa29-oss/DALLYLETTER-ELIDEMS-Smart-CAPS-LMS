@@ -18,7 +18,7 @@ function idOf(v:unknown){const n=Number(v);return Number.isSafeInteger(n)&&n>0?n
 router.use(requireAuth);
 router.get("/config",requireManagerPermission("teacher_cv.view"),async(req,res)=>{if(!canReview(req.currentUser)){res.status(403).json({error:"Owner or Senior Manager access required"});return}await ensure();const r=await pool.query("SELECT review_duration_days,updated_at FROM teacher_cv_workflow_settings WHERE id=1");res.json({reviewDurationDays:(r.rows[0]?.review_duration_days==null?null:Number(r.rows[0].review_duration_days)),updatedAt:r.rows[0]?.updated_at||null,canEdit:isOwner(req.currentUser)})});
 router.patch("/config",async(req,res)=>{if(!isOwner(req.currentUser)){res.status(403).json({error:"Only the Owner can set the review duration"});return}const days=Number(req.body?.reviewDurationDays);if(!Number.isInteger(days)||days<1||days>365){res.status(400).json({error:"Choose a whole number from 1 to 365 days"});return}await ensure();const r=await pool.query("UPDATE teacher_cv_workflow_settings SET review_duration_days=$1,updated_by=$2,updated_at=now() WHERE id=1 RETURNING review_duration_days,updated_at",[days,req.currentUser!.id]);await pool.query("UPDATE users u SET teacher_review_deadline=COALESCE((SELECT max(h.created_at) FROM teacher_cv_review_history h WHERE h.teacher_id=u.id AND h.action='submitted'),u.created_at)+make_interval(days=>$1) WHERE lower(u.role)=$2 AND u.teacher_application_status IN ($3,$4)",[days,"teacher","draft","pending_review"]);res.json({reviewDurationDays:r.rows[0].review_duration_days,updatedAt:r.rows[0].updated_at})});
-router.get("/queue",requireManagerPermission("teacher_cv.view"),async(req,res)=>{await ensure();const s=await pool.query("SELECT review_duration_days FROM teacher_cv_workflow_settings WHERE id=1");const days=s.rows[0]?.review_duration_days==null?null:Number(s.rows[0].review_duration_days);const r=await pool.query("SELECT u.id,u.name,u.email,u.role,u.is_manager,u.manager_level,u.created_at,(SELECT max(h.created_at) FROM teacher_cv_review_history h WHERE h.teacher_id=u.id AND h.action='submitted') submitted_at,COALESCE(u.teacher_application_status,$1) status,u.teacher_review_deadline deadline,(u.teacher_review_deadline IS NOT NULL AND u.teacher_review_deadline<=now()) overdue,(SELECT count(*)::int FROM teacher_documents d WHERE d.user_id=u.id) document_count,(tp.cv->>'surveySubmittedAt') survey_submitted_at,COALESCE(tp.cv->>'surveyReviewStatus','pending') survey_review_status,EXISTS(SELECT 1 FROM teacher_cv_review_history submitted WHERE submitted.teacher_id=u.id AND submitted.action='submitted') has_cv_submission FROM users u LEFT JOIN teacher_profiles tp ON tp.user_id=u.id WHERE lower(u.role)=$2 AND ((COALESCE(u.teacher_application_status,$3) NOT IN ($4,$5,$6,$7) AND EXISTS (SELECT 1 FROM teacher_cv_review_history submitted WHERE submitted.teacher_id=u.id AND submitted.action='submitted')) OR (tp.cv->>'surveySubmittedAt' IS NOT NULL AND COALESCE(tp.cv->>'surveyReviewStatus','pending')='pending')) ORDER BY u.created_at DESC LIMIT 250",["pending_review","teacher","pending_review","approved","rejected","auto_converted","rejected_pending_conversion"]);const actor=req.currentUser!;const applications=(isOwner(actor)||isAdmin(actor))?r.rows:r.rows.filter((row:any)=>canModerateUser(actor,{role:row.role,isManager:row.is_manager,managerLevel:row.manager_level})).map(({role,is_manager,manager_level,...row}:any)=>row);res.json({reviewDurationDays:days,applications})});
+router.get("/queue",requireManagerPermission("teacher_cv.view"),async(req,res)=>{await ensure();const s=await pool.query("SELECT review_duration_days FROM teacher_cv_workflow_settings WHERE id=1");const days=s.rows[0]?.review_duration_days==null?null:Number(s.rows[0].review_duration_days);const r=await pool.query("SELECT u.id,u.name,u.email,u.role,u.is_manager,u.manager_level,u.created_at,(SELECT max(h.created_at) FROM teacher_cv_review_history h WHERE h.teacher_id=u.id AND h.action='submitted') submitted_at,COALESCE(u.teacher_application_status,'pending_review') status,u.teacher_review_deadline deadline,(u.teacher_review_deadline IS NOT NULL AND u.teacher_review_deadline<=now()) overdue,(SELECT count(*)::int FROM teacher_documents d WHERE d.user_id=u.id) document_count,(tp.cv->>'surveySubmittedAt') survey_submitted_at,COALESCE(tp.cv->>'surveyReviewStatus','pending') survey_review_status,(COALESCE((SELECT max(h.created_at) FILTER (WHERE h.action='submitted') FROM teacher_cv_review_history h WHERE h.teacher_id=u.id),'epoch'::timestamptz) > COALESCE((SELECT max(h.created_at) FILTER (WHERE h.action='cv_deleted') FROM teacher_cv_review_history h WHERE h.teacher_id=u.id),'epoch'::timestamptz)) has_cv_submission FROM users u LEFT JOIN teacher_profiles tp ON tp.user_id=u.id WHERE lower(u.role)='teacher' AND (tp.user_id IS NOT NULL OR EXISTS(SELECT 1 FROM teacher_cv_review_history h WHERE h.teacher_id=u.id AND h.action IN ('submitted','cv_submission_superseded','cv_deleted','approved','rejected')) OR EXISTS(SELECT 1 FROM teacher_documents d WHERE d.user_id=u.id) OR EXISTS(SELECT 1 FROM teacher_qualifications q WHERE q.user_id=u.id)) ORDER BY u.created_at DESC LIMIT 500");const actor=req.currentUser!;const applications=(isOwner(actor)||isAdmin(actor))?r.rows:r.rows.filter((row:any)=>canModerateUser(actor,{role:row.role,isManager:row.is_manager,managerLevel:row.manager_level})).map(({role,is_manager,manager_level,...row}:any)=>row);res.json({reviewDurationDays:days,applications})});
 router.post("/survey/submit",async(req,res)=>{
  await ensure();
  const actor=req.currentUser!;
@@ -32,10 +32,7 @@ router.post("/survey/submit",async(req,res)=>{
   const cv=profile.rows[0].cv&&typeof profile.rows[0].cv==="object"?profile.rows[0].cv:{};
   let answers:any={};
   try{answers=typeof cv.surveyAnswers==="string"?JSON.parse(cv.surveyAnswers):cv.surveyAnswers||{};}catch{answers={};}
-  const required=["laptop","smartphone","computer","online","internet","power","verificationCall"];
-  const missing=required.filter(key=>!String(answers[key]??"").trim());
-  if(!Array.isArray(answers.platforms)||!answers.platforms.some((value:any)=>String(value||"").trim()))missing.push("platforms");
-  if(missing.length){await client.query("ROLLBACK");res.status(409).json({error:"Complete the required readiness survey answers before submitting the survey.",missingFields:missing});return;}
+  // Readiness answers are optional; incomplete answers must not block submission.
   if(cv.surveySubmittedAt){await client.query("COMMIT");res.json({submitted:true,alreadySubmitted:true,submittedAt:cv.surveySubmittedAt});return;}
   const submittedAt=new Date().toISOString();
   const nextCv={...cv,surveySubmittedAt:submittedAt,surveyReviewStatus:"pending",surveyReviewNote:null,surveyReviewedAt:null,surveyReviewedBy:null};
@@ -97,19 +94,8 @@ router.post("/submit",async(req,res)=>{
  if(normalizeRole(actor.role)!=="teacher"){res.status(403).json({error:"Only the applying teacher can submit this application"});return;}
  await ensure();
  await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, cv jsonb NOT NULL DEFAULT '{}'::jsonb, updated_at timestamptz NOT NULL DEFAULT now())");
- const [cvResult,docs,quals]=await Promise.all([
-  pool.query("SELECT cv FROM teacher_profiles WHERE user_id=$1",[actor.id]),
-  pool.query("SELECT id FROM teacher_documents WHERE user_id=$1 AND document_type='resume' AND mime_type='application/pdf'",[actor.id]),
-  pool.query("SELECT q.id,q.title,q.document_id,d.document_type FROM teacher_qualifications q LEFT JOIN teacher_documents d ON d.id=q.document_id AND d.user_id=q.user_id WHERE q.user_id=$1",[actor.id]),
- ]);
- const cv=(cvResult.rows[0]?.cv||{}) as Record<string,unknown>;
- let personal:any={};try{personal=JSON.parse(String(cv.personalDetails||"{}"))}catch{}
- const missing=["professionalSummary","education","experience","subjects","address"].filter(k=>typeof cv[k]!=="string"||String(cv[k]).trim().length<2);
- const photo=await pool.query("SELECT id FROM teacher_documents WHERE id=$1 AND user_id=$2 AND document_type='cv' AND mime_type LIKE 'image/%'",[Number(cv.photoDocumentId),actor.id]);
- const incomplete=quals.rows.filter(q=>!q.document_id||q.document_type!=="certificate");
- if(missing.length||!personal.fullName||!personal.idNumber||!personal.dob||!personal.phone||!personal.email||!personal.address||!photo.rows.length||!docs.rows.length||!quals.rows.length||incomplete.length){
-  res.status(409).json({error:"Complete the required CV details, upload a PDF resume and profile photo, and attach a separate certificate to every qualification before submitting. The readiness survey is optional and can be saved separately.",missingFields:missing,photoUploaded:Boolean(photo.rows.length),resumeUploaded:docs.rows.length>0,qualifications:quals.rows.length,certificatesMissing:incomplete.length});return;
- }
+ // Attachments, qualifications, and profile completeness are optional. A saved
+ // incomplete CV remains eligible for submission and owner review.
  const reviewSetting=await pool.query("SELECT review_duration_days FROM teacher_cv_workflow_settings WHERE id=1");
  const configuredDays=Number(reviewSetting.rows[0]?.review_duration_days||30);
  const reviewDays=Number.isInteger(configuredDays)&&configuredDays>=1&&configuredDays<=365?configuredDays:30;
@@ -125,8 +111,8 @@ router.post("/submit",async(req,res)=>{
    if(["approved","rejected_pending_conversion","auto_converted"].includes(previousStatus)){
     await submissionClient.query("ROLLBACK");res.status(409).json({error:"This teacher application is no longer eligible for submission."});return;
    }
-   const priorSubmission=await submissionClient.query("SELECT id FROM teacher_cv_review_history WHERE teacher_id=$1 AND action='submitted' LIMIT 1",[actor.id]);
-   if(priorSubmission.rows.length){
+   const priorSubmission=await submissionClient.query("SELECT action FROM teacher_cv_review_history WHERE teacher_id=$1 AND action IN ('submitted','cv_deleted') ORDER BY created_at DESC,id DESC LIMIT 1",[actor.id]);
+   if(priorSubmission.rows[0]?.action==='submitted'){
     await submissionClient.query("UPDATE users SET teacher_application_status='pending_review',teacher_review_deadline=COALESCE((SELECT max(h.created_at) FROM teacher_cv_review_history h WHERE h.teacher_id=users.id AND h.action='submitted'),now())+make_interval(days=>$2) WHERE id=$1 AND lower(role)='teacher'",[actor.id,reviewDays]);
     alreadySubmitted=true;
    }else{
@@ -175,7 +161,7 @@ router.post("/submit",async(req,res)=>{
   message:"Your CV and supporting documents have been saved and submitted for review. Notification delivery will be attempted separately and cannot block your application."
  });
 });
-router.get("/:teacherId/details",requireManagerPermission("teacher_cv.view"),async(req,res)=>{const id=idOf(req.params.teacherId);if(!id){res.status(400).json({error:"Invalid teacher id"});return}await ensure();await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, cv jsonb NOT NULL DEFAULT jsonb_build_object(), updated_at timestamptz NOT NULL DEFAULT now())");const [u,d,c,h,q]=await Promise.all([pool.query("SELECT id,name,email,phone,role,is_manager,manager_level,created_at,COALESCE(teacher_application_status,'pending_review') AS teacher_application_status FROM users WHERE id=$1 AND lower(role)='teacher'",[id]),pool.query("SELECT id,document_type,file_name,mime_type,size_bytes,created_at FROM teacher_documents WHERE user_id=$1 ORDER BY created_at DESC",[id]),pool.query("SELECT cv,updated_at FROM teacher_profiles WHERE user_id=$1",[id]),pool.query("SELECT h.action,h.previous_status,h.new_status,h.note,h.created_at,u.name reviewer_name FROM teacher_cv_review_history h LEFT JOIN users u ON u.id=h.reviewer_id WHERE h.teacher_id=$1 ORDER BY h.created_at DESC LIMIT 100",[id]),pool.query("SELECT q.id,q.title,q.institution,q.year,q.verification_status,q.document_id,d.file_name AS document_file_name,d.mime_type AS document_mime_type FROM teacher_qualifications q LEFT JOIN teacher_documents d ON d.id=q.document_id AND d.user_id=q.user_id WHERE q.user_id=$1 ORDER BY q.created_at ASC",[id])]);const hasCvSubmission=h.rows.some((item:any)=>item.action==="submitted");const cvValue=c.rows[0]?.cv&&typeof c.rows[0].cv==="object"?c.rows[0].cv:{};const hasSurveySubmission=Boolean(cvValue.surveySubmittedAt);if(!u.rows.length || (!hasCvSubmission&&!hasSurveySubmission) || (!isOwner(req.currentUser) && !isAdmin(req.currentUser) && (!canModerateUser(req.currentUser!,{role:u.rows[0].role,isManager:u.rows[0].is_manager,managerLevel:u.rows[0].manager_level}) || (hasCvSubmission&&!["pending_review","not_applicable"].includes(String(u.rows[0].teacher_application_status||"pending_review")))))){res.status(404).json({error:"Teacher application or submitted readiness survey not found"});return}const {role,is_manager,manager_level,...teacher}=u.rows[0];res.json({teacher,documents:d.rows,qualifications:q.rows,cv:c.rows[0]?.cv||{},history:h.rows})});
+router.get("/:teacherId/details",requireManagerPermission("teacher_cv.view"),async(req,res)=>{const id=idOf(req.params.teacherId);if(!id){res.status(400).json({error:"Invalid teacher id"});return}await ensure();await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, cv jsonb NOT NULL DEFAULT jsonb_build_object(), updated_at timestamptz NOT NULL DEFAULT now())");const [u,d,c,h,q]=await Promise.all([pool.query("SELECT id,name,email,phone,role,is_manager,manager_level,created_at,COALESCE(teacher_application_status,'pending_review') AS teacher_application_status FROM users WHERE id=$1 AND lower(role)='teacher'",[id]),pool.query("SELECT id,document_type,file_name,mime_type,size_bytes,created_at FROM teacher_documents WHERE user_id=$1 ORDER BY created_at DESC",[id]),pool.query("SELECT cv,updated_at FROM teacher_profiles WHERE user_id=$1",[id]),pool.query("SELECT h.action,h.previous_status,h.new_status,h.note,h.created_at,u.name reviewer_name FROM teacher_cv_review_history h LEFT JOIN users u ON u.id=h.reviewer_id WHERE h.teacher_id=$1 ORDER BY h.created_at DESC LIMIT 100",[id]),pool.query("SELECT q.id,q.title,q.institution,q.year,q.verification_status,q.document_id,d.file_name AS document_file_name,d.mime_type AS document_mime_type FROM teacher_qualifications q LEFT JOIN teacher_documents d ON d.id=q.document_id AND d.user_id=q.user_id WHERE q.user_id=$1 ORDER BY q.created_at ASC",[id])]);const latestCvLifecycle=h.rows.find((item:any)=>["submitted","cv_deleted"].includes(item.action));const hasCvSubmission=latestCvLifecycle?.action==="submitted";const cvValue=c.rows[0]?.cv&&typeof c.rows[0].cv==="object"?c.rows[0].cv:{};const hasSurveySubmission=Boolean(cvValue.surveySubmittedAt);if(!u.rows.length || (!hasCvSubmission&&!hasSurveySubmission) || (!isOwner(req.currentUser) && !isAdmin(req.currentUser) && (!canModerateUser(req.currentUser!,{role:u.rows[0].role,isManager:u.rows[0].is_manager,managerLevel:u.rows[0].manager_level}) || (hasCvSubmission&&!["pending_review","not_applicable"].includes(String(u.rows[0].teacher_application_status||"pending_review")))))){res.status(404).json({error:"Teacher application or submitted readiness survey not found"});return}const {role,is_manager,manager_level,...teacher}=u.rows[0];res.json({teacher,documents:d.rows,qualifications:q.rows,cv:c.rows[0]?.cv||{},history:h.rows})});
 router.post("/:teacherId/decision",requireManagerPermissionForRequest((req)=>req.body?.action==="approve"?"teacher_cv.authorize":"teacher_cv.review"),async(req,res)=>{
  if(!canReview(req.currentUser)){res.status(403).json({error:"Only Owner or Senior Manager can decide teacher applications"});return;}
  const id=idOf(req.params.teacherId),action=String(req.body?.action||""),note=typeof req.body?.note==="string"?req.body.note.trim().slice(0,2000):"";
@@ -184,58 +170,119 @@ router.post("/:teacherId/decision",requireManagerPermissionForRequest((req)=>req
  const q=await pool.query("SELECT id,name,email,role,is_manager,manager_level,teacher_application_status FROM users WHERE id=$1",[id]);
  const t=q.rows[0];
  const submitted=await pool.query("SELECT 1 FROM teacher_cv_review_history WHERE teacher_id=$1 AND action='submitted' LIMIT 1",[id]);
- if(!t||normalizeRole(t.role)!=="teacher"||!submitted.rows.length||(!isOwner(req.currentUser)&&!isAdmin(req.currentUser)&&!canModerateUser(req.currentUser!,{role:t.role,isManager:t.is_manager,managerLevel:t.manager_level}))){res.status(404).json({error:"Teacher application not found"});return;}
- if(action==="approve"){
-  const [cvResult,qualResult,resumeResult]=await Promise.all([
-   pool.query("SELECT cv FROM teacher_profiles WHERE user_id=$1",[id]),
-   pool.query("SELECT q.id,q.title,q.verification_status,q.document_id,d.document_type FROM teacher_qualifications q LEFT JOIN teacher_documents d ON d.id=q.document_id AND d.user_id=q.user_id WHERE q.user_id=$1",[id]),
-   pool.query("SELECT id FROM teacher_documents WHERE user_id=$1 AND document_type='resume' AND mime_type='application/pdf' LIMIT 1",[id])
-  ]);
-  const cv=(cvResult.rows[0]?.cv||{}) as Record<string,unknown>;
-  let personal:any={};try{personal=JSON.parse(String(cv.personalDetails||"{}"))}catch{}
-  const required=["professionalSummary","education","experience","subjects","address"];
-  const missing=required.filter(k=>typeof cv[k]!=="string"||String(cv[k]).trim().length<2);
-  const photoResult=await pool.query("SELECT id FROM teacher_documents WHERE id=$1 AND user_id=$2 AND document_type=$3 AND mime_type LIKE $4",[Number(cv.photoDocumentId),id,"cv","image/%"]);
-  const hasPhoto=photoResult.rows.length>0;
-  const incomplete=qualResult.rows.filter(q=>q.verification_status!=="verified"||!q.document_id||q.document_type!=="certificate");
-  if(missing.length||!hasPhoto||!resumeResult.rows.length||!personal.fullName||!personal.idNumber||!personal.dob||!personal.phone||!personal.email||!personal.address||!qualResult.rows.length||incomplete.length){
-   res.status(409).json({error:"Complete personal/legal details, upload a profile photo and PDF resume, attach a certificate to every qualification, and have every qualification verified before authorizing teaching access. The readiness survey is optional.",missingFields:missing,photoUploaded:hasPhoto,resumePdfUploaded:Boolean(resumeResult.rows.length),qualificationCount:qualResult.rows.length,unverifiedQualifications:incomplete.map(q=>({id:q.id,title:q.title,status:q.verification_status,documentUploaded:Boolean(q.document_id)}))});return;
-  }
- }
+ const surveyState=await pool.query("SELECT cv->>'surveySubmittedAt' AS submitted_at FROM teacher_profiles WHERE user_id=$1",[id]);
+ const hasCvSubmission=submitted.rows.length>0;
+ const hasSurveySubmission=Boolean(surveyState.rows[0]?.submitted_at);
+ if(!t||normalizeRole(t.role)!=="teacher"||(!hasCvSubmission&&!hasSurveySubmission)||(!isOwner(req.currentUser)&&!isAdmin(req.currentUser)&&!canModerateUser(req.currentUser!,{role:t.role,isManager:t.is_manager,managerLevel:t.manager_level}))){res.status(404).json({error:"Submitted CV or readiness survey not found"});return;}
  const client=await pool.connect();
  let conversionDeadline:string|null=null;
  try{
   await client.query("BEGIN");
   if(action==="approve"){
-   const updated=await client.query("UPDATE users SET role='teacher',teacher_application_status='approved',teacher_review_deadline=NULL,updated_at=now() WHERE id=$1 AND lower(role)='teacher' AND COALESCE(teacher_application_status,'not_applicable') IN ('pending_review','not_applicable') RETURNING id,role,teacher_application_status",[id]);
-    if(!updated.rows.length){await client.query("ROLLBACK");res.status(409).json({error:"This application is no longer awaiting a decision."});return;}
-   await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,'approved',$3,'approved',$4)",[id,req.currentUser!.id,t.teacher_application_status||"pending_review",note||null]);
+   if(hasCvSubmission){
+    const updated=await client.query("UPDATE users SET role='teacher',teacher_application_status='approved',teacher_review_deadline=NULL,updated_at=now() WHERE id=$1 AND lower(role)='teacher' AND COALESCE(teacher_application_status,'not_applicable') IN ('pending_review','not_applicable') RETURNING id,role,teacher_application_status",[id]);
+    if(!updated.rows.length){await client.query("ROLLBACK");res.status(409).json({error:"This CV application is no longer awaiting a decision."});return;}
+    await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,'approved',$3,'approved',$4)",[id,req.currentUser!.id,t.teacher_application_status||"pending_review",note||null]);
+   }
+   if(hasSurveySubmission){
+    await client.query("UPDATE teacher_profiles SET cv=jsonb_set(cv,'{surveyReviewStatus}',to_jsonb('approved'::text),true) || jsonb_build_object('surveyReviewNote',$2::text,'surveyReviewedAt',now()::text,'surveyReviewedBy',$3::integer),updated_at=now() WHERE user_id=$1",[id,note||null,req.currentUser!.id]);
+    await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,'survey_approved','survey_pending','approved',$3)",[id,req.currentUser!.id,note||null]);
+   }
   }else{
-   const setting=await client.query("SELECT review_duration_days FROM teacher_cv_workflow_settings WHERE id=1");
-   const days=Number(setting.rows[0]?.review_duration_days||30);
-   const safeDays=Number.isInteger(days)&&days>=1&&days<=365?days:30;
-   const deadline=await client.query("UPDATE users SET teacher_application_status='rejected_pending_conversion',teacher_review_deadline=now()+make_interval(days=>$2),is_manager=false,is_prefect=false WHERE id=$1 AND lower(role)='teacher' AND COALESCE(teacher_application_status,'not_applicable') IN ('pending_review','not_applicable') RETURNING teacher_review_deadline",[id,safeDays]);
-    if(!deadline.rows.length){await client.query("ROLLBACK");res.status(409).json({error:"This application is no longer awaiting a decision."});return;}
-   conversionDeadline=deadline.rows[0]?.teacher_review_deadline?new Date(deadline.rows[0].teacher_review_deadline).toISOString():null;
-   await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,'rejected',$3,'rejected_pending_conversion',$4)",[id,req.currentUser!.id,t.teacher_application_status||"pending_review",note||null]);
+   if(hasCvSubmission){
+    const setting=await client.query("SELECT review_duration_days FROM teacher_cv_workflow_settings WHERE id=1");
+    const days=Number(setting.rows[0]?.review_duration_days||30);
+    const safeDays=Number.isInteger(days)&&days>=1&&days<=365?days:30;
+    const deadline=await client.query("UPDATE users SET teacher_application_status='rejected_pending_conversion',teacher_review_deadline=now()+make_interval(days=>$2),is_manager=false,is_prefect=false WHERE id=$1 AND lower(role)='teacher' AND COALESCE(teacher_application_status,'not_applicable') IN ('pending_review','not_applicable') RETURNING teacher_review_deadline",[id,safeDays]);
+    if(!deadline.rows.length){await client.query("ROLLBACK");res.status(409).json({error:"This CV application is no longer awaiting a decision."});return;}
+    conversionDeadline=deadline.rows[0]?.teacher_review_deadline?new Date(deadline.rows[0].teacher_review_deadline).toISOString():null;
+    await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,'rejected',$3,'rejected_pending_conversion',$4)",[id,req.currentUser!.id,t.teacher_application_status||"pending_review",note||null]);
+   }
+   if(hasSurveySubmission){
+    await client.query("UPDATE teacher_profiles SET cv=jsonb_set(cv,'{surveyReviewStatus}',to_jsonb('rejected'::text),true) || jsonb_build_object('surveyReviewNote',$2::text,'surveyReviewedAt',now()::text,'surveyReviewedBy',$3::integer),updated_at=now() WHERE user_id=$1",[id,note||null,req.currentUser!.id]);
+    await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,'survey_rejected','survey_pending','rejected',$3)",[id,req.currentUser!.id,note||null]);
+   }
   }
   await client.query("COMMIT");
  }catch(e){await client.query("ROLLBACK").catch(()=>undefined);throw e;}finally{client.release();}
- const title=action==="approve"?"Teacher application approved":"Teacher application not approved";
- const message=action==="approve"
-  ?"Your teacher CV has been approved. Your teacher permissions are now active. Sign in again if your dashboard has not refreshed."
-  :"Your teacher CV was not approved. Your account and login remain active, but teaching permissions are disabled. Your account is scheduled to become a learner after "+(conversionDeadline?new Date(conversionDeadline).toLocaleString():"the configured conversion period")+".";
- try{await db.insert(notificationsTable).values({recipientId:id,title,message,link:action==="approve"?"/teacher":"/profile-hub",type:"teacher_cv_decision"});}catch(error){console.error("[teacher-cv] Decision notification failed; decision remains saved.",error instanceof Error?error.message:"unknown");}
+ const title=hasCvSubmission?(action==="approve"?"Teacher application approved":"Teacher application not approved"):(action==="approve"?"Readiness survey approved":"Readiness survey not approved");
+ const message=hasCvSubmission
+  ?(action==="approve"?"Your teacher CV has been approved. Your teacher permissions are now active. Sign in again if your dashboard has not refreshed.":"Your teacher CV was not approved. Your account and login remain active, but teaching permissions are disabled. Your account is scheduled to become a learner after "+(conversionDeadline?new Date(conversionDeadline).toLocaleString():"the configured conversion period")+".")
+  :(action==="approve"?"Your readiness survey has been approved. Your CV application remains unchanged and teaching access has not been activated.":"Your readiness survey was not approved. Your CV application and teaching permissions remain unchanged.");
+ try{await db.insert(notificationsTable).values({recipientId:id,title,message,link:hasCvSubmission&&action==="approve"?"/teacher":"/profile-hub",type:hasCvSubmission?"teacher_cv_decision":"teacher_survey_decision"});}catch(error){console.error("[teacher-cv] Decision notification failed; decision remains saved.",error instanceof Error?error.message:"unknown");}
  try{await enqueueEmailNotification(id,"Dallyletter Elidems — "+title,message);}catch(error){console.error("[teacher-cv] Decision email queue failed; decision remains saved.",error instanceof Error?error.message:"unknown");}
  res.json({
-  status:action==="approve"?"approved":"rejected_pending_conversion",
+  status:hasCvSubmission?(action==="approve"?"approved":"rejected_pending_conversion"):(action==="approve"?"approved":"rejected"),
   role:"teacher",
-  teacherApplicationStatus:action==="approve"?"approved":"rejected_pending_conversion",
-  dashboardPath:action==="approve"?"/teacher":"/profile-hub",
+  teacherApplicationStatus:hasCvSubmission?(action==="approve"?"approved":"rejected_pending_conversion"):t.teacher_application_status||"draft",
+  dashboardPath:hasCvSubmission&&action==="approve"?"/teacher":"/profile-hub",
   conversionDeadline,
-  message:action==="approve"?"Teacher approved and authorized. The teacher role, full teacher dashboard and teaching API permissions are now active.":"Teaching access denied. The account remains usable and will convert to a learner on the scheduled date."
+  message:hasCvSubmission
+   ?(action==="approve"?"Teacher approved and authorized. The teacher role, full teacher dashboard and teaching API permissions are now active.":"Teaching access denied. The account remains usable and will convert to a learner on the scheduled date.")
+   :(action==="approve"?"Readiness survey approved. The CV application remains unchanged; no teacher dashboard access was activated.":"Readiness survey rejected. The CV application remains unchanged.")
  });
 });
+
+function requireSelfOrCvMonitor(req:any,res:any,next:any){const targetId=idOf(req.params.teacherId);if(targetId&&Number(req.currentUser?.id)===targetId){next();return;}return requireManagerPermissionIfManager("teacher_cv.view")(req,res,next);}
+async function authorizeCvMutation(actor:any,teacherId:number){
+ if(Number(actor?.id)===teacherId) return true;
+ if(isOwner(actor)) return true;
+ const target=await pool.query("SELECT role,is_manager,manager_level FROM users WHERE id=$1 AND lower(role)='teacher'",[teacherId]);
+ return Boolean(target.rows[0]&&canAccessManager(actor)&&canModerateUser(actor,{role:target.rows[0].role,isManager:target.rows[0].is_manager,managerLevel:target.rows[0].manager_level}));
+}
+router.delete("/bulk/:scope",requireManagerPermissionIfManager("teacher_cv.view"),async(req,res)=>{
+ const scope=String(req.params.scope||""); const ids=Array.isArray(req.body?.teacherIds)?[...new Set(req.body.teacherIds.map(idOf).filter(Boolean))] as number[]:[];
+ if(!["cv","survey"].includes(scope)||!ids.length||ids.length>100){res.status(400).json({error:"Choose CV or survey and provide 1–100 valid teacher IDs."});return;}
+ const allowed=await Promise.all(ids.map(async id=>({id,allowed:await authorizeCvMutation(req.currentUser!,id)})));
+ const denied=allowed.filter(x=>!x.allowed).map(x=>x.id); if(denied.length){res.status(403).json({error:"One or more selected applications are outside your monitoring scope.",deniedTeacherIds:denied});return;}
+ await ensure(); const client=await pool.connect(); const deleted:number[]=[];
+ try{
+  await client.query("BEGIN");
+  for(const id of ids){
+   const target=await client.query("SELECT id FROM users WHERE id=$1 AND lower(role)='teacher' FOR UPDATE",[id]); if(!target.rows.length)continue;
+   if(scope==="cv"){
+    await client.query("DELETE FROM teacher_qualifications WHERE user_id=$1",[id]); await client.query("DELETE FROM teacher_documents WHERE user_id=$1",[id]);
+    await client.query("UPDATE teacher_profiles SET cv=cv - 'professionalSummary' - 'education' - 'experience' - 'subjects' - 'address' - 'personalDetails' - 'teachingDetails' - 'photoDocumentId' - 'certifications',updated_at=now() WHERE user_id=$1",[id]);
+    await client.query("UPDATE users SET teacher_application_status='draft',teacher_review_deadline=NULL,updated_at=now() WHERE id=$1 AND teacher_application_status='pending_review'",[id]);
+   }else{
+    await client.query("UPDATE teacher_profiles SET cv=cv - 'surveyAnswers' - 'surveySubmittedAt' - 'surveyReviewStatus' - 'surveyReviewNote' - 'surveyReviewedAt' - 'surveyReviewedBy',updated_at=now() WHERE user_id=$1",[id]);
+   }
+   await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,$3,'existing','deleted',$4)",[id,req.currentUser!.id,scope+"_deleted","Bulk "+scope+" deletion by authorized reviewer"]);
+   deleted.push(id);
+  }
+  await client.query("COMMIT"); res.json({deleted:true,scope,deletedTeacherIds:deleted,count:deleted.length});
+ }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}finally{client.release();}
+});
+
+router.delete("/:teacherId/cv",requireSelfOrCvMonitor,async(req,res)=>{
+ const id=idOf(req.params.teacherId); if(!id){res.status(400).json({error:"Invalid teacher id"});return;}
+ if(!await authorizeCvMutation(req.currentUser!,id)){res.status(403).json({error:"You are not authorized to delete this CV"});return;}
+ await ensure(); const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  const target=await client.query("SELECT id FROM users WHERE id=$1 AND lower(role)='teacher' FOR UPDATE",[id]);
+  if(!target.rows.length){await client.query("ROLLBACK");res.status(404).json({error:"Teacher CV owner not found"});return;}
+  await client.query("DELETE FROM teacher_qualifications WHERE user_id=$1",[id]);
+  await client.query("DELETE FROM teacher_documents WHERE user_id=$1",[id]);
+  await client.query("UPDATE teacher_profiles SET cv=(cv - 'professionalSummary' - 'education' - 'experience' - 'subjects' - 'address' - 'personalDetails' - 'teachingDetails' - 'photoDocumentId' - 'certifications'),updated_at=now() WHERE user_id=$1",[id]);
+  await client.query("UPDATE users SET teacher_application_status='draft',teacher_review_deadline=NULL,updated_at=now() WHERE id=$1 AND teacher_application_status='pending_review'",[id]);
+  await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,'cv_deleted','existing','deleted','CV deleted by authorized account holder; survey data and review audit retained')",[id,req.currentUser!.id]);
+  await client.query("COMMIT"); res.json({deleted:true,scope:"cv",surveyPreserved:true,reviewHistoryPreserved:true});
+ }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}finally{client.release();}
+});
+router.delete("/:teacherId/survey",requireSelfOrCvMonitor,async(req,res)=>{
+ const id=idOf(req.params.teacherId); if(!id){res.status(400).json({error:"Invalid teacher id"});return;}
+ if(!await authorizeCvMutation(req.currentUser!,id)){res.status(403).json({error:"You are not authorized to delete this survey"});return;}
+ await ensure(); const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  const updated=await client.query("UPDATE teacher_profiles SET cv=cv - 'surveyAnswers' - 'surveySubmittedAt' - 'surveyReviewStatus' - 'surveyReviewNote' - 'surveyReviewedAt' - 'surveyReviewedBy',updated_at=now() WHERE user_id=$1 RETURNING user_id",[id]);
+  if(!updated.rows.length){await client.query("ROLLBACK");res.status(404).json({error:"Survey not found"});return;}
+  await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,'survey_deleted','existing','deleted','Readiness survey deleted by authorized account holder')",[id,req.currentUser!.id]);
+  await client.query("COMMIT"); res.json({deleted:true,scope:"survey",cvPreserved:true});
+ }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}finally{client.release();}
+});
+
 router.get("/:teacherId/history",requireManagerPermissionIfManager("teacher_cv.view"),async(req,res)=>{
  const id=idOf(req.params.teacherId);if(!id){res.status(400).json({error:"Invalid teacher id"});return}
  const actor=req.currentUser!;

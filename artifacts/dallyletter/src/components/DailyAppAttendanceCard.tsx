@@ -223,7 +223,7 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
           const isPastUnrecorded = key < today && !status && !holidayName;
           // The date cell itself communicates the register state; keep the summary
           // cards and the separate fullscreen activity-history dialog untouched.
-          const colorClass = isFuture
+          const colorClass = (isFuture || (isToday && !status && !holidayName))
             ? "bg-slate-50 text-slate-500 border-slate-200 dark:bg-slate-900/60 dark:text-slate-300 dark:border-slate-700"
             : isMixed
               ? "bg-amber-100 text-amber-950 border-amber-400 dark:bg-amber-950/60 dark:text-amber-100 dark:border-amber-700"
@@ -248,12 +248,12 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
         })}
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-emerald-500 bg-emerald-200 dark:bg-emerald-900" /> Present (green)</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-red-500 bg-red-200 dark:bg-red-900" /> Absent (red)</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-amber-500 bg-amber-200 dark:bg-amber-900" /> Mixed sessions (amber)</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-orange-500 bg-orange-200 dark:bg-orange-900" /> Past day not marked (orange)</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-violet-500 bg-violet-200 dark:bg-violet-900" /> Public holiday (violet)</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-slate-300 bg-slate-100 dark:bg-slate-800" /> Upcoming / no record</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-emerald-400 bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/60" /> Present (green)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-red-400 bg-red-100 dark:border-red-700 dark:bg-red-950/60" /> Absent (red)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-amber-400 bg-amber-100 dark:border-amber-700 dark:bg-amber-950/60" /> Mixed sessions (amber)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-orange-400 bg-orange-100 dark:border-orange-700 dark:bg-orange-950/60" /> Past day not marked (orange)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-violet-400 bg-violet-100 dark:border-violet-700 dark:bg-violet-950/60" /> Public holiday (violet)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/60" /> Upcoming / today not yet marked (grey)</span>
         <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-violet-400 bg-card" /> Weekend outline</span>
       </div>
     </div>

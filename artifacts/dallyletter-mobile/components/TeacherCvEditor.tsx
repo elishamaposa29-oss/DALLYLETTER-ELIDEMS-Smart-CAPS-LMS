@@ -216,9 +216,7 @@ export function TeacherCvEditor() {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         const missing = Array.isArray(data.missingFields) ? data.missingFields : [];
-        if (data.photoUploaded === false) missing.push("profile photograph");
-        if (data.resumeUploaded === false) missing.push("PDF resume");
-        if (Number(data.certificatesMissing) > 0) missing.push(Number(data.certificatesMissing) + " qualification certificate(s)");
+        // Supporting documents are optional and are not submission blockers.
         throw new Error((data.error || "Your application could not be submitted.") + (missing.length ? " Missing or incomplete: " + missing.join(", ") + "." : ""));
       }
       setApplicationStatus("pending_review");
@@ -277,7 +275,7 @@ export function TeacherCvEditor() {
   return (
     <View style={{ marginHorizontal: 16, marginTop: 18, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card }}>
       <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground, marginBottom: 4 }}>Teacher CV & professional profile</Text>
-      <Text style={{ fontSize: 13, color: colors.mutedForeground, marginBottom: 14 }}>Complete the required sections, then upload your resume and certificates. Only the owner can approve your teaching access.</Text>
+      <Text style={{ fontSize: 13, color: colors.mutedForeground, marginBottom: 14 }}>Save or submit your CV whenever you are ready. A resume, photo and qualification certificates are optional supporting evidence. Only an authorized reviewer can approve teaching access.</Text>
       <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "700", marginTop: 8, marginBottom: 6 }}>Legal and contact details</Text>
       <Text style={{ color: colors.mutedForeground, fontSize: 12, marginBottom: 8 }}>Your legal name comes from your account profile. Complete the remaining details before formal submission.</Text>
       {([
