@@ -194,7 +194,9 @@ for (const operation of [
 ]) assert.ok(mobileReview.includes(operation), "Android teacher qualification review operation missing: " + operation);
 
 
-assert.ok(qualificationReview.includes('"/api/qualifications/pending"') && qualificationReview.includes('"/api/qualifications/"+row.document_id+"/document"') && qualificationReview.includes('"/api/qualifications/"+row.id+"/review-history"') && qualificationReview.includes('"/api/qualifications/"+row.id+"/verify"'), "Android standalone qualification review lifecycle is incomplete");
+assert.ok(qualificationReview.includes('"/api/qualifications/pending"') && qualificationReview.includes('"/api/qualifications/"+row.document_id+"/document"') && qualificationReview.includes('"/api/qualifications/"+row.id+"/review-history"') && qualificationReview.includes('"/api/qualifications/"+row.id+"/verify"'), "Android consolidated qualification review lifecycle is incomplete");
+assert.ok(mobileReview.includes("QualificationReviewWorkspaceMobile") && mobileReview.includes('setActiveTab("qualifications")'), "Android CV and qualifications review must share one tabbed workspace");
+assert.ok(managerRoute.includes("TeacherCvReviewWorkspace initialTab=\"qualifications\"") && adminRoute.includes("TeacherCvReviewWorkspace initialTab=\"qualifications\""), "Legacy Android qualification routes must open the consolidated workspace tab");
 assert.ok(managerMore.includes('permissions?.["qualifications.view"]') && managerMore.includes("/(manager)/qualifications"), "Manager qualification review entry is not gated by qualifications.view");
 assert.ok(adminEntry.includes("/(admin)/qualifications"), "Owner qualification review entry is missing");
 assert.ok(managerLayout.includes('name="qualifications"') && adminLayout.includes('name="qualifications"'), "Qualification review routes are not registered");
