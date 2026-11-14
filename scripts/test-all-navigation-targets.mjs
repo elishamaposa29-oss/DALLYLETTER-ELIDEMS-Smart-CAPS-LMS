@@ -49,7 +49,9 @@ function extractTargets(source) {
   const targets = [];
   for (const pattern of patterns) {
     for (const match of source.matchAll(pattern)) {
-      const path = normalizePath(match[1]);
+      const suffix = source.slice(match.index + match[0].length);
+      const rawTarget = /^\\s*\\+/.test(suffix) ? match[1] + "__dynamic__" : match[1];
+      const path = normalizePath(rawTarget);
       if (path) targets.push(path);
     }
   }
