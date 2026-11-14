@@ -223,7 +223,7 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
           const isPastUnrecorded = key < today && !status && !holidayName;
           // The date cell itself communicates the register state; keep the summary
           // cards and the separate fullscreen activity-history dialog untouched.
-          const colorClass = isFuture
+          const colorClass = (isFuture || (isToday && !status && !holidayName))
             ? "bg-slate-50 text-slate-500 border-slate-200 dark:bg-slate-900/60 dark:text-slate-300 dark:border-slate-700"
             : isMixed
               ? "bg-amber-100 text-amber-950 border-amber-400 dark:bg-amber-950/60 dark:text-amber-100 dark:border-amber-700"
@@ -253,7 +253,7 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
         <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-amber-400 bg-amber-100 dark:border-amber-700 dark:bg-amber-950/60" /> Mixed sessions (amber)</span>
         <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-orange-400 bg-orange-100 dark:border-orange-700 dark:bg-orange-950/60" /> Past day not marked (orange)</span>
         <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-violet-400 bg-violet-100 dark:border-violet-700 dark:bg-violet-950/60" /> Public holiday (violet)</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/60" /> Upcoming / no record</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/60" /> Upcoming / today not yet marked (grey)</span>
         <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-violet-400 bg-card" /> Weekend outline</span>
       </div>
     </div>
