@@ -17,7 +17,7 @@ type HistoryEntry = { id: number; previous_status: string; new_status: string; r
 const token = () => localStorage.getItem("dallyletter_token") ?? "";
 const headers = () => ({ Authorization: "Bearer " + token() });
 
-export default function ManagerQualifications() {
+export function ManagerQualificationsPanel() {
   const [rows,setRows]=useState<Qualification[]>([]);
   const [permissions,setPermissions]=useState<Record<string,boolean>>({});
   const [loading,setLoading]=useState(true);
@@ -85,7 +85,7 @@ export default function ManagerQualifications() {
     finally{setBusy(null);}
   };
 
-  return <DashboardLayout><div className="mx-auto max-w-5xl space-y-5">
+  return <div className="mx-auto max-w-5xl space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h1 className="flex items-center gap-2 text-2xl font-bold text-[#0f2a5a]"><FileCheck2 className="h-6 w-6"/>Qualification verification</h1><p className="mt-1 text-sm text-muted-foreground">Review each teacher qualification and its supporting certificate separately.</p></div>
       <Button variant="outline" onClick={()=>void load()} disabled={loading}><RefreshCw className="mr-2 h-4 w-4"/>Refresh</Button>
@@ -104,5 +104,7 @@ export default function ManagerQualifications() {
         {can("qualifications.verify")&&<div className="space-y-2 border-t pt-3"><Textarea rows={2} value={notes[row.id]??""} onChange={e=>setNotes(current=>({...current,[row.id]:e.target.value}))} placeholder="Reviewer note (required when rejecting)"/><div className="flex flex-wrap gap-2"><Button size="sm" className="bg-[#0f2a5a]" onClick={()=>void decide(row,"verified")} disabled={busy===row.id||!row.document_id}>{busy===row.id?<Loader2 className="mr-2 h-4 w-4 animate-spin"/>:null}Verify qualification</Button><Button size="sm" variant="destructive" onClick={()=>void decide(row,"rejected")} disabled={busy===row.id}>Reject qualification</Button></div></div>}
       </CardContent>
     </Card>)}
-  </div></DashboardLayout>;
+  </div>;
 }
+
+export default function ManagerQualifications(){return <DashboardLayout><ManagerQualificationsPanel /></DashboardLayout>;}
