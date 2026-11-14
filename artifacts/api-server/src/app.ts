@@ -48,10 +48,17 @@ const defaultOrigins = [
 function isTrustedDallyletterVercelOrigin(origin: string): boolean {
   try {
     const parsed = new URL(origin);
+    const hostname = parsed.hostname;
+    const isNamedDallyletterProject =
+      /^(?:dallyletter|elidems)(?:-[a-z0-9]+)*(?:-[a-z0-9]{6,})?\.vercel\.app$/i.test(hostname);
+    // Vercel's generated production deployment host uses the account + exact project slug,
+    // rather than a dallyletter/elidems prefix. Trust only that one project namespace.
+    const isThisDallyletterProjectDeployment =
+      /^elishamaposa29-oss-dallyletter-elidems-smart-caps-[a-z0-9-]+\.vercel\.app$/i.test(hostname);
     return parsed.protocol === "https:"
       && parsed.origin === origin
-      && parsed.hostname.endsWith(".vercel.app")
-      && /^(?:dallyletter|elidems)(?:-[a-z0-9]+)*(?:-[a-z0-9]{6,})?\.vercel\.app$/i.test(parsed.hostname);
+      && hostname.endsWith(".vercel.app")
+      && (isNamedDallyletterProject || isThisDallyletterProjectDeployment);
   } catch {
     return false;
   }
