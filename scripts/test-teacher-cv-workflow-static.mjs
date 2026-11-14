@@ -17,6 +17,9 @@ const roleAccess = read("artifacts/api-server/src/lib/role-access.ts");
 const expiry = read("artifacts/api-server/src/lib/teacher-cv-expiry.ts");
 const authContext = read("artifacts/dallyletter/src/contexts/AuthContext.tsx");
 const mobileAuthContext = read("artifacts/dallyletter-mobile/contexts/AuthContext.tsx");
+const teacherQualifications = read("artifacts/dallyletter/src/pages/TeacherQualifications.tsx");
+const attendanceCalendar = read("artifacts/dallyletter/src/components/DailyAppAttendanceCard.tsx");
+
 const renderBlueprint = read("render.yaml");
 
 assert.match(auth, /router\.post\("\/auth\/google"/, "Google Identity Services endpoint must be registered");
@@ -33,8 +36,8 @@ assert.match(workspaceApi, /requireManagerPermissionForRequest\(\(req\)=>req\.bo
 assert.match(managerPermissions, /teacher_cv\.authorize.*seniorOnly: true/, "Teacher authorization must remain a Senior Manager/Owner-only permission");
 assert.match(managerPermissions, /teacher_cv\.review.*seniorOnly: true/, "Teacher application review must remain a Senior Manager/Owner-only permission");
 assert.match(workspaceApi, /role='teacher',teacher_application_status='approved',teacher_review_deadline=NULL/, "Approval must explicitly retain the teacher role and activate the application");
-assert.match(workspaceApi, /teacherApplicationStatus:action==="approve"\?"approved":"rejected_pending_conversion"/, "Decision response must report the effective application state");
-assert.match(workspaceApi, /dashboardPath:action==="approve"\?"\/teacher":"\/profile-hub"/, "Approval notification response must route the teacher to the teacher dashboard");
+assert.match(workspaceApi, /teacherApplicationStatus:hasCvSubmission\?\(action==="approve"\?"approved":"rejected_pending_conversion"\)/, "CV decisions must activate or reject the teacher application only when a CV was submitted");
+assert.match(workspaceApi, /dashboardPath:hasCvSubmission&&action==="approve"\?"\/teacher":"\/profile-hub"/, "Only an approved CV application may route to the full teacher dashboard");
 assert.match(workspaceApi, /teacher_application_status='rejected_pending_conversion'.*teacher_review_deadline=now\(\)/, "Rejection must immediately restrict teaching and schedule learner conversion");
 assert.match(workspaceApi, /teacher_profiles/, "Reviewer detail endpoint must retrieve the applicant's saved CV and survey profile");
 assert.match(workspaceApi, /surveySubmittedAt/, "Reviewer queue must include independent readiness survey submissions");
@@ -54,4 +57,19 @@ assert.match(expiry, /SET role='student',teacher_application_status='auto_conver
 assert.match(authContext, /restrictedTeacher \? 15_000 : 60_000/, "Web sessions must poll pending teacher applications promptly without increasing normal-user API traffic");
 assert.match(mobileAuthContext, /isPendingTeacher \? 15_000 : 60_000/, "Mobile sessions must poll pending teacher applications promptly without increasing normal-user API traffic");
 
+
+assert.match(workspaceApi, /Attachments, qualifications, and profile completeness are optional/, "CV evidence must not block formal submission");
+assert.doesNotMatch(workspaceApi, /Resolve the specific items below, save your draft, then submit again/, "CV submit must not retain mandatory document-completeness rejection");
+assert.doesNotMatch(workspaceApi, /Complete personal\/legal details, upload a profile photo and PDF resume/, "CV approval must not require optional evidence");
+assert.match(workspaceApi, /router\.delete\("\/:teacherId\/cv"/, "Teacher and authorized reviewer must have an individual CV delete endpoint");
+assert.match(workspaceApi, /router\.delete\("\/:teacherId\/survey"/, "Authorized reviewer must have an individual survey delete endpoint");
+assert.match(workspaceApi, /router\.delete\("\/bulk\/:scope"/, "Authorized reviewers must have a bulk delete endpoint");
+assert.match(workspaceUi, /Delete entire CV/, "Reviewer workspace must expose individual CV deletion");
+assert.match(workspaceUi, /Delete survey only/, "Reviewer workspace must expose individual survey deletion");
+assert.match(workspaceUi, /Delete selected CVs/, "Reviewer workspace must expose selected bulk CV deletion");
+assert.match(workspaceUi, /Approved/, "Reviewer workspace must support approved status filtering");
+assert.match(teacherQualifications, /Delete my entire CV/, "Teacher must be able to delete their own CV");
+assert.match(workspaceUi, /main CV Approve \/ Reject controls below also apply the same decision/, "CV decision controls must also decide the submitted survey");
+assert.match(attendanceCalendar, /border-emerald-400 bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950\/60/, "Present legend swatch must match the actual calendar cell colours");
+assert.match(attendanceCalendar, /border-red-400 bg-red-100 dark:border-red-700 dark:bg-red-950\/60/, "Absent legend swatch must match the actual calendar cell colours");
 console.log("TEACHER_CV_WORKFLOW_STATIC: PASS — Google sign-in wiring, CV/survey review, explicit manager authorization, teacher activation, rejection grace period, learner conversion, routes and session refresh.");

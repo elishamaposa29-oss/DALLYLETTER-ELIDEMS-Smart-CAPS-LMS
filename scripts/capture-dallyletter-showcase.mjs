@@ -92,7 +92,12 @@ async function assertPublishablePage(page, label, options = {}) {
 
 async function waitForExpectedDeployment() {
   const homepage = new URL("/", baseUrl);
-  const deadline = Date.now() + 15 * 60 * 1000;
+  // Vercel edge caches can serve an older HTML document even with no-store headers.
+  // A SHA-specific query forces a fresh document before the build marker is trusted.
+  if (expectedDeploymentSha) homepage.searchParams.set("__dallyletter_build_check", expectedDeploymentSha);
+  // Vercel preview builds can take longer than the initial 15-minute window under queue pressure.
+  // Keep the wait below the workflow's 40-minute job timeout so evidence capture can still finish.
+  const deadline = Date.now() + 35 * 60 * 1000;
   let lastObservation = "homepage has not been checked";
 
   while (true) {
@@ -132,10 +137,24 @@ async function discoverPublicPages() {
   const locations = [...xml.matchAll(/<loc>\s*([\s\S]*?)\s*<\/loc>/gi)].map((match) => decodeXml(match[1].trim()));
   if (!locations.length) throw new Error("No <loc> URLs found in " + sitemapUrl);
 
+  // Prerendered sitemap URLs retain the canonical production host. On a preview,
+  // map only that known canonical host onto the preview origin so every public route
+  // is tested against the exact PR build rather than silently filtering them out.
+  const homepageResponse = await fetch(new URL("/", baseUrl), { cache: "no-store" });
+  if (!homepageResponse.ok) throw new Error("Homepage request failed while resolving its canonical host: HTTP " + homepageResponse.status);
+  const homepageHtml = await homepageResponse.text();
+  const canonicalHref = homepageHtml.match(/<link\s+rel=["']canonical["']\s+href=["']([^"']+)["']/i)?.[1];
+  const canonicalOrigin = canonicalHref ? new URL(canonicalHref, baseUrl).origin : baseUrl.origin;
+
   const discovered = new Map();
   for (const value of locations) {
     const url = new URL(value);
-    if (url.origin !== baseUrl.origin) continue;
+    if (url.origin === canonicalOrigin && canonicalOrigin !== baseUrl.origin) {
+      url.protocol = baseUrl.protocol;
+      url.host = baseUrl.host;
+    } else if (url.origin !== baseUrl.origin) {
+      continue;
+    }
     url.hash = "";
     url.search = "";
     discovered.set(url.href, url);

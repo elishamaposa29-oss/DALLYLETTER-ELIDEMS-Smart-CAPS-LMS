@@ -42,8 +42,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
-      SHOWCASE_SITE_URL: ${{ github.event_name == 'pull_request' && 'https://elishamaposa29-oss-dal-git-fe8581-elishamaposa29-1821s-projects.vercel.app/' || 'https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/' }}
-      SHOWCASE_AUTH_ALLOWED_ORIGIN: ${{ github.event_name == 'pull_request' && 'https://elishamaposa29-oss-dal-git-fe8581-elishamaposa29-1821s-projects.vercel.app' || 'https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app' }}
+      SHOWCASE_SITE_URL: ${{ github.event_name == 'pull_request' && 'https://elishamaposa29-oss-dal-git-7f323c-elishamaposa29-1821s-projects.vercel.app/' || 'https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/' }}
+      SHOWCASE_AUTH_ALLOWED_ORIGIN: ${{ github.event_name == 'pull_request' && 'https://elishamaposa29-oss-dal-git-7f323c-elishamaposa29-1821s-projects.vercel.app' || 'https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app' }}
       SHOWCASE_LEARNER_EMAIL: ${{ github.event_name != 'pull_request' && secrets.SHOWCASE_LEARNER_EMAIL || '' }}
       SHOWCASE_LEARNER_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.SHOWCASE_LEARNER_PASSWORD || '' }}
       SHOWCASE_TEACHER_EMAIL: ${{ github.event_name != 'pull_request' && secrets.SHOWCASE_TEACHER_EMAIL || '' }}
@@ -68,6 +68,16 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: Resolve current PR head for preview verification
+        if: github.event_name == 'pull_request'
+        env:
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          head_sha="$(git ls-remote origin "refs/heads/${PR_HEAD_REF}" | awk 'NR == 1 {print $1}')"
+          test -n "$head_sha"
+          echo "EXPECTED_DEPLOYMENT_SHA=$head_sha" >> "$GITHUB_ENV"
+          echo "Preview must expose current PR head $head_sha"
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
