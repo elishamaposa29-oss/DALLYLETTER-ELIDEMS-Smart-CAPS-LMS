@@ -83,14 +83,14 @@ assert.ok(workspaceApi.includes('router.delete("/:teacherId/application"'), "Tea
 assert.ok(workspaceApi.includes("DELETE FROM teacher_cv_chat_messages WHERE teacher_id=$1"), "Full application deletion must remove all private application chat messages");
 assert.ok(workspaceApi.includes("DELETE FROM teacher_profiles WHERE user_id=$1"), "Full application deletion must remove saved CV and survey drafts");
 assert.ok(workspaceApi.includes("removeStoredMedia(key)"), "Full application deletion must clean external and chunked media storage");
-assert.ok(workspaceUi.includes("Delete my entire survey / CV / application"), "Teacher self-service must expose one complete application deletion action");
+assert.ok(teacherQualifications.includes("Delete my entire survey / CV / application") && teacherQualifications.includes("deleteOwnApplication"), "Teacher self-service must expose one complete application deletion action");
 
 assert.match(workspaceApi, /router\.delete\("\/bulk\/:scope"/, "Authorized reviewers must have a bulk delete endpoint");
 assert.match(workspaceUi, /Delete entire CV/, "Reviewer workspace must expose individual CV deletion");
 assert.match(workspaceUi, /Delete survey only/, "Reviewer workspace must expose individual survey deletion");
 assert.match(workspaceUi, /Delete selected CVs/, "Reviewer workspace must expose selected bulk CV deletion");
 assert.match(workspaceUi, /Approved/, "Reviewer workspace must support approved status filtering");
-assert.match(teacherQualifications, /Delete my entire CV/, "Teacher must be able to delete their own CV");
+assert.match(teacherQualifications, /Delete my entire survey \/ CV \/ application/, "Teacher must be able to delete their complete application while retaining their account");
 assert.match(workspaceUi, /main CV Approve \/ Reject controls below also apply the same decision/, "CV decision controls must also decide the submitted survey");
 assert.match(attendanceCalendar, /border-emerald-400 bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950\/60/, "Present legend swatch must match the actual calendar cell colours");
 assert.match(attendanceCalendar, /border-red-400 bg-red-100 dark:border-red-700 dark:bg-red-950\/60/, "Absent legend swatch must match the actual calendar cell colours");
