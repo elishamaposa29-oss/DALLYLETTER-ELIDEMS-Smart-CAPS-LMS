@@ -4,15 +4,34 @@ import { isSmsConfigured, sendSms } from "./sms-service";
 
 let started = false;
 let draining = false;
+let notificationMetadataSchema: Promise<void> | null = null;
 
-export async function enqueueEmailNotification(recipientUserId: number, subject: string, bodyText: string): Promise<void> {
+export async function ensureNotificationMetadataSchema(): Promise<void> {
+  if (!notificationMetadataSchema) {
+    notificationMetadataSchema = (async () => {
+      await pool.query("ALTER TABLE email_notification_queue ADD COLUMN IF NOT EXISTS related_entity_type text");
+      await pool.query("ALTER TABLE email_notification_queue ADD COLUMN IF NOT EXISTS related_entity_id integer");
+    })().catch(error => { notificationMetadataSchema = null; throw error; });
+  }
+  return notificationMetadataSchema;
+}
+
+export async function enqueueEmailNotification(
+  recipientUserId: number,
+  subject: string,
+  bodyText: string,
+  relatedEntity?: { relatedEntityType: string; relatedEntityId: number },
+): Promise<void> {
   if (!Number.isSafeInteger(recipientUserId) || recipientUserId <= 0) throw new Error("A valid notification recipient is required.");
   const safeSubject = subject.trim().slice(0, 200);
   const safeBody = bodyText.trim().slice(0, 20000);
   if (!safeSubject || !safeBody) throw new Error("Notification subject and body are required.");
+  await ensureNotificationMetadataSchema();
+  const entityType = relatedEntity?.relatedEntityType?.trim().slice(0, 80) || null;
+  const entityId = Number.isSafeInteger(relatedEntity?.relatedEntityId) && Number(relatedEntity?.relatedEntityId) > 0 ? Number(relatedEntity?.relatedEntityId) : null;
   await pool.query(
-    "INSERT INTO email_notification_queue(recipient_user_id,subject,body_text,status,available_at) VALUES($1,$2,$3,'pending',now())",
-    [recipientUserId, safeSubject, safeBody],
+    "INSERT INTO email_notification_queue(recipient_user_id,subject,body_text,status,available_at,related_entity_type,related_entity_id) VALUES($1,$2,$3,'pending',now(),$4,$5)",
+    [recipientUserId, safeSubject, safeBody, entityType, entityId],
   );
 }
 

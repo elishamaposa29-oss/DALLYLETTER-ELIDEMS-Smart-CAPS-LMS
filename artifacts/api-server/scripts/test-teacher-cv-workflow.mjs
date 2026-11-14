@@ -246,6 +246,33 @@ await request("/api/users/me/teacher-cv",{token:ownerSurveyDeleteApplicant.token
 await request("/api/teacher-cv-workspace/survey/submit",{token:ownerSurveyDeleteApplicant.token,method:"POST"});
 const ownerSurveyDelete=await request("/api/teacher-cv-workspace/"+ownerSurveyDeleteApplicant.id+"/survey",{token:ownerToken,method:"DELETE"});
 assert.equal(ownerSurveyDelete.status,200,"Owner can delete one applicant's readiness survey without deleting the CV");
+const wholeApplicationDeleteApplicant=await registerTeacher("whole-application-delete");const unrelatedDeletionActor=await registerTeacher("unrelated-application-delete");
+const unauthorizedWholeApplicationDelete=await request("/api/teacher-cv-workspace/"+wholeApplicationDeleteApplicant.id+"/application",{token:unrelatedDeletionActor.token,method:"DELETE"});
+assert.equal(unauthorizedWholeApplicationDelete.status,403,"A different teacher cannot erase another teacher's application");
+
+await request("/api/users/me/teacher-cv",{token:wholeApplicationDeleteApplicant.token,method:"PATCH",body:{cv:{professionalSummary:"Application draft to erase",surveyAnswers:JSON.stringify({laptop:"Yes"}),surveySubmittedAt:new Date().toISOString(),surveyReviewStatus:"pending"}}});
+const wholeApplicationDocument=await pool.query("INSERT INTO teacher_documents(user_id,document_type,file_name,mime_type,size_bytes,data) VALUES($1,'certificate','private-application-media.pdf','application/pdf',18,$2) RETURNING id",[wholeApplicationDeleteApplicant.id,Buffer.from("private-media-bytes")]);
+await pool.query("INSERT INTO teacher_qualifications(user_id,title,institution,year,document_id,verification_status,source) VALUES($1,'Test qualification','Test institution',2020,$2,'pending','user')",[wholeApplicationDeleteApplicant.id,wholeApplicationDocument.rows[0].id]);
+const wholeApplicationChat=await request("/api/teacher-cv-workspace/"+wholeApplicationDeleteApplicant.id+"/chat",{token:wholeApplicationDeleteApplicant.token,method:"POST",body:{body:"Private application message to erase"}});
+assert.equal(wholeApplicationChat.status,201,"Teacher can create a private application chat message before deletion");
+assert((await pool.query("SELECT 1 FROM notifications WHERE type='teacher_cv_message' AND message LIKE $1",["%Private application message to erase%"])).rowCount>0,"Private application chat creates a notification copy that deletion must remove");
+assert((await pool.query("SELECT 1 FROM email_notification_queue WHERE subject=$1 AND body_text LIKE $2 AND related_entity_type='teacher_cv_application' AND related_entity_id=$3",["Dallyletter Elidems — New teacher application message","%Private application message to erase%",wholeApplicationDeleteApplicant.id])).rowCount>0,"Private application chat email copies are tagged to the exact application before deletion");
+
+const wholeApplicationDelete=await request("/api/teacher-cv-workspace/"+wholeApplicationDeleteApplicant.id+"/application",{token:wholeApplicationDeleteApplicant.token,method:"DELETE"});
+assert.equal(wholeApplicationDelete.status,200,"Teacher can delete the entire application through the self-service endpoint");
+assert.equal(wholeApplicationDelete.data.deleted,true,"Whole application deletion confirms success");
+assert.equal(wholeApplicationDelete.data.accountPreserved,true,"Whole application deletion preserves the Dallyletter account");
+assert.equal((await pool.query("SELECT 1 FROM teacher_profiles WHERE user_id=$1",[wholeApplicationDeleteApplicant.id])).rowCount,0,"Whole application deletion removes saved CV and survey drafts");
+assert.equal((await pool.query("SELECT 1 FROM teacher_documents WHERE user_id=$1",[wholeApplicationDeleteApplicant.id])).rowCount,0,"Whole application deletion removes uploaded document and inline media bytes");
+assert.equal((await pool.query("SELECT 1 FROM teacher_qualifications WHERE user_id=$1",[wholeApplicationDeleteApplicant.id])).rowCount,0,"Whole application deletion removes qualification records and their dependent review history");
+assert.equal((await pool.query("SELECT 1 FROM teacher_cv_chat_messages WHERE teacher_id=$1",[wholeApplicationDeleteApplicant.id])).rowCount,0,"Whole application deletion removes all private application chat messages");
+assert.equal((await pool.query("SELECT 1 FROM notifications WHERE type='teacher_cv_message' AND message LIKE $1",["%Private application message to erase%"])).rowCount,0,"Whole application deletion removes notification copies of private chat messages");
+assert.equal((await pool.query("SELECT 1 FROM email_notification_queue WHERE subject=$1 AND body_text LIKE $2",["Dallyletter Elidems — New teacher application message","%Private application message to erase%"])).rowCount,0,"Whole application deletion removes queued email copies of private chat messages");
+
+const wholeApplicationAudit=await pool.query("SELECT action,new_status FROM teacher_cv_review_history WHERE teacher_id=$1",[wholeApplicationDeleteApplicant.id]);
+assert.equal(wholeApplicationAudit.rowCount,1,"Whole application deletion retains only one minimal deletion audit marker");
+assert.equal(wholeApplicationAudit.rows[0].action,"application_deleted","Application content review history is removed and replaced by a non-content deletion marker");
+
 const managerDeleteApplicant=await registerTeacher("manager-bulk-delete");
 await request("/api/users/me/teacher-cv",{token:managerDeleteApplicant.token,method:"PATCH",body:{cv:{professionalSummary:"Manager monitored draft"}}});
 await request("/api/teacher-cv-workspace/submit",{token:managerDeleteApplicant.token,method:"POST"});

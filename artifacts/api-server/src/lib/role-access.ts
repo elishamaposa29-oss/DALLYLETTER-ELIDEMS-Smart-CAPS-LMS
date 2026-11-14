@@ -108,7 +108,7 @@ export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, 
     (method === "POST" && path === "/users/me/qualifications/bulk") ||
     (method === "POST" && path === "/users/me/teacher-documents") ||
     (method === "POST" && path === "/teacher-cv-workspace/submit") ||
-    (method === "DELETE" && ["/teacher-cv-workspace/" + selfId + "/cv", "/teacher-cv-workspace/" + selfId + "/survey"].includes(path)) ||
+    (method === "DELETE" && ["/teacher-cv-workspace/" + selfId + "/cv", "/teacher-cv-workspace/" + selfId + "/survey", "/teacher-cv-workspace/" + selfId + "/application"].includes(path)) ||
     (method === "POST" && path === "/teacher-cv-workspace/survey/submit") ||
     (method === "POST" && /^\/qualifications\/\d+\/document$/.test(path)) ||
     (method === "GET" && path === "/users/" + selfId + "/teacher-documents") ||
