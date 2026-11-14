@@ -132,10 +132,24 @@ async function discoverPublicPages() {
   const locations = [...xml.matchAll(/<loc>\s*([\s\S]*?)\s*<\/loc>/gi)].map((match) => decodeXml(match[1].trim()));
   if (!locations.length) throw new Error("No <loc> URLs found in " + sitemapUrl);
 
+  // Prerendered sitemap URLs retain the canonical production host. On a preview,
+  // map only that known canonical host onto the preview origin so every public route
+  // is tested against the exact PR build rather than silently filtering them out.
+  const homepageResponse = await fetch(new URL("/", baseUrl), { cache: "no-store" });
+  if (!homepageResponse.ok) throw new Error("Homepage request failed while resolving its canonical host: HTTP " + homepageResponse.status);
+  const homepageHtml = await homepageResponse.text();
+  const canonicalHref = homepageHtml.match(/<link\\s+rel=["']canonical["']\\s+href=["']([^"']+)["']/i)?.[1];
+  const canonicalOrigin = canonicalHref ? new URL(canonicalHref, baseUrl).origin : baseUrl.origin;
+
   const discovered = new Map();
   for (const value of locations) {
     const url = new URL(value);
-    if (url.origin !== baseUrl.origin) continue;
+    if (url.origin === canonicalOrigin && canonicalOrigin !== baseUrl.origin) {
+      url.protocol = baseUrl.protocol;
+      url.host = baseUrl.host;
+    } else if (url.origin !== baseUrl.origin) {
+      continue;
+    }
     url.hash = "";
     url.search = "";
     discovered.set(url.href, url);
