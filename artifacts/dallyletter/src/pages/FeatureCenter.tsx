@@ -36,7 +36,7 @@ const features:Feature[] = [
  {title:"Academic report review",description:"Review teacher-prepared academic report drafts before release to learners.",href:"/manager/reports/review",icon:FileText,tone:"bg-violet-50 text-violet-700",tag:"Approval",roles:["manager","senior_manager","owner"]},
  {title:"Unified review queue",description:"See pending transfer, report, qualification and achievement decisions in one place.",href:"/manager/review-queue",icon:ClipboardList,tone:"bg-rose-50 text-rose-700",tag:"Approval",roles:["manager","senior_manager","owner"]},
  {title:"Qualification review history",description:"Open Profile Hub to inspect qualification status and recorded review history.",href:"/profile-hub",icon:ShieldCheck,tone:"bg-cyan-50 text-cyan-700",tag:"Profile",roles:["teacher","manager","senior_manager","owner"]},
- {title:"Teacher CV applications",description:"Review submitted CVs, applicant documents, messages and authorization decisions.",href:"/manager/teacher-cv-workspace",icon:FileCheck2,tone:"bg-indigo-50 text-indigo-700",tag:"Approval",roles:["manager","senior_manager","junior_manager","owner"]},
+ {title:"Teacher CV applications",description:"Review submitted CVs, applicant documents and review history. Admin access is read-only; approval remains restricted to the Owner and explicitly authorized Senior Managers.",href:"/manager/teacher-cv-workspace",icon:FileCheck2,tone:"bg-indigo-50 text-indigo-700",tag:"Approval",roles:["manager","senior_manager","junior_manager","owner","admin"]},
  {title:"Qualification verification",description:"Open individual certificates, verify evidence and inspect review history.",href:"/manager/qualifications",icon:ShieldCheck,tone:"bg-cyan-50 text-cyan-700",tag:"Approval",roles:["manager","senior_manager","junior_manager","owner"]},
  {title:"Manager audit history",description:"Inspect subordinate actions and permission decisions permitted to your account.",href:"/manager/audit-logs",icon:FileText,tone:"bg-slate-50 text-slate-700",tag:"Audit",roles:["manager","senior_manager","junior_manager","owner"]},
  {title:"Teacher CV PDF",description:"Open your Profile Hub or teacher qualifications area to view and download the verified-record CV.",href:"/profile-hub",icon:FileText,tone:"bg-slate-50 text-slate-700",tag:"Document",roles:["teacher","manager","senior_manager","owner"]},
@@ -114,7 +114,7 @@ export default function FeatureCenter(){
    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
     {visible.map((f)=>{
       const Icon=f.icon;
-      const destination = f.title === "Lessons & preview" && isOwner ? "/admin/lessons" : f.href;
+      const destination = f.title === "Lessons & preview" && isOwner ? "/admin/lessons" : f.title === "Teacher CV applications" && normalizedRole === "admin" ? "/admin/teacher-cv-workspace" : f.href;
       return <Card key={f.title} className="group flex h-full flex-col overflow-hidden border-slate-200/80 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg">
        <CardHeader className="pb-3"><div className="flex items-start justify-between gap-3"><div className={`rounded-2xl p-3 ${f.tone}`}><Icon className="h-5 w-5"/></div><Badge variant="outline">{f.tag}</Badge></div><CardTitle className="mt-2 text-lg">{f.title}</CardTitle><CardDescription className="leading-relaxed">{f.description}</CardDescription></CardHeader>
        <CardContent className="mt-auto pt-0"><Link href={destination}><Button className="w-full gap-2">Open & test <span aria-hidden>→</span></Button></Link></CardContent>
