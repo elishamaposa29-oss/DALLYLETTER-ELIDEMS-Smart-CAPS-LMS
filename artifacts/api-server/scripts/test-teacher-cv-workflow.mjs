@@ -246,7 +246,10 @@ await request("/api/users/me/teacher-cv",{token:ownerSurveyDeleteApplicant.token
 await request("/api/teacher-cv-workspace/survey/submit",{token:ownerSurveyDeleteApplicant.token,method:"POST"});
 const ownerSurveyDelete=await request("/api/teacher-cv-workspace/"+ownerSurveyDeleteApplicant.id+"/survey",{token:ownerToken,method:"DELETE"});
 assert.equal(ownerSurveyDelete.status,200,"Owner can delete one applicant's readiness survey without deleting the CV");
-const wholeApplicationDeleteApplicant=await registerTeacher("whole-application-delete");
+const wholeApplicationDeleteApplicant=await registerTeacher("whole-application-delete");const unrelatedDeletionActor=await registerTeacher("unrelated-application-delete");
+const unauthorizedWholeApplicationDelete=await request("/api/teacher-cv-workspace/"+wholeApplicationDeleteApplicant.id+"/application",{token:unrelatedDeletionActor.token,method:"DELETE"});
+assert.equal(unauthorizedWholeApplicationDelete.status,403,"A different teacher cannot erase another teacher's application");
+
 await request("/api/users/me/teacher-cv",{token:wholeApplicationDeleteApplicant.token,method:"PATCH",body:{cv:{professionalSummary:"Application draft to erase",surveyAnswers:JSON.stringify({laptop:"Yes"}),surveySubmittedAt:new Date().toISOString(),surveyReviewStatus:"pending"}}});
 const wholeApplicationDocument=await pool.query("INSERT INTO teacher_documents(user_id,document_type,file_name,mime_type,size_bytes,data) VALUES($1,'certificate','private-application-media.pdf','application/pdf',18,$2) RETURNING id",[wholeApplicationDeleteApplicant.id,Buffer.from("private-media-bytes")]);
 await pool.query("INSERT INTO teacher_qualifications(user_id,title,institution,year,document_id,verification_status,source) VALUES($1,'Test qualification','Test institution',2020,$2,'pending','user')",[wholeApplicationDeleteApplicant.id,wholeApplicationDocument.rows[0].id]);
