@@ -2,7 +2,7 @@ import { Router } from "express";
 import { requireManagerPermission, requireManagerPermissionForRequest, requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
 import { db, notificationsTable, pool } from "@workspace/db";
 import { requireAuth, canAccessManager } from "../lib/auth-middleware";
-import { enqueueEmailNotification } from "../lib/email-notification-queue";
+import { enqueueEmailNotification, ensureNotificationMetadataSchema } from "../lib/email-notification-queue";
 import { normalizeRole, isSeniorManager, canModerateUser } from "../lib/role-access";
 import { revokeUserSessions } from "../lib/auth-session-store";
 import { removeStoredMedia } from "../lib/media-storage";
@@ -247,6 +247,8 @@ router.delete("/:teacherId/application",requireSelfOrCvMonitor,async(req,res)=>{
   const docs=await client.query("SELECT storage_key FROM teacher_documents WHERE user_id=$1 AND storage_key IS NOT NULL FOR UPDATE",[id]);
   mediaKeys=docs.rows.map((row:any)=>String(row.storage_key)).filter(Boolean);
   await client.query("INSERT INTO teacher_application_media_cleanup(teacher_id,storage_key) SELECT $1,storage_key FROM teacher_documents WHERE user_id=$1 AND storage_key IS NOT NULL ON CONFLICT(storage_key) DO NOTHING",[id]);
+  // Ensure metadata columns exist before scoped queue cleanup, even if no chat has been sent yet.
+  await ensureNotificationMetadataSchema();
   // Remove notification copies addressed to the applicant and only those reviewer email
   // copies explicitly tagged with this application ID. Never fuzzy-delete another app's messages.
   await client.query("DELETE FROM notifications WHERE type='teacher_cv_message' AND (recipient_id=$1 OR link LIKE $2)",[id,"%teacherId="+id+"%"]);
