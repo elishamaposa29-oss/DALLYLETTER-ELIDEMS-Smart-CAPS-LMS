@@ -230,6 +230,30 @@ async function authorizeCvMutation(actor:any,teacherId:number){
  const target=await pool.query("SELECT role,is_manager,manager_level FROM users WHERE id=$1 AND lower(role)='teacher'",[teacherId]);
  return Boolean(target.rows[0]&&canAccessManager(actor)&&canModerateUser(actor,{role:target.rows[0].role,isManager:target.rows[0].is_manager,managerLevel:target.rows[0].manager_level}));
 }
+router.delete("/bulk/:scope",requireManagerPermissionIfManager("teacher_cv.view"),async(req,res)=>{
+ const scope=String(req.params.scope||""); const ids=Array.isArray(req.body?.teacherIds)?[...new Set(req.body.teacherIds.map(idOf).filter(Boolean))] as number[]:[];
+ if(!["cv","survey"].includes(scope)||!ids.length||ids.length>100){res.status(400).json({error:"Choose CV or survey and provide 1–100 valid teacher IDs."});return;}
+ const allowed=await Promise.all(ids.map(async id=>({id,allowed:await authorizeCvMutation(req.currentUser!,id)})));
+ const denied=allowed.filter(x=>!x.allowed).map(x=>x.id); if(denied.length){res.status(403).json({error:"One or more selected applications are outside your monitoring scope.",deniedTeacherIds:denied});return;}
+ await ensure(); const client=await pool.connect(); const deleted:number[]=[];
+ try{
+  await client.query("BEGIN");
+  for(const id of ids){
+   const target=await client.query("SELECT id FROM users WHERE id=$1 AND lower(role)='teacher' FOR UPDATE",[id]); if(!target.rows.length)continue;
+   if(scope==="cv"){
+    await client.query("DELETE FROM teacher_qualifications WHERE user_id=$1",[id]); await client.query("DELETE FROM teacher_documents WHERE user_id=$1",[id]);
+    await client.query("UPDATE teacher_profiles SET cv=cv - 'professionalSummary' - 'education' - 'experience' - 'subjects' - 'address' - 'personalDetails' - 'teachingDetails' - 'photoDocumentId' - 'certifications',updated_at=now() WHERE user_id=$1",[id]);
+    await client.query("UPDATE users SET teacher_application_status='draft',teacher_review_deadline=NULL,updated_at=now() WHERE id=$1 AND teacher_application_status='pending_review'",[id]);
+   }else{
+    await client.query("UPDATE teacher_profiles SET cv=cv - 'surveyAnswers' - 'surveySubmittedAt' - 'surveyReviewStatus' - 'surveyReviewNote' - 'surveyReviewedAt' - 'surveyReviewedBy',updated_at=now() WHERE user_id=$1",[id]);
+   }
+   await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,$3,'existing','deleted',$4)",[id,req.currentUser!.id,scope+"_deleted","Bulk "+scope+" deletion by authorized reviewer"]);
+   deleted.push(id);
+  }
+  await client.query("COMMIT"); res.json({deleted:true,scope,deletedTeacherIds:deleted,count:deleted.length});
+ }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}finally{client.release();}
+});
+
 router.delete("/:teacherId/cv",requireSelfOrCvMonitor,async(req,res)=>{
  const id=idOf(req.params.teacherId); if(!id){res.status(400).json({error:"Invalid teacher id"});return;}
  if(!await authorizeCvMutation(req.currentUser!,id)){res.status(403).json({error:"You are not authorized to delete this CV"});return;}
@@ -259,29 +283,6 @@ router.delete("/:teacherId/survey",requireSelfOrCvMonitor,async(req,res)=>{
  }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}finally{client.release();}
 });
 
-router.delete("/bulk/:scope",requireManagerPermissionIfManager("teacher_cv.view"),async(req,res)=>{
- const scope=String(req.params.scope||""); const ids=Array.isArray(req.body?.teacherIds)?[...new Set(req.body.teacherIds.map(idOf).filter(Boolean))] as number[]:[];
- if(!["cv","survey"].includes(scope)||!ids.length||ids.length>100){res.status(400).json({error:"Choose CV or survey and provide 1–100 valid teacher IDs."});return;}
- const allowed=await Promise.all(ids.map(async id=>({id,allowed:await authorizeCvMutation(req.currentUser!,id)})));
- const denied=allowed.filter(x=>!x.allowed).map(x=>x.id); if(denied.length){res.status(403).json({error:"One or more selected applications are outside your monitoring scope.",deniedTeacherIds:denied});return;}
- await ensure(); const client=await pool.connect(); const deleted:number[]=[];
- try{
-  await client.query("BEGIN");
-  for(const id of ids){
-   const target=await client.query("SELECT id FROM users WHERE id=$1 AND lower(role)='teacher' FOR UPDATE",[id]); if(!target.rows.length)continue;
-   if(scope==="cv"){
-    await client.query("DELETE FROM teacher_qualifications WHERE user_id=$1",[id]); await client.query("DELETE FROM teacher_documents WHERE user_id=$1",[id]);
-    await client.query("UPDATE teacher_profiles SET cv=cv - 'professionalSummary' - 'education' - 'experience' - 'subjects' - 'address' - 'personalDetails' - 'teachingDetails' - 'photoDocumentId' - 'certifications',updated_at=now() WHERE user_id=$1",[id]);
-    await client.query("UPDATE users SET teacher_application_status='draft',teacher_review_deadline=NULL,updated_at=now() WHERE id=$1 AND teacher_application_status='pending_review'",[id]);
-   }else{
-    await client.query("UPDATE teacher_profiles SET cv=cv - 'surveyAnswers' - 'surveySubmittedAt' - 'surveyReviewStatus' - 'surveyReviewNote' - 'surveyReviewedAt' - 'surveyReviewedBy',updated_at=now() WHERE user_id=$1",[id]);
-   }
-   await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,$3,'existing','deleted',$4)",[id,req.currentUser!.id,scope+"_deleted","Bulk "+scope+" deletion by authorized reviewer"]);
-   deleted.push(id);
-  }
-  await client.query("COMMIT"); res.json({deleted:true,scope,deletedTeacherIds:deleted,count:deleted.length});
- }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}finally{client.release();}
-});
 router.get("/:teacherId/history",requireManagerPermissionIfManager("teacher_cv.view"),async(req,res)=>{
  const id=idOf(req.params.teacherId);if(!id){res.status(400).json({error:"Invalid teacher id"});return}
  const actor=req.currentUser!;
