@@ -76,38 +76,38 @@
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .08);
 
-  --background: 240 20% 98%;
-  --foreground: 240 10% 10%;
-  --border: 240 10% 90%;
+  --background: 214 45% 97%;
+  --foreground: 216 45% 12%;
+  --border: 214 35% 89%;
   
   --card: 0 0% 100%;
   --card-foreground: 240 10% 10%;
   --card-border: 240 10% 90%;
 
-  --sidebar: 240 5% 96%;
-  --sidebar-foreground: 240 10% 10%;
-  --sidebar-border: 240 10% 90%;
-  --sidebar-primary: 240 80% 25%;
+  --sidebar: 216 45% 95%;
+  --sidebar-foreground: 216 45% 12%;
+  --sidebar-border: 214 35% 89%;
+  --sidebar-primary: 216 72% 21%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 240 10% 90%;
-  --sidebar-accent-foreground: 240 10% 10%;
-  --sidebar-ring: 240 80% 25%;
+  --sidebar-accent: 186 70% 92%;
+  --sidebar-accent-foreground: 216 72% 21%;
+  --sidebar-ring: 186 100% 38%;
 
   --popover: 0 0% 100%;
   --popover-foreground: 240 10% 10%;
   --popover-border: 240 10% 90%;
 
-  --primary: 240 80% 25%;
+  --primary: 216 72% 21%;
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 45 100% 50%;
-  --secondary-foreground: 240 80% 25%;
+  --secondary: 46 82% 92%;
+  --secondary-foreground: 216 72% 21%;
 
   --muted: 240 10% 90%;
   --muted-foreground: 240 10% 40%;
 
-  --accent: 45 100% 50%;
-  --accent-foreground: 240 80% 25%;
+  --accent: 186 100% 38%;
+  --accent-foreground: 0 0% 100%;
 
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
@@ -115,15 +115,15 @@
   --input: 240 10% 85%;
   --ring: 240 80% 25%;
   
-  --chart-1: 240 80% 25%;
-  --chart-2: 45 100% 50%;
-  --chart-3: 200 80% 40%;
-  --chart-4: 300 80% 40%;
-  --chart-5: 350 80% 40%;
+  --chart-1: 186 100% 38%;
+  --chart-2: 46 100% 35%;
+  --chart-3: 278 100% 50%;
+  --chart-4: 216 72% 35%;
+  --chart-5: 150 65% 35%;
 
-  --app-font-sans: 'Inter', sans-serif;
+  --app-font-sans: 'Plus Jakarta Sans', sans-serif;
   --app-font-serif: Georgia, serif;
-  --app-font-mono: Menlo, monospace;
+  --app-font-mono: 'Orbitron', Menlo, monospace;
   --radius: 0.75rem;
   --shadow-2xs: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00); /*replace with H S L */
   --shadow-xs: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00); /*replace with H S L */
@@ -176,38 +176,38 @@
   --elevate-1: rgba(255,255,255, .04);
   --elevate-2: rgba(255,255,255, .09);
 
-  --background: 240 20% 5%;
-  --foreground: 240 10% 90%;
-  --border: 240 10% 20%;
+  --background: 220 65% 6%;
+  --foreground: 212 100% 97%;
+  --border: 216 43% 21%;
 
-  --card: 240 20% 10%;
-  --card-foreground: 240 10% 90%;
-  --card-border: 240 10% 20%;
+  --card: 217 57% 11%;
+  --card-foreground: 212 100% 97%;
+  --card-border: 216 43% 21%;
 
-  --sidebar: 240 20% 8%;
-  --sidebar-foreground: 240 10% 90%;
-  --sidebar-border: 240 10% 20%;
-  --sidebar-primary: 240 80% 60%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 240 10% 20%;
-  --sidebar-accent-foreground: 240 10% 90%;
-  --sidebar-ring: 240 80% 60%;
+  --sidebar: 220 70% 7%;
+  --sidebar-foreground: 212 100% 97%;
+  --sidebar-border: 216 43% 21%;
+  --sidebar-primary: 186 100% 50%;
+  --sidebar-primary-foreground: 220 65% 6%;
+  --sidebar-accent: 216 43% 18%;
+  --sidebar-accent-foreground: 212 100% 97%;
+  --sidebar-ring: 186 100% 50%;
 
   --popover: 240 20% 10%;
   --popover-foreground: 240 10% 90%;
   --popover-border: 240 10% 20%;
 
-  --primary: 240 80% 60%;
-  --primary-foreground: 0 0% 100%;
+  --primary: 186 100% 50%;
+  --primary-foreground: 220 65% 6%;
 
-  --secondary: 45 100% 50%;
-  --secondary-foreground: 240 80% 25%;
+  --secondary: 46 48% 23%;
+  --secondary-foreground: 46 100% 82%;
 
   --muted: 240 10% 20%;
   --muted-foreground: 240 10% 60%;
 
-  --accent: 45 100% 50%;
-  --accent-foreground: 240 80% 25%;
+  --accent: 278 100% 64%;
+  --accent-foreground: 0 0% 100%;
 
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
@@ -215,11 +215,11 @@
   --input: 240 10% 25%;
   --ring: 240 80% 60%;
   
-  --chart-1: 240 80% 60%;
-  --chart-2: 45 100% 50%;
-  --chart-3: 200 80% 60%;
-  --chart-4: 300 80% 60%;
-  --chart-5: 350 80% 60%;
+  --chart-1: 186 100% 50%;
+  --chart-2: 46 100% 62%;
+  --chart-3: 278 100% 70%;
+  --chart-4: 216 90% 68%;
+  --chart-5: 150 65% 58%;
 
   --shadow-2xs: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00);
   --shadow-xs: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00);
@@ -359,4 +359,55 @@
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
     inset: -1px;
   }
+}
+
+/* Dallyletter future-interface layer: keep the established brand, add depth and signal. */
+.dallyletter-stage {
+  background-color: hsl(var(--background));
+  background-image:
+    radial-gradient(ellipse at 8% 4%, hsl(186 100% 50% / 0.075), transparent 34rem),
+    radial-gradient(ellipse at 94% 10%, hsl(278 100% 60% / 0.055), transparent 30rem),
+    radial-gradient(ellipse at 78% 94%, hsl(46 100% 45% / 0.045), transparent 34rem),
+    linear-gradient(hsl(var(--foreground) / 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(var(--foreground) / 0.025) 1px, transparent 1px);
+  background-size: auto, auto, auto, 28px 28px, 28px 28px;
+  background-position: center top;
+}
+.dark .dallyletter-stage {
+  background-image:
+    radial-gradient(ellipse at 8% 4%, hsl(186 100% 50% / 0.11), transparent 34rem),
+    radial-gradient(ellipse at 94% 10%, hsl(278 100% 60% / 0.09), transparent 30rem),
+    radial-gradient(ellipse at 78% 94%, hsl(46 100% 45% / 0.07), transparent 34rem),
+    linear-gradient(hsl(212 100% 97% / 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(212 100% 97% / 0.035) 1px, transparent 1px);
+}
+.dallyletter-future-card {
+  border-color: hsl(var(--border) / 0.9);
+  box-shadow: 0 10px 28px -22px hsl(216 72% 21% / 0.42), 0 1px 0 hsl(0 0% 100% / 0.65) inset;
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+.dallyletter-future-card:hover {
+  border-color: hsl(186 72% 48% / 0.42);
+  box-shadow: 0 14px 34px -22px hsl(186 100% 38% / 0.24), 0 1px 0 hsl(0 0% 100% / 0.7) inset;
+}
+.dark .dallyletter-future-card {
+  box-shadow: 0 12px 32px -24px hsl(186 100% 50% / 0.25), 0 1px 0 hsl(212 100% 97% / 0.06) inset;
+}
+.dark .dallyletter-future-card:hover {
+  border-color: hsl(186 100% 50% / 0.38);
+  box-shadow: 0 16px 38px -22px hsl(186 100% 50% / 0.2), 0 1px 0 hsl(212 100% 97% / 0.08) inset;
+}
+.dallyletter-tech-label {
+  font-family: var(--app-font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.dallyletter-sidebar {
+  background-image:
+    radial-gradient(ellipse at 92% 12%, hsl(186 100% 50% / 0.12), transparent 18rem),
+    radial-gradient(ellipse at 12% 88%, hsl(278 100% 60% / 0.09), transparent 20rem),
+    linear-gradient(180deg, #0a1628 0%, #0d1e38 52%, #0a1628 100%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .dallyletter-future-card { transition: none; }
 }
