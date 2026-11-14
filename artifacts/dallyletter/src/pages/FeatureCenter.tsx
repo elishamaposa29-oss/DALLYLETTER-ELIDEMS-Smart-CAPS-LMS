@@ -87,7 +87,7 @@ export default function FeatureCenter(){
   "Attendance Register & Activity History":"attendance.view",
   "Attendance register & operations":"attendance.view",
   "Learning communities":"groups.manage",
-  "Teacher CV applications":"teacher_cv.view",
+
   "Qualification verification":"qualifications.view",
   "Manager audit history":"audit.view_subordinate",
  };
