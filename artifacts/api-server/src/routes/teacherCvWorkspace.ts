@@ -247,17 +247,10 @@ router.delete("/:teacherId/application",requireSelfOrCvMonitor,async(req,res)=>{
   const docs=await client.query("SELECT storage_key FROM teacher_documents WHERE user_id=$1 AND storage_key IS NOT NULL FOR UPDATE",[id]);
   mediaKeys=docs.rows.map((row:any)=>String(row.storage_key)).filter(Boolean);
   await client.query("INSERT INTO teacher_application_media_cleanup(teacher_id,storage_key) SELECT $1,storage_key FROM teacher_documents WHERE user_id=$1 AND storage_key IS NOT NULL ON CONFLICT(storage_key) DO NOTHING",[id]);
-  const chatRows=await client.query("SELECT body FROM teacher_cv_chat_messages WHERE teacher_id=$1",[id]);
-  const chatBodies=chatRows.rows.map((row:any)=>String(row.body||"")).filter(Boolean);
-  const chatNoticeRows=await client.query("SELECT recipient_id FROM notifications WHERE type='teacher_cv_message' AND (recipient_id=$1 OR link LIKE $2)",[id,"%teacherId="+id+"%"]);
-  const chatEmailRows=chatBodies.length?await client.query("SELECT DISTINCT recipient_user_id FROM email_notification_queue WHERE subject=$1 AND EXISTS (SELECT 1 FROM unnest($2::text[]) AS message_body WHERE position(message_body IN body_text)>0)",["Dallyletter Elidems — New teacher application message",chatBodies]):{rows:[] as any[]};
-  const chatRecipientIds=[...new Set([id,...chatNoticeRows.rows.map((row:any)=>Number(row.recipient_id)),...chatEmailRows.rows.map((row:any)=>Number(row.recipient_user_id))].filter(Number.isSafeInteger))];
-  // Delete all application-owned records and message copies in one transaction.
-  // The user account and independently granted teacher access are preserved.
+  // Remove notification copies addressed to the applicant and only those reviewer email
+  // copies explicitly tagged with this application ID. Never fuzzy-delete another app's messages.
   await client.query("DELETE FROM notifications WHERE type='teacher_cv_message' AND (recipient_id=$1 OR link LIKE $2)",[id,"%teacherId="+id+"%"]);
-  if(chatBodies.length){
-   await client.query("DELETE FROM email_notification_queue WHERE subject=$1 AND recipient_user_id=ANY($2::int[]) AND EXISTS (SELECT 1 FROM unnest($3::text[]) AS message_body WHERE position(message_body IN body_text)>0)",["Dallyletter Elidems — New teacher application message",chatRecipientIds,chatBodies]);
-  }
+  await client.query("DELETE FROM email_notification_queue WHERE subject=$1 AND (recipient_user_id=$2 OR (related_entity_type='teacher_cv_application' AND related_entity_id=$2))",["Dallyletter Elidems — New teacher application message",id]);
   await client.query("DELETE FROM teacher_cv_chat_messages WHERE teacher_id=$1",[id]);
   await client.query("DELETE FROM teacher_qualifications WHERE user_id=$1",[id]);
   await client.query("DELETE FROM teacher_documents WHERE user_id=$1",[id]);
@@ -365,7 +358,7 @@ router.post("/:teacherId/chat",requireManagerPermissionIfManager("teacher_cv.cha
  for(const recipientId of recipients){
   try{await db.insert(notificationsTable).values({recipientId,title,message,link:recipientId===id?"/profile-hub":"/manager/teacher-cv-workspace?teacherId="+id,type:"teacher_cv_message"});}catch(error){console.error("[teacher-cv] Chat notification failed.",error instanceof Error?error.message:"unknown");}
  }
- const emailResults=await Promise.allSettled(recipients.map(recipientId=>enqueueEmailNotification(recipientId,"Dallyletter Elidems — "+title,message)));
+ const emailResults=await Promise.allSettled(recipients.map(recipientId=>enqueueEmailNotification(recipientId,"Dallyletter Elidems — "+title,message,{relatedEntityType:"teacher_cv_application",relatedEntityId:id})));
  res.status(201).json({...r.rows[0],notificationsQueued:recipients.length,emailNotificationsQueued:emailResults.filter(result=>result.status==="fulfilled").length});
 });
 if(process.env.NODE_ENV==="test"){router.post("/__test/process-expired",async(req,res)=>{if(!isOwner(req.currentUser)){res.status(403).json({error:"Owner access required"});return}await processExpiredTeacherApplications();res.json({processed:true})})}
