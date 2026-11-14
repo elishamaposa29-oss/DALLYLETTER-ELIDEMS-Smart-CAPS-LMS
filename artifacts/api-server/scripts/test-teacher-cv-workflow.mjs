@@ -197,6 +197,21 @@ const adminApprove=await request("/api/teacher-cv-workspace/"+approvalApplicant.
 assert.equal(adminApprove.status,403,"Admin cannot bypass the Owner/Senior Manager authorization grant");
 const adminReject=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/decision",{token:adminToken,method:"POST",body:{action:"reject",note:"Admin rejection must be denied"}});
 assert.equal(adminReject.status,403,"Admin cannot bypass the Owner/Senior Manager review grant");
+const managerRoleRow=await pool.query("INSERT INTO users(email,password_hash,name,role,is_manager,manager_level) VALUES($1,$2,$3,'manager',true,'junior') RETURNING id",["teacher-cv-generic-manager-"+suffix+"@example.test","test-only-not-used","CV Test Manager Role"]);
+const managerRoleId=managerRoleRow.rows[0].id;
+const managerRoleEncoded=Buffer.from(JSON.stringify({userId:managerRoleId,ts:Date.now()})).toString("base64url");
+const managerRoleToken=managerRoleEncoded+"."+crypto.createHmac("sha256",process.env.JWT_SECRET).update(managerRoleEncoded).digest("hex");
+await pool.query("INSERT INTO auth_sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '90 days')",[crypto.createHash("sha256").update(managerRoleToken).digest("hex"),managerRoleId]);
+const genericManagerDenied=await request("/api/teacher-cv-workspace/queue",{token:managerRoleToken});
+assert.equal(genericManagerDenied.status,403,"A generic Manager role receives no implicit CV access");
+const genericManagerGrant=await request("/api/manager-permissions/"+managerRoleId,{token:ownerToken,method:"PUT",body:{permissions:[{key:"teacher_cv.view",granted:true}]}});
+assert.equal(genericManagerGrant.status,200,"Owner can grant CV view to a generic Manager account individually");
+const genericManagerQueue=await request("/api/teacher-cv-workspace/queue",{token:managerRoleToken});
+assert.equal(genericManagerQueue.status,200,"Generic Manager can view the CV queue only after the explicit Owner grant");
+const genericManagerDetails=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/details",{token:managerRoleToken});
+assert.equal(genericManagerDetails.status,200,"Generic Manager can inspect the submitted CV details with the explicit view grant");
+const genericManagerCannotApprove=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/decision",{token:managerRoleToken,method:"POST",body:{action:"approve",note:"Manager role must not gain senior authority"}});
+assert.equal(genericManagerCannotApprove.status,403,"A junior-level generic Manager cannot approve teacher CVs");
 const grantView=await request("/api/manager-permissions/"+managerId,{token:ownerToken,method:"PUT",body:{permissions:[{key:"teacher_cv.view",granted:true}]}});
 assert.equal(grantView.status,200,"Owner can grant this manager CV view permission individually");
 const juniorCannotReviewSurvey=await request("/api/teacher-cv-workspace/"+draftOnlyApplicant.id+"/survey/decision",{token:managerToken,method:"POST",body:{action:"approve",note:"Junior review must be denied"}});
@@ -554,6 +569,10 @@ assert.ok(convertedRejected.rows[0].password_hash,"Scheduled conversion preserve
 const learnerLogin=await request("/api/auth/login",{method:"POST",body:{email:rejected.email,password}});
 assert.equal(learnerLogin.status,200,"Converted applicant can still authenticate normally");
 assert.equal(learnerLogin.data.user.role,"student","Converted applicant receives learner role on next login");
+const learnerCvQueue=await request("/api/teacher-cv-workspace/queue",{token:learnerLogin.data.token});
+assert.equal(learnerCvQueue.status,403,"Learner cannot access the protected teacher CV review queue");
+const learnerCvSubmit=await request("/api/teacher-cv-workspace/submit",{token:learnerLogin.data.token,method:"POST"});
+assert.equal(learnerCvSubmit.status,403,"Learner cannot submit a teacher CV application without a teacher account");
 const learnerLesson=await request("/api/lessons",{token:learnerLogin.data.token,method:"POST",body:{title:"learner cannot teach"}});
 assert.equal(learnerLesson.status,403,"Converted learner cannot create teacher lessons");
 
