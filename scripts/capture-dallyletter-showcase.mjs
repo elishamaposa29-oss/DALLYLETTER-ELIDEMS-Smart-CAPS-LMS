@@ -618,7 +618,8 @@ try {
   }
   const roleResults = results.filter((result) => result.type === "dashboard");
   const requiredCvRoles = new Set(["owner", "senior_manager", "junior_manager", "manager", "admin", "teacher", "learner"]);
-  const authenticatedCaptureEnabled = process.env.SHOWCASE_CAPTURE_AUTHENTICATED !== "false";
+  const previewRun = process.env.GITHUB_EVENT_NAME === "pull_request";
+  const authenticatedCaptureEnabled = !previewRun && process.env.SHOWCASE_CAPTURE_AUTHENTICATED !== "false";
   const missingRequiredRoleAccounts = authenticatedCaptureEnabled
     ? [...requiredCvRoles].filter((role) => !roleResults.some((result) => result.role === role && result.status === "captured"))
     : [...requiredCvRoles];
@@ -637,11 +638,11 @@ try {
     results.push({
       type: "integration",
       page: "google-sign-in",
-      status: authenticatedCaptureEnabled ? "blocked" : "skipped",
+      status: previewRun ? "skipped" : "blocked",
       occurrences: googleIdentityErrors.length,
-      ...(authenticatedCaptureEnabled
-        ? { error: "Google Identity Services rejected the configured production origin. Password-role dashboard captures were allowed to continue; Google sign-in remains unverified." }
-        : { reason: "Vercel preview origins are not configured as Google OAuth JavaScript origins. Google sign-in is intentionally not evaluated on pull-request previews; the trusted production capture remains responsible for verifying the configured production origin." })
+      ...(previewRun
+        ? { reason: "Vercel preview origins are not configured as Google OAuth JavaScript origins. Google sign-in is intentionally not evaluated on pull-request previews; the trusted production capture remains responsible for verifying the configured production origin." }
+        : { error: "Google Identity Services rejected the configured production origin. Google sign-in remains unverified." })
     });
   }
   results.push(await pageFor404Probe());
