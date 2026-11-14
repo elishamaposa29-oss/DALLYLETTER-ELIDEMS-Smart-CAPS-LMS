@@ -53,8 +53,11 @@ function isTrustedDallyletterVercelOrigin(origin: string): boolean {
       /^(?:dallyletter|elidems)(?:-[a-z0-9]+)*(?:-[a-z0-9]{6,})?\.vercel\.app$/i.test(hostname);
     // Vercel's generated production deployment host uses the account + exact project slug,
     // rather than a dallyletter/elidems prefix. Trust only that one project namespace.
+    // The active Dallyletter Vercel project uses an account-scoped hostname.
+    // Preview deployments append a suffix (for example, -gamma). Trust only this
+    // exact account + project prefix, never arbitrary vercel.app tenants.
     const isThisDallyletterProjectDeployment =
-      /^elishamaposa29-oss-dallyletter-elidems-smart-caps-[a-z0-9-]+\.vercel\.app$/i.test(hostname);
+      /^elishamaposa29-oss-dallyletter-elid(?:-[a-z0-9-]+)?\.vercel\.app$/i.test(hostname);
     return parsed.protocol === "https:"
       && parsed.origin === origin
       && hostname.endsWith(".vercel.app")
