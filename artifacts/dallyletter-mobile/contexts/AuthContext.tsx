@@ -215,9 +215,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const subscription = AppState.addEventListener("change", state => {
       if (state === "active") void revalidate();
     });
+    const isPendingTeacher = String((user as any)?.role || "").toLowerCase() === "teacher" &&
+      ["draft", "pending_review", "rejected_pending_conversion"].includes(String((user as any)?.teacherApplicationStatus || "").toLowerCase());
     const interval = setInterval(() => {
       if (AppState.currentState === "active") void revalidate();
-    }, 15_000);
+    }, isPendingTeacher ? 15_000 : 60_000);
     return () => {
       subscription.remove();
       clearInterval(interval);
