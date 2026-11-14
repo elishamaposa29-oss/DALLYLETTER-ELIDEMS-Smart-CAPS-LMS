@@ -22,7 +22,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const { data: fetchedUser, isLoading, refetch, error } = useGetCurrentUser({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    query: { enabled: !!token, retry: false, refetchInterval: 60_000, refetchOnWindowFocus: true } as any,
+    query: {
+      enabled: !!token,
+      retry: false,
+      refetchInterval: (query: any) => {
+        const current = query.state.data as any;
+        const restrictedTeacher = String(current?.role || "").toLowerCase() === "teacher" &&
+          ["draft", "pending_review", "rejected_pending_conversion"].includes(String(current?.teacherApplicationStatus || "").toLowerCase());
+        return restrictedTeacher ? 15_000 : 60_000;
+      },
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: true,
+    } as any,
   });
 
   useEffect(() => {
