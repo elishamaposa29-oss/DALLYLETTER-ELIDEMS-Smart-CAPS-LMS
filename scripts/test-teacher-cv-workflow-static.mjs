@@ -48,7 +48,7 @@ assert.match(appRoutes, /\/manager\/teacher-cv-workspace/, "Manager CV workspace
 
 assert.match(roleAccess, /isTeacherRestricted/, "Pending and rejected applicants must remain restricted from teacher operations");
 assert.match(expiry, /SET role='student',teacher_application_status='auto_converted'/, "Expired or rejected applications must convert to the learner role");
-assert.match(authContext, /refetchInterval: 15_000/, "Web sessions must refresh role/application state promptly after Owner approval");
-assert.match(mobileAuthContext, /}, 15_000\);/, "Mobile sessions must refresh role/application state promptly after Owner approval");
+assert.match(authContext, /restrictedTeacher \? 15_000 : 60_000/, "Web sessions must poll pending teacher applications promptly without increasing normal-user API traffic");
+assert.match(mobileAuthContext, /isPendingTeacher \? 15_000 : 60_000/, "Mobile sessions must poll pending teacher applications promptly without increasing normal-user API traffic");
 
 console.log("TEACHER_CV_WORKFLOW_STATIC: PASS — Google sign-in wiring, CV/survey review, explicit manager authorization, teacher activation, rejection grace period, learner conversion, routes and session refresh.");
