@@ -41,6 +41,9 @@ const productionRenderService = renderBlueprint.split("name: dallyletter-api-pro
 assert.match(productionRenderService, /key: GOOGLE_CLIENT_ID/, "Production LMS API service must declare the existing Google OAuth client ID environment variable");
 
 assert.match(workspaceUi, /Staff verification workspace/, "CV and qualification review must share one staff verification workspace");
+assert.doesNotMatch(dashboardLayout, /label: "Teacher CV Applications"|label: "Qualification Verification"/, "Dashboard navigation must not expose duplicate CV and qualification destinations");
+assert.match(teacherQualifications, /api\/users\/me\/qualifications/, "Teacher self-service qualification records must remain available in the unified CV editor");
+assert.match(teacherQualifications, /api\/users\/me\/teacher-cv/, "Teacher self-service CV and readiness survey must remain available in the same editor");
 assert.match(workspaceUi, /Qualifications & certificates/, "The consolidated workspace must expose the full qualification verification queue");
 assert.match(managerQualifications, /export function ManagerQualificationsPanel/, "Existing qualification verification must remain available as an embedded panel");
 assert.match(dashboardLayout, /Staff Verification & Qualifications/, "Staff navigation must expose one consolidated verification destination");
