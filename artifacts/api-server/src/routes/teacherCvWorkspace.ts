@@ -5,6 +5,7 @@ import { requireAuth, canAccessManager } from "../lib/auth-middleware";
 import { enqueueEmailNotification } from "../lib/email-notification-queue";
 import { normalizeRole, isSeniorManager, canModerateUser } from "../lib/role-access";
 import { revokeUserSessions } from "../lib/auth-session-store";
+import { removeStoredMedia } from "../lib/media-storage";
 import { processExpiredTeacherApplications } from "../lib/teacher-cv-expiry";
 const router=Router(); let ready:Promise<void>|null=null;
 async function ensure(){if(!ready)ready=(async()=>{await pool.query(`CREATE TABLE IF NOT EXISTS teacher_cv_workflow_settings(id integer PRIMARY KEY DEFAULT 1 CHECK(id=1),review_duration_days integer CHECK(review_duration_days BETWEEN 1 AND 365 OR review_duration_days IS NULL),updated_by integer REFERENCES users(id),updated_at timestamptz NOT NULL DEFAULT now())`);await pool.query("INSERT INTO teacher_cv_workflow_settings(id,review_duration_days) VALUES(1,NULL) ON CONFLICT(id) DO NOTHING");
@@ -230,6 +231,40 @@ async function authorizeCvMutation(actor:any,teacherId:number){
  const target=await pool.query("SELECT role,is_manager,manager_level FROM users WHERE id=$1 AND lower(role)='teacher'",[teacherId]);
  return Boolean(target.rows[0]&&canAccessManager(actor)&&canModerateUser(actor,{role:target.rows[0].role,isManager:target.rows[0].is_manager,managerLevel:target.rows[0].manager_level}));
 }
+router.delete("/:teacherId/application",requireSelfOrCvMonitor,async(req,res)=>{
+ const id=idOf(req.params.teacherId);
+ if(!id){res.status(400).json({error:"Invalid teacher id"});return;}
+ if(!await authorizeCvMutation(req.currentUser!,id)){res.status(403).json({error:"You are not authorized to delete this application"});return;}
+ await ensure();
+ const client=await pool.connect();
+ let mediaKeys:string[]=[];
+ let previousStatus="draft";
+ try{
+  await client.query("BEGIN");
+  const target=await client.query("SELECT id,teacher_application_status FROM users WHERE id=$1 AND lower(role)='teacher' FOR UPDATE",[id]);
+  if(!target.rows.length){await client.query("ROLLBACK");res.status(404).json({error:"Teacher application owner not found"});return;}
+  previousStatus=String(target.rows[0].teacher_application_status||"draft");
+  const docs=await client.query("SELECT storage_key FROM teacher_documents WHERE user_id=$1 AND storage_key IS NOT NULL FOR UPDATE",[id]);
+  mediaKeys=docs.rows.map((row:any)=>String(row.storage_key)).filter(Boolean);
+  // Delete all application-owned records in one transaction. The user account and
+  // its independently granted teacher access are not deleted or silently demoted.
+  await client.query("DELETE FROM teacher_cv_chat_messages WHERE teacher_id=$1",[id]);
+  await client.query("DELETE FROM teacher_qualifications WHERE user_id=$1",[id]);
+  await client.query("DELETE FROM teacher_documents WHERE user_id=$1",[id]);
+  await client.query("DELETE FROM teacher_profiles WHERE user_id=$1",[id]);
+  await client.query("DELETE FROM teacher_cv_review_history WHERE teacher_id=$1",[id]);
+  await client.query("UPDATE users SET teacher_application_status=CASE WHEN teacher_application_status='approved' THEN teacher_application_status ELSE 'draft' END,teacher_review_deadline=NULL,updated_at=now() WHERE id=$1",[id]);
+  // Keep a minimal deletion audit marker; message bodies, CV content and survey answers are removed.
+  await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,'application_deleted',$3,'deleted','Application content, messages and uploaded documents deleted')",[id,req.currentUser!.id,previousStatus]);
+  await client.query("COMMIT");
+ }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}
+ finally{client.release();}
+ const cleanup=await Promise.allSettled(mediaKeys.map(key=>removeStoredMedia(key)));
+ const mediaCleanupPending=cleanup.filter(item=>item.status==="rejected").length;
+ if(mediaCleanupPending) console.error("[teacher-cv] Application media cleanup incomplete.",{teacherId:id,pending:mediaCleanupPending});
+ res.json({deleted:true,scope:"application",deletedChatMessages:true,deletedDrafts:true,deletedSurvey:true,deletedCv:true,deletedQualifications:true,deletedDocuments:true,deletedMediaCount:mediaKeys.length,mediaCleanupPending,accountPreserved:true,approvedTeacherAccessPreserved:previousStatus==="approved"});
+});
+
 router.delete("/bulk/:scope",requireManagerPermissionIfManager("teacher_cv.view"),async(req,res)=>{
  const scope=String(req.params.scope||""); const ids=Array.isArray(req.body?.teacherIds)?[...new Set(req.body.teacherIds.map(idOf).filter(Boolean))] as number[]:[];
  if(!["cv","survey"].includes(scope)||!ids.length||ids.length>100){res.status(400).json({error:"Choose CV or survey and provide 1–100 valid teacher IDs."});return;}
