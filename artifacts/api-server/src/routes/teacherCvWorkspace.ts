@@ -11,7 +11,7 @@ const router=Router(); let ready:Promise<void>|null=null;
 async function ensure(){if(!ready)ready=(async()=>{await pool.query(`CREATE TABLE IF NOT EXISTS teacher_cv_workflow_settings(id integer PRIMARY KEY DEFAULT 1 CHECK(id=1),review_duration_days integer CHECK(review_duration_days BETWEEN 1 AND 365 OR review_duration_days IS NULL),updated_by integer REFERENCES users(id),updated_at timestamptz NOT NULL DEFAULT now())`);await pool.query("INSERT INTO teacher_cv_workflow_settings(id,review_duration_days) VALUES(1,NULL) ON CONFLICT(id) DO NOTHING");
     await pool.query("ALTER TABLE teacher_cv_workflow_settings ALTER COLUMN review_duration_days DROP NOT NULL");
     await pool.query("ALTER TABLE teacher_cv_workflow_settings ALTER COLUMN review_duration_days DROP DEFAULT");
-    await pool.query("UPDATE teacher_cv_workflow_settings SET review_duration_days=NULL WHERE updated_by IS NULL");await pool.query(`CREATE TABLE IF NOT EXISTS teacher_cv_review_history(id bigserial PRIMARY KEY,teacher_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,reviewer_id integer REFERENCES users(id),action text NOT NULL,previous_status text,new_status text NOT NULL,note text,created_at timestamptz NOT NULL DEFAULT now())`);await pool.query(`CREATE TABLE IF NOT EXISTS teacher_cv_chat_messages(id bigserial PRIMARY KEY,teacher_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,sender_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,body text NOT NULL CHECK(length(trim(body)) BETWEEN 1 AND 4000),created_at timestamptz NOT NULL DEFAULT now())`);await pool.query("CREATE INDEX IF NOT EXISTS teacher_cv_chat_thread_idx ON teacher_cv_chat_messages(teacher_id,created_at)")})().catch(e=>{ready=null;throw e});return ready}
+    await pool.query("UPDATE teacher_cv_workflow_settings SET review_duration_days=NULL WHERE updated_by IS NULL");await pool.query(`CREATE TABLE IF NOT EXISTS teacher_cv_review_history(id bigserial PRIMARY KEY,teacher_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,reviewer_id integer REFERENCES users(id),action text NOT NULL,previous_status text,new_status text NOT NULL,note text,created_at timestamptz NOT NULL DEFAULT now())`);await pool.query(`CREATE TABLE IF NOT EXISTS teacher_cv_chat_messages(id bigserial PRIMARY KEY,teacher_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,sender_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,body text NOT NULL CHECK(length(trim(body)) BETWEEN 1 AND 4000),created_at timestamptz NOT NULL DEFAULT now())`);await pool.query("CREATE INDEX IF NOT EXISTS teacher_cv_chat_thread_idx ON teacher_cv_chat_messages(teacher_id,created_at)");await pool.query("CREATE TABLE IF NOT EXISTS teacher_application_media_cleanup(teacher_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,storage_key text PRIMARY KEY,created_at timestamptz NOT NULL DEFAULT now())")})().catch(e=>{ready=null;throw e});return ready}
 function isOwner(u:any){return ["owner","platform_owner"].includes(normalizeRole(u?.role))}
 function isAdmin(u:any){return normalizeRole(u?.role)==="admin"}
 function canReview(u:any){return isOwner(u)||isSeniorManager(u)}
@@ -246,6 +246,7 @@ router.delete("/:teacherId/application",requireSelfOrCvMonitor,async(req,res)=>{
   previousStatus=String(target.rows[0].teacher_application_status||"draft");
   const docs=await client.query("SELECT storage_key FROM teacher_documents WHERE user_id=$1 AND storage_key IS NOT NULL FOR UPDATE",[id]);
   mediaKeys=docs.rows.map((row:any)=>String(row.storage_key)).filter(Boolean);
+  await client.query("INSERT INTO teacher_application_media_cleanup(teacher_id,storage_key) SELECT $1,storage_key FROM teacher_documents WHERE user_id=$1 AND storage_key IS NOT NULL ON CONFLICT(storage_key) DO NOTHING",[id]);
   const chatRows=await client.query("SELECT body FROM teacher_cv_chat_messages WHERE teacher_id=$1",[id]);
   const chatBodies=chatRows.rows.map((row:any)=>String(row.body||"")).filter(Boolean);
   const chatNoticeRows=await client.query("SELECT recipient_id FROM notifications WHERE type='teacher_cv_message' AND (recipient_id=$1 OR link LIKE $2)",[id,"%teacherId="+id+"%"]);
@@ -267,10 +268,14 @@ router.delete("/:teacherId/application",requireSelfOrCvMonitor,async(req,res)=>{
   await client.query("COMMIT");
  }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}
  finally{client.release();}
- const cleanup=await Promise.allSettled(mediaKeys.map(key=>removeStoredMedia(key)));
- const mediaCleanupPending=cleanup.filter(item=>item.status==="rejected").length;
+ const pendingMedia=await pool.query("SELECT storage_key FROM teacher_application_media_cleanup WHERE teacher_id=$1 ORDER BY created_at ASC",[id]);
+ const cleanup=await Promise.allSettled(pendingMedia.rows.map((row:any)=>removeStoredMedia(String(row.storage_key))));
+ const cleanedKeys=pendingMedia.rows.filter((_row:any,index:number)=>cleanup[index]?.status==="fulfilled").map((row:any)=>String(row.storage_key));
+ if(cleanedKeys.length) await pool.query("DELETE FROM teacher_application_media_cleanup WHERE teacher_id=$1 AND storage_key=ANY($2::text[])",[id,cleanedKeys]);
+ const remainingMedia=await pool.query("SELECT count(*)::int AS count FROM teacher_application_media_cleanup WHERE teacher_id=$1",[id]);
+ const mediaCleanupPending=Number(remainingMedia.rows[0]?.count||0);
  if(mediaCleanupPending) console.error("[teacher-cv] Application media cleanup incomplete.",{teacherId:id,pending:mediaCleanupPending});
- res.json({deleted:true,scope:"application",deletedChatMessages:true,deletedDrafts:true,deletedSurvey:true,deletedCv:true,deletedQualifications:true,deletedDocuments:true,deletedMediaCount:mediaKeys.length,mediaCleanupPending,accountPreserved:true,approvedTeacherAccessPreserved:previousStatus==="approved"});
+ res.json({deleted:true,scope:"application",deletedChatMessages:true,deletedDrafts:true,deletedSurvey:true,deletedCv:true,deletedQualifications:true,deletedDocuments:true,deletedMediaCount:pendingMedia.rows.length,mediaCleanupPending,accountPreserved:true,approvedTeacherAccessPreserved:previousStatus==="approved"});
 });
 
 router.delete("/bulk/:scope",requireManagerPermissionIfManager("teacher_cv.view"),async(req,res)=>{
