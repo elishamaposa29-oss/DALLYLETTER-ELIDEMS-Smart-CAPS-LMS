@@ -132,7 +132,7 @@ export default function StudentHome() {
               </View>
             )}
           </View>
-          <TouchableOpacity style={s.badge} onPress={() => router.push("/(student)/notifications")}>
+          <TouchableOpacity style={s.badge} onPress={() => router.push("/(student)/more?section=notifications")}>
             <Feather name="bell" size={18} color="#ffffff" />
             {unread > 0 && <View style={s.badgeDot} />}
           </TouchableOpacity>
