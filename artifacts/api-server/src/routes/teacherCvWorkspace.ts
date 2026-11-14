@@ -207,7 +207,7 @@ router.post("/:teacherId/decision",requireManagerPermissionForRequest((req)=>req
  try{
   await client.query("BEGIN");
   if(action==="approve"){
-   const updated=await client.query("UPDATE users SET teacher_application_status='approved',teacher_review_deadline=NULL WHERE id=$1 AND lower(role)='teacher' AND COALESCE(teacher_application_status,'not_applicable') IN ('pending_review','not_applicable') RETURNING id",[id]);
+   const updated=await client.query("UPDATE users SET role='teacher',teacher_application_status='approved',teacher_review_deadline=NULL,updated_at=now() WHERE id=$1 AND lower(role)='teacher' AND COALESCE(teacher_application_status,'not_applicable') IN ('pending_review','not_applicable') RETURNING id,role,teacher_application_status",[id]);
     if(!updated.rows.length){await client.query("ROLLBACK");res.status(409).json({error:"This application is no longer awaiting a decision."});return;}
    await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,'approved',$3,'approved',$4)",[id,req.currentUser!.id,t.teacher_application_status||"pending_review",note||null]);
   }else{
@@ -225,12 +225,15 @@ router.post("/:teacherId/decision",requireManagerPermissionForRequest((req)=>req
  const message=action==="approve"
   ?"Your teacher CV has been approved. Your teacher permissions are now active. Sign in again if your dashboard has not refreshed."
   :"Your teacher CV was not approved. Your account and login remain active, but teaching permissions are disabled. Your account is scheduled to become a learner after "+(conversionDeadline?new Date(conversionDeadline).toLocaleString():"the configured conversion period")+".";
- try{await db.insert(notificationsTable).values({recipientId:id,title,message,link:"/profile-hub",type:"teacher_cv_decision"});}catch(error){console.error("[teacher-cv] Decision notification failed; decision remains saved.",error instanceof Error?error.message:"unknown");}
+ try{await db.insert(notificationsTable).values({recipientId:id,title,message,link:action==="approve"?"/teacher":"/profile-hub",type:"teacher_cv_decision"});}catch(error){console.error("[teacher-cv] Decision notification failed; decision remains saved.",error instanceof Error?error.message:"unknown");}
  try{await enqueueEmailNotification(id,"Dallyletter Elidems — "+title,message);}catch(error){console.error("[teacher-cv] Decision email queue failed; decision remains saved.",error instanceof Error?error.message:"unknown");}
  res.json({
   status:action==="approve"?"approved":"rejected_pending_conversion",
+  role:"teacher",
+  teacherApplicationStatus:action==="approve"?"approved":"rejected_pending_conversion",
+  dashboardPath:action==="approve"?"/teacher":"/profile-hub",
   conversionDeadline,
-  message:action==="approve"?"Teacher approved and authorized.":"Teaching access denied. The account remains usable and will convert to a learner on the scheduled date."
+  message:action==="approve"?"Teacher approved and authorized. The teacher role, full teacher dashboard and teaching API permissions are now active.":"Teaching access denied. The account remains usable and will convert to a learner on the scheduled date."
  });
 });
 router.get("/:teacherId/history",requireManagerPermissionIfManager("teacher_cv.view"),async(req,res)=>{
