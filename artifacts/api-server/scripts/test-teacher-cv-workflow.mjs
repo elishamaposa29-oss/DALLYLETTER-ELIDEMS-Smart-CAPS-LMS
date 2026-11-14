@@ -250,6 +250,14 @@ const managerSurveyQueueRow=managerQueue.data.applications.find(item=>Number(ite
 assert(managerSurveyQueueRow,"Authorized manager can see the independently submitted readiness survey in the review queue");
 const surveyApplicantCvSubmission=await pool.query("SELECT EXISTS(SELECT 1 FROM teacher_cv_review_history WHERE teacher_id=$1 AND action='submitted') AS has_cv_submission",[draftOnlyApplicant.id]);
 assert.equal(surveyApplicantCvSubmission.rows[0].has_cv_submission,false,"Independent readiness survey must not be recorded as a CV application submission");
+const incompleteCvSubmit=await request("/api/teacher-cv-workspace/submit",{token:draftOnlyApplicant.token,method:"POST"});
+assert.equal(incompleteCvSubmit.status,200,"A CV with no resume, profile photo, completed personal details or qualifications can be submitted");
+const linkedApproval=await request("/api/teacher-cv-workspace/"+draftOnlyApplicant.id+"/decision",{token:ownerToken,method:"POST",body:{action:"approve",note:"Approve the linked CV and readiness survey together"}});
+assert.equal(linkedApproval.status,200,"One shared approval action approves a submitted CV and its submitted readiness survey");
+const linkedApprovalState=await request("/api/users/me/teacher-cv",{token:draftOnlyApplicant.token});
+assert.equal(linkedApprovalState.data.cv.surveyReviewStatus,"approved","Shared CV approval also approves the attached readiness survey");
+const linkedApprovalAuth=await request("/api/auth/me",{token:draftOnlyApplicant.token});
+assert.equal(linkedApprovalAuth.data.teacherApplicationStatus,"approved","Optional CV evidence does not block teacher authorization");
 assert(managerSurveyQueueRow.survey_submitted_at,"Review queue identifies the independent survey submission timestamp");
 const managerDetail=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/details",{token:managerToken});
 assert.equal(managerDetail.status,200,"Authorized manager can open applicant details");
