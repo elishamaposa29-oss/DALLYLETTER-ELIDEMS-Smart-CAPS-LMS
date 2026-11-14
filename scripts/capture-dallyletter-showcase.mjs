@@ -616,17 +616,21 @@ try {
   } else {
     for (const account of roleAccounts) await captureRole(...account);
   }
+  const roleResults = results.filter((result) => result.type === "dashboard");
   const requiredCvRoles = new Set(["owner", "senior_manager", "junior_manager", "manager", "admin", "teacher", "learner"]);
-  const missingRequiredRoleAccounts = roleResults
-    .filter((result) => requiredCvRoles.has(result.role) && result.status === "missing-demo-account")
-    .map((result) => result.role);
+  const authenticatedCaptureEnabled = process.env.SHOWCASE_CAPTURE_AUTHENTICATED !== "false";
+  const missingRequiredRoleAccounts = authenticatedCaptureEnabled
+    ? [...requiredCvRoles].filter((role) => !roleResults.some((result) => result.role === role && result.status === "captured"))
+    : [...requiredCvRoles];
   if (missingRequiredRoleAccounts.length) {
     results.push({
       type: "integration",
       page: "authenticated-cv-role-coverage",
-      status: "blocked",
+      status: authenticatedCaptureEnabled ? "blocked" : "skipped",
       missingRoles: missingRequiredRoleAccounts,
-      error: "Authenticated CV role verification is incomplete. Configure dedicated synthetic showcase accounts for: " + missingRequiredRoleAccounts.join(", ") + ". No role is counted as verified without a successful login and API-confirmed role."
+      error: authenticatedCaptureEnabled
+        ? "Authenticated CV role verification is incomplete. Configure dedicated synthetic showcase accounts for: " + missingRequiredRoleAccounts.join(", ") + ". No role is counted as verified without a successful login and API-confirmed role."
+        : "Authenticated role capture is intentionally disabled for pull-request security. These roles are not counted as verified until a trusted post-merge showcase run completes."
     });
   }
   if (googleIdentityErrors.length) {
@@ -640,7 +644,6 @@ try {
   }
   results.push(await pageFor404Probe());
 
-  const roleResults = results.filter((result) => result.type === "dashboard");
   const manifest = {
     site: baseUrl.href,
     capturedAt: new Date().toISOString(),
