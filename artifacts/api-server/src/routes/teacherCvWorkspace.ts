@@ -212,6 +212,42 @@ router.post("/:teacherId/decision",requireManagerPermissionForRequest((req)=>req
   message:action==="approve"?"Teacher approved and authorized. The teacher role, full teacher dashboard and teaching API permissions are now active.":"Teaching access denied. The account remains usable and will convert to a learner on the scheduled date."
  });
 });
+
+async function authorizeCvMutation(actor:any,teacherId:number){
+ if(Number(actor?.id)===teacherId) return true;
+ if(isOwner(actor)||isAdmin(actor)) return true;
+ const target=await pool.query("SELECT role,is_manager,manager_level FROM users WHERE id=$1 AND lower(role)='teacher'",[teacherId]);
+ return Boolean(target.rows[0]&&canAccessManager(actor)&&canModerateUser(actor,{role:target.rows[0].role,isManager:target.rows[0].is_manager,managerLevel:target.rows[0].manager_level}));
+}
+router.delete("/:teacherId/cv",requireManagerPermissionIfManager("teacher_cv.view"),async(req,res)=>{
+ const id=idOf(req.params.teacherId); if(!id){res.status(400).json({error:"Invalid teacher id"});return;}
+ if(!await authorizeCvMutation(req.currentUser!,id)){res.status(403).json({error:"You are not authorized to delete this CV"});return;}
+ await ensure(); const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  const target=await client.query("SELECT id FROM users WHERE id=$1 AND lower(role)='teacher' FOR UPDATE",[id]);
+  if(!target.rows.length){await client.query("ROLLBACK");res.status(404).json({error:"Teacher CV owner not found"});return;}
+  await client.query("DELETE FROM teacher_qualifications WHERE user_id=$1",[id]);
+  await client.query("DELETE FROM teacher_documents WHERE user_id=$1",[id]);
+  await client.query("UPDATE teacher_profiles SET cv=(cv - 'professionalSummary' - 'education' - 'experience' - 'subjects' - 'address' - 'personalDetails' - 'teachingDetails' - 'photoDocumentId' - 'certifications'),updated_at=now() WHERE user_id=$1",[id]);
+  await client.query("UPDATE teacher_cv_review_history SET action='cv_submission_superseded' WHERE teacher_id=$1 AND action='submitted'",[id]);
+  await client.query("UPDATE users SET teacher_application_status='draft',teacher_review_deadline=NULL,updated_at=now() WHERE id=$1 AND teacher_application_status='pending_review'",[id]);
+  await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,'cv_deleted','existing','deleted','CV deleted by authorized account holder; survey data and review audit retained')",[id,req.currentUser!.id]);
+  await client.query("COMMIT"); res.json({deleted:true,scope:"cv",surveyPreserved:true,reviewHistoryPreserved:true});
+ }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}finally{client.release();}
+});
+router.delete("/:teacherId/survey",requireManagerPermissionIfManager("teacher_cv.view"),async(req,res)=>{
+ const id=idOf(req.params.teacherId); if(!id){res.status(400).json({error:"Invalid teacher id"});return;}
+ if(!await authorizeCvMutation(req.currentUser!,id)){res.status(403).json({error:"You are not authorized to delete this survey"});return;}
+ await ensure(); const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  const updated=await client.query("UPDATE teacher_profiles SET cv=cv - 'surveyAnswers' - 'surveySubmittedAt' - 'surveyReviewStatus' - 'surveyReviewNote' - 'surveyReviewedAt' - 'surveyReviewedBy',updated_at=now() WHERE user_id=$1 RETURNING user_id",[id]);
+  if(!updated.rows.length){await client.query("ROLLBACK");res.status(404).json({error:"Survey not found"});return;}
+  await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,'survey_deleted','existing','deleted','Readiness survey deleted by authorized account holder')",[id,req.currentUser!.id]);
+  await client.query("COMMIT"); res.json({deleted:true,scope:"survey",cvPreserved:true});
+ }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}finally{client.release();}
+});
 router.get("/:teacherId/history",requireManagerPermissionIfManager("teacher_cv.view"),async(req,res)=>{
  const id=idOf(req.params.teacherId);if(!id){res.status(400).json({error:"Invalid teacher id"});return}
  const actor=req.currentUser!;
