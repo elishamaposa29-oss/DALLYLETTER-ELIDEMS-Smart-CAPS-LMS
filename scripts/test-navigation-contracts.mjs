@@ -36,5 +36,8 @@ assert.ok(mobileCv.includes("if (!selectedId || !canChat)"), "Mobile chat synchr
 assert.ok(mobileCv.includes('getApiUrl("/api/users/" + selectedId + "/teacher-cv/pdf")'), "Android reviewers must retain the professional CV PDF export available on web");
 assert.ok(webCv.includes("/api/qualifications/") && webCv.includes("/review-history") && webCv.includes("View qualification review history"), "Web reviewers must retain the qualification review history available on Android");
 assert.ok(webCv.includes('new URLSearchParams(window.location.search).get("teacherId")') && webCv.includes("[canChat]"), "Web deep links must reopen applicant details after reviewer permissions resolve");
+assert.ok(webRoutes.includes('path="/manager/teacher-cv-workspace"><ProtectedRoute allowedRoles={["owner","senior_manager","manager","junior_manager"]} allowManagerStaff>'), "Manager CV workspace must require a manager role or explicitly designated teacher-manager status");
+assert.ok(webRoutes.includes('path="/admin/teacher-cv-workspace"><ProtectedRoute allowedRoles={["owner","admin"]}'), "Admin CV workspace must remain read-only while Owner review authority is preserved");
+assert.ok(webCv.includes('else if(admin){p={};setCanReview(false);setCanAuthorize(false);setCanVerifyQualifications(false);setCanChat(false);'), "Admin CV access must not imply approval, authorization, qualification verification or chat grants");
 
 console.log("Navigation contracts passed: legacy study-group path, owner event destinations, shared Android CV workspace and permission-aware CV deep links.");
