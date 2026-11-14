@@ -319,6 +319,7 @@ async function captureRole(role, route, email, password) {
 
   const screenshots = [];
   const routeResults = [];
+  const testedNavigationLinks = new Set();
   try {
     const routeInventory = await discoverRoleRoutes(role);
     const queue = [{ path: route, label: "dashboard", source: "role-home" }, ...routeInventory];
@@ -376,20 +377,54 @@ async function captureRole(role, route, email, password) {
         }
 
         // Discover every visible, same-origin, read-only navigation destination from this feature page.
-        const links = await page.locator("a[href]").evaluateAll((anchors) => anchors.map((anchor) => ({
+        const links = await page.locator("a[href]").evaluateAll((anchors) => anchors.map((anchor, index) => ({
+          index,
           href: anchor.href,
           label: (anchor.innerText || anchor.getAttribute("aria-label") || "").trim().toLowerCase(),
           visible: !!(anchor.offsetWidth || anchor.offsetHeight || anchor.getClientRects().length)
         })));
-        const deny = /logout|sign out|delete|remove|approve|reject|submit|upload|invite|reset password|verify email/i;
+        const deny = /logout|sign out|delete|remove|approve|reject|submit|upload|invite|reset password|verify email|archive|publish|grant|revoke|send|pay now|purchase|subscribe|accept|decline/i;
         for (const link of links) {
           if (!link.visible || deny.test(link.label)) continue;
           const linked = new URL(link.href, baseUrl);
           if (linked.origin !== baseUrl.origin || linked.search || linked.hash) continue;
           const linkedPath = linked.pathname.replace(/\/+$/, "") || "/";
-          if (seen.has(linkedPath) || queue.some((candidate) => candidate.path === linkedPath)) continue;
           if (/^\/(login|register|forgot-password|reset-password|verify-email|suspended)(\/|$)/.test(linkedPath)) continue;
-          queue.push({ path: linkedPath, label: link.label || linkedPath, source: "visible-navigation" });
+          if (!seen.has(linkedPath) && !queue.some((candidate) => candidate.path === linkedPath)) {
+            queue.push({ path: linkedPath, label: link.label || linkedPath, source: "visible-navigation" });
+          }
+          if (testedNavigationLinks.has(link.href) || linkedPath === pathname) continue;
+          testedNavigationLinks.add(link.href);
+          const originalUrl = page.url();
+          try {
+            const popupPromise = page.waitForEvent("popup", { timeout: 900 }).catch(() => null);
+            await page.locator("a[href]").nth(link.index).click({ timeout: 5000 });
+            const popup = await popupPromise;
+            if (popup) {
+              await popup.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
+              const opened = new URL(popup.url());
+              const popupMain = await popup.locator("main").innerText().catch(() => "");
+              if (opened.origin !== baseUrl.origin || opened.pathname.replace(/\/+$/, "") !== linkedPath || !popupMain.trim()) {
+                throw new Error("Link opened an unexpected or empty page: " + popup.url());
+              }
+              await popup.close();
+            } else {
+              await page.waitForURL(url => url.origin === baseUrl.origin && (url.pathname.replace(/\/+$/, "") || "/") === linkedPath, { timeout: 7000 });
+              const opened = new URL(page.url());
+              const openedMain = await page.locator("main").innerText().catch(() => "");
+              if (opened.pathname.replace(/\/+$/, "") !== linkedPath || !openedMain.trim() || /page you're looking for doesn't exist|this screen doesn't exist|404 not found/i.test(openedMain)) {
+                throw new Error("Link did not open its intended feature: " + page.url());
+              }
+              await page.goto(originalUrl, { waitUntil: "domcontentloaded", timeout: 25000 });
+              await page.waitForLoadState("networkidle", { timeout: 4000 }).catch(() => {});
+            }
+            routeResults.push({ path: linkedPath, status: "captured", interaction: "anchor-click", from: pathname, label: link.label || linkedPath });
+          } catch (error) {
+            routeResults.push({ path: linkedPath, status: "navigation-click-failed", interaction: "anchor-click", from: pathname, label: link.label || linkedPath, error: String(error) });
+            if (page.url() !== originalUrl) {
+              await page.goto(originalUrl, { waitUntil: "domcontentloaded", timeout: 25000 }).catch(() => {});
+            }
+          }
         }
       } catch (error) {
         routeResults.push({ path: pathname, status: "capture-error", error: String(error) });
