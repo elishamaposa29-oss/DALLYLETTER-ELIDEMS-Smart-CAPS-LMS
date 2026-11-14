@@ -65,7 +65,7 @@ assert.equal(JSON.parse(partialDraftRead.data.cv.personalDetails).fullName,"Part
 const incompleteSurveyAnswers=await request("/api/users/me/teacher-cv",{token:draftOnlyApplicant.token,method:"PATCH",body:{cv:{surveyAnswers:JSON.stringify({laptop:"Yes"})}}});
 assert.equal(incompleteSurveyAnswers.status,200,"Applicant can save a partial readiness survey without submitting it");
 const incompleteSurveySubmission=await request("/api/teacher-cv-workspace/survey/submit",{token:draftOnlyApplicant.token,method:"POST"});
-assert.equal(incompleteSurveySubmission.status,409,"Survey submission validates required answers independently of CV submission");
+assert.equal(incompleteSurveySubmission.status,200,"An incomplete readiness survey can be submitted without required-answer validation");
 const completeSurveyAnswers={laptop:"Yes",laptopType:"Laptop",smartphone:"Android",computer:"Intermediate",online:"Weekdays",internet:"Wi-Fi",platforms:["WhatsApp"],power:"Yes",verificationCall:"Yes"};
 const completeSurveySave=await request("/api/users/me/teacher-cv",{token:draftOnlyApplicant.token,method:"PATCH",body:{cv:{surveyAnswers:JSON.stringify(completeSurveyAnswers)}}});
 assert.equal(completeSurveySave.status,200);
@@ -88,7 +88,7 @@ const ownerLegacyDraftPdf=await request("/api/users/"+draftOnlyApplicant.id+"/te
 assert.equal(ownerLegacyDraftPdf.status,404,"Legacy reviewer PDF endpoint must not expose an unsubmitted draft");
 const pendingQueue=await request("/api/teacher-cv-workspace/queue",{token:ownerToken});
 assert.equal(pendingQueue.status,200,"Owner can retrieve the teacher CV review queue");
-assert(!pendingQueue.data.applications.some(item=>Number(item.id)===Number(approvalApplicant.id)),"Unsubmitted teacher registrations must not appear as submitted CV applications");
+assert(pendingQueue.data.applications.some(item=>Number(item.id)===Number(approvalApplicant.id)&&item.has_cv_submission===false),"Incomplete and unsubmitted CV profiles remain visible for monitoring without being mislabeled as submitted");
 assert(pendingQueue.data.applications.some(item=>Number(item.id)===Number(draftOnlyApplicant.id)&&item.has_cv_submission===false&&item.survey_review_status==="pending"),"Independent survey submission must appear separately in the reviewer queue without becoming a CV application");
 const profilePhoto=await upload("/api/users/me/teacher-documents",approvalApplicant.token,"file","teacher-photo.png","image/png",Buffer.from([137,80,78,71,13,10,26,10]),{documentType:"cv"});
 assert.equal(profilePhoto.status,201,"Applicant can upload a private profile photo");
@@ -109,8 +109,8 @@ const invalidPhotoCv={...cvPayload,photoDocumentId:"99999999"};
 const invalidPhotoSave=await request("/api/users/me/teacher-cv",{token:approvalApplicant.token,method:"PATCH",body:{cv:invalidPhotoCv}});
 assert.equal(invalidPhotoSave.status,200);
 const invalidPhotoSubmit=await request("/api/teacher-cv-workspace/submit",{token:approvalApplicant.token,method:"POST"});
-assert.equal(invalidPhotoSubmit.status,409,"Formal submission rejects a photo document ID that is not owned and typed as a profile image");
-assert.equal(invalidPhotoSubmit.data.photoUploaded,false,"Invalid photo evidence is explicitly reported as missing");
+assert.equal(invalidPhotoSubmit.status,200,"Formal CV submission is not blocked by a missing or invalid optional profile photo");
+assert.equal(invalidPhotoSubmit.data.submitted,true,"An incomplete CV can still enter the review queue");
 const savedApprovalCv=await request("/api/users/me/teacher-cv",{token:approvalApplicant.token,method:"PATCH",body:{cv:cvPayload}});
 assert.equal(savedApprovalCv.status,200,"Applicant can save the complete structured CV");
 const incompleteSurveyCv={...cvPayload,surveyAnswers:JSON.stringify({laptop:"Yes"})};
