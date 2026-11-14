@@ -58,37 +58,37 @@ export default function TeacherHome() {
       label: "Students",
       value: stats?.totalStudents ?? 0,
       icon: Users,
-      gradient: "from-blue-500 to-blue-700",
-      bg: "from-blue-50 to-blue-100/50 dark:from-blue-950/40 dark:to-blue-900/20",
-      border: "border-blue-200 dark:border-blue-800",
-      text: "text-blue-700 dark:text-blue-300",
+      gradient: "from-[#0f2a5a] to-[#164a78]",
+      bg: "from-[#0f2a5a]/10 to-[#00d9ef]/[0.08] dark:from-[#0f2a5a]/45 dark:to-[#00d9ef]/10",
+      border: "border-[#0f2a5a]/20 dark:border-[#00d9ef]/25",
+      text: "text-[#0f2a5a] dark:text-[#65eaff]",
     },
     {
       label: "Lessons Posted",
       value: stats?.totalLessons ?? 0,
       icon: BookOpen,
-      gradient: "from-emerald-500 to-emerald-700",
-      bg: "from-emerald-50 to-emerald-100/50 dark:from-emerald-950/40 dark:to-emerald-900/20",
-      border: "border-emerald-200 dark:border-emerald-800",
-      text: "text-emerald-700 dark:text-emerald-300",
+      gradient: "from-[#087f91] to-[#00b8c9]",
+      bg: "from-[#00a6bd]/10 to-[#00d9ef]/[0.08] dark:from-[#087f91]/25 dark:to-[#00b8c9]/10",
+      border: "border-[#00a6bd]/20 dark:border-[#00d9ef]/25",
+      text: "text-[#087f91] dark:text-[#65eaff]",
     },
     {
       label: "Classes",
       value: stats?.totalClasses ?? 0,
       icon: Video,
-      gradient: "from-violet-500 to-violet-700",
-      bg: "from-violet-50 to-violet-100/50 dark:from-violet-950/40 dark:to-violet-900/20",
-      border: "border-violet-200 dark:border-violet-800",
-      text: "text-violet-700 dark:text-violet-300",
+      gradient: "from-[#51327f] to-[#8557bb]",
+      bg: "from-[#8557bb]/10 to-[#a85cff]/[0.08] dark:from-[#51327f]/35 dark:to-[#8557bb]/10",
+      border: "border-[#8557bb]/20 dark:border-[#a85cff]/25",
+      text: "text-[#694293] dark:text-[#c6a1ff]",
     },
     {
       label: "Study Groups",
       value: stats?.activeStudyGroups ?? 0,
       icon: Activity,
-      gradient: "from-amber-500 to-amber-700",
-      bg: "from-amber-50 to-amber-100/50 dark:from-amber-950/40 dark:to-amber-900/20",
-      border: "border-amber-200 dark:border-amber-800",
-      text: "text-amber-700 dark:text-amber-300",
+      gradient: "from-[#8b6b00] to-[#c59a13]",
+      bg: "from-[#b38b00]/10 to-[#f2d98c]/[0.12] dark:from-[#8b6b00]/25 dark:to-[#c59a13]/10",
+      border: "border-[#b38b00]/25 dark:border-[#f2d98c]/25",
+      text: "text-[#856500] dark:text-[#f2d98c]",
     },
   ];
 
@@ -98,8 +98,11 @@ export default function TeacherHome() {
         <InstallAppCard />
 
         {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="relative overflow-hidden rounded-2xl border border-primary/15 bg-gradient-to-br from-card via-card to-primary/[0.06] p-5 shadow-sm sm:p-6">
+          <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-cyan-400/10 blur-3xl" />
+          <div className="relative flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
+            <p className="dallyletter-tech-label mb-1 text-[10px] font-bold text-primary">ELIDEMS · TEACHER COMMAND</p>
             <h1 className="text-3xl font-bold tracking-tight text-foreground">Teacher Portal</h1>
             <p className="text-muted-foreground mt-1">
               Good to see you, <span className="font-semibold text-foreground">{user?.name}</span>. Ready to teach?
@@ -107,7 +110,7 @@ export default function TeacherHome() {
           </div>
           <div className="flex gap-2 shrink-0">
             <Link href="/teacher/lessons">
-              <Button variant="outline" className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400">
+              <Button variant="outline" className="gap-2 border-primary/25 text-primary hover:bg-primary/5">
                 <BookOpen className="h-4 w-4" />
                 Add Lesson
               </Button>
@@ -118,6 +121,7 @@ export default function TeacherHome() {
                 Schedule Class
               </Button>
             </Link>
+          </div>
           </div>
         </div>
 
@@ -232,8 +236,8 @@ export default function TeacherHome() {
               <Card>
                 <CardHeader className="border-b pb-4">
                   <CardTitle className="flex items-center gap-2 text-base">
-                    <div className="p-1.5 bg-violet-100 dark:bg-violet-900/30 rounded-lg">
-                      <Activity className="h-4 w-4 text-violet-600" />
+                    <div className="p-1.5 rounded-lg bg-cyan-400/10 dark:bg-cyan-400/15">
+                      <Activity className="h-4 w-4 text-cyan-700 dark:text-cyan-300" />
                     </div>
                     Recent Activity
                   </CardTitle>
