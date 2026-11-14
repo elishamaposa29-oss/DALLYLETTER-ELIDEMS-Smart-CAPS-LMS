@@ -48,16 +48,29 @@ export default function TeacherCvReviewWorkspace({initialTab="applications"}:{in
     return payload;
   }, [token]);
 
+  const canViewApplications = isOwner || normalizedRole === "admin" || managerGrants["teacher_cv.view"] === true;
+  const canViewQualifications = isOwner || managerGrants["qualifications.view"] === true;
+
+  useEffect(() => {
+    if (activeTab === "applications" && !canViewApplications && canViewQualifications) setActiveTab("qualifications");
+    else if (activeTab === "qualifications" && !canViewQualifications && canViewApplications) setActiveTab("applications");
+  }, [activeTab, canViewApplications, canViewQualifications]);
+
   const loadQueue = useCallback(async () => {
     if (!token) return;
     setLoading(true); setError("");
     try {
-      const [result, config, permissionResponse] = await Promise.all([
-        api("/queue"),
-        api("/config").catch(() => null),
-        fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: "Bearer " + token }, cache: "no-store" }).catch(() => null),
-      ]);
-      if (permissionResponse?.ok) { const permissionData = await permissionResponse.json().catch(() => ({})); setManagerGrants(permissionData.permissions || {}); }
+      const permissionResponse = await fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: "Bearer " + token }, cache: "no-store" });
+      const permissionData = await permissionResponse.json().catch(() => ({}));
+      if (!permissionResponse.ok) throw new Error(permissionData.error || "Could not load staff verification permissions.");
+      const grants = permissionData.permissions || {};
+      setManagerGrants(grants);
+      const viewApplications = isOwner || normalizedRole === "admin" || grants["teacher_cv.view"] === true;
+      if (!viewApplications) {
+        setQueue([]); setSelectedId(null); setDetail(null); setHistory([]); setChat([]); setCanEditConfig(false);
+        return;
+      }
+      const [result, config] = await Promise.all([api("/queue"), api("/config").catch(() => null)]);
       const rows = Array.isArray(result?.applications) ? result.applications : [];
       setQueue(rows);
       if (config) { setReviewDays(config.reviewDurationDays == null ? "" : String(config.reviewDurationDays)); setCanEditConfig(config.canEdit === true); }
@@ -66,7 +79,7 @@ export default function TeacherCvReviewWorkspace({initialTab="applications"}:{in
       }
     } catch (e) { setError(e instanceof Error ? e.message : "The review queue could not be loaded."); }
     finally { setLoading(false); }
-  }, [api, token, selectedId]);
+  }, [api, token, selectedId, isOwner, normalizedRole]);
 
   const openApplication = async (id: number) => {
     setBusy(true); setError("");
@@ -215,8 +228,8 @@ export default function TeacherCvReviewWorkspace({initialTab="applications"}:{in
       <Text style={{ color: "#fff", fontSize: 21, fontWeight: "900" }}>Teacher CV & Survey Review</Text>
       <Text style={{ color: "#dbeafe", fontSize: 12, marginTop: 5 }}>Review submitted evidence, record decisions, inspect history and message applicants.</Text>
     </View>
-    <View style={{ flexDirection: "row", gap: 8, padding: 12, backgroundColor: colors.background }}><TouchableOpacity onPress={() => setActiveTab("applications")} style={[button, { flex: 1, backgroundColor: activeTab === "applications" ? colors.primary : colors.card, borderWidth: activeTab === "applications" ? 0 : 1, borderColor: colors.border }]}><Text style={[buttonText, activeTab === "applications" ? {} : { color: colors.foreground }]}>CV applications & surveys</Text></TouchableOpacity><TouchableOpacity onPress={() => setActiveTab("qualifications")} style={[button, { flex: 1, backgroundColor: activeTab === "qualifications" ? colors.primary : colors.card, borderWidth: activeTab === "qualifications" ? 0 : 1, borderColor: colors.border }]}><Text style={[buttonText, activeTab === "qualifications" ? {} : { color: colors.foreground }]}>Qualifications & certificates</Text></TouchableOpacity></View>
-    {activeTab === "qualifications" ? <QualificationReviewWorkspaceMobile /> : <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: 100 }}>
+    {(canViewApplications || canViewQualifications) ? <View style={{ flexDirection: "row", gap: 8, padding: 12, backgroundColor: colors.background }}>{canViewApplications ? <TouchableOpacity onPress={() => setActiveTab("applications")} style={[button, { flex: 1, backgroundColor: activeTab === "applications" ? colors.primary : colors.card, borderWidth: activeTab === "applications" ? 0 : 1, borderColor: colors.border }]}><Text style={[buttonText, activeTab === "applications" ? {} : { color: colors.foreground }]}>CV applications & surveys</Text></TouchableOpacity> : null}{canViewQualifications ? <TouchableOpacity onPress={() => setActiveTab("qualifications")} style={[button, { flex: 1, backgroundColor: activeTab === "qualifications" ? colors.primary : colors.card, borderWidth: activeTab === "qualifications" ? 0 : 1, borderColor: colors.border }]}><Text style={[buttonText, activeTab === "qualifications" ? {} : { color: colors.foreground }]}>Qualifications & certificates</Text></TouchableOpacity> : null}</View> : null}
+    {activeTab === "qualifications" && canViewQualifications ? <QualificationReviewWorkspaceMobile /> : activeTab === "applications" && canViewApplications ? <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: 100 }}> : <View style={{padding:20}}><Text style={{color:colors.mutedForeground}}>The Owner has not granted access to staff verification.</Text></View>}
       {error ? <View style={[card, { borderColor: "#dc2626" }]}><Text style={{ color: "#dc2626" }}>{error}</Text><TouchableOpacity onPress={() => void loadQueue()}><Text style={{ color: colors.primary, fontWeight: "800", marginTop: 8 }}>Retry</Text></TouchableOpacity></View> : null}
       {canEditConfig ? <View style={card}>
         <Text style={heading}>Owner review configuration</Text>
