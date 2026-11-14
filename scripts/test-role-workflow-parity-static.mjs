@@ -186,7 +186,7 @@ for (const operation of [
   'router.patch("/qualifications/:id/verify"',
 ]) assert.ok(usersApi.includes(operation), "Qualification review API lifecycle missing: " + operation);
 for (const operation of [
-  '"/api/qualifications/" + qualification.document_id + "/document"',
+  '"/api/users/" + selectedId + "/teacher-documents/" + qualification.document_id',
   '"/api/qualifications/" + qualificationId + "/review-history"',
   '"/api/qualifications/" + qualification.id + "/verify"',
   'Verify qualification',
