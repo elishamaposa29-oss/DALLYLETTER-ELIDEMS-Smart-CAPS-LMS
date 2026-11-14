@@ -607,6 +607,7 @@ try {
     ["junior_manager", "/manager", process.env.SHOWCASE_JUNIOR_MANAGER_EMAIL, process.env.SHOWCASE_JUNIOR_MANAGER_PASSWORD],
     ["senior_manager", "/manager", process.env.SHOWCASE_SENIOR_MANAGER_EMAIL, process.env.SHOWCASE_SENIOR_MANAGER_PASSWORD],
     ["manager", "/manager", process.env.SHOWCASE_MANAGER_EMAIL, process.env.SHOWCASE_MANAGER_PASSWORD],
+    ["admin", "/admin/teacher-cv-workspace", process.env.SHOWCASE_ADMIN_EMAIL, process.env.SHOWCASE_ADMIN_PASSWORD],
     // DEMx 430 remains the configured Owner login; no new account or signup path is introduced.
     ["owner", "/admin", process.env.SHOWCASE_OWNER_EMAIL, process.env.SHOWCASE_OWNER_PASSWORD]
   ];
@@ -636,7 +637,7 @@ try {
     publicUrlCount: results.filter((result) => result.type === "public").length,
     publicPageCount: results.filter((result) => result.type === "public" && result.screenshot).length,
     expectedRoleCount: roleAccounts.length,
-    roleModelNotes: { admin: "No separate Admin dashboard exists in App.tsx; /admin and its Owner administration routes are Owner-only. The admin role has only individually permitted shared routes.", platform_owner: "No separate Platform Owner dashboard or multi-school administration route is registered in App.tsx; not treated as an implemented dashboard role." },
+    roleModelNotes: { admin: "Admin uses the explicitly permitted read-only /admin/teacher-cv-workspace route; Owner-only administration routes remain restricted.", platform_owner: "No separate Platform Owner dashboard or multi-school administration route is registered in App.tsx; not treated as an implemented dashboard role." },
     capturedRoleCount: roleResults.filter((result) => result.status === "captured").length,
     roleScreenshotCount: roleResults.reduce((count, result) => count + (result.screenshots?.length || 0), 0),
     roleCoverage: roleResults.map(({ role, status, authenticatedRole, pagesCaptured, routeInventoryCount }) => ({ role, status, authenticatedRole, pagesCaptured: pagesCaptured || 0, routeInventoryCount: routeInventoryCount || 0 })),
