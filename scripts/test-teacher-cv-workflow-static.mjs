@@ -35,6 +35,8 @@ assert.match(workspaceApi, /dashboardPath:action==="approve"\?"\/teacher":"\/pro
 assert.match(workspaceApi, /teacher_application_status='rejected_pending_conversion'.*teacher_review_deadline=now\(\)/, "Rejection must immediately restrict teaching and schedule learner conversion");
 assert.match(workspaceApi, /teacher_profiles/, "Reviewer detail endpoint must retrieve the applicant's saved CV and survey profile");
 assert.match(workspaceApi, /surveySubmittedAt/, "Reviewer queue must include independent readiness survey submissions");
+assert.match(workspaceUi, /Applicant ID:/, "Web reviewer UI must visibly bind the CV and survey to the applicant user ID");
+assert.match(mobileReviewUi, /Applicant ID:/, "Mobile reviewer UI must visibly bind the CV and survey to the applicant user ID");
 assert.match(workspaceUi, /Teacher's professional CV preview/, "Reviewer UI must render the applicant's professional CV");
 assert.match(workspaceUi, /Readiness survey/, "Reviewer UI must render the applicant's readiness survey");
 assert.match(workspaceUi, /Approve & Activate Full Teacher Access/, "Reviewer UI must expose the teacher activation action");
