@@ -35,6 +35,7 @@ assert.ok(mobileCv.includes('canChat ? api("/" + id + "/chat") : Promise.resolve
 assert.ok(mobileCv.includes("if (!selectedId || !canChat)"), "Mobile chat synchronization must respect the live chat grant");
 assert.ok(mobileCv.includes('getApiUrl("/api/users/" + selectedId + "/teacher-cv/pdf")'), "Android reviewers must retain the professional CV PDF export available on web");
 assert.ok(webCv.includes("/api/qualifications/") && webCv.includes("/review-history") && webCv.includes("View qualification review history"), "Web reviewers must retain the qualification review history available on Android");
+assert.ok(webCv.includes('setCanViewQualificationHistory(Boolean(p["qualifications.view"]))') && webCv.includes('canViewQualificationHistory && <div className="mt-2"'), "Qualification review history must only be offered to reviewers with the backend-required view grant");
 assert.ok(webCv.includes('new URLSearchParams(window.location.search).get("teacherId")') && webCv.includes("[canChat]"), "Web deep links must reopen applicant details after reviewer permissions resolve");
 assert.ok(webRoutes.includes('path="/manager/teacher-cv-workspace"><ProtectedRoute allowedRoles={["owner","senior_manager","manager","junior_manager"]} allowManagerStaff>'), "Manager CV workspace must require a manager role or explicitly designated teacher-manager status");
 assert.ok(webRoutes.includes('path="/admin/teacher-cv-workspace"><ProtectedRoute allowedRoles={["owner","admin"]}'), "Admin CV workspace must remain read-only while Owner review authority is preserved");
