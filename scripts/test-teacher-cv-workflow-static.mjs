@@ -7,6 +7,9 @@ const googleButton = read("artifacts/dallyletter/src/components/GoogleSignInButt
 const login = read("artifacts/dallyletter/src/pages/Login.tsx");
 const register = read("artifacts/dallyletter/src/pages/Register.tsx");
 const workspaceApi = read("artifacts/api-server/src/routes/teacherCvWorkspace.ts");
+const managerQualifications = read("artifacts/dallyletter/src/pages/manager/ManagerQualifications.tsx");
+const dashboardLayout = read("artifacts/dallyletter/src/components/DashboardLayout.tsx");
+const appRoutesSource = read("artifacts/dallyletter/src/App.tsx");
 const workspaceUi = read("artifacts/dallyletter/src/pages/TeacherCvWorkspace.tsx");
 const ownerDashboard = read("artifacts/dallyletter/src/pages/admin/OwnerCommandCenter.tsx");
 const appRoutes = read("artifacts/dallyletter/src/App.tsx");
@@ -37,6 +40,11 @@ assert.match(profileHub, /optional supporting evidence; missing items do not blo
 const productionRenderService = renderBlueprint.split("name: dallyletter-api-production")[1] || "";
 assert.match(productionRenderService, /key: GOOGLE_CLIENT_ID/, "Production LMS API service must declare the existing Google OAuth client ID environment variable");
 
+assert.match(workspaceUi, /Staff verification workspace/, "CV and qualification review must share one staff verification workspace");
+assert.match(workspaceUi, /Qualifications & certificates/, "The consolidated workspace must expose the full qualification verification queue");
+assert.match(managerQualifications, /export function ManagerQualificationsPanel/, "Existing qualification verification must remain available as an embedded panel");
+assert.match(dashboardLayout, /Staff Verification & Qualifications/, "Staff navigation must expose one consolidated verification destination");
+assert.match(appRoutesSource, /<TeacherCvWorkspace initialTab="qualifications" \/>/, "Legacy qualification route must remain as a compatibility alias");
 assert.match(workspaceApi, /requireManagerPermissionForRequest\(\(req\)=>req\.body\?\.action==="approve"\?"teacher_cv\.authorize":"teacher_cv\.review"\)/, "Approval and rejection must use separate explicit manager permissions");
 assert.match(managerPermissions, /teacher_cv\.authorize.*seniorOnly: true/, "Teacher authorization must remain a Senior Manager/Owner-only permission");
 assert.match(managerPermissions, /teacher_cv\.review.*seniorOnly: true/, "Teacher application review must remain a Senior Manager/Owner-only permission");
