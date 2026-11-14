@@ -3,11 +3,18 @@ import { readFileSync } from "node:fs";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const webRoutes = read("../artifacts/dallyletter/src/App.tsx");
+const vercelConfig = JSON.parse(read("../vercel.json"));
 const ownerCenter = read("../artifacts/dallyletter/src/pages/admin/OwnerCommandCenter.tsx");
 const webCv = read("../artifacts/dallyletter/src/pages/TeacherCvWorkspace.tsx");
 const mobileManagerRoute = read("../artifacts/dallyletter-mobile/app/(manager)/teacher-cv-workspace.tsx").trim();
 const mobileOwnerRoute = read("../artifacts/dallyletter-mobile/app/(admin)/teacher-cv-workspace.tsx").trim();
 const mobileCv = read("../artifacts/dallyletter-mobile/components/TeacherCvReviewWorkspace.tsx");
+
+const roleShellRewrites = vercelConfig.rewrites.filter((item) => /^(student|teacher|manager|admin)$/.test(item.source.split("/")[1] || "") && item.destination === "/app.html");
+for (const role of ["student", "teacher", "manager", "admin"]) {
+  assert.ok(roleShellRewrites.some((item) => item.source === "/" + role + "/(.*)"), `Nested /${role}/* routes must rewrite to the React application shell; wildcard rewrites must be tested against deployed Vercel behavior.`);
+}
+assert.equal(vercelConfig.trailingSlash, true, "Protected role route rewrite tests must preserve the deployed trailing-slash contract");
 
 for (const route of [
   'path="/student/study-groups"',
