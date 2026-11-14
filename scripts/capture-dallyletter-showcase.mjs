@@ -138,7 +138,7 @@ async function discoverPublicPages() {
   const homepageResponse = await fetch(new URL("/", baseUrl), { cache: "no-store" });
   if (!homepageResponse.ok) throw new Error("Homepage request failed while resolving its canonical host: HTTP " + homepageResponse.status);
   const homepageHtml = await homepageResponse.text();
-  const canonicalHref = homepageHtml.match(/<link\\s+rel=["']canonical["']\\s+href=["']([^"']+)["']/i)?.[1];
+  const canonicalHref = homepageHtml.match(/<link\s+rel=["']canonical["']\s+href=["']([^"']+)["']/i)?.[1];
   const canonicalOrigin = canonicalHref ? new URL(canonicalHref, baseUrl).origin : baseUrl.origin;
 
   const discovered = new Map();
