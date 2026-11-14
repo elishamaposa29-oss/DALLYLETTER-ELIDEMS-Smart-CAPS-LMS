@@ -1,2 +1,2 @@
-import QualificationReviewWorkspaceMobile from "@/components/QualificationReviewWorkspaceMobile";
-export default function QualificationsRoute(){return <QualificationReviewWorkspaceMobile/>;}
+import TeacherCvReviewWorkspace from "@/components/TeacherCvReviewWorkspace";
+export default function QualificationsRoute(){return <TeacherCvReviewWorkspace initialTab="qualifications" />;}
