@@ -73,6 +73,13 @@ for (const file of webFiles) {
 }
 assert.deepEqual(webReferences, [], "Web navigation targets must resolve to registered routes: " + JSON.stringify(webReferences, null, 2));
 
+function normalizeMobilePath(value) {
+  const path = normalizePath(value);
+  if (!path) return null;
+  const visible = path.split("/").filter(segment => segment && !(segment.startsWith("(") && segment.endsWith(")")));
+  return "/" + visible.join("/") || "/";
+}
+
 function expoRoutePath(file) {
   let relativePath = relative(mobileAppRoot, file).replace(/\\/g, "/").replace(/\.(tsx?|jsx?)$/, "");
   const parts = relativePath.split("/");
@@ -93,8 +100,9 @@ const mobileSources = [
 const mobileReferences = [];
 for (const file of mobileSources) {
   const source = readFileSync(file, "utf8");
-  for (const target of extractTargets(source)) {
-    if (!mobileRouteMatchers.some(route => route.matcher.test(target))) {
+  for (const rawTarget of extractTargets(source)) {
+    const target = normalizeMobilePath(rawTarget);
+    if (target && !mobileRouteMatchers.some(route => route.matcher.test(target))) {
       mobileReferences.push({ file: relative(root, file), target });
     }
   }
