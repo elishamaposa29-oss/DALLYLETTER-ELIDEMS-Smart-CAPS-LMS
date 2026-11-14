@@ -637,9 +637,11 @@ try {
     results.push({
       type: "integration",
       page: "google-sign-in",
-      status: "blocked",
+      status: authenticatedCaptureEnabled ? "blocked" : "skipped",
       occurrences: googleIdentityErrors.length,
-      error: "Google Identity Services rejected the configured production origin. Password-role dashboard captures were allowed to continue; Google sign-in remains unverified."
+      ...(authenticatedCaptureEnabled
+        ? { error: "Google Identity Services rejected the configured production origin. Password-role dashboard captures were allowed to continue; Google sign-in remains unverified." }
+        : { reason: "Vercel preview origins are not configured as Google OAuth JavaScript origins. Google sign-in is intentionally not evaluated on pull-request previews; the trusted production capture remains responsible for verifying the configured production origin." })
     });
   }
   results.push(await pageFor404Probe());
