@@ -28,8 +28,8 @@ export default function TeacherCvReviewWorkspace() {
   const normalizedRole = String(user?.role || "").toLowerCase().replace(/[ -]+/g, "_");
   const isOwner = ["owner", "platform_owner"].includes(normalizedRole);
   const isAdmin = normalizedRole === "admin";
-  const canReview = isOwner || isAdmin || managerGrants["teacher_cv.review"] === true;
-  const canAuthorize = isOwner || isAdmin || managerGrants["teacher_cv.authorize"] === true;
+  const canReview = isOwner || managerGrants["teacher_cv.review"] === true;
+  const canAuthorize = isOwner || managerGrants["teacher_cv.authorize"] === true;
   const canChat = isOwner || isAdmin || managerGrants["teacher_cv.chat"] === true;
   const canViewQualificationDocuments = isOwner || managerGrants["qualifications.view"] === true;
   const canVerifyQualifications = isOwner || managerGrants["qualifications.verify"] === true;
