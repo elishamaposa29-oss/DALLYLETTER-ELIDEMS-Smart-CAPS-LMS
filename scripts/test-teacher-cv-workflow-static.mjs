@@ -36,8 +36,8 @@ assert.match(workspaceApi, /requireManagerPermissionForRequest\(\(req\)=>req\.bo
 assert.match(managerPermissions, /teacher_cv\.authorize.*seniorOnly: true/, "Teacher authorization must remain a Senior Manager/Owner-only permission");
 assert.match(managerPermissions, /teacher_cv\.review.*seniorOnly: true/, "Teacher application review must remain a Senior Manager/Owner-only permission");
 assert.match(workspaceApi, /role='teacher',teacher_application_status='approved',teacher_review_deadline=NULL/, "Approval must explicitly retain the teacher role and activate the application");
-assert.match(workspaceApi, /teacherApplicationStatus:action==="approve"\?"approved":"rejected_pending_conversion"/, "Decision response must report the effective application state");
-assert.match(workspaceApi, /dashboardPath:action==="approve"\?"\/teacher":"\/profile-hub"/, "Approval notification response must route the teacher to the teacher dashboard");
+assert.match(workspaceApi, /teacherApplicationStatus:hasCvSubmission\?\(action==="approve"\? "approved" : "rejected_pending_conversion"\)/, "CV decisions must activate or reject the teacher application only when a CV was submitted");
+assert.match(workspaceApi, /dashboardPath:hasCvSubmission&&action==="approve"\?"\/teacher":"\/profile-hub"/, "Only an approved CV application may route to the full teacher dashboard");
 assert.match(workspaceApi, /teacher_application_status='rejected_pending_conversion'.*teacher_review_deadline=now\(\)/, "Rejection must immediately restrict teaching and schedule learner conversion");
 assert.match(workspaceApi, /teacher_profiles/, "Reviewer detail endpoint must retrieve the applicant's saved CV and survey profile");
 assert.match(workspaceApi, /surveySubmittedAt/, "Reviewer queue must include independent readiness survey submissions");
