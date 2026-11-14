@@ -20,6 +20,7 @@ export default function ManagerHome() {
   const [permissionError, setPermissionError] = useState("");
   const [loading, setLoading] = useState(true);
   const [pendingTransfers, setPendingTransfers] = useState(0);
+  const [teacherApplications, setTeacherApplications] = useState<any[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -32,6 +33,14 @@ export default function ManagerHome() {
         const effective = permissionData.isOwner ? { "*": true } : (permissionData.permissions ?? {});
         if (!active) return;
         setPermissions(effective);
+        // Show submitted CVs and independent surveys only to users with the explicit view grant.
+        if (permissionData.isOwner || effective["teacher_cv.view"] === true) {
+          try {
+            const cvResponse = await fetch(getApiUrl("/api/teacher-cv-workspace/queue"), { headers, cache: "no-store" });
+            const cvData = await cvResponse.json().catch(() => ({}));
+            if (cvResponse.ok && active) setTeacherApplications(Array.isArray(cvData.applications) ? cvData.applications : []);
+          } catch { /* Keep the rest of the dashboard available during a CV queue outage. */ }
+        }
         // The overview is optional. Individual workspaces are independently
         // available when their own permission is granted.
         if (permissionData.isOwner || effective["manager.dashboard.view"] === true) {
@@ -194,6 +203,38 @@ export default function ManagerHome() {
         </Card>}
 
         {can("audit.view_subordinate") && <ActivityMonitor />}
+        {can("teacher_cv.view") && <Card className="border-0 shadow-sm">
+          <CardHeader>
+            <CardTitle className="flex flex-wrap items-center gap-2 text-sm">
+              <GraduationCap className="h-4 w-4 text-sky-600" /> Teacher CV & Readiness Survey Submissions
+              <Badge className="ml-auto">{teacherApplications.length} awaiting review</Badge>
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">Submitted CV applications and independent readiness surveys. Open an applicant to inspect the saved CV, qualifications, documents, survey answers and review history.</p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {!teacherApplications.length ? <p className="py-3 text-center text-sm text-muted-foreground">No submitted CV applications or pending readiness surveys are currently assigned to your review access.</p> :
+              <div className="max-h-96 space-y-2 overflow-y-auto">
+                {teacherApplications.map((application: any) => <div key={application.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold">{application.name || "Teacher applicant"}</p>
+                    <p className="break-all text-xs text-muted-foreground">{application.email}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Badge variant={application.has_cv_submission ? "default" : "outline"}>{application.has_cv_submission ? "CV submitted" : "CV not submitted"}</Badge>
+                      <Badge variant={application.survey_submitted_at ? "secondary" : "outline"}>Survey: {application.survey_submitted_at ? (application.survey_review_status || "pending") : "not submitted"}</Badge>
+                      <Badge variant="outline">{String(application.status || "pending_review").replaceAll("_", " ")}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">{application.document_count ?? 0} supporting files · Submitted {application.submitted_at ? new Date(application.submitted_at).toLocaleString() : "date unavailable"}</p>
+                  </div>
+                  <Link href={"/manager/teacher-cv-workspace?teacherId=" + application.id}><Button size="sm" variant="outline">Open CV & survey</Button></Link>
+                </div>)}
+              </div>
+            }
+            <div className="flex flex-wrap gap-2 border-t pt-3">
+              <Link href="/manager/teacher-cv-workspace"><Button size="sm">Open full review workspace</Button></Link>
+            </div>
+          </CardContent>
+        </Card>}
+
         {/* Quick Nav */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {[
