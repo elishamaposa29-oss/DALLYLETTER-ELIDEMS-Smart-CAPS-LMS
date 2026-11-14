@@ -255,6 +255,9 @@ const wholeApplicationDocument=await pool.query("INSERT INTO teacher_documents(u
 await pool.query("INSERT INTO teacher_qualifications(user_id,title,institution,year,document_id,verification_status,source) VALUES($1,'Test qualification','Test institution',2020,$2,'pending','user')",[wholeApplicationDeleteApplicant.id,wholeApplicationDocument.rows[0].id]);
 const wholeApplicationChat=await request("/api/teacher-cv-workspace/"+wholeApplicationDeleteApplicant.id+"/chat",{token:wholeApplicationDeleteApplicant.token,method:"POST",body:{body:"Private application message to erase"}});
 assert.equal(wholeApplicationChat.status,201,"Teacher can create a private application chat message before deletion");
+assert((await pool.query("SELECT 1 FROM notifications WHERE type='teacher_cv_message' AND message LIKE $1",["%Private application message to erase%"])).rowCount>0,"Private application chat creates a notification copy that deletion must remove");
+assert((await pool.query("SELECT 1 FROM email_notification_queue WHERE subject=$1 AND body_text LIKE $2 AND related_entity_type='teacher_cv_application' AND related_entity_id=$3",["Dallyletter Elidems — New teacher application message","%Private application message to erase%",wholeApplicationDeleteApplicant.id])).rowCount>0,"Private application chat email copies are tagged to the exact application before deletion");
+
 const wholeApplicationDelete=await request("/api/teacher-cv-workspace/"+wholeApplicationDeleteApplicant.id+"/application",{token:wholeApplicationDeleteApplicant.token,method:"DELETE"});
 assert.equal(wholeApplicationDelete.status,200,"Teacher can delete the entire application through the self-service endpoint");
 assert.equal(wholeApplicationDelete.data.deleted,true,"Whole application deletion confirms success");
