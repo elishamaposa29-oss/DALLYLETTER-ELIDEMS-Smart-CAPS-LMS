@@ -7,6 +7,7 @@ const googleButton = read("artifacts/dallyletter/src/components/GoogleSignInButt
 const login = read("artifacts/dallyletter/src/pages/Login.tsx");
 const register = read("artifacts/dallyletter/src/pages/Register.tsx");
 const workspaceApi = read("artifacts/api-server/src/routes/teacherCvWorkspace.ts");
+const emailNotificationQueue = read("artifacts/api-server/src/lib/email-notification-queue.ts");
 const managerQualifications = read("artifacts/dallyletter/src/pages/manager/ManagerQualifications.tsx");
 const dashboardLayout = read("artifacts/dallyletter/src/components/DashboardLayout.tsx");
 const appRoutesSource = read("artifacts/dallyletter/src/App.tsx");
@@ -84,6 +85,8 @@ assert.ok(roleAccess.includes('"/teacher-cv-workspace/" + selfId + "/application
 assert.ok(workspaceApi.includes("DELETE FROM teacher_cv_chat_messages WHERE teacher_id=$1"), "Full application deletion must remove all private application chat messages");
 assert.ok(workspaceApi.includes("DELETE FROM teacher_profiles WHERE user_id=$1"), "Full application deletion must remove saved CV and survey drafts");
 assert.ok(workspaceApi.includes("removeStoredMedia(String(row.storage_key))") && workspaceApi.includes("teacher_application_media_cleanup"), "Full application deletion must clean external and chunked media storage");
+assert.ok(emailNotificationQueue.includes("related_entity_type") && emailNotificationQueue.includes("related_entity_id") && workspaceApi.includes("related_entity_type='teacher_cv_application' AND related_entity_id=$2"), "Chat email copies must be tagged and deleted by application identity without touching other applications");
+
 assert.ok(teacherQualifications.includes("Delete my entire survey / CV / application") && teacherQualifications.includes("deleteOwnApplication"), "Teacher self-service must expose one complete application deletion action");
 
 assert.match(workspaceApi, /router\.delete\("\/bulk\/:scope"/, "Authorized reviewers must have a bulk delete endpoint");
