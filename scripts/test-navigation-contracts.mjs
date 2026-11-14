@@ -9,6 +9,11 @@ const webCv = read("../artifacts/dallyletter/src/pages/TeacherCvWorkspace.tsx");
 const mobileManagerRoute = read("../artifacts/dallyletter-mobile/app/(manager)/teacher-cv-workspace.tsx").trim();
 const mobileOwnerRoute = read("../artifacts/dallyletter-mobile/app/(admin)/teacher-cv-workspace.tsx").trim();
 const mobileCv = read("../artifacts/dallyletter-mobile/components/TeacherCvReviewWorkspace.tsx");
+const dashboardLayout = read("../artifacts/dallyletter/src/components/DashboardLayout.tsx");
+const teacherNavigation = dashboardLayout.split('} else if (normalizedRole === "teacher") {')[1]?.split('} else if (["manager","senior_manager","junior_manager"].includes(normalizedRole)) {')[0] || "";
+const teacherNavigationHrefs = [...teacherNavigation.matchAll(/href:\\s*"([^"]+)"/g)].map(match => match[1]);
+assert.equal(new Set(teacherNavigationHrefs).size, teacherNavigationHrefs.length, "Teacher and teacher-manager navigation must not render duplicate destinations.");
+
 
 const roleShellRewrites = vercelConfig.rewrites.filter((item) => /^(student|teacher|manager|admin)$/.test(item.source.split("/")[1] || "") && item.destination === "/app.html");
 for (const role of ["student", "teacher", "manager", "admin"]) {
