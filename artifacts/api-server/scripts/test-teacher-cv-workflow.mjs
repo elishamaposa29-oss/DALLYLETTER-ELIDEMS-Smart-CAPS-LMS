@@ -251,7 +251,7 @@ await request("/api/users/me/teacher-cv",{token:wholeApplicationDeleteApplicant.
 const wholeApplicationDocument=await pool.query("INSERT INTO teacher_documents(user_id,document_type,file_name,mime_type,size_bytes,data) VALUES($1,'certificate','private-application-media.pdf','application/pdf',18,$2) RETURNING id",[wholeApplicationDeleteApplicant.id,Buffer.from("private-media-bytes")]);
 await pool.query("INSERT INTO teacher_qualifications(user_id,title,institution,year,document_id,verification_status,source) VALUES($1,'Test qualification','Test institution',2020,$2,'pending','user')",[wholeApplicationDeleteApplicant.id,wholeApplicationDocument.rows[0].id]);
 const wholeApplicationChat=await request("/api/teacher-cv-workspace/"+wholeApplicationDeleteApplicant.id+"/chat",{token:wholeApplicationDeleteApplicant.token,method:"POST",body:{body:"Private application message to erase"}});
-assert.equal(wholeApplicationChat.status,200,"Teacher can create a private application chat message before deletion");
+assert.equal(wholeApplicationChat.status,201,"Teacher can create a private application chat message before deletion");
 const wholeApplicationDelete=await request("/api/teacher-cv-workspace/"+wholeApplicationDeleteApplicant.id+"/application",{token:wholeApplicationDeleteApplicant.token,method:"DELETE"});
 assert.equal(wholeApplicationDelete.status,200,"Teacher can delete the entire application through the self-service endpoint");
 assert.equal(wholeApplicationDelete.data.deleted,true,"Whole application deletion confirms success");
