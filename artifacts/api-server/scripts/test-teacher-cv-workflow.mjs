@@ -187,6 +187,12 @@ const adminQueue=await request("/api/teacher-cv-workspace/queue",{token:adminTok
 assert.equal(adminQueue.status,200,"Admin may inspect the CV queue through the read-only view capability");
 const adminDetails=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/details",{token:adminToken});
 assert.equal(adminDetails.status,200,"Admin may inspect applicant CV and survey details");
+const adminCvPdf=await fetch(base+"/api/users/"+approvalApplicant.id+"/teacher-cv/pdf",{headers:{Authorization:"Bearer "+adminToken}});
+assert.equal(adminCvPdf.status,200,"Admin read-only CV access includes the submitted professional CV PDF");
+assert((await adminCvPdf.arrayBuffer()).byteLength>0,"Admin receives the non-empty submitted CV PDF bytes");
+const adminPhoto=await fetch(base+"/api/users/"+approvalApplicant.id+"/teacher-documents/"+profilePhoto.data.id,{headers:{Authorization:"Bearer "+adminToken}});
+assert.equal(adminPhoto.status,200,"Admin read-only CV access includes the submitted profile photo document");
+assert((await adminPhoto.arrayBuffer()).byteLength>0,"Admin receives the non-empty submitted profile photo bytes");
 const adminApprove=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/decision",{token:adminToken,method:"POST",body:{action:"approve",note:"Admin approval must be denied"}});
 assert.equal(adminApprove.status,403,"Admin cannot bypass the Owner/Senior Manager authorization grant");
 const adminReject=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/decision",{token:adminToken,method:"POST",body:{action:"reject",note:"Admin rejection must be denied"}});
