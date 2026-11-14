@@ -42,8 +42,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
-      SHOWCASE_SITE_URL: ${{ github.event_name == 'pull_request' && 'https://elishamaposa29-oss-dal-git-fe8581-elishamaposa29-1821s-projects.vercel.app/' || 'https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/' }}
-      SHOWCASE_AUTH_ALLOWED_ORIGIN: ${{ github.event_name == 'pull_request' && 'https://elishamaposa29-oss-dal-git-fe8581-elishamaposa29-1821s-projects.vercel.app' || 'https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app' }}
+      SHOWCASE_SITE_URL: ${{ github.event_name == 'pull_request' && 'https://elishamaposa29-oss-dal-git-7f323c-elishamaposa29-1821s-projects.vercel.app/' || 'https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/' }}
+      SHOWCASE_AUTH_ALLOWED_ORIGIN: ${{ github.event_name == 'pull_request' && 'https://elishamaposa29-oss-dal-git-7f323c-elishamaposa29-1821s-projects.vercel.app' || 'https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app' }}
       SHOWCASE_LEARNER_EMAIL: ${{ github.event_name != 'pull_request' && secrets.SHOWCASE_LEARNER_EMAIL || '' }}
       SHOWCASE_LEARNER_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.SHOWCASE_LEARNER_PASSWORD || '' }}
       SHOWCASE_TEACHER_EMAIL: ${{ github.event_name != 'pull_request' && secrets.SHOWCASE_TEACHER_EMAIL || '' }}
