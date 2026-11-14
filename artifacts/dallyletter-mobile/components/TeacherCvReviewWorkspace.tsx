@@ -212,6 +212,7 @@ export default function TeacherCvReviewWorkspace() {
       </View>
       {detail && selectedId ? <View style={card}>
         <Text style={heading}>{detail.teacher?.name || "Teacher applicant"} · Full application</Text>
+        <Text style={muted}>Applicant ID: {detail.teacher?.id ?? selectedId}</Text>
         <Text style={muted}>{detail.teacher?.email || ""} · Application status: {detail.teacher?.teacher_application_status || "pending_review"}</Text>
         <Text style={{ ...heading, marginTop: 12 }}>Personal / legal details</Text>
         {Object.entries(personal).map(([key, value]) => <Text key={key} style={body}>{key}: {String(value ?? "—")}</Text>)}
