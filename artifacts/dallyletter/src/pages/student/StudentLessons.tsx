@@ -67,10 +67,10 @@ export default function StudentLessons() {
 
   const getTypeColor = (type: string) => {
     switch (type) {
-      case "video": return "bg-blue-500/10 text-blue-600 border-blue-200";
-      case "image": return "bg-purple-500/10 text-purple-600 border-purple-200";
-      case "audio": return "bg-orange-500/10 text-orange-600 border-orange-200";
-      case "notes": return "bg-green-500/10 text-green-600 border-green-200";
+      case "video": return "bg-primary/10 text-primary border-primary/20";
+      case "image": return "bg-accent/10 text-accent-foreground border-accent/25";
+      case "audio": return "bg-secondary text-secondary-foreground border-secondary";
+      case "notes": return "bg-emerald-500/10 text-emerald-700 border-emerald-500/20 dark:text-emerald-300";
       default: return "bg-primary/10 text-primary border-primary/20";
     }
   };
@@ -84,13 +84,13 @@ export default function StudentLessons() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-4 rounded-2xl bg-gradient-to-b from-[#FFF8E1]/70 via-background to-[#0A1931]/5 p-1">
+      <div className="dallyletter-stage space-y-4 rounded-2xl p-1">
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center">
           <div>
             <p className="dallyletter-tech-label mb-1 text-[10px] font-bold text-primary">Dallyletter learning network · Resource library</p>
-            <h1 className="text-3xl font-black tracking-tight text-[#0A1931] dark:text-[#FFF8E1]">Lessons</h1>
+            <h1 className="text-3xl font-extrabold tracking-tight text-foreground">Lessons</h1>
             <p className="text-muted-foreground">Browse your course materials and study notes.</p>
           </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 px-3 py-1.5 rounded-full border">
@@ -146,7 +146,7 @@ export default function StudentLessons() {
               filteredLessons?.map((lesson) => (
                 <Card
                   key={lesson.id}
-                  className={`flex flex-col h-full overflow-hidden rounded-2xl border-[#D4AF37]/20 bg-[#FFF8E1]/60 shadow-md transition-all duration-200 hover:-translate-y-1 hover:border-[#D4AF37]/70 hover:shadow-xl dark:bg-[#0A1931]/80 ${hasValidMediaUrl(lesson.mediaUrl) ? "cursor-pointer" : ""}`}
+                  className={`dallyletter-future-card flex flex-col h-full overflow-hidden rounded-2xl bg-card shadow-md transition-all duration-200 hover:-translate-y-1 hover:shadow-xl ${hasValidMediaUrl(lesson.mediaUrl) ? "cursor-pointer" : ""}`}
                   onClick={() => hasValidMediaUrl(lesson.mediaUrl) && handleOpen(lesson.mediaUrl!, lesson.id)}
                 >
                   <CardHeader className="pb-3 space-y-3">
@@ -182,10 +182,10 @@ export default function StudentLessons() {
                     {lesson.content && <div className="rounded-xl border bg-background/70 p-4"><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Lesson notes</p><div className="prose prose-sm max-w-none dark:prose-invert" dangerouslySetInnerHTML={{__html:sanitizeRichText(lesson.content)}} /></div>}
                     <div className="rounded-lg bg-muted/20 p-3"><p className="text-sm text-muted-foreground line-clamp-4">{lesson.description || "No description provided."}</p></div>
 
-                    {(exerciseMap[lesson.id] ?? []).length > 0 && <div className="space-y-2 border-t pt-3"><div className="flex items-center gap-2 text-sm font-medium"><ClipboardList className="h-4 w-4 text-primary" />Exercises</div>{(exerciseMap[lesson.id] ?? []).map(ex => <Button key={ex.id} variant="outline" className={`w-full justify-between gap-2 border transition-all hover:-translate-y-0.5 ${ex.submissionStatus==="marked" ? (localStorage.getItem(`dallyletter.exercise.viewed.${ex.id}`)==="1" ? "border-[#D4AF37]/60 bg-[#D4AF37]/10 text-[#6b4f00]" : "border-emerald-300 bg-emerald-50 text-emerald-800") : "border-purple-300 bg-purple-50 text-purple-800"}`} onClick={(e) => { e.stopPropagation(); localStorage.setItem(`dallyletter.exercise.viewed.${ex.id}`,"1"); window.location.assign(`/student/exercises/${ex.id}`); }}><span className="truncate text-left font-semibold">{ex.title}</span><span className="flex shrink-0 items-center gap-1"><Badge variant="secondary">{ex.totalMarks} marks</Badge><Badge className={ex.submissionStatus==="marked" ? (localStorage.getItem(`dallyletter.exercise.viewed.${ex.id}`)==="1" ? "bg-[#D4AF37] text-[#0A1931]" : "bg-emerald-600 text-white") : "bg-purple-600 text-white"}>{ex.submissionStatus==="marked" ? `Result: ${ex.submission?.totalScore ?? "0"}/${ex.totalMarks}` : ex.submissionStatus==="submitted" ? "Awaiting marking" : "Unmarked • Unviewed"}</Badge></span></Button>)}</div>}
+                    {(exerciseMap[lesson.id] ?? []).length > 0 && <div className="space-y-2 border-t pt-3"><div className="flex items-center gap-2 text-sm font-medium"><ClipboardList className="h-4 w-4 text-primary" />Exercises</div>{(exerciseMap[lesson.id] ?? []).map(ex => <Button key={ex.id} variant="outline" className={`w-full justify-between gap-2 border transition-all hover:-translate-y-0.5 ${ex.submissionStatus==="marked" ? (localStorage.getItem(`dallyletter.exercise.viewed.${ex.id}`)==="1" ? "border-secondary bg-secondary text-secondary-foreground" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300") : "border-accent/30 bg-accent/10 text-foreground"}`} onClick={(e) => { e.stopPropagation(); localStorage.setItem(`dallyletter.exercise.viewed.${ex.id}`,"1"); window.location.assign(`/student/exercises/${ex.id}`); }}><span className="truncate text-left font-semibold">{ex.title}</span><span className="flex shrink-0 items-center gap-1"><Badge variant="secondary">{ex.totalMarks} marks</Badge><Badge className={ex.submissionStatus==="marked" ? (localStorage.getItem(`dallyletter.exercise.viewed.${ex.id}`)==="1" ? "bg-secondary text-secondary-foreground" : "bg-emerald-600 text-white") : "bg-accent text-accent-foreground"}>{ex.submissionStatus==="marked" ? `Result: ${ex.submission?.totalScore ?? "0"}/${ex.totalMarks}` : ex.submissionStatus==="submitted" ? "Awaiting marking" : "Unmarked • Unviewed"}</Badge></span></Button>)}</div>}
                     <div className="flex items-center justify-between pt-3 border-t">
                       <span className="text-xs text-muted-foreground">
-                        {new Date(lesson.createdAt).toLocaleDateString("en-ZA", { day: "numeric", month: "short", year: "numeric" })}
+                        {new Date(lesson.createdAt).toLocaleDateString("en-ZW", { day: "numeric", month: "short", year: "numeric" })}
                       </span>
                       {hasValidMediaUrl(lesson.mediaUrl) && (
                         <Button
