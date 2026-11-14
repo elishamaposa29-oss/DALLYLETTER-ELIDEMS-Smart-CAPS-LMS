@@ -3,7 +3,7 @@ import { pool } from "@workspace/db";
 import { defaultManagerPermission, isActiveTeacherManager, isOwnerRole, isSeniorManager, isSeniorOnlyManagerPermission, normalizeRole } from "./role-access";
 
 const MANAGER_ROLES = new Set(["junior_manager", "senior_manager", "manager"]);
-const ADMIN_CV_PERMISSION_KEYS = new Set(["teacher_cv.view","teacher_cv.chat","teacher_cv.review","teacher_cv.authorize","qualifications.view","qualifications.verify"]);
+const ADMIN_CV_PERMISSION_KEYS = new Set(["teacher_cv.view","teacher_cv.chat","qualifications.view"]);
 function isAdminCvAuthority(role: unknown, permissionKey: string): boolean { return normalizeRole(role) === "admin" && ADMIN_CV_PERMISSION_KEYS.has(permissionKey); }
 type CurrentAuthority = {
   id: number;
