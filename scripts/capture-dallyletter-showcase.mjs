@@ -441,8 +441,22 @@ async function captureRole(role, route, email, password) {
           if (testedNavigationButtons.has(buttonKey)) continue;
           testedNavigationButtons.add(buttonKey);
           const originalUrl = page.url();
+          const beforeMain = await page.locator("main").innerText().catch(() => "");
           try {
+            const popupPromise = page.waitForEvent("popup", { timeout: 900 }).catch(() => null);
             await page.locator("button").nth(button.index).click({ timeout: 5000 });
+            const popup = await popupPromise;
+            if (popup) {
+              await popup.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
+              const popupUrl = new URL(popup.url());
+              const popupMain = await popup.locator("main").innerText().catch(() => "");
+              if (popupUrl.origin !== baseUrl.origin || !popupMain.trim() || /page you're looking for doesn't exist|this screen doesn't exist|404 not found/i.test(popupMain)) {
+                throw new Error("Button opened an unexpected or empty page: " + popup.url());
+              }
+              routeResults.push({ path: popupUrl.pathname, search: popupUrl.search, status: "captured", interaction: "button-popup", from: pathname, label: button.label });
+              await popup.close();
+              continue;
+            }
             await page.waitForTimeout(350);
             const currentUrl = new URL(page.url());
             const original = new URL(originalUrl);
@@ -457,8 +471,8 @@ async function captureRole(role, route, email, password) {
               routeResults.push({ path: currentUrl.pathname, search: currentUrl.search, status: "captured", interaction: "button-click", from: pathname, label: button.label });
               await page.goto(originalUrl, { waitUntil: "domcontentloaded", timeout: 25000 });
               await page.waitForLoadState("networkidle", { timeout: 4000 }).catch(() => {});
-            } else if (safeOverlay > 0 || expanded > 0) {
-              routeResults.push({ path: pathname, status: "captured", interaction: "button-opened-panel", from: pathname, label: button.label });
+            } else if (safeOverlay > 0 || expanded > 0 || mainText.trim() !== beforeMain.trim()) {
+              routeResults.push({ path: pathname, status: "captured", interaction: safeOverlay > 0 || expanded > 0 ? "button-opened-panel" : "button-changed-content", from: pathname, label: button.label });
               await page.keyboard.press("Escape").catch(() => {});
             } else {
               throw new Error("Button click produced no route change, dialog, menu or expanded control.");
