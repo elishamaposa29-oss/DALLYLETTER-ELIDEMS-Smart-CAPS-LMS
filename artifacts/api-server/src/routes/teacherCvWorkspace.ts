@@ -185,7 +185,7 @@ router.post("/:teacherId/decision",requireManagerPermissionForRequest((req)=>req
     await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,'approved',$3,'approved',$4)",[id,req.currentUser!.id,t.teacher_application_status||"pending_review",note||null]);
    }
    if(hasSurveySubmission){
-    await client.query("UPDATE teacher_profiles SET cv=jsonb_set(cv,'{surveyReviewStatus}',to_jsonb('approved'::text),true) || jsonb_build_object('surveyReviewNote',$2,'surveyReviewedAt',now()::text,'surveyReviewedBy',$3),updated_at=now() WHERE user_id=$1",[id,note||null,req.currentUser!.id]);
+    await client.query("UPDATE teacher_profiles SET cv=jsonb_set(cv,'{surveyReviewStatus}',to_jsonb('approved'::text),true) || jsonb_build_object('surveyReviewNote',$2::text,'surveyReviewedAt',now()::text,'surveyReviewedBy',$3::integer),updated_at=now() WHERE user_id=$1",[id,note||null,req.currentUser!.id]);
     await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,'survey_approved','survey_pending','approved',$3)",[id,req.currentUser!.id,note||null]);
    }
   }else{
@@ -199,7 +199,7 @@ router.post("/:teacherId/decision",requireManagerPermissionForRequest((req)=>req
     await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,'rejected',$3,'rejected_pending_conversion',$4)",[id,req.currentUser!.id,t.teacher_application_status||"pending_review",note||null]);
    }
    if(hasSurveySubmission){
-    await client.query("UPDATE teacher_profiles SET cv=jsonb_set(cv,'{surveyReviewStatus}',to_jsonb('rejected'::text),true) || jsonb_build_object('surveyReviewNote',$2,'surveyReviewedAt',now()::text,'surveyReviewedBy',$3),updated_at=now() WHERE user_id=$1",[id,note||null,req.currentUser!.id]);
+    await client.query("UPDATE teacher_profiles SET cv=jsonb_set(cv,'{surveyReviewStatus}',to_jsonb('rejected'::text),true) || jsonb_build_object('surveyReviewNote',$2::text,'surveyReviewedAt',now()::text,'surveyReviewedBy',$3::integer),updated_at=now() WHERE user_id=$1",[id,note||null,req.currentUser!.id]);
     await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,'survey_rejected','survey_pending','rejected',$3)",[id,req.currentUser!.id,note||null]);
    }
   }
