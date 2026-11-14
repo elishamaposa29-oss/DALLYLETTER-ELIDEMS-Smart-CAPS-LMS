@@ -21,23 +21,23 @@ interface NavItem {
 }
 
 const roleColors: Record<string, string> = {
-  student: "from-blue-600 to-blue-800",
-  prefect: "from-blue-600 to-blue-800",
-  teacher: "from-emerald-600 to-emerald-800",
-  owner: "from-amber-600 to-amber-800",
-  admin: "from-amber-600 to-amber-800",
-  platform_owner: "from-amber-600 to-amber-800",
-  manager: "from-purple-600 to-purple-800",
-  senior_manager: "from-purple-600 to-purple-800",
-  junior_manager: "from-indigo-600 to-indigo-800",
+  student: "from-[#0f2a5a] via-[#153d70] to-[#0b7187]",
+  prefect: "from-[#0f2a5a] via-[#153d70] to-[#b38b00]",
+  teacher: "from-[#0b243d] via-[#0d4962] to-[#0b8290]",
+  owner: "from-[#0f2a5a] via-[#5c4708] to-[#b38b00]",
+  admin: "from-[#1b2b43] via-[#40536c] to-[#72849a]",
+  platform_owner: "from-[#0f2a5a] via-[#5c4708] to-[#b38b00]",
+  manager: "from-[#101b3d] via-[#292f68] to-[#59418e]",
+  senior_manager: "from-[#101b3d] via-[#292f68] to-[#8060b4]",
+  junior_manager: "from-[#0f2a5a] via-[#1b4268] to-[#477b9d]",
 };
 
 const roleLabels: Record<string, string> = {
   student: "Learner",
   prefect: "Prefect learner",
   teacher: "Educator",
-  owner: "Administrator",
-  admin: "Administrator",
+  owner: "Owner",
+  admin: "Admin",
   platform_owner: "Platform owner",
   manager: "Manager",
   senior_manager: "Senior manager",
@@ -197,18 +197,14 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Student Payments", href: "/teacher/payments", icon: CreditCard },
       ...(activeTeacherManager ? [
         { label: "Manager Panel", href: "/manager", icon: Briefcase, section: "Management", accent: "text-purple-400", permissionKey: "manager.dashboard.view" },
-      { label: "Class & Learning Operations", href: "/operations", icon: CalendarDays },
         { label: "Teacher CV Applications", href: "/manager/teacher-cv-workspace", icon: GraduationCap, permissionKey: "teacher_cv.view" },
         { label: "Qualification Verification", href: "/manager/qualifications", icon: FileCheck2, permissionKey: "qualifications.view" },
-        { label: "RecordBook & Academic Records", href: "/record-book", icon: ScrollText, permissionKey: "recordbook.view" },
         { label: "Monitor Teachers", href: "/manager/teachers", icon: GraduationCap, permissionKey: "users.view" },
         { label: "Monitor Students", href: "/manager/students", icon: Users, permissionKey: "users.view" },
         { label: "Assignments", href: "/manager/assignments", icon: ClipboardList, permissionKey: "recordbook.view" },
-      { label: "Exercise Marking Queue", href: "/teacher/exercises", icon: ClipboardList, permissionKey: "recordbook.view" },
-      { label: "Classes", href: "/manager/classes", icon: Video, permissionKey: "classes.manage" },
+        { label: "Classes", href: "/manager/classes", icon: Video, permissionKey: "classes.manage" },
       { label: "Lessons", href: "/manager/lessons", icon: BookOpen, permissionKey: "recordbook.view" },
       { label: "Polls & Quizzes", href: "/manager/polls", icon: BarChart3, permissionKey: "polls.manage" },
-      { label: "Study Groups", href: "/student/study-groups", icon: Users, permissionKey: "groups.manage" },
       { label: "Audit History", href: "/manager/audit-logs", icon: ScrollText, permissionKey: "audit.view_subordinate" },
         { label: "Connect", href: "/manager/chat", icon: MessageSquare, permissionKey: "messages.send" },
         { label: "Reports", href: "/manager/reports", icon: ScrollText, permissionKey: "reports.view" },
@@ -327,10 +323,10 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             <div key={item.href}>
               {sectionEl}
               <Link href={item.href} onClick={onNav}>
-                <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 group ${isActive ? "bg-white/15 text-white shadow-sm" : "text-white/60 hover:text-white hover:bg-white/10"}`}>
+                <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 group ${isActive ? "border border-cyan-300/20 bg-gradient-to-r from-cyan-400/15 via-white/10 to-purple-500/10 text-white shadow-[0_0_20px_rgba(0,229,255,0.12)]" : "border border-transparent text-white/60 hover:text-white hover:border-white/10 hover:bg-white/[0.06]"}`}>
                   <Icon className={`h-4 w-4 shrink-0 ${isActive ? "text-white" : item.accent ? item.accent + " opacity-80" : "text-white/50 group-hover:text-white/80"}`} />
                   <span className="truncate">{item.label}</span>
-                  {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white/80 shrink-0" />}
+                  {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-300 shadow-[0_0_10px_rgba(0,229,255,0.9)] shrink-0" />}
                 </div>
               </Link>
             </div>
@@ -341,7 +337,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   };
 
   const SidebarContent = ({ onNav }: { onNav?: () => void }) => (
-    <div className="flex flex-col h-full bg-gradient-to-b from-[#0a1628] via-[#0d1e38] to-[#0a1628]">
+    <div className="dallyletter-sidebar flex flex-col h-full bg-gradient-to-b from-[#0a1628] via-[#0d1e38] to-[#0a1628]">
       <div className="px-5 pt-6 pb-4">
         <Link href={homeHref}>
           <div className="flex items-center gap-2.5 cursor-pointer group">
@@ -427,8 +423,25 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       <main className="flex-1 min-h-0 overflow-hidden">
-        <div className="h-full overflow-y-auto bg-slate-50 dark:bg-background">
+        <div className="dallyletter-stage h-full overflow-y-auto bg-slate-50 dark:bg-background">
           <div className="max-w-6xl mx-auto p-4 md:p-8">
+            <div className="dallyletter-command-bar mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3 shadow-sm backdrop-blur-xl">
+              <div className="flex min-w-0 items-center gap-3">
+                <img src="/favicon.svg" alt="" aria-hidden="true" className="h-9 w-9 shrink-0 rounded-xl shadow-md shadow-cyan-950/15" />
+                <div className="min-w-0">
+                  <p className="dallyletter-tech-label text-[9px] font-bold text-primary">ELIDEMS · LEARNING NETWORK</p>
+                  <p className="truncate text-sm font-semibold tracking-tight text-foreground">Dallyletter workspace</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`rounded-full border border-primary/20 bg-gradient-to-r ${roleColors[normalizedRole] || "from-[#0f2a5a] to-[#153d70]"} px-3 py-1.5 text-[11px] font-bold tracking-wide text-white shadow-sm`}>
+                  {roleLabels[normalizedRole] || user.role}
+                </span>
+                <Link href="/profile-hub" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-primary/15 bg-card/80 px-3 text-xs font-semibold text-foreground shadow-sm transition hover:border-cyan-400/40 hover:bg-primary/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <Users className="h-4 w-4 text-primary" /> Profile Hub
+                </Link>
+              </div>
+            </div>
             {children}
           </div>
         </div>

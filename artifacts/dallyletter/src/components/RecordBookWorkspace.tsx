@@ -178,7 +178,7 @@ export default function RecordBookWorkspace() {
 
   return <Card className="overflow-hidden border-primary/25 shadow-sm">
     <CardHeader className="bg-gradient-to-r from-primary/[0.08] to-transparent">
-      <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-primary">Academic workspace</p><CardTitle className="mt-1">RecordBook</CardTitle><p className="mt-1 text-sm text-muted-foreground">{isStaff ? "Build an activity-by-activity view from existing saved records. Mark work in its original activity workspace." : "Your saved activity results, with missing marks kept unscored."}</p></div><span className="rounded-full border px-3 py-1 text-xs font-semibold">Saved records only</span></div>
+      <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="dallyletter-tech-label text-[10px] font-bold text-primary">Academic workspace · Verified learning record</p><CardTitle className="mt-1">RecordBook</CardTitle><p className="mt-1 text-sm text-muted-foreground">{isStaff ? "Build an activity-by-activity view from existing saved records. Mark work in its original activity workspace." : "Your saved activity results, with missing marks kept unscored."}</p></div><span className="rounded-full border px-3 py-1 text-xs font-semibold">Saved records only</span></div>
     </CardHeader>
     <CardContent className="space-y-4 p-4">
       {isStaff && canBuildRecordBook && <div className="grid gap-3 sm:grid-cols-2">

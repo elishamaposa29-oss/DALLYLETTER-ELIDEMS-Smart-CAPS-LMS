@@ -60,15 +60,21 @@ export default function StudentExercises() {
   const busy = lessonsLoading || loadingExercises;
   return <DashboardLayout>
     <div className="mx-auto w-full max-w-5xl space-y-5 p-4 pb-10 sm:p-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Learning workspace</p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">Exercises & drawing tasks</h1>
-          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Find published exercises from your lessons, open each task, write answers or use the drawing canvas, and review returned marks.</p>
+      <div className="relative overflow-hidden rounded-2xl border border-primary/15 bg-gradient-to-br from-card via-card to-primary/[0.06] p-5 shadow-sm sm:p-6">
+        <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-cyan-400/10 blur-3xl" />
+        <div className="relative flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="dallyletter-tech-label text-[10px] font-bold text-primary">Learning workspace · Practice systems</p>
+            <h1 className="mt-2 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Exercises & drawing tasks</h1>
+            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Find published exercises from your lessons, open each task, write answers or use the drawing canvas, and review returned marks.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {!busy && <span className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-semibold text-primary">{exercises.length} tasks</span>}
+            <Button variant="outline" onClick={() => setRetryKey(value => value + 1)} disabled={busy} aria-label="Refresh exercise list">
+              <RefreshCw className="mr-2 h-4 w-4" /> Refresh
+            </Button>
+          </div>
         </div>
-        <Button variant="outline" onClick={() => setRetryKey(value => value + 1)} disabled={busy} aria-label="Refresh exercise list">
-          <RefreshCw className="mr-2 h-4 w-4" /> Refresh
-        </Button>
       </div>
 
       {error && <div role="alert" className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
