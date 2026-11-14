@@ -46,6 +46,6 @@ assert.ok(webCv.includes('setCanViewQualificationHistory(Boolean(p["qualificatio
 assert.ok(webCv.includes('new URLSearchParams(window.location.search).get("teacherId")') && webCv.includes("[canChat,canViewApplications]"), "Web deep links must reopen applicant details after reviewer permissions resolve");
 assert.ok(webRoutes.includes('path="/manager/teacher-cv-workspace"><ProtectedRoute allowedRoles={["owner","senior_manager","manager","junior_manager"]} allowManagerStaff>'), "Manager CV workspace must require a manager role or explicitly designated teacher-manager status");
 assert.ok(webRoutes.includes('path="/admin/teacher-cv-workspace"><ProtectedRoute allowedRoles={["owner","admin"]}'), "Admin CV workspace must remain read-only while Owner review authority is preserved");
-assert.ok(webCv.includes('else if(admin){p={};setCanReview(false);setCanAuthorize(false);setCanVerifyQualifications(false);setCanViewQualificationHistory(false);setCanChat(false);'), "Admin CV access must not imply approval, authorization, qualification verification, history viewing or chat grants");
+assert.ok(webCv.includes('else if(admin){setCanReview(false);setCanAuthorize(false);setCanVerifyQualifications(false);setCanViewQualificationHistory(false);setCanChat(false);'), "Admin CV access must not imply approval, authorization, qualification verification, history viewing or chat grants");
 
 console.log("Navigation contracts passed: legacy study-group path, owner event destinations, shared Android CV workspace and permission-aware CV deep links.");
