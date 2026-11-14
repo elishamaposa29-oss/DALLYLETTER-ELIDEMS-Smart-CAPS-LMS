@@ -246,8 +246,16 @@ router.delete("/:teacherId/application",requireSelfOrCvMonitor,async(req,res)=>{
   previousStatus=String(target.rows[0].teacher_application_status||"draft");
   const docs=await client.query("SELECT storage_key FROM teacher_documents WHERE user_id=$1 AND storage_key IS NOT NULL FOR UPDATE",[id]);
   mediaKeys=docs.rows.map((row:any)=>String(row.storage_key)).filter(Boolean);
-  // Delete all application-owned records in one transaction. The user account and
-  // its independently granted teacher access are not deleted or silently demoted.
+  const chatRows=await client.query("SELECT body FROM teacher_cv_chat_messages WHERE teacher_id=$1",[id]);
+  const chatBodies=chatRows.rows.map((row:any)=>String(row.body||"")).filter(Boolean);
+  const chatNoticeRows=await client.query("SELECT recipient_id FROM notifications WHERE type='teacher_cv_message' AND (recipient_id=$1 OR link LIKE $2)",[id,"%teacherId="+id+"%"]).catch(()=>({rows:[] as any[]}));
+  const chatRecipientIds=[...new Set([id,...chatNoticeRows.rows.map((row:any)=>Number(row.recipient_id)).filter(Number.isSafeInteger)])];
+  // Delete all application-owned records and message copies in one transaction.
+  // The user account and independently granted teacher access are preserved.
+  await client.query("DELETE FROM notifications WHERE type='teacher_cv_message' AND (recipient_id=$1 OR link LIKE $2)",[id,"%teacherId="+id+"%"]).catch(()=>undefined);
+  if(chatBodies.length){
+   await client.query("DELETE FROM email_notification_queue WHERE subject=$1 AND recipient_user_id=ANY($2::int[]) AND EXISTS (SELECT 1 FROM unnest($3::text[]) AS message_body WHERE position(message_body IN body_text)>0)",["Dallyletter Elidems — New teacher application message",chatRecipientIds,chatBodies]).catch(()=>undefined);
+  }
   await client.query("DELETE FROM teacher_cv_chat_messages WHERE teacher_id=$1",[id]);
   await client.query("DELETE FROM teacher_qualifications WHERE user_id=$1",[id]);
   await client.query("DELETE FROM teacher_documents WHERE user_id=$1",[id]);
