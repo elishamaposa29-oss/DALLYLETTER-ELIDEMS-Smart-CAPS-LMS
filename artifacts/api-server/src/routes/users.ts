@@ -505,8 +505,15 @@ router.get("/users/me/teacher-cv/pdf", requireAuth, async (req, res): Promise<vo
 router.get("/users/:id/teacher-cv", requireAuth, requireManagerPermission("teacher_cv.view"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid user id." }); return; }
-  const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, id));
-  if (!target || normalizeRole(target.role) !== "teacher" || !(await hasSubmittedTeacherApplication(id)) || (!isOwnerRole(req.currentUser!.role) && !canModerateUser(req.currentUser!, target))) { res.status(404).json({ error: "Teacher CV not found." }); return; }
+  const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel, teacherApplicationStatus: usersTable.teacherApplicationStatus }).from(usersTable).where(eq(usersTable.id, id));
+  // The route middleware has already enforced teacher_cv.view for Owner and
+  // Admin. Do not re-check the same grant here: Admin is not a manager account,
+  // and this duplicate lookup can incorrectly hide an otherwise permitted
+  // read-only application view.
+  const adminCvReviewAccess = normalizeRole(req.currentUser!.role) === "admin"
+    && target?.teacherApplicationStatus === "pending_review"
+    && await hasSubmittedTeacherApplication(id);
+  if (!target || normalizeRole(target.role) !== "teacher" || !(await hasSubmittedTeacherApplication(id)) || (!isOwnerRole(req.currentUser!.role) && !adminCvReviewAccess && !canModerateUser(req.currentUser!, target))) { res.status(404).json({ error: "Teacher CV not found." }); return; }
   await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, cv jsonb NOT NULL DEFAULT '{}'::jsonb, updated_at timestamptz NOT NULL DEFAULT now())");
   const result = await pool.query("SELECT cv, updated_at FROM teacher_profiles WHERE user_id = $1", [id]);
   if (!result.rows.length) { res.status(404).json({ error: "Teacher CV not found." }); return; }
@@ -516,8 +523,15 @@ router.get("/users/:id/teacher-cv", requireAuth, requireManagerPermission("teach
 router.get("/users/:id/teacher-cv/pdf", requireAuth, requireManagerPermission("teacher_cv.view"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid user id." }); return; }
-  const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, id));
-  if (!target || normalizeRole(target.role) !== "teacher" || !(await hasSubmittedTeacherApplication(id)) || (!isOwnerRole(req.currentUser!.role) && !canModerateUser(req.currentUser!, target))) { res.status(404).json({ error: "Teacher CV not found." }); return; }
+  const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel, teacherApplicationStatus: usersTable.teacherApplicationStatus }).from(usersTable).where(eq(usersTable.id, id));
+  // The route middleware has already enforced teacher_cv.view for Owner and
+  // Admin. Do not re-check the same grant here: Admin is not a manager account,
+  // and this duplicate lookup can incorrectly hide an otherwise permitted
+  // read-only application view.
+  const adminCvReviewAccess = normalizeRole(req.currentUser!.role) === "admin"
+    && target?.teacherApplicationStatus === "pending_review"
+    && await hasSubmittedTeacherApplication(id);
+  if (!target || normalizeRole(target.role) !== "teacher" || !(await hasSubmittedTeacherApplication(id)) || (!isOwnerRole(req.currentUser!.role) && !adminCvReviewAccess && !canModerateUser(req.currentUser!, target))) { res.status(404).json({ error: "Teacher CV not found." }); return; }
   await sendTeacherCvPdf(id, res, true);
 });
 
@@ -563,12 +577,19 @@ router.post("/users/me/teacher-documents", requireAuth, (req, res): void => {
 router.get("/users/:id/teacher-documents", requireAuth, async (req, res): Promise<void> => {
   const id = Number(req.params.id); const actor = req.currentUser!;
   if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid user id." }); return; }
-  const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, id));
+  const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel, teacherApplicationStatus: usersTable.teacherApplicationStatus }).from(usersTable).where(eq(usersTable.id, id));
   if (!target || (isOwnerRole(target.role) && !isOwnerRole(actor.role))) { res.status(404).json({ error: "User not found." }); return; }
-  if (actor.id !== id && !isOwnerRole(actor.role) && !canModerateUser(actor, target)) { res.status(403).json({ error: "You are not authorized to access this user's teacher documents." }); return; }
-  const cvReviewAccess = actor.id !== id && canAccessManager(actor)
+  const pendingSubmittedApplication = target.teacherApplicationStatus === "pending_review"
+    && (await pool.query("SELECT EXISTS(SELECT 1 FROM teacher_cv_review_history h WHERE h.teacher_id=$1 AND h.action='submitted') AS allowed", [id])).rows[0]?.allowed === true;
+  // Admin's teacher_cv.view capability is explicitly read-only and is
+  // granted by role policy. Restrict it to submitted applications; do not
+  // route it through the manager-grant helper used for manager accounts.
+  const adminCvReviewAccess = normalizeRole(actor.role) === "admin"
+    && pendingSubmittedApplication;
+  if (actor.id !== id && !isOwnerRole(actor.role) && !adminCvReviewAccess && !canModerateUser(actor, target)) { res.status(403).json({ error: "You are not authorized to access this user's teacher documents." }); return; }
+  const cvReviewAccess = actor.id !== id && (adminCvReviewAccess || (canAccessManager(actor)
     && await managerHasPermission(actor, "teacher_cv.view")
-    && (await pool.query("SELECT EXISTS(SELECT 1 FROM teacher_cv_review_history h JOIN users u ON u.id=h.teacher_id WHERE h.teacher_id=$1 AND h.action='submitted' AND u.teacher_application_status='pending_review') AS allowed", [id])).rows[0]?.allowed === true;
+    && pendingSubmittedApplication));
   if (!cvReviewAccess && !(await canViewProfileSection(actor,id,"teacher_documents"))) { res.status(403).json({ error: "Teacher document visibility is restricted by this profile's privacy settings." }); return; }
   const selfOrManager = actor.id === id || isOwnerRole(actor.role) || cvReviewAccess || (canAccessManager(actor) && await managerHasPermission(actor, "qualifications.view"));
   if (canAccessManager(actor) && !isOwnerRole(actor.role) && actor.id !== id && !selfOrManager) { res.status(403).json({ error: "Individual qualifications.view permission is required for teacher document access." }); return; }
@@ -583,12 +604,19 @@ router.get("/users/:id/teacher-documents", requireAuth, async (req, res): Promis
 router.get("/users/:id/teacher-documents/:docId", requireAuth, async (req, res): Promise<void> => {
   const id = Number(req.params.id); const docId = Number(req.params.docId); const actor = req.currentUser!;
   if (!Number.isInteger(id) || id <= 0 || !Number.isInteger(docId) || docId <= 0) { res.status(400).json({ error: "Invalid document reference." }); return; }
-  const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, id));
+  const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel, teacherApplicationStatus: usersTable.teacherApplicationStatus }).from(usersTable).where(eq(usersTable.id, id));
   if (!target || (isOwnerRole(target.role) && !isOwnerRole(actor.role))) { res.status(404).json({ error: "User not found." }); return; }
-  if (actor.id !== id && !isOwnerRole(actor.role) && !canModerateUser(actor, target)) { res.status(403).json({ error: "You are not authorized to access this user's teacher documents." }); return; }
-  const cvReviewAccess = actor.id !== id && canAccessManager(actor)
+  const pendingSubmittedApplication = target.teacherApplicationStatus === "pending_review"
+    && (await pool.query("SELECT EXISTS(SELECT 1 FROM teacher_cv_review_history h WHERE h.teacher_id=$1 AND h.action='submitted') AS allowed", [id])).rows[0]?.allowed === true;
+  // Admin's teacher_cv.view capability is explicitly read-only and is
+  // granted by role policy. Restrict it to submitted applications; do not
+  // route it through the manager-grant helper used for manager accounts.
+  const adminCvReviewAccess = normalizeRole(actor.role) === "admin"
+    && pendingSubmittedApplication;
+  if (actor.id !== id && !isOwnerRole(actor.role) && !adminCvReviewAccess && !canModerateUser(actor, target)) { res.status(403).json({ error: "You are not authorized to access this user's teacher documents." }); return; }
+  const cvReviewAccess = actor.id !== id && (adminCvReviewAccess || (canAccessManager(actor)
     && await managerHasPermission(actor, "teacher_cv.view")
-    && (await pool.query("SELECT EXISTS(SELECT 1 FROM teacher_cv_review_history h JOIN users u ON u.id=h.teacher_id WHERE h.teacher_id=$1 AND h.action='submitted' AND u.teacher_application_status='pending_review') AS allowed", [id])).rows[0]?.allowed === true;
+    && pendingSubmittedApplication));
   if (!cvReviewAccess && !(await canViewProfileSection(actor, id, "teacher_documents"))) {
     res.status(403).json({ error: "Teacher document visibility is restricted by this profile's privacy settings." }); return;
   }

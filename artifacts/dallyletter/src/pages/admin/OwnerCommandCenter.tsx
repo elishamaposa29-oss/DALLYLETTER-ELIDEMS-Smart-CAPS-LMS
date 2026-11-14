@@ -36,10 +36,10 @@ function OwnerCommandCenterPage() {
     const routes: Record<string, string> = {
       lesson: id ? `/preview/lesson/${id}` : "/teacher/lessons",
       exercise: id ? `/teacher/exercises/${id}/mark` : "/teacher/lessons",
-      assignment: "/teacher/assignments", class: "/teacher/classes",
-      group: id ? `/student/groups?group=${id}` : "/student/groups",
-      message: "/student/chat", user: "/manager/students", student: "/manager/students",
-      teacher: "/manager/teachers", poll: id ? `/student/polls?poll=${id}` : "/student/polls",
+      assignment: "/admin/assignments", class: "/admin/classes",
+      group: id ? `/student/study-groups?group=${id}` : "/student/study-groups",
+      message: "/admin/chat", user: "/manager/students", student: "/manager/students",
+      teacher: "/manager/teachers", poll: id ? `/admin/polls?poll=${id}` : "/admin/polls",
     };
     const route = routes[type];
     if (route) window.location.assign(route); else setSelectedEvent(event);

@@ -214,8 +214,12 @@ const rewriteSources = new Set(vercel.rewrites.map(rewrite => rewrite.source));
 if (rewriteSources.has("/(.*)") || rewriteSources.has("/:path*")) {
   throw new Error("A catch-all SPA rewrite creates soft 404s for unknown URLs");
 }
-for (const appRoute of ["/student/", "/student/:path*", "/teacher/", "/teacher/:path*", "/manager/", "/manager/:path*", "/admin/", "/admin/:path*"]) {
-  if (!rewriteSources.has(appRoute)) throw new Error("Missing authenticated application rewrite: " + appRoute);
+for (const appRoute of ["/student/", "/teacher/", "/manager/", "/admin/"]) {
+  if (!rewriteSources.has(appRoute)) throw new Error("Missing authenticated application root rewrite: " + appRoute);
+}
+for (const role of ["student", "teacher", "manager", "admin"]) {
+  const nestedRoute = "/" + role + "/(.*)";
+  if (!rewriteSources.has(nestedRoute)) throw new Error("Missing nested authenticated application rewrite: " + nestedRoute);
 }
 for (const route of publicRoutes) {
   const source = route === "/" ? "/" : route;

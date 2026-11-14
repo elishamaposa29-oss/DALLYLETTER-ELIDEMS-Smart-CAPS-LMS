@@ -395,7 +395,7 @@
       "destination": "/app.html"
     },
     {
-      "source": "/student/:path*",
+      "source": "/student/(.*)",
       "destination": "/app.html"
     },
     {
@@ -403,7 +403,7 @@
       "destination": "/app.html"
     },
     {
-      "source": "/teacher/:path*",
+      "source": "/teacher/(.*)",
       "destination": "/app.html"
     },
     {
@@ -411,7 +411,7 @@
       "destination": "/app.html"
     },
     {
-      "source": "/manager/:path*",
+      "source": "/manager/(.*)",
       "destination": "/app.html"
     },
     {
@@ -419,7 +419,7 @@
       "destination": "/app.html"
     },
     {
-      "source": "/admin/:path*",
+      "source": "/admin/(.*)",
       "destination": "/app.html"
     }
   ],

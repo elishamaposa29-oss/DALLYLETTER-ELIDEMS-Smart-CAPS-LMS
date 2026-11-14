@@ -30,7 +30,8 @@ export default function TeacherCvReviewWorkspace() {
   const canReview = isOwner || managerGrants["teacher_cv.review"] === true;
   const canAuthorize = isOwner || managerGrants["teacher_cv.authorize"] === true;
   const canChat = isOwner || managerGrants["teacher_cv.chat"] === true;
-  const canViewQualificationDocuments = isOwner || managerGrants["qualifications.view"] === true;
+  const canViewQualificationDocuments = isOwner || normalizedRole === "admin" || managerGrants["qualifications.view"] === true;
+  const canViewQualificationHistory = isOwner || managerGrants["qualifications.view"] === true;
   const canVerifyQualifications = isOwner || managerGrants["qualifications.verify"] === true;
 
   const api = useCallback(async (path: string, method = "GET", body?: any) => {
@@ -71,7 +72,7 @@ export default function TeacherCvReviewWorkspace() {
       const [d, h, messages] = await Promise.all([
         api("/" + id + "/details"),
         api("/" + id + "/history"),
-        api("/" + id + "/chat"),
+        canChat ? api("/" + id + "/chat") : Promise.resolve([]),
       ]);
       setSelectedId(id); setDetail(d); setHistory(Array.isArray(h?.history) ? h.history : []);
       setChat(Array.isArray(messages) ? messages : Array.isArray(messages?.messages) ? messages.messages : []);
@@ -81,6 +82,15 @@ export default function TeacherCvReviewWorkspace() {
   };
 
   useEffect(() => { void loadQueue(); }, [loadQueue]);
+
+  useEffect(() => {
+    if (!selectedId || !canChat) { if (!canChat) setChat([]); return; }
+    let active = true;
+    void api("/" + selectedId + "/chat")
+      .then(messages => { if (active) setChat(Array.isArray(messages) ? messages : Array.isArray(messages?.messages) ? messages.messages : []); })
+      .catch(() => { /* Keep the last successfully loaded conversation if chat access is temporarily unavailable. */ });
+    return () => { active = false; };
+  }, [api, selectedId, canChat]);
 
   const decide = async (action: "approve" | "reject") => {
     if (!selectedId) return;
@@ -127,6 +137,18 @@ export default function TeacherCvReviewWorkspace() {
     finally { setBusy(false); }
   };
 
+  const openCvPdf = async () => {
+    if (!selectedId || !token) return;
+    setBusy(true); setError("");
+    try {
+      const destination = (FileSystem.cacheDirectory || FileSystem.documentDirectory || "") + "dallyletter-teacher-cv-" + selectedId + ".pdf";
+      const result = await FileSystem.downloadAsync(getApiUrl("/api/users/" + selectedId + "/teacher-cv/pdf"), destination, { headers: { Authorization: "Bearer " + token } });
+      if (result.status < 200 || result.status >= 300) throw new Error("The submitted CV PDF could not be generated or downloaded.");
+      await Linking.openURL(result.uri);
+    } catch (e) { setError(e instanceof Error ? e.message : "The professional CV PDF could not be opened."); }
+    finally { setBusy(false); }
+  };
+
   const openDocument = async (document: Row) => {
     if (!selectedId || !token || !document?.id) return;
     try {
@@ -144,17 +166,18 @@ export default function TeacherCvReviewWorkspace() {
     return payload;
   };
   const openQualificationDocument = async (qualification: Row) => {
-    if (!token || !qualification.document_id || !canViewQualificationDocuments) return;
+    if (!token || !selectedId || !qualification.document_id || !canViewQualificationDocuments) return;
     try {
       const mime = String(qualification.document_mime_type || "application/pdf");
       const extension = mime === "image/png" ? ".png" : mime === "image/jpeg" ? ".jpg" : ".pdf";
       const destination = (FileSystem.cacheDirectory || FileSystem.documentDirectory || "") + "dallyletter-qualification-" + qualification.document_id + extension;
-      const result = await FileSystem.downloadAsync(getApiUrl("/api/qualifications/" + qualification.document_id + "/document"), destination, { headers: { Authorization: "Bearer " + token } });
+      const result = await FileSystem.downloadAsync(getApiUrl("/api/users/" + selectedId + "/teacher-documents/" + qualification.document_id), destination, { headers: { Authorization: "Bearer " + token } });
       if (result.status < 200 || result.status >= 300) throw new Error("The protected qualification document could not be downloaded.");
       await Linking.openURL(result.uri);
     } catch (e) { Alert.alert("Certificate unavailable", e instanceof Error ? e.message : "Please retry."); }
   };
   const loadQualificationHistory = async (qualificationId: number) => {
+    if (!canViewQualificationHistory) return;
     try {
       const result = await qualificationRequest("/api/qualifications/" + qualificationId + "/review-history");
       setQualificationHistory(current => ({ ...current, [qualificationId]: Array.isArray(result.history) ? result.history : [] }));
@@ -217,6 +240,7 @@ export default function TeacherCvReviewWorkspace() {
         <Text style={{ ...heading, marginTop: 12 }}>Personal / legal details</Text>
         {Object.entries(personal).map(([key, value]) => <Text key={key} style={body}>{key}: {String(value ?? "—")}</Text>)}
         <Text style={{ ...heading, marginTop: 12 }}>CV evidence</Text>
+        {queue.some(row => Number(row.id) === Number(selectedId) && row.has_cv_submission) ? <TouchableOpacity disabled={busy} onPress={() => void openCvPdf()} style={[button, { marginTop: 8 }]}><Text style={buttonText}>Download professional CV PDF</Text></TouchableOpacity> : null}
         {["professionalSummary","education","experience","subjects","address","certifications","languages","references"].map(key => <View key={key} style={{ marginTop: 7 }}><Text style={{ color: colors.foreground, fontWeight: "800", textTransform: "capitalize" }}>{key.replace(/[A-Z]/g, letter => " " + letter)}</Text><Text style={body}>{String(cv[key] || "Not supplied")}</Text></View>)}
         <Text style={{ ...heading, marginTop: 12 }}>Uploaded documents</Text>
         {(detail.documents || []).map((doc: Row) => <TouchableOpacity key={String(doc.id)} onPress={() => void openDocument(doc)} style={{ paddingVertical: 9, borderTopWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -228,7 +252,7 @@ export default function TeacherCvReviewWorkspace() {
           <Text style={muted}>{q.institution || "Institution not supplied"} · {q.year || "Year not supplied"} · {q.verification_status || "pending"} · {q.document_id ? (q.document_file_name || "Certificate attached") : "Certificate missing"}</Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 7, marginTop: 7 }}>
             {q.document_id && canViewQualificationDocuments ? <TouchableOpacity onPress={() => void openQualificationDocument(q)} style={[button, { paddingVertical: 7 }]}><Text style={buttonText}>Open certificate</Text></TouchableOpacity> : null}
-            {canViewQualificationDocuments ? <TouchableOpacity onPress={() => void loadQualificationHistory(Number(q.id))} style={[button, { paddingVertical: 7, backgroundColor: colors.secondary }]}><Text style={{ ...buttonText, color: colors.foreground }}>Review history</Text></TouchableOpacity> : null}
+            {canViewQualificationHistory ? <TouchableOpacity onPress={() => void loadQualificationHistory(Number(q.id))} style={[button, { paddingVertical: 7, backgroundColor: colors.secondary }]}><Text style={{ ...buttonText, color: colors.foreground }}>Review history</Text></TouchableOpacity> : null}
           </View>
           {(qualificationHistory[Number(q.id)] || []).map((entry: Row) => <View key={String(entry.id)} style={{ marginTop: 6, padding: 8, backgroundColor: colors.background, borderRadius: 7 }}><Text style={muted}>{entry.reviewer_name || "Reviewer"} · {entry.previous_status} → {entry.new_status} · {entry.created_at ? new Date(entry.created_at).toLocaleString() : ""}</Text>{entry.review_note ? <Text style={body}>{entry.review_note}</Text> : null}</View>)}
           {q.verification_status === "pending" && canVerifyQualifications ? <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>

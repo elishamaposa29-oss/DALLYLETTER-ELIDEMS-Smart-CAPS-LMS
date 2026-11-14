@@ -58,6 +58,9 @@ assert.ok(adminEntry.includes("/(admin)/teacher-cv-workspace"), "Admin/Owner Mor
 assert.ok(adminEntry.includes('normalizedRole === "admin"'), "Admin may open the CV workspace for the read-only CV and survey view capability");
 assert.ok(mobileReview.includes('const canReview = isOwner || managerGrants["teacher_cv.review"] === true;'), "Android CV rejection/review actions must require Owner or an explicit Senior Manager grant");
 assert.ok(mobileReview.includes('const canAuthorize = isOwner || managerGrants["teacher_cv.authorize"] === true;'), "Android CV approval must require Owner or an explicit Senior Manager authorization grant");
+assert.ok(mobileReview.includes('const canViewQualificationDocuments = isOwner || normalizedRole === "admin" || managerGrants["qualifications.view"] === true;'), "Admin retains read-only access to submitted qualification documents through the CV workspace");
+assert.ok(mobileReview.includes('const canViewQualificationHistory = isOwner || managerGrants["qualifications.view"] === true;'), "Admin does not receive qualification review-history access merely from CV view");
+assert.ok(mobileReview.includes('getApiUrl("/api/users/" + selectedId + "/teacher-documents/" + qualification.document_id)'), "Android certificate preview uses the same permission-checked teacher-document endpoint as web");
 assert.ok(!mobileReview.includes('const isAdmin = normalizedRole === "admin"'), "Admin must not bypass teacher CV approval permissions");
 assert.ok(managerEntry.includes("/(manager)/teacher-cv-workspace"), "Manager More screen must link to the permission-gated CV review workspace");
 assert.ok(adminLayout.includes('name="teacher-cv-workspace"'), "Admin route must be registered as a hidden route");
@@ -183,7 +186,7 @@ for (const operation of [
   'router.patch("/qualifications/:id/verify"',
 ]) assert.ok(usersApi.includes(operation), "Qualification review API lifecycle missing: " + operation);
 for (const operation of [
-  '"/api/qualifications/" + qualification.document_id + "/document"',
+  '"/api/users/" + selectedId + "/teacher-documents/" + qualification.document_id',
   '"/api/qualifications/" + qualificationId + "/review-history"',
   '"/api/qualifications/" + qualification.id + "/verify"',
   'Verify qualification',

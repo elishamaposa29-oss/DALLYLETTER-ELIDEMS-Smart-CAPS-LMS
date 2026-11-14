@@ -58,10 +58,9 @@ async function verifyAuthenticatedRole(token, expectedRole, authenticatedApiOrig
   return actualRole;
 }
 const decodeXml = (value) => value.replaceAll("&amp;", "&").replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&quot;", '"').replaceAll("&apos;", "'");
-const isProductionPush = process.env.GITHUB_EVENT_NAME === "push" && process.env.GITHUB_REF === "refs/heads/main";
-const expectedDeploymentSha = isProductionPush ? (process.env.EXPECTED_DEPLOYMENT_SHA || "").trim() : "";
-if (!isProductionPush && process.env.EXPECTED_DEPLOYMENT_SHA) {
-  console.log("Skipping exact-production-commit wait for " + (process.env.GITHUB_EVENT_NAME || "local") + " event; PR commits are not deployed to the permanent production hostname.");
+const expectedDeploymentSha = (process.env.EXPECTED_DEPLOYMENT_SHA || "").trim();
+if (expectedDeploymentSha) {
+  console.log("Waiting for the exact deployment commit " + expectedDeploymentSha + " before testing routes.");
 }
 
 
@@ -206,6 +205,37 @@ async function capturePublicPages() {
     }
   }
 }
+async function verifyProtectedRouteShells() {
+  const source = await fs.readFile(path.resolve("artifacts/dallyletter/src/App.tsx"), "utf8");
+  const routePaths = [...source.matchAll(/<Route\s+path=["']([^"']+)["']/g)]
+    .map((match) => match[1])
+    .filter((routePath) => /^\/(student|teacher|manager|admin)(\/|$)/.test(routePath) && !routePath.includes("*"));
+  const routes = [...new Set(routePaths)];
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await context.newPage();
+  try {
+    for (const routePath of routes) {
+      const testPath = routePath.replace(/:([A-Za-z0-9_]+)/g, "showcase-test").replace(/\/+$/, "") + "/";
+      const url = new URL(testPath, baseUrl);
+      const response = await page.goto(url.href, { waitUntil: "domcontentloaded", timeout: 25000 });
+      if (!response || response.status() !== 200) {
+        results.push({ type: "route-shell", path: routePath, url: url.href, status: response?.status() ?? "no-response", error: "Registered protected route did not return the application shell." });
+        continue;
+      }
+      const title = await page.title();
+      const shell = await page.locator("#root, #app, [data-reactroot]").count().catch(() => 0);
+      const html = await page.locator("body").innerText().catch(() => "");
+      if (!/Dallyletter Elidems/i.test(title) || (!shell && html.trim().length < 20) || /page you're looking for doesn't exist|this screen doesn't exist|404 not found/i.test(html)) {
+        results.push({ type: "route-shell", path: routePath, url: url.href, status: "wrong-page", error: "Route returned HTTP 200 but did not render the expected application shell." });
+        continue;
+      }
+      results.push({ type: "route-shell", path: routePath, url: url.href, status: "captured" });
+    }
+  } finally {
+    await context.close();
+  }
+}
+
 async function discoverRoleRoutes(role) {
   const source = await fs.readFile(path.resolve("artifacts/dallyletter/src/App.tsx"), "utf8");
   const routePattern = /<Route path="([^"]+)"([\s\S]*?)(?=<Route path="|<Route component=|<\/Switch>)/g;
@@ -319,6 +349,8 @@ async function captureRole(role, route, email, password) {
 
   const screenshots = [];
   const routeResults = [];
+  const testedNavigationLinks = new Set();
+  const testedNavigationButtons = new Set();
   try {
     const routeInventory = await discoverRoleRoutes(role);
     const queue = [{ path: route, label: "dashboard", source: "role-home" }, ...routeInventory];
@@ -376,20 +408,111 @@ async function captureRole(role, route, email, password) {
         }
 
         // Discover every visible, same-origin, read-only navigation destination from this feature page.
-        const links = await page.locator("a[href]").evaluateAll((anchors) => anchors.map((anchor) => ({
+        const links = await page.locator("a[href]").evaluateAll((anchors) => anchors.map((anchor, index) => ({
+          index,
           href: anchor.href,
           label: (anchor.innerText || anchor.getAttribute("aria-label") || "").trim().toLowerCase(),
-          visible: !!(anchor.offsetWidth || anchor.offsetHeight || anchor.getClientRects().length)
+          visible: !!(anchor.offsetWidth || anchor.offsetHeight || anchor.getClientRects().length),
+          download: anchor.hasAttribute("download")
         })));
-        const deny = /logout|sign out|delete|remove|approve|reject|submit|upload|invite|reset password|verify email/i;
+        const deny = /logout|sign out|delete|remove|approve|reject|submit|upload|invite|reset password|verify email|archive|publish|grant|revoke|send|pay now|purchase|subscribe|accept|decline/i;
         for (const link of links) {
-          if (!link.visible || deny.test(link.label)) continue;
+          if (!link.visible || link.download || deny.test(link.label)) continue;
           const linked = new URL(link.href, baseUrl);
-          if (linked.origin !== baseUrl.origin || linked.search || linked.hash) continue;
+          if (linked.origin !== baseUrl.origin || linked.hash || linked.pathname.startsWith("/api/") || /\\.(?:pdf|csv|xlsx?|docx?|zip|png|jpe?g|webp|svg|mp4|webm|mp3|wav)$/i.test(linked.pathname)) continue;
           const linkedPath = linked.pathname.replace(/\/+$/, "") || "/";
-          if (seen.has(linkedPath) || queue.some((candidate) => candidate.path === linkedPath)) continue;
           if (/^\/(login|register|forgot-password|reset-password|verify-email|suspended)(\/|$)/.test(linkedPath)) continue;
-          queue.push({ path: linkedPath, label: link.label || linkedPath, source: "visible-navigation" });
+          if (!linked.search && !seen.has(linkedPath) && !queue.some((candidate) => candidate.path === linkedPath)) {
+            queue.push({ path: linkedPath, label: link.label || linkedPath, source: "visible-navigation" });
+          }
+          if (testedNavigationLinks.has(link.href) || linkedPath === pathname) continue;
+          testedNavigationLinks.add(link.href);
+          const originalUrl = page.url();
+          try {
+            const popupPromise = page.waitForEvent("popup", { timeout: 900 }).catch(() => null);
+            await page.locator("a[href]").nth(link.index).click({ timeout: 5000 });
+            const popup = await popupPromise;
+            if (popup) {
+              await popup.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
+              const opened = new URL(popup.url());
+              const popupMain = await popup.locator("main").innerText().catch(() => "");
+              if (opened.origin !== baseUrl.origin || opened.pathname.replace(/\/+$/, "") !== linkedPath || opened.search !== linked.search || !popupMain.trim()) {
+                throw new Error("Link opened an unexpected or empty page: " + popup.url());
+              }
+              await popup.close();
+            } else {
+              await page.waitForURL(url => url.origin === baseUrl.origin && (url.pathname.replace(/\/+$/, "") || "/") === linkedPath && url.search === linked.search, { timeout: 7000 });
+              const opened = new URL(page.url());
+              const openedMain = await page.locator("main").innerText().catch(() => "");
+              if (opened.pathname.replace(/\/+$/, "") !== linkedPath || opened.search !== linked.search || !openedMain.trim() || /page you're looking for doesn't exist|this screen doesn't exist|404 not found/i.test(openedMain)) {
+                throw new Error("Link did not open its intended feature: " + page.url());
+              }
+              await page.goto(originalUrl, { waitUntil: "domcontentloaded", timeout: 25000 });
+              await page.waitForLoadState("networkidle", { timeout: 4000 }).catch(() => {});
+            }
+            routeResults.push({ path: linkedPath, search: linked.search, status: "captured", interaction: "anchor-click", from: pathname, label: link.label || linkedPath });
+          } catch (error) {
+            routeResults.push({ path: linkedPath, search: linked.search, status: "navigation-click-failed", interaction: "anchor-click", from: pathname, label: link.label || linkedPath, error: String(error) });
+            if (page.url() !== originalUrl) {
+              await page.goto(originalUrl, { waitUntil: "domcontentloaded", timeout: 25000 }).catch(() => {});
+            }
+          }
+        }
+        const buttons = await page.locator("button").evaluateAll((items) => items.map((button, index) => ({
+          index,
+          label: (button.innerText || button.getAttribute("aria-label") || button.getAttribute("title") || "").trim().replace(/\s+/g, " "),
+          visible: !!(button.offsetWidth || button.offsetHeight || button.getClientRects().length),
+          disabled: button.disabled
+        })));
+        const safeNavigationButton = /^(?:open|view|explore|go to|browse|visit|more)(?:\s|$)/i;
+        for (const button of buttons) {
+          if (!button.visible || button.disabled || !safeNavigationButton.test(button.label)) continue;
+          const buttonKey = pathname + "|" + button.index + "|" + button.label.toLowerCase();
+          if (testedNavigationButtons.has(buttonKey)) continue;
+          testedNavigationButtons.add(buttonKey);
+          const originalUrl = page.url();
+          const beforeMain = await page.locator("main").innerText().catch(() => "");
+          try {
+            const popupPromise = page.waitForEvent("popup", { timeout: 900 }).catch(() => null);
+            await page.locator("button").nth(button.index).click({ timeout: 5000 });
+            const popup = await popupPromise;
+            if (popup) {
+              await popup.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
+              const popupUrl = new URL(popup.url());
+              const popupMain = await popup.locator("main").innerText().catch(() => "");
+              if (popupUrl.origin !== baseUrl.origin || !popupMain.trim() || /page you're looking for doesn't exist|this screen doesn't exist|404 not found/i.test(popupMain)) {
+                throw new Error("Button opened an unexpected or empty page: " + popup.url());
+              }
+              routeResults.push({ path: popupUrl.pathname, search: popupUrl.search, status: "captured", interaction: "button-popup", from: pathname, label: button.label });
+              await popup.close();
+              continue;
+            }
+            await page.waitForTimeout(350);
+            const currentUrl = new URL(page.url());
+            const original = new URL(originalUrl);
+            const routeChanged = currentUrl.pathname !== original.pathname || currentUrl.search !== original.search;
+            const mainText = await page.locator("main").innerText().catch(() => "");
+            const safeOverlay = await page.locator('[role="dialog"]:visible, [role="menu"]:visible, [data-state="open"]:visible').count().catch(() => 0);
+            const expanded = await page.locator('button[aria-expanded="true"]').count().catch(() => 0);
+            if (routeChanged) {
+              if (currentUrl.origin !== baseUrl.origin || !mainText.trim() || /page you're looking for doesn't exist|this screen doesn't exist|404 not found/i.test(mainText)) {
+                throw new Error("Button opened an unexpected or empty feature: " + currentUrl.href);
+              }
+              routeResults.push({ path: currentUrl.pathname, search: currentUrl.search, status: "captured", interaction: "button-click", from: pathname, label: button.label });
+              await page.goto(originalUrl, { waitUntil: "domcontentloaded", timeout: 25000 });
+              await page.waitForLoadState("networkidle", { timeout: 4000 }).catch(() => {});
+            } else if (safeOverlay > 0 || expanded > 0 || mainText.trim() !== beforeMain.trim()) {
+              routeResults.push({ path: pathname, status: "captured", interaction: safeOverlay > 0 || expanded > 0 ? "button-opened-panel" : "button-changed-content", from: pathname, label: button.label });
+              await page.keyboard.press("Escape").catch(() => {});
+            } else {
+              throw new Error("Button click produced no route change, dialog, menu or expanded control.");
+            }
+          } catch (error) {
+            routeResults.push({ path: pathname, status: "navigation-button-failed", interaction: "button-click", from: pathname, label: button.label, error: String(error) });
+            if (page.url() !== originalUrl) {
+              await page.goto(originalUrl, { waitUntil: "domcontentloaded", timeout: 25000 }).catch(() => {});
+            }
+          }
         }
       } catch (error) {
         routeResults.push({ path: pathname, status: "capture-error", error: String(error) });
@@ -473,6 +596,7 @@ function buildGallery(manifest) {
 
 try {
   await capturePublicPages();
+  await verifyProtectedRouteShells();
   // These are existing promoted accounts, not separate signup types. Prefect reuses the
   // learner login unless an explicit promoted-learner override is supplied. Manager-tier
   // credentials must belong to an existing learner/teacher promoted by the Owner.
@@ -483,6 +607,7 @@ try {
     ["junior_manager", "/manager", process.env.SHOWCASE_JUNIOR_MANAGER_EMAIL, process.env.SHOWCASE_JUNIOR_MANAGER_PASSWORD],
     ["senior_manager", "/manager", process.env.SHOWCASE_SENIOR_MANAGER_EMAIL, process.env.SHOWCASE_SENIOR_MANAGER_PASSWORD],
     ["manager", "/manager", process.env.SHOWCASE_MANAGER_EMAIL, process.env.SHOWCASE_MANAGER_PASSWORD],
+    ["admin", "/admin/teacher-cv-workspace", process.env.SHOWCASE_ADMIN_EMAIL, process.env.SHOWCASE_ADMIN_PASSWORD],
     // DEMx 430 remains the configured Owner login; no new account or signup path is introduced.
     ["owner", "/admin", process.env.SHOWCASE_OWNER_EMAIL, process.env.SHOWCASE_OWNER_PASSWORD]
   ];
@@ -491,18 +616,37 @@ try {
   } else {
     for (const account of roleAccounts) await captureRole(...account);
   }
+  const roleResults = results.filter((result) => result.type === "dashboard");
+  const requiredCvRoles = new Set(["owner", "senior_manager", "junior_manager", "manager", "admin", "teacher", "learner"]);
+  const previewRun = process.env.GITHUB_EVENT_NAME === "pull_request";
+  const authenticatedCaptureEnabled = !previewRun && process.env.SHOWCASE_CAPTURE_AUTHENTICATED !== "false";
+  const missingRequiredRoleAccounts = authenticatedCaptureEnabled
+    ? [...requiredCvRoles].filter((role) => !roleResults.some((result) => result.role === role && result.status === "captured"))
+    : [...requiredCvRoles];
+  if (missingRequiredRoleAccounts.length) {
+    results.push({
+      type: "integration",
+      page: "authenticated-cv-role-coverage",
+      status: authenticatedCaptureEnabled ? "blocked" : "skipped",
+      missingRoles: missingRequiredRoleAccounts,
+      ...(authenticatedCaptureEnabled
+        ? { error: "Authenticated CV role verification is incomplete. Configure dedicated synthetic showcase accounts for: " + missingRequiredRoleAccounts.join(", ") + ". No role is counted as verified without a successful login and API-confirmed role." }
+        : { reason: "Authenticated role capture is intentionally disabled for pull-request security. These roles are not counted as verified until a trusted post-merge showcase run completes." })
+    });
+  }
   if (googleIdentityErrors.length) {
     results.push({
       type: "integration",
       page: "google-sign-in",
-      status: "blocked",
+      status: previewRun ? "skipped" : "blocked",
       occurrences: googleIdentityErrors.length,
-      error: "Google Identity Services rejected the configured production origin. Password-role dashboard captures were allowed to continue; Google sign-in remains unverified."
+      ...(previewRun
+        ? { reason: "Vercel preview origins are not configured as Google OAuth JavaScript origins. Google sign-in is intentionally not evaluated on pull-request previews; the trusted production capture remains responsible for verifying the configured production origin." }
+        : { error: "Google Identity Services rejected the configured production origin. Google sign-in remains unverified." })
     });
   }
   results.push(await pageFor404Probe());
 
-  const roleResults = results.filter((result) => result.type === "dashboard");
   const manifest = {
     site: baseUrl.href,
     capturedAt: new Date().toISOString(),
@@ -512,7 +656,9 @@ try {
     publicUrlCount: results.filter((result) => result.type === "public").length,
     publicPageCount: results.filter((result) => result.type === "public" && result.screenshot).length,
     expectedRoleCount: roleAccounts.length,
-    roleModelNotes: { admin: "No separate Admin dashboard exists in App.tsx; /admin and its Owner administration routes are Owner-only. The admin role has only individually permitted shared routes.", platform_owner: "No separate Platform Owner dashboard or multi-school administration route is registered in App.tsx; not treated as an implemented dashboard role." },
+    requiredCvRoleCount: requiredCvRoles.size,
+    missingRequiredRoleAccounts,
+    roleModelNotes: { admin: "Admin uses the explicitly permitted read-only /admin/teacher-cv-workspace route; Owner-only administration routes remain restricted.", platform_owner: "No separate Platform Owner dashboard or multi-school administration route is registered in App.tsx; not treated as an implemented dashboard role." },
     capturedRoleCount: roleResults.filter((result) => result.status === "captured").length,
     roleScreenshotCount: roleResults.reduce((count, result) => count + (result.screenshots?.length || 0), 0),
     roleCoverage: roleResults.map(({ role, status, authenticatedRole, pagesCaptured, routeInventoryCount }) => ({ role, status, authenticatedRole, pagesCaptured: pagesCaptured || 0, routeInventoryCount: routeInventoryCount || 0 })),
@@ -533,12 +679,12 @@ try {
       "- Workflow commit: " + (manifest.workflowCommit || "unknown"),
       "- [Workflow run](" + (manifest.workflowRunUrl || "") + ")",
       "",
-      ...results.map((result) => "- " + (result.type || "page") + " / " + (result.page || result.role) + ": " + (result.error ? "FAILED — " + result.error : result.status || "captured") + " — " + (result.url || ""))
+      ...results.map((result) => "- " + (result.type || "page") + " / " + (result.page || result.role || result.path) + ": " + (result.error ? "FAILED — " + result.error : result.status || "captured") + " — " + (result.url || ""))
     ];
     await fs.appendFile(process.env.GITHUB_STEP_SUMMARY, summary.join("\n") + "\n");
   }
   console.log(JSON.stringify(manifest, null, 2));
-  if (results.some((result) => result.error || ["login-failed", "capture-failed", "partial"].includes(result.status) || result.pageLimitReached)) process.exitCode = 1;
+  if (results.some((result) => result.error || ["login-failed", "capture-failed", "partial", "wrong-page"].includes(result.status) || result.pageLimitReached)) process.exitCode = 1;
 } finally {
   await browser.close();
   // Keep role screenshots inside the private GitHub Actions artifact; never publish them to showcase-media.
