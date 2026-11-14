@@ -16,6 +16,7 @@ const mobileReviewUi = read("artifacts/dallyletter-mobile/components/TeacherCvRe
 const roleAccess = read("artifacts/api-server/src/lib/role-access.ts");
 const expiry = read("artifacts/api-server/src/lib/teacher-cv-expiry.ts");
 const authContext = read("artifacts/dallyletter/src/contexts/AuthContext.tsx");
+const mobileAuthContext = read("artifacts/dallyletter-mobile/contexts/AuthContext.tsx");
 
 assert.match(auth, /router\.post\("\/auth\/google"/, "Google Identity Services endpoint must be registered");
 assert.match(auth, /verifyGoogleIdToken\(credential, clientId\)/, "API must verify the Google ID token against the configured OAuth client");
@@ -45,6 +46,7 @@ assert.match(appRoutes, /\/manager\/teacher-cv-workspace/, "Manager CV workspace
 
 assert.match(roleAccess, /isTeacherRestricted/, "Pending and rejected applicants must remain restricted from teacher operations");
 assert.match(expiry, /SET role='student',teacher_application_status='auto_converted'/, "Expired or rejected applications must convert to the learner role");
-assert.match(authContext, /refetchInterval: 15_000/, "Active sessions must refresh role/application state promptly after Owner approval");
+assert.match(authContext, /refetchInterval: 15_000/, "Web sessions must refresh role/application state promptly after Owner approval");
+assert.match(mobileAuthContext, /}, 15_000\);/, "Mobile sessions must refresh role/application state promptly after Owner approval");
 
 console.log("TEACHER_CV_WORKFLOW_STATIC: PASS — Google sign-in wiring, CV/survey review, explicit manager authorization, teacher activation, rejection grace period, learner conversion, routes and session refresh.");
