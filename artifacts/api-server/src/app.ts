@@ -59,7 +59,7 @@ function isTrustedDallyletterVercelOrigin(origin: string): boolean {
     const isThisDallyletterProjectDeployment =
       /^elishamaposa29-oss-dallyletter-elid(?:-[a-z0-9-]+)?\.vercel\.app$/i.test(hostname);
     const isDallyletterLmsProjectDeployment =
-      /^elishamaposa29-oss-dallyletter-elidems-smart-caps-[a-z0-9-]+\.vercel\.app$/i.test(hostname);
+      /^elishamaposa29-oss-dallyletter-elidems-smart-caps-[a-z0-9]+(?:-[a-z0-9]+)*\.vercel\.app$/i.test(hostname);
     return parsed.protocol === "https:"
       && parsed.origin === origin
       && hostname.endsWith(".vercel.app")
