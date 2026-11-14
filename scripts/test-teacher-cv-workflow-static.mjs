@@ -69,7 +69,7 @@ assert.match(workspaceUi, /Delete survey only/, "Reviewer workspace must expose 
 assert.match(workspaceUi, /Delete selected CVs/, "Reviewer workspace must expose selected bulk CV deletion");
 assert.match(workspaceUi, /Approved/, "Reviewer workspace must support approved status filtering");
 assert.match(teacherQualifications, /Delete my entire CV/, "Teacher must be able to delete their own CV");
-assert.match(workspaceUi, /main Approve \/ Reject controls below also apply the same decision/, "CV decision controls must also decide the submitted survey");
+assert.match(workspaceUi, /main CV Approve \/ Reject controls below also apply the same decision/, "CV decision controls must also decide the submitted survey");
 assert.match(attendanceCalendar, /border-emerald-400 bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950\/60/, "Present legend swatch must match the actual calendar cell colours");
 assert.match(attendanceCalendar, /border-red-400 bg-red-100 dark:border-red-700 dark:bg-red-950\/60/, "Absent legend swatch must match the actual calendar cell colours");
 console.log("TEACHER_CV_WORKFLOW_STATIC: PASS — Google sign-in wiring, CV/survey review, explicit manager authorization, teacher activation, rejection grace period, learner conversion, routes and session refresh.");
