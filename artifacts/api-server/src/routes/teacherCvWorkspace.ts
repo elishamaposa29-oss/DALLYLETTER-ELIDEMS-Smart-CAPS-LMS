@@ -170,48 +170,58 @@ router.post("/:teacherId/decision",requireManagerPermissionForRequest((req)=>req
  const q=await pool.query("SELECT id,name,email,role,is_manager,manager_level,teacher_application_status FROM users WHERE id=$1",[id]);
  const t=q.rows[0];
  const submitted=await pool.query("SELECT 1 FROM teacher_cv_review_history WHERE teacher_id=$1 AND action='submitted' LIMIT 1",[id]);
- if(!t||normalizeRole(t.role)!=="teacher"||!submitted.rows.length||(!isOwner(req.currentUser)&&!isAdmin(req.currentUser)&&!canModerateUser(req.currentUser!,{role:t.role,isManager:t.is_manager,managerLevel:t.manager_level}))){res.status(404).json({error:"Teacher application not found"});return;}
- // Do not block authorization because a resume, photo, qualification,
- // certificate, or optional profile field has not been supplied.
+ const surveyState=await pool.query("SELECT cv->>'surveySubmittedAt' AS submitted_at FROM teacher_profiles WHERE user_id=$1",[id]);
+ const hasCvSubmission=submitted.rows.length>0;
+ const hasSurveySubmission=Boolean(surveyState.rows[0]?.submitted_at);
+ if(!t||normalizeRole(t.role)!=="teacher"||(!hasCvSubmission&&!hasSurveySubmission)||(!isOwner(req.currentUser)&&!isAdmin(req.currentUser)&&!canModerateUser(req.currentUser!,{role:t.role,isManager:t.is_manager,managerLevel:t.manager_level}))){res.status(404).json({error:"Submitted CV or readiness survey not found"});return;}
  const client=await pool.connect();
  let conversionDeadline:string|null=null;
  try{
   await client.query("BEGIN");
   if(action==="approve"){
-   const updated=await client.query("UPDATE users SET role='teacher',teacher_application_status='approved',teacher_review_deadline=NULL,updated_at=now() WHERE id=$1 AND lower(role)='teacher' AND COALESCE(teacher_application_status,'not_applicable') IN ('pending_review','not_applicable') RETURNING id,role,teacher_application_status",[id]);
-    if(!updated.rows.length){await client.query("ROLLBACK");res.status(409).json({error:"This application is no longer awaiting a decision."});return;}
-   await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,'approved',$3,'approved',$4)",[id,req.currentUser!.id,t.teacher_application_status||"pending_review",note||null]);
-   // The same Approve/Reject action updates the submitted survey when present.
-   await client.query("UPDATE teacher_profiles SET cv=jsonb_set(cv,'{surveyReviewStatus}',to_jsonb($2::text),true) || jsonb_build_object('surveyReviewNote',$3,'surveyReviewedAt',now()::text,'surveyReviewedBy',$4),updated_at=now() WHERE user_id=$1 AND cv ? 'surveySubmittedAt'",[id,action==="approve"?"approved":"rejected",note||null,req.currentUser!.id]);
-   await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) SELECT $1,$2,$3,'survey_pending',$4,$5 FROM teacher_profiles WHERE user_id=$1 AND cv ? 'surveySubmittedAt' AND cv->>'surveyReviewStatus'=$4",[id,req.currentUser!.id,action==="approve"?"survey_approved":"survey_rejected",action==="approve"?"approved":"rejected",note||null]);
+   if(hasCvSubmission){
+    const updated=await client.query("UPDATE users SET role='teacher',teacher_application_status='approved',teacher_review_deadline=NULL,updated_at=now() WHERE id=$1 AND lower(role)='teacher' AND COALESCE(teacher_application_status,'not_applicable') IN ('pending_review','not_applicable') RETURNING id,role,teacher_application_status",[id]);
+    if(!updated.rows.length){await client.query("ROLLBACK");res.status(409).json({error:"This CV application is no longer awaiting a decision."});return;}
+    await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,'approved',$3,'approved',$4)",[id,req.currentUser!.id,t.teacher_application_status||"pending_review",note||null]);
+   }
+   if(hasSurveySubmission){
+    await client.query("UPDATE teacher_profiles SET cv=jsonb_set(cv,'{surveyReviewStatus}',to_jsonb('approved'::text),true) || jsonb_build_object('surveyReviewNote',$2,'surveyReviewedAt',now()::text,'surveyReviewedBy',$3),updated_at=now() WHERE user_id=$1",[id,note||null,req.currentUser!.id]);
+    await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,'survey_approved','survey_pending','approved',$3)",[id,req.currentUser!.id,note||null]);
+   }
   }else{
-   const setting=await client.query("SELECT review_duration_days FROM teacher_cv_workflow_settings WHERE id=1");
-   const days=Number(setting.rows[0]?.review_duration_days||30);
-   const safeDays=Number.isInteger(days)&&days>=1&&days<=365?days:30;
-   const deadline=await client.query("UPDATE users SET teacher_application_status='rejected_pending_conversion',teacher_review_deadline=now()+make_interval(days=>$2),is_manager=false,is_prefect=false WHERE id=$1 AND lower(role)='teacher' AND COALESCE(teacher_application_status,'not_applicable') IN ('pending_review','not_applicable') RETURNING teacher_review_deadline",[id,safeDays]);
-    if(!deadline.rows.length){await client.query("ROLLBACK");res.status(409).json({error:"This application is no longer awaiting a decision."});return;}
-   conversionDeadline=deadline.rows[0]?.teacher_review_deadline?new Date(deadline.rows[0].teacher_review_deadline).toISOString():null;
-   await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,'rejected',$3,'rejected_pending_conversion',$4)",[id,req.currentUser!.id,t.teacher_application_status||"pending_review",note||null]);
-   await client.query("UPDATE teacher_profiles SET cv=jsonb_set(cv,'{surveyReviewStatus}',to_jsonb('rejected'::text),true) || jsonb_build_object('surveyReviewNote',$2,'surveyReviewedAt',now()::text,'surveyReviewedBy',$3),updated_at=now() WHERE user_id=$1 AND cv ? 'surveySubmittedAt' AND COALESCE(cv->>'surveyReviewStatus','pending')='pending'",[id,note||null,req.currentUser!.id]);
-   await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) SELECT $1,$2,'survey_rejected','survey_pending','rejected',$3 FROM teacher_profiles WHERE user_id=$1 AND cv ? 'surveySubmittedAt' AND cv->>'surveyReviewStatus'='rejected'",[id,req.currentUser!.id,note||null]);
+   if(hasCvSubmission){
+    const setting=await client.query("SELECT review_duration_days FROM teacher_cv_workflow_settings WHERE id=1");
+    const days=Number(setting.rows[0]?.review_duration_days||30);
+    const safeDays=Number.isInteger(days)&&days>=1&&days<=365?days:30;
+    const deadline=await client.query("UPDATE users SET teacher_application_status='rejected_pending_conversion',teacher_review_deadline=now()+make_interval(days=>$2),is_manager=false,is_prefect=false WHERE id=$1 AND lower(role)='teacher' AND COALESCE(teacher_application_status,'not_applicable') IN ('pending_review','not_applicable') RETURNING teacher_review_deadline",[id,safeDays]);
+    if(!deadline.rows.length){await client.query("ROLLBACK");res.status(409).json({error:"This CV application is no longer awaiting a decision."});return;}
+    conversionDeadline=deadline.rows[0]?.teacher_review_deadline?new Date(deadline.rows[0].teacher_review_deadline).toISOString():null;
+    await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,'rejected',$3,'rejected_pending_conversion',$4)",[id,req.currentUser!.id,t.teacher_application_status||"pending_review",note||null]);
+   }
+   if(hasSurveySubmission){
+    await client.query("UPDATE teacher_profiles SET cv=jsonb_set(cv,'{surveyReviewStatus}',to_jsonb('rejected'::text),true) || jsonb_build_object('surveyReviewNote',$2,'surveyReviewedAt',now()::text,'surveyReviewedBy',$3),updated_at=now() WHERE user_id=$1",[id,note||null,req.currentUser!.id]);
+    await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,'survey_rejected','survey_pending','rejected',$3)",[id,req.currentUser!.id,note||null]);
+   }
   }
   await client.query("COMMIT");
  }catch(e){await client.query("ROLLBACK").catch(()=>undefined);throw e;}finally{client.release();}
- const title=action==="approve"?"Teacher application approved":"Teacher application not approved";
- const message=action==="approve"
-  ?"Your teacher CV has been approved. Your teacher permissions are now active. Sign in again if your dashboard has not refreshed."
-  :"Your teacher CV was not approved. Your account and login remain active, but teaching permissions are disabled. Your account is scheduled to become a learner after "+(conversionDeadline?new Date(conversionDeadline).toLocaleString():"the configured conversion period")+".";
+ const title=hasCvSubmission?(action==="approve"?"Teacher application approved":"Teacher application not approved"):(action==="approve"?"Readiness survey approved":"Readiness survey not approved");
+ const message=hasCvSubmission
+  ?(action==="approve"?"Your teacher CV has been approved. Your teacher permissions are now active. Sign in again if your dashboard has not refreshed.":"Your teacher CV was not approved. Your account and login remain active, but teaching permissions are disabled. Your account is scheduled to become a learner after "+(conversionDeadline?new Date(conversionDeadline).toLocaleString():"the configured conversion period")+".")
+  :(action==="approve"?"Your readiness survey has been approved. Your CV application remains unchanged and teaching access has not been activated.":"Your readiness survey was not approved. Your CV application and teaching permissions remain unchanged.");
  try{await db.insert(notificationsTable).values({recipientId:id,title,message,link:action==="approve"?"/teacher":"/profile-hub",type:"teacher_cv_decision"});}catch(error){console.error("[teacher-cv] Decision notification failed; decision remains saved.",error instanceof Error?error.message:"unknown");}
  try{await enqueueEmailNotification(id,"Dallyletter Elidems — "+title,message);}catch(error){console.error("[teacher-cv] Decision email queue failed; decision remains saved.",error instanceof Error?error.message:"unknown");}
  res.json({
-  status:action==="approve"?"approved":"rejected_pending_conversion",
+  status:hasCvSubmission?(action==="approve"?"approved":"rejected_pending_conversion"):(action==="approve"?"approved":"rejected"),
   role:"teacher",
-  teacherApplicationStatus:action==="approve"?"approved":"rejected_pending_conversion",
-  dashboardPath:action==="approve"?"/teacher":"/profile-hub",
+  teacherApplicationStatus:hasCvSubmission?(action==="approve"?"approved":"rejected_pending_conversion"):t.teacher_application_status||"draft",
+  dashboardPath:hasCvSubmission&&action==="approve"?"/teacher":"/profile-hub",
   conversionDeadline,
-  message:action==="approve"?"Teacher approved and authorized. The teacher role, full teacher dashboard and teaching API permissions are now active.":"Teaching access denied. The account remains usable and will convert to a learner on the scheduled date."
+  message:hasCvSubmission
+   ?(action==="approve"?"Teacher approved and authorized. The teacher role, full teacher dashboard and teaching API permissions are now active.":"Teaching access denied. The account remains usable and will convert to a learner on the scheduled date.")
+   :(action==="approve"?"Readiness survey approved. The CV application remains unchanged; no teacher dashboard access was activated.":"Readiness survey rejected. The CV application remains unchanged.")
  });
-});
+
 
 async function authorizeCvMutation(actor:any,teacherId:number){
  if(Number(actor?.id)===teacherId) return true;
