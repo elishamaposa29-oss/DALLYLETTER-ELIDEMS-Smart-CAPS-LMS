@@ -21,6 +21,7 @@ const ownerTools = read("artifacts/dallyletter-mobile/app/(admin)/tools.tsx");
 const adminSettings = read("artifacts/dallyletter/src/pages/admin/AdminSettings.tsx");
 const managerMore = read("artifacts/dallyletter-mobile/components/ManagerMore.tsx");
 const managerRoute = read("artifacts/dallyletter-mobile/app/(manager)/teacher-cv-workspace.tsx");
+const adminRoute = read("artifacts/dallyletter-mobile/app/(admin)/qualifications.tsx");
 const mobileOperations = read("artifacts/dallyletter-mobile/components/MobileOperationsWorkspace.tsx");
 const webOperations = read("artifacts/dallyletter/src/pages/OperationsWorkspace.tsx");
 const webLessons = read("artifacts/dallyletter/src/pages/teacher/TeacherLessons.tsx");
