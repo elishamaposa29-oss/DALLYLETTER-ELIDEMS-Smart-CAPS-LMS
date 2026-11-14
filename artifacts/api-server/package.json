@@ -15,7 +15,8 @@
     "test:profile-access": "node ./scripts/test-authorization.mjs",
     "start:api": "pnpm run start",
     "backfill:enrollments": "node ./scripts/backfill-enrollments.mjs",
-    "test:ai-provider": "node ./scripts/test-ai-provider-http.mjs"
+    "test:ai-provider": "node ./scripts/test-ai-provider-http.mjs",
+    "test:teacher-cv-workflow": "node ./scripts/test-teacher-cv-workflow.mjs"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",
