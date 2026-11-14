@@ -372,8 +372,12 @@ assert.equal(certificateView.status,200,"Owner can view the applicant's individu
 assert.match(certificateView.headers.get("content-type")||"",/application\/pdf/);
 const approved=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/decision",{token:seniorToken,method:"POST",body:{action:"approve",note:"All qualification evidence verified by Owner"}});
 assert.equal(approved.status,200,"Owner can authorize a complete CV with verified qualifications");
-const approvedNotification=await pool.query("SELECT id FROM notifications WHERE recipient_id=$1 AND type='teacher_cv_decision' ORDER BY id DESC LIMIT 1",[approvalApplicant.id]);
+assert.equal(approved.data.role,"teacher","Approval response explicitly confirms the teacher role");
+assert.equal(approved.data.teacherApplicationStatus,"approved","Approval response explicitly confirms the active application state");
+assert.equal(approved.data.dashboardPath,"/teacher","Approval response directs the applicant to the full teacher dashboard");
+const approvedNotification=await pool.query("SELECT id,link FROM notifications WHERE recipient_id=$1 AND type='teacher_cv_decision' ORDER BY id DESC LIMIT 1",[approvalApplicant.id]);
 assert(approvedNotification.rows.length>0,"CV approval notifies the teacher in-app");
+assert.equal(approvedNotification.rows[0].link,"/teacher","Approval notification opens the full teacher dashboard");
 const approvedEmail=await pool.query("SELECT id FROM email_notification_queue WHERE recipient_user_id=$1 AND subject LIKE '%Teacher application approved%' ORDER BY id DESC LIMIT 1",[approvalApplicant.id]);
 assert(approvedEmail.rows.length>0,"CV approval queues an email to the teacher");
 const approvedRow=await pool.query("SELECT id,email,password_hash,role,teacher_application_status FROM users WHERE id=$1",[approvalApplicant.id]);
