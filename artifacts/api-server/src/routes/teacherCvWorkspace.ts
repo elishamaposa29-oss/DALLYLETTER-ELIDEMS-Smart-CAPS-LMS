@@ -250,7 +250,8 @@ router.delete("/:teacherId/application",requireSelfOrCvMonitor,async(req,res)=>{
   const chatRows=await client.query("SELECT body FROM teacher_cv_chat_messages WHERE teacher_id=$1",[id]);
   const chatBodies=chatRows.rows.map((row:any)=>String(row.body||"")).filter(Boolean);
   const chatNoticeRows=await client.query("SELECT recipient_id FROM notifications WHERE type='teacher_cv_message' AND (recipient_id=$1 OR link LIKE $2)",[id,"%teacherId="+id+"%"]);
-  const chatRecipientIds=[...new Set([id,...chatNoticeRows.rows.map((row:any)=>Number(row.recipient_id)).filter(Number.isSafeInteger)])];
+  const chatEmailRows=chatBodies.length?await client.query("SELECT DISTINCT recipient_user_id FROM email_notification_queue WHERE subject=$1 AND EXISTS (SELECT 1 FROM unnest($2::text[]) AS message_body WHERE position(message_body IN body_text)>0)",["Dallyletter Elidems — New teacher application message",chatBodies]):{rows:[] as any[]};
+  const chatRecipientIds=[...new Set([id,...chatNoticeRows.rows.map((row:any)=>Number(row.recipient_id)),...chatEmailRows.rows.map((row:any)=>Number(row.recipient_user_id))].filter(Number.isSafeInteger))];
   // Delete all application-owned records and message copies in one transaction.
   // The user account and independently granted teacher access are preserved.
   await client.query("DELETE FROM notifications WHERE type='teacher_cv_message' AND (recipient_id=$1 OR link LIKE $2)",[id,"%teacherId="+id+"%"]);
