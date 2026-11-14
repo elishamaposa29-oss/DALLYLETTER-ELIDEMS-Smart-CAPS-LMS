@@ -320,6 +320,7 @@ async function captureRole(role, route, email, password) {
   const screenshots = [];
   const routeResults = [];
   const testedNavigationLinks = new Set();
+  const testedNavigationButtons = new Set();
   try {
     const routeInventory = await discoverRoleRoutes(role);
     const queue = [{ path: route, label: "dashboard", source: "role-home" }, ...routeInventory];
@@ -422,6 +423,48 @@ async function captureRole(role, route, email, password) {
             routeResults.push({ path: linkedPath, search: linked.search, status: "captured", interaction: "anchor-click", from: pathname, label: link.label || linkedPath });
           } catch (error) {
             routeResults.push({ path: linkedPath, search: linked.search, status: "navigation-click-failed", interaction: "anchor-click", from: pathname, label: link.label || linkedPath, error: String(error) });
+            if (page.url() !== originalUrl) {
+              await page.goto(originalUrl, { waitUntil: "domcontentloaded", timeout: 25000 }).catch(() => {});
+            }
+          }
+        }
+        const buttons = await page.locator("button").evaluateAll((items) => items.map((button, index) => ({
+          index,
+          label: (button.innerText || button.getAttribute("aria-label") || button.getAttribute("title") || "").trim().replace(/\s+/g, " "),
+          visible: !!(button.offsetWidth || button.offsetHeight || button.getClientRects().length),
+          disabled: button.disabled
+        })));
+        const safeNavigationButton = /^(?:open|view|explore|go to|browse|visit|more)(?:\s|$)/i;
+        for (const button of buttons) {
+          if (!button.visible || button.disabled || !safeNavigationButton.test(button.label)) continue;
+          const buttonKey = pathname + "|" + button.label.toLowerCase();
+          if (testedNavigationButtons.has(buttonKey)) continue;
+          testedNavigationButtons.add(buttonKey);
+          const originalUrl = page.url();
+          try {
+            await page.locator("button").nth(button.index).click({ timeout: 5000 });
+            await page.waitForTimeout(350);
+            const currentUrl = new URL(page.url());
+            const original = new URL(originalUrl);
+            const routeChanged = currentUrl.pathname !== original.pathname || currentUrl.search !== original.search;
+            const mainText = await page.locator("main").innerText().catch(() => "");
+            const safeOverlay = await page.locator('[role="dialog"]:visible, [role="menu"]:visible, [data-state="open"]:visible').count().catch(() => 0);
+            const expanded = await page.locator('button[aria-expanded="true"]').count().catch(() => 0);
+            if (routeChanged) {
+              if (currentUrl.origin !== baseUrl.origin || !mainText.trim() || /page you're looking for doesn't exist|this screen doesn't exist|404 not found/i.test(mainText)) {
+                throw new Error("Button opened an unexpected or empty feature: " + currentUrl.href);
+              }
+              routeResults.push({ path: currentUrl.pathname, search: currentUrl.search, status: "captured", interaction: "button-click", from: pathname, label: button.label });
+              await page.goto(originalUrl, { waitUntil: "domcontentloaded", timeout: 25000 });
+              await page.waitForLoadState("networkidle", { timeout: 4000 }).catch(() => {});
+            } else if (safeOverlay > 0 || expanded > 0) {
+              routeResults.push({ path: pathname, status: "captured", interaction: "button-opened-panel", from: pathname, label: button.label });
+              await page.keyboard.press("Escape").catch(() => {});
+            } else {
+              throw new Error("Button click produced no route change, dialog, menu or expanded control.");
+            }
+          } catch (error) {
+            routeResults.push({ path: pathname, status: "navigation-button-failed", interaction: "button-click", from: pathname, label: button.label, error: String(error) });
             if (page.url() !== originalUrl) {
               await page.goto(originalUrl, { waitUntil: "domcontentloaded", timeout: 25000 }).catch(() => {});
             }
