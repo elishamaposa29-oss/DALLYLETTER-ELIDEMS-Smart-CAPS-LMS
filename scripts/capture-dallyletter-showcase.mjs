@@ -92,6 +92,9 @@ async function assertPublishablePage(page, label, options = {}) {
 
 async function waitForExpectedDeployment() {
   const homepage = new URL("/", baseUrl);
+  // Vercel edge caches can serve an older HTML document even with no-store headers.
+  // A SHA-specific query forces a fresh document before the build marker is trusted.
+  if (expectedDeploymentSha) homepage.searchParams.set("__dallyletter_build_check", expectedDeploymentSha);
   // Vercel preview builds can take longer than the initial 15-minute window under queue pressure.
   // Keep the wait below the workflow's 40-minute job timeout so evidence capture can still finish.
   const deadline = Date.now() + 35 * 60 * 1000;
