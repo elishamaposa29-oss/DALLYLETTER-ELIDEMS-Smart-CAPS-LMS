@@ -323,10 +323,10 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             <div key={item.href}>
               {sectionEl}
               <Link href={item.href} onClick={onNav}>
-                <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 group ${isActive ? "bg-white/15 text-white shadow-sm" : "text-white/60 hover:text-white hover:bg-white/10"}`}>
+                <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 group ${isActive ? "border border-cyan-300/20 bg-gradient-to-r from-cyan-400/15 via-white/10 to-purple-500/10 text-white shadow-[0_0_20px_rgba(0,229,255,0.12)]" : "border border-transparent text-white/60 hover:text-white hover:border-white/10 hover:bg-white/[0.06]"}`}>
                   <Icon className={`h-4 w-4 shrink-0 ${isActive ? "text-white" : item.accent ? item.accent + " opacity-80" : "text-white/50 group-hover:text-white/80"}`} />
                   <span className="truncate">{item.label}</span>
-                  {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white/80 shrink-0" />}
+                  {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-300 shadow-[0_0_10px_rgba(0,229,255,0.9)] shrink-0" />}
                 </div>
               </Link>
             </div>
@@ -337,7 +337,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   };
 
   const SidebarContent = ({ onNav }: { onNav?: () => void }) => (
-    <div className="flex flex-col h-full bg-gradient-to-b from-[#0a1628] via-[#0d1e38] to-[#0a1628]">
+    <div className="dallyletter-sidebar flex flex-col h-full bg-gradient-to-b from-[#0a1628] via-[#0d1e38] to-[#0a1628]">
       <div className="px-5 pt-6 pb-4">
         <Link href={homeHref}>
           <div className="flex items-center gap-2.5 cursor-pointer group">
@@ -423,7 +423,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       <main className="flex-1 min-h-0 overflow-hidden">
-        <div className="h-full overflow-y-auto bg-slate-50 dark:bg-background">
+        <div className="dallyletter-stage h-full overflow-y-auto bg-slate-50 dark:bg-background">
           <div className="max-w-6xl mx-auto p-4 md:p-8">
             {children}
           </div>
