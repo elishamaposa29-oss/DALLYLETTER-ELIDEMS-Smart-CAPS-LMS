@@ -17,6 +17,7 @@ const roleAccess = read("artifacts/api-server/src/lib/role-access.ts");
 const expiry = read("artifacts/api-server/src/lib/teacher-cv-expiry.ts");
 const authContext = read("artifacts/dallyletter/src/contexts/AuthContext.tsx");
 const mobileAuthContext = read("artifacts/dallyletter-mobile/contexts/AuthContext.tsx");
+const renderBlueprint = read("render.yaml");
 
 assert.match(auth, /router\.post\("\/auth\/google"/, "Google Identity Services endpoint must be registered");
 assert.match(auth, /verifyGoogleIdToken\(credential, clientId\)/, "API must verify the Google ID token against the configured OAuth client");
@@ -25,6 +26,8 @@ assert.match(googleButton, /VITE_GOOGLE_CLIENT_ID/, "Web Google sign-in must use
 assert.match(googleButton, /\/api\/auth\/google/, "Web Google sign-in must exchange its credential with the LMS API");
 assert.match(login, /<GoogleSignInButton\s*\/>/, "Login page must render Google sign-in");
 assert.match(register, /<GoogleSignInButton mode="signup"\s*\/>/, "Registration page must render Google sign-up");
+const productionRenderService = renderBlueprint.split("name: dallyletter-api-production")[1] || "";
+assert.match(productionRenderService, /key: GOOGLE_CLIENT_ID/, "Production LMS API service must declare the existing Google OAuth client ID environment variable");
 
 assert.match(workspaceApi, /requireManagerPermissionForRequest\(\(req\)=>req\.body\?\.action==="approve"\?"teacher_cv\.authorize":"teacher_cv\.review"\)/, "Approval and rejection must use separate explicit manager permissions");
 assert.match(managerPermissions, /teacher_cv\.authorize.*seniorOnly: true/, "Teacher authorization must remain a Senior Manager/Owner-only permission");
