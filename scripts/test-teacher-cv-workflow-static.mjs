@@ -79,6 +79,12 @@ assert.doesNotMatch(workspaceApi, /Resolve the specific items below, save your d
 assert.doesNotMatch(workspaceApi, /Complete personal\/legal details, upload a profile photo and PDF resume/, "CV approval must not require optional evidence");
 assert.match(workspaceApi, /router\.delete\("\/:teacherId\/cv"/, "Teacher and authorized reviewer must have an individual CV delete endpoint");
 assert.match(workspaceApi, /router\.delete\("\/:teacherId\/survey"/, "Authorized reviewer must have an individual survey delete endpoint");
+assert.ok(workspaceApi.includes('router.delete("/:teacherId/application"'), "Teacher must have one atomic full-application deletion endpoint");
+assert.ok(workspaceApi.includes("DELETE FROM teacher_cv_chat_messages WHERE teacher_id=$1"), "Full application deletion must remove all private application chat messages");
+assert.ok(workspaceApi.includes("DELETE FROM teacher_profiles WHERE user_id=$1"), "Full application deletion must remove saved CV and survey drafts");
+assert.ok(workspaceApi.includes("removeStoredMedia(key)"), "Full application deletion must clean external and chunked media storage");
+assert.ok(workspaceUi.includes("Delete my entire survey / CV / application"), "Teacher self-service must expose one complete application deletion action");
+
 assert.match(workspaceApi, /router\.delete\("\/bulk\/:scope"/, "Authorized reviewers must have a bulk delete endpoint");
 assert.match(workspaceUi, /Delete entire CV/, "Reviewer workspace must expose individual CV deletion");
 assert.match(workspaceUi, /Delete survey only/, "Reviewer workspace must expose individual survey deletion");
