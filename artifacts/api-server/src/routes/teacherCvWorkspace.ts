@@ -223,13 +223,14 @@ router.post("/:teacherId/decision",requireManagerPermissionForRequest((req)=>req
  });
 });
 
+function requireSelfOrCvMonitor(req:any,res:any,next:any){const targetId=idOf(req.params.teacherId);if(targetId&&Number(req.currentUser?.id)===targetId){next();return;}return requireManagerPermissionIfManager("teacher_cv.view")(req,res,next);}
 async function authorizeCvMutation(actor:any,teacherId:number){
  if(Number(actor?.id)===teacherId) return true;
  if(isOwner(actor)) return true;
  const target=await pool.query("SELECT role,is_manager,manager_level FROM users WHERE id=$1 AND lower(role)='teacher'",[teacherId]);
  return Boolean(target.rows[0]&&canAccessManager(actor)&&canModerateUser(actor,{role:target.rows[0].role,isManager:target.rows[0].is_manager,managerLevel:target.rows[0].manager_level}));
 }
-router.delete("/:teacherId/cv",requireManagerPermissionIfManager("teacher_cv.view"),async(req,res)=>{
+router.delete("/:teacherId/cv",requireSelfOrCvMonitor,async(req,res)=>{
  const id=idOf(req.params.teacherId); if(!id){res.status(400).json({error:"Invalid teacher id"});return;}
  if(!await authorizeCvMutation(req.currentUser!,id)){res.status(403).json({error:"You are not authorized to delete this CV"});return;}
  await ensure(); const client=await pool.connect();
@@ -245,7 +246,7 @@ router.delete("/:teacherId/cv",requireManagerPermissionIfManager("teacher_cv.vie
   await client.query("COMMIT"); res.json({deleted:true,scope:"cv",surveyPreserved:true,reviewHistoryPreserved:true});
  }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}finally{client.release();}
 });
-router.delete("/:teacherId/survey",requireManagerPermissionIfManager("teacher_cv.view"),async(req,res)=>{
+router.delete("/:teacherId/survey",requireSelfOrCvMonitor,async(req,res)=>{
  const id=idOf(req.params.teacherId); if(!id){res.status(400).json({error:"Invalid teacher id"});return;}
  if(!await authorizeCvMutation(req.currentUser!,id)){res.status(403).json({error:"You are not authorized to delete this survey"});return;}
  await ensure(); const client=await pool.connect();
