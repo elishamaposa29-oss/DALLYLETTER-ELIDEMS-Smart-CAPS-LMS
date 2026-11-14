@@ -71,7 +71,7 @@ export default function TeacherCvReviewWorkspace() {
       const [d, h, messages] = await Promise.all([
         api("/" + id + "/details"),
         api("/" + id + "/history"),
-        api("/" + id + "/chat"),
+        canChat ? api("/" + id + "/chat") : Promise.resolve([]),
       ]);
       setSelectedId(id); setDetail(d); setHistory(Array.isArray(h?.history) ? h.history : []);
       setChat(Array.isArray(messages) ? messages : Array.isArray(messages?.messages) ? messages.messages : []);
@@ -81,6 +81,15 @@ export default function TeacherCvReviewWorkspace() {
   };
 
   useEffect(() => { void loadQueue(); }, [loadQueue]);
+
+  useEffect(() => {
+    if (!selectedId || !canChat) { if (!canChat) setChat([]); return; }
+    let active = true;
+    void api("/" + selectedId + "/chat")
+      .then(messages => { if (active) setChat(Array.isArray(messages) ? messages : Array.isArray(messages?.messages) ? messages.messages : []); })
+      .catch(() => { /* Keep the last successfully loaded conversation if chat access is temporarily unavailable. */ });
+    return () => { active = false; };
+  }, [api, selectedId, canChat]);
 
   const decide = async (action: "approve" | "reject") => {
     if (!selectedId) return;
