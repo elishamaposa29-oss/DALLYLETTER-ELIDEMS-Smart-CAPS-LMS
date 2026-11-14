@@ -190,6 +190,9 @@ assert.equal(adminDetails.status,200,"Admin may inspect applicant CV and survey 
 const adminStructuredCv=await request("/api/users/"+approvalApplicant.id+"/teacher-cv",{token:adminToken});
 assert.equal(adminStructuredCv.status,200,"Admin read-only CV access includes the submitted structured CV");
 assert.equal(JSON.parse(adminStructuredCv.data.cv.personalDetails).fullName,"CV Test approval","Admin read-only CV view receives the submitted personal details");
+const adminDocuments=await request("/api/users/"+approvalApplicant.id+"/teacher-documents",{token:adminToken});
+assert.equal(adminDocuments.status,200,"Admin read-only CV access includes the submitted document inventory needed by the workspace");
+assert(adminDocuments.data.some(doc=>Number(doc.id)===Number(profilePhoto.data.id)),"Admin document inventory includes the submitted profile photo");
 const adminCvPdf=await fetch(base+"/api/users/"+approvalApplicant.id+"/teacher-cv/pdf",{headers:{Authorization:"Bearer "+adminToken}});
 assert.equal(adminCvPdf.status,200,"Admin read-only CV access includes the submitted professional CV PDF");
 assert((await adminCvPdf.arrayBuffer()).byteLength>0,"Admin receives the non-empty submitted CV PDF bytes");
