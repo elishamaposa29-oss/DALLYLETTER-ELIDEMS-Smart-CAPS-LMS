@@ -656,30 +656,9 @@ router.patch("/users/:id/teacher-review", requireAuth, requireManagerPermissionF
     res.status(409).json({ error: "Only formally submitted pending teacher applications can be reviewed" }); return;
   }
 
-  if (action === "approve") {
-    await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, cv jsonb NOT NULL DEFAULT '{}'::jsonb, updated_at timestamptz NOT NULL DEFAULT now())");
-    const cvResult = await pool.query("SELECT cv FROM teacher_profiles WHERE user_id = $1", [id]);
-    const cv = (cvResult.rows[0]?.cv ?? {}) as Record<string, unknown>;
-    const requiredFields = ["professionalSummary", "education", "experience", "subjects", "address"];
-    const missingFields = requiredFields.filter((key) => typeof cv[key] !== "string" || (cv[key] as string).trim().length < 2);
-    let personalDetails: Record<string, unknown> = {}; try { personalDetails = JSON.parse(String(cv.personalDetails || "{}")) as Record<string, unknown>; } catch { /* incomplete CV is rejected below */ }
-    const photoResult = await pool.query("SELECT id FROM teacher_documents WHERE id=$1 AND user_id=$2 AND document_type=$3 AND mime_type LIKE $4", [Number(cv.photoDocumentId), id, "cv", "image/%"]);
-    const hasPhoto = photoResult.rows.length > 0;
-    const hasLegalDetails = ["fullName","idNumber","dob","phone","email","address"].every((key) => typeof personalDetails[key] === "string" && String(personalDetails[key]).trim().length > 0);
-    const docs = await pool.query("SELECT 1 FROM teacher_documents WHERE user_id=$1 AND document_type='resume' AND mime_type='application/pdf' LIMIT 1", [id]);
-    const verifiedQualifications = await pool.query("SELECT count(*)::int AS total, count(*) FILTER (WHERE q.verification_status=$2 AND q.document_id IS NOT NULL AND d.document_type='certificate')::int AS verified FROM teacher_qualifications q LEFT JOIN teacher_documents d ON d.id=q.document_id AND d.user_id=q.user_id WHERE q.user_id=$1", [id, "verified"]);
-    if (missingFields.length || !hasPhoto || !hasLegalDetails || !docs.rows.length || Number(verifiedQualifications.rows[0]?.total||0)===0 || Number(verifiedQualifications.rows[0]?.verified||0)!==Number(verifiedQualifications.rows[0]?.total||0)) {
-      res.status(409).json({
-        error: "Teacher application is incomplete. Complete personal/legal CV details, upload a profile photo and PDF resume, and have every separate qualification certificate verified before authorization. The readiness survey is optional.",
-        missingFields,
-        qualificationVerificationComplete: Number(verifiedQualifications.rows[0]?.total||0)>0 && Number(verifiedQualifications.rows[0]?.verified||0)===Number(verifiedQualifications.rows[0]?.total||0),
-        profilePhotoUploaded: hasPhoto,
-        legalDetailsComplete: hasLegalDetails,
-        resumePdfUploaded: Boolean(docs.rows.length),
-      });
-      return;
-    }
-  }
+  // Supporting evidence and CV completeness are optional. The shared Teacher CV Workspace
+  // decision route also updates a submitted readiness survey in the same transaction.
+  // Keep this legacy endpoint permissive for older clients without blocking approval.
 
   let conversionDeadline: Date | null = null;
   if (action === "reject") {
