@@ -90,7 +90,7 @@ assert.equal(ownerLegacyDraftPdf.status,404,"Legacy reviewer PDF endpoint must n
 const pendingQueue=await request("/api/teacher-cv-workspace/queue",{token:ownerToken});
 assert.equal(pendingQueue.status,200,"Owner can retrieve the teacher CV review queue");
 assert(pendingQueue.data.applications.some(item=>Number(item.id)===Number(approvalApplicant.id)&&item.has_cv_submission===false),"Incomplete and unsubmitted CV profiles remain visible for monitoring without being mislabeled as submitted");
-assert(pendingQueue.data.applications.some(item=>Number(item.id)===Number(draftOnlyApplicant.id)&&item.has_cv_submission===false&&item.survey_review_status==="pending"),"Independent survey submission must appear separately in the reviewer queue without becoming a CV application");
+assert(pendingQueue.data.applications.some(item=>Number(item.id)===Number(draftOnlyApplicant.id)&&item.has_cv_submission===false&&item.survey_review_status==="approved"),"The shared decision must update the survey in the reviewer queue without becoming a CV application");
 const profilePhoto=await upload("/api/users/me/teacher-documents",approvalApplicant.token,"file","teacher-photo.png","image/png",Buffer.from([137,80,78,71,13,10,26,10]),{documentType:"cv"});
 assert.equal(profilePhoto.status,201,"Applicant can upload a private profile photo");
 const resume=await upload("/api/users/me/teacher-documents",approvalApplicant.token,"file","teacher-resume.pdf","application/pdf",Buffer.from("%PDF-1.4\\n%teacher resume integration test\\n"),{documentType:"resume"});
