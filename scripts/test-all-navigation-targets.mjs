@@ -50,7 +50,7 @@ function extractTargets(source) {
   for (const pattern of patterns) {
     for (const match of source.matchAll(pattern)) {
       const suffix = source.slice(match.index + match[0].length);
-      const rawTarget = /^\\s*\\+/.test(suffix) ? match[1] + "__dynamic__" : match[1];
+      const rawTarget = /^\s*\+/.test(suffix) ? match[1] + "__dynamic__" : match[1];
       const path = normalizePath(rawTarget);
       if (path) targets.push(path);
     }
