@@ -9,6 +9,13 @@ const webCv = read("../artifacts/dallyletter/src/pages/TeacherCvWorkspace.tsx");
 const mobileManagerRoute = read("../artifacts/dallyletter-mobile/app/(manager)/teacher-cv-workspace.tsx").trim();
 const mobileOwnerRoute = read("../artifacts/dallyletter-mobile/app/(admin)/teacher-cv-workspace.tsx").trim();
 const mobileCv = read("../artifacts/dallyletter-mobile/components/TeacherCvReviewWorkspace.tsx");
+
+const mobileStudentHome = read("../artifacts/dallyletter-mobile/app/(student)/home.tsx");
+const mobileFeatureHub = read("../artifacts/dallyletter-mobile/components/FeatureHub.tsx");
+assert.ok(mobileStudentHome.includes('router.push("/(student)/more?section=notifications")'), "Student notification badge must open the real Feature Hub notification section.");
+assert.ok(mobileFeatureHub.includes('{ id: "notifications", title: "Notifications"'), "The student Feature Hub must expose the notifications section used by the home badge.");
+assert.ok(!mobileStudentHome.includes('router.push("/(student)/notifications")'), "Student home must not navigate to the nonexistent student notifications route.");
+
 const dashboardLayout = read("../artifacts/dallyletter/src/components/DashboardLayout.tsx");
 const teacherNavigation = dashboardLayout.split('} else if (normalizedRole === "teacher") {')[1]?.split('} else if (["manager","senior_manager","junior_manager"].includes(normalizedRole)) {')[0] || "";
 const teacherNavigationHrefs = [...teacherNavigation.matchAll(/href:\s*"([^"]+)"/g)].map(match => match[1]);
