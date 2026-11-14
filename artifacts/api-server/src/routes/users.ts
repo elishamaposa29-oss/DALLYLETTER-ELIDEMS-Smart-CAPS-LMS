@@ -581,9 +581,11 @@ router.get("/users/:id/teacher-documents", requireAuth, async (req, res): Promis
   if (!target || (isOwnerRole(target.role) && !isOwnerRole(actor.role))) { res.status(404).json({ error: "User not found." }); return; }
   const pendingSubmittedApplication = target.teacherApplicationStatus === "pending_review"
     && (await pool.query("SELECT EXISTS(SELECT 1 FROM teacher_cv_review_history h WHERE h.teacher_id=$1 AND h.action='submitted') AS allowed", [id])).rows[0]?.allowed === true;
+  // Admin's teacher_cv.view capability is explicitly read-only and is
+  // granted by role policy. Restrict it to submitted applications; do not
+  // route it through the manager-grant helper used for manager accounts.
   const adminCvReviewAccess = normalizeRole(actor.role) === "admin"
-    && pendingSubmittedApplication
-    && await managerHasPermission(actor, "teacher_cv.view");
+    && pendingSubmittedApplication;
   if (actor.id !== id && !isOwnerRole(actor.role) && !adminCvReviewAccess && !canModerateUser(actor, target)) { res.status(403).json({ error: "You are not authorized to access this user's teacher documents." }); return; }
   const cvReviewAccess = actor.id !== id && (adminCvReviewAccess || (canAccessManager(actor)
     && await managerHasPermission(actor, "teacher_cv.view")
@@ -606,9 +608,11 @@ router.get("/users/:id/teacher-documents/:docId", requireAuth, async (req, res):
   if (!target || (isOwnerRole(target.role) && !isOwnerRole(actor.role))) { res.status(404).json({ error: "User not found." }); return; }
   const pendingSubmittedApplication = target.teacherApplicationStatus === "pending_review"
     && (await pool.query("SELECT EXISTS(SELECT 1 FROM teacher_cv_review_history h WHERE h.teacher_id=$1 AND h.action='submitted') AS allowed", [id])).rows[0]?.allowed === true;
+  // Admin's teacher_cv.view capability is explicitly read-only and is
+  // granted by role policy. Restrict it to submitted applications; do not
+  // route it through the manager-grant helper used for manager accounts.
   const adminCvReviewAccess = normalizeRole(actor.role) === "admin"
-    && pendingSubmittedApplication
-    && await managerHasPermission(actor, "teacher_cv.view");
+    && pendingSubmittedApplication;
   if (actor.id !== id && !isOwnerRole(actor.role) && !adminCvReviewAccess && !canModerateUser(actor, target)) { res.status(403).json({ error: "You are not authorized to access this user's teacher documents." }); return; }
   const cvReviewAccess = actor.id !== id && (adminCvReviewAccess || (canAccessManager(actor)
     && await managerHasPermission(actor, "teacher_cv.view")
