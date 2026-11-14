@@ -616,6 +616,19 @@ try {
   } else {
     for (const account of roleAccounts) await captureRole(...account);
   }
+  const requiredCvRoles = new Set(["owner", "senior_manager", "junior_manager", "manager", "admin", "teacher", "learner"]);
+  const missingRequiredRoleAccounts = roleResults
+    .filter((result) => requiredCvRoles.has(result.role) && result.status === "missing-demo-account")
+    .map((result) => result.role);
+  if (missingRequiredRoleAccounts.length) {
+    results.push({
+      type: "integration",
+      page: "authenticated-cv-role-coverage",
+      status: "blocked",
+      missingRoles: missingRequiredRoleAccounts,
+      error: "Authenticated CV role verification is incomplete. Configure dedicated synthetic showcase accounts for: " + missingRequiredRoleAccounts.join(", ") + ". No role is counted as verified without a successful login and API-confirmed role."
+    });
+  }
   if (googleIdentityErrors.length) {
     results.push({
       type: "integration",
@@ -637,6 +650,8 @@ try {
     publicUrlCount: results.filter((result) => result.type === "public").length,
     publicPageCount: results.filter((result) => result.type === "public" && result.screenshot).length,
     expectedRoleCount: roleAccounts.length,
+    requiredCvRoleCount: requiredCvRoles.size,
+    missingRequiredRoleAccounts,
     roleModelNotes: { admin: "Admin uses the explicitly permitted read-only /admin/teacher-cv-workspace route; Owner-only administration routes remain restricted.", platform_owner: "No separate Platform Owner dashboard or multi-school administration route is registered in App.tsx; not treated as an implemented dashboard role." },
     capturedRoleCount: roleResults.filter((result) => result.status === "captured").length,
     roleScreenshotCount: roleResults.reduce((count, result) => count + (result.screenshots?.length || 0), 0),
