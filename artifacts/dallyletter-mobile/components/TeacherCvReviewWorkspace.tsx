@@ -136,6 +136,18 @@ export default function TeacherCvReviewWorkspace() {
     finally { setBusy(false); }
   };
 
+  const openCvPdf = async () => {
+    if (!selectedId || !token) return;
+    setBusy(true); setError("");
+    try {
+      const destination = (FileSystem.cacheDirectory || FileSystem.documentDirectory || "") + "dallyletter-teacher-cv-" + selectedId + ".pdf";
+      const result = await FileSystem.downloadAsync(getApiUrl("/api/users/" + selectedId + "/teacher-cv/pdf"), destination, { headers: { Authorization: "Bearer " + token } });
+      if (result.status < 200 || result.status >= 300) throw new Error("The submitted CV PDF could not be generated or downloaded.");
+      await Linking.openURL(result.uri);
+    } catch (e) { setError(e instanceof Error ? e.message : "The professional CV PDF could not be opened."); }
+    finally { setBusy(false); }
+  };
+
   const openDocument = async (document: Row) => {
     if (!selectedId || !token || !document?.id) return;
     try {
@@ -226,6 +238,7 @@ export default function TeacherCvReviewWorkspace() {
         <Text style={{ ...heading, marginTop: 12 }}>Personal / legal details</Text>
         {Object.entries(personal).map(([key, value]) => <Text key={key} style={body}>{key}: {String(value ?? "—")}</Text>)}
         <Text style={{ ...heading, marginTop: 12 }}>CV evidence</Text>
+        {queue.some(row => Number(row.id) === Number(selectedId) && row.has_cv_submission) ? <TouchableOpacity disabled={busy} onPress={() => void openCvPdf()} style={[button, { marginTop: 8 }]}><Text style={buttonText}>Download professional CV PDF</Text></TouchableOpacity> : null}
         {["professionalSummary","education","experience","subjects","address","certifications","languages","references"].map(key => <View key={key} style={{ marginTop: 7 }}><Text style={{ color: colors.foreground, fontWeight: "800", textTransform: "capitalize" }}>{key.replace(/[A-Z]/g, letter => " " + letter)}</Text><Text style={body}>{String(cv[key] || "Not supplied")}</Text></View>)}
         <Text style={{ ...heading, marginTop: 12 }}>Uploaded documents</Text>
         {(detail.documents || []).map((doc: Row) => <TouchableOpacity key={String(doc.id)} onPress={() => void openDocument(doc)} style={{ paddingVertical: 9, borderTopWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", gap: 8 }}>
