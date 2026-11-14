@@ -19,6 +19,8 @@ const authContext = read("artifacts/dallyletter/src/contexts/AuthContext.tsx");
 const mobileAuthContext = read("artifacts/dallyletter-mobile/contexts/AuthContext.tsx");
 const teacherQualifications = read("artifacts/dallyletter/src/pages/TeacherQualifications.tsx");
 const attendanceCalendar = read("artifacts/dallyletter/src/components/DailyAppAttendanceCard.tsx");
+const apiApp = read("artifacts/api-server/src/app.ts");
+const profileHub = read("artifacts/dallyletter/src/pages/ProfileHub.tsx");
 
 const renderBlueprint = read("render.yaml");
 
@@ -29,6 +31,9 @@ assert.match(googleButton, /VITE_GOOGLE_CLIENT_ID/, "Web Google sign-in must use
 assert.match(googleButton, /\/api\/auth\/google/, "Web Google sign-in must exchange its credential with the LMS API");
 assert.match(login, /<GoogleSignInButton\s*\/>/, "Login page must render Google sign-in");
 assert.match(register, /<GoogleSignInButton mode="signup"\s*\/>/, "Registration page must render Google sign-up");
+assert.ok(apiApp.includes("elishamaposa29-oss-dallyletter-elid(?:-[a-z0-9-]+)?"), "CORS must trust the exact account-scoped Dallyletter Vercel production and preview hostname pattern");
+assert.match(profileHub, /Open CV & readiness survey/, "Pending teachers must have a direct, clickable path to their CV and readiness survey workspace");
+assert.match(profileHub, /optional supporting evidence; missing items do not block submission/, "Profile Hub must not incorrectly describe optional CV documents as mandatory");
 const productionRenderService = renderBlueprint.split("name: dallyletter-api-production")[1] || "";
 assert.match(productionRenderService, /key: GOOGLE_CLIENT_ID/, "Production LMS API service must declare the existing Google OAuth client ID environment variable");
 
