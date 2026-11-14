@@ -381,13 +381,14 @@ async function captureRole(role, route, email, password) {
           index,
           href: anchor.href,
           label: (anchor.innerText || anchor.getAttribute("aria-label") || "").trim().toLowerCase(),
-          visible: !!(anchor.offsetWidth || anchor.offsetHeight || anchor.getClientRects().length)
+          visible: !!(anchor.offsetWidth || anchor.offsetHeight || anchor.getClientRects().length),
+          download: anchor.hasAttribute("download")
         })));
         const deny = /logout|sign out|delete|remove|approve|reject|submit|upload|invite|reset password|verify email|archive|publish|grant|revoke|send|pay now|purchase|subscribe|accept|decline/i;
         for (const link of links) {
-          if (!link.visible || deny.test(link.label)) continue;
+          if (!link.visible || link.download || deny.test(link.label)) continue;
           const linked = new URL(link.href, baseUrl);
-          if (linked.origin !== baseUrl.origin || linked.hash) continue;
+          if (linked.origin !== baseUrl.origin || linked.hash || linked.pathname.startsWith("/api/") || /\\.(?:pdf|csv|xlsx?|docx?|zip|png|jpe?g|webp|svg|mp4|webm|mp3|wav)$/i.test(linked.pathname)) continue;
           const linkedPath = linked.pathname.replace(/\/+$/, "") || "/";
           if (/^\/(login|register|forgot-password|reset-password|verify-email|suspended)(\/|$)/.test(linkedPath)) continue;
           if (!linked.search && !seen.has(linkedPath) && !queue.some((candidate) => candidate.path === linkedPath)) {
