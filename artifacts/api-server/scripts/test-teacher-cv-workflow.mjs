@@ -202,6 +202,8 @@ assert((await adminPhoto.arrayBuffer()).byteLength>0,"Admin receives the non-emp
 const adminCertificate=await fetch(base+"/api/users/"+approvalApplicant.id+"/teacher-documents/"+certificate.data.document.id,{headers:{Authorization:"Bearer "+adminToken}});
 assert.equal(adminCertificate.status,200,"Admin read-only CV access includes submitted qualification certificate documents");
 assert((await adminCertificate.arrayBuffer()).byteLength>0,"Admin receives the non-empty qualification certificate bytes");
+const adminDraftDocuments=await request("/api/users/"+draftOnlyApplicant.id+"/teacher-documents",{token:adminToken});
+assert.equal(adminDraftDocuments.status,403,"Admin cannot inspect documents belonging to an unsubmitted teacher draft");
 const adminApprove=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/decision",{token:adminToken,method:"POST",body:{action:"approve",note:"Admin approval must be denied"}});
 assert.equal(adminApprove.status,403,"Admin cannot bypass the Owner/Senior Manager authorization grant");
 const adminReject=await request("/api/teacher-cv-workspace/"+approvalApplicant.id+"/decision",{token:adminToken,method:"POST",body:{action:"reject",note:"Admin rejection must be denied"}});
