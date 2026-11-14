@@ -19,8 +19,9 @@ This is a working acceptance ledger for the real LMS. The source of truth is the
 | Web tokens | Navy/gold identity, cyan/violet future accents, accessible light/dark tokens | Build/typecheck pending on latest head |
 | Web shell | Existing role-specific navigation retained; ambient future layer and active-route signal refined | Navigation regression tests pending on latest head |
 | Cards | Existing Card API and layout retained; refined border, depth and hover focus | Visual review pending from authenticated screenshots |
-| Android palette | Light palette aligned to Dallyletter navy/gold; dark palette added with restrained cyan/violet | First typecheck exposed a union-cast error; fixed by selecting typed `colors.dark` directly; rerun pending |
-| Teacher-manager nav | Removed duplicate route entries from teacher-manager navigation | Added regression assertion for unique destinations |
+| Android palette | Light palette aligned to Dallyletter navy/gold; dark palette added with restrained cyan/violet | Full workspace typecheck passed after replacing the unsafe union cast with typed `colors.dark` / `colors.light` selection |
+| Teacher-manager nav | Removed duplicate route entries from teacher-manager navigation | Regression assertion for unique destinations passes in the full verification suite |
+| Learner notification badge | Corrected the Android home badge to open the existing Feature Hub notifications section instead of a nonexistent route | Added a route regression assertion; Expo TypeScript check passes |
 
 ## Phase 1 — learner learning loop
 
@@ -32,7 +33,7 @@ This is a working acceptance ledger for the real LMS. The source of truth is the
 | Marking and feedback | Teacher marking routes/components | Teacher FeatureHub marking sections | Pending | Verify teacher rubric/marking, returned status, learner feedback and resubmission rules |
 | RecordBook | `RecordBookWorkspace.tsx` | Existing mobile reports/RecordBook surface | Existing saved-record workflow retained; Dallyletter technical label aligned | Verify source data, factual/missing marks, role scope, draft/review/approval/PDF permissions |
 
-**Phase 1 status:** visual foundation updates are in the branch. None of these features is declared end-to-end complete yet. Authenticated visual comparison and feature-specific behavior checks remain mandatory.
+**Phase 1 status:** the first learner visual pass is in the branch. Full `pnpm run ci:verify` passed in an isolated Vercel sandbox after the Android notification destination was corrected: web/mobile/scripts typechecks, navigation and role-guard audits, teacher-CV static regression, API authorization, assignment submission, offline queue, media-auth and AI-provider tests, web/mobile builds, public-page prerender/SEO verification and release formatting. This does not replace authenticated screen-by-screen visual review or real account/API end-to-end acceptance. No feature is declared fully complete yet.
 
 ## Phase 2 — teacher experience
 
