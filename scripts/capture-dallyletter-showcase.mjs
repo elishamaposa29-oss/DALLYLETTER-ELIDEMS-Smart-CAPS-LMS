@@ -387,10 +387,10 @@ async function captureRole(role, route, email, password) {
         for (const link of links) {
           if (!link.visible || deny.test(link.label)) continue;
           const linked = new URL(link.href, baseUrl);
-          if (linked.origin !== baseUrl.origin || linked.search || linked.hash) continue;
+          if (linked.origin !== baseUrl.origin || linked.hash) continue;
           const linkedPath = linked.pathname.replace(/\/+$/, "") || "/";
           if (/^\/(login|register|forgot-password|reset-password|verify-email|suspended)(\/|$)/.test(linkedPath)) continue;
-          if (!seen.has(linkedPath) && !queue.some((candidate) => candidate.path === linkedPath)) {
+          if (!linked.search && !seen.has(linkedPath) && !queue.some((candidate) => candidate.path === linkedPath)) {
             queue.push({ path: linkedPath, label: link.label || linkedPath, source: "visible-navigation" });
           }
           if (testedNavigationLinks.has(link.href) || linkedPath === pathname) continue;
@@ -404,23 +404,23 @@ async function captureRole(role, route, email, password) {
               await popup.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
               const opened = new URL(popup.url());
               const popupMain = await popup.locator("main").innerText().catch(() => "");
-              if (opened.origin !== baseUrl.origin || opened.pathname.replace(/\/+$/, "") !== linkedPath || !popupMain.trim()) {
+              if (opened.origin !== baseUrl.origin || opened.pathname.replace(/\/+$/, "") !== linkedPath || opened.search !== linked.search || !popupMain.trim()) {
                 throw new Error("Link opened an unexpected or empty page: " + popup.url());
               }
               await popup.close();
             } else {
-              await page.waitForURL(url => url.origin === baseUrl.origin && (url.pathname.replace(/\/+$/, "") || "/") === linkedPath, { timeout: 7000 });
+              await page.waitForURL(url => url.origin === baseUrl.origin && (url.pathname.replace(/\/+$/, "") || "/") === linkedPath && url.search === linked.search, { timeout: 7000 });
               const opened = new URL(page.url());
               const openedMain = await page.locator("main").innerText().catch(() => "");
-              if (opened.pathname.replace(/\/+$/, "") !== linkedPath || !openedMain.trim() || /page you're looking for doesn't exist|this screen doesn't exist|404 not found/i.test(openedMain)) {
+              if (opened.pathname.replace(/\/+$/, "") !== linkedPath || opened.search !== linked.search || !openedMain.trim() || /page you're looking for doesn't exist|this screen doesn't exist|404 not found/i.test(openedMain)) {
                 throw new Error("Link did not open its intended feature: " + page.url());
               }
               await page.goto(originalUrl, { waitUntil: "domcontentloaded", timeout: 25000 });
               await page.waitForLoadState("networkidle", { timeout: 4000 }).catch(() => {});
             }
-            routeResults.push({ path: linkedPath, status: "captured", interaction: "anchor-click", from: pathname, label: link.label || linkedPath });
+            routeResults.push({ path: linkedPath, search: linked.search, status: "captured", interaction: "anchor-click", from: pathname, label: link.label || linkedPath });
           } catch (error) {
-            routeResults.push({ path: linkedPath, status: "navigation-click-failed", interaction: "anchor-click", from: pathname, label: link.label || linkedPath, error: String(error) });
+            routeResults.push({ path: linkedPath, search: linked.search, status: "navigation-click-failed", interaction: "anchor-click", from: pathname, label: link.label || linkedPath, error: String(error) });
             if (page.url() !== originalUrl) {
               await page.goto(originalUrl, { waitUntil: "domcontentloaded", timeout: 25000 }).catch(() => {});
             }
