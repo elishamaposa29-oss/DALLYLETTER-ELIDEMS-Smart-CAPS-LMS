@@ -105,10 +105,11 @@ router.post("/submit",async(req,res)=>{
  const cv=(cvResult.rows[0]?.cv||{}) as Record<string,unknown>;
  let personal:any={};try{personal=JSON.parse(String(cv.personalDetails||"{}"))}catch{}
  const missing=["professionalSummary","education","experience","subjects","address"].filter(k=>typeof cv[k]!=="string"||String(cv[k]).trim().length<2);
+ const missingPersonalDetails=["fullName","idNumber","dob","phone","email","address"].filter(k=>typeof personal[k]!=="string"||!personal[k].trim());
  const photo=await pool.query("SELECT id FROM teacher_documents WHERE id=$1 AND user_id=$2 AND document_type='cv' AND mime_type LIKE 'image/%'",[Number(cv.photoDocumentId),actor.id]);
  const incomplete=quals.rows.filter(q=>!q.document_id||q.document_type!=="certificate");
- if(missing.length||!personal.fullName||!personal.idNumber||!personal.dob||!personal.phone||!personal.email||!personal.address||!photo.rows.length||!docs.rows.length||!quals.rows.length||incomplete.length){
-  res.status(409).json({error:"Complete the required CV details, upload a PDF resume and profile photo, and attach a separate certificate to every qualification before submitting. The readiness survey is optional and can be saved separately.",missingFields:missing,photoUploaded:Boolean(photo.rows.length),resumeUploaded:docs.rows.length>0,qualifications:quals.rows.length,certificatesMissing:incomplete.length});return;
+ if(missing.length||missingPersonalDetails.length||!photo.rows.length||!docs.rows.length||!quals.rows.length||incomplete.length){
+  res.status(409).json({error:"Your CV has not been submitted. Resolve the specific items below, save your draft, then submit again. The readiness survey is optional and is not a CV submission requirement.",missingFields:missing,missingPersonalDetails,photoUploaded:Boolean(photo.rows.length),resumeUploaded:docs.rows.length>0,qualifications:quals.rows.length,certificatesMissing:incomplete.length,qualificationsMissingCertificates:incomplete.map((q:any)=>String(q.title||"Untitled qualification"))});return;
  }
  const reviewSetting=await pool.query("SELECT review_duration_days FROM teacher_cv_workflow_settings WHERE id=1");
  const configuredDays=Number(reviewSetting.rows[0]?.review_duration_days||30);
