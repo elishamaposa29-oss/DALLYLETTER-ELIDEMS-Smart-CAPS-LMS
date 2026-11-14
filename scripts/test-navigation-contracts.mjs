@@ -33,6 +33,8 @@ assert.equal(mobileManagerRoute, sharedMobileRoute, "Manager Android route must 
 assert.equal(mobileOwnerRoute, sharedMobileRoute, "Owner Android route must use the shared CV review workspace");
 assert.ok(mobileCv.includes('canChat ? api("/" + id + "/chat") : Promise.resolve([])'), "Opening an application must not fail when the reviewer has no chat grant");
 assert.ok(mobileCv.includes("if (!selectedId || !canChat)"), "Mobile chat synchronization must respect the live chat grant");
+assert.ok(mobileCv.includes('getApiUrl("/api/users/" + selectedId + "/teacher-cv/pdf")'), "Android reviewers must retain the professional CV PDF export available on web");
+assert.ok(webCv.includes("/api/qualifications/") && webCv.includes("/review-history") && webCv.includes("View qualification review history"), "Web reviewers must retain the qualification review history available on Android");
 assert.ok(webCv.includes('new URLSearchParams(window.location.search).get("teacherId")') && webCv.includes("[canChat]"), "Web deep links must reopen applicant details after reviewer permissions resolve");
 
 console.log("Navigation contracts passed: legacy study-group path, owner event destinations, shared Android CV workspace and permission-aware CV deep links.");
