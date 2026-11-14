@@ -198,8 +198,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       ...(activeTeacherManager ? [
         { label: "Manager Panel", href: "/manager", icon: Briefcase, section: "Management", accent: "text-purple-400", permissionKey: "manager.dashboard.view" },
       { label: "Class & Learning Operations", href: "/operations", icon: CalendarDays },
-        { label: "Teacher CV Applications", href: "/manager/teacher-cv-workspace", icon: GraduationCap, permissionKey: "teacher_cv.view" },
-        { label: "Qualification Verification", href: "/manager/qualifications", icon: FileCheck2, permissionKey: "qualifications.view" },
+        { label: "Staff Verification & Qualifications", href: "/manager/teacher-cv-workspace", icon: GraduationCap },
         { label: "RecordBook & Academic Records", href: "/record-book", icon: ScrollText, permissionKey: "recordbook.view" },
         { label: "Monitor Teachers", href: "/manager/teachers", icon: GraduationCap, permissionKey: "users.view" },
         { label: "Monitor Students", href: "/manager/students", icon: Users, permissionKey: "users.view" },
@@ -227,8 +226,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Class & Learning Operations", href: "/operations", icon: CalendarDays },
       { label: "Profile Hub", href: "/profile-hub", icon: Users },
       { label: "RecordBook & Academic Records", href: "/record-book", icon: ScrollText, permissionKey: "recordbook.view" },
-      { label: "Teacher CV Applications", href: "/manager/teacher-cv-workspace", icon: GraduationCap, permissionKey: "teacher_cv.view" },
-      { label: "Qualification Verification", href: "/manager/qualifications", icon: FileCheck2, permissionKey: "qualifications.view" },
+      { label: "Staff Verification & Qualifications", href: "/manager/teacher-cv-workspace", icon: GraduationCap },
       { label: "Feature Preview Center", href: "/features", icon: Sparkles },
       { label: "Monitor Teachers", href: "/manager/teachers", icon: GraduationCap, permissionKey: "users.view" },
       { label: "Monitor Students", href: "/manager/students", icon: Users, permissionKey: "users.view" },
@@ -296,7 +294,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const managerNavigationAccount = ["manager", "senior_manager", "junior_manager"].includes(normalizedRole) || activeTeacherManager;
   if (managerNavigationAccount) {
     // Fail closed while permissions load or if the permission service is unavailable.
-    navItems = navItems.filter(item => !item.permissionKey || managerPermissions?.[item.permissionKey] === true);
+    navItems = navItems.filter(item => item.label !== "Staff Verification & Qualifications" || managerPermissions?.["teacher_cv.view"] === true || managerPermissions?.["qualifications.view"] === true).filter(item => !item.permissionKey || managerPermissions?.[item.permissionKey] === true);
   }
 
   if (pendingTeacher) {
