@@ -506,8 +506,11 @@ router.get("/users/:id/teacher-cv", requireAuth, requireManagerPermission("teach
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid user id." }); return; }
   const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel, teacherApplicationStatus: usersTable.teacherApplicationStatus }).from(usersTable).where(eq(usersTable.id, id));
+  // The route middleware has already enforced teacher_cv.view for Owner and
+  // Admin. Do not re-check the same grant here: Admin is not a manager account,
+  // and this duplicate lookup can incorrectly hide an otherwise permitted
+  // read-only application view.
   const adminCvReviewAccess = normalizeRole(req.currentUser!.role) === "admin"
-    && await managerHasPermission(req.currentUser!, "teacher_cv.view")
     && target?.teacherApplicationStatus === "pending_review"
     && await hasSubmittedTeacherApplication(id);
   if (!target || normalizeRole(target.role) !== "teacher" || !(await hasSubmittedTeacherApplication(id)) || (!isOwnerRole(req.currentUser!.role) && !adminCvReviewAccess && !canModerateUser(req.currentUser!, target))) { res.status(404).json({ error: "Teacher CV not found." }); return; }
@@ -521,8 +524,11 @@ router.get("/users/:id/teacher-cv/pdf", requireAuth, requireManagerPermission("t
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid user id." }); return; }
   const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel, teacherApplicationStatus: usersTable.teacherApplicationStatus }).from(usersTable).where(eq(usersTable.id, id));
+  // The route middleware has already enforced teacher_cv.view for Owner and
+  // Admin. Do not re-check the same grant here: Admin is not a manager account,
+  // and this duplicate lookup can incorrectly hide an otherwise permitted
+  // read-only application view.
   const adminCvReviewAccess = normalizeRole(req.currentUser!.role) === "admin"
-    && await managerHasPermission(req.currentUser!, "teacher_cv.view")
     && target?.teacherApplicationStatus === "pending_review"
     && await hasSubmittedTeacherApplication(id);
   if (!target || normalizeRole(target.role) !== "teacher" || !(await hasSubmittedTeacherApplication(id)) || (!isOwnerRole(req.currentUser!.role) && !adminCvReviewAccess && !canModerateUser(req.currentUser!, target))) { res.status(404).json({ error: "Teacher CV not found." }); return; }
