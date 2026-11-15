@@ -38,7 +38,7 @@ assert.match(register, /<GoogleSignInButton mode="signup"\s*\/>/, "Registration 
 assert.ok(apiApp.includes("elishamaposa29-oss-dallyletter-elid(?:-[a-z0-9-]+)?"), "CORS must trust the exact account-scoped Dallyletter Vercel production and preview hostname pattern");
 assert.match(profileHub, /Open CV & readiness survey/, "Pending teachers must have a direct, clickable path to their CV and readiness survey workspace");
 assert.match(profileHub, /optional supporting evidence; missing items do not block submission/, "Profile Hub must not incorrectly describe optional CV documents as mandatory");
-const productionRenderService = renderBlueprint.split("name: dallyletter-api-production")[1] || "";
+const productionRenderService = renderBlueprint.split("name: DALLYLETTER-ELIDEMS-Smart-CAPS-LMS-4")[1] || "";
 assert.match(productionRenderService, /key: GOOGLE_CLIENT_ID/, "Production LMS API service must declare the existing Google OAuth client ID environment variable");
 
 assert.match(workspaceUi, /Staff verification workspace/, "CV and qualification review must share one staff verification workspace");
