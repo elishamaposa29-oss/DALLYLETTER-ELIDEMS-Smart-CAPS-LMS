@@ -18,7 +18,7 @@ services:
     # Build only application artifacts; no database writes during build.
     buildCommand: cd ../.. && pnpm install --frozen-lockfile && pnpm --dir artifacts/api-server build
     # Free Render services do not support preDeployCommand. Run idempotent DB setup before API startup.
-    startCommand: cd ../.. && pnpm run db:push && pnpm --dir scripts run migrate:legacy-tables && pnpm --dir lib/db run migrate:manager-permissions && pnpm --dir lib/db run migrate:payment-transactions && pnpm --dir scripts run migrate:exercise-schema && pnpm --dir scripts run repair:messages-schema && pnpm --dir scripts run repair:connect-schema && pnpm --dir scripts run seed:owner && pnpm --dir artifacts/api-server start
+    startCommand: cd ../.. && pnpm run db:push && pnpm --dir scripts run migrate:legacy-tables && pnpm --dir lib/db run migrate:manager-permissions && pnpm --dir lib/db run migrate:payment-transactions && pnpm --dir scripts run migrate:exercise-schema && pnpm --dir scripts run repair:messages-schema && pnpm --dir scripts run repair:connect-schema && pnpm --dir scripts run seed:owner && pnpm --dir scripts run verify:owner-recovery && pnpm --dir artifacts/api-server start
     healthCheckPath: /api/healthz
     envVars:
       - key: NODE_ENV
