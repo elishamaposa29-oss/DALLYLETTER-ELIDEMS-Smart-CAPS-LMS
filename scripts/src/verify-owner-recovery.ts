@@ -6,6 +6,12 @@ import { ensureManagerPermissionSchema } from "../../artifacts/api-server/src/li
 
 const email = process.env.OWNER_BOOTSTRAP_EMAIL?.trim().toLowerCase();
 if (!email) throw new Error("OWNER_BOOTSTRAP_EMAIL must be configured for recovery verification.");
+if (!process.env.OWNER_BOOTSTRAP_PASSWORD || process.env.OWNER_BOOTSTRAP_PASSWORD.length < 12) {
+  throw new Error("OWNER_BOOTSTRAP_PASSWORD is missing or too short; configure it in Render's protected environment settings.");
+}
+if (!process.env.GOOGLE_CLIENT_ID?.trim()) {
+  throw new Error("GOOGLE_CLIENT_ID is missing; configure the production Google OAuth client ID in Render's protected environment settings.");
+}
 
 const requiredTables = [
   "users",
