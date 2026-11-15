@@ -64,6 +64,10 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
+      - key: OWNER_BOOTSTRAP_EMAIL
+        value: elishamaposa430@gmail.com
+      - key: OWNER_BOOTSTRAP_PASSWORD
+        sync: false
       - key: PAYNOW_INTEGRATION_ID
         sync: false
       - key: PAYNOW_INTEGRATION_KEY
