@@ -60,7 +60,7 @@ Run this only against the **new, empty replacement database**. Do not run it aga
    `pnpm --dir scripts run seed:owner`
    On a truly empty database this creates the named account with role `owner`. The script does not print the password or hash. If another `owner` or `admin` already exists, it intentionally refuses to create a competing privileged account; stop and investigate rather than weakening this guard.
 6. The Render Blueprint now runs database migrations, repairs, and owner bootstrap in the **pre-deploy** phase, after the build and after `db:push`. This fixes the previous ordering defect where `seed:owner` ran during build before the new `users` table was guaranteed to exist. Start the recovery API so its auth-session and Profile Hub schema initializers can create their additive tables. Confirm the `google_account_links` table exists before attempting Google sign-in. Do not rely on a green health endpoint alone.
-7. Verify the owner row is exactly one row for the target email, role is `owner`, and both `is_blocked` and `is_suspended` are false. Verify `google_account_links`, `auth_sessions`, and the Profile Hub tables exist.
+7. Run `pnpm --dir scripts run verify:owner-recovery`. It fails closed unless exactly one matching enabled Owner exists and the critical auth, Google-link, manager-permission, teacher-review, and legacy tables are present. This check supplements, but does not replace, the full schema and API workflow tests.
 8. Open the production Dallyletter login page and use Google sign-in with the Google account whose verified email is exactly `elishamaposa430@gmail.com`. The first successful Google sign-in links that Google subject to the existing owner row. Verify the returned identity is the same owner and the Owner dashboard loads; then verify Owner-only user promotion, teacher application review/approval, and audit access.
 9. Only after all checks pass, explicitly switch the canonical API's `DATABASE_URL` to the new internal URL and redeploy/restart it. Confirm the production API health endpoint, owner Google login, Owner dashboard, user promotion, and teacher approval. Keep the old database until the new service is verified and rollback is understood.
 
@@ -69,7 +69,7 @@ Run this only against the **new, empty replacement database**. Do not run it aga
 - [ ] PostgreSQL 18 replacement is available in the existing Render workspace.
 - [ ] The schema push and all additive migrations/repairs complete without errors.
 - [ ] Every Drizzle table and the four legacy tables exist; no migration is skipped silently.
-- [ ] Auth session and Profile Hub initializers complete; Google link table exists.
+- [ ] `pnpm --dir scripts run verify:owner-recovery` passes after the API schema initializers complete.
 - [ ] Exactly one configured owner account exists for `elishamaposa430@gmail.com`; its role is `owner`, and it is not blocked/suspended.
 - [ ] Owner bootstrap password is stored only as an app-compatible scrypt hash; no plaintext password or hash is committed.
 - [ ] Google sign-in verifies a Google-issued, verified ID token for the matching email and links to the pre-created owner rather than creating a student.
