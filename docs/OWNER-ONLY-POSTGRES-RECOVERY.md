@@ -49,6 +49,7 @@ Run this only against the **new, empty replacement database**. Do not run it aga
    `pnpm run db:push`
    Never use `db:push:force`.
 4. Apply the repository's additive migrations/repairs in the same order as the canonical production service:
+   `pnpm --dir scripts run migrate:legacy-tables`
    `pnpm --dir lib/db run migrate:manager-permissions`
    `pnpm --dir lib/db run migrate:payment-transactions`
    `pnpm --dir scripts run migrate:exercise-schema`
