@@ -1,4 +1,8 @@
 import { pool } from "@workspace/db";
+import { ensureConnectSchema } from "../../artifacts/api-server/src/lib/ensureConnectSchema.js";
+import { ensureAuthSessionSchema } from "../../artifacts/api-server/src/lib/auth-session-store.js";
+import { ensureProfileHubSchema } from "../../artifacts/api-server/src/lib/ensureProfileHubSchema.js";
+import { ensureManagerPermissionSchema } from "../../artifacts/api-server/src/lib/ensureManagerPermissionSchema.js";
 
 const email = process.env.OWNER_BOOTSTRAP_EMAIL?.trim().toLowerCase();
 if (!email) throw new Error("OWNER_BOOTSTRAP_EMAIL must be configured for recovery verification.");
@@ -82,6 +86,13 @@ const requiredTables = [
 ];
 
 try {
+  // Run the same additive initializers as API startup before checking their tables.
+  // This keeps verification fail-closed without racing the server process.
+  await ensureConnectSchema();
+  await ensureAuthSessionSchema();
+  await ensureProfileHubSchema();
+  await ensureManagerPermissionSchema();
+
   const owners = await pool.query(
     "SELECT id, email, role, is_blocked, is_suspended FROM public.users WHERE lower(email) = $1",
     [email],
