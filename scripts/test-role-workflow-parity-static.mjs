@@ -21,6 +21,8 @@ const ownerTools = read("artifacts/dallyletter-mobile/app/(admin)/tools.tsx");
 const adminSettings = read("artifacts/dallyletter/src/pages/admin/AdminSettings.tsx");
 const managerMore = read("artifacts/dallyletter-mobile/components/ManagerMore.tsx");
 const managerRoute = read("artifacts/dallyletter-mobile/app/(manager)/teacher-cv-workspace.tsx");
+const adminRoute = read("artifacts/dallyletter-mobile/app/(admin)/qualifications.tsx");
+const managerQualificationsRoute = read("artifacts/dallyletter-mobile/app/(manager)/qualifications.tsx");
 const mobileOperations = read("artifacts/dallyletter-mobile/components/MobileOperationsWorkspace.tsx");
 const webOperations = read("artifacts/dallyletter/src/pages/OperationsWorkspace.tsx");
 const webLessons = read("artifacts/dallyletter/src/pages/teacher/TeacherLessons.tsx");
@@ -194,7 +196,12 @@ for (const operation of [
 ]) assert.ok(mobileReview.includes(operation), "Android teacher qualification review operation missing: " + operation);
 
 
-assert.ok(qualificationReview.includes('"/api/qualifications/pending"') && qualificationReview.includes('"/api/qualifications/"+row.document_id+"/document"') && qualificationReview.includes('"/api/qualifications/"+row.id+"/review-history"') && qualificationReview.includes('"/api/qualifications/"+row.id+"/verify"'), "Android standalone qualification review lifecycle is incomplete");
+assert.ok(qualificationReview.includes('"/api/qualifications/pending"') && qualificationReview.includes('"/api/qualifications/"+row.document_id+"/document"') && qualificationReview.includes('"/api/qualifications/"+row.id+"/review-history"') && qualificationReview.includes('"/api/qualifications/"+row.id+"/verify"'), "Android consolidated qualification review lifecycle is incomplete");
+assert.ok(mobileReview.includes("QualificationReviewWorkspaceMobile") && mobileReview.includes('setActiveTab("qualifications")'), "Android CV and qualifications review must share one tabbed workspace");
+assert.ok(mobileReview.includes('managerGrants["teacher_cv.view"] === true') && mobileReview.includes('managerGrants["qualifications.view"] === true'), "Android consolidated tabs must respect independent Owner grants");
+assert.ok(mobileReview.indexOf('if (!viewApplications)') < mobileReview.indexOf('api("/queue")'), "Android must not request the CV queue when the reviewer only has qualification visibility");
+assert.ok(mobileReview.includes('activeTab === "qualifications" && canViewQualifications') && mobileReview.includes('activeTab === "applications" && canViewApplications'), "Android must not expose ungranted CV or qualification sections");
+assert.ok(managerQualificationsRoute.includes("TeacherCvReviewWorkspace initialTab=\"qualifications\"") && adminRoute.includes("TeacherCvReviewWorkspace initialTab=\"qualifications\""), "Legacy Android qualification routes must open the consolidated workspace tab");
 assert.ok(managerMore.includes('permissions?.["qualifications.view"]') && managerMore.includes("/(manager)/qualifications"), "Manager qualification review entry is not gated by qualifications.view");
 assert.ok(adminEntry.includes("/(admin)/qualifications"), "Owner qualification review entry is missing");
 assert.ok(managerLayout.includes('name="qualifications"') && adminLayout.includes('name="qualifications"'), "Qualification review routes are not registered");

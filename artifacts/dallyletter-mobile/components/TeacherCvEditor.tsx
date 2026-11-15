@@ -249,6 +249,28 @@ export function TeacherCvEditor() {
     finally { setChatSending(false); }
   };
 
+  const deleteEntireApplication = () => {
+    if (!token || !user?.id || saving || submitting) return;
+    Alert.alert("Delete entire teacher application?", "This permanently deletes your CV and survey drafts, submitted CV and survey, qualifications, uploaded documents and media, private application chat messages and review history. Your Dallyletter account remains. Existing approved teaching access is preserved.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete permanently", style: "destructive", onPress: () => { void (async () => {
+        setSaving(true);
+        try {
+          const response = await fetch(getApiUrl("/api/teacher-cv-workspace/" + user.id + "/application"), { method: "DELETE", headers: { Authorization: "Bearer " + token } });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(data.error || "Your application could not be deleted.");
+          setCv(emptyCv); setPersonal({ idNumber: "", dob: "", phone: String(user.phone || ""), email: String(user.email || "") });
+          setSurvey({ laptop: "", laptopType: "", smartphone: "", computer: "", online: "", internet: "", platforms: "", power: "", verificationCall: "", extra: "" });
+          setSurveySubmittedAt(null); setSurveyReviewStatus("pending"); setSurveyReviewNote("");
+          setApplicationStatus(data.approvedTeacherAccessPreserved ? "approved" : "draft"); setReviewDeadline(null);
+          setReviewHistory([]); setChatMessages([]); setChatDraft("");
+          Alert.alert("Application deleted", data.mediaCleanupPending ? "Application data was deleted. Some external media cleanup remains queued for retry." : "Your CV, survey, drafts, messages and uploaded media were deleted. Your account remains active.");
+        } catch (error) { Alert.alert("Application not deleted", error instanceof Error ? error.message : "Please retry."); }
+        finally { setSaving(false); }
+      })(); } },
+    ]);
+  };
+
   const downloadPdf = async () => {
     if (!token || downloading) return;
     setDownloading(true);
@@ -379,6 +401,13 @@ export function TeacherCvEditor() {
         <TextInput testID="teacher-cv-review-chat" accessibilityLabel="Message your CV reviewer" blurOnSubmit={false} multiline value={chatDraft} onChangeText={setChatDraft} placeholder="Write a private message to the authorized reviewer…" placeholderTextColor={colors.mutedForeground} style={{ minHeight: 70, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 10, color: colors.foreground, backgroundColor: colors.background, textAlignVertical: "top" }} />
         <TouchableOpacity disabled={!chatDraft.trim() || chatSending} onPress={() => void sendReviewMessage()} style={{ marginTop: 8, backgroundColor: colors.secondary, borderRadius: 9, padding: 10, alignItems: "center", opacity: !chatDraft.trim() || chatSending ? 0.6 : 1 }}>
           <Text style={{ color: colors.primary, fontWeight: "700" }}>{chatSending ? "Sending…" : "Send reviewer message"}</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={{ marginTop: 14, padding: 12, borderWidth: 1, borderColor: "#fecaca", borderRadius: 10, backgroundColor: "#fef2f2" }}>
+        <Text style={{ color: "#991b1b", fontWeight: "700", fontSize: 13 }}>Permanent application deletion</Text>
+        <Text style={{ color: "#991b1b", fontSize: 12, marginTop: 4 }}>Removes your CV and survey drafts, qualifications, uploaded media and private application messages. Your account is retained.</Text>
+        <TouchableOpacity disabled={saving || loading || submitting} onPress={deleteEntireApplication} style={{ marginTop: 9, borderRadius: 8, padding: 12, alignItems: "center", backgroundColor: "#b91c1c", opacity: saving || loading || submitting ? 0.6 : 1 }}>
+          <Text style={{ color: "#fff", fontWeight: "700" }}>{saving ? "Deleting application…" : "Delete my entire survey / CV / application"}</Text>
         </TouchableOpacity>
       </View>
       <TouchableOpacity disabled={saving || loading || downloading} onPress={() => void downloadPdf()} style={{ marginTop: 10, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 13, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, opacity: downloading ? 0.65 : 1 }}>

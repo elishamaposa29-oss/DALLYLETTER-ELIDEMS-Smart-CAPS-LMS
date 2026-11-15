@@ -2,15 +2,16 @@ import { Router } from "express";
 import { requireManagerPermission, requireManagerPermissionForRequest, requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
 import { db, notificationsTable, pool } from "@workspace/db";
 import { requireAuth, canAccessManager } from "../lib/auth-middleware";
-import { enqueueEmailNotification } from "../lib/email-notification-queue";
+import { enqueueEmailNotification, ensureNotificationMetadataSchema } from "../lib/email-notification-queue";
 import { normalizeRole, isSeniorManager, canModerateUser } from "../lib/role-access";
 import { revokeUserSessions } from "../lib/auth-session-store";
+import { removeStoredMedia } from "../lib/media-storage";
 import { processExpiredTeacherApplications } from "../lib/teacher-cv-expiry";
 const router=Router(); let ready:Promise<void>|null=null;
 async function ensure(){if(!ready)ready=(async()=>{await pool.query(`CREATE TABLE IF NOT EXISTS teacher_cv_workflow_settings(id integer PRIMARY KEY DEFAULT 1 CHECK(id=1),review_duration_days integer CHECK(review_duration_days BETWEEN 1 AND 365 OR review_duration_days IS NULL),updated_by integer REFERENCES users(id),updated_at timestamptz NOT NULL DEFAULT now())`);await pool.query("INSERT INTO teacher_cv_workflow_settings(id,review_duration_days) VALUES(1,NULL) ON CONFLICT(id) DO NOTHING");
     await pool.query("ALTER TABLE teacher_cv_workflow_settings ALTER COLUMN review_duration_days DROP NOT NULL");
     await pool.query("ALTER TABLE teacher_cv_workflow_settings ALTER COLUMN review_duration_days DROP DEFAULT");
-    await pool.query("UPDATE teacher_cv_workflow_settings SET review_duration_days=NULL WHERE updated_by IS NULL");await pool.query(`CREATE TABLE IF NOT EXISTS teacher_cv_review_history(id bigserial PRIMARY KEY,teacher_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,reviewer_id integer REFERENCES users(id),action text NOT NULL,previous_status text,new_status text NOT NULL,note text,created_at timestamptz NOT NULL DEFAULT now())`);await pool.query(`CREATE TABLE IF NOT EXISTS teacher_cv_chat_messages(id bigserial PRIMARY KEY,teacher_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,sender_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,body text NOT NULL CHECK(length(trim(body)) BETWEEN 1 AND 4000),created_at timestamptz NOT NULL DEFAULT now())`);await pool.query("CREATE INDEX IF NOT EXISTS teacher_cv_chat_thread_idx ON teacher_cv_chat_messages(teacher_id,created_at)")})().catch(e=>{ready=null;throw e});return ready}
+    await pool.query("UPDATE teacher_cv_workflow_settings SET review_duration_days=NULL WHERE updated_by IS NULL");await pool.query(`CREATE TABLE IF NOT EXISTS teacher_cv_review_history(id bigserial PRIMARY KEY,teacher_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,reviewer_id integer REFERENCES users(id),action text NOT NULL,previous_status text,new_status text NOT NULL,note text,created_at timestamptz NOT NULL DEFAULT now())`);await pool.query(`CREATE TABLE IF NOT EXISTS teacher_cv_chat_messages(id bigserial PRIMARY KEY,teacher_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,sender_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,body text NOT NULL CHECK(length(trim(body)) BETWEEN 1 AND 4000),created_at timestamptz NOT NULL DEFAULT now())`);await pool.query("CREATE INDEX IF NOT EXISTS teacher_cv_chat_thread_idx ON teacher_cv_chat_messages(teacher_id,created_at)");await pool.query("CREATE TABLE IF NOT EXISTS teacher_application_media_cleanup(teacher_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,storage_key text PRIMARY KEY,created_at timestamptz NOT NULL DEFAULT now())")})().catch(e=>{ready=null;throw e});return ready}
 function isOwner(u:any){return ["owner","platform_owner"].includes(normalizeRole(u?.role))}
 function isAdmin(u:any){return normalizeRole(u?.role)==="admin"}
 function canReview(u:any){return isOwner(u)||isSeniorManager(u)}
@@ -230,6 +231,49 @@ async function authorizeCvMutation(actor:any,teacherId:number){
  const target=await pool.query("SELECT role,is_manager,manager_level FROM users WHERE id=$1 AND lower(role)='teacher'",[teacherId]);
  return Boolean(target.rows[0]&&canAccessManager(actor)&&canModerateUser(actor,{role:target.rows[0].role,isManager:target.rows[0].is_manager,managerLevel:target.rows[0].manager_level}));
 }
+router.delete("/:teacherId/application",requireSelfOrCvMonitor,async(req,res)=>{
+ const id=idOf(req.params.teacherId);
+ if(!id){res.status(400).json({error:"Invalid teacher id"});return;}
+ if(!await authorizeCvMutation(req.currentUser!,id)){res.status(403).json({error:"You are not authorized to delete this application"});return;}
+ await ensure();
+ const client=await pool.connect();
+ let mediaKeys:string[]=[];
+ let previousStatus="draft";
+ try{
+  await client.query("BEGIN");
+  const target=await client.query("SELECT id,teacher_application_status FROM users WHERE id=$1 AND lower(role)='teacher' FOR UPDATE",[id]);
+  if(!target.rows.length){await client.query("ROLLBACK");res.status(404).json({error:"Teacher application owner not found"});return;}
+  previousStatus=String(target.rows[0].teacher_application_status||"draft");
+  const docs=await client.query("SELECT storage_key FROM teacher_documents WHERE user_id=$1 AND storage_key IS NOT NULL FOR UPDATE",[id]);
+  mediaKeys=docs.rows.map((row:any)=>String(row.storage_key)).filter(Boolean);
+  await client.query("INSERT INTO teacher_application_media_cleanup(teacher_id,storage_key) SELECT $1,storage_key FROM teacher_documents WHERE user_id=$1 AND storage_key IS NOT NULL ON CONFLICT(storage_key) DO NOTHING",[id]);
+  // Ensure metadata columns exist before scoped queue cleanup, even if no chat has been sent yet.
+  await ensureNotificationMetadataSchema();
+  // Remove notification copies addressed to the applicant and only those reviewer email
+  // copies explicitly tagged with this application ID. Never fuzzy-delete another app's messages.
+  await client.query("DELETE FROM notifications WHERE type='teacher_cv_message' AND (recipient_id=$1 OR link LIKE $2)",[id,"%teacherId="+id+"%"]);
+  await client.query("DELETE FROM email_notification_queue WHERE subject=$1 AND (recipient_user_id=$2 OR (related_entity_type='teacher_cv_application' AND related_entity_id=$2))",["Dallyletter Elidems — New teacher application message",id]);
+  await client.query("DELETE FROM teacher_cv_chat_messages WHERE teacher_id=$1",[id]);
+  await client.query("DELETE FROM teacher_qualifications WHERE user_id=$1",[id]);
+  await client.query("DELETE FROM teacher_documents WHERE user_id=$1",[id]);
+  await client.query("DELETE FROM teacher_profiles WHERE user_id=$1",[id]);
+  await client.query("DELETE FROM teacher_cv_review_history WHERE teacher_id=$1",[id]);
+  await client.query("UPDATE users SET teacher_application_status=CASE WHEN teacher_application_status='approved' THEN teacher_application_status ELSE 'draft' END,teacher_review_deadline=NULL,updated_at=now() WHERE id=$1",[id]);
+  // Keep a minimal deletion audit marker; message bodies, CV content and survey answers are removed.
+  await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) VALUES($1,$2,'application_deleted',$3,'deleted','Application content, messages and uploaded documents deleted')",[id,req.currentUser!.id,previousStatus]);
+  await client.query("COMMIT");
+ }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}
+ finally{client.release();}
+ const pendingMedia=await pool.query("SELECT storage_key FROM teacher_application_media_cleanup WHERE teacher_id=$1 ORDER BY created_at ASC",[id]);
+ const cleanup=await Promise.allSettled(pendingMedia.rows.map((row:any)=>removeStoredMedia(String(row.storage_key))));
+ const cleanedKeys=pendingMedia.rows.filter((_row:any,index:number)=>cleanup[index]?.status==="fulfilled").map((row:any)=>String(row.storage_key));
+ if(cleanedKeys.length) await pool.query("DELETE FROM teacher_application_media_cleanup WHERE teacher_id=$1 AND storage_key=ANY($2::text[])",[id,cleanedKeys]);
+ const remainingMedia=await pool.query("SELECT count(*)::int AS count FROM teacher_application_media_cleanup WHERE teacher_id=$1",[id]);
+ const mediaCleanupPending=Number(remainingMedia.rows[0]?.count||0);
+ if(mediaCleanupPending) console.error("[teacher-cv] Application media cleanup incomplete.",{teacherId:id,pending:mediaCleanupPending});
+ res.json({deleted:true,scope:"application",deletedChatMessages:true,deletedDrafts:true,deletedSurvey:true,deletedCv:true,deletedQualifications:true,deletedDocuments:true,deletedMediaCount:pendingMedia.rows.length,mediaCleanupPending,accountPreserved:true,approvedTeacherAccessPreserved:previousStatus==="approved"});
+});
+
 router.delete("/bulk/:scope",requireManagerPermissionIfManager("teacher_cv.view"),async(req,res)=>{
  const scope=String(req.params.scope||""); const ids=Array.isArray(req.body?.teacherIds)?[...new Set(req.body.teacherIds.map(idOf).filter(Boolean))] as number[]:[];
  if(!["cv","survey"].includes(scope)||!ids.length||ids.length>100){res.status(400).json({error:"Choose CV or survey and provide 1–100 valid teacher IDs."});return;}
@@ -316,7 +360,7 @@ router.post("/:teacherId/chat",requireManagerPermissionIfManager("teacher_cv.cha
  for(const recipientId of recipients){
   try{await db.insert(notificationsTable).values({recipientId,title,message,link:recipientId===id?"/profile-hub":"/manager/teacher-cv-workspace?teacherId="+id,type:"teacher_cv_message"});}catch(error){console.error("[teacher-cv] Chat notification failed.",error instanceof Error?error.message:"unknown");}
  }
- const emailResults=await Promise.allSettled(recipients.map(recipientId=>enqueueEmailNotification(recipientId,"Dallyletter Elidems — "+title,message)));
+ const emailResults=await Promise.allSettled(recipients.map(recipientId=>enqueueEmailNotification(recipientId,"Dallyletter Elidems — "+title,message,{relatedEntityType:"teacher_cv_application",relatedEntityId:id})));
  res.status(201).json({...r.rows[0],notificationsQueued:recipients.length,emailNotificationsQueued:emailResults.filter(result=>result.status==="fulfilled").length});
 });
 if(process.env.NODE_ENV==="test"){router.post("/__test/process-expired",async(req,res)=>{if(!isOwner(req.currentUser)){res.status(403).json({error:"Owner access required"});return}await processExpiredTeacherApplications();res.json({processed:true})})}

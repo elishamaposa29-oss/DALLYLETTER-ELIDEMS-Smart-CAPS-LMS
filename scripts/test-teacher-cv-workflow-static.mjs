@@ -7,6 +7,10 @@ const googleButton = read("artifacts/dallyletter/src/components/GoogleSignInButt
 const login = read("artifacts/dallyletter/src/pages/Login.tsx");
 const register = read("artifacts/dallyletter/src/pages/Register.tsx");
 const workspaceApi = read("artifacts/api-server/src/routes/teacherCvWorkspace.ts");
+const emailNotificationQueue = read("artifacts/api-server/src/lib/email-notification-queue.ts");
+const managerQualifications = read("artifacts/dallyletter/src/pages/manager/ManagerQualifications.tsx");
+const dashboardLayout = read("artifacts/dallyletter/src/components/DashboardLayout.tsx");
+const appRoutesSource = read("artifacts/dallyletter/src/App.tsx");
 const workspaceUi = read("artifacts/dallyletter/src/pages/TeacherCvWorkspace.tsx");
 const ownerDashboard = read("artifacts/dallyletter/src/pages/admin/OwnerCommandCenter.tsx");
 const appRoutes = read("artifacts/dallyletter/src/App.tsx");
@@ -19,6 +23,8 @@ const authContext = read("artifacts/dallyletter/src/contexts/AuthContext.tsx");
 const mobileAuthContext = read("artifacts/dallyletter-mobile/contexts/AuthContext.tsx");
 const teacherQualifications = read("artifacts/dallyletter/src/pages/TeacherQualifications.tsx");
 const attendanceCalendar = read("artifacts/dallyletter/src/components/DailyAppAttendanceCard.tsx");
+const apiApp = read("artifacts/api-server/src/app.ts");
+const profileHub = read("artifacts/dallyletter/src/pages/ProfileHub.tsx");
 
 const renderBlueprint = read("render.yaml");
 
@@ -29,9 +35,20 @@ assert.match(googleButton, /VITE_GOOGLE_CLIENT_ID/, "Web Google sign-in must use
 assert.match(googleButton, /\/api\/auth\/google/, "Web Google sign-in must exchange its credential with the LMS API");
 assert.match(login, /<GoogleSignInButton\s*\/>/, "Login page must render Google sign-in");
 assert.match(register, /<GoogleSignInButton mode="signup"\s*\/>/, "Registration page must render Google sign-up");
+assert.ok(apiApp.includes("elishamaposa29-oss-dallyletter-elid(?:-[a-z0-9-]+)?"), "CORS must trust the exact account-scoped Dallyletter Vercel production and preview hostname pattern");
+assert.match(profileHub, /Open CV & readiness survey/, "Pending teachers must have a direct, clickable path to their CV and readiness survey workspace");
+assert.match(profileHub, /optional supporting evidence; missing items do not block submission/, "Profile Hub must not incorrectly describe optional CV documents as mandatory");
 const productionRenderService = renderBlueprint.split("name: dallyletter-api-production")[1] || "";
 assert.match(productionRenderService, /key: GOOGLE_CLIENT_ID/, "Production LMS API service must declare the existing Google OAuth client ID environment variable");
 
+assert.match(workspaceUi, /Staff verification workspace/, "CV and qualification review must share one staff verification workspace");
+assert.doesNotMatch(dashboardLayout, /label: "Teacher CV Applications"|label: "Qualification Verification"/, "Dashboard navigation must not expose duplicate CV and qualification destinations");
+assert.match(teacherQualifications, /api\/users\/me\/qualifications/, "Teacher self-service qualification records must remain available in the unified CV editor");
+assert.match(teacherQualifications, /api\/users\/me\/teacher-cv/, "Teacher self-service CV and readiness survey must remain available in the same editor");
+assert.match(workspaceUi, /Qualifications & certificates/, "The consolidated workspace must expose the full qualification verification queue");
+assert.match(managerQualifications, /export function ManagerQualificationsPanel/, "Existing qualification verification must remain available as an embedded panel");
+assert.match(dashboardLayout, /Staff Verification & Qualifications/, "Staff navigation must expose one consolidated verification destination");
+assert.match(appRoutesSource, /<TeacherCvWorkspace initialTab="qualifications" \/>/, "Legacy qualification route must remain as a compatibility alias");
 assert.match(workspaceApi, /requireManagerPermissionForRequest\(\(req\)=>req\.body\?\.action==="approve"\?"teacher_cv\.authorize":"teacher_cv\.review"\)/, "Approval and rejection must use separate explicit manager permissions");
 assert.match(managerPermissions, /teacher_cv\.authorize.*seniorOnly: true/, "Teacher authorization must remain a Senior Manager/Owner-only permission");
 assert.match(managerPermissions, /teacher_cv\.review.*seniorOnly: true/, "Teacher application review must remain a Senior Manager/Owner-only permission");
@@ -63,12 +80,21 @@ assert.doesNotMatch(workspaceApi, /Resolve the specific items below, save your d
 assert.doesNotMatch(workspaceApi, /Complete personal\/legal details, upload a profile photo and PDF resume/, "CV approval must not require optional evidence");
 assert.match(workspaceApi, /router\.delete\("\/:teacherId\/cv"/, "Teacher and authorized reviewer must have an individual CV delete endpoint");
 assert.match(workspaceApi, /router\.delete\("\/:teacherId\/survey"/, "Authorized reviewer must have an individual survey delete endpoint");
+assert.ok(workspaceApi.includes('router.delete("/:teacherId/application"'), "Teacher must have one atomic full-application deletion endpoint");
+assert.ok(roleAccess.includes('"/teacher-cv-workspace/" + selfId + "/application"'), "Pending teachers must be allowed to delete their own complete application");
+assert.ok(workspaceApi.includes("DELETE FROM teacher_cv_chat_messages WHERE teacher_id=$1"), "Full application deletion must remove all private application chat messages");
+assert.ok(workspaceApi.includes("DELETE FROM teacher_profiles WHERE user_id=$1"), "Full application deletion must remove saved CV and survey drafts");
+assert.ok(workspaceApi.includes("removeStoredMedia(String(row.storage_key))") && workspaceApi.includes("teacher_application_media_cleanup"), "Full application deletion must clean external and chunked media storage");
+assert.ok(emailNotificationQueue.includes("related_entity_type") && emailNotificationQueue.includes("related_entity_id") && workspaceApi.includes("related_entity_type='teacher_cv_application' AND related_entity_id=$2"), "Chat email copies must be tagged and deleted by application identity without touching other applications");
+
+assert.ok(teacherQualifications.includes("Delete my entire survey / CV / application") && teacherQualifications.includes("deleteOwnApplication"), "Teacher self-service must expose one complete application deletion action");
+
 assert.match(workspaceApi, /router\.delete\("\/bulk\/:scope"/, "Authorized reviewers must have a bulk delete endpoint");
 assert.match(workspaceUi, /Delete entire CV/, "Reviewer workspace must expose individual CV deletion");
 assert.match(workspaceUi, /Delete survey only/, "Reviewer workspace must expose individual survey deletion");
 assert.match(workspaceUi, /Delete selected CVs/, "Reviewer workspace must expose selected bulk CV deletion");
 assert.match(workspaceUi, /Approved/, "Reviewer workspace must support approved status filtering");
-assert.match(teacherQualifications, /Delete my entire CV/, "Teacher must be able to delete their own CV");
+assert.match(teacherQualifications, /Delete my entire survey \/ CV \/ application/, "Teacher must be able to delete their complete application while retaining their account");
 assert.match(workspaceUi, /main CV Approve \/ Reject controls below also apply the same decision/, "CV decision controls must also decide the submitted survey");
 assert.match(attendanceCalendar, /border-emerald-400 bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950\/60/, "Present legend swatch must match the actual calendar cell colours");
 assert.match(attendanceCalendar, /border-red-400 bg-red-100 dark:border-red-700 dark:bg-red-950\/60/, "Absent legend swatch must match the actual calendar cell colours");
