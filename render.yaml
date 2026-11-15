@@ -4,10 +4,7 @@ databases:
     user: dallyletter_elidems_production_recovery_2_user
     plan: free
     region: oregon
-    postgresMajorVersion: 18
-    ipAllowList:
-      - cidrBlock: 41.175.65.71/32
-        description: owner administrative access
+    postgresMajorVersion: "18"
 
 services:
   - type: web
