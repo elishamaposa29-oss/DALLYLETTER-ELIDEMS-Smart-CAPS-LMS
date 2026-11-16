@@ -101,7 +101,6 @@ assert.match(attendanceCalendar, /border-emerald-400 bg-emerald-100 dark:border-
 assert.match(attendanceCalendar, /border-red-400 bg-red-100 dark:border-red-700 dark:bg-red-950\/60/, "Absent legend swatch must match the actual calendar cell colours");
 console.log("TEACHER_CV_WORKFLOW_STATIC: PASS — Google sign-in wiring, CV/survey review, explicit manager authorization, teacher activation, rejection grace period, learner conversion, routes and session refresh.");
 
-assert.match(usersRoutes, /router\\.delete\\("\/users\/me\/teacher-documents\/:docId"/, "Teachers must have an authenticated self-scoped endpoint to permanently delete uploaded CV documents");
 
 assert.ok(usersRoutes.includes('router.delete("/users/me/teacher-documents/:docId"'), "Teachers must have an authenticated self-scoped endpoint to permanently delete uploaded CV documents");
 assert.ok(usersRoutes.includes('router.delete("/users/me/qualifications/:id"'), "Teachers must have an authenticated self-scoped endpoint to permanently delete their own qualifications");
