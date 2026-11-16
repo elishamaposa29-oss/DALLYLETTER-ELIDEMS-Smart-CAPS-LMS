@@ -360,7 +360,13 @@ router.get("/lessons/:id/shared", async (req, res): Promise<void> => {
       return original + (String(original).includes("?") ? "&" : "?") + "shareToken=" + mediaToken;
     });
   };
-  const content = typeof lesson.content === "string" ? signedMediaUrl(lesson.content) : lesson.content;
+  const signEmbeddedMedia = (value: any): any => {
+    if (typeof value === "string") return signedMediaUrl(value);
+    if (Array.isArray(value)) return value.map(signEmbeddedMedia);
+    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key,item])=>[key,signEmbeddedMedia(item)]));
+    return value;
+  };
+  const content = signEmbeddedMedia(lesson.content);
   res.setHeader("Cache-Control","private, no-store");
   res.json({ lesson: { id: lesson.id, title: lesson.title, subject: lesson.subject, grade: lesson.grade, description: lesson.description, content, mediaUrl: signedMediaUrl(lesson.mediaUrl), createdAt: lesson.createdAt?.toISOString?.() || null }, expiresAt: expiry });
 });
