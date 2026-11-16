@@ -7,6 +7,12 @@ const router = Router();
 let schemaReady: Promise<void> | null = null;
 async function ensureSchema(): Promise<void> {
   if (!schemaReady) schemaReady = pool.query(`
+    CREATE TABLE IF NOT EXISTS profile_privacy_settings (
+      user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      section_settings jsonb NOT NULL DEFAULT '{}'::jsonb,
+      chat_privacy text NOT NULL DEFAULT 'everyone' CHECK (chat_privacy IN ('everyone','approval_required')),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
     CREATE TABLE IF NOT EXISTS learner_school_ids (
       user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
       school_id text NOT NULL UNIQUE,
@@ -70,6 +76,7 @@ router.get("/school-id/me", requireAuth, async (req, res): Promise<void> => {
 
 router.get("/school-id/verify/:schoolId", async (req, res): Promise<void> => {
   await ensureSchema();
+  await pool.query("DELETE FROM learner_school_id_lookups WHERE requested_at < now()-interval '90 days'");
   const ipHash = createHash("sha256").update(String(req.ip || "unknown")).digest("hex");
   const recent = await pool.query(`SELECT count(*)::int AS count FROM learner_school_id_lookups WHERE ip_hash=$1 AND requested_at>now()-interval '1 minute'`, [ipHash]);
   if (Number(recent.rows[0]?.count || 0) >= 20) { res.status(429).json({ verified: false, error: "Too many verification attempts. Try again shortly." }); return; }
@@ -80,7 +87,7 @@ router.get("/school-id/verify/:schoolId", async (req, res): Promise<void> => {
     res.status(404).json({ verified: false, error: "School ID not found." }); return;
   }
   const result = await pool.query(
-    "SELECT s.user_id,u.name,u.role,u.grade,p.section_settings FROM learner_school_ids s JOIN users u ON u.id=s.user_id LEFT JOIN profile_privacy_settings p ON p.user_id=s.user_id WHERE s.school_id=$1 AND lower(u.role) IN ('student','learner') AND u.is_blocked=false AND u.is_suspended=false",
+    "SELECT s.user_id,u.name,u.role,u.grade,p.section_settings FROM learner_school_ids s JOIN users u ON u.id=s.user_id LEFT JOIN profile_privacy_settings p ON p.user_id=s.user_id WHERE s.school_id=$1 AND lower(u.role) IN ('student','learner') AND COALESCE(u.is_blocked,false)=false AND COALESCE(u.is_suspended,false)=false",
     [schoolId],
   );
   await pool.query("INSERT INTO learner_school_id_lookups(school_id,found,ip_hash) VALUES($1,$2,$3)", [schoolId, result.rows.length > 0, ipHash]);
