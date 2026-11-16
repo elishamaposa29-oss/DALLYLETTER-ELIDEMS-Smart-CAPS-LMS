@@ -152,6 +152,14 @@ router.get("/school-id/documents/verify/:token/pdf", async (req, res): Promise<v
   res.send(pdf);
 });
 
+router.get("/school-id/documents/shares", requireAuth, async (req, res): Promise<void> => {
+  await ensureSchema();
+  if (!isOwnerRole(req.currentUser!.role)) { res.status(403).json({ error: "Owner access required." }); return; }
+  const result = await pool.query("SELECT v.id,v.document_type,v.document_id,v.recipient_name,v.created_at,v.expires_at,v.revoked_at,v.revocation_reason,u.id AS learner_id,u.name AS learner_name FROM academic_document_verifications v JOIN users u ON u.id=v.learner_id ORDER BY v.created_at DESC LIMIT 200");
+  res.setHeader("Cache-Control","private, no-store");
+  res.json(result.rows);
+});
+
 router.patch("/school-id/documents/:verificationId/revoke", requireAuth, async (req, res): Promise<void> => {
   await ensureSchema();
   const actor = req.currentUser!;
