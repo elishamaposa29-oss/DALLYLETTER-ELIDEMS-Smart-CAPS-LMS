@@ -22,6 +22,7 @@ const ForgotPassword = lazy(() => import("@/pages/ForgotPassword"));
 const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
 const VerifyEmail = lazy(() => import("@/pages/VerifyEmail"));
 const TransferVerification = lazy(() => import("@/pages/TransferVerification"));
+const SchoolIdVerification = lazy(() => import("@/pages/SchoolIdVerification"));
 const Register = lazy(() => import("@/pages/Register"));
 const Suspended = lazy(() => import("@/pages/Suspended"));
 const StudentHome = lazy(() => import("@/pages/student/StudentHome"));
