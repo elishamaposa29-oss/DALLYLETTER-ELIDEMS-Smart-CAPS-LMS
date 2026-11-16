@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { createHash, randomBytes } from "node:crypto";
-import { pool } from "@workspace/db";
-import { requireAuth } from "../lib/auth-middleware";
+import { pool, db, auditLogsTable } from "@workspace/db";
+import { requireAuth, isOwnerRole } from "../lib/auth-middleware";
 
 const router = Router();
 let schemaReady: Promise<void> | null = null;
@@ -29,6 +29,21 @@ async function ensureSchema(): Promise<void> {
     );
     ALTER TABLE learner_school_id_lookups ADD COLUMN IF NOT EXISTS ip_hash text;
     CREATE INDEX IF NOT EXISTS learner_school_id_lookups_time_idx ON learner_school_id_lookups(requested_at DESC);
+    CREATE TABLE IF NOT EXISTS academic_document_verifications (
+      id bigserial PRIMARY KEY,
+      token_hash text NOT NULL UNIQUE,
+      document_type text NOT NULL CHECK (document_type IN ('report','transfer','achievement')),
+      document_id bigint NOT NULL,
+      learner_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      recipient_name text NOT NULL,
+      created_by integer NOT NULL REFERENCES users(id),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      expires_at timestamptz NOT NULL DEFAULT now()+interval '365 days',
+      revoked_at timestamptz,
+      revoked_by integer REFERENCES users(id),
+      revocation_reason text
+    );
+    CREATE INDEX IF NOT EXISTS academic_document_verifications_document_idx ON academic_document_verifications(document_type,document_id);
   `).then(async () => {
     const learners = await pool.query("SELECT u.id FROM users u WHERE lower(u.role) IN ('student','learner') AND COALESCE(u.is_blocked,false)=false AND COALESCE(u.is_suspended,false)=false AND NOT EXISTS (SELECT 1 FROM learner_school_ids s WHERE s.user_id=u.id) ORDER BY u.id");
     for (const learner of learners.rows) {
