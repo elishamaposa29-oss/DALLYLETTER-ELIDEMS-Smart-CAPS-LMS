@@ -1,5 +1,6 @@
 import { Router } from "express";
-import { randomUUID, createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
+import { isValidSchoolId } from "../lib/school-id";
 import { db, aiActionsTable, auditLogsTable, usersTable, platformSettingsTable, pool } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { requireAuth } from "../lib/auth-middleware";
@@ -261,10 +262,7 @@ router.patch("/ai/actions/:id/reverse", requireAuth, async (req, res): Promise<v
 router.post("/ai/school-id-analysis", requireAuth, async (req, res): Promise<void> => {
   const schoolId = String(req.body?.schoolId || "").trim().toUpperCase();
   const question = typeof req.body?.question === "string" ? req.body.question.trim() : "";
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  const valid = /^DL-[A-HJ-NP-Z2-9]{17}$/.test(schoolId) &&
-    schoolId[19] === alphabet[createHash("sha256").update(schoolId.slice(3, 19)).digest()[0] % alphabet.length];
-  if (!valid) { res.status(404).json({ verified: false, error: "A valid exact School ID is required. Names and approximate IDs cannot be used." }); return; }
+  if (!isValidSchoolId(schoolId)) { res.status(404).json({ verified: false, error: "A valid exact School ID is required. Names and approximate IDs cannot be used." }); return; }
   if (!question || question.length > 3000) { res.status(400).json({ error: "Provide a question between 1 and 3,000 characters." }); return; }
   const found = await pool.query(
     "SELECT s.user_id,u.name,u.grade,p.section_settings FROM learner_school_ids s JOIN users u ON u.id=s.user_id LEFT JOIN profile_privacy_settings p ON p.user_id=s.user_id WHERE s.school_id=$1 AND lower(u.role) IN ('student','learner') AND COALESCE(u.is_blocked,false)=false AND COALESCE(u.is_suspended,false)=false LIMIT 1",
