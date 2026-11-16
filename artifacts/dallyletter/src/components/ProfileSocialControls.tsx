@@ -37,7 +37,6 @@ export function ProfileSocialControls({profileId,isSelf,role}:{profileId:number|
   const [requests,setRequests]=useState<RequestRow[]>([]);
   const [settings,setSettings]=useState<Record<string,SectionSetting>>({});
   const [chatPrivacy,setChatPrivacy]=useState<"everyone"|"approval_required">("everyone");
-  const [sensitivePersonalDataConsent,setSensitivePersonalDataConsent]=useState(false);
   const [sensitivePersonalDataFields,setSensitivePersonalDataFields]=useState<string[]>([]);
 
   const load=async()=>{
@@ -57,7 +56,7 @@ export function ProfileSocialControls({profileId,isSelf,role}:{profileId:number|
           const saved=data.privacy?.[key];
           next[key]={mode:saved?.mode||(publicByDefault.has(key)?"everyone":"me_only_authorized"),selectedUserIds:Array.isArray(saved?.selectedUserIds)?saved.selectedUserIds.map(Number):[]};
         }
-        setSettings(next);setChatPrivacy(data.chatPrivacy==="approval_required"?"approval_required":"everyone");setSensitivePersonalDataConsent(Boolean(data.privacy?.sensitive_personal_data_consent?.enabled));setSensitivePersonalDataFields(Array.isArray(data.privacy?.sensitive_personal_data_consent?.fields)?data.privacy.sensitive_personal_data_consent.fields:[]);
+        setSettings(next);setChatPrivacy(data.chatPrivacy==="approval_required"?"approval_required":"everyone");setSensitivePersonalDataFields(Array.isArray(data.privacy?.sensitive_personal_data_consent?.fields)?data.privacy.sensitive_personal_data_consent.fields:[]);
       }
     }catch(e){setError(e instanceof Error?e.message:"Could not load connections and privacy.");}
   };
@@ -96,7 +95,7 @@ export function ProfileSocialControls({profileId,isSelf,role}:{profileId:number|
     setBusy(true);setError("");setNotice("");
     try{
       const result=await api<any>("/api/profile/me/privacy",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({sectionSettings:settings,chatPrivacy,sensitivePersonalDataConsent:sensitivePersonalDataFields.length>0,sensitivePersonalDataFields})});
-      setSettings(result.sectionSettings);setChatPrivacy(result.chatPrivacy);setSensitivePersonalDataConsent(Boolean(result.sensitivePersonalDataConsent));setSensitivePersonalDataFields(Array.isArray(result.sensitivePersonalDataFields)?result.sensitivePersonalDataFields:[]);setNotice("Your privacy and consent settings have been saved.");
+      setSettings(result.sectionSettings);setChatPrivacy(result.chatPrivacy);setSensitivePersonalDataFields(Array.isArray(result.sensitivePersonalDataFields)?result.sensitivePersonalDataFields:[]);setNotice("Your privacy and consent settings have been saved.");
     }catch(e){setError(e instanceof Error?e.message:"Privacy settings could not be saved.");}
     finally{setBusy(false);}
   };
