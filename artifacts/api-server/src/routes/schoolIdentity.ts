@@ -81,7 +81,9 @@ router.post("/school-id/documents/:type/:id/share", requireAuth, async (req, res
   const tokenHash = createHash("sha256").update(token).digest("hex");
   const saved = await pool.query("INSERT INTO academic_document_verifications(token_hash,document_type,document_id,learner_id,recipient_name,created_by) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,created_at,expires_at", [tokenHash,type,id,document.learner_id,recipientName,actor.id]);
   await db.insert(auditLogsTable).values({ performedBy: actor.id, action: "academic_document.share_created", category: "academic", targetType: type, targetId: id, details: JSON.stringify({ verificationId: saved.rows[0].id, recipientName }) });
-  res.status(201).json({ verificationId: Number(saved.rows[0].id), documentType: type, recipientName, sharedAt: saved.rows[0].created_at, expiresAt: saved.rows[0].expires_at, verificationPath: "/verify/document/" + token });
+  const verificationPath = "/verify/document/" + token;
+  const publicBase = String(process.env.PUBLIC_APP_URL || process.env.VITE_APP_URL || "").trim().replace(/\/+$/,"");
+  res.status(201).json({ verificationId: Number(saved.rows[0].id), documentType: type, recipientName, sharedAt: saved.rows[0].created_at, expiresAt: saved.rows[0].expires_at, verificationPath, verificationUrl: publicBase ? publicBase + verificationPath : verificationPath });
 });
 
 router.get("/school-id/documents/verify/:token", async (req, res): Promise<void> => {
