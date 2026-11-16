@@ -32,6 +32,10 @@ assert.match(ai,/verified published academic facts/,"AI analysis must be grounde
 assert.match(privacy,/profile\.sensitive_data_consent\.enabled/,"Consent enablement must be audited");
 assert.match(privacy,/profile\.sensitive_data_consent\.revoked/,"Consent revocation must be audited");
 assert.match(privacy,/sensitive_personal_data_consent/,"Consent must persist in Profile Hub privacy settings");
+assert.match(privacy,/sensitivePersonalDataFields/,"Consent must be saved for individually selected fields");
+assert.match(privacy,/guardianApprovalVerified:false/,"Learner selection must not substitute for guardian verification");
+assert.match(card,/api\.qrserver\.com/,"School ID card must provide a QR code for the verification URL");
+assert.match(card,/navigator\.share/,"School ID card must use native sharing where available");
 assert.match(card,/school-id\/me/,"Learner Profile Hub must request its own School ID");
 assert.match(hub,/SchoolIdCard/,"School ID card must be integrated into Profile Hub");
 assert.match(page,/school-id\/verify/,"Public verification page must call the exact ID endpoint");
