@@ -294,7 +294,7 @@ router.get("/academic-records/transfer-verification/:token", async (req, res): P
   if (!/^[A-Za-z0-9_-]{43}$/.test(token)) { res.status(404).json({ error: "Verification link is invalid or expired." }); return; }
   const tokenHash = createHash("sha256").update(token).digest("hex");
   const result = await pool.query(
-    "SELECT id,form_data,reviewed_at,verification_token_expires_at,verification_verified_at FROM academic_transfer_requests WHERE verification_token_hash=$1 AND status='approved' AND verification_token_expires_at>now() LIMIT 1",
+    "SELECT id,form_data,reviewed_at,verification_token_expires_at,verification_verified_at FROM academic_transfer_requests WHERE verification_token_hash=$1 AND status='approved' AND verification_token_expires_at>now() AND verification_revoked_at IS NULL LIMIT 1",
     [tokenHash],
   );
   const row = result.rows[0];
@@ -314,6 +314,21 @@ router.get("/academic-records/transfer-verification/:token", async (req, res): P
     expiresAt: row.verification_token_expires_at,
     verifiedAt: row.verification_verified_at,
   });
+});
+
+router.patch("/academic-records/transfer-requests/:id/revoke-verification", requireAuth, async (req, res): Promise<void> => {
+  const owner = req.currentUser!;
+  if (!isOwnerRole(owner.role)) { res.status(403).json({ error: "Only the Owner can revoke a transfer document verification link." }); return; }
+  const id = Number(req.params.id);
+  const reason = typeof req.body?.reason === "string" ? req.body.reason.trim().slice(0, 1000) : "";
+  if (!Number.isSafeInteger(id) || id < 1 || reason.length < 3) { res.status(400).json({ error: "A valid transfer request ID and revocation reason are required." }); return; }
+  const result = await pool.query(
+    "UPDATE academic_transfer_requests SET verification_revoked_at=now(),verification_revoked_by=$1,verification_revocation_reason=$2,updated_at=now() WHERE id=$3 AND status='approved' AND verification_token_hash IS NOT NULL AND verification_revoked_at IS NULL RETURNING id,verification_revoked_at",
+    [owner.id, reason, id],
+  );
+  if (!result.rowCount) { res.status(404).json({ error: "Active approved verification record not found." }); return; }
+  await db.insert(auditLogsTable).values({ performedBy: owner.id, action: "academic_document.verification_revoked", category: "academic", targetType: "transfer_request", targetId: id, details: JSON.stringify({ reason }) });
+  res.json({ revoked: true, requestId: id, revokedAt: result.rows[0].verification_revoked_at });
 });
 
 router.get("/academic-records/transfer-requests/:id/download", requireAuth, requireManagerPermissionIfManager("transfers.view"), async (req, res): Promise<void> => {
