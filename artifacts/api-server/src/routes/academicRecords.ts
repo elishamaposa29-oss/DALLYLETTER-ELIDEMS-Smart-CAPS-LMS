@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { createHash, randomBytes } from "node:crypto";
+import { deflateSync, inflateSync } from "node:zlib";
 import { db, auditLogsTable, pool } from "@workspace/db";
 import { getAIProvider } from "../lib/ai-provider";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
@@ -30,6 +31,16 @@ function jpegDimensions(data: Buffer): { width: number; height: number } | null 
   }
   return null;
 }
+function decodePngForPdf(data: Buffer): { bytes: Buffer; width: number; height: number } | null {
+  const signature=Buffer.from([137,80,78,71,13,10,26,10]);if(data.length<33||!data.subarray(0,8).equals(signature))return null;
+  let offset=8,width=0,height=0,depth=0,typeCode=0,interlace=0;const chunks:Buffer[]=[];
+  while(offset+12<=data.length){const length=data.readUInt32BE(offset);if(length>data.length-offset-12)return null;const type=data.toString("ascii",offset+4,offset+8),chunk=data.subarray(offset+8,offset+8+length);if(type==="IHDR"){width=chunk.readUInt32BE(0);height=chunk.readUInt32BE(4);depth=chunk[8];typeCode=chunk[9];interlace=chunk[12];}if(type==="IDAT")chunks.push(chunk);offset+=length+12;if(type==="IEND")break;}
+  const channels=({0:1,2:3,4:2,6:4} as Record<number,number>)[typeCode];if(!width||!height||width*height>16_000_000||depth!==8||interlace!==0||!channels||!chunks.length)return null;
+  const stride=width*channels,raw=inflateSync(Buffer.concat(chunks));if(raw.length!==(stride+1)*height)return null;const decoded=Buffer.alloc(stride*height);
+  for(let y=0;y<height;y++){const filter=raw[y*(stride+1)],src=y*(stride+1)+1,dst=y*stride;if(filter>4)return null;for(let x=0;x<stride;x++){const v=raw[src+x],a=x>=channels?decoded[dst+x-channels]:0,b=y?decoded[dst-stride+x]:0,d=y&&x>=channels?decoded[dst-stride+x-channels]:0;let p=0;if(filter===1)p=a;else if(filter===2)p=b;else if(filter===3)p=Math.floor((a+b)/2);else if(filter===4){const q=a+b-d,pa=Math.abs(q-a),pb=Math.abs(q-b),pd=Math.abs(q-d);p=pa<=pb&&pa<=pd?a:pb<=pd?b:d;}decoded[dst+x]=(v+p)&255;}}
+  const rgb=Buffer.alloc(width*height*3);for(let i=0;i<width*height;i++){const s=i*channels,d=i*3;if(typeCode===0||typeCode===4){const g=decoded[s],a=typeCode===4?decoded[s+1]/255:1,v=Math.round(g*a+255*(1-a));rgb[d]=v;rgb[d+1]=v;rgb[d+2]=v;}else{const a=typeCode===6?decoded[s+3]/255:1;rgb[d]=Math.round(decoded[s]*a+255*(1-a));rgb[d+1]=Math.round(decoded[s+1]*a+255*(1-a));rgb[d+2]=Math.round(decoded[s+2]*a+255*(1-a));}}
+  return {bytes:deflateSync(rgb),width,height};
+}
 function buildBrandedDocumentPdf(title: string, _subtitle: string, reference: string, sections: BrandedPdfSection[], transferImages: TransferPdfImage[] = []): Buffer {
   const esc=(value:unknown)=>String(value??"—").normalize("NFKD").replace(/[^\x20-\xFF]/g,"?").replace(/\\/g,"\\\\").replace(/\(/g,"\\(").replace(/\)/g,"\\)");
   const pages: Array<Array<{kind:"section"|"line";text:string}>>=[[]];
@@ -44,10 +55,10 @@ function buildBrandedDocumentPdf(title: string, _subtitle: string, reference: st
   for(const section of sections){push("section",section.heading);for(const row of section.rows)push("line",row);push("line","");}
   const validImages=transferImages.flatMap(image=>{
     if(typeof image.dataUrl!=="string")return [];
-    const match=image.dataUrl.match(/^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/);
-    if(!match)return [];
-    const bytes=Buffer.from(match[1],"base64"),dimensions=jpegDimensions(bytes);
-    return dimensions&&dimensions.width>0&&dimensions.height>0&&bytes.length<=900*1024?[{name:image.name,bytes,...dimensions}]:[];
+    const match=image.dataUrl.match(/^data:image\\/(jpeg|png);base64,([A-Za-z0-9+/=]+)$/);if(!match)return [];
+    const bytes=Buffer.from(match[2],"base64");if(bytes.length>900*1024)return [];
+    if(match[1]==="jpeg"){const dimensions=jpegDimensions(bytes);return dimensions&&dimensions.width>0&&dimensions.height>0?[{name:image.name,bytes,...dimensions,filter:"DCTDecode"}]:[];}
+    const decoded=decodePngForPdf(bytes);return decoded?[{name:image.name,...decoded,filter:"FlateDecode"}]:[];
   });
   if(validImages.length)pages.push([]);
   const objects:string[]=[
@@ -59,7 +70,7 @@ function buildBrandedDocumentPdf(title: string, _subtitle: string, reference: st
   const imageObjectIds:number[]=[];
   for(const image of validImages){
     const id=objects.length+1;imageObjectIds.push(id);
-    objects.push("<< /Type /XObject /Subtype /Image /Width "+image.width+" /Height "+image.height+" /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length "+image.bytes.length+" >>\nstream\n"+image.bytes.toString("binary")+"\nendstream");
+    objects.push("<< /Type /XObject /Subtype /Image /Width "+image.width+" /Height "+image.height+" /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /"+image.filter+" /Length "+image.bytes.length+" >>\nstream\n"+image.bytes.toString("binary")+"\nendstream");
   }
   const pageObjectIds:number[]=[];
   pages.forEach((items,i)=>{
