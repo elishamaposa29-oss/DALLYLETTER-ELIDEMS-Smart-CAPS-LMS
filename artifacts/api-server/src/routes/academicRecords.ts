@@ -619,7 +619,7 @@ router.get("/academic-records/reports/drafts/:id/download/pdf", requireAuth, req
   const sourceSnapshot = typeof row.source_snapshot === "string" ? JSON.parse(row.source_snapshot) : row.source_snapshot;
   const learnerName = String(draftContent?.learner || sourceSnapshot?.learner?.name || "Learner record");
   const schoolId = await ensureLearnerSchoolId(Number(row.learner_id));
-  const publicBase = String(process.env.PUBLIC_APP_URL || process.env.VITE_APP_URL || "").trim().replace(/\\/+$/,"");
+  const publicBase = String(process.env.PUBLIC_APP_URL || process.env.VITE_APP_URL || "").trim().replace(/\/+$/,"");
   const schoolVerificationUrl = (publicBase ? publicBase : "") + "/verify/school/" + schoolId;
   const pdf = buildAcademicReportPdf({ id, reportType: String(row.report_type), termLabel: String(row.term_label), periodStart: row.period_start, periodEnd: row.period_end, learnerName, schoolId, schoolVerificationUrl, reviewedAt: row.reviewed_at, reviewedBy: row.reviewed_by, reviewNote: row.review_note, report: draftContent });
   res.setHeader("Content-Type", "application/pdf");
