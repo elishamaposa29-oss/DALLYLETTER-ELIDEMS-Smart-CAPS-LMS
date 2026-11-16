@@ -273,9 +273,9 @@ const ownQualificationDelete=await request("/api/users/me/qualifications/"+owned
 assert.equal(ownQualificationDelete.status,200,"A teacher can permanently delete their own qualification, including a verified user-submitted record");
 assert.equal((await pool.query("SELECT 1 FROM teacher_qualifications WHERE id=$1",[ownedQualification.rows[0].id])).rowCount,0,"Qualification deletion removes the qualification and cascaded review history");
 assert.equal((await pool.query("SELECT 1 FROM teacher_documents WHERE id=$1 AND user_id=$2",[attachedCertificate.rows[0].id,individualDeletionApplicant.id])).rowCount,0,"Deleting a qualification also removes its exclusively attached certificate bytes");
-assert.equal((await pool.query("SELECT document_id FROM teacher_qualifications WHERE id=$1",[secondQualification.rows[0].id])).rows[0].document_id,null,"Deleting a shared uploaded certificate clears its qualification reference instead of leaving a dangling link");
 const sharedCertificateDelete=await request("/api/users/me/teacher-documents/"+directDeleteCertificate.rows[0].id,{token:individualDeletionApplicant.token,method:"DELETE"});
 assert.equal(sharedCertificateDelete.status,200,"Teacher can directly delete a certificate even when a qualification record references it");
+assert.equal((await pool.query("SELECT document_id FROM teacher_qualifications WHERE id=$1",[secondQualification.rows[0].id])).rows[0].document_id,null,"Deleting a shared uploaded certificate clears its qualification reference instead of leaving a dangling link");
 assert.equal((await pool.query("SELECT 1 FROM teacher_qualifications WHERE id=$1",[secondQualification.rows[0].id])).rowCount,1,"Deleting an uploaded certificate preserves its separate qualification record");
 const secondQualificationDelete=await request("/api/users/me/qualifications/"+secondQualification.rows[0].id,{token:individualDeletionApplicant.token,method:"DELETE"});
 assert.equal(secondQualificationDelete.status,200,"Qualification remains individually deletable after its certificate is removed");
