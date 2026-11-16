@@ -366,7 +366,7 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, requ
   if (row.status !== "approved") { res.status(403).json({ error: "The transfer letter cannot be downloaded until an authorized manager approves the request." }); return; }
   const schoolId = await ensureLearnerSchoolId(Number(row.learner_id));
   const publicBase = String(process.env.PUBLIC_APP_URL || process.env.VITE_APP_URL || "").trim().replace(/\/+$/,"");
-  const schoolVerificationUrl = schoolIdRow ? (publicBase ? publicBase + "/verify/school/" + schoolId : "/verify/school/" + schoolId) : "Not available";
+  const schoolVerificationUrl = publicBase ? publicBase + "/verify/school/" + schoolId : "/verify/school/" + schoolId;
   const [enrollmentRows, attendanceRows, awardRows, subjectRows, reportRows] = await Promise.all([
     pool.query("SELECT c.title,c.subject,c.grade,e.enrolled_at,e.progress_percent,e.status FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 ORDER BY e.enrolled_at DESC LIMIT 12", [row.learner_id]),
     pool.query("SELECT count(*)::int AS sessions,count(*) FILTER (WHERE lower(status)='present')::int AS present,count(*) FILTER (WHERE lower(status)='absent')::int AS absent FROM attendance WHERE student_id=$1", [row.learner_id]),
