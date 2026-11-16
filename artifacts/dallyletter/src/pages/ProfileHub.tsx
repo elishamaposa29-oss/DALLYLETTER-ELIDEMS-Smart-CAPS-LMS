@@ -34,43 +34,44 @@ const TRANSFER_IMAGE_OUTPUT_LIMIT = 900 * 1024;
 async function transferImageToDataUrl(file: File): Promise<string> {
   if (!["image/png", "image/jpeg"].includes(file.type)) throw new Error("Choose a PNG or JPG image.");
   if (!file.size || file.size > TRANSFER_IMAGE_INPUT_LIMIT) throw new Error("Choose an image smaller than 15 MB.");
-  if (file.size <= TRANSFER_IMAGE_OUTPUT_LIMIT) {
-    return await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error("The selected image could not be read."));
-      reader.onload = () => resolve(String(reader.result || ""));
-      reader.readAsDataURL(file);
-    });
-  }
   const bitmap = await createImageBitmap(file);
   try {
     let width = bitmap.width, height = bitmap.height;
     const longest = Math.max(width, height);
     if (longest > 1800) { const scale = 1800 / longest; width = Math.round(width * scale); height = Math.round(height * scale); }
-    const canvas = document.createElement("canvas");
-    const context = canvas.getContext("2d");
+    const canvas = document.createElement("canvas"), context = canvas.getContext("2d");
     if (!context) throw new Error("Image compression is unavailable in this browser.");
-    for (let attempt = 0; attempt < 8; attempt += 1) {
+    for (let attempt = 0; attempt < 9; attempt += 1) {
       canvas.width = width; canvas.height = height;
       context.fillStyle = "#ffffff"; context.fillRect(0, 0, width, height);
       context.drawImage(bitmap, 0, 0, width, height);
-      const formats = file.type === "image/png"
-        ? [{ type: "image/png", quality: undefined as number | undefined }, { type: "image/jpeg", quality: 0.86 }]
-        : [{ type: "image/jpeg", quality: 0.88 }];
-      for (const format of formats) {
-        const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, format.type, format.quality));
-        if (blob && blob.size <= TRANSFER_IMAGE_OUTPUT_LIMIT) {
-          return await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onerror = () => reject(new Error("The compressed image could not be read."));
-            reader.onload = () => resolve(String(reader.result || ""));
-            reader.readAsDataURL(blob);
-          });
-        }
+      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/jpeg", Math.max(0.55, 0.9 - attempt * 0.045)));
+      if (blob && blob.size <= TRANSFER_IMAGE_OUTPUT_LIMIT) {
+        return await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onerror = () => reject(new Error("The compressed image could not be read."));
+          reader.onload = () => resolve(String(reader.result || ""));
+          reader.readAsDataURL(blob);
+        });
       }
-      width = Math.max(320, Math.round(width * 0.78)); height = Math.max(240, Math.round(height * 0.78));
+      width = Math.max(240, Math.round(width * 0.82)); height = Math.max(180, Math.round(height * 0.82));
     }
     throw new Error("This image could not be compressed below 900 KB. Please choose a smaller image.");
+  } finally { bitmap.close(); }
+}
+
+async function loadDallyletterLogoDataUrl(): Promise<string> {
+  const response = await fetch("/icons/icon-192.png", { cache: "force-cache" });
+  if (!response.ok) throw new Error("Dallyletter logo could not be loaded.");
+  const blob = await response.blob();
+  const bitmap = await createImageBitmap(blob);
+  try {
+    const canvas = document.createElement("canvas"); canvas.width = bitmap.width; canvas.height = bitmap.height;
+    const context = canvas.getContext("2d"); if (!context) throw new Error("Logo conversion unavailable.");
+    context.fillStyle = "#ffffff"; context.fillRect(0,0,canvas.width,canvas.height); context.drawImage(bitmap,0,0);
+    const jpeg = await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,"image/jpeg",0.9));
+    if(!jpeg) throw new Error("Dallyletter logo conversion failed.");
+    return await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onerror=()=>reject(new Error("Logo could not be read."));reader.onload=()=>resolve(String(reader.result||""));reader.readAsDataURL(jpeg);});
   } finally { bitmap.close(); }
 }
 
@@ -161,6 +162,7 @@ export default function ProfileHub() {
   const headmasterSignatureInputRef = useRef<HTMLInputElement|null>(null);
   const transferAttachmentsRef = useRef<HTMLDetailsElement|null>(null);
   const [transferImageBusy,setTransferImageBusy] = useState(false);
+  useEffect(()=>{let active=true;if(!transferForm.schoolLogoDataUrl){void loadDallyletterLogoDataUrl().then(logo=>{if(active)setTransferForm((current:any)=>current.schoolLogoDataUrl?current:{...current,schoolLogoDataUrl:logo});}).catch(()=>undefined);}return()=>{active=false;};},[]);
 
   const saveTransferImage = async (field:"schoolLogoDataUrl"|"guardianSignatureDataUrl"|"headmasterSignatureDataUrl", file?:File) => {
     if (!file) return;
