@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 
 const [
   api, privacy, card, schoolPage, hub, app, academic, schema, ai, docs,
-  achievementApi, achievementUi, pdf, idHelper, documentPage, mobileHub, webSectionViewer,
+  achievementApi, achievementUi, pdf, idHelper, documentPage, mobileHub, webSectionViewer, lessonApi, sharedLessonPage, mobileLessons,
 ] = await Promise.all([
   readFile("artifacts/api-server/src/routes/schoolIdentity.ts","utf8"),
   readFile("artifacts/api-server/src/routes/profileConnections.ts","utf8"),
@@ -22,6 +22,9 @@ const [
   readFile("artifacts/dallyletter/src/pages/DocumentVerification.tsx","utf8"),
   readFile("artifacts/dallyletter-mobile/app/profile-hub.tsx","utf8"),
   readFile("artifacts/dallyletter/src/components/ProfileSectionViewer.tsx","utf8"),
+  readFile("artifacts/api-server/src/routes/lessons.ts","utf8"),
+  readFile("artifacts/dallyletter/src/pages/SharedLessonPreview.tsx","utf8"),
+  readFile("artifacts/dallyletter-mobile/app/(student)/lessons.tsx","utf8"),
 ]);
 
 assert.match(idHelper,/randomBytes\(16\)/,"School IDs must use 80 random bits");
@@ -78,5 +81,11 @@ assert.match(mobileHub,/Share protected link/,"Android Profile Hub must share pr
 assert.match(mobileHub,/Create protected share/,"Android Profile Hub must collect the intended recipient name");
 assert.match(webSectionViewer,/Share protected link/,"Web Profile Hub must share approved academic reports");
 assert.match(webSectionViewer,/Share protected transfer copy/,"Web Profile Hub must share approved transfer documents");
+assert.match(lessonApi,/lessons\\/:id\\/share/,"Lessons must have a protected share-token creation endpoint");
+assert.match(lessonApi,/lessons\\/:id\\/shared/,"Lessons must have a public token-verified preview endpoint");
+assert.match(lessonApi,/validMediaShare\\("lesson:"/,"Shared lesson preview tokens must be validated and expiring");
+assert.match(sharedLessonPage,/No account required to preview/,"Shared lesson preview must work without signup");
+assert.match(app,/SharedLessonPreview/,"Shared lesson preview route must be registered");
+assert.match(mobileLessons,/Share protected preview/,"Android lesson sharing must use protected preview links");
 
 console.log("School ID / consent / document verification static checks passed.");
