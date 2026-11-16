@@ -353,7 +353,7 @@ router.get("/lessons/:id/shared", async (req, res): Promise<void> => {
   const expiry = Number(String(token).split(".")[0]);
   const signedMediaUrl = (value: unknown) => {
     if (typeof value !== "string") return value;
-    return value.replace(/(\\/api\\/lessons\\/media\\/([a-f0-9-]{36})(?:\\?type=([^&\\s"'<>]+))?)/gi, (_match, original, storageKey, mediaType) => {
+    return value.replace(/(\/api\/lessons\/media\/([a-f0-9-]{36})(?:\?type=([^&\s"'<>]+))?)/gi, (_match, original, storageKey, mediaType) => {
       const mediaToken = signMediaShare(storageKey, expiry);
       return original + (String(original).includes("?") ? "&" : "?") + "shareToken=" + mediaToken;
     });
