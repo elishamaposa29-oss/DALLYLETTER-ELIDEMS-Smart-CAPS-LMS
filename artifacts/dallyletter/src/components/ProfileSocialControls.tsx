@@ -37,6 +37,7 @@ export function ProfileSocialControls({profileId,isSelf,role}:{profileId:number|
   const [requests,setRequests]=useState<RequestRow[]>([]);
   const [settings,setSettings]=useState<Record<string,SectionSetting>>({});
   const [chatPrivacy,setChatPrivacy]=useState<"everyone"|"approval_required">("everyone");
+  const [sensitivePersonalDataConsent,setSensitivePersonalDataConsent]=useState(false);
 
   const load=async()=>{
     if(!profileId)return;
@@ -55,7 +56,7 @@ export function ProfileSocialControls({profileId,isSelf,role}:{profileId:number|
           const saved=data.privacy?.[key];
           next[key]={mode:saved?.mode||(publicByDefault.has(key)?"everyone":"me_only_authorized"),selectedUserIds:Array.isArray(saved?.selectedUserIds)?saved.selectedUserIds.map(Number):[]};
         }
-        setSettings(next);setChatPrivacy(data.chatPrivacy==="approval_required"?"approval_required":"everyone");
+        setSettings(next);setChatPrivacy(data.chatPrivacy==="approval_required"?"approval_required":"everyone");setSensitivePersonalDataConsent(Boolean(data.privacy?.sensitive_personal_data_consent?.enabled));
       }
     }catch(e){setError(e instanceof Error?e.message:"Could not load connections and privacy.");}
   };
@@ -93,8 +94,8 @@ export function ProfileSocialControls({profileId,isSelf,role}:{profileId:number|
   const save=async()=>{
     setBusy(true);setError("");setNotice("");
     try{
-      const result=await api<any>("/api/profile/me/privacy",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({sectionSettings:settings,chatPrivacy})});
-      setSettings(result.sectionSettings);setChatPrivacy(result.chatPrivacy);setNotice("Your independent section privacy settings have been saved.");
+      const result=await api<any>("/api/profile/me/privacy",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({sectionSettings:settings,chatPrivacy,sensitivePersonalDataConsent})});
+      setSettings(result.sectionSettings);setChatPrivacy(result.chatPrivacy);setSensitivePersonalDataConsent(Boolean(result.sensitivePersonalDataConsent));setNotice("Your privacy and consent settings have been saved.");
     }catch(e){setError(e instanceof Error?e.message:"Privacy settings could not be saved.");}
     finally{setBusy(false);}
   };
@@ -124,6 +125,11 @@ export function ProfileSocialControls({profileId,isSelf,role}:{profileId:number|
             <option value="everyone">Everyone allowed by existing school chat rules</option>
             <option value="approval_required">Approved connections only (request required)</option>
           </select>
+        </section>
+        <section className="rounded-lg border border-amber-500/40 bg-amber-50/40 p-3">
+          <h4 className="font-semibold">Sensitive personal information consent</h4>
+          <p className="mt-1 text-xs text-muted-foreground">Optional, separate approval for sensitive personal details (such as contact and guardian information) to be included in a verified share. This does not automatically publish anything; only explicitly selected fields in a future share may be disclosed. Health information and account credentials are never included.</p>
+          <label className="mt-3 flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={sensitivePersonalDataConsent} onChange={e=>setSensitivePersonalDataConsent(e.target.checked)}/><span>I explicitly approve sensitive personal-data sharing when a verified portfolio share asks for it. I can revoke this at any time.</span></label>
         </section>
         <section className="space-y-3">
           <h4 className="font-semibold">Independent section visibility</h4>
