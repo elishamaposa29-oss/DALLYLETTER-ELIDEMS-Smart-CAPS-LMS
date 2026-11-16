@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [api,privacy,card,page,hub,app,academic,schema] = await Promise.all([
+const [api,privacy,card,page,hub,app,academic,schema,ai] = await Promise.all([
   readFile("artifacts/api-server/src/routes/schoolIdentity.ts","utf8"),
   readFile("artifacts/api-server/src/routes/profileConnections.ts","utf8"),
   readFile("artifacts/dallyletter/src/components/SchoolIdCard.tsx","utf8"),
@@ -10,6 +10,7 @@ const [api,privacy,card,page,hub,app,academic,schema] = await Promise.all([
   readFile("artifacts/dallyletter/src/App.tsx","utf8"),
   readFile("artifacts/api-server/src/routes/academicRecords.ts","utf8"),
   readFile("artifacts/api-server/src/lib/ensureProfileHubSchema.ts","utf8"),
+  readFile("artifacts/api-server/src/routes/ai.ts","utf8"),
 ]);
 assert.match(api,/randomBytes\(16\)/,"School IDs must use 80 random bits");
 assert.match(api,/NOT EXISTS \(SELECT 1 FROM learner_school_ids/,"Existing learner accounts must receive School IDs during the additive backfill");
@@ -24,6 +25,10 @@ assert.match(api,/isPublic\("transfers"\)/,"Public portfolio must support approv
 assert.match(academic,/revoke-verification/,"Owner must have a transfer verification revocation endpoint");
 assert.match(academic,/verification_revoked_at IS NULL/,"Revoked transfer links must fail public verification");
 assert.match(schema,/verification_revocation_reason/,"Transfer revocation reason must be persisted");
+assert.match(ai,/\/ai\/school-id-analysis/,"AI academic analysis must have a dedicated School ID route");
+assert.match(ai,/Names and approximate IDs cannot be used/,"AI must reject name-only or approximate identity lookups");
+assert.match(ai,/settings\[key\]\?\.mode === "everyone"/,"AI must use only learner-published portfolio sections");
+assert.match(ai,/verified published academic facts/,"AI analysis must be grounded in verified academic records");
 assert.match(privacy,/profile\.sensitive_data_consent\.enabled/,"Consent enablement must be audited");
 assert.match(privacy,/profile\.sensitive_data_consent\.revoked/,"Consent revocation must be audited");
 assert.match(privacy,/sensitive_personal_data_consent/,"Consent must persist in Profile Hub privacy settings");
