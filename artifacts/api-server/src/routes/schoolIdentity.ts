@@ -104,7 +104,7 @@ router.get("/school-id/documents/verify/:token", async (req, res): Promise<void>
   const token = String(req.params.token || "");
   if (token.length < 40 || token.length > 100) { res.status(404).json({ verified: false, error: "Document verification not found." }); return; }
   const tokenHash = createHash("sha256").update(token).digest("hex");
-  const found = await pool.query("SELECT v.id,v.document_type,v.document_id,v.learner_id,v.recipient_name,v.created_at,v.expires_at,v.revoked_at,u.name AS learner_name,s.school_id FROM academic_document_verifications v JOIN users u ON u.id=v.learner_id LEFT JOIN learner_school_ids s ON s.user_id=v.learner_id WHERE v.token_hash=$1 LIMIT 1", [tokenHash]);
+  const found = await pool.query("SELECT v.id,v.document_type,v.document_id,v.learner_id,v.recipient_name,v.created_at,v.expires_at,v.revoked_at,u.name AS learner_name,s.school_id,p.section_settings FROM academic_document_verifications v JOIN users u ON u.id=v.learner_id LEFT JOIN learner_school_ids s ON s.user_id=v.learner_id LEFT JOIN profile_privacy_settings p ON p.user_id=v.learner_id WHERE v.token_hash=$1 AND COALESCE(u.is_blocked,false)=false AND COALESCE(u.is_suspended,false)=false LIMIT 1", [tokenHash]);
   const row = found.rows[0];
   if (!row || row.revoked_at || new Date(row.expires_at).getTime() <= Date.now()) { res.status(404).json({ verified: false, error: "This document link is invalid, expired or revoked." }); return; }
   let current: any;
@@ -113,7 +113,7 @@ router.get("/school-id/documents/verify/:token", async (req, res): Promise<void>
   if (row.document_type === "achievement") current = (await pool.query("SELECT id FROM user_achievements WHERE id=$1 AND user_id=$2", [row.document_id,row.learner_id])).rows[0];
   if (!current || (current.status && current.status !== "approved")) { res.status(404).json({ verified: false, error: "The source document is no longer valid." }); return; }
   res.setHeader("Cache-Control","no-store");
-  res.json({ verified: true, verificationId: Number(row.id), documentType: row.document_type, documentId: Number(row.document_id), learner: { name: row.learner_name, schoolId: row.school_id }, recipientName: row.recipient_name, sharedAt: row.created_at, expiresAt: row.expires_at, status: "active" });
+  res.json({ verified: true, verificationId: Number(row.id), documentType: row.document_type, documentId: Number(row.document_id), learner: { name: row.section_settings?.overview?.mode === "everyone" ? row.learner_name : "Privacy protected", schoolId: row.school_id }, recipientName: row.recipient_name, sharedAt: row.created_at, expiresAt: row.expires_at, status: "active" });
 });
 
 router.patch("/school-id/documents/:verificationId/revoke", requireAuth, async (req, res): Promise<void> => {
