@@ -47,7 +47,7 @@ async function ensureSchema(): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS academic_document_verifications_document_idx ON academic_document_verifications(document_type,document_id);
   `).then(async () => {
-    const learners = await pool.query("SELECT u.id FROM users u WHERE lower(u.role) IN ('student','learner') AND COALESCE(u.is_blocked,false)=false AND COALESCE(u.is_suspended,false)=false AND NOT EXISTS (SELECT 1 FROM learner_school_ids s WHERE s.user_id=u.id) ORDER BY u.id");
+    const learners = await pool.query("SELECT u.id FROM users u WHERE lower(u.role) IN ('student','learner','prefect') AND COALESCE(u.is_blocked,false)=false AND COALESCE(u.is_suspended,false)=false AND NOT EXISTS (SELECT 1 FROM learner_school_ids s WHERE s.user_id=u.id) ORDER BY u.id");
     for (const learner of learners.rows) {
       let issued = false;
       for (let attempt = 0; attempt < 5 && !issued; attempt++) {
@@ -176,7 +176,7 @@ router.patch("/school-id/documents/:verificationId/revoke", requireAuth, async (
 router.get("/school-id/me", requireAuth, async (req, res): Promise<void> => {
   await ensureSchema();
   const user = req.currentUser!;
-  if (!["student", "learner"].includes(String(user.role).toLowerCase())) {
+  if (!["student", "learner", "prefect"].includes(String(user.role).toLowerCase())) {
     res.status(403).json({ error: "School IDs are issued to learner accounts." }); return;
   }
   let result = await pool.query("SELECT school_id FROM learner_school_ids WHERE user_id=$1", [user.id]);
