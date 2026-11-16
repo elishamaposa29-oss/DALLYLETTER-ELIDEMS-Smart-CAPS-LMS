@@ -97,7 +97,6 @@ router.get("/school-id/verify/:schoolId", async (req, res): Promise<void> => {
   const isPublic = (key: string) => settings[key]?.mode === "everyone";
   const portfolio: Record<string, unknown> = {};
   const overviewPublished = isPublic("overview");
-  const sensitiveConsentEnabled = settings.sensitive_personal_data_consent?.enabled === true;
   const stripPrivateFields = (value: any): any => {
     if (Array.isArray(value)) return value.map(stripPrivateFields);
     if (!value || typeof value !== "object") return value;
@@ -158,9 +157,6 @@ router.get("/school-id/verify/:schoolId", async (req, res): Promise<void> => {
       "SELECT e.enrolled_at,e.progress_percent,e.status,c.title AS class_title,c.subject FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 ORDER BY e.enrolled_at DESC",
       [learner.user_id],
     )).rows;
-  }
-  if (sensitiveConsentEnabled) {
-    portfolio.sensitivePersonalDataConsent = { approved: true, consentUpdatedAt: settings.sensitive_personal_data_consent.updatedAt || null, note: "Consent is recorded; no sensitive personal fields are currently exposed by this public endpoint." };
   }
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
   res.setHeader("X-Content-Type-Options", "nosniff");
