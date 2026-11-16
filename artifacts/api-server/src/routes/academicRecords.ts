@@ -12,56 +12,98 @@ import { canViewProfileSection } from "./profileConnections";
 const router = Router();
 
 type BrandedPdfSection = { heading: string; rows: string[] };
-function buildBrandedDocumentPdf(title: string, subtitle: string, reference: string, sections: BrandedPdfSection[]): Buffer {
-  const esc=(value:unknown)=>String(value??"—").normalize("NFKD").replace(/[^\x20-\xFF]/g,"?").replace(/\\/g,"\\\\").replace(/\(/g,"\\(").replace(/\)/g,"\\)");
+type TransferPdfImage = { name: string; dataUrl: unknown };
+function jpegDimensions(data: Buffer): { width: number; height: number } | null {
+  if (data.length < 4 || data[0] !== 0xff || data[1] !== 0xd8) return null;
+  let offset = 2;
+  while (offset + 9 < data.length) {
+    if (data[offset] !== 0xff) { offset += 1; continue; }
+    const marker = data[offset + 1]; offset += 2;
+    if (marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) continue;
+    if (offset + 2 > data.length) return null;
+    const length = data.readUInt16BE(offset);
+    if (length < 2 || offset + length > data.length) return null;
+    if ([0xc0,0xc1,0xc2,0xc3,0xc5,0xc6,0xc7,0xc9,0xca,0xcb,0xcd,0xce,0xcf].includes(marker)) {
+      return { height: data.readUInt16BE(offset + 3), width: data.readUInt16BE(offset + 5) };
+    }
+    offset += length;
+  }
+  return null;
+}
+function buildBrandedDocumentPdf(title: string, _subtitle: string, reference: string, sections: BrandedPdfSection[], transferImages: TransferPdfImage[] = []): Buffer {
+  const esc=(value:unknown)=>String(value??"—").normalize("NFKD").replace(/[^\\x20-\\xFF]/g,"?").replace(/\\\\/g,"\\\\\\\\").replace(/\\(/g,"\\\\(").replace(/\\)/g,"\\\\)");
   const pages: Array<Array<{kind:"section"|"line";text:string}>>=[[]];
   let page=pages[0], used=0;
   const push=(kind:"section"|"line",text:string)=>{
-    const words=String(text||"—").split(/\s+/);let line="";
+    const words=String(text||"—").split(/\\s+/);let line="";
     const lines:string[]=[];
     for(const word of words){if((line+" "+word).trim().length>92){if(line)lines.push(line);line=word;}else line=(line+" "+word).trim();}
     if(line)lines.push(line);
     for(const part of lines){const cost=kind==="section"?2:1;if(used+cost>48){page=[];pages.push(page);used=0;}page.push({kind,text:part});used+=cost;}
   };
   for(const section of sections){push("section",section.heading);for(const row of section.rows)push("line",row);push("line","");}
+  const validImages=transferImages.flatMap(image=>{
+    if(typeof image.dataUrl!=="string")return [];
+    const match=image.dataUrl.match(/^data:image\\/jpeg;base64,([A-Za-z0-9+/=]+)$/);
+    if(!match)return [];
+    const bytes=Buffer.from(match[1],"base64"),dimensions=jpegDimensions(bytes);
+    return dimensions&&dimensions.width>0&&dimensions.height>0&&bytes.length<=900*1024?[{name:image.name,bytes,...dimensions}]:[];
+  });
+  if(validImages.length)pages.push([]);
   const objects:string[]=[
     "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids ["+pages.map((_,i)=>(5+i*2)+" 0 R").join(" ")+"] /Count "+pages.length+" >>",
+    "",
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>"
   ];
+  const imageObjectIds:number[]=[];
+  for(const image of validImages){
+    const id=objects.length+1;imageObjectIds.push(id);
+    objects.push("<< /Type /XObject /Subtype /Image /Width "+image.width+" /Height "+image.height+" /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length "+image.bytes.length+" >>\\nstream\\n"+image.bytes.toString("binary")+"\\nendstream");
+  }
+  const pageObjectIds:number[]=[];
   pages.forEach((items,i)=>{
+    const pageId=objects.length+1,contentId=pageId+1;pageObjectIds.push(pageId);
     const commands:string[]=[
       "0.055 0.13 0.29 rg 0 770 595 72 re f",
-      "1 1 1 rg BT /F2 19 Tf 42 811 Td ("+esc("DALLYLETTER ELIDEMS")+") Tj ET",
-      "1 1 1 rg BT /F2 13 Tf 42 789 Td ("+esc(title)+") Tj ET",
-      "0.72 0.55 0.08 rg 0 764 595 5 re f",
-      "0.25 0.29 0.36 rg BT /F1 9 Tf 42 744 Td ("+esc(subtitle)+") Tj ET"
+      "1 1 1 rg BT /F2 18 Tf 42 811 Td ("+esc("DALLYLETTER ELIDEMS")+") Tj ET",
+      "1 1 1 rg BT /F2 12 Tf 42 789 Td ("+esc(title)+") Tj ET",
+      "0.72 0.55 0.08 rg 0 764 595 5 re f"
     ];
     let y=718;
-    for(const item of items){
-      if(item.kind==="section"){
-        commands.push("0.94 0.95 0.97 rg 38 "+(y-5)+" 519 19 re f");
-        commands.push("0.72 0.55 0.08 rg 38 "+(y-5)+" 4 19 re f");
-        commands.push("0.055 0.13 0.29 rg BT /F2 10 Tf 50 "+y+" Td ("+esc(item.text.toUpperCase())+") Tj ET");
-        y-=25;
-      }else if(item.text){
-        commands.push("0.12 0.16 0.22 rg BT /F1 9 Tf 50 "+y+" Td ("+esc(item.text)+") Tj ET");
-        y-=14;
-      }else y-=6;
+    if(i===pages.length-1&&validImages.length){
+      commands.push("0.055 0.13 0.29 rg BT /F2 12 Tf 42 735 Td ("+esc("Submitted logo and signatures")+") Tj ET");
+      let imageY=610;
+      validImages.forEach((image,index)=>{
+        const objectId=imageObjectIds[index],label=image.name==="schoolLogoDataUrl"?"Current-school logo":image.name==="guardianSignatureDataUrl"?"Parent / guardian signature":"Headmaster signature / school stamp";
+        commands.push("0.25 0.29 0.36 rg BT /F2 9 Tf 42 "+(imageY+92)+" Td ("+esc(label)+") Tj ET");
+        const maxW=image.name==="schoolLogoDataUrl"?100:220,maxH=72,scale=Math.min(maxW/image.width,maxH/image.height);
+        const w=Math.max(1,image.width*scale),h=Math.max(1,image.height*scale);
+        commands.push("q "+w.toFixed(2)+" 0 0 "+h.toFixed(2)+" 42 "+imageY+" cm /Im"+(index+1)+" Do Q");
+        imageY-=140;
+      });
+    }else{
+      for(const item of items){
+        if(item.kind==="section"){
+          commands.push("0.94 0.95 0.97 rg 38 "+(y-5)+" 519 19 re f");
+          commands.push("0.72 0.55 0.08 rg 38 "+(y-5)+" 4 19 re f");
+          commands.push("0.055 0.13 0.29 rg BT /F2 10 Tf 50 "+y+" Td ("+esc(item.text.toUpperCase())+") Tj ET");y-=25;
+        }else if(item.text){commands.push("0.12 0.16 0.22 rg BT /F1 9 Tf 50 "+y+" Td ("+esc(item.text)+") Tj ET");y-=14;}else y-=6;
+      }
     }
     commands.push("0.055 0.13 0.29 rg 38 43 519 1 re f");
     commands.push("0.25 0.29 0.36 rg BT /F1 8 Tf 42 27 Td ("+esc(reference+" · Official protected document")+") Tj ET");
     commands.push("0.25 0.29 0.36 rg BT /F1 8 Tf 490 27 Td ("+esc("Page "+(i+1)+" of "+pages.length)+") Tj ET");
-    const stream=commands.join("\n"),pageObj=5+i*2,contentObj=pageObj+1;
-    objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents "+contentObj+" 0 R >>");
-    objects.push("<< /Length "+Buffer.byteLength(stream,"binary")+" >>\nstream\n"+stream+"\nendstream");
+    const stream=commands.join("\\n"),xObjects=validImages.length?" /XObject << "+validImages.map((_,index)=>"/Im"+(index+1)+" "+imageObjectIds[index]+" 0 R").join(" ")+" >>":"";
+    objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >>"+xObjects+" >> /Contents "+contentId+" 0 R >>");
+    objects.push("<< /Length "+Buffer.byteLength(stream,"binary")+" >>\\nstream\\n"+stream+"\\nendstream");
   });
-  let pdf="%PDF-1.4\n";const offsets=[0];
-  for(let i=0;i<objects.length;i++){offsets.push(Buffer.byteLength(pdf,"binary"));pdf+=(i+1)+" 0 obj\n"+objects[i]+"\nendobj\n";}
-  const xref=Buffer.byteLength(pdf,"binary");pdf+="xref\n0 "+(objects.length+1)+"\n0000000000 65535 f \n";
-  for(const offset of offsets.slice(1))pdf+=String(offset).padStart(10,"0")+" 00000 n \n";
-  pdf+="trailer\n<< /Size "+(objects.length+1)+" /Root 1 0 R >>\nstartxref\n"+xref+"\n%%EOF";
+  objects[1]="<< /Type /Pages /Kids ["+pageObjectIds.map(id=>id+" 0 R").join(" ")+"] /Count "+pages.length+" >>";
+  let pdf="%PDF-1.4\\n";const offsets=[0];
+  for(let i=0;i<objects.length;i++){offsets.push(Buffer.byteLength(pdf,"binary"));pdf+=(i+1)+" 0 obj\\n"+objects[i]+"\\nendobj\\n";}
+  const xref=Buffer.byteLength(pdf,"binary");pdf+="xref\\n0 "+(objects.length+1)+"\\n0000000000 65535 f \\n";
+  for(const offset of offsets.slice(1))pdf+=String(offset).padStart(10,"0")+" 00000 n \\n";
+  pdf+="trailer\\n<< /Size "+(objects.length+1)+" /Root 1 0 R >>\\nstartxref\\n"+xref+"\\n%%EOF";
   return Buffer.from(pdf,"binary");
 }
 
