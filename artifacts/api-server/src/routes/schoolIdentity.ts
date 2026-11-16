@@ -195,7 +195,9 @@ router.get("/school-id/me", requireAuth, async (req, res): Promise<void> => {
     }
   }
   res.setHeader("Cache-Control", "private, no-store");
-  res.json({ schoolId: result.rows[0].school_id, verificationPath: "/verify/school/" + result.rows[0].school_id });
+  const verificationPath = "/verify/school/" + result.rows[0].school_id;
+  const publicBase = String(process.env.PUBLIC_APP_URL || process.env.VITE_APP_URL || "").trim().replace(/\/+$/,"");
+  res.json({ schoolId: result.rows[0].school_id, verificationPath, verificationUrl: publicBase ? publicBase + verificationPath : verificationPath });
 });
 
 router.get("/school-id/verify/:schoolId", async (req, res): Promise<void> => {
