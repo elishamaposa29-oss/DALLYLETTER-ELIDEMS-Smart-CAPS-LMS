@@ -133,7 +133,7 @@ export default function MobileProfileHub() {
     try{
       const result=await api("/api/school-id/documents/"+shareTarget.type+"/"+shareTarget.id+"/share",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipientName:shareRecipient.trim()})});
       const url=String(result.verificationUrl||"").trim() || String(result.verificationPath||"");
-      const fullUrl=url.startsWith("http")?url:"https://dallyletter.com"+url;
+      const fullUrl=url.startsWith("http")?url:"";if(!fullUrl)throw new Error("Configure PUBLIC_APP_URL or VITE_APP_URL before sharing public verification links.");
       await Share.share({title:"Dallyletter verified academic document",message:"Verify and download this recipient-specific academic document: "+fullUrl,url:fullUrl});
       setShareTarget(null);setShareRecipient("");setMessage("Protected document link prepared. The recipient can verify and download the watermarked PDF without signing in.");
     }catch(error){setMessage(error instanceof Error?error.message:"Could not create protected share.");}
