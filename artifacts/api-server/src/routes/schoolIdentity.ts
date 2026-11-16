@@ -121,7 +121,14 @@ router.get("/school-id/documents/verify/:token/pdf", async (req, res): Promise<v
     const draft = typeof source.draft_content === "string" ? JSON.parse(source.draft_content) : source.draft_content;
     const snapshot = typeof source.source_snapshot === "string" ? JSON.parse(source.source_snapshot) : source.source_snapshot;
     const learnerName = String(draft?.learner || snapshot?.learner?.name || row.learner_name || "Learner record");
-    pdf = buildAcademicReportPdf({ id:Number(source.id),reportType:String(source.report_type),termLabel:String(source.term_label),periodStart:source.period_start,periodEnd:source.period_end,learnerName,schoolId,schoolVerificationUrl:(base ? base : "")+"/verify/school/"+schoolId,watermark,reviewedAt:source.reviewed_at,reviewedBy:source.reviewed_by,reviewNote:source.review_note,report:draft });
+    const stripPrivate = (value:any):any => {
+      if (Array.isArray(value)) return value.map(stripPrivate);
+      if (!value || typeof value !== "object") return value;
+      const privateField = /^(?:dob|dateofbirth|birthdate|phone|mobile|email|contact|address|guardian.*|parent.*|health.*|medical.*|admissionnumber|admissionno|emisno|nationalid|identitynumber|password|token|secret)$/i;
+      return Object.fromEntries(Object.entries(value).filter(([key])=>!privateField.test(key.replace(/[_-]/g,""))).map(([key,item])=>[key,stripPrivate(item)]));
+    };
+    const publicDraft = draft && typeof draft === "object" ? { ...draft, admissionNumber: undefined, dateOfBirth: undefined, ageOnPeriodEnd: undefined, factualRecords: stripPrivate(draft.factualRecords || {}) } : {};
+    pdf = buildAcademicReportPdf({ id:Number(source.id),reportType:String(source.report_type),termLabel:String(source.term_label),periodStart:source.period_start,periodEnd:source.period_end,learnerName,schoolId,schoolVerificationUrl:(base ? base : "")+"/verify/school/"+schoolId,watermark,reviewedAt:source.reviewed_at,reviewedBy:source.reviewed_by,reviewNote:undefined,report:publicDraft });
   } else if (row.document_type === "transfer") {
     const source = (await pool.query("SELECT id,reason,status,reviewed_at,created_at,form_data FROM academic_transfer_requests WHERE id=$1 AND learner_id=$2 AND status='approved'", [row.document_id,row.learner_id])).rows[0];
     if (!source) { res.status(404).json({ error: "The approved transfer document is no longer available." }); return; }
