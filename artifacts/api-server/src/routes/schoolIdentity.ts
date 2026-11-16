@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { createHash, randomBytes } from "node:crypto";
+import { createSchoolId, isValidSchoolId } from "../lib/school-id";
 import { pool, db, auditLogsTable } from "@workspace/db";
 import { requireAuth, isOwnerRole } from "../lib/auth-middleware";
 
@@ -50,7 +51,7 @@ async function ensureSchema(): Promise<void> {
       let issued = false;
       for (let attempt = 0; attempt < 5 && !issued; attempt++) {
         try {
-          await pool.query("INSERT INTO learner_school_ids(user_id,school_id) VALUES($1,$2) ON CONFLICT(user_id) DO NOTHING", [learner.id, makeCode()]);
+          await pool.query("INSERT INTO learner_school_ids(user_id,school_id) VALUES($1,$2) ON CONFLICT(user_id) DO NOTHING", [learner.id, createSchoolId()]);
           issued = true;
         } catch (error) {
           if ((error as any)?.code !== "23505" || attempt === 4) throw error;
@@ -60,23 +61,6 @@ async function ensureSchema(): Promise<void> {
   }).catch(error => { schemaReady = null; throw error; });
   await schemaReady;
 }
-
-const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-function makeCode(): string {
-  const bytes = randomBytes(16);
-  let raw = "";
-  for (let i = 0; i < 16; i++) raw += alphabet[bytes[i] % alphabet.length];
-  const checksum = createHash("sha256").update(raw).digest()[0] % alphabet.length;
-  return "DL-" + raw + alphabet[checksum];
-}
-function validCode(value: unknown): string | null {
-  const code = String(value || "").trim().toUpperCase();
-  if (!/^DL-[A-HJ-NP-Z2-9]{17}$/.test(code)) return null;
-  const raw = code.slice(3, 19);
-  const check = alphabet[createHash("sha256").update(raw).digest()[0] % alphabet.length];
-  return code[19] === check ? code : null;
-}
-
 
 router.post("/school-id/documents/:type/:id/share", requireAuth, async (req, res): Promise<void> => {
   await ensureSchema();
@@ -160,7 +144,7 @@ router.get("/school-id/verify/:schoolId", async (req, res): Promise<void> => {
   const ipHash = createHash("sha256").update(String(req.ip || "unknown")).digest("hex");
   const recent = await pool.query(`SELECT count(*)::int AS count FROM learner_school_id_lookups WHERE ip_hash=$1 AND requested_at>now()-interval '1 minute'`, [ipHash]);
   if (Number(recent.rows[0]?.count || 0) >= 20) { res.status(429).json({ verified: false, error: "Too many verification attempts. Try again shortly." }); return; }
-  const schoolId = validCode(req.params.schoolId);
+  const schoolId = (isValidSchoolId(req.params.schoolId) ? String(req.params.schoolId).toUpperCase() : null);
   if (!schoolId) {
     const invalidFingerprint = "INVALID:" + createHash("sha256").update(String(req.params.schoolId || "")).digest("hex");
     await pool.query("INSERT INTO learner_school_id_lookups(school_id,found,ip_hash) VALUES($1,false,$2)", [invalidFingerprint, ipHash]);
