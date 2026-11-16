@@ -326,6 +326,43 @@ router.post("/lessons/:id/notify-followers", requireAuth, requireManagerPermissi
 });
 
 // GET /lessons/:id — Get lesson by ID
+
+router.post("/lessons/:id/share", requireAuth, requireManagerPermissionIfManager("recordbook.view"), async (req, res): Promise<void> => {
+  const params = GetLessonParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const [lesson] = await db.select({ id: lessonsTable.id }).from(lessonsTable).where(eq(lessonsTable.id, params.data.id));
+  if (!lesson) { res.status(404).json({ error: "Lesson not found." }); return; }
+  const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30;
+  try {
+    const shareToken = signMediaShare("lesson:" + lesson.id, expiresAt);
+    res.setHeader("Cache-Control","no-store");
+    res.status(201).json({ shareToken, expiresAt, previewPath: "/shared-lesson/" + lesson.id + "?shareToken=" + shareToken });
+  } catch (error) {
+    res.status(503).json({ error: error instanceof Error ? error.message : "Could not create a protected lesson link." });
+  }
+});
+
+router.get("/lessons/:id/shared", async (req, res): Promise<void> => {
+  const params = GetLessonParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const id = params.data.id;
+  const token = req.query.shareToken;
+  if (!validMediaShare("lesson:" + id, token)) { res.status(404).json({ error: "This lesson share link is invalid or expired." }); return; }
+  const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, id));
+  if (!lesson) { res.status(404).json({ error: "Shared lesson not found." }); return; }
+  const expiry = Number(String(token).split(".")[0]);
+  const signedMediaUrl = (value: unknown) => {
+    if (typeof value !== "string") return value;
+    return value.replace(/(\\/api\\/lessons\\/media\\/([a-f0-9-]{36})(?:\\?type=([^&\\s"'<>]+))?)/gi, (_match, original, storageKey, mediaType) => {
+      const mediaToken = signMediaShare(storageKey, expiry);
+      return original + (String(original).includes("?") ? "&" : "?") + "shareToken=" + mediaToken;
+    });
+  };
+  const content = typeof lesson.content === "string" ? signedMediaUrl(lesson.content) : lesson.content;
+  res.setHeader("Cache-Control","private, no-store");
+  res.json({ lesson: { id: lesson.id, title: lesson.title, subject: lesson.subject, grade: lesson.grade, description: lesson.description, content, mediaUrl: signedMediaUrl(lesson.mediaUrl), createdAt: lesson.createdAt?.toISOString?.() || null }, expiresAt: expiry });
+});
+
 router.get("/lessons/:id", requireAuth, requireManagerPermissionIfManager("recordbook.view"), async (req, res): Promise<void> => {
   const params = GetLessonParams.safeParse(req.params);
   if (!params.success) {
