@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { db, aiActionsTable, auditLogsTable, usersTable, platformSettingsTable, pool } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { requireAuth } from "../lib/auth-middleware";
