@@ -265,7 +265,7 @@ router.post("/ai/school-id-analysis", requireAuth, async (req, res): Promise<voi
   if (!isValidSchoolId(schoolId)) { res.status(404).json({ verified: false, error: "A valid exact School ID is required. Names and approximate IDs cannot be used." }); return; }
   if (!question || question.length > 3000) { res.status(400).json({ error: "Provide a question between 1 and 3,000 characters." }); return; }
   const found = await pool.query(
-    "SELECT s.user_id,u.name,u.grade,p.section_settings FROM learner_school_ids s JOIN users u ON u.id=s.user_id LEFT JOIN profile_privacy_settings p ON p.user_id=s.user_id WHERE s.school_id=$1 AND lower(u.role) IN ('student','learner') AND COALESCE(u.is_blocked,false)=false AND COALESCE(u.is_suspended,false)=false LIMIT 1",
+    "SELECT s.user_id,u.name,u.grade,p.section_settings FROM learner_school_ids s JOIN users u ON u.id=s.user_id LEFT JOIN profile_privacy_settings p ON p.user_id=s.user_id WHERE s.school_id=$1 AND lower(u.role) IN ('student','learner','prefect') AND COALESCE(u.is_blocked,false)=false AND COALESCE(u.is_suspended,false)=false LIMIT 1",
     [schoolId],
   );
   if (!found.rows.length) { res.status(404).json({ verified: false, error: "School ID not found." }); return; }
