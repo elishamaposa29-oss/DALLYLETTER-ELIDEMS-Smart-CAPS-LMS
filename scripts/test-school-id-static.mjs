@@ -17,8 +17,10 @@ const [api,privacy,card,page,hub,app,academic,schema,ai,docs,achievementApi,achi
   readFile("artifacts/api-server/src/routes/achievements.ts","utf8"),
   readFile("artifacts/dallyletter/src/pages/student/StudentAchievements.tsx","utf8"),
   readFile("artifacts/api-server/src/routes/academicRecords.ts","utf8"),
+  readFile("artifacts/api-server/src/lib/school-id.ts","utf8"),
+  readFile("artifacts/dallyletter/src/pages/DocumentVerification.tsx","utf8"),
 ]);
-assert.match(api,/randomBytes\(16\)/,"School IDs must use 80 random bits");
+assert.match(idHelper,/randomBytes\(16\)/,"School IDs must use 80 random bits");
 assert.match(api,/NOT EXISTS \(SELECT 1 FROM learner_school_ids/,"Existing learner accounts must receive School IDs during the additive backfill");
 assert.match(api,/createHash\("sha256"\)/,"School IDs must include a checksum and hashed lookup throttling");
 assert.match(api,/school_id=\$1/,"Public lookup must match the complete exact School ID");
@@ -35,7 +37,7 @@ assert.match(ai,/\/ai\/school-id-analysis/,"AI academic analysis must have a ded
 assert.match(ai,/Names and approximate IDs cannot be used/,"AI must reject name-only or approximate identity lookups");
 assert.match(ai,/settings\[key\]\?\.mode === "everyone"/,"AI must use only learner-published portfolio sections");
 assert.match(ai,/verified published academic facts/,"AI analysis must be grounded in verified academic records");
-assert.match(privacy,/profile\.sensitive_data_consent\.enabled/,"Consent enablement must be audited");
+assert.match(privacy,/profile\.sensitive_data_consent\.fields_selected/,"Field-level consent changes must be audited");
 assert.match(privacy,/profile\.sensitive_data_consent\.revoked/,"Consent revocation must be audited");
 assert.match(privacy,/sensitive_personal_data_consent/,"Consent must persist in Profile Hub privacy settings");
 assert.match(privacy,/sensitivePersonalDataFields/,"Consent must be saved for individually selected fields");
@@ -47,4 +49,18 @@ assert.match(hub,/SchoolIdCard/,"School ID card must be integrated into Profile 
 assert.match(page,/school-id\/verify/,"Public verification page must call the exact ID endpoint");
 assert.match(app,/const SchoolIdVerification = lazy\(\(\) => import\("@\/pages\/SchoolIdVerification"\)\)/,"Public School ID page must be lazily imported");
 assert.match(app,/\/verify\/school\/:schoolId/,"Public School ID verification route must be registered");
-console.log("School ID / consent static checks passed.");
+assert.match(docs,/academic_document_verifications/,"Protected document verification records must be persisted");
+assert.match(docs,/academic_document.share_revoked/,"Owner document revocations must be audited");
+assert.match(docs,/school-id\\/documents\\/verify\\/:token\\/pdf/,"Public document links must deliver verified PDF copies without login");
+assert.match(achievementApi,/certificate\\.pdf/,"Achievement certificates must be downloadable as PDFs");
+assert.match(achievementApi,/recipientName/,"Achievement PDFs must support recipient-specific watermark metadata");
+assert.match(achievementUi,/Download PDF/,"Learner achievement UI must expose certificate downloads");
+assert.match(achievementUi,/Share verified/,"Learner achievement UI must expose protected sharing");
+assert.match(achievementUi,/recipient-watermarked PDF prepared/,"Verified achievement shares must prepare a recipient-specific PDF copy");
+assert.match(pdf,/watermark\\.recipientName/,"Academic PDF renderer must apply recipient-name watermarks");
+assert.match(pdf,/watermark\\.sharedAt/,"Academic PDF renderer must include the share date");
+assert.match(academic,/Dallyletter School ID/,"Transfer and report PDFs must display the learner School ID");
+assert.match(academic,/Public academic verification/,"Academic PDFs must include a public verification URL");
+assert.match(docPage,/Download verified recipient copy/,"Public verification page must expose the verified PDF download");
+assert.match(docPage,/QR code for this public document verification page/,"Public document verification must be scannable");
+console.log("School ID / consent / document verification static checks passed.");
