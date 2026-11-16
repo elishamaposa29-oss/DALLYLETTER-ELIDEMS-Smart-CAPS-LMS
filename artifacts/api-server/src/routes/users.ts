@@ -665,7 +665,13 @@ router.delete("/users/me/teacher-documents/:docId", requireAuth, async (req, res
     mediaCleanupPending=true;
     await pool.query("CREATE TABLE IF NOT EXISTS teacher_application_media_cleanup(teacher_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,storage_key text PRIMARY KEY,created_at timestamptz NOT NULL DEFAULT now())");
     await pool.query("INSERT INTO teacher_application_media_cleanup(teacher_id,storage_key) VALUES($1,$2) ON CONFLICT(storage_key) DO NOTHING",[actor.id,storageKey]);
-    console.error("[teacher-cv] Individual document media cleanup queued.",{teacherId:actor.id,documentId:docId});
+    try {
+      await removeStoredMedia(storageKey);
+      await pool.query("DELETE FROM teacher_application_media_cleanup WHERE teacher_id=$1 AND storage_key=$2",[actor.id,storageKey]);
+      mediaCleanupPending=false;
+    } catch {
+      console.error("[teacher-cv] Individual document media cleanup queued.",{teacherId:actor.id,documentId:docId});
+    }
   }}
   res.json({deleted:true,documentId:docId,mediaCleanupPending});
 });
@@ -992,7 +998,13 @@ router.delete("/users/me/qualifications/:id", requireAuth, async (req, res): Pro
     mediaCleanupPending=true;
     await pool.query("CREATE TABLE IF NOT EXISTS teacher_application_media_cleanup(teacher_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,storage_key text PRIMARY KEY,created_at timestamptz NOT NULL DEFAULT now())");
     await pool.query("INSERT INTO teacher_application_media_cleanup(teacher_id,storage_key) VALUES($1,$2) ON CONFLICT(storage_key) DO NOTHING",[actor.id,storageKey]);
-    console.error("[teacher-cv] Qualification certificate cleanup queued.",{teacherId:actor.id,qualificationId:id});
+    try {
+      await removeStoredMedia(storageKey);
+      await pool.query("DELETE FROM teacher_application_media_cleanup WHERE teacher_id=$1 AND storage_key=$2",[actor.id,storageKey]);
+      mediaCleanupPending=false;
+    } catch {
+      console.error("[teacher-cv] Qualification certificate cleanup queued.",{teacherId:actor.id,qualificationId:id});
+    }
   }}
   res.json({deleted:true,qualificationId:id,certificateDeleted:Boolean(storageKey),mediaCleanupPending});
 });
