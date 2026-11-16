@@ -8,7 +8,7 @@ export function SchoolIdCard({ isOwner, role }: { isOwner: boolean; role?: strin
   const [copied,setCopied]=useState(false);
   const [shareNotice,setShareNotice]=useState("");
   useEffect(()=>{
-    if(!isOwner||!["student","learner"].includes(String(role||"").toLowerCase()))return;
+    if(!isOwner||!["student","learner","prefect"].includes(String(role||"").toLowerCase()))return;
     const token=localStorage.getItem("dallyletter_token");
     if(!token)return;
     let active=true;
