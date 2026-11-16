@@ -193,6 +193,8 @@ router.put("/profile/me/privacy", requireAuth, async (req,res): Promise<void> =>
   const sectionSettings=req.body?.sectionSettings;
   const chatPrivacy=req.body?.chatPrivacy;
   const sensitivePersonalDataConsent=req.body?.sensitivePersonalDataConsent;
+  const sensitivePersonalDataFields=req.body?.sensitivePersonalDataFields;
+  const sensitiveFieldAllowlist=new Set(["phone","email","address","guardian_name","guardian_phone","guardian_email","date_of_birth","admission_number"]);
   if(!sectionSettings||typeof sectionSettings!=="object"||Array.isArray(sectionSettings)){res.status(400).json({error:"sectionSettings must be an object"});return;}
   const cleaned:Record<string,{mode:string;selectedUserIds:number[]}>={};
   for(const [key,value] of Object.entries(sectionSettings)){
@@ -203,22 +205,26 @@ router.put("/profile/me/privacy", requireAuth, async (req,res): Promise<void> =>
   }
   if(chatPrivacy!==undefined&&!["everyone","approval_required"].includes(chatPrivacy)){res.status(400).json({error:"Invalid chat privacy setting"});return;}
   if(sensitivePersonalDataConsent!==undefined&&typeof sensitivePersonalDataConsent!=="boolean"){res.status(400).json({error:"Sensitive personal-data consent must be explicitly enabled or disabled."});return;}
+  if(sensitivePersonalDataFields!==undefined&&(!Array.isArray(sensitivePersonalDataFields)||sensitivePersonalDataFields.length>8||sensitivePersonalDataFields.some((field:any)=>typeof field!=="string"||!sensitiveFieldAllowlist.has(field)))){res.status(400).json({error:"Choose only supported individual personal-data fields."});return;}
   const existing=await pool.query("SELECT section_settings,chat_privacy FROM profile_privacy_settings WHERE user_id=$1",[req.currentUser!.id]);
   const previousSettings=existing.rows[0]?.section_settings??{};
   const merged={...previousSettings,...cleaned};
-  if(sensitivePersonalDataConsent!==undefined){
-    merged.sensitive_personal_data_consent={enabled:sensitivePersonalDataConsent,version:"2026-11-16",updatedAt:new Date().toISOString()};
+  if(sensitivePersonalDataConsent!==undefined||sensitivePersonalDataFields!==undefined){
+    const fields=sensitivePersonalDataFields!==undefined?[...new Set<string>(sensitivePersonalDataFields)]:Array.isArray(previousSettings.sensitive_personal_data_consent?.fields)?previousSettings.sensitive_personal_data_consent.fields:[];
+    merged.sensitive_personal_data_consent={enabled:fields.length>0,fields,version:"2026-11-16",updatedAt:new Date().toISOString(),guardianApprovalRequired:true,guardianApprovalVerified:false};
   }
   const nextChat=chatPrivacy??existing.rows[0]?.chat_privacy??"everyone";
   await pool.query(
     "INSERT INTO profile_privacy_settings(user_id,section_settings,chat_privacy,updated_at) VALUES($1,$2::jsonb,$3,now()) ON CONFLICT(user_id) DO UPDATE SET section_settings=EXCLUDED.section_settings,chat_privacy=EXCLUDED.chat_privacy,updated_at=now()",
     [req.currentUser!.id,JSON.stringify(merged),nextChat],
   );
-  if(sensitivePersonalDataConsent!==undefined&&Boolean(previousSettings.sensitive_personal_data_consent?.enabled)!==sensitivePersonalDataConsent){
-    await db.insert(auditLogsTable).values({performedBy:req.currentUser!.id,action:sensitivePersonalDataConsent?"profile.sensitive_data_consent.enabled":"profile.sensitive_data_consent.revoked",category:"privacy",targetType:"user",targetId:req.currentUser!.id,details:JSON.stringify({consentVersion:"2026-11-16",enabled:sensitivePersonalDataConsent})});
-    await db.insert(notificationsTable).values({recipientId:req.currentUser!.id,title:sensitivePersonalDataConsent?"Sensitive data sharing enabled":"Sensitive data sharing disabled",message:sensitivePersonalDataConsent?"You approved sharing selected sensitive personal details only where a future verified portfolio explicitly requests them. You can revoke this consent in Profile Hub privacy settings.":"Your consent for sensitive personal-data sharing has been revoked.",link:"/profile-hub",type:"privacy_consent"});
+  const nextSensitiveConsent=merged.sensitive_personal_data_consent;
+  const consentChanged=JSON.stringify(previousSettings.sensitive_personal_data_consent?.fields||[])!==JSON.stringify(nextSensitiveConsent?.fields||[]);
+  if(consentChanged){
+    await db.insert(auditLogsTable).values({performedBy:req.currentUser!.id,action:nextSensitiveConsent?.enabled?"profile.sensitive_data_consent.fields_selected":"profile.sensitive_data_consent.revoked",category:"privacy",targetType:"user",targetId:req.currentUser!.id,details:JSON.stringify({consentVersion:"2026-11-16",enabled:Boolean(nextSensitiveConsent?.enabled),fields:nextSensitiveConsent?.fields||[],guardianApprovalRequired:true,guardianApprovalVerified:false})});
+    await db.insert(notificationsTable).values({recipientId:req.currentUser!.id,title:nextSensitiveConsent?.enabled?"Sensitive data fields selected":"Sensitive data sharing revoked",message:nextSensitiveConsent?.enabled?"Your selected fields are saved as your own consent preferences. Guardian verification is still required where applicable; no sensitive fields are published by this setting alone.":"Your sensitive personal-data field selections have been cleared.",link:"/profile-hub",type:"privacy_consent"});
   }
-  res.json({sectionSettings:merged,chatPrivacy:nextChat,sensitivePersonalDataConsent:Boolean(merged.sensitive_personal_data_consent?.enabled)});
+  res.json({sectionSettings:merged,chatPrivacy:nextChat,sensitivePersonalDataConsent:Boolean(merged.sensitive_personal_data_consent?.enabled),sensitivePersonalDataFields:merged.sensitive_personal_data_consent?.fields||[]});
 });
 
 router.post("/profile/:id/connect", requireAuth, async (req,res): Promise<void> => {
