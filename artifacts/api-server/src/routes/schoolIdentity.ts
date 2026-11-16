@@ -114,7 +114,7 @@ router.get("/school-id/verify/:schoolId", async (req, res): Promise<void> => {
     portfolio.reports = (await pool.query(
       "SELECT id,report_type,term_label,period_start,period_end,draft_content,review_note,reviewed_at FROM academic_report_drafts WHERE learner_id=$1 AND status='approved' ORDER BY reviewed_at DESC NULLS LAST,created_at DESC LIMIT 100",
       [learner.user_id],
-    )).rows.map(row => ({ ...row, draft_content: stripPrivateFields(row.draft_content) }));
+    )).rows.map(row => stripPrivateFields(row));
   }
   if (isPublic("attendance")) {
     portfolio.attendance = (await pool.query(
@@ -127,6 +127,15 @@ router.get("/school-id/verify/:schoolId", async (req, res): Promise<void> => {
       "SELECT attendance_date,status,activity_label FROM daily_app_attendance WHERE user_id=$1 ORDER BY attendance_date DESC LIMIT 120",
       [learner.user_id],
     )).rows;
+  }
+  if (isPublic("subjects")) {
+    portfolio.subjects = (await pool.query("SELECT subjects FROM learner_subjects WHERE user_id=$1", [learner.user_id])).rows[0]?.subjects || [];
+  }
+  if (isPublic("transfers")) {
+    portfolio.transfers = (await pool.query(
+      "SELECT id,status,reviewed_at,created_at,form_data FROM academic_transfer_requests WHERE learner_id=$1 AND status='approved' ORDER BY reviewed_at DESC NULLS LAST LIMIT 50",
+      [learner.user_id],
+    )).rows.map(row => stripPrivateFields(row));
   }
   if (isPublic("enrollments")) {
     portfolio.enrollments = (await pool.query(
