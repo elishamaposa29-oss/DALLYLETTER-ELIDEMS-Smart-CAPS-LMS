@@ -55,7 +55,7 @@ function buildBrandedDocumentPdf(title: string, _subtitle: string, reference: st
   for(const section of sections){push("section",section.heading);for(const row of section.rows)push("line",row);push("line","");}
   const validImages=transferImages.flatMap(image=>{
     if(typeof image.dataUrl!=="string")return [];
-    const match=image.dataUrl.match(/^data:image\\/(jpeg|png);base64,([A-Za-z0-9+/=]+)$/);if(!match)return [];
+    const match=image.dataUrl.match(/^data:image\/(jpeg|png);base64,([A-Za-z0-9+/=]+)$/);if(!match)return [];
     const bytes=Buffer.from(match[2],"base64");if(bytes.length>900*1024)return [];
     if(match[1]==="jpeg"){const dimensions=jpegDimensions(bytes);return dimensions&&dimensions.width>0&&dimensions.height>0?[{name:image.name,bytes,...dimensions,filter:"DCTDecode"}]:[];}
     const decoded=decodePngForPdf(bytes);return decoded?[{name:image.name,...decoded,filter:"FlateDecode"}]:[];
