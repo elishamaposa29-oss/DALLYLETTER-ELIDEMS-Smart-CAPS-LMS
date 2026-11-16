@@ -78,8 +78,8 @@ export function canPendingTeacherUseRoute(user: RoleLikeUser & { id?: number }, 
     (method === "GET" && path === "/users/me/qualifications") ||
     (method === "POST" && path === "/users/me/qualifications") ||
     (method === "PATCH" && /^\/users\/me\/qualifications\/\d+$/.test(path)) ||
-    (method === "DELETE" && /^\\/users\\/me\\/qualifications\\/\\d+$/.test(path)) ||
-    (method === "DELETE" && /^\\/users\\/me\\/teacher-documents\\/\\d+$/.test(path)) ||
+    (method === "DELETE" && /^\/users\/me\/qualifications\/\\d+$/.test(path)) ||
+    (method === "DELETE" && /^\/users\/me\/teacher-documents\/\\d+$/.test(path)) ||
     (method === "GET" && ["/users/me/enrollments-summary","/users/me/enrollments","/users/me/notification-email","/users/me/subjects","/users/me/recovery-profile","/academic-records/reports/me","/academic-records/current-year","/academic-records/me","/academic-records/transfer-requests","/daily-attendance/me","/achievements/my","/achievements/lesson-requests","/subjects/catalog","/config/currentYear"].includes(path)) ||
     (method === "GET" && /^\/academic-records\/reports\/drafts\/\d+\/download(?:\/pdf)?$/.test(path)) ||
     (method === "GET" && /^\/academic-records\/transfer-requests\/\d+\/download$/.test(path)) ||
