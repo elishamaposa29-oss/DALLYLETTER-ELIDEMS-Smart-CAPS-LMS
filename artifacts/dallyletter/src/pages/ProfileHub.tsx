@@ -223,7 +223,7 @@ export default function ProfileHub() {
     if (!context) { setMessage("The signature could not be saved."); return; }
     context.fillStyle="#ffffff"; context.fillRect(0,0,output.width,output.height); context.drawImage(canvas,0,0);
     const field=signatureTarget==="guardian"?"guardianSignatureDataUrl":"headmasterSignatureDataUrl";
-    setTransferForm((current:any)=>({...current,[field]:output.toDataURL("image/png")}));
+    setTransferForm((current:any)=>({...current,[field]:output.toDataURL("image/jpeg",0.9)}));
     setSignatureTarget(null); setMessage("Signature saved to the transfer letter preview.");
   };
   useEffect(() => {
