@@ -98,7 +98,7 @@ router.get("/school-id/documents/verify/:token", async (req, res): Promise<void>
   if (row.document_type === "achievement") current = (await pool.query("SELECT id FROM user_achievements WHERE id=$1 AND user_id=$2", [row.document_id,row.learner_id])).rows[0];
   if (!current || (current.status && current.status !== "approved")) { res.status(404).json({ verified: false, error: "The source document is no longer valid." }); return; }
   res.setHeader("Cache-Control","no-store");
-  res.json({ verified: true, verificationId: Number(row.id), documentType: row.document_type, documentId: Number(row.document_id), learner: { name: row.section_settings?.overview?.mode === "everyone" ? row.learner_name : "Privacy protected", schoolId: row.school_id }, recipientName: row.recipient_name, sharedAt: row.created_at, expiresAt: row.expires_at, status: "active" });
+  res.json({ verified: true, verificationId: Number(row.id), documentType: row.document_type, documentId: Number(row.document_id), learner: { name: row.section_settings?.overview?.mode === "everyone" ? row.learner_name : "Privacy protected", schoolId: row.school_id }, recipientName: row.recipient_name, sharedAt: row.created_at, expiresAt: row.expires_at, status: "active", downloadPath: "/api/school-id/documents/verify/" + token + "/pdf" });
 });
 
 
