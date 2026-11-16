@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [api,privacy,card,page,hub,app,academic,schema,ai] = await Promise.all([
+const [api,privacy,card,page,hub,app,academic,schema,ai,docs,achievementApi,achievementUi] = await Promise.all([
   readFile("artifacts/api-server/src/routes/schoolIdentity.ts","utf8"),
   readFile("artifacts/api-server/src/routes/profileConnections.ts","utf8"),
   readFile("artifacts/dallyletter/src/components/SchoolIdCard.tsx","utf8"),
@@ -11,6 +11,9 @@ const [api,privacy,card,page,hub,app,academic,schema,ai] = await Promise.all([
   readFile("artifacts/api-server/src/routes/academicRecords.ts","utf8"),
   readFile("artifacts/api-server/src/lib/ensureProfileHubSchema.ts","utf8"),
   readFile("artifacts/api-server/src/routes/ai.ts","utf8"),
+  readFile("artifacts/api-server/src/routes/schoolIdentity.ts","utf8"),
+  readFile("artifacts/api-server/src/routes/achievements.ts","utf8"),
+  readFile("artifacts/dallyletter/src/pages/student/StudentAchievements.tsx","utf8"),
 ]);
 assert.match(api,/randomBytes\(16\)/,"School IDs must use 80 random bits");
 assert.match(api,/NOT EXISTS \(SELECT 1 FROM learner_school_ids/,"Existing learner accounts must receive School IDs during the additive backfill");
