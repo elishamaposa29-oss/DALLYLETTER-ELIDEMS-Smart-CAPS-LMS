@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Trophy, Star, Flame, TrendingUp, Medal, Crown } from "lucide-react";
+import { Trophy, Star, Flame, TrendingUp, Medal, Crown, Download, Share2 } from "lucide-react";
 
 const token = () => localStorage.getItem("dallyletter_token") ?? "";
 
@@ -16,6 +16,10 @@ export default function StudentAchievements() {
   const [allAchievements, setAllAchievements] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"badges" | "leaderboard" | "all">("badges");
+  const [downloading,setDownloading]=useState<number|null>(null);
+  const [shareNotice,setShareNotice]=useState("");
+  const downloadCertificate=async(id:number)=>{setDownloading(id);setShareNotice("");try{const response=await fetch(getApiUrl("/api/achievements/"+id+"/certificate.pdf"),{headers:{Authorization:"Bearer "+token()}});if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.error||"Certificate download failed.");}const blob=await response.blob();const url=URL.createObjectURL(blob);const anchor=document.createElement("a");anchor.href=url;anchor.download="dallyletter-achievement-"+id+".pdf";document.body.appendChild(anchor);anchor.click();anchor.remove();URL.revokeObjectURL(url);}catch(error){setShareNotice(error instanceof Error?error.message:"Certificate download failed.");}finally{setDownloading(null);}};
+  const shareCertificate=async(id:number)=>{const recipientName=window.prompt("Who is this verified certificate being shared with?");if(!recipientName?.trim())return;setShareNotice("");try{const response=await fetch(getApiUrl("/api/school-id/documents/achievement/"+id+"/share"),{method:"POST",headers:{Authorization:"Bearer "+token(),"Content-Type":"application/json"},body:JSON.stringify({recipientName:recipientName.trim()})});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"Could not create protected share.");const url=window.location.origin+data.verificationPath;await navigator.clipboard.writeText(url);setShareNotice("Protected link copied. It opens without requiring the recipient to sign in.");}catch(error){setShareNotice(error instanceof Error?error.message:"Could not create protected share.");}};
 
   useEffect(() => {
     Promise.all([
@@ -124,11 +128,13 @@ export default function StudentAchievements() {
                             <span className="text-xs font-bold text-amber-600">+{ua.achievement?.pointsValue} pts</span>
                           </div>
                           <p className="text-[10px] text-slate-400 mt-1">{new Date(ua.earnedAt).toLocaleDateString()}</p>
+                          <div className="mt-3 flex flex-wrap justify-center gap-2"><button type="button" disabled={downloading===ua.id} onClick={()=>void downloadCertificate(Number(ua.id))} className="inline-flex items-center gap-1 rounded-md border px-2 py-1.5 text-xs font-semibold disabled:opacity-50"><Download className="h-3.5 w-3.5"/>{downloading===ua.id?"Preparing…":"Download PDF"}</button><button type="button" onClick={()=>void shareCertificate(Number(ua.id))} className="inline-flex items-center gap-1 rounded-md bg-[#0f2a5a] px-2 py-1.5 text-xs font-semibold text-white"><Share2 className="h-3.5 w-3.5"/>Share verified</button></div>
                         </CardContent>
                       </Card>
                     ))}
                   </div>
                 )}
+                {shareNotice&&<p role="status" className="mt-3 text-center text-xs text-muted-foreground">{shareNotice}</p>}
               </div>
             )}
 
