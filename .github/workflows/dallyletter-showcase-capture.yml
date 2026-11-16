@@ -39,7 +39,7 @@ concurrency:
 jobs:
   capture:
     name: Refresh live public pages and non-owner dashboard evidence
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
       SHOWCASE_SITE_URL: ${{ github.event_name == 'pull_request' && 'https://elishamaposa29-oss-dal-git-7f323c-elishamaposa29-1821s-projects.vercel.app/' || 'https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/' }}
