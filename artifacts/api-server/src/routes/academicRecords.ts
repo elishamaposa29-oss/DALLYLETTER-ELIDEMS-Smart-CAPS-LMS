@@ -11,8 +11,8 @@ import { canViewProfileSection } from "./profileConnections";
 
 const router = Router();
 
-type BrandedPdfSection = { heading: string; rows: string[] };
-function buildBrandedDocumentPdf(title: string, subtitle: string, reference: string, sections: BrandedPdfSection[]): Buffer {
+export type BrandedPdfSection = { heading: string; rows: string[] };
+export function buildBrandedDocumentPdf(title: string, subtitle: string, reference: string, sections: BrandedPdfSection[], watermark?: { recipientName: string; sharedAt: Date; verificationUrl?: string }): Buffer {
   const esc=(value:unknown)=>String(value??"—").normalize("NFKD").replace(/[^\x20-\xFF]/g,"?").replace(/\\/g,"\\\\").replace(/\(/g,"\\(").replace(/\)/g,"\\)");
   const pages: Array<Array<{kind:"section"|"line";text:string}>>=[[]];
   let page=pages[0], used=0;
@@ -49,6 +49,11 @@ function buildBrandedDocumentPdf(title: string, subtitle: string, reference: str
         commands.push("0.12 0.16 0.22 rg BT /F1 9 Tf 50 "+y+" Td ("+esc(item.text)+") Tj ET");
         y-=14;
       }else y-=6;
+    }
+    if (watermark) {
+      const label = "SHARED WITH " + watermark.recipientName + " · " + watermark.sharedAt.toISOString().slice(0,10);
+      commands.push("q 0.82 0.84 0.87 rg BT /F2 25 Tf 0.707 0.707 -0.707 0.707 105 330 Tm ("+esc(label)+") Tj ET Q");
+      if (watermark.verificationUrl) commands.push("0.25 0.29 0.36 rg BT /F1 7 Tf 42 14 Td ("+esc("Verify: "+watermark.verificationUrl)+") Tj ET");
     }
     commands.push("0.055 0.13 0.29 rg 38 43 519 1 re f");
     commands.push("0.25 0.29 0.36 rg BT /F1 8 Tf 42 27 Td ("+esc(reference+" · Official protected document")+") Tj ET");
