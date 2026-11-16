@@ -31,11 +31,11 @@ function jpegDimensions(data: Buffer): { width: number; height: number } | null 
   return null;
 }
 function buildBrandedDocumentPdf(title: string, _subtitle: string, reference: string, sections: BrandedPdfSection[], transferImages: TransferPdfImage[] = []): Buffer {
-  const esc=(value:unknown)=>String(value??"—").normalize("NFKD").replace(/[^\\x20-\\xFF]/g,"?").replace(/\\\\/g,"\\\\\\\\").replace(/\\(/g,"\\\\(").replace(/\\)/g,"\\\\)");
+  const esc=(value:unknown)=>String(value??"—").normalize("NFKD").replace(/[^\\x20-\\xFF]/g,"?").replace(/\\/g,"\\\\\\\\").replace(/\(/g,"\\\\(").replace(/\)/g,"\\\\)");
   const pages: Array<Array<{kind:"section"|"line";text:string}>>=[[]];
   let page=pages[0], used=0;
   const push=(kind:"section"|"line",text:string)=>{
-    const words=String(text||"—").split(/\\s+/);let line="";
+    const words=String(text||"—").split(/\s+/);let line="";
     const lines:string[]=[];
     for(const word of words){if((line+" "+word).trim().length>92){if(line)lines.push(line);line=word;}else line=(line+" "+word).trim();}
     if(line)lines.push(line);
