@@ -60,7 +60,8 @@ function buildBrandedDocumentPdf(title: string, _subtitle: string, reference: st
     if(match[1]==="jpeg"){const dimensions=jpegDimensions(bytes);return dimensions&&dimensions.width>0&&dimensions.height>0?[{name:image.name,bytes,...dimensions,filter:"DCTDecode"}]:[];}
     const decoded=decodePngForPdf(bytes);return decoded?[{name:image.name,...decoded,filter:"FlateDecode"}]:[];
   });
-  if(validImages.length)pages.push([]);
+  const signatureImages=validImages.filter(image=>image.name!=="schoolLogoDataUrl");
+  if(signatureImages.length)pages.push([]);
   const objects:string[]=[
     "<< /Type /Catalog /Pages 2 0 R >>",
     "",
@@ -81,16 +82,21 @@ function buildBrandedDocumentPdf(title: string, _subtitle: string, reference: st
       "1 1 1 rg BT /F2 12 Tf 42 789 Td ("+esc(title)+") Tj ET",
       "0.72 0.55 0.08 rg 0 764 595 5 re f"
     ];
+    const logoIndex=validImages.findIndex(image=>image.name==="schoolLogoDataUrl");
+    if(logoIndex>=0){
+      const logo=validImages[logoIndex],scale=Math.min(42/logo.width,42/logo.height),w=Math.max(1,logo.width*scale),h=Math.max(1,logo.height*scale);
+      commands.push("q "+w.toFixed(2)+" 0 0 "+h.toFixed(2)+" "+(535-w/2).toFixed(2)+" 786 cm /Im"+(logoIndex+1)+" Do Q");
+    }
     let y=718;
-    if(i===pages.length-1&&validImages.length){
-      commands.push("0.055 0.13 0.29 rg BT /F2 12 Tf 42 735 Td ("+esc("Submitted logo and signatures")+") Tj ET");
+    if(i===pages.length-1&&signatureImages.length){
+      commands.push("0.055 0.13 0.29 rg BT /F2 12 Tf 42 735 Td ("+esc("Submitted signatures and school stamp")+") Tj ET");
       let imageY=610;
-      validImages.forEach((image,index)=>{
-        const label=image.name==="schoolLogoDataUrl"?"Current-school logo":image.name==="guardianSignatureDataUrl"?"Parent / guardian signature":"Headmaster signature / school stamp";
+      signatureImages.forEach((image,index)=>{
+        const label=image.name==="guardianSignatureDataUrl"?"Parent / guardian signature":"Headmaster signature / school stamp";
         commands.push("0.25 0.29 0.36 rg BT /F2 9 Tf 42 "+(imageY+92)+" Td ("+esc(label)+") Tj ET");
         const maxW=image.name==="schoolLogoDataUrl"?100:220,maxH=72,scale=Math.min(maxW/image.width,maxH/image.height);
         const w=Math.max(1,image.width*scale),h=Math.max(1,image.height*scale);
-        commands.push("q "+w.toFixed(2)+" 0 0 "+h.toFixed(2)+" 42 "+imageY+" cm /Im"+(index+1)+" Do Q");
+        commands.push("q "+w.toFixed(2)+" 0 0 "+h.toFixed(2)+" 42 "+imageY+" cm /Im"+(validImages.indexOf(image)+1)+" Do Q");
         imageY-=140;
       });
     }else{
@@ -157,6 +163,14 @@ function summarizeAcademicMarks(assignmentRows: any[], exerciseRows: any[]) {
   };
 }
 
+async function getLearnerAcademicMarkSummary(learnerId: number) {
+  const [assignmentMarks, exerciseMarks] = await Promise.all([
+    pool.query("SELECT s.status,s.marks,a.total_marks FROM assignment_submissions s JOIN assignments a ON a.id=s.assignment_id WHERE s.student_id=$1", [learnerId]),
+    pool.query("SELECT s.status,s.total_score,s.marked_at,s.returned_at,e.total_marks,e.layout AS exercise_layout FROM exercise_submissions s JOIN exercises e ON e.id=s.exercise_id WHERE s.learner_id=$1", [learnerId]),
+  ]);
+  return summarizeAcademicMarks(assignmentMarks.rows, exerciseMarks.rows);
+}
+
 function buildAcademicReportPdf(input: { id: number; reportType: string; termLabel: string; periodStart?: unknown; periodEnd?: unknown; learnerName: string; reviewedAt: unknown; reviewedBy: unknown; reviewNote?: unknown; report: unknown }): Buffer {
  const report=input.report&&typeof input.report==="object"?input.report as Record<string,any>:{};
  const facts=report.factualRecords&&typeof report.factualRecords==="object"?report.factualRecords:{};
@@ -215,7 +229,17 @@ router.post("/academic-records/transfer-requests", requireAuth, async (req, res)
       return;
     }
   }
-  if (JSON.stringify(formData).length > 5_000_000) { res.status(413).json({ error: "Transfer letter fields and attachments exceed the combined 5 MB limit." }); return; }
+  const academicMarkSummary = await getLearnerAcademicMarkSummary(Number(user.id));
+  const authoritativeFormData = {
+    ...formData,
+    currentSchool: "Dallyletter Elidems",
+    average: academicMarkSummary.overall.percentage,
+    averageMarkedCount: academicMarkSummary.overall.markedCount,
+    averageEarnedMarks: academicMarkSummary.overall.earnedMarks,
+    averagePossibleMarks: academicMarkSummary.overall.possibleMarks,
+    averageSource: "saved_marked_assignments_and_reportable_exercises",
+  };
+  if (JSON.stringify(authoritativeFormData).length > 5_000_000) { res.status(413).json({ error: "Transfer letter fields and attachments exceed the combined 5 MB limit." }); return; }
   // Serialize submissions per learner so rapid taps/retries cannot create duplicate pending requests.
   const client = await pool.connect();
   let requestRow: any;
@@ -233,7 +257,7 @@ router.post("/academic-records/transfer-requests", requireAuth, async (req, res)
     }
     const inserted = await client.query(
       "INSERT INTO academic_transfer_requests (learner_id, requested_by, reason, form_data) VALUES ($1,$1,$2,$3::jsonb) RETURNING id, learner_id, reason, status, created_at",
-      [user.id, reason, JSON.stringify(formData)],
+      [user.id, reason, JSON.stringify(authoritativeFormData)],
     );
     requestRow = inserted.rows[0];
     await client.query("COMMIT");
@@ -394,7 +418,7 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, requ
 
   const sections:BrandedPdfSection[]=[
     {heading:"Transfer application",rows:["Reference: DL-TR-"+id,"Application date: "+new Date(row.created_at).toISOString().slice(0,10),"Approval date: "+(row.reviewed_at?new Date(row.reviewed_at).toISOString().slice(0,10):"Not recorded"),"Current school: Dallyletter Elidems","Receiving school: "+fmt(form.receivingSchool),"Transfer reason: "+fmt(form.reasonType||row.reason),"Reason details: "+fmt(form.reasonDetail)]},
-    {heading:"Learner details",rows:["Full name: "+fmt(form.learnerName||row.learner_name),"Grade / Form: "+fmt(form.grade||row.grade),"Date of birth: "+fmt(form.dob)+" · Age on effective transfer date: "+fmt(age),"Gender: "+fmt(form.gender),"Admission number: "+fmt(form.admissionNo),"EMIS number: "+fmt(form.emisNo),"Academic year: "+fmt(form.academicYear),"Last term average: "+fmt(form.average)+" · Conduct: "+fmt(form.conduct)]},
+    {heading:"Learner details",rows:["Full name: "+fmt(form.learnerName||row.learner_name),"Grade / Form: "+fmt(form.grade||row.grade),"Date of birth: "+fmt(form.dob)+" · Age on effective transfer date: "+fmt(age),"Gender: "+fmt(form.gender),"Admission number: "+fmt(form.admissionNo),"EMIS number: "+fmt(form.emisNo),"Academic year: "+fmt(form.academicYear),"Recorded academic average: "+(form.average===null||form.average===undefined?"Not recorded":String(form.average)+"%")+" · Conduct: "+fmt(form.conduct)]},
     {heading:"Parent / guardian details",rows:["Name: "+fmt(form.guardianName)+" · Relationship: "+fmt(form.relationship),"ID: "+fmt(form.guardianId),"Phone: "+fmt(form.guardianPhone),"Email: "+fmt(form.guardianEmail),"Address: "+fmt(form.address),"Effective transfer date: "+fmt(form.effectiveDate)]},
     {heading:"Declarations and signatures",rows:["Parent / guardian signature: "+(form.guardianSignatureDataUrl?"Signature image supplied in submitted preview":"Not supplied"),"Current-school headmaster signature / stamp: "+(form.headmasterSignatureDataUrl?"Signature / stamp image supplied in submitted preview":"Not supplied"),"School logo: "+(form.schoolLogoDataUrl?"Logo supplied in submitted preview":"Not supplied"),"A missing signature, stamp or fee clearance is never fabricated."]},
     {heading:"Academic record summary",rows:["Subjects: "+fmt((subjectRows.rows[0]?.subjects||[]).join(", ")),"Latest approved report: "+(reportRows.rows[0]?String(reportRows.rows[0].term_label)+" ("+String(reportRows.rows[0].report_type)+")":"No approved report recorded"),"Attendance sessions: "+String(attendanceRows.rows[0]?.sessions??0)+" · Present: "+String(attendanceRows.rows[0]?.present??0)+" · Absent: "+String(attendanceRows.rows[0]?.absent??0),"Enrollments: "+(enrollmentRows.rows.length?enrollmentRows.rows.map((e:any)=>[e.title,e.subject,e.grade?"Grade "+e.grade:"",e.progress_percent==null?"Progress not recorded":e.progress_percent+"% complete"].filter(Boolean).join(" · ")).join("; "):"No enrollment records available"),"Achievements: "+(awardRows.rows.length?awardRows.rows.map((a:any)=>a.name).join(", "):"No achievements recorded")]},
