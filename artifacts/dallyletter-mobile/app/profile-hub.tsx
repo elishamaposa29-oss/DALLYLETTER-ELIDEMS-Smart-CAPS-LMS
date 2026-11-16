@@ -76,6 +76,7 @@ export default function MobileProfileHub() {
   const [signatureTarget,setSignatureTarget] = useState<"guardian"|"headmaster"|null>(null);
   const [signaturePath,setSignaturePath] = useState("");
   const signatureSvgRef = useRef<any>(null);
+  useEffect(()=>{let active=true;if(!transferForm.schoolLogoDataUrl){const uri=Image.resolveAssetSource(require("../assets/images/icon.png"))?.uri;if(uri){void FileSystem.readAsStringAsync(uri,{encoding:FileSystem.EncodingType.Base64}).then(base64=>{if(active&&base64)setTransferForm(old=>old.schoolLogoDataUrl?old:{...old,schoolLogoDataUrl:"data:image/png;base64,"+base64});}).catch(()=>undefined);}}return()=>{active=false;};},[]);
 
   useEffect(() => {
     if (!isOwn || !token) return;
