@@ -643,6 +643,32 @@ router.get("/users/:id/teacher-documents/:docId", requireAuth, async (req, res):
   res.setHeader("Content-Length", row.size_bytes); res.end(row.data);
 });
 
+
+router.delete("/users/me/teacher-documents/:docId", requireAuth, async (req, res): Promise<void> => {
+  const actor=req.currentUser!; const docId=Number(req.params.docId);
+  if(String(actor.role).toLowerCase()!=="teacher"){res.status(403).json({error:"Teacher account required."});return;}
+  if(!Number.isSafeInteger(docId)||docId<=0){res.status(400).json({error:"Invalid document id."});return;}
+  const client=await pool.connect(); let storageKey:string|null=null;
+  try{
+    await client.query("BEGIN");
+    const found=await client.query("SELECT id,storage_key FROM teacher_documents WHERE id=$1 AND user_id=$2 FOR UPDATE",[docId,actor.id]);
+    if(!found.rows.length){await client.query("ROLLBACK");res.status(404).json({error:"Your uploaded document was not found."});return;}
+    storageKey=found.rows[0].storage_key?String(found.rows[0].storage_key):null;
+    await client.query("UPDATE teacher_qualifications SET document_id=NULL WHERE user_id=$1 AND document_id=$2",[actor.id,docId]);
+    await client.query("UPDATE teacher_profiles SET cv=cv-'photoDocumentId',updated_at=now() WHERE user_id=$1 AND cv->>'photoDocumentId'=$2",[actor.id,String(docId)]);
+    await client.query("DELETE FROM teacher_documents WHERE id=$1 AND user_id=$2",[docId,actor.id]);
+    await client.query("COMMIT");
+  }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}finally{client.release();}
+  let mediaCleanupPending=false;
+  if(storageKey){try{await removeStoredMedia(storageKey);}catch{
+    mediaCleanupPending=true;
+    await pool.query("CREATE TABLE IF NOT EXISTS teacher_application_media_cleanup(teacher_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,storage_key text PRIMARY KEY,created_at timestamptz NOT NULL DEFAULT now())");
+    await pool.query("INSERT INTO teacher_application_media_cleanup(teacher_id,storage_key) VALUES($1,$2) ON CONFLICT(storage_key) DO NOTHING",[actor.id,storageKey]);
+    console.error("[teacher-cv] Individual document media cleanup queued.",{teacherId:actor.id,documentId:docId});
+  }}
+  res.json({deleted:true,documentId:docId,mediaCleanupPending});
+});
+
 router.patch("/users/:id/teacher-review", requireAuth, requireManagerPermissionForRequest((req) => req.body?.action === "approve" ? "teacher_cv.authorize" : "teacher_cv.review"), async (req, res): Promise<void> => {
   const actor = req.currentUser!;
   if (!canReviewTeacherApplication(actor)) { res.status(403).json({ error: "Owner or Senior Manager approval is required for teacher applications." }); return; }
@@ -937,6 +963,37 @@ router.patch("/users/me/qualifications/:id", requireAuth, async (req, res): Prom
   );
   if (!result.rows.length) { res.status(404).json({ error: "Editable qualification not found. Verified qualifications cannot be changed." }); return; }
   res.json(result.rows[0]);
+});
+
+
+router.delete("/users/me/qualifications/:id", requireAuth, async (req, res): Promise<void> => {
+  const actor=req.currentUser!; const id=Number(req.params.id);
+  if(String(actor.role).toLowerCase()!=="teacher"){res.status(403).json({error:"Teacher account required."});return;}
+  if(!Number.isSafeInteger(id)||id<=0){res.status(400).json({error:"Invalid qualification id."});return;}
+  const client=await pool.connect();let storageKey:string|null=null;
+  try{
+    await client.query("BEGIN");
+    const found=await client.query("SELECT id,document_id FROM teacher_qualifications WHERE id=$1 AND user_id=$2 AND source='user' FOR UPDATE",[id,actor.id]);
+    if(!found.rows.length){await client.query("ROLLBACK");res.status(404).json({error:"Your qualification was not found or cannot be deleted."});return;}
+    const documentId=found.rows[0].document_id==null?null:Number(found.rows[0].document_id);
+    await client.query("DELETE FROM teacher_qualifications WHERE id=$1 AND user_id=$2 AND source='user'",[id,actor.id]);
+    if(documentId){
+      const used=await client.query("SELECT 1 FROM teacher_qualifications WHERE user_id=$1 AND document_id=$2 LIMIT 1",[actor.id,documentId]);
+      if(!used.rows.length){
+        const removed=await client.query("DELETE FROM teacher_documents WHERE id=$1 AND user_id=$2 RETURNING storage_key",[documentId,actor.id]);
+        storageKey=removed.rows[0]?.storage_key?String(removed.rows[0].storage_key):null;
+      }
+    }
+    await client.query("COMMIT");
+  }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}finally{client.release();}
+  let mediaCleanupPending=false;
+  if(storageKey){try{await removeStoredMedia(storageKey);}catch{
+    mediaCleanupPending=true;
+    await pool.query("CREATE TABLE IF NOT EXISTS teacher_application_media_cleanup(teacher_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,storage_key text PRIMARY KEY,created_at timestamptz NOT NULL DEFAULT now())");
+    await pool.query("INSERT INTO teacher_application_media_cleanup(teacher_id,storage_key) VALUES($1,$2) ON CONFLICT(storage_key) DO NOTHING",[actor.id,storageKey]);
+    console.error("[teacher-cv] Qualification certificate cleanup queued.",{teacherId:actor.id,qualificationId:id});
+  }}
+  res.json({deleted:true,qualificationId:id,certificateDeleted:Boolean(storageKey),mediaCleanupPending});
 });
 
 
