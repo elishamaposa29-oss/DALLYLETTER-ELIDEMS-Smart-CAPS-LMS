@@ -359,7 +359,7 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, requ
     }
   }
   const schoolId = schoolIdRow?.school_id || "Not issued";
-  const publicBase = String(process.env.PUBLIC_APP_URL || process.env.VITE_APP_URL || "").trim().replace(/\\/+$/,"");
+  const publicBase = String(process.env.PUBLIC_APP_URL || process.env.VITE_APP_URL || "").trim().replace(/\/+$/,"");
   const schoolVerificationUrl = schoolIdRow ? (publicBase ? publicBase + "/verify/school/" + schoolId : "/verify/school/" + schoolId) : "Not available";
   const [enrollmentRows, attendanceRows, awardRows, subjectRows, reportRows] = await Promise.all([
     pool.query("SELECT c.title,c.subject,c.grade,e.enrolled_at,e.progress_percent,e.status FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 ORDER BY e.enrolled_at DESC LIMIT 12", [row.learner_id]),
