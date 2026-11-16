@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { createHash, randomBytes } from "node:crypto";
+import { createSchoolId } from "../lib/school-id";
 import { db, auditLogsTable, pool } from "@workspace/db";
 import { getAIProvider } from "../lib/ai-provider";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
@@ -348,6 +349,18 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, requ
   if (!row || (Number(row.learner_id) !== Number(user.id) && !canAccessManager(user))) { res.status(404).json({ error: "Approved transfer letter not found." }); return; }
   if(canAccessManager(user)&&!isOwnerRole(user.role)&&!canModerateUser(user,{role:row.role,isManager:row.is_manager,managerLevel:row.manager_level})){res.status(404).json({error:"Approved transfer letter not found."});return;}
   if (row.status !== "approved") { res.status(403).json({ error: "The transfer letter cannot be downloaded until an authorized manager approves the request." }); return; }
+  await pool.query("CREATE TABLE IF NOT EXISTS learner_school_ids (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,school_id text NOT NULL UNIQUE,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now())");
+  let schoolIdRow = (await pool.query("SELECT school_id FROM learner_school_ids WHERE user_id=$1", [row.learner_id])).rows[0];
+  for (let attempt=0; !schoolIdRow && attempt<5; attempt++) {
+    try {
+      schoolIdRow = (await pool.query("INSERT INTO learner_school_ids(user_id,school_id) VALUES($1,$2) ON CONFLICT(user_id) DO UPDATE SET user_id=EXCLUDED.user_id RETURNING school_id", [row.learner_id,createSchoolId()])).rows[0];
+    } catch (error) {
+      if ((error as any)?.code !== "23505" || attempt === 4) throw error;
+    }
+  }
+  const schoolId = schoolIdRow?.school_id || "Not issued";
+  const publicBase = String(process.env.PUBLIC_APP_URL || process.env.VITE_APP_URL || "").trim().replace(/\\/+$/,"");
+  const schoolVerificationUrl = schoolIdRow ? (publicBase ? publicBase + "/verify/school/" + schoolId : "/verify/school/" + schoolId) : "Not available";
   const [enrollmentRows, attendanceRows, awardRows, subjectRows, reportRows] = await Promise.all([
     pool.query("SELECT c.title,c.subject,c.grade,e.enrolled_at,e.progress_percent,e.status FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 ORDER BY e.enrolled_at DESC LIMIT 12", [row.learner_id]),
     pool.query("SELECT count(*)::int AS sessions,count(*) FILTER (WHERE lower(status)='present')::int AS present,count(*) FILTER (WHERE lower(status)='absent')::int AS absent FROM attendance WHERE student_id=$1", [row.learner_id]),
@@ -360,7 +373,7 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, requ
   const age = calculateAgeOnDate(form.dob, form.effectiveDate || row.created_at);
 
   const sections:BrandedPdfSection[]=[
-    {heading:"Transfer application",rows:["Reference: DL-TR-"+id,"Application date: "+new Date(row.created_at).toISOString().slice(0,10),"Approval date: "+(row.reviewed_at?new Date(row.reviewed_at).toISOString().slice(0,10):"Not recorded"),"Current school: "+fmt(form.currentSchool),"Receiving school: "+fmt(form.receivingSchool),"Transfer reason: "+fmt(form.reasonType||row.reason),"Reason details: "+fmt(form.reasonDetail)]},
+    {heading:"Transfer application",rows:["Reference: DL-TR-"+id,"Learner School ID: "+schoolId,"Public academic verification: "+schoolVerificationUrl,"Application date: "+new Date(row.created_at).toISOString().slice(0,10),"Approval date: "+(row.reviewed_at?new Date(row.reviewed_at).toISOString().slice(0,10):"Not recorded"),"Current school: "+fmt(form.currentSchool),"Receiving school: "+fmt(form.receivingSchool),"Transfer reason: "+fmt(form.reasonType||row.reason),"Reason details: "+fmt(form.reasonDetail)]},
     {heading:"Learner details",rows:["Full name: "+fmt(form.learnerName||row.learner_name),"Grade / Form: "+fmt(form.grade||row.grade),"Date of birth: "+fmt(form.dob)+" · Age on effective transfer date: "+fmt(age),"Gender: "+fmt(form.gender),"Admission number: "+fmt(form.admissionNo),"EMIS number: "+fmt(form.emisNo),"Academic year: "+fmt(form.academicYear),"Last term average: "+fmt(form.average)+" · Conduct: "+fmt(form.conduct)]},
     {heading:"Parent / guardian details",rows:["Name: "+fmt(form.guardianName)+" · Relationship: "+fmt(form.relationship),"ID: "+fmt(form.guardianId),"Phone: "+fmt(form.guardianPhone),"Email: "+fmt(form.guardianEmail),"Address: "+fmt(form.address),"Effective transfer date: "+fmt(form.effectiveDate)]},
     {heading:"Declarations and signatures",rows:["Parent / guardian signature: "+(form.guardianSignatureDataUrl?"Signature image supplied in submitted preview":"Not supplied"),"Current-school headmaster signature / stamp: "+(form.headmasterSignatureDataUrl?"Signature / stamp image supplied in submitted preview":"Not supplied"),"School logo: "+(form.schoolLogoDataUrl?"Logo supplied in submitted preview":"Not supplied"),"A missing signature, stamp or fee clearance is never fabricated."]},
