@@ -125,7 +125,7 @@ function summarizeAcademicMarks(assignmentRows: any[], exerciseRows: any[]) {
   };
 }
 
-function buildAcademicReportPdf(input: { id: number; reportType: string; termLabel: string; periodStart?: unknown; periodEnd?: unknown; learnerName: string; schoolId?: string; schoolVerificationUrl?: string; reviewedAt: unknown; reviewedBy: unknown; reviewNote?: unknown; report: unknown }): Buffer {
+export function buildAcademicReportPdf(input: { id: number; reportType: string; termLabel: string; periodStart?: unknown; periodEnd?: unknown; learnerName: string; schoolId?: string; schoolVerificationUrl?: string; reviewedAt: unknown; reviewedBy: unknown; reviewNote?: unknown; report: unknown }): Buffer {
  const report=input.report&&typeof input.report==="object"?input.report as Record<string,any>:{};
  const facts=report.factualRecords&&typeof report.factualRecords==="object"?report.factualRecords:{};
  const summary=facts.markSummary?.overall||report.markSummary?.overall||{};
