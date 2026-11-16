@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { createHash, randomBytes } from "node:crypto";
 import { createSchoolId, isValidSchoolId } from "../lib/school-id";
+import { buildBrandedDocumentPdf, buildAcademicReportPdf, ensureLearnerSchoolId } from "./academicRecords";
 import { pool, db, auditLogsTable } from "@workspace/db";
 import { requireAuth, isOwnerRole } from "../lib/auth-middleware";
 
@@ -98,6 +99,50 @@ router.get("/school-id/documents/verify/:token", async (req, res): Promise<void>
   if (!current || (current.status && current.status !== "approved")) { res.status(404).json({ verified: false, error: "The source document is no longer valid." }); return; }
   res.setHeader("Cache-Control","no-store");
   res.json({ verified: true, verificationId: Number(row.id), documentType: row.document_type, documentId: Number(row.document_id), learner: { name: row.section_settings?.overview?.mode === "everyone" ? row.learner_name : "Privacy protected", schoolId: row.school_id }, recipientName: row.recipient_name, sharedAt: row.created_at, expiresAt: row.expires_at, status: "active" });
+});
+
+
+router.get("/school-id/documents/verify/:token/pdf", async (req, res): Promise<void> => {
+  await ensureSchema();
+  const token = String(req.params.token || "");
+  if (token.length < 40 || token.length > 100) { res.status(404).json({ error: "Document verification not found." }); return; }
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const found = await pool.query("SELECT v.id,v.document_type,v.document_id,v.learner_id,v.recipient_name,v.created_at,v.expires_at,v.revoked_at,u.name AS learner_name,u.grade FROM academic_document_verifications v JOIN users u ON u.id=v.learner_id WHERE v.token_hash=$1 AND COALESCE(u.is_blocked,false)=false AND COALESCE(u.is_suspended,false)=false LIMIT 1", [tokenHash]);
+  const row = found.rows[0];
+  if (!row || row.revoked_at || new Date(row.expires_at).getTime() <= Date.now()) { res.status(404).json({ error: "This document link is invalid, expired or revoked." }); return; }
+  const schoolId = await ensureLearnerSchoolId(Number(row.learner_id));
+  const base = String(process.env.PUBLIC_APP_URL || process.env.VITE_APP_URL || "").trim().replace(/\/+$/,"");
+  const verificationUrl = (base ? base : "") + "/verify/document/" + token;
+  const watermark = { recipientName: String(row.recipient_name), sharedAt: new Date(row.created_at), verificationUrl };
+  let pdf: Buffer;
+  if (row.document_type === "report") {
+    const source = (await pool.query("SELECT * FROM academic_report_drafts WHERE id=$1 AND learner_id=$2 AND status='approved'", [row.document_id,row.learner_id])).rows[0];
+    if (!source) { res.status(404).json({ error: "The approved academic report is no longer available." }); return; }
+    const draft = typeof source.draft_content === "string" ? JSON.parse(source.draft_content) : source.draft_content;
+    const snapshot = typeof source.source_snapshot === "string" ? JSON.parse(source.source_snapshot) : source.source_snapshot;
+    const learnerName = String(draft?.learner || snapshot?.learner?.name || row.learner_name || "Learner record");
+    pdf = buildAcademicReportPdf({ id:Number(source.id),reportType:String(source.report_type),termLabel:String(source.term_label),periodStart:source.period_start,periodEnd:source.period_end,learnerName,schoolId,schoolVerificationUrl:(base ? base : "")+"/verify/school/"+schoolId,watermark,reviewedAt:source.reviewed_at,reviewedBy:source.reviewed_by,reviewNote:source.review_note,report:draft });
+  } else if (row.document_type === "transfer") {
+    const source = (await pool.query("SELECT id,reason,status,reviewed_at,created_at,form_data FROM academic_transfer_requests WHERE id=$1 AND learner_id=$2 AND status='approved'", [row.document_id,row.learner_id])).rows[0];
+    if (!source) { res.status(404).json({ error: "The approved transfer document is no longer available." }); return; }
+    const form = source.form_data && typeof source.form_data === "object" ? source.form_data : {};
+    pdf = buildBrandedDocumentPdf("OFFICIAL TRANSFER LETTER","Dallyletter Elidems verified transfer record","DL-TR-"+source.id,[
+      {heading:"Learner and transfer",rows:["Learner: "+String(form.learnerName||row.learner_name),"Dallyletter School ID: "+schoolId,"Academic verification: "+((base?base:"")+"/verify/school/"+schoolId),"Current school: "+String(form.currentSchool||"Not recorded"),"Receiving school: "+String(form.receivingSchool||"Not recorded"),"Grade / Form: "+String(form.grade||row.grade||"Not recorded"),"Academic year: "+String(form.academicYear||"Not recorded"),"Effective date: "+String(form.effectiveDate||"Not recorded"),"Reason: "+String(form.reasonDetail||source.reason||"Not recorded")]},
+      {heading:"Approval",rows:["Status: Approved","Approved on: "+new Date(source.reviewed_at||source.created_at).toLocaleDateString(),"Document reference: DL-TR-"+source.id,"This recipient copy omits private guardian contact, identity and address fields."]}
+    ],watermark);
+  } else {
+    const award = (await pool.query("SELECT ua.id,ua.earned_at,ua.awarded_by_name,a.name,a.description,a.category,a.points_value FROM user_achievements ua JOIN achievements a ON a.id=ua.achievement_id WHERE ua.id=$1 AND ua.user_id=$2", [row.document_id,row.learner_id])).rows[0];
+    if (!award) { res.status(404).json({ error: "The achievement award is no longer available." }); return; }
+    pdf = buildBrandedDocumentPdf("ACHIEVEMENT CERTIFICATE","Official learner achievement record","ACH-"+award.id,[
+      {heading:"Award recipient",rows:["Learner: "+row.learner_name,"Grade / Form: "+String(row.grade||"Not recorded"),"Dallyletter School ID: "+schoolId,"Academic verification: "+((base?base:"")+"/verify/school/"+schoolId)]},
+      {heading:"Achievement",rows:["Award: "+award.name,"Description: "+award.description,"Category: "+(award.category||"Learning"),"Points: "+Number(award.points_value||0),"Awarded on: "+new Date(award.earned_at).toLocaleDateString(),"Awarded by: "+(award.awarded_by_name||"Dallyletter Elidems")]}
+    ],watermark);
+  }
+  res.setHeader("Content-Type","application/pdf");
+  res.setHeader("Content-Disposition",'attachment; filename="dallyletter-verified-'+row.document_type+'-'+row.document_id+'.pdf"');
+  res.setHeader("Cache-Control","private, no-store");
+  res.setHeader("X-Content-Type-Options","nosniff");
+  res.send(pdf);
 });
 
 router.patch("/school-id/documents/:verificationId/revoke", requireAuth, async (req, res): Promise<void> => {
