@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [api,privacy,card,page,hub,app,academic,schema,ai,docs,achievementApi,achievementUi,pdf] = await Promise.all([
+const [api,privacy,card,page,hub,app,academic,schema,ai,docs,achievementApi,achievementUi,pdf,idHelper,docPage] = await Promise.all([
   readFile("artifacts/api-server/src/routes/schoolIdentity.ts","utf8"),
   readFile("artifacts/api-server/src/routes/profileConnections.ts","utf8"),
   readFile("artifacts/dallyletter/src/components/SchoolIdCard.tsx","utf8"),
@@ -9,6 +9,8 @@ const [api,privacy,card,page,hub,app,academic,schema,ai,docs,achievementApi,achi
   readFile("artifacts/dallyletter/src/pages/ProfileHub.tsx","utf8"),
   readFile("artifacts/dallyletter/src/App.tsx","utf8"),
   readFile("artifacts/api-server/src/routes/academicRecords.ts","utf8"),
+  readFile("artifacts/api-server/src/lib/school-id.ts","utf8"),
+  readFile("artifacts/dallyletter/src/pages/DocumentVerification.tsx","utf8"),
   readFile("artifacts/api-server/src/lib/ensureProfileHubSchema.ts","utf8"),
   readFile("artifacts/api-server/src/routes/ai.ts","utf8"),
   readFile("artifacts/api-server/src/routes/schoolIdentity.ts","utf8"),
