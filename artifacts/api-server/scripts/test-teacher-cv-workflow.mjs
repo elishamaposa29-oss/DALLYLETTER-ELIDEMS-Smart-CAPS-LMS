@@ -264,10 +264,21 @@ assert.equal(ownPhotoDelete.status,200,"A teacher can delete their own CV profil
 const cleanedPhotoCv=await pool.query("SELECT cv FROM teacher_profiles WHERE user_id=$1",[individualDeletionApplicant.id]);
 assert.equal(cleanedPhotoCv.rows[0].cv.photoDocumentId,undefined,"Deleting a CV photo removes its stale profile reference");
 assert.equal(cleanedPhotoCv.rows[0].cv.professionalSummary,"Keep this CV text","Deleting an uploaded photo preserves the teacher's separately saved CV text");
+
+const crossAccountQualificationDelete=await request("/api/users/me/qualifications/"+ownedQualification.rows[0].id,{token:unrelatedDeletionActor.token,method:"DELETE"});
+assert.equal(crossAccountQualificationDelete.status,404,"A teacher cannot delete another teacher's qualification by guessing its ID");
+const secondQualification=await pool.query("INSERT INTO teacher_qualifications(user_id,title,document_id,verification_status,source) VALUES($1,'Certificate unlink test',$2,'pending','user') RETURNING id",[individualDeletionApplicant.id,attachedCertificate.rows[0].id]);
 const ownQualificationDelete=await request("/api/users/me/qualifications/"+ownedQualification.rows[0].id,{token:individualDeletionApplicant.token,method:"DELETE"});
 assert.equal(ownQualificationDelete.status,200,"A teacher can permanently delete their own qualification, including a verified user-submitted record");
 assert.equal((await pool.query("SELECT 1 FROM teacher_qualifications WHERE id=$1",[ownedQualification.rows[0].id])).rowCount,0,"Qualification deletion removes the qualification and cascaded review history");
 assert.equal((await pool.query("SELECT 1 FROM teacher_documents WHERE id=$1 AND user_id=$2",[attachedCertificate.rows[0].id,individualDeletionApplicant.id])).rowCount,0,"Deleting a qualification also removes its exclusively attached certificate bytes");
+assert.equal((await pool.query("SELECT document_id FROM teacher_qualifications WHERE id=$1",[secondQualification.rows[0].id])).rows[0].document_id,null,"Deleting a shared uploaded certificate clears its qualification reference instead of leaving a dangling link");
+const sharedCertificateDelete=await request("/api/users/me/teacher-documents/"+attachedCertificate.rows[0].id,{token:individualDeletionApplicant.token,method:"DELETE"});
+assert.equal(sharedCertificateDelete.status,200,"Teacher can directly delete a certificate even when a qualification record references it");
+assert.equal((await pool.query("SELECT 1 FROM teacher_qualifications WHERE id=$1",[secondQualification.rows[0].id])).rowCount,1,"Deleting an uploaded certificate preserves its separate qualification record");
+const secondQualificationDelete=await request("/api/users/me/qualifications/"+secondQualification.rows[0].id,{token:individualDeletionApplicant.token,method:"DELETE"});
+assert.equal(secondQualificationDelete.status,200,"Qualification remains individually deletable after its certificate is removed");
+
 assert.equal((await pool.query("SELECT 1 FROM teacher_profiles WHERE user_id=$1 AND cv->>'professionalSummary'='Keep this CV text'",[individualDeletionApplicant.id])).rowCount,1,"Individual file/qualification deletion does not erase unrelated CV content");
 
 const wholeApplicationDeleteApplicant=await registerTeacher("whole-application-delete");
