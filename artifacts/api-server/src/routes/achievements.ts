@@ -7,8 +7,8 @@ import { requireAuth, isOwnerRole, canAccessManager } from "../lib/auth-middlewa
 import { canRecommendAchievementAwards } from "../lib/role-access";
 import { canViewProfileSection } from "./profileConnections";
 import { createHash } from "node:crypto";
-import { createSchoolId } from "../lib/school-id";
-import { buildBrandedDocumentPdf } from "./academicRecords";
+
+import { buildBrandedDocumentPdf, ensureLearnerSchoolId } from "./academicRecords";
 
 const router = Router();
 
@@ -386,18 +386,9 @@ router.get("/:awardId/certificate.pdf", requireAuth, async (req, res): Promise<v
     const base = String(process.env.PUBLIC_APP_URL || process.env.VITE_APP_URL || "").replace(/\/+$/,"");
     watermark = { recipientName: row.recipient_name, sharedAt: new Date(row.created_at), verificationUrl: base ? base + "/verify/document/" + token : undefined };
   }
-  await pool.query("CREATE TABLE IF NOT EXISTS learner_school_ids (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,school_id text NOT NULL UNIQUE,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now())");
-  let schoolIdRow = (await pool.query("SELECT school_id FROM learner_school_ids WHERE user_id=$1", [award.user_id])).rows[0];
-  for (let attempt=0; !schoolIdRow && attempt<5; attempt++) {
-    try {
-      schoolIdRow = (await pool.query("INSERT INTO learner_school_ids(user_id,school_id) VALUES($1,$2) ON CONFLICT(user_id) DO UPDATE SET user_id=EXCLUDED.user_id RETURNING school_id", [award.user_id,createSchoolId()])).rows[0];
-    } catch (error) {
-      if ((error as any)?.code !== "23505" || attempt === 4) throw error;
-    }
-  }
-  const schoolId = schoolIdRow?.school_id || "Not issued";
+  const schoolId = await ensureLearnerSchoolId(Number(award.user_id));
   const publicBase = String(process.env.PUBLIC_APP_URL || process.env.VITE_APP_URL || "").trim().replace(/\/+$/,"");
-  const schoolVerificationUrl = schoolIdRow ? (publicBase ? publicBase + "/verify/school/" + schoolId : "/verify/school/" + schoolId) : "Not available";
+  const schoolVerificationUrl = publicBase ? publicBase + "/verify/school/" + schoolId : "/verify/school/" + schoolId;
   const sections = [
     { heading: "Award recipient", rows: ["Learner: " + award.learner_name, "Grade / Form: " + (award.grade || "Not recorded"), "Dallyletter School ID: " + schoolId, "Academic portfolio verification: " + schoolVerificationUrl] },
     { heading: "Achievement", rows: ["Award: " + award.name, "Description: " + award.description, "Category: " + (award.category || "Learning"), "Points: " + Number(award.points_value || 0), "Awarded on: " + new Date(award.earned_at).toLocaleDateString(), "Awarded by: " + (award.awarded_by_name || "Dallyletter Elidems")] },
