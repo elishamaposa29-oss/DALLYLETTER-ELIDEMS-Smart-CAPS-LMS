@@ -12,6 +12,7 @@ const [api,privacy,card,page,hub,app,academic,schema] = await Promise.all([
   readFile("artifacts/api-server/src/lib/ensureProfileHubSchema.ts","utf8"),
 ]);
 assert.match(api,/randomBytes\(16\)/,"School IDs must use 80 random bits");
+assert.match(api,/NOT EXISTS \(SELECT 1 FROM learner_school_ids/,"Existing learner accounts must receive School IDs during the additive backfill");
 assert.match(api,/createHash\("sha256"\)/,"School IDs must include a checksum and hashed lookup throttling");
 assert.match(api,/school_id=\$1/,"Public lookup must match the complete exact School ID");
 assert.match(api,/>= 20/,"Public verification must be rate limited");
