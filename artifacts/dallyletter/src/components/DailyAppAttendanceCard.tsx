@@ -100,6 +100,7 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
   const [dailyError, setDailyError] = useState("");
   const [dailyOpen, setDailyOpen] = useState(false);
   const [monthOffset, setMonthOffset] = useState(0);
+  const [selectedDate, setSelectedDate] = useState(todayInLocalZone());
   const [offlineClassCache, setOfflineClassCache] = useState(false);
   const [offlineDailyCache, setOfflineDailyCache] = useState(false);
   const today = todayInLocalZone();
@@ -237,15 +238,18 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
                       ? "bg-violet-100 text-violet-950 border-violet-400 dark:bg-violet-950/60 dark:text-violet-100 dark:border-violet-700"
                       : "bg-card text-foreground border-border";
           return (
-            <div key={key} title={`${formatDate(key)} · ${isMixed ? "Present and absent sessions" : isAbsent ? "Absence recorded" : isPresent ? "Present" : isPastUnrecorded ? "No attendance record" : holidayName || (isFuture ? "Upcoming date" : "No record")}${status ? ` · ${status.present} present, ${status.absent} absent` : ""}`} aria-label={`${formatDate(key)}: ${isMixed ? "mixed attendance, present and absent sessions" : isAbsent ? "absence recorded" : isPresent ? "present" : isPastUnrecorded ? "past day with no record" : holidayName ? holidayName : isFuture ? "upcoming date" : "no record"}`} className={`relative flex min-h-[42px] flex-col items-center justify-center rounded-lg border text-sm font-semibold transition-colors sm:min-h-[54px] ${colorClass} ${isWeekend ? "ring-1 ring-inset ring-violet-400 dark:ring-violet-600" : ""} ${isToday ? "outline outline-2 outline-offset-1 outline-primary" : ""}`}>
+            <button type="button" key={key} aria-pressed={selectedDate === key} onClick={() => setSelectedDate(key)} title={`${formatDate(key)} · ${isMixed ? "Present and absent sessions" : isAbsent ? "Absence recorded" : isPresent ? "Present" : isPastUnrecorded ? "No attendance record" : holidayName || (isFuture ? "Upcoming date" : "No record")}${status ? ` · ${status.present} present, ${status.absent} absent` : ""}`} aria-label={`${formatDate(key)}: ${isMixed ? "mixed attendance, present and absent sessions" : isAbsent ? "absence recorded" : isPresent ? "present" : isPastUnrecorded ? "past day with no record" : holidayName ? holidayName : isFuture ? "upcoming date" : "no record"}`} className={`relative flex min-h-[42px] flex-col items-center justify-center rounded-lg border text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b38b00] sm:min-h-[54px] ${colorClass} ${isWeekend ? "ring-1 ring-inset ring-violet-400 dark:ring-violet-600" : ""} ${isToday ? "outline outline-2 outline-offset-1 outline-primary" : ""} ${selectedDate === key ? "ring-2 ring-[#b38b00] ring-offset-1" : ""}`}>
               <span>{day}</span>
               {status && <span className="text-[9px] font-bold leading-3">{status.present > 0 && <span>{status.present}P</span>}{status.present > 0 && status.absent > 0 && <span> · </span>}{status.absent > 0 && <span>{status.absent}A</span>}</span>}
-              {isPastUnrecorded && !holidayName && <span className="text-[9px] font-extrabold leading-3">NO MARK</span>}
               {holidayName && <span title={holidayName} aria-label={holidayName} className="pointer-events-none absolute inset-x-0 bottom-0 truncate px-0.5 text-center text-[8px] font-bold leading-3 text-violet-800 dark:text-violet-200">{holidayName}</span>}
               {isToday && <span className="text-[8px] font-bold uppercase tracking-wide">Today</span>}
-            </div>
+            </button>
           );
         })}
+      </div>
+      <div aria-live="polite" className="rounded-lg border border-[#b38b00]/30 bg-muted/30 px-3 py-2">
+        <p className="text-xs font-semibold text-foreground">Selected date · {formatDate(selectedDate)}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{(() => { const item = dayStatus.get(selectedDate); const holiday = zimbabwePublicHolidays(Number(selectedDate.slice(0, 4))).get(selectedDate); return item ? `${item.present} present · ${item.absent} absent` : holiday || (selectedDate > today ? "Upcoming date" : "No attendance record for this date."); })()}</p>
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-muted-foreground">
         <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-emerald-400 bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/60" /> Present (green)</span>
