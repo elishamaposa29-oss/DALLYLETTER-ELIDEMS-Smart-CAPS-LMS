@@ -31,7 +31,7 @@ function jpegDimensions(data: Buffer): { width: number; height: number } | null 
   return null;
 }
 function buildBrandedDocumentPdf(title: string, _subtitle: string, reference: string, sections: BrandedPdfSection[], transferImages: TransferPdfImage[] = []): Buffer {
-  const esc=(value:unknown)=>String(value??"—").normalize("NFKD").replace(/[^\\x20-\\xFF]/g,"?").replace(/\\/g,"\\\\\\\\").replace(/\(/g,"\\\\(").replace(/\)/g,"\\\\)");
+  const esc=(value:unknown)=>String(value??"—").normalize("NFKD").replace(/[^\x20-\xFF]/g,"?").replace(/\\/g,"\\\\").replace(/\(/g,"\\(").replace(/\)/g,"\\)");
   const pages: Array<Array<{kind:"section"|"line";text:string}>>=[[]];
   let page=pages[0], used=0;
   const push=(kind:"section"|"line",text:string)=>{
@@ -44,7 +44,7 @@ function buildBrandedDocumentPdf(title: string, _subtitle: string, reference: st
   for(const section of sections){push("section",section.heading);for(const row of section.rows)push("line",row);push("line","");}
   const validImages=transferImages.flatMap(image=>{
     if(typeof image.dataUrl!=="string")return [];
-    const match=image.dataUrl.match(/^data:image\\/jpeg;base64,([A-Za-z0-9+/=]+)$/);
+    const match=image.dataUrl.match(/^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/);
     if(!match)return [];
     const bytes=Buffer.from(match[1],"base64"),dimensions=jpegDimensions(bytes);
     return dimensions&&dimensions.width>0&&dimensions.height>0&&bytes.length<=900*1024?[{name:image.name,bytes,...dimensions}]:[];
@@ -59,7 +59,7 @@ function buildBrandedDocumentPdf(title: string, _subtitle: string, reference: st
   const imageObjectIds:number[]=[];
   for(const image of validImages){
     const id=objects.length+1;imageObjectIds.push(id);
-    objects.push("<< /Type /XObject /Subtype /Image /Width "+image.width+" /Height "+image.height+" /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length "+image.bytes.length+" >>\\nstream\\n"+image.bytes.toString("binary")+"\\nendstream");
+    objects.push("<< /Type /XObject /Subtype /Image /Width "+image.width+" /Height "+image.height+" /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length "+image.bytes.length+" >>\nstream\n"+image.bytes.toString("binary")+"\\nendstream");
   }
   const pageObjectIds:number[]=[];
   pages.forEach((items,i)=>{
@@ -94,16 +94,16 @@ function buildBrandedDocumentPdf(title: string, _subtitle: string, reference: st
     commands.push("0.055 0.13 0.29 rg 38 43 519 1 re f");
     commands.push("0.25 0.29 0.36 rg BT /F1 8 Tf 42 27 Td ("+esc(reference+" · Official protected document")+") Tj ET");
     commands.push("0.25 0.29 0.36 rg BT /F1 8 Tf 490 27 Td ("+esc("Page "+(i+1)+" of "+pages.length)+") Tj ET");
-    const stream=commands.join("\\n"),xObjects=validImages.length?" /XObject << "+validImages.map((_,index)=>"/Im"+(index+1)+" "+imageObjectIds[index]+" 0 R").join(" ")+" >>":"";
+    const stream=commands.join("\n"),xObjects=validImages.length?" /XObject << "+validImages.map((_,index)=>"/Im"+(index+1)+" "+imageObjectIds[index]+" 0 R").join(" ")+" >>":"";
     objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >>"+xObjects+" >> /Contents "+contentId+" 0 R >>");
-    objects.push("<< /Length "+Buffer.byteLength(stream,"binary")+" >>\\nstream\\n"+stream+"\\nendstream");
+    objects.push("<< /Length "+Buffer.byteLength(stream,"binary")+" >>\nstream\n"+stream+"\\nendstream");
   });
   objects[1]="<< /Type /Pages /Kids ["+pageObjectIds.map(id=>id+" 0 R").join(" ")+"] /Count "+pages.length+" >>";
-  let pdf="%PDF-1.4\\n";const offsets=[0];
-  for(let i=0;i<objects.length;i++){offsets.push(Buffer.byteLength(pdf,"binary"));pdf+=(i+1)+" 0 obj\\n"+objects[i]+"\\nendobj\\n";}
-  const xref=Buffer.byteLength(pdf,"binary");pdf+="xref\\n0 "+(objects.length+1)+"\\n0000000000 65535 f \\n";
-  for(const offset of offsets.slice(1))pdf+=String(offset).padStart(10,"0")+" 00000 n \\n";
-  pdf+="trailer\\n<< /Size "+(objects.length+1)+" /Root 1 0 R >>\\nstartxref\\n"+xref+"\\n%%EOF";
+  let pdf="%PDF-1.4\n";const offsets=[0];
+  for(let i=0;i<objects.length;i++){offsets.push(Buffer.byteLength(pdf,"binary"));pdf+=(i+1)+" 0 obj\n"+objects[i]+"\nendobj\n";}
+  const xref=Buffer.byteLength(pdf,"binary");pdf+="xref\n0 "+(objects.length+1)+"\\n0000000000 65535 f \\n";
+  for(const offset of offsets.slice(1))pdf+=String(offset).padStart(10,"0")+" 00000 n \n";
+  pdf+="trailer\n<< /Size "+(objects.length+1)+" /Root 1 0 R >>\nstartxref\n"+xref+"\n%%EOF";
   return Buffer.from(pdf,"binary");
 }
 
