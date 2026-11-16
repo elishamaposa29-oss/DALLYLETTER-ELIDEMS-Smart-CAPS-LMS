@@ -654,6 +654,7 @@ router.delete("/users/me/teacher-documents/:docId", requireAuth, async (req, res
     const found=await client.query("SELECT id,storage_key FROM teacher_documents WHERE id=$1 AND user_id=$2 FOR UPDATE",[docId,actor.id]);
     if(!found.rows.length){await client.query("ROLLBACK");res.status(404).json({error:"Your uploaded document was not found."});return;}
     storageKey=found.rows[0].storage_key?String(found.rows[0].storage_key):null;
+    await client.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,cv jsonb NOT NULL DEFAULT '{}'::jsonb,updated_at timestamptz NOT NULL DEFAULT now())");
     await client.query("UPDATE teacher_qualifications SET document_id=NULL WHERE user_id=$1 AND document_id=$2",[actor.id,docId]);
     await client.query("UPDATE teacher_profiles SET cv=cv-'photoDocumentId',updated_at=now() WHERE user_id=$1 AND cv->>'photoDocumentId'=$2",[actor.id,String(docId)]);
     await client.query("DELETE FROM teacher_documents WHERE id=$1 AND user_id=$2",[docId,actor.id]);
