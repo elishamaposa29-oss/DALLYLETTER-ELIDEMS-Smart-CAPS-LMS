@@ -122,7 +122,7 @@ router.get("/school-id/me", requireAuth, async (req, res): Promise<void> => {
   let result = await pool.query("SELECT school_id FROM learner_school_ids WHERE user_id=$1", [user.id]);
   if (!result.rows.length) {
     for (let attempt = 0; attempt < 4; attempt++) {
-      const code = makeCode();
+      const code = createSchoolId();
       try {
         result = await pool.query(
           "INSERT INTO learner_school_ids(user_id,school_id) VALUES($1,$2) ON CONFLICT(user_id) DO UPDATE SET user_id=EXCLUDED.user_id RETURNING school_id",
