@@ -125,7 +125,7 @@ function summarizeAcademicMarks(assignmentRows: any[], exerciseRows: any[]) {
   };
 }
 
-export function buildAcademicReportPdf(input: { id: number; reportType: string; termLabel: string; periodStart?: unknown; periodEnd?: unknown; learnerName: string; schoolId?: string; schoolVerificationUrl?: string; reviewedAt: unknown; reviewedBy: unknown; reviewNote?: unknown; report: unknown }): Buffer {
+export function buildAcademicReportPdf(input: { id: number; reportType: string; termLabel: string; periodStart?: unknown; periodEnd?: unknown; learnerName: string; schoolId?: string; schoolVerificationUrl?: string; watermark?: { recipientName: string; sharedAt: Date; verificationUrl?: string }; reviewedAt: unknown; reviewedBy: unknown; reviewNote?: unknown; report: unknown }): Buffer {
  const report=input.report&&typeof input.report==="object"?input.report as Record<string,any>:{};
  const facts=report.factualRecords&&typeof report.factualRecords==="object"?report.factualRecords:{};
  const summary=facts.markSummary?.overall||report.markSummary?.overall||{};
@@ -154,7 +154,7 @@ export function buildAcademicReportPdf(input: { id: number; reportType: string; 
   );
  }
  sections.push({heading:"Comments and decisions",rows:["Academic commentary: "+fmt(report.commentary),"Teacher comment: "+fmt(report.teacherComment),"Conduct / behaviour: "+fmt(report.conduct),"Term result / promotion: "+fmt(report.result),"Reviewer / headmaster comment: "+fmt(input.reviewNote),"Teacher signature: Not digitally recorded","Headmaster signature / school stamp: Not recorded","Record integrity: only saved records are included; unmarked work is not counted as zero."]});
- return buildBrandedDocumentPdf("OFFICIAL ACADEMIC REPORT",input.termLabel,"DL-AR-"+input.id,sections);
+ return buildBrandedDocumentPdf("OFFICIAL ACADEMIC REPORT",input.termLabel,"DL-AR-"+input.id,sections,input.watermark);
 }
 // Academic documents are built only from authoritative records. Transfer letters and
 // AI-assisted reports remain unavailable to learners until an authorized manager approves.
