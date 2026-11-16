@@ -396,7 +396,7 @@ router.get("/:awardId/certificate.pdf", requireAuth, async (req, res): Promise<v
     }
   }
   const schoolId = schoolIdRow?.school_id || "Not issued";
-  const publicBase = String(process.env.PUBLIC_APP_URL || process.env.VITE_APP_URL || "").trim().replace(/\\/+$/,"");
+  const publicBase = String(process.env.PUBLIC_APP_URL || process.env.VITE_APP_URL || "").trim().replace(/\/+$/,"");
   const schoolVerificationUrl = schoolIdRow ? (publicBase ? publicBase + "/verify/school/" + schoolId : "/verify/school/" + schoolId) : "Not available";
   const sections = [
     { heading: "Award recipient", rows: ["Learner: " + award.learner_name, "Grade / Form: " + (award.grade || "Not recorded"), "Dallyletter School ID: " + schoolId, "Academic portfolio verification: " + schoolVerificationUrl] },
