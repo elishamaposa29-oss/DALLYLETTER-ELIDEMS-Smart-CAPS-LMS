@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { and, eq } from "drizzle-orm";
-import { db, notificationsTable, usersTable, pool } from "@workspace/db";
+import { db, notificationsTable, usersTable, pool, auditLogsTable } from "@workspace/db";
 import { requireAuth, normalizeRole, isOwnerRole, canAccessManager } from "../lib/auth-middleware";
 import { managerHasPermission } from "../lib/manager-permission-policy";
 import { canModerateUser } from "../lib/role-access";
@@ -215,6 +215,7 @@ router.put("/profile/me/privacy", requireAuth, async (req,res): Promise<void> =>
     [req.currentUser!.id,JSON.stringify(merged),nextChat],
   );
   if(sensitivePersonalDataConsent!==undefined&&Boolean(previousSettings.sensitive_personal_data_consent?.enabled)!==sensitivePersonalDataConsent){
+    await db.insert(auditLogsTable).values({performedBy:req.currentUser!.id,action:sensitivePersonalDataConsent?"profile.sensitive_data_consent.enabled":"profile.sensitive_data_consent.revoked",category:"privacy",targetType:"user",targetId:req.currentUser!.id,details:JSON.stringify({consentVersion:"2026-11-16",enabled:sensitivePersonalDataConsent})});
     await db.insert(notificationsTable).values({recipientId:req.currentUser!.id,title:sensitivePersonalDataConsent?"Sensitive data sharing enabled":"Sensitive data sharing disabled",message:sensitivePersonalDataConsent?"You approved sharing selected sensitive personal details only where a future verified portfolio explicitly requests them. You can revoke this consent in Profile Hub privacy settings.":"Your consent for sensitive personal-data sharing has been revoked.",link:"/profile-hub",type:"privacy_consent"});
   }
   res.json({sectionSettings:merged,chatPrivacy:nextChat,sensitivePersonalDataConsent:Boolean(merged.sensitive_personal_data_consent?.enabled)});
