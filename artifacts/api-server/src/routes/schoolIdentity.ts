@@ -101,8 +101,8 @@ router.get("/school-id/verify/:schoolId", async (req, res): Promise<void> => {
   const stripPrivateFields = (value: any): any => {
     if (Array.isArray(value)) return value.map(stripPrivateFields);
     if (!value || typeof value !== "object") return value;
-    const blocked = /^(?:dob|dateOfBirth|birthDate|phone|mobile|email|address|guardian.*|parent.*|health.*|medical.*|admissionNumber|admissionNo|emisNo|nationalId|identityNumber|password|token|secret)$/i;
-    return Object.fromEntries(Object.entries(value).filter(([key]) => !blocked.test(key)).map(([key, item]) => [key, stripPrivateFields(item)]));
+    const blocked = /^(?:dob|dateofbirth|birthdate|phone|mobile|email|contact|address|guardian.*|parent.*|health.*|medical.*|admissionnumber|admissionno|emisno|nationalid|identitynumber|password|token|secret)$/i;
+    return Object.fromEntries(Object.entries(value).filter(([key]) => !blocked.test(key.replace(/[_-]/g, ""))).map(([key, item]) => [key, stripPrivateFields(item)]));
   };
   if (isPublic("achievements")) {
     portfolio.achievements = (await pool.query(
@@ -114,7 +114,16 @@ router.get("/school-id/verify/:schoolId", async (req, res): Promise<void> => {
     portfolio.reports = (await pool.query(
       "SELECT id,report_type,term_label,period_start,period_end,draft_content,review_note,reviewed_at FROM academic_report_drafts WHERE learner_id=$1 AND status='approved' ORDER BY reviewed_at DESC NULLS LAST,created_at DESC LIMIT 100",
       [learner.user_id],
-    )).rows.map(row => stripPrivateFields(row));
+    )).rows.map(row => {
+      const content = row.draft_content && typeof row.draft_content === "object" ? row.draft_content : {};
+      const facts = content.factualRecords && typeof content.factualRecords === "object" ? content.factualRecords : {};
+      return {
+        id: row.id, reportType: row.report_type, termLabel: row.term_label,
+        periodStart: row.period_start, periodEnd: row.period_end, reviewedAt: row.reviewed_at,
+        learnerGrade: content.learnerGrade || null, academicYear: content.academicYear || null,
+        factualRecords: stripPrivateFields(facts),
+      };
+    });
   }
   if (isPublic("attendance")) {
     portfolio.attendance = (await pool.query(
@@ -135,7 +144,14 @@ router.get("/school-id/verify/:schoolId", async (req, res): Promise<void> => {
     portfolio.transfers = (await pool.query(
       "SELECT id,status,reviewed_at,created_at,form_data FROM academic_transfer_requests WHERE learner_id=$1 AND status='approved' ORDER BY reviewed_at DESC NULLS LAST LIMIT 50",
       [learner.user_id],
-    )).rows.map(row => stripPrivateFields(row));
+    )).rows.map(row => {
+      const form = row.form_data && typeof row.form_data === "object" ? row.form_data : {};
+      return {
+        id: row.id, status: row.status, reviewedAt: row.reviewed_at, createdAt: row.created_at,
+        currentSchool: form.currentSchool || null, receivingSchool: form.receivingSchool || null,
+        grade: form.grade || null, academicYear: form.academicYear || null, effectiveDate: form.effectiveDate || null,
+      };
+    });
   }
   if (isPublic("enrollments")) {
     portfolio.enrollments = (await pool.query(
