@@ -77,6 +77,58 @@ function validCode(value: unknown): string | null {
   return code[19] === check ? code : null;
 }
 
+
+router.post("/school-id/documents/:type/:id/share", requireAuth, async (req, res): Promise<void> => {
+  await ensureSchema();
+  const type = String(req.params.type || "");
+  const id = Number(req.params.id);
+  const actor = req.currentUser!;
+  if (!["report","transfer","achievement"].includes(type) || !Number.isSafeInteger(id) || id < 1) { res.status(400).json({ error: "Unsupported document or invalid document ID." }); return; }
+  let document: any;
+  if (type === "report") document = (await pool.query("SELECT id,learner_id,report_type AS title FROM academic_report_drafts WHERE id=$1 AND status='approved'", [id])).rows[0];
+  if (type === "transfer") document = (await pool.query("SELECT id,learner_id,'Approved transfer letter' AS title FROM academic_transfer_requests WHERE id=$1 AND status='approved'", [id])).rows[0];
+  if (type === "achievement") document = (await pool.query("SELECT ua.id,ua.user_id AS learner_id,a.name AS title FROM user_achievements ua JOIN achievements a ON a.id=ua.achievement_id WHERE ua.id=$1", [id])).rows[0];
+  if (!document) { res.status(404).json({ error: "Approved document not found." }); return; }
+  if (Number(document.learner_id) !== Number(actor.id) && !isOwnerRole(actor.role)) { res.status(403).json({ error: "Only the learner or platform Owner can create this protected share." }); return; }
+  const recipientName = typeof req.body?.recipientName === "string" ? req.body.recipientName.trim().slice(0,120) : "";
+  if (!recipientName) { res.status(400).json({ error: "Enter the intended recipient's name for the share watermark." }); return; }
+  const token = randomBytes(32).toString("base64url");
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const saved = await pool.query("INSERT INTO academic_document_verifications(token_hash,document_type,document_id,learner_id,recipient_name,created_by) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,created_at,expires_at", [tokenHash,type,id,document.learner_id,recipientName,actor.id]);
+  await db.insert(auditLogsTable).values({ performedBy: actor.id, action: "academic_document.share_created", category: "academic", targetType: type, targetId: id, details: JSON.stringify({ verificationId: saved.rows[0].id, recipientName }) });
+  res.status(201).json({ verificationId: Number(saved.rows[0].id), documentType: type, recipientName, sharedAt: saved.rows[0].created_at, expiresAt: saved.rows[0].expires_at, verificationPath: "/verify/document/" + token });
+});
+
+router.get("/school-id/documents/verify/:token", async (req, res): Promise<void> => {
+  await ensureSchema();
+  const token = String(req.params.token || "");
+  if (token.length < 40 || token.length > 100) { res.status(404).json({ verified: false, error: "Document verification not found." }); return; }
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const found = await pool.query("SELECT v.id,v.document_type,v.document_id,v.learner_id,v.recipient_name,v.created_at,v.expires_at,v.revoked_at,u.name AS learner_name,s.school_id FROM academic_document_verifications v JOIN users u ON u.id=v.learner_id LEFT JOIN learner_school_ids s ON s.user_id=v.learner_id WHERE v.token_hash=$1 LIMIT 1", [tokenHash]);
+  const row = found.rows[0];
+  if (!row || row.revoked_at || new Date(row.expires_at).getTime() <= Date.now()) { res.status(404).json({ verified: false, error: "This document link is invalid, expired or revoked." }); return; }
+  let current: any;
+  if (row.document_type === "report") current = (await pool.query("SELECT status FROM academic_report_drafts WHERE id=$1 AND learner_id=$2", [row.document_id,row.learner_id])).rows[0];
+  if (row.document_type === "transfer") current = (await pool.query("SELECT status FROM academic_transfer_requests WHERE id=$1 AND learner_id=$2", [row.document_id,row.learner_id])).rows[0];
+  if (row.document_type === "achievement") current = (await pool.query("SELECT id FROM user_achievements WHERE id=$1 AND user_id=$2", [row.document_id,row.learner_id])).rows[0];
+  if (!current || (current.status && current.status !== "approved")) { res.status(404).json({ verified: false, error: "The source document is no longer valid." }); return; }
+  res.setHeader("Cache-Control","no-store");
+  res.json({ verified: true, verificationId: Number(row.id), documentType: row.document_type, documentId: Number(row.document_id), learner: { name: row.learner_name, schoolId: row.school_id }, recipientName: row.recipient_name, sharedAt: row.created_at, expiresAt: row.expires_at, status: "active" });
+});
+
+router.patch("/school-id/documents/:verificationId/revoke", requireAuth, async (req, res): Promise<void> => {
+  await ensureSchema();
+  const actor = req.currentUser!;
+  if (!isOwnerRole(actor.role)) { res.status(403).json({ error: "Only the platform Owner can revoke academic document verification links." }); return; }
+  const id = Number(req.params.verificationId);
+  const reason = typeof req.body?.reason === "string" ? req.body.reason.trim().slice(0,1000) : "";
+  if (!Number.isSafeInteger(id) || id < 1 || reason.length < 3) { res.status(400).json({ error: "A valid verification ID and reason are required." }); return; }
+  const result = await pool.query("UPDATE academic_document_verifications SET revoked_at=now(),revoked_by=$1,revocation_reason=$2 WHERE id=$3 AND revoked_at IS NULL RETURNING id,document_type,document_id", [actor.id,reason,id]);
+  if (!result.rowCount) { res.status(404).json({ error: "Active document verification not found." }); return; }
+  await db.insert(auditLogsTable).values({ performedBy: actor.id, action: "academic_document.share_revoked", category: "academic", targetType: result.rows[0].document_type, targetId: Number(result.rows[0].document_id), details: JSON.stringify({ verificationId:id,reason }) });
+  res.json({ revoked:true,verificationId:id });
+});
+
 router.get("/school-id/me", requireAuth, async (req, res): Promise<void> => {
   await ensureSchema();
   const user = req.currentUser!;
