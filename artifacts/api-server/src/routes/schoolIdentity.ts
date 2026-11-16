@@ -29,7 +29,20 @@ async function ensureSchema(): Promise<void> {
     );
     ALTER TABLE learner_school_id_lookups ADD COLUMN IF NOT EXISTS ip_hash text;
     CREATE INDEX IF NOT EXISTS learner_school_id_lookups_time_idx ON learner_school_id_lookups(requested_at DESC);
-  `).then(() => undefined).catch(error => { schemaReady = null; throw error; });
+  `).then(async () => {
+    const learners = await pool.query("SELECT u.id FROM users u WHERE lower(u.role) IN ('student','learner') AND COALESCE(u.is_blocked,false)=false AND COALESCE(u.is_suspended,false)=false AND NOT EXISTS (SELECT 1 FROM learner_school_ids s WHERE s.user_id=u.id) ORDER BY u.id");
+    for (const learner of learners.rows) {
+      let issued = false;
+      for (let attempt = 0; attempt < 5 && !issued; attempt++) {
+        try {
+          await pool.query("INSERT INTO learner_school_ids(user_id,school_id) VALUES($1,$2) ON CONFLICT(user_id) DO NOTHING", [learner.id, makeCode()]);
+          issued = true;
+        } catch (error) {
+          if ((error as any)?.code !== "23505" || attempt === 4) throw error;
+        }
+      }
+    }
+  }).catch(error => { schemaReady = null; throw error; });
   await schemaReady;
 }
 
