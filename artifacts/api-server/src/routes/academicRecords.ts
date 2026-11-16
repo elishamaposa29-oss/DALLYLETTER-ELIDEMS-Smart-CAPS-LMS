@@ -42,7 +42,7 @@ export function buildBrandedDocumentPdf(title: string, subtitle: string, referen
   for(const section of sections){push("section",section.heading);for(const row of section.rows)push("line",row);push("line","");}
   const objects:string[]=[
     "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids ["+pages.map((_,i)=>(5+i*2)+" 0 R").join(" ")+"] /Count "+pages.length+" >>",
+    "<< /Type /Pages /Kids ["+pages.map((_,i)=>(5+i*3)+" 0 R").join(" ")+"] /Count "+pages.length+" >>",
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>"
   ];
@@ -74,9 +74,11 @@ export function buildBrandedDocumentPdf(title: string, subtitle: string, referen
     commands.push("0.055 0.13 0.29 rg 38 43 519 1 re f");
     commands.push("0.25 0.29 0.36 rg BT /F1 8 Tf 42 27 Td ("+esc(reference+" · Official protected document")+") Tj ET");
     commands.push("0.25 0.29 0.36 rg BT /F1 8 Tf 490 27 Td ("+esc("Page "+(i+1)+" of "+pages.length)+") Tj ET");
-    const stream=commands.join("\n"),pageObj=5+i*2,contentObj=pageObj+1;
-    objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents "+contentObj+" 0 R >>");
+    const stream=commands.join("\n"),pageObj=5+i*3,contentObj=pageObj+1,annotationObj=pageObj+2;
+    const brandUrl=String(process.env.PUBLIC_APP_URL||process.env.VITE_APP_URL||watermark?.verificationUrl||"").trim();
+    objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents "+contentObj+" 0 R /Annots ["+annotationObj+" 0 R] >>");
     objects.push("<< /Length "+Buffer.byteLength(stream,"binary")+" >>\nstream\n"+stream+"\nendstream");
+    objects.push(brandUrl ? "<< /Type /Annot /Subtype /Link /Rect [42 805 270 835] /Border [0 0 0] /A << /S /URI /URI ("+esc(brandUrl)+") >> >>" : "<< /Type /Annot /Subtype /Link /Rect [42 805 270 835] /Border [0 0 0] >>");
   });
   let pdf="%PDF-1.4\n";const offsets=[0];
   for(let i=0;i<objects.length;i++){offsets.push(Buffer.byteLength(pdf,"binary"));pdf+=(i+1)+" 0 obj\n"+objects[i]+"\nendobj\n";}
