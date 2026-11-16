@@ -7,7 +7,7 @@ import { getApiUrl } from "@workspace/api-client-react";
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import type { LucideIcon } from "lucide-react";
-import { Bell, BookOpen, ClipboardList, CreditCard, FileCheck2, FileText, Headphones, Mail, MessageSquare, PenTool, ShieldCheck, Smartphone, Users, Video, WalletCards } from "lucide-react";
+import { Bell, BookOpen, ClipboardList, CreditCard, FileCheck2, FileText, Headphones, Mail, MessageSquare, PenTool, ShieldCheck, Smartphone, Users, Video, WalletCards, FileLock2 } from "lucide-react";
 
 type Feature = { title:string; description:string; href:string; icon:LucideIcon; tone:string; tag:string; roles?:string[] };
 
@@ -32,6 +32,7 @@ const features:Feature[] = [
  {title:"Manager assignments",description:"Open assignment oversight tools.",href:"/manager/assignments",icon:ClipboardList,tone:"bg-indigo-50 text-indigo-700",tag:"Management",roles:["manager","senior_manager","owner"]},
  {title:"Connect",description:"Open manager-authorized school communication.",href:"/manager/chat",icon:MessageSquare,tone:"bg-rose-50 text-rose-700",tag:"Management",roles:["manager","senior_manager","owner"]},
  {title:"Achievement award review",description:"Review achievement recommendations and approve or decline awards according to manager authority.",href:"/admin/achievements",icon:ShieldCheck,tone:"bg-amber-50 text-amber-700",tag:"Approval",roles:["manager","senior_manager","owner"]},
+ {title:"Academic document security",description:"Owner-only inventory of recipient-specific report, transfer and achievement shares, with immediate revocation and audit history.",href:"/admin/document-security",icon:FileLock2,tone:"bg-rose-50 text-rose-700",tag:"Owner security",roles:["owner","platform_owner"]},
  {title:"Transfer letter approvals",description:"Review learner transfer requests, record decisions and download approved letters.",href:"/manager/transfer-requests",icon:FileCheck2,tone:"bg-amber-50 text-amber-700",tag:"Approval",roles:["manager","senior_manager","owner"]},
  {title:"Academic report review",description:"Review teacher-prepared academic report drafts before release to learners.",href:"/manager/reports/review",icon:FileText,tone:"bg-violet-50 text-violet-700",tag:"Approval",roles:["manager","senior_manager","owner"]},
  {title:"Unified review queue",description:"See pending transfer, report, qualification and achievement decisions in one place.",href:"/manager/review-queue",icon:ClipboardList,tone:"bg-rose-50 text-rose-700",tag:"Approval",roles:["manager","senior_manager","owner"]},
