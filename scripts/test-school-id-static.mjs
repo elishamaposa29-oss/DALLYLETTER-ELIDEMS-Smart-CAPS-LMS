@@ -30,5 +30,6 @@ assert.match(privacy,/sensitive_personal_data_consent/,"Consent must persist in 
 assert.match(card,/school-id\/me/,"Learner Profile Hub must request its own School ID");
 assert.match(hub,/SchoolIdCard/,"School ID card must be integrated into Profile Hub");
 assert.match(page,/school-id\/verify/,"Public verification page must call the exact ID endpoint");
+assert.match(app,/const SchoolIdVerification = lazy\(\(\) => import\("@\/pages\/SchoolIdVerification"\)\)/,"Public School ID page must be lazily imported");
 assert.match(app,/\/verify\/school\/:schoolId/,"Public School ID verification route must be registered");
 console.log("School ID / consent static checks passed.");
