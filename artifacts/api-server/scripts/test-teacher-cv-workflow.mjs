@@ -247,6 +247,7 @@ await request("/api/teacher-cv-workspace/survey/submit",{token:ownerSurveyDelete
 const ownerSurveyDelete=await request("/api/teacher-cv-workspace/"+ownerSurveyDeleteApplicant.id+"/survey",{token:ownerToken,method:"DELETE"});
 assert.equal(ownerSurveyDelete.status,200,"Owner can delete one applicant's readiness survey without deleting the CV");
 
+const unrelatedDeletionActor=await registerTeacher("unrelated-application-delete");
 const individualDeletionApplicant=await registerTeacher("individual-delete");
 const standaloneDoc=await pool.query("INSERT INTO teacher_documents(user_id,document_type,file_name,mime_type,size_bytes,data) VALUES($1,'resume','my-private-resume.pdf','application/pdf',20,$2) RETURNING id",[individualDeletionApplicant.id,Buffer.from("private-resume-bytes")]);
 const profilePhotoDoc=await pool.query("INSERT INTO teacher_documents(user_id,document_type,file_name,mime_type,size_bytes,data) VALUES($1,'cv','my-profile-photo.png','image/png',8,$2) RETURNING id",[individualDeletionApplicant.id,Buffer.from("photo-byte")]);
@@ -269,7 +270,7 @@ assert.equal((await pool.query("SELECT 1 FROM teacher_qualifications WHERE id=$1
 assert.equal((await pool.query("SELECT 1 FROM teacher_documents WHERE id=$1 AND user_id=$2",[attachedCertificate.rows[0].id,individualDeletionApplicant.id])).rowCount,0,"Deleting a qualification also removes its exclusively attached certificate bytes");
 assert.equal((await pool.query("SELECT 1 FROM teacher_profiles WHERE user_id=$1 AND cv->>'professionalSummary'='Keep this CV text'",[individualDeletionApplicant.id])).rowCount,1,"Individual file/qualification deletion does not erase unrelated CV content");
 
-const wholeApplicationDeleteApplicant=await registerTeacher("whole-application-delete");const unrelatedDeletionActor=await registerTeacher("unrelated-application-delete");
+const wholeApplicationDeleteApplicant=await registerTeacher("whole-application-delete");
 const unauthorizedWholeApplicationDelete=await request("/api/teacher-cv-workspace/"+wholeApplicationDeleteApplicant.id+"/application",{token:unrelatedDeletionActor.token,method:"DELETE"});
 assert.equal(unauthorizedWholeApplicationDelete.status,403,"A different teacher cannot erase another teacher's application");
 
