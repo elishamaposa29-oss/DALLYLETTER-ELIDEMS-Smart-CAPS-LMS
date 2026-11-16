@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { getApiUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { FileText, LockKeyhole } from "lucide-react";
+import { FileText, LockKeyhole, Share2 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 type SectionKey = "qualifications"|"subjects"|"enrollments"|"achievements"|"reports"|"attendance"|"payments"|"transfers"|"teacher_documents"|"groups"|"activity";
 type Props = { profileId:number; section:SectionKey; title:string };
@@ -22,6 +23,24 @@ function detailFor(item:any):string {
 }
 
 export function ProfileSectionViewer({profileId,section,title}:Props) {
+  const { user } = useAuth();
+  const [shareNotice,setShareNotice]=useState("");
+  const shareRecord=async(id:number,kind:"report"|"transfer")=>{
+    const recipientName=window.prompt("Who is this academic document being shared with?");
+    if(!recipientName?.trim())return;
+    setShareNotice("");
+    try{
+      const token=localStorage.getItem("dallyletter_token");
+      const response=await fetch(getApiUrl("/api/school-id/documents/"+kind+"/"+id+"/share"),{method:"POST",headers:{"Content-Type":"application/json",...(token?{Authorization:"Bearer "+token}:{})},body:JSON.stringify({recipientName:recipientName.trim()})});
+      const payload=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(payload.error||"A protected share link could not be created.");
+      const url=window.location.origin+payload.verificationPath;
+      if(typeof navigator.share==="function")await navigator.share({title:"Dallyletter verified academic document",text:"A recipient-specific academic document share.",url});
+      else await navigator.clipboard.writeText(url);
+      setShareNotice("Protected verification link shared. The recipient can verify and download the watermarked PDF without signing in.");
+    }catch(e){if(!(e instanceof Error&&e.name==="AbortError"))setShareNotice(e instanceof Error?e.message:"Could not share this document.");}
+  };
+  const canShare=Number(user?.id)===Number(profileId)||["owner","platform_owner"].includes(String(user?.role||"").toLowerCase());
   const [data,setData]=useState<any[]|Record<string,any>>([]);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState("");
@@ -59,6 +78,7 @@ export function ProfileSectionViewer({profileId,section,title}:Props) {
   return <Card className="border-primary/15 shadow-sm">
     <CardHeader><CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5 text-primary"/>{title}</CardTitle></CardHeader>
     <CardContent className="space-y-3">
+      {shareNotice&&<p role="status" className="rounded-md bg-muted p-2 text-xs">{shareNotice}</p>}
       {loading?<p className="text-sm text-muted-foreground">Loading shared records…</p>:error?<p role="alert" className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"><LockKeyhole className="h-4 w-4 shrink-0"/>{error}</p>:rows.length===0?<p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">No saved records have been shared in this section.</p>:rows.map((item:any,index:number)=>{
         const report=item?.draft_content&&typeof item.draft_content==="object"?item.draft_content:{};
         return <article key={item?.id??index} className="rounded-xl border p-3">
@@ -70,7 +90,8 @@ export function ProfileSectionViewer({profileId,section,title}:Props) {
           {report?.commentary&&<p className="mt-2 whitespace-pre-wrap text-sm">{String(report.commentary)}</p>}
           {item?.review_note&&<p className="mt-2 text-sm"><strong>Review note:</strong> {item.review_note}</p>}
           {item?.reason&&section==="transfers"&&<p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{item.reason}</p>}
-          {section==="reports"&&item?.id&&<button type="button" disabled={downloading===Number(item.id)} onClick={()=>void downloadRecord(Number(item.id),"report")} className="mt-3 rounded-lg bg-[#0f2a5a] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">{downloading===Number(item.id)?"Preparing PDF…":"Download approved report PDF"}</button>}
+          {section==="reports"&&item?.id&&<div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={downloading===Number(item.id)} onClick={()=>void downloadRecord(Number(item.id),"report")} className="rounded-lg bg-[#0f2a5a] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">{downloading===Number(item.id)?"Preparing PDF…":"Download approved report PDF"}</button>{canShare&&<button type="button" onClick={()=>void shareRecord(Number(item.id),"report")} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold"><Share2 className="h-3.5 w-3.5"/>Share protected link</button>}</div>}
+          {section==="transfers"&&item?.id&&String(item.status).toLowerCase()==="approved"&&canShare&&<button type="button" onClick={()=>void shareRecord(Number(item.id),"transfer")} className="mt-3 inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold"><Share2 className="h-3.5 w-3.5"/>Share protected transfer copy</button>}
           {section==="teacher_documents"&&item?.id&&<button type="button" disabled={downloading===Number(item.id)} onClick={()=>void downloadRecord(Number(item.id),"document")} className="mt-3 rounded-lg bg-[#0f2a5a] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">{downloading===Number(item.id)?"Preparing file…":"Open certificate"}</button>}
           {item?.subjects&&Array.isArray(item.subjects)&&<p className="mt-2 text-sm">{item.subjects.join(", ")}</p>}
           {item?.lesson_requests!=null&&<p className="mt-1 text-sm">Lesson requests: {item.lesson_requests}</p>}
