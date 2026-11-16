@@ -147,6 +147,9 @@ export async function ensureProfileHubSchema(): Promise<void> {
     await client.query("ALTER TABLE academic_transfer_requests ADD COLUMN IF NOT EXISTS verification_token_hash text");
     await client.query("ALTER TABLE academic_transfer_requests ADD COLUMN IF NOT EXISTS verification_token_expires_at timestamptz");
     await client.query("ALTER TABLE academic_transfer_requests ADD COLUMN IF NOT EXISTS verification_verified_at timestamptz");
+    await client.query("ALTER TABLE academic_transfer_requests ADD COLUMN IF NOT EXISTS verification_revoked_at timestamptz");
+    await client.query("ALTER TABLE academic_transfer_requests ADD COLUMN IF NOT EXISTS verification_revoked_by integer REFERENCES users(id)");
+    await client.query("ALTER TABLE academic_transfer_requests ADD COLUMN IF NOT EXISTS verification_revocation_reason text");
     await client.query("CREATE UNIQUE INDEX IF NOT EXISTS academic_transfer_verification_token_idx ON academic_transfer_requests(verification_token_hash) WHERE verification_token_hash IS NOT NULL");
     await client.query(`CREATE TABLE IF NOT EXISTS academic_report_drafts (
       id bigserial PRIMARY KEY,

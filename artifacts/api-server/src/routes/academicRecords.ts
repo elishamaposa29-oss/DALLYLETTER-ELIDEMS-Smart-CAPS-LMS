@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { createHash, randomBytes } from "node:crypto";
+import { createSchoolId } from "../lib/school-id";
 import { db, auditLogsTable, pool } from "@workspace/db";
 import { getAIProvider } from "../lib/ai-provider";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
@@ -11,8 +12,23 @@ import { canViewProfileSection } from "./profileConnections";
 
 const router = Router();
 
-type BrandedPdfSection = { heading: string; rows: string[] };
-function buildBrandedDocumentPdf(title: string, subtitle: string, reference: string, sections: BrandedPdfSection[]): Buffer {
+export async function ensureLearnerSchoolId(userId: number): Promise<string> {
+  await pool.query("CREATE TABLE IF NOT EXISTS learner_school_ids (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,school_id text NOT NULL UNIQUE,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now())");
+  const existing = (await pool.query("SELECT school_id FROM learner_school_ids WHERE user_id=$1", [userId])).rows[0];
+  if (existing?.school_id) return String(existing.school_id);
+  for (let attempt=0; attempt<5; attempt++) {
+    try {
+      const inserted = await pool.query("INSERT INTO learner_school_ids(user_id,school_id) VALUES($1,$2) ON CONFLICT(user_id) DO UPDATE SET user_id=EXCLUDED.user_id RETURNING school_id", [userId,createSchoolId()]);
+      return String(inserted.rows[0].school_id);
+    } catch (error) {
+      if ((error as any)?.code !== "23505" || attempt === 4) throw error;
+    }
+  }
+  throw new Error("Could not issue a unique School ID.");
+}
+
+export type BrandedPdfSection = { heading: string; rows: string[] };
+export function buildBrandedDocumentPdf(title: string, subtitle: string, reference: string, sections: BrandedPdfSection[], watermark?: { recipientName: string; sharedAt: Date; verificationUrl?: string }): Buffer {
   const esc=(value:unknown)=>String(value??"—").normalize("NFKD").replace(/[^\x20-\xFF]/g,"?").replace(/\\/g,"\\\\").replace(/\(/g,"\\(").replace(/\)/g,"\\)");
   const pages: Array<Array<{kind:"section"|"line";text:string}>>=[[]];
   let page=pages[0], used=0;
@@ -26,7 +42,7 @@ function buildBrandedDocumentPdf(title: string, subtitle: string, reference: str
   for(const section of sections){push("section",section.heading);for(const row of section.rows)push("line",row);push("line","");}
   const objects:string[]=[
     "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids ["+pages.map((_,i)=>(5+i*2)+" 0 R").join(" ")+"] /Count "+pages.length+" >>",
+    "<< /Type /Pages /Kids ["+pages.map((_,i)=>(5+i*3)+" 0 R").join(" ")+"] /Count "+pages.length+" >>",
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>"
   ];
@@ -50,12 +66,19 @@ function buildBrandedDocumentPdf(title: string, subtitle: string, reference: str
         y-=14;
       }else y-=6;
     }
+    if (watermark) {
+      const label = "SHARED WITH " + watermark.recipientName + " · " + watermark.sharedAt.toISOString().slice(0,10);
+      commands.push("q 0.82 0.84 0.87 rg BT /F2 25 Tf 0.707 0.707 -0.707 0.707 105 330 Tm ("+esc(label)+") Tj ET Q");
+      if (watermark.verificationUrl) commands.push("0.25 0.29 0.36 rg BT /F1 7 Tf 42 14 Td ("+esc("Verify: "+watermark.verificationUrl)+") Tj ET");
+    }
     commands.push("0.055 0.13 0.29 rg 38 43 519 1 re f");
     commands.push("0.25 0.29 0.36 rg BT /F1 8 Tf 42 27 Td ("+esc(reference+" · Official protected document")+") Tj ET");
     commands.push("0.25 0.29 0.36 rg BT /F1 8 Tf 490 27 Td ("+esc("Page "+(i+1)+" of "+pages.length)+") Tj ET");
-    const stream=commands.join("\n"),pageObj=5+i*2,contentObj=pageObj+1;
-    objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents "+contentObj+" 0 R >>");
+    const stream=commands.join("\n"),pageObj=5+i*3,contentObj=pageObj+1,annotationObj=pageObj+2;
+    const brandUrl=String(process.env.PUBLIC_APP_URL||process.env.VITE_APP_URL||watermark?.verificationUrl||"").trim();
+    objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents "+contentObj+" 0 R /Annots ["+annotationObj+" 0 R] >>");
     objects.push("<< /Length "+Buffer.byteLength(stream,"binary")+" >>\nstream\n"+stream+"\nendstream");
+    objects.push(brandUrl ? "<< /Type /Annot /Subtype /Link /Rect [42 805 270 835] /Border [0 0 0] /A << /S /URI /URI ("+esc(brandUrl)+") >> >>" : "<< /Type /Annot /Subtype /Link /Rect [42 805 270 835] /Border [0 0 0] >>");
   });
   let pdf="%PDF-1.4\n";const offsets=[0];
   for(let i=0;i<objects.length;i++){offsets.push(Buffer.byteLength(pdf,"binary"));pdf+=(i+1)+" 0 obj\n"+objects[i]+"\nendobj\n";}
@@ -104,7 +127,7 @@ function summarizeAcademicMarks(assignmentRows: any[], exerciseRows: any[]) {
   };
 }
 
-function buildAcademicReportPdf(input: { id: number; reportType: string; termLabel: string; periodStart?: unknown; periodEnd?: unknown; learnerName: string; reviewedAt: unknown; reviewedBy: unknown; reviewNote?: unknown; report: unknown }): Buffer {
+export function buildAcademicReportPdf(input: { id: number; reportType: string; termLabel: string; periodStart?: unknown; periodEnd?: unknown; learnerName: string; schoolId?: string; schoolVerificationUrl?: string; watermark?: { recipientName: string; sharedAt: Date; verificationUrl?: string }; reviewedAt: unknown; reviewedBy: unknown; reviewNote?: unknown; report: unknown }): Buffer {
  const report=input.report&&typeof input.report==="object"?input.report as Record<string,any>:{};
  const facts=report.factualRecords&&typeof report.factualRecords==="object"?report.factualRecords:{};
  const summary=facts.markSummary?.overall||report.markSummary?.overall||{};
@@ -113,7 +136,7 @@ function buildAcademicReportPdf(input: { id: number; reportType: string; termLab
  const fmt=(v:unknown)=>v===null||v===undefined||v===""?"Not recorded":String(v);
  const date=(v:unknown)=>{if(!v)return "Not recorded";const d=new Date(String(v));return Number.isNaN(d.getTime())?String(v):d.toISOString().slice(0,10);};
  const sections:BrandedPdfSection[]=[
-  {heading:"Learner details",rows:["Learner: "+input.learnerName,"Grade / Form: "+fmt(report.learnerGrade)+" · Admission number: "+fmt(report.admissionNumber),"Date of birth: "+fmt(report.dateOfBirth)+" · Age at period end: "+fmt(report.ageOnPeriodEnd),"Academic year: "+fmt(report.academicYear)+" · Report type: "+input.reportType.replace(/_/g," "),"Term: "+input.termLabel,"Period: "+date(input.periodStart)+" to "+date(input.periodEnd),"Document reference: DL-AR-"+input.id+" · Approved: "+date(input.reviewedAt)]}
+  {heading:"Learner details",rows:["Learner: "+input.learnerName,"Dallyletter School ID: "+fmt(input.schoolId),"Public academic verification: "+fmt(input.schoolVerificationUrl),"Grade / Form: "+fmt(report.learnerGrade)+" · Admission number: "+fmt(report.admissionNumber),"Date of birth: "+fmt(report.dateOfBirth)+" · Age at period end: "+fmt(report.ageOnPeriodEnd),"Academic year: "+fmt(report.academicYear)+" · Report type: "+input.reportType.replace(/_/g," "),"Term: "+input.termLabel,"Period: "+date(input.periodStart)+" to "+date(input.periodEnd),"Document reference: DL-AR-"+input.id+" · Approved: "+date(input.reviewedAt)]}
  ];
  if(input.reportType==="attendance_register"){
   const rows=Array.isArray(report.records)?report.records:[];
@@ -133,7 +156,7 @@ function buildAcademicReportPdf(input: { id: number; reportType: string; termLab
   );
  }
  sections.push({heading:"Comments and decisions",rows:["Academic commentary: "+fmt(report.commentary),"Teacher comment: "+fmt(report.teacherComment),"Conduct / behaviour: "+fmt(report.conduct),"Term result / promotion: "+fmt(report.result),"Reviewer / headmaster comment: "+fmt(input.reviewNote),"Teacher signature: Not digitally recorded","Headmaster signature / school stamp: Not recorded","Record integrity: only saved records are included; unmarked work is not counted as zero."]});
- return buildBrandedDocumentPdf("OFFICIAL ACADEMIC REPORT",input.termLabel,"DL-AR-"+input.id,sections);
+ return buildBrandedDocumentPdf("OFFICIAL ACADEMIC REPORT",input.termLabel,"DL-AR-"+input.id,sections,input.watermark);
 }
 // Academic documents are built only from authoritative records. Transfer letters and
 // AI-assisted reports remain unavailable to learners until an authorized manager approves.
@@ -294,7 +317,7 @@ router.get("/academic-records/transfer-verification/:token", async (req, res): P
   if (!/^[A-Za-z0-9_-]{43}$/.test(token)) { res.status(404).json({ error: "Verification link is invalid or expired." }); return; }
   const tokenHash = createHash("sha256").update(token).digest("hex");
   const result = await pool.query(
-    "SELECT id,form_data,reviewed_at,verification_token_expires_at,verification_verified_at FROM academic_transfer_requests WHERE verification_token_hash=$1 AND status='approved' AND verification_token_expires_at>now() LIMIT 1",
+    "SELECT id,form_data,reviewed_at,verification_token_expires_at,verification_verified_at FROM academic_transfer_requests WHERE verification_token_hash=$1 AND status='approved' AND verification_token_expires_at>now() AND verification_revoked_at IS NULL LIMIT 1",
     [tokenHash],
   );
   const row = result.rows[0];
@@ -316,6 +339,21 @@ router.get("/academic-records/transfer-verification/:token", async (req, res): P
   });
 });
 
+router.patch("/academic-records/transfer-requests/:id/revoke-verification", requireAuth, async (req, res): Promise<void> => {
+  const owner = req.currentUser!;
+  if (!isOwnerRole(owner.role)) { res.status(403).json({ error: "Only the Owner can revoke a transfer document verification link." }); return; }
+  const id = Number(req.params.id);
+  const reason = typeof req.body?.reason === "string" ? req.body.reason.trim().slice(0, 1000) : "";
+  if (!Number.isSafeInteger(id) || id < 1 || reason.length < 3) { res.status(400).json({ error: "A valid transfer request ID and revocation reason are required." }); return; }
+  const result = await pool.query(
+    "UPDATE academic_transfer_requests SET verification_revoked_at=now(),verification_revoked_by=$1,verification_revocation_reason=$2,updated_at=now() WHERE id=$3 AND status='approved' AND verification_token_hash IS NOT NULL AND verification_revoked_at IS NULL RETURNING id,verification_revoked_at",
+    [owner.id, reason, id],
+  );
+  if (!result.rowCount) { res.status(404).json({ error: "Active approved verification record not found." }); return; }
+  await db.insert(auditLogsTable).values({ performedBy: owner.id, action: "academic_document.verification_revoked", category: "academic", targetType: "transfer_request", targetId: id, details: JSON.stringify({ reason }) });
+  res.json({ revoked: true, requestId: id, revokedAt: result.rows[0].verification_revoked_at });
+});
+
 router.get("/academic-records/transfer-requests/:id/download", requireAuth, requireManagerPermissionIfManager("transfers.view"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   const id = Number(req.params.id);
@@ -328,6 +366,9 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, requ
   if (!row || (Number(row.learner_id) !== Number(user.id) && !canAccessManager(user))) { res.status(404).json({ error: "Approved transfer letter not found." }); return; }
   if(canAccessManager(user)&&!isOwnerRole(user.role)&&!canModerateUser(user,{role:row.role,isManager:row.is_manager,managerLevel:row.manager_level})){res.status(404).json({error:"Approved transfer letter not found."});return;}
   if (row.status !== "approved") { res.status(403).json({ error: "The transfer letter cannot be downloaded until an authorized manager approves the request." }); return; }
+  const schoolId = await ensureLearnerSchoolId(Number(row.learner_id));
+  const publicBase = String(process.env.PUBLIC_APP_URL || process.env.VITE_APP_URL || "").trim().replace(/\/+$/,"");
+  const schoolVerificationUrl = publicBase ? publicBase + "/verify/school/" + schoolId : "/verify/school/" + schoolId;
   const [enrollmentRows, attendanceRows, awardRows, subjectRows, reportRows] = await Promise.all([
     pool.query("SELECT c.title,c.subject,c.grade,e.enrolled_at,e.progress_percent,e.status FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 ORDER BY e.enrolled_at DESC LIMIT 12", [row.learner_id]),
     pool.query("SELECT count(*)::int AS sessions,count(*) FILTER (WHERE lower(status)='present')::int AS present,count(*) FILTER (WHERE lower(status)='absent')::int AS absent FROM attendance WHERE student_id=$1", [row.learner_id]),
@@ -340,7 +381,7 @@ router.get("/academic-records/transfer-requests/:id/download", requireAuth, requ
   const age = calculateAgeOnDate(form.dob, form.effectiveDate || row.created_at);
 
   const sections:BrandedPdfSection[]=[
-    {heading:"Transfer application",rows:["Reference: DL-TR-"+id,"Application date: "+new Date(row.created_at).toISOString().slice(0,10),"Approval date: "+(row.reviewed_at?new Date(row.reviewed_at).toISOString().slice(0,10):"Not recorded"),"Current school: "+fmt(form.currentSchool),"Receiving school: "+fmt(form.receivingSchool),"Transfer reason: "+fmt(form.reasonType||row.reason),"Reason details: "+fmt(form.reasonDetail)]},
+    {heading:"Transfer application",rows:["Reference: DL-TR-"+id,"Learner School ID: "+schoolId,"Public academic verification: "+schoolVerificationUrl,"Application date: "+new Date(row.created_at).toISOString().slice(0,10),"Approval date: "+(row.reviewed_at?new Date(row.reviewed_at).toISOString().slice(0,10):"Not recorded"),"Current school: "+fmt(form.currentSchool),"Receiving school: "+fmt(form.receivingSchool),"Transfer reason: "+fmt(form.reasonType||row.reason),"Reason details: "+fmt(form.reasonDetail)]},
     {heading:"Learner details",rows:["Full name: "+fmt(form.learnerName||row.learner_name),"Grade / Form: "+fmt(form.grade||row.grade),"Date of birth: "+fmt(form.dob)+" · Age on effective transfer date: "+fmt(age),"Gender: "+fmt(form.gender),"Admission number: "+fmt(form.admissionNo),"EMIS number: "+fmt(form.emisNo),"Academic year: "+fmt(form.academicYear),"Last term average: "+fmt(form.average)+" · Conduct: "+fmt(form.conduct)]},
     {heading:"Parent / guardian details",rows:["Name: "+fmt(form.guardianName)+" · Relationship: "+fmt(form.relationship),"ID: "+fmt(form.guardianId),"Phone: "+fmt(form.guardianPhone),"Email: "+fmt(form.guardianEmail),"Address: "+fmt(form.address),"Effective transfer date: "+fmt(form.effectiveDate)]},
     {heading:"Declarations and signatures",rows:["Parent / guardian signature: "+(form.guardianSignatureDataUrl?"Signature image supplied in submitted preview":"Not supplied"),"Current-school headmaster signature / stamp: "+(form.headmasterSignatureDataUrl?"Signature / stamp image supplied in submitted preview":"Not supplied"),"School logo: "+(form.schoolLogoDataUrl?"Logo supplied in submitted preview":"Not supplied"),"A missing signature, stamp or fee clearance is never fabricated."]},
@@ -579,7 +620,10 @@ router.get("/academic-records/reports/drafts/:id/download/pdf", requireAuth, req
   const draftContent = typeof row.draft_content === "string" ? JSON.parse(row.draft_content) : row.draft_content;
   const sourceSnapshot = typeof row.source_snapshot === "string" ? JSON.parse(row.source_snapshot) : row.source_snapshot;
   const learnerName = String(draftContent?.learner || sourceSnapshot?.learner?.name || "Learner record");
-  const pdf = buildAcademicReportPdf({ id, reportType: String(row.report_type), termLabel: String(row.term_label), periodStart: row.period_start, periodEnd: row.period_end, learnerName, reviewedAt: row.reviewed_at, reviewedBy: row.reviewed_by, reviewNote: row.review_note, report: draftContent });
+  const schoolId = await ensureLearnerSchoolId(Number(row.learner_id));
+  const publicBase = String(process.env.PUBLIC_APP_URL || process.env.VITE_APP_URL || "").trim().replace(/\/+$/,"");
+  const schoolVerificationUrl = (publicBase ? publicBase : "") + "/verify/school/" + schoolId;
+  const pdf = buildAcademicReportPdf({ id, reportType: String(row.report_type), termLabel: String(row.term_label), periodStart: row.period_start, periodEnd: row.period_end, learnerName, schoolId, schoolVerificationUrl, reviewedAt: row.reviewed_at, reviewedBy: row.reviewed_by, reviewNote: row.review_note, report: draftContent });
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");

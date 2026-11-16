@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getApiUrl, useListLessons } from "@workspace/api-client-react";
 import * as Linking from "expo-linking";
 import { router } from "expo-router";
-import { AppState, Modal, Platform, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Alert, AppState, Modal, Platform, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import AuthenticatedMediaPreview from "@/components/AuthenticatedMediaPreview";
@@ -134,6 +134,19 @@ export default function StudentLessons() {
   const lessonCacheKey = user ? `${LESSON_CACHE_KEY}_${user.id}_${user.role}` : null;
   const progressKey = user ? `dallyletter_unfinished_lessons_v1_${user.id}_${user.role}` : null;
   const savedOfflineKey = user ? `dallyletter_saved_learning_bundle_v1_${user.id}_${user.role}` : null;
+  const [sharingLesson,setSharingLesson] = useState(false);
+  const shareSelectedLesson = async () => {
+    if (!selectedLesson?.id || !token) { Alert.alert("Sign in required","Sign in before creating a protected lesson share."); return; }
+    setSharingLesson(true);
+    try {
+      const response = await fetch(getApiUrl("/api/lessons/"+selectedLesson.id+"/share"), { method:"POST", headers:{Authorization:"Bearer "+token} });
+      const data = await response.json().catch(()=>({}));
+      if (!response.ok || typeof data.previewUrl !== "string" || !/^https?:\/\//i.test(data.previewUrl)) throw new Error(data.error || "The public lesson URL is not configured.");
+      await Share.share({ title:String(selectedLesson.title||"Dallyletter lesson"), message:"Preview this protected Dallyletter lesson without signing in: "+data.previewUrl, url:data.previewUrl });
+    } catch (error) {
+      Alert.alert("Could not share lesson",error instanceof Error?error.message:"Please reconnect and try again.");
+    } finally { setSharingLesson(false); }
+  };
 
   useEffect(() => {
     let active = true;
@@ -398,8 +411,8 @@ export default function StudentLessons() {
             {selectedLesson && <>
               <Text style={{ color: colors.foreground, fontSize: 23, lineHeight: 30, fontFamily: "Inter_700Bold" }}>{selectedLesson.title}</Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12, marginBottom: 8 }}>
-                <TouchableOpacity accessibilityRole="button" onPress={() => void Share.share({ title: String(selectedLesson.title || "Dallyletter lesson"), message: [String(selectedLesson.title || "Dallyletter lesson"), String(selectedLesson.subject || ""), String(selectedLesson.description || ""), extractLessonLinks(selectedLesson.content).join("\n")].filter(Boolean).join("\n\n") })} style={{ flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 9, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card }}>
-                  <Feather name="share-2" size={15} color={colors.primary} /><Text style={{ color: colors.foreground, fontSize: 12, fontFamily: "Inter_600SemiBold" }}>Share lesson</Text>
+                <TouchableOpacity accessibilityRole="button" onPress={() => void shareSelectedLesson()} disabled={sharingLesson} style={{ flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 9, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card }}>
+                  <Feather name="share-2" size={15} color={colors.primary} /><Text style={{ color: colors.foreground, fontSize: 12, fontFamily: "Inter_600SemiBold" }}>{sharingLesson?"Creating link…":"Share protected preview"}</Text>
                 </TouchableOpacity>
                 {savedForOffline[String(selectedLesson.id)] ? <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 9, borderRadius: 9, backgroundColor: colors.card }}><Feather name="check-circle" size={15} color={colors.primary} /><Text style={{ color: colors.primary, fontSize: 12, fontFamily: "Inter_600SemiBold" }}>Available offline</Text></View> : null}
               </View>

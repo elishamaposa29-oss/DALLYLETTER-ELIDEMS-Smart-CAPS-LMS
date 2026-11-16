@@ -35,6 +35,7 @@ import emailRouter from "./email";
 import contentPermissionsRouter from "./contentPermissions";
 import teacherCvWorkspaceRouter from "./teacherCvWorkspace";
 import profileConnectionsRouter from "./profileConnections";
+import schoolIdentityRouter from "./schoolIdentity";
 
 const router: IRouter = Router();
 
@@ -69,6 +70,7 @@ router.use("/manager-permissions", managerPermissionsRouter);
 router.use("/exercises", exercisesRouter);
 router.use(socialFeaturesRouter);
 router.use(profileConnectionsRouter);
+router.use(schoolIdentityRouter);
 router.use(pushRouter);
 router.use(emailRouter);
 router.use(contentPermissionsRouter);

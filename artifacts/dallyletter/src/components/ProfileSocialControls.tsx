@@ -37,6 +37,7 @@ export function ProfileSocialControls({profileId,isSelf,role}:{profileId:number|
   const [requests,setRequests]=useState<RequestRow[]>([]);
   const [settings,setSettings]=useState<Record<string,SectionSetting>>({});
   const [chatPrivacy,setChatPrivacy]=useState<"everyone"|"approval_required">("everyone");
+  const [sensitivePersonalDataFields,setSensitivePersonalDataFields]=useState<string[]>([]);
 
   const load=async()=>{
     if(!profileId)return;
@@ -55,7 +56,7 @@ export function ProfileSocialControls({profileId,isSelf,role}:{profileId:number|
           const saved=data.privacy?.[key];
           next[key]={mode:saved?.mode||(publicByDefault.has(key)?"everyone":"me_only_authorized"),selectedUserIds:Array.isArray(saved?.selectedUserIds)?saved.selectedUserIds.map(Number):[]};
         }
-        setSettings(next);setChatPrivacy(data.chatPrivacy==="approval_required"?"approval_required":"everyone");
+        setSettings(next);setChatPrivacy(data.chatPrivacy==="approval_required"?"approval_required":"everyone");setSensitivePersonalDataFields(Array.isArray(data.privacy?.sensitive_personal_data_consent?.fields)?data.privacy.sensitive_personal_data_consent.fields:[]);
       }
     }catch(e){setError(e instanceof Error?e.message:"Could not load connections and privacy.");}
   };
@@ -93,8 +94,8 @@ export function ProfileSocialControls({profileId,isSelf,role}:{profileId:number|
   const save=async()=>{
     setBusy(true);setError("");setNotice("");
     try{
-      const result=await api<any>("/api/profile/me/privacy",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({sectionSettings:settings,chatPrivacy})});
-      setSettings(result.sectionSettings);setChatPrivacy(result.chatPrivacy);setNotice("Your independent section privacy settings have been saved.");
+      const result=await api<any>("/api/profile/me/privacy",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({sectionSettings:settings,chatPrivacy,sensitivePersonalDataConsent:sensitivePersonalDataFields.length>0,sensitivePersonalDataFields})});
+      setSettings(result.sectionSettings);setChatPrivacy(result.chatPrivacy);setSensitivePersonalDataFields(Array.isArray(result.sensitivePersonalDataFields)?result.sensitivePersonalDataFields:[]);setNotice("Your privacy and consent settings have been saved.");
     }catch(e){setError(e instanceof Error?e.message:"Privacy settings could not be saved.");}
     finally{setBusy(false);}
   };
@@ -124,6 +125,14 @@ export function ProfileSocialControls({profileId,isSelf,role}:{profileId:number|
             <option value="everyone">Everyone allowed by existing school chat rules</option>
             <option value="approval_required">Approved connections only (request required)</option>
           </select>
+        </section>
+        <section className="rounded-lg border border-amber-500/40 bg-amber-50/40 p-3">
+          <h4 className="font-semibold">Sensitive personal information consent</h4>
+          <p className="mt-1 text-xs text-muted-foreground">Choose exactly which personal fields you may later approve for a verified share. This selection is not public by itself. For a learner who requires guardian consent, the guardian's separate verified approval must also be recorded before any selected field can be disclosed. Health information and account credentials are never shareable.</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {([["phone","Personal phone number"],["email","Personal email address"],["address","Home / physical address"],["guardian_name","Guardian name"],["guardian_phone","Guardian phone number"],["guardian_email","Guardian email address"],["date_of_birth","Date of birth"],["admission_number","Admission number"]] as const).map(([key,label])=><label key={key} className="flex items-start gap-2 rounded-md border p-2 text-sm"><input type="checkbox" className="mt-1" checked={sensitivePersonalDataFields.includes(key)} onChange={e=>setSensitivePersonalDataFields(current=>e.target.checked?[...new Set([...current,key])]:current.filter(value=>value!==key))}/><span>{label}</span></label>)}
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">{sensitivePersonalDataFields.length} field(s) selected. Guardian approval is not assumed from the learner's selection.</p>
         </section>
         <section className="space-y-3">
           <h4 className="font-semibold">Independent section visibility</h4>
