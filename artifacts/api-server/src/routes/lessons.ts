@@ -336,7 +336,9 @@ router.post("/lessons/:id/share", requireAuth, requireManagerPermissionIfManager
   try {
     const shareToken = signMediaShare("lesson:" + lesson.id, expiresAt);
     res.setHeader("Cache-Control","no-store");
-    res.status(201).json({ shareToken, expiresAt, previewPath: "/shared-lesson/" + lesson.id + "?shareToken=" + shareToken });
+    const previewPath = "/shared-lesson/" + lesson.id + "?shareToken=" + shareToken;
+    const publicBase = String(process.env.PUBLIC_APP_URL || process.env.VITE_APP_URL || "").trim().replace(/\/+$/,"");
+    res.status(201).json({ shareToken, expiresAt, previewPath, previewUrl: publicBase ? publicBase + previewPath : previewPath });
   } catch (error) {
     res.status(503).json({ error: error instanceof Error ? error.message : "Could not create a protected lesson link." });
   }
