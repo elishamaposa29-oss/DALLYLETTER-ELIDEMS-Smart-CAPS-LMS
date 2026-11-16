@@ -29,18 +29,18 @@ async function ensureSchema(): Promise<void> {
 
 const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 function makeCode(): string {
-  const bytes = randomBytes(10);
+  const bytes = randomBytes(16);
   let raw = "";
-  for (let i = 0; i < 10; i++) raw += alphabet[bytes[i] % alphabet.length];
+  for (let i = 0; i < 16; i++) raw += alphabet[bytes[i] % alphabet.length];
   const checksum = createHash("sha256").update(raw).digest()[0] % alphabet.length;
   return "DL-" + raw + alphabet[checksum];
 }
 function validCode(value: unknown): string | null {
   const code = String(value || "").trim().toUpperCase();
-  if (!/^DL-[A-HJ-NP-Z2-9]{11}$/.test(code)) return null;
-  const raw = code.slice(3, 13);
+  if (!/^DL-[A-HJ-NP-Z2-9]{17}$/.test(code)) return null;
+  const raw = code.slice(3, 19);
   const check = alphabet[createHash("sha256").update(raw).digest()[0] % alphabet.length];
-  return code[13] === check ? code : null;
+  return code[19] === check ? code : null;
 }
 
 router.get("/school-id/me", requireAuth, async (req, res): Promise<void> => {
