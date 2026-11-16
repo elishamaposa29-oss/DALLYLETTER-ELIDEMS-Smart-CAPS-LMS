@@ -6,6 +6,8 @@ import { eq, desc, and, inArray } from "drizzle-orm";
 import { requireAuth, isOwnerRole, canAccessManager } from "../lib/auth-middleware";
 import { canRecommendAchievementAwards } from "../lib/role-access";
 import { canViewProfileSection } from "./profileConnections";
+import { createHash } from "node:crypto";
+import { buildBrandedDocumentPdf } from "./academicRecords";
 
 const router = Router();
 
@@ -359,6 +361,40 @@ router.delete("/lesson-requests/:id", requireAuth, async (req, res): Promise<voi
   }
   await db.delete(lessonRequestsTable).where(eq(lessonRequestsTable.id, id));
   res.sendStatus(204);
+});
+
+
+router.get("/:awardId/certificate.pdf", requireAuth, async (req, res): Promise<void> => {
+  const awardId = Number(req.params.awardId);
+  const actor = req.currentUser!;
+  if (!Number.isSafeInteger(awardId) || awardId < 1) { res.status(400).json({ error: "Invalid achievement award ID." }); return; }
+  const found = await pool.query(
+    "SELECT ua.id,ua.user_id,ua.awarded_by_name,ua.earned_at,ua.note,a.name,a.description,a.category,a.points_value,u.name AS learner_name,u.grade FROM user_achievements ua JOIN achievements a ON a.id=ua.achievement_id JOIN users u ON u.id=ua.user_id WHERE ua.id=$1",
+    [awardId],
+  );
+  const award = found.rows[0];
+  if (!award) { res.status(404).json({ error: "Achievement award not found." }); return; }
+  if (Number(award.user_id) !== Number(actor.id) && !isOwnerRole(actor.role)) { res.status(403).json({ error: "You can only download your own achievement certificate." }); return; }
+  const token = typeof req.query.verificationToken === "string" ? req.query.verificationToken : "";
+  let watermark: { recipientName: string; sharedAt: Date; verificationUrl?: string } | undefined;
+  if (token) {
+    const tokenHash = createHash("sha256").update(token).digest("hex");
+    const verification = await pool.query("SELECT id,recipient_name,created_at,revoked_at,expires_at FROM academic_document_verifications WHERE token_hash=$1 AND document_type='achievement' AND document_id=$2 AND learner_id=$3 LIMIT 1", [tokenHash,awardId,award.user_id]);
+    const row = verification.rows[0];
+    if (!row || row.revoked_at || new Date(row.expires_at).getTime() <= Date.now()) { res.status(404).json({ error: "This achievement share is invalid, expired or revoked." }); return; }
+    const base = String(process.env.PUBLIC_APP_URL || process.env.VITE_APP_URL || "").replace(/\/+$/,"");
+    watermark = { recipientName: row.recipient_name, sharedAt: new Date(row.created_at), verificationUrl: base ? base + "/verify/document/" + token : undefined };
+  }
+  const sections = [
+    { heading: "Award recipient", rows: ["Learner: " + award.learner_name, "Grade / Form: " + (award.grade || "Not recorded")] },
+    { heading: "Achievement", rows: ["Award: " + award.name, "Description: " + award.description, "Category: " + (award.category || "Learning"), "Points: " + Number(award.points_value || 0), "Awarded on: " + new Date(award.earned_at).toLocaleDateString(), "Awarded by: " + (award.awarded_by_name || "Dallyletter Elidems")] },
+    { heading: "Authenticity", rows: token ? ["This copy is watermarked for its named recipient. Verify the current document status using the verification link printed below."] : ["Learner's personal download copy. Use the protected share workflow to create a recipient-specific verified copy."] },
+  ];
+  const pdf = buildBrandedDocumentPdf("Achievement Certificate", "Official learner achievement record", "ACH-" + awardId, sections, watermark);
+  res.setHeader("Content-Type","application/pdf");
+  res.setHeader("Content-Disposition","attachment; filename=dallyletter-achievement-" + awardId + ".pdf");
+  res.setHeader("Cache-Control","private, no-store");
+  res.send(pdf);
 });
 
 export default router;
