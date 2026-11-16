@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { randomUUID } from "node:crypto";
-import { db, aiActionsTable, auditLogsTable, usersTable, platformSettingsTable } from "@workspace/db";
+import { db, aiActionsTable, auditLogsTable, usersTable, platformSettingsTable, pool } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { requireAuth } from "../lib/auth-middleware";
 import { normalizeRole, canUseStaffAI } from "../lib/role-access";
@@ -254,6 +254,59 @@ router.patch("/ai/actions/:id/reverse", requireAuth, async (req, res): Promise<v
   const [updated] = await db.update(aiActionsTable).set({ isReversed: true, reversedBy: user.id, reversedAt: new Date() }).where(eq(aiActionsTable.id, id)).returning();
   await db.insert(auditLogsTable).values({ action: `Reversed AI action #${id}: ${action.action}`, category: "ai", performedBy: user.id, targetType: action.targetType ?? undefined, targetId: action.targetId ?? undefined });
   res.json(updated);
+});
+
+// POST /ai/school-id-analysis — analysis is grounded only in an exact, valid School ID
+// and academic sections the learner has explicitly published to Everyone.
+router.post("/ai/school-id-analysis", requireAuth, async (req, res): Promise<void> => {
+  const schoolId = String(req.body?.schoolId || "").trim().toUpperCase();
+  const question = typeof req.body?.question === "string" ? req.body.question.trim() : "";
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const valid = /^DL-[A-HJ-NP-Z2-9]{17}$/.test(schoolId) &&
+    schoolId[19] === alphabet[createHash("sha256").update(schoolId.slice(3, 19)).digest()[0] % alphabet.length];
+  if (!valid) { res.status(404).json({ verified: false, error: "A valid exact School ID is required. Names and approximate IDs cannot be used." }); return; }
+  if (!question || question.length > 3000) { res.status(400).json({ error: "Provide a question between 1 and 3,000 characters." }); return; }
+  const found = await pool.query(
+    "SELECT s.user_id,u.name,u.grade,p.section_settings FROM learner_school_ids s JOIN users u ON u.id=s.user_id LEFT JOIN profile_privacy_settings p ON p.user_id=s.user_id WHERE s.school_id=$1 AND lower(u.role) IN ('student','learner') AND COALESCE(u.is_blocked,false)=false AND COALESCE(u.is_suspended,false)=false LIMIT 1",
+    [schoolId],
+  );
+  if (!found.rows.length) { res.status(404).json({ verified: false, error: "School ID not found." }); return; }
+  const learner = found.rows[0], settings = learner.section_settings || {};
+  const isPublic = (key: string) => settings[key]?.mode === "everyone";
+  const privateKey = /^(?:dob|dateofbirth|birthdate|phone|mobile|email|contact|address|guardian.*|parent.*|health.*|medical.*|admissionnumber|admissionno|emisno|nationalid|identitynumber|password|token|secret)$/i;
+  const clean = (value: any): any => {
+    if (Array.isArray(value)) return value.map(clean);
+    if (!value || typeof value !== "object") return value;
+    return Object.fromEntries(Object.entries(value).filter(([key]) => !privateKey.test(key.replace(/[_-]/g, ""))).map(([key,item]) => [key,clean(item)]));
+  };
+  const portfolio: Record<string, unknown> = {};
+  if (isPublic("overview")) portfolio.overview = { learnerName: learner.name, grade: learner.grade || null };
+  if (isPublic("subjects")) portfolio.subjects = (await pool.query("SELECT subjects FROM learner_subjects WHERE user_id=$1", [learner.user_id])).rows[0]?.subjects || [];
+  if (isPublic("achievements")) portfolio.achievements = (await pool.query("SELECT a.name,a.description,a.category,ua.earned_at FROM user_achievements ua JOIN achievements a ON a.id=ua.achievement_id WHERE ua.user_id=$1 ORDER BY ua.earned_at DESC LIMIT 100", [learner.user_id])).rows;
+  if (isPublic("attendance")) portfolio.attendance = (await pool.query("SELECT status,joined_at,duration_minutes,is_late FROM attendance WHERE student_id=$1 ORDER BY joined_at DESC LIMIT 200", [learner.user_id])).rows;
+  if (isPublic("register")) portfolio.attendanceRegister = (await pool.query("SELECT attendance_date,status,activity_label FROM daily_app_attendance WHERE user_id=$1 ORDER BY attendance_date DESC LIMIT 120", [learner.user_id])).rows;
+  if (isPublic("reports")) {
+    const reports = await pool.query("SELECT id,report_type,term_label,period_start,period_end,draft_content,reviewed_at FROM academic_report_drafts WHERE learner_id=$1 AND status='approved' ORDER BY reviewed_at DESC NULLS LAST LIMIT 50", [learner.user_id]);
+    portfolio.reports = reports.rows.map((row:any) => {
+      const content = row.draft_content && typeof row.draft_content === "object" ? row.draft_content : {};
+      return { id: row.id, reportType: row.report_type, term: row.term_label, periodStart: row.period_start, periodEnd: row.period_end, reviewedAt: row.reviewed_at, learnerGrade: content.learnerGrade || null, academicYear: content.academicYear || null, factualRecords: clean(content.factualRecords || {}) };
+    });
+  }
+  if (isPublic("enrollments")) portfolio.enrollments = (await pool.query("SELECT e.enrolled_at,e.progress_percent,e.status,c.title AS class_title,c.subject FROM enrollments e JOIN classes c ON c.id=e.class_id WHERE e.learner_id=$1 ORDER BY e.enrolled_at DESC LIMIT 100", [learner.user_id])).rows;
+  if (isPublic("transfers")) portfolio.transfers = (await pool.query("SELECT status,reviewed_at,created_at,form_data FROM academic_transfer_requests WHERE learner_id=$1 AND status='approved' ORDER BY reviewed_at DESC NULLS LAST LIMIT 20", [learner.user_id])).rows.map((row:any) => { const form=row.form_data&&typeof row.form_data==="object"?row.form_data:{}; return {status:row.status,reviewedAt:row.reviewed_at,currentSchool:form.currentSchool||null,receivingSchool:form.receivingSchool||null,grade:form.grade||null,academicYear:form.academicYear||null,effectiveDate:form.effectiveDate||null}; });
+  const serialized = JSON.stringify(portfolio);
+  if (serialized.length > 30000) { res.status(413).json({ error: "The published academic portfolio is too large to analyze in one request." }); return; }
+  try {
+    const ai = await getAIProvider();
+    const response = await ai.chat([{ role: "user", content: "Question: " + question + "\n\nVerified published academic portfolio (JSON):\n" + serialized }], "You are ELIDEMS AI's verified academic portfolio analyst. The School ID has been checked by Dallyletter Elidems. Analyze only the supplied published academic facts. Do not infer missing grades, attendance, qualifications or achievements. Do not request or reveal private contact, guardian, identity or health information. If the portfolio lacks a section or evidence, state that it was not published or is not available. Never identify a learner by a name alone; the exact School ID is the required lookup key. Give concise, constructive, evidence-based guidance.", new AbortController().signal);
+    if (typeof response !== "string" || !response.trim()) throw new AIProviderError(ai.name, "invalid_response");
+    await db.insert(aiActionsTable).values({ command: "Verified School ID portfolio analysis", action: "school_id_academic_analysis", performedBy: req.currentUser!.id, result: "Analysis generated for verified School ID" }).catch(() => undefined);
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ verified: true, schoolId, response, provider: ai.name, portfolioSections: Object.keys(portfolio) });
+  } catch (err) {
+    const failure = err instanceof AIProviderError ? err : new AIProviderError("configuration", "provider_unavailable");
+    res.status(failure.code === "timeout" ? 504 : failure.code === "rate_limited" ? 429 : 502).json({ verified: true, error: "Verified portfolio analysis is temporarily unavailable.", code: failure.code, retryable: failure.retryable });
+  }
 });
 
 // POST /ai/analyze — AI data analysis
