@@ -18,8 +18,10 @@ async function ensureSchema(): Promise<void> {
       id bigserial PRIMARY KEY,
       school_id text NOT NULL,
       found boolean NOT NULL,
-      requested_at timestamptz NOT NULL DEFAULT now()
+      requested_at timestamptz NOT NULL DEFAULT now(),
+      ip_hash text
     );
+    ALTER TABLE learner_school_id_lookups ADD COLUMN IF NOT EXISTS ip_hash text;
     CREATE INDEX IF NOT EXISTS learner_school_id_lookups_time_idx ON learner_school_id_lookups(requested_at DESC);
   `).then(() => undefined).catch(error => { schemaReady = null; throw error; });
   await schemaReady;
@@ -68,19 +70,29 @@ router.get("/school-id/me", requireAuth, async (req, res): Promise<void> => {
 
 router.get("/school-id/verify/:schoolId", async (req, res): Promise<void> => {
   await ensureSchema();
+  const ipHash = createHash("sha256").update(String(req.ip || "unknown")).digest("hex");
+  const recent = await pool.query(`SELECT count(*)::int AS count FROM learner_school_id_lookups WHERE ip_hash=$1 AND requested_at>now()-interval '1 minute'`, [ipHash]);
+  if (Number(recent.rows[0]?.count || 0) >= 20) { res.status(429).json({ verified: false, error: "Too many verification attempts. Try again shortly." }); return; }
   const schoolId = validCode(req.params.schoolId);
   if (!schoolId) { res.status(404).json({ verified: false, error: "School ID not found." }); return; }
   const result = await pool.query(
     "SELECT s.user_id,u.name,u.role,u.grade,p.section_settings FROM learner_school_ids s JOIN users u ON u.id=s.user_id LEFT JOIN profile_privacy_settings p ON p.user_id=s.user_id WHERE s.school_id=$1 AND lower(u.role) IN ('student','learner') AND u.is_blocked=false AND u.is_suspended=false",
     [schoolId],
   );
-  await pool.query("INSERT INTO learner_school_id_lookups(school_id,found) VALUES($1,$2)", [schoolId, result.rows.length > 0]);
+  await pool.query("INSERT INTO learner_school_id_lookups(school_id,found,ip_hash) VALUES($1,$2,$3)", [schoolId, result.rows.length > 0, ipHash]);
   if (!result.rows.length) { res.status(404).json({ verified: false, error: "School ID not found." }); return; }
   const learner = result.rows[0];
   const settings = learner.section_settings || {};
   const isPublic = (key: string) => settings[key]?.mode === "everyone";
   const portfolio: Record<string, unknown> = {};
-  if (isPublic("overview")) portfolio.overview = { learnerName: learner.name, grade: learner.grade || null };
+  const overviewPublished = isPublic("overview");
+  const sensitiveConsentEnabled = settings.sensitive_personal_data_consent?.enabled === true;
+  const stripPrivateFields = (value: any): any => {
+    if (Array.isArray(value)) return value.map(stripPrivateFields);
+    if (!value || typeof value !== "object") return value;
+    const blocked = /^(?:dob|dateOfBirth|birthDate|phone|mobile|email|address|guardian.*|parent.*|health.*|medical.*|admissionNumber|admissionNo|emisNo|nationalId|identityNumber|password|token|secret)$/i;
+    return Object.fromEntries(Object.entries(value).filter(([key]) => !blocked.test(key)).map(([key, item]) => [key, stripPrivateFields(item)]));
+  };
   if (isPublic("achievements")) {
     portfolio.achievements = (await pool.query(
       "SELECT a.name,a.description,a.category,ua.earned_at FROM user_achievements ua JOIN achievements a ON a.id=ua.achievement_id WHERE ua.user_id=$1 ORDER BY ua.earned_at DESC",
@@ -91,7 +103,7 @@ router.get("/school-id/verify/:schoolId", async (req, res): Promise<void> => {
     portfolio.reports = (await pool.query(
       "SELECT id,report_type,term_label,period_start,period_end,draft_content,review_note,reviewed_at FROM academic_report_drafts WHERE learner_id=$1 AND status='approved' ORDER BY reviewed_at DESC NULLS LAST,created_at DESC LIMIT 100",
       [learner.user_id],
-    )).rows;
+    )).rows.map(row => ({ ...row, draft_content: stripPrivateFields(row.draft_content) }));
   }
   if (isPublic("attendance")) {
     portfolio.attendance = (await pool.query(
@@ -111,17 +123,17 @@ router.get("/school-id/verify/:schoolId", async (req, res): Promise<void> => {
       [learner.user_id],
     )).rows;
   }
-  if (settings.sensitive_personal_data_consent?.enabled === true) {
-    portfolio.sensitivePersonalDataConsent = { approved: true, consentUpdatedAt: settings.sensitive_personal_data_consent.updatedAt || null };
+  if (sensitiveConsentEnabled) {
+    portfolio.sensitivePersonalDataConsent = { approved: true, consentUpdatedAt: settings.sensitive_personal_data_consent.updatedAt || null, note: "Consent is recorded; no sensitive personal fields are currently exposed by this public endpoint." };
   }
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.json({
     verified: true,
     schoolId,
-    learner: { name: learner.name, grade: learner.grade || null },
+    learner: overviewPublished ? { name: learner.name, grade: learner.grade || null } : { name: "Privacy protected", grade: null },
     portfolio,
-    privacy: { sensitivePersonalDataShared: false, note: "Only academic sections explicitly set to Everyone are shown. Sensitive personal fields are not included in this public lookup." },
+    privacy: { overviewPublished, sensitivePersonalDataShared: false, note: "Only academic sections explicitly set to Everyone are shown. Personal contact, guardian, identity and health fields are excluded from this public lookup." },
   });
 });
 
