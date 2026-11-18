@@ -13,7 +13,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 function DUnreadBadge({ count }: { count: number }) {
   if (count <= 0) return null;
-  return <span className="ml-auto inline-flex items-center gap-1 rounded-lg border-2 border-[#D6AD3B] bg-[#0B1E3A] px-1 py-0.5 text-[10px] font-bold leading-none text-[#F4D98A] shadow-[0_0_8px_rgba(201,162,39,.45)]" aria-label={`${count} unread`}>
+  return <span className="ml-auto inline-flex items-center gap-1 rounded-lg border-2 border-[#D6AD3B] bg-[#0B1E3A] px-1 py-0.5 text-[10px] font-bold leading-none text-[#F4D98A] shadow-[0_0_8px_rgba(198,154,53,.48)]" aria-label={`${count} unread`}>
     <img src="/favicon.svg" alt="" className="h-3.5 w-3.5 rounded-[3px] border border-[#F8E8AD]" />
     <span>{count > 99 ? "99+" : count}</span>
   </span>;
