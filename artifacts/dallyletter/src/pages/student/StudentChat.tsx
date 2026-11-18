@@ -26,9 +26,13 @@ import { useToast } from "@/hooks/use-toast";
 type GroupView = {
   id: number;
   name: string;
+  description?: string | null;
+  subject?: string;
+  coverImageUrl?: string | null;
+  creatorName?: string;
   memberCount: number;
   isMember?: boolean;
-  members?: Array<{ id: number }>;
+  members?: Array<{ id: number; name?: string; avatarUrl?: string | null }>;
 };
 
 type GroupSettings = {
@@ -60,6 +64,8 @@ export default function StudentChat() {
   const [chatFullscreen, setChatFullscreen] = useState(false);
   const [message, setMessage] = useState("");
   const [conversationSearch, setConversationSearch] = useState("");
+  const [groupHubOpen, setGroupHubOpen] = useState(false);
+  const [unreadSummary, setUnreadSummary] = useState<{groups:Array<{id:number;unread:number}>;privateChats:Array<{id:number;unread:number}>}>({groups:[],privateChats:[]});
   const [replyTo, setReplyTo] = useState<number | null>(null);
   const [reportingMessageId, setReportingMessageId] = useState<number | null>(null);
   const [settings, setSettings] = useState<GroupSettings>(defaultGroupSettings);
@@ -86,6 +92,23 @@ export default function StudentChat() {
     { groupId: selectedGroupId, recipientId: selectedUserId },
     { query: { enabled: !!selectedGroupId || !!selectedUserId, refetchInterval: 5000 } as any },
   );
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      try {
+        const result = await apiJson<typeof unreadSummary>("/api/messages/unread-summary");
+        if (active) setUnreadSummary({groups:result.groups ?? [],privateChats:result.privateChats ?? []});
+      } catch { /* Retry on the next polling cycle. */ }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 5000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, []);
+
+  const unreadForGroup = (id:number) => unreadSummary.groups.find(item=>item.id===id)?.unread ?? 0;
+  const unreadForPrivate = (id:number) => unreadSummary.privateChats.find(item=>item.id===id)?.unread ?? 0;
+  const DUnread = ({count}:{count:number}) => count>0 ? <span className="inline-flex items-center gap-1 rounded-md border-2 border-[#C9A227] bg-[#0B1E3A] px-1 py-0.5 text-[10px] font-bold text-[#FFD700]"><img src="/favicon.svg" alt="" className="h-3.5 w-3.5 rounded border border-[#F2D98C]"/>{count>99?"99+":count}</span> : null;
+
   const sendMessageMutation = useSendMessage();
   const rootMessages = [...(messages?.filter(currentMessage => currentMessage.parentMessageId == null) ?? [])].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id - b.id);
   const replyTarget = messages?.find(currentMessage => currentMessage.id === replyTo);
@@ -292,10 +315,14 @@ export default function StudentChat() {
                 <div className="flex flex-col items-center justify-center gap-3 p-6 text-center"><Users className="h-10 w-10 text-muted-foreground/30" /><p className="text-sm text-muted-foreground">No joined groups yet. Join one from Study Groups to start chatting.</p></div>
               ) : (
                 visibleJoinedGroups.map(group => (
-                  <button key={group.id} onClick={() => selectGroup(group.id)} className={`flex w-full items-center justify-between rounded-lg px-3 py-3 text-left transition-colors ${selectedGroupId === group.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
-                    <span className="truncate font-medium">{group.name}</span>
-                    <span className={`rounded-full px-2 py-0.5 text-xs ${selectedGroupId === group.id ? "bg-primary-foreground/20" : "bg-muted-foreground/20"}`}>{group.memberCount}</span>
-                  </button>
+                  <div key={group.id} className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 transition-colors ${selectedGroupId === group.id ? "bg-primary/10 ring-1 ring-primary/30" : "hover:bg-muted"}`}>
+                    <button type="button" onClick={() => selectGroup(group.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border-2 border-[#C9A227] bg-[#0B1E3A] text-sm font-bold text-[#FFD700]">{group.coverImageUrl ? <AuthenticatedMedia url={group.coverImageUrl} type="image" title={group.name}/> : group.name.slice(0,1).toUpperCase()}</span>
+                      <span className="min-w-0 flex-1 truncate font-medium">{group.name}</span>
+                    </button>
+                    <DUnread count={unreadForGroup(group.id)} />
+                    <button type="button" aria-label={`Open ${group.name} chat`} onClick={() => selectGroup(group.id)} className="rounded-full bg-muted px-2 py-1 text-xs">{group.memberCount}</button>
+                  </div>
                 ))
               )
             ) : (
@@ -309,7 +336,7 @@ export default function StudentChat() {
                 visibleContacts.map(contact => (
                   <button key={contact.id} onClick={() => selectContact(contact.id)} className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors ${selectedUserId === contact.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-bold">{contact.name.charAt(0)}</div>
-                    <span className="min-w-0 flex-1 truncate font-medium">{contact.name}</span>
+                    <span className="min-w-0 flex-1 truncate font-medium">{contact.name}</span>\n                    <DUnread count={unreadForPrivate(contact.id)} />
                     <span className="text-xs capitalize opacity-70">{contact.role}</span>
                   </button>
                 ))
@@ -326,11 +353,32 @@ export default function StudentChat() {
               <div className="flex items-center justify-between gap-2 border-b bg-muted/30 p-4">
                 <div className="flex min-w-0 items-center gap-2">
                   <Button type="button" variant="ghost" size="icon" className="h-8 w-8 md:hidden" onClick={() => { setSelectedGroupId(null); setSelectedUserId(null); }} aria-label="Back to conversations"><ArrowLeft className="h-4 w-4" /></Button>
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">{isGroupConversation ? <Users className="h-4 w-4 text-primary" /> : <User className="h-4 w-4 text-primary" />}</div>
+                  {isGroupConversation ? <button type="button" onClick={() => setGroupHubOpen(true)} aria-label="Open full group hub" title="Open group hub" className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border-2 border-[#C9A227] bg-[#0B1E3A] text-sm font-bold text-[#FFD700]">{selectedGroup?.coverImageUrl ? <AuthenticatedMedia url={selectedGroup.coverImageUrl} type="image" title={selectedGroup.name}/> : selectedGroup?.name?.slice(0,1).toUpperCase()}</button> : <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10"><User className="h-4 w-4 text-primary" /></div>}
                   <div className="min-w-0"><p className="truncate font-semibold">{isGroupConversation ? selectedGroup?.name : selectedContact?.name}</p>{isGroupConversation && settings.rules && <p className="truncate text-xs text-muted-foreground">{settings.rules}</p>}</div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">{isGroupConversation && settings.allowPolls && <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => setPollComposerOpen(value => !value)}><BarChart3 className="mr-1 h-4 w-4" />Poll</Button>}<Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={() => setChatFullscreen(value => !value)} aria-label={chatFullscreen ? "Exit full-screen chat" : "Open full-screen chat"} title={chatFullscreen ? "Exit full-screen chat" : "Open full-screen chat"}>{chatFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}</Button></div>
               </div>
+
+              {groupHubOpen && isGroupConversation && selectedGroup && (
+                <div role="dialog" aria-modal="true" aria-label={`${selectedGroup.name} group hub`} className="absolute inset-0 z-30 overflow-y-auto bg-background/95 p-4 backdrop-blur-sm">
+                  <div className="mx-auto max-w-xl space-y-4 rounded-2xl border bg-card p-5 shadow-2xl">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-xl border-2 border-[#C9A227] bg-[#0B1E3A] text-2xl font-bold text-[#FFD700]">{selectedGroup.coverImageUrl ? <AuthenticatedMedia url={selectedGroup.coverImageUrl} type="image" title={selectedGroup.name}/> : selectedGroup.name.slice(0,1).toUpperCase()}</div>
+                        <div><h2 className="text-lg font-bold">{selectedGroup.name}</h2><p className="text-sm text-muted-foreground">{selectedGroup.subject || "Study group"} · {selectedGroup.memberCount} members</p><p className="text-xs text-muted-foreground">Created by {selectedGroup.creatorName || "Group creator"}</p></div>
+                      </div>
+                      <Button type="button" variant="ghost" size="icon" onClick={() => setGroupHubOpen(false)} aria-label="Close group hub"><X className="h-5 w-5"/></Button>
+                    </div>
+                    <p className="whitespace-pre-wrap text-sm">{selectedGroup.description || "No group description has been added."}</p>
+                    {settings.rules && <div className="rounded-lg bg-muted p-3"><p className="mb-1 text-xs font-semibold uppercase">Group rules</p><p className="whitespace-pre-wrap text-sm">{settings.rules}</p></div>}
+                    <div className="flex items-center justify-between"><h3 className="font-semibold">Members ({selectedGroup.members?.length ?? selectedGroup.memberCount})</h3><span className="text-xs text-muted-foreground">Group hub</span></div>
+                    <div className="max-h-64 space-y-2 overflow-y-auto">
+                      {(selectedGroup.members ?? []).map(member => <UserProfileLink key={member.id} userId={member.id} name={member.name || `Member ${member.id}`} avatarUrl={member.avatarUrl} className="text-sm"/>)}
+                    </div>
+                    <div className="flex flex-wrap gap-2"><Button type="button" onClick={() => setGroupHubOpen(false)}>Return to chat</Button><Button type="button" variant="outline" onClick={() => { window.location.href = `/student/study-groups?groupProfile=${selectedGroup.id}`; }}>Open full group profile</Button></div>
+                  </div>
+                </div>
+              )}
 
               {pollComposerOpen && isGroupConversation && (
                 <form onSubmit={createPoll} className="space-y-3 border-b bg-muted/20 p-4">
