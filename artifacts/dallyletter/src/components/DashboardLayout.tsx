@@ -13,8 +13,8 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 function DUnreadBadge({ count }: { count: number }) {
   if (count <= 0) return null;
-  return <span className="ml-auto inline-flex items-center gap-1 rounded-lg border-2 border-[#C9A227] bg-[#0B1E3A] px-1 py-0.5 text-[10px] font-bold leading-none text-[#FFD700] shadow-[0_0_8px_rgba(201,162,39,.45)]" aria-label={`${count} unread`}>
-    <img src="/favicon.svg" alt="" className="h-3.5 w-3.5 rounded-[3px] border border-[#F2D98C]" />
+  return <span className="ml-auto inline-flex items-center gap-1 rounded-lg border-2 border-[#D6AD3B] bg-[#0B1E3A] px-1 py-0.5 text-[10px] font-bold leading-none text-[#F4D98A] shadow-[0_0_8px_rgba(201,162,39,.45)]" aria-label={`${count} unread`}>
+    <img src="/favicon.svg" alt="" className="h-3.5 w-3.5 rounded-[3px] border border-[#F8E8AD]" />
     <span>{count > 99 ? "99+" : count}</span>
   </span>;
 }
@@ -88,7 +88,7 @@ function ProfileImageUpload() {
     } catch(error) { setUploadError(error instanceof Error ? error.message : "Profile image upload failed. Check your connection and retry."); }
     finally { setBusy(false); if(inputRef.current) inputRef.current.value=""; }
   };
-  return <div className="mt-1"><input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" aria-label="Choose profile image" onChange={e=>void upload(e.target.files?.[0])}/><button type="button" disabled={busy} onClick={()=>inputRef.current?.click()} className="inline-flex min-h-8 items-center gap-1 rounded-md border border-amber-400/30 px-2 text-xs font-medium text-amber-200 hover:bg-white/10 disabled:opacity-50"><ImagePlus className="h-3.5 w-3.5"/>{busy?"Saving image…":"Upload profile photo"}</button>{uploadError && <p role="alert" className="mt-1 max-w-56 text-[11px] text-rose-300">{uploadError}</p>}</div>;
+  return <div className="mt-1"><input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" aria-label="Choose profile image" onChange={e=>void upload(e.target.files?.[0])}/><button type="button" disabled={busy} onClick={()=>inputRef.current?.click()} className="inline-flex min-h-8 items-center gap-1 rounded-md border border-amber-400/30 px-2 text-xs font-medium text-[#F8E8AD] hover:bg-white/10 disabled:opacity-50"><ImagePlus className="h-3.5 w-3.5"/>{busy?"Saving image…":"Upload profile photo"}</button>{uploadError && <p role="alert" className="mt-1 max-w-56 text-[11px] text-rose-300">{uploadError}</p>}</div>;
 }
 
 function PushDeliveryTest() {
@@ -120,7 +120,7 @@ function PushDeliveryTest() {
     finally { setBusy(false); }
   };
   return <div className="mt-2 space-y-1">
-    <button type="button" disabled={busy} onClick={() => void runTest()} className="inline-flex items-center gap-1 text-[11px] text-amber-300 hover:text-white disabled:opacity-50"><Bell className="h-3 w-3"/>{busy?"Working…":"Test push delivery"}</button>
+    <button type="button" disabled={busy} onClick={() => void runTest()} className="inline-flex items-center gap-1 text-[11px] text-[#E6C66C] hover:text-white disabled:opacity-50"><Bell className="h-3 w-3"/>{busy?"Working…":"Test push delivery"}</button>
     {testId !== null && <button type="button" disabled={busy} onClick={() => void checkStatus()} className="block text-[11px] text-white/70 underline disabled:opacity-50">Check test #{testId}</button>}
     {status && <p className="max-w-[210px] text-[10px] leading-4 text-white/60" aria-live="polite">{status}</p>}
   </div>;
@@ -203,14 +203,14 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Polls & Quizzes", href: "/student/polls", icon: BarChart3 },
       { label: "Chat", href: "/student/chat", icon: MessageSquare },
       { label: "Achievements", href: "/student/achievements", icon: Trophy, section: "My Progress" },
-      { label: "BREAK-ELIDEMS", href: "/student/break-elidems", icon: Star, accent: "text-amber-400" },
+      { label: "BREAK-ELIDEMS", href: "/student/break-elidems", icon: Star, accent: "text-[#E6C66C]" },
       { label: "Payments", href: "/student/payments", icon: CreditCard, section: "Account" },
       { label: "Notifications", href: "/student/notifications", icon: Bell },
       { label: "Report to Owner", href: "/student/report", icon: AlertTriangle, accent: "text-red-400" },
     ];
     if (user.isPrefect) {
       navItems.splice(navItems.findIndex(n => n.href === "/student/achievements"), 0,
-        { label: "Prefect Panel", href: "/student/prefect", icon: Shield, accent: "text-amber-400" }
+        { label: "Prefect Panel", href: "/student/prefect", icon: Shield, accent: "text-[#E6C66C]" }
       );
     }
   } else if (normalizedRole === "teacher") {
@@ -241,7 +241,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         { label: "Notifications", href: "/manager/notifications", icon: Bell, permissionKey: "notifications.view" },
         { label: "Prefect Management", href: "/manager/prefects", icon: Shield, permissionKey: "users.view" },
       { label: "Achievement Awards", href: "/admin/achievements", icon: Trophy, permissionKey: "achievements.view" },
-      { label: "Transfer Requests", href: "/manager/transfer-requests", icon: FileCheck2, section: "Approvals", accent: "text-amber-300", permissionKey: "transfers.view" },
+      { label: "Transfer Requests", href: "/manager/transfer-requests", icon: FileCheck2, section: "Approvals", accent: "text-[#E6C66C]", permissionKey: "transfers.view" },
       { label: "Report Review", href: "/manager/reports/review", icon: FileCheck2, section: "Approvals", accent: "text-violet-300", permissionKey: "reports.review" },
       { label: "All Review Items", href: "/manager/review-queue", icon: FileCheck2, section: "Approvals", accent: "text-red-300", permissionKey: "manager.dashboard.view" },
       { label: "Content Moderation", href: "/manager/safety", icon: Shield, section: "Approvals", accent: "text-orange-300", permissionKey: "moderation.view" },
@@ -268,7 +268,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Notifications", href: "/manager/notifications", icon: Bell, permissionKey: "notifications.view" },
       { label: "Prefect Management", href: "/manager/prefects", icon: Shield, permissionKey: "users.view" },
       { label: "Achievement Awards", href: "/admin/achievements", icon: Trophy, permissionKey: "achievements.view" },
-      { label: "Transfer Requests", href: "/manager/transfer-requests", icon: FileCheck2, section: "Approvals", accent: "text-amber-300", permissionKey: "transfers.view" },
+      { label: "Transfer Requests", href: "/manager/transfer-requests", icon: FileCheck2, section: "Approvals", accent: "text-[#E6C66C]", permissionKey: "transfers.view" },
       { label: "Report Review", href: "/manager/reports/review", icon: FileCheck2, section: "Approvals", accent: "text-violet-300", permissionKey: "reports.review" },
       { label: "All Review Items", href: "/manager/review-queue", icon: FileCheck2, section: "Approvals", accent: "text-red-300", permissionKey: "manager.dashboard.view" },
       { label: "Content Moderation", href: "/manager/safety", icon: Shield, section: "Approvals", accent: "text-orange-300", permissionKey: "moderation.view" },
@@ -291,7 +291,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Staff Verification & Qualifications", href: "/admin/teacher-cv-workspace", icon: GraduationCap },
       { label: "RecordBook & Academic Records", href: "/record-book", icon: ScrollText },
       { label: "Exercise Marking Queue", href: "/teacher/exercises", icon: ClipboardList },
-      { label: "Transfer Requests", href: "/manager/transfer-requests", icon: FileCheck2, section: "Approvals", accent: "text-amber-300", permissionKey: "transfers.view" },
+      { label: "Transfer Requests", href: "/manager/transfer-requests", icon: FileCheck2, section: "Approvals", accent: "text-[#E6C66C]", permissionKey: "transfers.view" },
       { label: "Report Review", href: "/manager/reports/review", icon: FileCheck2, section: "Approvals", accent: "text-violet-300", permissionKey: "reports.review" },
       { label: "All Review Items", href: "/manager/review-queue", icon: FileCheck2, section: "Approvals", accent: "text-red-300", permissionKey: "manager.dashboard.view" },
       { label: "Content Moderation", href: "/manager/safety", icon: Shield, section: "Approvals", accent: "text-orange-300", permissionKey: "moderation.view" },
@@ -307,7 +307,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Staff Payments", href: "/admin/staff-payments", icon: Briefcase },
       { label: "ELIDEMS AI", href: "/admin/ai", icon: Sparkles, section: "AI & Automation", accent: "text-purple-400" },
       { label: "Polls & Quizzes", href: "/admin/polls", icon: BarChart3 },
-      { label: "BREAK-ELIDEMS", href: "/admin/break-elidems", icon: Star, accent: "text-amber-400" },
+      { label: "BREAK-ELIDEMS", href: "/admin/break-elidems", icon: Star, accent: "text-[#E6C66C]" },
       { label: "Achievements", href: "/admin/achievements", icon: Trophy },
       { label: "Owner Alerts", href: "/admin/alerts", icon: AlertTriangle, accent: "text-red-400" },
       { label: "Content Safety", href: "/admin/safety", icon: Shield },
@@ -376,7 +376,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             <img src="/favicon.svg" alt="Dallyletter Elidems logo" className="h-10 w-10 rounded-xl shadow-lg group-hover:shadow-amber-500/30 transition-shadow" />
             <div>
               <span className="text-white font-bold text-lg leading-none tracking-tight font-serif block">Dallyletter</span>
-              <span className="text-amber-400/80 text-[10px] uppercase tracking-widest font-medium">Elidems</span>
+              <span className="text-[#E6C66C]/80 text-[10px] uppercase tracking-widest font-medium">Elidems</span>
             </div>
           </div>
         </Link>
@@ -384,17 +384,17 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
       <div className="mx-4 mb-4">
         <div className="bg-white/8 border border-white/10 rounded-xl p-3 flex items-center gap-3">
-          <Link href="/profile-hub" aria-label="Open your Profile Hub" title="Open your Profile Hub" className={`h-10 w-10 overflow-hidden rounded-xl bg-gradient-to-br ${roleColors[normalizedRole] || "from-slate-600 to-slate-800"} flex items-center justify-center text-white font-bold text-base shadow-lg shrink-0 ring-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300`}>
+          <Link href="/profile-hub" aria-label="Open your Profile Hub" title="Open your Profile Hub" className={`h-10 w-10 overflow-hidden rounded-xl bg-gradient-to-br ${roleColors[normalizedRole] || "from-slate-600 to-slate-800"} flex items-center justify-center text-white font-bold text-base shadow-lg shrink-0 ring-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E6C66C]`}>
             {user.avatarUrl ? <AuthenticatedAvatar url={user.avatarUrl} name={user.name} /> : user.name.charAt(0).toUpperCase()}
           </Link>
           <div className="flex-1 min-w-0">
-            <Link href="/profile-hub" className="block text-sm font-semibold text-white truncate hover:text-amber-200 focus-visible:underline">{user.name}</Link>
-            <div className="flex items-center justify-between gap-2"><ProfileImageUpload /><Link href="/profile-hub" aria-label="More profile actions" title="Open Profile Hub" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white/75 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"><EllipsisVertical className="h-5 w-5" /></Link></div>
+            <Link href="/profile-hub" className="block text-sm font-semibold text-white truncate hover:text-[#F8E8AD] focus-visible:underline">{user.name}</Link>
+            <div className="flex items-center justify-between gap-2"><ProfileImageUpload /><Link href="/profile-hub" aria-label="More profile actions" title="Open Profile Hub" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white/75 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E6C66C]"><EllipsisVertical className="h-5 w-5" /></Link></div>
             <PushDeliveryTest />
             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
               <span className="text-xs text-white/50">{roleLabels[normalizedRole] || user.role}</span>
               {user.isPrefect && (
-                <span className="inline-flex items-center text-[9px] font-bold bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full border border-amber-500/30">
+                <span className="inline-flex items-center text-[9px] font-bold bg-amber-500/20 text-[#E6C66C] px-1.5 py-0.5 rounded-full border border-amber-500/30">
                   <Shield className="w-2.5 h-2.5 mr-0.5" />PREFECT
                 </span>
               )}
@@ -408,7 +408,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               <div className="flex items-center gap-1 mt-1">
                 <Flame className="h-2.5 w-2.5 text-orange-400" />
                 <span className="text-[9px] text-white/40">{(user as any).streakDays ?? 0}d · </span>
-                <Star className="h-2.5 w-2.5 text-amber-400" />
+                <Star className="h-2.5 w-2.5 text-[#E6C66C]" />
                 <span className="text-[9px] text-white/40">{(user as any).performanceScore ?? 0} pts</span>
               </div>
             )}
