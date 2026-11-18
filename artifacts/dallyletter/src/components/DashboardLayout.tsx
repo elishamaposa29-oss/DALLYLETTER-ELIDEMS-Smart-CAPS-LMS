@@ -157,12 +157,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   if (["student","prefect"].includes(normalizedRole)) {
     navItems = [
       { label: "Dashboard", href: "/", icon: Home, section: "Main" },
-      { label: "Profile Hub", href: "/profile-hub", icon: Users },
-      { label: "Class & Learning Operations", href: "/operations", icon: CalendarDays },
       { label: "Feature Preview Center", href: "/features", icon: Sparkles },
-      { label: "My RecordBook & Reports", href: "/record-book", icon: ScrollText },
       { label: "Lessons", href: "/student/lessons", icon: BookOpen },
-      { label: "Exercises & Drawing", href: "/student/exercises", icon: ClipboardList },
       { label: "Live Classes", href: "/student/classes", icon: Video },
       { label: "Assignments", href: "/student/assignments", icon: ClipboardList },
       { label: "Study Groups", href: "/student/study-groups", icon: Users },
