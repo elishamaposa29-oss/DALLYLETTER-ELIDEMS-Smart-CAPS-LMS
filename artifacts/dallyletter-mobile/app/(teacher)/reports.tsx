@@ -1,3 +1,4 @@
+import { FeedbackMessage } from "@/components/FeedbackMessage";
 import { Feather } from "@expo/vector-icons";
 import { getApiUrl } from "@workspace/api-client-react";
 import * as FileSystem from "expo-file-system/legacy";
@@ -136,7 +137,7 @@ export default function TeacherAcademicReports() {
           {field("Conduct / behaviour (optional)", conduct, setConduct, "Teacher assessment, if recorded")}
           {field("Term result / promotion (optional)", result, setResult, "School decision, if recorded")}
           {field("Teacher comment (optional)", teacherComment, setTeacherComment, "Factual comment based on recorded progress", true)}
-          {error ? <Text accessibilityRole="alert" style={{ color: "#dc2626", marginBottom: 10 }}>{error}</Text> : null}
+          <FeedbackMessage message={error} tone="error" onDismiss={() => setError("")} />
           <TouchableOpacity disabled={saving || loading || !learners.length} onPress={() => void createDraft()} style={{ backgroundColor: "#0f2a5a", padding: 13, borderRadius: 9, opacity: saving || loading || !learners.length ? 0.5 : 1 }}>
             <Text style={{ color: "#fff", textAlign: "center", fontWeight: "800" }}>{saving ? "Saving report…" : "Create report draft"}</Text>
           </TouchableOpacity>
