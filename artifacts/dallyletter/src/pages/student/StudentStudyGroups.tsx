@@ -453,7 +453,6 @@ export default function StudentStudyGroups() {
                           <summary className="cursor-pointer list-none text-xs font-semibold text-foreground/70 hover:text-primary">MEMBERS ({group.memberCount})</summary>
                           <div className="mt-3 space-y-2">
 
-                        <p className="mb-2 text-xs font-semibold text-foreground/70">MEMBERS ({group.memberCount})</p>
                         <div className="space-y-2">
                           {group.members.map(member => (
                             <div key={member.id} className="flex items-center gap-2">
@@ -486,7 +485,7 @@ export default function StudentStudyGroups() {
                           </div>
                         </details>
                       </div>;
-                    })()}}
+                    })()}
                   </CardContent>
                   <CardFooter className="relative z-10 flex flex-wrap gap-2 border-t border-white/20 bg-black/20 pt-4">
                     {user?.role === "owner" && <Button type="button" variant="outline" size="sm" className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/10" disabled={busyGroup === group.id} onClick={() => {
