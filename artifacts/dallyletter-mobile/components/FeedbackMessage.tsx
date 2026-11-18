@@ -40,7 +40,7 @@ export function FeedbackMessage({ message, onDismiss, tone, durationMs }: Props)
   if (!message) return null;
   const colors = palette[resolvedTone];
   return (
-    <TouchableOpacity accessibilityRole={resolvedTone === "error" ? "alert" : "status"} accessibilityLiveRegion={resolvedTone === "error" ? "assertive" : "polite"} onPress={onDismiss} activeOpacity={0.85} style={{ marginHorizontal: 14, marginVertical: 5, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.background }}>
+    <TouchableOpacity accessibilityRole="text" accessibilityLiveRegion={resolvedTone === "error" ? "assertive" : "polite"} onPress={onDismiss} activeOpacity={0.85} style={{ marginHorizontal: 14, marginVertical: 5, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.background }}>
       <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
         <View style={{ flex: 1 }}>
           <Text style={{ color: colors.foreground, fontSize: 11, fontWeight: "800", marginBottom: 2 }}>{colors.label}</Text>
