@@ -1166,9 +1166,9 @@ router.post("/users/me/notification-email/request", requireAuth, async(req,res):
   const otp=String(crypto.randomInt(100000,1000000));
   const digest=await hashPassword(String(req.currentUser!.id)+":"+email+":"+otp);
   await pool.query("INSERT INTO notification_email_verifications(user_id,email,otp_hash,expires_at,attempts,created_at) VALUES($1,$2,$3,now()+interval '10 minutes',0,now()) ON CONFLICT(user_id) DO UPDATE SET email=EXCLUDED.email,otp_hash=EXCLUDED.otp_hash,expires_at=EXCLUDED.expires_at,attempts=0,created_at=now()",[req.currentUser!.id,email,digest]);
-  try{await sendEmail({to:[email],subject:"Verify your Dallyletter notification email",text:"Your verification code is "+otp+". It expires in 10 minutes. If you did not request this, ignore this message."});}
+  try{const delivery=await sendEmail({to:[email],subject:"Verify your Dallyletter notification email",text:"Your verification code is "+otp+". It expires in 10 minutes. If you did not request this, ignore this message."});if(delivery.sent!==1||delivery.failed!==0)throw new Error("Email provider did not confirm acceptance of the verification email.");}
   catch(error){await pool.query("DELETE FROM notification_email_verifications WHERE user_id=$1",[req.currentUser!.id]);res.status(503).json({error:error instanceof Error&&/Resend is in testing mode/i.test(error.message)?"Email provider setup is blocking delivery: verify a sending domain in Resend and set EMAIL_FROM to an address on that domain. No active code was created.":"Email provider could not send the code. Try again later."});return;}
-  res.json({message:"Verification code sent. It expires in 10 minutes."});
+  res.json({message:"Email provider accepted the verification email for delivery to "+email+". Check your inbox and spam folder. The code expires in 10 minutes.",expiresInSeconds:600,deliveryAccepted:true});
 });
 
 router.post("/users/me/notification-email/verify", requireAuth, async(req,res):Promise<void>=>{
