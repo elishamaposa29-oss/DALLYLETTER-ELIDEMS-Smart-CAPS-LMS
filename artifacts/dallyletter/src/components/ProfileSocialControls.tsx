@@ -108,12 +108,12 @@ export function ProfileSocialControls({profileId,isSelf,role}:{profileId:number|
 
   if(!profileId)return null;
   return <>
-    {!isSelf&&<button type="button" onClick={()=>void connectOrChat()} disabled={busy} aria-label="Connect or open private chat" title="Connect / Chat" className="fixed bottom-6 right-5 z-[80] grid h-14 w-14 place-items-center rounded-full border-2 border-[#b38b00] bg-[#0f2a5a] text-white shadow-xl transition hover:scale-105 disabled:opacity-60">
+    {!isSelf&&<button type="button" onClick={()=>void connectOrChat()} disabled={busy} aria-label="Connect or open private chat" title="Connect / Chat" className="fixed bottom-6 right-5 z-[80] grid h-14 w-14 place-items-center rounded-full border-2 border-[#A87919] bg-[#0f2a5a] text-white shadow-xl transition hover:scale-105 disabled:opacity-60">
       {social?.chatPrivacy==="approval_required"&&social?.connection?.status!=="accepted"?<UserPlus className="h-6 w-6"/>:<MessageCircle className="h-6 w-6"/>}
     </button>}
     {!isSelf&&(error||notice)&&<div role={error?"alert":"status"} className="fixed bottom-24 right-5 z-[80] max-w-[min(90vw,360px)] rounded-lg border bg-background p-3 text-sm shadow-lg">{error||notice}</div>}
     {isSelf&&<>
-      <button type="button" aria-label="Open profile privacy settings" title="Profile privacy" onClick={()=>setOpen(v=>!v)} className="fixed bottom-5 right-20 z-[80] grid h-11 w-11 place-items-center rounded-full border border-amber-300/80 bg-gradient-to-br from-[#0f2a5a] to-[#b38b00] text-white shadow-[0_8px_28px_rgba(15,42,90,.3)] transition hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2"><ShieldCheck className="h-5 w-5"/></button>
+      <button type="button" aria-label="Open profile privacy settings" title="Profile privacy" onClick={()=>setOpen(v=>!v)} className="fixed bottom-5 right-20 z-[80] grid h-11 w-11 place-items-center rounded-full border border-amber-300/80 bg-gradient-to-br from-[#0f2a5a] to-[#A87919] text-white shadow-[0_8px_28px_rgba(15,42,90,.3)] transition hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2"><ShieldCheck className="h-5 w-5"/></button>
       {open&&<div className="fixed bottom-20 right-4 z-[82] max-h-[min(72dvh,620px)] w-[min(92vw,420px)] overflow-y-auto rounded-2xl border border-amber-300/60 bg-background p-4 shadow-2xl ring-1 ring-[#0f2a5a]/10">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div><h3 className="font-bold text-[#0f2a5a]">Profile privacy & connections</h3><p className="text-xs text-muted-foreground">Each section has its own visibility rule. Institutional access is not controlled by learner privacy choices.</p></div>
