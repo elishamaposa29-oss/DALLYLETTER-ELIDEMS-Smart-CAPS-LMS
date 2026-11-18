@@ -472,3 +472,37 @@ button[class*="bg-[linear-gradient"] {
   0%, 100% { filter: drop-shadow(0 0 0 rgb(198 154 53 / 0)); }
   50% { filter: drop-shadow(0 0 2px rgb(198 154 53 / .34)); }
 }
+
+/* Persistent D-logo unread indicator: navy enamel, bronze-gold rim, moving foil glint. */
+.dl-unread-gold-badge {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-color: #c69a35 !important;
+  box-shadow: 0 0 0 1px rgb(248 232 173 / .28), 0 0 12px rgb(198 154 53 / .42), inset 0 1px 0 rgb(255 240 189 / .55) !important;
+}
+.dl-unread-gold-badge::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  top: -35%;
+  bottom: -35%;
+  left: -65%;
+  width: 42%;
+  pointer-events: none;
+  transform: skewX(-18deg);
+  background: linear-gradient(90deg, transparent, rgb(255 240 189 / .82), #fff8dc, rgb(230 198 108 / .58), transparent);
+  animation: dl-badge-foil-sweep 3.8s ease-in-out infinite;
+}
+.dl-unread-gold-badge img, .dl-unread-gold-badge span {
+  position: relative;
+  z-index: 3;
+}
+@keyframes dl-badge-foil-sweep {
+  0%, 58% { left: -65%; opacity: .1; }
+  78% { opacity: .9; }
+  100% { left: 135%; opacity: .1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dl-unread-gold-badge::after { animation: none !important; }
+}
