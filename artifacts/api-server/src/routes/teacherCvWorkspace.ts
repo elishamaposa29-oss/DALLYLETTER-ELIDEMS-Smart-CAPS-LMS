@@ -235,6 +235,7 @@ router.delete("/:teacherId/documents/:docId",requireSelfOrCvMonitor,async(req,re
  if(self&&normalizeRole(actor.role)!=="teacher"){res.status(403).json({error:"Only a teacher can delete their own uploaded file."});return;}
  if(!self&&!isOwner(actor)&&!canAccessManager(actor)){res.status(403).json({error:"Owner or an authorized manager is required to delete another teacher's file."});return;}
  await ensure();
+ await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,cv jsonb NOT NULL DEFAULT '{}'::jsonb,updated_at timestamptz NOT NULL DEFAULT now())");
  const client=await pool.connect();let storageKey:string|null=null;
  try{
   await client.query("BEGIN");
