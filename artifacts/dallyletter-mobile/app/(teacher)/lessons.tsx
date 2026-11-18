@@ -1,3 +1,4 @@
+import { ACADEMIC_GRADE_OPTIONS } from "@workspace/academic-grades";
 import { Feather } from "@expo/vector-icons";
 import { getApiUrl, useCreateLesson, useUpdateLesson, useDeleteLesson, useListLessons } from "@workspace/api-client-react";
 import * as ImagePicker from "expo-image-picker";
@@ -49,6 +50,7 @@ export default function TeacherLessons() {
   const [mediaUrl, setMediaUrl] = useState("");
   const [content, setContent] = useState("");
   const [grade, setGrade] = useState("");
+  const [showGradeOptions, setShowGradeOptions] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [editingLessonId, setEditingLessonId] = useState<number | null>(null);
   const [notifyingLessonId, setNotifyingLessonId] = useState<number | null>(null);
@@ -250,7 +252,7 @@ export default function TeacherLessons() {
               </View>
               <View style={s.info}>
                 <Text style={s.lessonTitle} numberOfLines={2}>{lesson.title}</Text>
-                <Text style={s.meta}>{lesson.subject}{lesson.grade ? ` · Grade ${lesson.grade}` : ""}</Text>
+                <Text style={s.meta}>{lesson.subject}{lesson.grade ? ` · ${lesson.grade}` : ""}</Text>
                 {lesson.mediaUrl && lesson.type === "image" ? <AuthenticatedMediaPreview url={String(lesson.mediaUrl)} height={140} accessibilityLabel={String(lesson.title || "Lesson image")} /> : null}
                 {lesson.content ? <Text style={s.meta} numberOfLines={3}>{String(lesson.content).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()}</Text> : null}
                 {extractLessonLinks(lesson.content).map((url,index) => <View key={url} style={{marginTop:6}}>
@@ -284,8 +286,11 @@ export default function TeacherLessons() {
               <Text style={s.label}>Subject *</Text>
               <TextInput style={s.input} placeholder="e.g. Mathematics" placeholderTextColor={colors.mutedForeground} value={subject} onChangeText={setSubject} />
 
-              <Text style={s.label}>Grade</Text>
-              <TextInput style={s.input} placeholder="e.g. Grade 10" placeholderTextColor={colors.mutedForeground} value={grade} onChangeText={setGrade} />
+              <Text style={s.label}>Grade / Form</Text>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Select grade or form" onPress={() => setShowGradeOptions(value => !value)} style={[s.input,{justifyContent:"center"}]}>
+                <Text style={{color:grade?colors.foreground:colors.mutedForeground}}>{grade || "Select grade / form"}</Text>
+              </TouchableOpacity>
+              {showGradeOptions ? <View style={{borderWidth:1,borderColor:colors.border,borderRadius:10,marginTop:-8,marginBottom:14,overflow:"hidden"}}>{ACADEMIC_GRADE_OPTIONS.map(option=><TouchableOpacity key={option} accessibilityRole="button" onPress={()=>{setGrade(option);setShowGradeOptions(false);}} style={{paddingHorizontal:14,paddingVertical:11,backgroundColor:grade===option?colors.primary+"18":colors.card,borderBottomWidth:1,borderBottomColor:colors.border}}><Text style={{color:colors.foreground,fontWeight:grade===option?"800":"500"}}>{option}</Text></TouchableOpacity>)}</View> : null}
 
               <Text style={s.label}>Type</Text>
               <View style={s.typeRow}>
