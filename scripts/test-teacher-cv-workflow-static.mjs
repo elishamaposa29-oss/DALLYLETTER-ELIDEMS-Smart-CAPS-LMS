@@ -26,6 +26,8 @@ const attendanceCalendar = read("artifacts/dallyletter/src/components/DailyAppAt
 const apiApp = read("artifacts/api-server/src/app.ts");
 const profileHub = read("artifacts/dallyletter/src/pages/ProfileHub.tsx");
 const usersRoutes = read("artifacts/api-server/src/routes/users.ts");
+const globalToast = read("artifacts/dallyletter/src/components/ui/toast.tsx");
+const globalToaster = read("artifacts/dallyletter/src/components/ui/toaster.tsx");
 
 const renderBlueprint = read("render.yaml");
 
@@ -124,3 +126,11 @@ assert.ok(profileHub.includes("navigator.clipboard.readText") && profileHub.incl
 assert.ok(profileHub.includes("Verification code window:") && profileHub.includes("startOtpCountdown"), "OTP request must show a countdown until the code is entered or expires");
 assert.ok(profileHub.includes("border-red-300 bg-red-50") && profileHub.includes("border-emerald-300 bg-emerald-50"), "Profile Hub feedback must distinguish failure in red and success in green");
 assert.ok(usersRoutes.includes("delivery.sent!==1||delivery.failed!==0"), "Notification email OTP must report success only after provider acceptance");
+
+
+assert.match(globalToast, /success: "border border-emerald-300 bg-emerald-50/, "Global success feedback must use an accessible green treatment");
+assert.match(globalToast, /destructive:\s*"destructive group border-destructive bg-destructive text-destructive-foreground"/, "Global failure feedback must use the destructive red treatment");
+assert.match(globalToast, /warning: "border border-amber-300 bg-amber-50/, "Global warning feedback must be visually distinct from success and failure");
+assert.match(globalToast, /default: "success"/, "Unqualified successful action toasts must use the global success treatment");
+assert.match(globalToaster, /props\.variant === "destructive" \? 9000/, "Failure feedback must remain visible longer than routine success feedback");
+assert.match(globalToaster, /duration=\{props\.variant === "destructive" \? 9000 : props\.variant === "warning" \? 7000 : 5000\}/, "Global feedback must have bounded severity-aware auto-dismiss timers");
