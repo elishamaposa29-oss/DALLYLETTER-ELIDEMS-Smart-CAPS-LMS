@@ -354,7 +354,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               <Link href={item.href} onClick={onNav}>
                 <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 group ${isActive ? "bg-white/15 text-white shadow-sm" : "text-white/60 hover:text-white hover:bg-white/10"}`}>
                   <Icon className={`h-4 w-4 shrink-0 ${isActive ? "text-white" : item.accent ? item.accent + " opacity-80" : "text-white/50 group-hover:text-white/80"}`} />
-                  <span className="truncate">{item.label}</span>\n                  <DUnreadBadge count={unreadCount} />
+                  <span className="truncate">{item.label}</span>
+                  <DUnreadBadge count={unreadCount} />
                   {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white/80 shrink-0" />}
                 </div>
               </Link>
