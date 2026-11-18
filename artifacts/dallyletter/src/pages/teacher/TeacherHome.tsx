@@ -31,7 +31,7 @@ export default function TeacherHome() {
             <h1 className="text-3xl font-bold tracking-tight text-foreground">Teacher Portal</h1>
             <p className="mt-1 text-muted-foreground">Your account is active. Your teacher application status is shown below.</p>
           </div>
-          <Card className="border-[#b38b00]/40">
+          <Card className="border-[#A87919]/40">
             <CardContent className="space-y-4 p-6">
               <Badge variant="outline" className="w-fit">{rejected ? "Application not approved" : "Application awaiting review"}</Badge>
               <h2 className="text-xl font-semibold">{rejected ? "Teaching access is disabled" : "Complete your Profile Hub application"}</h2>
