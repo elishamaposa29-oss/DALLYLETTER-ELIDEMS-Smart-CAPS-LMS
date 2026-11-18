@@ -178,13 +178,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   } else if (normalizedRole === "teacher") {
     navItems = [
       { label: "Dashboard", href: "/teacher", icon: Home, section: "Main" },
-      { label: "Profile Hub", href: "/profile-hub", icon: Users },
       { label: "Feature Preview Center", href: "/features", icon: Sparkles },
-      { label: "Teacher RecordBook", href: "/record-book", icon: ScrollText },
-      { label: "Class & Learning Operations", href: "/operations", icon: CalendarDays },
       { label: "My Lessons", href: "/teacher/lessons", icon: BookOpen },
-      { label: "Exercise Marking Queue", href: "/teacher/exercises", icon: ClipboardList, permissionKey: "recordbook.view" },
-      { label: "Qualifications & CV", href: "/teacher/qualifications", icon: GraduationCap },
       { label: "My Classes", href: "/teacher/classes", icon: Video },
       { label: "Assignments", href: "/teacher/assignments", icon: ClipboardList },
       { label: "Study Groups", href: "/student/study-groups", icon: Users },
@@ -193,13 +188,11 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Student Payments", href: "/teacher/payments", icon: CreditCard },
       ...(activeTeacherManager ? [
         { label: "Manager Panel", href: "/manager", icon: Briefcase, section: "Management", accent: "text-purple-400", permissionKey: "manager.dashboard.view" },
-      { label: "Class & Learning Operations", href: "/operations", icon: CalendarDays },
         { label: "Staff Verification & Qualifications", href: "/manager/teacher-cv-workspace", icon: GraduationCap },
         { label: "RecordBook & Academic Records", href: "/record-book", icon: ScrollText, permissionKey: "recordbook.view" },
         { label: "Monitor Teachers", href: "/manager/teachers", icon: GraduationCap, permissionKey: "users.view" },
         { label: "Monitor Students", href: "/manager/students", icon: Users, permissionKey: "users.view" },
         { label: "Assignments", href: "/manager/assignments", icon: ClipboardList, permissionKey: "recordbook.view" },
-      { label: "Exercise Marking Queue", href: "/teacher/exercises", icon: ClipboardList, permissionKey: "recordbook.view" },
       { label: "Classes", href: "/manager/classes", icon: Video, permissionKey: "classes.manage" },
       { label: "Lessons", href: "/manager/lessons", icon: BookOpen, permissionKey: "recordbook.view" },
       { label: "Polls & Quizzes", href: "/manager/polls", icon: BarChart3, permissionKey: "polls.manage" },
