@@ -235,10 +235,10 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
                   ? "bg-violet-100 text-violet-950 border-violet-400 dark:bg-violet-950/60 dark:text-violet-100 dark:border-violet-700"
                   : isExpectedSchoolDay
                     ? "bg-[#0f2a5a]/[0.08] text-[#0f2a5a] border-[#0f2a5a]/30 dark:bg-[#8fb4ec]/[0.14] dark:text-[#d5e5ff] dark:border-[#8fb4ec]/40"
-                    : isPastUnrecorded
-                      ? "bg-orange-50 text-orange-900 border-orange-200 dark:bg-orange-950/30 dark:text-orange-100 dark:border-orange-800"
-                      : isWeekend && isFuture
-                        ? "bg-violet-50 text-violet-900 border-violet-200 dark:bg-violet-950/35 dark:text-violet-100 dark:border-violet-800"
+                    : isWeekend
+                      ? "bg-violet-50 text-violet-900 border-violet-200 dark:bg-violet-950/35 dark:text-violet-100 dark:border-violet-800"
+                      : isPastUnrecorded
+                        ? "bg-orange-50 text-orange-900 border-orange-200 dark:bg-orange-950/30 dark:text-orange-100 dark:border-orange-800"
                         : "bg-card text-foreground border-border";
           return (
             <button type="button" key={key} aria-pressed={selectedDate === key} onClick={() => setSelectedDate(key)} title={`${formatDate(key)} · ${isMixed ? "Mixed attendance" : isAbsent ? "Absence recorded" : isPresent ? "Present" : holidayName || (isExpectedSchoolDay ? "Expected school day" : isPastUnrecorded ? "No record saved · historical date" : isWeekend ? "Weekend" : isFuture ? "Upcoming date" : "No attendance record")}${status ? ` · ${status.present} present, ${status.absent} absent` : ""}`} aria-label={`${formatDate(key)}: ${isMixed ? "mixed attendance, present and absent sessions" : isAbsent ? "absence recorded" : isPresent ? "present" : holidayName ? holidayName : isExpectedSchoolDay ? "expected school day" : isPastUnrecorded ? "past date with no saved record" : isWeekend ? "weekend" : isFuture ? "upcoming date" : "no attendance record"}`} className={`relative flex min-h-[42px] flex-col items-center justify-center rounded-lg border text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b38b00] sm:min-h-[54px] ${colorClass} ${isWeekend ? "border-dashed border-violet-300 dark:border-violet-700" : ""} ${isToday ? "border-2 border-[#0f2a5a] outline outline-1 outline-offset-1 outline-[#0f2a5a]" : ""} ${selectedDate === key ? "ring-2 ring-[#b38b00] ring-offset-1" : ""}`}>
