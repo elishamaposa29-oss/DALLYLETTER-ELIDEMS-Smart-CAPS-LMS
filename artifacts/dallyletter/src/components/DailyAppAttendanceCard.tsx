@@ -221,24 +221,23 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
           const isPresent = !!status && status.present > 0;
           const isMixed = isAbsent && isPresent;
           const holidayName = zimbabwePublicHolidays(monthStart.getFullYear()).get(key);
-          const isPastUnrecorded = key < today && !status && !holidayName;
-          // The date cell itself communicates the register state; keep the summary
-          // cards and the separate fullscreen activity-history dialog untouched.
-          const colorClass = (isFuture || (isToday && !status && !holidayName))
-            ? "bg-slate-50 text-slate-500 border-slate-200 dark:bg-slate-900/60 dark:text-slate-300 dark:border-slate-700"
-            : isMixed
-              ? "bg-amber-100 text-amber-950 border-amber-400 dark:bg-amber-950/60 dark:text-amber-100 dark:border-amber-700"
-              : isAbsent
-                ? "bg-red-100 text-red-900 border-red-400 dark:bg-red-950/60 dark:text-red-100 dark:border-red-700"
-                : isPresent
-                  ? "bg-emerald-100 text-emerald-950 border-emerald-400 dark:bg-emerald-950/60 dark:text-emerald-100 dark:border-emerald-700"
-                  : isPastUnrecorded
-                    ? "bg-orange-100 text-orange-950 border-orange-400 dark:bg-orange-950/60 dark:text-orange-100 dark:border-orange-700"
-                    : holidayName
-                      ? "bg-violet-100 text-violet-950 border-violet-400 dark:bg-violet-950/60 dark:text-violet-100 dark:border-violet-700"
-                      : "bg-card text-foreground border-border";
+          const isExpectedSchoolDay = isFuture && !isWeekend && !holidayName;
+          // Recorded outcomes always win. Future weekdays are visibly predicted as
+          // expected school days; known Zimbabwe public holidays are predicted ahead.
+          // Unrecorded past dates stay neutral rather than being assigned a false status.
+          const colorClass = isMixed
+            ? "bg-amber-100 text-amber-950 border-amber-400 dark:bg-amber-950/60 dark:text-amber-100 dark:border-amber-700"
+            : isAbsent
+              ? "bg-red-100 text-red-900 border-red-400 dark:bg-red-950/60 dark:text-red-100 dark:border-red-700"
+              : isPresent
+                ? "bg-emerald-100 text-emerald-950 border-emerald-400 dark:bg-emerald-950/60 dark:text-emerald-100 dark:border-emerald-700"
+                : holidayName
+                  ? "bg-violet-100 text-violet-950 border-violet-400 dark:bg-violet-950/60 dark:text-violet-100 dark:border-violet-700"
+                  : isExpectedSchoolDay
+                    ? "bg-emerald-50 text-emerald-900 border-emerald-300 dark:bg-emerald-950/35 dark:text-emerald-200 dark:border-emerald-800"
+                    : "bg-card text-foreground border-border";
           return (
-            <button type="button" key={key} aria-pressed={selectedDate === key} onClick={() => setSelectedDate(key)} title={`${formatDate(key)} · ${isMixed ? "Present and absent sessions" : isAbsent ? "Absence recorded" : isPresent ? "Present" : isPastUnrecorded ? "No attendance record" : holidayName || (isFuture ? "Upcoming date" : "No record")}${status ? ` · ${status.present} present, ${status.absent} absent` : ""}`} aria-label={`${formatDate(key)}: ${isMixed ? "mixed attendance, present and absent sessions" : isAbsent ? "absence recorded" : isPresent ? "present" : isPastUnrecorded ? "past day with no record" : holidayName ? holidayName : isFuture ? "upcoming date" : "no record"}`} className={`relative flex min-h-[42px] flex-col items-center justify-center rounded-lg border text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b38b00] sm:min-h-[54px] ${colorClass} ${isWeekend ? "ring-1 ring-inset ring-violet-400 dark:ring-violet-600" : ""} ${isToday ? "outline outline-2 outline-offset-1 outline-primary" : ""} ${selectedDate === key ? "ring-2 ring-[#b38b00] ring-offset-1" : ""}`}>
+            <button type="button" key={key} aria-pressed={selectedDate === key} onClick={() => setSelectedDate(key)} title={`${formatDate(key)} · ${isMixed ? "Mixed attendance" : isAbsent ? "Absence recorded" : isPresent ? "Present" : holidayName || (isExpectedSchoolDay ? "Expected school day" : isWeekend ? "Weekend" : isFuture ? "Upcoming date" : "No attendance record")}${status ? ` · ${status.present} present, ${status.absent} absent` : ""}`} aria-label={`${formatDate(key)}: ${isMixed ? "mixed attendance, present and absent sessions" : isAbsent ? "absence recorded" : isPresent ? "present" : holidayName ? holidayName : isExpectedSchoolDay ? "predicted normal school day" : isWeekend ? "weekend" : isFuture ? "upcoming date" : "no attendance record"}`} className={`relative flex min-h-[42px] flex-col items-center justify-center rounded-lg border text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b38b00] sm:min-h-[54px] ${colorClass} ${isWeekend ? "border-dashed" : ""} ${isToday ? "border-2 border-[#0f2a5a] outline outline-1 outline-offset-1 outline-[#0f2a5a]" : ""} ${selectedDate === key ? "ring-2 ring-[#b38b00] ring-offset-1" : ""}`}>
               <span>{day}</span>
               {status && <span className="text-[9px] font-bold leading-3">{status.present > 0 && <span>{status.present}P</span>}{status.present > 0 && status.absent > 0 && <span> · </span>}{status.absent > 0 && <span>{status.absent}A</span>}</span>}
               {holidayName && <span title={holidayName} aria-label={holidayName} className="pointer-events-none absolute inset-x-0 bottom-0 truncate px-0.5 text-center text-[8px] font-bold leading-3 text-violet-800 dark:text-violet-200">{holidayName}</span>}
@@ -249,16 +248,16 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
       </div>
       <div aria-live="polite" className="rounded-lg border border-[#b38b00]/30 bg-muted/30 px-3 py-2">
         <p className="text-xs font-semibold text-foreground">Selected date · {formatDate(selectedDate)}</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">{(() => { const item = dayStatus.get(selectedDate); const holiday = zimbabwePublicHolidays(Number(selectedDate.slice(0, 4))).get(selectedDate); return item ? `${item.present} present · ${item.absent} absent` : holiday || (selectedDate > today ? "Upcoming date" : "No attendance record for this date."); })()}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{(() => { const item = dayStatus.get(selectedDate); const holiday = zimbabwePublicHolidays(Number(selectedDate.slice(0, 4))).get(selectedDate); return item ? `${item.present} present · ${item.absent} absent` : holiday || (selectedDate > today && new Date(selectedDate + "T12:00:00").getDay() !== 0 && new Date(selectedDate + "T12:00:00").getDay() !== 6 ? "Predicted normal school day · expected" : selectedDate > today ? "Weekend / upcoming date" : "No attendance record for this date."); })()}</p>
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-muted-foreground">
         <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-emerald-400 bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/60" /> Present (green)</span>
         <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-red-400 bg-red-100 dark:border-red-700 dark:bg-red-950/60" /> Absent (red)</span>
         <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-amber-400 bg-amber-100 dark:border-amber-700 dark:bg-amber-950/60" /> Mixed sessions (amber)</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-orange-400 bg-orange-100 dark:border-orange-700 dark:bg-orange-950/60" /> Past day not marked (orange)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/35" /> Expected school day (future)</span>
         <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-violet-400 bg-violet-100 dark:border-violet-700 dark:bg-violet-950/60" /> Public holiday (violet)</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/60" /> Upcoming / today not yet marked (grey)</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-violet-400 bg-card" /> Weekend outline</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-dashed border-violet-400 bg-card" /> Weekend (dashed outline)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border-2 border-[#0f2a5a] bg-card" /> Today (navy border)</span>
       </div>
     </div>
   );
