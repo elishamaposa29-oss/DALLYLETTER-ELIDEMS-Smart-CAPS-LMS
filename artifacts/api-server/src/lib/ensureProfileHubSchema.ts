@@ -194,11 +194,10 @@ export async function ensureProfileHubSchema(): Promise<void> {
     await client.query("CREATE INDEX IF NOT EXISTS notification_reads_user_idx ON notification_reads(user_id, read_at DESC)");
     await client.query(`CREATE TABLE IF NOT EXISTS message_conversation_reads (
       user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      group_id integer REFERENCES study_groups(id) ON DELETE CASCADE,
-      other_user_id integer REFERENCES users(id) ON DELETE CASCADE,
+      conversation_type text NOT NULL CHECK (conversation_type IN ('group','private')),
+      conversation_id integer NOT NULL,
       last_read_at timestamptz NOT NULL DEFAULT now(),
-      PRIMARY KEY (user_id, group_id, other_user_id),
-      CHECK ((group_id IS NOT NULL AND other_user_id IS NULL) OR (group_id IS NULL AND other_user_id IS NOT NULL))
+      PRIMARY KEY (user_id, conversation_type, conversation_id)
     )`);
     await client.query("CREATE INDEX IF NOT EXISTS message_conversation_reads_user_idx ON message_conversation_reads(user_id, last_read_at DESC)");
 
