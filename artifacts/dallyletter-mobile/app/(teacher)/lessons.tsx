@@ -1,4 +1,4 @@
-import { ACADEMIC_GRADE_OPTIONS } from "@workspace/academic-grades";
+import { ACADEMIC_GRADE_OPTIONS } from "@workspace/api-client-react/academic-grades";
 import { Feather } from "@expo/vector-icons";
 import { getApiUrl, useCreateLesson, useUpdateLesson, useDeleteLesson, useListLessons } from "@workspace/api-client-react";
 import * as ImagePicker from "expo-image-picker";
