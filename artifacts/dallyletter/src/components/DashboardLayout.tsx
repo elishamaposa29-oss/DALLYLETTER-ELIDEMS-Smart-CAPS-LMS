@@ -11,6 +11,14 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
+function DUnreadBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return <span className="ml-auto inline-flex items-center gap-1 rounded-lg border-2 border-[#C9A227] bg-[#0B1E3A] px-1 py-0.5 text-[10px] font-bold leading-none text-[#FFD700] shadow-[0_0_8px_rgba(201,162,39,.45)]" aria-label={`${count} unread`}>
+    <img src="/favicon.svg" alt="" className="h-3.5 w-3.5 rounded-[3px] border border-[#F2D98C]" />
+    <span>{count > 99 ? "99+" : count}</span>
+  </span>;
+}
+
 interface NavItem {
   label: string;
   href: string;
@@ -124,6 +132,34 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const logoutMutation = useLogoutUser();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [managerPermissions, setManagerPermissions] = useState<Record<string, boolean> | null>(null);
+  const [messageUnread, setMessageUnread] = useState(0);
+  const [groupUnread, setGroupUnread] = useState(0);
+  const [activityUnread, setActivityUnread] = useState(0);
+
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    const refreshUnread = async () => {
+      const token = localStorage.getItem("dallyletter_token") ?? "";
+      const headers = { Authorization: "Bearer " + token };
+      try {
+        const [messageResponse, notificationResponse] = await Promise.all([
+          fetch(getApiUrl("/api/messages/unread-summary"), { headers, cache: "no-store" }),
+          fetch(getApiUrl("/api/notifications"), { headers, cache: "no-store" }),
+        ]);
+        if (!messageResponse.ok || !notificationResponse.ok) return;
+        const [messages, notifications] = await Promise.all([messageResponse.json(), notificationResponse.json()]);
+        if (!active) return;
+        setMessageUnread(Number(messages.messageUnread || 0));
+        setGroupUnread(Number(messages.groupUnread || 0));
+        setActivityUnread(Array.isArray(notifications) ? notifications.filter((item:any) => !item.isRead).length : 0);
+      } catch { /* Keep last known private counts during temporary network outages. */ }
+    };
+    void refreshUnread();
+    const timer = window.setInterval(() => void refreshUnread(), 5000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [user?.id, location]);
+
 
   useEffect(() => {
     const role = String(user?.role || "").toLowerCase().replace(/[ -]+/g, "_");
@@ -298,6 +334,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       <div className="space-y-0.5">
         {navItems.map((item) => {
           const Icon = item.icon;
+          const unreadCount = item.href.includes("/student/chat") || item.href.includes("/teacher/chat") || item.href.includes("/manager/chat") || item.href.includes("/admin/chat") ? messageUnread
+            : item.href === "/student/study-groups" ? groupUnread
+            : item.href.includes("notifications") ? activityUnread : 0;
           const isActive =
             location === item.href ||
             (item.href !== "/" && item.href !== "/teacher" && item.href !== "/admin" && item.href !== "/manager" && location.startsWith(item.href));
@@ -315,7 +354,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               <Link href={item.href} onClick={onNav}>
                 <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 group ${isActive ? "bg-white/15 text-white shadow-sm" : "text-white/60 hover:text-white hover:bg-white/10"}`}>
                   <Icon className={`h-4 w-4 shrink-0 ${isActive ? "text-white" : item.accent ? item.accent + " opacity-80" : "text-white/50 group-hover:text-white/80"}`} />
-                  <span className="truncate">{item.label}</span>
+                  <span className="truncate">{item.label}</span>\n                  <DUnreadBadge count={unreadCount} />
                   {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white/80 shrink-0" />}
                 </div>
               </Link>
@@ -399,7 +438,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}>
           <SheetTrigger asChild>
             <Button variant="ghost" size="icon" className="text-white/70 hover:text-white hover:bg-white/10">
-              <Menu className="h-5 w-5" />
+              <span className="relative inline-flex"><Menu className="h-5 w-5" /><DUnreadBadge count={messageUnread + activityUnread} /></span>
             </Button>
           </SheetTrigger>
           <SheetContent side="left" className="w-64 p-0 border-0">
