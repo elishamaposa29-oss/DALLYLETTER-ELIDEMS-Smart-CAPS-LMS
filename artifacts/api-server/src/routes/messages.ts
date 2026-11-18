@@ -5,7 +5,7 @@ import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import multer from "multer";
-import { db, messagesTable, activityLogTable, studyGroupMembersTable, studyGroupsTable, contentFlagsTable, auditLogsTable, groupMemberControlsTable, groupSettingsTable, usersTable } from "@workspace/db";
+import { db, pool, messagesTable, activityLogTable, studyGroupMembersTable, studyGroupsTable, contentFlagsTable, auditLogsTable, groupMemberControlsTable, groupSettingsTable, usersTable } from "@workspace/db";
 import {
   ListMessagesQueryParams,
   SendMessageBody,
@@ -203,6 +203,29 @@ router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise
 });
 
 // GET /messages — List messages filtered by groupId or recipientId
+router.get("/messages/unread-summary", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
+  const groups = await pool.query(`
+    SELECT m.group_id AS conversation_id, count(*)::int AS unread_count
+    FROM messages m
+    INNER JOIN study_group_members gm ON gm.group_id=m.group_id AND gm.user_id=$1
+    LEFT JOIN message_conversation_reads r ON r.user_id=$1 AND r.conversation_type='group' AND r.conversation_id=m.group_id
+    WHERE m.group_id IS NOT NULL AND m.sender_id<>$1 AND m.created_at>COALESCE(r.last_read_at,'epoch'::timestamptz)
+    GROUP BY m.group_id
+  `, [user.id]);
+  const privateChats = await pool.query(`
+    SELECT m.sender_id AS conversation_id, count(*)::int AS unread_count
+    FROM messages m
+    LEFT JOIN message_conversation_reads r ON r.user_id=$1 AND r.conversation_type='private' AND r.conversation_id=m.sender_id
+    WHERE m.group_id IS NULL AND m.recipient_id=$1 AND m.created_at>COALESCE(r.last_read_at,'epoch'::timestamptz)
+    GROUP BY m.sender_id
+  `, [user.id]);
+  const groupUnread=groups.rows.reduce((sum,row)=>sum+Number(row.unread_count||0),0);
+  const privateUnread=privateChats.rows.reduce((sum,row)=>sum+Number(row.unread_count||0),0);
+  res.json({groupUnread,privateUnread,messageUnread:groupUnread+privateUnread,groups:groups.rows.map(row=>({id:Number(row.conversation_id),unread:Number(row.unread_count)})),privateChats:privateChats.rows.map(row=>({id:Number(row.conversation_id),unread:Number(row.unread_count)}))});
+});
+
 router.get("/messages", requireAuth, async (req, res): Promise<void> => {
   // The generated client historically serialized nullable filters as the literal string "null".
   // Treat null/empty query values as absent so harmless nullable filters never become a 400.
@@ -265,6 +288,11 @@ router.get("/messages", requireAuth, async (req, res): Promise<void> => {
     if (handRaiseId != null) return Number.isInteger(handRaiseId) && handRaiseId > 0 && match?.[1] === String(handRaiseId);
     return !match;
   });
+  if (groupId != null) {
+    await pool.query("INSERT INTO message_conversation_reads (user_id,conversation_type,conversation_id,last_read_at) VALUES ($1,'group',$2,now()) ON CONFLICT (user_id,conversation_type,conversation_id) DO UPDATE SET last_read_at=GREATEST(message_conversation_reads.last_read_at,EXCLUDED.last_read_at)", [currentUser.id, groupId]);
+  } else if (recipientId != null) {
+    await pool.query("INSERT INTO message_conversation_reads (user_id,conversation_type,conversation_id,last_read_at) VALUES ($1,'private',$2,now()) ON CONFLICT (user_id,conversation_type,conversation_id) DO UPDATE SET last_read_at=GREATEST(message_conversation_reads.last_read_at,EXCLUDED.last_read_at)", [currentUser.id, recipientId]);
+  }
   res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
   res.json(scopedMessages.map(message => ({ ...message, content: message.content.replace(handRaiseMarker, ""), createdAt: message.createdAt.toISOString() })));
 });
