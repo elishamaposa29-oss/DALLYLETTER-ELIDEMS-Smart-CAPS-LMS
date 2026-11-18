@@ -65,7 +65,7 @@ export default function Login() {
       <div className="hidden lg:flex w-[52%] flex-col bg-[#0a1628] relative overflow-hidden">
         {/* Background gradient orbs */}
         <div className="absolute top-0 right-0 w-[600px] h-[600px] rounded-full bg-blue-600/10 blur-3xl -translate-y-1/3 translate-x-1/3" />
-        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] rounded-full bg-[gold]-500/10 blur-3xl translate-y-1/3 -translate-x-1/3" />
+        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] rounded-full bg-amber-500/10 blur-3xl translate-y-1/3 -translate-x-1/3" />
         {/* Subtle grid pattern */}
         <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: "linear-gradient(rgba(255,255,255,0.4) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.4) 1px,transparent 1px)", backgroundSize: "48px 48px" }} />
 
@@ -75,7 +75,7 @@ export default function Login() {
             <img src="/favicon.svg" alt="Dallyletter Elidems logo" className="h-12 w-12 rounded-xl shadow-lg" />
             <div>
               <span className="text-white font-bold text-xl leading-none block">DallyLetter</span>
-              <span className="text-[gold]-400/80 text-[10px] uppercase tracking-[0.2em] font-semibold">Elidems</span>
+              <span className="text-amber-400/80 text-[10px] uppercase tracking-[0.2em] font-semibold">Elidems</span>
             </div>
           </div>
 
@@ -87,7 +87,7 @@ export default function Login() {
             </div>
             <h1 className="text-5xl font-bold text-white leading-[1.1] tracking-tight">
               Empowering the<br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-[gold]-300 to-[gold]-500">
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-amber-500">
                 future of learning.
               </span>
             </h1>
@@ -101,7 +101,7 @@ export default function Login() {
             {features.map(({ icon: Icon, text }) => (
               <div key={text} className="flex items-center gap-3.5">
                 <div className="shrink-0 h-8 w-8 rounded-lg bg-white/8 border border-white/10 flex items-center justify-center">
-                  <Icon className="h-4 w-4 text-[gold]-400" />
+                  <Icon className="h-4 w-4 text-amber-400" />
                 </div>
                 <p className="text-sm text-white/60">{text}</p>
               </div>
@@ -130,7 +130,7 @@ export default function Login() {
           <img src="/favicon.svg" alt="Dallyletter Elidems logo" className="h-10 w-10 rounded-xl shadow-md" />
           <div>
             <span className="font-bold text-[#0a1628] text-lg leading-none block">DallyLetter</span>
-            <span className="text-[gold]-500 text-[10px] uppercase tracking-widest font-semibold">Elidems</span>
+            <span className="text-amber-500 text-[10px] uppercase tracking-widest font-semibold">Elidems</span>
           </div>
         </div>
 
