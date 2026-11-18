@@ -499,7 +499,7 @@ export default function StudentStudyGroups() {
                       setBusyGroup(group.id);
                       void apiJson(`/api/study-groups/${group.id}/messages`, { method: "DELETE" }).then(() => toast({ title: "Group messages cleared" })).catch(error => toast({ variant: "destructive", title: "Could not clear messages", description: error instanceof Error ? error.message : "Try again." })).finally(() => setBusyGroup(null));
                     }} disabled={busyGroup === group.id}>Clear chat</Button>}
-                    {isMember && <Button type="button" variant="secondary" className="min-w-[130px] flex-1 gap-2" onClick={() => { window.location.href = `/student/chat?groupId=${group.id}`; }}><MessageSquare className="h-4 w-4" />Open group chat</Button>}
+                    {isMember && <Button type="button" variant="secondary" className="min-w-[130px] flex-1 gap-2" onClick={() => { const role=String(user?.role||"").toLowerCase(); const base=role==="teacher"?"/teacher/chat":role==="owner"||role==="admin"||role==="platform_owner"?"/admin/chat":["manager","senior_manager","junior_manager"].includes(role)?"/manager/chat":"/student/chat"; window.location.href = `${base}?groupId=${group.id}`; }}><MessageSquare className="h-4 w-4" />Open group chat</Button>}
                     {isMember ? (
                       <Button variant="secondary" className="min-w-[130px] flex-1 gap-2" onClick={() => handleLeaveGroup(group.id)} disabled={isOwner || leaveGroupMutation.isPending}>
                         {isOwner ? <Users className="h-4 w-4" /> : <LogOut className="h-4 w-4" />}{isOwner ? "Group Owner" : "Leave Group"}
