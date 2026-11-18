@@ -1,3 +1,4 @@
+import { FeedbackMessage } from "@/components/FeedbackMessage";
 import { Feather } from "@expo/vector-icons";
 import { useListMessages, useSendMessage, useListStudyGroups } from "@workspace/api-client-react";
 import * as Haptics from "expo-haptics";
@@ -192,7 +193,7 @@ export default function StudentChat() {
       </View>
 
       <View style={s.groupStrip}><ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">{joinedGroups.map(group => <TouchableOpacity key={group.id} onPress={() => { setSelectedGroupId(group.id); setNotice(""); }} style={[s.groupChip,{borderColor:selectedGroupId===group.id?colors.primary:colors.border,backgroundColor:selectedGroupId===group.id?colors.primary:colors.card}]}><Text style={{color:selectedGroupId===group.id?"#fff":colors.foreground,fontWeight:"700",fontSize:12}}>{group.name}</Text></TouchableOpacity>)}{!groupsLoading&&joinedGroups.length===0?<Text style={s.emptySubtext}>No joined study groups. Join a group first.</Text>:null}</ScrollView></View>
-      {notice ? <Text accessibilityRole="alert" style={{paddingHorizontal:14,paddingVertical:6,color:colors.primary,fontSize:12}}>{notice}</Text> : null}
+      <FeedbackMessage message={notice} onDismiss={() => setNotice("")} />
       {grouped.length === 0 ? (
         <View style={s.emptyWrap}>
           <Feather name="message-circle" size={48} color={colors.border} />
