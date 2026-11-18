@@ -229,7 +229,7 @@ function requireSelfOrCvMonitor(req:any,res:any,next:any){const targetId=idOf(re
 router.delete("/:teacherId/documents/:docId",requireSelfOrCvMonitor,async(req,res)=>{
  const teacherId=idOf(req.params.teacherId),docId=idOf(req.params.docId),actor=req.currentUser!;
  if(!teacherId||!docId){res.status(400).json({error:"Invalid teacher or document id."});return;}
- const [target]=await pool.query("SELECT id,role FROM users WHERE id=$1",[teacherId]);
+ const targetResult=await pool.query("SELECT id,role FROM users WHERE id=$1",[teacherId]);const target=targetResult.rows[0];
  if(!target||normalizeRole(target.role)!=="teacher"){res.status(404).json({error:"Teacher account not found."});return;}
  const self=Number(actor.id)===teacherId;
  if(self&&normalizeRole(actor.role)!=="teacher"){res.status(403).json({error:"Only a teacher can delete their own uploaded file."});return;}
