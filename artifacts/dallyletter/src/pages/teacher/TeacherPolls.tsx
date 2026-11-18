@@ -1,3 +1,4 @@
+import { ACADEMIC_GRADE_OPTIONS } from "@workspace/academic-grades";
 import { getApiUrl } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
@@ -171,7 +172,7 @@ export default function TeacherPolls() {
                   <Label>Grade</Label>
                   <Select value={newPoll.grade} onValueChange={v => setNewPoll(p => ({ ...p, grade: v }))}>
                     <SelectTrigger><SelectValue placeholder="Select grade" /></SelectTrigger>
-                    <SelectContent>{["Grade 8","Grade 9","Grade 10","Grade 11","Grade 12"].map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
+                    <SelectContent>{ACADEMIC_GRADE_OPTIONS.map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5"><Label>Subject</Label><Input placeholder="e.g. Mathematics" value={newPoll.subject} onChange={e => setNewPoll(p => ({ ...p, subject: e.target.value }))} /></div>
@@ -218,7 +219,7 @@ export default function TeacherPolls() {
                   <Label>Grade</Label>
                   <Select value={aiTopic.grade} onValueChange={v => setAiTopic(t => ({ ...t, grade: v }))}>
                     <SelectTrigger><SelectValue placeholder="Any grade" /></SelectTrigger>
-                    <SelectContent>{["Grade 8","Grade 9","Grade 10","Grade 11","Grade 12"].map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
+                    <SelectContent>{ACADEMIC_GRADE_OPTIONS.map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5"><Label>Subject</Label><Input placeholder="e.g. Science" value={aiTopic.subject} onChange={e => setAiTopic(t => ({ ...t, subject: e.target.value }))} /></div>
