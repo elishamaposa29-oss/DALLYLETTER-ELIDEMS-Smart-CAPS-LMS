@@ -360,7 +360,7 @@ export default function StudentChat() {
               </div>
 
               {groupHubOpen && isGroupConversation && selectedGroup && (
-                <div role="dialog" aria-modal="true" aria-label={`${selectedGroup.name} group hub`} className="absolute inset-0 z-30 overflow-y-auto bg-background/95 p-4 backdrop-blur-sm">
+                <div role="dialog" aria-modal="true" aria-label={`${selectedGroup.name} group hub`} className="fixed inset-0 z-[110] overflow-y-auto bg-background/95 p-4 backdrop-blur-sm">
                   <div className="mx-auto max-w-xl space-y-4 rounded-2xl border bg-card p-5 shadow-2xl">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
