@@ -270,7 +270,7 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
             <div>
               <div className="mb-2 flex items-center gap-2 text-[#F4D27A]"><BookOpenCheck className="h-5 w-5" /><span className="text-xs font-semibold uppercase tracking-[0.16em]">Learner record</span></div>
               <CardTitle className="text-xl sm:text-2xl">My attendance register</CardTitle>
-              <CardDescription className="mt-1 text-white/75">Your own recorded class sessions only. Dates and statuses come from saved attendance records.</CardDescription>
+              <CardDescription className="mt-1 text-white/75">Recorded sessions show actual outcomes; future weekdays and known Zimbabwe public holidays are predicted in advance.</CardDescription>
             </div>
             <CalendarDays className="mt-1 h-7 w-7 shrink-0 text-[#F4D27A]" />
           </div>
@@ -301,7 +301,7 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
           {classError && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{classError}</p>}
           {offlineClassCache && <p role="status" className="rounded-lg border border-orange-300 bg-orange-50 p-2 text-xs text-orange-900">Offline mode: showing the last saved attendance records on this device. New changes sync after reconnecting.</p>}
           {renderCalendar()}
-          {!classLoading && !classError && classRecords.length === 0 && <p className="rounded-lg border border-dashed p-3 text-center text-sm text-muted-foreground">No personal attendance records are available yet. The calendar is intentionally empty until the API returns saved records.</p>}
+          {!classLoading && !classError && classRecords.length === 0 && <p className="rounded-lg border border-dashed p-3 text-center text-sm text-muted-foreground">No class sessions have been recorded yet. Future weekdays and known public holidays are still shown as predictions.</p>}
           <p className="text-[11px] text-muted-foreground">A session is counted only when the attendance API returns a saved present or absent record. Unmarked dates are not counted as absences.</p>
         </CardContent>
       </Card>
