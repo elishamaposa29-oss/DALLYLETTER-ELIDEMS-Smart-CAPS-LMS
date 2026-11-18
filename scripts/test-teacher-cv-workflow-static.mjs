@@ -33,6 +33,7 @@ const mobileStudentWork = read("artifacts/dallyletter-mobile/app/(student)/work.
 const mobileTeacherWork = read("artifacts/dallyletter-mobile/app/(teacher)/work.tsx");
 const mobileStudentChat = read("artifacts/dallyletter-mobile/app/(student)/chat.tsx");
 const mobileTeacherChat = read("artifacts/dallyletter-mobile/app/(teacher)/chat.tsx");
+const globalStyles = read("artifacts/dallyletter/src/index.css");
 
 const renderBlueprint = read("render.yaml");
 
@@ -144,3 +145,5 @@ assert.match(mobileFeedback, /const palette: Record<FeedbackTone/, "Mobile feedb
 assert.match(mobileFeedback, /resolvedTone === "error" \? 10000 : resolvedTone === "warning" \? 8000 : 6000/, "Mobile feedback must auto-dismiss by severity with longer failure visibility");
 assert.match(mobileFeedback, /secondsLeft\}s · Dismiss/, "Mobile feedback must show its visible countdown and dismiss affordance");
 for (const [screen, source] of [["student work", mobileStudentWork], ["teacher work", mobileTeacherWork], ["student chat", mobileStudentChat], ["teacher chat", mobileTeacherChat]]) assert.match(source, /<FeedbackMessage message=\{notice\}/, `${screen} must use the shared mobile feedback treatment`);
+
+assert.match(globalStyles, /\[role="alert"\]:not\(\[data-feedback="unstyled"\]\)/, "All web inline alert surfaces must receive the shared failure treatment unless explicitly opted out");
