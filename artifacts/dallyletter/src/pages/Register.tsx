@@ -1,4 +1,4 @@
-import { ACADEMIC_GRADE_OPTIONS } from "@workspace/academic-grades";
+import { ACADEMIC_GRADE_OPTIONS } from "@workspace/api-client-react/academic-grades";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
