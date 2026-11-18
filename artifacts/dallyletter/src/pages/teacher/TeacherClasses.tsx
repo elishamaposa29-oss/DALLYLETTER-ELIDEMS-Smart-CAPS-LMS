@@ -1,3 +1,4 @@
+import { ACADEMIC_GRADE_OPTIONS } from "@workspace/academic-grades";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Link } from "wouter";
 import UserProfileLink from "@/components/UserProfileLink";
@@ -159,7 +160,7 @@ export default function TeacherClasses() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              {["Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"].map(g => (
+                              {ACADEMIC_GRADE_OPTIONS.map(g => (
                                 <SelectItem key={g} value={g}>{g}</SelectItem>
                               ))}
                             </SelectContent>
