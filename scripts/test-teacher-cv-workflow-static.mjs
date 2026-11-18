@@ -134,7 +134,7 @@ assert.match(attendanceCalendar, /holidayName\s*\n\s*\? "bg-violet-100/, "known 
 assert.ok(attendanceCalendar.includes(': isExpectedSchoolDay\n                    ? "bg-[#0f2a5a]/[0.08]'), "predicted ordinary school days must use the light transparent Dallyletter navy treatment");
 assert.ok(attendanceCalendar.includes(': isWeekend\n                      ? "bg-violet-50'), "unrecorded weekends must retain the purple weekend treatment");
 assert.ok(attendanceCalendar.includes(': isPastUnrecorded\n                        ? "bg-orange-50'), "past dates without saved records must use the light orange treatment");
-assert.match(attendanceCalendar, /\$\{isWeekend \? "border-dashed" : ""\}/, "weekend dates must use dashed outlines");
+assert.ok(attendanceCalendar.includes('${isWeekend ? "border-dashed border-violet-300 dark:border-violet-700" : ""}'), "weekend dates must use purple dashed outlines");
 assert.match(attendanceCalendar, /border-2 border-\[#0f2a5a\]/, "today must retain a navy border");
 assert.doesNotMatch(attendanceCalendar, /bg-orange-100|bg-slate-50|Past day not marked \(orange\)|Upcoming \/ today not yet marked \(grey\)/, "calendar must not use orange or grey blank-day fills or legends");
 
