@@ -1,3 +1,4 @@
+import { FeedbackMessage } from "@/components/FeedbackMessage";
 import { Feather } from "@expo/vector-icons";
 import { useLoginUser } from "@workspace/api-client-react";
 import * as Haptics from "expo-haptics";
@@ -271,12 +272,7 @@ export default function LoginScreen() {
             </TouchableOpacity>
           </View>
 
-          {error ? (
-            <View style={s.errorBox}>
-              <Feather name="alert-circle" size={15} color="#dc2626" />
-              <Text style={s.errorText}>{error}</Text>
-            </View>
-          ) : null}
+          <FeedbackMessage message={error} tone="error" onDismiss={() => setError("")} />
 
           <TouchableOpacity
             style={[s.btn, loginMutation.isPending && { opacity: 0.7 }]}
