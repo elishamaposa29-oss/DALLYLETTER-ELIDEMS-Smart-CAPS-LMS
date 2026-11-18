@@ -28,6 +28,11 @@ const profileHub = read("artifacts/dallyletter/src/pages/ProfileHub.tsx");
 const usersRoutes = read("artifacts/api-server/src/routes/users.ts");
 const globalToast = read("artifacts/dallyletter/src/components/ui/toast.tsx");
 const globalToaster = read("artifacts/dallyletter/src/components/ui/toaster.tsx");
+const mobileFeedback = read("artifacts/dallyletter-mobile/components/FeedbackMessage.tsx");
+const mobileStudentWork = read("artifacts/dallyletter-mobile/app/(student)/work.tsx");
+const mobileTeacherWork = read("artifacts/dallyletter-mobile/app/(teacher)/work.tsx");
+const mobileStudentChat = read("artifacts/dallyletter-mobile/app/(student)/chat.tsx");
+const mobileTeacherChat = read("artifacts/dallyletter-mobile/app/(teacher)/chat.tsx");
 
 const renderBlueprint = read("render.yaml");
 
@@ -134,3 +139,8 @@ assert.match(globalToast, /warning: "border border-amber-300 bg-amber-50/, "Glob
 assert.match(globalToast, /default: "success"/, "Unqualified successful action toasts must use the global success treatment");
 assert.match(globalToaster, /props\.variant === "destructive" \? 9000/, "Failure feedback must remain visible longer than routine success feedback");
 assert.match(globalToaster, /duration=\{props\.variant === "destructive" \? 9000 : props\.variant === "warning" \? 7000 : 5000\}/, "Global feedback must have bounded severity-aware auto-dismiss timers");
+
+assert.match(mobileFeedback, /const palette: Record<FeedbackTone/, "Mobile feedback must share a single semantic color system");
+assert.match(mobileFeedback, /resolvedTone === "error" \? 10000 : resolvedTone === "warning" \? 8000 : 6000/, "Mobile feedback must auto-dismiss by severity with longer failure visibility");
+assert.match(mobileFeedback, /secondsLeft\}s · Dismiss/, "Mobile feedback must show its visible countdown and dismiss affordance");
+for (const [screen, source] of [["student work", mobileStudentWork], ["teacher work", mobileTeacherWork], ["student chat", mobileStudentChat], ["teacher chat", mobileTeacherChat]]) assert.match(source, /<FeedbackMessage message=\{notice\}/, `${screen} must use the shared mobile feedback treatment`);
