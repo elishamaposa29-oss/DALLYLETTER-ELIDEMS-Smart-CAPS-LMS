@@ -325,9 +325,9 @@ export default function ProfileHub() {
   const [fullscreenMediaError,setFullscreenMediaError] = useState(false);
   const [mediaRefreshKey,setMediaRefreshKey] = useState(0);
   const [message,setMessage] = useState("");
-  const messageIsError = /could not|not sent|failed|invalid|expired|blocked|denied|error|unable|must be|enter a valid|choose a|no active|not configured|not available|does not|cannot|too many|not found|access denied|was not/i.test(message);
+  const messageIsError = /could not|not sent|failed|invalid|expired|blocked|denied|error|unable|must be|enter |choose |no active|no six-digit|not configured|not available|does not|cannot|too many|not found|access denied|was not/i.test(message);
   const [busy,setBusy] = useState(false);
-  useEffect(()=>{if(!otpCountdownUntil){setOtpSecondsLeft(0);return;}const tick=()=>{const left=Math.max(0,Math.ceil((otpCountdownUntil-Date.now())/1000));setOtpSecondsLeft(left);if(left===0)setOtpCountdownUntil(null);};tick();const timer=window.setInterval(tick,1000);return()=>window.clearInterval(timer);},[otpCountdownUntil]);
+  useEffect(()=>{if(!otpCountdownUntil){setOtpSecondsLeft(0);return;}const tick=()=>{const left=Math.max(0,Math.ceil((otpCountdownUntil-Date.now())/1000));setOtpSecondsLeft(left);if(left===0){setOtpCountdownUntil(null);setMessage("Verification code expired. Request a new code.");}};tick();const timer=window.setInterval(tick,1000);return()=>window.clearInterval(timer);},[otpCountdownUntil]);
   const startOtpCountdown=(seconds=600)=>setOtpCountdownUntil(Date.now()+Math.max(1,seconds)*1000);
   const stopOtpCountdown=()=>setOtpCountdownUntil(null);
   const startSmsOtpAutofill=()=>{try{webOtpAbortRef.current?.abort();const controller=new AbortController();webOtpAbortRef.current=controller;const credentials=navigator.credentials as any;if(typeof credentials?.get!=="function")return;void credentials.get({otp:{transport:["sms"]},signal:controller.signal}).then((credential:any)=>{const code=String(credential?.code||"").replace(/\D/g,"").slice(0,6);if(code.length===6){setPhoneOtp(code);stopOtpCountdown();setMessage("SMS code received and filled automatically. Tap Verify to confirm it.");}}).catch(()=>undefined);}catch{/* WebOTP is optional; manual entry remains available. */}};
