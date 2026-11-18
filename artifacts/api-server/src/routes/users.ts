@@ -200,7 +200,7 @@ router.post("/users/me/phone/request-verification", requireAuth, async (req, res
     [req.currentUser!.id, phone, codeHash]);
   try {
     await sendSms(phone, "Your Dallyletter Elidems verification code is " + code + ". It expires in 10 minutes. Do not share this code.");
-    res.json({ message: "Verification code sent.", expiresInSeconds: 600 });
+    res.json({ message: "SMS provider accepted the verification message for delivery. The code expires in 10 minutes.", expiresInSeconds: 600, deliveryAccepted: true });
   } catch {
     await pool.query("UPDATE account_recovery_profiles SET phone_verification_code_hash=NULL,phone_verification_expires_at=NULL,updated_at=now() WHERE user_id=$1", [req.currentUser!.id]);
     res.status(503).json({ error: "The SMS provider could not send your verification code. Please try again later." });
