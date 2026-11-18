@@ -371,6 +371,16 @@ export default function StudentChat() {
                     </div>
                     <p className="whitespace-pre-wrap text-sm">{selectedGroup.description || "No group description has been added."}</p>
                     {settings.rules && <div className="rounded-lg bg-muted p-3"><p className="mb-1 text-xs font-semibold uppercase">Group rules</p><p className="whitespace-pre-wrap text-sm">{settings.rules}</p></div>}
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="rounded-lg bg-muted p-3"><p className="text-lg font-bold">{settings.allowPolls ? "On" : "Off"}</p><p className="text-[11px] text-muted-foreground">Polls</p></div>
+                      <div className="rounded-lg bg-muted p-3"><p className="text-lg font-bold">{settings.allowMedia ? "On" : "Off"}</p><p className="text-[11px] text-muted-foreground">Media</p></div>
+                      <div className="rounded-lg bg-muted p-3"><p className="text-lg font-bold">{settings.announcementsOnly ? "Limited" : "Open"}</p><p className="text-[11px] text-muted-foreground">Posting</p></div>
+                    </div>
+                    <div className="space-y-2">
+                      <h3 className="font-semibold">Recent group activity</h3>
+                      {rootMessages.slice(-4).reverse().map(item => <div key={item.id} className="rounded-lg bg-muted/60 p-3"><UserProfileLink userId={item.senderId} name={item.senderName} avatarUrl={(users ?? []).find(contact=>contact.id===item.senderId)?.avatarUrl} className="text-xs font-semibold"/><p className="mt-1 line-clamp-2 break-words text-sm text-muted-foreground">{item.content || (item.mediaUrl ? "Shared media" : "Group activity")}</p></div>)}
+                      {rootMessages.length===0 && <p className="text-sm text-muted-foreground">No group posts yet.</p>}
+                    </div>
                     <div className="flex items-center justify-between"><h3 className="font-semibold">Members ({selectedGroup.members?.length ?? selectedGroup.memberCount})</h3><span className="text-xs text-muted-foreground">Group hub</span></div>
                     <div className="max-h-64 space-y-2 overflow-y-auto">
                       {(selectedGroup.members ?? []).map(member => <UserProfileLink key={member.id} userId={member.id} name={member.name || `Member ${member.id}`} avatarUrl={member.avatarUrl} className="text-sm"/>)}
