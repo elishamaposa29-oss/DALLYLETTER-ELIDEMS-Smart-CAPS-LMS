@@ -5,14 +5,14 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex min-w-0 max-w-full touch-manipulation select-none items-center justify-center gap-2 whitespace-normal sm:whitespace-nowrap rounded-md text-sm font-semibold transition-all duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none hover:brightness-105 hover:shadow-md active:scale-[0.98] [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0" +
+  "inline-flex min-w-0 max-w-full touch-manipulation select-none items-center justify-center gap-2 whitespace-normal sm:whitespace-nowrap rounded-md text-sm font-semibold transition-all duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D6AD3B] focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none hover:brightness-105 hover:shadow-md active:scale-[0.98] [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0" +
 " hover-elevate active-elevate-2",
   {
     variants: {
       variant: {
         default:
            // @replit: no hover, and add primary border
-           "bg-gradient-to-r from-[#FFD75E] via-[#FFC72C] to-[#FDB913] text-[#0A1931] border border-[#E6A900] shadow-sm",
+           "bg-[linear-gradient(112deg,#FFF0B8_0%,#D6AD3B_20%,#8D651B_42%,#F7E7A0_56%,#B48629_76%,#6E4D14_100%)] text-[#17243A] border border-[#D6AD3B] shadow-[0_8px_24px_rgba(198,154,53,0.22)]",
         destructive:
           "bg-destructive text-destructive-foreground shadow-sm border-destructive-border",
         outline:
