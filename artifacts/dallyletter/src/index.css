@@ -360,3 +360,17 @@
     inset: -1px;
   }
 }
+@layer components {
+  /* Every inline error surface inherits the same unmistakable failure treatment. */
+  [role="alert"]:not([data-feedback="unstyled"]) {
+    color: #991b1b;
+    border-color: #fecaca;
+    background-color: #fef2f2;
+    border-radius: 0.5rem;
+  }
+  .dark [role="alert"]:not([data-feedback="unstyled"]) {
+    color: #fecaca;
+    border-color: #7f1d1d;
+    background-color: rgb(69 10 10 / 0.35);
+  }
+}
