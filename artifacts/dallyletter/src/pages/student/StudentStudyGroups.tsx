@@ -441,8 +441,18 @@ export default function StudentStudyGroups() {
                       <span className="inline-flex items-center gap-1"><Mic className="h-3.5 w-3.5" />{groupSettings.allowMedia ? "Voice on" : "Voice off"}</span>
                       {groupSettings.announcementsOnly && <span className="inline-flex items-center gap-1"><ShieldCheck className="h-3.5 w-3.5" />Announcements only</span>}
                     </div>
-                    {group.members && group.members.length > 0 && (
-                      <div className="border-t pt-4">
+                    {group.members && group.members.length > 0 && (() => {
+                      const creator = group.members.find(member => member.id === group.creatorId) ?? group.members[0];
+                      const activeMember = group.members.find(member => member.id !== creator.id) ?? creator;
+                      const previewMembers = [creator, activeMember].filter((member, index, all) => member && all.findIndex(item => item.id === member.id) === index);
+                      return <div className="border-t pt-4">
+                        <div className="mb-3 flex items-center gap-2" aria-label="Group members preview">
+                          {previewMembers.map((member, index) => <UserProfileLink key={member.id} userId={member.id} name={member.name} avatarUrl={member.avatarUrl} className="text-[0px]" />)}
+                        </div>
+                        <details>
+                          <summary className="cursor-pointer list-none text-xs font-semibold text-foreground/70 hover:text-primary">MEMBERS ({group.memberCount})</summary>
+                          <div className="mt-3 space-y-2">
+
                         <p className="mb-2 text-xs font-semibold text-foreground/70">MEMBERS ({group.memberCount})</p>
                         <div className="space-y-2">
                           {group.members.map(member => (
@@ -472,8 +482,11 @@ export default function StudentStudyGroups() {
                             </div>
                           </div>;
                         })()}
-                      </div>
-                    )}
+                      
+                          </div>
+                        </details>
+                      </div>;
+                    })()}}
                   </CardContent>
                   <CardFooter className="relative z-10 flex flex-wrap gap-2 border-t border-white/20 bg-black/20 pt-4">
                     {user?.role === "owner" && <Button type="button" variant="outline" size="sm" className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/10" disabled={busyGroup === group.id} onClick={() => {
