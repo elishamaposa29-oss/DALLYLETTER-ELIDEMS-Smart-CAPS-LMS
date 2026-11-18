@@ -1,3 +1,4 @@
+import { FeedbackMessage } from "@/components/FeedbackMessage";
 import { getApiUrl } from "@workspace/api-client-react";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Linking from "expo-linking";
@@ -28,7 +29,7 @@ export default function TransferRequestReviewWorkspace() {
  if(!user||!token)return <View style={{flex:1,backgroundColor:colors.background,padding:20}}><Text style={body}>Sign in to review transfer requests.</Text></View>;
  return <ScrollView style={{flex:1,backgroundColor:colors.background}} contentContainerStyle={{padding:16,paddingBottom:40}}>
   <View style={{...card,backgroundColor:"#0f2a5a",borderColor:"#0f2a5a"}}><Text style={{color:"#e8c35a",fontSize:11,fontWeight:"800",letterSpacing:1}}>DALLYLETTER ELIDEMS</Text><Text style={{color:"#fff",fontSize:23,fontWeight:"900",marginTop:5}}>Transfer letter review</Text><Text style={{color:"#dbeafe",marginTop:5}}>Inspect the original learner submission, signatures, review history and protected PDF before deciding.</Text>{btn(loading?"Refreshing…":"Refresh requests",()=>void load(),loading,true)}</View>
-  {error?<Text accessibilityRole="alert" style={{color:"#dc2626",marginBottom:10}}>{error}</Text>:null}
+  <FeedbackMessage message={error} tone="error" onDismiss={() => setError("")} />
   <View style={{...card,flexDirection:"row",justifyContent:"space-between"}}><Text style={body}>Total: {rows.length}</Text><Text style={body}>Pending: {rows.filter(x=>x.status==="pending").length}</Text><Text style={body}>Reviewed: {rows.filter(x=>x.status!=="pending").length}</Text></View>
   {loading?<ActivityIndicator color={colors.primary}/>:rows.length===0?<View style={card}><Text style={muted}>No transfer requests are available in your permitted scope.</Text></View>:rows.map(row=><View key={row.id} style={card}>
    <View style={{flexDirection:"row",justifyContent:"space-between",gap:8,alignItems:"center"}}><Text style={title}>Request #{row.id}</Text><Text style={{color:row.status==="approved"?"#16a34a":row.status==="rejected"?"#dc2626":colors.mutedForeground,fontWeight:"800"}}>{String(row.status||"pending").toUpperCase()}</Text></View>
