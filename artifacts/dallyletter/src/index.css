@@ -100,13 +100,13 @@
   --primary: 240 80% 25%;
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 45 100% 50%;
+  --secondary: 43 66% 45%;
   --secondary-foreground: 240 80% 25%;
 
   --muted: 240 10% 90%;
   --muted-foreground: 240 10% 40%;
 
-  --accent: 45 100% 50%;
+  --accent: 43 66% 45%;
   --accent-foreground: 240 80% 25%;
 
   --destructive: 0 84% 60%;
@@ -116,7 +116,7 @@
   --ring: 240 80% 25%;
   
   --chart-1: 240 80% 25%;
-  --chart-2: 45 100% 50%;
+  --chart-2: 43 66% 45%;
   --chart-3: 200 80% 40%;
   --chart-4: 300 80% 40%;
   --chart-5: 350 80% 40%;
@@ -200,13 +200,13 @@
   --primary: 240 80% 60%;
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 45 100% 50%;
+  --secondary: 43 66% 45%;
   --secondary-foreground: 240 80% 25%;
 
   --muted: 240 10% 20%;
   --muted-foreground: 240 10% 60%;
 
-  --accent: 45 100% 50%;
+  --accent: 43 66% 45%;
   --accent-foreground: 240 80% 25%;
 
   --destructive: 0 84% 60%;
@@ -216,7 +216,7 @@
   --ring: 240 80% 60%;
   
   --chart-1: 240 80% 60%;
-  --chart-2: 45 100% 50%;
+  --chart-2: 43 66% 45%;
   --chart-3: 200 80% 60%;
   --chart-4: 300 80% 60%;
   --chart-5: 350 80% 60%;
@@ -372,5 +372,78 @@
     color: #fecaca;
     border-color: #7f1d1d;
     background-color: rgb(69 10 10 / 0.35);
+  }
+}
+
+
+/* Dallyletter Elidems signature bronze-gold system.
+   Gold is a brand accent, never flat yellow. Keep status meaning in text/icons. */
+:root {
+  --dl-gold-foil: #f8e8ad;
+  --dl-gold-light: #e6c66c;
+  --dl-gold: #c69a35;
+  --dl-gold-rich: #9a7020;
+  --dl-gold-deep: #674713;
+  --dl-gold-glow: rgb(198 154 53 / .34);
+  --dl-gold-wash: #fbf5e6;
+}
+.dark {
+  --dl-gold-foil: #fff0bd;
+  --dl-gold-light: #e9ca75;
+  --dl-gold: #d4aa48;
+  --dl-gold-rich: #a77a25;
+  --dl-gold-deep: #76531a;
+  --dl-gold-glow: rgb(212 170 72 / .4);
+  --dl-gold-wash: rgb(198 154 53 / .13);
+}
+
+/* Legacy yellow/amber Tailwind utilities are remapped to bronze-gold.
+   These selectors intentionally affect UI only; logos and brand artwork stay untouched. */
+[class*="bg-amber-"], [class*="bg-yellow-"] {
+  background-color: var(--dl-gold-wash) !important;
+  background-image: linear-gradient(112deg,
+    color-mix(in srgb, var(--dl-gold-foil) 72%, transparent),
+    color-mix(in srgb, var(--dl-gold-light) 42%, transparent) 24%,
+    color-mix(in srgb, var(--dl-gold) 24%, transparent) 52%,
+    color-mix(in srgb, var(--dl-gold-foil) 62%, transparent) 72%,
+    color-mix(in srgb, var(--dl-gold-rich) 22%, transparent)) !important;
+  background-size: 220% 100%;
+  animation: dl-gold-sheen 5.2s ease-in-out infinite;
+}
+[class*="text-amber-"], [class*="text-yellow-"] {
+  color: var(--dl-gold-rich) !important;
+}
+.dark [class*="text-amber-"], .dark [class*="text-yellow-"] {
+  color: var(--dl-gold-light) !important;
+}
+[class*="border-amber-"], [class*="border-yellow-"] {
+  border-color: color-mix(in srgb, var(--dl-gold) 76%, white) !important;
+}
+.dark [class*="border-amber-"], .dark [class*="border-yellow-"] {
+  border-color: color-mix(in srgb, var(--dl-gold) 78%, #30230b) !important;
+}
+[class*="ring-amber-"], [class*="ring-yellow-"] {
+  --tw-ring-color: var(--dl-gold-light) !important;
+}
+[class*="shadow-amber-"], [class*="shadow-yellow-"] {
+  --tw-shadow-color: var(--dl-gold-glow) !important;
+}
+[class*="from-amber-"], [class*="from-yellow-"] {
+  --tw-gradient-from: var(--dl-gold-light) var(--tw-gradient-from-position) !important;
+}
+[class*="via-amber-"], [class*="via-yellow-"] {
+  --tw-gradient-via: var(--dl-gold) var(--tw-gradient-via-position) !important;
+}
+[class*="to-amber-"], [class*="to-yellow-"] {
+  --tw-gradient-to: var(--dl-gold-rich) var(--tw-gradient-to-position) !important;
+}
+@keyframes dl-gold-sheen {
+  0%, 58% { background-position: 115% 50%; }
+  100% { background-position: -115% 50%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [class*="bg-amber-"], [class*="bg-yellow-"] {
+    animation: none !important;
+    background-position: 50% 50%;
   }
 }
