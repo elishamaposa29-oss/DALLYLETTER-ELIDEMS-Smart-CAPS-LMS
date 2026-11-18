@@ -226,19 +226,19 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
           // Saved attendance is authoritative. Predictions only style dates with no saved outcome.
           // Past unrecorded dates are unknown, never silently treated as absences.
           const colorClass = isMixed
-            ? "bg-amber-100 text-amber-950 border-amber-400 dark:bg-amber-950/60 dark:text-amber-100 dark:border-amber-700"
+            ? "bg-amber-300 text-amber-950 border-amber-500 dark:bg-amber-700 dark:text-white dark:border-amber-400"
             : isAbsent
-              ? "bg-red-100 text-red-900 border-red-400 dark:bg-red-950/60 dark:text-red-100 dark:border-red-700"
+              ? "bg-red-300 text-red-950 border-red-500 dark:bg-red-800 dark:text-white dark:border-red-500"
               : isPresent
-                ? "bg-emerald-100 text-emerald-950 border-emerald-400 dark:bg-emerald-950/60 dark:text-emerald-100 dark:border-emerald-700"
+                ? "bg-emerald-300 text-emerald-950 border-emerald-500 dark:bg-emerald-800 dark:text-white dark:border-emerald-500"
                 : holidayName
-                  ? "bg-violet-100 text-violet-950 border-violet-400 dark:bg-violet-950/60 dark:text-violet-100 dark:border-violet-700"
+                  ? "bg-violet-300 text-violet-950 border-violet-500 dark:bg-violet-800 dark:text-white dark:border-violet-400"
                   : isExpectedSchoolDay
-                    ? "bg-[#0f2a5a]/[0.08] text-[#0f2a5a] border-[#0f2a5a]/30 dark:bg-[#8fb4ec]/[0.14] dark:text-[#d5e5ff] dark:border-[#8fb4ec]/40"
+                    ? "bg-[#c9dcff] text-[#0f2a5a] border-[#527bb8] dark:bg-[#244777] dark:text-[#f1f6ff] dark:border-[#8fb4ec]"
                     : isWeekend
-                      ? "bg-violet-50 text-violet-900 border-violet-200 dark:bg-violet-950/35 dark:text-violet-100 dark:border-violet-800"
+                      ? "bg-violet-200 text-violet-950 border-violet-400 dark:bg-violet-900 dark:text-white dark:border-violet-500"
                       : isPastUnrecorded
-                        ? "bg-orange-50 text-orange-900 border-orange-200 dark:bg-orange-950/30 dark:text-orange-100 dark:border-orange-800"
+                        ? "bg-orange-200 text-orange-950 border-orange-400 dark:bg-orange-900 dark:text-white dark:border-orange-500"
                         : "bg-card text-foreground border-border";
           return (
             <button type="button" key={key} aria-pressed={selectedDate === key} onClick={() => setSelectedDate(key)} title={`${formatDate(key)} · ${isMixed ? "Mixed attendance" : isAbsent ? "Absence recorded" : isPresent ? "Present" : holidayName || (isExpectedSchoolDay ? "Expected school day" : isPastUnrecorded ? "No record saved · historical date" : isWeekend ? "Weekend" : isFuture ? "Upcoming date" : "No attendance record")}${status ? ` · ${status.present} present, ${status.absent} absent` : ""}`} aria-label={`${formatDate(key)}: ${isMixed ? "mixed attendance, present and absent sessions" : isAbsent ? "absence recorded" : isPresent ? "present" : holidayName ? holidayName : isExpectedSchoolDay ? "expected school day" : isPastUnrecorded ? "past date with no saved record" : isWeekend ? "weekend" : isFuture ? "upcoming date" : "no attendance record"}`} className={`relative flex min-h-[42px] flex-col items-center justify-center rounded-lg border text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b38b00] sm:min-h-[54px] ${colorClass} ${isWeekend ? "border-dashed border-violet-300 dark:border-violet-700" : ""} ${isToday ? "border-2 border-[#0f2a5a] outline outline-1 outline-offset-1 outline-[#0f2a5a]" : ""} ${selectedDate === key ? "ring-2 ring-[#b38b00] ring-offset-1" : ""}`}>
@@ -255,13 +255,13 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
         <p className="mt-0.5 text-xs text-muted-foreground">{(() => { const item = dayStatus.get(selectedDate); const holiday = zimbabwePublicHolidays(Number(selectedDate.slice(0, 4))).get(selectedDate); const selectedDay = new Date(selectedDate + "T12:00:00").getDay(); const weekend = selectedDay === 0 || selectedDay === 6; return item ? `${item.present} present · ${item.absent} absent` : holiday || (selectedDate > today && !weekend ? "Expected school day · forecast only, not recorded attendance" : selectedDate > today ? "Weekend · no school-day prediction" : selectedDate < today ? "No record saved · this date may be before the learner joined Dallyletter" : "No attendance record saved for today yet."); })()}</p>
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-emerald-400 bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/60" /> Present (green)</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-red-400 bg-red-100 dark:border-red-700 dark:bg-red-950/60" /> Absent (red)</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-amber-400 bg-amber-100 dark:border-amber-700 dark:bg-amber-950/60" /> Mixed sessions (amber)</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-[#0f2a5a]/30 bg-[#0f2a5a]/[0.08] dark:border-[#8fb4ec]/40 dark:bg-[#8fb4ec]/[0.14]" /> Expected school day (future)</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-violet-400 bg-violet-100 dark:border-violet-700 dark:bg-violet-950/60" /> Public holiday (violet)</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950/30" /> Past date · no saved record</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-dashed border-violet-400 bg-violet-50 dark:bg-violet-950/35" /> Weekend (purple · dashed outline)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-emerald-500 bg-emerald-300 dark:border-emerald-500 dark:bg-emerald-800" /> Present (green)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-red-500 bg-red-300 dark:border-red-500 dark:bg-red-800" /> Absent (red)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-amber-500 bg-amber-300 dark:border-amber-400 dark:bg-amber-700" /> Mixed sessions (amber)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-[#527bb8] bg-[#c9dcff] dark:border-[#8fb4ec] dark:bg-[#244777]" /> Expected school day (future)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-violet-500 bg-violet-300 dark:border-violet-400 dark:bg-violet-800" /> Public holiday (violet)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-orange-400 bg-orange-200 dark:border-orange-500 dark:bg-orange-900" /> Past date · no saved record</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-dashed border-violet-500 bg-violet-200 dark:bg-violet-900" /> Weekend (purple · dashed outline)</span>
         <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border-2 border-[#0f2a5a] bg-card" /> Today (navy border)</span>
       </div>
     </div>
