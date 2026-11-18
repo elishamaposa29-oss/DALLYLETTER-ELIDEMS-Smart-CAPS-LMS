@@ -447,3 +447,22 @@
     background-position: 50% 50%;
   }
 }
+
+/* Moving foil highlight for primary gold actions and metallic borders. */
+.premium-button:not([class*="border"]),
+button[class*="bg-[linear-gradient"] {
+  background-size: 220% 100% !important;
+  animation: dl-gold-sheen 4.6s ease-in-out infinite;
+}
+.premium-button__stroke {
+  stroke-dasharray: .18 .82;
+  animation: dl-gold-stroke 6s linear infinite;
+}
+@keyframes dl-gold-stroke {
+  to { stroke-dashoffset: -1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .premium-button, button[class*="bg-[linear-gradient"], .premium-button__stroke {
+    animation: none !important;
+  }
+}
