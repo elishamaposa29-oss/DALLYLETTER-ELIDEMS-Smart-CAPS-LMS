@@ -1,4 +1,4 @@
-import { ACADEMIC_GRADE_OPTIONS } from "@workspace/academic-grades";
+import { ACADEMIC_GRADE_OPTIONS } from "@workspace/api-client-react/academic-grades";
 import { getApiUrl } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
