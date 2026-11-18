@@ -101,25 +101,25 @@ export default function Register() {
       {/* Left — Branding Panel */}
       <div className="hidden lg:flex w-[45%] flex-col bg-[#0a1628] relative overflow-hidden">
         <div className="absolute top-0 right-0 w-[500px] h-[500px] rounded-full bg-blue-600/10 blur-3xl -translate-y-1/3 translate-x-1/3" />
-        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] rounded-full bg-amber-500/10 blur-3xl translate-y-1/3 -translate-x-1/3" />
+        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] rounded-full bg-[gold]-500/10 blur-3xl translate-y-1/3 -translate-x-1/3" />
         <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: "linear-gradient(rgba(255,255,255,0.4) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.4) 1px,transparent 1px)", backgroundSize: "48px 48px" }} />
 
         <div className="relative z-10 flex flex-col h-full px-12 py-12">
           {/* Logo */}
           <div className="flex items-center gap-3 mb-auto">
-            <div className="bg-gradient-to-br from-amber-400 to-amber-600 p-2.5 rounded-2xl shadow-lg shadow-amber-500/20">
+            <div className="bg-gradient-to-br from-[gold]-400 to-[gold]-600 p-2.5 rounded-2xl shadow-lg shadow-[gold]-500/20">
               <img src="/icons/icon-192.png" alt="" className="h-6 w-6 rounded-md object-cover" />
             </div>
             <div>
               <span className="text-white font-bold text-xl leading-none block">DallyLetter</span>
-              <span className="text-amber-400/80 text-[10px] uppercase tracking-[0.2em] font-semibold">Elidems</span>
+              <span className="text-[gold]-400/80 text-[10px] uppercase tracking-[0.2em] font-semibold">Elidems</span>
             </div>
           </div>
 
           <div className="space-y-6 mb-10">
             <h1 className="text-4xl font-bold text-white leading-tight">
               Join the{" "}
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-amber-500">
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-[gold]-300 to-[gold]-500">
                 Elidems
               </span>{" "}
               community.
@@ -150,12 +150,12 @@ export default function Register() {
       <div className="flex-1 flex flex-col">
         {/* Mobile logo */}
         <div className="lg:hidden flex items-center gap-2.5 px-6 py-5 border-b bg-white">
-          <div className="bg-gradient-to-br from-amber-400 to-amber-600 p-2 rounded-xl shadow-md">
+          <div className="bg-gradient-to-br from-[gold]-400 to-[gold]-600 p-2 rounded-xl shadow-md">
             <img src="/icons/icon-192.png" alt="" className="h-5 w-5 rounded-md object-cover" />
           </div>
           <div>
             <span className="font-bold text-[#0a1628] text-lg leading-none block">DallyLetter</span>
-            <span className="text-amber-500 text-[10px] uppercase tracking-widest font-semibold">Elidems</span>
+            <span className="text-[gold]-500 text-[10px] uppercase tracking-widest font-semibold">Elidems</span>
           </div>
         </div>
 
