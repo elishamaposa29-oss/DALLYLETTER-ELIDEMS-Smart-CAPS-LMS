@@ -134,6 +134,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [managerPermissions, setManagerPermissions] = useState<Record<string, boolean> | null>(null);
   const [messageUnread, setMessageUnread] = useState(0);
   const [groupUnread, setGroupUnread] = useState(0);
+  const [groupActivityUnread, setGroupActivityUnread] = useState(0);
   const [activityUnread, setActivityUnread] = useState(0);
 
   useEffect(() => {
@@ -153,6 +154,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         setMessageUnread(Number(messages.messageUnread || 0));
         setGroupUnread(Number(messages.groupUnread || 0));
         setActivityUnread(Array.isArray(notifications) ? notifications.filter((item:any) => !item.isRead).length : 0);
+        setGroupActivityUnread(Array.isArray(notifications) ? notifications.filter((item:any) => !item.isRead && (String(item.type || "").toLowerCase().includes("group") || String(item.link || "").toLowerCase().includes("group"))).length : 0);
       } catch { /* Keep last known private counts during temporary network outages. */ }
     };
     void refreshUnread();
@@ -335,7 +337,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         {navItems.map((item) => {
           const Icon = item.icon;
           const unreadCount = item.href.includes("/student/chat") || item.href.includes("/teacher/chat") || item.href.includes("/manager/chat") || item.href.includes("/admin/chat") ? messageUnread
-            : item.href === "/student/study-groups" ? groupUnread
+            : item.href === "/student/study-groups" ? groupUnread + groupActivityUnread
             : item.href.includes("notifications") ? activityUnread : 0;
           const isActive =
             location === item.href ||
