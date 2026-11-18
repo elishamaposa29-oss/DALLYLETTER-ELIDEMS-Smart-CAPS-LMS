@@ -115,3 +115,12 @@ assert.match(attendanceCalendar, /: isExpectedSchoolDay\s*\n\s*\? "bg-emerald-50
 assert.match(attendanceCalendar, /\$\{isWeekend \? "border-dashed" : ""\}/, "weekend dates must use dashed outlines");
 assert.match(attendanceCalendar, /border-2 border-\[#0f2a5a\]/, "today must retain a navy border");
 assert.doesNotMatch(attendanceCalendar, /bg-orange-100|bg-slate-50|Past day not marked \(orange\)|Upcoming \/ today not yet marked \(grey\)/, "calendar must not use orange or grey blank-day fills or legends");
+
+assert.ok(workspaceApi.includes('router.delete("/:teacherId/documents/:docId"'), "Teacher self-service and authorized CV reviewers must be able to delete one separate uploaded file");
+assert.ok(workspaceApi.includes("document_deleted"), "Individual file deletion must leave a reviewer audit record");
+assert.ok(workspaceUi.includes("Delete this separate uploaded file") && workspaceUi.includes("deleteDocument"), "Reviewer workspace must expose per-file deletion beside each uploaded document");
+assert.ok(profileHub.includes("navigator.credentials") && profileHub.includes('otp:{transport:["sms"]}'), "Phone OTP paste action must support browser SMS OTP autofill where available");
+assert.ok(profileHub.includes("navigator.clipboard.readText") && profileHub.includes("Email apps do not expose their inbox OTPs"), "OTP paste action must use clipboard and clearly explain email autofill limitations");
+assert.ok(profileHub.includes("Verification code window:") && profileHub.includes("startOtpCountdown"), "OTP request must show a countdown until the code is entered or expires");
+assert.ok(profileHub.includes("border-red-300 bg-red-50") && profileHub.includes("border-emerald-300 bg-emerald-50"), "Profile Hub feedback must distinguish failure in red and success in green");
+assert.ok(usersRoutes.includes("delivery.sent!==1||delivery.failed!==0"), "Notification email OTP must report success only after provider acceptance");
