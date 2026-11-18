@@ -85,7 +85,7 @@ export default function StudentChat() {
     { query: { enabled: !!selectedGroupId || !!selectedUserId, refetchInterval: 5000 } as any },
   );
   const sendMessageMutation = useSendMessage();
-  const rootMessages = messages?.filter(currentMessage => currentMessage.parentMessageId == null) ?? [];
+  const rootMessages = [...(messages?.filter(currentMessage => currentMessage.parentMessageId == null) ?? [])].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id - b.id);
   const replyTarget = messages?.find(currentMessage => currentMessage.id === replyTo);
   const selectedGroup = joinedGroups.find(group => group.id === selectedGroupId);
   const selectedContact = contacts.find(contact => contact.id === selectedUserId);
@@ -367,12 +367,12 @@ export default function StudentChat() {
                   rootMessages.map(messageItem => {
                     const renderMessage = (currentMessage: typeof messageItem, depth = 0): ReactNode => {
                       const isMe = currentMessage.senderId === user?.id;
-                      const replies = messages?.filter(reply => reply.parentMessageId === currentMessage.id) ?? [];
+                      const replies = [...(messages?.filter(reply => reply.parentMessageId === currentMessage.id) ?? [])].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id - b.id);
                       return (
                         <div key={currentMessage.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
                           <div className="flex max-w-[90%] items-end gap-2" style={{ marginLeft: isMe ? 0 : `${Math.min(depth, 4) * 1.5}rem` }}>
                             <div className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
-                              {!isMe && <UserProfileLink userId={currentMessage.senderId} name={currentMessage.senderName + " · " + currentMessage.senderRole} className="mb-1 ml-1 text-xs text-muted-foreground" />}
+                              {!isMe && <UserProfileLink userId={currentMessage.senderId} name={currentMessage.senderName + " · " + currentMessage.senderRole} avatarUrl={(users ?? []).find(contact => contact.id === currentMessage.senderId)?.avatarUrl} className="mb-1 ml-1 text-xs text-muted-foreground" />}
                               <div className={`rounded-2xl px-4 py-2.5 ${isMe ? "rounded-tr-sm bg-primary text-primary-foreground" : "rounded-tl-sm border bg-card shadow-sm"}`}>
                                 {currentMessage.type === "voice" && currentMessage.mediaUrl ? <AuthenticatedAudio className="h-10 max-w-[250px]" src={currentMessage.mediaUrl} /> : currentMessage.type === "media" && currentMessage.mediaUrl ? (
   <div className="space-y-2">
