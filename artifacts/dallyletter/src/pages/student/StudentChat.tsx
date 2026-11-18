@@ -59,6 +59,7 @@ export default function StudentChat() {
   const [activeTab, setActiveTab] = useState<"groups" | "people">(() => new URLSearchParams(window.location.search).has("recipientId") ? "people" : "groups");
   const [chatFullscreen, setChatFullscreen] = useState(false);
   const [message, setMessage] = useState("");
+  const [conversationSearch, setConversationSearch] = useState("");
   const [replyTo, setReplyTo] = useState<number | null>(null);
   const [reportingMessageId, setReportingMessageId] = useState<number | null>(null);
   const [settings, setSettings] = useState<GroupSettings>(defaultGroupSettings);
@@ -74,6 +75,7 @@ export default function StudentChat() {
   const { data: groupData, isLoading: groupsLoading, isError: groupsError, refetch: refetchGroups } = useListStudyGroups();
   const groups = (groupData ?? []) as unknown as GroupView[];
   const joinedGroups = groups.filter(group => group.isMember ?? group.members?.some(member => member.id === user?.id));
+  const visibleJoinedGroups = joinedGroups.filter(group => group.name.toLowerCase().includes(conversationSearch.trim().toLowerCase()));
   const { data: users, isLoading: usersLoading, isError: usersError, refetch: refetchUsers } = useListUsers();
   const contacts = (users ?? []).filter(contact =>
     contact.id !== user?.id
@@ -279,16 +281,17 @@ export default function StudentChat() {
               </TabsList>
             </Tabs>
           </div>
+          <div className="px-3 pt-3"><Input aria-label="Search users, groups and communities" placeholder="Search users, groups and communities…" value={conversationSearch} onChange={event => setConversationSearch(event.target.value)} /></div>
           <div className="max-h-[34vh] flex-1 space-y-1 overflow-y-auto p-2 md:max-h-none">
             {activeTab === "groups" ? (
               groupsLoading ? (
                 <div className="flex justify-center p-4"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
               ) : groupsError ? (
                 <div className="flex flex-col items-center gap-2 p-6 text-center text-sm text-muted-foreground"><p>Groups could not be loaded.</p><Button variant="outline" size="sm" onClick={() => void refetchGroups()}><RefreshCw className="mr-2 h-3.5 w-3.5" />Retry</Button></div>
-              ) : joinedGroups.length === 0 ? (
+              ) : visibleJoinedGroups.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-3 p-6 text-center"><Users className="h-10 w-10 text-muted-foreground/30" /><p className="text-sm text-muted-foreground">No joined groups yet. Join one from Study Groups to start chatting.</p></div>
               ) : (
-                joinedGroups.map(group => (
+                visibleJoinedGroups.map(group => (
                   <button key={group.id} onClick={() => selectGroup(group.id)} className={`flex w-full items-center justify-between rounded-lg px-3 py-3 text-left transition-colors ${selectedGroupId === group.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
                     <span className="truncate font-medium">{group.name}</span>
                     <span className={`rounded-full px-2 py-0.5 text-xs ${selectedGroupId === group.id ? "bg-primary-foreground/20" : "bg-muted-foreground/20"}`}>{group.memberCount}</span>
@@ -300,10 +303,10 @@ export default function StudentChat() {
                 <div className="flex justify-center p-4"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
               ) : usersError ? (
                 <div className="flex flex-col items-center gap-2 p-6 text-center text-sm text-muted-foreground"><p>Contacts could not be loaded.</p><Button variant="outline" size="sm" onClick={() => void refetchUsers()}><RefreshCw className="mr-2 h-3.5 w-3.5" />Retry</Button></div>
-              ) : contacts.length === 0 ? (
+              ) : visibleContacts.length === 0 ? (
                 <div className="p-6 text-center text-sm text-muted-foreground">No educator contacts are available yet.</div>
               ) : (
-                contacts.map(contact => (
+                visibleContacts.map(contact => (
                   <button key={contact.id} onClick={() => selectContact(contact.id)} className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors ${selectedUserId === contact.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-bold">{contact.name.charAt(0)}</div>
                     <span className="min-w-0 flex-1 truncate font-medium">{contact.name}</span>
