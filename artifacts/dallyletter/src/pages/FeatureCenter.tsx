@@ -12,7 +12,7 @@ import { Bell, BookOpen, ClipboardList, CreditCard, FileCheck2, FileText, Headph
 type Feature = { title:string; description:string; href:string; icon:LucideIcon; tone:string; tag:string; roles?:string[] };
 
 const features:Feature[] = [
- {title:"Clickable notifications",description:"Recent alerts route to the exact lesson, assignment, class, poll or activity instead of a dead end.",href:"/student/notifications",icon:Bell,tone:"bg-amber-50 text-amber-700",tag:"Interactive",roles:["student","prefect"]},
+ {title:"Clickable notifications",description:"Recent alerts route to the exact lesson, assignment, class, poll or activity instead of a dead end.",href:"/student/notifications",icon:Bell,tone:"bg-[gold]-50 text-[gold]-700",tag:"Interactive",roles:["student","prefect"]},
  {title:"Voice & media",description:"Open the authenticated chat/media experience and test playback without replacing the existing message flow.",href:"/student/chat",icon:Headphones,tone:"bg-indigo-50 text-indigo-700",tag:"Media",roles:["student","prefect"]},
  {title:"Lessons & preview",description:"Preview current lessons, video, audio, images and notes before publishing or sharing.",href:"/teacher/lessons",icon:Video,tone:"bg-blue-50 text-blue-700",tag:"Preview",roles:["teacher","owner","platform_owner","manager","senior_manager","junior_manager"]},
  {title:"Missing resource recovery + Docs",description:"Broken lesson links land on a friendly recovery page with read-only documentation access.",href:"/docs",icon:FileText,tone:"bg-slate-50 text-slate-700",tag:"Recovery"},
@@ -28,11 +28,11 @@ const features:Feature[] = [
  {title:"Monitor teachers",description:"Open the authorized teacher monitoring view.",href:"/manager/teachers",icon:Users,tone:"bg-blue-50 text-blue-700",tag:"Management",roles:["manager","senior_manager","owner"]},
  {title:"Monitor learners",description:"Open the authorized learner monitoring view.",href:"/manager/students",icon:Users,tone:"bg-cyan-50 text-cyan-700",tag:"Management",roles:["manager","senior_manager","owner"]},
  {title:"Manager reports",description:"View school-level reporting summaries.",href:"/manager/reports",icon:FileText,tone:"bg-emerald-50 text-emerald-700",tag:"Management",roles:["manager","senior_manager","owner"]},
- {title:"Manager notifications",description:"Review and manage role-authorized notifications.",href:"/manager/notifications",icon:Bell,tone:"bg-amber-50 text-amber-700",tag:"Management",roles:["manager","senior_manager","owner"]},
+ {title:"Manager notifications",description:"Review and manage role-authorized notifications.",href:"/manager/notifications",icon:Bell,tone:"bg-[gold]-50 text-[gold]-700",tag:"Management",roles:["manager","senior_manager","owner"]},
  {title:"Manager assignments",description:"Open assignment oversight tools.",href:"/manager/assignments",icon:ClipboardList,tone:"bg-indigo-50 text-indigo-700",tag:"Management",roles:["manager","senior_manager","owner"]},
  {title:"Connect",description:"Open manager-authorized school communication.",href:"/manager/chat",icon:MessageSquare,tone:"bg-rose-50 text-rose-700",tag:"Management",roles:["manager","senior_manager","owner"]},
- {title:"Achievement award review",description:"Review achievement recommendations and approve or decline awards according to manager authority.",href:"/admin/achievements",icon:ShieldCheck,tone:"bg-amber-50 text-amber-700",tag:"Approval",roles:["manager","senior_manager","owner"]},
- {title:"Transfer letter approvals",description:"Review learner transfer requests, record decisions and download approved letters.",href:"/manager/transfer-requests",icon:FileCheck2,tone:"bg-amber-50 text-amber-700",tag:"Approval",roles:["manager","senior_manager","owner"]},
+ {title:"Achievement award review",description:"Review achievement recommendations and approve or decline awards according to manager authority.",href:"/admin/achievements",icon:ShieldCheck,tone:"bg-[gold]-50 text-[gold]-700",tag:"Approval",roles:["manager","senior_manager","owner"]},
+ {title:"Transfer letter approvals",description:"Review learner transfer requests, record decisions and download approved letters.",href:"/manager/transfer-requests",icon:FileCheck2,tone:"bg-[gold]-50 text-[gold]-700",tag:"Approval",roles:["manager","senior_manager","owner"]},
  {title:"Academic report review",description:"Review teacher-prepared academic report drafts before release to learners.",href:"/manager/reports/review",icon:FileText,tone:"bg-violet-50 text-violet-700",tag:"Approval",roles:["manager","senior_manager","owner"]},
  {title:"Unified review queue",description:"See pending transfer, report, qualification and achievement decisions in one place.",href:"/manager/review-queue",icon:ClipboardList,tone:"bg-rose-50 text-rose-700",tag:"Approval",roles:["manager","senior_manager","owner"]},
  {title:"Qualification review history",description:"Open the qualification records and saved review history in the correct role workspace.",href:"/manager/qualifications",icon:ShieldCheck,tone:"bg-cyan-50 text-cyan-700",tag:"Review",roles:["teacher","manager","senior_manager","junior_manager","owner"]},
@@ -44,7 +44,7 @@ const features:Feature[] = [
  {title:"Attendance Register & Activity History",description:"Open Profile Hub attendance records and saved fullscreen activity history. Private sections remain controlled independently.",href:"/profile-hub",icon:ClipboardList,tone:"bg-violet-50 text-violet-700",tag:"Attendance",roles:["student","prefect","teacher","manager","senior_manager","owner"]},
  {title:"Profile privacy & connection approvals",description:"Manage each Profile Hub section separately and review connection requests before private chat is unlocked.",href:"/profile-hub",icon:Users,tone:"bg-cyan-50 text-cyan-700",tag:"Privacy",roles:["student","prefect","teacher","manager","senior_manager","owner"]},
  {title:"Attendance register & operations",description:"Open class registers, review present/absent records, make authorized corrections and see attendance totals.",href:"/operations",icon:ClipboardList,tone:"bg-violet-50 text-violet-700",tag:"Operations",roles:["student","prefect","teacher","owner","platform_owner","manager","senior_manager","junior_manager"]},
- {title:"Content permission requests",description:"Track submitted requests, review requests for your content and report declined decisions.",href:"/operations",icon:ShieldCheck,tone:"bg-amber-50 text-amber-700",tag:"Permissions",roles:["teacher","owner","platform_owner","manager","senior_manager","junior_manager"]},
+ {title:"Content permission requests",description:"Track submitted requests, review requests for your content and report declined decisions.",href:"/operations",icon:ShieldCheck,tone:"bg-[gold]-50 text-[gold]-700",tag:"Permissions",roles:["teacher","owner","platform_owner","manager","senior_manager","junior_manager"]},
  {title:"Learning communities",description:"Create communities and associate existing study groups where groups.manage authority is granted.",href:"/operations",icon:Users,tone:"bg-orange-50 text-orange-700",tag:"Community",roles:["owner","platform_owner","manager","senior_manager","junior_manager"]},
  {title:"Notification preferences",description:"Save push, sound and follow-notification preferences to your account.",href:"/operations",icon:Bell,tone:"bg-sky-50 text-sky-700",tag:"Settings",roles:["student","prefect","teacher","owner","platform_owner","admin","manager","senior_manager","junior_manager"]},
 ];
@@ -108,7 +108,7 @@ export default function FeatureCenter(){
   <div className="space-y-6">
    <div className="rounded-3xl bg-gradient-to-br from-[#0a1628] via-[#10294a] to-[#0a1628] p-6 md:p-8 text-white shadow-xl">
     <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-     <div><Badge className="bg-amber-400 text-[#0a1628] hover:bg-amber-400">DALLYLETTER ELIDEMS · Preview Center</Badge><h1 className="mt-3 text-3xl md:text-4xl font-black tracking-tight">Everything in one place.</h1><p className="mt-2 max-w-3xl text-sm md:text-base text-white/70">A mobile-first control room for the requested upgrades. Open each area and test the real interface before merging.</p></div>
+     <div><Badge className="bg-[gold]-400 text-[#0a1628] hover:bg-[gold]-400">DALLYLETTER ELIDEMS · Preview Center</Badge><h1 className="mt-3 text-3xl md:text-4xl font-black tracking-tight">Everything in one place.</h1><p className="mt-2 max-w-3xl text-sm md:text-base text-white/70">A mobile-first control room for the requested upgrades. Open each area and test the real interface before merging.</p></div>
      <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm"><span className="text-white/50">Signed in as</span><div className="font-semibold">{user?.name}</div></div>
     </div>
    </div>
@@ -122,7 +122,7 @@ export default function FeatureCenter(){
       </Card>
     })}
    </div>
-   <Card className="border-amber-200 bg-amber-50/60"><CardContent className="p-5"><div className="flex gap-3"><WalletCards className="mt-0.5 h-5 w-5 shrink-0 text-amber-700"/><div><p className="font-semibold text-amber-950">Provider-backed features are deliberately honest</p><p className="mt-1 text-sm text-amber-900/80">Email, push, cloud media and real payouts only show successful delivery when the required server credentials/provider configuration actually exists. No fake payment or fake notification success is used.</p></div></div></CardContent></Card>
+   <Card className="border-[gold]-200 bg-[gold]-50/60"><CardContent className="p-5"><div className="flex gap-3"><WalletCards className="mt-0.5 h-5 w-5 shrink-0 text-[gold]-700"/><div><p className="font-semibold text-[gold]-950">Provider-backed features are deliberately honest</p><p className="mt-1 text-sm text-[gold]-900/80">Email, push, cloud media and real payouts only show successful delivery when the required server credentials/provider configuration actually exists. No fake payment or fake notification success is used.</p></div></div></CardContent></Card>
   </div>
  </DashboardLayout>
 }
