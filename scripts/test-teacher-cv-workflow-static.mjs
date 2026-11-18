@@ -33,6 +33,18 @@ const mobileStudentWork = read("artifacts/dallyletter-mobile/app/(student)/work.
 const mobileTeacherWork = read("artifacts/dallyletter-mobile/app/(teacher)/work.tsx");
 const mobileStudentChat = read("artifacts/dallyletter-mobile/app/(student)/chat.tsx");
 const mobileTeacherChat = read("artifacts/dallyletter-mobile/app/(teacher)/chat.tsx");
+const mobileAuthLogin = read("artifacts/dallyletter-mobile/app/login.tsx");
+const mobileAuthSignup = read("artifacts/dallyletter-mobile/app/signup.tsx");
+const mobileAuthForgot = read("artifacts/dallyletter-mobile/app/forgot-password.tsx");
+const mobileAuthReset = read("artifacts/dallyletter-mobile/app/reset-password.tsx");
+const mobileTeacherReports = read("artifacts/dallyletter-mobile/app/(teacher)/reports.tsx");
+const mobileAdminTools = read("artifacts/dallyletter-mobile/app/(admin)/tools.tsx");
+const mobileManagerPermissions = read("artifacts/dallyletter-mobile/components/ManagerPermissionControlsMobile.tsx");
+const mobileTransferReview = read("artifacts/dallyletter-mobile/components/TransferRequestReviewWorkspace.tsx");
+const mobileQualificationReview = read("artifacts/dallyletter-mobile/components/QualificationReviewWorkspaceMobile.tsx");
+const mobileAcademicReports = read("artifacts/dallyletter-mobile/components/AcademicReportReviewWorkspace.tsx");
+const mobileOperations = read("artifacts/dallyletter-mobile/components/MobileOperationsWorkspace.tsx");
+const mobileManagerDashboard = read("artifacts/dallyletter-mobile/components/ManagerDashboard.tsx");
 const globalStyles = read("artifacts/dallyletter/src/index.css");
 
 const renderBlueprint = read("render.yaml");
@@ -147,3 +159,5 @@ assert.match(mobileFeedback, /secondsLeft\}s · Dismiss/, "Mobile feedback must 
 for (const [screen, source] of [["student work", mobileStudentWork], ["teacher work", mobileTeacherWork], ["student chat", mobileStudentChat], ["teacher chat", mobileTeacherChat]]) assert.match(source, /<FeedbackMessage message=\{notice\}/, `${screen} must use the shared mobile feedback treatment`);
 
 assert.match(globalStyles, /\[role="alert"\]:not\(\[data-feedback="unstyled"\]\)/, "All web inline alert surfaces must receive the shared failure treatment unless explicitly opted out");
+
+for (const [screen, source] of [["login",mobileAuthLogin],["signup",mobileAuthSignup],["forgot password",mobileAuthForgot],["reset password",mobileAuthReset],["teacher reports",mobileTeacherReports],["admin tools",mobileAdminTools],["manager permissions",mobileManagerPermissions],["transfer review",mobileTransferReview],["qualification review",mobileQualificationReview],["academic report review",mobileAcademicReports],["operations workspace",mobileOperations],["manager dashboard",mobileManagerDashboard]]) assert.match(source, /<FeedbackMessage message=\{error\}/, `${screen} must use shared red error feedback with a dismiss action`);
