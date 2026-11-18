@@ -87,6 +87,7 @@ export default function StudentChat() {
     contact.id !== user?.id
     && (contact.role === "teacher" || contact.role === "owner" || contact.isPrefect),
   );
+  const visibleContacts = contacts.filter(contact => contact.name.toLowerCase().includes(conversationSearch.trim().toLowerCase()));
 
   const { data: messages, isLoading: messagesLoading, isError: messagesError, refetch: refetchMessages } = useListMessages(
     { groupId: selectedGroupId, recipientId: selectedUserId },
