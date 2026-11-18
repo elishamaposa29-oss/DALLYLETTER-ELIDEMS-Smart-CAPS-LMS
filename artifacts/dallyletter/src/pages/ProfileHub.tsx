@@ -471,7 +471,7 @@ export default function ProfileHub() {
       if(payoutMethod==="bank"){body.bank_name=bankName.trim();body.account_name_holder=accountHolder.trim();}
       await request("/api/users/me/payout-preferences",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       setPayoutDestination("");setMessage("Payout preferences saved. Existing destination remains masked.");
-      const fresh=await request("/api/users/me/payout-preferences");setPayoutDestinationMasked(fresh.destination_masked||"");
+      const fresh=await request("/api/users/me/payout-preferences");setPayoutDestinationMasked(fresh.destination_masked||"");setEditingPayoutPreferences(false);
     }catch(e){setMessage(e instanceof Error?e.message:"Could not save payout preferences.");}
     finally{setBusy(false);}
   };
