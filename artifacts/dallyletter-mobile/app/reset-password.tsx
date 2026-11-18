@@ -1,3 +1,4 @@
+import { FeedbackMessage } from "@/components/FeedbackMessage";
 import { Feather } from "@expo/vector-icons";
 import { getApiUrl } from "@workspace/api-client-react";
 import { router, useLocalSearchParams } from "expo-router";
@@ -49,7 +50,7 @@ export default function ResetPasswordScreen() {
       <Text style={[s.label,{color:colors.foreground}]}>Confirm new password</Text>
       <TextInput value={confirm} onChangeText={setConfirm} secureTextEntry autoComplete="new-password" placeholder="Re-enter password" placeholderTextColor={colors.mutedForeground} style={[s.input,{color:colors.foreground,borderColor:colors.border,backgroundColor:colors.card}]}/>
       {message ? <Text style={s.success}>{message}</Text> : null}
-      {error ? <Text accessibilityRole="alert" style={s.error}>{error}</Text> : null}
+      <FeedbackMessage message={error} tone="error" onDismiss={() => setError("")} />
       {message ? <TouchableOpacity onPress={()=>router.replace("/login")} style={[s.button,{backgroundColor:colors.primary}]}><Text style={s.buttonText}>Go to sign in</Text></TouchableOpacity> : <TouchableOpacity onPress={()=>void submit()} disabled={busy||detailsLoading||!detailsValid} style={[s.button,{backgroundColor:colors.primary,opacity:busy?0.7:1}]}>{busy?<ActivityIndicator color="#fff"/>:<Text style={s.buttonText}>Update password</Text>}</TouchableOpacity>}
     </View>
   </KeyboardAvoidingView>;
