@@ -17,7 +17,7 @@ assert.match(api, /new Set\(\["all", "everyone", "teachers", "prefects", "learne
 assert.match(api, /canViewManagerTarget\(actor/);
 assert.ok(api.indexOf('router.get("/users/selection-directory"') < api.indexOf('router.get("/users/:id"'), "Static user-directory route must precede the dynamic user-id route");
 assert.match(api, /avatar_url/);
-assert.match(api, /router\.get\("\/subjects\/catalog", async/);
+assert.match(api, /router\.get\("\/subjects\/catalog", requireAuth/);
 for (const source of ["lessons", "classes", "assignments", "polls", "study_groups", "learner_subjects", "teacher_subjects"]) {
   assert.match(api, new RegExp("FROM " + source + "|FROM " + source + " CROSS JOIN", "i"), "Subject catalogue must include " + source);
 }
@@ -27,6 +27,7 @@ for (const activity of ["attendance", "assignment_submissions", "poll_submission
 assert.match(api, /router\.post\("\/subjects\/catalog", requireAuth/);
 assert.match(api, /canAddSystemSubject\(actor\)/);
 assert.match(api, /router\.post\("\/subjects\/catalog\/interaction", requireAuth/);
+assert.match(api, /req\.currentUser!\.id, normalized, subject/);
 assert.match(schema, /CREATE TABLE IF NOT EXISTS dallyletter_subject_catalog/);
 assert.match(schema, /CREATE TABLE IF NOT EXISTS dallyletter_subject_interactions/);
 
@@ -44,6 +45,7 @@ for (const source of [webSubject, mobileSubject]) {
   assert.match(source, /subjects\/catalog\/interaction/);
   assert.match(source, /onBlur/);
   assert.match(source, /onSelect/);
+  assert.doesNotMatch(source, /onBlur[^\\n]*canAdd[^\\n]*add\\(/, "Shared subject creation must require an explicit Add action");
 }
 
 const webUserIntegrations = [
