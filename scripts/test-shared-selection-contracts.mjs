@@ -29,7 +29,7 @@ assert.match(api, /router\.post\("\/subjects\/catalog", requireAuth/);
 assert.match(api, /canAddSystemSubject\(actor\)/);
 assert.match(api, /classes\.manage.*lessons\.create.*polls\.manage/s);
 assert.match(api, /router\.post\("\/subjects\/catalog\/interaction", requireAuth/);
-assert.ok(api.includes("req.currentUser?.id, normalized, subject"));
+assert.ok(api.includes("[(req.currentUser?.id ?? 0), normalized, subject]"));
 assert.match(schema, /CREATE TABLE IF NOT EXISTS dallyletter_subject_catalog/);
 assert.match(schema, /CREATE TABLE IF NOT EXISTS dallyletter_subject_interactions/);
 
