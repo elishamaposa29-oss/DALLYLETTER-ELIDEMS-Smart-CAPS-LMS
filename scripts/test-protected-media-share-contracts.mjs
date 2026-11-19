@@ -32,6 +32,8 @@ assert.ok(web.includes("navigator.clipboard?.writeText"));
 assert.ok(web.includes("brandedShare && shareToken"));
 assert.ok(web.includes('mediaRequestUrl.searchParams.set("shareToken", shareToken)'), "Public viewer must pass its signed token to the protected media endpoint");
 assert.ok(!web.includes("files:[file]"), "Web must never bypass protected links by sharing raw media files");
+assert.equal((web.match(/supportsProtectedShare && <Button/g) || []).length, 4, "Every supported web media type must use the same protected share control");
+assert.ok(!web.includes("supportsProtectedShare && {"), "Share controls must not contain duplicated conditional wrappers");
 
 const mobileMediaPath = "artifacts/dallyletter-mobile/components/OfflineMediaDownload.tsx";
 const mobileMedia = contents.get(mobileMediaPath);
