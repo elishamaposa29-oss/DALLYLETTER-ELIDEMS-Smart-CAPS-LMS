@@ -61,7 +61,7 @@ jobs:
       SHOWCASE_OWNER_PASSWORD: ${{ secrets.SHOWCASE_OWNER_PASSWORD || '' }}
       VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET || '' }}
       SHOWCASE_MAX_PAGES_PER_ROLE: "100"
-      SHOWCASE_CAPTURE_AUTHENTICATED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+      SHOWCASE_CAPTURE_AUTHENTICATED: ${{ github.event_name != 'pull_request' }}
       SOURCE_COMMIT: ${{ github.sha }}
       EXPECTED_DEPLOYMENT_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       SHOWCASE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
