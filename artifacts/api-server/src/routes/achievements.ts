@@ -245,7 +245,7 @@ router.post("/award", requireAuth, async (req, res): Promise<void> => {
 router.get("/prefect-teachers", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (!user.isPrefect) { res.status(403).json({ error: "Prefect access required" }); return; }
-  const teachers = await db.select({ id: usersTable.id, name: usersTable.name, subject: usersTable.subject })
+  const teachers = await db.select({ id: usersTable.id, name: usersTable.name, subject: usersTable.subject, avatarUrl: usersTable.avatarUrl })
     .from(usersTable).where(eq(usersTable.role, "teacher"));
   res.json(teachers);
 });
