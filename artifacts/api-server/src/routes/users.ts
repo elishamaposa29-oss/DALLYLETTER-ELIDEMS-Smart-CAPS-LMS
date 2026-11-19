@@ -1317,9 +1317,16 @@ router.get("/users/selection-directory", requireAuth, async (req, res): Promise<
 
 router.get("/subjects/catalog", async (req, res): Promise<void> => {
   await ensureProfileHubSchema();
-  const [lessonRows, classRows, saved, interactions, custom] = await Promise.all([
-    pool.query("SELECT trim(subject) AS subject, count(*)::int AS usage_count FROM lessons WHERE subject IS NOT NULL AND trim(subject) <> '' GROUP BY lower(trim(subject)), trim(subject)"),
-    pool.query("SELECT trim(subject) AS subject, count(*)::int AS usage_count FROM classes WHERE subject IS NOT NULL AND trim(subject) <> '' GROUP BY lower(trim(subject)), trim(subject)"),
+  const [globalRows, saved, interactions, custom] = await Promise.all([
+    pool.query(`SELECT min(subject) AS subject,count(*)::int AS usage_count FROM (
+      SELECT trim(subject) AS subject FROM lessons WHERE subject IS NOT NULL AND trim(subject) <> ''
+      UNION ALL SELECT trim(subject) FROM classes WHERE subject IS NOT NULL AND trim(subject) <> ''
+      UNION ALL SELECT trim(subject) FROM assignments WHERE subject IS NOT NULL AND trim(subject) <> ''
+      UNION ALL SELECT trim(subject) FROM polls WHERE subject IS NOT NULL AND trim(subject) <> ''
+      UNION ALL SELECT trim(subject) FROM study_groups WHERE subject IS NOT NULL AND trim(subject) <> ''
+      UNION ALL SELECT trim(value) FROM learner_subjects CROSS JOIN LATERAL unnest(subjects) AS value
+      UNION ALL SELECT trim(value) FROM teacher_subjects CROSS JOIN LATERAL unnest(subjects_to_teach) AS value
+    ) subject_sources WHERE subject <> '' GROUP BY lower(subject)`),
     pool.query("SELECT subjects FROM learner_subjects WHERE user_id=$1", [req.currentUser?.id ?? 0]).catch(() => ({ rows: [] as any[] })),
     pool.query("SELECT subject,interaction_count,last_interacted_at FROM dallyletter_subject_interactions WHERE user_id=$1 ORDER BY interaction_count DESC,last_interacted_at DESC", [(req.currentUser?.id ?? 0)]),
     pool.query("SELECT subject FROM dallyletter_subject_catalog ORDER BY created_at DESC"),
@@ -1330,12 +1337,12 @@ router.get("/subjects/catalog", async (req, res): Promise<void> => {
     : { rows: [] as any[] };
   const preferred = [...new Set([...(savedSubjects ?? []), ...((teacherSaved.rows[0]?.subjects_to_teach ?? []) as string[])].map(value => String(value).trim()).filter(Boolean))];
   const usage = new Map<string, number>();
-  for (const row of [...lessonRows.rows, ...classRows.rows]) {
+  for (const row of globalRows.rows) {
     const key = String(row.subject).toLocaleLowerCase();
     usage.set(key, (usage.get(key) ?? 0) + Number(row.usage_count ?? 0));
   }
   const names = new Map<string, string>();
-  for (const row of [...lessonRows.rows, ...classRows.rows, ...custom.rows]) {
+  for (const row of [...globalRows.rows, ...custom.rows]) {
     const name = String(row.subject ?? "").trim();
     if (name) names.set(name.toLocaleLowerCase(), name);
   }
