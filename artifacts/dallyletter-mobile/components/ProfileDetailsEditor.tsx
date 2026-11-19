@@ -5,6 +5,7 @@ import { router } from "expo-router";
 import { ActivityIndicator, Alert, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import SubjectSelector from "@/components/selection/SubjectSelector";
 
 export function ProfileDetailsEditor() {
   const {user,token,login,logout}=useAuth();
@@ -149,7 +150,7 @@ export function ProfileDetailsEditor() {
       {field("Full name",name,setName,"Your name")}
       {field("Phone",phone,setPhone,"Phone number")}
       {field("Grade",grade,setGrade,"Your grade")}
-      {field("Subject",subject,setSubject,"Your subject")}
+      <View style={{marginTop:12}}><Text style={{color:colors.foreground,fontSize:13,fontWeight:"700",marginBottom:6}}>Subject</Text><SubjectSelector value={subject} onChange={setSubject} placeholder="Search or type your subject…" /></View>
       <TouchableOpacity onPress={()=>void save()} disabled={busy} style={{height:46,borderRadius:10,marginTop:16,backgroundColor:colors.primary,alignItems:"center",justifyContent:"center",flexDirection:"row",gap:8}}>
         {busy?<ActivityIndicator color="#fff"/>:null}<Text style={{color:"#fff",fontWeight:"700"}}>{busy?"Saving…":"Save changes"}</Text>
       </TouchableOpacity>
