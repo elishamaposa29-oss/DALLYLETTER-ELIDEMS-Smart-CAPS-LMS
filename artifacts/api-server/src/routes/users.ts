@@ -1344,7 +1344,7 @@ router.get("/subjects/catalog", async (req, res): Promise<void> => {
     pool.query("SELECT subject FROM dallyletter_subject_catalog ORDER BY created_at DESC"),
   ]);
   const savedSubjects = (saved.rows[0]?.subjects ?? []) as string[];
-  const teacherSaved = req.currentUser && ["teacher", "manager", "senior_manager"].includes(String(req.currentUser.role).toLowerCase())
+  const teacherSaved = req.currentUser && ["teacher", "manager", "junior_manager", "senior_manager"].includes(String(req.currentUser.role).toLowerCase())
     ? await pool.query("SELECT subjects_to_teach FROM teacher_subjects WHERE user_id=$1", [(req.currentUser?.id ?? 0)]).catch(() => ({ rows: [] as any[] }))
     : { rows: [] as any[] };
   const preferred = [...new Set([...(savedSubjects ?? []), ...((teacherSaved.rows[0]?.subjects_to_teach ?? []) as string[])].map(value => String(value).trim()).filter(Boolean))];
