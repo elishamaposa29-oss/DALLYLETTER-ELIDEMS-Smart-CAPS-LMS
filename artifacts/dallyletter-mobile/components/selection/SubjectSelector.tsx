@@ -9,7 +9,7 @@ type Props={value:string;onChange:(value:string)=>void;onSelect?:(value:string)=
 export default function SubjectSelector({value,onChange,onSelect,placeholder="Search or type a subject…",disabled=false}:Props){
   const colors=useColors();const {token}=useAuth();
   const [subjects,setSubjects]=useState<string[]>([]);const [canAdd,setCanAdd]=useState(false);
-  const [query,setQuery]=useState(value);const [loading,setLoading]=useState(true);const [notice,setNotice]=useState("");
+  const [query,setQuery]=useState(value);const [loading,setLoading]=useState(true);const [notice,setNotice]=useState("");const selecting=useRef(false);
   useEffect(()=>{setQuery(value);},[value]);
   const refresh=async()=>{const response=await fetch(getApiUrl("/api/subjects/catalog"),{headers:token?{Authorization:"Bearer "+token}:{}});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data?.error||"Subject catalogue unavailable.");setSubjects(Array.isArray(data.subjects)?data.subjects:[]);setCanAdd(data.canAddSubject===true);};
   useEffect(()=>{let active=true;refresh().catch(error=>{if(active)setNotice(error instanceof Error?error.message:"Subject catalogue unavailable.");}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[token]);
