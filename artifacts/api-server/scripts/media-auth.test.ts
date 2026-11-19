@@ -53,9 +53,10 @@ test("creates a canonical protected link and sends the authenticated share reque
     assert.equal(requestedAuthorization, "Bearer signed-in-session");
     assert.equal(parsed.origin, DEFAULT_DALLYLETTER_WEB_URL);
     assert.equal(parsed.pathname, "/shared-media");
-    assert.equal(parsed.searchParams.get("url"), resourceUrl);
-    assert.equal(parsed.searchParams.get("type"), "image");
-    assert.equal(parsed.searchParams.get("title"), "Protected image");
+    assert.equal(parsed.searchParams.get("m"), storageKey);
+    assert.equal(parsed.searchParams.get("mt"), "image/jpeg");
+    assert.equal(parsed.searchParams.get("t"), "image");
+    assert.equal(parsed.searchParams.get("n"), "Protected image");
     assert.equal(parsed.searchParams.get("k"), shareToken);
     assert.equal(parsed.searchParams.has("shareToken"), false);
     assert.equal(parsed.hash, "");
