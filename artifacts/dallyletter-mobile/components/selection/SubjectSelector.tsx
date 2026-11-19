@@ -13,7 +13,7 @@ export default function SubjectSelector({value,onChange,placeholder="Search or t
   useEffect(()=>{setQuery(value);},[value]);
   const refresh=async()=>{const response=await fetch(getApiUrl("/api/subjects/catalog"),{headers:token?{Authorization:"Bearer "+token}:{}});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data?.error||"Subject catalogue unavailable.");setSubjects(Array.isArray(data.subjects)?data.subjects:[]);setCanAdd(data.canAddSubject===true);};
   useEffect(()=>{let active=true;refresh().catch(error=>{if(active)setNotice(error instanceof Error?error.message:"Subject catalogue unavailable.");}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[token]);
-  const normalized=query.trim().replace(/\\s+/g," ");
+  const normalized=query.trim().replace(/\s+/g," ");
   const matches=useMemo(()=>subjects.filter(subject=>subject.toLowerCase().includes(normalized.toLowerCase())).slice(0,10),[subjects,normalized]);
   const exact=subjects.some(subject=>subject.toLowerCase()===normalized.toLowerCase());
   const recordInteraction=(subject:string)=>fetch(getApiUrl("/api/subjects/catalog/interaction"),{method:"POST",headers:{"Content-Type":"application/json",...(token?{Authorization:"Bearer "+token}:{})},body:JSON.stringify({subject})}).catch(()=>undefined);
