@@ -303,7 +303,10 @@ router.get("/messages", requireAuth, async (req, res): Promise<void> => {
         [groupId],
       )
     : await pool.query(
-        "SELECT user_id,last_read_at FROM message_conversation_reads WHERE conversation_type='private' AND conversation_id=$1 AND user_id=$2",
+        // A private conversation has one read cursor per participant. Fetch both
+        // directions so each message reports the other participant's receipt,
+        // regardless of who originally opened the conversation.
+        "SELECT user_id,last_read_at FROM message_conversation_reads WHERE conversation_type='private' AND ((conversation_id=$1 AND user_id=$2) OR (conversation_id=$2 AND user_id=$1))",
         [currentUser.id, recipientId],
       );
   const readers = readCursors.rows.map(row => ({
