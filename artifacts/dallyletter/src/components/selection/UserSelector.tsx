@@ -18,6 +18,7 @@ type UserGroup = "all" | "everyone" | "teachers" | "prefects" | "learners" | "ma
 
 const GROUPS: Array<{ value: UserGroup; label: string }> = [
   { value: "all", label: "All users" },
+  { value: "everyone", label: "Everyone" },
   { value: "teachers", label: "Teachers" },
   { value: "prefects", label: "Prefects" },
   { value: "learners", label: "Learners" },
@@ -46,16 +47,18 @@ export function UserSelector({
   disabled = false,
   className = "",
 }: UserSelectorProps) {
+  const [activeGroup, setActiveGroup] = useState<UserGroup>(group);
   const [query, setQuery] = useState("");
   const [users, setUsers] = useState<DirectoryUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  useEffect(() => { setActiveGroup(group); }, [group]);
   const selected = useMemo(() => users.find(user => String(user.id) === String(value)), [users, value]);
 
   useEffect(() => {
     const controller = new AbortController();
     const token = localStorage.getItem("dallyletter_token") ?? "";
-    const params = new URLSearchParams({ group, q: query });
+    const params = new URLSearchParams({ group: activeGroup, q: query });
     setLoading(true);
     setError("");
     fetch(getApiUrl("/api/users/selection-directory?" + params.toString()), {
@@ -69,7 +72,7 @@ export function UserSelector({
       .catch(reason => { if (reason?.name !== "AbortError") setError(reason instanceof Error ? reason.message : "People could not be loaded."); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [group, query]);
+  }, [activeGroup, query]);
 
   const choose = (user: DirectoryUser) => {
     onChange(user.id, user);
@@ -78,7 +81,7 @@ export function UserSelector({
   return <div className={"space-y-2 " + className}>
     {showGroupFilter && <label className="block space-y-1 text-sm">
       <span className="font-medium">Show</span>
-      <select disabled={disabled} value={group} onChange={event => onGroupChange?.(event.target.value as UserGroup)} className="w-full rounded-md border bg-background px-3 py-2">
+      <select disabled={disabled} value={activeGroup} onChange={event => { const next = event.target.value as UserGroup; setActiveGroup(next); onGroupChange?.(next); }} className="w-full rounded-md border bg-background px-3 py-2">
         {GROUPS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
       </select>
     </label>}
