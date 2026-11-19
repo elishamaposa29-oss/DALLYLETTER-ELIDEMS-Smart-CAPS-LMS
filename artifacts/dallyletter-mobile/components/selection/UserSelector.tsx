@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { getApiUrl } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -35,7 +35,9 @@ export default function UserSelector({value,onChange,group="all",showGroupFilter
       .finally(()=>{if(active)setLoading(false);});
     return()=>{active=false;};
   },[activeGroup,query,token,suppliedUsers]);
-  const visibleRows=suppliedUsers??rows;
+  const sourceRows=suppliedUsers??rows;
+  const visibleRows=useMemo(()=>suppliedUsers?sourceRows.filter(person=>person.name.toLowerCase().includes(query.toLowerCase())):sourceRows,[suppliedUsers,sourceRows,query]);
+  const selectedPerson=sourceRows.find(person=>String(person.id)===String(value));
   return <View style={{gap:9}}>
     {showGroupFilter&&<View style={{flexDirection:"row",flexWrap:"wrap",gap:6}}>
       {groups.map(item=><TouchableOpacity key={item.value} disabled={disabled} onPress={()=>setActiveGroup(item.value)} style={{paddingHorizontal:10,paddingVertical:7,borderRadius:16,backgroundColor:activeGroup===item.value?colors.primary:colors.card,borderWidth:1,borderColor:colors.border}}>
