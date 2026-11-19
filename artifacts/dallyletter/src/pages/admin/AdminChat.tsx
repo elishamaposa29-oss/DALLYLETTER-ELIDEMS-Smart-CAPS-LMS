@@ -19,6 +19,7 @@ export default function AdminChat() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("recipientId"); return value && /^\d+$/.test(value) ? Number(value) : null; });
   const [message, setMessage] = useState("");
   const [activeTab, setActiveTab] = useState("users");
+  const [groupHubOpen,setGroupHubOpen]=useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
@@ -164,11 +165,13 @@ export default function AdminChat() {
               <div className="p-4 border-b bg-muted/30 font-semibold flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   {selectedGroupId 
-                    ? <><Users className="h-5 w-5 text-primary"/> {groups?.find(g => g.id === selectedGroupId)?.name}</>
+                    ? <button type="button" onClick={()=>setGroupHubOpen(true)} className="inline-flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" aria-label="Open group hub"><Users className="h-5 w-5 text-primary"/> {groups?.find(g => g.id === selectedGroupId)?.name} <span className="text-xs text-primary">Group hub ↗</span></button>
                     : <><User className="h-5 w-5 text-primary"/> {users?.find(u => u.id === selectedUserId)?.name}</>
                   }
                 </div>
               </div>
+
+              {groupHubOpen && selectedGroupId && (()=>{const group:any=groups?.find(g=>g.id===selectedGroupId);return <div role="dialog" aria-modal="true" aria-label="Study group hub" className="border-b bg-card p-4"><div className="flex items-start justify-between gap-3"><div className="flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary"><Users className="h-6 w-6"/></div><div><h2 className="font-semibold">{group?.name||"Study group"}</h2><p className="text-xs text-muted-foreground">{group?.subject||"Study community"}{group?.memberCount!=null?" · "+group.memberCount+" members":""}</p></div></div><Button type="button" variant="outline" size="sm" onClick={()=>setGroupHubOpen(false)}>Back to chat</Button></div>{group?.description&&<p className="mt-3 text-sm text-muted-foreground">{group.description}</p>}{group?.creatorName&&<p className="mt-2 text-xs text-muted-foreground">Created by {group.creatorName}</p>}</div>;})()}
 
               {/* Messages Area */}
               <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50 dark:bg-slate-900/50">
