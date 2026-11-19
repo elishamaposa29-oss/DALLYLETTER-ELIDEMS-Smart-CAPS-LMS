@@ -293,8 +293,32 @@ router.get("/messages", requireAuth, async (req, res): Promise<void> => {
   } else if (recipientId != null) {
     await pool.query("INSERT INTO message_conversation_reads (user_id,conversation_type,conversation_id,last_read_at) VALUES ($1,'private',$2,now()) ON CONFLICT (user_id,conversation_type,conversation_id) DO UPDATE SET last_read_at=GREATEST(message_conversation_reads.last_read_at,EXCLUDED.last_read_at)", [currentUser.id, recipientId]);
   }
+
+  // The read cursor is a durable per-user receipt: every message at or before
+  // that timestamp has been displayed in this conversation. Return the readers
+  // alongside each message so the sender sees a receipt on the exact message.
+  const readCursors = groupId != null
+    ? await pool.query(
+        "SELECT r.user_id,r.last_read_at FROM message_conversation_reads r INNER JOIN study_group_members gm ON gm.user_id=r.user_id AND gm.group_id=$1 WHERE r.conversation_type='group' AND r.conversation_id=$1",
+        [groupId],
+      )
+    : await pool.query(
+        "SELECT user_id,last_read_at FROM message_conversation_reads WHERE conversation_type='private' AND conversation_id=$1 AND user_id=$2",
+        [currentUser.id, recipientId],
+      );
+  const readers = readCursors.rows.map(row => ({
+    userId: Number(row.user_id),
+    lastReadAt: new Date(row.last_read_at).getTime(),
+  }));
   res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
-  res.json(scopedMessages.map(message => ({ ...message, content: message.content.replace(handRaiseMarker, ""), createdAt: message.createdAt.toISOString() })));
+  res.json(scopedMessages.map(message => ({
+    ...message,
+    content: message.content.replace(handRaiseMarker, ""),
+    createdAt: message.createdAt.toISOString(),
+    readByUserIds: readers
+      .filter(reader => reader.userId !== Number(message.senderId) && reader.lastReadAt >= new Date(message.createdAt).getTime())
+      .map(reader => reader.userId),
+  })));
 });
 
 // POST /messages — Send a message
