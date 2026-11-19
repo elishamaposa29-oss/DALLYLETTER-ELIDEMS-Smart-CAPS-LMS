@@ -328,7 +328,7 @@ export default function AdminPolls() {
                     <SelectContent>{["Grade 8","Grade 9","Grade 10","Grade 11","Grade 12"].map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1.5"><Label>Subject (optional)</Label><Input placeholder="e.g. Mathematics" value={aiTopic.subject} onChange={e => setAiTopic(t => ({ ...t, subject: e.target.value }))} /></div>
+                <div className="space-y-1.5"><Label>Subject (optional)</Label><SubjectSelector value={aiTopic.subject} onChange={subject => setAiTopic(t => ({ ...t, subject }))} placeholder="Search or type a subject…"/></div>
                 <div className="space-y-1.5">
                   <Label>Number of Questions</Label>
                   <Select value={aiTopic.count} onValueChange={v => setAiTopic(t => ({ ...t, count: v }))}>
