@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VoiceRecorder } from "@/components/VoiceRecorder";
 import { AuthenticatedAudio } from "@/components/AuthenticatedAudio";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
+import { UserSelector } from "@/components/selection/UserSelector";
 
 export default function TeacherChat() {
   const { user } = useAuth();
@@ -39,7 +40,7 @@ export default function TeacherChat() {
 
   const sendMessageMutation = useSendMessage();
 
-  useEffect(()=>{if(!ownerChatRequested)return;const token=localStorage.getItem("dallyletter_token");void fetch(getApiUrl("/api/manager/owner-contact"),{headers:token?{Authorization:`Bearer ${token}`}:{}}).then(async response=>{const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"Owner chat permission is unavailable.");setOwnerContact({id:Number(data.id),name:String(data.name||"Owner")});setSelectedGroupId(null);setSelectedUserId(Number(data.id));setActiveTab("people");}).catch(error=>window.alert(error instanceof Error?error.message:"Owner chat is unavailable."));},[ownerChatRequested]);
+  useEffect(()=>{if(!ownerChatRequested)return;const token=localStorage.getItem("dallyletter_token");void fetch(getApiUrl("/api/manager/owner-contact"),{headers:token?{Authorization:`Bearer ${token}`}:{}}).then(async response=>{const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"Owner chat permission is unavailable.");setOwnerContact({id:Number(data.id),name:String(data.name||"Owner")});setSelectedGroupId(null);setSelectedUserId(Number(data.id));setActiveTab("students");}).catch(error=>window.alert(error instanceof Error?error.message:"Owner chat is unavailable."));},[ownerChatRequested]);
 
   const loadLessonRequests = async () => {
     setRequestLoading(true);
@@ -214,29 +215,10 @@ export default function TeacherChat() {
                 ))
               )
             ) : (
-              usersLoading ? (
-                <div className="flex justify-center p-4"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-              ) : (users?.filter(u => u.role === "student").length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full gap-2 text-center p-6">
-                  <User className="h-10 w-10 text-muted-foreground/20" />
-                  <p className="text-sm text-muted-foreground">No students yet.</p>
-                </div>
-              ) : (
-                users?.filter(u => u.role === "student").map(student => (
-                  <button
-                    key={student.id}
-                    onClick={() => selectUser(student.id)}
-                    className={`w-full text-left px-3 py-3 rounded-lg transition-colors flex items-center gap-3 ${
-                      selectedUserId === student.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"
-                    }`}
-                  >
-                    <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold shrink-0">
-                      {student.name.charAt(0)}
-                    </div>
-                    <span className="font-medium truncate flex-1">{student.name}</span>
-                  </button>
-                ))
-              ))
+              <div className="space-y-3">
+                {ownerContact && <button type="button" onClick={() => selectUser(ownerContact.id)} className={`w-full rounded-lg border p-2 text-left text-sm font-medium ${selectedUserId === ownerContact.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>Message Owner · {ownerContact.name}</button>}
+                <UserSelector value={selectedUserId} users={(users ?? []).filter(person => person.role === "student" || person.role === "learner") as any} showGroupFilter={false} placeholder="Search your learners…" onChange={id => { setSelectedUserId(id); if (id) setSelectedGroupId(null); }} />
+              </div>
             )}
           </div>
         </Card>
