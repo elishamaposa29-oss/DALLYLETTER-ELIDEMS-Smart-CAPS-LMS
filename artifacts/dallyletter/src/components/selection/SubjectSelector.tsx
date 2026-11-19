@@ -42,6 +42,7 @@ export function SubjectSelector({ value, onChange, placeholder = "Search or type
   const recordInteraction = (subject: string) => fetch(getApiUrl("/api/subjects/catalog/interaction"), { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token() }, body: JSON.stringify({ subject }) }).catch(() => undefined);
   const choose = async (subject: string) => {
     onChange(subject);
+    onSelect?.(subject);
     setQuery(subject);
     setNotice("");
     void recordInteraction(subject);
