@@ -125,7 +125,7 @@ router.get("/users", requireAuth, requireManagerPermissionIfManager("users.view"
   res.json(visible.map(u => ({ ...u, createdAt: u.createdAt.toISOString() })));
 });
 
-router.get("/users/selection-directory", requireAuth, async (req, res): Promise<void> => {
+router.get("/users/selection-directory", requireAuth, requireManagerPermissionIfManager("users.view"), async (req, res): Promise<void> => {
   const group = String(req.query.group ?? "all").trim().toLowerCase();
   const supportedGroups = new Set(["all", "everyone", "teachers", "prefects", "learners", "managers", "both"]);
   if (!supportedGroups.has(group)) { res.status(400).json({ error: "Choose a supported user group." }); return; }
@@ -1309,9 +1309,10 @@ function normalizeSelectionSubject(value: unknown): string | null {
   return subject.length > 0 && subject.length <= 100 ? subject : null;
 }
 
-function canAddSystemSubject(actor: NonNullable<Express.Request["currentUser"]>): boolean {
+async function canAddSystemSubject(actor: NonNullable<Express.Request["currentUser"]>): Promise<boolean> {
   const role = String(actor.role).toLowerCase();
-  if (isOwnerRole(role) || role === "admin" || canAccessManager(actor)) return true;
+  if (isOwnerRole(role) || role === "admin") return true;
+  if (canAccessManager(actor)) return (await Promise.all(["classes.manage", "lessons.create", "polls.manage"].map(key => managerHasPermission(actor, key)))).some(Boolean);
   return role === "teacher" && ["not_applicable", "approved"].includes(String(actor.teacherApplicationStatus ?? "not_applicable").toLowerCase());
 }
 
@@ -1375,12 +1376,12 @@ router.get("/subjects/catalog", requireAuth, async (req, res): Promise<void> => 
     left.subject.localeCompare(right.subject)
   );
   res.setHeader("Cache-Control", "private, no-store");
-  res.json({ subjects: subjects.map(row => row.subject), rankedSubjects: subjects, canAddSubject: Boolean(req.currentUser && canAddSystemSubject(req.currentUser)) });
+  res.json({ subjects: subjects.map(row => row.subject), rankedSubjects: subjects, canAddSubject: Boolean(req.currentUser && await canAddSystemSubject(req.currentUser)) });
 });
 
 router.post("/subjects/catalog", requireAuth, async (req, res): Promise<void> => {
   const actor = req.currentUser!;
-  if (!canAddSystemSubject(actor)) { res.status(403).json({ error: "Only authorized teachers and privileged staff can add system subjects." }); return; }
+  if (!(await canAddSystemSubject(actor))) { res.status(403).json({ error: "Only authorized teachers and privileged staff can add system subjects." }); return; }
   const subject = normalizeSelectionSubject(req.body?.subject);
   if (!subject) { res.status(400).json({ error: "Enter a subject name of up to 100 characters." }); return; }
   await ensureProfileHubSchema();
