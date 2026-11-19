@@ -337,7 +337,7 @@ export default function StudentChat() {
                 visibleContacts.map(contact => (
                   <button key={contact.id} onClick={() => selectContact(contact.id)} className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors ${selectedUserId === contact.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-bold">{contact.name.charAt(0)}</div>
-                    <span className="min-w-0 flex-1 truncate font-medium">{contact.name}</span>\n                    <DUnread count={unreadForPrivate(contact.id)} />
+                    <span className="min-w-0 flex-1 truncate font-medium">{contact.name}</span><DUnread count={unreadForPrivate(contact.id)} />
                     <span className="text-xs capitalize opacity-70">{contact.role}</span>
                   </button>
                 ))
