@@ -11,7 +11,7 @@ export default function SubjectSelector({value,onChange,onSelect,placeholder="Se
   const [subjects,setSubjects]=useState<string[]>([]);const [canAdd,setCanAdd]=useState(false);
   const [query,setQuery]=useState(value);const [loading,setLoading]=useState(true);const [notice,setNotice]=useState("");const selecting=useRef(false);
   useEffect(()=>{setQuery(value);},[value]);
-  const refresh=async()=>{const response=await fetch(getApiUrl("/api/subjects/catalog"),{headers:token?{Authorization:"Bearer "+token}:{}});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data?.error||"Subject catalogue unavailable.");setSubjects(Array.isArray(data.subjects)?data.subjects:[]);setCanAdd(data.canAddSubject===true);};
+  const refresh=async()=>{const response=await fetch(getApiUrl(token?"/api/subjects/catalog":"/api/subjects/catalog/public"),{headers:token?{Authorization:"Bearer "+token}:{}});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data?.error||"Subject catalogue unavailable.");setSubjects(Array.isArray(data.subjects)?data.subjects:[]);setCanAdd(data.canAddSubject===true);};
   useEffect(()=>{let active=true;refresh().catch(error=>{if(active)setNotice(error instanceof Error?error.message:"Subject catalogue unavailable.");}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[token]);
   const normalized=query.trim().replace(/\s+/g," ");
   const matches=useMemo(()=>subjects.filter(subject=>subject.toLowerCase().includes(normalized.toLowerCase())).slice(0,10),[subjects,normalized]);
