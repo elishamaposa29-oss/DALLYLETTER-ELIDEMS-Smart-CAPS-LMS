@@ -79,7 +79,17 @@ for (const path of webSubjectIntegrations) assert.match(read(path), /SubjectSele
 for (const path of [
   "artifacts/dallyletter-mobile/components/FeatureHub.tsx",
   "artifacts/dallyletter-mobile/components/AcademicReportReviewWorkspace.tsx",
+  "artifacts/dallyletter-mobile/app/(admin)/payments.tsx",
+  "artifacts/dallyletter-mobile/app/(admin)/tools.tsx",
 ]) assert.match(read(path), /UserSelector/, path + " must use shared mobile user selector");
+
+for (const path of [
+  "artifacts/dallyletter/src/pages/admin/AdminChat.tsx",
+  "artifacts/dallyletter/src/pages/teacher/TeacherChat.tsx",
+  "artifacts/dallyletter/src/pages/student/StudentChat.tsx",
+  "artifacts/dallyletter/src/components/ProfileSocialControls.tsx",
+]) assert.match(read(path), /UserSelector/, path + " must use the shared user selector");
+assert.match(read("artifacts/api-server/src/routes/profileConnections.ts"), /avatar_url AS \\"avatarUrl\\"/, "Approved connections must include uploaded profile avatars");
 for (const path of [
   "artifacts/dallyletter-mobile/app/(teacher)/lessons.tsx",
   "artifacts/dallyletter-mobile/app/(teacher)/classes.tsx",
