@@ -54,10 +54,12 @@ export function UserSelector({
   const [users, setUsers] = useState<DirectoryUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [selectedUser, setSelectedUser] = useState<DirectoryUser | undefined>();
   useEffect(() => { setActiveGroup(group); }, [group]);
   const sourceUsers = suppliedUsers ?? users;
   const visibleUsers = useMemo(() => suppliedUsers ? sourceUsers.filter(person => person.name.toLowerCase().includes(query.toLowerCase())) : sourceUsers, [suppliedUsers, sourceUsers, query]);
-  const selected = useMemo(() => sourceUsers.find(user => String(user.id) === String(value)), [sourceUsers, value]);
+  const selected = useMemo(() => sourceUsers.find(user => String(user.id) === String(value)) ?? (selectedUser && String(selectedUser.id) === String(value) ? selectedUser : undefined), [sourceUsers, value, selectedUser]);
+  useEffect(() => { if (value == null) setSelectedUser(undefined); else { const found = sourceUsers.find(user => String(user.id) === String(value)); if (found) setSelectedUser(found); } }, [value, sourceUsers]);
 
   useEffect(() => {
     if (suppliedUsers) return;
@@ -80,6 +82,7 @@ export function UserSelector({
   }, [activeGroup, query, suppliedUsers]);
 
   const choose = (user: DirectoryUser) => {
+    setSelectedUser(user);
     onChange(user.id, user);
   };
 
@@ -94,7 +97,7 @@ export function UserSelector({
     {selected && <div className="flex items-center gap-2 rounded-lg border bg-muted/30 p-2 text-sm">
       <UserProfileLink userId={selected.id} name={selected.name} avatarUrl={selected.avatarUrl} className="min-w-0 flex-1" />
       <div className="min-w-0"><div className="text-xs capitalize text-muted-foreground">{selected.isPrefect ? "Prefect" : String(selected.role ?? "learner").replaceAll("_", " ")}</div></div>
-      <button type="button" disabled={disabled} onClick={() => onChange(null)} className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted">Clear</button>
+      <button type="button" disabled={disabled} onClick={() => { setSelectedUser(undefined); onChange(null); }} className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted">Clear</button>
     </div>}
     <div role="listbox" aria-label="Matching users" className="max-h-56 space-y-1 overflow-y-auto rounded-md border p-1">
       {!suppliedUsers && loading ? <p className="p-3 text-sm text-muted-foreground">Loading people…</p> : error ? <p role="alert" className="p-3 text-sm text-destructive">{error}</p> : visibleUsers.length === 0 ? <p className="p-3 text-sm text-muted-foreground">No matching people.</p> : visibleUsers.map(person => <div key={person.id} className="flex items-center gap-2 rounded-md p-2 hover:bg-muted/60">
