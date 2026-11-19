@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { UserSelector } from "@/components/selection/UserSelector";
 import { Trophy, Plus, Star, Gift } from "lucide-react";
 
 const token = () => localStorage.getItem("dallyletter_token") ?? "";
@@ -120,10 +121,7 @@ export default function AdminAchievements() {
                   </div>
                   <div>
                     <label className="text-sm font-medium text-slate-700 mb-1 block">Select Student</label>
-                    <select className="w-full border rounded-lg px-3 py-2 text-sm" value={awardUserId} onChange={e => setAwardUserId(e.target.value)}>
-                      <option value="">— Choose student —</option>
-                      {students.filter(s => s.role === "student").map(s => <option key={s.id} value={s.id}>{s.name} {s.grade ? `(${s.grade})` : ""}</option>)}
-                    </select>
+                    <UserSelector value={awardUserId || null} onChange={id => setAwardUserId(id ? String(id) : "")} group="learners" showGroupFilter={false} placeholder="Search learners by name…" />
                   </div>
                   <Input placeholder="Award note (optional)" value={awardNote} onChange={e => setAwardNote(e.target.value)} />
                   <Button className="w-full bg-amber-500 text-white" onClick={award}>{canDirectAward ? "Award Badge" : "Submit Recommendation"}</Button>
