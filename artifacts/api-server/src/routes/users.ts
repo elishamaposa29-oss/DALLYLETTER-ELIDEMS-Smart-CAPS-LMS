@@ -1325,8 +1325,8 @@ router.get("/subjects/catalog", async (req, res): Promise<void> => {
       UNION ALL SELECT trim(subject) FROM assignments WHERE subject IS NOT NULL AND trim(subject) <> ''
       UNION ALL SELECT trim(subject) FROM polls WHERE subject IS NOT NULL AND trim(subject) <> ''
       UNION ALL SELECT trim(subject) FROM study_groups WHERE subject IS NOT NULL AND trim(subject) <> ''
-      UNION ALL SELECT trim(value) FROM learner_subjects CROSS JOIN LATERAL unnest(subjects) AS value
-      UNION ALL SELECT trim(value) FROM teacher_subjects CROSS JOIN LATERAL unnest(subjects_to_teach) AS value
+      UNION ALL SELECT trim(value) FROM learner_subjects CROSS JOIN LATERAL unnest(subjects) AS learner_subject(value)
+      UNION ALL SELECT trim(value) FROM teacher_subjects CROSS JOIN LATERAL unnest(subjects_to_teach) AS teacher_subject(value)
     ) subject_sources WHERE subject <> '' GROUP BY lower(subject)`),
     pool.query("SELECT subjects FROM learner_subjects WHERE user_id=$1", [req.currentUser?.id ?? 0]).catch(() => ({ rows: [] as any[] })),
     pool.query(`SELECT min(subject) AS subject, sum(interaction_count)::int AS interaction_count, max(last_interacted_at) AS last_interacted_at
