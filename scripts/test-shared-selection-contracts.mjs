@@ -23,6 +23,7 @@ for (const source of ["lessons", "classes", "assignments", "polls", "study_group
 }
 assert.match(api, /interaction_count DESC/);
 assert.match(api, /last_interacted_at DESC/);
+for (const activity of ["attendance", "assignment_submissions", "poll_submissions", "study_group_members"]) assert.match(api, new RegExp("FROM " + activity + "|JOIN " + activity, "i"), "Personal subject ranking must include " + activity);
 assert.match(api, /router\.post\("\/subjects\/catalog", requireAuth/);
 assert.match(api, /canAddSystemSubject\(actor\)/);
 assert.match(api, /router\.post\("\/subjects\/catalog\/interaction", requireAuth/);
