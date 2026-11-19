@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { createProtectedMediaShareLink, getApiUrl, useListLessons } from "@workspace/api-client-react";
+import { createProtectedMediaShareLink, DEFAULT_DALLYLETTER_WEB_URL, getApiUrl, useListLessons } from "@workspace/api-client-react";
 import * as Linking from "expo-linking";
 import { router } from "expo-router";
 import { Alert, AppState, Modal, Platform, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
@@ -302,7 +302,7 @@ export default function StudentLessons() {
   const shareSelectedLesson = async () => {
     if (!selectedLessonProtectedMedia) return;
     try {
-      const webBaseUrl = (process.env.EXPO_PUBLIC_WEB_BASE_URL || "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app").replace(/\\/+$/, "");
+      const webBaseUrl = (process.env.EXPO_PUBLIC_WEB_BASE_URL || DEFAULT_DALLYLETTER_WEB_URL).replace(/\\/+$/, "");
       const shareUrl = await createProtectedMediaShareLink({
         resourceUrl: selectedLessonProtectedMedia,
         title: String(selectedLesson.title || "Dallyletter lesson"),
