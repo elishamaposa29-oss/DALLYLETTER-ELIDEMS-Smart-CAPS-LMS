@@ -211,7 +211,7 @@ export default function AdminChat() {
                     );
                   })
                 )}
-                {selectedGroupId != null && <StudyGroupPollPanel groupId={selectedGroupId} />}
+                {selectedGroupId != null && <StudyGroupPollPanel groupId={selectedGroupId} allowPolls={(groups?.find(g => g.id === selectedGroupId) as any)?.settings?.allowPolls !== false} />}
                 <div ref={messagesEndRef} />
               </div>
 
