@@ -31,9 +31,10 @@ export function StudyGroupPollPanel({ groupId, token, colors, allowPolls }: { gr
     catch(e){setError(e instanceof Error?e.message:"Poll could not be created.");}
   };
 
-  const vote=async(pollId:number,optionId:number)=>{
+  const vote=async(poll:Poll,optionId:number)=>{
     if(!token)return;
-    try{const r=await fetch(getApiUrl(`/api/chat/polls/${pollId}/vote`),{method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({optionIds:[optionId]})});const data=await r.json().catch(()=>null);if(!r.ok)throw new Error(data?.error||"Vote not saved");await load();}
+    const selectedIds=poll.poll.allowMultiple?[...poll.options.filter(option=>option.selected&&option.id!==optionId).map(option=>option.id),...(poll.options.some(option=>option.id===optionId&&option.selected)?[]:[optionId])]:[optionId];
+    try{const r=await fetch(getApiUrl(`/api/chat/polls/${poll.poll.id}/vote`),{method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({optionIds:selectedIds})});const data=await r.json().catch(()=>null);if(!r.ok)throw new Error(data?.error||"Vote not saved");await load();}
     catch(e){setError(e instanceof Error?e.message:"Vote could not be saved.");}
   };
 
@@ -54,7 +55,7 @@ export function StudyGroupPollPanel({ groupId, token, colors, allowPolls }: { gr
     {error!==""&&<Text accessibilityRole="alert" style={{color:"#B91C1C",fontSize:11}}>{error}</Text>}
     {loading&&polls.length===0?<ActivityIndicator color={colors.primary}/>:polls.length===0?<Text style={{fontSize:11,color:colors.mutedForeground}}>No polls yet. Create one to get the group involved.</Text>:<View style={{gap:8}}>{polls.map(item=><View key={item.poll.id} style={{backgroundColor:colors.card,borderColor:colors.border,borderWidth:1,borderRadius:12,padding:10,gap:7}}>
       <View style={{flexDirection:"row",justifyContent:"space-between",gap:8}}><Text style={{fontWeight:"800",fontSize:13,color:colors.foreground,flex:1}}>{item.poll.question}</Text><Text style={{fontSize:10,color:colors.mutedForeground}}>{item.poll.closed?"Closed":"Active"}</Text></View>
-      {item.options.map(option=><TouchableOpacity key={option.id} disabled={item.poll.closed} onPress={()=>void vote(item.poll.id,option.id)} style={{flexDirection:"row",justifyContent:"space-between",alignItems:"center",borderWidth:1,borderColor:option.selected?colors.primary:colors.border,backgroundColor:colors.background,borderRadius:8,padding:9}}><Text style={{fontSize:12,color:colors.foreground,flex:1}}>{option.selected?"✓ ":""}{option.label}</Text><Text style={{fontSize:11,color:colors.mutedForeground}}>{option.voteCount}</Text></TouchableOpacity>)}
+      {item.options.map(option=><TouchableOpacity key={option.id} disabled={item.poll.closed} onPress={()=>void vote(item,option.id)} style={{flexDirection:"row",justifyContent:"space-between",alignItems:"center",borderWidth:1,borderColor:option.selected?colors.primary:colors.border,backgroundColor:colors.background,borderRadius:8,padding:9}}><Text style={{fontSize:12,color:colors.foreground,flex:1}}>{option.selected?"✓ ":""}{option.label}</Text><Text style={{fontSize:11,color:colors.mutedForeground}}>{option.voteCount}</Text></TouchableOpacity>)}
       <Text style={{fontSize:10,color:colors.mutedForeground}}>{item.totalVotes} vote{item.totalVotes===1?"":"s"} · {item.poll.allowMultiple?"Multiple choices":"Choose one"}</Text>
     </View>)}</View>}
   </View>;
