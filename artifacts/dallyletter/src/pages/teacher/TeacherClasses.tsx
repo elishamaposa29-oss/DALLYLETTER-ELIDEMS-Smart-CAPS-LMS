@@ -20,6 +20,7 @@ import { z } from "zod";
 import { CreateClassBodyStatus, UpdateClassBodyStatus } from "@workspace/api-client-react";
 import { Textarea } from "@/components/ui/textarea";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
+import { SubjectSelector } from "@/components/selection/SubjectSelector";
 
 const createClassSchema = z.object({
   title: z.string().min(2, "Title is required"),
@@ -140,7 +141,7 @@ export default function TeacherClasses() {
                         <FormItem>
                           <FormLabel>Subject</FormLabel>
                           <FormControl>
-                            <Input placeholder="e.g. Mathematics" {...field} />
+                            <SubjectSelector value={field.value ?? ""} onChange={field.onChange} placeholder="Search or type a subject…" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
