@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, ScrollText, Search, Download, Trash2, Send, ExternalLink, Brain, CheckSquare } from "lucide-react";
+import { Loader2, ScrollText, Search, Download, Trash2, Copy, ExternalLink, Brain, CheckSquare } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface AuditLog { id: number; action: string; category: string; targetType: string | null; targetId: number | null; details: string | null; createdAt: string; performerName: string | null; performerRole: string | null; performerId?: number | null; }
@@ -60,7 +60,7 @@ export default function AdminAuditLogs() {
   async function bulkDelete() { if (!window.confirm(`Delete ${selected.length} selected audit log(s)?`)) return; const r = await fetch(getApiUrl("/api/audit-logs/delete"), { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token() }, body: JSON.stringify({ ids: selected }) }); if (r.ok) { setSelected([]); await loadLogs(); } else { const d = await r.json().catch(() => null); setSummary(d?.error ?? "Audit log deletion failed"); } }
   async function summarizeAI() { const r = await fetch(getApiUrl("/api/audit-logs/summarize"), { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token() }, body: JSON.stringify({ ids: selected }) }); const d = await r.json(); setSummary(r.ok ? d.summary : (d.error ?? "AI summary unavailable")); }
   function openSelected() { const rows = filtered.filter(l => selected.includes(l.id)); const url = URL.createObjectURL(new Blob([JSON.stringify(rows, null, 2)], { type: "application/json" })); window.open(url, "_blank", "noopener,noreferrer"); }
-  async function sendSelected() { const rows = filtered.filter(l => selected.includes(l.id)); const text = rows.map(l => "[" + l.id + "] " + l.action + " — " + (l.performerName ?? "Unknown") + " (" + (l.performerRole ?? "unknown") + ")").join("\n"); if (navigator.share) await navigator.share({ title: "DALLYLETTER Audit Logs", text }); else await navigator.clipboard.writeText(text); }
+  async function copySelectedSummary() { const rows = filtered.filter(l => selected.includes(l.id)); const text = rows.map(l => "[" + l.id + "] " + l.action + " — " + (l.performerName ?? "Unknown") + " (" + (l.performerRole ?? "unknown") + ")").join("\n"); try { await navigator.clipboard.writeText(text); setSummary("Selected audit summary copied. Share it only through your approved internal channel."); } catch { window.prompt("Copy the selected audit summary:", text); } }
   function exportSelected(format: "json" | "csv") { if (format === "json") { const rows = filtered.filter(l => selected.includes(l.id)); const blob = new Blob([JSON.stringify(rows, null, 2)], { type: "application/json" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "audit-logs-selected.json"; a.click(); return; } exportCSV(); }
 
   function exportCSV() {
@@ -104,7 +104,7 @@ export default function AdminAuditLogs() {
           <span className="text-sm text-muted-foreground self-center">{filtered.length} entries</span>
           <div className="flex flex-wrap gap-2 w-full">
             <Button size="sm" variant="outline" onClick={selectAll} className="gap-1.5"><CheckSquare className="h-4 w-4" />{selected.length === visibleIds.length && visibleIds.length ? "Clear selection" : "Select all"}</Button>
-            <Button size="sm" variant="outline" disabled={!selected.length} onClick={() => void sendSelected()} className="gap-1.5"><Send className="h-4 w-4" />Send</Button>
+            <Button size="sm" variant="outline" disabled={!selected.length} onClick={() => void copySelectedSummary()} className="gap-1.5"><Copy className="h-4 w-4" />Copy summary</Button>
             <Button size="sm" variant="outline" disabled={!selected.length} onClick={openSelected} className="gap-1.5"><ExternalLink className="h-4 w-4" />Open with</Button>
             <Button size="sm" variant="outline" disabled={!selected.length} onClick={() => exportSelected("json")} className="gap-1.5"><Download className="h-4 w-4" />Download as JSON</Button>
             <Button size="sm" variant="outline" disabled={!selected.length} onClick={() => void summarizeAI()} className="gap-1.5"><Brain className="h-4 w-4" />Summarise with AI</Button>
