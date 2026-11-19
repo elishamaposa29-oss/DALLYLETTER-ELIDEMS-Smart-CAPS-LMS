@@ -7,7 +7,7 @@ import { UserProfileLink } from "@/components/UserProfileLink";
 
 type Group = "all" | "everyone" | "teachers" | "prefects" | "learners" | "managers" | "both";
 type Person = { id:number; name:string; role?:string; isPrefect?:boolean; isManager?:boolean; avatarUrl?:string|null; grade?:string|null; subject?:string|null };
-type Props = { value?:number|string|null; onChange:(id:number|null, user?:Person)=>void; group?:Group; showGroupFilter?:boolean; placeholder?:string; disabled?:boolean; users?:Person[] };
+type Props = { value?:number|string|null; onChange:(id:number|null, user?:Person)=>void; group?:Group; showGroupFilter?:boolean; placeholder?:string; disabled?:boolean; users?:Array<Record<string, any> & {id:number}> };
 
 const groups: Array<{value:Group;label:string}> = [
   {value:"all",label:"All"},{value:"everyone",label:"Everyone"}, {value:"teachers",label:"Teachers"}, {value:"prefects",label:"Prefects"},
@@ -35,8 +35,9 @@ export default function UserSelector({value,onChange,group="all",showGroupFilter
       .finally(()=>{if(active)setLoading(false);});
     return()=>{active=false;};
   },[activeGroup,query,token,suppliedUsers]);
-  const sourceRows=suppliedUsers??rows;
-  const visibleRows=useMemo(()=>suppliedUsers?sourceRows.filter(person=>person.name.toLowerCase().includes(query.toLowerCase())):sourceRows,[suppliedUsers,sourceRows,query]);
+  const rawRows=(suppliedUsers??rows) as Array<Record<string, any> & {id:number}>;
+  const sourceRows:Person[]=rawRows.map(person=>({id:person.id,name:String(person.name??person.displayName??"User"),role:person.role,isPrefect:Boolean(person.isPrefect),isManager:Boolean(person.isManager),avatarUrl:person.avatarUrl??null,grade:person.grade??null,subject:person.subject??null}));
+  const visibleRows=useMemo(()=>suppliedUsers?sourceRows.filter(person=>person.name.toLowerCase().includes(query.toLowerCase())):sourceRows,[suppliedUsers,query,rows]);
   const selectedPerson=sourceRows.find(person=>String(person.id)===String(value));
   return <View style={{gap:9}}>
     {showGroupFilter&&<View style={{flexDirection:"row",flexWrap:"wrap",gap:6}}>
