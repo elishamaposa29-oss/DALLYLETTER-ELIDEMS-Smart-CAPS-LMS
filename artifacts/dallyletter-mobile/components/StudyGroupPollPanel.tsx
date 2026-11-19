@@ -34,6 +34,7 @@ export function StudyGroupPollPanel({ groupId, token, colors, allowPolls }: { gr
   const vote=async(poll:Poll,optionId:number)=>{
     if(!token)return;
     const selectedIds=poll.poll.allowMultiple?[...poll.options.filter(option=>option.selected&&option.id!==optionId).map(option=>option.id),...(poll.options.some(option=>option.id===optionId&&option.selected)?[]:[optionId])]:[optionId];
+    if(selectedIds.length===0)return;
     try{const r=await fetch(getApiUrl(`/api/chat/polls/${poll.poll.id}/vote`),{method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({optionIds:selectedIds})});const data=await r.json().catch(()=>null);if(!r.ok)throw new Error(data?.error||"Vote not saved");await load();}
     catch(e){setError(e instanceof Error?e.message:"Vote could not be saved.");}
   };
