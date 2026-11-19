@@ -55,8 +55,9 @@ export function UserSelector({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   useEffect(() => { setActiveGroup(group); }, [group]);
-  const visibleUsers = suppliedUsers ?? users;
-  const selected = useMemo(() => visibleUsers.find(user => String(user.id) === String(value)), [visibleUsers, value]);
+  const sourceUsers = suppliedUsers ?? users;
+  const visibleUsers = useMemo(() => suppliedUsers ? sourceUsers.filter(person => person.name.toLowerCase().includes(query.toLowerCase())) : sourceUsers, [suppliedUsers, sourceUsers, query]);
+  const selected = useMemo(() => sourceUsers.find(user => String(user.id) === String(value)), [sourceUsers, value]);
 
   useEffect(() => {
     if (suppliedUsers) return;
