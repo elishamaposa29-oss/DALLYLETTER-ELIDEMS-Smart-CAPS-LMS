@@ -28,7 +28,7 @@ function isProfileOnlyTeacher(user: NonNullable<Express.Request["currentUser"]>)
 }
 
 router.get("/manager/owner-contact", requireAuth, requireManagerPermission("owner.chat"), async (req,res):Promise<void> => {
-  const [owner]=await db.select({id:usersTable.id,name:usersTable.name}).from(usersTable).where(inArray(usersTable.role,["owner","platform_owner"])).orderBy(usersTable.id).limit(1);
+  const [owner]=await db.select({id:usersTable.id,name:usersTable.name,avatarUrl:usersTable.avatarUrl}).from(usersTable).where(inArray(usersTable.role,["owner","platform_owner"])).orderBy(usersTable.id).limit(1);
   if(!owner){res.status(404).json({error:"Owner contact is not available."});return;}
   res.setHeader("Cache-Control","private,no-store");
   res.json({id:Number(owner.id),name:String(owner.name||"Owner")});
