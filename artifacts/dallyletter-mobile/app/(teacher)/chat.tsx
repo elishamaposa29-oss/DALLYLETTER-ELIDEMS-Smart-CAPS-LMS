@@ -7,7 +7,7 @@ import { Platform, FlatList, ScrollView, StyleSheet, Text, TextInput, TouchableO
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useEffect, useState } from "react";
-type ChatGroup = { id: number; name: string; description?: string | null; subject?: string; creatorName?: string; memberCount?: number; createdAt?: string; isMember?: boolean; members?: Array<{ id: number; name?: string; role?: string; isPrefect?: boolean }> };
+type ChatGroup = { id: number; name: string; description?: string | null; subject?: string; creatorName?: string; memberCount?: number; createdAt?: string; isMember?: boolean; settings?: { allowPolls?: boolean }; members?: Array<{ id: number; name?: string; role?: string; isPrefect?: boolean }> };
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { UserProfileLink } from "@/components/UserProfileLink";
@@ -18,8 +18,6 @@ export default function TeacherChat() {
   const { user, token } = useAuth();
   const [text, setText] = useState("");
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
-  const [groupPollsEnabled,setGroupPollsEnabled] = useState(true);
-  useEffect(()=>{if(!selectedGroupId||!token){setGroupPollsEnabled(true);return;}let active=true;fetch(getApiUrl(`/api/study-groups/${selectedGroupId}/settings`),{headers:{Authorization:`Bearer ${token}`},cache:"no-store"}).then(r=>r.ok?r.json():null).then(data=>{if(active&&data)setGroupPollsEnabled(data.allowPolls!==false);}).catch(()=>{if(active)setGroupPollsEnabled(true);});return()=>{active=false;};},[selectedGroupId,token]);
   const [notice, setNotice] = useState("");
   const [unreadGroups, setUnreadGroups] = useState<Array<{id:number;unread:number}>>([]);
   useEffect(() => {
@@ -163,7 +161,7 @@ export default function TeacherChat() {
         />
       )}
 
-      <StudyGroupPollPanel groupId={selectedGroupId} token={token} colors={colors} allowPolls={groupPollsEnabled} />
+      <StudyGroupPollPanel groupId={selectedGroupId} token={token} colors={colors} allowPolls={selectedGroup?.settings?.allowPolls !== false} />
       <Modal visible={groupHubOpen && Boolean(selectedGroup)} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setGroupHubOpen(false)}>
         <View style={{flex:1,backgroundColor:colors.background,paddingTop:insets.top+12}}>
           <View style={{flexDirection:"row",alignItems:"center",justifyContent:"space-between",paddingHorizontal:20,paddingBottom:16,borderBottomWidth:1,borderBottomColor:colors.border}}>
