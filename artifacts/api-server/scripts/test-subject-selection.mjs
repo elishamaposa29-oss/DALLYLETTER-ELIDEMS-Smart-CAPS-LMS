@@ -2,10 +2,6 @@ import assert from "node:assert/strict";
 import { pool } from "@workspace/db";
 
 const ensure = async () => {
-  await pool.query(`CREATE TABLE IF NOT EXISTS learner_subjects (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,subjects text[] NOT NULL DEFAULT '{}',updated_at timestamptz NOT NULL DEFAULT now())`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS teacher_subjects (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,teaching_subjects text[] NOT NULL DEFAULT '{}',subjects_to_teach text[] NOT NULL DEFAULT '{}',updated_at timestamptz NOT NULL DEFAULT now())`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS dallyletter_subject_catalog (id bigserial PRIMARY KEY,subject text NOT NULL,normalized_subject text NOT NULL UNIQUE,created_by integer REFERENCES users(id) ON DELETE SET NULL,created_at timestamptz NOT NULL DEFAULT now())`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS dallyletter_subject_interactions (user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,normalized_subject text NOT NULL,subject text NOT NULL,interaction_count integer NOT NULL DEFAULT 0 CHECK (interaction_count >= 0),last_interacted_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY (user_id, normalized_subject))`);
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
