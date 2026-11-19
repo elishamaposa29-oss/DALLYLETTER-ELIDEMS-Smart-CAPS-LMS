@@ -49,8 +49,9 @@ function validMediaShare(storageKey: string, token: unknown): boolean {
   if (!Number.isSafeInteger(expiresAt) || expiresAt < Math.floor(Date.now() / 1000)) return false;
   const secret = mediaShareSecret();
   if (!secret) return false;
-  const expected = createHmac("sha256", secret).update(`${storageKey}.${expiresAt}`).digest();
-  const supplied = Buffer.from(signature, "hex");
+  const digest = createHmac("sha256", secret).update(`${storageKey}.${expiresAt}`).digest();
+  const expected = signature.length === 64 ? digest : digest.subarray(0, 16);
+  const supplied = signature.length === 64 ? Buffer.from(signature, "hex") : Buffer.from(signature, "base64url");
   return supplied.length === expected.length && timingSafeEqual(supplied, expected);
 }
 const mediaAccess = (req: Request, res: Response, next: NextFunction) => {
