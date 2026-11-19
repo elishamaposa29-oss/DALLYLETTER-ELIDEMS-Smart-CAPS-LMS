@@ -127,7 +127,7 @@ export default function AdminAI() {
                   <CheckCircle className="h-3 w-3" /> Live AI — {status.provider}
                 </Badge>
               ) : (
-                <Badge variant="outline" className="gap-1.5 text-amber-600 border-amber-300 bg-amber-50">
+                <Badge variant="outline" className="dl-status-warning gap-1.5 text-amber-600 border-amber-300 bg-amber-50">
                   <AlertTriangle className="h-3 w-3" /> Development Mode
                 </Badge>
               )
@@ -140,7 +140,7 @@ export default function AdminAI() {
 
         {/* Dev mode banner */}
         {status && !status.isLive && (
-          <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 flex items-center justify-between gap-4">
+          <div className="dl-status-warning bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 flex items-center justify-between gap-4">
             <p className="text-sm text-amber-800 dark:text-amber-400">
               <strong>Development Mode:</strong> ELIDEMS AI is using mock responses. Add an API key in Settings → ELIDEMS AI to activate Live Mode.
             </p>
