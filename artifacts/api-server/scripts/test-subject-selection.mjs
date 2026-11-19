@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { pool } from "@workspace/db";
-import { ensureProfileHubSchema } from "../src/lib/ensureProfileHubSchema.js";
 
 const ensure = async () => {
-  await ensureProfileHubSchema();
+  await pool.query(`CREATE TABLE IF NOT EXISTS dallyletter_subject_catalog (id bigserial PRIMARY KEY,subject text NOT NULL,normalized_subject text NOT NULL UNIQUE,created_by integer REFERENCES users(id) ON DELETE SET NULL,created_at timestamptz NOT NULL DEFAULT now())`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS dallyletter_subject_interactions (user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,normalized_subject text NOT NULL,subject text NOT NULL,interaction_count integer NOT NULL DEFAULT 0 CHECK (interaction_count >= 0),last_interacted_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY (user_id, normalized_subject))`);
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
