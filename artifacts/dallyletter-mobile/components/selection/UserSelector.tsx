@@ -45,10 +45,10 @@ export default function UserSelector({value,onChange,group="all",showGroupFilter
     <TextInput value={query} onChangeText={setQuery} editable={!disabled} placeholder={placeholder} placeholderTextColor={colors.mutedForeground} accessibilityLabel="Search users" style={{borderWidth:1,borderColor:colors.border,borderRadius:10,padding:11,color:colors.foreground,backgroundColor:colors.card}}/>
     {value!=null&&<TouchableOpacity onPress={()=>onChange(null)} disabled={disabled} style={{alignSelf:"flex-start",padding:7}}><Text style={{color:colors.primary,fontSize:12}}>Clear selected person</Text></TouchableOpacity>}
     {!suppliedUsers&&loading?<ActivityIndicator color={colors.primary}/>:error?<Text accessibilityRole="alert" style={{color:colors.destructive,fontSize:12}}>{error}</Text>:visibleRows.length===0?<Text style={{color:colors.mutedForeground,fontSize:12}}>No matching people.</Text>:<View style={{maxHeight:230,borderWidth:1,borderColor:colors.border,borderRadius:10,overflow:"hidden"}}>
-      {visibleRows.map(person=><TouchableOpacity key={person.id} disabled={disabled} onPress={()=>onChange(person.id,person)} style={{flexDirection:"row",alignItems:"center",padding:9,borderBottomWidth:1,borderBottomColor:colors.border,backgroundColor:String(value)===String(person.id)?colors.secondary:colors.card}}>
+      {visibleRows.map(person=><View key={person.id} style={{flexDirection:"row",alignItems:"center",padding:9,borderBottomWidth:1,borderBottomColor:colors.border,backgroundColor:String(value)===String(person.id)?colors.secondary:colors.card}}>
         <View style={{flex:1,minWidth:0}}><UserProfileLink userId={person.id} name={person.name} avatarUrl={person.avatarUrl}/><Text style={{marginLeft:43,marginTop:-3,fontSize:11,color:colors.mutedForeground}}>{person.isPrefect?"Prefect":person.role.replaceAll("_"," ")}{person.grade?" · "+person.grade:""}</Text></View>
-        {String(value)===String(person.id)&&<Text style={{color:colors.primary,fontWeight:"700"}}>✓</Text>}
-      </TouchableOpacity>)}
+        <TouchableOpacity disabled={disabled} onPress={()=>onChange(person.id,person)} style={{paddingHorizontal:10,paddingVertical:7,borderRadius:8,backgroundColor:colors.primary}}><Text style={{fontSize:11,fontWeight:"700",color:colors.background}}>Select</Text></TouchableOpacity>
+      </View>)}
     </View>}
   </View>;
 }
