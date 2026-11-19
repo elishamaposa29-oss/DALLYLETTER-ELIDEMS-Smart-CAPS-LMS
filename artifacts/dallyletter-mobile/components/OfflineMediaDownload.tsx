@@ -173,7 +173,7 @@ export default function OfflineMediaDownload({ url, fileName, accessibilityLabel
   };
   const shareProtectedLessonMedia = async () => {
     try {
-      const webBaseUrl = (process.env.EXPO_PUBLIC_WEB_BASE_URL || DEFAULT_DALLYLETTER_WEB_URL).replace(/\\/+$/, "");
+      const webBaseUrl = (process.env.EXPO_PUBLIC_WEB_BASE_URL || DEFAULT_DALLYLETTER_WEB_URL).replace(/\/+$/, "");
       const shareUrl = await createProtectedMediaShareLink({
         resourceUrl: url,
         title: fileName || "Learning resource",
@@ -182,7 +182,7 @@ export default function OfflineMediaDownload({ url, fileName, accessibilityLabel
       });
       await Share.share({
         title: (fileName || "Learning resource") + " · Dallyletter Elidems",
-        message: "Shared from Dallyletter Elidems. Anyone with this protected link can view the resource until it expires.\\n" + shareUrl,
+        message: "Shared from Dallyletter Elidems. Anyone with this protected link can view the resource until it expires.\n" + shareUrl,
         url: shareUrl,
       });
     } catch (error) {
