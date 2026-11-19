@@ -1316,6 +1316,29 @@ async function canAddSystemSubject(actor: NonNullable<Express.Request["currentUs
   return role === "teacher" && ["not_applicable", "approved"].includes(String(actor.teacherApplicationStatus ?? "not_applicable").toLowerCase());
 }
 
+router.get("/subjects/catalog/public", async (_req, res): Promise<void> => {
+  await ensureProfileHubSchema();
+  const [globalRows, custom] = await Promise.all([
+    pool.query(`SELECT min(subject) AS subject FROM (
+      SELECT trim(subject) AS subject FROM lessons WHERE subject IS NOT NULL AND trim(subject) <> ''
+      UNION ALL SELECT trim(subject) FROM classes WHERE subject IS NOT NULL AND trim(subject) <> ''
+      UNION ALL SELECT trim(subject) FROM assignments WHERE subject IS NOT NULL AND trim(subject) <> ''
+      UNION ALL SELECT trim(subject) FROM polls WHERE subject IS NOT NULL AND trim(subject) <> ''
+      UNION ALL SELECT trim(subject) FROM study_groups WHERE subject IS NOT NULL AND trim(subject) <> ''
+      UNION ALL SELECT trim(value) FROM learner_subjects CROSS JOIN LATERAL unnest(subjects) AS learner_subject(value)
+      UNION ALL SELECT trim(value) FROM teacher_subjects CROSS JOIN LATERAL unnest(subjects_to_teach) AS teacher_subject(value)
+    ) subject_sources WHERE subject <> '' GROUP BY lower(subject)`),
+    pool.query("SELECT subject FROM dallyletter_subject_catalog"),
+  ]);
+  const names = new Map<string, string>();
+  for (const row of [...globalRows.rows, ...custom.rows]) {
+    const subject = String(row.subject ?? "").trim();
+    if (subject) names.set(subject.toLocaleLowerCase(), names.get(subject.toLocaleLowerCase()) ?? subject);
+  }
+  res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=600");
+  res.json({ subjects: [...names.values()].sort((left, right) => left.localeCompare(right)), canAddSubject: false });
+});
+
 router.get("/subjects/catalog", requireAuth, async (req, res): Promise<void> => {
   await ensureProfileHubSchema();
   const [globalRows, saved, interactions, custom] = await Promise.all([
