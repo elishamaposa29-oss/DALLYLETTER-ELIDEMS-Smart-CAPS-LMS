@@ -59,7 +59,7 @@ export function UserSelector({
   const sourceUsers = suppliedUsers ?? users;
   const visibleUsers = useMemo(() => suppliedUsers ? sourceUsers.filter(person => person.name.toLowerCase().includes(query.toLowerCase())) : sourceUsers, [suppliedUsers, sourceUsers, query]);
   const selected = useMemo(() => sourceUsers.find(user => String(user.id) === String(value)) ?? (selectedUser && String(selectedUser.id) === String(value) ? selectedUser : undefined), [sourceUsers, value, selectedUser]);
-  useEffect(() => { if (value == null) setSelectedUser(undefined); else { const found = sourceUsers.find(user => String(user.id) === String(value)); if (found) setSelectedUser(found); } }, [value, sourceUsers]);
+  useEffect(() => { if (value == null) { if (selectedUser) setSelectedUser(undefined); } else { const found = sourceUsers.find(user => String(user.id) === String(value)); if (found && String(selectedUser?.id) !== String(found.id)) setSelectedUser(found); } }, [value, sourceUsers, selectedUser]);
 
   useEffect(() => {
     if (suppliedUsers) return;
