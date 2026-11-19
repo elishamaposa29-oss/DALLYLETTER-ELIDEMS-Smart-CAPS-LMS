@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { getApiUrl } from "@workspace/api-client-react";
 import { MessageCircle, Users, ShieldCheck, Save, Check, UserPlus } from "lucide-react";
+import { UserSelector } from "@/components/selection/UserSelector";
+import UserProfileLink from "@/components/UserProfileLink";
 
 type PrivacyMode = "me_only_authorized" | "selected_friends" | "everyone";
 type SectionSetting = { mode: PrivacyMode; selectedUserIds: number[] };
-type Friend = { id: number; name: string; role: string };
+type Friend = { id: number; name: string; role: string; avatarUrl?: string | null };
 type RequestRow = { id: number; requester_id: number; requester_name: string; requester_role: string; created_at: string };
 
 const sections = [
@@ -135,10 +137,10 @@ export function ProfileSocialControls({profileId,isSelf,role}:{profileId:number|
               <option value="everyone">Everyone</option>
             </select>
             {settings[key]?.mode==="selected_friends"&&<div className="mt-2 space-y-2 rounded-md bg-muted/30 p-2">
-              {friends.length?friends.map(friend=><label key={friend.id} className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={settings[key]?.selectedUserIds.includes(friend.id)||false} onChange={e=>setSettings(v=>({...v,[key]:{...v[key],selectedUserIds:e.target.checked?[...(v[key]?.selectedUserIds||[]),friend.id]:(v[key]?.selectedUserIds||[]).filter(id=>id!==friend.id)}}))}/>
-                {friend.name} <span className="text-xs text-muted-foreground">({friend.role})</span>
-              </label>):<p className="text-xs text-muted-foreground">No approved connections yet.</p>}
+              {friends.length ? <>
+                <UserSelector value={null} users={friends as any} showGroupFilter={false} placeholder="Search approved connections…" onChange={id=>{if(id)setSettings(v=>({...v,[key]:{...v[key],selectedUserIds:Array.from(new Set([...(v[key]?.selectedUserIds||[]),id]))}}));}} />
+                <div className="flex flex-wrap gap-2">{friends.filter(friend=>settings[key]?.selectedUserIds.includes(friend.id)).map(friend=><span key={friend.id} className="inline-flex items-center gap-1 rounded-full border bg-background px-2 py-1 text-xs"><UserProfileLink userId={friend.id} name={friend.name} avatarUrl={friend.avatarUrl} showAvatar={false}/><span>({friend.role})</span><button type="button" aria-label={"Remove "+friend.name} onClick={()=>setSettings(v=>({...v,[key]:{...v[key],selectedUserIds:(v[key]?.selectedUserIds||[]).filter(id=>id!==friend.id)}}))}>×</button></span>)}</div>
+              </> : <p className="text-xs text-muted-foreground">No approved connections yet.</p>}
             </div>}
           </div>)}
         </section>
