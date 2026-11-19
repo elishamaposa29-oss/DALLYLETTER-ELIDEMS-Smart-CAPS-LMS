@@ -108,7 +108,7 @@ export default function StudentChat() {
 
   const unreadForGroup = (id:number) => unreadSummary.groups.find(item=>item.id===id)?.unread ?? 0;
   const unreadForPrivate = (id:number) => unreadSummary.privateChats.find(item=>item.id===id)?.unread ?? 0;
-  const DUnread = ({count}:{count:number}) => count>0 ? <span className="inline-flex items-center gap-1 rounded-md border-2 border-[#C9A227] bg-[#0B1E3A] px-1 py-0.5 text-[10px] font-bold text-[#FFD700]"><img src="/favicon.svg" alt="" className="h-3.5 w-3.5 rounded border border-[#F2D98C]"/>{count>99?"99+":count}</span> : null;
+  const DUnread = ({count}:{count:number}) => count>0 ? <span className="dl-unread-gold-badge inline-flex items-center gap-1 rounded-md border-2 border-[#FFD700] bg-[#0B1E3A] px-1 py-0.5 text-[10px] font-bold text-[#FFD700]" aria-label={count+" unread"}><img src="/favicon.svg" alt="" className="h-3.5 w-3.5 rounded border border-[#FFD700]"/>{count>99?"99+":count}</span> : null;
 
   const sendMessageMutation = useSendMessage();
   const rootMessages = [...(messages?.filter(currentMessage => currentMessage.parentMessageId == null) ?? [])].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id - b.id);
@@ -448,7 +448,7 @@ export default function StudentChat() {
 ) : <p className="whitespace-pre-wrap break-words text-sm">{currentMessage.content}</p>}
                               </div>
                               <div className="mt-1 flex flex-wrap gap-2">{isGroupConversation && <><button type="button" className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary" onClick={() => setReplyTo(currentMessage.id)}><Reply className="h-3 w-3" />Reply</button><button type="button" className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-destructive disabled:opacity-50" onClick={() => void handleReport(currentMessage.id)} disabled={reportingMessageId === currentMessage.id}>{reportingMessageId === currentMessage.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Flag className="h-3 w-3" />}Report</button></>}{isMe && <button type="button" className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-destructive disabled:opacity-50" onClick={() => void handleDeleteMessage(currentMessage.id)} disabled={deletingMessageId === currentMessage.id}>{deletingMessageId === currentMessage.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}Delete</button>}</div>
-                              <span className="mt-1 text-[10px] text-muted-foreground opacity-70">{new Date(currentMessage.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                              <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground"><span>{new Date(currentMessage.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>{isMe && ((currentMessage as any).readByUserIds?.length ?? 0) > 0 && <span className="inline-flex items-center gap-1 font-semibold text-[#9A7020]" aria-label={isGroupConversation ? "Seen by "+(currentMessage as any).readByUserIds.length+" group members" : "Seen"}>{isGroupConversation ? "Seen by "+(currentMessage as any).readByUserIds.length : "Seen"} <span aria-hidden="true">✓✓</span></span>}</div>
                             </div>
                           </div>
                           {replies.length > 0 && <div className="mt-2 w-full space-y-2">{replies.map(reply => renderMessage(reply, depth + 1))}</div>}
