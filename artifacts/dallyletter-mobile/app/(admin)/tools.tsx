@@ -6,6 +6,7 @@ import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, Touc
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import UserSelector from "@/components/selection/UserSelector";
 
 type ToolSection = "command-center" | "alerts" | "settings" | "ai" | "safety" | "financial" | "achievements";
 type Row = Record<string, any> & { id?: number };
@@ -206,7 +207,7 @@ export default function OwnerTools() {
         <Text style={s.muted}>{data.workflow?.canDirectAward?"Owner-class awards are recorded immediately.":"Junior manager recommendations require independent senior-manager or owner approval. Badges and points are applied only after approval."} Duplicate pending recommendations are rejected by the API.</Text>
         {(data.achievements||[]).map((item:Row)=><TouchableOpacity key={item.id} onPress={()=>setAwardAchievementId(String(item.id))} style={[s.row,{borderWidth:1,borderColor:awardAchievementId===String(item.id)?colors.primary:colors.border,borderRadius:9,marginTop:6}]}><Text style={s.body}>{item.icon||"🏆"} {item.name} · {item.pointsValue??0} points</Text></TouchableOpacity>)}
         <Text style={[s.muted,{marginTop:12}]}>Learner</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:7}}>{(data.students||[]).map((item:Row)=><TouchableOpacity key={item.id} onPress={()=>setAwardUserId(String(item.id))} style={[s.chip,{backgroundColor:awardUserId===String(item.id)?colors.primary:colors.card}]}><Text style={{color:awardUserId===String(item.id)?"#fff":colors.foreground,fontSize:12}}>{item.name||item.email||("Learner #"+item.id)}</Text></TouchableOpacity>)}</ScrollView>
+        <UserSelector value={awardUserId||null} group="learners" showGroupFilter={false} placeholder="Search learners by name…" onChange={id=>setAwardUserId(id?String(id):"")} />
         <TextInput style={s.input} value={awardNote} onChangeText={setAwardNote} placeholder="Award note (optional)" placeholderTextColor={colors.mutedForeground}/>
         <TouchableOpacity style={s.button} onPress={()=>void awardAchievement()} disabled={busy||!awardAchievementId||!awardUserId}><Text style={s.buttonText}>{busy?"Working…":data.workflow?.canDirectAward?"Award selected badge":"Submit recommendation"}</Text></TouchableOpacity>
       </View>}
