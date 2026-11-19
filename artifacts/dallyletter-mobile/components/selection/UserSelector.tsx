@@ -10,7 +10,7 @@ type Person = { id:number; name:string; role:string; isPrefect?:boolean; isManag
 type Props = { value?:number|string|null; onChange:(id:number|null, user?:Person)=>void; group?:Group; showGroupFilter?:boolean; placeholder?:string; disabled?:boolean };
 
 const groups: Array<{value:Group;label:string}> = [
-  {value:"all",label:"All"}, {value:"teachers",label:"Teachers"}, {value:"prefects",label:"Prefects"},
+  {value:"all",label:"All"},{value:"everyone",label:"Everyone"}, {value:"teachers",label:"Teachers"}, {value:"prefects",label:"Prefects"},
   {value:"learners",label:"Learners"}, {value:"managers",label:"Managers"}, {value:"both",label:"Both"},
 ];
 
