@@ -10,10 +10,9 @@ import {
   getListMessagesQueryKey,
 } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
-import { Loader2, Send, Users, MessageSquare, Reply, X, Flag, BarChart3, RefreshCw, User, ArrowLeft, Check, Paperclip, Trash2, Maximize2, Minimize2 } from "lucide-react";
+import { Loader2, Send, Users, MessageSquare, Reply, X, Flag, RefreshCw, User, ArrowLeft, Paperclip, Trash2, Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { useState, useRef, useEffect, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { SendMessageBodyType } from "@workspace/api-client-react";
