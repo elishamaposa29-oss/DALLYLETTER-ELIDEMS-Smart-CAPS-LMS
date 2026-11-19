@@ -71,8 +71,8 @@ export function SubjectSelector({ value, onChange, placeholder = "Search or type
     <datalist id={listId}>{subjects.map(subject => <option key={subject} value={subject} />)}</datalist>
     {(loading || matches.length > 0 || (normalized && !exact && canAdd)) && <div className="max-h-44 overflow-y-auto rounded-md border bg-popover p-1">
       {loading && <p className="p-2 text-xs text-muted-foreground">Loading subjects…</p>}
-      {matches.map(subject => <button type="button" key={subject} disabled={disabled} onClick={() => void choose(subject)} className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-muted">{subject}</button>)}
-      {normalized && !exact && canAdd && <button type="button" disabled={disabled} onClick={() => void add()} className="block w-full rounded px-2 py-1.5 text-left text-sm font-medium text-primary hover:bg-muted">+ Add “{normalized}” to Dallyletter</button>}
+      {matches.map(subject => <button type="button" key={subject} disabled={disabled} onMouseDown={event => event.preventDefault()} onClick={() => void choose(subject)} className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-muted">{subject}</button>)}
+      {normalized && !exact && canAdd && <button type="button" disabled={disabled} onMouseDown={event => event.preventDefault()} onClick={() => void add()} className="block w-full rounded px-2 py-1.5 text-left text-sm font-medium text-primary hover:bg-muted">+ Add “{normalized}” to Dallyletter</button>}
     </div>}
     {notice && <p role="status" className="text-xs text-muted-foreground">{notice}</p>}
   </div>;
