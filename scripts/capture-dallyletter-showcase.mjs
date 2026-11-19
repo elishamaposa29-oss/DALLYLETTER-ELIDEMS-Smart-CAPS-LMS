@@ -630,15 +630,15 @@ try {
     // DEMx 430 remains the configured Owner login; no new account or signup path is introduced.
     ["owner", "/admin", process.env.SHOWCASE_OWNER_EMAIL, process.env.SHOWCASE_OWNER_PASSWORD]
   ];
-  if (process.env.SHOWCASE_CAPTURE_AUTHENTICATED === "false") {
-    results.push({ type: "dashboard", role: "all", status: "skipped", reason: "Pull-request runs capture public pages only; authenticated showcase accounts are used only after a matching main deployment." });
+  const authenticatedCaptureEnabled = process.env.SHOWCASE_CAPTURE_AUTHENTICATED !== "false";
+  if (!authenticatedCaptureEnabled) {
+    results.push({ type: "dashboard", role: "all", status: "skipped", reason: "Authenticated showcase capture is disabled for this run; no role is counted as verified." });
   } else {
     for (const account of roleAccounts) await captureRole(...account);
   }
   const roleResults = results.filter((result) => result.type === "dashboard");
   const requiredCvRoles = new Set(["owner", "senior_manager", "junior_manager", "manager", "admin", "teacher", "learner"]);
   const previewRun = process.env.GITHUB_EVENT_NAME === "pull_request";
-  const authenticatedCaptureEnabled = !previewRun && process.env.SHOWCASE_CAPTURE_AUTHENTICATED !== "false";
   const missingRequiredRoleAccounts = authenticatedCaptureEnabled
     ? [...requiredCvRoles].filter((role) => !roleResults.some((result) => result.role === role && result.status === "captured"))
     : [...requiredCvRoles];
