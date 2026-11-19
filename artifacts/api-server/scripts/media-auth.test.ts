@@ -55,8 +55,8 @@ test("creates a canonical protected link and sends the authenticated share reque
     assert.equal(parsed.pathname, "/shared-media");
     assert.equal(parsed.searchParams.get("m"), storageKey);
     assert.equal(parsed.searchParams.get("mt"), "image/jpeg");
-    assert.equal(parsed.searchParams.get("t"), "image");
-    assert.equal(parsed.searchParams.get("n"), "Protected image");
+    assert.equal(parsed.searchParams.get("t"), null, "MIME metadata should make a duplicate media-type query unnecessary");
+    assert.equal(parsed.searchParams.get("n"), null, "Titles should not bloat portable share URLs");
     assert.equal(parsed.searchParams.get("k"), shareToken);
     assert.equal(parsed.searchParams.has("shareToken"), false);
     assert.equal(parsed.hash, "");
