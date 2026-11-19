@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SubjectSelector } from "@/components/selection/SubjectSelector";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -259,7 +260,7 @@ export default function AdminPolls() {
                     <SelectContent>{["Grade 8","Grade 9","Grade 10","Grade 11","Grade 12"].map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1.5"><Label>Subject</Label><Input placeholder="e.g. Mathematics" value={newPoll.subject} onChange={e => setNewPoll(p => ({ ...p, subject: e.target.value }))} /></div>
+                <div className="space-y-1.5"><Label>Subject</Label><SubjectSelector value={newPoll.subject} onChange={subject => setNewPoll(p => ({ ...p, subject }))} placeholder="Search or type a subject…" /></div>
                 <div className="space-y-1.5">
                   <Label>Mode</Label>
                   <Select value={newPoll.mode} onValueChange={v => setNewPoll(p => ({ ...p, mode: v }))}>
