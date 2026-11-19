@@ -632,7 +632,7 @@ try {
   // credentials must belong to an existing learner/teacher promoted by the Owner.
   const roleAccounts = [
     ["learner", "/student", process.env.SHOWCASE_LEARNER_EMAIL, process.env.SHOWCASE_LEARNER_PASSWORD],
-    ["prefect", "/student", process.env.SHOWCASE_PREFECT_EMAIL, process.env.SHOWCASE_PREFECT_PASSWORD],
+    ["prefect", "/student", process.env.SHOWCASE_PREFECT_EMAIL || process.env.SHOWCASE_LEARNER_EMAIL, process.env.SHOWCASE_PREFECT_PASSWORD || process.env.SHOWCASE_LEARNER_PASSWORD],
     ["teacher", "/teacher", process.env.SHOWCASE_TEACHER_EMAIL, process.env.SHOWCASE_TEACHER_PASSWORD],
     ["junior_manager", "/manager", process.env.SHOWCASE_JUNIOR_MANAGER_EMAIL, process.env.SHOWCASE_JUNIOR_MANAGER_PASSWORD],
     ["senior_manager", "/manager", process.env.SHOWCASE_SENIOR_MANAGER_EMAIL, process.env.SHOWCASE_SENIOR_MANAGER_PASSWORD],
@@ -648,7 +648,7 @@ try {
     for (const account of roleAccounts) await captureRole(...account);
   }
   const roleResults = results.filter((result) => result.type === "dashboard");
-  const requiredCvRoles = new Set(["owner", "senior_manager", "junior_manager", "manager", "admin", "teacher", "learner"]);
+  const requiredCvRoles = new Set(["owner", "senior_manager", "junior_manager", "manager", "admin", "teacher", "learner", "prefect"]);
   const previewRun = process.env.GITHUB_EVENT_NAME === "pull_request";
   const missingRequiredRoleAccounts = authenticatedCaptureEnabled
     ? [...requiredCvRoles].filter((role) => !roleResults.some((result) => result.role === role && result.status === "captured"))
