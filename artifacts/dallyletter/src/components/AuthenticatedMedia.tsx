@@ -101,13 +101,50 @@ export function AuthenticatedMedia({ url, type, title, brandedShare = false, sha
     };
   }, [url, brandedShare, shareToken]);
 
+  const downloadBrandedImage = async () => {
+    try {
+      const source = document.querySelector<HTMLImageElement>("[data-dallyletter-shared-image]");
+      if (!source || !source.complete || !source.naturalWidth) throw new Error("Image is not ready to export yet.");
+      const canvas = document.createElement("canvas");
+      canvas.width = source.naturalWidth;
+      canvas.height = source.naturalHeight;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Image export is not supported on this device.");
+      context.drawImage(source, 0, 0);
+      const logo = new Image();
+      logo.src = "/icons/icon-192.png";
+      await logo.decode();
+      const markWidth = Math.max(30, Math.round(canvas.width * 0.075));
+      const markHeight = markWidth;
+      const margin = Math.max(10, Math.round(canvas.width * 0.018));
+      context.globalAlpha = 0.82;
+      context.fillStyle = "rgba(0,0,0,0.48)";
+      context.fillRect(canvas.width - markWidth - margin * 2 - 150, canvas.height - markHeight - margin * 2, markWidth + margin * 2 + 150, markHeight + margin * 2);
+      context.drawImage(logo, canvas.width - markWidth - margin, canvas.height - markHeight - margin, markWidth, markHeight);
+      context.globalAlpha = 1;
+      context.fillStyle = "#fff";
+      context.font = "600 12px sans-serif";
+      context.textAlign = "right";
+      context.fillText("DALLYLETTER ELIDEMS", canvas.width - margin, canvas.height - margin - markHeight / 2 + 4);
+      const output = await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("Could not create the watermarked image.")), "image/png"));
+      const href = URL.createObjectURL(output);
+      const anchor = document.createElement("a");
+      anchor.href = href;
+      anchor.download = "dallyletter-" + (title || "shared-image").replace(/[^a-z0-9-_]+/gi, "-").slice(0, 60) + ".png";
+      anchor.click();
+      URL.revokeObjectURL(href);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Could not prepare the watermarked image.");
+    }
+  };
+
   const downloadUrl = (() => { if (objectUrl?.startsWith("blob:")) return objectUrl; try { const target = new URL(objectUrl || "", window.location.origin); target.searchParams.set("download", "1"); return target.toString(); } catch { return objectUrl || ""; } })();
 
   if (error) return <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"><p className="font-semibold">Media unavailable</p><p className="mt-1">The learning resource could not be loaded safely.</p><Button type="button" size="sm" variant="outline" className="mt-3 gap-1" onClick={()=>window.location.reload()}><RefreshCw className="h-3.5 w-3.5"/>Try again</Button></div>;
   if (!objectUrl) return <p className="text-sm text-muted-foreground">Loading media...</p>;
   if (type === "audio") return <div className="space-y-2 rounded-md border p-3">{brandedShare && <p className="text-xs font-bold tracking-wide text-muted-foreground">DALLYLETTER ELIDEMS · SHARED LEARNING RESOURCE</p>}<audio className="w-full" src={objectUrl} title={title} controls preload="none" />{brandedShare && <a className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm" href={downloadUrl} download><Download className="h-4 w-4"/>Download file to share</a>}{supportsProtectedShare && <Button type="button" size="sm" variant="outline" onClick={() => void shareBrandedLink()}><Share2 className="mr-2 h-4 w-4"/>Share protected link</Button>}</div>;
   if (type === "video") return <div className="space-y-2"><div className="relative overflow-hidden rounded-md bg-black"><video className="aspect-video w-full rounded-md bg-black" src={objectUrl} title={title} controls preload="none" playsInline />{brandedShare && <span aria-hidden="true" className="pointer-events-none absolute bottom-3 right-3 inline-flex items-center gap-1 rounded bg-black/55 px-1.5 py-1 text-[9px] font-semibold tracking-wide text-white"><img src="/icons/icon-192.png" alt="" className="h-3 w-3 rounded-[2px]"/>DALLYLETTER ELIDEMS</span>}</div>{brandedShare && <a className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm" href={downloadUrl} download><Download className="h-4 w-4"/>Download file to share</a>}{supportsProtectedShare && <Button type="button" size="sm" variant="outline" onClick={() => void shareBrandedLink()}><Share2 className="mr-2 h-4 w-4"/>Share protected link</Button>}</div>;
-  if (type === "image") return <div className="space-y-2"><div className="flex flex-wrap gap-1.5"><Button type="button" size="sm" variant="outline" onClick={()=>setScale(s=>Math.min(3,s+.25))} aria-label="Zoom in"><ZoomIn className="h-4 w-4"/></Button><Button type="button" size="sm" variant="outline" onClick={()=>setScale(s=>Math.max(.5,s-.25))} aria-label="Zoom out"><ZoomOut className="h-4 w-4"/></Button><Button type="button" size="sm" variant="outline" onClick={()=>window.open(objectUrl,"_blank","noopener,noreferrer")}><Expand className="mr-1 h-4 w-4"/>Full screen</Button><a className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm" href={downloadUrl} download><Download className="h-4 w-4"/>Download</a>{supportsProtectedShare && <Button type="button" size="sm" variant="outline" onClick={() => void shareBrandedLink()}><Share2 className="mr-1 h-4 w-4"/>Share protected link</Button>}</div><div className="overflow-auto rounded-md border bg-white"><div className="relative"><img className="max-h-[70vh] w-full origin-center object-contain transition-transform" style={{transform:`scale(${scale})`}} src={objectUrl} alt={title} loading="lazy" decoding="async"/>{brandedShare && <><div aria-hidden="true" className="pointer-events-none absolute inset-0 grid place-items-center overflow-hidden"><span className="rotate-[-24deg] rounded-lg bg-black/30 px-4 py-2 text-center text-sm font-black tracking-[0.2em] text-white/80 sm:text-xl"><img src="/icons/icon-192.png" alt="" className="mx-auto mb-1 h-5 w-5 rounded"/>DALLYLETTER ELIDEMS</span></div><span className="pointer-events-none absolute bottom-2 right-2 rounded bg-black/60 px-2 py-1 text-[10px] font-bold tracking-wide text-white">DALLYLETTER ELIDEMS</span></>}</div></div></div>;
+  if (type === "image") return <div className="space-y-2"><div className="flex flex-wrap gap-1.5"><Button type="button" size="sm" variant="outline" onClick={()=>setScale(s=>Math.min(3,s+.25))} aria-label="Zoom in"><ZoomIn className="h-4 w-4"/></Button><Button type="button" size="sm" variant="outline" onClick={()=>setScale(s=>Math.max(.5,s-.25))} aria-label="Zoom out"><ZoomOut className="h-4 w-4"/></Button><Button type="button" size="sm" variant="outline" onClick={()=>window.open(objectUrl,"_blank","noopener,noreferrer")}><Expand className="mr-1 h-4 w-4"/>Full screen</Button>{brandedShare ? <Button type="button" size="sm" variant="outline" onClick={() => void downloadBrandedImage()}><Download className="h-4 w-4"/>Download watermarked image</Button> : <a className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm" href={downloadUrl} download><Download className="h-4 w-4"/>Download</a>}{supportsProtectedShare && <Button type="button" size="sm" variant="outline" onClick={() => void shareBrandedLink()}><Share2 className="mr-1 h-4 w-4"/>Share protected link</Button>}</div><div className="overflow-auto rounded-md border bg-white"><div className="relative"><img className="max-h-[70vh] w-full origin-center object-contain transition-transform" style={{transform:`scale(${scale})`}} src={objectUrl} alt={title} loading="lazy" decoding="async" crossOrigin="anonymous" data-dallyletter-shared-image="true"/>{brandedShare && <><div aria-hidden="true" className="pointer-events-none absolute inset-0 grid place-items-center overflow-hidden"><span className="rotate-[-24deg] rounded-lg bg-black/30 px-4 py-2 text-center text-sm font-black tracking-[0.2em] text-white/80 sm:text-xl"><img src="/icons/icon-192.png" alt="" className="mx-auto mb-1 h-5 w-5 rounded"/>DALLYLETTER ELIDEMS</span></div><span className="pointer-events-none absolute bottom-2 right-2 rounded bg-black/60 px-2 py-1 text-[10px] font-bold tracking-wide text-white">DALLYLETTER ELIDEMS</span></>}</div></div></div>;
 
   return (
     <div className="space-y-2">
