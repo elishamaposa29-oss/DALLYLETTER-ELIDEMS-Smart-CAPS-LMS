@@ -206,6 +206,7 @@ router.get("/lessons/media/:storageKey", mediaAccess, async (req, res): Promise<
     if (remote) {
       res.status(remote.status);
       remote.headers.forEach((value, key) => res.setHeader(key, value));
+      res.setHeader("Cache-Control", "private, max-age=300");
       if (req.query.download === "1") res.setHeader("Content-Disposition", `attachment; filename="dallyletter-media-${storageKey}"`);
       if (remote.body) {
         // Preserve backpressure for large R2 videos/PDFs and stop cleanly if the client disconnects.
@@ -221,6 +222,7 @@ router.get("/lessons/media/:storageKey", mediaAccess, async (req, res): Promise<
       : "application/octet-stream";
     res.setHeader("Content-Type", mediaType);
     res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "private, max-age=300");
     if (req.query.download === "1") res.setHeader("Content-Disposition", `attachment; filename="dallyletter-media-${storageKey}"`);
     res.setHeader("Accept-Ranges", "bytes");
     const range = req.headers.range;
