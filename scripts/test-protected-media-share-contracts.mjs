@@ -54,6 +54,11 @@ assert.ok(lesson.includes("AuthenticatedMediaPreview"));
 assert.ok(!lesson.includes("Share.share") && !lesson.includes("createProtectedMediaShareLink"), "Lesson details must not add a second share system; per-media protected sharing is reused");
 assert.ok(!lesson.includes("extractLessonLinks(selectedLesson.content).join"), "Lesson sharing must not expose raw lesson URLs or content");
 
+const apiLessons = readFileSync(join(root, "artifacts/api-server/src/routes/lessons.ts"), "utf8");
+assert.ok(apiLessons.includes('digest().subarray(0, 16).toString("base64url")'), "New signing keys must be compact 128-bit base64url values");
+assert.ok(apiLessons.includes('|[A-Za-z0-9_-]{22}'), "Server must accept compact share keys");
+assert.ok(apiLessons.includes('|[a-f0-9]{64}'), "Server must continue accepting existing long share keys");
+
 const sharedPage = contents.get("artifacts/dallyletter/src/pages/SharedMedia.tsx");
 assert.ok(sharedPage.includes("shareToken={shareToken}"), "Shared-media page must pass the signed token into the viewer");
 assert.ok(sharedPage.includes('params.get("k")'), "Compact share key must be supported");
