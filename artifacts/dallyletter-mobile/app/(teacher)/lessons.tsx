@@ -22,6 +22,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import AuthenticatedMediaPreview from "@/components/AuthenticatedMediaPreview";
 import OfflineMediaDownload from "@/components/OfflineMediaDownload";
+import SubjectSelector from "@/components/selection/SubjectSelector";
 
 function extractLessonLinks(value: unknown): string[] {
   const source = String(value ?? "");
@@ -282,7 +283,7 @@ export default function TeacherLessons() {
               <TextInput style={s.input} placeholder="Lesson title" placeholderTextColor={colors.mutedForeground} value={title} onChangeText={setTitle} />
 
               <Text style={s.label}>Subject *</Text>
-              <TextInput style={s.input} placeholder="e.g. Mathematics" placeholderTextColor={colors.mutedForeground} value={subject} onChangeText={setSubject} />
+              <SubjectSelector value={subject} onChange={setSubject} placeholder="Search or type a subject…" />
 
               <Text style={s.label}>Grade</Text>
               <TextInput style={s.input} placeholder="e.g. Grade 10" placeholderTextColor={colors.mutedForeground} value={grade} onChangeText={setGrade} />
