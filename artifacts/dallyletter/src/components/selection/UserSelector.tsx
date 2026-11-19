@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "wouter";
-import { getApiUrl } from "@/lib/api";
+import { getApiUrl } from "@workspace/api-client-react";
+import UserProfileLink from "@/components/UserProfileLink";
 
 type DirectoryUser = {
   id: number;
@@ -91,21 +91,15 @@ export function UserSelector({
     </label>}
     <input disabled={disabled} value={query} onChange={event => setQuery(event.target.value)} placeholder={placeholder} aria-label="Search users" className="w-full rounded-md border bg-background px-3 py-2 text-sm" />
     {selected && <div className="flex items-center gap-2 rounded-lg border bg-muted/30 p-2 text-sm">
-      <Link href={"/profile/" + selected.id} aria-label={"Open " + selected.name + " profile"} className="shrink-0 rounded-full focus-visible:outline focus-visible:outline-2">
-        {selected.avatarUrl ? <img src={selected.avatarUrl} alt={selected.name + " profile"} className="h-10 w-10 rounded-full object-cover" /> : <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 font-semibold">{selected.name.slice(0, 1).toUpperCase()}</span>}
-      </Link>
-      <div className="min-w-0 flex-1"><div className="truncate font-medium">{selected.name}</div><div className="text-xs capitalize text-muted-foreground">{selected.isPrefect ? "Prefect" : selected.role.replaceAll("_", " ")}</div></div>
+      <UserProfileLink userId={selected.id} name={selected.name} avatarUrl={selected.avatarUrl} className="min-w-0 flex-1" />
+      <div className="min-w-0"><div className="text-xs capitalize text-muted-foreground">{selected.isPrefect ? "Prefect" : selected.role.replaceAll("_", " ")}</div></div>
       <button type="button" disabled={disabled} onClick={() => onChange(null)} className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted">Clear</button>
     </div>}
     <div role="listbox" aria-label="Matching users" className="max-h-56 space-y-1 overflow-y-auto rounded-md border p-1">
       {!suppliedUsers && loading ? <p className="p-3 text-sm text-muted-foreground">Loading people…</p> : error ? <p role="alert" className="p-3 text-sm text-destructive">{error}</p> : visibleUsers.length === 0 ? <p className="p-3 text-sm text-muted-foreground">No matching people.</p> : visibleUsers.map(person => <div key={person.id} className="flex items-center gap-2 rounded-md p-2 hover:bg-muted/60">
-        <Link href={"/profile/" + person.id} aria-label={"Open " + person.name + " profile"} className="shrink-0 rounded-full focus-visible:outline focus-visible:outline-2">
-          {person.avatarUrl ? <img src={person.avatarUrl} alt={person.name + " profile"} className="h-9 w-9 rounded-full object-cover" /> : <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold">{person.name.slice(0, 1).toUpperCase()}</span>}
-        </Link>
-        <button type="button" role="option" aria-selected={String(person.id) === String(value)} disabled={disabled} onClick={() => choose(person)} className="min-w-0 flex-1 text-left">
-          <span className="block truncate text-sm font-medium">{person.name}</span>
-          <span className="block truncate text-xs capitalize text-muted-foreground">{person.isPrefect ? "Prefect" : person.role.replaceAll("_", " ")}{person.grade ? " · " + person.grade : ""}</span>
-        </button>
+        <UserProfileLink userId={person.id} name={person.name} avatarUrl={person.avatarUrl} className="min-w-0 flex-1" />
+        <div className="min-w-0 flex-1 text-xs capitalize text-muted-foreground">{person.isPrefect ? "Prefect" : person.role.replaceAll("_", " ")}{person.grade ? " · " + person.grade : ""}</div>
+        <button type="button" role="option" aria-selected={String(person.id) === String(value)} disabled={disabled} onClick={() => choose(person)} className="rounded-md border px-2 py-1 text-xs hover:bg-muted">Select</button>
       </div>)}
     </div>
   </div>;
