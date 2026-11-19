@@ -32,11 +32,9 @@ export default function AdminAchievements() {
   const load = () => {
     void Promise.all([
       fetch(getApiUrl("/api/achievements"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
-      fetch(getApiUrl("/api/users"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json()),
       fetch(getApiUrl("/api/achievements/award/recommendations"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.ok ? r.json() : null),
-    ]).then(([a, u, workflow]) => {
+     ]).then(([a, workflow]) => {
       setAchievements(Array.isArray(a) ? a : []);
-      setStudents(Array.isArray(u) ? u : []);
       setRecommendations(Array.isArray(workflow?.items) ? workflow.items : []);
       setCanApproveRecommendations(workflow?.canApprove === true);
       setCanDirectAward(workflow?.canDirectAward === true);
