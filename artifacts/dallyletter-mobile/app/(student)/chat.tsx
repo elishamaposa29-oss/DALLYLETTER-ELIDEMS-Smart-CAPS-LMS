@@ -2,13 +2,13 @@ import { FeedbackMessage } from "@/components/FeedbackMessage";
 import { Feather } from "@expo/vector-icons";
 import { useListMessages, useSendMessage, useListStudyGroups } from "@workspace/api-client-react";
 import * as Haptics from "expo-haptics";
-import { AppState, Platform, FlatList, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Image } from "react-native";
+import { AppState, Platform, FlatList, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Image, Modal } from "react-native";
 import { getApiUrl } from "@workspace/api-client-react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useEffect, useState } from "react";
-type ChatGroup = { id: number; name: string; isMember?: boolean; members?: Array<{ id: number }> };
+type ChatGroup = { id: number; name: string; description?: string | null; subject?: string; creatorName?: string; memberCount?: number; createdAt?: string; isMember?: boolean; members?: Array<{ id: number; name?: string; role?: string; isPrefect?: boolean }> };
 import { useAuth } from "@/contexts/AuthContext";
 import { UserProfileLink } from "@/components/UserProfileLink";
 import { useColors } from "@/hooks/useColors";
@@ -40,6 +40,7 @@ export default function StudentChat() {
   const groups = (groupData ?? []) as unknown as ChatGroup[];
   const joinedGroups = groups.filter(group => group.isMember ?? group.members?.some(member => member.id === user?.id));
   const selectedGroup = joinedGroups.find(group => group.id === selectedGroupId);
+  const [groupHubOpen, setGroupHubOpen] = useState(false);
   const [queuedMessages, setQueuedMessages] = useState<any[]>([]);
   const [retrySignal, setRetrySignal] = useState(0);
   const queueKey = user?.id ? "dallyletter_mobile_chat_outbox_user_" + user.id : null;
@@ -200,9 +201,9 @@ export default function StudentChat() {
   return (
     <KeyboardAvoidingView style={s.container} behavior="padding" keyboardVerticalOffset={0}>
       <View style={s.header}>
-        <View style={s.avatarWrap}>
+        <TouchableOpacity style={s.avatarWrap} onPress={() => selectedGroup && setGroupHubOpen(true)} disabled={!selectedGroup} accessibilityRole="button" accessibilityLabel={selectedGroup ? "Open " + selectedGroup.name + " group hub" : "No group selected"}>
           <Feather name="users" size={18} color="#ffffff" />
-        </View>
+        </TouchableOpacity>
         <View style={s.headerText}>
           <Text style={s.headerTitle}>Class Chat</Text>
           <Text style={s.headerSub}>{selectedGroup?.name || (groupsLoading ? "Loading groups…" : "Select a joined group")}</Text>
@@ -241,6 +242,34 @@ export default function StudentChat() {
         />
       )}
 
+      <Modal visible={groupHubOpen && Boolean(selectedGroup)} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setGroupHubOpen(false)}>
+        <View style={{flex:1,backgroundColor:colors.background,paddingTop:insets.top+12}}>
+          <View style={{flexDirection:"row",alignItems:"center",justifyContent:"space-between",paddingHorizontal:20,paddingBottom:16,borderBottomWidth:1,borderBottomColor:colors.border}}>
+            <View style={{flex:1,paddingRight:12}}>
+              <Text style={{fontSize:11,fontWeight:"800",letterSpacing:1.2,color:colors.mutedForeground}}>STUDY GROUP HUB</Text>
+              <Text style={{fontSize:21,fontWeight:"900",color:colors.foreground}}>{selectedGroup?.name}</Text>
+            </View>
+            <TouchableOpacity onPress={() => setGroupHubOpen(false)} accessibilityRole="button" accessibilityLabel="Close group hub" style={{padding:10,borderRadius:20,backgroundColor:colors.card}}><Feather name="x" size={20} color={colors.foreground}/></TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={{padding:20,gap:16}}>
+            <View style={{backgroundColor:colors.card,borderColor:colors.border,borderWidth:1,borderRadius:18,padding:16,gap:8}}>
+              <Text style={{fontSize:18,fontWeight:"800",color:colors.foreground}}>{selectedGroup?.name}</Text>
+              <Text style={{fontSize:13,color:colors.mutedForeground}}>{selectedGroup?.subject || "Learning community"} · {selectedGroup?.memberCount ?? selectedGroup?.members?.length ?? 0} members</Text>
+              <Text style={{fontSize:14,lineHeight:21,color:colors.foreground}}>{selectedGroup?.description?.trim() || "This group has not added a description yet."}</Text>
+              <Text style={{fontSize:12,color:colors.mutedForeground}}>Created by {selectedGroup?.creatorName || "Group creator"}{selectedGroup?.createdAt ? " · " + new Date(selectedGroup.createdAt).toLocaleDateString() : ""}</Text>
+            </View>
+            <View style={{gap:10}}>
+              <Text style={{fontSize:16,fontWeight:"800",color:colors.foreground}}>Members ({selectedGroup?.members?.length ?? 0})</Text>
+              {(selectedGroup?.members || []).map(member => <View key={member.id} style={{flexDirection:"row",alignItems:"center",gap:12,padding:12,borderRadius:14,backgroundColor:colors.card,borderWidth:1,borderColor:colors.border}}>
+                <View style={{width:36,height:36,borderRadius:18,backgroundColor:colors.primary,alignItems:"center",justifyContent:"center"}}><Feather name="user" size={16} color="#fff"/></View>
+                <View style={{flex:1}}><Text style={{fontSize:14,fontWeight:"700",color:colors.foreground}}>{member.name || "Group member"}</Text><Text style={{fontSize:11,color:colors.mutedForeground}}>{member.role || "Member"}{member.isPrefect ? " · Prefect" : ""}</Text></View>
+              </View>)}
+              {(!selectedGroup?.members || selectedGroup.members.length===0) && <Text style={{fontSize:13,color:colors.mutedForeground}}>Member details are not available.</Text>}
+            </View>
+            <TouchableOpacity onPress={() => setGroupHubOpen(false)} style={{backgroundColor:colors.primary,borderRadius:14,padding:15,alignItems:"center"}}><Text style={{color:"#fff",fontWeight:"800"}}>Return to group chat</Text></TouchableOpacity>
+          </ScrollView>
+        </View>
+      </Modal>
       <View style={s.inputArea}>
         <TextInput
           style={s.input}
