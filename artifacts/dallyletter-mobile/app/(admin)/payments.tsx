@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
+import UserSelector from "@/components/selection/UserSelector";
 
 export default function AdminPayments() {
   const colors = useColors();
@@ -177,19 +178,7 @@ export default function AdminPayments() {
             <View style={s.modal}>
               <Text style={s.modalTitle}>Record Payment</Text>
               <Text style={s.label}>Select Student</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
-                <View style={s.studentPicker}>
-                  {students.map((st: any) => (
-                    <TouchableOpacity
-                      key={st.id}
-                      style={[s.studentChip, studentId === String(st.id) && s.studentChipActive]}
-                      onPress={() => setStudentId(String(st.id))}
-                    >
-                      <Text style={[s.studentChipText, studentId === String(st.id) && s.studentChipTextActive]}>{st.name}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </ScrollView>
+              <UserSelector value={studentId || null} group="learners" showGroupFilter={false} placeholder="Search learners by name…" onChange={id=>setStudentId(id?String(id):"")} />
               <Text style={s.label}>Amount (R) *</Text>
               <TextInput style={s.input} placeholder="e.g. 500" placeholderTextColor={colors.mutedForeground} value={amount} onChangeText={setAmount} keyboardType="numeric" />
               <Text style={s.label}>Month *</Text>
