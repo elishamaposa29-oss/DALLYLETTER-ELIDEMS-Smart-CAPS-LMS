@@ -33,6 +33,7 @@ type GroupView = {
   memberCount: number;
   isMember?: boolean;
   members?: Array<{ id: number; name?: string; avatarUrl?: string | null }>;
+  settings?: GroupSettings;
 };
 
 type GroupSettings = {
@@ -360,7 +361,7 @@ export default function StudentChat() {
                     return renderMessage(messageItem);
                   })
                 )}
-                {isGroupConversation && <StudyGroupPollPanel groupId={selectedGroupId} allowPolls={settings.allowPolls} />}
+                {isGroupConversation && <StudyGroupPollPanel groupId={selectedGroupId} allowPolls={selectedGroup?.settings?.allowPolls !== false} />}
                 <div ref={messagesEndRef} />
               </div>
 
