@@ -43,7 +43,7 @@ function signMediaShare(storageKey: string, expiresAt: number): string {
   return `${expiresAt}.${createHmac("sha256", secret).update(payload).digest().subarray(0, 16).toString("base64url")}`;
 }
 function validMediaShare(storageKey: string, token: unknown): boolean {
-  if (typeof token !== "string" || !/^[0-9]{10,12}\.[a-f0-9]{64}$/i.test(token)) return false;
+  if (typeof token !== "string" || !/^[0-9]{10,12}\.(?:[a-f0-9]{64}|[A-Za-z0-9_-]{22})$/i.test(token)) return false;
   const [expiryText, signature] = token.split(".");
   const expiresAt = Number(expiryText);
   if (!Number.isSafeInteger(expiresAt) || expiresAt < Math.floor(Date.now() / 1000)) return false;
