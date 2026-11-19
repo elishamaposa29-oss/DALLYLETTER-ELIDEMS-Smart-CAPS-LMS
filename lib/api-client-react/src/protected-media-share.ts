@@ -23,7 +23,6 @@ export async function createProtectedMediaShareLink(options: CreateProtectedMedi
   }
   const match = target.pathname.match(/^\/api\/lessons\/media\/([a-f0-9-]{36})$/i);
   if (!match) throw new Error("This item does not have a supported protected lesson-media link.");
-  const resourcePath = target.pathname + target.search;
   const response = await fetch(getApiUrl("/api/lessons/media/" + match[1] + "/share"), {
     method: "POST",
     headers: { Authorization: "Bearer " + options.token },
@@ -39,11 +38,15 @@ export async function createProtectedMediaShareLink(options: CreateProtectedMedi
     mimeType.startsWith("audio/") ? "audio" : "document"
   );
   const page = new URL("/shared-media", options.webBaseUrl);
+  if (page.protocol !== "https:" && page.hostname !== "localhost" && page.hostname !== "127.0.0.1") {
+    throw new Error("Protected share links must use HTTPS.");
+  }
   page.searchParams.set("m", match[1]);
   page.searchParams.set("t", inferredType);
   const originalMime = target.searchParams.get("type");
   if (originalMime) page.searchParams.set("mt", originalMime);
   if (options.title) page.searchParams.set("n", options.title.slice(0, 80));
-  page.searchParams.set("k", data.shareToken);
+  // Keep the signing key in the URL fragment: it is not sent in HTTP requests or referrer headers.
+  page.hash = new URLSearchParams({ k: data.shareToken }).toString();
   return page.toString();
 }
