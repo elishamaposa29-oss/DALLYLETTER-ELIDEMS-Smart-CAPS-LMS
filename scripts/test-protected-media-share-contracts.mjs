@@ -36,6 +36,8 @@ assert.ok(web.includes("brandedShare && shareToken"));
 assert.ok(web.includes('path.startsWith("/api/lessons/media/")'));
 assert.ok(web.includes('mediaRequestUrl.searchParams.set("shareToken", shareToken)'), "Public viewer must pass its signed token to the protected media endpoint");
 assert.ok(web.includes("Stream public media directly"), "Shared media must stream without downloading a complete blob first");
+assert.ok(web.includes("downloadBrandedImage") && web.includes('logo.src = "/icons/icon-192.png"'), "Exported shared images must carry the Dallyletter app-logo watermark");
+assert.ok(web.includes("data-dallyletter-shared-image"), "The displayed source image must be used for watermarked export without a second download");
 assert.ok(web.includes('preload="none"'), "Audio and video must not preload large files on low-data connections");
 assert.ok(!web.includes("files:[file]"), "Web must never bypass protected links by sharing raw media files");
 assert.equal((web.match(/supportsProtectedShare && <Button/g) || []).length, 4, "Every supported web media type must use the same protected share control");
@@ -58,6 +60,8 @@ const apiLessons = readFileSync(join(root, "artifacts/api-server/src/routes/less
 assert.ok(apiLessons.includes('digest().subarray(0, 16).toString("base64url")'), "New signing keys must be compact 128-bit base64url values");
 assert.ok(apiLessons.includes('|[A-Za-z0-9_-]{22}'), "Server must accept compact share keys");
 assert.ok(apiLessons.includes('|[a-f0-9]{64}'), "Server must continue accepting existing long share keys");
+assert.ok(apiLessons.includes('Content-Disposition'), "A protected direct-file download fallback must be available");
+assert.ok(apiLessons.includes('Accept-Ranges'), "Media endpoints must advertise byte-range support");
 
 const sharedPage = contents.get("artifacts/dallyletter/src/pages/SharedMedia.tsx");
 assert.ok(sharedPage.includes("shareToken={shareToken}"), "Shared-media page must pass the signed token into the viewer");
