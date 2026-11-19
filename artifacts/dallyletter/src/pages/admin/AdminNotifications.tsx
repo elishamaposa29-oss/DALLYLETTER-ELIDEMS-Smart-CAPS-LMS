@@ -18,6 +18,7 @@ import { z } from "zod";
 import { CreateNotificationBodyType } from "@workspace/api-client-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { UserSelector } from "@/components/selection/UserSelector";
 
 const createNotificationSchema = z.object({
   recipientId: z.coerce.number().optional().nullable(),
@@ -198,16 +199,9 @@ export default function AdminNotifications() {
                     <FormField control={form.control} name="recipientId" render={({ field }) => (
                       <FormItem>
                         <FormLabel>Select User</FormLabel>
-                        <Select onValueChange={(val) => field.onChange(parseInt(val))} value={field.value ? field.value.toString() : ""}>
-                          <FormControl>
-                            <SelectTrigger><SelectValue placeholder="Select user" /></SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {users?.map(u => (
-                              <SelectItem key={u.id} value={u.id.toString()}>{u.name} ({u.role})</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <FormControl>
+                          <UserSelector value={field.value ?? null} onChange={id => field.onChange(id)} showGroupFilter={false} placeholder="Search for a recipient…" />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )} />
