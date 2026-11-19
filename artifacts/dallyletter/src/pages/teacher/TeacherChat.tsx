@@ -38,6 +38,11 @@ export default function TeacherChat() {
   );
 
   const sendMessageMutation = useSendMessage();
+  const [unreadSummary,setUnreadSummary]=useState<{groups:Array<{id:number;unread:number}>;privateChats:Array<{id:number;unread:number}>}>({groups:[],privateChats:[]});
+  useEffect(()=>{const accessToken=localStorage.getItem("dallyletter_token");if(!accessToken||!user?.id)return;let active=true;const refresh=async()=>{try{const response=await fetch(getApiUrl("/api/messages/unread-summary"),{headers:{Authorization:"Bearer "+accessToken},cache:"no-store"});if(!response.ok)return;const data=await response.json();if(active)setUnreadSummary({groups:Array.isArray(data.groups)?data.groups:[],privateChats:Array.isArray(data.privateChats)?data.privateChats:[]});}catch{/* Retain last known unread counts while offline. */}};void refresh();const timer=window.setInterval(()=>void refresh(),5000);return()=>{active=false;window.clearInterval(timer);};},[user?.id,selectedGroupId,selectedUserId]);
+  const DUnread=(count:number)=>count>0?<span className="dl-unread-gold-badge ml-auto inline-flex items-center gap-1 rounded-md border-2 border-[#FFD700] bg-[#0B1E3A] px-1 py-0.5 text-[10px] font-bold leading-none text-[#FFD700]" aria-label={count+" unread"}><img src="/favicon.svg" alt="" className="h-3.5 w-3.5 rounded border border-[#FFD700]"/>{count>99?"99+":count}</span>:null;
+  const unreadForGroup=(id:number)=>unreadSummary.groups.find(item=>item.id===id)?.unread||0;
+  const unreadForPrivate=(id:number)=>unreadSummary.privateChats.find(item=>item.id===id)?.unread||0;
 
   useEffect(()=>{if(!ownerChatRequested)return;const token=localStorage.getItem("dallyletter_token");void fetch(getApiUrl("/api/manager/owner-contact"),{headers:token?{Authorization:`Bearer ${token}`}:{}}).then(async response=>{const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"Owner chat permission is unavailable.");setOwnerContact({id:Number(data.id),name:String(data.name||"Owner")});setSelectedGroupId(null);setSelectedUserId(Number(data.id));setActiveTab("people");}).catch(error=>window.alert(error instanceof Error?error.message:"Owner chat is unavailable."));},[ownerChatRequested]);
 
@@ -209,7 +214,7 @@ export default function TeacherChat() {
                     }`}
                   >
                     <Users className="h-4 w-4 opacity-70 shrink-0" />
-                    <span className="font-medium truncate">{group.name}</span>
+                    <span className="font-medium truncate flex-1">{group.name}</span>{DUnread(unreadForGroup(group.id))}
                   </button>
                 ))
               )
@@ -233,7 +238,7 @@ export default function TeacherChat() {
                     <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold shrink-0">
                       {student.name.charAt(0)}
                     </div>
-                    <span className="font-medium truncate flex-1">{student.name}</span>
+                    <span className="font-medium truncate flex-1">{student.name}</span>{DUnread(unreadForPrivate(student.id))}
                   </button>
                 ))
               ))
@@ -300,9 +305,7 @@ export default function TeacherChat() {
                                 <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
                               )}
                             </div>
-                            <span className="text-[10px] text-muted-foreground mt-1 opacity-70">
-                              {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                            </span>
+                            <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground"><span>{new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>{isMe&&((msg as any).readByUserIds?.length??0)>0&&<span className="font-semibold text-[#9A7020]" aria-label={selectedGroupId?"Seen by "+(msg as any).readByUserIds.length+" group members":"Seen"}>{selectedGroupId?"Seen by "+(msg as any).readByUserIds.length:"Seen"} ✓✓</span>}</div>
                             {isMe && <button type="button" className="mt-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-destructive disabled:opacity-50" onClick={() => void handleDeleteMessage(msg.id)} disabled={deletingMessageId === msg.id}>{deletingMessageId === msg.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}Delete</button>}
                           </div>
                         </div>
