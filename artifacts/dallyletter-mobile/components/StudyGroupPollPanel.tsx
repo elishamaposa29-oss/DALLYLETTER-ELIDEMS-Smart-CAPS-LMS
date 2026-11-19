@@ -5,23 +5,26 @@ import { getApiUrl } from "@workspace/api-client-react";
 type Poll = { poll: { id:number; question:string; allowMultiple:boolean; closed:boolean }; options:Array<{id:number;label:string;voteCount:number;selected:boolean}>; totalVotes:number };
 type Palette = { background:string; card:string; border:string; foreground:string; mutedForeground:string; primary:string };
 
-export function StudyGroupPollPanel({ groupId, token, colors, allowPolls=true }: { groupId:number|null; token:string|null; colors:Palette; allowPolls?:boolean }) {
+export function StudyGroupPollPanel({ groupId, token, colors, allowPolls }: { groupId:number|null; token:string|null; colors:Palette; allowPolls?:boolean }) {
   const [polls,setPolls]=useState<Poll[]>([]);
   const [loading,setLoading]=useState(false);
   const [composer,setComposer]=useState(false);
   const [question,setQuestion]=useState("");
   const [optionsText,setOptionsText]=useState("Yes\nNo");
   const [error,setError]=useState("");
+  const [groupAllowsPolls,setGroupAllowsPolls]=useState(true);
+  const pollsEnabled=allowPolls ?? groupAllowsPolls;
+  useEffect(()=>{if(allowPolls!==undefined){setGroupAllowsPolls(allowPolls);return;}if(!groupId||!token){setGroupAllowsPolls(false);return;}let active=true;fetch(getApiUrl(`/api/study-groups/${groupId}/settings`),{headers:{Authorization:`Bearer ${token}`},cache:"no-store"}).then(r=>r.ok?r.json():null).then(data=>{if(active&&data)setGroupAllowsPolls(data.allowPolls!==false);}).catch(()=>{if(active)setGroupAllowsPolls(true);});return()=>{active=false;};},[groupId,token,pollsEnabled]);
 
   const load=useCallback(async()=>{
-    if(!groupId||!token||!allowPolls){setPolls([]);return;}
+    if(!groupId||!token||!pollsEnabled){setPolls([]);return;}
     setLoading(true);
     try{const r=await fetch(getApiUrl(`/api/chat/groups/${groupId}/polls`),{headers:{Authorization:`Bearer ${token}`},cache:"no-store"});const data=await r.json().catch(()=>[]);if(!r.ok)throw new Error(data?.error||"Polls unavailable");setPolls(Array.isArray(data)?data:[]);setError("");}
     catch(e){setError(e instanceof Error?e.message:"Polls could not be loaded.");}
     finally{setLoading(false);}
   },[groupId,token,allowPolls]);
 
-  useEffect(()=>{void load();if(!groupId||!token||!allowPolls)return;const timer=setInterval(()=>void load(),10000);return()=>clearInterval(timer);},[load,groupId,token,allowPolls]);
+  useEffect(()=>{void load();if(!groupId||!token||!pollsEnabled)return;const timer=setInterval(()=>void load(),10000);return()=>clearInterval(timer);},[load,groupId,token,allowPolls]);
 
   const create=async()=>{
     const options=optionsText.split("\n").map(x=>x.trim()).filter(Boolean);
@@ -36,7 +39,7 @@ export function StudyGroupPollPanel({ groupId, token, colors, allowPolls=true }:
     catch(e){setError(e instanceof Error?e.message:"Vote could not be saved.");}
   };
 
-  if(!groupId||!allowPolls)return null;
+  if(!groupId||!pollsEnabled)return null;
   return <View style={{borderTopWidth:1,borderTopColor:colors.border,paddingHorizontal:14,paddingVertical:10,gap:9,maxHeight:250}}>
     <View style={{flexDirection:"row",alignItems:"center",justifyContent:"space-between"}}>
       <Text style={{fontSize:14,fontWeight:"900",color:colors.foreground}}>📊 Group polls</Text>
