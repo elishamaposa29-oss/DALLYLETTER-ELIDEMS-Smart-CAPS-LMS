@@ -219,6 +219,7 @@ router.get("/lessons/media/:storageKey", mediaAccess, async (req, res): Promise<
       ? req.query.type
       : "application/octet-stream";
     res.setHeader("Content-Type", mediaType);
+    res.setHeader("Accept-Ranges", "bytes");
     const range = req.headers.range;
     if (!range) {
       res.setHeader("Content-Length", mediaStats.size);
