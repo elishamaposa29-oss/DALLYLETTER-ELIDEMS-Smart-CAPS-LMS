@@ -1315,7 +1315,7 @@ function canAddSystemSubject(actor: NonNullable<Express.Request["currentUser"]>)
   return role === "teacher" && ["not_applicable", "approved"].includes(String(actor.teacherApplicationStatus ?? "not_applicable").toLowerCase());
 }
 
-router.get("/subjects/catalog", async (req, res): Promise<void> => {
+router.get("/subjects/catalog", requireAuth, async (req, res): Promise<void> => {
   await ensureProfileHubSchema();
   const [globalRows, saved, interactions, custom] = await Promise.all([
     pool.query(`SELECT min(subject) AS subject,count(*)::int AS usage_count FROM (
@@ -1327,7 +1327,7 @@ router.get("/subjects/catalog", async (req, res): Promise<void> => {
       UNION ALL SELECT trim(value) FROM learner_subjects CROSS JOIN LATERAL unnest(subjects) AS learner_subject(value)
       UNION ALL SELECT trim(value) FROM teacher_subjects CROSS JOIN LATERAL unnest(subjects_to_teach) AS teacher_subject(value)
     ) subject_sources WHERE subject <> '' GROUP BY lower(subject)`),
-    pool.query("SELECT subjects FROM learner_subjects WHERE user_id=$1", [req.currentUser?.id ?? 0]).catch(() => ({ rows: [] as any[] })),
+    pool.query("SELECT subjects FROM learner_subjects WHERE user_id=$1", [req.currentUser!.id]).catch(() => ({ rows: [] as any[] })),
     pool.query(`SELECT min(subject) AS subject, sum(interaction_count)::int AS interaction_count, max(last_interacted_at) AS last_interacted_at
       FROM (
         SELECT subject,interaction_count,last_interacted_at FROM dallyletter_subject_interactions WHERE user_id=$1
@@ -1374,7 +1374,7 @@ router.get("/subjects/catalog", async (req, res): Promise<void> => {
     right.usageCount - left.usageCount ||
     left.subject.localeCompare(right.subject)
   );
-  res.setHeader("Cache-Control", "private, max-age=15");
+  res.setHeader("Cache-Control", "private, no-store");
   res.json({ subjects: subjects.map(row => row.subject), rankedSubjects: subjects, canAddSubject: Boolean(req.currentUser && canAddSystemSubject(req.currentUser)) });
 });
 
