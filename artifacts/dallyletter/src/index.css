@@ -480,8 +480,25 @@ button[class*="bg-[linear-gradient"] {
   overflow: hidden;
   color: #FFD700 !important;
   background-color: #0B1E3A !important;
-  border-color: #FFD700 !important;
-  box-shadow: 0 0 0 1px rgb(248 232 173 / .28), 0 0 12px rgb(198 154 53 / .42), inset 0 1px 0 rgb(255 240 189 / .55) !important;
+  border-color: #C9A227 !important;
+  box-shadow: 0 0 0 1px #F2D98C, 0 0 12px rgb(201 162 39 / .58), inset 0 1px 0 #F2D98C, inset 0 -1px 0 rgb(201 162 39 / .72) !important;
+}
+.dl-unread-gold-badge::before {
+  content: "✦";
+  position: absolute;
+  z-index: 4;
+  top: -5px;
+  right: -4px;
+  color: #F2D98C;
+  font-size: 9px;
+  line-height: 1;
+  pointer-events: none;
+  text-shadow: 0 0 5px #FFD700;
+  animation: dl-badge-sparkle 2.4s ease-in-out infinite;
+}
+@keyframes dl-badge-sparkle {
+  0%, 100% { opacity: .45; transform: scale(.8) rotate(0deg); }
+  50% { opacity: 1; transform: scale(1.18) rotate(24deg); }
 }
 .dl-unread-gold-badge::after {
   content: "";
@@ -493,7 +510,7 @@ button[class*="bg-[linear-gradient"] {
   width: 42%;
   pointer-events: none;
   transform: skewX(-18deg);
-  background: linear-gradient(90deg, transparent, rgb(255 215 0 / .72), #fff8dc, rgb(255 215 0 / .58), transparent);
+  background: linear-gradient(90deg, transparent, #C9A227, #F2D98C, #FFD700, transparent);
   animation: dl-badge-foil-sweep 3.8s ease-in-out infinite;
 }
 .dl-unread-gold-badge img, .dl-unread-gold-badge span {
@@ -506,7 +523,7 @@ button[class*="bg-[linear-gradient"] {
   100% { left: 135%; opacity: .1; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .dl-unread-gold-badge::after { animation: none !important; }
+  .dl-unread-gold-badge::after, .dl-unread-gold-badge::before { animation: none !important; }
 }
 
 /* Semantic amber is reserved for mixed attendance and warnings; it must not be
