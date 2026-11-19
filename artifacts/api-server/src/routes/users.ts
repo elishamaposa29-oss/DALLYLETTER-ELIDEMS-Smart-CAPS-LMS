@@ -133,8 +133,8 @@ router.get("/users/selection-directory", requireAuth, async (req, res): Promise<
   const actor = req.currentUser!;
   const ownerViewer = isOwnerRole(actor.role);
   const result = await pool.query(
-    "SELECT id,name,role,is_prefect,is_manager,manager_level,grade,subject,avatar_url FROM users WHERE COALESCE(is_blocked,false)=false AND COALESCE(is_suspended,false)=false AND ($1::boolean OR lower(role) NOT IN ('owner','platform_owner')) ORDER BY name ASC",
-    [ownerViewer],
+    "SELECT id,name,role,is_prefect,is_manager,manager_level,grade,subject,avatar_url FROM users WHERE COALESCE(is_blocked,false)=false AND COALESCE(is_suspended,false)=false AND ($1::boolean OR lower(role) NOT IN ('owner','platform_owner')) AND ($2 = '' OR name ILIKE '%' || $2 || '%') ORDER BY name ASC LIMIT 500",
+    [ownerViewer, query],
   );
   const managerViewer = isSeniorManager(actor) || isJuniorManager(actor);
   const rows = result.rows.filter((row: any) => {
@@ -144,7 +144,6 @@ router.get("/users/selection-directory", requireAuth, async (req, res): Promise<
     const learner = ["student", "learner"].includes(role);
     const teacher = role === "teacher";
     if (managerViewer && !canViewManagerTarget(actor, { id: Number(row.id), role: row.role, isManager: row.is_manager, managerLevel: row.manager_level })) return false;
-    if (query && !String(row.name ?? "").toLowerCase().includes(query)) return false;
     if (group === "teachers" && !teacher) return false;
     if (group === "prefects" && !prefect) return false;
     if (group === "learners" && !learner) return false;
@@ -153,7 +152,7 @@ router.get("/users/selection-directory", requireAuth, async (req, res): Promise<
     return true;
   });
   res.setHeader("Cache-Control", "private, no-store");
-  res.json(rows.map((row: any) => ({
+  res.json(rows.slice(0, 100).map((row: any) => ({
     id: Number(row.id), name: row.name, role: row.role,
     isPrefect: Boolean(row.is_prefect), isManager: Boolean(row.is_manager),
     managerLevel: row.manager_level, grade: row.grade, subject: row.subject,
@@ -1375,7 +1374,7 @@ router.get("/subjects/catalog", async (req, res): Promise<void> => {
     right.usageCount - left.usageCount ||
     left.subject.localeCompare(right.subject)
   );
-  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("Cache-Control", "private, max-age=15");
   res.json({ subjects: subjects.map(row => row.subject), rankedSubjects: subjects, canAddSubject: Boolean(req.currentUser && canAddSystemSubject(req.currentUser)) });
 });
 
