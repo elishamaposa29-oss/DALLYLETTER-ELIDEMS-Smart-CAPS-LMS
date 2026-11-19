@@ -12,7 +12,7 @@ type ChatPoll = {
   totalVotes: number;
 };
 
-export function StudyGroupPollPanel({ groupId, allowPolls = true }: { groupId: number | null; allowPolls?: boolean }) {
+export function StudyGroupPollPanel({ groupId, allowPolls }: { groupId: number | null; allowPolls?: boolean }) {
   const [polls, setPolls] = useState<ChatPoll[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -20,9 +20,13 @@ export function StudyGroupPollPanel({ groupId, allowPolls = true }: { groupId: n
   const [question, setQuestion] = useState("");
   const [optionsText, setOptionsText] = useState("Yes\nNo");
   const [error, setError] = useState<string | null>(null);
+  const [groupAllowsPolls,setGroupAllowsPolls]=useState(true);
+  const pollsEnabled=allowPolls ?? groupAllowsPolls;
+
+  useEffect(()=>{if(allowPolls!==undefined){setGroupAllowsPolls(allowPolls);return;}if(!groupId){setGroupAllowsPolls(false);return;}let active=true;void apiJson<{allowPolls?:boolean}>(`/api/study-groups/${groupId}/settings`).then(settings=>{if(active)setGroupAllowsPolls(settings.allowPolls!==false);}).catch(()=>{if(active)setGroupAllowsPolls(true);});return()=>{active=false;};},[groupId,allowPolls]);
 
   const load = useCallback(async () => {
-    if (!groupId || !allowPolls) { setPolls([]); return; }
+    if (!groupId || !pollsEnabled) { setPolls([]); return; }
     setLoading(true);
     try {
       setPolls(await apiJson<ChatPoll[]>(`/api/chat/groups/${groupId}/polls`));
@@ -30,14 +34,14 @@ export function StudyGroupPollPanel({ groupId, allowPolls = true }: { groupId: n
     } catch (e) {
       setError(e instanceof Error ? e.message : "Polls could not be loaded.");
     } finally { setLoading(false); }
-  }, [groupId, allowPolls]);
+  }, [groupId, pollsEnabled]);
 
   useEffect(() => {
     void load();
-    if (!groupId || !allowPolls) return;
+    if (!groupId || !pollsEnabled) return;
     const timer = window.setInterval(() => void load(), 10000);
     return () => window.clearInterval(timer);
-  }, [load, groupId, allowPolls]);
+  }, [load, groupId, pollsEnabled]);
 
   const create = async (event: FormEvent) => {
     event.preventDefault();
@@ -58,7 +62,7 @@ export function StudyGroupPollPanel({ groupId, allowPolls = true }: { groupId: n
     } catch (e) { setError(e instanceof Error ? e.message : "Your vote could not be saved."); }
   };
 
-  if (!groupId || !allowPolls) return null;
+  if (!groupId || !pollsEnabled) return null;
   return <section aria-label="Study group polls" className="space-y-3 border-t border-border/70 pt-3">
     <div className="flex items-center justify-between gap-2">
       <div className="flex items-center gap-2 font-semibold text-sm"><BarChart3 className="h-4 w-4 text-primary"/>Group polls</div>
