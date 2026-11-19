@@ -18,6 +18,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
+import SubjectSelector from "@/components/selection/SubjectSelector";
 
 const statusColor: Record<string, string> = { upcoming: "#3b82f6", live: "#22c55e", completed: "#9ca3af", cancelled: "#ef4444" };
 
@@ -175,7 +176,7 @@ export default function TeacherClasses() {
               <Text style={s.label}>Class Title *</Text>
               <TextInput style={s.input} placeholder="e.g. Algebra Review" placeholderTextColor={colors.mutedForeground} value={title} onChangeText={setTitle} />
               <Text style={s.label}>Subject</Text>
-              <TextInput style={s.input} placeholder="e.g. Mathematics" placeholderTextColor={colors.mutedForeground} value={subject} onChangeText={setSubject} />
+              <SubjectSelector value={subject} onChange={setSubject} placeholder="Search or type a subject…" />
               <Text style={s.label}>Google Meet Link *</Text>
               <TextInput style={s.input} placeholder="https://meet.google.com/xxx-xxxx-xxx" placeholderTextColor={colors.mutedForeground} value={meetLink} onChangeText={setMeetLink} autoCapitalize="none" keyboardType="url" />
               <Text style={s.label}>Description</Text>
