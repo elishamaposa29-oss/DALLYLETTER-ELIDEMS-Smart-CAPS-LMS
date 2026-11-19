@@ -81,7 +81,7 @@ export default function AdminUsers() {
 
   const getStatusBadge = (user: { isBlocked: boolean; isSuspended?: boolean }) => {
     if (user.isBlocked) return <Badge variant="destructive" className="bg-destructive/20 text-destructive border-destructive/30">Blocked</Badge>;
-    if (user.isSuspended) return <Badge className="bg-amber-500/20 text-amber-700 border border-amber-400/40 dark:text-amber-400">Suspended</Badge>;
+    if (user.isSuspended) return <Badge className="dl-status-suspended bg-amber-500/20 text-amber-700 border border-amber-400/40 dark:text-amber-400">Suspended</Badge>;
     return <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">Active</Badge>;
   };
 
@@ -189,7 +189,7 @@ export default function AdminUsers() {
                                   title={user.isPrefect ? "Remove Prefect" : "Make Prefect"}
                                   onClick={() => handleTogglePrefect(user.id, user.isPrefect)}
                                 >
-                                  <Shield className={`h-4 w-4 ${user.isPrefect ? "text-amber-500" : "text-muted-foreground"}`} />
+                                  <Shield className={`h-4 w-4 ${user.isPrefect ? "text-amber-500 dl-status-suspended-text" : "text-muted-foreground"}`} />
                                 </Button>
                               )}
                               <ManagerPermissionControls
