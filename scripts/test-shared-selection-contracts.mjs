@@ -45,7 +45,7 @@ for (const source of [webSubject, mobileSubject]) {
   assert.match(source, /subjects\/catalog\/interaction/);
   assert.match(source, /onBlur/);
   assert.match(source, /onSelect/);
-  assert.doesNotMatch(source, /onBlur[^\\n]*canAdd[^\\n]*add\\(/, "Shared subject creation must require an explicit Add action");
+  assert.doesNotMatch(source, /onBlur.*canAdd.*add\(/, "Shared subject creation must require an explicit Add action");
 }
 
 const webUserIntegrations = [
