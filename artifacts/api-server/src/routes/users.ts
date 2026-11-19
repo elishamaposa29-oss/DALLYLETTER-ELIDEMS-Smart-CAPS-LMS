@@ -1340,7 +1340,7 @@ router.get("/users/selection-directory", requireAuth, async (req, res): Promise<
   })));
 });
 
-router.get("/subjects/catalog", requireAuth, async (req, res): Promise<void> => {
+router.get("/subjects/catalog", async (req, res): Promise<void> => {
   await ensureSelectionSchema();
   const [lessonRows, classRows, saved, interactions, custom] = await Promise.all([
     pool.query("SELECT trim(subject) AS subject, count(*)::int AS usage_count FROM lessons WHERE subject IS NOT NULL AND trim(subject) <> '' GROUP BY lower(trim(subject)), trim(subject)"),
@@ -1350,7 +1350,7 @@ router.get("/subjects/catalog", requireAuth, async (req, res): Promise<void> => 
     pool.query("SELECT subject FROM dallyletter_subject_catalog ORDER BY created_at DESC"),
   ]);
   const savedSubjects = (saved.rows[0]?.subjects ?? []) as string[];
-  const teacherSaved = ["teacher", "manager", "senior_manager"].includes(String(req.currentUser!.role).toLowerCase())
+  const teacherSaved = req.currentUser && ["teacher", "manager", "senior_manager"].includes(String(req.currentUser.role).toLowerCase())
     ? await pool.query("SELECT subjects_to_teach FROM teacher_subjects WHERE user_id=$1", [req.currentUser!.id]).catch(() => ({ rows: [] as any[] }))
     : { rows: [] as any[] };
   const preferred = [...new Set([...(savedSubjects ?? []), ...((teacherSaved.rows[0]?.subjects_to_teach ?? []) as string[])].map(value => String(value).trim()).filter(Boolean))];
@@ -1381,7 +1381,7 @@ router.get("/subjects/catalog", requireAuth, async (req, res): Promise<void> => 
     left.subject.localeCompare(right.subject)
   );
   res.setHeader("Cache-Control", "private, no-store");
-  res.json({ subjects: subjects.map(row => row.subject), rankedSubjects: subjects, canAddSubject: canAddSystemSubject(req.currentUser!) });
+  res.json({ subjects: subjects.map(row => row.subject), rankedSubjects: subjects, canAddSubject: Boolean(req.currentUser && canAddSystemSubject(req.currentUser)) });
 });
 
 router.post("/subjects/catalog", requireAuth, async (req, res): Promise<void> => {
