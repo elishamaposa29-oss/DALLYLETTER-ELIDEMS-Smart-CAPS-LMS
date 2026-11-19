@@ -5,7 +5,7 @@ import UserProfileLink from "@/components/UserProfileLink";
 type DirectoryUser = {
   id: number;
   name: string;
-  role: string;
+  role?: string;
   isPrefect?: boolean;
   isManager?: boolean;
   managerLevel?: string | null;
@@ -93,13 +93,13 @@ export function UserSelector({
     <input disabled={disabled} value={query} onChange={event => setQuery(event.target.value)} placeholder={placeholder} aria-label="Search users" className="w-full rounded-md border bg-background px-3 py-2 text-sm" />
     {selected && <div className="flex items-center gap-2 rounded-lg border bg-muted/30 p-2 text-sm">
       <UserProfileLink userId={selected.id} name={selected.name} avatarUrl={selected.avatarUrl} className="min-w-0 flex-1" />
-      <div className="min-w-0"><div className="text-xs capitalize text-muted-foreground">{selected.isPrefect ? "Prefect" : selected.role.replaceAll("_", " ")}</div></div>
+      <div className="min-w-0"><div className="text-xs capitalize text-muted-foreground">{selected.isPrefect ? "Prefect" : String(selected.role ?? "learner").replaceAll("_", " ")}</div></div>
       <button type="button" disabled={disabled} onClick={() => onChange(null)} className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted">Clear</button>
     </div>}
     <div role="listbox" aria-label="Matching users" className="max-h-56 space-y-1 overflow-y-auto rounded-md border p-1">
       {!suppliedUsers && loading ? <p className="p-3 text-sm text-muted-foreground">Loading people…</p> : error ? <p role="alert" className="p-3 text-sm text-destructive">{error}</p> : visibleUsers.length === 0 ? <p className="p-3 text-sm text-muted-foreground">No matching people.</p> : visibleUsers.map(person => <div key={person.id} className="flex items-center gap-2 rounded-md p-2 hover:bg-muted/60">
         <UserProfileLink userId={person.id} name={person.name} avatarUrl={person.avatarUrl} className="min-w-0 flex-1" />
-        <div className="min-w-0 flex-1 text-xs capitalize text-muted-foreground">{person.isPrefect ? "Prefect" : person.role.replaceAll("_", " ")}{person.grade ? " · " + person.grade : ""}</div>
+        <div className="min-w-0 flex-1 text-xs capitalize text-muted-foreground">{person.isPrefect ? "Prefect" : String(person.role ?? "learner").replaceAll("_", " ")}{person.grade ? " · " + person.grade : ""}</div>
         <button type="button" role="option" aria-selected={String(person.id) === String(value)} disabled={disabled} onClick={() => choose(person)} className="rounded-md border px-2 py-1 text-xs hover:bg-muted">Select</button>
       </div>)}
     </div>
