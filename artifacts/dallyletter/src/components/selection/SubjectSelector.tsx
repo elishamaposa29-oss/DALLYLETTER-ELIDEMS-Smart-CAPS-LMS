@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState } from "react";
-import { getApiUrl } from "@/lib/api";
+import { getApiUrl } from "@workspace/api-client-react";
 
 type CatalogResponse = { subjects?: string[]; canAddSubject?: boolean };
 type SubjectSelectorProps = {
@@ -8,6 +8,7 @@ type SubjectSelectorProps = {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  onSelect?: (value: string) => void;
 };
 
 function token() { return localStorage.getItem("dallyletter_token") ?? ""; }
