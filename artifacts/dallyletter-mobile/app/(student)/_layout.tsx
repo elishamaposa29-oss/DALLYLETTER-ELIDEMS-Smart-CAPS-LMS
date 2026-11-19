@@ -25,7 +25,7 @@ export default function StudentTabLayout() {
     void refresh(); const timer=setInterval(()=>void refresh(),5000);
     return()=>{active=false;clearInterval(timer);};
   },[token,user?.id]);
-  const unreadIcon = (name: keyof typeof Feather.glyphMap, color: string, size: number, count: number) => <View style={{position:"relative"}}><Feather name={name} size={size} color={color}/>{count>0&&<View style={{position:"absolute",right:-13,top:-9,flexDirection:"row",alignItems:"center",gap:2,backgroundColor:"#0B1E3A",borderWidth:1.5,borderColor:"#FFD700",borderRadius:7,paddingHorizontal:3,paddingVertical:1}}><Image source={require("../../assets/images/icon.png")} style={{width:10,height:10,borderRadius:2}}/><Text style={{color:"#FFD700",fontSize:8,fontWeight:"900"}}>{count>99?"99+":count}</Text></View>}</View>;
+  const unreadIcon = (name: "message-circle" | "grid", color: string, size: number, count: number) => <View style={{position:"relative"}}><Feather name={name} size={size} color={color}/>{count>0&&<View style={{position:"absolute",right:-13,top:-9,flexDirection:"row",alignItems:"center",gap:2,backgroundColor:"#0B1E3A",borderWidth:1.5,borderColor:"#FFD700",borderRadius:7,paddingHorizontal:3,paddingVertical:1}} accessibilityRole="text" accessibilityLabel={count+" unread"}><Image source={require("../../assets/images/icon.png")} style={{width:10,height:10,borderRadius:2}}/><Text style={{color:"#FFD700",fontSize:8,fontWeight:"900"}}>{count>99?"99+":count}</Text></View>}</View>;
   const role = String(user?.role || "").toLowerCase();
   const allowed = role === "student" || role === "prefect";
   const isIOS = Platform.OS === "ios";
