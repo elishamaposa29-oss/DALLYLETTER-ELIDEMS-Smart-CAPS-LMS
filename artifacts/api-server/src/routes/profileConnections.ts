@@ -234,7 +234,7 @@ router.post("/profile/:id/connect", requireAuth, async (req,res): Promise<void> 
 router.get("/profile/connections/friends", requireAuth, async(req,res):Promise<void> => {
   await ensureSchema();
   const rows=await pool.query(
-    "SELECT u.id,u.name,u.role FROM profile_connections c JOIN users u ON u.id=CASE WHEN c.requester_id=$1 THEN c.recipient_id ELSE c.requester_id END WHERE c.status='accepted' AND (c.requester_id=$1 OR c.recipient_id=$1) ORDER BY u.name",
+    "SELECT u.id,u.name,u.role,u.avatar_url AS \"avatarUrl\" FROM profile_connections c JOIN users u ON u.id=CASE WHEN c.requester_id=$1 THEN c.recipient_id ELSE c.requester_id END WHERE c.status='accepted' AND (c.requester_id=$1 OR c.recipient_id=$1) ORDER BY u.name",
     [req.currentUser!.id],
   );
   const visibleRows=isOwnerRole(req.currentUser!.role)?rows.rows:rows.rows.filter((row:any)=>!isOwnerRole(row.role));
