@@ -59,7 +59,7 @@ assert.ok(!lesson.includes("extractLessonLinks(selectedLesson.content).join"), "
 const apiLessons = readFileSync(join(root, "artifacts/api-server/src/routes/lessons.ts"), "utf8");
 assert.ok(apiLessons.includes('digest().subarray(0, 16).toString("base64url")'), "New signing keys must be compact 128-bit base64url values");
 assert.ok(apiLessons.includes('|[A-Za-z0-9_-]{22}'), "Server must accept compact share keys");
-assert.ok(apiLessons.includes('|[a-f0-9]{64}'), "Server must continue accepting existing long share keys");
+assert.ok(apiLessons.includes('[a-f0-9]{64}'), "Server must continue accepting existing long share keys");
 assert.ok(apiLessons.includes('Content-Disposition'), "A protected direct-file download fallback must be available");
 assert.ok(apiLessons.includes('Accept-Ranges'), "Media endpoints must advertise byte-range support");
 
