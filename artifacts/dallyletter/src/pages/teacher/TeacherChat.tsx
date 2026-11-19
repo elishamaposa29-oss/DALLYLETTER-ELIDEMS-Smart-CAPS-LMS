@@ -218,7 +218,7 @@ export default function TeacherChat() {
             ) : (
               <div className="space-y-3">
                 {ownerContact && <div className="flex items-center justify-between gap-2 rounded-lg border p-2"><UserProfileLink userId={ownerContact.id} name={ownerContact.name} avatarUrl={ownerContact.avatarUrl} /><Button type="button" size="sm" variant={selectedUserId === ownerContact.id ? "secondary" : "outline"} onClick={() => selectUser(ownerContact.id)}>Message</Button></div>}
-                <UserSelector value={selectedUserId} users={(users ?? []).filter(person => person.role === "student" || person.role === "learner") as any} showGroupFilter={false} placeholder="Search your learners…" onChange={id => { setSelectedUserId(id); if (id) setSelectedGroupId(null); }} />
+                <UserSelector value={selectedUserId} users={(users ?? []).filter(person => String(person.role) === "student" || String(person.role) === "learner") as any} showGroupFilter={false} placeholder="Search your learners…" onChange={id => { setSelectedUserId(id); if (id) setSelectedGroupId(null); }} />
               </div>
             )}
           </div>
