@@ -72,7 +72,8 @@ const ensure = async () => {
       UNION ALL SELECT trim(value) FROM learner_subjects CROSS JOIN LATERAL unnest(subjects) AS learner_subject(value)
       UNION ALL SELECT trim(value) FROM teacher_subjects CROSS JOIN LATERAL unnest(subjects_to_teach) AS teacher_subject(value)
     ) subject_sources WHERE subject <> '' GROUP BY lower(subject)`);
-    const names = new Set(catalog.rows.map(row => String(row.subject).toLowerCase()));
+    const custom = await client.query("SELECT subject FROM dallyletter_subject_catalog");
+    const names = new Set([...catalog.rows, ...custom.rows].map(row => String(row.subject).toLowerCase()));
     for (const subject of ["history", "chemistry", "global catalogue subject", "mathematics", "biology", "physics", "geography"]) {
       assert.ok(names.has(subject), "Catalogue omitted " + subject);
     }
