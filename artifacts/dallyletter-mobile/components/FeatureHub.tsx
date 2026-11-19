@@ -1,5 +1,6 @@
 import { UserProfileLink } from "@/components/UserProfileLink";
 import UserSelector from "@/components/selection/UserSelector";
+import SubjectSelector from "@/components/selection/SubjectSelector";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getApiUrl } from "@workspace/api-client-react";
@@ -1241,7 +1242,7 @@ export default function FeatureHub() {
         {section === "assignments" && (canCreateAssignments || (editingAssignmentId!==null&&canEditAssignments)) && <>
           <Text style={styles.sectionTitle}>{editingAssignmentId !== null ? "Edit assignment" : "Create assignment"}</Text>
           <TextInput style={styles.input} value={newTitle} onChangeText={setNewTitle} placeholder="Assignment title" placeholderTextColor={colors.mutedForeground}/>
-          <TextInput style={styles.input} value={newSubject} onChangeText={setNewSubject} placeholder="Subject" placeholderTextColor={colors.mutedForeground}/>
+          <SubjectSelector value={newSubject} onChange={setNewSubject} placeholder="Search or type a subject…" />
           <TextInput style={styles.input} value={newDueDate} onChangeText={setNewDueDate} placeholder="Due date (YYYY-MM-DD)" placeholderTextColor={colors.mutedForeground}/>
           <TextInput style={[styles.input, styles.textArea]} multiline value={newDescription} onChangeText={setNewDescription} placeholder="Instructions and details" placeholderTextColor={colors.mutedForeground}/>
           <TouchableOpacity style={[styles.button, styles.secondary]} onPress={() => void uploadMedia()} disabled={uploading}><Text style={[styles.buttonText, styles.secondaryText]}>{uploading ? "Uploading…" : attachmentUrl ? "Replace attachment" : "Upload image/video attachment"}</Text></TouchableOpacity>
