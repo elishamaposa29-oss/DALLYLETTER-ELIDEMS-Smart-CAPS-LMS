@@ -12,9 +12,7 @@ export function StudyGroupPollPanel({ groupId, token, colors, allowPolls }: { gr
   const [question,setQuestion]=useState("");
   const [optionsText,setOptionsText]=useState("Yes\nNo");
   const [error,setError]=useState("");
-  const [groupAllowsPolls,setGroupAllowsPolls]=useState(true);
-  const pollsEnabled=allowPolls ?? groupAllowsPolls;
-  useEffect(()=>{if(allowPolls!==undefined){setGroupAllowsPolls(allowPolls);return;}if(!groupId||!token){setGroupAllowsPolls(false);return;}let active=true;fetch(getApiUrl(`/api/study-groups/${groupId}/settings`),{headers:{Authorization:`Bearer ${token}`},cache:"no-store"}).then(r=>r.ok?r.json():null).then(data=>{if(active&&data)setGroupAllowsPolls(data.allowPolls!==false);}).catch(()=>{if(active)setGroupAllowsPolls(true);});return()=>{active=false;};},[groupId,token,allowPolls]);
+  const pollsEnabled=allowPolls !== false;
 
   const load=useCallback(async()=>{
     if(!groupId||!token||!pollsEnabled){setPolls([]);return;}
