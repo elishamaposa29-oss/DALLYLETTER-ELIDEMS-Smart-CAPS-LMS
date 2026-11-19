@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { SubjectSelector } from "@/components/selection/SubjectSelector";
 import { useAuth } from "@/contexts/AuthContext";
 import { useListLessons, useDeleteLesson, getApiUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
@@ -76,17 +77,10 @@ export default function AdminLessons() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <Select value={subjectFilter} onValueChange={setSubjectFilter}>
-            <SelectTrigger className="w-full sm:w-[180px]">
-              <SelectValue placeholder="All Subjects" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Subjects</SelectItem>
-              {subjects.map(sub => (
-                <SelectItem key={sub} value={sub}>{sub}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex min-w-[220px] items-center gap-2">
+            <div className="min-w-0 flex-1"><SubjectSelector value={subjectFilter === "all" ? "" : subjectFilter} onChange={value => setSubjectFilter(value.trim() || "all")} placeholder="Search subjects…" /></div>
+            <Button type="button" size="sm" variant="outline" onClick={() => setSubjectFilter("all")}>All subjects</Button>
+          </div>
         </div>
 
         {isLoading ? (
