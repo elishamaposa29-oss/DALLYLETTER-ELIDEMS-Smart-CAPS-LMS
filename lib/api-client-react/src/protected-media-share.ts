@@ -41,7 +41,9 @@ export async function createProtectedMediaShareLink(options: CreateProtectedMedi
   const page = new URL("/shared-media", options.webBaseUrl);
   page.searchParams.set("m", match[1]);
   page.searchParams.set("t", inferredType);
+  const originalMime = target.searchParams.get("type");
+  if (originalMime) page.searchParams.set("mt", originalMime);
   if (options.title) page.searchParams.set("n", options.title.slice(0, 80));
-  page.hash = "k=" + data.shareToken;
+  page.searchParams.set("k", data.shareToken);
   return page.toString();
 }
