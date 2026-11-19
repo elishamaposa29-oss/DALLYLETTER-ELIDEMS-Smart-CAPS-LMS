@@ -12,7 +12,7 @@ type ChatPoll = {
   totalVotes: number;
 };
 
-export function StudyGroupPollPanel({ groupId, allowPolls }: { groupId: number | null; allowPolls?: boolean }) {
+export function StudyGroupPollPanel({ groupId, allowPolls = true }: { groupId: number | null; allowPolls?: boolean }) {
   const [polls, setPolls] = useState<ChatPoll[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -20,10 +20,7 @@ export function StudyGroupPollPanel({ groupId, allowPolls }: { groupId: number |
   const [question, setQuestion] = useState("");
   const [optionsText, setOptionsText] = useState("Yes\nNo");
   const [error, setError] = useState<string | null>(null);
-  const [groupAllowsPolls,setGroupAllowsPolls]=useState(true);
-  const pollsEnabled=allowPolls ?? groupAllowsPolls;
-
-  useEffect(()=>{if(allowPolls!==undefined){setGroupAllowsPolls(allowPolls);return;}if(!groupId){setGroupAllowsPolls(false);return;}let active=true;void apiJson<{allowPolls?:boolean}>(`/api/study-groups/${groupId}/settings`).then(settings=>{if(active)setGroupAllowsPolls(settings.allowPolls!==false);}).catch(()=>{if(active)setGroupAllowsPolls(true);});return()=>{active=false;};},[groupId,allowPolls]);
+  const pollsEnabled=allowPolls;
 
   const load = useCallback(async () => {
     if (!groupId || !pollsEnabled) { setPolls([]); return; }
