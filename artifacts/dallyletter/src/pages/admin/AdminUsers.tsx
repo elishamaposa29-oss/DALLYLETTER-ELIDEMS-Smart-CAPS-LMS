@@ -189,7 +189,7 @@ export default function AdminUsers() {
                                   title={user.isPrefect ? "Remove Prefect" : "Make Prefect"}
                                   onClick={() => handleTogglePrefect(user.id, user.isPrefect)}
                                 >
-                                  <Shield className={`h-4 w-4 ${user.isPrefect ? "text-amber-500 dl-status-suspended-text" : "text-muted-foreground"}`} />
+                                  <Shield className={`h-4 w-4 ${user.isPrefect ? "text-amber-500" : "text-muted-foreground"}`} />
                                 </Button>
                               )}
                               <ManagerPermissionControls
@@ -207,7 +207,7 @@ export default function AdminUsers() {
                               >
                                 {suspending === user.id
                                   ? <Loader2 className="h-4 w-4 animate-spin" />
-                                  : <PauseCircle className={`h-4 w-4 ${(user as { isSuspended?: boolean }).isSuspended ? "text-amber-500" : "text-muted-foreground"}`} />
+                                  : <PauseCircle className={`h-4 w-4 ${(user as { isSuspended?: boolean }).isSuspended ? "text-amber-500 dl-status-suspended-text" : "text-muted-foreground"}`} />
                                 }
                               </Button>
                               {/* Block button */}
