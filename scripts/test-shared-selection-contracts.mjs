@@ -19,6 +19,9 @@ assert.match(api, /canViewManagerTarget\(actor/);
 assert.ok(api.indexOf('router.get("/users/selection-directory"') < api.indexOf('router.get("/users/:id"'), "Static user-directory route must precede the dynamic user-id route");
 assert.match(api, /avatar_url/);
 assert.match(api, /router\.get\("\/subjects\/catalog", requireAuth/);
+assert.match(api, /router.get\("\/subjects\/catalog\/public"/);
+assert.match(webSubject, /authToken \? "\/api\/subjects\/catalog" : "\/api\/subjects\/catalog\/public"/);
+assert.match(mobileSubject, /token\?"\/api\/subjects\/catalog":"\/api\/subjects\/catalog\/public"/);
 for (const source of ["lessons", "classes", "assignments", "polls", "study_groups", "learner_subjects", "teacher_subjects"]) {
   assert.match(api, new RegExp("FROM " + source + "|FROM " + source + " CROSS JOIN", "i"), "Subject catalogue must include " + source);
 }
