@@ -57,9 +57,10 @@ test("creates a canonical protected link and sends the authenticated share reque
     assert.equal(parsed.searchParams.get("mt"), "image/jpeg");
     assert.equal(parsed.searchParams.get("t"), null, "MIME metadata should make a duplicate media-type query unnecessary");
     assert.equal(parsed.searchParams.get("n"), null, "Titles should not bloat portable share URLs");
-    assert.equal(parsed.searchParams.get("k"), shareToken);
+    assert.equal(parsed.searchParams.has("k"), false);
     assert.equal(parsed.searchParams.has("shareToken"), false);
-    assert.equal(parsed.hash, "");
+    assert.equal(new URLSearchParams(parsed.hash.slice(1)).get("k"), shareToken);
+    assert.ok(parsed.hash.startsWith("#k="));
     assert.ok(link.startsWith("https://"), "Shared links must use HTTPS");
   } finally {
     globalThis.fetch = originalFetch;
