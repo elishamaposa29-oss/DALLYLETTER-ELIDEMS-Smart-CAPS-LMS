@@ -297,7 +297,7 @@ export default function StudentLessons() {
 
   const selectedLessonProtectedMedia = selectedLesson
     ? [selectedLesson.mediaUrl, ...collectMediaReferences(selectedLesson.content)].find((value): value is string =>
-        typeof value === "string" && /(?:^|\\/)api\\/lessons\\/media\\/[a-f0-9-]{36}(?:[?#]|$)/i.test(value))
+        typeof value === "string" && (() => { try { const path = new URL(value, "https://dallyletter.invalid").pathname; const key = path.split("/").pop() || ""; return path.startsWith("/api/lessons/media/") && /^[a-f0-9-]{36}$/i.test(key); } catch { return false; } })())
     : null;
   const shareSelectedLesson = async () => {
     if (!selectedLessonProtectedMedia) return;
