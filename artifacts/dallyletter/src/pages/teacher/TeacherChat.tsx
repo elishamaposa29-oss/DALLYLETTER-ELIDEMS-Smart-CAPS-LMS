@@ -14,13 +14,14 @@ import { VoiceRecorder } from "@/components/VoiceRecorder";
 import { AuthenticatedAudio } from "@/components/AuthenticatedAudio";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 import { UserSelector } from "@/components/selection/UserSelector";
+import UserProfileLink from "@/components/UserProfileLink";
 
 export default function TeacherChat() {
   const { user } = useAuth();
   const restrictedApplicant = String(user?.role||"").toLowerCase()==="teacher" && ["pending_review","rejected_pending_conversion"].includes(String((user as any)?.teacherApplicationStatus||"").toLowerCase());
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("groupId"); return value && /^\d+$/.test(value) ? Number(value) : null; });
   const [selectedUserId, setSelectedUserId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("recipientId"); return value && /^\d+$/.test(value) ? Number(value) : null; });
-  const [ownerContact,setOwnerContact]=useState<{id:number;name:string}|null>(null);
+  const [ownerContact,setOwnerContact]=useState<{id:number;name:string;avatarUrl?:string|null}|null>(null);
   const ownerChatRequested=new URLSearchParams(window.location.search).get("ownerChat")==="1";
   const [message, setMessage] = useState("");
   const [activeTab, setActiveTab] = useState(() => (new URLSearchParams(window.location.search).has("recipientId")||new URLSearchParams(window.location.search).has("ownerChat")) ? "students" : "groups");
@@ -40,7 +41,7 @@ export default function TeacherChat() {
 
   const sendMessageMutation = useSendMessage();
 
-  useEffect(()=>{if(!ownerChatRequested)return;const token=localStorage.getItem("dallyletter_token");void fetch(getApiUrl("/api/manager/owner-contact"),{headers:token?{Authorization:`Bearer ${token}`}:{}}).then(async response=>{const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"Owner chat permission is unavailable.");setOwnerContact({id:Number(data.id),name:String(data.name||"Owner")});setSelectedGroupId(null);setSelectedUserId(Number(data.id));setActiveTab("students");}).catch(error=>window.alert(error instanceof Error?error.message:"Owner chat is unavailable."));},[ownerChatRequested]);
+  useEffect(()=>{if(!ownerChatRequested)return;const token=localStorage.getItem("dallyletter_token");void fetch(getApiUrl("/api/manager/owner-contact"),{headers:token?{Authorization:`Bearer ${token}`}:{}}).then(async response=>{const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"Owner chat permission is unavailable.");setOwnerContact({id:Number(data.id),name:String(data.name||"Owner"),avatarUrl:data.avatarUrl??null});setSelectedGroupId(null);setSelectedUserId(Number(data.id));setActiveTab("students");}).catch(error=>window.alert(error instanceof Error?error.message:"Owner chat is unavailable."));},[ownerChatRequested]);
 
   const loadLessonRequests = async () => {
     setRequestLoading(true);
@@ -216,7 +217,7 @@ export default function TeacherChat() {
               )
             ) : (
               <div className="space-y-3">
-                {ownerContact && <button type="button" onClick={() => selectUser(ownerContact.id)} className={`w-full rounded-lg border p-2 text-left text-sm font-medium ${selectedUserId === ownerContact.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>Message Owner · {ownerContact.name}</button>}
+                {ownerContact && <div className="flex items-center justify-between gap-2 rounded-lg border p-2"><UserProfileLink userId={ownerContact.id} name={ownerContact.name} avatarUrl={ownerContact.avatarUrl} /><Button type="button" size="sm" variant={selectedUserId === ownerContact.id ? "secondary" : "outline"} onClick={() => selectUser(ownerContact.id)}>Message</Button></div>}
                 <UserSelector value={selectedUserId} users={(users ?? []).filter(person => person.role === "student" || person.role === "learner") as any} showGroupFilter={false} placeholder="Search your learners…" onChange={id => { setSelectedUserId(id); if (id) setSelectedGroupId(null); }} />
               </div>
             )}
