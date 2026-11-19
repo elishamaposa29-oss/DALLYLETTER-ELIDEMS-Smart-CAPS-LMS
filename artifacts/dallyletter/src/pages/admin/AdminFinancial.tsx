@@ -72,7 +72,7 @@ export default function AdminFinancial() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[
             { label: "Total Revenue", value: `$${totalRevenue.toFixed(2)}`, icon: DollarSign, color: "text-emerald-600", bg: "bg-emerald-50", sub: `${paidCount} payments`, trend: "up" },
-            { label: "Pending Fees", value: `$${pendingRevenue.toFixed(2)}`, icon: CreditCard, color: "text-amber-600", bg: "bg-amber-50", sub: `${pendingCount} pending`, trend: "neutral" },
+            { label: "Pending Fees", value: `$${pendingRevenue.toFixed(2)}`, icon: CreditCard, color: "text-amber-600 dl-status-pending-text", bg: "bg-amber-50 dl-status-pending", sub: `${pendingCount} pending`, trend: "neutral" },
             { label: "Staff Salaries", value: `$${(staffSummary?.total ?? 0).toFixed(2)}`, icon: Users, color: "text-blue-600", bg: "bg-blue-50", sub: `${staffSummary?.count ?? 0} payments`, trend: "down" },
             { label: "Net Profit", value: `$${netProfit.toFixed(2)}`, icon: TrendingUp, color: netProfit >= 0 ? "text-emerald-600" : "text-red-600", bg: netProfit >= 0 ? "bg-emerald-50" : "bg-red-50", sub: "Revenue minus salaries", trend: netProfit >= 0 ? "up" : "down" },
           ].map(m => (
@@ -161,7 +161,7 @@ export default function AdminFinancial() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-bold text-slate-900">${parseFloat(p.amount).toFixed(2)}</span>
-                    <Badge variant={p.status === "paid" ? "default" : "secondary"} className={p.status === "paid" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}>
+                    <Badge variant={p.status === "paid" ? "default" : "secondary"} className={p.status === "paid" ? "bg-emerald-100 text-emerald-700" : "dl-status-pending bg-amber-100 text-amber-700"}>
                       {p.status}
                     </Badge>
                   </div>
