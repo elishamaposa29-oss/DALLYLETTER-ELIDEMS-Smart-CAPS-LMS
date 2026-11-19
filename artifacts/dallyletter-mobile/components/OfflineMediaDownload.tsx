@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Linking from "expo-linking";
-import { createProtectedMediaShareLink, getApiUrl } from "@workspace/api-client-react";
+import { createProtectedMediaShareLink, DEFAULT_DALLYLETTER_WEB_URL, getApiUrl } from "@workspace/api-client-react";
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Share, Text, TouchableOpacity, View } from "react-native";
 import { useAuth } from "@/contexts/AuthContext";
@@ -173,7 +173,7 @@ export default function OfflineMediaDownload({ url, fileName, accessibilityLabel
   };
   const shareProtectedLessonMedia = async () => {
     try {
-      const webBaseUrl = (process.env.EXPO_PUBLIC_WEB_BASE_URL || "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app").replace(/\\/+$/, "");
+      const webBaseUrl = (process.env.EXPO_PUBLIC_WEB_BASE_URL || DEFAULT_DALLYLETTER_WEB_URL).replace(/\\/+$/, "");
       const shareUrl = await createProtectedMediaShareLink({
         resourceUrl: url,
         title: fileName || "Learning resource",
