@@ -133,8 +133,8 @@ router.get("/users/selection-directory", requireAuth, async (req, res): Promise<
   const actor = req.currentUser!;
   const ownerViewer = isOwnerRole(actor.role);
   const result = await pool.query(
-    "SELECT id,name,role,is_prefect,is_manager,manager_level,grade,subject,avatar_url FROM users WHERE COALESCE(is_blocked,false)=false AND COALESCE(is_suspended,false)=false AND ($1::boolean OR lower(role) NOT IN ('owner','platform_owner')) AND ($2 = '' OR name ILIKE '%' || $2 || '%') ORDER BY name ASC LIMIT 500",
-    [ownerViewer, query],
+    "SELECT id,name,role,is_prefect,is_manager,manager_level,grade,subject,avatar_url FROM users WHERE COALESCE(is_blocked,false)=false AND COALESCE(is_suspended,false)=false AND ($1::boolean OR lower(role) NOT IN ('owner','platform_owner')) AND ($2 = '' OR name ILIKE '%' || $2 || '%') AND ($3 IN ('all','everyone') OR ($3='teachers' AND lower(role)='teacher') OR ($3='prefects' AND (COALESCE(is_prefect,false)=true OR lower(role)='prefect')) OR ($3='learners' AND lower(role) IN ('student','learner')) OR ($3='managers' AND (COALESCE(is_manager,false)=true OR lower(role) IN ('manager','junior_manager','senior_manager'))) OR ($3='both' AND lower(role) IN ('teacher','student','learner'))) ORDER BY name ASC LIMIT 500",
+    [ownerViewer, query, group],
   );
   const managerViewer = isSeniorManager(actor) || isJuniorManager(actor);
   const rows = result.rows.filter((row: any) => {
