@@ -1345,7 +1345,7 @@ router.get("/subjects/catalog", async (req, res): Promise<void> => {
   const [lessonRows, classRows, saved, interactions, custom] = await Promise.all([
     pool.query("SELECT trim(subject) AS subject, count(*)::int AS usage_count FROM lessons WHERE subject IS NOT NULL AND trim(subject) <> '' GROUP BY lower(trim(subject)), trim(subject)"),
     pool.query("SELECT trim(subject) AS subject, count(*)::int AS usage_count FROM classes WHERE subject IS NOT NULL AND trim(subject) <> '' GROUP BY lower(trim(subject)), trim(subject)"),
-    pool.query("SELECT subjects FROM learner_subjects WHERE user_id=$1", [req.currentUser!.id]).catch(() => ({ rows: [] as any[] })),
+    pool.query("SELECT subjects FROM learner_subjects WHERE user_id=$1", [req.currentUser?.id ?? 0]).catch(() => ({ rows: [] as any[] })),
     pool.query("SELECT subject,interaction_count,last_interacted_at FROM dallyletter_subject_interactions WHERE user_id=$1 ORDER BY interaction_count DESC,last_interacted_at DESC", [req.currentUser!.id]),
     pool.query("SELECT subject FROM dallyletter_subject_catalog ORDER BY created_at DESC"),
   ]);
