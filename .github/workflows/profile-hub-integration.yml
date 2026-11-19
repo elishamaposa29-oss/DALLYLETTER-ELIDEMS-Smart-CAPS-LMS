@@ -104,8 +104,6 @@ jobs:
         run: pnpm --dir artifacts/dallyletter-mobile exec expo export --platform android --output-dir /tmp/dallyletter-android-export
       - name: Create schema in isolated ephemeral PostgreSQL
         run: pnpm run db:push
-      - name: Verify shared subject catalogue and personalized ranking
-        run: pnpm --dir artifacts/api-server run test:subject-selection
       - name: Build API
         run: pnpm --dir artifacts/api-server run build
       - name: Apply additive transfer form-data migration twice (idempotency check)
@@ -133,6 +131,8 @@ jobs:
           done
           test -s /tmp/pr84-health.json
           node -e 'const fs=require("fs");const v=JSON.parse(fs.readFileSync("/tmp/pr84-health.json","utf8"));if(v.status!=="ok")process.exit(1)'
+      - name: Verify shared subject catalogue and personalized ranking
+        run: pnpm --dir artifacts/api-server run test:subject-selection
       - name: Smoke-test every protected API route before authenticated workflows
         env:
           API_BASE_URL: http://127.0.0.1:4000
