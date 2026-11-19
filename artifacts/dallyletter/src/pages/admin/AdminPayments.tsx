@@ -16,6 +16,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { RecordPaymentBodyStatus } from "@workspace/api-client-react";
+import { UserSelector } from "@/components/selection/UserSelector";
 
 const recordPaymentSchema = z.object({
   studentId: z.coerce.number().min(1, "Student is required"),
@@ -112,18 +113,9 @@ export default function AdminPayments() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Student</FormLabel>
-                        <Select onValueChange={(val) => field.onChange(parseInt(val))} value={field.value ? field.value.toString() : ""}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select Student" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {students.map(s => (
-                              <SelectItem key={s.id} value={s.id.toString()}>{s.name} ({s.email})</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <FormControl>
+                          <UserSelector value={field.value ?? null} users={students} group="learners" onChange={id => field.onChange(id)} showGroupFilter={false} placeholder="Search learners by name…" />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
