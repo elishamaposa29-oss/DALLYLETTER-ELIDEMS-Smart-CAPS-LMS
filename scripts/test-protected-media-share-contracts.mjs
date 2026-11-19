@@ -23,7 +23,8 @@ assert.ok(helper.includes('method: "POST"'));
 assert.ok(helper.includes("/api/lessons/media/"));
 assert.ok(helper.includes("/shared-media"));
 assert.ok(helper.includes("shareToken"));
-assert.ok(helper.includes('page.searchParams.set("k", data.shareToken)'));
+assert.ok(helper.includes('page.hash = new URLSearchParams({ k: data.shareToken }).toString()'), "Long signing keys must be kept in the URL fragment, not displayed in query parameters");
+assert.ok(helper.includes('page.protocol !== "https:"'), "Production share links must require HTTPS");
 assert.ok(helper.includes('page.searchParams.set("m", match[1])'));
 assert.ok(helper.includes("DEFAULT_DALLYLETTER_WEB_URL"));
 
@@ -62,10 +63,14 @@ assert.ok(apiLessons.includes('|[A-Za-z0-9_-]{22}'), "Server must accept compact
 assert.ok(apiLessons.includes('[a-f0-9]{64}'), "Server must continue accepting existing long share keys");
 assert.ok(apiLessons.includes('Content-Disposition'), "A protected direct-file download fallback must be available");
 assert.ok(apiLessons.includes('Accept-Ranges'), "Media endpoints must advertise byte-range support");
+assert.ok(apiLessons.includes('Cache-Control", "private, max-age=300"'), "Protected media should use short private caching to reduce repeat data usage");
+const mediaStorage = readFileSync(join(root, "artifacts/api-server/src/lib/media-storage.ts"), "utf8");
+assert.ok(mediaStorage.includes('"Cache-Control": "private, max-age=300"'), "Chunk-backed protected media should also use short private caching");
 
 const sharedPage = contents.get("artifacts/dallyletter/src/pages/SharedMedia.tsx");
 assert.ok(sharedPage.includes("shareToken={shareToken}"), "Shared-media page must pass the signed token into the viewer");
-assert.ok(sharedPage.includes('params.get("k")'), "Compact share key must be supported");
+assert.ok(sharedPage.includes('new URLSearchParams(window.location.hash.replace(/^#/, "")).get("k")'), "Compact signing key must be read from the URL fragment");
+assert.ok(sharedPage.includes('params.get("k")'), "Previous compact query links must remain supported");
 assert.ok(sharedPage.includes('params.get("shareToken")'), "Legacy long-key share URLs must remain supported");
 
 const audit = contents.get("artifacts/dallyletter/src/pages/admin/AdminAuditLogs.tsx");
