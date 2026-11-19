@@ -4,6 +4,7 @@ import { useListLessons, useCreateLesson, useUpdateLesson, useDeleteLesson, getA
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SubjectSelector } from "@/components/selection/SubjectSelector";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -294,7 +295,7 @@ export default function TeacherLessons() {
                         <FormItem>
                           <FormLabel>Subject</FormLabel>
                           <FormControl>
-                            <Input placeholder="e.g. Mathematics" {...field} />
+                            <SubjectSelector value={field.value ?? ""} onChange={field.onChange} placeholder="Search or type a subject…" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
