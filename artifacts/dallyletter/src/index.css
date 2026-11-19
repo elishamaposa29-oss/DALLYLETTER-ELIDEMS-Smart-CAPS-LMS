@@ -511,8 +511,7 @@ button[class*="bg-[linear-gradient"] {
 
 /* Semantic amber is reserved for mixed attendance and warnings; it must not be
    recolored into the decorative brand-gold accent system. */
-.dl-status-mixed,
-.dl-status-mixed [class*="text-amber-"] {
+.dl-status-mixed {
   background-color: #fcd34d !important;
   color: #78350f !important;
   border-color: #d97706 !important;
