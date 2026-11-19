@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { StudyGroupPollPanel } from "@/components/StudyGroupPollPanel";
 import UserProfileLink from "@/components/UserProfileLink";
 import { apiJson, authenticatedFetch } from "@/lib/api";
 import {
@@ -42,12 +43,6 @@ type GroupSettings = {
   rules: string | null;
 };
 
-type ChatPoll = {
-  poll: { id: number; question: string; allowMultiple: boolean; closed: boolean };
-  options: Array<{ id: number; label: string; voteCount: number; selected: boolean }>;
-  totalVotes: number;
-};
-
 const defaultGroupSettings: GroupSettings = {
   allowPolls: true,
   allowMedia: true,
@@ -69,12 +64,6 @@ export default function StudentChat() {
   const [replyTo, setReplyTo] = useState<number | null>(null);
   const [reportingMessageId, setReportingMessageId] = useState<number | null>(null);
   const [settings, setSettings] = useState<GroupSettings>(defaultGroupSettings);
-  const [polls, setPolls] = useState<ChatPoll[]>([]);
-  const [pollLoading, setPollLoading] = useState(false);
-  const [pollComposerOpen, setPollComposerOpen] = useState(false);
-  const [pollQuestion, setPollQuestion] = useState("");
-  const [pollOptions, setPollOptions] = useState("Yes\nNo");
-  const [pollError, setPollError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
@@ -122,26 +111,11 @@ export default function StudentChat() {
   }, [messages]);
 
   useEffect(() => {
-    if (!selectedGroupId) {
-      setSettings(defaultGroupSettings);
-      setPolls([]);
-      return;
-    }
+    if (!selectedGroupId) { setSettings(defaultGroupSettings); return; }
     let active = true;
-    setPollLoading(true);
-    setPollError(null);
-    void Promise.all([
-      apiJson<GroupSettings>(`/api/study-groups/${selectedGroupId}/settings`),
-      apiJson<ChatPoll[]>(`/api/chat/groups/${selectedGroupId}/polls`),
-    ]).then(([nextSettings, nextPolls]) => {
-      if (!active) return;
-      setSettings(nextSettings);
-      setPolls(nextPolls);
-    }).catch(error => {
-      if (active) setPollError(error instanceof Error ? error.message : "Group extras could not be loaded.");
-    }).finally(() => {
-      if (active) setPollLoading(false);
-    });
+    void apiJson<GroupSettings>(`/api/study-groups/${selectedGroupId}/settings`)
+      .then(nextSettings => { if (active) setSettings(nextSettings); })
+      .catch(() => { if (active) setSettings(defaultGroupSettings); });
     return () => { active = false; };
   }, [selectedGroupId]);
 
@@ -208,50 +182,6 @@ export default function StudentChat() {
       },
     });
     invalidateMessages();
-  };
-
-  const loadPolls = async () => {
-    if (!selectedGroupId) return;
-    setPollLoading(true);
-    try {
-      setPolls(await apiJson<ChatPoll[]>(`/api/chat/groups/${selectedGroupId}/polls`));
-    } catch (error) {
-      setPollError(error instanceof Error ? error.message : "Polls could not be loaded.");
-    } finally {
-      setPollLoading(false);
-    }
-  };
-
-  const createPoll = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!selectedGroupId || !pollQuestion.trim()) return;
-    const options = pollOptions.split("\n").map(option => option.trim()).filter(Boolean);
-    if (options.length < 2) {
-      setPollError("Add at least two poll options.");
-      return;
-    }
-    try {
-      await apiJson(`/api/chat/groups/${selectedGroupId}/polls`, {
-        method: "POST",
-        body: JSON.stringify({ question: pollQuestion.trim(), options }),
-      });
-      setPollQuestion("");
-      setPollOptions("Yes\nNo");
-      setPollComposerOpen(false);
-      await loadPolls();
-      toast({ title: "Poll created" });
-    } catch (error) {
-      setPollError(error instanceof Error ? error.message : "Poll could not be created.");
-    }
-  };
-
-  const votePoll = async (pollId: number, optionId: number) => {
-    try {
-      await apiJson(`/api/chat/polls/${pollId}/vote`, { method: "POST", body: JSON.stringify({ optionIds: [optionId] }) });
-      await loadPolls();
-    } catch (error) {
-      toast({ variant: "destructive", title: "Vote not saved", description: error instanceof Error ? error.message : "Try again." });
-    }
   };
 
   const [deletingMessageId, setDeletingMessageId] = useState<number | null>(null);
@@ -357,7 +287,7 @@ export default function StudentChat() {
                   {isGroupConversation ? <button type="button" onClick={() => setGroupHubOpen(true)} aria-label="Open full group hub" title="Open group hub" className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border-2 border-[#C9A227] bg-[#0B1E3A] text-sm font-bold text-[#FFD700]">{selectedGroup?.coverImageUrl ? <AuthenticatedMedia url={selectedGroup.coverImageUrl} type="image" title={selectedGroup.name}/> : selectedGroup?.name?.slice(0,1).toUpperCase()}</button> : <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10"><User className="h-4 w-4 text-primary" /></div>}
                   <div className="min-w-0"><p className="truncate font-semibold">{isGroupConversation ? selectedGroup?.name : selectedContact?.name}</p>{isGroupConversation && settings.rules && <p className="truncate text-xs text-muted-foreground">{settings.rules}</p>}</div>
                 </div>
-                <div className="flex shrink-0 items-center gap-1">{isGroupConversation && settings.allowPolls && <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => setPollComposerOpen(value => !value)}><BarChart3 className="mr-1 h-4 w-4" />Poll</Button>}<Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={() => setChatFullscreen(value => !value)} aria-label={chatFullscreen ? "Exit full-screen chat" : "Open full-screen chat"} title={chatFullscreen ? "Exit full-screen chat" : "Open full-screen chat"}>{chatFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}</Button></div>
+                <div className="flex shrink-0 items-center gap-1"><Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={() => setChatFullscreen(value => !value)} aria-label={chatFullscreen ? "Exit full-screen chat" : "Open full-screen chat"} title={chatFullscreen ? "Exit full-screen chat" : "Open full-screen chat"}>{chatFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}</Button></div>
               </div>
 
               {groupHubOpen && isGroupConversation && selectedGroup && (
@@ -391,34 +321,7 @@ export default function StudentChat() {
                 </div>
               )}
 
-              {pollComposerOpen && isGroupConversation && (
-                <form onSubmit={createPoll} className="space-y-3 border-b bg-muted/20 p-4">
-                  <Input placeholder="Poll question" value={pollQuestion} onChange={event => setPollQuestion(event.target.value)} maxLength={300} required />
-                  <Textarea placeholder={"One option per line"} value={pollOptions} onChange={event => setPollOptions(event.target.value)} rows={3} />
-                  <div className="flex gap-2"><Button type="submit" size="sm">Create poll</Button><Button type="button" size="sm" variant="ghost" onClick={() => setPollComposerOpen(false)}>Cancel</Button></div>
-                </form>
-              )}
-              {pollError && <div className="flex items-center justify-between gap-2 border-b bg-destructive/10 px-4 py-2 text-xs text-destructive"><span>{pollError}</span><button type="button" onClick={() => setPollError(null)} aria-label="Dismiss poll error"><X className="h-3.5 w-3.5" /></button></div>}
-
               <div className="flex-1 space-y-4 overflow-y-auto bg-slate-50/50 p-4 dark:bg-slate-900/50">
-                {isGroupConversation && (
-                  <div className="space-y-3">
-                    {pollLoading && <div className="text-center text-xs text-muted-foreground">Loading polls…</div>}
-                    {polls.map(item => (
-                      <Card key={item.poll.id} className="p-4">
-                        <p className="font-medium">{item.poll.question}</p>
-                        <div className="mt-3 space-y-2">
-                          {item.options.map(option => (
-                            <button key={option.id} type="button" onClick={() => void votePoll(item.poll.id, option.id)} className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm ${option.selected ? "border-primary bg-primary/10" : "hover:bg-muted"}`}>
-                              <span>{option.selected && <Check className="mr-1 inline h-3.5 w-3.5" />}{option.label}</span><span className="text-xs text-muted-foreground">{option.voteCount}</span>
-                            </button>
-                          ))}
-                        </div>
-                        <p className="mt-2 text-[11px] text-muted-foreground">{item.totalVotes} vote{item.totalVotes === 1 ? "" : "s"}</p>
-                      </Card>
-                    ))}
-                  </div>
-                )}
                 {messagesLoading ? (
                   <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
                 ) : messagesError ? (
@@ -458,6 +361,7 @@ export default function StudentChat() {
                     return renderMessage(messageItem);
                   })
                 )}
+                {isGroupConversation && <StudyGroupPollPanel groupId={selectedGroupId} allowPolls={settings.allowPolls} />}
                 <div ref={messagesEndRef} />
               </div>
 
