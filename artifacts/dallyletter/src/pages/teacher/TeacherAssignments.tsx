@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SubjectSelector } from "@/components/selection/SubjectSelector";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -193,7 +194,7 @@ export default function TeacherAssignments() {
                 <Input type="url" placeholder="Reference material URL (PDF, video, document)" value={form.attachmentUrl} onChange={e => setForm(f => ({ ...f, attachmentUrl: e.target.value }))} />
                 <Input type="file" accept="video/mp4,video/webm,video/quicktime,video/ogg,audio/mpeg,audio/mp4,audio/ogg,audio/wav,image/jpeg,image/png,image/webp,application/pdf,.doc,.docx" onChange={e => uploadMaterial(e.target.files?.[0])} disabled={materialUploading} />
                 <div className="grid grid-cols-2 gap-2">
-                  <Input placeholder="Subject *" value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} />
+                  <SubjectSelector value={form.subject} onChange={subject => setForm(f => ({ ...f, subject }))} placeholder="Search or type a subject…" />
                   <Input placeholder="Grade / stream" value={form.grade} onChange={e => setForm(f => ({ ...f, grade: e.target.value }))} />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
