@@ -17,7 +17,7 @@ export function AuthenticatedMedia({ url, type, title, brandedShare = false, sha
   const [error, setError] = useState(false);
   const [scale, setScale] = useState(1);
   const supportsProtectedShare = (() => {
-    try { return /^\\/api\\/lessons\\/media\\/[a-f0-9-]{36}$/i.test(new URL(url, getApiUrl("/")).pathname); }
+    try { return /^\\/api\\/lessons\\/media\\/[a-f0-9-]{36}$/i.test(new URL(url, window.location.origin).pathname); }
     catch { return false; }
   })();
 
