@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { pool } from "@workspace/db";
+import { createRequire } from "node:module";
+const requireDb = createRequire(new URL("../../../lib/db/package.json", import.meta.url));
+const { Pool } = requireDb("pg");
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 const ensure = async () => {
   const client = await pool.connect();
