@@ -1328,7 +1328,19 @@ router.get("/subjects/catalog", async (req, res): Promise<void> => {
       UNION ALL SELECT trim(value) FROM teacher_subjects CROSS JOIN LATERAL unnest(subjects_to_teach) AS value
     ) subject_sources WHERE subject <> '' GROUP BY lower(subject)`),
     pool.query("SELECT subjects FROM learner_subjects WHERE user_id=$1", [req.currentUser?.id ?? 0]).catch(() => ({ rows: [] as any[] })),
-    pool.query("SELECT subject,interaction_count,last_interacted_at FROM dallyletter_subject_interactions WHERE user_id=$1 ORDER BY interaction_count DESC,last_interacted_at DESC", [(req.currentUser?.id ?? 0)]),
+    pool.query(`SELECT min(subject) AS subject, sum(interaction_count)::int AS interaction_count, max(last_interacted_at) AS last_interacted_at
+      FROM (
+        SELECT subject,interaction_count,last_interacted_at FROM dallyletter_subject_interactions WHERE user_id=$1
+        UNION ALL SELECT c.subject,count(*)::int,max(a.joined_at) FROM attendance a JOIN classes c ON c.id=a.class_id WHERE a.student_id=$1 AND lower(a.status)='present' GROUP BY lower(c.subject),c.subject
+        UNION ALL SELECT a.subject,count(*)::int,max(s.submitted_at) FROM assignment_submissions s JOIN assignments a ON a.id=s.assignment_id WHERE s.student_id=$1 GROUP BY lower(a.subject),a.subject
+        UNION ALL SELECT p.subject,count(*)::int,max(s.completed_at) FROM poll_submissions s JOIN polls p ON p.id=s.poll_id WHERE s.student_id=$1 AND p.subject IS NOT NULL GROUP BY lower(p.subject),p.subject
+        UNION ALL SELECT g.subject,count(*)::int,max(m.joined_at) FROM study_group_members m JOIN study_groups g ON g.id=m.group_id WHERE m.user_id=$1 GROUP BY lower(g.subject),g.subject
+        UNION ALL SELECT subject,count(*)::int,max(created_at) FROM lessons WHERE teacher_id=$1 GROUP BY lower(subject),subject
+        UNION ALL SELECT subject,count(*)::int,max(created_at) FROM classes WHERE teacher_id=$1 GROUP BY lower(subject),subject
+        UNION ALL SELECT subject,count(*)::int,max(created_at) FROM assignments WHERE teacher_id=$1 GROUP BY lower(subject),subject
+        UNION ALL SELECT subject,count(*)::int,max(created_at) FROM polls WHERE created_by=$1 AND subject IS NOT NULL GROUP BY lower(subject),subject
+      ) subject_activity
+      GROUP BY lower(subject) ORDER BY interaction_count DESC,last_interacted_at DESC`, [(req.currentUser?.id ?? 0)]),
     pool.query("SELECT subject FROM dallyletter_subject_catalog ORDER BY created_at DESC"),
   ]);
   const savedSubjects = (saved.rows[0]?.subjects ?? []) as string[];
