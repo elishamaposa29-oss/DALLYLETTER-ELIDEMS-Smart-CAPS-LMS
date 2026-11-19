@@ -4,9 +4,9 @@ import { getApiUrl } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
-type Props={value:string;onChange:(value:string)=>void;placeholder?:string;disabled?:boolean};
+type Props={value:string;onChange:(value:string)=>void;onSelect?:(value:string)=>void;placeholder?:string;disabled?:boolean};
 
-export default function SubjectSelector({value,onChange,placeholder="Search or type a subject…",disabled=false}:Props){
+export default function SubjectSelector({value,onChange,onSelect,placeholder="Search or type a subject…",disabled=false}:Props){
   const colors=useColors();const {token}=useAuth();
   const [subjects,setSubjects]=useState<string[]>([]);const [canAdd,setCanAdd]=useState(false);
   const [query,setQuery]=useState(value);const [loading,setLoading]=useState(true);const [notice,setNotice]=useState("");
@@ -17,7 +17,7 @@ export default function SubjectSelector({value,onChange,placeholder="Search or t
   const matches=useMemo(()=>subjects.filter(subject=>subject.toLowerCase().includes(normalized.toLowerCase())).slice(0,10),[subjects,normalized]);
   const exact=subjects.some(subject=>subject.toLowerCase()===normalized.toLowerCase());
   const recordInteraction=(subject:string)=>fetch(getApiUrl("/api/subjects/catalog/interaction"),{method:"POST",headers:{"Content-Type":"application/json",...(token?{Authorization:"Bearer "+token}:{})},body:JSON.stringify({subject})}).catch(()=>undefined);
-  const choose=(subject:string)=>{onChange(subject);setQuery(subject);setNotice("");void recordInteraction(subject);};
+  const choose=(subject:string)=>{onChange(subject);onSelect?.(subject);setQuery(subject);setNotice("");void recordInteraction(subject);};
   const add=async()=>{if(!normalized||!canAdd)return;try{const response=await fetch(getApiUrl("/api/subjects/catalog"),{method:"POST",headers:{"Content-Type":"application/json",...(token?{Authorization:"Bearer "+token}:{})},body:JSON.stringify({subject:normalized})});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"Subject could not be added.");await refresh();choose(String(data.subject||normalized));setNotice("Added to the shared subject catalogue.");}catch(error){setNotice(error instanceof Error?error.message:"Subject could not be added.");}};
   return <View style={{gap:6}}>
     <TextInput value={query} editable={!disabled} onChangeText={text=>{setQuery(text);onChange(text);}} onBlur={()=>{if(normalized&&canAdd&&!exact)void add();else if(normalized)void recordInteraction(normalized);}} placeholder={placeholder} placeholderTextColor={colors.mutedForeground} accessibilityLabel="Subject" style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground,backgroundColor:colors.card}}/>
