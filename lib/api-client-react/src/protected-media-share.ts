@@ -13,7 +13,7 @@ export interface CreateProtectedMediaShareLinkOptions {
 /** The single client entry point for creating Dallyletter's existing expiring protected-media links. */
 export async function createProtectedMediaShareLink(options: CreateProtectedMediaShareLinkOptions): Promise<string> {
   if (!options.token) throw new Error("Sign in before creating a protected share link.");
-  const apiBase = new URL(getApiUrl("/"));
+  const apiBase = new URL(getApiUrl("/"), options.webBaseUrl);
   const target = new URL(options.resourceUrl, apiBase);
   const webOrigin = new URL(options.webBaseUrl).origin;
   if (target.origin !== apiBase.origin && target.origin !== webOrigin) {
