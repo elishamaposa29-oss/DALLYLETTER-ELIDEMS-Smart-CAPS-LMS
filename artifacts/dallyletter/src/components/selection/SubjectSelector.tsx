@@ -12,7 +12,7 @@ type SubjectSelectorProps = {
 
 function token() { return localStorage.getItem("dallyletter_token") ?? ""; }
 
-export function SubjectSelector({ value, onChange, placeholder = "Search or type a subject…", disabled = false, className = "" }: SubjectSelectorProps) {
+export function SubjectSelector({ value, onChange, placeholder = "Search or type a subject…", disabled = false, className = "", onSelect }: SubjectSelectorProps) {
   const listId = "dallyletter-subject-options-" + useId();
   const [subjects, setSubjects] = useState<string[]>([]);
   const [canAdd, setCanAdd] = useState(false);
