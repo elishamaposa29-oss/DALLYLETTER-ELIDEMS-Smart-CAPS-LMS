@@ -117,7 +117,7 @@ export default function AdminChat() {
                 ))
               )
             ) : (
-              <UserSelector value={selectedUserId} users={(users ?? []).filter(person => person.id !== user?.id) as any} showGroupFilter={false} placeholder="Search people to message…" onChange={id => { setSelectedUserId(id); if (id) setSelectedGroupId(null); }} />
+              <UserSelector value={selectedUserId} users={(users ?? []).filter(person => person.id !== user?.id) as any} showGroupFilter={false} placeholder="Search people to message…" onChange={id => { if (id) selectUser(id); else setSelectedUserId(null); }} />
             )}
           </div>
         </Card>
