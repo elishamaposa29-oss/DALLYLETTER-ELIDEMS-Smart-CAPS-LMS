@@ -304,7 +304,7 @@ router.get("/messages", requireAuth, async (req, res): Promise<void> => {
       )
     : await pool.query(
         "SELECT user_id,last_read_at FROM message_conversation_reads WHERE conversation_type='private' AND conversation_id=$1 AND user_id=$2",
-        [recipientId, currentUser.id],
+        [currentUser.id, recipientId],
       );
   const readers = readCursors.rows.map(row => ({
     userId: Number(row.user_id),
