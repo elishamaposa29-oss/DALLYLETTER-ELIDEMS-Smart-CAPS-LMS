@@ -1267,13 +1267,147 @@ router.post("/webhooks/paynow", async(req,res):Promise<void>=>{
   res.json({received:true});
 });
 
-router.get("/subjects/catalog", requireAuth, async (_req, res): Promise<void> => {
-  const [lessonRows, classRows] = await Promise.all([
-    pool.query("SELECT DISTINCT trim(subject) AS subject FROM lessons WHERE subject IS NOT NULL AND trim(subject) <> ''").catch(() => ({ rows: [] as Array<{ subject: string }> })),
-    pool.query("SELECT DISTINCT trim(subject) AS subject FROM classes WHERE subject IS NOT NULL AND trim(subject) <> ''").catch(() => ({ rows: [] as Array<{ subject: string }> })),
+let selectionSchemaReady: Promise<void> | null = null;
+async function ensureSelectionSchema(): Promise<void> {
+  if (!selectionSchemaReady) {
+    selectionSchemaReady = (async () => {
+      await pool.query(`CREATE TABLE IF NOT EXISTS dallyletter_subject_catalog (
+        id bigserial PRIMARY KEY,
+        subject text NOT NULL,
+        normalized_subject text NOT NULL UNIQUE,
+        created_by integer REFERENCES users(id) ON DELETE SET NULL,
+        created_at timestamptz NOT NULL DEFAULT now()
+      )`);
+      await pool.query(`CREATE TABLE IF NOT EXISTS dallyletter_subject_interactions (
+        user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        normalized_subject text NOT NULL,
+        subject text NOT NULL,
+        interaction_count integer NOT NULL DEFAULT 0,
+        last_interacted_at timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, normalized_subject)
+      )`);
+      await pool.query("CREATE INDEX IF NOT EXISTS dallyletter_subject_interactions_rank_idx ON dallyletter_subject_interactions(user_id, interaction_count DESC, last_interacted_at DESC)");
+    })().catch(error => { selectionSchemaReady = null; throw error; });
+  }
+  await selectionSchemaReady;
+}
+
+function normalizeSelectionSubject(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const subject = value.trim().replace(/\\s+/g, " ");
+  return subject.length > 0 && subject.length <= 100 ? subject : null;
+}
+
+function canAddSystemSubject(actor: NonNullable<Express.Request["currentUser"]>): boolean {
+  const role = String(actor.role).toLowerCase();
+  if (isOwnerRole(role) || role === "admin" || canAccessManager(actor)) return true;
+  return role === "teacher" && !["draft", "pending_review", "rejected_pending_conversion"].includes(String(actor.teacherApplicationStatus ?? ""));
+}
+
+router.get("/users/selection-directory", requireAuth, async (req, res): Promise<void> => {
+  const group = String(req.query.group ?? "all").trim().toLowerCase();
+  const supportedGroups = new Set(["all", "everyone", "teachers", "prefects", "learners", "managers", "both"]);
+  if (!supportedGroups.has(group)) { res.status(400).json({ error: "Choose a supported user group." }); return; }
+  const query = typeof req.query.q === "string" ? req.query.q.trim().slice(0, 100).toLowerCase() : "";
+  const actor = req.currentUser!;
+  const ownerViewer = isOwnerRole(actor.role);
+  const result = await pool.query(
+    "SELECT id,name,role,is_prefect,is_manager,manager_level,grade,subject,avatar_url FROM users WHERE COALESCE(is_blocked,false)=false AND COALESCE(is_suspended,false)=false AND ($1::boolean OR lower(role) NOT IN ('owner','platform_owner')) ORDER BY name ASC",
+    [ownerViewer],
+  );
+  const managerViewer = isSeniorManager(actor) || isJuniorManager(actor);
+  const rows = result.rows.filter((row: any) => {
+    const role = normalizeRole(row.role);
+    const prefect = Boolean(row.is_prefect) || role === "prefect";
+    const manager = Boolean(row.is_manager) || ["manager", "junior_manager", "senior_manager"].includes(role);
+    const learner = ["student", "learner"].includes(role) || prefect;
+    const teacher = role === "teacher";
+    if (managerViewer && !canViewManagerTarget(actor, { id: Number(row.id), role: row.role, isManager: row.is_manager, managerLevel: row.manager_level })) return false;
+    if (query && !String(row.name ?? "").toLowerCase().includes(query)) return false;
+    if (group === "teachers" && !teacher) return false;
+    if (group === "prefects" && !prefect) return false;
+    if (group === "learners" && !learner) return false;
+    if (group === "managers" && !manager) return false;
+    if (group === "both" && !(teacher || learner)) return false;
+    return true;
+  });
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json(rows.map((row: any) => ({
+    id: Number(row.id), name: row.name, role: row.role,
+    isPrefect: Boolean(row.is_prefect), isManager: Boolean(row.is_manager),
+    managerLevel: row.manager_level, grade: row.grade, subject: row.subject,
+    avatarUrl: row.avatar_url,
+  })));
+});
+
+router.get("/subjects/catalog", requireAuth, async (req, res): Promise<void> => {
+  await ensureSelectionSchema();
+  const [lessonRows, classRows, saved, interactions, custom] = await Promise.all([
+    pool.query("SELECT trim(subject) AS subject, count(*)::int AS usage_count FROM lessons WHERE subject IS NOT NULL AND trim(subject) <> '' GROUP BY lower(trim(subject)), trim(subject)"),
+    pool.query("SELECT trim(subject) AS subject, count(*)::int AS usage_count FROM classes WHERE subject IS NOT NULL AND trim(subject) <> '' GROUP BY lower(trim(subject)), trim(subject)"),
+    pool.query("SELECT subjects FROM learner_subjects WHERE user_id=$1", [req.currentUser!.id]).catch(() => ({ rows: [] as any[] })),
+    pool.query("SELECT subject,interaction_count,last_interacted_at FROM dallyletter_subject_interactions WHERE user_id=$1 ORDER BY interaction_count DESC,last_interacted_at DESC", [req.currentUser!.id]),
+    pool.query("SELECT subject FROM dallyletter_subject_catalog ORDER BY created_at DESC"),
   ]);
-  const subjects = [...new Set([...lessonRows.rows, ...classRows.rows].map((row: { subject: string }) => row.subject).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-  res.json({ subjects });
+  const savedSubjects = (saved.rows[0]?.subjects ?? []) as string[];
+  const teacherSaved = ["teacher", "manager", "senior_manager"].includes(String(req.currentUser!.role).toLowerCase())
+    ? await pool.query("SELECT subjects_to_teach FROM teacher_subjects WHERE user_id=$1", [req.currentUser!.id]).catch(() => ({ rows: [] as any[] }))
+    : { rows: [] as any[] };
+  const preferred = [...new Set([...(savedSubjects ?? []), ...((teacherSaved.rows[0]?.subjects_to_teach ?? []) as string[])].map(value => String(value).trim()).filter(Boolean))];
+  const usage = new Map<string, number>();
+  for (const row of [...lessonRows.rows, ...classRows.rows]) {
+    const key = String(row.subject).toLocaleLowerCase();
+    usage.set(key, (usage.get(key) ?? 0) + Number(row.usage_count ?? 0));
+  }
+  const names = new Map<string, string>();
+  for (const row of [...lessonRows.rows, ...classRows.rows, ...custom.rows]) {
+    const name = String(row.subject ?? "").trim();
+    if (name) names.set(name.toLocaleLowerCase(), name);
+  }
+  for (const name of preferred) names.set(name.toLocaleLowerCase(), names.get(name.toLocaleLowerCase()) ?? name);
+  for (const row of interactions.rows) names.set(String(row.normalized_subject ?? row.subject).toLocaleLowerCase(), String(row.subject));
+  const preferredRank = new Map(preferred.map((name, index) => [name.toLocaleLowerCase(), index]));
+  const interactionRank = new Map(interactions.rows.map((row: any) => [String(row.normalized_subject ?? row.subject).toLocaleLowerCase(), row]));
+  const subjects = [...names.entries()].map(([key, subject]) => ({
+    subject, usageCount: usage.get(key) ?? 0,
+    interactionCount: Number(interactionRank.get(key)?.interaction_count ?? 0),
+    lastInteractedAt: interactionRank.get(key)?.last_interacted_at ?? null,
+    preferredRank: preferredRank.get(key) ?? Number.MAX_SAFE_INTEGER,
+  })).sort((left, right) =>
+    left.preferredRank - right.preferredRank ||
+    right.interactionCount - left.interactionCount ||
+    new Date(right.lastInteractedAt ?? 0).getTime() - new Date(left.lastInteractedAt ?? 0).getTime() ||
+    right.usageCount - left.usageCount ||
+    left.subject.localeCompare(right.subject)
+  );
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json({ subjects: subjects.map(row => row.subject), rankedSubjects: subjects, canAddSubject: canAddSystemSubject(req.currentUser!) });
+});
+
+router.post("/subjects/catalog", requireAuth, async (req, res): Promise<void> => {
+  const actor = req.currentUser!;
+  if (!canAddSystemSubject(actor)) { res.status(403).json({ error: "Only authorized teachers and privileged staff can add system subjects." }); return; }
+  const subject = normalizeSelectionSubject(req.body?.subject);
+  if (!subject) { res.status(400).json({ error: "Enter a subject name of up to 100 characters." }); return; }
+  await ensureSelectionSchema();
+  const normalized = subject.toLocaleLowerCase();
+  const result = await pool.query(
+    "INSERT INTO dallyletter_subject_catalog(subject,normalized_subject,created_by) VALUES($1,$2,$3) ON CONFLICT(normalized_subject) DO UPDATE SET subject=dallyletter_subject_catalog.subject RETURNING subject",
+    [subject, normalized, actor.id],
+  );
+  res.status(201).json({ subject: result.rows[0].subject, created: true });
+});
+
+router.post("/subjects/catalog/interaction", requireAuth, async (req, res): Promise<void> => {
+  const subject = normalizeSelectionSubject(req.body?.subject);
+  if (!subject) { res.status(400).json({ error: "Choose a valid subject." }); return; }
+  await ensureSelectionSchema();
+  const normalized = subject.toLocaleLowerCase();
+  await pool.query(
+    "INSERT INTO dallyletter_subject_interactions(user_id,normalized_subject,subject,interaction_count,last_interacted_at) VALUES($1,$2,$3,1,now()) ON CONFLICT(user_id,normalized_subject) DO UPDATE SET subject=EXCLUDED.subject,interaction_count=dallyletter_subject_interactions.interaction_count+1,last_interacted_at=now()",
+    [req.currentUser!.id, normalized, subject],
+  );
+  res.json({ recorded: true });
 });
 
 router.get("/users/me/subjects", requireAuth, async (req, res): Promise<void> => {
