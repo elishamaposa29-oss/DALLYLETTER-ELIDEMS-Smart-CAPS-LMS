@@ -124,6 +124,42 @@ router.get("/users", requireAuth, requireManagerPermissionIfManager("users.view"
   res.json(visible.map(u => ({ ...u, createdAt: u.createdAt.toISOString() })));
 });
 
+router.get("/users/selection-directory", requireAuth, async (req, res): Promise<void> => {
+  const group = String(req.query.group ?? "all").trim().toLowerCase();
+  const supportedGroups = new Set(["all", "everyone", "teachers", "prefects", "learners", "managers", "both"]);
+  if (!supportedGroups.has(group)) { res.status(400).json({ error: "Choose a supported user group." }); return; }
+  const query = typeof req.query.q === "string" ? req.query.q.trim().slice(0, 100).toLowerCase() : "";
+  const actor = req.currentUser!;
+  const ownerViewer = isOwnerRole(actor.role);
+  const result = await pool.query(
+    "SELECT id,name,role,is_prefect,is_manager,manager_level,grade,subject,avatar_url FROM users WHERE COALESCE(is_blocked,false)=false AND COALESCE(is_suspended,false)=false AND ($1::boolean OR lower(role) NOT IN ('owner','platform_owner')) ORDER BY name ASC",
+    [ownerViewer],
+  );
+  const managerViewer = isSeniorManager(actor) || isJuniorManager(actor);
+  const rows = result.rows.filter((row: any) => {
+    const role = normalizeRole(row.role);
+    const prefect = Boolean(row.is_prefect) || role === "prefect";
+    const manager = Boolean(row.is_manager) || ["manager", "junior_manager", "senior_manager"].includes(role);
+    const learner = ["student", "learner"].includes(role);
+    const teacher = role === "teacher";
+    if (managerViewer && !canViewManagerTarget(actor, { id: Number(row.id), role: row.role, isManager: row.is_manager, managerLevel: row.manager_level })) return false;
+    if (query && !String(row.name ?? "").toLowerCase().includes(query)) return false;
+    if (group === "teachers" && !teacher) return false;
+    if (group === "prefects" && !prefect) return false;
+    if (group === "learners" && !learner) return false;
+    if (group === "managers" && !manager) return false;
+    if (group === "both" && !(teacher || learner)) return false;
+    return true;
+  });
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json(rows.map((row: any) => ({
+    id: Number(row.id), name: row.name, role: row.role,
+    isPrefect: Boolean(row.is_prefect), isManager: Boolean(row.is_manager),
+    managerLevel: row.manager_level, grade: row.grade, subject: row.subject,
+    avatarUrl: row.avatar_url,
+  })));
+});
+
 router.get("/users/:id", requireAuth, requireManagerPermissionIfManager("users.view"), async (req, res): Promise<void> => {
   const params = GetUserParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
@@ -1278,42 +1314,6 @@ function canAddSystemSubject(actor: NonNullable<Express.Request["currentUser"]>)
   if (isOwnerRole(role) || role === "admin" || canAccessManager(actor)) return true;
   return role === "teacher" && ["not_applicable", "approved"].includes(String(actor.teacherApplicationStatus ?? "not_applicable").toLowerCase());
 }
-
-router.get("/users/selection-directory", requireAuth, async (req, res): Promise<void> => {
-  const group = String(req.query.group ?? "all").trim().toLowerCase();
-  const supportedGroups = new Set(["all", "everyone", "teachers", "prefects", "learners", "managers", "both"]);
-  if (!supportedGroups.has(group)) { res.status(400).json({ error: "Choose a supported user group." }); return; }
-  const query = typeof req.query.q === "string" ? req.query.q.trim().slice(0, 100).toLowerCase() : "";
-  const actor = req.currentUser!;
-  const ownerViewer = isOwnerRole(actor.role);
-  const result = await pool.query(
-    "SELECT id,name,role,is_prefect,is_manager,manager_level,grade,subject,avatar_url FROM users WHERE COALESCE(is_blocked,false)=false AND COALESCE(is_suspended,false)=false AND ($1::boolean OR lower(role) NOT IN ('owner','platform_owner')) ORDER BY name ASC",
-    [ownerViewer],
-  );
-  const managerViewer = isSeniorManager(actor) || isJuniorManager(actor);
-  const rows = result.rows.filter((row: any) => {
-    const role = normalizeRole(row.role);
-    const prefect = Boolean(row.is_prefect) || role === "prefect";
-    const manager = Boolean(row.is_manager) || ["manager", "junior_manager", "senior_manager"].includes(role);
-    const learner = ["student", "learner"].includes(role);
-    const teacher = role === "teacher";
-    if (managerViewer && !canViewManagerTarget(actor, { id: Number(row.id), role: row.role, isManager: row.is_manager, managerLevel: row.manager_level })) return false;
-    if (query && !String(row.name ?? "").toLowerCase().includes(query)) return false;
-    if (group === "teachers" && !teacher) return false;
-    if (group === "prefects" && !prefect) return false;
-    if (group === "learners" && !learner) return false;
-    if (group === "managers" && !manager) return false;
-    if (group === "both" && !(teacher || learner)) return false;
-    return true;
-  });
-  res.setHeader("Cache-Control", "private, no-store");
-  res.json(rows.map((row: any) => ({
-    id: Number(row.id), name: row.name, role: row.role,
-    isPrefect: Boolean(row.is_prefect), isManager: Boolean(row.is_manager),
-    managerLevel: row.manager_level, grade: row.grade, subject: row.subject,
-    avatarUrl: row.avatar_url,
-  })));
-});
 
 router.get("/subjects/catalog", async (req, res): Promise<void> => {
   await ensureProfileHubSchema();
