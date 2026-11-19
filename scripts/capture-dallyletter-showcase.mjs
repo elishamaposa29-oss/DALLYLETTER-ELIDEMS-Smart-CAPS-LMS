@@ -4,6 +4,12 @@ import { chromium } from "playwright";
 
 const baseUrl = new URL(process.env.SHOWCASE_SITE_URL || "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/");
 const authAllowedOrigin = new URL(process.env.SHOWCASE_AUTH_ALLOWED_ORIGIN || "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/").origin;
+const vercelBypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET || "";
+const previewHeaders = vercelBypassSecret ? { "x-vercel-protection-bypass": vercelBypassSecret } : {};
+const previewRequest = (init = {}) => ({
+  ...init,
+  headers: { ...(init.headers || {}), ...previewHeaders },
+});
 if (baseUrl.protocol !== "https:" || baseUrl.username || baseUrl.password) throw new Error("SHOWCASE_SITE_URL must be a public HTTPS URL without embedded credentials.");
 const out = path.resolve("showcase-captures");
 const roleScreensOut = path.join(out, "role-feature-screenshots");
@@ -102,7 +108,10 @@ async function waitForExpectedDeployment() {
 
   while (true) {
     try {
-      const response = await fetch(homepage, { cache: "no-store", headers: { "cache-control": "no-cache" } });
+      const response = await fetch(homepage, previewRequest({ cache: "no-store", headers: { "cache-control": "no-cache" } }));
+      if (new URL(response.url).origin !== baseUrl.origin || response.status === 401 || response.status === 403) {
+        throw new Error("Vercel preview protection blocked the showcase request. Configure the VERCEL_AUTOMATION_BYPASS_SECRET repository secret or authorize public preview access; no screenshots were captured.");
+      }
       if (!response.ok) {
         lastObservation = "homepage returned HTTP " + response.status;
       } else {
@@ -131,7 +140,7 @@ const browser = await chromium.launch({ headless: true });
 
 async function discoverPublicPages() {
   const sitemapUrl = new URL("/sitemap.xml", baseUrl);
-  const response = await fetch(sitemapUrl, { cache: "no-store", headers: { accept: "application/xml,text/xml", "cache-control": "no-cache" } });
+  const response = await fetch(sitemapUrl, previewRequest({ cache: "no-store", headers: { accept: "application/xml,text/xml", "cache-control": "no-cache" } }));
   if (!response.ok) throw new Error("Sitemap request failed: HTTP " + response.status + " at " + sitemapUrl);
   const xml = await response.text();
   const locations = [...xml.matchAll(/<loc>\s*([\s\S]*?)\s*<\/loc>/gi)].map((match) => decodeXml(match[1].trim()));
@@ -140,7 +149,7 @@ async function discoverPublicPages() {
   // Prerendered sitemap URLs retain the canonical production host. On a preview,
   // map only that known canonical host onto the preview origin so every public route
   // is tested against the exact PR build rather than silently filtering them out.
-  const homepageResponse = await fetch(new URL("/", baseUrl), { cache: "no-store" });
+  const homepageResponse = await fetch(new URL("/", baseUrl), previewRequest({ cache: "no-store" }));
   if (!homepageResponse.ok) throw new Error("Homepage request failed while resolving its canonical host: HTTP " + homepageResponse.status);
   const homepageHtml = await homepageResponse.text();
   const canonicalHref = homepageHtml.match(/<link\s+rel=["']canonical["']\s+href=["']([^"']+)["']/i)?.[1];
@@ -178,6 +187,7 @@ async function capturePublicPages() {
     const slug = url.pathname.split("/").filter(Boolean).join("-");
     const name = url.pathname === "/" ? "homepage" : safeName(slug);
     const context = await browser.newContext({
+      extraHTTPHeaders: previewHeaders,
       viewport: { width: 1440, height: 1000 },
       deviceScaleFactor: 1,
       recordVideo: { dir: roleScreensOut, size: { width: 1440, height: 1000 } }
@@ -230,7 +240,7 @@ async function verifyProtectedRouteShells() {
     .map((match) => match[1])
     .filter((routePath) => /^\/(student|teacher|manager|admin)(\/|$)/.test(routePath) && !routePath.includes("*"));
   const routes = [...new Set(routePaths)];
-  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, extraHTTPHeaders: previewHeaders });
   const page = await context.newPage();
   try {
     for (const routePath of routes) {
@@ -308,7 +318,7 @@ async function captureRole(role, route, email, password) {
   }
 
   // Login is deliberately performed in a non-recording context. Only dedicated showcase accounts are accepted.
-  const loginContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
+  const loginContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, extraHTTPHeaders: previewHeaders });
   let storageState;
   let authenticatedRole;
   let authenticatedApiOrigin;
@@ -352,6 +362,7 @@ async function captureRole(role, route, email, password) {
   }
 
   const context = await browser.newContext({
+    extraHTTPHeaders: previewHeaders,
     viewport: { width: 1440, height: 1000 },
     deviceScaleFactor: 1,
     storageState
@@ -556,7 +567,7 @@ async function captureRole(role, route, email, password) {
 }
 
 async function pageFor404Probe() {
-  const context = await browser.newContext();
+  const context = await browser.newContext({ extraHTTPHeaders: previewHeaders });
   const page = await context.newPage();
   const url = new URL("/__dallyletter-showcase-404-probe__/", baseUrl);
   try {
