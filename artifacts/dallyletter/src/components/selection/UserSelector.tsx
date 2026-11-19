@@ -53,7 +53,7 @@ export function UserSelector({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   useEffect(() => { setActiveGroup(group); }, [group]);
-  const selected = useMemo(() => users.find(user => String(user.id) === String(value)), [users, value]);
+  const visibleUsers = suppliedUsers ?? users;\n  const selected = useMemo(() => visibleUsers.find(user => String(user.id) === String(value)), [visibleUsers, value]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -72,7 +72,7 @@ export function UserSelector({
       .catch(reason => { if (reason?.name !== "AbortError") setError(reason instanceof Error ? reason.message : "People could not be loaded."); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [activeGroup, query]);
+  }, [activeGroup, query, suppliedUsers]);
 
   const choose = (user: DirectoryUser) => {
     onChange(user.id, user);
@@ -94,7 +94,7 @@ export function UserSelector({
       <button type="button" disabled={disabled} onClick={() => onChange(null)} className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted">Clear</button>
     </div>}
     <div role="listbox" aria-label="Matching users" className="max-h-56 space-y-1 overflow-y-auto rounded-md border p-1">
-      {loading ? <p className="p-3 text-sm text-muted-foreground">Loading people…</p> : error ? <p role="alert" className="p-3 text-sm text-destructive">{error}</p> : users.length === 0 ? <p className="p-3 text-sm text-muted-foreground">No matching people.</p> : users.map(person => <div key={person.id} className="flex items-center gap-2 rounded-md p-2 hover:bg-muted/60">
+      {!suppliedUsers && loading ? <p className="p-3 text-sm text-muted-foreground">Loading people…</p> : error ? <p role="alert" className="p-3 text-sm text-destructive">{error}</p> : visibleUsers.length === 0 ? <p className="p-3 text-sm text-muted-foreground">No matching people.</p> : visibleUsers.map(person => <div key={person.id} className="flex items-center gap-2 rounded-md p-2 hover:bg-muted/60">
         <Link href={"/profile/" + person.id} aria-label={"Open " + person.name + " profile"} className="shrink-0 rounded-full focus-visible:outline focus-visible:outline-2">
           {person.avatarUrl ? <img src={person.avatarUrl} alt={person.name + " profile"} className="h-9 w-9 rounded-full object-cover" /> : <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold">{person.name.slice(0, 1).toUpperCase()}</span>}
         </Link>
