@@ -13,7 +13,7 @@ const ensure = async () => {
     const learner = (await client.query(
       "INSERT INTO users(email,password_hash,name,role,teacher_application_status) VALUES($1,'test-hash','Selection Test Learner','student','not_applicable') RETURNING id",
       ["selection-learner-" + suffix + "@example.test"],
-    )).rows[0].id as number;
+    )).rows[0].id;
 
     await client.query("INSERT INTO learner_subjects(user_id,subjects) VALUES($1,$2)", [learner, ["History"]]);
     await client.query("INSERT INTO teacher_subjects(user_id,subjects_to_teach) VALUES($1,$2)", [teacher, ["Chemistry"]]);
