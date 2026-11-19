@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { eq, notInArray } from "drizzle-orm";
 import multer from "multer";
 import { db, usersTable, classesTable, notificationsTable, pool } from "@workspace/db";
+import { ensureProfileHubSchema } from "../lib/ensureProfileHubSchema";
 import {
   GetUserParams, UpdateUserParams, UpdateUserBody,
   DeleteUserParams, BlockUserParams, BlockUserBody,
