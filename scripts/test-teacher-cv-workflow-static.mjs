@@ -150,7 +150,7 @@ assert.ok(usersRoutes.includes("delivery.sent!==1||delivery.failed!==0"), "Notif
 
 assert.match(globalToast, /success: "border border-emerald-300 bg-emerald-50/, "Global success feedback must use an accessible green treatment");
 assert.match(globalToast, /destructive:\s*"destructive group border-destructive bg-destructive text-destructive-foreground"/, "Global failure feedback must use the destructive red treatment");
-assert.match(globalToast, /warning: "border border-amber-300 bg-amber-50/, "Global warning feedback must be visually distinct from success and failure");
+assert.match(globalToast, /warning: "dl-status-warning border border-amber-300 bg-amber-50/, "Global warning feedback must retain its semantic amber treatment and remain distinct from success and failure");
 assert.match(globalToast, /defaultVariants:\s*\{\s*variant: "success"/, "Unqualified successful action toasts must use the global success treatment");
 assert.match(globalToaster, /props\.variant === "destructive" \? 9000/, "Failure feedback must remain visible longer than routine success feedback");
 assert.match(globalToaster, /duration=\{props\.variant === "destructive" \? 9000 : props\.variant === "warning" \? 7000 : 5000\}/, "Global feedback must have bounded severity-aware auto-dismiss timers");
