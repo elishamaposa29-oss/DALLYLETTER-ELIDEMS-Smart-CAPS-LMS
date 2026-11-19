@@ -24,7 +24,7 @@ export default function AdminChat() {
   const queryClient = useQueryClient();
 
   const { data: groups, isLoading: groupsLoading } = useListStudyGroups();
-  const { data: users, isLoading: usersLoading } = useListUsers();
+  const { data: users } = useListUsers();
   
   const { data: messages, isLoading: messagesLoading } = useListMessages(
     { groupId: selectedGroupId, recipientId: selectedUserId },
