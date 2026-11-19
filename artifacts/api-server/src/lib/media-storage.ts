@@ -144,7 +144,7 @@ export async function streamStoredMedia(storageKey: string, range?: string): Pro
   const headers = new Headers({
     "Content-Type": mimeType,
     "Accept-Ranges": "bytes",
-    "Cache-Control": "private, no-store",
+    "Cache-Control": "private, max-age=300",
   });
   if (!range) {
     headers.set("Content-Length", String(size));
