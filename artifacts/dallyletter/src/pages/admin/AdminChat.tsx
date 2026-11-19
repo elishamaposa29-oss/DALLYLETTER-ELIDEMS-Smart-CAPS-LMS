@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { StudyGroupPollPanel } from "@/components/StudyGroupPollPanel";
 import { useListMessages, useSendMessage, useListStudyGroups, useListUsers, getApiUrl } from "@workspace/api-client-react";
 import { AuthenticatedAudio } from "@/components/AuthenticatedAudio";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
@@ -210,6 +211,7 @@ export default function AdminChat() {
                     );
                   })
                 )}
+                {selectedGroupId != null && <StudyGroupPollPanel groupId={selectedGroupId} />}
                 <div ref={messagesEndRef} />
               </div>
 
