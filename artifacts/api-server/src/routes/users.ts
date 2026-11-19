@@ -1346,12 +1346,12 @@ router.get("/subjects/catalog", async (req, res): Promise<void> => {
     pool.query("SELECT trim(subject) AS subject, count(*)::int AS usage_count FROM lessons WHERE subject IS NOT NULL AND trim(subject) <> '' GROUP BY lower(trim(subject)), trim(subject)"),
     pool.query("SELECT trim(subject) AS subject, count(*)::int AS usage_count FROM classes WHERE subject IS NOT NULL AND trim(subject) <> '' GROUP BY lower(trim(subject)), trim(subject)"),
     pool.query("SELECT subjects FROM learner_subjects WHERE user_id=$1", [req.currentUser?.id ?? 0]).catch(() => ({ rows: [] as any[] })),
-    pool.query("SELECT subject,interaction_count,last_interacted_at FROM dallyletter_subject_interactions WHERE user_id=$1 ORDER BY interaction_count DESC,last_interacted_at DESC", [req.currentUser!.id]),
+    pool.query("SELECT subject,interaction_count,last_interacted_at FROM dallyletter_subject_interactions WHERE user_id=$1 ORDER BY interaction_count DESC,last_interacted_at DESC", [(req.currentUser?.id ?? 0)]),
     pool.query("SELECT subject FROM dallyletter_subject_catalog ORDER BY created_at DESC"),
   ]);
   const savedSubjects = (saved.rows[0]?.subjects ?? []) as string[];
   const teacherSaved = req.currentUser && ["teacher", "manager", "senior_manager"].includes(String(req.currentUser.role).toLowerCase())
-    ? await pool.query("SELECT subjects_to_teach FROM teacher_subjects WHERE user_id=$1", [req.currentUser!.id]).catch(() => ({ rows: [] as any[] }))
+    ? await pool.query("SELECT subjects_to_teach FROM teacher_subjects WHERE user_id=$1", [(req.currentUser?.id ?? 0)]).catch(() => ({ rows: [] as any[] }))
     : { rows: [] as any[] };
   const preferred = [...new Set([...(savedSubjects ?? []), ...((teacherSaved.rows[0]?.subjects_to_teach ?? []) as string[])].map(value => String(value).trim()).filter(Boolean))];
   const usage = new Map<string, number>();
@@ -1374,9 +1374,9 @@ router.get("/subjects/catalog", async (req, res): Promise<void> => {
     lastInteractedAt: interactionRank.get(key)?.last_interacted_at ?? null,
     preferredRank: preferredRank.get(key) ?? Number.MAX_SAFE_INTEGER,
   })).sort((left, right) =>
-    left.preferredRank - right.preferredRank ||
     right.interactionCount - left.interactionCount ||
     new Date(right.lastInteractedAt ?? 0).getTime() - new Date(left.lastInteractedAt ?? 0).getTime() ||
+    left.preferredRank - right.preferredRank ||
     right.usageCount - left.usageCount ||
     left.subject.localeCompare(right.subject)
   );
@@ -1406,7 +1406,7 @@ router.post("/subjects/catalog/interaction", requireAuth, async (req, res): Prom
   const normalized = subject.toLocaleLowerCase();
   await pool.query(
     "INSERT INTO dallyletter_subject_interactions(user_id,normalized_subject,subject,interaction_count,last_interacted_at) VALUES($1,$2,$3,1,now()) ON CONFLICT(user_id,normalized_subject) DO UPDATE SET subject=EXCLUDED.subject,interaction_count=dallyletter_subject_interactions.interaction_count+1,last_interacted_at=now()",
-    [req.currentUser!.id, normalized, subject],
+    [(req.currentUser?.id ?? 0), normalized, subject],
   );
   res.json({ recorded: true });
 });
