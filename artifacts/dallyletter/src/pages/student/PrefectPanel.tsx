@@ -11,8 +11,9 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { getApiUrl } from "@workspace/api-client-react";
+import { UserSelector } from "@/components/selection/UserSelector";
 
-type Teacher = { id: number; name: string; subject: string | null };
+type Teacher = { id: number; name: string; subject: string | null; avatarUrl?: string | null };
 type Prefect = { id: number; name: string; avatarUrl?: string | null; grade: string | null; performanceScore: number | null; badgeCount: number | null };
 const token = () => localStorage.getItem("dallyletter_token") ?? "";
 
@@ -80,7 +81,7 @@ export default function PrefectPanel() {
   return <DashboardLayout><div className="space-y-6">
     <div className="rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 p-5 text-white"><div className="flex items-center gap-3"><Shield className="h-6 w-6" /><div><h1 className="text-2xl font-bold">Prefect Dashboard</h1><p className="text-amber-50 text-sm">Coordinate learning requests and connect with teachers.</p></div></div></div>
     <Card><CardHeader><CardTitle className="flex items-center gap-2"><Calendar className="h-5 w-5" />Request a Lesson</CardTitle></CardHeader><CardContent className="space-y-4">
-      <div className="space-y-2"><Label>Teacher</Label><Select value={teacherId} onValueChange={setTeacherId}><SelectTrigger><SelectValue placeholder={loading ? "Loading teachers…" : "Select a teacher"} /></SelectTrigger><SelectContent>{teachers.map(t => <SelectItem key={t.id} value={String(t.id)}>{t.name}{t.subject ? ` — ${t.subject}` : ""}</SelectItem>)}</SelectContent></Select><div className="flex flex-wrap gap-2">{teachers.slice(0,8).map(t=><Button key={t.id} type="button" size="sm" variant={follows.some(f=>f.targetType==="teacher"&&f.targetUserId===t.id)?"default":"outline"} onClick={()=>void toggleFollow("teacher",t.id,t.name)}>{follows.some(f=>f.targetType==="teacher"&&f.targetUserId===t.id)?"Following":"Follow"} {t.name.split(" ")[0]}</Button>)}</div></div>
+      <div className="space-y-2"><Label>Teacher</Label><UserSelector value={teacherId||null} users={teachers.map(t=>({...t,role:"teacher"}))} group="teachers" showGroupFilter={false} onChange={id=>setTeacherId(id?String(id):"")} placeholder={loading?"Loading teachers…":"Search teachers by name…"} /><div className="flex flex-wrap gap-2">{teachers.slice(0,8).map(t=><Button key={t.id} type="button" size="sm" variant={follows.some(f=>f.targetType==="teacher"&&f.targetUserId===t.id)?"default":"outline"} onClick={()=>void toggleFollow("teacher",t.id,t.name)}>{follows.some(f=>f.targetType==="teacher"&&f.targetUserId===t.id)?"Following":"Follow"} {t.name.split(" ")[0]}</Button>)}</div></div>
       <div className="space-y-2"><Label>Lesson topic</Label><Textarea value={topic} onChange={e => setTopic(e.target.value)} placeholder="e.g. Simultaneous equations" /></div>
       <div className="space-y-2"><Label>Preferred date</Label><input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full rounded-md border bg-background px-3 py-2 text-sm" /></div>
       <div className="space-y-2"><Label>Notes</Label><Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="What should the teacher cover?" /></div>
