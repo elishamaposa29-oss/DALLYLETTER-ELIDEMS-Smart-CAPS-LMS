@@ -32,7 +32,7 @@ test("creates a canonical protected link and sends the authenticated share reque
   const originalFetch = globalThis.fetch;
   const storageKey = "123e4567-e89b-12d3-a456-426614174000";
   const resourceUrl = "/api/lessons/media/" + storageKey + "?type=image%2Fjpeg";
-  const shareToken = "1799999999." + "a".repeat(64);
+  const shareToken = "1799999999." + "a".repeat(22);
   let requestedUrl = "";
   let requestedAuthorization = "";
   setBaseUrl(api);
@@ -56,7 +56,10 @@ test("creates a canonical protected link and sends the authenticated share reque
     assert.equal(parsed.searchParams.get("url"), resourceUrl);
     assert.equal(parsed.searchParams.get("type"), "image");
     assert.equal(parsed.searchParams.get("title"), "Protected image");
-    assert.equal(parsed.searchParams.get("shareToken"), shareToken);
+    assert.equal(parsed.searchParams.get("k"), shareToken);
+    assert.equal(parsed.searchParams.has("shareToken"), false);
+    assert.equal(parsed.hash, "");
+    assert.ok(link.startsWith("https://"), "Shared links must use HTTPS");
   } finally {
     globalThis.fetch = originalFetch;
     setBaseUrl(null);
