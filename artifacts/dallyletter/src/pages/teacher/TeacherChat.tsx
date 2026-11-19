@@ -31,7 +31,7 @@ export default function TeacherChat() {
   const queryClient = useQueryClient();
 
   const { data: groups, isLoading: groupsLoading } = useListStudyGroups({ query: { enabled: !restrictedApplicant } } as any);
-  const { data: users, isLoading: usersLoading } = useListUsers({ query: { enabled: !restrictedApplicant } } as any);
+  const { data: users } = useListUsers({ query: { enabled: !restrictedApplicant } } as any);
 
   const { data: messages, isLoading: messagesLoading } = useListMessages(
     { groupId: selectedGroupId, recipientId: selectedUserId },
