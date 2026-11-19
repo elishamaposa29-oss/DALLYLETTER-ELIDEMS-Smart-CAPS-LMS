@@ -23,6 +23,8 @@ assert.ok(helper.includes('method: "POST"'));
 assert.ok(helper.includes("/api/lessons/media/"));
 assert.ok(helper.includes("/shared-media"));
 assert.ok(helper.includes("shareToken"));
+assert.ok(helper.includes('page.searchParams.set("k", data.shareToken)'));
+assert.ok(helper.includes('page.searchParams.set("m", match[1])'));
 assert.ok(helper.includes("DEFAULT_DALLYLETTER_WEB_URL"));
 
 const webPath = "artifacts/dallyletter/src/components/AuthenticatedMedia.tsx";
@@ -33,6 +35,8 @@ assert.ok(web.includes("navigator.clipboard?.writeText"));
 assert.ok(web.includes("brandedShare && shareToken"));
 assert.ok(web.includes('path.startsWith("/api/lessons/media/")'));
 assert.ok(web.includes('mediaRequestUrl.searchParams.set("shareToken", shareToken)'), "Public viewer must pass its signed token to the protected media endpoint");
+assert.ok(web.includes("Stream public media directly"), "Shared media must stream without downloading a complete blob first");
+assert.ok(web.includes('preload="none"'), "Audio and video must not preload large files on low-data connections");
 assert.ok(!web.includes("files:[file]"), "Web must never bypass protected links by sharing raw media files");
 assert.equal((web.match(/supportsProtectedShare && <Button/g) || []).length, 4, "Every supported web media type must use the same protected share control");
 assert.ok(!web.includes("supportsProtectedShare && {"), "Share controls must not contain duplicated conditional wrappers");
@@ -52,6 +56,8 @@ assert.ok(!lesson.includes("extractLessonLinks(selectedLesson.content).join"), "
 
 const sharedPage = contents.get("artifacts/dallyletter/src/pages/SharedMedia.tsx");
 assert.ok(sharedPage.includes("shareToken={shareToken}"), "Shared-media page must pass the signed token into the viewer");
+assert.ok(sharedPage.includes('params.get("k")'), "Compact share key must be supported");
+assert.ok(sharedPage.includes('params.get("shareToken")'), "Legacy long-key share URLs must remain supported");
 
 const audit = contents.get("artifacts/dallyletter/src/pages/admin/AdminAuditLogs.tsx");
 assert.ok(!audit.includes("navigator.share"), "Confidential audit logs must not be exposed through public OS share targets");
