@@ -56,6 +56,7 @@ export function StudyGroupPollPanel({ groupId, allowPolls = true }: { groupId: n
     const selectedIds = poll.poll.allowMultiple
       ? [...poll.options.filter(option => option.selected && option.id !== optionId).map(option => option.id), ...(poll.options.some(option => option.id === optionId && option.selected) ? [] : [optionId])]
       : [optionId];
+    if (selectedIds.length === 0) return;
     try {
       await apiJson(`/api/chat/polls/${poll.poll.id}/vote`, { method: "POST", body: JSON.stringify({ optionIds: selectedIds }) });
       await load();
