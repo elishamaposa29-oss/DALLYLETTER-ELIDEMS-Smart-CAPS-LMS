@@ -40,7 +40,7 @@ function signMediaShare(storageKey: string, expiresAt: number): string {
   const secret = mediaShareSecret();
   if (!secret) throw new Error("Media sharing signing secret is not configured");
   const payload = `${storageKey}.${expiresAt}`;
-  return `${expiresAt}.${createHmac("sha256", secret).update(payload).digest("hex")}`;
+  return `${expiresAt}.${createHmac("sha256", secret).update(payload).digest().subarray(0, 16).toString("base64url")}`;
 }
 function validMediaShare(storageKey: string, token: unknown): boolean {
   if (typeof token !== "string" || !/^[0-9]{10,12}\.[a-f0-9]{64}$/i.test(token)) return false;
