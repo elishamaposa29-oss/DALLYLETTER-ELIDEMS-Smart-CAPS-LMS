@@ -15,6 +15,7 @@ const mobileSubject = read("artifacts/dallyletter-mobile/components/selection/Su
 assert.match(api, /router\.get\("\/users\/selection-directory", requireAuth/);
 assert.match(api, /new Set\(\["all", "everyone", "teachers", "prefects", "learners", "managers", "both"\]\)/);
 assert.match(api, /canViewManagerTarget\(actor/);
+assert.ok(api.indexOf('router.get("/users/selection-directory"') < api.indexOf('router.get("/users/:id"'), "Static user-directory route must precede the dynamic user-id route");
 assert.match(api, /avatar_url/);
 assert.match(api, /router\.get\("\/subjects\/catalog", async/);
 for (const source of ["lessons", "classes", "assignments", "polls", "study_groups", "learner_subjects", "teacher_subjects"]) {
