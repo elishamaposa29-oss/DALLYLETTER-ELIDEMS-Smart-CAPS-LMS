@@ -126,6 +126,11 @@ async function waitForExpectedDeployment() {
       }
     } catch (error) {
       lastObservation = String(error);
+      // A protection denial is a configuration failure, not a deployment-readiness
+      // condition. Stop immediately instead of burning the full deployment wait window.
+      if (/Vercel preview protection blocked the showcase request/i.test(lastObservation)) {
+        throw new Error(lastObservation + " Configure the GitHub Actions secret VERCEL_AUTOMATION_BYPASS_SECRET, then rerun this workflow.");
+      }
     }
 
     if (Date.now() >= deadline) {
