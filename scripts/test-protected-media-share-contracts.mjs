@@ -29,6 +29,8 @@ const web = contents.get(webPath);
 assert.ok(web.includes("createProtectedMediaShareLink"));
 assert.ok(web.includes("navigator.share"));
 assert.ok(web.includes("navigator.clipboard?.writeText"));
+assert.ok(web.includes("brandedShare && shareToken"));
+assert.ok(web.includes('mediaRequestUrl.searchParams.set("shareToken", shareToken)'), "Public viewer must pass its signed token to the protected media endpoint");
 assert.ok(!web.includes("files:[file]"), "Web must never bypass protected links by sharing raw media files");
 
 const mobileMediaPath = "artifacts/dallyletter-mobile/components/OfflineMediaDownload.tsx";
@@ -42,6 +44,9 @@ const lesson = contents.get(lessonPath);
 assert.ok(lesson.includes("createProtectedMediaShareLink"));
 assert.ok(lesson.includes("Share.share"));
 assert.ok(!lesson.includes("extractLessonLinks(selectedLesson.content).join"), "Lesson sharing must not expose raw lesson URLs or content");
+
+const sharedPage = contents.get("artifacts/dallyletter/src/pages/SharedMedia.tsx");
+assert.ok(sharedPage.includes("shareToken={shareToken}"), "Shared-media page must pass the signed token into the viewer");
 
 const audit = contents.get("artifacts/dallyletter/src/pages/admin/AdminAuditLogs.tsx");
 assert.ok(!audit.includes("navigator.share"), "Confidential audit logs must not be exposed through public OS share targets");
