@@ -151,7 +151,7 @@ export default function TeacherChat() {
                 {!mine && <UserProfileLink userId={msg.senderId} name={msg.senderName ?? "Student"} compact />}
                 <View style={[s.bubble, mine ? s.myBubble : s.theirBubble]}>
                   <Text style={mine ? s.myText : s.theirText}>{msg.content}</Text>
-                  <View style={{flexDirection:"row",alignItems:"center",gap:6,marginTop:3}}><Text style={mine ? s.time : s.theirTime}>{new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>{mine&&(msg.readByUserIds?.length||0)>0&&<Text style={{fontSize:9,fontWeight:"800",color:"#9A7020"}}>Seen by {msg.readByUserIds.length} ✓✓</Text>}</View>
+                  <View style={{flexDirection:"row",alignItems:"center",gap:6,marginTop:3}}><Text style={mine ? s.time : s.theirTime}>{new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>{mine&&(((msg as any).readByUserIds?.length)||0)>0&&<Text style={{fontSize:9,fontWeight:"800",color:"#9A7020"}}>Seen by {(msg as any).readByUserIds.length} ✓✓</Text>}</View>
                 </View>
               </View>
             );
