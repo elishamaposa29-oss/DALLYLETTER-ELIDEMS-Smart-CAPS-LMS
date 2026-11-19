@@ -11,6 +11,7 @@ import { Loader2, Plus, Play, Square, Trash2, BarChart3, Sparkles, ClipboardList
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
+import { SubjectSelector } from "@/components/selection/SubjectSelector";
 
 interface Poll { id: number; title: string; type: string; grade: string | null; subject: string | null; mode: string; status: string; createdAt: string; }
 interface PollResults { submissions: { studentName: string; score: number; totalQuestions: number }[]; total: number; avgScore: number; }
@@ -174,7 +175,7 @@ export default function TeacherPolls() {
                     <SelectContent>{["Grade 8","Grade 9","Grade 10","Grade 11","Grade 12"].map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1.5"><Label>Subject</Label><Input placeholder="e.g. Mathematics" value={newPoll.subject} onChange={e => setNewPoll(p => ({ ...p, subject: e.target.value }))} /></div>
+                <div className="space-y-1.5"><Label>Subject</Label><SubjectSelector value={newPoll.subject} onChange={subject => setNewPoll(p => ({ ...p, subject }))} placeholder="Search or type a subject…" /></div>
               </div>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
