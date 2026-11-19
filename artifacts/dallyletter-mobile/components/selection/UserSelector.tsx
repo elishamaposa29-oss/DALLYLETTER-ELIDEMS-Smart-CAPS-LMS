@@ -40,7 +40,7 @@ export default function UserSelector({value,onChange,group="all",showGroupFilter
   const sourceRows:Person[]=rawRows.map(person=>({id:person.id,name:String(person.name??person.displayName??"User"),role:person.role,isPrefect:Boolean(person.isPrefect),isManager:Boolean(person.isManager),avatarUrl:person.avatarUrl??null,grade:person.grade??null,subject:person.subject??null}));
   const visibleRows=useMemo(()=>suppliedUsers?sourceRows.filter(person=>person.name.toLowerCase().includes(query.toLowerCase())):sourceRows,[suppliedUsers,query,rows]);
   const selectedPerson=sourceRows.find(person=>String(person.id)===String(value))??(selectedUser&&String(selectedUser.id)===String(value)?selectedUser:undefined);
-  useEffect(()=>{if(value==null)setSelectedUser(undefined);else{const found=sourceRows.find(person=>String(person.id)===String(value));if(found)setSelectedUser(found);}},[value,sourceRows]);
+  useEffect(()=>{if(value==null){if(selectedUser)setSelectedUser(undefined);}else{const found=sourceRows.find(person=>String(person.id)===String(value));if(found&&String(selectedUser?.id)!==String(found.id))setSelectedUser(found);}},[value,sourceRows,selectedUser]);
   return <View style={{gap:9}}>
     {showGroupFilter&&<View style={{flexDirection:"row",flexWrap:"wrap",gap:6}}>
       {groups.map(item=><TouchableOpacity key={item.value} disabled={disabled} onPress={()=>setActiveGroup(item.value)} style={{paddingHorizontal:10,paddingVertical:7,borderRadius:16,backgroundColor:activeGroup===item.value?colors.primary:colors.card,borderWidth:1,borderColor:colors.border}}>
