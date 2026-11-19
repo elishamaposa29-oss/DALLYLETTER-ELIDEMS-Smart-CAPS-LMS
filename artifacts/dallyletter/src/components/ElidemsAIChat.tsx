@@ -62,7 +62,7 @@ export function ElidemsAIChat({ role }: Props) {
       {messages.map((message, index) => <div key={index} className={`max-w-[90%] whitespace-pre-wrap rounded-xl px-3 py-2 text-sm ${message.role === "user" ? "ml-auto bg-[#0f2a5a] text-white" : "mr-auto border bg-white text-slate-800"}`}>{message.content}</div>)}
       {busy && <p className="text-xs text-slate-500">ELIDEMS AI is thinking…</p>}
     </div>
-    {mode === "agent" && <p className="border-t bg-amber-50 px-4 py-2 text-xs text-amber-900">Agent planning is permission-gated. This chat does not execute changes; consequential tasks must be completed through the existing authorized workflow and confirmation.</p>}
+    {mode === "agent" && <p className="dl-status-warning border-t bg-amber-50 px-4 py-2 text-xs text-amber-900">Agent planning is permission-gated. This chat does not execute changes; consequential tasks must be completed through the existing authorized workflow and confirmation.</p>}
     {error && <p role="alert" className="px-4 pt-2 text-xs text-red-700">{error}</p>}
     <form className="flex gap-2 border-t p-3" onSubmit={event => { event.preventDefault(); void send(); }}>
       <input value={draft} onChange={event => setDraft(event.target.value)} maxLength={learner ? 4000 : 20000} placeholder={learner ? "Ask a learning question…" : "Message ELIDEMS AI…"} aria-label="Message ELIDEMS AI" className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#A87919]" />
