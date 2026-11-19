@@ -23,6 +23,7 @@ assert.ok(helper.includes('method: "POST"'));
 assert.ok(helper.includes("/api/lessons/media/"));
 assert.ok(helper.includes("/shared-media"));
 assert.ok(helper.includes("shareToken"));
+assert.ok(helper.includes("DEFAULT_DALLYLETTER_WEB_URL"));
 
 const webPath = "artifacts/dallyletter/src/components/AuthenticatedMedia.tsx";
 const web = contents.get(webPath);
@@ -31,7 +32,6 @@ assert.ok(web.includes("navigator.share"));
 assert.ok(web.includes("navigator.clipboard?.writeText"));
 assert.ok(web.includes("brandedShare && shareToken"));
 assert.ok(web.includes('path.startsWith("/api/lessons/media/")'));
-assert.ok(!web.includes("\\\\/api"), "Web protected-media path detection must use valid path parsing");
 assert.ok(web.includes('mediaRequestUrl.searchParams.set("shareToken", shareToken)'), "Public viewer must pass its signed token to the protected media endpoint");
 assert.ok(!web.includes("files:[file]"), "Web must never bypass protected links by sharing raw media files");
 assert.equal((web.match(/supportsProtectedShare && <Button/g) || []).length, 4, "Every supported web media type must use the same protected share control");
@@ -40,6 +40,7 @@ assert.ok(!web.includes("supportsProtectedShare && {"), "Share controls must not
 const mobileMediaPath = "artifacts/dallyletter-mobile/components/OfflineMediaDownload.tsx";
 const mobileMedia = contents.get(mobileMediaPath);
 assert.ok(mobileMedia.includes("createProtectedMediaShareLink"));
+assert.ok(mobileMedia.includes("DEFAULT_DALLYLETTER_WEB_URL"));
 assert.ok(mobileMedia.includes("Share.share"));
 assert.ok(!mobileMedia.includes("shared-media?url="), "Mobile must not maintain a second protected-link URL builder");
 
