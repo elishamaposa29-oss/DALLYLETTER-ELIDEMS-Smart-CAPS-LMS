@@ -1276,7 +1276,7 @@ function normalizeSelectionSubject(value: unknown): string | null {
 function canAddSystemSubject(actor: NonNullable<Express.Request["currentUser"]>): boolean {
   const role = String(actor.role).toLowerCase();
   if (isOwnerRole(role) || role === "admin" || canAccessManager(actor)) return true;
-  return role === "teacher" && String(actor.teacherApplicationStatus ?? "").toLowerCase() === "approved";
+  return role === "teacher" && ["not_applicable", "approved"].includes(String(actor.teacherApplicationStatus ?? "not_applicable").toLowerCase());
 }
 
 router.get("/users/selection-directory", requireAuth, async (req, res): Promise<void> => {
