@@ -2,7 +2,8 @@ import { FeedbackMessage } from "@/components/FeedbackMessage";
 import { Feather } from "@expo/vector-icons";
 import { useListMessages, useSendMessage, useListStudyGroups } from "@workspace/api-client-react";
 import * as Haptics from "expo-haptics";
-import { AppState, Platform, FlatList, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { AppState, Platform, FlatList, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Image } from "react-native";
+import { getApiUrl } from "@workspace/api-client-react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -15,10 +16,26 @@ import { useColors } from "@/hooks/useColors";
 export default function StudentChat() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [text, setText] = useState("");
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
   const [notice, setNotice] = useState("");
+  const [unreadGroups, setUnreadGroups] = useState<Array<{id:number;unread:number}>>([]);
+  useEffect(() => {
+    if (!token || !user?.id) { setUnreadGroups([]); return; }
+    let active = true;
+    const refreshUnread = async () => {
+      try {
+        const response = await fetch(getApiUrl("/api/messages/unread-summary"), { headers: { Authorization: "Bearer " + token }, cache: "no-store" });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (active) setUnreadGroups(Array.isArray(data.groups) ? data.groups : []);
+      } catch { /* Preserve the last known counts during a temporary outage. */ }
+    };
+    void refreshUnread();
+    const timer = setInterval(() => { if (AppState.currentState === "active") void refreshUnread(); }, 5000);
+    return () => { active = false; clearInterval(timer); };
+  }, [token, user?.id]);
   const { data: groupData, isLoading: groupsLoading } = useListStudyGroups();
   const groups = (groupData ?? []) as unknown as ChatGroup[];
   const joinedGroups = groups.filter(group => group.isMember ?? group.members?.some(member => member.id === user?.id));
@@ -192,7 +209,7 @@ export default function StudentChat() {
         </View>
       </View>
 
-      <View style={s.groupStrip}><ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">{joinedGroups.map(group => <TouchableOpacity key={group.id} onPress={() => { setSelectedGroupId(group.id); setNotice(""); }} style={[s.groupChip,{borderColor:selectedGroupId===group.id?colors.primary:colors.border,backgroundColor:selectedGroupId===group.id?colors.primary:colors.card}]}><Text style={{color:selectedGroupId===group.id?"#fff":colors.foreground,fontWeight:"700",fontSize:12}}>{group.name}</Text></TouchableOpacity>)}{!groupsLoading&&joinedGroups.length===0?<Text style={s.emptySubtext}>No joined study groups. Join a group first.</Text>:null}</ScrollView></View>
+      <View style={s.groupStrip}><ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">{joinedGroups.map(group => <TouchableOpacity key={group.id} onPress={() => { setSelectedGroupId(group.id); setNotice(""); }} style={[s.groupChip,{borderColor:selectedGroupId===group.id?colors.primary:colors.border,backgroundColor:selectedGroupId===group.id?colors.primary:colors.card}]}><Text style={{color:selectedGroupId===group.id?"#fff":colors.foreground,fontWeight:"700",fontSize:12}}>{group.name}</Text>{(unreadGroups.find(item=>item.id===group.id)?.unread||0)>0&&<View style={{flexDirection:"row",alignItems:"center",gap:3,backgroundColor:"#0B1E3A",borderWidth:1.5,borderColor:"#FFD700",borderRadius:7,paddingHorizontal:4,paddingVertical:2}}><Image source={require("../../assets/images/icon.png")} style={{width:12,height:12,borderRadius:3}}/><Text style={{color:"#FFD700",fontSize:9,fontWeight:"900"}}>{(unreadGroups.find(item=>item.id===group.id)?.unread||0)>99?"99+":unreadGroups.find(item=>item.id===group.id)?.unread}</Text></View>}</View></TouchableOpacity>)}{!groupsLoading&&joinedGroups.length===0?<Text style={s.emptySubtext}>No joined study groups. Join a group first.</Text>:null}</ScrollView></View>
       <FeedbackMessage message={notice} onDismiss={() => setNotice("")} />
       {grouped.length === 0 ? (
         <View style={s.emptyWrap}>
@@ -216,9 +233,7 @@ export default function StudentChat() {
                 <View style={[s.bubble, mine ? s.myBubble : s.theirBubble]}>
                   <Text style={mine ? s.myText : s.theirText}>{msg.content}</Text>
                   {msg.queued && <Text style={{ color: "#fde68a", fontSize: 10, marginTop: 3 }}>Saved offline · waiting to send</Text>}
-                  <Text style={mine ? s.time : s.theirTime}>
-                    {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                  </Text>
+                  <View style={{flexDirection:"row",alignItems:"center",gap:6,marginTop:3}}><Text style={mine ? s.time : s.theirTime}>{new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>{mine&&(msg.readByUserIds?.length||0)>0&&<Text style={{fontSize:9,fontWeight:"800",color:"#9A7020"}}>Seen by {msg.readByUserIds.length} ✓✓</Text>}</View>
                 </View>
               </View>
             );
