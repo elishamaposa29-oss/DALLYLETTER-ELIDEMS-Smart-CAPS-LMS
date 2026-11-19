@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Linking from "expo-linking";
-import { getApiUrl } from "@workspace/api-client-react";
+import { createProtectedMediaShareLink, getApiUrl } from "@workspace/api-client-react";
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Share, Text, TouchableOpacity, View } from "react-native";
 import { useAuth } from "@/contexts/AuthContext";
@@ -172,25 +172,22 @@ export default function OfflineMediaDownload({ url, fileName, accessibilityLabel
     } finally { setBusy(false); setProgress(0); }
   };
   const shareProtectedLessonMedia = async () => {
-    if (!token) { Alert.alert("Sign in required", "Sign in before creating a protected media share link."); return; }
-    let resourcePath = url;
     try {
-      if (/^https?:\/\//i.test(url)) {
-        const parsed = new URL(url);
-        resourcePath = parsed.pathname + parsed.search;
-      }
-    } catch { Alert.alert("Cannot share", "This media URL is not valid."); return; }
-    const match = resourcePath.match(/^\/api\/lessons\/media\/([a-f0-9-]{36})(?:\?type=([^&]+))?/i);
-    if (!match) { Alert.alert("Sharing unavailable", "The website only supports protected share links for lesson media. This file can still be saved offline."); return; }
-    try {
-      const response = await fetch(getApiUrl("/api/lessons/media/" + match[1] + "/share"), { method: "POST", headers: { Authorization: "Bearer " + token } });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || typeof data.shareToken !== "string") throw new Error(data.error || "The server refused to create a share link.");
-      const webBase = (process.env.EXPO_PUBLIC_WEB_BASE_URL || "https://dallyletter-elidems-onlineschoolbye.vercel.app").replace(/\/+$/, "");
-      const type = match[2] ? decodeURIComponent(match[2]) : "";
-      const shareUrl = webBase + "/shared-media?url=" + encodeURIComponent(resourcePath) + "&type=" + encodeURIComponent(type) + "&title=" + encodeURIComponent(fileName || "Learning resource") + "&shareToken=" + encodeURIComponent(data.shareToken);
-      await Share.share({ title: (fileName || "Learning resource") + " · Dallyletter Elidems", message: "Shared from Dallyletter Elidems. Anyone with this link can view the resource until the share link expires.\n" + shareUrl, url: shareUrl });
-    } catch (error) { Alert.alert("Could not share media", error instanceof Error ? error.message : "Please reconnect and try again."); }
+      const webBaseUrl = (process.env.EXPO_PUBLIC_WEB_BASE_URL || "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app").replace(/\\/+$/, "");
+      const shareUrl = await createProtectedMediaShareLink({
+        resourceUrl: url,
+        title: fileName || "Learning resource",
+        token,
+        webBaseUrl,
+      });
+      await Share.share({
+        title: (fileName || "Learning resource") + " · Dallyletter Elidems",
+        message: "Shared from Dallyletter Elidems. Anyone with this protected link can view the resource until it expires.\\n" + shareUrl,
+        url: shareUrl,
+      });
+    } catch (error) {
+      Alert.alert("Could not share protected link", error instanceof Error ? error.message : "Please reconnect and try again.");
+    }
   };
   const openSaved = async () => {
     if (!saved?.localUri) return;
