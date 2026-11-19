@@ -10,8 +10,8 @@ type Person = { id:number; name:string; role?:string; isPrefect?:boolean; isMana
 type Props = { value?:number|string|null; onChange:(id:number|null, user?:Person)=>void; group?:Group; showGroupFilter?:boolean; placeholder?:string; disabled?:boolean; users?:Array<Record<string, any> & {id:number}> };
 
 const groups: Array<{value:Group;label:string}> = [
-  {value:"all",label:"All"},{value:"everyone",label:"Everyone"}, {value:"teachers",label:"Teachers"}, {value:"prefects",label:"Prefects"},
-  {value:"learners",label:"Learners"}, {value:"managers",label:"Managers"}, {value:"both",label:"Both"},
+  {value:"all",label:"All users"},{value:"everyone",label:"Everyone"}, {value:"teachers",label:"Teachers"}, {value:"prefects",label:"Prefects"},
+  {value:"learners",label:"Learners"}, {value:"managers",label:"Managers"}, {value:"both",label:"Teachers + learners"},
 ];
 
 export default function UserSelector({value,onChange,group="all",showGroupFilter=true,placeholder="Search people…",disabled=false,users:suppliedUsers}:Props) {
