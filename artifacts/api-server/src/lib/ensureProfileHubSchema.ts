@@ -222,6 +222,23 @@ export async function ensureProfileHubSchema(): Promise<void> {
     )`);
     await client.query("INSERT INTO daily_attendance_feature_state (singleton) VALUES (true) ON CONFLICT (singleton) DO NOTHING");
 
+    await client.query(`CREATE TABLE IF NOT EXISTS dallyletter_subject_catalog (
+      id bigserial PRIMARY KEY,
+      subject text NOT NULL,
+      normalized_subject text NOT NULL UNIQUE,
+      created_by integer REFERENCES users(id) ON DELETE SET NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await client.query(`CREATE TABLE IF NOT EXISTS dallyletter_subject_interactions (
+      user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      normalized_subject text NOT NULL,
+      subject text NOT NULL,
+      interaction_count integer NOT NULL DEFAULT 0 CHECK (interaction_count >= 0),
+      last_interacted_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (user_id, normalized_subject)
+    )`);
+    await client.query("CREATE INDEX IF NOT EXISTS dallyletter_subject_interactions_rank_idx ON dallyletter_subject_interactions(user_id, interaction_count DESC, last_interacted_at DESC)");
+
     // Legacy CV-to-qualification reconciliation is deliberately NOT run during server startup.
     // It requires a verified staging schema mapping and a separately approved, idempotent job.
     await client.query("COMMIT");
