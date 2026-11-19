@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { StudyGroupPollPanel } from "@/components/StudyGroupPollPanel";
 import { useListMessages, useSendMessage, useListStudyGroups, useListUsers, getApiUrl } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
 import { Loader2, Send, Users, MessageSquare, User, Paperclip, Trash2, Maximize2, Minimize2 } from "lucide-react";
@@ -313,6 +314,7 @@ export default function TeacherChat() {
                     );
                   })
                 )}
+                {selectedGroupId != null && <StudyGroupPollPanel groupId={selectedGroupId} />}
                 <div ref={messagesEndRef} />
               </div>
 
