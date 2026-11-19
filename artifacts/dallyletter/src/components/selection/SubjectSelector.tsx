@@ -35,7 +35,7 @@ export function SubjectSelector({ value, onChange, placeholder = "Search or type
     return () => { active = false; };
   }, []);
 
-  const normalized = query.trim().replace(/\\s+/g, " ");
+  const normalized = query.trim().replace(/\s+/g, " ");
   const matches = useMemo(() => subjects.filter(subject => subject.toLowerCase().includes(normalized.toLowerCase())).slice(0, 12), [subjects, normalized]);
   const exact = subjects.some(subject => subject.toLowerCase() === normalized.toLowerCase());
   const recordInteraction = (subject: string) => fetch(getApiUrl("/api/subjects/catalog/interaction"), { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token() }, body: JSON.stringify({ subject }) }).catch(() => undefined);
