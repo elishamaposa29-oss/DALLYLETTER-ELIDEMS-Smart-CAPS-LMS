@@ -1,4 +1,5 @@
 import { FeedbackMessage } from "@/components/FeedbackMessage";
+import { StudyGroupPollPanel } from "@/components/StudyGroupPollPanel";
 import { Feather } from "@expo/vector-icons";
 import { useListMessages, useSendMessage, useListStudyGroups, getApiUrl } from "@workspace/api-client-react";
 import * as Haptics from "expo-haptics";
@@ -160,6 +161,7 @@ export default function TeacherChat() {
         />
       )}
 
+      <StudyGroupPollPanel groupId={selectedGroupId} token={token} colors={colors} />
       <Modal visible={groupHubOpen && Boolean(selectedGroup)} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setGroupHubOpen(false)}>
         <View style={{flex:1,backgroundColor:colors.background,paddingTop:insets.top+12}}>
           <View style={{flexDirection:"row",alignItems:"center",justifyContent:"space-between",paddingHorizontal:20,paddingBottom:16,borderBottomWidth:1,borderBottomColor:colors.border}}>
