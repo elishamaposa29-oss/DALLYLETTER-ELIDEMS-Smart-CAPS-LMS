@@ -30,6 +30,8 @@ assert.ok(web.includes("createProtectedMediaShareLink"));
 assert.ok(web.includes("navigator.share"));
 assert.ok(web.includes("navigator.clipboard?.writeText"));
 assert.ok(web.includes("brandedShare && shareToken"));
+assert.ok(web.includes('path.startsWith("/api/lessons/media/")'));
+assert.ok(!web.includes("\\\\/api"), "Web protected-media path detection must use valid path parsing");
 assert.ok(web.includes('mediaRequestUrl.searchParams.set("shareToken", shareToken)'), "Public viewer must pass its signed token to the protected media endpoint");
 assert.ok(!web.includes("files:[file]"), "Web must never bypass protected links by sharing raw media files");
 assert.equal((web.match(/supportsProtectedShare && <Button/g) || []).length, 4, "Every supported web media type must use the same protected share control");
@@ -45,6 +47,7 @@ const lessonPath = "artifacts/dallyletter-mobile/app/(student)/lessons.tsx";
 const lesson = contents.get(lessonPath);
 assert.ok(lesson.includes("createProtectedMediaShareLink"));
 assert.ok(lesson.includes("Share.share"));
+assert.ok(lesson.includes('path.startsWith("/api/lessons/media/")'));
 assert.ok(!lesson.includes("extractLessonLinks(selectedLesson.content).join"), "Lesson sharing must not expose raw lesson URLs or content");
 
 const sharedPage = contents.get("artifacts/dallyletter/src/pages/SharedMedia.tsx");
