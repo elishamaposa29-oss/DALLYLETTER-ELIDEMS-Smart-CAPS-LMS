@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type MouseEventHandler, type PointerEvent as ReactPointerEvent } from "react";
 import { useRoute } from "wouter";
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { UserSelector } from "@/components/selection/UserSelector";
 import { useAuth } from "@/contexts/AuthContext";
 import { getApiUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -695,7 +696,7 @@ export default function ProfileHub() {
       <p className="text-sm text-muted-foreground">Create the actual fee record for a learner here. The learner can then see the amount owed, pay in parts or pay extra through Paynow, and track the verified balance. A reported payment is not proof that funds have cleared.</p>
       <section className="space-y-3 rounded-xl border p-4">
         <h3 className="font-semibold">Issue a school fee invoice</h3>
-        <label className="block text-sm font-medium">Learner<select className="mt-1 w-full rounded-md border bg-background p-2 text-foreground" value={invoiceStudentId} onChange={e=>setInvoiceStudentId(e.target.value)}><option value="">Select learner</option>{paymentLearners.filter((entry:any)=>["student","learner","prefect"].includes(String(entry.role||"").toLowerCase())).map((entry:any)=><option key={entry.id} value={entry.id}>{entry.name||entry.display_name||("Learner #"+entry.id)} · #{entry.id}</option>)}</select></label>
+        <label className="block text-sm font-medium">Learner<UserSelector value={invoiceStudentId || null} users={paymentLearners.filter((entry:any)=>["student","learner","prefect"].includes(String(entry.role||"").toLowerCase()))} group="learners" onChange={id=>setInvoiceStudentId(id?String(id):"")} showGroupFilter={false} placeholder="Search learners by name…" /></label>
         <div className="grid gap-3 sm:grid-cols-3">
           <label className="text-sm font-medium">Fee amount (USD)<input type="number" min="0.01" max="100000" step="0.01" className="mt-1 w-full rounded-md border bg-background p-2 text-foreground" value={invoiceAmount} onChange={e=>setInvoiceAmount(e.target.value)} placeholder="e.g. 45.00"/></label>
           <label className="text-sm font-medium">Month / period<input className="mt-1 w-full rounded-md border bg-background p-2 text-foreground" value={invoiceMonth} onChange={e=>setInvoiceMonth(e.target.value)} maxLength={40}/></label>
