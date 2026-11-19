@@ -23,7 +23,8 @@ export function SubjectSelector({ value, onChange, placeholder = "Search or type
 
   useEffect(() => { setQuery(value); }, [value]);
   const refresh = async () => {
-    const response = await fetch(getApiUrl("/api/subjects/catalog"), { headers: { Authorization: "Bearer " + token() } });
+    const authToken = token();
+    const response = await fetch(getApiUrl(authToken ? "/api/subjects/catalog" : "/api/subjects/catalog/public"), { headers: authToken ? { Authorization: "Bearer " + authToken } : {} });
     const data: CatalogResponse = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error("Subject catalogue could not be loaded.");
     setSubjects(Array.isArray(data.subjects) ? data.subjects : []);
