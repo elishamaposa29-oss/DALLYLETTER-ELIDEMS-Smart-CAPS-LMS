@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { UserProfileLink } from "@/components/UserProfileLink";
 
-type Group = "all" | "teachers" | "prefects" | "learners" | "managers" | "both";
+type Group = "all" | "everyone" | "teachers" | "prefects" | "learners" | "managers" | "both";
 type Person = { id:number; name:string; role:string; isPrefect?:boolean; isManager?:boolean; avatarUrl?:string|null; grade?:string|null; subject?:string|null };
 type Props = { value?:number|string|null; onChange:(id:number|null, user?:Person)=>void; group?:Group; showGroupFilter?:boolean; placeholder?:string; disabled?:boolean; users?:Person[] };
 
@@ -24,6 +24,7 @@ export default function UserSelector({value,onChange,group="all",showGroupFilter
   const [error,setError]=useState("");
   useEffect(()=>{setActiveGroup(group);},[group]);
   useEffect(()=>{
+    if(suppliedUsers)return;
     let active=true;
     setLoading(true);setError("");
     const params=new URLSearchParams({group:activeGroup,q:query});
@@ -33,7 +34,8 @@ export default function UserSelector({value,onChange,group="all",showGroupFilter
       .catch(reason=>{if(active)setError(reason instanceof Error?reason.message:"People could not be loaded.");})
       .finally(()=>{if(active)setLoading(false);});
     return()=>{active=false;};
-  },[activeGroup,query,token,suppliedUsers]);\n  const visibleRows=suppliedUsers??rows;
+  },[activeGroup,query,token,suppliedUsers]);
+  const visibleRows=suppliedUsers??rows;
   return <View style={{gap:9}}>
     {showGroupFilter&&<View style={{flexDirection:"row",flexWrap:"wrap",gap:6}}>
       {groups.map(item=><TouchableOpacity key={item.value} disabled={disabled} onPress={()=>setActiveGroup(item.value)} style={{paddingHorizontal:10,paddingVertical:7,borderRadius:16,backgroundColor:activeGroup===item.value?colors.primary:colors.card,borderWidth:1,borderColor:colors.border}}>
