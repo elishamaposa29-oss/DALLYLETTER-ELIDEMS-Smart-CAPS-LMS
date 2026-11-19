@@ -297,11 +297,11 @@ export default function StudentChat() {
                 ))
               )
             ) : (
-              {usersLoading ? <div className="flex justify-center p-4"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div> : usersError ? (
+              usersLoading ? <div className="flex justify-center p-4"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div> : usersError ? (
                 <div className="flex flex-col items-center gap-2 p-6 text-center text-sm text-muted-foreground"><p>Contacts could not be loaded.</p><Button variant="outline" size="sm" onClick={() => void refetchUsers()}><RefreshCw className="mr-2 h-3.5 w-3.5" />Retry</Button></div>
               ) : contacts.length === 0 ? <div className="p-6 text-center text-sm text-muted-foreground">No educator contacts are available yet.</div> : (
                 <UserSelector value={selectedUserId} users={contacts as any} showGroupFilter={false} placeholder="Search educators and prefects…" onChange={id => { if (id) selectContact(id); else setSelectedUserId(null); }} />
-              )}
+              )
             )}
           </div>
         </Card>
