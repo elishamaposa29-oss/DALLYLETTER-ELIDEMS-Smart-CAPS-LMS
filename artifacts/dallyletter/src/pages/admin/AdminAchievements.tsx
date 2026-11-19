@@ -17,7 +17,6 @@ const CATEGORIES = ["learning","attendance","participation","leadership","academ
 export default function AdminAchievements() {
   const { toast } = useToast();
   const [achievements, setAchievements] = useState<any[]>([]);
-  const [students, setStudents] = useState<any[]>([]);
   const [recommendations, setRecommendations] = useState<any[]>([]);
   const [canApproveRecommendations, setCanApproveRecommendations] = useState(false);
   const [canDirectAward, setCanDirectAward] = useState(false);
