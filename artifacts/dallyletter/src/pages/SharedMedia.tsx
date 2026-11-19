@@ -13,7 +13,9 @@ export default function SharedMedia() {
   const legacyUrl = params.get("url") ?? "";
   const url = mediaKey ? `/api/lessons/media/${mediaKey}` + (mediaType ? `?type=${encodeURIComponent(mediaType)}` : "") : legacyUrl;
   const title = (params.get("n") ?? params.get("title") ?? "Dallyletter learning resource").slice(0, 180);
-  const type = (params.get("t") ?? params.get("type")) as MediaType;
+  const mime = mediaType.toLowerCase();
+  const inferredType = mime.startsWith("image/") ? "image" : mime.startsWith("video/") ? "video" : mime.startsWith("audio/") ? "audio" : "document";
+  const type = (params.get("t") ?? params.get("type") ?? inferredType) as MediaType;
   const validType = ["audio", "video", "image", "document"].includes(type);
   const shareToken = new URLSearchParams(window.location.hash.replace(/^#/, "")).get("k") ?? params.get("k") ?? params.get("shareToken") ?? "";
   const validUrl = /^\/api\/lessons\/media\/[a-f0-9-]{36}(?:\?type=[a-zA-Z0-9%./+-]+)?$/i.test(url) && /^[0-9]{10,12}\.(?:[a-f0-9]{64}|[A-Za-z0-9_-]{22})$/i.test(shareToken);
