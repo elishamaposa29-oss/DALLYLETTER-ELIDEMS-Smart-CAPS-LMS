@@ -1294,7 +1294,7 @@ async function ensureSelectionSchema(): Promise<void> {
 
 function normalizeSelectionSubject(value: unknown): string | null {
   if (typeof value !== "string") return null;
-  const subject = value.trim().replace(/\\s+/g, " ");
+  const subject = value.trim().replace(/\s+/g, " ");
   return subject.length > 0 && subject.length <= 100 ? subject : null;
 }
 
