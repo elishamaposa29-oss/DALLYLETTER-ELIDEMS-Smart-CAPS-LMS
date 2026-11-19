@@ -35,6 +35,7 @@ export type UserSelectorProps = {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  users?: DirectoryUser[];
 };
 
 export function UserSelector({
@@ -46,6 +47,7 @@ export function UserSelector({
   placeholder = "Search people by name…",
   disabled = false,
   className = "",
+  users: suppliedUsers,
 }: UserSelectorProps) {
   const [activeGroup, setActiveGroup] = useState<UserGroup>(group);
   const [query, setQuery] = useState("");
@@ -53,9 +55,11 @@ export function UserSelector({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   useEffect(() => { setActiveGroup(group); }, [group]);
-  const visibleUsers = suppliedUsers ?? users;\n  const selected = useMemo(() => visibleUsers.find(user => String(user.id) === String(value)), [visibleUsers, value]);
+  const visibleUsers = suppliedUsers ?? users;
+  const selected = useMemo(() => visibleUsers.find(user => String(user.id) === String(value)), [visibleUsers, value]);
 
   useEffect(() => {
+    if (suppliedUsers) return;
     const controller = new AbortController();
     const token = localStorage.getItem("dallyletter_token") ?? "";
     const params = new URLSearchParams({ group: activeGroup, q: query });
