@@ -1,7 +1,7 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { useEffect, useState } from "react";
-import { useListNotifications, useCreateNotification, useListUsers, getApiUrl } from "@workspace/api-client-react";
+import { useListNotifications, useCreateNotification, getApiUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,7 +42,6 @@ export default function AdminNotifications() {
   const canViewUsers=isOwner||permissions["users.view"]===true;
   const canCompose=canCreate&&(canBroadcast||canViewUsers);
   const { data: notifications, isLoading } = useListNotifications();
-  const { data: users } = useListUsers();
   const createNotificationMutation = useCreateNotification();
   const { toast } = useToast();
   const queryClient = useQueryClient();
