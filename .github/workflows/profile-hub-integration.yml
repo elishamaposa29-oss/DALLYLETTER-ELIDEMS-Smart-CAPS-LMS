@@ -104,6 +104,8 @@ jobs:
         run: pnpm --dir artifacts/dallyletter-mobile exec expo export --platform android --output-dir /tmp/dallyletter-android-export
       - name: Create schema in isolated ephemeral PostgreSQL
         run: pnpm run db:push
+      - name: Verify shared subject catalogue and personalized ranking
+        run: pnpm --dir artifacts/api-server run test:subject-selection
       - name: Build API
         run: pnpm --dir artifacts/api-server run build
       - name: Apply additive transfer form-data migration twice (idempotency check)
