@@ -45,9 +45,8 @@ assert.ok(!mobileMedia.includes("shared-media?url="), "Mobile must not maintain 
 
 const lessonPath = "artifacts/dallyletter-mobile/app/(student)/lessons.tsx";
 const lesson = contents.get(lessonPath);
-assert.ok(lesson.includes("createProtectedMediaShareLink"));
-assert.ok(lesson.includes("Share.share"));
-assert.ok(lesson.includes('path.startsWith("/api/lessons/media/")'));
+assert.ok(lesson.includes("AuthenticatedMediaPreview"));
+assert.ok(!lesson.includes("Share.share") && !lesson.includes("createProtectedMediaShareLink"), "Lesson details must not add a second share system; per-media protected sharing is reused");
 assert.ok(!lesson.includes("extractLessonLinks(selectedLesson.content).join"), "Lesson sharing must not expose raw lesson URLs or content");
 
 const sharedPage = contents.get("artifacts/dallyletter/src/pages/SharedMedia.tsx");
@@ -58,5 +57,5 @@ assert.ok(!audit.includes("navigator.share"), "Confidential audit logs must not 
 assert.ok(audit.includes("Copy summary"));
 
 const nativeShareFiles = [...contents.entries()].filter(([, source]) => source.includes("navigator.share") || source.includes("Share.share")).map(([path]) => path);
-assert.deepEqual(nativeShareFiles.sort(), [webPath, mobileMediaPath, lessonPath].sort(), "Every remaining native share sheet must distribute a Dallyletter protected link");
+assert.deepEqual(nativeShareFiles.sort(), [webPath, mobileMediaPath].sort(), "Every remaining native share sheet must distribute a Dallyletter protected link");
 console.log("PROTECTED_MEDIA_SHARE_CONTRACTS: PASS");
