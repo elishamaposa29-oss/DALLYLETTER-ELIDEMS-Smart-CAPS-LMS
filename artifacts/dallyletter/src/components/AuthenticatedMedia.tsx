@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Download, Expand, Share2, ZoomIn, ZoomOut, RefreshCw } from "lucide-react";
-import { createProtectedMediaShareLink, getApiUrl } from "@workspace/api-client-react";
+import { createProtectedMediaShareLink, DEFAULT_DALLYLETTER_WEB_URL, getApiUrl } from "@workspace/api-client-react";
 
 interface AuthenticatedMediaProps {
   url: string;
@@ -30,7 +30,7 @@ export function AuthenticatedMedia({ url, type, title, brandedShare = false, sha
             title,
             type,
             token: localStorage.getItem("dallyletter_token"),
-            webBaseUrl: window.location.origin,
+            webBaseUrl: DEFAULT_DALLYLETTER_WEB_URL,
           });
       const shareData = {
         title: `${title || "Learning resource"} · Dallyletter Elidems`,
