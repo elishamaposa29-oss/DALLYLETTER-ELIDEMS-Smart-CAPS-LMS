@@ -95,6 +95,7 @@ for (const path of [
   "artifacts/dallyletter-mobile/app/(teacher)/classes.tsx",
   "artifacts/dallyletter-mobile/components/FeatureHub.tsx",
   "artifacts/dallyletter-mobile/app/profile-hub.tsx",
+  "artifacts/dallyletter-mobile/components/ProfileDetailsEditor.tsx",
 ]) assert.match(read(path), /SubjectSelector/, path + " must use shared mobile subject selector");
 
 console.log("Shared user/subject selection contracts passed.");
