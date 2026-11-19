@@ -14,7 +14,7 @@ export function StudyGroupPollPanel({ groupId, token, colors, allowPolls }: { gr
   const [error,setError]=useState("");
   const [groupAllowsPolls,setGroupAllowsPolls]=useState(true);
   const pollsEnabled=allowPolls ?? groupAllowsPolls;
-  useEffect(()=>{if(allowPolls!==undefined){setGroupAllowsPolls(allowPolls);return;}if(!groupId||!token){setGroupAllowsPolls(false);return;}let active=true;fetch(getApiUrl(`/api/study-groups/${groupId}/settings`),{headers:{Authorization:`Bearer ${token}`},cache:"no-store"}).then(r=>r.ok?r.json():null).then(data=>{if(active&&data)setGroupAllowsPolls(data.allowPolls!==false);}).catch(()=>{if(active)setGroupAllowsPolls(true);});return()=>{active=false;};},[groupId,token,pollsEnabled]);
+  useEffect(()=>{if(allowPolls!==undefined){setGroupAllowsPolls(allowPolls);return;}if(!groupId||!token){setGroupAllowsPolls(false);return;}let active=true;fetch(getApiUrl(`/api/study-groups/${groupId}/settings`),{headers:{Authorization:`Bearer ${token}`},cache:"no-store"}).then(r=>r.ok?r.json():null).then(data=>{if(active&&data)setGroupAllowsPolls(data.allowPolls!==false);}).catch(()=>{if(active)setGroupAllowsPolls(true);});return()=>{active=false;};},[groupId,token,allowPolls]);
 
   const load=useCallback(async()=>{
     if(!groupId||!token||!pollsEnabled){setPolls([]);return;}
@@ -22,9 +22,9 @@ export function StudyGroupPollPanel({ groupId, token, colors, allowPolls }: { gr
     try{const r=await fetch(getApiUrl(`/api/chat/groups/${groupId}/polls`),{headers:{Authorization:`Bearer ${token}`},cache:"no-store"});const data=await r.json().catch(()=>[]);if(!r.ok)throw new Error(data?.error||"Polls unavailable");setPolls(Array.isArray(data)?data:[]);setError("");}
     catch(e){setError(e instanceof Error?e.message:"Polls could not be loaded.");}
     finally{setLoading(false);}
-  },[groupId,token,allowPolls]);
+  },[groupId,token,pollsEnabled]);
 
-  useEffect(()=>{void load();if(!groupId||!token||!pollsEnabled)return;const timer=setInterval(()=>void load(),10000);return()=>clearInterval(timer);},[load,groupId,token,allowPolls]);
+  useEffect(()=>{void load();if(!groupId||!token||!pollsEnabled)return;const timer=setInterval(()=>void load(),10000);return()=>clearInterval(timer);},[load,groupId,token,pollsEnabled]);
 
   const create=async()=>{
     const options=optionsText.split("\n").map(x=>x.trim()).filter(Boolean);
