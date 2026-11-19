@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getApiUrl, useListLessons } from "@workspace/api-client-react";
+import { createProtectedMediaShareLink, getApiUrl, useListLessons } from "@workspace/api-client-react";
 import * as Linking from "expo-linking";
 import { router } from "expo-router";
 import { AppState, Modal, Platform, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
@@ -295,6 +295,30 @@ export default function StudentLessons() {
     return () => { active = false; };
   }, [lessons, cachedLessons, savedBundles, isOnline, token]);
 
+  const selectedLessonProtectedMedia = selectedLesson
+    ? [selectedLesson.mediaUrl, ...collectMediaReferences(selectedLesson.content)].find((value): value is string =>
+        typeof value === "string" && /(?:^|\\/)api\\/lessons\\/media\\/[a-f0-9-]{36}(?:[?#]|$)/i.test(value))
+    : null;
+  const shareSelectedLesson = async () => {
+    if (!selectedLessonProtectedMedia) return;
+    try {
+      const webBaseUrl = (process.env.EXPO_PUBLIC_WEB_BASE_URL || "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app").replace(/\\/+$/, "");
+      const shareUrl = await createProtectedMediaShareLink({
+        resourceUrl: selectedLessonProtectedMedia,
+        title: String(selectedLesson.title || "Dallyletter lesson"),
+        token,
+        webBaseUrl,
+      });
+      await Share.share({
+        title: String(selectedLesson.title || "Dallyletter lesson") + " · Dallyletter Elidems",
+        message: "Shared from Dallyletter Elidems. Open this protected learning-resource link: " + shareUrl,
+        url: shareUrl,
+      });
+    } catch (error) {
+      Alert.alert("Could not share lesson", error instanceof Error ? error.message : "Please reconnect and try again.");
+    }
+  };
+
   const markLessonComplete = (lessonId: string | number) => {
     const next = { ...unfinishedLessons };
     delete next[String(lessonId)];
@@ -398,9 +422,9 @@ export default function StudentLessons() {
             {selectedLesson && <>
               <Text style={{ color: colors.foreground, fontSize: 23, lineHeight: 30, fontFamily: "Inter_700Bold" }}>{selectedLesson.title}</Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12, marginBottom: 8 }}>
-                <TouchableOpacity accessibilityRole="button" onPress={() => void Share.share({ title: String(selectedLesson.title || "Dallyletter lesson"), message: [String(selectedLesson.title || "Dallyletter lesson"), String(selectedLesson.subject || ""), String(selectedLesson.description || ""), extractLessonLinks(selectedLesson.content).join("\n")].filter(Boolean).join("\n\n") })} style={{ flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 9, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card }}>
-                  <Feather name="share-2" size={15} color={colors.primary} /><Text style={{ color: colors.foreground, fontSize: 12, fontFamily: "Inter_600SemiBold" }}>Share lesson</Text>
-                </TouchableOpacity>
+                {selectedLessonProtectedMedia ? <TouchableOpacity accessibilityRole="button" onPress={() => void shareSelectedLesson()} style={{ flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 9, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card }}>
+                  <Feather name="share-2" size={15} color={colors.primary} /><Text style={{ color: colors.foreground, fontSize: 12, fontFamily: "Inter_600SemiBold" }}>Share protected link</Text>
+                </TouchableOpacity> : null}
                 {savedForOffline[String(selectedLesson.id)] ? <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 9, borderRadius: 9, backgroundColor: colors.card }}><Feather name="check-circle" size={15} color={colors.primary} /><Text style={{ color: colors.primary, fontSize: 12, fontFamily: "Inter_600SemiBold" }}>Available offline</Text></View> : null}
               </View>
               <Text style={{ color: colors.mutedForeground, marginTop: 8, marginBottom: 16 }}>{[selectedLesson.subject, selectedLesson.grade ? `Grade ${selectedLesson.grade}` : null, selectedLesson.type].filter(Boolean).join(" · ")}</Text>
