@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
+import { UserSelector } from "@/components/selection/UserSelector";
 
 type Row = Record<string, any>;
 type AcademicData = { enrollments: Row[]; attendance: Row[]; awards: Row[]; assignmentMarks: Row[]; exerciseMarks: Row[]; pollSubmissions?: Row[]; markSummary?: Row };
@@ -182,7 +183,7 @@ export default function RecordBookWorkspace() {
     </CardHeader>
     <CardContent className="space-y-4 p-4">
       {isStaff && canBuildRecordBook && <div className="grid gap-3 sm:grid-cols-2">
-        <label className="text-sm font-medium">Learner<select className="mt-1 w-full rounded-md border bg-background p-2.5" value={learnerId} onChange={e=>{setLearnerId(e.target.value);setSnapshot(null);}}><option value="">Choose assigned learner</option>{learners.map(l=><option key={l.id} value={String(l.id)}>{l.name} · {l.grade || "Grade not recorded"}</option>)}</select></label>
+        <label className="text-sm font-medium">Learner<UserSelector value={learnerId || null} users={learners} onChange={id=>{setLearnerId(id?String(id):"");setSnapshot(null);}} group="learners" showGroupFilter={false} placeholder="Search assigned learners…" /></label>
         <label className="text-sm font-medium">Term / record label<input className="mt-1 w-full rounded-md border bg-background p-2.5" maxLength={80} value={termLabel} onChange={e=>setTermLabel(e.target.value)} /></label>
         <label className="text-sm font-medium">Period starts<input type="date" className="mt-1 w-full rounded-md border bg-background p-2.5" value={periodStart} onChange={e=>setPeriodStart(e.target.value)} /></label>
         <label className="text-sm font-medium">Period ends<input type="date" className="mt-1 w-full rounded-md border bg-background p-2.5" value={periodEnd} onChange={e=>setPeriodEnd(e.target.value)} /></label>
