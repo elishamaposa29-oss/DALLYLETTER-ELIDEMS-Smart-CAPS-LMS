@@ -200,7 +200,7 @@ export default function AdminNotifications() {
                       <FormItem>
                         <FormLabel>Select User</FormLabel>
                         <FormControl>
-                          <UserSelector value={field.value ?? null} onChange={id => field.onChange(id)} showGroupFilter={false} placeholder="Search for a recipient…" />
+                          <UserSelector value={field.value ?? null} onChange={id => field.onChange(id)} showGroupFilter placeholder="Search for a recipient…" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
