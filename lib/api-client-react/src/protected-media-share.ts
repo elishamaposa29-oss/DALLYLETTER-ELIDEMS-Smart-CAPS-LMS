@@ -42,10 +42,9 @@ export async function createProtectedMediaShareLink(options: CreateProtectedMedi
     throw new Error("Protected share links must use HTTPS.");
   }
   page.searchParams.set("m", match[1]);
-  page.searchParams.set("t", inferredType);
   const originalMime = target.searchParams.get("type");
   if (originalMime) page.searchParams.set("mt", originalMime);
-  if (options.title) page.searchParams.set("n", options.title.slice(0, 80));
+  else page.searchParams.set("t", inferredType);
   // Keep the signing key in the URL fragment: it is not sent in HTTP requests or referrer headers.
   page.hash = new URLSearchParams({ k: data.shareToken }).toString();
   return page.toString();
