@@ -9,9 +9,10 @@ interface AuthenticatedMediaProps {
   title: string;
   /** Render branding only in the dedicated shared-resource viewer, never in ordinary in-app previews. */
   brandedShare?: boolean;
+  shareToken?: string;
 }
 
-export function AuthenticatedMedia({ url, type, title, brandedShare = false }: AuthenticatedMediaProps) {
+export function AuthenticatedMedia({ url, type, title, brandedShare = false, shareToken }: AuthenticatedMediaProps) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const [scale, setScale] = useState(1);
@@ -22,13 +23,15 @@ export function AuthenticatedMedia({ url, type, title, brandedShare = false }: A
 
   const shareBrandedLink = async () => {
     try {
-      const protectedUrl = await createProtectedMediaShareLink({
-        resourceUrl: url,
-        title,
-        type,
-        token: localStorage.getItem("dallyletter_token"),
-        webBaseUrl: window.location.origin,
-      });
+      const protectedUrl = brandedShare && shareToken
+        ? window.location.href
+        : await createProtectedMediaShareLink({
+            resourceUrl: url,
+            title,
+            type,
+            token: localStorage.getItem("dallyletter_token"),
+            webBaseUrl: window.location.origin,
+          });
       const shareData = {
         title: `${title || "Learning resource"} · Dallyletter Elidems`,
         text: "Shared from Dallyletter Elidems — The fun way to success. Anyone with this link can view the resource until it expires.",
@@ -70,7 +73,9 @@ export function AuthenticatedMedia({ url, type, title, brandedShare = false }: A
 
     setObjectUrl(null);
     setError(false);
-    fetch(getApiUrl(url), { headers: token ? { Authorization: `Bearer ${token}` } : undefined })
+    const mediaRequestUrl = new URL(getApiUrl(url), window.location.origin);
+    if (brandedShare && shareToken) mediaRequestUrl.searchParams.set("shareToken", shareToken);
+    fetch(mediaRequestUrl.toString(), { headers: token ? { Authorization: `Bearer ${token}` } : undefined })
       .then(response => {
         if (!response.ok) throw new Error("Media unavailable");
         return response.blob();
@@ -89,7 +94,7 @@ export function AuthenticatedMedia({ url, type, title, brandedShare = false }: A
         return null;
       });
     };
-  }, [url]);
+  }, [url, brandedShare, shareToken]);
 
   if (error) return <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"><p className="font-semibold">Media unavailable</p><p className="mt-1">The learning resource could not be loaded safely.</p><Button type="button" size="sm" variant="outline" className="mt-3 gap-1" onClick={()=>window.location.reload()}><RefreshCw className="h-3.5 w-3.5"/>Try again</Button></div>;
   if (!objectUrl) return <p className="text-sm text-muted-foreground">Loading media...</p>;
