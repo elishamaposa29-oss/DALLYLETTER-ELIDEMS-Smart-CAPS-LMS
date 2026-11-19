@@ -1267,31 +1267,6 @@ router.post("/webhooks/paynow", async(req,res):Promise<void>=>{
   res.json({received:true});
 });
 
-let selectionSchemaReady: Promise<void> | null = null;
-async function ensureSelectionSchema(): Promise<void> {
-  if (!selectionSchemaReady) {
-    selectionSchemaReady = (async () => {
-      await pool.query(`CREATE TABLE IF NOT EXISTS dallyletter_subject_catalog (
-        id bigserial PRIMARY KEY,
-        subject text NOT NULL,
-        normalized_subject text NOT NULL UNIQUE,
-        created_by integer REFERENCES users(id) ON DELETE SET NULL,
-        created_at timestamptz NOT NULL DEFAULT now()
-      )`);
-      await pool.query(`CREATE TABLE IF NOT EXISTS dallyletter_subject_interactions (
-        user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        normalized_subject text NOT NULL,
-        subject text NOT NULL,
-        interaction_count integer NOT NULL DEFAULT 0,
-        last_interacted_at timestamptz NOT NULL DEFAULT now(),
-        PRIMARY KEY (user_id, normalized_subject)
-      )`);
-      await pool.query("CREATE INDEX IF NOT EXISTS dallyletter_subject_interactions_rank_idx ON dallyletter_subject_interactions(user_id, interaction_count DESC, last_interacted_at DESC)");
-    })().catch(error => { selectionSchemaReady = null; throw error; });
-  }
-  await selectionSchemaReady;
-}
-
 function normalizeSelectionSubject(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const subject = value.trim().replace(/\s+/g, " ");
@@ -1341,7 +1316,7 @@ router.get("/users/selection-directory", requireAuth, async (req, res): Promise<
 });
 
 router.get("/subjects/catalog", async (req, res): Promise<void> => {
-  await ensureSelectionSchema();
+  await ensureProfileHubSchema();
   const [lessonRows, classRows, saved, interactions, custom] = await Promise.all([
     pool.query("SELECT trim(subject) AS subject, count(*)::int AS usage_count FROM lessons WHERE subject IS NOT NULL AND trim(subject) <> '' GROUP BY lower(trim(subject)), trim(subject)"),
     pool.query("SELECT trim(subject) AS subject, count(*)::int AS usage_count FROM classes WHERE subject IS NOT NULL AND trim(subject) <> '' GROUP BY lower(trim(subject)), trim(subject)"),
@@ -1389,7 +1364,7 @@ router.post("/subjects/catalog", requireAuth, async (req, res): Promise<void> =>
   if (!canAddSystemSubject(actor)) { res.status(403).json({ error: "Only authorized teachers and privileged staff can add system subjects." }); return; }
   const subject = normalizeSelectionSubject(req.body?.subject);
   if (!subject) { res.status(400).json({ error: "Enter a subject name of up to 100 characters." }); return; }
-  await ensureSelectionSchema();
+  await ensureProfileHubSchema();
   const normalized = subject.toLocaleLowerCase();
   const inserted = await pool.query(
     "INSERT INTO dallyletter_subject_catalog(subject,normalized_subject,created_by) VALUES($1,$2,$3) ON CONFLICT(normalized_subject) DO NOTHING RETURNING subject",
@@ -1402,7 +1377,7 @@ router.post("/subjects/catalog", requireAuth, async (req, res): Promise<void> =>
 router.post("/subjects/catalog/interaction", requireAuth, async (req, res): Promise<void> => {
   const subject = normalizeSelectionSubject(req.body?.subject);
   if (!subject) { res.status(400).json({ error: "Choose a valid subject." }); return; }
-  await ensureSelectionSchema();
+  await ensureProfileHubSchema();
   const normalized = subject.toLocaleLowerCase();
   await pool.query(
     "INSERT INTO dallyletter_subject_interactions(user_id,normalized_subject,subject,interaction_count,last_interacted_at) VALUES($1,$2,$3,1,now()) ON CONFLICT(user_id,normalized_subject) DO UPDATE SET subject=EXCLUDED.subject,interaction_count=dallyletter_subject_interactions.interaction_count+1,last_interacted_at=now()",
