@@ -27,7 +27,7 @@ for (const activity of ["attendance", "assignment_submissions", "poll_submission
 assert.match(api, /router\.post\("\/subjects\/catalog", requireAuth/);
 assert.match(api, /canAddSystemSubject\(actor\)/);
 assert.match(api, /router\.post\("\/subjects\/catalog\/interaction", requireAuth/);
-assert.match(api, /req\.currentUser!\.id, normalized, subject/);
+assert.match(api, /req\\.currentUser\\?\\.id, normalized, subject/);
 assert.match(schema, /CREATE TABLE IF NOT EXISTS dallyletter_subject_catalog/);
 assert.match(schema, /CREATE TABLE IF NOT EXISTS dallyletter_subject_interactions/);
 
