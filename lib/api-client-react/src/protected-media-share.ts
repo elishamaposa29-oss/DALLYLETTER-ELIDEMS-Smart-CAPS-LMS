@@ -1,5 +1,7 @@
 import { getApiUrl } from "./custom-fetch";
 
+export const DEFAULT_DALLYLETTER_WEB_URL = "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app";
+
 export type ProtectedMediaKind = "audio" | "video" | "image" | "document";
 
 export interface CreateProtectedMediaShareLinkOptions {
