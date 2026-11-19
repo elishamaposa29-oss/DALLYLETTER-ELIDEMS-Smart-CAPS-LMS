@@ -7,6 +7,7 @@ import GoogleSignInButton from "@/components/GoogleSignInButton";
 import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SubjectSelector } from "@/components/selection/SubjectSelector";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, CheckCircle2 } from "lucide-react";
@@ -282,7 +283,7 @@ export default function Register() {
                           <FormItem>
                             <FormLabel className="text-gray-700 font-medium">Subject</FormLabel>
                             <FormControl>
-                              <Input placeholder="e.g. Maths" className="h-11 border-gray-200 bg-gray-50" {...field} />
+                              <SubjectSelector value={field.value ?? ""} onChange={field.onChange} placeholder="Search or type a subject…" />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
