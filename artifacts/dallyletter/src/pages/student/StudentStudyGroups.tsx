@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Users, LogOut, Plus, Settings2, UserMinus, ShieldCheck, Mic, BarChart3, RefreshCw, Trash2, UserRound, X, MessageCircle, ImagePlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { SubjectSelector } from "@/components/selection/SubjectSelector";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useEffect, useRef, useState, type FormEvent } from "react";
@@ -324,7 +325,7 @@ export default function StudentStudyGroups() {
             <form onSubmit={handleCreate}>
               <CardContent className="grid gap-4 sm:grid-cols-2">
                 <Input placeholder="Group name" value={name} onChange={event => setName(event.target.value)} required maxLength={120} />
-                <Input placeholder="Subject (e.g. Mathematics)" value={subject} onChange={event => setSubject(event.target.value)} required maxLength={120} />
+                <SubjectSelector value={subject} onChange={setSubject} placeholder="Search or type a subject…" />
                 <Input placeholder="Grade / Form (e.g. Form 3)" value={grade} onChange={event => setGrade(event.target.value)} maxLength={80} />
                 <Input placeholder="Topic (e.g. Algebra)" value={topic} onChange={event => setTopic(event.target.value)} maxLength={120} />
                 {<div className="sm:col-span-2 space-y-2"><label className="text-sm font-medium" htmlFor="group-cover-image">Group cover image</label><Input id="group-cover-image" type="file" accept="image/*" onChange={event => setCoverFile(event.target.files?.[0] ?? null)} /><p className="text-xs text-muted-foreground">Use an image up to the platform's media upload limit. The image is stored through the existing persistent media service.</p>{coverFile && <p className="text-xs text-muted-foreground">Selected: {coverFile.name}</p>}</div>}
