@@ -83,7 +83,7 @@ export default function ManagerTransferRequests() {
   return <DashboardLayout><div className="mx-auto max-w-6xl space-y-5">
     <div className="rounded-2xl bg-gradient-to-r from-indigo-700 to-violet-800 p-6 text-white">
       <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-bold">Transfer letter requests</h1><p className="mt-1 text-sm text-indigo-100">Review requests and authorize official letters. Decisions are recorded by the server.</p></div><Button variant="secondary" onClick={() => void load()} disabled={loading}><RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`}/>Refresh</Button></div>
-      <div className="mt-4 flex flex-wrap gap-2"><Badge className="bg-amber-400 text-slate-900">{pending.length} pending</Badge><Badge variant="secondary">{rows.filter(r=>r.status==="approved").length} approved</Badge><Badge variant="secondary">{rows.filter(r=>r.status==="rejected").length} rejected</Badge></div>
+      <div className="mt-4 flex flex-wrap gap-2"><Badge className="dl-status-pending bg-amber-400 text-slate-900">{pending.length} pending</Badge><Badge variant="secondary">{rows.filter(r=>r.status==="approved").length} approved</Badge><Badge variant="secondary">{rows.filter(r=>r.status==="rejected").length} rejected</Badge></div>
     </div>
     {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
     {message && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</div>}
