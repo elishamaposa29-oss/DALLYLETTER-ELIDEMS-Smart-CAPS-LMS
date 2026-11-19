@@ -12,6 +12,7 @@ import { getListMessagesQueryKey } from "@workspace/api-client-react";
 import { SendMessageBodyType } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { UserSelector } from "@/components/selection/UserSelector";
 
 export default function AdminChat() {
   const { user } = useAuth();
@@ -116,31 +117,7 @@ export default function AdminChat() {
                 ))
               )
             ) : (
-              usersLoading ? (
-                 <div className="flex justify-center p-4"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-              ) : (
-                users?.filter(u => u.id !== user?.id).map(u => (
-                  <button
-                    key={u.id}
-                    onClick={() => selectUser(u.id)}
-                    className={`w-full text-left px-3 py-3 rounded-lg transition-colors flex items-center gap-3 ${
-                      selectedUserId === u.id 
-                        ? "bg-primary text-primary-foreground" 
-                        : "hover:bg-muted"
-                    }`}
-                  >
-                    <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold shrink-0">
-                      {u.name.charAt(0)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{u.name}</div>
-                      <div className={`text-xs truncate ${selectedUserId === u.id ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
-                        {u.role}
-                      </div>
-                    </div>
-                  </button>
-                ))
-              )
+              <UserSelector value={selectedUserId} users={(users ?? []).filter(person => person.id !== user?.id) as any} showGroupFilter={false} placeholder="Search people to message…" onChange={id => { setSelectedUserId(id); if (id) setSelectedGroupId(null); }} />
             )}
           </div>
         </Card>
