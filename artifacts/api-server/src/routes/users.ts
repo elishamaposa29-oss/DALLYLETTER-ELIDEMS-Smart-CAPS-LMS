@@ -1301,7 +1301,7 @@ function normalizeSelectionSubject(value: unknown): string | null {
 function canAddSystemSubject(actor: NonNullable<Express.Request["currentUser"]>): boolean {
   const role = String(actor.role).toLowerCase();
   if (isOwnerRole(role) || role === "admin" || canAccessManager(actor)) return true;
-  return role === "teacher" && !["draft", "pending_review", "rejected_pending_conversion"].includes(String(actor.teacherApplicationStatus ?? ""));
+  return role === "teacher" && String(actor.teacherApplicationStatus ?? "").toLowerCase() === "approved";
 }
 
 router.get("/users/selection-directory", requireAuth, async (req, res): Promise<void> => {
@@ -1391,11 +1391,12 @@ router.post("/subjects/catalog", requireAuth, async (req, res): Promise<void> =>
   if (!subject) { res.status(400).json({ error: "Enter a subject name of up to 100 characters." }); return; }
   await ensureSelectionSchema();
   const normalized = subject.toLocaleLowerCase();
-  const result = await pool.query(
-    "INSERT INTO dallyletter_subject_catalog(subject,normalized_subject,created_by) VALUES($1,$2,$3) ON CONFLICT(normalized_subject) DO UPDATE SET subject=dallyletter_subject_catalog.subject RETURNING subject",
+  const inserted = await pool.query(
+    "INSERT INTO dallyletter_subject_catalog(subject,normalized_subject,created_by) VALUES($1,$2,$3) ON CONFLICT(normalized_subject) DO NOTHING RETURNING subject",
     [subject, normalized, actor.id],
   );
-  res.status(201).json({ subject: result.rows[0].subject, created: true });
+  const existing = inserted.rows[0] ?? (await pool.query("SELECT subject FROM dallyletter_subject_catalog WHERE normalized_subject=$1", [normalized])).rows[0];
+  res.status(201).json({ subject: existing.subject, created: inserted.rowCount === 1 });
 });
 
 router.post("/subjects/catalog/interaction", requireAuth, async (req, res): Promise<void> => {
