@@ -372,16 +372,16 @@ router.get("/academic-records/me", requireAuth, async (req, res): Promise<void> 
 router.get("/academic-records/report-learners", requireAuth, requireManagerPermissionIfManager("recordbook.view"), requireManagerPermissionIfManager("reports.create"), async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (canAccessManager(user)) {
-    const result = await pool.query("SELECT id,name,grade,role,is_manager,manager_level FROM users WHERE role IN ('student','learner') AND is_blocked=false ORDER BY name LIMIT 1000");
+    const result = await pool.query("SELECT id,name,grade,avatar_url,role,is_manager,manager_level FROM users WHERE role IN ('student','learner') AND is_blocked=false ORDER BY name LIMIT 1000");
     const visible=isOwnerRole(user.role)?result.rows:result.rows.filter((row:any)=>canModerateUser(user,{role:row.role,isManager:row.is_manager,managerLevel:row.manager_level}));
-    res.json(isOwnerRole(user.role)?visible:visible.map(({role,is_manager,manager_level,...row}:any)=>row));
+    res.json(visible.map(({role,is_manager,manager_level,avatar_url,...row}:any)=>({...row,avatarUrl:avatar_url})));
     return;
   }
   if (String(user.role).toLowerCase() !== "teacher" || ["draft","pending_review","rejected_pending_conversion"].includes(String(user.teacherApplicationStatus||"").toLowerCase())) {
     res.status(403).json({ error: "Academic report creation is available to teachers and managers." }); return;
   }
   const result = await pool.query(
-    "SELECT DISTINCT u.id,u.name,u.grade FROM enrollments e JOIN classes c ON c.id=e.class_id JOIN users u ON u.id=e.learner_id WHERE c.teacher_id=$1 AND u.role IN ('student','learner') AND u.is_blocked=false ORDER BY u.name LIMIT 1000",
+    "SELECT DISTINCT u.id,u.name,u.grade,u.avatar_url AS \"avatarUrl\" FROM enrollments e JOIN classes c ON c.id=e.class_id JOIN users u ON u.id=e.learner_id WHERE c.teacher_id=$1 AND u.role IN ('student','learner') AND u.is_blocked=false ORDER BY u.name LIMIT 1000",
     [user.id],
   );
   res.json(result.rows);
