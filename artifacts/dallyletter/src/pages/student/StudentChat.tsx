@@ -21,6 +21,7 @@ import { VoiceRecorder } from "@/components/VoiceRecorder";
 import { AuthenticatedAudio } from "@/components/AuthenticatedAudio";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { UserSelector } from "@/components/selection/UserSelector";
 import { useToast } from "@/hooks/use-toast";
 
 type GroupView = {
@@ -296,21 +297,11 @@ export default function StudentChat() {
                 ))
               )
             ) : (
-              usersLoading ? (
-                <div className="flex justify-center p-4"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-              ) : usersError ? (
+              {usersLoading ? <div className="flex justify-center p-4"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div> : usersError ? (
                 <div className="flex flex-col items-center gap-2 p-6 text-center text-sm text-muted-foreground"><p>Contacts could not be loaded.</p><Button variant="outline" size="sm" onClick={() => void refetchUsers()}><RefreshCw className="mr-2 h-3.5 w-3.5" />Retry</Button></div>
-              ) : contacts.length === 0 ? (
-                <div className="p-6 text-center text-sm text-muted-foreground">No educator contacts are available yet.</div>
-              ) : (
-                contacts.map(contact => (
-                  <button key={contact.id} onClick={() => selectContact(contact.id)} className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors ${selectedUserId === contact.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-bold">{contact.name.charAt(0)}</div>
-                    <span className="min-w-0 flex-1 truncate font-medium">{contact.name}</span>
-                    <span className="text-xs capitalize opacity-70">{contact.role}</span>
-                  </button>
-                ))
-              )
+              ) : contacts.length === 0 ? <div className="p-6 text-center text-sm text-muted-foreground">No educator contacts are available yet.</div> : (
+                <UserSelector value={selectedUserId} users={contacts as any} showGroupFilter={false} placeholder="Search educators and prefects…" onChange={id => { if (id) selectContact(id); else setSelectedUserId(null); }} />
+              )}
             )}
           </div>
         </Card>
