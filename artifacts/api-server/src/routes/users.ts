@@ -1320,7 +1320,7 @@ router.get("/users/selection-directory", requireAuth, async (req, res): Promise<
     const role = normalizeRole(row.role);
     const prefect = Boolean(row.is_prefect) || role === "prefect";
     const manager = Boolean(row.is_manager) || ["manager", "junior_manager", "senior_manager"].includes(role);
-    const learner = ["student", "learner"].includes(role) || prefect;
+    const learner = ["student", "learner"].includes(role);
     const teacher = role === "teacher";
     if (managerViewer && !canViewManagerTarget(actor, { id: Number(row.id), role: row.role, isManager: row.is_manager, managerLevel: row.manager_level })) return false;
     if (query && !String(row.name ?? "").toLowerCase().includes(query)) return false;
