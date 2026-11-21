@@ -284,13 +284,23 @@ export async function getAIProvider(): Promise<AIProvider> {
     throw new AIProviderError("configuration", "configuration_unavailable");
   }
 
-  // Database settings override deployment environment variables. This keeps
-  // owner-configured settings stable while allowing secure server-side setup
-  // through Render/other secret managers without putting keys in the client.
-  const geminiKey = cfg["gemini_api_key"] || process.env.GEMINI_API_KEY || "";
-  const openaiKey = cfg["openai_api_key"] || process.env.OPENAI_API_KEY || "";
-  const anthropicKey = cfg["anthropic_api_key"] || process.env.ANTHROPIC_API_KEY || "";
-  const configuredName = cfg["ai_provider"] || process.env.AI_PROVIDER;
+  // Explicit deployment configuration takes precedence over database settings.
+  // This lets Render secret variables activate a provider without storing API
+  // credentials in platform_settings or allowing a stale DB "mock" selection
+  // to silently override an explicitly configured production provider.
+  const envProvider = process.env.AI_PROVIDER?.trim().toLowerCase();
+  const envGeminiKey = process.env.GEMINI_API_KEY || "";
+  const envOpenaiKey = process.env.OPENAI_API_KEY || "";
+  const envAnthropicKey = process.env.ANTHROPIC_API_KEY || "";
+  const hasCompleteEnvironmentConfig = Boolean(
+    (envProvider === "gemini" && envGeminiKey) ||
+    (envProvider === "openai" && envOpenaiKey) ||
+    (envProvider === "anthropic" && envAnthropicKey)
+  );
+  const geminiKey = envGeminiKey || cfg["gemini_api_key"] || "";
+  const openaiKey = envOpenaiKey || cfg["openai_api_key"] || "";
+  const anthropicKey = envAnthropicKey || cfg["anthropic_api_key"] || "";
+  const configuredName = hasCompleteEnvironmentConfig ? envProvider : (cfg["ai_provider"] || envProvider);
   const name = configuredName || (
     geminiKey ? "gemini" :
     openaiKey ? "openai" :
