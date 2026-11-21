@@ -127,8 +127,11 @@ router.get("/chat/groups/:groupId/polls", requireAuth, async(req,res)=>{
   const out=await Promise.all(rows.map(async poll=>{
     const options=await db.select().from(chatPollOptionsTable).where(eq(chatPollOptionsTable.pollId,poll.id));
     const votes=await db.select().from(chatPollVotesTable).where(eq(chatPollVotesTable.pollId,poll.id));
-    const hasVoted = votes.some(vote => vote.userId === req.currentUser!.id);
-    const safePoll = { ...poll, correctOptionId: poll.autoMark && (poll.creatorId === req.currentUser!.id || hasVoted) ? poll.correctOptionId : null };
+    const actor = req.currentUser!;
+    const hasVoted = votes.some(vote => vote.userId === actor.id);
+    const managerAuthorized = poll.groupId !== null && canAccessManager(actor) && await managerHasPermission(actor, "groups.manage") && await canAccessChatGroup(poll.groupId, actor.id, actor);
+    const canDelete = poll.creatorId === actor.id || isOwnerRole(actor.role) || managerAuthorized;
+    const safePoll = { ...poll, canDelete, correctOptionId: poll.autoMark && (poll.creatorId === actor.id || hasVoted) ? poll.correctOptionId : null };
     return { poll: safePoll, options: options.map(option => ({ ...option, voteCount: votes.filter(vote => vote.optionId === option.id).length, selected: votes.some(vote => vote.optionId === option.id && vote.userId === req.currentUser!.id) })), totalVotes: new Set(votes.map(vote => vote.userId)).size };
   }));
  res.json(out);
