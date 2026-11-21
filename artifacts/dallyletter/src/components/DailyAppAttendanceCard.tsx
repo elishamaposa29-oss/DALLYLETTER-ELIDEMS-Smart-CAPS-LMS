@@ -162,8 +162,8 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
         <Badge variant="outline" className="shrink-0 border-primary/20 bg-primary/5">{dailyRecords.length} days recorded</Badge>
       </div>
       <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
-        {weekdayLabels.map((day, index) => (
-          <div key={day} className={`py-1 text-center text-[11px] font-semibold ${index > 4 ? "text-violet-700 dark:text-violet-300" : "text-muted-foreground"}`}>{day}</div>
+        {weekdayLabels.map(day => (
+          <div key={day} className="py-1 text-center text-[11px] font-semibold text-muted-foreground">{day}</div>
         ))}
         {Array.from({ length: mondayOffset }, (_, index) => <div key={`blank-${index}`} aria-hidden="true" />)}
         {Array.from({ length: monthDays }, (_, index) => {
