@@ -216,9 +216,20 @@ router.post("/ai/test-connection", requireAuth, async (req, res): Promise<void> 
   invalidateAICache();
   try {
     const ai = await getAIProvider();
-    const response = await ai.chat([{ role: "user", content: "Hello! Please respond with exactly: ELIDEMS AI connection successful." }]);
-    const success = response.toLowerCase().includes("elide") || response.toLowerCase().includes("success") || response.length > 10;
-    res.json({ success, provider: ai.name, isLive: ai.name !== "mock", response: response.slice(0, 200) });
+    if (ai.name === "mock") {
+      res.status(503).json({
+        success: false,
+        provider: ai.name,
+        isLive: false,
+        code: "AI_PROVIDER_NOT_CONFIGURED",
+        error: "No live AI provider is active. Save a valid provider and API key, then retry.",
+      });
+      return;
+    }
+    const response = await ai.chat([{ role: "user", content: "Reply with this exact phrase: ELIDEMS AI connection successful." }]);
+    const success = typeof response === "string" && response.trim().length > 0;
+    if (!success) throw new AIProviderError(ai.name, "invalid_response");
+    res.json({ success: true, provider: ai.name, isLive: true, response: response.slice(0, 200) });
   } catch (err) {
     const failure = err instanceof AIProviderError ? err : new AIProviderError("configuration", "provider_unavailable");
     res.status(failure.code === "timeout" ? 504 : failure.code === "cancelled" ? 499 : failure.code === "rate_limited" ? 429 : 502)
