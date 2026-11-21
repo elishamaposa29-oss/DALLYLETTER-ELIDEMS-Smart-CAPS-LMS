@@ -128,7 +128,7 @@ export default function StudentStudyGroups() {
   const groupCoverInputRef = useRef<HTMLInputElement>(null);
   const [uploadingCoverGroupId, setUploadingCoverGroupId] = useState<number | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
-  const [profileGroupId, setProfileGroupId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("groupProfile"); return value && /^\d+$/.test(value) ? Number(value) : null; });
+  const [profileGroupId, setProfileGroupId] = useState<number | null>(() => { const params = new URLSearchParams(window.location.search); const value = params.get("groupProfile") ?? params.get("groupId"); return value && /^\d+$/.test(value) ? Number(value) : null; });
   const { data: profileMessages } = useListMessages({ groupId: profileGroupId, recipientId: null }, { query: { enabled: profileGroupId !== null, refetchInterval: 5000 } as any });
 
   const refresh = () => void queryClient.invalidateQueries({ queryKey: getListStudyGroupsQueryKey() });
@@ -452,15 +452,15 @@ export default function StudentStudyGroups() {
                         <details>
                           <summary className="cursor-pointer list-none text-xs font-semibold text-foreground/70 hover:text-primary">MEMBERS ({group.memberCount})</summary>
                           <div className="mt-3 space-y-2">
-
-                        <div className="space-y-2">
+                            <div className="space-y-2">
                           {group.members.map(member => (
                             <div key={member.id} className="flex items-center gap-2">
                               <UserProfileLink userId={member.id} name={member.name + (member.id === group.creatorId ? " · owner" : "")} avatarUrl={member.avatarUrl} className="min-w-0 flex-1 text-xs" />
                               {member.control && <span className="text-[10px] text-muted-foreground">{[member.control.muted && "muted",member.control.suspended && "suspended",member.control.blocked && "blocked",member.control.mediaBlocked && "voice blocked"].filter(Boolean).join(" · ")}</span>}
                             </div>
                           ))}
-                        </div>
+                            </div>
+                          </div>
                         {canManage && group.members.some(member => member.id !== group.creatorId) && (() => {
                           const targets = group.members.filter(member => member.id !== group.creatorId);
                           const targetId = moderationTargetByGroup[group.id] ?? targets[0]?.id;
@@ -471,24 +471,22 @@ export default function StudentStudyGroups() {
                             <select id={`moderation-target-${group.id}`} className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={target.id} onChange={event => setModerationTargetByGroup(current => ({...current,[group.id]:Number(event.target.value)}))}>
                               {targets.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}
                             </select>
-                            <div className="flex flex-wrap gap-2">
-                              <Button type="button" variant={target.control?.muted ? "destructive" : "outline"} size="sm" onClick={() => void toggleMemberControl(group.id,target,"muted")} disabled={busyGroup===group.id}>{target.control?.muted ? "Unmute" : "Mute"}</Button>
-                              <Button type="button" variant={target.control?.mediaBlocked ? "destructive" : "outline"} size="sm" onClick={() => void toggleMemberControl(group.id,target,"mediaBlocked")} disabled={busyGroup===group.id}>{target.control?.mediaBlocked ? "Allow voice" : "Block voice"}</Button>
-                              <Button type="button" variant={target.control?.blocked ? "destructive" : "outline"} size="sm" onClick={() => void toggleMemberControl(group.id,target,"blocked")} disabled={busyGroup===group.id}>{target.control?.blocked ? "Unblock" : "Block"}</Button>
-                              <Button type="button" variant={target.control?.suspended ? "destructive" : "outline"} size="sm" onClick={() => void toggleMemberControl(group.id,target,"suspended")} disabled={busyGroup===group.id}>{target.control?.suspended ? "Unsuspend" : "Suspend"}</Button>
-                              <Button type="button" variant={target.control?.canManageSettings ? "secondary" : "outline"} size="sm" onClick={() => void toggleMemberControl(group.id,target,"canManageSettings")} disabled={busyGroup===group.id}>{target.control?.canManageSettings ? "Remove settings access" : "Grant settings access"}</Button>
-                              {isOwner && <Button type="button" variant="ghost" size="sm" className="text-destructive" onClick={() => { if(!window.confirm(`Remove ${target.name} from this group?`)) return; void apiJson(`/api/study-groups/${group.id}/members/${target.id}`,{method:"DELETE"}).then(()=>{toast({title:"Member removed"});refresh();}).catch(error=>toast({variant:"destructive",title:"Could not remove member",description:error instanceof Error?error.message:"Try again."})); }} disabled={busyGroup===group.id}><UserMinus className="mr-1 h-3.5 w-3.5"/>Remove member</Button>}
+                            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                              <Button type="button" variant={target.control?.muted ? "destructive" : "outline"} size="sm" className={target.control?.muted ? "min-h-10 whitespace-normal border-red-600 bg-red-600 px-3 text-xs font-semibold text-white hover:bg-red-700 dark:border-red-500 dark:bg-red-700 dark:text-white" : "min-h-10 whitespace-normal border-2 border-[#0f2a5a]/60 bg-white px-3 text-xs font-semibold text-[#0f2a5a] shadow-sm ring-1 ring-[#0f2a5a]/10 transition-colors hover:border-[#0f2a5a] hover:bg-[#0f2a5a]/[0.06] focus-visible:ring-2 focus-visible:ring-[#0f2a5a] dark:border-[#8fb4ec]/75 dark:bg-slate-950 dark:text-[#dbeafe] dark:hover:border-[#8fb4ec] dark:hover:bg-[#0f2a5a]/30"} onClick={() => void toggleMemberControl(group.id,target,"muted")} disabled={busyGroup===group.id}>{target.control?.muted ? "Unmute" : "Mute"}</Button>
+                              <Button type="button" variant={target.control?.mediaBlocked ? "destructive" : "outline"} size="sm" className={target.control?.mediaBlocked ? "min-h-10 whitespace-normal border-red-600 bg-red-600 px-3 text-xs font-semibold text-white hover:bg-red-700 dark:border-red-500 dark:bg-red-700 dark:text-white" : "min-h-10 whitespace-normal border-2 border-[#0f2a5a]/60 bg-white px-3 text-xs font-semibold text-[#0f2a5a] shadow-sm ring-1 ring-[#0f2a5a]/10 transition-colors hover:border-[#0f2a5a] hover:bg-[#0f2a5a]/[0.06] focus-visible:ring-2 focus-visible:ring-[#0f2a5a] dark:border-[#8fb4ec]/75 dark:bg-slate-950 dark:text-[#dbeafe] dark:hover:border-[#8fb4ec] dark:hover:bg-[#0f2a5a]/30"} onClick={() => void toggleMemberControl(group.id,target,"mediaBlocked")} disabled={busyGroup===group.id}>{target.control?.mediaBlocked ? "Allow voice" : "Block voice"}</Button>
+                              <Button type="button" variant={target.control?.blocked ? "destructive" : "outline"} size="sm" className={target.control?.blocked ? "min-h-10 whitespace-normal border-red-600 bg-red-600 px-3 text-xs font-semibold text-white hover:bg-red-700 dark:border-red-500 dark:bg-red-700 dark:text-white" : "min-h-10 whitespace-normal border-2 border-[#0f2a5a]/60 bg-white px-3 text-xs font-semibold text-[#0f2a5a] shadow-sm ring-1 ring-[#0f2a5a]/10 transition-colors hover:border-[#0f2a5a] hover:bg-[#0f2a5a]/[0.06] focus-visible:ring-2 focus-visible:ring-[#0f2a5a] dark:border-[#8fb4ec]/75 dark:bg-slate-950 dark:text-[#dbeafe] dark:hover:border-[#8fb4ec] dark:hover:bg-[#0f2a5a]/30"} onClick={() => void toggleMemberControl(group.id,target,"blocked")} disabled={busyGroup===group.id}>{target.control?.blocked ? "Unblock" : "Block"}</Button>
+                              <Button type="button" variant={target.control?.suspended ? "destructive" : "outline"} size="sm" className={target.control?.suspended ? "min-h-10 whitespace-normal border-red-600 bg-red-600 px-3 text-xs font-semibold text-white hover:bg-red-700 dark:border-red-500 dark:bg-red-700 dark:text-white" : "min-h-10 whitespace-normal border-2 border-[#0f2a5a]/60 bg-white px-3 text-xs font-semibold text-[#0f2a5a] shadow-sm ring-1 ring-[#0f2a5a]/10 transition-colors hover:border-[#0f2a5a] hover:bg-[#0f2a5a]/[0.06] focus-visible:ring-2 focus-visible:ring-[#0f2a5a] dark:border-[#8fb4ec]/75 dark:bg-slate-950 dark:text-[#dbeafe] dark:hover:border-[#8fb4ec] dark:hover:bg-[#0f2a5a]/30"} onClick={() => void toggleMemberControl(group.id,target,"suspended")} disabled={busyGroup===group.id}>{target.control?.suspended ? "Unsuspend" : "Suspend"}</Button>
+                              <Button type="button" variant={target.control?.canManageSettings ? "secondary" : "outline"} size="sm" className={target.control?.canManageSettings ? "min-h-10 whitespace-normal border-sky-700 bg-sky-100 px-3 text-xs font-semibold text-sky-950 hover:bg-sky-200 dark:border-sky-700 dark:bg-sky-950 dark:text-sky-100" : "min-h-10 whitespace-normal border-2 border-[#0f2a5a]/60 bg-white px-3 text-xs font-semibold text-[#0f2a5a] shadow-sm ring-1 ring-[#0f2a5a]/10 transition-colors hover:border-[#0f2a5a] hover:bg-[#0f2a5a]/[0.06] focus-visible:ring-2 focus-visible:ring-[#0f2a5a] dark:border-[#8fb4ec]/75 dark:bg-slate-950 dark:text-[#dbeafe] dark:hover:border-[#8fb4ec] dark:hover:bg-[#0f2a5a]/30"} onClick={() => void toggleMemberControl(group.id,target,"canManageSettings")} disabled={busyGroup===group.id}>{target.control?.canManageSettings ? "Remove settings access" : "Grant settings access"}</Button>
+                              {isOwner && <Button type="button" variant="ghost" size="sm" className="min-h-10 whitespace-normal border border-red-300 bg-red-50 px-3 text-xs font-semibold text-red-700 hover:bg-red-100 dark:border-red-900 dark:bg-red-950 dark:text-red-200 dark:hover:bg-red-900" onClick={() => { if(!window.confirm(`Remove ${target.name} from this group?`)) return; void apiJson(`/api/study-groups/${group.id}/members/${target.id}`,{method:"DELETE"}).then(()=>{toast({title:"Member removed"});refresh();}).catch(error=>toast({variant:"destructive",title:"Could not remove member",description:error instanceof Error?error.message:"Try again."})); }} disabled={busyGroup===group.id}><UserMinus className="mr-1 h-3.5 w-3.5"/>Remove member</Button>}
                             </div>
                           </div>;
                         })()}
-                      
-                          </div>
-                        </details>
+                         </details>
                       </div>;
                     })()}
                   </CardContent>
                   <CardFooter className="relative z-10 flex flex-wrap gap-2 border-t border-white/20 bg-black/20 pt-4">
-                    {user?.role === "owner" && <Button type="button" variant="outline" size="sm" className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/10" disabled={busyGroup === group.id} onClick={() => {
+                    {(isOwner || isPlatformOwner || isManager) && <Button type="button" variant="outline" size="sm" className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/10" disabled={busyGroup === group.id} onClick={() => {
                       if (!window.confirm(`Permanently delete "${group.name}" and its members, messages, polls, settings and moderation records from Dallyletter? This cannot be undone.`)) return;
                       setBusyGroup(group.id);
                       void apiJson<{ok:boolean;deletedGroupName:string}>(`/api/study-groups/${group.id}`,{method:"DELETE"}).then(result=>{toast({title:"Study group permanently deleted",description:result.deletedGroupName});if(editingGroupId===group.id){setEditingGroupId(null);setSettings(null);}refresh();}).catch(error=>toast({variant:"destructive",title:"Group deletion failed",description:error instanceof Error?error.message:"Try again."})).finally(()=>setBusyGroup(null));

@@ -127,7 +127,12 @@ router.get("/chat/groups/:groupId/polls", requireAuth, async(req,res)=>{
   const out=await Promise.all(rows.map(async poll=>{
     const options=await db.select().from(chatPollOptionsTable).where(eq(chatPollOptionsTable.pollId,poll.id));
     const votes=await db.select().from(chatPollVotesTable).where(eq(chatPollVotesTable.pollId,poll.id));
-    return { poll, options: options.map(option => ({ ...option, voteCount: votes.filter(vote => vote.optionId === option.id).length, selected: votes.some(vote => vote.optionId === option.id && vote.userId === req.currentUser!.id) })), totalVotes: new Set(votes.map(vote => vote.userId)).size };
+    const actor = req.currentUser!;
+    const hasVoted = votes.some(vote => vote.userId === actor.id);
+    const managerAuthorized = poll.groupId !== null && canAccessManager(actor) && await managerHasPermission(actor, "groups.manage") && await canAccessChatGroup(poll.groupId, actor.id, actor);
+    const canDelete = poll.creatorId === actor.id || isOwnerRole(actor.role) || managerAuthorized;
+    const safePoll = { ...poll, canDelete, correctOptionId: poll.autoMark && (poll.creatorId === actor.id || hasVoted) ? poll.correctOptionId : null };
+    return { poll: safePoll, options: options.map(option => ({ ...option, voteCount: votes.filter(vote => vote.optionId === option.id).length, selected: votes.some(vote => vote.optionId === option.id && vote.userId === req.currentUser!.id) })), totalVotes: new Set(votes.map(vote => vote.userId)).size };
   }));
  res.json(out);
 });
@@ -138,9 +143,31 @@ router.post("/chat/groups/:groupId/polls", requireAuth, async(req,res):Promise<v
   if (settings?.allowPolls === false) { res.status(403).json({ error: "Polls are disabled in this group" }); return; }
   const uniqueOptions = [...new Set(options.map((option: string) => option.trim()))];
   if (uniqueOptions.length < 2) { res.status(400).json({ error: "Poll options must be unique" }); return; }
- const [poll]=await db.insert(chatPollsTable).values({groupId,creatorId:user.id,question,allowMultiple:Boolean(req.body?.allowMultiple),anonymous:Boolean(req.body?.anonymous)}).returning();
-  await db.insert(chatPollOptionsTable).values(uniqueOptions.map((label:string)=>({pollId:poll.id,label})));
- res.status(201).json({poll,options:await db.select().from(chatPollOptionsTable).where(eq(chatPollOptionsTable.pollId,poll.id))});
+ const autoMark = req.body?.autoMark === true;
+  const allowMultiple = Boolean(req.body?.allowMultiple);
+  if (autoMark && allowMultiple) { res.status(400).json({ error: "Auto-marking requires a single-answer poll." }); return; }
+  const correctOption = typeof req.body?.correctOption === "string" ? req.body.correctOption.trim() : "";
+  const correctOptionIndex = uniqueOptions.indexOf(correctOption);
+  if (autoMark && correctOptionIndex < 0) { res.status(400).json({ error: "Select the correct answer before publishing an auto-marked poll." }); return; }
+  const [poll]=await db.insert(chatPollsTable).values({groupId,creatorId:user.id,question,allowMultiple,anonymous:Boolean(req.body?.anonymous),autoMark,correctOptionId:null}).returning();
+  const createdOptions = await db.insert(chatPollOptionsTable).values(uniqueOptions.map((label:string)=>({pollId:poll.id,label}))).returning();
+  const correctOptionId = autoMark ? createdOptions[correctOptionIndex]?.id : null;
+  const [savedPoll] = autoMark ? await db.update(chatPollsTable).set({correctOptionId}).where(eq(chatPollsTable.id,poll.id)).returning() : [poll];
+  res.status(201).json({poll:savedPoll,options:createdOptions});
+});
+router.delete("/chat/polls/:pollId", requireAuth, async(req,res):Promise<void>=>{
+ const pollId=Number(req.params.pollId), actor=req.currentUser!;
+ if(!Number.isSafeInteger(pollId)||pollId<=0){res.status(400).json({error:"Invalid poll id"});return;}
+ const [poll]=await db.select().from(chatPollsTable).where(eq(chatPollsTable.id,pollId));
+ if(!poll){res.status(404).json({error:"Poll not found"});return;}
+ const isCreator=poll.creatorId===actor.id;
+ const isOwner=isOwnerRole(actor.role);
+ const managerAuthorized=poll.groupId !== null && canAccessManager(actor) && await managerHasPermission(actor,"groups.manage") && await canAccessChatGroup(poll.groupId,actor.id,actor);
+ if(!isCreator&&!isOwner&&!managerAuthorized){res.status(403).json({error:"Only the poll creator, platform owner, or an authorized group manager can delete this poll."});return;}
+ await db.delete(chatPollVotesTable).where(eq(chatPollVotesTable.pollId,pollId));
+ await db.delete(chatPollOptionsTable).where(eq(chatPollOptionsTable.pollId,pollId));
+ await db.delete(chatPollsTable).where(eq(chatPollsTable.id,pollId));
+ res.sendStatus(204);
 });
 router.post("/chat/polls/:pollId/vote", requireAuth, async(req,res):Promise<void>=>{
  const pollId=Number(req.params.pollId), user=req.currentUser!, optionIds=Array.isArray(req.body?.optionIds)?req.body.optionIds.map(Number).filter(Number.isInteger):[];
@@ -151,7 +178,8 @@ router.post("/chat/polls/:pollId/vote", requireAuth, async(req,res):Promise<void
  const valid=await db.select().from(chatPollOptionsTable).where(eq(chatPollOptionsTable.pollId,pollId)); const validIds=new Set(valid.map((o: { id: number })=>o.id)); if(optionIds.some((id: number)=>!validIds.has(id))){res.status(400).json({error:"Invalid poll option"});return;}
  await db.delete(chatPollVotesTable).where(and(eq(chatPollVotesTable.pollId,pollId),eq(chatPollVotesTable.userId,user.id)));
  await db.insert(chatPollVotesTable).values(optionIds.map((optionId: number)=>({pollId,optionId,userId:user.id})));
- res.json({ok:true});
+ const marked = poll.autoMark && !poll.allowMultiple && poll.correctOptionId != null ? { isCorrect: optionIds[0] === poll.correctOptionId, correctOptionId: poll.correctOptionId, correctLabel: valid.find(option => option.id === poll.correctOptionId)?.label ?? null } : {};
+ res.json({ok:true,...marked});
 });
 
 router.get("/communities", requireAuth, async(req,res)=>{

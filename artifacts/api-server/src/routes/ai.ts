@@ -48,6 +48,8 @@ router.get("/ai/status", requireAuth, async (req, res): Promise<void> => {
       isLive: ai.name !== "mock",
       configuredProvider: cfg["ai_provider"] || environmentProvider || inferredProvider,
       hasGeminiKey: !!(cfg["gemini_api_key"] || process.env.GEMINI_API_KEY),
+      geminiModel: cfg["gemini_model"] || process.env.GEMINI_MODEL || "gemini-3.8-flash",
+      geminiModelSource: cfg["gemini_model"] ? "database" : process.env.GEMINI_MODEL ? "environment" : "default",
       hasOpenAIKey: !!(cfg["openai_api_key"] || process.env.OPENAI_API_KEY),
       hasAnthropicKey: !!(cfg["anthropic_api_key"] || process.env.ANTHROPIC_API_KEY),
     });
@@ -183,7 +185,7 @@ router.post("/ai/chat", requireAuth, async (req, res): Promise<void> => {
 router.post("/ai/settings", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (user.role !== "owner") { res.status(403).json({ error: "Owner only" }); return; }
-  const { provider, gemini_api_key, openai_api_key, anthropic_api_key } = req.body as Record<string, string>;
+  const { provider, gemini_api_key, gemini_model, openai_api_key, anthropic_api_key } = req.body as Record<string, string>;
 
   const updates: { key: string; value: string }[] = [];
   if (provider) {
@@ -191,6 +193,12 @@ router.post("/ai/settings", requireAuth, async (req, res): Promise<void> => {
     updates.push({ key: "ai_provider", value: provider });
   }
   if (gemini_api_key !== undefined) updates.push({ key: "gemini_api_key", value: gemini_api_key });
+  if (gemini_model !== undefined) {
+    if (typeof gemini_model !== "string" || gemini_model.length > 100 || (gemini_model.trim() !== "" && !/^[a-zA-Z0-9._-]+$/.test(gemini_model.trim()))) {
+      res.status(400).json({ error: "Gemini model must be a valid model ID of at most 100 characters." }); return;
+    }
+    updates.push({ key: "gemini_model", value: gemini_model.trim() });
+  }
   if (openai_api_key !== undefined) updates.push({ key: "openai_api_key", value: openai_api_key });
   if (anthropic_api_key !== undefined) updates.push({ key: "anthropic_api_key", value: anthropic_api_key });
 
@@ -218,7 +226,7 @@ router.post("/ai/test-connection", requireAuth, async (req, res): Promise<void> 
     const ai = await getAIProvider();
     const response = await ai.chat([{ role: "user", content: "Hello! Please respond with exactly: ELIDEMS AI connection successful." }]);
     const success = response.toLowerCase().includes("elide") || response.toLowerCase().includes("success") || response.length > 10;
-    res.json({ success, provider: ai.name, isLive: ai.name !== "mock", response: response.slice(0, 200) });
+    res.json({ success, provider: ai.name, model: ai.model ?? null, isLive: ai.name !== "mock", response: response.slice(0, 200) });
   } catch (err) {
     const failure = err instanceof AIProviderError ? err : new AIProviderError("configuration", "provider_unavailable");
     res.status(failure.code === "timeout" ? 504 : failure.code === "cancelled" ? 499 : failure.code === "rate_limited" ? 429 : 502)

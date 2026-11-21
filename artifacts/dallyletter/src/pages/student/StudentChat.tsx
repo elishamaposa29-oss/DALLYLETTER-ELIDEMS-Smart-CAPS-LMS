@@ -1,7 +1,8 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { StudyGroupPollPanel } from "@/components/StudyGroupPollPanel";
+import { StudyGroupPollPanel, StudyGroupPollCard, type ChatPoll } from "@/components/StudyGroupPollPanel";
 import UserProfileLink from "@/components/UserProfileLink";
 import { apiJson, authenticatedFetch } from "@/lib/api";
+import { getApiUrl } from "@workspace/api-client-react";
 import {
   useListMessages,
   useSendMessage,
@@ -30,6 +31,8 @@ type GroupView = {
   subject?: string;
   coverImageUrl?: string | null;
   creatorName?: string;
+  creatorId: number;
+  canManage?: boolean;
   memberCount: number;
   isMember?: boolean;
   members?: Array<{ id: number; name?: string; avatarUrl?: string | null }>;
@@ -50,6 +53,32 @@ const defaultGroupSettings: GroupSettings = {
   rules: null,
 };
 
+/** Authenticated blob loading mirrors the proven PR #131 group-cover implementation. */
+function AuthenticatedGroupAvatar({ url, name }: { url: string; name: string }) {
+  const [source, setSource] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    let objectUrl: string | null = null;
+    setSource(null);
+    const token = localStorage.getItem("dallyletter_token");
+    fetch(getApiUrl(url), { headers: token ? { Authorization: `Bearer ${token}` } : undefined })
+      .then(response => { if (!response.ok) throw new Error("Group image unavailable"); return response.blob(); })
+      .then(blob => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setSource(objectUrl);
+      })
+      .catch(() => { if (active) setSource(null); });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [url]);
+  return source
+    ? <img src={source} alt={name + " group avatar"} className="h-full w-full object-cover" loading="lazy" />
+    : <span role="img" aria-label={name + " group avatar"}>{name.slice(0, 1).toUpperCase()}</span>;
+}
+
 export default function StudentChat() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -64,6 +93,7 @@ export default function StudentChat() {
   const [replyTo, setReplyTo] = useState<number | null>(null);
   const [reportingMessageId, setReportingMessageId] = useState<number | null>(null);
   const [settings, setSettings] = useState<GroupSettings>(defaultGroupSettings);
+  const [groupPolls, setGroupPolls] = useState<ChatPoll[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
@@ -101,6 +131,10 @@ export default function StudentChat() {
 
   const sendMessageMutation = useSendMessage();
   const rootMessages = [...(messages?.filter(currentMessage => currentMessage.parentMessageId == null) ?? [])].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id - b.id);
+  const timelineItems = [
+    ...rootMessages.map(item => ({ kind: "message" as const, id: item.id, createdAt: item.createdAt, item })),
+    ...(selectedGroupId == null ? [] : groupPolls.map(item => ({ kind: "poll" as const, id: item.poll.id, createdAt: item.poll.createdAt ?? "", item }))),
+  ].sort((a,b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || (a.kind === b.kind ? a.id-b.id : a.kind === "message" ? -1 : 1));
   const replyTarget = messages?.find(currentMessage => currentMessage.id === replyTo);
   const selectedGroup = joinedGroups.find(group => group.id === selectedGroupId);
   const selectedContact = contacts.find(contact => contact.id === selectedUserId);
@@ -248,7 +282,7 @@ export default function StudentChat() {
                 visibleJoinedGroups.map(group => (
                   <div key={group.id} className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 transition-colors ${selectedGroupId === group.id ? "bg-primary/10 ring-1 ring-primary/30" : "hover:bg-muted"}`}>
                     <button type="button" onClick={() => selectGroup(group.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border-2 border-[#C9A227] bg-[#0B1E3A] text-sm font-bold text-[#FFD700]">{group.coverImageUrl ? <AuthenticatedMedia url={group.coverImageUrl} type="image" title={group.name}/> : group.name.slice(0,1).toUpperCase()}</span>
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border-2 border-[#C9A227] bg-[#0B1E3A] text-sm font-bold text-[#FFD700]">{group.coverImageUrl ? <AuthenticatedGroupAvatar url={group.coverImageUrl} name={group.name}/> : group.name.slice(0,1).toUpperCase()}</span>
                       <span className="min-w-0 flex-1 truncate font-medium">{group.name}</span>
                     </button>
                     <DUnread count={unreadForGroup(group.id)} />
@@ -284,7 +318,7 @@ export default function StudentChat() {
               <div className="flex items-center justify-between gap-2 border-b bg-muted/30 p-4">
                 <div className="flex min-w-0 items-center gap-2">
                   <Button type="button" variant="ghost" size="icon" className="h-8 w-8 md:hidden" onClick={() => { setSelectedGroupId(null); setSelectedUserId(null); }} aria-label="Back to conversations"><ArrowLeft className="h-4 w-4" /></Button>
-                  {isGroupConversation ? <button type="button" onClick={() => setGroupHubOpen(true)} aria-label="Open full group hub" title="Open group hub" className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border-2 border-[#C9A227] bg-[#0B1E3A] text-sm font-bold text-[#FFD700]">{selectedGroup?.coverImageUrl ? <AuthenticatedMedia url={selectedGroup.coverImageUrl} type="image" title={selectedGroup.name}/> : selectedGroup?.name?.slice(0,1).toUpperCase()}</button> : <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10"><User className="h-4 w-4 text-primary" /></div>}
+                  {isGroupConversation ? <button type="button" onClick={() => setGroupHubOpen(true)} aria-label="Open full group hub" title="Open group hub" className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border-2 border-[#C9A227] bg-[#0B1E3A] text-sm font-bold text-[#FFD700]">{selectedGroup?.coverImageUrl ? <AuthenticatedGroupAvatar url={selectedGroup.coverImageUrl} name={selectedGroup.name}/> : selectedGroup?.name?.slice(0,1).toUpperCase()}</button> : <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10"><User className="h-4 w-4 text-primary" /></div>}
                   <div className="min-w-0"><p className="truncate font-semibold">{isGroupConversation ? selectedGroup?.name : selectedContact?.name}</p>{isGroupConversation && settings.rules && <p className="truncate text-xs text-muted-foreground">{settings.rules}</p>}</div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1"><Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={() => setChatFullscreen(value => !value)} aria-label={chatFullscreen ? "Exit full-screen chat" : "Open full-screen chat"} title={chatFullscreen ? "Exit full-screen chat" : "Open full-screen chat"}>{chatFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}</Button></div>
@@ -295,7 +329,7 @@ export default function StudentChat() {
                   <div className="mx-auto max-w-xl space-y-4 rounded-2xl border bg-card p-5 shadow-2xl">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-xl border-2 border-[#C9A227] bg-[#0B1E3A] text-2xl font-bold text-[#FFD700]">{selectedGroup.coverImageUrl ? <AuthenticatedMedia url={selectedGroup.coverImageUrl} type="image" title={selectedGroup.name}/> : selectedGroup.name.slice(0,1).toUpperCase()}</div>
+                        <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-xl border-2 border-[#C9A227] bg-[#0B1E3A] text-2xl font-bold text-[#FFD700]">{selectedGroup.coverImageUrl ? <AuthenticatedGroupAvatar url={selectedGroup.coverImageUrl} name={selectedGroup.name}/> : selectedGroup.name.slice(0,1).toUpperCase()}</div>
                         <div><h2 className="text-lg font-bold">{selectedGroup.name}</h2><p className="text-sm text-muted-foreground">{selectedGroup.subject || "Study group"} · {selectedGroup.memberCount} members</p><p className="text-xs text-muted-foreground">Created by {selectedGroup.creatorName || "Group creator"}</p></div>
                       </div>
                       <Button type="button" variant="ghost" size="icon" onClick={() => setGroupHubOpen(false)} aria-label="Close group hub"><X className="h-5 w-5"/></Button>
@@ -316,7 +350,7 @@ export default function StudentChat() {
                     <div className="max-h-64 space-y-2 overflow-y-auto">
                       {(selectedGroup.members ?? []).map(member => <UserProfileLink key={member.id} userId={member.id} name={member.name || `Member ${member.id}`} avatarUrl={member.avatarUrl} className="text-sm"/>)}
                     </div>
-                    <div className="flex flex-wrap gap-2"><Button type="button" onClick={() => setGroupHubOpen(false)}>Return to chat</Button><Button type="button" variant="outline" onClick={() => { window.location.href = `/student/study-groups?groupProfile=${selectedGroup.id}`; }}>Open full group profile</Button></div>
+                    <div className="flex flex-wrap gap-2"><Button type="button" onClick={() => setGroupHubOpen(false)}>Return to chat</Button><Button type="button" variant="outline" onClick={() => { window.location.href = `/student/study-groups?groupProfile=${selectedGroup.id}`; }}>Open full group profile</Button>{selectedGroup.canManage === true && <Button type="button" variant="destructive" disabled={sendMessageMutation.isPending} onClick={() => void (async()=>{if(!window.confirm("Permanently delete this study group, its polls, messages and membership records?"))return;try{await apiJson(`/api/study-groups/${selectedGroup.id}`,{method:"DELETE"});setGroupHubOpen(false);setSelectedGroupId(null);setSelectedUserId(null);await refetchGroups();}catch(error){toast({variant:"destructive",title:"Group could not be deleted",description:error instanceof Error?error.message:"You may not have the required group-management permission."});}})()}>Delete group</Button>}</div>
                   </div>
                 </div>
               )}
@@ -326,10 +360,12 @@ export default function StudentChat() {
                   <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
                 ) : messagesError ? (
                   <div className="flex flex-col items-center gap-3 p-8 text-center text-sm text-muted-foreground"><p>Messages could not be loaded.</p><Button variant="outline" onClick={() => void refetchMessages()}><RefreshCw className="mr-2 h-4 w-4" />Retry</Button></div>
-                ) : messages?.length === 0 ? (
+                ) : messages?.length === 0 && groupPolls.length === 0 ? (
                   <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground"><MessageSquare className="h-12 w-12 opacity-20" /><p className="text-sm">No messages yet. Be the first to say hello.</p></div>
                 ) : (
-                  rootMessages.map(messageItem => {
+                  timelineItems.map(timelineItem => {
+                    if (timelineItem.kind === "poll") return <div key={`poll-${timelineItem.id}`} className="flex w-full justify-center"><div className="w-full max-w-[90%]"><StudyGroupPollCard item={timelineItem.item as any} canDelete={Boolean((timelineItem.item as any).poll.canDelete)} onVoted={() => { if (selectedGroupId) void apiJson<typeof groupPolls>(`/api/chat/groups/${selectedGroupId}/polls`).then(setGroupPolls).catch(() => undefined); }} /></div></div>;
+                    const messageItem = timelineItem.item;
                     const renderMessage = (currentMessage: typeof messageItem, depth = 0): ReactNode => {
                       const isMe = currentMessage.senderId === user?.id;
                       const replies = [...(messages?.filter(reply => reply.parentMessageId === currentMessage.id) ?? [])].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id - b.id);
@@ -361,7 +397,7 @@ export default function StudentChat() {
                     return renderMessage(messageItem);
                   })
                 )}
-                {isGroupConversation && <StudyGroupPollPanel groupId={selectedGroupId} allowPolls={selectedGroup?.settings?.allowPolls !== false} />}
+                {isGroupConversation && <StudyGroupPollPanel groupId={selectedGroupId} inline allowPolls={selectedGroup?.settings?.allowPolls !== false} onPollsChange={setGroupPolls} />}
                 <div ref={messagesEndRef} />
               </div>
 

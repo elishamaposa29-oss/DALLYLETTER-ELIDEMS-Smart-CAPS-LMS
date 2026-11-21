@@ -111,6 +111,7 @@ router.get("/study-groups", requireAuth, async (req, res): Promise<void> => {
     const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, g.id));
     return {
       ...g,
+      canManage,
       memberCount: visibleMembers.length,
       isMember,
       // Non-members get only a safe public profile preview: never expose email, phone,
@@ -381,7 +382,10 @@ router.delete("/study-groups/:id/members/:userId", requireAuth, async (req, res)
 router.delete("/study-groups/:id", requireAuth, async (req, res): Promise<void> => {
   const groupId = Number(req.params.id);
   if (!Number.isInteger(groupId) || groupId <= 0) { res.status(400).json({ error: "Invalid group id" }); return; }
-  if (!isOwnerRole(req.currentUser!.role)) { res.status(403).json({ error: "Only the platform owner can permanently delete a study group." }); return; }
+  const actor=req.currentUser!;
+  const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
+  if (!group) { res.status(404).json({ error: "Study group not found" }); return; }
+  if (!(await canManageGroup(actor, group))) { res.status(403).json({ error: "Only the group creator, platform owner, or a manager with groups.manage permission and authority over the creator can permanently delete this group." }); return; }
 
   const client = await pool.connect();
   let mediaKeys: string[] = [];

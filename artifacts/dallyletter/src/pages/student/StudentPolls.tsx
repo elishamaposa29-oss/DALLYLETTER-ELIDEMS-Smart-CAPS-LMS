@@ -8,6 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
+import UserProfileLink from "@/components/UserProfileLink";
 import { Loader2, ClipboardList, Play, CheckCircle, XCircle, Trophy, Clock, ChevronRight, ChevronLeft, BarChart3 } from "lucide-react";
 
 interface Poll { id: number; title: string; grade: string | null; subject: string | null; mode: string; status: string; timerSeconds: number | null; type: string; }
@@ -15,7 +16,7 @@ interface PollOption { id: number; text: string; isCorrect?: boolean; }
 interface PollQuestion { id: number; question: string; difficulty: string; explanation: string | null; imageUrl?: string | null; options: PollOption[]; }
 interface PollDetail extends Poll { questions: PollQuestion[]; }
 interface SubmitResult { score: number; totalQuestions: number; percentage: number; feedback: { questionId: number; question: string; explanation: string | null; correctText: string | null; submittedOptionId: number | null; isCorrect: boolean; }[]; }
-interface LeaderEntry { studentName: string; score: number; totalQuestions: number; }
+interface LeaderEntry { studentName: string; studentId?: number | null; avatarUrl?: string | null; score: number; totalQuestions: number; }
 
 type Screen = "list" | "quiz" | "results" | "leaderboard";
 
@@ -278,7 +279,7 @@ export default function StudentPolls() {
                 <div key={i} className={`flex items-center justify-between border rounded-lg p-3 ${i === 0 ? "border-amber-300 bg-amber-50 dark:bg-amber-950/20" : i === 1 ? "border-slate-300 bg-slate-50 dark:bg-slate-900/20" : i === 2 ? "border-orange-200 bg-orange-50 dark:bg-orange-950/20" : ""}`}>
                   <div className="flex items-center gap-3">
                     <span className="font-bold text-lg w-7 text-center">{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i+1}`}</span>
-                    <span className="font-medium">{entry.studentName}</span>
+                    <UserProfileLink userId={entry.studentId} name={entry.studentName} avatarUrl={entry.avatarUrl} className="min-w-0 text-sm font-medium" />
                   </div>
                   <Badge variant="outline" className={entry.totalQuestions > 0 && (entry.score / entry.totalQuestions) >= 0.7 ? "text-emerald-700 border-emerald-300" : ""}>
                     {entry.totalQuestions > 0 ? Math.round((entry.score / entry.totalQuestions) * 100) : 0}% ({entry.score}/{entry.totalQuestions})

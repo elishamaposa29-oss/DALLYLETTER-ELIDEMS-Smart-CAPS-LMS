@@ -22,6 +22,11 @@ export function DailyAttendanceTracker() {
         method: "POST",
         headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
         body: JSON.stringify({ timeZone, source: "web" }),
+      }).then(response => {
+        if (!response.ok) return;
+        return response.json();
+      }).then(record => {
+        if (!disposed && record) window.dispatchEvent(new CustomEvent("dallyletter:daily-attendance-updated", { detail: record }));
       }).catch(() => {
         // Attendance is best-effort during a network outage; the next foreground open retries.
       }).finally(() => { requestInFlight = false; });

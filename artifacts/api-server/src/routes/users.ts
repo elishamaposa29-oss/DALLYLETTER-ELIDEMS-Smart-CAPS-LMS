@@ -788,7 +788,7 @@ router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<v
   if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid user id." }); return; }
   const [user] = await db.select({
     id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl, bio: usersTable.bio,
-    role: usersTable.role, grade: usersTable.grade, isPrefect: usersTable.isPrefect, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel,
+    role: usersTable.role, grade: usersTable.grade, isPrefect: usersTable.isPrefect, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel, teacherApplicationStatus: usersTable.teacherApplicationStatus,
     performanceScore: usersTable.performanceScore, badgeCount: usersTable.badgeCount, streakDays: usersTable.streakDays,
   }).from(usersTable).where(eq(usersTable.id, id));
   if (!user || (isOwnerRole(user.role) && !isOwnerRole(req.currentUser!.role)) || ((isSeniorManager(req.currentUser!) || isJuniorManager(req.currentUser!)) && !canViewManagerTarget(req.currentUser!,user))) { res.status(404).json({ error: "User not found." }); return; }
@@ -847,8 +847,15 @@ router.get("/users/:id/public-profile", requireAuth, async (req, res): Promise<v
     primary_subject: canViewSubjects ? teacherSubjectRows.rows[0]?.primary_subject ?? null : null,
     section_visibility: { overview:canViewOverview, qualifications:canViewQualifications, subjects:canViewSubjects, groups:canViewGroups, payments:canViewPayments, achievements:canViewAchievements, activity:canViewActivity, attendance:await canViewProfileSection(req.currentUser!,id,"attendance"), register:canViewRegister, reports:await canViewProfileSection(req.currentUser!,id,"reports"), transfers:await canViewProfileSection(req.currentUser!,id,"transfers"), enrollments:await canViewProfileSection(req.currentUser!,id,"enrollments"), teacher_documents:await canViewProfileSection(req.currentUser!,id,"teacher_documents") },
     grade: canViewOverview ? user.grade : null,
-    is_prefect: canViewOverview && Boolean(user.isPrefect),
-    is_manager: canViewOverview && Boolean(user.isManager),
+    is_prefect: canViewOverview && (Boolean(user.isPrefect) || normalizeRole(user.role) === "prefect"),
+    is_manager: canViewOverview && (
+      ["manager", "senior_manager", "junior_manager"].includes(normalizeRole(user.role)) ||
+      (normalizeRole(user.role) === "teacher" && Boolean(user.isManager) && ["approved", "not_applicable"].includes(String(user.teacherApplicationStatus ?? "not_applicable").trim().toLowerCase()))
+    ),
+    manager_level: canViewOverview && (
+      ["manager", "senior_manager", "junior_manager"].includes(normalizeRole(user.role)) ||
+      (normalizeRole(user.role) === "teacher" && Boolean(user.isManager) && ["approved", "not_applicable"].includes(String(user.teacherApplicationStatus ?? "not_applicable").trim().toLowerCase()))
+    ) ? user.managerLevel ?? null : null,
     performance_score: canViewOverview ? Number(user.performanceScore ?? 0) : null,
     leaderboard_position: canViewOverview ? (Number(rankRows.rows[0]?.position ?? 0) || null) : null,
     badge_count: canViewOverview ? Number(user.badgeCount ?? 0) : null,
