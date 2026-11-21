@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getApiUrl } from "@workspace/api-client-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useListNotifications, useMarkNotificationRead } from "@workspace/api-client-react";
@@ -75,6 +75,20 @@ export default function StudentNotifications() {
   const [, navigate] = useLocation();
   const markReadMutation = useMarkNotificationRead();
   const queryClient = useQueryClient();
+  const autoReadIds = useRef(new Set<number>());
+
+  useEffect(() => {
+    if (!notifications) return;
+    const unread = notifications.filter(item => !item.isRead && !autoReadIds.current.has(item.id));
+    if (!unread.length) return;
+    for (const item of unread) autoReadIds.current.add(item.id);
+    for (const item of unread) {
+      markReadMutation.mutate({ id: item.id }, {
+        onError: () => { autoReadIds.current.delete(item.id); },
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() }),
+      });
+    }
+  }, [notifications]);
 
   const handleMarkAsRead = (id: number) => {
     markReadMutation.mutate({ id }, {
