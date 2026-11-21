@@ -299,7 +299,7 @@ router.delete("/academic-records/transfer-requests/:id", requireAuth, async (req
  if(!Number.isSafeInteger(id)||id<1){res.status(400).json({error:"Invalid transfer request id."});return;}
  const found=await pool.query("SELECT r.id,r.learner_id,r.requested_by,u.role,u.is_manager,u.manager_level FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id WHERE r.id=$1",[id]);
  const row=found.rows[0];if(!row){res.status(404).json({error:"Transfer letter not found."});return;}
- const creator=Number(row.requested_by)===Number(actor.id),owner=isOwnerRole(actor.role);
+ const creator=Number(row.requested_by ?? row.learner_id)===Number(actor.id),owner=isOwnerRole(actor.role);
  const managerAuthorized=canAccessManager(actor)&&await managerHasPermission(actor,"transfers.view")&&canModerateUser(actor,{role:row.role,isManager:row.is_manager,managerLevel:row.manager_level});
  if(!creator&&!owner&&!managerAuthorized){res.status(403).json({error:"Only the transfer-letter creator, platform owner, or an authorized manager with transfers.view in scope can delete this letter."});return;}
  const client=await pool.connect();
