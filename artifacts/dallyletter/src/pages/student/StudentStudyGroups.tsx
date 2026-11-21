@@ -77,7 +77,7 @@ type GroupView = {
   settings?: GroupSettings;
 };
 
-function AuthenticatedGroupCover({ url, name }: { url: string; name: string }) {
+function AuthenticatedGroupCover({ url, name, onClick }: { url: string; name: string; onClick?: () => void }) {
   const [source, setSource] = useState<string | null>(null);
   useEffect(() => {
     let active = true;
