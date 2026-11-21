@@ -318,7 +318,8 @@ export default function AdminNotifications() {
                           <span className="text-xs text-muted-foreground hidden sm:block">
                             {new Date(notification.createdAt).toLocaleDateString()}
                           </span>
-{isOwner && <Button
+{!notification.isRead && <Button type="button" size="sm" variant="outline" onClick={() => void handleMarkAsRead(notification.id)}>Mark as read</Button>}
+                          {isOwner && <Button
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
