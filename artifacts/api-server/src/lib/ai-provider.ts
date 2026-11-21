@@ -72,6 +72,7 @@ function parseModerationResult(raw: string): ModerationResult {
 
 export interface AIProvider {
   name: string;
+  model?: string;
   chat(messages: AIMessage[], systemPrompt?: string, signal?: AbortSignal): Promise<string>;
   generatePoll(topic: string, grade?: string, subject?: string, count?: number): Promise<GeneratedPoll>;
   moderateContent(text: string): Promise<ModerationResult>;
@@ -148,7 +149,7 @@ class MockProvider implements AIProvider {
 // ─── GEMINI PROVIDER ─────────────────────────────────────────────────────────
 class GeminiProvider implements AIProvider {
   name = "gemini";
-  constructor(private apiKey: string) {}
+  constructor(private apiKey: string, readonly model: string) {}
 
   private async call(messages: AIMessage[], system?: string, signal?: AbortSignal): Promise<string> {
     const contents = messages
@@ -158,7 +159,7 @@ class GeminiProvider implements AIProvider {
     if (system) body.systemInstruction = { parts: [{ text: system }] };
     const j = await requestProviderJson(
       this.name,
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${this.apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(this.model)}:generateContent?key=${encodeURIComponent(this.apiKey)}`,
       { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal },
     ) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
     const text = j.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -288,6 +289,7 @@ export async function getAIProvider(): Promise<AIProvider> {
   // owner-configured settings stable while allowing secure server-side setup
   // through Render/other secret managers without putting keys in the client.
   const geminiKey = cfg["gemini_api_key"] || process.env.GEMINI_API_KEY || "";
+  const geminiModel = cfg["gemini_model"] || process.env.GEMINI_MODEL || "gemini-3.8-flash";
   const openaiKey = cfg["openai_api_key"] || process.env.OPENAI_API_KEY || "";
   const anthropicKey = cfg["anthropic_api_key"] || process.env.ANTHROPIC_API_KEY || "";
   const configuredName = cfg["ai_provider"] || process.env.AI_PROVIDER;
@@ -300,7 +302,7 @@ export async function getAIProvider(): Promise<AIProvider> {
   if (name === "mock") _cached = new MockProvider();
   else if (name === "gemini") {
     if (!geminiKey) throw new AIProviderError("gemini", "invalid_credentials");
-    _cached = new GeminiProvider(geminiKey);
+    _cached = new GeminiProvider(geminiKey, geminiModel);
   } else if (name === "openai") {
     if (!openaiKey) throw new AIProviderError("openai", "invalid_credentials");
     _cached = new OpenAIProvider(openaiKey);

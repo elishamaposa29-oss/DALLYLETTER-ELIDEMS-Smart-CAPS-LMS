@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Sparkles, CheckCircle, AlertTriangle, Eye, EyeOff, Trash2, Zap, Bot } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
-interface AIStatus { provider: string; isLive: boolean; hasGeminiKey: boolean; hasOpenAIKey: boolean; hasAnthropicKey: boolean; configuredProvider?: string; }
+interface AIStatus { provider: string; isLive: boolean; hasGeminiKey: boolean; hasOpenAIKey: boolean; hasAnthropicKey: boolean; configuredProvider?: string; geminiModel?: string; geminiModelSource?: string; }
 
 const PROVIDERS = [
   { id: "mock", label: "Development Mode (No API Key)", description: "Uses smart mock responses. Free, no setup needed.", icon: "🤖" },
@@ -23,6 +23,7 @@ export default function AdminAISettings() {
   const { toast } = useToast();
   const [status, setStatus] = useState<AIStatus | null>(null);
   const [selectedProvider, setSelectedProvider] = useState("mock");
+  const [geminiModel, setGeminiModel] = useState("gemini-3.8-flash");
   const [keys, setKeys] = useState({ gemini_api_key: "", openai_api_key: "", anthropic_api_key: "" });
   const [showKeys, setShowKeys] = useState({ gemini_api_key: false, openai_api_key: false, anthropic_api_key: false });
   const [saving, setSaving] = useState(false);
@@ -37,6 +38,7 @@ export default function AdminAISettings() {
       .then((s: AIStatus) => {
         setStatus(s);
         setSelectedProvider(s.configuredProvider ?? "mock");
+        setGeminiModel(s.geminiModel ?? "gemini-3.8-flash");
       })
       .catch(() => {});
   }, []);
@@ -46,6 +48,7 @@ export default function AdminAISettings() {
     setTestResult(null);
     try {
       const payload: Record<string, string> = { provider: selectedProvider };
+      if (selectedProvider === "gemini") payload.gemini_model = geminiModel.trim();
       const currentProvider = PROVIDERS.find(p => p.id === selectedProvider);
       if (currentProvider?.keyField && keys[currentProvider.keyField as keyof typeof keys]) {
         payload[currentProvider.keyField] = keys[currentProvider.keyField as keyof typeof keys];
@@ -78,19 +81,23 @@ export default function AdminAISettings() {
       if (currentProvider?.keyField && keys[currentProvider.keyField as keyof typeof keys]) {
         payload[currentProvider.keyField] = keys[currentProvider.keyField as keyof typeof keys];
       }
-      await fetch(getApiUrl("/api/ai/settings"), {
+      const saveResponse = await fetch(getApiUrl("/api/ai/settings"), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
         body: JSON.stringify(payload),
       });
+      if (!saveResponse.ok) {
+        const saveError = await saveResponse.json().catch(() => ({}));
+        throw new Error(saveError.error || "Unable to save AI settings before testing.");
+      }
       const r = await fetch(getApiUrl("/api/ai/test-connection"), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
       });
-      const data = await r.json() as { success: boolean; provider: string; response?: string; error?: string };
+      const data = await r.json() as { success: boolean; provider: string; model?: string | null; response?: string; error?: string };
       setTestResult({
         success: data.success,
-        message: data.success ? `✅ Connected to ${data.provider}! Response: "${data.response?.slice(0, 80)}…"` : `❌ ${data.error ?? "Connection failed"}`,
+        message: data.success ? `✅ Connected to ${data.provider}${data.model ? ` (${data.model})` : ""}! Response: "${data.response?.slice(0, 80)}…"` : `❌ ${data.error ?? "Connection failed"}`,
       });
       if (data.success) {
         const s = await fetch(getApiUrl("/api/ai/status"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json());
@@ -186,6 +193,13 @@ export default function AdminAISettings() {
               <CardDescription>Your key is stored in the platform settings database and is never returned in full to students.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {selectedProvider === "gemini" && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="gemini-model">Gemini model ID</Label>
+                  <Input id="gemini-model" value={geminiModel} onChange={e => setGeminiModel(e.target.value)} placeholder="gemini-3.8-flash" maxLength={100} />
+                  <p className="text-xs text-muted-foreground">Defaults to gemini-3.8-flash. The Owner can change this without editing or redeploying the application.</p>
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label>{activeProvider.keyLabel}</Label>
                 <div className="flex gap-2">
