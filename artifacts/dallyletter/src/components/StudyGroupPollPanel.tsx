@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { BarChart3, Loader2, RefreshCw } from "lucide-react";
+import { BarChart3, Loader2, RefreshCw, Trash2 } from "lucide-react";
 
 export type ChatPoll = {
   poll: { id: number; question: string; allowMultiple: boolean; closed: boolean; autoMark?: boolean; correctOptionId?: number | null; creatorId?: number; createdAt?: string };
@@ -12,8 +12,13 @@ export type ChatPoll = {
   totalVotes: number;
 };
 type PollMarkResult = { isCorrect?: boolean; correctLabel?: string | null };
-export function StudyGroupPollCard({ item, onVoted }: { item: ChatPoll; onVoted?: () => void }) {
+export function StudyGroupPollCard({ item, onVoted, canDelete = false }: { item: ChatPoll; onVoted?: () => void; canDelete?: boolean }) {
   const [mark, setMark] = useState<PollMarkResult | null>(null);
+  const remove = async () => {
+    if (!canDelete || !window.confirm("Permanently delete this poll and its votes?")) return;
+    try { await apiJson(`/api/chat/polls/${item.poll.id}`, { method: "DELETE" }); onVoted?.(); }
+    catch { /* Keep the poll visible if the server rejects deletion. */ }
+  };
   const vote = async (optionId: number) => {
     const selectedIds = item.poll.allowMultiple ? [...item.options.filter(option => option.selected && option.id !== optionId).map(option => option.id), ...(item.options.some(option => option.id === optionId && option.selected) ? [] : [optionId])] : [optionId];
     if (!selectedIds.length) return;
@@ -22,7 +27,7 @@ export function StudyGroupPollCard({ item, onVoted }: { item: ChatPoll; onVoted?
       setMark(result); onVoted?.();
     } catch { /* Parent refresh and visible poll state remain intact on transient errors. */ }
   };
-  return <Card className="w-full space-y-3 p-4"><div className="flex items-start justify-between gap-2"><p className="font-semibold text-sm">{item.poll.question}</p><span className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground">{item.poll.closed ? "Closed" : "Active"}</span></div><div className="space-y-2">{item.options.map(option => <button key={option.id} type="button" disabled={item.poll.closed} onClick={() => void vote(option.id)} className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-70 ${option.selected ? "border-primary bg-primary/10" : "hover:bg-muted"}`}><span>{option.selected ? "✓ " : ""}{option.label}</span><span className="text-xs tabular-nums text-muted-foreground">{option.voteCount}</span></button>)}</div><p className="text-[11px] text-muted-foreground">{item.totalVotes} vote{item.totalVotes===1?"":"s"} · {item.poll.allowMultiple?"Multiple choices":"Choose one"}</p>{(mark?.isCorrect !== undefined || (item.poll.autoMark && item.poll.correctOptionId != null && item.options.some(option => option.selected))) && (() => { const correct = item.options.find(option => option.id === item.poll.correctOptionId); const selected = item.options.find(option => option.selected); const isCorrect = mark?.isCorrect ?? selected?.id === item.poll.correctOptionId; return <p role="status" className={`rounded-md p-2 text-xs font-medium ${isCorrect ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>{isCorrect ? "Correct answer!" : `Not correct. Correct answer: ${mark?.correctLabel ?? correct?.label ?? "See teacher feedback"}`}</p>; })()}</Card>;
+  return <Card className="w-full space-y-3 p-4"><div className="flex items-start justify-between gap-2"><p className="font-semibold text-sm">{item.poll.question}</p><div className="flex items-center gap-2"><span className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground">{item.poll.closed ? "Closed" : "Active"}</span>{canDelete && <Button type="button" size="icon" variant="ghost" className="h-7 w-7 text-destructive" aria-label="Delete poll" title="Delete poll" onClick={() => void remove()}><Trash2 className="h-3.5 w-3.5"/></Button>}</div></div><div className="space-y-2">{item.options.map(option => <button key={option.id} type="button" disabled={item.poll.closed} onClick={() => void vote(option.id)} className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-70 ${option.selected ? "border-primary bg-primary/10" : "hover:bg-muted"}`}><span>{option.selected ? "✓ " : ""}{option.label}</span><span className="text-xs tabular-nums text-muted-foreground">{option.voteCount}</span></button>)}</div><p className="text-[11px] text-muted-foreground">{item.totalVotes} vote{item.totalVotes===1?"":"s"} · {item.poll.allowMultiple?"Multiple choices":"Choose one"}</p>{(mark?.isCorrect !== undefined || (item.poll.autoMark && item.poll.correctOptionId != null && item.options.some(option => option.selected))) && (() => { const correct = item.options.find(option => option.id === item.poll.correctOptionId); const selected = item.options.find(option => option.selected); const isCorrect = mark?.isCorrect ?? selected?.id === item.poll.correctOptionId; return <p role="status" className={`rounded-md p-2 text-xs font-medium ${isCorrect ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>{isCorrect ? "Correct answer!" : `Not correct. Correct answer: ${mark?.correctLabel ?? correct?.label ?? "See teacher feedback"}`}</p>; })()}</Card>;
 }
 
 export function StudyGroupPollPanel({ groupId, allowPolls = true, inline = false, onPollsChange }: { groupId: number | null; allowPolls?: boolean; inline?: boolean; onPollsChange?: (polls: ChatPoll[]) => void }) {
