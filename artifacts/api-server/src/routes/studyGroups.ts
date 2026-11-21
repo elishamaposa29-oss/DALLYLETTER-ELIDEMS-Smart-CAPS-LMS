@@ -416,7 +416,7 @@ router.delete("/study-groups/:id", requireAuth, async (req, res): Promise<void> 
     res.status(200).json({ ok: true, deleted: true, deletedGroupId: groupId, deletedGroupName: found.rows[0].name, mediaCleanupPending: cleanupFailures.length > 0, mediaCleanupFailedCount: cleanupFailures.length });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
-    res.status(500).json({ error: "Study group deletion failed; no group deletion was committed." });
+    res.status(500).json({ error: error instanceof Error ? error.message : "Study group deletion failed; no group deletion was committed." });
   } finally {
     client.release();
   }
@@ -426,7 +426,7 @@ router.delete("/study-groups/:id", requireAuth, async (req, res): Promise<void> 
 router.delete("/study-groups/:id/messages", requireAuth, async (req, res): Promise<void> => {
   const groupId = Number(req.params.id), user = req.currentUser!;
   const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
-  if (!group || !(await canManageGroupSettings(user, groupId, group))) { res.status(403).json({ error: "Group management access required" }); return; }
+  if (!group || !(await canManageGroup(user, group))) { res.status(403).json({ error: "Only the group creator/owner, platform owner, or a scoped manager with groups.manage can clear group messages." }); return; }
   const groupMessages = await db.select({ id: messagesTable.id, mediaUrl: messagesTable.mediaUrl }).from(messagesTable).where(eq(messagesTable.groupId, groupId));
   await db.transaction(async (tx) => {
     const removed = await tx.delete(messagesTable).where(eq(messagesTable.groupId, groupId)).returning({ id: messagesTable.id });
