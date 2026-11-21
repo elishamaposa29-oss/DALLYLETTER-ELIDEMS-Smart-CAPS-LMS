@@ -265,7 +265,7 @@ export default function StudentChat() {
       const result = await apiJson<{deleted?:boolean;mediaCleanupPending?:boolean}>(`/api/messages/${messageId}`, { method: "DELETE" });
       if (!result.deleted) throw new Error("The server did not confirm that the message was deleted.");
       await queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId, recipientId: selectedUserId }) });
-      toast({ title: "Message deleted", description: result.mediaCleanupPending ? "The message is deleted; its stored attachment still needs cleanup." : undefined });
+      toast({ title: "Message deleted", description: result.mediaCleanupPending ? result.warning || "The message is deleted; its stored attachment still needs cleanup." : undefined });
     } catch (error) {
       toast({ variant: "destructive", title: "Message could not be deleted", description: error instanceof Error ? error.message : "Try again." });
     } finally { setDeletingMessageId(null); }
