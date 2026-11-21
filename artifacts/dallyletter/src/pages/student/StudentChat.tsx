@@ -32,6 +32,7 @@ type GroupView = {
   coverImageUrl?: string | null;
   creatorName?: string;
   creatorId: number;
+  canManage?: boolean;
   memberCount: number;
   isMember?: boolean;
   members?: Array<{ id: number; name?: string; avatarUrl?: string | null }>;
@@ -339,7 +340,7 @@ export default function StudentChat() {
                     <div className="max-h-64 space-y-2 overflow-y-auto">
                       {(selectedGroup.members ?? []).map(member => <UserProfileLink key={member.id} userId={member.id} name={member.name || `Member ${member.id}`} avatarUrl={member.avatarUrl} className="text-sm"/>)}
                     </div>
-                    <div className="flex flex-wrap gap-2"><Button type="button" onClick={() => setGroupHubOpen(false)}>Return to chat</Button><Button type="button" variant="outline" onClick={() => { window.location.href = `/student/study-groups?groupProfile=${selectedGroup.id}`; }}>Open full group profile</Button>{(selectedGroup.creatorId === user?.id || ["owner","platform_owner","manager","senior_manager","junior_manager"].includes(String(user?.role||"").toLowerCase()) || (user as any)?.isManager) && <Button type="button" variant="destructive" disabled={sendMessageMutation.isPending} onClick={() => void (async()=>{if(!window.confirm("Permanently delete this study group, its polls, messages and membership records?"))return;try{await apiJson(`/api/study-groups/${selectedGroup.id}`,{method:"DELETE"});setGroupHubOpen(false);setSelectedGroupId(null);setSelectedUserId(null);await refetchGroups();}catch(error){toast({variant:"destructive",title:"Group could not be deleted",description:error instanceof Error?error.message:"You may not have the required group-management permission."});}})()}>Delete group</Button>}</div>
+                    <div className="flex flex-wrap gap-2"><Button type="button" onClick={() => setGroupHubOpen(false)}>Return to chat</Button><Button type="button" variant="outline" onClick={() => { window.location.href = `/student/study-groups?groupProfile=${selectedGroup.id}`; }}>Open full group profile</Button>{selectedGroup.canManage === true && <Button type="button" variant="destructive" disabled={sendMessageMutation.isPending} onClick={() => void (async()=>{if(!window.confirm("Permanently delete this study group, its polls, messages and membership records?"))return;try{await apiJson(`/api/study-groups/${selectedGroup.id}`,{method:"DELETE"});setGroupHubOpen(false);setSelectedGroupId(null);setSelectedUserId(null);await refetchGroups();}catch(error){toast({variant:"destructive",title:"Group could not be deleted",description:error instanceof Error?error.message:"You may not have the required group-management permission."});}})()}>Delete group</Button>}</div>
                   </div>
                 </div>
               )}
@@ -353,7 +354,7 @@ export default function StudentChat() {
                   <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground"><MessageSquare className="h-12 w-12 opacity-20" /><p className="text-sm">No messages yet. Be the first to say hello.</p></div>
                 ) : (
                   timelineItems.map(timelineItem => {
-                    if (timelineItem.kind === "poll") return <div key={`poll-${timelineItem.id}`} className="flex w-full justify-center"><div className="w-full max-w-[90%]"><StudyGroupPollCard item={timelineItem.item as any} canDelete={Boolean(user && ((timelineItem.item as any).poll.creatorId === user.id || ["owner","platform_owner","manager","senior_manager","junior_manager"].includes(String(user.role).toLowerCase()) || (user as any).isManager))} onVoted={() => { if (selectedGroupId) void apiJson<typeof groupPolls>(`/api/chat/groups/${selectedGroupId}/polls`).then(setGroupPolls).catch(() => undefined); }} /></div></div>;
+                    if (timelineItem.kind === "poll") return <div key={`poll-${timelineItem.id}`} className="flex w-full justify-center"><div className="w-full max-w-[90%]"><StudyGroupPollCard item={timelineItem.item as any} canDelete={Boolean((timelineItem.item as any).poll.canDelete)} onVoted={() => { if (selectedGroupId) void apiJson<typeof groupPolls>(`/api/chat/groups/${selectedGroupId}/polls`).then(setGroupPolls).catch(() => undefined); }} /></div></div>;
                     const messageItem = timelineItem.item;
                     const renderMessage = (currentMessage: typeof messageItem, depth = 0): ReactNode => {
                       const isMe = currentMessage.senderId === user?.id;
