@@ -1,24 +1,10 @@
 name: Dallyletter Real UI Showcase Capture
 
 on:
-  # Refresh evidence after product changes land on main. Captures the currently deployed
-  # public site; scheduled runs also catch deployments made outside GitHub pushes.
-  push:
-    branches: [main]
-    paths:
-      - "artifacts/dallyletter/**"
-      - "scripts/prerender-public-pages.mjs"
-      - "scripts/capture-dallyletter-showcase.mjs"
-      - ".github/workflows/dallyletter-showcase-capture.yml"
-      - "vercel.json"
-  pull_request:
-    branches: [main]
-    paths:
-      - "artifacts/dallyletter/**"
-      - "scripts/prerender-public-pages.mjs"
-      - "scripts/capture-dallyletter-showcase.mjs"
-      - ".github/workflows/dallyletter-showcase-capture.yml"
-      - "vercel.json"
+  # Automatic capture is intentionally paused: protected Vercel previews require
+  # an automation-bypass credential, and this evidence workflow must not block
+  # pull-request review or merges. Resume only after protection access is configured.
+  # Keep scheduled and manually approved runs available for controlled verification.
   schedule:
     - cron: "23 6 * * 1"
   workflow_dispatch:
