@@ -159,7 +159,7 @@ router.delete("/chat/polls/:pollId", requireAuth, async(req,res):Promise<void>=>
  if(!poll){res.status(404).json({error:"Poll not found"});return;}
  const isCreator=poll.creatorId===actor.id;
  const isOwner=isOwnerRole(actor.role);
- const managerAuthorized=Boolean(poll.groupId)&&canAccessManager(actor)&&await managerHasPermission(actor,"groups.manage")&&await canAccessChatGroup(poll.groupId,actor.id,actor);
+ const managerAuthorized=poll.groupId !== null && canAccessManager(actor) && await managerHasPermission(actor,"groups.manage") && await canAccessChatGroup(poll.groupId,actor.id,actor);
  if(!isCreator&&!isOwner&&!managerAuthorized){res.status(403).json({error:"Only the poll creator, platform owner, or an authorized group manager can delete this poll."});return;}
  await db.delete(chatPollVotesTable).where(eq(chatPollVotesTable.pollId,pollId));
  await db.delete(chatPollOptionsTable).where(eq(chatPollOptionsTable.pollId,pollId));
