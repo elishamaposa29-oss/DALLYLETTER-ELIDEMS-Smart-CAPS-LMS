@@ -260,27 +260,48 @@ export default function StudentChat() {
               groupsLoading ? (
                 <div className="flex justify-center p-4"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
               ) : groupsError ? (
-                <div className="flex flex-col items-center gap-2 p-6 text-center text-sm text-muted-foreground"><p>Groups could not be loaded.</p><Button variant="outline" size="sm" onClick={() => void refetchGroups()}><RefreshCw className="mr-2 h-3.5 w-3.5" />Retry</Button></div>
+                <div className="flex flex-col items-center gap-2 p-6 text-center text-sm text-muted-foreground">
+                  <p>Groups could not be loaded.</p>
+                  <Button variant="outline" size="sm" onClick={() => void refetchGroups()}><RefreshCw className="mr-2 h-3.5 w-3.5" />Retry</Button>
+                </div>
               ) : visibleJoinedGroups.length === 0 ? (
-                <div className="flex flex-col items-center justify-center gap-3 p-6 text-center"><Users className="h-10 w-10 text-muted-foreground/30" /><p className="text-sm text-muted-foreground">No joined groups yet. Join one from Study Groups to start chatting.</p></div>
+                <div className="flex flex-col items-center justify-center gap-3 p-6 text-center">
+                  <Users className="h-10 w-10 text-muted-foreground/30" />
+                  <p className="text-sm text-muted-foreground">No joined groups yet. Join one from Study Groups to start chatting.</p>
+                </div>
               ) : (
                 visibleJoinedGroups.map(group => (
-                  <button key={group.id} onClick={() => selectGroup(group.id)} className={selectedGroupId === group.id ? 'flex w-full items-center justify-between rounded-lg px-3 py-3 text-left bg-primary text-primary-foreground' : 'flex w-full items-center justify-between rounded-lg px-3 py-3 text-left hover:bg-muted'}>
-                    <span className="flex min-w-0 items-center gap-3"><GroupCoverAvatar url={group.coverImageUrl} name={group.name} onClick={() => window.location.assign("/student/study-groups?groupId=" + group.id)} /><span className="truncate font-medium">{group.name}</span></span>
+                  <button key={group.id} onClick={() => selectGroup(group.id)} className={selectedGroupId === group.id ? "flex w-full items-center justify-between rounded-lg px-3 py-3 text-left bg-primary text-primary-foreground" : "flex w-full items-center justify-between rounded-lg px-3 py-3 text-left hover:bg-muted"}>
+                    <span className="flex min-w-0 items-center gap-3">
+                      <GroupCoverAvatar url={group.coverImageUrl} name={group.name} onClick={() => window.location.assign("/student/study-groups?groupId=" + group.id)} />
+                      <span className="truncate font-medium">{group.name}</span>
+                    </span>
                     <DUnread count={unreadForGroup(group.id)} />
                     <span className="rounded-full bg-muted px-2 py-0.5 text-xs">{group.memberCount}</span>
                   </button>
                 ))
-                ))
               )
             ) : (
-              usersLoading ? <div className="flex justify-center p-4"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div> : usersError ? (
-                <div className="flex flex-col items-center gap-2 p-6 text-center text-sm text-muted-foreground"><p>Contacts could not be loaded.</p><Button variant="outline" size="sm" onClick={() => void refetchUsers()}><RefreshCw className="mr-2 h-3.5 w-3.5" />Retry</Button></div>
-                visibleJoinedGroups.map(group => (
-                  <button key={group.id} onClick={() => selectGroup(group.id)} className={selectedGroupId === group.id ? 'flex w-full items-center justify-between rounded-lg px-3 py-3 text-left bg-primary text-primary-foreground' : 'flex w-full items-center justify-between rounded-lg px-3 py-3 text-left hover:bg-muted'}>
-                    <span className="flex min-w-0 items-center gap-3"><GroupCoverAvatar url={group.coverImageUrl} name={group.name} onClick={() => window.location.assign("/student/study-groups?groupId=" + group.id)} /><span className="truncate font-medium">{group.name}</span></span>
-                    <DUnread count={unreadForGroup(group.id)} />
-                    <span className="rounded-full bg-muted px-2 py-0.5 text-xs">{group.memberCount}</span>
+              usersLoading ? (
+                <div className="flex justify-center p-4"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+              ) : usersError ? (
+                <div className="flex flex-col items-center gap-2 p-6 text-center text-sm text-muted-foreground">
+                  <p>Contacts could not be loaded.</p>
+                  <Button variant="outline" size="sm" onClick={() => void refetchUsers()}><RefreshCw className="mr-2 h-3.5 w-3.5" />Retry</Button>
+                </div>
+              ) : visibleContacts.length === 0 ? (
+                <div className="p-6 text-center text-sm text-muted-foreground">No eligible educators or prefects match your search.</div>
+              ) : (
+                visibleContacts.map(contact => (
+                  <button key={contact.id} onClick={() => selectContact(contact.id)} className={selectedUserId === contact.id ? "flex w-full items-center gap-3 rounded-lg bg-primary px-3 py-3 text-left text-primary-foreground" : "flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left hover:bg-muted"}>
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border bg-muted text-sm font-semibold">
+                      {contact.avatarUrl ? <AuthenticatedMedia url={contact.avatarUrl} type="image" title={contact.name} /> : contact.name.slice(0, 1).toUpperCase()}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">{contact.name}</span>
+                      <span className="block text-xs capitalize opacity-70">{contact.isPrefect ? "Prefect" : contact.role}</span>
+                    </span>
+                    <DUnread count={unreadForPrivate(contact.id)} />
                   </button>
                 ))
               )
@@ -296,13 +317,6 @@ export default function StudentChat() {
               <div className="flex items-center justify-between gap-2 border-b bg-muted/30 p-4">
                 <div className="flex min-w-0 items-center gap-2">
                   <Button type="button" variant="ghost" size="icon" className="h-8 w-8 md:hidden" onClick={() => { setSelectedGroupId(null); setSelectedUserId(null); }} aria-label="Back to conversations"><ArrowLeft className="h-4 w-4" /></Button>
-                visibleJoinedGroups.map(group => (
-                  <button key={group.id} onClick={() => selectGroup(group.id)} className={selectedGroupId === group.id ? 'flex w-full items-center justify-between rounded-lg px-3 py-3 text-left bg-primary text-primary-foreground' : 'flex w-full items-center justify-between rounded-lg px-3 py-3 text-left hover:bg-muted'}>
-                    <span className="flex min-w-0 items-center gap-3"><GroupCoverAvatar url={group.coverImageUrl} name={group.name} onClick={() => window.location.assign("/student/study-groups?groupId=" + group.id)} /><span className="truncate font-medium">{group.name}</span></span>
-                    <DUnread count={unreadForGroup(group.id)} />
-                    <span className="rounded-full bg-muted px-2 py-0.5 text-xs">{group.memberCount}</span>
-                  </button>
-                ))
                   <div className="min-w-0"><p className="truncate font-semibold">{isGroupConversation ? selectedGroup?.name : selectedContact?.name}</p>{isGroupConversation && settings.rules && <p className="truncate text-xs text-muted-foreground">{settings.rules}</p>}</div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1"><Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={() => setChatFullscreen(value => !value)} aria-label={chatFullscreen ? "Exit full-screen chat" : "Open full-screen chat"} title={chatFullscreen ? "Exit full-screen chat" : "Open full-screen chat"}>{chatFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}</Button></div>

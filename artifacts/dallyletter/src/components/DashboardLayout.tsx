@@ -162,17 +162,35 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     return () => { active = false; window.clearInterval(timer); };
   }, [user?.id, location]);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
-    if (!user) { setUnreadNotificationCount(0); return; }
+  useEffect(() => {
+    if (!user) {
+      setUnreadNotificationCount(0);
+      return;
+    }
+    let active = true;
     const loadUnread = async () => {
+      try {
         const token = localStorage.getItem("dallyletter_token") ?? "";
-        const response = await fetch(getApiUrl("/api/notifications"), { headers: { Authorization: "Bearer " + token }, cache: "no-store" });
+        const response = await fetch(getApiUrl("/api/notifications"), {
+          headers: { Authorization: "Bearer " + token },
+          cache: "no-store",
+        });
         if (!response.ok) return;
         const rows = await response.json();
-        if (active && Array.isArray(rows)) setUnreadNotificationCount(rows.filter((item: any) => !item.isRead).length);
-      } catch { /* Keep the last known count during temporary network failures. */ }
+        if (active && Array.isArray(rows)) {
+          setUnreadNotificationCount(rows.filter((item: any) => !item.isRead).length);
+        }
+      } catch {
+        // Keep the last known count during temporary network failures.
+      }
+    };
     void loadUnread();
     const interval = window.setInterval(() => void loadUnread(), 20000);
-    return () => { active = false; window.clearInterval(interval); };
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [user?.id, location]);
 
   useEffect(() => {
     const role = String(user?.role || "").toLowerCase().replace(/[ -]+/g, "_");
