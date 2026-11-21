@@ -95,6 +95,18 @@ export default function AdminNotifications() {
     });
   };
 
+  const handleMarkAsRead = async (id: number) => {
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const response = await fetch(getApiUrl(`/api/notifications/${id}/read`), { method: "PATCH", headers: { Authorization: `Bearer ${token}` } });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Could not mark notification as read.");
+      await queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() });
+    } catch (error) {
+      toast({ variant: "destructive", title: "Could not mark as read", description: error instanceof Error ? error.message : "Try again." });
+    }
+  };
+
   const handleDelete = async (id: number) => {
     if (!confirm("Delete this notification? Students who have not yet read it will no longer see it.")) return;
     const token = localStorage.getItem("dallyletter_token");
