@@ -286,6 +286,19 @@ export default function StudentStudyGroups() {
     }
   };
 
+  const handleDeleteGroup = async (groupId: number, groupName: string) => {
+    if (!window.confirm(`Permanently delete "${groupName}" and its group messages, polls, votes, members and cover media? This cannot be undone.`)) return;
+    setBusyGroup(groupId);
+    try {
+      await apiJson(`/api/study-groups/${groupId}`, { method: "DELETE" });
+      setProfileGroupId(null);
+      toast({ title: "Study group deleted", description: groupName + " and its group data were removed." });
+      refresh();
+    } catch (error) {
+      toast({ variant: "destructive", title: "Group could not be deleted", description: error instanceof Error ? error.message : "Try again." });
+    } finally { setBusyGroup(null); }
+  };
+
   const toggleMemberControl = async (groupId: number, member: GroupMember, field: keyof MemberControl) => {
     const nextValue = !member.control?.[field];
     setBusyGroup(groupId);
