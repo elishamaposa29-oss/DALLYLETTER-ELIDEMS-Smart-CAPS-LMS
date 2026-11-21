@@ -30,6 +30,7 @@ type GroupView = {
   subject?: string;
   coverImageUrl?: string | null;
   creatorName?: string;
+  creatorId: number;
   memberCount: number;
   isMember?: boolean;
   members?: Array<{ id: number; name?: string; avatarUrl?: string | null }>;
