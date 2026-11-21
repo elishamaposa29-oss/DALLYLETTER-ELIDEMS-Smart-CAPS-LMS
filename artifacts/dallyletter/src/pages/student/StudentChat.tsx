@@ -104,7 +104,7 @@ export default function StudentChat() {
   const rootMessages = [...(messages?.filter(currentMessage => currentMessage.parentMessageId == null) ?? [])].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id - b.id);
   const timelineItems = [
     ...rootMessages.map(item => ({ kind: "message" as const, id: item.id, createdAt: item.createdAt, item })),
-    ...(isNaN(Number(selectedGroupId)) ? [] : groupPolls.map(item => ({ kind: "poll" as const, id: item.poll.id, createdAt: item.poll.createdAt ?? "", item }))),
+    ...(selectedGroupId == null ? [] : groupPolls.map(item => ({ kind: "poll" as const, id: item.poll.id, createdAt: item.poll.createdAt ?? "", item }))),
   ].sort((a,b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || (a.kind === b.kind ? a.id-b.id : a.kind === "message" ? -1 : 1));
   const replyTarget = messages?.find(currentMessage => currentMessage.id === replyTo);
   const selectedGroup = joinedGroups.find(group => group.id === selectedGroupId);
@@ -331,11 +331,11 @@ export default function StudentChat() {
                   <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
                 ) : messagesError ? (
                   <div className="flex flex-col items-center gap-3 p-8 text-center text-sm text-muted-foreground"><p>Messages could not be loaded.</p><Button variant="outline" onClick={() => void refetchMessages()}><RefreshCw className="mr-2 h-4 w-4" />Retry</Button></div>
-                ) : messages?.length === 0 ? (
+                ) : messages?.length === 0 && groupPolls.length === 0 ? (
                   <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground"><MessageSquare className="h-12 w-12 opacity-20" /><p className="text-sm">No messages yet. Be the first to say hello.</p></div>
                 ) : (
                   timelineItems.map(timelineItem => {
-                    if (timelineItem.kind === "poll") return <div key={`poll-${timelineItem.id}`} className="flex w-full justify-center"><div className="w-full max-w-[90%]"><StudyGroupPollCard item={timelineItem.item as any} onVoted={() => queryClient.invalidateQueries({ queryKey: ["study-group-polls", selectedGroupId] })} /></div></div>;
+                    if (timelineItem.kind === "poll") return <div key={`poll-${timelineItem.id}`} className="flex w-full justify-center"><div className="w-full max-w-[90%]"><StudyGroupPollCard item={timelineItem.item as any} onVoted={() => { if (selectedGroupId) void apiJson<typeof groupPolls>(`/api/chat/groups/${selectedGroupId}/polls`).then(setGroupPolls).catch(() => undefined); }} /></div></div>;
                     const messageItem = timelineItem.item;
                     const renderMessage = (currentMessage: typeof messageItem, depth = 0): ReactNode => {
                       const isMe = currentMessage.senderId === user?.id;
