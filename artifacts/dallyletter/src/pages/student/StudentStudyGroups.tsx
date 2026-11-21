@@ -18,6 +18,7 @@ import { Loader2, Users, LogOut, Plus, Settings2, UserMinus, ShieldCheck, Mic, B
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { SubjectSelector } from "@/components/selection/SubjectSelector";
+import { ACADEMIC_GRADE_OPTIONS } from "@workspace/api-client-react/academic-grades";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useEffect, useRef, useState, type FormEvent } from "react";
@@ -339,7 +340,7 @@ export default function StudentStudyGroups() {
               <CardContent className="grid gap-4 sm:grid-cols-2">
                 <Input placeholder="Group name" value={name} onChange={event => setName(event.target.value)} required maxLength={120} />
                 <SubjectSelector value={subject} onChange={setSubject} placeholder="Search or type a subject…" />
-                <Input placeholder="Grade / Form (e.g. Form 3)" value={grade} onChange={event => setGrade(event.target.value)} maxLength={80} />
+                <select aria-label="Grade / Form" value={grade} onChange={event => setGrade(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"><option value="">All grades / not specified</option>{ACADEMIC_GRADE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select>
                 <Input placeholder="Topic (e.g. Algebra)" value={topic} onChange={event => setTopic(event.target.value)} maxLength={120} />
                 {<div className="sm:col-span-2 space-y-2"><label className="text-sm font-medium" htmlFor="group-cover-image">Group cover image</label><Input id="group-cover-image" type="file" accept="image/*" onChange={event => setCoverFile(event.target.files?.[0] ?? null)} /><p className="text-xs text-muted-foreground">Use an image up to the platform's media upload limit. The image is stored through the existing persistent media service.</p>{coverFile && <p className="text-xs text-muted-foreground">Selected: {coverFile.name}</p>}</div>}
                 <Textarea className="sm:col-span-2" placeholder="What will this group focus on?" value={description} onChange={event => setDescription(event.target.value)} rows={3} maxLength={1000} />
@@ -365,7 +366,7 @@ export default function StudentStudyGroups() {
               <form onSubmit={saveSettings}>
                 <CardContent className="space-y-4">
                   {(user?.role === "owner" || user?.isManager === true || Number(groups.find(item => item.id === settings.groupId)?.creatorId) === Number(user?.id)) && <div className="grid gap-3 sm:grid-cols-2">
-                    <div><label className="text-sm font-medium" htmlFor="group-grade">Grade / Form</label><Input id="group-grade" className="mt-1" value={profileGrade} onChange={event => setProfileGrade(event.target.value)} maxLength={80} /></div>
+                    <div><label className="text-sm font-medium" htmlFor="group-grade">Grade / Form</label><select id="group-grade" className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={profileGrade} onChange={event => setProfileGrade(event.target.value)}><option value="">All grades / not specified</option>{ACADEMIC_GRADE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></div>
                     <div><label className="text-sm font-medium" htmlFor="group-topic">Topic</label><Input id="group-topic" className="mt-1" value={profileTopic} onChange={event => setProfileTopic(event.target.value)} maxLength={120} /></div>
                     {(isPlatformOwner || isManager || settings.groupId && Number(groups.find(item => item.id === settings.groupId)?.creatorId) === Number(user?.id)) && <div className="sm:col-span-2"><label className="text-sm font-medium" htmlFor="group-cover-replace">Replace cover image</label><Input id="group-cover-replace" className="mt-1" type="file" accept="image/*" onChange={event => setProfileCoverFile(event.target.files?.[0] ?? null)} /><p className="mt-1 text-xs text-muted-foreground">{profileCoverFile ? profileCoverFile.name : "The group creator or authorized manager can replace this cover image."}</p></div>}
                   </div>}
