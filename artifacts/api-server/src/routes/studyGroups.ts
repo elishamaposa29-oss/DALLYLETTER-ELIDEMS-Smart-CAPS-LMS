@@ -435,7 +435,7 @@ router.delete("/study-groups/:id/messages", requireAuth, async (req, res): Promi
   const cleanupFailures: string[] = [];
   for (const message of groupMessages) {
     const key = typeof message.mediaUrl === "string" ? message.mediaUrl.match(/\/api\/messages\/media\/([a-f0-9-]{36})/i)?.[1] : null;
-    if (key) { try { await removeStoredMedia(key); } catch { cleanupFailures.push(key); } }
+    if (key) { try { await removeStoredMedia(key); } catch (error) { cleanupFailures.push(error instanceof Error ? error.message : "Unknown media cleanup error"); } }
   }
-  res.status(200).json({ ok: true, deleted: true, deletedMessageCount: groupMessages.length, mediaCleanupPending: cleanupFailures.length > 0, mediaCleanupFailedCount: cleanupFailures.length });
+  res.status(200).json({ ok: true, deleted: true, deletedMessageCount: groupMessages.length, mediaCleanupPending: cleanupFailures.length > 0, mediaCleanupFailedCount: cleanupFailures.length, mediaCleanupErrors: cleanupFailures });
 });
