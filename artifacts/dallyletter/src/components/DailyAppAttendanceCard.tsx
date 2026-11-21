@@ -240,7 +240,7 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
           {classError && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{classError}</p>}
           {offlineClassCache && <p role="status" className="rounded-lg border border-orange-300 bg-orange-50 p-2 text-xs text-orange-900">Offline mode: showing the last saved attendance records on this device. New changes sync after reconnecting.</p>}
           {renderCalendar()}
-          {!classLoading && !classError && classRecords.length === 0 && <p className="rounded-lg border border-dashed p-3 text-center text-sm text-muted-foreground">No class sessions have been recorded yet. Future weekdays and known public holidays are still shown as predictions.</p>}
+          {!classLoading && !classError && classRecords.length === 0 && <p className="rounded-lg border border-dashed p-3 text-center text-sm text-muted-foreground">No class-session attendance records have been saved yet. This does not affect the daily Dallyletter app-access calendar above.</p>}
           <p className="text-[11px] text-muted-foreground">A session is counted only when the attendance API returns a saved present or absent record. Unmarked dates are not counted as absences.</p>
         </CardContent>
       </Card>
