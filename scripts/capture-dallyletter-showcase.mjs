@@ -213,7 +213,7 @@ async function capturePublicPages() {
     const slug = url.pathname.split("/").filter(Boolean).join("-");
     const name = url.pathname === "/" ? "homepage" : safeName(slug);
     const context = await newScopedContext({
-      ,
+
       viewport: { width: 1440, height: 1000 },
       deviceScaleFactor: 1,
       recordVideo: { dir: roleScreensOut, size: { width: 1440, height: 1000 } }
@@ -388,7 +388,7 @@ async function captureRole(role, route, email, password) {
   }
 
   const context = await newScopedContext({
-    ,
+
     viewport: { width: 1440, height: 1000 },
     deviceScaleFactor: 1,
     storageState
