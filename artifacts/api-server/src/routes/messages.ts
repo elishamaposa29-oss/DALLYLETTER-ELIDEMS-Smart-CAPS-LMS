@@ -221,9 +221,34 @@ router.get("/messages/unread-summary", requireAuth, async (req, res): Promise<vo
     WHERE m.group_id IS NULL AND m.recipient_id=$1 AND m.created_at>COALESCE(r.last_read_at,'epoch'::timestamptz)
     GROUP BY m.sender_id
   `, [user.id]);
+  // Conversation priority is based only on chats the authenticated user actually belongs to.
+  // Group history is limited by membership; private history is limited to either side of this user's DMs.
+  const recentGroups = await pool.query(`
+    SELECT m.group_id AS conversation_id, COUNT(*)::int AS message_count, MAX(m.created_at) AS last_message_at
+    FROM messages m
+    INNER JOIN study_group_members gm ON gm.group_id=m.group_id AND gm.user_id=$1
+    WHERE m.group_id IS NOT NULL
+    GROUP BY m.group_id
+    ORDER BY COUNT(*) DESC, MAX(m.created_at) DESC
+  `, [user.id]);
+  const recentPeople = await pool.query(`
+    SELECT CASE WHEN m.sender_id=$1 THEN m.recipient_id ELSE m.sender_id END AS conversation_id,
+           COUNT(*)::int AS message_count, MAX(m.created_at) AS last_message_at
+    FROM messages m
+    WHERE m.group_id IS NULL AND m.recipient_id IS NOT NULL
+      AND (m.sender_id=$1 OR m.recipient_id=$1)
+    GROUP BY CASE WHEN m.sender_id=$1 THEN m.recipient_id ELSE m.sender_id END
+    ORDER BY COUNT(*) DESC, MAX(m.created_at) DESC
+  `, [user.id]);
   const groupUnread=groups.rows.reduce((sum,row)=>sum+Number(row.unread_count||0),0);
   const privateUnread=privateChats.rows.reduce((sum,row)=>sum+Number(row.unread_count||0),0);
-  res.json({groupUnread,privateUnread,messageUnread:groupUnread+privateUnread,groups:groups.rows.map(row=>({id:Number(row.conversation_id),unread:Number(row.unread_count)})),privateChats:privateChats.rows.map(row=>({id:Number(row.conversation_id),unread:Number(row.unread_count)}))});
+  res.json({
+    groupUnread, privateUnread, messageUnread:groupUnread+privateUnread,
+    groups:groups.rows.map(row=>({id:Number(row.conversation_id),unread:Number(row.unread_count)})),
+    privateChats:privateChats.rows.map(row=>({id:Number(row.conversation_id),unread:Number(row.unread_count)})),
+    recentGroups:recentGroups.rows.map(row=>({id:Number(row.conversation_id),messageCount:Number(row.message_count),lastMessageAt:row.last_message_at})),
+    recentPeople:recentPeople.rows.map(row=>({id:Number(row.conversation_id),messageCount:Number(row.message_count),lastMessageAt:row.last_message_at})),
+  });
 });
 
 router.get("/messages", requireAuth, async (req, res): Promise<void> => {
