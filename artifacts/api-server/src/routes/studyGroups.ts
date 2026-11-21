@@ -111,6 +111,7 @@ router.get("/study-groups", requireAuth, async (req, res): Promise<void> => {
     const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, g.id));
     return {
       ...g,
+      canManage,
       memberCount: visibleMembers.length,
       isMember,
       // Non-members get only a safe public profile preview: never expose email, phone,
