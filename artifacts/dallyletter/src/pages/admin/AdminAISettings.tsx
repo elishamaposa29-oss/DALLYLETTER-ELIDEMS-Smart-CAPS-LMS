@@ -57,9 +57,28 @@ export default function AdminAISettings() {
         body: JSON.stringify(payload),
       });
       if (r.ok) {
-        toast({ title: "AI settings saved!", description: "ELIDEMS AI will use the new provider on next request." });
+        // Saving a provider is followed by a real upstream request. This prevents
+        // the UI from claiming Live Mode merely because a key was stored.
+        const testResponse = await fetch(getApiUrl("/api/ai/test-connection"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+        });
+        const testData = await testResponse.json() as { success?: boolean; provider?: string; response?: string; error?: string };
+        const connected = testResponse.ok && testData.success === true;
+        setTestResult({
+          success: connected,
+          message: connected
+            ? `✅ Real connection confirmed: ${testData.provider}. ${testData.response?.slice(0, 100) ?? ""}`
+            : `Settings were saved, but the live connection test failed: ${testData.error ?? "Check the provider, API key, quota and server logs."}`,
+        });
         const s = await fetch(getApiUrl("/api/ai/status"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json());
         setStatus(s);
+        if (currentProvider?.keyField) {
+          setKeys(prev => ({ ...prev, [currentProvider.keyField!]: "" }));
+        }
+        toast(connected
+          ? { title: "ELIDEMS AI is live!", description: `Real ${testData.provider} response received. Chat, poll generation and enabled AI workflows can now use this provider.` }
+          : { variant: "destructive", title: "Settings saved; AI test failed", description: "The key was stored, but Dallyletter could not confirm a live model response. See the connection result below." });
       } else {
         const data = await r.json().catch(() => ({}));
         toast({ variant: "destructive", title: "Save failed", description: data.error || "Unable to save AI settings." });
