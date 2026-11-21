@@ -16,7 +16,7 @@ try {
     entryPoints: [new URL("../src/lib/ai-provider.ts", import.meta.url).pathname],
     bundle: true, platform: "node", format: "esm", outfile: output,
     plugins: [{ name: "ai-provider-test-db", setup(build) {
-      build.onResolve({ filter: /^@workspace\\/db$/ }, () => ({ path: "db-stub", namespace: "ai-test" }));
+      build.onResolve({ filter: /^@workspace\/db$/ }, () => ({ path: "db-stub", namespace: "ai-test" }));
       build.onLoad({ filter: /.*/, namespace: "ai-test" }, () => ({ contents: 'export const platformSettingsTable = {}; export const db = { select: () => ({ from: async () => globalThis.__AI_TEST_SETTINGS__ || [] }) };', loader: "js" }));
     }}],
   });

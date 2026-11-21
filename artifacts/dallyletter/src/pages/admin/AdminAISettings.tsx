@@ -77,6 +77,7 @@ export default function AdminAISettings() {
     setTestResult(null);
     try {
       const payload: Record<string, string> = { provider: selectedProvider };
+      if (selectedProvider === "gemini") payload.gemini_model = geminiModel.trim();
       const currentProvider = PROVIDERS.find(p => p.id === selectedProvider);
       if (currentProvider?.keyField && keys[currentProvider.keyField as keyof typeof keys]) {
         payload[currentProvider.keyField] = keys[currentProvider.keyField as keyof typeof keys];
