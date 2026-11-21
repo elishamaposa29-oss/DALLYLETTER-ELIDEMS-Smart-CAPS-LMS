@@ -335,7 +335,7 @@ export default function StudentChat() {
                   <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground"><MessageSquare className="h-12 w-12 opacity-20" /><p className="text-sm">No messages yet. Be the first to say hello.</p></div>
                 ) : (
                   timelineItems.map(timelineItem => {
-                    if (timelineItem.kind === "poll") return <div key={`poll-${timelineItem.id}`} className="flex w-full justify-center"><div className="w-full max-w-[90%]"><StudyGroupPollCard item={timelineItem.item as any} onVoted={() => { if (selectedGroupId) void apiJson<typeof groupPolls>(`/api/chat/groups/${selectedGroupId}/polls`).then(setGroupPolls).catch(() => undefined); }} /></div></div>;
+                    if (timelineItem.kind === "poll") return <div key={`poll-${timelineItem.id}`} className="flex w-full justify-center"><div className="w-full max-w-[90%]"><StudyGroupPollCard item={timelineItem.item as any} canDelete={Boolean(user && ((timelineItem.item as any).poll.creatorId === user.id || ["owner","platform_owner","manager","senior_manager","junior_manager"].includes(String(user.role).toLowerCase()) || (user as any).isManager))} onVoted={() => { if (selectedGroupId) void apiJson<typeof groupPolls>(`/api/chat/groups/${selectedGroupId}/polls`).then(setGroupPolls).catch(() => undefined); }} /></div></div>;
                     const messageItem = timelineItem.item;
                     const renderMessage = (currentMessage: typeof messageItem, depth = 0): ReactNode => {
                       const isMe = currentMessage.senderId === user?.id;
