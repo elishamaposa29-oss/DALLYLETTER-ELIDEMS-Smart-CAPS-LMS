@@ -411,9 +411,9 @@ router.delete("/study-groups/:id", requireAuth, async (req, res): Promise<void> 
     const cleanupFailures: string[] = [];
     for (const key of [...new Set(mediaKeys)]) {
       try { await removeStoredMedia(key); }
-      catch { cleanupFailures.push(key); }
+      catch (error) { cleanupFailures.push(error instanceof Error ? error.message : "Unknown media cleanup error"); }
     }
-    res.status(200).json({ ok: true, deleted: true, deletedGroupId: groupId, deletedGroupName: found.rows[0].name, mediaCleanupPending: cleanupFailures.length > 0, mediaCleanupFailedCount: cleanupFailures.length });
+    res.status(200).json({ ok: true, deleted: true, deletedGroupId: groupId, deletedGroupName: found.rows[0].name, mediaCleanupPending: cleanupFailures.length > 0, mediaCleanupFailedCount: cleanupFailures.length, mediaCleanupErrors: cleanupFailures });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
     res.status(500).json({ error: error instanceof Error ? error.message : "Study group deletion failed; no group deletion was committed." });
