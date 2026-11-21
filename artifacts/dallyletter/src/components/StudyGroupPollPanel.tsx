@@ -22,7 +22,7 @@ export function StudyGroupPollCard({ item, onVoted, canDelete = false }: { item:
   const remove = async () => {
     if (!canDelete || !window.confirm("Permanently delete this poll and its votes?")) return;
     setDeleting(true);
-    try { await apiJson(`/api/chat/polls/${item.poll.id}`, { method: "DELETE" }); onVoted?.(); }
+    try { await apiJson(`/api/chat/polls/${item.poll.id}`, { method: "DELETE" }); onVoted?.(); toast({ title: "Poll permanently deleted" }); }
     catch (error) { toast({ variant: "destructive", title: "Poll could not be deleted", description: error instanceof Error ? error.message : "The server rejected the deletion. Check your group permissions." }); }
     finally { setDeleting(false); }
   };
