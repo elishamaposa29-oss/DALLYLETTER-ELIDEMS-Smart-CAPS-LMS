@@ -52,6 +52,42 @@ function formatTime(value: string | null): string {
 }
 
 
+/** Zimbabwe public holidays, calculated locally so the calendar works offline. */
+function easterSunday(year: number): Date {
+  const a = year % 19, b = Math.floor(year / 100), c = year % 100;
+  const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(year, month - 1, day);
+}
+function zimbabwePublicHolidays(year: number): Map<string, string> {
+  const holidays = new Map<string, string>();
+  const add = (date: Date, name: string) => holidays.set(`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`, name);
+  const fixed: [number, number, string][] = [
+    [1,1,"New Year's Day"], [2,21,"National Youth Day"], [4,18,"Independence Day"],
+    [5,1,"Workers' Day"], [5,25,"Africa Day"], [12,22,"Unity Day"],
+    [12,25,"Christmas Day"], [12,26,"Boxing Day"],
+  ];
+  fixed.forEach(([month, day, name]) => add(new Date(year, month-1, day), name));
+  const easter = easterSunday(year);
+  add(new Date(year, easter.getMonth(), easter.getDate()-2), "Good Friday");
+  add(new Date(year, easter.getMonth(), easter.getDate()-1), "Easter Saturday");
+  add(easter, "Easter Sunday");
+  add(new Date(year, easter.getMonth(), easter.getDate()+1), "Easter Monday");
+  const firstAugustMonday = new Date(year, 7, 1);
+  firstAugustMonday.setDate(1 + ((8 - firstAugustMonday.getDay()) % 7));
+  const heroesDay = new Date(firstAugustMonday);
+  heroesDay.setDate(heroesDay.getDate()+7);
+  add(heroesDay, "Heroes' Day");
+  const defenceDay = new Date(heroesDay);
+  defenceDay.setDate(defenceDay.getDate()+1);
+  add(defenceDay, "Defence Forces Day");
+  return holidays;
+}
+
 export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
   const { user } = useAuth();
   const targetId=profileId??user?.id;
@@ -147,10 +183,18 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
   const recordedCount = presentCount + absentCount;
   const attendanceRate = recordedCount ? Math.round((presentCount / recordedCount) * 100) : null;
 
-  // Calendar = daily Dallyletter app access. Class-session totals remain separate.
-  const dailyStatus = useMemo(() => new Map(
-    dailyRecords.map(record => [String(record.attendance_date).slice(0, 10), record] as const),
-  ), [dailyRecords]);
+  const dayStatus = useMemo(() => {
+    const grouped = new Map<string, { present: number; absent: number }>();
+    classRecords.forEach(record => {
+      const key = localDateKey(record.joinedAt ?? record.joined_at ?? "");
+      if (!key) return;
+      const value = grouped.get(key) ?? { present: 0, absent: 0 };
+      if (record.status?.toLowerCase() === "present") value.present += 1;
+      if (record.status?.toLowerCase() === "absent") value.absent += 1;
+      grouped.set(key, value);
+    });
+    return grouped;
+  }, [classRecords]);
 
   const todayRecord = dailyRecords.find(record => String(record.attendance_date).slice(0, 10) === today);
   const recentDailyRecords = dailyRecords.slice(0, 3);
@@ -160,34 +204,51 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-1">
           <button type="button" aria-label="Previous month" onClick={() => { const next = new Date(monthStart.getFullYear(), monthStart.getMonth() - 1, 1); const day = Math.min(Number(selectedDate.slice(8, 10)) || 1, new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate()); setMonthOffset(value => value - 1); setSelectedDate(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`); }} className="rounded-md border p-1.5 hover:bg-muted"><ChevronLeft className="h-4 w-4" /></button>
-          <div className="min-w-0 px-1"><p className="text-sm font-semibold text-foreground">{monthLabel}</p><p className="text-xs text-muted-foreground">Daily Dallyletter app access · offline-ready</p></div>
+          <div className="min-w-0 px-1"><p className="text-sm font-semibold text-foreground">{monthLabel}</p><p className="text-xs text-muted-foreground">Saved attendance · offline-ready</p></div>
           <button type="button" aria-label="Next month" onClick={() => { const next = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1); const day = Math.min(Number(selectedDate.slice(8, 10)) || 1, new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate()); setMonthOffset(value => value + 1); setSelectedDate(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`); }} className="rounded-md border p-1.5 hover:bg-muted"><ChevronRight className="h-4 w-4" /></button>
         </div>
-        <Badge variant="outline" className="shrink-0 border-primary/20 bg-primary/5">{dailyRecords.length} days recorded</Badge>
+        <Badge variant="outline" className="shrink-0 border-primary/20 bg-primary/5">{recordedCount} recorded</Badge>
       </div>
       <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
-        {weekdayLabels.map(day => (
-          <div key={day} className="py-1 text-center text-[11px] font-semibold text-muted-foreground">{day}</div>
+        {weekdayLabels.map((day, index) => (
+          <div key={day} className={`py-1 text-center text-[11px] font-semibold ${index > 4 ? "text-violet-700 dark:text-violet-300" : "text-muted-foreground"}`}>{day}</div>
         ))}
         {Array.from({ length: mondayOffset }, (_, index) => <div key={`blank-${index}`} aria-hidden="true" />)}
         {Array.from({ length: monthDays }, (_, index) => {
           const day = index + 1;
           const key = `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-          const status = dailyStatus.get(key);
+          const status = dayStatus.get(key);
+          const isWeekend = (index + mondayOffset) % 7 >= 5;
+          const isFuture = key > today;
           const isToday = key === today;
-          const normalizedStatus = String(status?.status ?? "").trim().toLowerCase();
-          const isAbsent = normalizedStatus === "absent";
-          const isPresent = normalizedStatus === "present";
-          // A missing row is unknown (including dates before tracking began), not an absence.
-          const colorClass = isAbsent
-            ? "bg-red-300 text-red-950 border-red-500 dark:bg-red-800 dark:text-white dark:border-red-500"
-            : isPresent
-              ? "bg-emerald-300 text-emerald-950 border-emerald-500 dark:bg-emerald-800 dark:text-white dark:border-emerald-500"
-              : "bg-card text-foreground border-border";
+          const isAbsent = !!status && status.absent > 0;
+          const isPresent = !!status && status.present > 0;
+          const isMixed = isAbsent && isPresent;
+          const holidayName = zimbabwePublicHolidays(monthStart.getFullYear()).get(key);
+          const isExpectedSchoolDay = isFuture && !isWeekend && !holidayName;
+          const isPastUnrecorded = key < today && !status && !holidayName;
+          // Saved attendance is authoritative. Predictions only style dates with no saved outcome.
+          // Past unrecorded dates are unknown, never silently treated as absences.
+          const colorClass = isMixed
+            ? "bg-amber-300 text-amber-950 border-amber-500 dark:bg-amber-700 dark:text-white dark:border-amber-400"
+            : isAbsent
+              ? "bg-red-300 text-red-950 border-red-500 dark:bg-red-800 dark:text-white dark:border-red-500"
+              : isPresent
+                ? "bg-emerald-300 text-emerald-950 border-emerald-500 dark:bg-emerald-800 dark:text-white dark:border-emerald-500"
+                : holidayName
+                  ? "bg-violet-300 text-violet-950 border-violet-500 dark:bg-violet-800 dark:text-white dark:border-violet-400"
+                  : isExpectedSchoolDay
+                    ? "bg-[#0f2a5a]/[0.08] text-[#0f2a5a] border-[#0f2a5a]/25 dark:bg-[#0f2a5a]/30 dark:text-[#f1f6ff] dark:border-[#8fb4ec]"
+                    : isWeekend
+                      ? "bg-violet-200 text-violet-950 border-violet-400 dark:bg-violet-900 dark:text-white dark:border-violet-500"
+                      : isPastUnrecorded
+                        ? "bg-orange-200 text-orange-950 border-orange-400 dark:bg-orange-900 dark:text-white dark:border-orange-500"
+                        : "bg-card text-foreground border-border";
           return (
-            <button type="button" key={key} aria-pressed={selectedDate === key} onClick={() => setSelectedDate(key)} title={`${formatDate(key)} · ${isPresent ? "Opened Dallyletter" : isAbsent ? "No app open · absence recorded" : "No daily app record"}${status ? ` · ${status.open_count} app opens` : ""}`} aria-label={`${formatDate(key)}: ${isPresent ? "Dallyletter opened" : isAbsent ? "daily app absence recorded" : "no daily app access record"}`} className={`relative flex min-h-[42px] flex-col items-center justify-center rounded-lg border text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f2a5a] sm:min-h-[54px] ${colorClass} ${isToday ? "border-2 border-[#0f2a5a] outline outline-1 outline-offset-1 outline-[#0f2a5a]" : ""} ${selectedDate === key ? "ring-2 ring-[#0f2a5a] ring-offset-1" : ""}`}>
+            <button type="button" key={key} aria-pressed={selectedDate === key} onClick={() => setSelectedDate(key)} title={`${formatDate(key)} · ${isMixed ? "Mixed attendance" : isAbsent ? "Absence recorded" : isPresent ? "Present" : holidayName || (isExpectedSchoolDay ? "Expected school day" : isPastUnrecorded ? "No record saved · historical date" : isWeekend ? "Weekend" : isFuture ? "Upcoming date" : "No attendance record")}${status ? ` · ${status.present} present, ${status.absent} absent` : ""}`} aria-label={`${formatDate(key)}: ${isMixed ? "mixed attendance, present and absent sessions" : isAbsent ? "absence recorded" : isPresent ? "present" : holidayName ? holidayName : isExpectedSchoolDay ? "expected school day" : isPastUnrecorded ? "past date with no saved record" : isWeekend ? "weekend" : isFuture ? "upcoming date" : "no attendance record"}`} className={`relative flex min-h-[42px] flex-col items-center justify-center rounded-lg border text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f2a5a] sm:min-h-[54px] ${isMixed ? "dl-status-mixed" : ""} ${colorClass} ${isWeekend ? "border-dashed border-violet-300 dark:border-violet-700" : ""} ${isToday ? "border-2 border-[#0f2a5a] outline outline-1 outline-offset-1 outline-[#0f2a5a]" : ""} ${selectedDate === key ? "ring-2 ring-[#0f2a5a] ring-offset-1" : ""}`}>
               <span>{day}</span>
-              {status && <span className="text-[9px] font-bold leading-3">{isPresent ? `${status.open_count} opens` : "Absent"}</span>}
+              {status && <span className="text-[9px] font-bold leading-3">{status.present > 0 && <span>{status.present}P</span>}{status.present > 0 && status.absent > 0 && <span> · </span>}{status.absent > 0 && <span>{status.absent}A</span>}</span>}
+              {holidayName && <span title={holidayName} aria-label={holidayName} className="pointer-events-none absolute inset-x-0 bottom-0 truncate px-0.5 text-center text-[8px] font-bold leading-3 text-violet-800 dark:text-violet-200">{holidayName}</span>}
               {isToday && <span className="text-[8px] font-bold uppercase tracking-wide">Today</span>}
             </button>
           );
@@ -195,12 +256,16 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
       </div>
       <div aria-live="polite" className="rounded-lg border border-[#0f2a5a]/25 bg-muted/30 px-3 py-2">
         <p className="text-xs font-semibold text-foreground">Selected date · {formatDate(selectedDate)}</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">{(() => { const item = dailyStatus.get(selectedDate); return item ? item.status === "present" ? `Dallyletter opened · ${item.open_count} app opens · ${item.time_zone}` : "No Dallyletter app open was recorded for this completed day." : "No daily app-access record saved for this date."; })()}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{(() => { const item = dayStatus.get(selectedDate); const holiday = zimbabwePublicHolidays(Number(selectedDate.slice(0, 4))).get(selectedDate); const selectedDay = new Date(selectedDate + "T12:00:00").getDay(); const weekend = selectedDay === 0 || selectedDay === 6; return item ? `${item.present} present · ${item.absent} absent` : holiday || (selectedDate > today && !weekend ? "Expected school day · forecast only, not recorded attendance" : selectedDate > today ? "Weekend · no school-day prediction" : selectedDate < today ? "No record saved · this date may be before the learner joined Dallyletter" : "No attendance record saved for today yet."); })()}</p>
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-emerald-500 bg-emerald-300 dark:border-emerald-500 dark:bg-emerald-800" /> Opened Dallyletter (green)</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-red-500 bg-red-300 dark:border-red-500 dark:bg-red-800" /> No app open after day close (red)</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-border bg-card" /> No daily record (neutral)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-emerald-500 bg-emerald-300 dark:border-emerald-500 dark:bg-emerald-800" /> Present (green)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-red-500 bg-red-300 dark:border-red-500 dark:bg-red-800" /> Absent (red)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="dl-status-mixed h-2.5 w-2.5 rounded-sm border border-amber-500 bg-amber-300 dark:border-amber-400 dark:bg-amber-700" /> Mixed sessions (amber)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-[#527bb8] bg-[#c9dcff] dark:border-[#8fb4ec] dark:bg-[#244777]" /> Expected school day (future)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-violet-500 bg-violet-300 dark:border-violet-400 dark:bg-violet-800" /> Public holiday (violet)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-orange-400 bg-orange-200 dark:border-orange-500 dark:bg-orange-900" /> Past date · no saved record</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-dashed border-violet-500 bg-violet-200 dark:bg-violet-900" /> Weekend (purple · dashed outline)</span>
         <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border-2 border-[#0f2a5a] bg-card" /> Today (navy border)</span>
       </div>
     </div>
@@ -214,7 +279,7 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
             <div>
               <div className="mb-2 flex items-center gap-2 text-[#F4D27A]"><BookOpenCheck className="h-5 w-5" /><span className="text-xs font-semibold uppercase tracking-[0.16em]">Learner record</span></div>
               <CardTitle className="text-xl sm:text-2xl">My attendance register</CardTitle>
-              <CardDescription className="mt-1 text-white/75">The calendar records whether you opened Dallyletter each day. Class-session totals below are separate and use saved class attendance marks.</CardDescription>
+              <CardDescription className="mt-1 text-white/75">Recorded sessions show actual outcomes; future weekdays and known Zimbabwe public holidays are predicted in advance.</CardDescription>
             </div>
             <CalendarDays className="mt-1 h-7 w-7 shrink-0 text-[#F4D27A]" />
           </div>
@@ -222,7 +287,7 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
         <CardContent className="space-y-5 p-4 sm:p-6">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
             <div className="col-span-2 rounded-xl border border-primary/20 bg-primary/[0.06] p-3 sm:col-span-1">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Class-session attendance rate</p>
+              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Attendance rate</p>
               <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">{classLoading ? "…" : classError ? "—" : attendanceRate === null ? "—" : `${attendanceRate}%`}</p>
               <p className="text-[10px] text-muted-foreground">Based on recorded sessions</p>
             </div>
@@ -239,13 +304,13 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
             <div className="rounded-xl border bg-muted/30 p-3">
               <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Recorded sessions</p>
               <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">{classLoading ? "…" : classError ? "—" : recordedCount}</p>
-              <p className="text-[10px] text-muted-foreground">Saved class marks only</p>
+              <p className="text-[10px] text-muted-foreground">Present + absent</p>
             </div>
           </div>
           {classError && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{classError}</p>}
-          {offlineClassCache && <p role="status" className="rounded-lg border border-slate-300 bg-slate-50 p-2 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">Offline mode: showing the last saved attendance records on this device. New changes sync after reconnecting.</p>}
+          {offlineClassCache && <p role="status" className="rounded-lg border border-slate-300 bg-muted p-2 text-xs text-foreground dark:border-slate-700">Offline mode: showing the last saved attendance records on this device. New changes sync after reconnecting.</p>}
           {renderCalendar()}
-          {!classLoading && !classError && classRecords.length === 0 && <p className="rounded-lg border border-dashed p-3 text-center text-sm text-muted-foreground">No class-session attendance records have been saved yet. This does not affect the daily Dallyletter app-access calendar above.</p>}
+          {!classLoading && !classError && classRecords.length === 0 && <p className="rounded-lg border border-dashed p-3 text-center text-sm text-muted-foreground">No class-session attendance records have been saved yet. Future weekdays and known public holidays remain predictions, not attendance marks.</p>}
           <p className="text-[11px] text-muted-foreground">A session is counted only when the attendance API returns a saved present or absent record. Unmarked dates are not counted as absences.</p>
         </CardContent>
       </Card>
