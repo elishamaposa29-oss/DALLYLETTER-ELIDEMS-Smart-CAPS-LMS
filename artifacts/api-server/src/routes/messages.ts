@@ -367,10 +367,17 @@ router.delete("/messages/:id", requireAuth, async (req, res): Promise<void> => {
     allowed = Boolean(group) && (message.senderId === user.id || isOwnerRole(user.role) || group!.creatorId === user.id || managerAuthorized);
   }
   if (!allowed) { res.status(403).json({ error: "You can delete your own messages. Another member's group message requires group ownership or an authorized manager with groups.manage in scope." }); return; }
-  await db.delete(messagesTable).where(eq(messagesTable.id, id));
+  const deleted = await db.delete(messagesTable).where(eq(messagesTable.id, id)).returning({ id: messagesTable.id });
+  if (!deleted.length) { res.status(409).json({ error: "Message was not deleted. Refresh and try again." }); return; }
   const storageKey = message.mediaUrl?.match(/\/api\/messages\/media\/([a-f0-9-]{36})/i)?.[1];
-  if (storageKey) { try { await removeStoredMedia(storageKey); } catch { /* Message is deleted; media cleanup can be retried without restoring the message. */ } }
-  res.sendStatus(204);
+  if (storageKey) {
+    try { await removeStoredMedia(storageKey); }
+    catch (error) {
+      res.status(200).json({ ok: true, deleted: true, mediaCleanupPending: true, warning: error instanceof Error ? error.message : "Attachment cleanup failed." });
+      return;
+    }
+  }
+  res.status(200).json({ ok: true, deleted: true });
 });
 
 router.post("/messages", requireAuth, async (req, res): Promise<void> => {
