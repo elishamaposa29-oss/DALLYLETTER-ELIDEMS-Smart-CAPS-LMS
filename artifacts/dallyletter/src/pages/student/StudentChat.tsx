@@ -321,7 +321,7 @@ export default function StudentChat() {
                   <button key={contact.id} onClick={() => selectContact(contact.id)} className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors ${selectedUserId === contact.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-bold">{contact.name.charAt(0)}</div>
                     <span className="min-w-0 flex-1 truncate font-medium">{contact.name}</span><DUnread count={unreadForPrivate(contact.id)} />
-                    <span className="shrink-0 text-xs capitalize opacity-70">{contact.isPrefect ? "Prefect" : contact.isManager ? `${contact.managerLevel || "Manager"} manager` : contact.role === "student" || contact.role === "learner" ? "Learner" : String(contact.role || "Member").replace(/_/g," ")}</span>
+                    <span className="shrink-0 text-xs capitalize opacity-70">{contact.isPrefect ? "Prefect" : contact.isManager ? `${String((contact as any).managerLevel || "Manager")} manager` : String(contact.role) === "student" || String(contact.role) === "learner" ? "Learner" : String(contact.role || "Member").replace(/_/g," ")}</span>
                   </button>
                 ))
               )
