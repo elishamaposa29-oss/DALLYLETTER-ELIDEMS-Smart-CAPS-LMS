@@ -59,14 +59,24 @@ function AuthenticatedGroupAvatar({ url, name }: { url: string; name: string }) 
   useEffect(() => {
     let active = true;
     let objectUrl: string | null = null;
+    setSource(null);
     const token = localStorage.getItem("dallyletter_token");
     fetch(getApiUrl(url), { headers: token ? { Authorization: `Bearer ${token}` } : undefined })
       .then(response => { if (!response.ok) throw new Error("Group image unavailable"); return response.blob(); })
-      .then(blob => { if (!active) return; objectUrl = URL.createObjectURL(blob); setSource(objectUrl); })
+      .then(blob => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setSource(objectUrl);
+      })
       .catch(() => { if (active) setSource(null); });
-    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
   }, [url]);
-  return source ? <img src={source} alt={name + " group avatar"} className="h-full w-full object-cover" loading="lazy" /> : <span aria-label={name + " group avatar"}>{name.slice(0, 1).toUpperCase()}</span>;
+  return source
+    ? <img src={source} alt={name + " group avatar"} className="h-full w-full object-cover" loading="lazy" />
+    : <span role="img" aria-label={name + " group avatar"}>{name.slice(0, 1).toUpperCase()}</span>;
 }
 
 export default function StudentChat() {
