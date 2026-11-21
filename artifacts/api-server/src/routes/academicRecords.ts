@@ -5,7 +5,7 @@ import { db, auditLogsTable, pool } from "@workspace/db";
 import { getAIProvider } from "../lib/ai-provider";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { isSeniorManager, canModerateUser } from "../lib/role-access";
-import { requireManagerPermission, requireManagerPermissionForRequest, requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
+import { managerHasPermission, requireManagerPermission, requireManagerPermissionForRequest, requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
 import { enqueueEmailNotification } from "../lib/email-notification-queue";
 import { calculateAgeOnDate, getCurrentAcademicYear } from "../lib/academic-year";
 import { canViewProfileSection } from "./profileConnections";
@@ -302,12 +302,13 @@ router.delete("/academic-records/transfer-requests/:id", requireAuth, async (req
  const creator=Number(row.learner_id)===Number(actor.id),owner=isOwnerRole(actor.role);
  const managerAuthorized=canAccessManager(actor)&&await managerHasPermission(actor,"transfers.view")&&canModerateUser(actor,{role:row.role,isManager:row.is_manager,managerLevel:row.manager_level});
  if(!creator&&!owner&&!managerAuthorized){res.status(403).json({error:"Only the transfer-letter creator, platform owner, or an authorized manager with transfers.view in scope can delete this letter."});return;}
- await pool.query("BEGIN");
+ const client=await pool.connect();
  try{
-  await pool.query("INSERT INTO audit_logs(action,category,performed_by,target_type,target_id,details) VALUES($1,$2,$3,$4,$5,$6)",["transfer_letter.deleted","academic",actor.id,"transfer_request",id,JSON.stringify({learnerId:Number(row.learner_id),status:"deleted"})]);
-  await pool.query("DELETE FROM academic_transfer_requests WHERE id=$1",[id]);
-  await pool.query("COMMIT");
- }catch(error){await pool.query("ROLLBACK");throw error;}
+  await client.query("BEGIN");
+  await client.query("INSERT INTO audit_logs(action,category,performed_by,target_type,target_id,details) VALUES($1,$2,$3,$4,$5,$6)",["transfer_letter.deleted","academic",actor.id,"transfer_request",id,JSON.stringify({learnerId:Number(row.learner_id),status:"deleted"})]);
+  await client.query("DELETE FROM academic_transfer_requests WHERE id=$1",[id]);
+  await client.query("COMMIT");
+ }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}finally{client.release();}
  res.sendStatus(204);
 });
 router.post("/academic-records/transfer-requests/:id/review", requireAuth, requireManagerPermissionForRequest((req) => req.body?.status === "approved" ? "transfers.approve" : "transfers.reject"), async (req, res): Promise<void> => {
@@ -627,12 +628,13 @@ router.delete("/academic-records/reports/drafts/:id", requireAuth, async (req,re
  const creator=Number(row.created_by)===Number(actor.id),owner=isOwnerRole(actor.role);
  const managerAuthorized=canAccessManager(actor)&&await managerHasPermission(actor,"reports.view")&&canModerateUser(actor,{role:row.role,isManager:row.is_manager,managerLevel:row.manager_level});
  if(!creator&&!owner&&!managerAuthorized){res.status(403).json({error:"Only the report creator, platform owner, or an authorized manager with reports.view in scope can delete this report."});return;}
- await pool.query("BEGIN");
+ const client=await pool.connect();
  try{
-  await pool.query("INSERT INTO audit_logs(action,category,performed_by,target_type,target_id,details) VALUES($1,$2,$3,$4,$5,$6)",["academic_report.deleted","academic",actor.id,"academic_report_draft",id,JSON.stringify({learnerId:Number(row.learner_id),createdBy:Number(row.created_by),status:"deleted"})]);
-  await pool.query("DELETE FROM academic_report_drafts WHERE id=$1",[id]);
-  await pool.query("COMMIT");
- }catch(error){await pool.query("ROLLBACK");throw error;}
+  await client.query("BEGIN");
+  await client.query("INSERT INTO audit_logs(action,category,performed_by,target_type,target_id,details) VALUES($1,$2,$3,$4,$5,$6)",["academic_report.deleted","academic",actor.id,"academic_report_draft",id,JSON.stringify({learnerId:Number(row.learner_id),createdBy:Number(row.created_by),status:"deleted"})]);
+  await client.query("DELETE FROM academic_report_drafts WHERE id=$1",[id]);
+  await client.query("COMMIT");
+ }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}finally{client.release();}
  res.sendStatus(204);
 });
 router.post("/academic-records/reports/drafts/:id/review", requireAuth, requireManagerPermission("reports.review"), async (req, res): Promise<void> => {
