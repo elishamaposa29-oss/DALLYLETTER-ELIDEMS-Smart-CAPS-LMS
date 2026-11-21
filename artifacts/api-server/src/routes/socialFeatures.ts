@@ -184,7 +184,7 @@ router.delete("/chat/polls/:pollId", requireAuth, async(req,res):Promise<void>=>
   const deleted = await tx.delete(chatPollsTable).where(eq(chatPollsTable.id,pollId)).returning({ id: chatPollsTable.id });
   if (!deleted.length) throw new Error("Poll deletion did not remove the poll row.");
  });
- res.status(200).json({ ok: true, deleted: true, pollId });
+ res.sendStatus(204);
 });
 router.post("/chat/polls/:pollId/vote", requireAuth, async(req,res):Promise<void>=>{
  const pollId=Number(req.params.pollId), user=req.currentUser!, optionIds=Array.isArray(req.body?.optionIds)?req.body.optionIds.map(Number).filter(Number.isInteger):[];
