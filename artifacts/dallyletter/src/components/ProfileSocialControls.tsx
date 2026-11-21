@@ -84,7 +84,7 @@ export function ProfileSocialControls({profileId,isSelf,role}:{profileId:number|
       }else if(current.canChat){
         setLocation(chatPath+"?recipientId="+encodeURIComponent(String(profileId)));
       }else{
-        setError("The existing school chat permissions do not allow this conversation.");
+        setError("This user requires an accepted Profile Hub connection before private chat is available.");
       }
     }catch(e){setError(e instanceof Error?e.message:"Could not connect or open chat.");}
     finally{setBusy(false);}
@@ -123,7 +123,7 @@ export function ProfileSocialControls({profileId,isSelf,role}:{profileId:number|
         <section className="rounded-lg border p-3">
           <h4 className="mb-2 flex items-center gap-2 font-semibold"><ShieldCheck className="h-4 w-4"/>Private chat access</h4>
           <select value={chatPrivacy} onChange={e=>setChatPrivacy(e.target.value as any)} className="w-full rounded-md border bg-background p-2 text-sm">
-            <option value="everyone">Everyone allowed by existing school chat rules</option>
+            <option value="everyone">Everyone allowed (default)</option>
             <option value="approval_required">Approved connections only (request required)</option>
           </select>
         </section>
