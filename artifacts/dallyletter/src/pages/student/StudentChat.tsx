@@ -132,7 +132,7 @@ export default function StudentChat() {
   const { data: users, isLoading: usersLoading, isError: usersError, refetch: refetchUsers } = useListUsers();
   // Show every account returned by the privacy-filtered user directory, not just educators.
   // Recent direct-message partners appear first; the remaining directory stays available alphabetically.
-  const contacts = (users ?? []).filter(contact => contact.id !== user?.id);
+  const contacts = ((users ?? []) as Array<NonNullable<typeof users>[number] & { avatarUrl?: string | null }>).filter(contact => contact.id !== user?.id);
   const recentPeopleRank = new Map(unreadSummary.recentPeople.map((item,index) => [item.id,index] as const));
   const visibleContacts = contacts
     .filter(contact => contact.name.toLowerCase().includes(conversationSearch.trim().toLowerCase()))
@@ -341,7 +341,7 @@ export default function StudentChat() {
                 visibleContacts.map(contact => (
                   <div key={contact.id} className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 transition-colors ${selectedUserId === contact.id ? "bg-primary/10" : "hover:bg-muted"}`}>
                     <Link href={"/profile/" + Number(contact.id)} aria-label={`Open ${contact.name}'s profile`} title={`Open ${contact.name}'s profile`} className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-primary/20 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-                      <AuthenticatedContactAvatar url={(contact as any).avatarUrl} name={contact.name} />
+                      <AuthenticatedContactAvatar url={contact.avatarUrl} name={contact.name} />
                     </Link>
                     <button type="button" onClick={() => selectContact(contact.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                       <span className="min-w-0 flex-1 truncate font-medium">{contact.name}</span><DUnread count={unreadForPrivate(contact.id)} />
