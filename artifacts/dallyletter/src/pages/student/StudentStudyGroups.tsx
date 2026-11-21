@@ -128,7 +128,7 @@ export default function StudentStudyGroups() {
   const groupCoverInputRef = useRef<HTMLInputElement>(null);
   const [uploadingCoverGroupId, setUploadingCoverGroupId] = useState<number | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
-  const [profileGroupId, setProfileGroupId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("groupProfile"); return value && /^\d+$/.test(value) ? Number(value) : null; });
+  const [profileGroupId, setProfileGroupId] = useState<number | null>(() => { const params = new URLSearchParams(window.location.search); const value = params.get("groupProfile") ?? params.get("groupId"); return value && /^\d+$/.test(value) ? Number(value) : null; });
   const { data: profileMessages } = useListMessages({ groupId: profileGroupId, recipientId: null }, { query: { enabled: profileGroupId !== null, refetchInterval: 5000 } as any });
 
   const refresh = () => void queryClient.invalidateQueries({ queryKey: getListStudyGroupsQueryKey() });
