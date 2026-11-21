@@ -71,11 +71,7 @@ async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]
   if (await hasAcceptedProfileConnection(sender.id, recipientId)) return true;
   // Profile Hub direct messages are open by default. Either participant may
   // require an accepted connection before a new private conversation.
-  const [senderRequiresApproval, recipientRequiresApproval] = await Promise.all([
-    isProfileChatApprovalRequired(sender.id),
-    isProfileChatApprovalRequired(recipientId),
-  ]);
-  if (senderRequiresApproval || recipientRequiresApproval) return false;
+  if (await isProfileChatApprovalRequired(recipientId)) return false;
   const senderRole = normalizeRole(sender.role);
   const recipientRole = normalizeRole(recipient.role);
   const senderIsManager = ["junior_manager","senior_manager","manager"].includes(senderRole) || (senderRole === "teacher" && sender.isManager === true);
@@ -101,12 +97,11 @@ async function canViewPrivateConversation(user: NonNullable<Express.Request["cur
       if (viewerIsManager && !(await managerHasPermission(user, "owner.chat"))) return false;
     } else if (!canModerateUser(user, recipient) || !(await managerHasPermission(user, "messages.send"))) return false;
   }
-  const [viewerRequiresApproval,targetRequiresApproval,accepted] = await Promise.all([
-    isProfileChatApprovalRequired(user.id),
+  const [targetRequiresApproval,accepted] = await Promise.all([
     isProfileChatApprovalRequired(recipientId),
     hasAcceptedProfileConnection(user.id, recipientId),
   ]);
-  if ((viewerRequiresApproval || targetRequiresApproval) && !accepted) return false;
+  if (targetRequiresApproval && !accepted) return false;
   if (accepted) return true;
   // With both profiles open to everyone, a participant may open a new thread
   // before the first message exists; membership is still limited to these two users.
