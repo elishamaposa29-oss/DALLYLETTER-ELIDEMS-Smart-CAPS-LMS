@@ -346,7 +346,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                   <Icon className={`h-4 w-4 shrink-0 ${isActive ? "text-white" : item.accent ? item.accent + " opacity-80" : "text-white/50 group-hover:text-white/80"}`} />
                   <span className="truncate">{item.label}</span>
                   {item.href.endsWith("/notifications") && unreadNotificationCount > 0 && <span aria-label={unreadNotificationCount + " unread notifications"} className="ml-auto rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold leading-none text-slate-950">{unreadNotificationCount > 99 ? "99+" : unreadNotificationCount}</span>}
-                  {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white/80 shrink-0" />}
+                  {isActive && <div className="ml-1 w-1.5 h-1.5 rounded-full bg-white/80 shrink-0" />}
                 </div>
               </Link>
             </div>
