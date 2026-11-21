@@ -822,7 +822,7 @@ export default function FeatureHub() {
         return;
       }
       if (!social?.canChat) {
-        Alert.alert("Chat unavailable","The existing school chat permissions or this user's privacy settings do not allow this conversation.");
+        Alert.alert("Chat unavailable","This user requires an accepted Profile Hub connection before private chat is available.");
         return;
       }
       setPrivateRecipient(person); setPrivateMessages([]); setPrivateDraft("");
