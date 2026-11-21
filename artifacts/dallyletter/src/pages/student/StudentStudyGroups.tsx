@@ -488,7 +488,7 @@ export default function StudentStudyGroups() {
                     })()}
                   </CardContent>
                   <CardFooter className="relative z-10 flex flex-wrap gap-2 border-t border-white/20 bg-black/20 pt-4">
-                    {user?.role === "owner" && <Button type="button" variant="outline" size="sm" className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/10" disabled={busyGroup === group.id} onClick={() => {
+                    {(isOwner || isPlatformOwner || isManager) && <Button type="button" variant="outline" size="sm" className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/10" disabled={busyGroup === group.id} onClick={() => {
                       if (!window.confirm(`Permanently delete "${group.name}" and its members, messages, polls, settings and moderation records from Dallyletter? This cannot be undone.`)) return;
                       setBusyGroup(group.id);
                       void apiJson<{ok:boolean;deletedGroupName:string}>(`/api/study-groups/${group.id}`,{method:"DELETE"}).then(result=>{toast({title:"Study group permanently deleted",description:result.deletedGroupName});if(editingGroupId===group.id){setEditingGroupId(null);setSettings(null);}refresh();}).catch(error=>toast({variant:"destructive",title:"Group deletion failed",description:error instanceof Error?error.message:"Try again."})).finally(()=>setBusyGroup(null));
