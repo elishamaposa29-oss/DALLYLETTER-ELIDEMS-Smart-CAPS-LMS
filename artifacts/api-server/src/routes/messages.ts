@@ -288,9 +288,12 @@ router.get("/messages", requireAuth, async (req, res): Promise<void> => {
     if (handRaiseId != null) return Number.isInteger(handRaiseId) && handRaiseId > 0 && match?.[1] === String(handRaiseId);
     return !match;
   });
-  if (groupId != null) {
+  // Filtered hand-raise polling displays only one subset of a private thread.
+  // It must not mark unrelated direct messages as read. Only full conversation
+  // reads advance the durable per-user cursor.
+  if (handRaiseId == null && groupId != null) {
     await pool.query("INSERT INTO message_conversation_reads (user_id,conversation_type,conversation_id,last_read_at) VALUES ($1,'group',$2,now()) ON CONFLICT (user_id,conversation_type,conversation_id) DO UPDATE SET last_read_at=GREATEST(message_conversation_reads.last_read_at,EXCLUDED.last_read_at)", [currentUser.id, groupId]);
-  } else if (recipientId != null) {
+  } else if (handRaiseId == null && recipientId != null) {
     await pool.query("INSERT INTO message_conversation_reads (user_id,conversation_type,conversation_id,last_read_at) VALUES ($1,'private',$2,now()) ON CONFLICT (user_id,conversation_type,conversation_id) DO UPDATE SET last_read_at=GREATEST(message_conversation_reads.last_read_at,EXCLUDED.last_read_at)", [currentUser.id, recipientId]);
   }
 
