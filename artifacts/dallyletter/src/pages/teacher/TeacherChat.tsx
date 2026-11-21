@@ -69,8 +69,10 @@ export default function TeacherChat() {
     try {
       const token = localStorage.getItem("dallyletter_token");
       const response = await fetch(getApiUrl(`/api/messages/${messageId}`), { method: "DELETE", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
-      if (!response.ok) { const data = await response.json().catch(() => null) as {error?:string}|null; throw new Error(data?.error ?? "Message deletion failed."); }
+      const data = await response.json().catch(() => ({})) as {error?:string;mediaCleanupPending?:boolean};
+      if (!response.ok) throw new Error(data.error ?? "Message deletion failed.");
       await queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId, recipientId: selectedUserId }) });
+      if (data.mediaCleanupPending) window.alert("The message is deleted, but its stored attachment still needs cleanup.");
     } catch (error) { window.alert(error instanceof Error ? error.message : "Message deletion failed."); }
     finally { setDeletingMessageId(null); }
   };
@@ -307,7 +309,7 @@ export default function TeacherChat() {
                               )}
                             </div>
                             <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground"><span>{new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>{isMe&&((msg as any).readByUserIds?.length??0)>0&&<span className="font-semibold text-[#9A7020]" aria-label={selectedGroupId?"Seen by "+(msg as any).readByUserIds.length+" group members":"Seen"}>{selectedGroupId?"Seen by "+(msg as any).readByUserIds.length:"Seen"} ✓✓</span>}</div>
-                            {isMe && <button type="button" className="mt-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-destructive disabled:opacity-50" onClick={() => void handleDeleteMessage(msg.id)} disabled={deletingMessageId === msg.id}>{deletingMessageId === msg.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}Delete</button>}
+                            {(isMe || (selectedGroupId != null && (groups?.find(g => g.id === selectedGroupId) as any)?.canManage === true)) && <button type="button" aria-label="Delete message" title="Delete message" className="mt-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-destructive disabled:opacity-50" onClick={() => void handleDeleteMessage(msg.id)} disabled={deletingMessageId === msg.id}>{deletingMessageId === msg.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}Delete</button>}
                           </div>
                         </div>
                       </div>
