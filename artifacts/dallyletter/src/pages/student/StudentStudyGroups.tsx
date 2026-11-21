@@ -485,11 +485,11 @@ export default function StudentStudyGroups() {
                     })()}
                   </CardContent>
                   <CardFooter className="relative z-10 flex flex-wrap gap-2 border-t border-white/20 bg-black/20 pt-4">
-                    {group.canManage === true && <Button type="button" variant="outline" size="sm" className="gap-2 border-2 border-red-600 bg-red-50 font-semibold text-red-700 shadow-sm hover:border-red-700 hover:bg-red-100 focus-visible:ring-2 focus-visible:ring-red-600 dark:border-red-500 dark:bg-red-950 dark:text-red-200 dark:hover:bg-red-900" disabled={busyGroup === group.id} onClick={() => {
+                    {group.canManage === true && <Button type="button" variant="ghost" size="icon" aria-label={`Delete study group ${group.name}`} title="Delete group" className="h-8 w-8 shrink-0 border border-red-300 text-red-700 hover:border-red-500 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-600 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950" disabled={busyGroup === group.id} onClick={() => {
                       if (!window.confirm(`Permanently delete "${group.name}" and its members, messages, polls, settings and moderation records from Dallyletter? This cannot be undone.`)) return;
                       setBusyGroup(group.id);
                       void apiJson<{ok:boolean;deleted:boolean;deletedGroupName:string;mediaCleanupPending?:boolean;mediaCleanupFailedCount?:number;mediaCleanupErrors?:string[]}>(`/api/study-groups/${group.id}`,{method:"DELETE"}).then(result=>{if(!result.deleted)throw new Error("The server did not confirm group deletion.");toast({title:"Study group permanently deleted",description:result.deletedGroupName+(result.mediaCleanupPending?` · ${result.mediaCleanupFailedCount||0} attachment(s) still need storage cleanup${result.mediaCleanupErrors?.[0]?": "+result.mediaCleanupErrors[0]:""}`:"")});if(editingGroupId===group.id){setEditingGroupId(null);setSettings(null);}refresh();}).catch(error=>toast({variant:"destructive",title:"Group deletion failed",description:error instanceof Error?error.message:"Try again."})).finally(()=>setBusyGroup(null));
-                    }}><Trash2 className="h-4 w-4" />Delete group</Button>}
+                    }}><Trash2 className="h-4 w-4" /></Button>}
                     {canManage && <Button variant="outline" className="gap-2" onClick={() => void openSettings(group.id)} disabled={busyGroup === group.id}><Settings2 className="h-4 w-4" />Settings</Button>}
                     {group.canManage === true && <Button variant="ghost" size="sm" onClick={() => {
                       if (!window.confirm("Clear all messages in this study group?")) return;
