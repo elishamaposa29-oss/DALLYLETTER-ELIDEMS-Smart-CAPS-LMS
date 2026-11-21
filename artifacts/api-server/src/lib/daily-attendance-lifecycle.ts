@@ -27,7 +27,7 @@ export async function closePreviousAttendanceDay(): Promise<number> {
      ), absent_days AS (
        INSERT INTO daily_app_attendance
          (user_id, attendance_date, time_zone, status, open_count, last_source, activity_label, created_at, updated_at)
-       SELECT ld.user_id, missing_days.attendance_date, ld.time_zone, 'absent', 0, 'system', 'Absent', now(), now()
+       SELECT ld.user_id, missing_days.day_start::date, ld.time_zone, 'absent', 0, 'system', 'Absent', now(), now()
          FROM local_days ld
          CROSS JOIN LATERAL generate_series(
            GREATEST(ld.created_local, ld.feature_start_local)::timestamp,
