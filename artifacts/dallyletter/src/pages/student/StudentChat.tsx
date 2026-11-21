@@ -47,7 +47,7 @@ type ChatPoll = {
   totalVotes: number;
 };
 
-function GroupCoverAvatar({ url, name }: { url?: string | null; name: string }) {
+function GroupCoverAvatar({ url, name, onClick }: { url?: string | null; name: string; onClick?: () => void }) {
   const [source, setSource] = useState<string | null>(null);
   useEffect(() => {
     if (!url) { setSource(null); return; }
@@ -59,7 +59,8 @@ function GroupCoverAvatar({ url, name }: { url?: string | null; name: string }) 
       .catch(() => { if (active) setSource(null); });
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [url]);
-  return source ? <img src={source} alt={name + " group cover"} className="h-10 w-10 shrink-0 rounded-full object-cover" loading="lazy" /> : <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10"><Users className="h-4 w-4 text-primary" /></span>;
+  const avatar = source ? <img src={source} alt={name + " group cover"} className="h-10 w-10 shrink-0 rounded-full object-cover" loading="lazy" /> : <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10"><Users className="h-4 w-4 text-primary" /></span>;
+  return onClick ? <span role="button" tabIndex={0} aria-label={"Open " + name + " group profile"} onClick={event => { event.stopPropagation(); onClick(); }} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); onClick(); } }} className="shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-primary">{avatar}</span> : avatar;
 }
 
 const defaultGroupSettings: GroupSettings = {
@@ -308,7 +309,7 @@ export default function StudentChat() {
               ) : (
                 joinedGroups.map(group => (
                   <button key={group.id} onClick={() => selectGroup(group.id)} className={`flex w-full items-center justify-between rounded-lg px-3 py-3 text-left transition-colors ${selectedGroupId === group.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
-                    <span className="flex min-w-0 items-center gap-3"><GroupCoverAvatar url={group.coverImageUrl} name={group.name} /><span className="truncate font-medium">{group.name}</span></span>
+                    <span className="flex min-w-0 items-center gap-3"><GroupCoverAvatar url={group.coverImageUrl} name={group.name} onClick={() => window.location.assign("/student/study-groups?groupId=" + group.id)} /><span className="truncate font-medium">{group.name}</span></span>
                     <span className={`rounded-full px-2 py-0.5 text-xs ${selectedGroupId === group.id ? "bg-primary-foreground/20" : "bg-muted-foreground/20"}`}>{group.memberCount}</span>
                   </button>
                 ))
@@ -331,7 +332,7 @@ export default function StudentChat() {
               <div className="flex items-center justify-between gap-2 border-b bg-muted/30 p-4">
                 <div className="flex min-w-0 items-center gap-2">
                   <Button type="button" variant="ghost" size="icon" className="h-8 w-8 md:hidden" onClick={() => { setSelectedGroupId(null); setSelectedUserId(null); }} aria-label="Back to conversations"><ArrowLeft className="h-4 w-4" /></Button>
-                  {isGroupConversation ? <GroupCoverAvatar url={selectedGroup?.coverImageUrl} name={selectedGroup?.name || "Study group"} /> : <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10"><User className="h-4 w-4 text-primary" /></div>}
+                  {isGroupConversation ? <GroupCoverAvatar url={selectedGroup?.coverImageUrl} name={selectedGroup?.name || "Study group"} onClick={() => selectedGroup && window.location.assign("/student/study-groups?groupId=" + selectedGroup.id)} /> : <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10"><User className="h-4 w-4 text-primary" /></div>}
                   <div className="min-w-0"><p className="truncate font-semibold">{isGroupConversation ? selectedGroup?.name : selectedContact?.name}</p>{isGroupConversation && settings.rules && <p className="truncate text-xs text-muted-foreground">{settings.rules}</p>}</div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">{isGroupConversation && settings.allowPolls && <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => setPollComposerOpen(value => !value)}><BarChart3 className="mr-1 h-4 w-4" />Poll</Button>}<Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={() => setChatFullscreen(value => !value)} aria-label={chatFullscreen ? "Exit full-screen chat" : "Open full-screen chat"} title={chatFullscreen ? "Exit full-screen chat" : "Open full-screen chat"}>{chatFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}</Button></div>
