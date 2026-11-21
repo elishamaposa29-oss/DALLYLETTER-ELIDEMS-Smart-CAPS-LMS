@@ -25,6 +25,27 @@ const teacherQualifications = read("artifacts/dallyletter/src/pages/TeacherQuali
 const attendanceCalendar = read("artifacts/dallyletter/src/components/DailyAppAttendanceCard.tsx");
 const apiApp = read("artifacts/api-server/src/app.ts");
 const profileHub = read("artifacts/dallyletter/src/pages/ProfileHub.tsx");
+const usersRoutes = read("artifacts/api-server/src/routes/users.ts");
+const globalToast = read("artifacts/dallyletter/src/components/ui/toast.tsx");
+const globalToaster = read("artifacts/dallyletter/src/components/ui/toaster.tsx");
+const mobileFeedback = read("artifacts/dallyletter-mobile/components/FeedbackMessage.tsx");
+const mobileStudentWork = read("artifacts/dallyletter-mobile/app/(student)/work.tsx");
+const mobileTeacherWork = read("artifacts/dallyletter-mobile/app/(teacher)/work.tsx");
+const mobileStudentChat = read("artifacts/dallyletter-mobile/app/(student)/chat.tsx");
+const mobileTeacherChat = read("artifacts/dallyletter-mobile/app/(teacher)/chat.tsx");
+const mobileAuthLogin = read("artifacts/dallyletter-mobile/app/login.tsx");
+const mobileAuthSignup = read("artifacts/dallyletter-mobile/app/signup.tsx");
+const mobileAuthForgot = read("artifacts/dallyletter-mobile/app/forgot-password.tsx");
+const mobileAuthReset = read("artifacts/dallyletter-mobile/app/reset-password.tsx");
+const mobileTeacherReports = read("artifacts/dallyletter-mobile/app/(teacher)/reports.tsx");
+const mobileAdminTools = read("artifacts/dallyletter-mobile/app/(admin)/tools.tsx");
+const mobileManagerPermissions = read("artifacts/dallyletter-mobile/components/ManagerPermissionControlsMobile.tsx");
+const mobileTransferReview = read("artifacts/dallyletter-mobile/components/TransferRequestReviewWorkspace.tsx");
+const mobileQualificationReview = read("artifacts/dallyletter-mobile/components/QualificationReviewWorkspaceMobile.tsx");
+const mobileAcademicReports = read("artifacts/dallyletter-mobile/components/AcademicReportReviewWorkspace.tsx");
+const mobileOperations = read("artifacts/dallyletter-mobile/components/MobileOperationsWorkspace.tsx");
+const mobileManagerDashboard = read("artifacts/dallyletter-mobile/components/ManagerDashboard.tsx");
+const globalStyles = read("artifacts/dallyletter/src/index.css");
 
 const renderBlueprint = read("render.yaml");
 
@@ -96,6 +117,49 @@ assert.match(workspaceUi, /Delete selected CVs/, "Reviewer workspace must expose
 assert.match(workspaceUi, /Approved/, "Reviewer workspace must support approved status filtering");
 assert.match(teacherQualifications, /Delete my entire survey \/ CV \/ application/, "Teacher must be able to delete their complete application while retaining their account");
 assert.match(workspaceUi, /main CV Approve \/ Reject controls below also apply the same decision/, "CV decision controls must also decide the submitted survey");
-assert.match(attendanceCalendar, /border-emerald-400 bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950\/60/, "Present legend swatch must match the actual calendar cell colours");
-assert.match(attendanceCalendar, /border-red-400 bg-red-100 dark:border-red-700 dark:bg-red-950\/60/, "Absent legend swatch must match the actual calendar cell colours");
+assert.match(attendanceCalendar, /bg-emerald-300 text-emerald-950 border-emerald-500 dark:bg-emerald-800 dark:text-white dark:border-emerald-500/, "Present legend swatch must match the actual calendar cell colours");
+assert.match(attendanceCalendar, /bg-red-300 text-red-950 border-red-500 dark:bg-red-800 dark:text-white dark:border-red-500/, "Absent legend swatch must match the actual calendar cell colours");
 console.log("TEACHER_CV_WORKFLOW_STATIC: PASS — Google sign-in wiring, CV/survey review, explicit manager authorization, teacher activation, rejection grace period, learner conversion, routes and session refresh.");
+
+
+assert.ok(usersRoutes.includes('router.delete("/users/me/teacher-documents/:docId"'), "Teachers must have an authenticated self-scoped endpoint to permanently delete uploaded CV documents");
+assert.ok(usersRoutes.includes('router.delete("/users/me/qualifications/:id"'), "Teachers must have an authenticated self-scoped endpoint to permanently delete their own qualifications");
+assert.ok(usersRoutes.includes("DELETE FROM teacher_documents WHERE id=$1 AND user_id=$2"), "Individual uploaded-file deletion must remove the stored document row and bytes");
+assert.ok(profileHub.includes("deleteOwnProfileDocument"), "Profile Hub must expose self-service delete actions beside uploaded documents");
+assert.ok(profileHub.includes("deleteOwnQualification"), "Profile Hub must expose self-service delete actions beside teacher-owned qualifications");
+assert.ok(profileHub.includes("Permanently delete uploaded document"), "Uploaded document deletion must be clearly identified as permanent");
+
+assert.match(attendanceCalendar, /const isExpectedSchoolDay = isFuture && !isWeekend && !holidayName/, "future ordinary weekdays must be predicted as expected school days");
+assert.match(attendanceCalendar, /holidayName\s*\n\s*\? "bg-violet-300/, "known public holidays must be violet before they arrive");
+assert.ok(attendanceCalendar.includes(': isExpectedSchoolDay\n                    ? "bg-[#0f2a5a]/[0.08]'), "predicted ordinary school days must use the light transparent Dallyletter navy treatment");
+assert.ok(attendanceCalendar.includes(': isWeekend\n                      ? "bg-violet-200'), "unrecorded weekends must retain the purple weekend treatment");
+assert.ok(attendanceCalendar.includes(': isPastUnrecorded\n                        ? "bg-orange-200'), "past dates without saved records must use the light orange treatment");
+assert.ok(attendanceCalendar.includes('${isWeekend ? "border-dashed border-violet-300 dark:border-violet-700" : ""}'), "weekend dates must use purple dashed outlines");
+assert.match(attendanceCalendar, /border-2 border-\[#0f2a5a\]/, "today must retain a navy border");
+assert.doesNotMatch(attendanceCalendar, /bg-orange-100|bg-slate-50|Past day not marked \(orange\)|Upcoming \/ today not yet marked \(grey\)/, "calendar must not use orange or grey blank-day fills or legends");
+
+assert.ok(workspaceApi.includes('router.delete("/:teacherId/documents/:docId"'), "Teacher self-service and authorized CV reviewers must be able to delete one separate uploaded file");
+assert.ok(workspaceApi.includes("document_deleted"), "Individual file deletion must leave a reviewer audit record");
+assert.ok(workspaceUi.includes("Delete this separate uploaded file") && workspaceUi.includes("deleteDocument"), "Reviewer workspace must expose per-file deletion beside each uploaded document");
+assert.ok(profileHub.includes("navigator.credentials") && profileHub.includes('otp:{transport:["sms"]}'), "Phone OTP paste action must support browser SMS OTP autofill where available");
+assert.ok(profileHub.includes("navigator.clipboard.readText") && profileHub.includes("Email apps do not expose their inbox OTPs"), "OTP paste action must use clipboard and clearly explain email autofill limitations");
+assert.ok(profileHub.includes("Verification code window:") && profileHub.includes("startOtpCountdown"), "OTP request must show a countdown until the code is entered or expires");
+assert.ok(profileHub.includes("border-red-300 bg-red-50") && profileHub.includes("border-emerald-300 bg-emerald-50"), "Profile Hub feedback must distinguish failure in red and success in green");
+assert.ok(usersRoutes.includes("delivery.sent!==1||delivery.failed!==0"), "Notification email OTP must report success only after provider acceptance");
+
+
+assert.match(globalToast, /success: "border border-emerald-300 bg-emerald-50/, "Global success feedback must use an accessible green treatment");
+assert.match(globalToast, /destructive:\s*"destructive group border-destructive bg-destructive text-destructive-foreground"/, "Global failure feedback must use the destructive red treatment");
+assert.match(globalToast, /warning: "dl-status-warning border border-amber-300 bg-amber-50/, "Global warning feedback must retain its semantic amber treatment and remain distinct from success and failure");
+assert.match(globalToast, /defaultVariants:\s*\{\s*variant: "success"/, "Unqualified successful action toasts must use the global success treatment");
+assert.match(globalToaster, /props\.variant === "destructive" \? 9000/, "Failure feedback must remain visible longer than routine success feedback");
+assert.match(globalToaster, /duration=\{props\.variant === "destructive" \? 9000 : props\.variant === "warning" \? 7000 : 5000\}/, "Global feedback must have bounded severity-aware auto-dismiss timers");
+
+assert.match(mobileFeedback, /const palette: Record<FeedbackTone/, "Mobile feedback must share a single semantic color system");
+assert.match(mobileFeedback, /resolvedTone === "error" \? 10000 : resolvedTone === "warning" \? 8000 : 6000/, "Mobile feedback must auto-dismiss by severity with longer failure visibility");
+assert.match(mobileFeedback, /secondsLeft\}s · Dismiss/, "Mobile feedback must show its visible countdown and dismiss affordance");
+for (const [screen, source] of [["student work", mobileStudentWork], ["teacher work", mobileTeacherWork], ["student chat", mobileStudentChat], ["teacher chat", mobileTeacherChat]]) assert.match(source, /<FeedbackMessage message=\{notice\}/, `${screen} must use the shared mobile feedback treatment`);
+
+assert.match(globalStyles, /\[role="alert"\]:not\(\[data-feedback="unstyled"\]\)/, "All web inline alert surfaces must receive the shared failure treatment unless explicitly opted out");
+
+for (const [screen, source] of [["login",mobileAuthLogin],["signup",mobileAuthSignup],["forgot password",mobileAuthForgot],["reset password",mobileAuthReset],["teacher reports",mobileTeacherReports],["admin tools",mobileAdminTools],["manager permissions",mobileManagerPermissions],["transfer review",mobileTransferReview],["qualification review",mobileQualificationReview],["academic report review",mobileAcademicReports],["operations workspace",mobileOperations],["manager dashboard",mobileManagerDashboard]]) assert.match(source, /<FeedbackMessage message=\{error\}/, `${screen} must use shared red error feedback with a dismiss action`);

@@ -68,8 +68,8 @@ export default function AdminSafety() {
     load();
   }
 
-  const sevColor = (s: string) => ({ critical: "bg-red-100 text-red-800 border-red-300", high: "bg-orange-100 text-orange-800 border-orange-300", medium: "bg-amber-100 text-amber-800 border-amber-200", low: "bg-blue-100 text-blue-800 border-blue-200" }[s] ?? "bg-muted text-muted-foreground");
-  const statusColor = (s: string) => ({ pending: "bg-amber-100 text-amber-800", reviewed: "bg-blue-100 text-blue-800", dismissed: "bg-muted text-muted-foreground", actioned: "bg-emerald-100 text-emerald-800" }[s] ?? "");
+  const sevColor = (s: string) => ({ critical: "bg-red-100 text-red-800 border-red-300", high: "bg-orange-100 text-orange-800 border-orange-300", medium: "dl-status-warning bg-amber-100 text-amber-800 border-amber-200", low: "bg-blue-100 text-blue-800 border-blue-200" }[s] ?? "bg-muted text-muted-foreground");
+  const statusColor = (s: string) => ({ pending: "dl-status-pending bg-amber-100 text-amber-800", reviewed: "bg-blue-100 text-blue-800", dismissed: "bg-muted text-muted-foreground", actioned: "bg-emerald-100 text-emerald-800" }[s] ?? "");
 
   const filtered = filter === "all" ? flags : flags.filter(f => f.status === filter);
   const counts = { total: flags.length, pending: flags.filter(f => f.status === "pending").length, critical: flags.filter(f => f.severity === "critical").length, high: flags.filter(f => f.severity === "high").length };
@@ -86,7 +86,7 @@ export default function AdminSafety() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
             { label: "Total Flags", value: counts.total, icon: Flag, color: "text-muted-foreground" },
-            { label: "Pending Review", value: counts.pending, icon: AlertTriangle, color: "text-amber-600" },
+            { label: "Pending Review", value: counts.pending, icon: AlertTriangle, color: "text-amber-600 dl-status-pending-text" },
             { label: "Critical", value: counts.critical, icon: XCircle, color: "text-red-600" },
             { label: "High Severity", value: counts.high, icon: AlertTriangle, color: "text-orange-600" },
           ].map(({ label, value, icon: Icon, color }) => (

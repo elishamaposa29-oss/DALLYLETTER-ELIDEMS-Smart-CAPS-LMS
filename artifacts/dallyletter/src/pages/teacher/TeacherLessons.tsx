@@ -1,3 +1,4 @@
+import { ACADEMIC_GRADE_OPTIONS } from "@workspace/api-client-react/academic-grades";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { useListLessons, useCreateLesson, useUpdateLesson, useDeleteLesson, getApiUrl } from "@workspace/api-client-react";
@@ -314,7 +315,7 @@ export default function TeacherLessons() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              {["Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8 / Form 1","Grade 9 / Form 2","Grade 10 / Form 3","Grade 11 / Form 4","Grade 12 / Form 5","Form 6"].map(g => (
+                              {ACADEMIC_GRADE_OPTIONS.map(g => (
                                 <SelectItem key={g} value={g}>{g}</SelectItem>
                               ))}
                             </SelectContent>

@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { StudyGroupPollPanel } from "@/components/StudyGroupPollPanel";
 import { useListMessages, useSendMessage, useListStudyGroups, useListUsers, getApiUrl } from "@workspace/api-client-react";
 import { AuthenticatedAudio } from "@/components/AuthenticatedAudio";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
@@ -20,11 +21,12 @@ export default function AdminChat() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("recipientId"); return value && /^\d+$/.test(value) ? Number(value) : null; });
   const [message, setMessage] = useState("");
   const [activeTab, setActiveTab] = useState("users");
+  const [groupHubOpen,setGroupHubOpen]=useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
   const { data: groups, isLoading: groupsLoading } = useListStudyGroups();
-  const { data: users } = useListUsers();
+  const { data: users, isLoading: usersLoading } = useListUsers();
   
   const { data: messages, isLoading: messagesLoading } = useListMessages(
     { groupId: selectedGroupId, recipientId: selectedUserId },
@@ -32,6 +34,11 @@ export default function AdminChat() {
   );
 
   const sendMessageMutation = useSendMessage();
+  const [unreadSummary,setUnreadSummary]=useState<{groups:Array<{id:number;unread:number}>;privateChats:Array<{id:number;unread:number}>}>({groups:[],privateChats:[]});
+  useEffect(()=>{const accessToken=localStorage.getItem("dallyletter_token");if(!accessToken||!user?.id)return;let active=true;const refresh=async()=>{try{const response=await fetch(getApiUrl("/api/messages/unread-summary"),{headers:{Authorization:"Bearer "+accessToken},cache:"no-store"});if(!response.ok)return;const data=await response.json();if(active)setUnreadSummary({groups:Array.isArray(data.groups)?data.groups:[],privateChats:Array.isArray(data.privateChats)?data.privateChats:[]});}catch{/* Retain last known unread counts while offline. */}};void refresh();const timer=window.setInterval(()=>void refresh(),5000);return()=>{active=false;window.clearInterval(timer);};},[user?.id,selectedGroupId,selectedUserId]);
+  const DUnread=(count:number)=>count>0?<span className="dl-unread-gold-badge ml-auto inline-flex items-center gap-1 rounded-md border-2 border-[#FFD700] bg-[#0B1E3A] px-1 py-0.5 text-[10px] font-bold leading-none text-[#FFD700]" aria-label={count+" unread"}><img src="/favicon.svg" alt="" className="h-3.5 w-3.5 rounded border border-[#FFD700]"/>{count>99?"99+":count}</span>:null;
+  const unreadForGroup=(id:number)=>unreadSummary.groups.find(item=>item.id===id)?.unread||0;
+  const unreadForPrivate=(id:number)=>unreadSummary.privateChats.find(item=>item.id===id)?.unread||0;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -111,13 +118,17 @@ export default function AdminChat() {
                   >
                     <div className="font-medium truncate flex items-center gap-2">
                       <Users className="h-4 w-4 opacity-70" />
-                      {group.name}
+                      <span className="min-w-0 flex-1 truncate">{group.name}</span>{DUnread(unreadForGroup(group.id))}
                     </div>
                   </button>
                 ))
               )
             ) : (
-              <UserSelector value={selectedUserId} users={(users ?? []).filter(person => person.id !== user?.id) as any} showGroupFilter={false} placeholder="Search people to message…" onChange={id => { if (id) selectUser(id); else setSelectedUserId(null); }} />
+              usersLoading ? (
+                <div className="flex justify-center p-4"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+              ) : (
+                <UserSelector value={selectedUserId} users={(users ?? []).filter(person => person.id !== user?.id).map(person => ({ ...person, unreadCount: unreadForPrivate(person.id) })) as any} showGroupFilter={false} placeholder="Search people to message…" onChange={id => { if (id) selectUser(id); else setSelectedUserId(null); }} />
+              )
             )}
           </div>
         </Card>
@@ -136,11 +147,13 @@ export default function AdminChat() {
               <div className="p-4 border-b bg-muted/30 font-semibold flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   {selectedGroupId 
-                    ? <><Users className="h-5 w-5 text-primary"/> {groups?.find(g => g.id === selectedGroupId)?.name}</>
+                    ? <button type="button" onClick={()=>setGroupHubOpen(true)} className="inline-flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" aria-label="Open group hub"><Users className="h-5 w-5 text-primary"/> {groups?.find(g => g.id === selectedGroupId)?.name} <span className="text-xs text-primary">Group hub ↗</span></button>
                     : <><User className="h-5 w-5 text-primary"/> {users?.find(u => u.id === selectedUserId)?.name}</>
                   }
                 </div>
               </div>
+
+              {groupHubOpen && selectedGroupId && (()=>{const group:any=groups?.find(g=>g.id===selectedGroupId);return <div role="dialog" aria-modal="true" aria-label="Study group hub" className="border-b bg-card p-4"><div className="flex items-start justify-between gap-3"><div className="flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary"><Users className="h-6 w-6"/></div><div><h2 className="font-semibold">{group?.name||"Study group"}</h2><p className="text-xs text-muted-foreground">{group?.subject||"Study community"}{group?.memberCount!=null?" · "+group.memberCount+" members":""}</p></div></div><Button type="button" variant="outline" size="sm" onClick={()=>setGroupHubOpen(false)}>Back to chat</Button></div>{group?.description&&<p className="mt-3 text-sm text-muted-foreground">{group.description}</p>}{group?.creatorName&&<p className="mt-2 text-xs text-muted-foreground">Created by {group.creatorName}</p>}</div>;})()}
 
               {/* Messages Area */}
               <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50 dark:bg-slate-900/50">
@@ -171,9 +184,7 @@ export default function AdminChat() {
                             }`}>
                               {msg.type === "voice" && msg.mediaUrl ? <AuthenticatedAudio className="h-10 max-w-[250px]" src={msg.mediaUrl} /> : msg.type === "media" && msg.mediaUrl ? <div className="space-y-2">{msg.content && <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>}<AuthenticatedMedia url={msg.mediaUrl} type={new URL(msg.mediaUrl, window.location.origin).searchParams.get("type")?.startsWith("image/") ? "image" : new URL(msg.mediaUrl, window.location.origin).searchParams.get("type")?.startsWith("video/") ? "video" : "document"} title={msg.content || "Shared learning media"} /></div> : <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>}
                             </div>
-                            <span className="text-[10px] text-muted-foreground mt-1 opacity-70">
-                              {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
+                            <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground"><span>{new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>{isMe&&((msg as any).readByUserIds?.length??0)>0&&<span className="font-semibold text-[#9A7020]" aria-label={selectedGroupId?"Seen by "+(msg as any).readByUserIds.length+" group members":"Seen"}>{selectedGroupId?"Seen by "+(msg as any).readByUserIds.length:"Seen"} ✓✓</span>}</div>
                             {isMe && <button type="button" className="mt-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-destructive disabled:opacity-50" onClick={() => void handleDeleteMessage(msg.id)} disabled={deletingMessageId === msg.id}>{deletingMessageId === msg.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}Delete</button>}
                           </div>
                         </div>
@@ -181,6 +192,7 @@ export default function AdminChat() {
                     );
                   })
                 )}
+                {selectedGroupId != null && <StudyGroupPollPanel groupId={selectedGroupId} allowPolls={(groups?.find(g => g.id === selectedGroupId) as any)?.settings?.allowPolls !== false} />}
                 <div ref={messagesEndRef} />
               </div>
 

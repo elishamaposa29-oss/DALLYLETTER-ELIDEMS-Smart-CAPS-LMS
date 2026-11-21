@@ -1,3 +1,4 @@
+import { FeedbackMessage } from "@/components/FeedbackMessage";
 import { Feather } from "@expo/vector-icons";
 import { getApiUrl } from "@workspace/api-client-react";
 import * as FileSystem from "expo-file-system/legacy";
@@ -26,7 +27,7 @@ export default function AcademicReportReviewWorkspace(){
  if(!user||!token)return <View style={{flex:1,backgroundColor:colors.background,padding:20}}><Text style={body}>Sign in to review academic reports.</Text></View>;
  return <ScrollView style={{flex:1,backgroundColor:colors.background}} contentContainerStyle={{padding:16,paddingBottom:40}}>
   <View style={{...card,backgroundColor:"#0f2a5a",borderColor:"#0f2a5a"}}><Text style={{color:"#e8c35a",fontWeight:"800",fontSize:11,letterSpacing:1}}>DALLYLETTER ELIDEMS</Text><Text style={{color:"#fff",fontSize:23,fontWeight:"900",marginTop:5}}>Academic report review</Text><Text style={{color:"#dbeafe",marginTop:5}}>Review recorded attendance, marks and teacher commentary. Approval publishes the report to the learner's Profile Hub.</Text>{button(loading?"Refreshing…":"Refresh reports",()=>void load(),loading,true)}</View>
-  {error?<Text accessibilityRole="alert" style={{color:"#dc2626",marginBottom:10}}>{error}</Text>:null}
+  <FeedbackMessage message={error} tone="error" onDismiss={() => setError("")} />
   {canCreate?<View style={card}><Text style={{...body,fontSize:16,fontWeight:"900"}}>Create academic report draft</Text><Text style={muted}>Submit an evidence-backed report for authorized review. It is not published until approved.</Text>
    <Text style={{...body,marginTop:10,fontWeight:"800"}}>Learner</Text><UserSelector users={learners} value={selectedLearner?.id ?? null} onChange={(id,person)=>{setSelectedLearner(id&&person?({...person} as Row):null);setShowLearners(false);}} showGroupFilter={false} placeholder="Search eligible learners…" />
    <Text style={{...body,marginTop:10,fontWeight:"800"}}>Report type</Text><View style={{flexDirection:"row",gap:8,marginTop:5}}><View style={{flex:1}}>{button("Attendance register",()=>setReportType("attendance_register"),false,reportType!=="attendance_register")}</View><View style={{flex:1}}>{button("Term performance",()=>setReportType("term_performance"),false,reportType!=="term_performance")}</View></View>

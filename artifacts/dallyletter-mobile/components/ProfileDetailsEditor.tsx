@@ -1,3 +1,4 @@
+import { ACADEMIC_GRADE_OPTIONS } from "@workspace/api-client-react/academic-grades";
 import { Feather } from "@expo/vector-icons";
 import { getApiUrl } from "@workspace/api-client-react";
 import React, { useEffect, useState } from "react";
@@ -14,6 +15,7 @@ export function ProfileDetailsEditor() {
   const [name,setName]=useState(user?.name||"");
   const [phone,setPhone]=useState(user?.phone||"");
   const [grade,setGrade]=useState(user?.grade||"");
+  const [showGradeOptions,setShowGradeOptions]=useState(false);
   const [subject,setSubject]=useState(user?.subject||"");
   const [busy,setBusy]=useState(false);
   const [primaryEmail,setPrimaryEmail]=useState("");
@@ -149,7 +151,7 @@ export function ProfileDetailsEditor() {
     {open?<View>
       {field("Full name",name,setName,"Your name")}
       {field("Phone",phone,setPhone,"Phone number")}
-      {field("Grade",grade,setGrade,"Your grade")}
+      <View style={{marginTop:12}}><Text style={{color:colors.foreground,fontSize:13,fontWeight:"700",marginBottom:6}}>Grade / Form</Text><TouchableOpacity accessibilityRole="button" accessibilityLabel="Select grade or form" onPress={()=>setShowGradeOptions(value=>!value)} style={{minHeight:46,borderWidth:1,borderColor:colors.border,borderRadius:10,paddingHorizontal:12,justifyContent:"center",backgroundColor:colors.card}}><Text style={{color:grade?colors.foreground:colors.mutedForeground}}>{grade||"Select grade / form"}</Text></TouchableOpacity>{showGradeOptions?<View style={{borderWidth:1,borderColor:colors.border,borderRadius:10,marginTop:5,overflow:"hidden"}}>{ACADEMIC_GRADE_OPTIONS.map(option=><TouchableOpacity key={option} accessibilityRole="button" onPress={()=>{setGrade(option);setShowGradeOptions(false);}} style={{paddingHorizontal:12,paddingVertical:11,backgroundColor:grade===option?colors.primary+"18":colors.card,borderBottomWidth:1,borderBottomColor:colors.border}}><Text style={{color:colors.foreground,fontWeight:grade===option?"800":"500"}}>{option}</Text></TouchableOpacity>)}</View>:null}</View>
       <View style={{marginTop:12}}><Text style={{color:colors.foreground,fontSize:13,fontWeight:"700",marginBottom:6}}>Subject</Text><SubjectSelector value={subject} onChange={setSubject} placeholder="Search or type your subject…" /></View>
       <TouchableOpacity onPress={()=>void save()} disabled={busy} style={{height:46,borderRadius:10,marginTop:16,backgroundColor:colors.primary,alignItems:"center",justifyContent:"center",flexDirection:"row",gap:8}}>
         {busy?<ActivityIndicator color="#fff"/>:null}<Text style={{color:"#fff",fontWeight:"700"}}>{busy?"Saving…":"Save changes"}</Text>

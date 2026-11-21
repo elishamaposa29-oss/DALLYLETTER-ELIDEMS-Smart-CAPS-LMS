@@ -79,7 +79,7 @@ export default function StudentBreakElidems() {
         ) : hasEvent ? (
           <div className="space-y-4">
             {/* Live/Today event */}
-            <Card className={`border-2 ${isLive ? "border-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20" : "border-amber-300 bg-amber-50/50 dark:bg-amber-950/20"}`}>
+            <Card className={`border-2 ${isLive ? "border-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20" : "dl-status-upcoming border-amber-300 bg-amber-50/50 dark:bg-amber-950/20"}`}>
               <CardContent className="p-6">
                 <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
                   <div className="flex-1">
@@ -87,7 +87,7 @@ export default function StudentBreakElidems() {
                       {isLive ? (
                         <Badge className="bg-emerald-600 text-white animate-pulse gap-1.5"><span className="inline-block w-1.5 h-1.5 rounded-full bg-white" />LIVE NOW</Badge>
                       ) : (
-                        <Badge className="bg-amber-500 text-white">TODAY</Badge>
+                        <Badge className="dl-status-today bg-amber-500 text-white">TODAY</Badge>
                       )}
                     </div>
                     <h2 className="text-2xl font-bold">{todayEvent!.title}</h2>
@@ -103,7 +103,7 @@ export default function StudentBreakElidems() {
                         <Video className="h-4 w-4" />Join Session
                       </Button>
                     ) : !isLive ? (
-                      <div className="text-sm text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/30 rounded-lg p-3 text-center">
+                      <div className="dl-status-warning text-sm text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/30 rounded-lg p-3 text-center">
                         <Clock className="h-5 w-5 mx-auto mb-1" />Event hasn't started yet.<br />Come back at {todayEvent!.startTime}
                       </div>
                     ) : null}
@@ -160,7 +160,7 @@ export default function StudentBreakElidems() {
                       <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{ev.startTime} – {ev.endTime}</span>
                     </div>
                   </div>
-                  <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-200">Scheduled</Badge>
+                  <Badge variant="outline" className="dl-status-upcoming bg-amber-100 text-amber-800 border-amber-200">Scheduled</Badge>
                 </CardContent>
               </Card>
             ))}

@@ -127,7 +127,7 @@ export default function TeacherClasses() {
   return (
     <View style={s.container}>
       <View style={s.header}>
-        <View style={{flex:1}}><Text style={s.title}>My Classes</Text><TouchableOpacity onPress={()=>router.push("/operations")} style={{marginTop:8,paddingVertical:8,paddingHorizontal:10,borderRadius:9,backgroundColor:"#b38b00",alignSelf:"flex-start"}}><Text style={{color:"#fff",fontWeight:"800"}}>Attendance register & statistics</Text></TouchableOpacity></View>
+        <View style={{flex:1}}><Text style={s.title}>My Classes</Text><TouchableOpacity onPress={()=>router.push("/operations")} style={{marginTop:8,paddingVertical:8,paddingHorizontal:10,borderRadius:9,backgroundColor:"#A87919",alignSelf:"flex-start"}}><Text style={{color:"#fff",fontWeight:"800"}}>Attendance register & statistics</Text></TouchableOpacity></View>
         <TouchableOpacity style={s.addBtn} onPress={() => setShowModal(true)}>
           <Feather name="plus" size={20} color={colors.primary} />
         </TouchableOpacity>

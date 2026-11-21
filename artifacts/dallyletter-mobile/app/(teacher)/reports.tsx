@@ -1,3 +1,4 @@
+import { FeedbackMessage } from "@/components/FeedbackMessage";
 import { Feather } from "@expo/vector-icons";
 import { getApiUrl } from "@workspace/api-client-react";
 import * as FileSystem from "expo-file-system/legacy";
@@ -119,14 +120,14 @@ export default function TeacherAcademicReports() {
           <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 12, marginBottom: 7 }}>Learner</Text>
           {loading ? <ActivityIndicator color={colors.primary} /> : learners.length ? <View style={{ gap: 7, marginBottom: 14 }}>{learners.map(learner => {
             const active = selectedLearner === String(learner.id);
-            return <TouchableOpacity key={learner.id} onPress={() => setSelectedLearner(String(learner.id))} style={{ borderWidth: 1, borderColor: active ? "#b38b00" : colors.border, backgroundColor: active ? "#b38b0018" : colors.background, borderRadius: 9, padding: 10 }}>
+            return <TouchableOpacity key={learner.id} onPress={() => setSelectedLearner(String(learner.id))} style={{ borderWidth: 1, borderColor: active ? "#A87919" : colors.border, backgroundColor: active ? "#A8791918" : colors.background, borderRadius: 9, padding: 10 }}>
               <Text style={{ color: colors.foreground, fontWeight: "700" }}>{learner.name}</Text>
               <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>{learner.grade || "Grade not recorded"} · Learner #{learner.id}</Text>
             </TouchableOpacity>;
           })}</View> : <Text style={{ color: colors.mutedForeground, marginBottom: 12 }}>No learners are currently assigned to your classes.</Text>}
           <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 12, marginBottom: 7 }}>Report type</Text>
           <View style={{ flexDirection: "row", gap: 8, marginBottom: 14 }}>
-            {([{ value: "term_performance", label: "Term performance" }, { value: "attendance_register", label: "Attendance" }] as const).map(option => <TouchableOpacity key={option.value} onPress={() => setReportType(option.value)} style={{ flex: 1, borderWidth: 1, borderColor: reportType === option.value ? "#b38b00" : colors.border, borderRadius: 9, padding: 10, backgroundColor: reportType === option.value ? "#b38b0018" : colors.background }}><Text style={{ color: colors.foreground, textAlign: "center", fontWeight: "700", fontSize: 12 }}>{option.label}</Text></TouchableOpacity>)}
+            {([{ value: "term_performance", label: "Term performance" }, { value: "attendance_register", label: "Attendance" }] as const).map(option => <TouchableOpacity key={option.value} onPress={() => setReportType(option.value)} style={{ flex: 1, borderWidth: 1, borderColor: reportType === option.value ? "#A87919" : colors.border, borderRadius: 9, padding: 10, backgroundColor: reportType === option.value ? "#A8791918" : colors.background }}><Text style={{ color: colors.foreground, textAlign: "center", fontWeight: "700", fontSize: 12 }}>{option.label}</Text></TouchableOpacity>)}
           </View>
           {field("Term / period label", termLabel, setTermLabel, "e.g. Term 1 2026")}
           {field("Start date (YYYY-MM-DD)", periodStart, setPeriodStart, "2026-01-01")}
@@ -136,7 +137,7 @@ export default function TeacherAcademicReports() {
           {field("Conduct / behaviour (optional)", conduct, setConduct, "Teacher assessment, if recorded")}
           {field("Term result / promotion (optional)", result, setResult, "School decision, if recorded")}
           {field("Teacher comment (optional)", teacherComment, setTeacherComment, "Factual comment based on recorded progress", true)}
-          {error ? <Text accessibilityRole="alert" style={{ color: "#dc2626", marginBottom: 10 }}>{error}</Text> : null}
+          <FeedbackMessage message={error} tone="error" onDismiss={() => setError("")} />
           <TouchableOpacity disabled={saving || loading || !learners.length} onPress={() => void createDraft()} style={{ backgroundColor: "#0f2a5a", padding: 13, borderRadius: 9, opacity: saving || loading || !learners.length ? 0.5 : 1 }}>
             <Text style={{ color: "#fff", textAlign: "center", fontWeight: "800" }}>{saving ? "Saving report…" : "Create report draft"}</Text>
           </TouchableOpacity>

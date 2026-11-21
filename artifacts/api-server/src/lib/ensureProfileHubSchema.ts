@@ -192,6 +192,14 @@ export async function ensureProfileHubSchema(): Promise<void> {
       PRIMARY KEY (notification_id, user_id)
     )`);
     await client.query("CREATE INDEX IF NOT EXISTS notification_reads_user_idx ON notification_reads(user_id, read_at DESC)");
+    await client.query(`CREATE TABLE IF NOT EXISTS message_conversation_reads (
+      user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      conversation_type text NOT NULL CHECK (conversation_type IN ('group','private')),
+      conversation_id integer NOT NULL,
+      last_read_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (user_id, conversation_type, conversation_id)
+    )`);
+    await client.query("CREATE INDEX IF NOT EXISTS message_conversation_reads_user_idx ON message_conversation_reads(user_id, last_read_at DESC)");
 
     // Additive daily app-access attendance. Separate from class-session attendance.
     await client.query(`CREATE TABLE IF NOT EXISTS user_attendance_preferences (

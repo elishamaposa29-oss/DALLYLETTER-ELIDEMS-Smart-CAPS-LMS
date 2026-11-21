@@ -236,7 +236,7 @@ router.post("/users/me/phone/request-verification", requireAuth, async (req, res
     [req.currentUser!.id, phone, codeHash]);
   try {
     await sendSms(phone, "Your Dallyletter Elidems verification code is " + code + ". It expires in 10 minutes. Do not share this code.");
-    res.json({ message: "Verification code sent.", expiresInSeconds: 600 });
+    res.json({ message: "SMS provider accepted the verification message for delivery. The code expires in 10 minutes.", expiresInSeconds: 600, deliveryAccepted: true });
   } catch {
     await pool.query("UPDATE account_recovery_profiles SET phone_verification_code_hash=NULL,phone_verification_expires_at=NULL,updated_at=now() WHERE user_id=$1", [req.currentUser!.id]);
     res.status(503).json({ error: "The SMS provider could not send your verification code. Please try again later." });
@@ -679,6 +679,39 @@ router.get("/users/:id/teacher-documents/:docId", requireAuth, async (req, res):
   res.setHeader("Content-Length", row.size_bytes); res.end(row.data);
 });
 
+
+router.delete("/users/me/teacher-documents/:docId", requireAuth, async (req, res): Promise<void> => {
+  const actor=req.currentUser!; const docId=Number(req.params.docId);
+  if(String(actor.role).toLowerCase()!=="teacher"){res.status(403).json({error:"Teacher account required."});return;}
+  if(!Number.isSafeInteger(docId)||docId<=0){res.status(400).json({error:"Invalid document id."});return;}
+  const client=await pool.connect(); let storageKey:string|null=null;
+  try{
+    await client.query("BEGIN");
+    const found=await client.query("SELECT id,storage_key FROM teacher_documents WHERE id=$1 AND user_id=$2 FOR UPDATE",[docId,actor.id]);
+    if(!found.rows.length){await client.query("ROLLBACK");res.status(404).json({error:"Your uploaded document was not found."});return;}
+    storageKey=found.rows[0].storage_key?String(found.rows[0].storage_key):null;
+    await client.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,cv jsonb NOT NULL DEFAULT '{}'::jsonb,updated_at timestamptz NOT NULL DEFAULT now())");
+    await client.query("UPDATE teacher_qualifications SET document_id=NULL WHERE user_id=$1 AND document_id=$2",[actor.id,docId]);
+    await client.query("UPDATE teacher_profiles SET cv=cv-'photoDocumentId',updated_at=now() WHERE user_id=$1 AND cv->>'photoDocumentId'=$2",[actor.id,String(docId)]);
+    await client.query("DELETE FROM teacher_documents WHERE id=$1 AND user_id=$2",[docId,actor.id]);
+    await client.query("COMMIT");
+  }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}finally{client.release();}
+  let mediaCleanupPending=false;
+  if(storageKey){try{await removeStoredMedia(storageKey);}catch{
+    mediaCleanupPending=true;
+    await pool.query("CREATE TABLE IF NOT EXISTS teacher_application_media_cleanup(teacher_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,storage_key text PRIMARY KEY,created_at timestamptz NOT NULL DEFAULT now())");
+    await pool.query("INSERT INTO teacher_application_media_cleanup(teacher_id,storage_key) VALUES($1,$2) ON CONFLICT(storage_key) DO NOTHING",[actor.id,storageKey]);
+    try {
+      await removeStoredMedia(storageKey);
+      await pool.query("DELETE FROM teacher_application_media_cleanup WHERE teacher_id=$1 AND storage_key=$2",[actor.id,storageKey]);
+      mediaCleanupPending=false;
+    } catch {
+      console.error("[teacher-cv] Individual document media cleanup queued.",{teacherId:actor.id,documentId:docId});
+    }
+  }}
+  res.json({deleted:true,documentId:docId,mediaCleanupPending});
+});
+
 router.patch("/users/:id/teacher-review", requireAuth, requireManagerPermissionForRequest((req) => req.body?.action === "approve" ? "teacher_cv.authorize" : "teacher_cv.review"), async (req, res): Promise<void> => {
   const actor = req.currentUser!;
   if (!canReviewTeacherApplication(actor)) { res.status(403).json({ error: "Owner or Senior Manager approval is required for teacher applications." }); return; }
@@ -976,6 +1009,43 @@ router.patch("/users/me/qualifications/:id", requireAuth, async (req, res): Prom
 });
 
 
+router.delete("/users/me/qualifications/:id", requireAuth, async (req, res): Promise<void> => {
+  const actor=req.currentUser!; const id=Number(req.params.id);
+  if(String(actor.role).toLowerCase()!=="teacher"){res.status(403).json({error:"Teacher account required."});return;}
+  if(!Number.isSafeInteger(id)||id<=0){res.status(400).json({error:"Invalid qualification id."});return;}
+  const client=await pool.connect();let storageKey:string|null=null;
+  try{
+    await client.query("BEGIN");
+    const found=await client.query("SELECT id,document_id FROM teacher_qualifications WHERE id=$1 AND user_id=$2 AND source='user' FOR UPDATE",[id,actor.id]);
+    if(!found.rows.length){await client.query("ROLLBACK");res.status(404).json({error:"Your qualification was not found or cannot be deleted."});return;}
+    const documentId=found.rows[0].document_id==null?null:Number(found.rows[0].document_id);
+    await client.query("DELETE FROM teacher_qualifications WHERE id=$1 AND user_id=$2 AND source='user'",[id,actor.id]);
+    if(documentId){
+      const used=await client.query("SELECT 1 FROM teacher_qualifications WHERE user_id=$1 AND document_id=$2 LIMIT 1",[actor.id,documentId]);
+      if(!used.rows.length){
+        const removed=await client.query("DELETE FROM teacher_documents WHERE id=$1 AND user_id=$2 RETURNING storage_key",[documentId,actor.id]);
+        storageKey=removed.rows[0]?.storage_key?String(removed.rows[0].storage_key):null;
+      }
+    }
+    await client.query("COMMIT");
+  }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}finally{client.release();}
+  let mediaCleanupPending=false;
+  if(storageKey){try{await removeStoredMedia(storageKey);}catch{
+    mediaCleanupPending=true;
+    await pool.query("CREATE TABLE IF NOT EXISTS teacher_application_media_cleanup(teacher_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,storage_key text PRIMARY KEY,created_at timestamptz NOT NULL DEFAULT now())");
+    await pool.query("INSERT INTO teacher_application_media_cleanup(teacher_id,storage_key) VALUES($1,$2) ON CONFLICT(storage_key) DO NOTHING",[actor.id,storageKey]);
+    try {
+      await removeStoredMedia(storageKey);
+      await pool.query("DELETE FROM teacher_application_media_cleanup WHERE teacher_id=$1 AND storage_key=$2",[actor.id,storageKey]);
+      mediaCleanupPending=false;
+    } catch {
+      console.error("[teacher-cv] Qualification certificate cleanup queued.",{teacherId:actor.id,qualificationId:id});
+    }
+  }}
+  res.json({deleted:true,qualificationId:id,certificateDeleted:Boolean(storageKey),mediaCleanupPending});
+});
+
+
 // Owner-only moderation queue for qualifications awaiting verification.
 router.get("/qualifications/pending", requireAuth, requireManagerPermission("qualifications.view"), async(req,res):Promise<void>=>{
   const actor=req.currentUser!;
@@ -1132,9 +1202,9 @@ router.post("/users/me/notification-email/request", requireAuth, async(req,res):
   const otp=String(crypto.randomInt(100000,1000000));
   const digest=await hashPassword(String(req.currentUser!.id)+":"+email+":"+otp);
   await pool.query("INSERT INTO notification_email_verifications(user_id,email,otp_hash,expires_at,attempts,created_at) VALUES($1,$2,$3,now()+interval '10 minutes',0,now()) ON CONFLICT(user_id) DO UPDATE SET email=EXCLUDED.email,otp_hash=EXCLUDED.otp_hash,expires_at=EXCLUDED.expires_at,attempts=0,created_at=now()",[req.currentUser!.id,email,digest]);
-  try{await sendEmail({to:[email],subject:"Verify your Dallyletter notification email",text:"Your verification code is "+otp+". It expires in 10 minutes. If you did not request this, ignore this message."});}
+  try{const delivery=await sendEmail({to:[email],subject:"Verify your Dallyletter notification email",text:"Your verification code is "+otp+". It expires in 10 minutes. If you did not request this, ignore this message."});if(delivery.sent!==1||delivery.failed!==0)throw new Error("Email provider did not confirm acceptance of the verification email.");}
   catch(error){await pool.query("DELETE FROM notification_email_verifications WHERE user_id=$1",[req.currentUser!.id]);res.status(503).json({error:error instanceof Error&&/Resend is in testing mode/i.test(error.message)?"Email provider setup is blocking delivery: verify a sending domain in Resend and set EMAIL_FROM to an address on that domain. No active code was created.":"Email provider could not send the code. Try again later."});return;}
-  res.json({message:"Verification code sent. It expires in 10 minutes."});
+  res.json({message:"Email provider accepted the verification email for delivery to "+email+". Check your inbox and spam folder. The code expires in 10 minutes.",expiresInSeconds:600,deliveryAccepted:true});
 });
 
 router.post("/users/me/notification-email/verify", requireAuth, async(req,res):Promise<void>=>{

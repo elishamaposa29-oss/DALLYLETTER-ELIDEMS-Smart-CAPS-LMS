@@ -1,3 +1,4 @@
+import { FeedbackMessage } from "@/components/FeedbackMessage";
 import { Feather } from "@expo/vector-icons";
 import { getApiUrl } from "@workspace/api-client-react";
 import { router } from "expo-router";
@@ -39,7 +40,7 @@ export default function ForgotPasswordScreen() {
       <TextInput value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" placeholder="you@example.com" placeholderTextColor={colors.mutedForeground} style={[s.input,{color:colors.foreground,borderColor:colors.border,backgroundColor:colors.card}]}/>
       {busy?<View accessibilityRole="text" style={s.status}><ActivityIndicator color={colors.primary}/><Text style={{color:colors.mutedForeground,marginLeft:8}}>Sending recovery email… {elapsed}s</Text></View>:null}
       {message ? <Text accessibilityRole="text" style={s.success}>{message}</Text> : null}
-      {error ? <Text accessibilityRole="alert" style={s.error}>{error}</Text> : null}
+      <FeedbackMessage message={error} tone="error" onDismiss={() => setError("")} />
       <TouchableOpacity onPress={() => void submit()} disabled={busy} style={[s.button,{backgroundColor:colors.primary,opacity:busy?0.7:1}]}>
         {busy ? <ActivityIndicator color="#fff"/> : <Text style={s.buttonText}>Send reset link</Text>}
       </TouchableOpacity>

@@ -1,3 +1,4 @@
+import { FeedbackMessage } from "@/components/FeedbackMessage";
 import { getApiUrl, useRegisterUser } from "@workspace/api-client-react";
 import { router } from "expo-router";
 import React, { useState } from "react";
@@ -119,7 +120,7 @@ export default function SignupScreen() {
           <Text style={s.label}>Password</Text>
           <TextInput style={s.input} value={password} onChangeText={setPassword} placeholder="At least 8 characters" placeholderTextColor={colors.mutedForeground} secureTextEntry autoComplete="new-password" />
           {role === "teacher" ? <Text style={s.hint}>Teacher accounts may require approval before teaching features are enabled.</Text> : null}
-          {error ? <Text accessibilityRole="alert" style={s.error}>{error}</Text> : null}
+          <FeedbackMessage message={error} tone="error" onDismiss={() => setError("")} />
           <TouchableOpacity accessibilityRole="button" style={[s.primaryButton, registerMutation.isPending && { opacity: 0.7 }]} onPress={submit} disabled={registerMutation.isPending}>
             {registerMutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={s.primaryText}>Create account</Text>}
           </TouchableOpacity>

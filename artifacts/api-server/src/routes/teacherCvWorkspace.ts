@@ -225,6 +225,37 @@ router.post("/:teacherId/decision",requireManagerPermissionForRequest((req)=>req
 });
 
 function requireSelfOrCvMonitor(req:any,res:any,next:any){const targetId=idOf(req.params.teacherId);if(targetId&&Number(req.currentUser?.id)===targetId){next();return;}return requireManagerPermissionIfManager("teacher_cv.view")(req,res,next);}
+
+router.delete("/:teacherId/documents/:docId",requireSelfOrCvMonitor,async(req,res)=>{
+ const teacherId=idOf(req.params.teacherId),docId=idOf(req.params.docId),actor=req.currentUser!;
+ if(!teacherId||!docId){res.status(400).json({error:"Invalid teacher or document id."});return;}
+ const targetResult=await pool.query("SELECT id,role FROM users WHERE id=$1",[teacherId]);const target=targetResult.rows[0];
+ if(!target||normalizeRole(target.role)!=="teacher"){res.status(404).json({error:"Teacher account not found."});return;}
+ const self=Number(actor.id)===teacherId;
+ if(self&&normalizeRole(actor.role)!=="teacher"){res.status(403).json({error:"Only a teacher can delete their own uploaded file."});return;}
+ if(!self&&!isOwner(actor)&&!canAccessManager(actor)){res.status(403).json({error:"Owner or an authorized manager is required to delete another teacher's file."});return;}
+ await ensure();
+ await pool.query("CREATE TABLE IF NOT EXISTS teacher_profiles (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,cv jsonb NOT NULL DEFAULT '{}'::jsonb,updated_at timestamptz NOT NULL DEFAULT now())");
+ const client=await pool.connect();let storageKey:string|null=null;
+ try{
+  await client.query("BEGIN");
+  const found=await client.query("SELECT id,storage_key,file_name FROM teacher_documents WHERE id=$1 AND user_id=$2 FOR UPDATE",[docId,teacherId]);
+  if(!found.rows.length){await client.query("ROLLBACK");res.status(404).json({error:"The uploaded file was not found. It may already have been deleted."});return;}
+  storageKey=found.rows[0].storage_key?String(found.rows[0].storage_key):null;
+  await client.query("UPDATE teacher_qualifications SET document_id=NULL WHERE user_id=$1 AND document_id=$2",[teacherId,docId]);
+  await client.query("UPDATE teacher_profiles SET cv=cv-'photoDocumentId',updated_at=now() WHERE user_id=$1 AND cv->>'photoDocumentId'=$2",[teacherId,String(docId)]);
+  await client.query("DELETE FROM teacher_documents WHERE id=$1 AND user_id=$2",[docId,teacherId]);
+  await client.query("INSERT INTO teacher_cv_review_history(teacher_id,reviewer_id,action,previous_status,new_status,note) SELECT $1,$2,'document_deleted',COALESCE(teacher_application_status,'pending_review'),COALESCE(teacher_application_status,'pending_review'),$3 FROM users WHERE id=$1",[teacherId,actor.id,"Deleted uploaded file: "+String(found.rows[0].file_name||"document").slice(0,200)]);
+  await client.query("COMMIT");
+ }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}finally{client.release();}
+ let mediaCleanupPending=false;
+ if(storageKey){try{await removeStoredMedia(storageKey);}catch{
+  mediaCleanupPending=true;
+  await pool.query("INSERT INTO teacher_application_media_cleanup(teacher_id,storage_key) VALUES($1,$2) ON CONFLICT(storage_key) DO NOTHING",[teacherId,storageKey]);
+  try{await removeStoredMedia(storageKey);await pool.query("DELETE FROM teacher_application_media_cleanup WHERE teacher_id=$1 AND storage_key=$2",[teacherId,storageKey]);mediaCleanupPending=false;}catch{/* Cleanup remains queued for retry. */}
+ }}
+ res.json({deleted:true,teacherId,documentId:docId,mediaCleanupPending,message:mediaCleanupPending?"File record deleted; stored media cleanup is queued for retry.":"Uploaded file and stored contents deleted."});
+});
 async function authorizeCvMutation(actor:any,teacherId:number){
  if(Number(actor?.id)===teacherId) return true;
  if(isOwner(actor)) return true;

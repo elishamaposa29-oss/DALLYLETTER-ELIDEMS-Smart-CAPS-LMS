@@ -12,6 +12,7 @@ type DirectoryUser = {
   grade?: string | null;
   subject?: string | null;
   avatarUrl?: string | null;
+  unreadCount?: number;
 };
 
 type UserGroup = "all" | "everyone" | "teachers" | "prefects" | "learners" | "managers" | "both";
@@ -103,7 +104,7 @@ export function UserSelector({
       {!suppliedUsers && loading ? <p className="p-3 text-sm text-muted-foreground">Loading people…</p> : error ? <p role="alert" className="p-3 text-sm text-destructive">{error}</p> : visibleUsers.length === 0 ? <p className="p-3 text-sm text-muted-foreground">No matching people.</p> : visibleUsers.map(person => <div key={person.id} className="flex items-center gap-2 rounded-md p-2 hover:bg-muted/60">
         <UserProfileLink userId={person.id} name={person.name} avatarUrl={person.avatarUrl} className="min-w-0 flex-1" />
         <div className="min-w-0 flex-1 text-xs capitalize text-muted-foreground">{person.isPrefect ? "Prefect" : String(person.role ?? "learner").replaceAll("_", " ")}{person.grade ? " · " + person.grade : ""}</div>
-        <button type="button" role="option" aria-selected={String(person.id) === String(value)} disabled={disabled} onClick={() => choose(person)} className="rounded-md border px-2 py-1 text-xs hover:bg-muted">Select</button>
+        {(person.unreadCount ?? 0) > 0 && <span className="rounded-md border-2 border-[#FFD700] bg-[#0B1E3A] px-1.5 py-1 text-[10px] font-bold text-[#FFD700]">{person.unreadCount! > 99 ? "99+" : person.unreadCount}</span>}<button type="button" role="option" aria-selected={String(person.id) === String(value)} disabled={disabled} onClick={() => choose(person)} className="rounded-md border px-2 py-1 text-xs hover:bg-muted">Select</button>
       </div>)}
     </div>
   </div>;

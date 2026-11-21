@@ -146,7 +146,7 @@ export default function AdminAISettings() {
         </div>
 
         {/* Current status */}
-        <Card className={status?.isLive ? "border-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/20" : "border-amber-200 bg-amber-50/50 dark:bg-amber-950/20"}>
+        <Card className={status?.isLive ? "border-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/20" : "dl-status-warning border-amber-200 bg-amber-50/50 dark:bg-amber-950/20"}>
           <CardContent className="p-4 flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className={`p-2.5 rounded-xl ${status?.isLive ? "bg-emerald-100 dark:bg-emerald-900" : "bg-amber-100 dark:bg-amber-900"}`}>
@@ -159,7 +159,7 @@ export default function AdminAISettings() {
                 </p>
               </div>
             </div>
-            <Badge variant="outline" className={status?.isLive ? "border-emerald-400 text-emerald-700" : "border-amber-400 text-amber-700"}>
+            <Badge variant="outline" className={status?.isLive ? "border-emerald-400 text-emerald-700" : "dl-status-warning border-amber-400 text-amber-700"}>
               {status?.provider ?? "mock"}
             </Badge>
           </CardContent>

@@ -173,7 +173,7 @@ export default function StudentPayments() {
     switch (status) {
       case "paid": return <CheckCircle2 className="h-5 w-5 text-emerald-500" />;
       case "partially_paid": return <Clock className="h-5 w-5 text-sky-600" />;
-      case "pending": return <Clock className="h-5 w-5 text-amber-500" />;
+      case "pending": return <Clock className="h-5 w-5 text-amber-500 dl-status-pending-text" />;
       case "overdue": return <AlertTriangle className="h-5 w-5 text-red-500" />;
       case "failed": return <XCircle className="h-5 w-5 text-red-600" />;
       case "cancelled": return <XCircle className="h-5 w-5 text-muted-foreground" />;
@@ -185,7 +185,7 @@ export default function StudentPayments() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "paid": return <Badge className="bg-emerald-500/10 text-emerald-700 border border-emerald-300 font-semibold">✓ Paid</Badge>;
-      case "pending": return <Badge className="bg-amber-500/10 text-amber-700 border border-amber-300 font-semibold">⏳ Pending</Badge>;
+      case "pending": return <Badge className="dl-status-pending bg-amber-500/10 text-amber-700 border border-amber-300 font-semibold">⏳ Pending</Badge>;
       case "partially_paid": return <Badge className="bg-sky-500/10 text-sky-700 border border-sky-300 font-semibold">Partially paid</Badge>;
       case "overdue": return <Badge className="bg-red-500/10 text-red-700 border border-red-300 font-semibold">⚠ Overdue</Badge>;
       case "failed": return <Badge className="bg-red-500/10 text-red-700 border border-red-300 font-semibold">✕ Payment failed</Badge>;

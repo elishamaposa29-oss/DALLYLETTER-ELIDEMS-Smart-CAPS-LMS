@@ -336,10 +336,10 @@ export default function StudentLessons() {
           <TextInput style={s.searchInput} placeholder="Search lessons..." placeholderTextColor="rgba(255,255,255,0.5)" value={search} onChangeText={setSearch} />
         </View>
         <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
-          <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: !showSavedOnly }} onPress={() => setShowSavedOnly(false)} style={{ paddingHorizontal: 13, paddingVertical: 8, borderRadius: 9, backgroundColor: !showSavedOnly ? "#FFC72C" : "rgba(255,255,255,0.12)" }}>
+          <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: !showSavedOnly }} onPress={() => setShowSavedOnly(false)} style={{ paddingHorizontal: 13, paddingVertical: 8, borderRadius: 9, backgroundColor: !showSavedOnly ? "#D6AD3B" : "rgba(255,255,255,0.12)" }}>
             <Text style={{ color: !showSavedOnly ? "#0A1931" : "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" }}>All lessons</Text>
           </TouchableOpacity>
-          <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: showSavedOnly }} onPress={() => setShowSavedOnly(true)} style={{ paddingHorizontal: 13, paddingVertical: 8, borderRadius: 9, backgroundColor: showSavedOnly ? "#FFC72C" : "rgba(255,255,255,0.12)", flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: showSavedOnly }} onPress={() => setShowSavedOnly(true)} style={{ paddingHorizontal: 13, paddingVertical: 8, borderRadius: 9, backgroundColor: showSavedOnly ? "#D6AD3B" : "rgba(255,255,255,0.12)", flexDirection: "row", alignItems: "center", gap: 6 }}>
             <Feather name="bookmark" size={13} color={showSavedOnly ? "#0A1931" : "#fff"} />
             <Text style={{ color: showSavedOnly ? "#0A1931" : "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" }}>Saved offline ({Object.keys(savedForOffline).length})</Text>
           </TouchableOpacity>

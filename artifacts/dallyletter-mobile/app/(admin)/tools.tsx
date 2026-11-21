@@ -1,3 +1,4 @@
+import { FeedbackMessage } from "@/components/FeedbackMessage";
 import { Feather } from "@expo/vector-icons";
 import { getApiUrl } from "@workspace/api-client-react";
 import { router, useLocalSearchParams } from "expo-router";
@@ -181,8 +182,8 @@ export default function OwnerTools() {
         {choices.map(x=><TouchableOpacity key={x.id} style={[s.chip,{backgroundColor:section===x.id?colors.primary:colors.card}]} onPress={()=>router.replace({pathname:"/(admin)/tools",params:{section:x.id}} as any)}><Text style={{color:section===x.id?"#fff":colors.foreground,fontSize:12}}>{x.title}</Text></TouchableOpacity>)}
       </ScrollView>
       {loading?<View style={[s.card,s.row]}><ActivityIndicator color={colors.primary}/><Text style={s.body}>Loading live data…</Text></View>:null}
-      {error?<View style={[s.card,{borderColor:"#dc2626"}]}><Text style={{color:"#dc2626",fontWeight:"700"}}>Could not load/action failed</Text><Text style={s.body}>{error}</Text></View>:null}
-      {notice?<View style={s.card}><Text style={{color:"#15803d",fontWeight:"700"}}>{notice}</Text></View>:null}
+      <FeedbackMessage message={error} tone="error" onDismiss={() => setError("")} />
+      <FeedbackMessage message={notice} tone="success" onDismiss={() => setNotice("")} />
       <TouchableOpacity style={[s.button,{backgroundColor:colors.card,borderWidth:1,borderColor:colors.border}]} onPress={()=>void load()} disabled={loading||busy}><Text style={[s.buttonText,{color:colors.foreground}]}>Refresh</Text></TouchableOpacity>
 
       {section==="command-center" && data && <>

@@ -6,7 +6,7 @@ function walk(dir){for(const e of fs.readdirSync(dir,{withFileTypes:true})){cons
 walk(root);
 const css=[
  "/* dl-motion-2049 */",
- "html{scroll-behavior:smooth}body:before{content:\"\";position:fixed;z-index:50;top:0;left:0;width:100%;height:2px;transform:scaleX(var(--page-progress,0));transform-origin:left;background:linear-gradient(90deg,#b38b00,#f3df8b,#62d7ff);box-shadow:0 0 14px #62d7ff;pointer-events:none}",
+ "html{scroll-behavior:smooth}body:before{content:\"\";position:fixed;z-index:50;top:0;left:0;width:100%;height:2px;transform:scaleX(var(--page-progress,0));transform-origin:left;background:linear-gradient(90deg,#A87919,#f3df8b,#62d7ff);box-shadow:0 0 14px #62d7ff;pointer-events:none}",
  ".hero{isolation:isolate}.hero .eyebrow{animation:dl-rise .8s both}.hero h1{animation:dl-rise .95s .08s both}.hero-copy>p{animation:dl-rise .95s .16s both}.hero .actions{animation:dl-rise .95s .24s both}",
  ".hero-art{perspective:1100px;animation:dl-float-in 1.2s .12s both}.dl-browser{transform-style:preserve-3d;transition:transform .45s cubic-bezier(.2,.75,.25,1),box-shadow .45s;will-change:transform;position:relative;overflow:hidden}",
  ".dl-browser:after,.dl-role-screen:after{content:\"\";position:absolute;inset:0;pointer-events:none;background:linear-gradient(110deg,transparent 25%,rgba(255,255,255,.42) 48%,transparent 65%);transform:translateX(-130%);animation:dl-sheen 6s ease-in-out infinite}",
