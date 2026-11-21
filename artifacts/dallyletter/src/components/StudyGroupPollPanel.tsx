@@ -50,6 +50,7 @@ export function StudyGroupPollPanel({ groupId, allowPolls = true, inline = false
   const [autoMark, setAutoMark] = useState(false);
   const [correctOptionIndex, setCorrectOptionIndex] = useState(0);
   const [marks, setMarks] = useState<Record<number, PollMarkResult>>({});
+  const [deletingPollId, setDeletingPollId] = useState<number | null>(null);
   const pollsEnabled=allowPolls;
 
   const load = useCallback(async () => {
@@ -85,6 +86,14 @@ export function StudyGroupPollPanel({ groupId, allowPolls = true, inline = false
     finally { setCreating(false); }
   };
 
+  const removePoll = async (item: ChatPoll) => {
+    if (!item.poll.canDelete || !window.confirm("Permanently delete this poll and all its votes?")) return;
+    setDeletingPollId(item.poll.id);
+    try { await apiJson(`/api/chat/polls/${item.poll.id}`, { method: "DELETE" }); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : "Poll deletion failed."); }
+    finally { setDeletingPollId(null); }
+  };
+
   const vote = async (poll: ChatPoll, optionId: number) => {
     const selectedIds = poll.poll.allowMultiple
       ? [...poll.options.filter(option => option.selected && option.id !== optionId).map(option => option.id), ...(poll.options.some(option => option.id === optionId && option.selected) ? [] : [optionId])]
@@ -116,7 +125,7 @@ export function StudyGroupPollPanel({ groupId, allowPolls = true, inline = false
     </form>}
     {error && <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
     {!inline && (loading && polls.length===0 ? <p className="text-xs text-muted-foreground">Loading group polls…</p> : polls.length===0 ? <p className="rounded-lg border border-dashed p-3 text-center text-xs text-muted-foreground">No group polls yet. Create one to get everyone participating.</p> : polls.map(item => <Card key={item.poll.id} className="space-y-3 p-4">
-      <div className="flex items-start justify-between gap-2"><p className="font-semibold text-sm">{item.poll.question}</p><span className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground">{item.poll.closed ? "Closed" : "Active"}</span></div>
+      <div className="flex items-start justify-between gap-2"><p className="font-semibold text-sm">{item.poll.question}</p><div className="flex items-center gap-2"><span className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground">{item.poll.closed ? "Closed" : "Active"}</span>{item.poll.canDelete && <Button type="button" size="icon" variant="ghost" className="h-7 w-7 text-destructive" aria-label="Delete poll" title="Delete poll" disabled={deletingPollId===item.poll.id} onClick={()=>void removePoll(item)}><Trash2 className="h-3.5 w-3.5"/></Button>}</div></div>
       <div className="space-y-2">{item.options.map(option => <button key={option.id} type="button" disabled={item.poll.closed} onClick={() => void vote(item, option.id)} className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-70 ${option.selected ? "border-primary bg-primary/10" : "hover:bg-muted"}`}><span>{option.selected ? "✓ " : ""}{option.label}</span><span className="text-xs tabular-nums text-muted-foreground">{option.voteCount}</span></button>)}</div>
       <p className="text-[11px] text-muted-foreground">{item.totalVotes} vote{item.totalVotes===1?"":"s"} · {item.poll.allowMultiple?"Multiple choices":"Choose one"}</p>
       {marks[item.poll.id]?.isCorrect !== undefined && <p role="status" className={`rounded-md p-2 text-xs font-medium ${marks[item.poll.id].isCorrect ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>{marks[item.poll.id].isCorrect ? "Correct answer!" : `Not correct. Correct answer: ${marks[item.poll.id].correctLabel ?? "See teacher feedback"}`}</p>}
