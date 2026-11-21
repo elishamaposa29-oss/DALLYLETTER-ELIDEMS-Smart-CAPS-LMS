@@ -110,6 +110,7 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
   const monthDays = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
   const mondayOffset = (monthStart.getDay() + 6) % 7;
   const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const holidayMap = useMemo(() => zimbabwePublicHolidays(monthStart.getFullYear()), [monthStart.getFullYear()]);
 
   useEffect(() => {
     let active = true;
@@ -215,7 +216,7 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
           const isAbsent = status?.status === "absent";
           const isPresent = status?.status === "present";
           const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-          const holidayName = zimbabwePublicHolidays(monthStart.getFullYear()).get(key);
+          const holidayName = holidayMap.get(key);
           const isFuture = key > today;
           const isPastUnrecorded = key < today && !status;
           // Saved app-access marks always win. Calendar metadata styles unrecorded dates only.
@@ -230,7 +231,7 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
                   : isFuture
                     ? "bg-[#0f2a5a]/[0.08] text-[#0f2a5a] border-[#0f2a5a]/25 dark:bg-[#0f2a5a]/30 dark:text-[#f1f6ff] dark:border-[#8fb4ec]"
                     : "bg-card text-foreground border-border";
-          const calendarLabel = isAbsent ? "Absence recorded" : isPresent ? "Dallyletter opened" : holidayName || (isWeekend ? "Weekend · no attendance prediction" : isFuture ? "Upcoming weekday · no attendance prediction" : isPastUnrecorded ? "Past date · no record saved" : "No daily record");
+          const calendarLabel = isAbsent ? "Absence recorded" : isPresent ? "Dallyletter opened" : holidayName ? `${holidayName} · no daily record` : isWeekend ? "Weekend · no daily record" : isFuture ? "Upcoming weekday · no attendance prediction" : isPastUnrecorded ? "Past date · no record saved" : "No daily record";
           return (
             <button type="button" key={key} aria-pressed={selectedDate === key} onClick={() => setSelectedDate(key)} title={`${formatDate(key)} · ${calendarLabel}${status ? ` · ${status.open_count} app opens` : ""}`} aria-label={`${formatDate(key)}: ${calendarLabel}`} className={`relative flex min-h-[42px] flex-col items-center justify-center rounded-lg border text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f2a5a] sm:min-h-[54px] ${colorClass} ${isToday ? "border-2 border-[#0f2a5a] outline outline-1 outline-offset-1 outline-[#0f2a5a]" : ""} ${selectedDate === key ? "ring-2 ring-[#0f2a5a] ring-offset-1" : ""}`}>
               <span>{day}</span>
