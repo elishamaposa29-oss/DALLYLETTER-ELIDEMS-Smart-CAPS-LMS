@@ -69,16 +69,21 @@ async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]
   // An accepted connection must unlock the existing private-message route,
   // even when the recipient requires approval for first-contact messages.
   if (await hasAcceptedProfileConnection(sender.id, recipientId)) return true;
-  if (await isProfileChatApprovalRequired(recipientId)) return false;
+  // Profile Hub direct messages are open by default. Either participant may
+  // require an accepted connection before a new private conversation.
+  const [senderRequiresApproval, recipientRequiresApproval] = await Promise.all([
+    isProfileChatApprovalRequired(sender.id),
+    isProfileChatApprovalRequired(recipientId),
+  ]);
+  if (senderRequiresApproval || recipientRequiresApproval) return false;
   const senderRole = normalizeRole(sender.role);
   const recipientRole = normalizeRole(recipient.role);
   const senderIsManager = ["junior_manager","senior_manager","manager"].includes(senderRole) || (senderRole === "teacher" && sender.isManager === true);
   if (isOwnerRole(recipientRole) && senderRole === "admin") return false;
   if (senderIsManager && isOwnerRole(recipientRole) && !(await managerHasPermission(sender, "owner.chat"))) return false;
   if (senderIsManager && !isOwnerRole(recipientRole) && (!canModerateUser(sender, recipient) || !(await managerHasPermission(sender, "messages.send")))) return false;
-  if (senderRole === "student") {
-    return recipientRole === "teacher" || isOwnerRole(recipientRole) || recipient.isPrefect === true;
-  }
+  // Do not apply classroom role hierarchy to Profile Hub private conversations.
+  // Manager scope and Owner-contact authorization above remain enforced.
   return true;
 }
 
@@ -110,7 +115,9 @@ async function canViewPrivateConversation(user: NonNullable<Express.Request["cur
       and(eq(messagesTable.senderId, recipientId), eq(messagesTable.recipientId, user.id)),
     ))
     .limit(1);
-  return Boolean(conversation);
+  // With both profiles open to everyone, a participant may open a new thread
+  // before the first message exists; membership is still limited to these two users.
+  return true;
 }
 
 function messageMediaPath(storageKey: string): string {
