@@ -1,3 +1,4 @@
+import { ACADEMIC_GRADE_OPTIONS } from "@workspace/api-client-react/academic-grades";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Link } from "wouter";
 import UserProfileLink from "@/components/UserProfileLink";
@@ -159,7 +160,7 @@ export default function TeacherClasses() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              {["Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"].map(g => (
+                              {ACADEMIC_GRADE_OPTIONS.map(g => (
                                 <SelectItem key={g} value={g}>{g}</SelectItem>
                               ))}
                             </SelectContent>
@@ -400,8 +401,8 @@ function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean
       </h4>
       <div className="space-y-2">
         {unresolved.map(hand => (
-          <div key={hand.id} className="bg-destructive/5 border border-destructive/20 rounded p-2 text-sm flex items-start gap-2">
-            <div className="flex-1">
+          <div key={hand.id} className="grid min-w-0 grid-cols-1 items-start gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-3 text-sm sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+            <div className="min-w-0">
               <UserProfileLink userId={hand.studentId} name={hand.studentName} className="font-medium" />
               {hand.question && <p className="text-muted-foreground mt-0.5">{hand.question}</p>}
               {hand.mediaUrl && <div className="mt-2"><AuthenticatedMedia
@@ -410,20 +411,21 @@ function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean
                 title={"Attachment from " + hand.studentName}
               /></div>}
             </div>
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-              <Input aria-label={`Reply to ${hand.studentName}`} className="min-w-[160px] flex-1" placeholder="Write a reply to this learner…" value={handReplies[hand.id] ?? ""} onChange={event => setHandReplies(current => ({ ...current, [hand.id]: event.target.value }))} />
-              <label className="inline-flex h-9 cursor-pointer items-center gap-1 rounded-md border px-3 text-xs hover:bg-muted" title="Attach to this reply">
-                <Paperclip className="h-3 w-3" />{handReplyFiles[hand.id]?.name ?? "Attach"}
+            <div className="flex min-w-0 flex-col gap-2">
+              <Input aria-label={`Reply to ${hand.studentName}`} className="w-full min-w-0" placeholder="Write a reply to this learner…" value={handReplies[hand.id] ?? ""} onChange={event => setHandReplies(current => ({ ...current, [hand.id]: event.target.value }))} />
+              <label className="inline-flex h-9 max-w-full min-w-0 cursor-pointer items-center gap-2 self-start rounded-md border px-3 text-xs hover:bg-muted" title="Attach to this reply">
+                <Paperclip className="h-3 w-3 shrink-0" /><span className="max-w-[220px] truncate">{handReplyFiles[hand.id]?.name ?? "Attach a file"}</span>
                 <input type="file" className="sr-only" accept="image/*,video/*,audio/*,application/pdf,.doc,.docx" onChange={event => { const file = event.target.files?.[0] ?? null; event.target.value = ""; setHandReplyFiles(current => ({ ...current, [hand.id]: file })); }} />
               </label>
-              <Button variant="default" size="sm" className="h-9" disabled={sendingHandReply === hand.id} onClick={() => void handleReply(hand.id, hand.studentId, hand.studentName).catch(error => toast({ variant: "destructive", title: "Reply failed", description: error instanceof Error ? error.message : "Could not send reply." }))}>
+              <Button variant="default" size="sm" className="h-9 w-full sm:w-auto sm:self-start" disabled={sendingHandReply === hand.id} onClick={() => void handleReply(hand.id, hand.studentId, hand.studentName).catch(error => toast({ variant: "destructive", title: "Reply failed", description: error instanceof Error ? error.message : "Could not send reply." }))}>
                 {sendingHandReply === hand.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}<span className="ml-1">Send</span>
               </Button>
             </div>
+            <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 sm:col-span-2">
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 px-2 text-xs text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 shrink-0"
+              className="h-8 px-3 text-xs text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700"
               onClick={() => handleLowerHand(hand.id, hand.studentName)}
               disabled={loweringId === hand.id}
               title="Lower this hand (mark as resolved)"
@@ -431,9 +433,10 @@ function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean
               {loweringId === hand.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
               <span className="ml-1">Lower</span>
             </Button>
-            <Button variant="destructive" size="sm" className="h-7 px-2 text-xs shrink-0" disabled={deletingHandId === hand.id} onClick={() => void handleDeleteHand(hand.id)} title="Delete hand raise and attached media">
+            <Button variant="destructive" size="sm" className="h-8 px-3 text-xs" disabled={deletingHandId === hand.id} onClick={() => void handleDeleteHand(hand.id)} title="Delete hand raise and attached media">
               {deletingHandId === hand.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}<span className="ml-1">Delete</span>
             </Button>
+            </div>
           </div>
         ))}
       </div>

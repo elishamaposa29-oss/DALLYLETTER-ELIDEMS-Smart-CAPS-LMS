@@ -1,3 +1,4 @@
+import { FeedbackMessage } from "@/components/FeedbackMessage";
 import { getApiUrl } from "@workspace/api-client-react";
 import * as FileSystem from "expo-file-system/legacy";
 import { useCallback, useEffect, useState } from "react";
@@ -22,7 +23,7 @@ export default function QualificationReviewWorkspaceMobile(){
  if(!user||!token)return <View style={{flex:1,backgroundColor:colors.background,padding:20}}><Text style={body}>Sign in to review qualifications.</Text></View>;
  return <ScrollView style={{flex:1,backgroundColor:colors.background}} contentContainerStyle={{padding:15,paddingBottom:40}}>
   <View style={{...card,backgroundColor:"#0f2a5a",borderColor:"#0f2a5a"}}><Text style={{color:"#e8c35a",fontSize:11,fontWeight:"800"}}>TEACHER APPLICATIONS</Text><Text style={{color:"#fff",fontSize:22,fontWeight:"900",marginTop:5}}>Qualification verification</Text><Text style={{color:"#dbeafe",marginTop:5}}>Review submitted certificates independently. Only Owner or an individually authorized Senior Manager can verify or reject.</Text>{action("Refresh queue",()=>void load(),loading,true)}</View>
-  {error?<Text accessibilityRole="alert" style={{color:"#dc2626",marginBottom:8}}>{error}</Text>:null}
+  <FeedbackMessage message={error} tone="error" onDismiss={() => setError("")} />
   <View style={{...card,flexDirection:"row",justifyContent:"space-between"}}><Text style={body}>Pending: {rows.length}</Text><Text style={body}>{canVerify?"Verification enabled":"View only"}</Text></View>
   {!canView?<View style={card}><Text style={muted}>This account does not have qualifications.view permission.</Text></View>:loading?<ActivityIndicator color={colors.primary}/>:rows.length===0?<View style={card}><Text style={muted}>No pending qualifications are available in your permitted scope.</Text></View>:rows.map(row=><View key={row.id} style={card}>
    <Text style={{color:colors.foreground,fontSize:16,fontWeight:"900"}}>{row.title||"Qualification"} · #{row.id}</Text><Text style={body}>{row.teacher_name||"Teacher #"+row.user_id}</Text><Text style={muted}>{row.institution||"Institution not supplied"} · {row.year||"Year not supplied"} · {row.verification_status||"pending"}</Text>

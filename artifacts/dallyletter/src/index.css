@@ -100,13 +100,13 @@
   --primary: 240 80% 25%;
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 45 100% 50%;
+  --secondary: 43 66% 45%;
   --secondary-foreground: 240 80% 25%;
 
   --muted: 240 10% 90%;
   --muted-foreground: 240 10% 40%;
 
-  --accent: 45 100% 50%;
+  --accent: 43 66% 45%;
   --accent-foreground: 240 80% 25%;
 
   --destructive: 0 84% 60%;
@@ -116,7 +116,7 @@
   --ring: 240 80% 25%;
   
   --chart-1: 240 80% 25%;
-  --chart-2: 45 100% 50%;
+  --chart-2: 43 66% 45%;
   --chart-3: 200 80% 40%;
   --chart-4: 300 80% 40%;
   --chart-5: 350 80% 40%;
@@ -200,13 +200,13 @@
   --primary: 240 80% 60%;
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 45 100% 50%;
+  --secondary: 43 66% 45%;
   --secondary-foreground: 240 80% 25%;
 
   --muted: 240 10% 20%;
   --muted-foreground: 240 10% 60%;
 
-  --accent: 45 100% 50%;
+  --accent: 43 66% 45%;
   --accent-foreground: 240 80% 25%;
 
   --destructive: 0 84% 60%;
@@ -216,7 +216,7 @@
   --ring: 240 80% 60%;
   
   --chart-1: 240 80% 60%;
-  --chart-2: 45 100% 50%;
+  --chart-2: 43 66% 45%;
   --chart-3: 200 80% 60%;
   --chart-4: 300 80% 60%;
   --chart-5: 350 80% 60%;
@@ -360,3 +360,289 @@
     inset: -1px;
   }
 }
+@layer components {
+  /* Every inline error surface inherits the same unmistakable failure treatment. */
+  [role="alert"]:not([data-feedback="unstyled"]) {
+    color: #991b1b;
+    border-color: #fecaca;
+    background-color: #fef2f2;
+    border-radius: 0.5rem;
+  }
+  .dark [role="alert"]:not([data-feedback="unstyled"]) {
+    color: #fecaca;
+    border-color: #7f1d1d;
+    background-color: rgb(69 10 10 / 0.35);
+  }
+}
+
+
+/* Dallyletter Elidems signature bronze-gold system.
+   Gold is a brand accent, never flat yellow. Keep status meaning in text/icons. */
+:root {
+  --dl-gold-foil: #f8e8ad;
+  --dl-gold-light: #e6c66c;
+  --dl-gold: #c69a35;
+  --dl-gold-rich: #9a7020;
+  --dl-gold-deep: #674713;
+  --dl-gold-glow: rgb(198 154 53 / .34);
+  --dl-gold-wash: #fbf5e6;
+}
+.dark {
+  --dl-gold-foil: #fff0bd;
+  --dl-gold-light: #e9ca75;
+  --dl-gold: #d4aa48;
+  --dl-gold-rich: #a77a25;
+  --dl-gold-deep: #76531a;
+  --dl-gold-glow: rgb(212 170 72 / .4);
+  --dl-gold-wash: rgb(198 154 53 / .13);
+}
+
+/* Legacy yellow/amber Tailwind utilities are remapped to bronze-gold.
+   These selectors intentionally affect UI only; logos and brand artwork stay untouched. */
+[class*="bg-amber-"], [class*="bg-yellow-"] {
+  background-color: var(--dl-gold-wash) !important;
+  background-image: linear-gradient(112deg,
+    color-mix(in srgb, var(--dl-gold-foil) 72%, transparent),
+    color-mix(in srgb, var(--dl-gold-light) 42%, transparent) 24%,
+    color-mix(in srgb, var(--dl-gold) 24%, transparent) 52%,
+    color-mix(in srgb, var(--dl-gold-foil) 62%, transparent) 72%,
+    color-mix(in srgb, var(--dl-gold-rich) 22%, transparent)) !important;
+  background-size: 220% 100%;
+  animation: dl-gold-sheen 5.2s ease-in-out infinite;
+}
+[class*="text-amber-"], [class*="text-yellow-"] {
+  color: var(--dl-gold-rich) !important;
+  animation: dl-gold-glint 5.4s ease-in-out infinite;
+}
+.dark [class*="text-amber-"], .dark [class*="text-yellow-"] {
+  color: var(--dl-gold-light) !important;
+}
+[class*="border-amber-"], [class*="border-yellow-"] {
+  border-color: color-mix(in srgb, var(--dl-gold) 76%, white) !important;
+}
+.dark [class*="border-amber-"], .dark [class*="border-yellow-"] {
+  border-color: color-mix(in srgb, var(--dl-gold) 78%, #30230b) !important;
+}
+[class*="ring-amber-"], [class*="ring-yellow-"] {
+  --tw-ring-color: var(--dl-gold-light) !important;
+}
+[class*="shadow-amber-"], [class*="shadow-yellow-"] {
+  --tw-shadow-color: var(--dl-gold-glow) !important;
+}
+[class*="from-amber-"], [class*="from-yellow-"] {
+  --tw-gradient-from: var(--dl-gold-light) var(--tw-gradient-from-position) !important;
+}
+[class*="via-amber-"], [class*="via-yellow-"] {
+  --tw-gradient-via: var(--dl-gold) var(--tw-gradient-via-position) !important;
+}
+[class*="to-amber-"], [class*="to-yellow-"] {
+  --tw-gradient-to: var(--dl-gold-rich) var(--tw-gradient-to-position) !important;
+}
+@keyframes dl-gold-sheen {
+  0%, 58% { background-position: 115% 50%; }
+  100% { background-position: -115% 50%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [class*="bg-amber-"], [class*="bg-yellow-"], [class*="text-amber-"], [class*="text-yellow-"] {
+    animation: none !important;
+    background-position: 50% 50%;
+  }
+}
+
+/* Moving foil highlight for primary gold actions and metallic borders. */
+.premium-button:not([class*="border"]),
+button[class*="bg-[linear-gradient"] {
+  background-size: 220% 100% !important;
+  animation: dl-gold-sheen 4.6s ease-in-out infinite;
+}
+.premium-button__stroke {
+  stroke-dasharray: .18 .82;
+  animation: dl-gold-stroke 6s linear infinite;
+}
+@keyframes dl-gold-stroke {
+  to { stroke-dashoffset: -1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .premium-button, button[class*="bg-[linear-gradient"], .premium-button__stroke {
+    animation: none !important;
+  }
+}
+
+@keyframes dl-gold-glint {
+  0%, 100% { filter: drop-shadow(0 0 0 rgb(198 154 53 / 0)); }
+  50% { filter: drop-shadow(0 0 2px rgb(198 154 53 / .34)); }
+}
+
+/* Persistent D-logo unread indicator: exact navy + #FFD700 identity. */
+.dl-unread-gold-badge {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  color: #FFD700 !important;
+  background-color: #0B1E3A !important;
+  border-color: #C9A227 !important;
+  box-shadow: 0 0 0 1px #F2D98C, 0 0 12px rgb(201 162 39 / .58), inset 0 1px 0 #F2D98C, inset 0 -1px 0 rgb(201 162 39 / .72) !important;
+}
+.dl-unread-gold-badge::before {
+  content: "✦";
+  position: absolute;
+  z-index: 4;
+  top: -5px;
+  right: -4px;
+  color: #F2D98C;
+  font-size: 9px;
+  line-height: 1;
+  pointer-events: none;
+  text-shadow: 0 0 5px #FFD700;
+  animation: dl-badge-sparkle 2.4s ease-in-out infinite;
+}
+@keyframes dl-badge-sparkle {
+  0%, 100% { opacity: .45; transform: scale(.8) rotate(0deg); }
+  50% { opacity: 1; transform: scale(1.18) rotate(24deg); }
+}
+.dl-unread-gold-badge::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  top: -35%;
+  bottom: -35%;
+  left: -65%;
+  width: 42%;
+  pointer-events: none;
+  transform: skewX(-18deg);
+  background: linear-gradient(90deg, transparent, #C9A227, #F2D98C, #FFD700, transparent);
+  animation: dl-badge-foil-sweep 3.8s ease-in-out infinite;
+}
+.dl-unread-gold-badge img, .dl-unread-gold-badge span {
+  position: relative;
+  z-index: 3;
+}
+@keyframes dl-badge-foil-sweep {
+  0%, 58% { left: -65%; opacity: .1; }
+  78% { opacity: .9; }
+  100% { left: 135%; opacity: .1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dl-unread-gold-badge::after, .dl-unread-gold-badge::before { animation: none !important; }
+}
+
+/* Semantic amber is reserved for mixed attendance and warnings; it must not be
+   recolored into the decorative brand-gold accent system. */
+.dl-status-mixed {
+  background-color: #fcd34d !important;
+  color: #78350f !important;
+  border-color: #d97706 !important;
+  background-image: none !important;
+  animation: none !important;
+}
+.dark .dl-status-mixed,
+.dark .dl-status-mixed [class*="text-amber-"] {
+  background-color: #92400e !important;
+  color: #fff7ed !important;
+  border-color: #f59e0b !important;
+}
+.dl-status-warning {
+  background-color: #fffbeb !important;
+  color: #78350f !important;
+  border-color: #f59e0b !important;
+  background-image: none !important;
+  animation: none !important;
+}
+.dark .dl-status-warning {
+  background-color: #451a03 !important;
+  color: #fef3c7 !important;
+  border-color: #b45309 !important;
+}
+.dl-status-warning [class*="bg-amber-"],
+.dl-status-warning [class*="bg-yellow-"] { background-color: #fffbeb !important; background-image: none !important; }
+.dl-status-warning [class*="text-amber-"],
+.dl-status-warning [class*="text-yellow-"] { color: #78350f !important; }
+.dl-status-warning [class*="border-amber-"],
+.dl-status-warning [class*="border-yellow-"] { border-color: #f59e0b !important; }
+.dark .dl-status-warning [class*="bg-amber-"],
+.dark .dl-status-warning [class*="bg-yellow-"] { background-color: #451a03 !important; }
+.dark .dl-status-warning [class*="text-amber-"],
+.dark .dl-status-warning [class*="text-yellow-"] { color: #fef3c7 !important; }
+.dark .dl-status-warning [class*="border-amber-"],
+.dark .dl-status-warning [class*="border-yellow-"] { border-color: #b45309 !important; }
+
+.dl-status-pending,
+.dl-status-suspended,
+.dl-status-upcoming {
+  background-color: #fef3c7 !important;
+  color: #78350f !important;
+  border-color: #d97706 !important;
+  background-image: none !important;
+  animation: none !important;
+}
+.dl-status-pending [class*="bg-amber-"],
+.dl-status-pending [class*="bg-yellow-"],
+.dl-status-suspended [class*="bg-amber-"],
+.dl-status-suspended [class*="bg-yellow-"],
+.dl-status-upcoming [class*="bg-amber-"],
+.dl-status-upcoming [class*="bg-yellow-"] { background-color: #fef3c7 !important; background-image: none !important; }
+.dl-status-pending [class*="text-amber-"],
+.dl-status-pending [class*="text-yellow-"],
+.dl-status-suspended [class*="text-amber-"],
+.dl-status-suspended [class*="text-yellow-"],
+.dl-status-upcoming [class*="text-amber-"],
+.dl-status-upcoming [class*="text-yellow-"] { color: #78350f !important; }
+.dl-status-pending [class*="border-amber-"],
+.dl-status-pending [class*="border-yellow-"],
+.dl-status-suspended [class*="border-amber-"],
+.dl-status-suspended [class*="border-yellow-"],
+.dl-status-upcoming [class*="border-amber-"],
+.dl-status-upcoming [class*="border-yellow-"] { border-color: #d97706 !important; }
+.dark .dl-status-pending,
+.dark .dl-status-suspended,
+.dark .dl-status-upcoming {
+  background-color: #78350f !important;
+  color: #fef3c7 !important;
+  border-color: #f59e0b !important;
+}
+.dark .dl-status-pending [class*="bg-amber-"],
+.dark .dl-status-pending [class*="bg-yellow-"],
+.dark .dl-status-suspended [class*="bg-amber-"],
+.dark .dl-status-suspended [class*="bg-yellow-"],
+.dark .dl-status-upcoming [class*="bg-amber-"],
+.dark .dl-status-upcoming [class*="bg-yellow-"] { background-color: #78350f !important; }
+.dark .dl-status-pending [class*="text-amber-"],
+.dark .dl-status-pending [class*="text-yellow-"],
+.dark .dl-status-suspended [class*="text-amber-"],
+.dark .dl-status-suspended [class*="text-yellow-"],
+.dark .dl-status-upcoming [class*="text-amber-"],
+.dark .dl-status-upcoming [class*="text-yellow-"] { color: #fef3c7 !important; }
+.dark .dl-status-pending [class*="border-amber-"],
+.dark .dl-status-pending [class*="border-yellow-"],
+.dark .dl-status-suspended [class*="border-amber-"],
+.dark .dl-status-suspended [class*="border-yellow-"],
+.dark .dl-status-upcoming [class*="border-amber-"],
+.dark .dl-status-upcoming [class*="border-yellow-"] { border-color: #f59e0b !important; }
+
+.dl-status-today,
+.dl-status-unread {
+  background-color: #f59e0b !important;
+  color: #422006 !important;
+  border-color: #b45309 !important;
+  background-image: none !important;
+  animation: none !important;
+}
+.dark .dl-status-today,
+.dark .dl-status-unread {
+  background-color: #92400e !important;
+  color: #fff7ed !important;
+  border-color: #f59e0b !important;
+}
+.dl-status-unread-surface {
+  background-color: #fffbeb !important;
+  border-color: #fcd34d !important;
+  background-image: none !important;
+}
+.dark .dl-status-unread-surface {
+  background-color: #451a03 !important;
+  border-color: #92400e !important;
+}
+.dl-status-pending-text,
+.dl-status-suspended-text { color: #92400e !important; }
+.dark .dl-status-pending-text,
+.dark .dl-status-suspended-text { color: #fbbf24 !important; }

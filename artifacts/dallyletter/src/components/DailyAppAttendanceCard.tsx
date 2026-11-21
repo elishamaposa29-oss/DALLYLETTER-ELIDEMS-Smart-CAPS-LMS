@@ -100,6 +100,7 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
   const [dailyError, setDailyError] = useState("");
   const [dailyOpen, setDailyOpen] = useState(false);
   const [monthOffset, setMonthOffset] = useState(0);
+  const [selectedDate, setSelectedDate] = useState(todayInLocalZone());
   const [offlineClassCache, setOfflineClassCache] = useState(false);
   const [offlineDailyCache, setOfflineDailyCache] = useState(false);
   const today = todayInLocalZone();
@@ -198,9 +199,9 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-1">
-          <button type="button" aria-label="Previous month" onClick={() => setMonthOffset(value => value - 1)} className="rounded-md border p-1.5 hover:bg-muted"><ChevronLeft className="h-4 w-4" /></button>
+          <button type="button" aria-label="Previous month" onClick={() => { const next = new Date(monthStart.getFullYear(), monthStart.getMonth() - 1, 1); const day = Math.min(Number(selectedDate.slice(8, 10)) || 1, new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate()); setMonthOffset(value => value - 1); setSelectedDate(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`); }} className="rounded-md border p-1.5 hover:bg-muted"><ChevronLeft className="h-4 w-4" /></button>
           <div className="min-w-0 px-1"><p className="text-sm font-semibold text-foreground">{monthLabel}</p><p className="text-xs text-muted-foreground">Saved attendance · offline-ready</p></div>
-          <button type="button" aria-label="Next month" onClick={() => setMonthOffset(value => value + 1)} className="rounded-md border p-1.5 hover:bg-muted"><ChevronRight className="h-4 w-4" /></button>
+          <button type="button" aria-label="Next month" onClick={() => { const next = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1); const day = Math.min(Number(selectedDate.slice(8, 10)) || 1, new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate()); setMonthOffset(value => value + 1); setSelectedDate(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`); }} className="rounded-md border p-1.5 hover:bg-muted"><ChevronRight className="h-4 w-4" /></button>
         </div>
         <Badge variant="outline" className="shrink-0 border-primary/20 bg-primary/5">{recordedCount} recorded</Badge>
       </div>
@@ -220,41 +221,48 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
           const isPresent = !!status && status.present > 0;
           const isMixed = isAbsent && isPresent;
           const holidayName = zimbabwePublicHolidays(monthStart.getFullYear()).get(key);
+          const isExpectedSchoolDay = isFuture && !isWeekend && !holidayName;
           const isPastUnrecorded = key < today && !status && !holidayName;
-          // The date cell itself communicates the register state; keep the summary
-          // cards and the separate fullscreen activity-history dialog untouched.
-          const colorClass = (isFuture || (isToday && !status && !holidayName))
-            ? "bg-slate-50 text-slate-500 border-slate-200 dark:bg-slate-900/60 dark:text-slate-300 dark:border-slate-700"
-            : isMixed
-              ? "bg-amber-100 text-amber-950 border-amber-400 dark:bg-amber-950/60 dark:text-amber-100 dark:border-amber-700"
-              : isAbsent
-                ? "bg-red-100 text-red-900 border-red-400 dark:bg-red-950/60 dark:text-red-100 dark:border-red-700"
-                : isPresent
-                  ? "bg-emerald-100 text-emerald-950 border-emerald-400 dark:bg-emerald-950/60 dark:text-emerald-100 dark:border-emerald-700"
-                  : isPastUnrecorded
-                    ? "bg-orange-100 text-orange-950 border-orange-400 dark:bg-orange-950/60 dark:text-orange-100 dark:border-orange-700"
-                    : holidayName
-                      ? "bg-violet-100 text-violet-950 border-violet-400 dark:bg-violet-950/60 dark:text-violet-100 dark:border-violet-700"
-                      : "bg-card text-foreground border-border";
+          // Saved attendance is authoritative. Predictions only style dates with no saved outcome.
+          // Past unrecorded dates are unknown, never silently treated as absences.
+          const colorClass = isMixed
+            ? "bg-amber-300 text-amber-950 border-amber-500 dark:bg-amber-700 dark:text-white dark:border-amber-400"
+            : isAbsent
+              ? "bg-red-300 text-red-950 border-red-500 dark:bg-red-800 dark:text-white dark:border-red-500"
+              : isPresent
+                ? "bg-emerald-300 text-emerald-950 border-emerald-500 dark:bg-emerald-800 dark:text-white dark:border-emerald-500"
+                : holidayName
+                  ? "bg-violet-300 text-violet-950 border-violet-500 dark:bg-violet-800 dark:text-white dark:border-violet-400"
+                  : isExpectedSchoolDay
+                    ? "bg-[#0f2a5a]/[0.08] text-[#0f2a5a] border-[#0f2a5a]/25 dark:bg-[#0f2a5a]/30 dark:text-[#f1f6ff] dark:border-[#8fb4ec]"
+                    : isWeekend
+                      ? "bg-violet-200 text-violet-950 border-violet-400 dark:bg-violet-900 dark:text-white dark:border-violet-500"
+                      : isPastUnrecorded
+                        ? "bg-orange-200 text-orange-950 border-orange-400 dark:bg-orange-900 dark:text-white dark:border-orange-500"
+                        : "bg-card text-foreground border-border";
           return (
-            <div key={key} title={`${formatDate(key)} · ${isMixed ? "Present and absent sessions" : isAbsent ? "Absence recorded" : isPresent ? "Present" : isPastUnrecorded ? "No attendance record" : holidayName || (isFuture ? "Upcoming date" : "No record")}${status ? ` · ${status.present} present, ${status.absent} absent` : ""}`} aria-label={`${formatDate(key)}: ${isMixed ? "mixed attendance, present and absent sessions" : isAbsent ? "absence recorded" : isPresent ? "present" : isPastUnrecorded ? "past day with no record" : holidayName ? holidayName : isFuture ? "upcoming date" : "no record"}`} className={`relative flex min-h-[42px] flex-col items-center justify-center rounded-lg border text-sm font-semibold transition-colors sm:min-h-[54px] ${colorClass} ${isWeekend ? "ring-1 ring-inset ring-violet-400 dark:ring-violet-600" : ""} ${isToday ? "outline outline-2 outline-offset-1 outline-primary" : ""}`}>
+            <button type="button" key={key} aria-pressed={selectedDate === key} onClick={() => setSelectedDate(key)} title={`${formatDate(key)} · ${isMixed ? "Mixed attendance" : isAbsent ? "Absence recorded" : isPresent ? "Present" : holidayName || (isExpectedSchoolDay ? "Expected school day" : isPastUnrecorded ? "No record saved · historical date" : isWeekend ? "Weekend" : isFuture ? "Upcoming date" : "No attendance record")}${status ? ` · ${status.present} present, ${status.absent} absent` : ""}`} aria-label={`${formatDate(key)}: ${isMixed ? "mixed attendance, present and absent sessions" : isAbsent ? "absence recorded" : isPresent ? "present" : holidayName ? holidayName : isExpectedSchoolDay ? "expected school day" : isPastUnrecorded ? "past date with no saved record" : isWeekend ? "weekend" : isFuture ? "upcoming date" : "no attendance record"}`} className={`relative flex min-h-[42px] flex-col items-center justify-center rounded-lg border text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b38b00] sm:min-h-[54px] ${isMixed ? "dl-status-mixed" : ""} ${colorClass} ${isWeekend ? "border-dashed border-violet-300 dark:border-violet-700" : ""} ${isToday ? "border-2 border-[#0f2a5a] outline outline-1 outline-offset-1 outline-[#0f2a5a]" : ""} ${selectedDate === key ? "ring-2 ring-[#b38b00] ring-offset-1" : ""}`}>
               <span>{day}</span>
               {status && <span className="text-[9px] font-bold leading-3">{status.present > 0 && <span>{status.present}P</span>}{status.present > 0 && status.absent > 0 && <span> · </span>}{status.absent > 0 && <span>{status.absent}A</span>}</span>}
-              {isPastUnrecorded && !holidayName && <span className="text-[9px] font-extrabold leading-3">NO MARK</span>}
               {holidayName && <span title={holidayName} aria-label={holidayName} className="pointer-events-none absolute inset-x-0 bottom-0 truncate px-0.5 text-center text-[8px] font-bold leading-3 text-violet-800 dark:text-violet-200">{holidayName}</span>}
               {isToday && <span className="text-[8px] font-bold uppercase tracking-wide">Today</span>}
-            </div>
+            </button>
           );
         })}
       </div>
+      <div aria-live="polite" className="rounded-lg border border-[#b38b00]/30 bg-muted/30 px-3 py-2">
+        <p className="text-xs font-semibold text-foreground">Selected date · {formatDate(selectedDate)}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{(() => { const item = dayStatus.get(selectedDate); const holiday = zimbabwePublicHolidays(Number(selectedDate.slice(0, 4))).get(selectedDate); const selectedDay = new Date(selectedDate + "T12:00:00").getDay(); const weekend = selectedDay === 0 || selectedDay === 6; return item ? `${item.present} present · ${item.absent} absent` : holiday || (selectedDate > today && !weekend ? "Expected school day · forecast only, not recorded attendance" : selectedDate > today ? "Weekend · no school-day prediction" : selectedDate < today ? "No record saved · this date may be before the learner joined Dallyletter" : "No attendance record saved for today yet."); })()}</p>
+      </div>
       <div className="flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-emerald-400 bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/60" /> Present (green)</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-red-400 bg-red-100 dark:border-red-700 dark:bg-red-950/60" /> Absent (red)</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-amber-400 bg-amber-100 dark:border-amber-700 dark:bg-amber-950/60" /> Mixed sessions (amber)</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-orange-400 bg-orange-100 dark:border-orange-700 dark:bg-orange-950/60" /> Past day not marked (orange)</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-violet-400 bg-violet-100 dark:border-violet-700 dark:bg-violet-950/60" /> Public holiday (violet)</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/60" /> Upcoming / today not yet marked (grey)</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-violet-400 bg-card" /> Weekend outline</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-emerald-500 bg-emerald-300 dark:border-emerald-500 dark:bg-emerald-800" /> Present (green)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-red-500 bg-red-300 dark:border-red-500 dark:bg-red-800" /> Absent (red)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="dl-status-mixed h-2.5 w-2.5 rounded-sm border border-amber-500 bg-amber-300 dark:border-amber-400 dark:bg-amber-700" /> Mixed sessions (amber)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-[#527bb8] bg-[#c9dcff] dark:border-[#8fb4ec] dark:bg-[#244777]" /> Expected school day (future)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-violet-500 bg-violet-300 dark:border-violet-400 dark:bg-violet-800" /> Public holiday (violet)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-orange-400 bg-orange-200 dark:border-orange-500 dark:bg-orange-900" /> Past date · no saved record</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border border-dashed border-violet-500 bg-violet-200 dark:bg-violet-900" /> Weekend (purple · dashed outline)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border-2 border-[#0f2a5a] bg-card" /> Today (navy border)</span>
       </div>
     </div>
   );
@@ -267,7 +275,7 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
             <div>
               <div className="mb-2 flex items-center gap-2 text-[#F4D27A]"><BookOpenCheck className="h-5 w-5" /><span className="text-xs font-semibold uppercase tracking-[0.16em]">Learner record</span></div>
               <CardTitle className="text-xl sm:text-2xl">My attendance register</CardTitle>
-              <CardDescription className="mt-1 text-white/75">Your own recorded class sessions only. Dates and statuses come from saved attendance records.</CardDescription>
+              <CardDescription className="mt-1 text-white/75">Recorded sessions show actual outcomes; future weekdays and known Zimbabwe public holidays are predicted in advance.</CardDescription>
             </div>
             <CalendarDays className="mt-1 h-7 w-7 shrink-0 text-[#F4D27A]" />
           </div>
@@ -298,7 +306,7 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
           {classError && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{classError}</p>}
           {offlineClassCache && <p role="status" className="rounded-lg border border-orange-300 bg-orange-50 p-2 text-xs text-orange-900">Offline mode: showing the last saved attendance records on this device. New changes sync after reconnecting.</p>}
           {renderCalendar()}
-          {!classLoading && !classError && classRecords.length === 0 && <p className="rounded-lg border border-dashed p-3 text-center text-sm text-muted-foreground">No personal attendance records are available yet. The calendar is intentionally empty until the API returns saved records.</p>}
+          {!classLoading && !classError && classRecords.length === 0 && <p className="rounded-lg border border-dashed p-3 text-center text-sm text-muted-foreground">No class sessions have been recorded yet. Future weekdays and known public holidays are still shown as predictions.</p>}
           <p className="text-[11px] text-muted-foreground">A session is counted only when the attendance API returns a saved present or absent record. Unmarked dates are not counted as absences.</p>
         </CardContent>
       </Card>

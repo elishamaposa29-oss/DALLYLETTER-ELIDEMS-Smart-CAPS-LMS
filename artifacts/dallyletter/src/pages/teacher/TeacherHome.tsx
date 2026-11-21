@@ -1,5 +1,4 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
-import RecordBookWorkspace from "@/components/RecordBookWorkspace";
 import { useGetDashboardStats, useListClasses, useGetRecentActivity } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,7 +31,7 @@ export default function TeacherHome() {
             <h1 className="text-3xl font-bold tracking-tight text-foreground">Teacher Portal</h1>
             <p className="mt-1 text-muted-foreground">Your account is active. Your teacher application status is shown below.</p>
           </div>
-          <Card className="border-[#b38b00]/40">
+          <Card className="border-[#A87919]/40">
             <CardContent className="space-y-4 p-6">
               <Badge variant="outline" className="w-fit">{rejected ? "Application not approved" : "Application awaiting review"}</Badge>
               <h2 className="text-xl font-semibold">{rejected ? "Teaching access is disabled" : "Complete your Profile Hub application"}</h2>
@@ -42,10 +41,6 @@ export default function TeacherHome() {
                   : "You can use every Profile Hub feature, prepare your CV, upload certificates, answer the teaching-readiness survey and communicate with authorized reviewers. Lessons, classes, assignments, polls and other teaching operations unlock only after approval."}
               </p>
               {rejected && deadline && <p className="text-sm font-medium">Scheduled learner conversion: {deadline}</p>}
-              <div className="flex flex-wrap gap-2">
-                <Link href="/profile-hub"><Button className="bg-[#0f2a5a] hover:bg-[#173a72]">Open Profile Hub</Button></Link>
-                <Link href="/teacher/qualifications"><Button variant="outline">CV & certificates</Button></Link>
-              </div>
             </CardContent>
           </Card>
         </div>
@@ -148,16 +143,6 @@ export default function TeacherHome() {
                 );
               })}
             </div>
-
-            <Card className="border-[#b38b00]/40 bg-gradient-to-r from-[#0f2a5a]/[0.04] to-[#b38b00]/[0.06]">
-              <CardContent className="flex flex-wrap items-center justify-between gap-4 p-5">
-                <div>
-                  <h2 className="font-bold text-[#0f2a5a]">Academic report builder</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Create period-based learner reports using saved attendance, assignment marks and report-enabled exercise results. Reports go to Senior Manager / Owner review.</p>
-                </div>
-                <Link href="/record-book"><Button className="bg-[#0f2a5a] hover:bg-[#173a72]">Open RecordBook & build report</Button></Link>
-              </CardContent>
-            </Card>
 
             {/* Bottom Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -270,7 +255,6 @@ export default function TeacherHome() {
           </>
         )}
       </div>
-      <RecordBookWorkspace />
       <Dialog open={Boolean(selectedActivity)} onOpenChange={(open) => { if (!open) setSelectedActivity(null); }}>
         <DialogContent>
           <DialogHeader>
@@ -284,7 +268,6 @@ export default function TeacherHome() {
             <div className="flex flex-wrap gap-2 border-t pt-3">
               {/lesson|media|resource/i.test(String(selectedActivity.description)) && <Link href="/teacher/lessons"><Button type="button" size="sm" variant="outline"><BookOpen className="mr-1.5 h-4 w-4" />Open lessons</Button></Link>}
               {/assignment|submission|marking/i.test(String(selectedActivity.description)) && <Link href="/teacher/assignments"><Button type="button" size="sm" variant="outline"><Activity className="mr-1.5 h-4 w-4" />Open assignments</Button></Link>}
-              {/exercise|drawbox|question/i.test(String(selectedActivity.description)) && <Link href="/teacher/exercises"><Button type="button" size="sm" variant="outline"><Activity className="mr-1.5 h-4 w-4" />Open exercise marking</Button></Link>}
               
               {/poll|quiz/i.test(String(selectedActivity.description)) && <Link href="/teacher/polls"><Button type="button" size="sm" variant="outline"><Activity className="mr-1.5 h-4 w-4" />Open polls</Button></Link>}
               {/group|chat|message/i.test(String(selectedActivity.description)) && <Link href="/student/study-groups"><Button type="button" size="sm" variant="outline"><Users className="mr-1.5 h-4 w-4" />Open study groups</Button></Link>}

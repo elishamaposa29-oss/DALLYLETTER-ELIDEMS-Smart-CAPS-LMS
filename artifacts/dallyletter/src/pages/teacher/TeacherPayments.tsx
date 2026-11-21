@@ -21,7 +21,7 @@ export default function TeacherPayments() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "paid": return <Badge className="bg-green-500/10 text-green-600 hover:bg-green-500/20 border-green-500/20">Paid</Badge>;
-      case "pending": return <Badge className="bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20 border-yellow-500/20">Pending</Badge>;
+      case "pending": return <Badge className="bg-[#fbf5e6] text-[#805b18] hover:bg-[#f4e6bf] border-[#c69a35]/60">Pending</Badge>;
       case "overdue": return <Badge variant="destructive">Overdue</Badge>;
       default: return <Badge variant="outline">{status}</Badge>;
     }

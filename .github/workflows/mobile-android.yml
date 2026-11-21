@@ -374,17 +374,25 @@ jobs:
           set -Eeuo pipefail
           api_url="${API_BASE_URL%/}"
           test -n "$api_url" || { echo "::error::EXPO_PUBLIC_API_BASE_URL is empty"; exit 1; }
+          # Render Free instances may sleep. The API startup also runs verified,
+          # idempotent schema/owner checks before binding its port, so allow a full
+          # cold-start window instead of failing after the old ~2-minute budget.
+          deadline=$((SECONDS + 900))
+          attempt=0
           status="000"
-          for attempt in 1 2 3 4 5 6; do
-            status="$(curl --silent --show-error --max-time 15 --output /tmp/dallyletter-api-warmup.json --write-out '%{http_code}' "$api_url/api/healthz" || true)"
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            attempt=$((attempt + 1))
+            status="$(curl --silent --show-error --connect-timeout 10 --max-time 25 --output /tmp/dallyletter-api-warmup.json --write-out '%{http_code}' "$api_url/api/healthz" 2>/dev/null || true)"
             if [ "$status" = "200" ] && grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' /tmp/dallyletter-api-warmup.json 2>/dev/null; then
-              echo "Deployed API is warm and healthy before login smoke test (attempt $attempt/6)."
+              echo "Deployed API is warm and healthy before login smoke test (attempt $attempt; elapsed $((900 - (deadline - SECONDS)))s)."
               exit 0
             fi
-            echo "API warmup attempt $attempt/6 returned HTTP $status; retrying after cold start."
-            sleep 5
+            echo "API warmup attempt $attempt returned HTTP $status; waiting for Render cold start (up to 15 minutes)."
+            sleep 10
           done
-          echo "::error::API did not become healthy before mobile login smoke tests (last HTTP $status)."
+          echo "::error::API did not become healthy within the 15-minute Render cold-start window (last HTTP $status)."
+          echo "Last health response:"
+          cat /tmp/dallyletter-api-warmup.json 2>/dev/null || true
           exit 1
       - name: Launch emulator and run install/launch/upgrade smoke tests
         shell: bash
@@ -449,17 +457,23 @@ jobs:
           set -Eeuo pipefail
           api_url="${API_BASE_URL%/}"
           test -n "$api_url" || { echo "::error::EXPO_PUBLIC_API_BASE_URL is empty"; exit 1; }
+          # Keep the post-smoke health assertion on the same bounded cold-start
+          # policy; this check runs even when emulator tests fail.
+          deadline=$((SECONDS + 900))
+          attempt=0
           status="000"
-          for attempt in 1 2 3 4 5 6; do
-            status="$(curl --silent --show-error --max-time 15 --output /tmp/dallyletter-api-health.json --write-out '%{http_code}' "$api_url/api/healthz" || true)"
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            attempt=$((attempt + 1))
+            status="$(curl --silent --show-error --connect-timeout 10 --max-time 25 --output /tmp/dallyletter-api-health.json --write-out '%{http_code}' "$api_url/api/healthz" 2>/dev/null || true)"
             if [ "$status" = "200" ] && grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' /tmp/dallyletter-api-health.json 2>/dev/null; then
-              echo "Deployed API /api/healthz returned HTTP 200 with status=ok (attempt $attempt/6)."
+              echo "Deployed API /api/healthz returned HTTP 200 with status=ok (attempt $attempt)."
               exit 0
             fi
-            echo "API health attempt $attempt/6 returned HTTP $status; retrying to allow a Render cold start."
-            sleep 5
+            echo "API health attempt $attempt returned HTTP $status; waiting for Render cold start (up to 15 minutes)."
+            sleep 10
           done
-          echo "::error::Deployed API health check failed after six bounded attempts (last HTTP $status). Expected /api/healthz to return status=ok."
+          echo "::error::Deployed API health check failed within the 15-minute cold-start window (last HTTP $status). Expected /api/healthz to return status=ok."
+          cat /tmp/dallyletter-api-health.json 2>/dev/null || true
           exit 1
       - name: Preserve emulator screenshots and diagnostics
         if: always()

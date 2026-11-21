@@ -1,5 +1,4 @@
 import { getApiUrl } from "@workspace/api-client-react";
-import RecordBookWorkspace from "@/components/RecordBookWorkspace";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useGetDashboardStats, useListLessons, useListClasses, useListNotifications } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -10,7 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { useEffect, useRef, useState } from "react";
 import { InstallAppCard } from "@/components/InstallAppCard";
-import { DailyAppAttendanceCard } from "@/components/DailyAppAttendanceCard";
 
 export default function StudentHome() {
   const { user } = useAuth();
@@ -92,7 +90,6 @@ export default function StudentHome() {
 
         <InstallAppCard />
 
-        <DailyAppAttendanceCard profileId={user?.id} />
 
         {/* Prefect Panel */}
         {user?.isPrefect && (
@@ -306,7 +303,6 @@ export default function StudentHome() {
           </div>
         )}
       </div>
-      <RecordBookWorkspace />
     </DashboardLayout>
   );
 }

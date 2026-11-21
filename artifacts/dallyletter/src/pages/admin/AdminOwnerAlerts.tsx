@@ -12,7 +12,7 @@ const token = () => localStorage.getItem("dallyletter_token") ?? "";
 const severityColor: Record<string, string> = {
   critical: "bg-red-100 text-red-700 border-red-200",
   high: "bg-orange-100 text-orange-700 border-orange-200",
-  medium: "bg-amber-100 text-amber-700 border-amber-200",
+  medium: "dl-status-warning bg-amber-100 text-amber-700 border-amber-200",
   low: "bg-blue-100 text-blue-700 border-blue-200",
 };
 const categoryIcon: Record<string, string> = { cyberbullying:"😡", threat:"⚠️", abuse:"🚨", fraud:"💰", system:"⚙️", teacher:"👩‍🏫", general:"📋" };
@@ -86,7 +86,7 @@ export default function AdminOwnerAlerts() {
         ) : (
           <div className="space-y-3">
             {filtered.map(alert => (
-              <Card key={alert.id} className={`border-0 shadow-sm ${!alert.isRead && alert.status === "open" ? "ring-2 ring-amber-200 bg-amber-50/30" : ""}`}>
+              <Card key={alert.id} className={`border-0 shadow-sm ${!alert.isRead && alert.status === "open" ? "dl-status-unread-surface ring-2 ring-amber-200 bg-amber-50/30" : ""}`}>
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
                     <div className="text-2xl">{categoryIcon[alert.category] ?? "📋"}</div>
@@ -96,7 +96,7 @@ export default function AdminOwnerAlerts() {
                         <Badge className={`text-[10px] border ${severityColor[alert.severity] ?? severityColor.medium}`}>{alert.severity}</Badge>
                         <Badge variant="outline" className="text-[10px] capitalize">{alert.category}</Badge>
                         {alert.status === "resolved" && <Badge className="bg-emerald-100 text-emerald-700 text-[10px]">Resolved</Badge>}
-                        {!alert.isRead && alert.status === "open" && <Badge className="bg-amber-500 text-white text-[10px]">Unread</Badge>}
+                        {!alert.isRead && alert.status === "open" && <Badge className="dl-status-unread bg-amber-500 text-white text-[10px]">Unread</Badge>}
                       </div>
                       <p className="text-sm text-slate-600 mb-2">{alert.description}</p>
                       <p className="text-xs text-slate-400">By <span className="font-medium">{alert.reporterName}</span> ({alert.reporterRole}) · {new Date(alert.createdAt).toLocaleDateString()}</p>

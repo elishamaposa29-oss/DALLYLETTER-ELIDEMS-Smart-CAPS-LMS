@@ -1,3 +1,4 @@
+import { ACADEMIC_GRADE_OPTIONS } from "@workspace/api-client-react/academic-grades";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -57,7 +58,6 @@ export default function Register() {
 
   const role = form.watch("role");
   const country = form.watch("country");
-  const gradeOptions = country === "ZW" ? ["Grade 7","Form 1","Form 2","Form 3","Form 4","Form 5","Form 6"] : ["Grade 7","Grade 8","Grade 9","Grade 10","Grade 11","Grade 12"];
 
   function onSubmit(values: z.infer<typeof registerSchema>) {
     const enteredPhone = values.phone?.trim();
@@ -263,7 +263,7 @@ export default function Register() {
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                {gradeOptions.map(g => (
+                                {ACADEMIC_GRADE_OPTIONS.map(g => (
                                   <SelectItem key={g} value={g}>{g}</SelectItem>
                                 ))}
                               </SelectContent>

@@ -378,3 +378,11 @@ test("every manager permission requires an explicit per-user Owner grant regardl
  assert.equal(defaultManagerPermission("senior_manager","senior",false,"owner.activity.view"),false);
  assert.equal(defaultManagerPermission("senior_manager","senior",false,"unregistered.permission"),false);
 });
+
+test("pending teachers may delete their own CV documents and qualifications through self-scoped routes",()=>{
+ const applicant={role:"teacher",id:41,teacherApplicationStatus:"pending_review"};
+ assert.equal(canPendingTeacherUseRoute(applicant,"DELETE","/api/users/me/teacher-documents/7"),true);
+ assert.equal(canPendingTeacherUseRoute(applicant,"DELETE","/api/users/me/qualifications/9"),true);
+ assert.equal(canPendingTeacherUseRoute(applicant,"DELETE","/api/users/42/teacher-documents/7"),false);
+ assert.equal(canPendingTeacherUseRoute(applicant,"DELETE","/api/users/42"),false);
+});

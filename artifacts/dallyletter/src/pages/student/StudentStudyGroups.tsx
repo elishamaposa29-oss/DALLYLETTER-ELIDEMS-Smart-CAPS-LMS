@@ -1,3 +1,4 @@
+import { ACADEMIC_GRADE_OPTIONS } from "@workspace/api-client-react/academic-grades";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import UserProfileLink from "@/components/UserProfileLink";
 import { apiJson } from "@/lib/api";
@@ -13,8 +14,9 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Users, LogOut, Plus, Settings2, UserMinus, ShieldCheck, Mic, BarChart3, RefreshCw, Trash2, UserRound, X, MessageCircle, ImagePlus } from "lucide-react";
+import { Loader2, Users, LogOut, Plus, Settings2, UserMinus, ShieldCheck, Mic, BarChart3, RefreshCw, Trash2, UserRound, X, MessageCircle, MessageSquare, ImagePlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -126,7 +128,7 @@ export default function StudentStudyGroups() {
   const groupCoverInputRef = useRef<HTMLInputElement>(null);
   const [uploadingCoverGroupId, setUploadingCoverGroupId] = useState<number | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
-  const [profileGroupId, setProfileGroupId] = useState<number | null>(null);
+  const [profileGroupId, setProfileGroupId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("groupProfile"); return value && /^\d+$/.test(value) ? Number(value) : null; });
   const { data: profileMessages } = useListMessages({ groupId: profileGroupId, recipientId: null }, { query: { enabled: profileGroupId !== null, refetchInterval: 5000 } as any });
 
   const refresh = () => void queryClient.invalidateQueries({ queryKey: getListStudyGroupsQueryKey() });
@@ -325,7 +327,7 @@ export default function StudentStudyGroups() {
               <CardContent className="grid gap-4 sm:grid-cols-2">
                 <Input placeholder="Group name" value={name} onChange={event => setName(event.target.value)} required maxLength={120} />
                 <Input placeholder="Subject (e.g. Mathematics)" value={subject} onChange={event => setSubject(event.target.value)} required maxLength={120} />
-                <Input placeholder="Grade / Form (e.g. Form 3)" value={grade} onChange={event => setGrade(event.target.value)} maxLength={80} />
+                <Select value={grade || "all"} onValueChange={value => setGrade(value === "all" ? "" : value)}><SelectTrigger aria-label="Study group grade or form"><SelectValue placeholder="All grades / forms" /></SelectTrigger><SelectContent><SelectItem value="all">All grades / forms</SelectItem>{ACADEMIC_GRADE_OPTIONS.map(option=><SelectItem key={option} value={option}>{option}</SelectItem>)}</SelectContent></Select>
                 <Input placeholder="Topic (e.g. Algebra)" value={topic} onChange={event => setTopic(event.target.value)} maxLength={120} />
                 {<div className="sm:col-span-2 space-y-2"><label className="text-sm font-medium" htmlFor="group-cover-image">Group cover image</label><Input id="group-cover-image" type="file" accept="image/*" onChange={event => setCoverFile(event.target.files?.[0] ?? null)} /><p className="text-xs text-muted-foreground">Use an image up to the platform's media upload limit. The image is stored through the existing persistent media service.</p>{coverFile && <p className="text-xs text-muted-foreground">Selected: {coverFile.name}</p>}</div>}
                 <Textarea className="sm:col-span-2" placeholder="What will this group focus on?" value={description} onChange={event => setDescription(event.target.value)} rows={3} maxLength={1000} />
@@ -351,7 +353,7 @@ export default function StudentStudyGroups() {
               <form onSubmit={saveSettings}>
                 <CardContent className="space-y-4">
                   {(user?.role === "owner" || user?.isManager === true || Number(groups.find(item => item.id === settings.groupId)?.creatorId) === Number(user?.id)) && <div className="grid gap-3 sm:grid-cols-2">
-                    <div><label className="text-sm font-medium" htmlFor="group-grade">Grade / Form</label><Input id="group-grade" className="mt-1" value={profileGrade} onChange={event => setProfileGrade(event.target.value)} maxLength={80} /></div>
+                    <div><label className="text-sm font-medium" htmlFor="group-grade">Grade / Form</label><Select value={profileGrade || "all"} onValueChange={value => setProfileGrade(value === "all" ? "" : value)}><SelectTrigger id="group-grade" className="mt-1" aria-label="Group grade or form"><SelectValue placeholder="All grades / forms" /></SelectTrigger><SelectContent><SelectItem value="all">All grades / forms</SelectItem>{ACADEMIC_GRADE_OPTIONS.map(option=><SelectItem key={option} value={option}>{option}</SelectItem>)}</SelectContent></Select></div>
                     <div><label className="text-sm font-medium" htmlFor="group-topic">Topic</label><Input id="group-topic" className="mt-1" value={profileTopic} onChange={event => setProfileTopic(event.target.value)} maxLength={120} /></div>
                     {(isPlatformOwner || isManager || settings.groupId && Number(groups.find(item => item.id === settings.groupId)?.creatorId) === Number(user?.id)) && <div className="sm:col-span-2"><label className="text-sm font-medium" htmlFor="group-cover-replace">Replace cover image</label><Input id="group-cover-replace" className="mt-1" type="file" accept="image/*" onChange={event => setProfileCoverFile(event.target.files?.[0] ?? null)} /><p className="mt-1 text-xs text-muted-foreground">{profileCoverFile ? profileCoverFile.name : "The group creator or authorized manager can replace this cover image."}</p></div>}
                   </div>}
@@ -416,13 +418,13 @@ export default function StudentStudyGroups() {
               return (
                 <Card key={group.id} className="relative flex h-full w-[min(88vw,360px)] shrink-0 snap-start flex-col overflow-hidden transition-shadow hover:shadow-md">
                   <CardHeader className="relative z-10 text-white">
-                    <AuthenticatedGroupCover url={group.coverImageUrl || ""} name={group.name} />
+                    <button type="button" onClick={() => setProfileGroupId(group.id)} aria-label={`Open ${group.name} group hub`} className="block w-full text-left"><AuthenticatedGroupCover url={group.coverImageUrl || ""} name={group.name} /></button>
                     {(isPlatformOwner || isManager || Number(group.creatorId) === Number(user?.id)) && <div className="flex justify-end"><label className="inline-flex cursor-pointer items-center gap-2 rounded-md border bg-background/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-background"><ImagePlus className="h-3.5 w-3.5" />{group.coverImageUrl ? "Change cover" : "Upload cover"}<input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" aria-label={`Upload cover for ${group.name}`} onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void uploadGroupCover(group.id, file); }} /></label></div>}
                     <div className="flex items-start justify-between gap-2">
                       <Badge variant="secondary">{group.subject}</Badge>
                       <div className="flex items-center gap-1.5 rounded-full bg-muted px-2 py-1 text-sm text-muted-foreground"><Users className="h-3.5 w-3.5" /><span>{group.memberCount}/{groupSettings.maxMembers}</span></div>
                     </div>
-                    <div className="mt-2 flex items-center justify-between gap-2"><CardTitle className="text-xl">{group.name}</CardTitle><Button type="button" size="icon" variant="outline" aria-label={`Open ${group.name} group profile`} title="Group profile" onClick={() => setProfileGroupId(group.id)}><UserRound className="h-4 w-4" /></Button></div>
+                    <div className="mt-2 flex items-center justify-between gap-2"><CardTitle className="text-xl"><button type="button" className="text-left hover:underline focus-visible:underline" onClick={() => { const role=String(user?.role||"").toLowerCase(); const base=role==="teacher"?"/teacher/chat":role==="owner"||role==="admin"||role==="platform_owner"?"/admin/chat":["manager","senior_manager","junior_manager"].includes(role)?"/manager/chat":"/student/chat"; window.location.href = `${base}?groupId=${group.id}`; }}>{group.name}</button></CardTitle><Button type="button" size="icon" variant="outline" aria-label={`Open ${group.name} group profile`} title="Group profile" onClick={() => setProfileGroupId(group.id)}><UserRound className="h-4 w-4" /></Button></div>
                     <CardDescription>Created by {group.creatorName}{group.grade ? ` · ${group.grade}` : ""}{group.topic ? ` · ${group.topic}` : ""}</CardDescription>
                     {isMember && <Badge className="mt-2 w-fit" variant="outline">Joined</Badge>}
                   </CardHeader>
@@ -439,9 +441,18 @@ export default function StudentStudyGroups() {
                       <span className="inline-flex items-center gap-1"><Mic className="h-3.5 w-3.5" />{groupSettings.allowMedia ? "Voice on" : "Voice off"}</span>
                       {groupSettings.announcementsOnly && <span className="inline-flex items-center gap-1"><ShieldCheck className="h-3.5 w-3.5" />Announcements only</span>}
                     </div>
-                    {group.members && group.members.length > 0 && (
-                      <div className="border-t pt-4">
-                        <p className="mb-2 text-xs font-semibold text-foreground/70">MEMBERS ({group.memberCount})</p>
+                    {group.members && group.members.length > 0 && (() => {
+                      const creator = group.members.find(member => member.id === group.creatorId) ?? group.members[0];
+                      const activeMember = group.members.find(member => member.id !== creator.id) ?? creator;
+                      const previewMembers = [creator, activeMember].filter((member, index, all) => member && all.findIndex(item => item.id === member.id) === index);
+                      return <div className="border-t pt-4">
+                        <div className="mb-3 flex items-center gap-2" aria-label="Group members preview">
+                          {previewMembers.map((member, index) => <UserProfileLink key={member.id} userId={member.id} name={member.name} avatarUrl={member.avatarUrl} className="text-[0px]" />)}
+                        </div>
+                        <details>
+                          <summary className="cursor-pointer list-none text-xs font-semibold text-foreground/70 hover:text-primary">MEMBERS ({group.memberCount})</summary>
+                          <div className="mt-3 space-y-2">
+
                         <div className="space-y-2">
                           {group.members.map(member => (
                             <div key={member.id} className="flex items-center gap-2">
@@ -470,8 +481,11 @@ export default function StudentStudyGroups() {
                             </div>
                           </div>;
                         })()}
-                      </div>
-                    )}
+                      
+                          </div>
+                        </details>
+                      </div>;
+                    })()}
                   </CardContent>
                   <CardFooter className="relative z-10 flex flex-wrap gap-2 border-t border-white/20 bg-black/20 pt-4">
                     {user?.role === "owner" && <Button type="button" variant="outline" size="sm" className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/10" disabled={busyGroup === group.id} onClick={() => {
@@ -485,6 +499,7 @@ export default function StudentStudyGroups() {
                       setBusyGroup(group.id);
                       void apiJson(`/api/study-groups/${group.id}/messages`, { method: "DELETE" }).then(() => toast({ title: "Group messages cleared" })).catch(error => toast({ variant: "destructive", title: "Could not clear messages", description: error instanceof Error ? error.message : "Try again." })).finally(() => setBusyGroup(null));
                     }} disabled={busyGroup === group.id}>Clear chat</Button>}
+                    {isMember && <Button type="button" variant="secondary" className="min-w-[130px] flex-1 gap-2" onClick={() => { const role=String(user?.role||"").toLowerCase(); const base=role==="teacher"?"/teacher/chat":role==="owner"||role==="admin"||role==="platform_owner"?"/admin/chat":["manager","senior_manager","junior_manager"].includes(role)?"/manager/chat":"/student/chat"; window.location.href = `${base}?groupId=${group.id}`; }}><MessageSquare className="h-4 w-4" />Open group chat</Button>}
                     {isMember ? (
                       <Button variant="secondary" className="min-w-[130px] flex-1 gap-2" onClick={() => handleLeaveGroup(group.id)} disabled={isOwner || leaveGroupMutation.isPending}>
                         {isOwner ? <Users className="h-4 w-4" /> : <LogOut className="h-4 w-4" />}{isOwner ? "Group Owner" : "Leave Group"}

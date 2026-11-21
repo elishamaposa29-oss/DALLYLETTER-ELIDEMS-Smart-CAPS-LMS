@@ -39,7 +39,7 @@ export default function VerifyEmail() {
   }, [location]);
   return <main className="min-h-screen flex items-center justify-center bg-slate-50 px-4 py-12">
     <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-xl">
-      <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 text-xl" aria-hidden="true">{status === "working" ? "…" : status === "success" ? "✓" : "!"}</div>
+      <div className={`mb-5 flex h-12 w-12 items-center justify-center rounded-xl text-xl ${status === "success" ? "bg-emerald-100 text-emerald-800" : status === "error" ? "bg-red-100 text-red-800" : "dl-status-warning bg-amber-100 text-amber-900"}`} aria-hidden="true">{status === "working" ? "…" : status === "success" ? "✓" : "!"}</div>
       <h1 className="text-2xl font-bold text-slate-900">{location.startsWith("/confirm-email-change") ? "Confirm email change" : "Verify your email"}</h1>
       <p role={status === "error" ? "alert" : "status"} className="mt-3 text-sm leading-6 text-slate-600">{message}</p>
       <div className="mt-6 flex flex-col gap-3">

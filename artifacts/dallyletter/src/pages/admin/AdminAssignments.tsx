@@ -1,3 +1,4 @@
+import { ACADEMIC_GRADE_OPTIONS } from "@workspace/api-client-react/academic-grades";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { getApiUrl } from "@workspace/api-client-react";
@@ -6,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { ClipboardList, Plus, Calendar, BookOpen, Trash2 } from "lucide-react";
@@ -124,7 +126,7 @@ export default function AdminAssignments() {
                 <Input type="file" accept="video/mp4,video/webm,video/quicktime,video/ogg,audio/mpeg,audio/mp4,audio/ogg,audio/wav,image/jpeg,image/png,image/webp,application/pdf,.doc,.docx" onChange={e => uploadMaterial(e.target.files?.[0])} disabled={materialUploading} />
                 <div className="grid grid-cols-2 gap-2">
                   <Input placeholder="Subject *" value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} />
-                  <Input placeholder="Grade / stream" value={form.grade} onChange={e => setForm(f => ({ ...f, grade: e.target.value }))} />
+                  <Select value={form.grade || "all"} onValueChange={value => setForm(f => ({ ...f, grade: value === "all" ? "" : value }))}><SelectTrigger><SelectValue placeholder="All grades / forms" /></SelectTrigger><SelectContent><SelectItem value="all">All grades / forms</SelectItem>{ACADEMIC_GRADE_OPTIONS.map(grade => <SelectItem key={grade} value={grade}>{grade}</SelectItem>)}</SelectContent></Select>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div><label className="text-xs text-slate-500 mb-1 block">Due Date *</label><Input type="date" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} /></div>
