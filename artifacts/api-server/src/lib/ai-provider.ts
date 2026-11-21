@@ -158,7 +158,7 @@ class GeminiProvider implements AIProvider {
     if (system) body.systemInstruction = { parts: [{ text: system }] };
     const j = await requestProviderJson(
       this.name,
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${this.apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${this.apiKey}`,
       { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal },
     ) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
     const text = j.candidates?.[0]?.content?.parts?.[0]?.text;
