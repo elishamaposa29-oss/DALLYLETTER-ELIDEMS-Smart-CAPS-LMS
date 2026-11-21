@@ -7,12 +7,25 @@ import { Textarea } from "@/components/ui/textarea";
 import { BarChart3, Loader2, RefreshCw } from "lucide-react";
 
 type ChatPoll = {
-  poll: { id: number; question: string; allowMultiple: boolean; closed: boolean; createdAt?: string };
+  poll: { id: number; question: string; allowMultiple: boolean; closed: boolean; autoMark?: boolean; correctOptionId?: number | null; creatorId?: number; createdAt?: string };
   options: Array<{ id: number; label: string; voteCount: number; selected: boolean }>;
   totalVotes: number;
 };
+type PollMarkResult = { isCorrect?: boolean; correctLabel?: string | null };
+export function StudyGroupPollCard({ item, onVoted }: { item: ChatPoll; onVoted?: () => void }) {
+  const [mark, setMark] = useState<PollMarkResult | null>(null);
+  const vote = async (optionId: number) => {
+    const selectedIds = item.poll.allowMultiple ? [...item.options.filter(option => option.selected && option.id !== optionId).map(option => option.id), ...(item.options.some(option => option.id === optionId && option.selected) ? [] : [optionId])] : [optionId];
+    if (!selectedIds.length) return;
+    try {
+      const result = await apiJson<PollMarkResult>(`/api/chat/polls/${item.poll.id}/vote`, { method: "POST", body: JSON.stringify({ optionIds: selectedIds }) });
+      setMark(result); onVoted?.();
+    } catch { /* Parent refresh and visible poll state remain intact on transient errors. */ }
+  };
+  return <Card className="w-full space-y-3 p-4"><div className="flex items-start justify-between gap-2"><p className="font-semibold text-sm">{item.poll.question}</p><span className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground">{item.poll.closed ? "Closed" : "Active"}</span></div><div className="space-y-2">{item.options.map(option => <button key={option.id} type="button" disabled={item.poll.closed} onClick={() => void vote(option.id)} className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-70 ${option.selected ? "border-primary bg-primary/10" : "hover:bg-muted"}`}><span>{option.selected ? "✓ " : ""}{option.label}</span><span className="text-xs tabular-nums text-muted-foreground">{option.voteCount}</span></button>)}</div><p className="text-[11px] text-muted-foreground">{item.totalVotes} vote{item.totalVotes===1?"":"s"} · {item.poll.allowMultiple?"Multiple choices":"Choose one"}</p>{mark?.isCorrect !== undefined && <p role="status" className={`rounded-md p-2 text-xs font-medium ${mark.isCorrect ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>{mark.isCorrect ? "Correct answer!" : `Not correct. Correct answer: ${mark.correctLabel ?? "See teacher feedback"}`}</p>}</Card>;
+}
 
-export function StudyGroupPollPanel({ groupId, allowPolls = true }: { groupId: number | null; allowPolls?: boolean }) {
+export function StudyGroupPollPanel({ groupId, allowPolls = true, inline = false, onPollsChange }: { groupId: number | null; allowPolls?: boolean; inline?: boolean; onPollsChange?: (polls: ChatPoll[]) => void }) {
   const [polls, setPolls] = useState<ChatPoll[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -20,18 +33,21 @@ export function StudyGroupPollPanel({ groupId, allowPolls = true }: { groupId: n
   const [question, setQuestion] = useState("");
   const [optionsText, setOptionsText] = useState("Yes\nNo");
   const [error, setError] = useState<string | null>(null);
+  const [autoMark, setAutoMark] = useState(false);
+  const [correctOptionIndex, setCorrectOptionIndex] = useState(0);
   const pollsEnabled=allowPolls;
 
   const load = useCallback(async () => {
     if (!groupId || !pollsEnabled) { setPolls([]); return; }
     setLoading(true);
     try {
-      setPolls(await apiJson<ChatPoll[]>(`/api/chat/groups/${groupId}/polls`));
+      const nextPolls = await apiJson<ChatPoll[]>(`/api/chat/groups/${groupId}/polls`);
+      setPolls(nextPolls); onPollsChange?.(nextPolls);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Polls could not be loaded.");
     } finally { setLoading(false); }
-  }, [groupId, pollsEnabled]);
+  }, [groupId, pollsEnabled, onPollsChange]);
 
   useEffect(() => {
     void load();
@@ -46,7 +62,7 @@ export function StudyGroupPollPanel({ groupId, allowPolls = true }: { groupId: n
     if (!groupId || !question.trim() || options.length < 2) { setError("Enter a question and at least two options."); return; }
     setCreating(true);
     try {
-      await apiJson(`/api/chat/groups/${groupId}/polls`, { method: "POST", body: JSON.stringify({ question: question.trim(), options }) });
+      await apiJson(`/api/chat/groups/${groupId}/polls`, { method: "POST", body: JSON.stringify({ question: question.trim(), options, autoMark, correctOptionIndex, allowMultiple: false }) });
       setQuestion(""); setOptionsText("Yes\nNo"); setComposerOpen(false); await load();
     } catch (e) { setError(e instanceof Error ? e.message : "Poll could not be created."); }
     finally { setCreating(false); }
@@ -74,11 +90,14 @@ export function StudyGroupPollPanel({ groupId, allowPolls = true }: { groupId: n
     </div>
     {composerOpen && <form onSubmit={create} className="space-y-2 rounded-lg border bg-card p-3">
       <Input value={question} onChange={e => setQuestion(e.target.value)} placeholder="Ask your group a question" maxLength={300} required/>
-      <Textarea value={optionsText} onChange={e => setOptionsText(e.target.value)} placeholder="One option per line" rows={3}/>
+      <Textarea value={optionsText} onChange={e => { setOptionsText(e.target.value); setCorrectOptionIndex(0); }} placeholder="One option per line" rows={3}/>
+      <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={autoMark} onChange={e => setAutoMark(e.target.checked)}/>Automatically mark answers</label>
+      {autoMark && <label className="block space-y-1 text-xs"><span className="font-medium">Correct answer</span><select className="h-9 w-full rounded-md border bg-background px-2" value={correctOptionIndex} onChange={e => setCorrectOptionIndex(Number(e.target.value))}>{optionsText.split("\\n").map(x => x.trim()).filter(Boolean).map((option,index)=><option key={`${index}-${option}`} value={index}>{option}</option>)}</select></label>}
+      {autoMark && <p className="text-[11px] text-muted-foreground">Learners receive correctness feedback after voting. The correct answer is hidden until they submit a vote.</p>}
       <Button type="submit" size="sm" disabled={creating || !question.trim()}>{creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}Publish poll</Button>
     </form>}
     {error && <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
-    {loading && polls.length===0 ? <p className="text-xs text-muted-foreground">Loading group polls…</p> : polls.length===0 ? <p className="rounded-lg border border-dashed p-3 text-center text-xs text-muted-foreground">No group polls yet. Create one to get everyone participating.</p> : polls.map(item => <Card key={item.poll.id} className="space-y-3 p-4">
+    {!inline && (loading && polls.length===0 ? <p className="text-xs text-muted-foreground">Loading group polls…</p> : polls.length===0 ? <p className="rounded-lg border border-dashed p-3 text-center text-xs text-muted-foreground">No group polls yet. Create one to get everyone participating.</p> : polls.map(item => <Card key={item.poll.id} className="space-y-3 p-4">
       <div className="flex items-start justify-between gap-2"><p className="font-semibold text-sm">{item.poll.question}</p><span className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground">{item.poll.closed ? "Closed" : "Active"}</span></div>
       <div className="space-y-2">{item.options.map(option => <button key={option.id} type="button" disabled={item.poll.closed} onClick={() => void vote(item, option.id)} className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-70 ${option.selected ? "border-primary bg-primary/10" : "hover:bg-muted"}`}><span>{option.selected ? "✓ " : ""}{option.label}</span><span className="text-xs tabular-nums text-muted-foreground">{option.voteCount}</span></button>)}</div>
       <p className="text-[11px] text-muted-foreground">{item.totalVotes} vote{item.totalVotes===1?"":"s"} · {item.poll.allowMultiple?"Multiple choices":"Choose one"}</p>
