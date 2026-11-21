@@ -49,6 +49,8 @@ export function StudyGroupPollPanel({ groupId, allowPolls = true, inline = false
     } finally { setLoading(false); }
   }, [groupId, pollsEnabled, onPollsChange]);
 
+  useEffect(() => { setPolls([]); onPollsChange?.([]); }, [groupId, onPollsChange]);
+
   useEffect(() => {
     void load();
     if (!groupId || !pollsEnabled) return;
