@@ -405,10 +405,15 @@ router.delete("/study-groups/:id", requireAuth, async (req, res): Promise<void> 
     await client.query("DELETE FROM group_settings WHERE group_id=$1", [groupId]);
     await client.query("DELETE FROM messages WHERE group_id=$1", [groupId]);
     await client.query("DELETE FROM study_group_members WHERE group_id=$1", [groupId]);
-    await client.query("DELETE FROM study_groups WHERE id=$1", [groupId]);
+    const removedGroup = await client.query("DELETE FROM study_groups WHERE id=$1 RETURNING id", [groupId]);
+    if (!removedGroup.rowCount) throw new Error("Study group row was not deleted.");
     await client.query("COMMIT");
-    for (const key of mediaKeys) { try { await removeStoredMedia(key); } catch { /* Group data is deleted; orphaned storage cleanup can be retried independently. */ } }
-    res.status(200).json({ ok: true, deletedGroupId: groupId, deletedGroupName: found.rows[0].name });
+    const cleanupFailures: string[] = [];
+    for (const key of [...new Set(mediaKeys)]) {
+      try { await removeStoredMedia(key); }
+      catch { cleanupFailures.push(key); }
+    }
+    res.status(200).json({ ok: true, deleted: true, deletedGroupId: groupId, deletedGroupName: found.rows[0].name, mediaCleanupPending: cleanupFailures.length > 0, mediaCleanupFailedCount: cleanupFailures.length });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
     res.status(500).json({ error: "Study group deletion failed; no group deletion was committed." });
@@ -422,6 +427,15 @@ router.delete("/study-groups/:id/messages", requireAuth, async (req, res): Promi
   const groupId = Number(req.params.id), user = req.currentUser!;
   const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
   if (!group || !(await canManageGroupSettings(user, groupId, group))) { res.status(403).json({ error: "Group management access required" }); return; }
-  await db.delete(messagesTable).where(eq(messagesTable.groupId, groupId));
-  res.sendStatus(204);
+  const groupMessages = await db.select({ id: messagesTable.id, mediaUrl: messagesTable.mediaUrl }).from(messagesTable).where(eq(messagesTable.groupId, groupId));
+  await db.transaction(async (tx) => {
+    const removed = await tx.delete(messagesTable).where(eq(messagesTable.groupId, groupId)).returning({ id: messagesTable.id });
+    if (removed.length !== groupMessages.length) throw new Error("Not all group messages were deleted; the clear-chat operation was rolled back.");
+  });
+  const cleanupFailures: string[] = [];
+  for (const message of groupMessages) {
+    const key = typeof message.mediaUrl === "string" ? message.mediaUrl.match(/\/api\/messages\/media\/([a-f0-9-]{36})/i)?.[1] : null;
+    if (key) { try { await removeStoredMedia(key); } catch { cleanupFailures.push(key); } }
+  }
+  res.status(200).json({ ok: true, deleted: true, deletedMessageCount: groupMessages.length, mediaCleanupPending: cleanupFailures.length > 0, mediaCleanupFailedCount: cleanupFailures.length });
 });
