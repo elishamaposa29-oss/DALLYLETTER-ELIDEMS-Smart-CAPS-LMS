@@ -89,7 +89,7 @@ function AuthenticatedGroupCover({ url, name, onClick }: { url: string; name: st
       .catch(() => { if (active) setSource(null); });
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [url]);
-  return <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-xl">{source ? <img src={source} alt="" className="h-full w-full object-cover" loading="lazy" /> : <div className="h-full w-full bg-gradient-to-br from-sky-900/30 via-indigo-900/20 to-slate-950/50" />}<div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/45 to-black/20" /></div>;
+  return <div aria-hidden={!onClick || undefined} role={onClick ? "button" : undefined} tabIndex={onClick ? 0 : undefined} onClick={onClick} onKeyDown={event => { if (onClick && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onClick(); } }} className={`absolute inset-0 z-0 overflow-hidden rounded-xl ${onClick ? "cursor-pointer" : "pointer-events-none"}`}>{source ? <img src={source} alt={onClick ? name + " group cover — open group profile" : ""} className="h-full w-full object-cover" loading="lazy" /> : <div className="h-full w-full bg-gradient-to-br from-sky-900/30 via-indigo-900/20 to-slate-950/50" />}<div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/45 to-black/20" /></div>;
 }
 
 const defaultSettings = (groupId: number): GroupSettings => ({
