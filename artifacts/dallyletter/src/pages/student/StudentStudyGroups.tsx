@@ -452,15 +452,16 @@ export default function StudentStudyGroups() {
                         <details>
                           <summary className="cursor-pointer list-none text-xs font-semibold text-foreground/70 hover:text-primary">MEMBERS ({group.memberCount})</summary>
                           <div className="mt-3 space-y-2">
-
-                        <div className="space-y-2">
+                            <div className="space-y-2">
                           {group.members.map(member => (
                             <div key={member.id} className="flex items-center gap-2">
                               <UserProfileLink userId={member.id} name={member.name + (member.id === group.creatorId ? " · owner" : "")} avatarUrl={member.avatarUrl} className="min-w-0 flex-1 text-xs" />
                               {member.control && <span className="text-[10px] text-muted-foreground">{[member.control.muted && "muted",member.control.suspended && "suspended",member.control.blocked && "blocked",member.control.mediaBlocked && "voice blocked"].filter(Boolean).join(" · ")}</span>}
                             </div>
                           ))}
-                        </div>
+                            </div>
+                          </div>
+                        </details>
                         {canManage && group.members.some(member => member.id !== group.creatorId) && (() => {
                           const targets = group.members.filter(member => member.id !== group.creatorId);
                           const targetId = moderationTargetByGroup[group.id] ?? targets[0]?.id;
@@ -481,9 +482,6 @@ export default function StudentStudyGroups() {
                             </div>
                           </div>;
                         })()}
-                      
-                          </div>
-                        </details>
                       </div>;
                     })()}
                   </CardContent>
