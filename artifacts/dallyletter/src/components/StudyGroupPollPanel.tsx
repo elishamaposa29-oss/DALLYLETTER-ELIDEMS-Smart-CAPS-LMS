@@ -12,7 +12,7 @@ type ChatPoll = {
   totalVotes: number;
 };
 type PollMarkResult = { isCorrect?: boolean; correctLabel?: string | null };
-export function StudyGroupPollCard({ item, onVoted }: { item: ChatPoll; onVoted?: () => void }) {
+export type ChatPoll =({ item, onVoted }: { item: ChatPoll; onVoted?: () => void }) {
   const [mark, setMark] = useState<PollMarkResult | null>(null);
   const vote = async (optionId: number) => {
     const selectedIds = item.poll.allowMultiple ? [...item.options.filter(option => option.selected && option.id !== optionId).map(option => option.id), ...(item.options.some(option => option.id === optionId && option.selected) ? [] : [optionId])] : [optionId];
@@ -38,7 +38,7 @@ export function StudyGroupPollPanel({ groupId, allowPolls = true, inline = false
   const pollsEnabled=allowPolls;
 
   const load = useCallback(async () => {
-    if (!groupId || !pollsEnabled) { setPolls([]); return; }
+    if (!groupId || !pollsEnabled) { setPolls([]); onPollsChange?.([]); return; }
     setLoading(true);
     try {
       const nextPolls = await apiJson<ChatPoll[]>(`/api/chat/groups/${groupId}/polls`);
