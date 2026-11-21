@@ -8,7 +8,7 @@ import { BarChart3, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export type ChatPoll = {
-  poll: { id: number; question: string; allowMultiple: boolean; closed: boolean; autoMark?: boolean; correctOptionId?: number | null; creatorId?: number; createdAt?: string };
+  poll: { id: number; question: string; allowMultiple: boolean; closed: boolean; autoMark?: boolean; correctOptionId?: number | null; creatorId?: number; canDelete?: boolean; createdAt?: string };
   options: Array<{ id: number; label: string; voteCount: number; selected: boolean }>;
   totalVotes: number;
 };
