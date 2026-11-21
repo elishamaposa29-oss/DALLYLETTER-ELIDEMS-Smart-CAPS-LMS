@@ -7,9 +7,9 @@ function systemTimeZone(): string {
 }
 
 /**
- * Persist confirmed absences only after the user's local day has ended.
- * This intentionally does not backfill earlier historical dates when the feature
- * first ships; it only closes the immediately preceding local calendar day.
+ * Persist confirmed absences only after each user's local day has ended.
+ * Catch up every missing day since the feature was enabled (and never before
+ * the account existed), so a stopped/restarted API cannot leave calendar gaps.
  */
 export async function closePreviousAttendanceDay(): Promise<number> {
   const fallbackZone = systemTimeZone();
@@ -27,13 +27,17 @@ export async function closePreviousAttendanceDay(): Promise<number> {
      ), absent_days AS (
        INSERT INTO daily_app_attendance
          (user_id, attendance_date, time_zone, status, open_count, last_source, activity_label, created_at, updated_at)
-       SELECT ld.user_id, ld.today_local - 1, ld.time_zone, 'absent', 0, 'system', 'Absent', now(), now()
+       SELECT ld.user_id, missing_days.attendance_date, ld.time_zone, 'absent', 0, 'system', 'Absent', now(), now()
          FROM local_days ld
-        WHERE ld.created_local < ld.today_local
-          AND ld.today_local - 1 >= ld.feature_start_local
+         CROSS JOIN LATERAL generate_series(
+           GREATEST(ld.created_local, ld.feature_start_local)::timestamp,
+           (ld.today_local - 1)::timestamp,
+           interval '1 day'
+         ) AS missing_days(day_start)
+        WHERE ld.today_local > GREATEST(ld.created_local, ld.feature_start_local)
           AND NOT EXISTS (
             SELECT 1 FROM daily_app_attendance d
-             WHERE d.user_id = ld.user_id AND d.attendance_date = ld.today_local - 1
+             WHERE d.user_id = ld.user_id AND d.attendance_date = missing_days.day_start::date
           )
        ON CONFLICT (user_id, attendance_date) DO NOTHING
        RETURNING user_id
