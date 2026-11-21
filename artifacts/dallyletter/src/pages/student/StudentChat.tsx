@@ -1,5 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { StudyGroupPollPanel } from "@/components/StudyGroupPollPanel";
+import { StudyGroupPollPanel, StudyGroupPollCard } from "@/components/StudyGroupPollPanel";
 import UserProfileLink from "@/components/UserProfileLink";
 import { apiJson, authenticatedFetch } from "@/lib/api";
 import {
@@ -64,6 +64,7 @@ export default function StudentChat() {
   const [replyTo, setReplyTo] = useState<number | null>(null);
   const [reportingMessageId, setReportingMessageId] = useState<number | null>(null);
   const [settings, setSettings] = useState<GroupSettings>(defaultGroupSettings);
+  const [groupPolls, setGroupPolls] = useState<Array<{ poll: { id:number; createdAt?:string }; options:Array<{id:number;label:string;voteCount:number;selected:boolean}>; totalVotes:number }>>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
@@ -101,6 +102,10 @@ export default function StudentChat() {
 
   const sendMessageMutation = useSendMessage();
   const rootMessages = [...(messages?.filter(currentMessage => currentMessage.parentMessageId == null) ?? [])].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id - b.id);
+  const timelineItems = [
+    ...rootMessages.map(item => ({ kind: "message" as const, id: item.id, createdAt: item.createdAt, item })),
+    ...(isNaN(Number(selectedGroupId)) ? [] : groupPolls.map(item => ({ kind: "poll" as const, id: item.poll.id, createdAt: item.poll.createdAt ?? "", item }))),
+  ].sort((a,b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || (a.kind === b.kind ? a.id-b.id : a.kind === "message" ? -1 : 1));
   const replyTarget = messages?.find(currentMessage => currentMessage.id === replyTo);
   const selectedGroup = joinedGroups.find(group => group.id === selectedGroupId);
   const selectedContact = contacts.find(contact => contact.id === selectedUserId);
@@ -329,7 +334,9 @@ export default function StudentChat() {
                 ) : messages?.length === 0 ? (
                   <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground"><MessageSquare className="h-12 w-12 opacity-20" /><p className="text-sm">No messages yet. Be the first to say hello.</p></div>
                 ) : (
-                  rootMessages.map(messageItem => {
+                  timelineItems.map(timelineItem => {
+                    if (timelineItem.kind === "poll") return <div key={`poll-${timelineItem.id}`} className="flex w-full justify-center"><div className="w-full max-w-[90%]"><StudyGroupPollCard item={timelineItem.item as any} onVoted={() => queryClient.invalidateQueries({ queryKey: ["study-group-polls", selectedGroupId] })} /></div></div>;
+                    const messageItem = timelineItem.item;
                     const renderMessage = (currentMessage: typeof messageItem, depth = 0): ReactNode => {
                       const isMe = currentMessage.senderId === user?.id;
                       const replies = [...(messages?.filter(reply => reply.parentMessageId === currentMessage.id) ?? [])].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id - b.id);
@@ -361,7 +368,7 @@ export default function StudentChat() {
                     return renderMessage(messageItem);
                   })
                 )}
-                {isGroupConversation && <StudyGroupPollPanel groupId={selectedGroupId} allowPolls={selectedGroup?.settings?.allowPolls !== false} />}
+                {isGroupConversation && <StudyGroupPollPanel groupId={selectedGroupId} inline allowPolls={selectedGroup?.settings?.allowPolls !== false} onPollsChange={setGroupPolls} />}
                 <div ref={messagesEndRef} />
               </div>
 
