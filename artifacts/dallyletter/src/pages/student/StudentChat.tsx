@@ -15,6 +15,7 @@ import { Loader2, Send, Users, MessageSquare, Reply, X, Flag, RefreshCw, User, A
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState, useRef, useEffect, type ReactNode } from "react";
+import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { SendMessageBodyType } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -337,11 +338,15 @@ export default function StudentChat() {
                 <div className="p-6 text-center text-sm text-muted-foreground">No educator contacts are available yet.</div>
               ) : (
                 visibleContacts.map(contact => (
-                  <button key={contact.id} onClick={() => selectContact(contact.id)} className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors ${selectedUserId === contact.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-primary/20 text-xs font-bold"><AuthenticatedContactAvatar url={(contact as any).avatarUrl} name={contact.name} /></div>
-                    <span className="min-w-0 flex-1 truncate font-medium">{contact.name}</span><DUnread count={unreadForPrivate(contact.id)} />
-                    <span className="shrink-0 text-xs capitalize opacity-70">{contact.isPrefect ? "Prefect" : contact.isManager ? `${String((contact as any).managerLevel || "Manager")} manager` : String(contact.role) === "student" || String(contact.role) === "learner" ? "Learner" : String(contact.role || "Member").replace(/_/g," ")}</span>
-                  </button>
+                  <div key={contact.id} className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 transition-colors ${selectedUserId === contact.id ? "bg-primary/10" : "hover:bg-muted"}`}>
+                    <Link href={"/profile/" + Number(contact.id)} aria-label={`Open ${contact.name}'s profile`} title={`Open ${contact.name}'s profile`} className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-primary/20 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                      <AuthenticatedContactAvatar url={(contact as any).avatarUrl} name={contact.name} />
+                    </Link>
+                    <button type="button" onClick={() => selectContact(contact.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                      <span className="min-w-0 flex-1 truncate font-medium">{contact.name}</span><DUnread count={unreadForPrivate(contact.id)} />
+                      <span className="shrink-0 text-xs capitalize opacity-70">{contact.isPrefect ? "Prefect" : contact.isManager ? `${String((contact as any).managerLevel || "Manager")} manager` : String(contact.role) === "student" || String(contact.role) === "learner" ? "Learner" : String(contact.role || "Member").replace(/_/g," ")}</span>
+                    </button>
+                  </div>
                 ))
               )
             )}
