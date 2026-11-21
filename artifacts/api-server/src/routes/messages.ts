@@ -361,9 +361,17 @@ router.delete("/messages/:id", requireAuth, async (req, res): Promise<void> => {
   let allowed = message.senderId === user.id || isOwnerRole(user.role);
   if (message.groupId) {
     const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, message.groupId));
-    allowed = Boolean(group) && (message.senderId === user.id || isOwnerRole(user.role) || group!.creatorId === user.id);
+    let managerAuthorized = false;
+    if (group && canAccessManager(user) && await managerHasPermission(user, "groups.manage")) {
+      if (group.creatorId === user.id) managerAuthorized = true;
+      else {
+        const [creator] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, group.creatorId));
+        managerAuthorized = Boolean(creator && canModerateUser(user, creator));
+      }
+    }
+    allowed = Boolean(group) && (message.senderId === user.id || isOwnerRole(user.role) || group!.creatorId === user.id || managerAuthorized);
   }
-  if (!allowed) { res.status(403).json({ error: "You can delete your own messages. Only the platform owner or group creator can delete another member's group message." }); return; }
+  if (!allowed) { res.status(403).json({ error: "You can delete your own messages. Another member's group message requires group ownership or an authorized manager with groups.manage in scope." }); return; }
   await db.delete(messagesTable).where(eq(messagesTable.id, id));
   const storageKey = message.mediaUrl?.match(/\/api\/messages\/media\/([a-f0-9-]{36})/i)?.[1];
   if (storageKey) { try { await removeStoredMedia(storageKey); } catch { /* Message is deleted; media cleanup can be retried without restoring the message. */ } }
