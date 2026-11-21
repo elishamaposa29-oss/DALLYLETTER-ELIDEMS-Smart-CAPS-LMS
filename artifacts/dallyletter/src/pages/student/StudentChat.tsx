@@ -39,6 +39,25 @@ type GroupView = {
   settings?: GroupSettings;
 };
 
+function AuthenticatedContactAvatar({ url, name }: { url?: string | null; name: string }) {
+  const [source, setSource] = useState<string | null>(/^https:\/\//i.test(url || "") ? (url || null) : null);
+  useEffect(() => {
+    if (!url) { setSource(null); return; }
+    if (/^https:\/\//i.test(url)) { setSource(url); return; }
+    let active = true;
+    let objectUrl: string | undefined;
+    const token = localStorage.getItem("dallyletter_token") ?? "";
+    void fetch(getApiUrl(url), { headers: token ? { Authorization: "Bearer " + token } : undefined })
+      .then(response => { if (!response.ok) throw new Error("Avatar unavailable"); return response.blob(); })
+      .then(blob => { objectUrl = URL.createObjectURL(blob); if (active) setSource(objectUrl); })
+      .catch(() => { if (active) setSource(null); });
+    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [url]);
+  return source
+    ? <img src={source} alt={name} className="h-full w-full object-cover" loading="lazy" />
+    : <span>{name.charAt(0).toUpperCase()}</span>;
+}
+
 type GroupSettings = {
   allowPolls: boolean;
   allowMedia: boolean;
@@ -319,7 +338,7 @@ export default function StudentChat() {
               ) : (
                 visibleContacts.map(contact => (
                   <button key={contact.id} onClick={() => selectContact(contact.id)} className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors ${selectedUserId === contact.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-bold">{contact.name.charAt(0)}</div>
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-primary/20 text-xs font-bold"><AuthenticatedContactAvatar url={(contact as any).avatarUrl} name={contact.name} /></div>
                     <span className="min-w-0 flex-1 truncate font-medium">{contact.name}</span><DUnread count={unreadForPrivate(contact.id)} />
                     <span className="shrink-0 text-xs capitalize opacity-70">{contact.isPrefect ? "Prefect" : contact.isManager ? `${String((contact as any).managerLevel || "Manager")} manager` : String(contact.role) === "student" || String(contact.role) === "learner" ? "Learner" : String(contact.role || "Member").replace(/_/g," ")}</span>
                   </button>
