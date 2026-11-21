@@ -52,6 +52,7 @@ export function StudyGroupPollPanel({ groupId, allowPolls = true, inline = false
   const [marks, setMarks] = useState<Record<number, PollMarkResult>>({});
   const [deletingPollId, setDeletingPollId] = useState<number | null>(null);
   const pollsEnabled=allowPolls;
+  const { toast } = useToast();
 
   const load = useCallback(async () => {
     if (!groupId || !pollsEnabled) { setPolls([]); onPollsChange?.([]); return; }
@@ -89,7 +90,7 @@ export function StudyGroupPollPanel({ groupId, allowPolls = true, inline = false
   const removePoll = async (item: ChatPoll) => {
     if (!item.poll.canDelete || !window.confirm("Permanently delete this poll and all its votes?")) return;
     setDeletingPollId(item.poll.id);
-    try { await apiJson(`/api/chat/polls/${item.poll.id}`, { method: "DELETE" }); await load(); }
+    try { await apiJson(`/api/chat/polls/${item.poll.id}`, { method: "DELETE" }); await load(); toast({ title: "Poll permanently deleted" }); }
     catch (e) { setError(e instanceof Error ? e.message : "Poll deletion failed."); }
     finally { setDeletingPollId(null); }
   };
