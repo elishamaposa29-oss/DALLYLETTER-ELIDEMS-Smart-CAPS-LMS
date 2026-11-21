@@ -449,7 +449,7 @@ export default function StudentStudyGroups() {
                           {previewMembers.map((member, index) => <UserProfileLink key={member.id} userId={member.id} name={member.name} avatarUrl={member.avatarUrl} className="text-[0px]" />)}
                         </div>
                         <details>
-                          <summary className="cursor-pointer list-none text-xs font-semibold text-foreground/70 hover:text-primary">MEMBERS ({group.memberCount})</summary>
+                          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between rounded-lg border-2 border-[#0f2a5a]/60 bg-white px-3 py-2 text-xs font-bold tracking-wide text-[#0f2a5a] shadow-sm transition-colors hover:border-[#0f2a5a] hover:bg-[#0f2a5a]/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f2a5a] dark:border-[#8fb4ec]/75 dark:bg-slate-950 dark:text-[#dbeafe]"> <span>MEMBERS &amp; GROUP ACTIONS ({group.memberCount})</span><span aria-hidden="true" className="text-sm">⌄</span></summary>
                           <div className="mt-3 space-y-2">
                             <div className="space-y-2">
                           {group.members.map(member => (
