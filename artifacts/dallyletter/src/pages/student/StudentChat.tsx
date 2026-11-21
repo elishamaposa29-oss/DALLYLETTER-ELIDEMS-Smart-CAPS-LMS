@@ -2,6 +2,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { StudyGroupPollPanel, StudyGroupPollCard, type ChatPoll } from "@/components/StudyGroupPollPanel";
 import UserProfileLink from "@/components/UserProfileLink";
 import { apiJson, authenticatedFetch } from "@/lib/api";
+import { getApiUrl } from "@workspace/api-client-react";
 import {
   useListMessages,
   useSendMessage,
@@ -50,6 +51,22 @@ const defaultGroupSettings: GroupSettings = {
   announcementsOnly: false,
   rules: null,
 };
+
+/** Authenticated blob loading mirrors the proven PR #131 group-cover implementation. */
+function AuthenticatedGroupAvatar({ url, name }: { url: string; name: string }) {
+  const [source, setSource] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    let objectUrl: string | null = null;
+    const token = localStorage.getItem("dallyletter_token");
+    fetch(getApiUrl(url), { headers: token ? { Authorization: `Bearer ${token}` } : undefined })
+      .then(response => { if (!response.ok) throw new Error("Group image unavailable"); return response.blob(); })
+      .then(blob => { if (!active) return; objectUrl = URL.createObjectURL(blob); setSource(objectUrl); })
+      .catch(() => { if (active) setSource(null); });
+    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [url]);
+  return source ? <img src={source} alt={name + " group avatar"} className="h-full w-full object-cover" loading="lazy" /> : <span aria-label={name + " group avatar"}>{name.slice(0, 1).toUpperCase()}</span>;
+}
 
 export default function StudentChat() {
   const { user } = useAuth();
@@ -254,7 +271,7 @@ export default function StudentChat() {
                 visibleJoinedGroups.map(group => (
                   <div key={group.id} className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 transition-colors ${selectedGroupId === group.id ? "bg-primary/10 ring-1 ring-primary/30" : "hover:bg-muted"}`}>
                     <button type="button" onClick={() => selectGroup(group.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border-2 border-[#C9A227] bg-[#0B1E3A] text-sm font-bold text-[#FFD700]">{group.coverImageUrl ? <AuthenticatedMedia url={group.coverImageUrl} type="image" title={group.name}/> : group.name.slice(0,1).toUpperCase()}</span>
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border-2 border-[#C9A227] bg-[#0B1E3A] text-sm font-bold text-[#FFD700]">{group.coverImageUrl ? <AuthenticatedGroupAvatar url={group.coverImageUrl} name={group.name}/> : group.name.slice(0,1).toUpperCase()}</span>
                       <span className="min-w-0 flex-1 truncate font-medium">{group.name}</span>
                     </button>
                     <DUnread count={unreadForGroup(group.id)} />
@@ -290,7 +307,7 @@ export default function StudentChat() {
               <div className="flex items-center justify-between gap-2 border-b bg-muted/30 p-4">
                 <div className="flex min-w-0 items-center gap-2">
                   <Button type="button" variant="ghost" size="icon" className="h-8 w-8 md:hidden" onClick={() => { setSelectedGroupId(null); setSelectedUserId(null); }} aria-label="Back to conversations"><ArrowLeft className="h-4 w-4" /></Button>
-                  {isGroupConversation ? <button type="button" onClick={() => setGroupHubOpen(true)} aria-label="Open full group hub" title="Open group hub" className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border-2 border-[#C9A227] bg-[#0B1E3A] text-sm font-bold text-[#FFD700]">{selectedGroup?.coverImageUrl ? <AuthenticatedMedia url={selectedGroup.coverImageUrl} type="image" title={selectedGroup.name}/> : selectedGroup?.name?.slice(0,1).toUpperCase()}</button> : <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10"><User className="h-4 w-4 text-primary" /></div>}
+                  {isGroupConversation ? <button type="button" onClick={() => setGroupHubOpen(true)} aria-label="Open full group hub" title="Open group hub" className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border-2 border-[#C9A227] bg-[#0B1E3A] text-sm font-bold text-[#FFD700]">{selectedGroup?.coverImageUrl ? <AuthenticatedGroupAvatar url={selectedGroup.coverImageUrl} name={selectedGroup.name}/> : selectedGroup?.name?.slice(0,1).toUpperCase()}</button> : <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10"><User className="h-4 w-4 text-primary" /></div>}
                   <div className="min-w-0"><p className="truncate font-semibold">{isGroupConversation ? selectedGroup?.name : selectedContact?.name}</p>{isGroupConversation && settings.rules && <p className="truncate text-xs text-muted-foreground">{settings.rules}</p>}</div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1"><Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={() => setChatFullscreen(value => !value)} aria-label={chatFullscreen ? "Exit full-screen chat" : "Open full-screen chat"} title={chatFullscreen ? "Exit full-screen chat" : "Open full-screen chat"}>{chatFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}</Button></div>
@@ -301,7 +318,7 @@ export default function StudentChat() {
                   <div className="mx-auto max-w-xl space-y-4 rounded-2xl border bg-card p-5 shadow-2xl">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-xl border-2 border-[#C9A227] bg-[#0B1E3A] text-2xl font-bold text-[#FFD700]">{selectedGroup.coverImageUrl ? <AuthenticatedMedia url={selectedGroup.coverImageUrl} type="image" title={selectedGroup.name}/> : selectedGroup.name.slice(0,1).toUpperCase()}</div>
+                        <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-xl border-2 border-[#C9A227] bg-[#0B1E3A] text-2xl font-bold text-[#FFD700]">{selectedGroup.coverImageUrl ? <AuthenticatedGroupAvatar url={selectedGroup.coverImageUrl} name={selectedGroup.name}/> : selectedGroup.name.slice(0,1).toUpperCase()}</div>
                         <div><h2 className="text-lg font-bold">{selectedGroup.name}</h2><p className="text-sm text-muted-foreground">{selectedGroup.subject || "Study group"} · {selectedGroup.memberCount} members</p><p className="text-xs text-muted-foreground">Created by {selectedGroup.creatorName || "Group creator"}</p></div>
                       </div>
                       <Button type="button" variant="ghost" size="icon" onClick={() => setGroupHubOpen(false)} aria-label="Close group hub"><X className="h-5 w-5"/></Button>
