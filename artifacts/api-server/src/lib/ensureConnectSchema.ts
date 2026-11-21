@@ -117,6 +117,8 @@ export async function ensureConnectSchema(): Promise<void> {
       closed boolean NOT NULL DEFAULT false,
       created_at timestamptz NOT NULL DEFAULT now()
     )`);
+    await client.query(`ALTER TABLE chat_polls ADD COLUMN IF NOT EXISTS auto_mark boolean NOT NULL DEFAULT false`);
+    await client.query(`ALTER TABLE chat_polls ADD COLUMN IF NOT EXISTS correct_option_id integer`);
     await client.query(`CREATE TABLE IF NOT EXISTS chat_poll_options (
       id serial PRIMARY KEY,
       poll_id integer NOT NULL REFERENCES chat_polls(id),
