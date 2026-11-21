@@ -129,8 +129,13 @@ router.get("/chat/groups/:groupId/polls", requireAuth, async(req,res)=>{
     const votes=await db.select().from(chatPollVotesTable).where(eq(chatPollVotesTable.pollId,poll.id));
     const actor = req.currentUser!;
     const hasVoted = votes.some(vote => vote.userId === actor.id);
+    let isGroupOwner = false;
+    if (poll.groupId !== null) {
+      const [group] = await db.select({ creatorId: studyGroupsTable.creatorId }).from(studyGroupsTable).where(eq(studyGroupsTable.id, poll.groupId));
+      isGroupOwner = group?.creatorId === actor.id;
+    }
     const managerAuthorized = poll.groupId !== null && canAccessManager(actor) && await managerHasPermission(actor, "groups.manage") && await canAccessChatGroup(poll.groupId, actor.id, actor);
-    const canDelete = poll.creatorId === actor.id || isOwnerRole(actor.role) || managerAuthorized;
+    const canDelete = poll.creatorId === actor.id || isGroupOwner || isOwnerRole(actor.role) || managerAuthorized;
     const safePoll = { ...poll, canDelete, correctOptionId: poll.autoMark && (poll.creatorId === actor.id || hasVoted) ? poll.correctOptionId : null };
     const myMark = poll.autoMark && hasVoted && poll.correctOptionId != null ? {
       isCorrect: votes.some(vote => vote.userId === actor.id && vote.optionId === poll.correctOptionId),
@@ -166,8 +171,13 @@ router.delete("/chat/polls/:pollId", requireAuth, async(req,res):Promise<void>=>
  if(!poll){res.status(404).json({error:"Poll not found"});return;}
  const isCreator=poll.creatorId===actor.id;
  const isOwner=isOwnerRole(actor.role);
- const managerAuthorized=poll.groupId !== null && canAccessManager(actor) && await managerHasPermission(actor,"groups.manage") && await canAccessChatGroup(poll.groupId,actor.id,actor);
- if(!isCreator&&!isOwner&&!managerAuthorized){res.status(403).json({error:"Only the poll creator, platform owner, or an authorized group manager can delete this poll."});return;}
+ let isGroupOwner=false;
+ if(poll.groupId!==null){
+  const [group]=await db.select({creatorId:studyGroupsTable.creatorId}).from(studyGroupsTable).where(eq(studyGroupsTable.id,poll.groupId));
+  isGroupOwner=group?.creatorId===actor.id;
+ }
+ const managerAuthorized=poll.groupId!==null&&canAccessManager(actor)&&await managerHasPermission(actor,"groups.manage")&&await canAccessChatGroup(poll.groupId,actor.id,actor);
+ if(!isCreator&&!isGroupOwner&&!isOwner&&!managerAuthorized){res.status(403).json({error:"Only the poll creator, group creator/owner, platform owner, or a manager with the existing groups.manage permission in scope can delete this poll."});return;}
  await db.delete(chatPollVotesTable).where(eq(chatPollVotesTable.pollId,pollId));
  await db.delete(chatPollOptionsTable).where(eq(chatPollOptionsTable.pollId,pollId));
  await db.delete(chatPollsTable).where(eq(chatPollsTable.id,pollId));
