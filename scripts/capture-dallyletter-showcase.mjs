@@ -143,6 +143,20 @@ async function waitForExpectedDeployment() {
 const deployedBuildSha = await waitForExpectedDeployment();
 const browser = await chromium.launch({ headless: true });
 
+async function newScopedContext(options = {}) {
+  const context = await browser.newContext(options);
+  if (vercelBypassSecret) {
+    await context.route("**/*", async (route) => {
+      const request = route.request();
+      let requestOrigin = "";
+      try { requestOrigin = new URL(request.url()).origin; } catch { /* Ignore non-URL requests. */ }
+      if (requestOrigin !== baseUrl.origin) { await route.continue(); return; }
+      await route.continue({ headers: { ...request.headers(), ...previewHeaders } });
+    });
+  }
+  return context;
+}
+
 async function discoverPublicPages() {
   const sitemapUrl = new URL("/sitemap.xml", baseUrl);
   const response = await fetch(sitemapUrl, previewRequest({ cache: "no-store", headers: { accept: "application/xml,text/xml", "cache-control": "no-cache" } }));
@@ -191,8 +205,8 @@ async function capturePublicPages() {
   for (const url of pages) {
     const slug = url.pathname.split("/").filter(Boolean).join("-");
     const name = url.pathname === "/" ? "homepage" : safeName(slug);
-    const context = await browser.newContext({
-      extraHTTPHeaders: previewHeaders,
+    const context = await newScopedContext({
+      ,
       viewport: { width: 1440, height: 1000 },
       deviceScaleFactor: 1,
       recordVideo: { dir: roleScreensOut, size: { width: 1440, height: 1000 } }
@@ -245,7 +259,7 @@ async function verifyProtectedRouteShells() {
     .map((match) => match[1])
     .filter((routePath) => /^\/(student|teacher|manager|admin)(\/|$)/.test(routePath) && !routePath.includes("*"));
   const routes = [...new Set(routePaths)];
-  const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, extraHTTPHeaders: previewHeaders });
+  const context = await newScopedContext({ viewport: { width: 1280, height: 900 },  });
   const page = await context.newPage();
   try {
     for (const routePath of routes) {
@@ -323,7 +337,7 @@ async function captureRole(role, route, email, password) {
   }
 
   // Login is deliberately performed in a non-recording context. Only dedicated showcase accounts are accepted.
-  const loginContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, extraHTTPHeaders: previewHeaders });
+  const loginContext = await newScopedContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1,  });
   let storageState;
   let authenticatedRole;
   let authenticatedApiOrigin;
@@ -366,8 +380,8 @@ async function captureRole(role, route, email, password) {
     await loginContext.close();
   }
 
-  const context = await browser.newContext({
-    extraHTTPHeaders: previewHeaders,
+  const context = await newScopedContext({
+    ,
     viewport: { width: 1440, height: 1000 },
     deviceScaleFactor: 1,
     storageState
@@ -572,7 +586,7 @@ async function captureRole(role, route, email, password) {
 }
 
 async function pageFor404Probe() {
-  const context = await browser.newContext({ extraHTTPHeaders: previewHeaders });
+  const context = await newScopedContext({  });
   const page = await context.newPage();
   const url = new URL("/__dallyletter-showcase-404-probe__/", baseUrl);
   try {
