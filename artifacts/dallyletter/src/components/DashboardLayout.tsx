@@ -124,6 +124,24 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const logoutMutation = useLogoutUser();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [managerPermissions, setManagerPermissions] = useState<Record<string, boolean> | null>(null);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+
+  useEffect(() => {
+    if (!user) { setUnreadNotificationCount(0); return; }
+    let active = true;
+    const loadUnread = async () => {
+      try {
+        const token = localStorage.getItem("dallyletter_token") ?? "";
+        const response = await fetch(getApiUrl("/api/notifications"), { headers: { Authorization: "Bearer " + token }, cache: "no-store" });
+        if (!response.ok) return;
+        const rows = await response.json();
+        if (active && Array.isArray(rows)) setUnreadNotificationCount(rows.filter((item: any) => !item.isRead).length);
+      } catch { /* Keep the last known count during temporary network failures. */ }
+    };
+    void loadUnread();
+    const interval = window.setInterval(() => void loadUnread(), 20000);
+    return () => { active = false; window.clearInterval(interval); };
+  }, [user?.id, location]);
 
   useEffect(() => {
     const role = String(user?.role || "").toLowerCase().replace(/[ -]+/g, "_");
@@ -327,6 +345,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                 <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 group ${isActive ? "bg-white/15 text-white shadow-sm" : "text-white/60 hover:text-white hover:bg-white/10"}`}>
                   <Icon className={`h-4 w-4 shrink-0 ${isActive ? "text-white" : item.accent ? item.accent + " opacity-80" : "text-white/50 group-hover:text-white/80"}`} />
                   <span className="truncate">{item.label}</span>
+                  {item.href.endsWith("/notifications") && unreadNotificationCount > 0 && <span aria-label={unreadNotificationCount + " unread notifications"} className="ml-auto rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold leading-none text-slate-950">{unreadNotificationCount > 99 ? "99+" : unreadNotificationCount}</span>}
                   {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white/80 shrink-0" />}
                 </div>
               </Link>
