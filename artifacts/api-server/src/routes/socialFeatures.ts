@@ -178,10 +178,13 @@ router.delete("/chat/polls/:pollId", requireAuth, async(req,res):Promise<void>=>
  }
  const managerAuthorized=poll.groupId!==null&&canAccessManager(actor)&&await managerHasPermission(actor,"groups.manage")&&await canAccessChatGroup(poll.groupId,actor.id,actor);
  if(!isCreator&&!isGroupOwner&&!isOwner&&!managerAuthorized){res.status(403).json({error:"Only the poll creator, group creator/owner, platform owner, or a manager with the existing groups.manage permission in scope can delete this poll."});return;}
- await db.delete(chatPollVotesTable).where(eq(chatPollVotesTable.pollId,pollId));
- await db.delete(chatPollOptionsTable).where(eq(chatPollOptionsTable.pollId,pollId));
- await db.delete(chatPollsTable).where(eq(chatPollsTable.id,pollId));
- res.sendStatus(204);
+ await db.transaction(async (tx) => {
+  await tx.delete(chatPollVotesTable).where(eq(chatPollVotesTable.pollId,pollId));
+  await tx.delete(chatPollOptionsTable).where(eq(chatPollOptionsTable.pollId,pollId));
+  const deleted = await tx.delete(chatPollsTable).where(eq(chatPollsTable.id,pollId)).returning({ id: chatPollsTable.id });
+  if (!deleted.length) throw new Error("Poll deletion did not remove the poll row.");
+ });
+ res.status(200).json({ ok: true, deleted: true, pollId });
 });
 router.post("/chat/polls/:pollId/vote", requireAuth, async(req,res):Promise<void>=>{
  const pollId=Number(req.params.pollId), user=req.currentUser!, optionIds=Array.isArray(req.body?.optionIds)?req.body.optionIds.map(Number).filter(Number.isInteger):[];
