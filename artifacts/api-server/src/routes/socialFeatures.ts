@@ -143,8 +143,9 @@ router.post("/chat/groups/:groupId/polls", requireAuth, async(req,res):Promise<v
  const autoMark = req.body?.autoMark === true;
   const allowMultiple = Boolean(req.body?.allowMultiple);
   if (autoMark && allowMultiple) { res.status(400).json({ error: "Auto-marking requires a single-answer poll." }); return; }
-  const correctOptionIndex = Number(req.body?.correctOptionIndex);
-  if (autoMark && (!Number.isInteger(correctOptionIndex) || correctOptionIndex < 0 || correctOptionIndex >= uniqueOptions.length)) { res.status(400).json({ error: "Select the correct answer before publishing an auto-marked poll." }); return; }
+  const correctOption = typeof req.body?.correctOption === "string" ? req.body.correctOption.trim() : "";
+  const correctOptionIndex = uniqueOptions.indexOf(correctOption);
+  if (autoMark && correctOptionIndex < 0) { res.status(400).json({ error: "Select the correct answer before publishing an auto-marked poll." }); return; }
   const [poll]=await db.insert(chatPollsTable).values({groupId,creatorId:user.id,question,allowMultiple,anonymous:Boolean(req.body?.anonymous),autoMark,correctOptionId:null}).returning();
   const createdOptions = await db.insert(chatPollOptionsTable).values(uniqueOptions.map((label:string)=>({pollId:poll.id,label}))).returning();
   const correctOptionId = autoMark ? createdOptions[correctOptionIndex]?.id : null;
