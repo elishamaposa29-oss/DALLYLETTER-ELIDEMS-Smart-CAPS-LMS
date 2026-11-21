@@ -6,13 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { BarChart3, Loader2, RefreshCw } from "lucide-react";
 
-type ChatPoll = {
+export type ChatPoll = {
   poll: { id: number; question: string; allowMultiple: boolean; closed: boolean; autoMark?: boolean; correctOptionId?: number | null; creatorId?: number; createdAt?: string };
   options: Array<{ id: number; label: string; voteCount: number; selected: boolean }>;
   totalVotes: number;
 };
 type PollMarkResult = { isCorrect?: boolean; correctLabel?: string | null };
-export type ChatPoll =({ item, onVoted }: { item: ChatPoll; onVoted?: () => void }) {
+export function StudyGroupPollCard({ item, onVoted }: { item: ChatPoll; onVoted?: () => void }) {
   const [mark, setMark] = useState<PollMarkResult | null>(null);
   const vote = async (optionId: number) => {
     const selectedIds = item.poll.allowMultiple ? [...item.options.filter(option => option.selected && option.id !== optionId).map(option => option.id), ...(item.options.some(option => option.id === optionId && option.selected) ? [] : [optionId])] : [optionId];
