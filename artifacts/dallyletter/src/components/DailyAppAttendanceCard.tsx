@@ -238,7 +238,7 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
                 : holidayName
                   ? "bg-violet-300 text-violet-950 border-violet-500 dark:bg-violet-800 dark:text-white dark:border-violet-400"
                   : isExpectedSchoolDay
-                    ? "bg-[#0f2a5a]/[0.08]" text-[#0f2a5a] border-[#0f2a5a]/25 dark:bg-[#0f2a5a]/30 dark:text-[#f1f6ff] dark:border-[#8fb4ec]"
+                     ? "bg-[#0f2a5a]/[0.08] text-[#0f2a5a] border-[#0f2a5a]/25 dark:bg-[#0f2a5a]/30 dark:text-[#f1f6ff] dark:border-[#8fb4ec]"
                     : isWeekend
                       ? "bg-violet-200 text-violet-950 border-violet-400 dark:bg-violet-900 dark:text-white dark:border-violet-500"
                       : isPastUnrecorded
