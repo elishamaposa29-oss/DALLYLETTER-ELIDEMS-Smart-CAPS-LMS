@@ -89,7 +89,12 @@ export default function StudentChat() {
   const [message, setMessage] = useState("");
   const [conversationSearch, setConversationSearch] = useState("");
   const [groupHubOpen, setGroupHubOpen] = useState(false);
-  const [unreadSummary, setUnreadSummary] = useState<{groups:Array<{id:number;unread:number}>;privateChats:Array<{id:number;unread:number}>}>({groups:[],privateChats:[]});
+  const [unreadSummary, setUnreadSummary] = useState<{
+    groups:Array<{id:number;unread:number}>;
+    privateChats:Array<{id:number;unread:number}>;
+    recentGroups:Array<{id:number;messageCount:number;lastMessageAt:string}>;
+    recentPeople:Array<{id:number;messageCount:number;lastMessageAt:string}>;
+  }>({groups:[],privateChats:[],recentGroups:[],recentPeople:[]});
   const [replyTo, setReplyTo] = useState<number | null>(null);
   const [reportingMessageId, setReportingMessageId] = useState<number | null>(null);
   const [settings, setSettings] = useState<GroupSettings>(defaultGroupSettings);
@@ -100,13 +105,22 @@ export default function StudentChat() {
   const { data: groupData, isLoading: groupsLoading, isError: groupsError, refetch: refetchGroups } = useListStudyGroups();
   const groups = (groupData ?? []) as unknown as GroupView[];
   const joinedGroups = groups.filter(group => group.isMember ?? group.members?.some(member => member.id === user?.id));
-  const visibleJoinedGroups = joinedGroups.filter(group => group.name.toLowerCase().includes(conversationSearch.trim().toLowerCase()));
+  const recentGroupRank = new Map(unreadSummary.recentGroups.map((item,index) => [item.id,index]));
+  const visibleJoinedGroups = joinedGroups
+    .filter(group => group.name.toLowerCase().includes(conversationSearch.trim().toLowerCase()))
+    .sort((a,b) => (recentGroupRank.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (recentGroupRank.get(b.id) ?? Number.MAX_SAFE_INTEGER));
   const { data: users, isLoading: usersLoading, isError: usersError, refetch: refetchUsers } = useListUsers();
-  const contacts = (users ?? []).filter(contact =>
-    contact.id !== user?.id
-    && (contact.role === "teacher" || contact.role === "owner" || contact.isPrefect),
-  );
-  const visibleContacts = contacts.filter(contact => contact.name.toLowerCase().includes(conversationSearch.trim().toLowerCase()));
+  // Show every account returned by the privacy-filtered user directory, not just educators.
+  // Recent direct-message partners appear first; the remaining directory stays available alphabetically.
+  const contacts = (users ?? []).filter(contact => contact.id !== user?.id);
+  const recentPeopleRank = new Map(unreadSummary.recentPeople.map((item,index) => [item.id,index]));
+  const visibleContacts = contacts
+    .filter(contact => contact.name.toLowerCase().includes(conversationSearch.trim().toLowerCase()))
+    .sort((a,b) => {
+      const aRank = recentPeopleRank.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+      const bRank = recentPeopleRank.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+      return aRank - bRank || a.name.localeCompare(b.name);
+    });
 
   const { data: messages, isLoading: messagesLoading, isError: messagesError, refetch: refetchMessages } = useListMessages(
     { groupId: selectedGroupId, recipientId: selectedUserId },
@@ -117,7 +131,12 @@ export default function StudentChat() {
     const refresh = async () => {
       try {
         const result = await apiJson<typeof unreadSummary>("/api/messages/unread-summary");
-        if (active) setUnreadSummary({groups:result.groups ?? [],privateChats:result.privateChats ?? []});
+        if (active) setUnreadSummary({
+          groups:result.groups ?? [],
+          privateChats:result.privateChats ?? [],
+          recentGroups:result.recentGroups ?? [],
+          recentPeople:result.recentPeople ?? [],
+        });
       } catch { /* Retry on the next polling cycle. */ }
     };
     void refresh();
@@ -302,7 +321,7 @@ export default function StudentChat() {
                   <button key={contact.id} onClick={() => selectContact(contact.id)} className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors ${selectedUserId === contact.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-bold">{contact.name.charAt(0)}</div>
                     <span className="min-w-0 flex-1 truncate font-medium">{contact.name}</span><DUnread count={unreadForPrivate(contact.id)} />
-                    <span className="text-xs capitalize opacity-70">{contact.role}</span>
+                    <span className="shrink-0 text-xs capitalize opacity-70">{contact.isPrefect ? "Prefect" : contact.isManager ? `${contact.managerLevel || "Manager"} manager` : contact.role === "student" || contact.role === "learner" ? "Learner" : String(contact.role || "Member").replace(/_/g," ")}</span>
                   </button>
                 ))
               )
