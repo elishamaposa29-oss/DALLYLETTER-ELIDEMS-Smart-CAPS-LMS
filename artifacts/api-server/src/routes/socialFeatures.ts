@@ -152,6 +152,20 @@ router.post("/chat/groups/:groupId/polls", requireAuth, async(req,res):Promise<v
   const [savedPoll] = autoMark ? await db.update(chatPollsTable).set({correctOptionId}).where(eq(chatPollsTable.id,poll.id)).returning() : [poll];
   res.status(201).json({poll:savedPoll,options:createdOptions});
 });
+router.delete("/chat/polls/:pollId", requireAuth, async(req,res):Promise<void>=>{
+ const pollId=Number(req.params.pollId), actor=req.currentUser!;
+ if(!Number.isSafeInteger(pollId)||pollId<=0){res.status(400).json({error:"Invalid poll id"});return;}
+ const [poll]=await db.select().from(chatPollsTable).where(eq(chatPollsTable.id,pollId));
+ if(!poll){res.status(404).json({error:"Poll not found"});return;}
+ const isCreator=poll.creatorId===actor.id;
+ const isOwner=isOwnerRole(actor.role);
+ const managerAuthorized=Boolean(poll.groupId)&&canAccessManager(actor)&&await managerHasPermission(actor,"groups.manage")&&await canAccessChatGroup(poll.groupId,actor.id,actor);
+ if(!isCreator&&!isOwner&&!managerAuthorized){res.status(403).json({error:"Only the poll creator, platform owner, or an authorized group manager can delete this poll."});return;}
+ await db.delete(chatPollVotesTable).where(eq(chatPollVotesTable.pollId,pollId));
+ await db.delete(chatPollOptionsTable).where(eq(chatPollOptionsTable.pollId,pollId));
+ await db.delete(chatPollsTable).where(eq(chatPollsTable.id,pollId));
+ res.sendStatus(204);
+});
 router.post("/chat/polls/:pollId/vote", requireAuth, async(req,res):Promise<void>=>{
  const pollId=Number(req.params.pollId), user=req.currentUser!, optionIds=Array.isArray(req.body?.optionIds)?req.body.optionIds.map(Number).filter(Number.isInteger):[];
  const [poll]=await db.select().from(chatPollsTable).where(eq(chatPollsTable.id,pollId)); if(!poll||poll.closed){res.status(404).json({error:"Poll unavailable"});return;}
