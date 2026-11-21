@@ -381,7 +381,9 @@ router.delete("/study-groups/:id/members/:userId", requireAuth, async (req, res)
 router.delete("/study-groups/:id", requireAuth, async (req, res): Promise<void> => {
   const groupId = Number(req.params.id);
   if (!Number.isInteger(groupId) || groupId <= 0) { res.status(400).json({ error: "Invalid group id" }); return; }
-  if (!isOwnerRole(req.currentUser!.role)) { res.status(403).json({ error: "Only the platform owner can permanently delete a study group." }); return; }
+  const [authorizedGroup] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
+  if (!authorizedGroup) { res.status(404).json({ error: "Study group not found" }); return; }
+  if (!(await canManageGroup(req.currentUser!, authorizedGroup))) { res.status(403).json({ error: "Only the group creator, platform owner, or a manager with groups.manage permission for this group can permanently delete it." }); return; }
 
   const client = await pool.connect();
   let mediaKeys: string[] = [];
