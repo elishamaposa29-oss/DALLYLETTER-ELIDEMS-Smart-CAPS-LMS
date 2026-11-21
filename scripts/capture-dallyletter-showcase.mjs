@@ -8,6 +8,8 @@ const vercelBypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET || "";
 const previewHeaders = vercelBypassSecret ? { "x-vercel-protection-bypass": vercelBypassSecret } : {};
 const previewRequest = (init = {}) => ({
   ...init,
+  // Do not follow redirects with the bypass header attached.
+  redirect: "manual",
   headers: { ...(init.headers || {}), ...previewHeaders },
 });
 if (baseUrl.protocol !== "https:" || baseUrl.username || baseUrl.password) throw new Error("SHOWCASE_SITE_URL must be a public HTTPS URL without embedded credentials.");
@@ -150,8 +152,13 @@ async function newScopedContext(options = {}) {
       const request = route.request();
       let requestOrigin = "";
       try { requestOrigin = new URL(request.url()).origin; } catch { /* Ignore non-URL requests. */ }
-      if (requestOrigin !== baseUrl.origin) { await route.continue(); return; }
-      await route.continue({ headers: { ...request.headers(), ...previewHeaders } });
+      const headers = { ...request.headers() };
+      if (requestOrigin === baseUrl.origin) {
+        Object.assign(headers, previewHeaders);
+      } else {
+        delete headers["x-vercel-protection-bypass"];
+      }
+      await route.continue({ headers });
     });
   }
   return context;
