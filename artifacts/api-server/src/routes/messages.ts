@@ -15,7 +15,7 @@ import { getAIProvider } from "../lib/ai-provider";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, removeStoredMedia, persistUploadedMedia, streamStoredMedia, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
 
 const MAX_CHAT_MEDIA_SIZE_BYTES = MAX_MEDIA_SIZE_BYTES;
-import { isOwnerRole, normalizeRole } from "../lib/auth-middleware";
+import { isOwnerRole, normalizeRole, canAccessManager } from "../lib/auth-middleware";
 import { hasAcceptedProfileConnection, isProfileChatApprovalRequired } from "./profileConnections";
 import { managerHasPermission, requireManagerPermission } from "../lib/manager-permission-policy";
 import { canModerateUser } from "../lib/role-access";
