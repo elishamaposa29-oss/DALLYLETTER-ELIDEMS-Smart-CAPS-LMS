@@ -108,13 +108,6 @@ async function canViewPrivateConversation(user: NonNullable<Express.Request["cur
   ]);
   if ((viewerRequiresApproval || targetRequiresApproval) && !accepted) return false;
   if (accepted) return true;
-  const [conversation] = await db.select({ id: messagesTable.id })
-    .from(messagesTable)
-    .where(or(
-      and(eq(messagesTable.senderId, user.id), eq(messagesTable.recipientId, recipientId)),
-      and(eq(messagesTable.senderId, recipientId), eq(messagesTable.recipientId, user.id)),
-    ))
-    .limit(1);
   // With both profiles open to everyone, a participant may open a new thread
   // before the first message exists; membership is still limited to these two users.
   return true;
