@@ -105,7 +105,7 @@ export default function StudentChat() {
   const { data: groupData, isLoading: groupsLoading, isError: groupsError, refetch: refetchGroups } = useListStudyGroups();
   const groups = (groupData ?? []) as unknown as GroupView[];
   const joinedGroups = groups.filter(group => group.isMember ?? group.members?.some(member => member.id === user?.id));
-  const recentGroupRank = new Map(unreadSummary.recentGroups.map((item,index) => [item.id,index]));
+  const recentGroupRank = new Map(unreadSummary.recentGroups.map((item,index) => [item.id,index] as const));
   const visibleJoinedGroups = joinedGroups
     .filter(group => group.name.toLowerCase().includes(conversationSearch.trim().toLowerCase()))
     .sort((a,b) => (recentGroupRank.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (recentGroupRank.get(b.id) ?? Number.MAX_SAFE_INTEGER));
@@ -113,7 +113,7 @@ export default function StudentChat() {
   // Show every account returned by the privacy-filtered user directory, not just educators.
   // Recent direct-message partners appear first; the remaining directory stays available alphabetically.
   const contacts = (users ?? []).filter(contact => contact.id !== user?.id);
-  const recentPeopleRank = new Map(unreadSummary.recentPeople.map((item,index) => [item.id,index]));
+  const recentPeopleRank = new Map(unreadSummary.recentPeople.map((item,index) => [item.id,index] as const));
   const visibleContacts = contacts
     .filter(contact => contact.name.toLowerCase().includes(conversationSearch.trim().toLowerCase()))
     .sort((a,b) => {
