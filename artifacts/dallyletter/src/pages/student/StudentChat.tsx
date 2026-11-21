@@ -1,5 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { StudyGroupPollPanel, StudyGroupPollCard } from "@/components/StudyGroupPollPanel";
+import { StudyGroupPollPanel, StudyGroupPollCard, type ChatPoll } from "@/components/StudyGroupPollPanel";
 import UserProfileLink from "@/components/UserProfileLink";
 import { apiJson, authenticatedFetch } from "@/lib/api";
 import {
@@ -64,7 +64,7 @@ export default function StudentChat() {
   const [replyTo, setReplyTo] = useState<number | null>(null);
   const [reportingMessageId, setReportingMessageId] = useState<number | null>(null);
   const [settings, setSettings] = useState<GroupSettings>(defaultGroupSettings);
-  const [groupPolls, setGroupPolls] = useState<Array<{ poll: { id:number; createdAt?:string }; options:Array<{id:number;label:string;voteCount:number;selected:boolean}>; totalVotes:number }>>([]);
+  const [groupPolls, setGroupPolls] = useState<ChatPoll[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
