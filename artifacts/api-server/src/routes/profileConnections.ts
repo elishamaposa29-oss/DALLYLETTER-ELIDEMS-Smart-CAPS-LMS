@@ -106,10 +106,10 @@ router.get("/profile/:id/social", requireAuth, async (req,res): Promise<void> =>
   );
   const connection=link.rows[0]??null;
   const accepted=connection?.status==="accepted";
-  const viewerRole=normalizeRole(actor.role),targetRole=normalizeRole(target.role);
-  const existingRoleRuleAllows=viewerRole!=="student"||targetRole==="teacher"||isOwnerRole(target.role)||target.isPrefect===true;
   const chatPrivacy=privacy.rows[0]?.chat_privacy??"everyone";
-  const canChat=actor.id!==targetId&&!target.isBlocked&&!target.isSuspended&&(accepted||((chatPrivacy!=="approval_required")&&existingRoleRuleAllows));
+  // Profile Hub direct messages are open by default across learner roles. A
+  // recipient who explicitly requires approval still controls first contact.
+  const canChat=actor.id!==targetId&&!target.isBlocked&&!target.isSuspended&&(accepted||chatPrivacy!=="approval_required");
   res.setHeader("Cache-Control","private, no-store");
   res.json({
     isSelf:actor.id===targetId,
