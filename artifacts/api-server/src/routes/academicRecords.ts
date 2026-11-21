@@ -306,7 +306,8 @@ router.delete("/academic-records/transfer-requests/:id", requireAuth, async (req
  try{
   await client.query("BEGIN");
   await client.query("INSERT INTO audit_logs(action,category,performed_by,target_type,target_id,details) VALUES($1,$2,$3,$4,$5,$6)",["transfer_letter.deleted","academic",actor.id,"transfer_request",id,JSON.stringify({learnerId:Number(row.learner_id),status:"deleted"})]);
-  await client.query("DELETE FROM academic_transfer_requests WHERE id=$1",[id]);
+  const removed=await client.query("DELETE FROM academic_transfer_requests WHERE id=$1 RETURNING id",[id]);
+  if(!removed.rowCount)throw new Error("Transfer letter deletion did not remove the record.");
   await client.query("COMMIT");
  }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}finally{client.release();}
  res.sendStatus(204);
@@ -632,7 +633,8 @@ router.delete("/academic-records/reports/drafts/:id", requireAuth, async (req,re
  try{
   await client.query("BEGIN");
   await client.query("INSERT INTO audit_logs(action,category,performed_by,target_type,target_id,details) VALUES($1,$2,$3,$4,$5,$6)",["academic_report.deleted","academic",actor.id,"academic_report_draft",id,JSON.stringify({learnerId:Number(row.learner_id),createdBy:Number(row.created_by),status:"deleted"})]);
-  await client.query("DELETE FROM academic_report_drafts WHERE id=$1",[id]);
+  const removed=await client.query("DELETE FROM academic_report_drafts WHERE id=$1 RETURNING id",[id]);
+  if(!removed.rowCount)throw new Error("Report draft deletion did not remove the record.");
   await client.query("COMMIT");
  }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}finally{client.release();}
  res.sendStatus(204);
