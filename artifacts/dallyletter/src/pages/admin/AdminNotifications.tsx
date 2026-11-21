@@ -110,6 +110,25 @@ export default function AdminNotifications() {
     }
   };
 
+  const handleMarkAsRead = async (id: number) => {
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const response = await fetch(getApiUrl(`/api/notifications/${id}/read`), {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Could not mark notification as read.");
+      await queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Could not mark as read",
+        description: error instanceof Error ? error.message : "Try again.",
+      });
+    }
+  };
+
   const getIcon = (type: string) => {
     switch (type) {
       case "payment_overdue": return <AlertTriangle className="h-4 w-4 text-destructive" />;
@@ -313,7 +332,15 @@ export default function AdminNotifications() {
                           <span className="text-xs text-muted-foreground hidden sm:block">
                             {new Date(notification.createdAt).toLocaleDateString()}
                           </span>
-{isOwner && <Button
+{!notification.isRead && <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void handleMarkAsRead(notification.id)}
+                          >
+                            Mark as read
+                          </Button>}
+                          {isOwner && <Button
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
