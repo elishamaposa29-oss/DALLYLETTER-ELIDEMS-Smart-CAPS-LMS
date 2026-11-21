@@ -262,7 +262,7 @@ export default function StudentChat() {
     if (!window.confirm("Delete this message and its attachment, if any? This cannot be undone.")) return;
     setDeletingMessageId(messageId);
     try {
-      const result = await apiJson<{deleted?:boolean;mediaCleanupPending?:boolean}>(`/api/messages/${messageId}`, { method: "DELETE" });
+      const result = await apiJson<{deleted?:boolean;mediaCleanupPending?:boolean;warning?:string}>(`/api/messages/${messageId}`, { method: "DELETE" });
       if (!result.deleted) throw new Error("The server did not confirm that the message was deleted.");
       await queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId, recipientId: selectedUserId }) });
       toast({ title: "Message deleted", description: result.mediaCleanupPending ? result.warning || "The message is deleted; its stored attachment still needs cleanup." : undefined });
