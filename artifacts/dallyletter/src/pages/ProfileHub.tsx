@@ -42,7 +42,9 @@ function profilePrimaryRoleLabel(role: unknown): string {
 function profileIdentityBadges(profile: PublicProfile | null): string[] {
   if (!profile) return [];
   const role = normalizeProfileRole(profile.role);
-  const badges = [profilePrimaryRoleLabel(role)];
+  const level = String(profile.manager_level || "").toLowerCase();
+  const primary = role === "manager" && level === "senior" ? "Senior Manager" : role === "manager" && level === "junior" ? "Junior Manager" : profilePrimaryRoleLabel(role);
+  const badges = [primary];
   const managerRole = ["manager","junior_manager","senior_manager"].includes(role);
   const manager = Boolean(profile.is_manager) || managerRole;
   if (manager && !managerRole) badges.push(String(profile.manager_level || "").toLowerCase() === "senior" ? "Senior Manager" : "Manager");
