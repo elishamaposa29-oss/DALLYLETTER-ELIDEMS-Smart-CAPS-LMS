@@ -276,31 +276,41 @@ let _cacheTs = 0;
 
 export async function getAIProvider(): Promise<AIProvider> {
   if (_cached && Date.now() - _cacheTs < 30_000) return _cached;
-  const cfg: Record<string, string> = {};
-  try {
-    const rows = await db.select().from(platformSettingsTable);
-    for (const r of rows) cfg[r.key] = r.value ?? "";
-  } catch {
-    throw new AIProviderError("configuration", "configuration_unavailable");
-  }
 
-  // Explicit deployment configuration takes precedence over database settings.
-  // This lets Render secret variables activate a provider without storing API
-  // credentials in platform_settings or allowing a stale DB "mock" selection
-  // to silently override an explicitly configured production provider.
+  // Explicit Render configuration is self-contained: do not depend on a
+  // platform_settings database read when a complete environment config exists.
   const envProvider = process.env.AI_PROVIDER?.trim().toLowerCase();
   const envGeminiKey = process.env.GEMINI_API_KEY || "";
   const envOpenaiKey = process.env.OPENAI_API_KEY || "";
   const envAnthropicKey = process.env.ANTHROPIC_API_KEY || "";
-  const hasCompleteEnvironmentConfig = Boolean(
-    (envProvider === "gemini" && envGeminiKey) ||
-    (envProvider === "openai" && envOpenaiKey) ||
-    (envProvider === "anthropic" && envAnthropicKey)
+  const inferredEnvProvider = envProvider || (
+    envGeminiKey ? "gemini" :
+    envOpenaiKey ? "openai" :
+    envAnthropicKey ? "anthropic" : ""
   );
+  const hasCompleteEnvironmentConfig = Boolean(
+    (inferredEnvProvider === "gemini" && envGeminiKey) ||
+    (inferredEnvProvider === "openai" && envOpenaiKey) ||
+    (inferredEnvProvider === "anthropic" && envAnthropicKey)
+  );
+
+  const cfg: Record<string, string> = {};
+  if (!hasCompleteEnvironmentConfig) {
+    try {
+      const rows = await db.select().from(platformSettingsTable);
+      for (const r of rows) cfg[r.key] = r.value ?? "";
+    } catch {
+      throw new AIProviderError("configuration", "configuration_unavailable");
+    }
+  }
+
+  // Environment secrets take precedence over database credentials. An
+  // explicitly configured provider/key pair cannot be silently overridden by
+  // a stale database "mock" selection or an old stored API key.
   const geminiKey = envGeminiKey || cfg["gemini_api_key"] || "";
   const openaiKey = envOpenaiKey || cfg["openai_api_key"] || "";
   const anthropicKey = envAnthropicKey || cfg["anthropic_api_key"] || "";
-  const configuredName = hasCompleteEnvironmentConfig ? envProvider : (cfg["ai_provider"] || envProvider);
+  const configuredName = hasCompleteEnvironmentConfig ? inferredEnvProvider : (cfg["ai_provider"] || inferredEnvProvider);
   const name = configuredName || (
     geminiKey ? "gemini" :
     openaiKey ? "openai" :
