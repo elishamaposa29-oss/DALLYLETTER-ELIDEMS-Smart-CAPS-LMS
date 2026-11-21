@@ -652,7 +652,7 @@ export default function ProfileHub() {
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-200">{[profile?.is_manager ? "Manager" : "", profile?.is_prefect ? "Prefect" : "", String(profile?.role||"").toLowerCase()==="student" ? "Learner" : (String(profile?.role||"").toLowerCase()!=="student" ? (profile?.role||"") : "")].filter(Boolean).join(" · ") || "Profile"}</p>
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-200">{(() => { const role = String(profile?.role || "").toLowerCase().replace(/[ -]+/g, "_"); const labels = [profile?.is_manager || ["manager","senior_manager","junior_manager"].includes(role) ? "Manager" : "", profile?.is_prefect || role === "prefect" ? "Prefect" : "", ["student","learner","prefect"].includes(role) ? "Learner" : role === "teacher" ? "Teacher" : ""]; return labels.filter((value, index) => value && labels.indexOf(value) === index).join(" · ") || profile?.role || "Profile"; })()}</p>
               <h1 className="mt-1 break-words text-2xl font-bold leading-tight tracking-tight text-white drop-shadow sm:text-3xl">{profile?.display_name||"Profile Hub"}</h1>
               <p className="mt-2 text-sm text-white/85">{isOwner?"Manage your profile and professional records":"Public profile"}</p>
               {profile?.bio&&<p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/90">{profile.bio}</p>}
