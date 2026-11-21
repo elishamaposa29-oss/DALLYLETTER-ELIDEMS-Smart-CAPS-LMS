@@ -135,7 +135,11 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
     };
     void loadClassAttendance();
     void loadDailyAttendance();
-    return () => { active = false; };
+    window.addEventListener("dallyletter:daily-attendance-updated", loadDailyAttendance);
+    return () => {
+      active = false;
+      window.removeEventListener("dallyletter:daily-attendance-updated", loadDailyAttendance);
+    };
   }, [user?.id, targetId, isOwn]);
 
   const presentCount = classRecords.filter(record => record.status?.toLowerCase() === "present").length;
@@ -171,8 +175,9 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
           const key = `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
           const status = dailyStatus.get(key);
           const isToday = key === today;
-          const isAbsent = status?.status === "absent";
-          const isPresent = status?.status === "present";
+          const normalizedStatus = String(status?.status ?? "").trim().toLowerCase();
+          const isAbsent = normalizedStatus === "absent";
+          const isPresent = normalizedStatus === "present";
           // A missing row is unknown (including dates before tracking began), not an absence.
           const colorClass = isAbsent
             ? "bg-red-300 text-red-950 border-red-500 dark:bg-red-800 dark:text-white dark:border-red-500"
@@ -180,7 +185,7 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
               ? "bg-emerald-300 text-emerald-950 border-emerald-500 dark:bg-emerald-800 dark:text-white dark:border-emerald-500"
               : "bg-card text-foreground border-border";
           return (
-            <button type="button" key={key} aria-pressed={selectedDate === key} onClick={() => setSelectedDate(key)} title={`${formatDate(key)} · ${isPresent ? "Opened Dallyletter" : isAbsent ? "No app open · absence recorded" : "No daily app record"}${status ? ` · ${status.open_count} app opens` : ""}`} aria-label={`${formatDate(key)}: ${isPresent ? "Dallyletter opened" : isAbsent ? "daily app absence recorded" : "no daily app access record"}`} className={`relative flex min-h-[42px] flex-col items-center justify-center rounded-lg border text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b38b00] sm:min-h-[54px] ${colorClass} ${isToday ? "border-2 border-[#0f2a5a] outline outline-1 outline-offset-1 outline-[#0f2a5a]" : ""} ${selectedDate === key ? "ring-2 ring-[#b38b00] ring-offset-1" : ""}`}>
+            <button type="button" key={key} aria-pressed={selectedDate === key} onClick={() => setSelectedDate(key)} title={`${formatDate(key)} · ${isPresent ? "Opened Dallyletter" : isAbsent ? "No app open · absence recorded" : "No daily app record"}${status ? ` · ${status.open_count} app opens` : ""}`} aria-label={`${formatDate(key)}: ${isPresent ? "Dallyletter opened" : isAbsent ? "daily app absence recorded" : "no daily app access record"}`} className={`relative flex min-h-[42px] flex-col items-center justify-center rounded-lg border text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f2a5a] sm:min-h-[54px] ${colorClass} ${isToday ? "border-2 border-[#0f2a5a] outline outline-1 outline-offset-1 outline-[#0f2a5a]" : ""} ${selectedDate === key ? "ring-2 ring-[#0f2a5a] ring-offset-1" : ""}`}>
               <span>{day}</span>
               {status && <span className="text-[9px] font-bold leading-3">{isPresent ? `${status.open_count} opens` : "Absent"}</span>}
               {isToday && <span className="text-[8px] font-bold uppercase tracking-wide">Today</span>}
@@ -188,7 +193,7 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
           );
         })}
       </div>
-      <div aria-live="polite" className="rounded-lg border border-[#b38b00]/30 bg-muted/30 px-3 py-2">
+      <div aria-live="polite" className="rounded-lg border border-[#0f2a5a]/25 bg-muted/30 px-3 py-2">
         <p className="text-xs font-semibold text-foreground">Selected date · {formatDate(selectedDate)}</p>
         <p className="mt-0.5 text-xs text-muted-foreground">{(() => { const item = dailyStatus.get(selectedDate); return item ? item.status === "present" ? `Dallyletter opened · ${item.open_count} app opens · ${item.time_zone}` : "No Dallyletter app open was recorded for this completed day." : "No daily app-access record saved for this date."; })()}</p>
       </div>
@@ -238,7 +243,7 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
             </div>
           </div>
           {classError && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{classError}</p>}
-          {offlineClassCache && <p role="status" className="rounded-lg border border-orange-300 bg-orange-50 p-2 text-xs text-orange-900">Offline mode: showing the last saved attendance records on this device. New changes sync after reconnecting.</p>}
+          {offlineClassCache && <p role="status" className="rounded-lg border border-slate-300 bg-slate-50 p-2 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">Offline mode: showing the last saved attendance records on this device. New changes sync after reconnecting.</p>}
           {renderCalendar()}
           {!classLoading && !classError && classRecords.length === 0 && <p className="rounded-lg border border-dashed p-3 text-center text-sm text-muted-foreground">No class-session attendance records have been saved yet. This does not affect the daily Dallyletter app-access calendar above.</p>}
           <p className="text-[11px] text-muted-foreground">A session is counted only when the attendance API returns a saved present or absent record. Unmarked dates are not counted as absences.</p>
@@ -264,7 +269,7 @@ export function DailyAppAttendanceCard({profileId}:{profileId?:number}) {
                   </div>
                   <p className="mt-1 truncate text-xs text-muted-foreground">{todayRecord ? `${todayRecord.open_count} app opens · ${todayRecord.activity_label}` : "Today's presence appears after a saved access record is returned."}</p>
                 </div>
-                {offlineDailyCache && <p role="status" className="shrink-0 truncate text-[10px] text-orange-800">Offline mode: showing saved activity.</p>}
+                {offlineDailyCache && <p role="status" className="shrink-0 truncate text-[10px] text-muted-foreground">Offline mode: showing saved activity.</p>}
                 {dailyLoading ? <p className="text-xs text-muted-foreground">Loading recent activity…</p> : dailyError ? <p role="alert" className="line-clamp-2 text-xs text-destructive">{dailyError}</p> : dailyRecords.length === 0 ? <p className="text-xs text-muted-foreground">No personal daily access records are available yet.</p> : (
                   <div className="grid shrink-0 grid-cols-3 gap-1.5">
                     {recentDailyRecords.map(record => (
