@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 import UserProfileLink from "@/components/UserProfileLink";
-import { Loader2, ClipboardList, Play, CheckCircle, XCircle, Trophy, Clock, ChevronRight, ChevronLeft, BarChart3 } from "lucide-react";
+import { Loader2, ClipboardList, Play, CheckCircle, XCircle, Trophy, Clock, ChevronRight, ChevronLeft, BarChart3, Shield, Zap } from "lucide-react";
 
 interface Poll { id: number; title: string; grade: string | null; subject: string | null; mode: string; status: string; timerSeconds: number | null; type: string; }
 interface PollOption { id: number; text: string; isCorrect?: boolean; }
@@ -38,6 +38,8 @@ export default function StudentPolls() {
   const [myPerformance, setMyPerformance] = useState<{ submitted: boolean; score: number; totalQuestions: number; percentage: number } | null>(null);
   const [resultPrivacy, setResultPrivacy] = useState<"public" | "private" | "selected_friends">("private");
   const [instantMarking, setInstantMarking] = useState(false);
+  const [instantMarkingPanelOpen, setInstantMarkingPanelOpen] = useState(false);
+  const [privacyPanelOpen, setPrivacyPanelOpen] = useState(false);
   const [feedbackEffects, setFeedbackEffects] = useState(true);
   const [instantFeedback, setInstantFeedback] = useState<Record<number, { isCorrect: boolean; explanation: string | null; correctText?: string }>>({});
   const [checkingAnswer, setCheckingAnswer] = useState(false);
@@ -195,23 +197,32 @@ export default function StudentPolls() {
                 ))}
               </div>
               {instantMarking && instantFeedback[currentQuestion.id] && (() => { const feedback = instantFeedback[currentQuestion.id]; return <div role="status" aria-live="polite" className={`rounded-xl border p-3 ${feedback.isCorrect ? "border-emerald-300 bg-emerald-50 text-emerald-900" : "border-rose-300 bg-rose-50 text-rose-900"}`}><p className="font-semibold">{feedback.isCorrect ? "✓ Correct answer!" : "Not quite — review the correction."}</p>{!feedback.isCorrect && feedback.correctText && <p className="mt-1 text-sm">Correct answer: {feedback.correctText}</p>}{feedback.explanation && <p className="mt-1 text-sm">{feedback.explanation}</p>}</div>; })()}
-              <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/20 p-3">
-                {activePoll.mode === "practice" && <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={instantMarking} onChange={e => setInstantMarking(e.target.checked)} />Allow instant marking (practice only)</label>}
-                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={feedbackEffects} onChange={e => setFeedbackEffects(e.target.checked)} />Sound and vibration</label>
+              <div className="flex flex-wrap items-center gap-2">
+                {activePoll.mode === "practice" && <Button type="button" size="sm" variant={instantMarkingPanelOpen ? "secondary" : "outline"} aria-label="Instant marking settings" aria-expanded={instantMarkingPanelOpen} onClick={() => setInstantMarkingPanelOpen(open => !open)} className="gap-2">
+                  <Zap className="h-4 w-4" />Instant marking
+                </Button>}
+                <Button type="button" size="sm" variant={privacyPanelOpen ? "secondary" : "outline"} aria-label="Results privacy settings" aria-expanded={privacyPanelOpen} onClick={() => setPrivacyPanelOpen(open => !open)} className="gap-2">
+                  <Shield className="h-4 w-4" />Privacy
+                </Button>
               </div>
+              {instantMarkingPanelOpen && activePoll.mode === "practice" && <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
+                <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={instantMarking} onChange={e => setInstantMarking(e.target.checked)} />Allow instant marking (practice only)</label>
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={feedbackEffects} onChange={e => setFeedbackEffects(e.target.checked)} />Sound and vibration</label>
+                <p className="text-xs text-muted-foreground">When enabled, practice answers are checked immediately and feedback appears after each answer.</p>
+              </div>}
+              {privacyPanelOpen && <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
+                <p className="text-xs font-semibold">Results privacy</p>
+                <select value={resultPrivacy} onChange={e => setResultPrivacy(e.target.value as typeof resultPrivacy)} className="w-full h-9 rounded-md border bg-background px-2 text-sm">
+                  <option value="private">Private — only me and authorized staff</option>
+                  <option value="public">Public — classmates can see my result</option>
+                  <option value="selected_friends">Selected friends only</option>
+                </select>
+                {resultPrivacy === "selected_friends" && <div className="max-h-28 overflow-y-auto space-y-1">{friends.map(friend => <label key={friend.id} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={selectedFriendIds.includes(friend.id)} onChange={() => setSelectedFriendIds(ids => ids.includes(friend.id) ? ids.filter(id => id !== friend.id) : [...ids, friend.id])} />{friend.name}</label>)}</div>}
+              </div>}
             </CardContent>
           </Card>
           <div className="flex items-center justify-between">
             <Button variant="outline" onClick={() => setCurrentQ(q => Math.max(0, q - 1))} disabled={currentQ === 0} className="gap-1.5"><ChevronLeft className="h-4 w-4" />Back</Button>
-            <div className="w-full rounded-lg border bg-muted/20 p-3 space-y-2">
-            <p className="text-xs font-semibold">Results privacy</p>
-            <select value={resultPrivacy} onChange={e => setResultPrivacy(e.target.value as typeof resultPrivacy)} className="w-full h-9 rounded-md border bg-background px-2 text-sm">
-              <option value="private">Private — only me and authorized staff</option>
-              <option value="public">Public — classmates can see my result</option>
-              <option value="selected_friends">Selected friends only</option>
-            </select>
-            {resultPrivacy === "selected_friends" && <div className="max-h-28 overflow-y-auto space-y-1">{friends.map(friend => <label key={friend.id} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={selectedFriendIds.includes(friend.id)} onChange={() => setSelectedFriendIds(ids => ids.includes(friend.id) ? ids.filter(id => id !== friend.id) : [...ids, friend.id])} />{friend.name}</label>)}</div>}
-          </div>
           <span className="text-sm text-muted-foreground">{answered}/{activePoll.questions.length} answered</span>
             {currentQ < activePoll.questions.length - 1 ? (
               <Button onClick={() => setCurrentQ(q => q + 1)} className="gap-1.5">Next<ChevronRight className="h-4 w-4" /></Button>
