@@ -13,7 +13,7 @@ const testPool = new PgPool({ connectionString: process.env.DATABASE_URL });
 const suffix = randomUUID();
 const email = `retention-integration-${suffix}@example.test`;
 const titlePrefix = `retention-integration-${suffix}`;
-const tempDir = await mkdtemp(join(tmpdir(), "dallyletter-retention-tests-"));
+const tempDir = await mkdtemp(join(process.cwd(), ".retention-cleanup-tests-"));
 let ownerId = null;
 let runIds = [];
 let stopScheduler = () => {};
