@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL(path, import.meta.url), "utf8");
-const [api, panel, mobilePanel, groups, studentChat, teacherChat, adminChat, aiRoute, aiSettings] = await Promise.all([
+const [api, panel, mobilePanel, groups, studentChat, teacherChat, adminChat, aiRoute, aiSettings, academicRecords] = await Promise.all([
   read("../artifacts/api-server/src/routes/socialFeatures.ts"),
   read("../artifacts/dallyletter/src/components/StudyGroupPollPanel.tsx"),
   read("../artifacts/dallyletter-mobile/components/StudyGroupPollPanel.tsx"),
@@ -12,6 +12,7 @@ const [api, panel, mobilePanel, groups, studentChat, teacherChat, adminChat, aiR
   read("../artifacts/dallyletter/src/pages/admin/AdminChat.tsx"),
   read("../artifacts/api-server/src/routes/ai.ts"),
   read("../artifacts/dallyletter/src/pages/admin/AdminAISettings.tsx"),
+  read("../artifacts/api-server/src/routes/academicRecords.ts"),
 ]);
 
 assert.ok(api.includes('router.get("/chat/polls/:pollId/leaderboard"'), "group polls must expose a leaderboard endpoint");
