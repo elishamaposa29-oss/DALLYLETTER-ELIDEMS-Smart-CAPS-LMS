@@ -9,12 +9,15 @@ interface AuthenticatedMediaProps {
   title: string;
   /** Render branding only in the dedicated shared-resource viewer, never in ordinary in-app previews. */
   brandedShare?: boolean;
+  /** Short-lived token for a resource opened from a protected public share link. */
+  shareToken?: string;
 }
 
-export function AuthenticatedMedia({ url, type, title, brandedShare = false }: AuthenticatedMediaProps) {
+export function AuthenticatedMedia({ url, type, title, brandedShare = false, shareToken }: AuthenticatedMediaProps) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [mediaBlob, setMediaBlob] = useState<Blob | null>(null);
   const [error, setError] = useState(false);
+  const [mediaRequested, setMediaRequested] = useState(false);
   const [scale, setScale] = useState(1);
 
   const shareBrandedLink = async () => {
@@ -85,11 +88,19 @@ export function AuthenticatedMedia({ url, type, title, brandedShare = false }: A
   useEffect(() => {
     let active = true;
     const token = localStorage.getItem("dallyletter_token");
+    const requiresExplicitRequest = type === "video" || type === "audio";
 
     setObjectUrl(null);
     setMediaBlob(null);
     setError(false);
-    fetch(getApiUrl(url), { headers: token ? { Authorization: `Bearer ${token}` } : undefined })
+    if (requiresExplicitRequest && !mediaRequested) {
+      return () => { active = false; };
+    }
+
+    const requestUrl = shareToken
+      ? `${getApiUrl(url)}${url.includes("?") ? "&" : "?"}shareToken=${encodeURIComponent(shareToken)}`
+      : getApiUrl(url);
+    fetch(requestUrl, { headers: token ? { Authorization: `Bearer ${token}` } : undefined })
       .then(response => {
         if (!response.ok) throw new Error("Media unavailable");
         return response.blob();
@@ -108,8 +119,9 @@ export function AuthenticatedMedia({ url, type, title, brandedShare = false }: A
         return null;
       });
     };
-  }, [url]);
+  }, [url, type, mediaRequested, shareToken]);
 
+  if ((type === "video" || type === "audio") && !mediaRequested) return <div className="space-y-3 rounded-xl border p-4"><p className="text-sm font-medium">{type === "video" ? "Video is paused to save mobile data." : "Audio is paused to save mobile data."}</p><p className="text-xs text-muted-foreground">Nothing downloads until you choose to load this resource.</p><Button type="button" onClick={() => setMediaRequested(true)}>{type === "video" ? "Load video and play" : "Load audio and play"}</Button>{!brandedShare && <Button type="button" size="sm" variant="outline" onClick={() => void shareBrandedLink()}><Share2 className="mr-2 h-4 w-4"/>Share protected link</Button>}</div>;
   if (error) return <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"><p className="font-semibold">Media unavailable</p><p className="mt-1">The learning resource could not be loaded safely.</p><Button type="button" size="sm" variant="outline" className="mt-3 gap-1" onClick={()=>window.location.reload()}><RefreshCw className="h-3.5 w-3.5"/>Try again</Button></div>;
   if (!objectUrl) return <p className="text-sm text-muted-foreground">Loading media...</p>;
   if (type === "audio") return <div className="space-y-2 rounded-md border p-3">{brandedShare && <p className="text-xs font-bold tracking-wide text-muted-foreground">DALLYLETTER ELIDEMS · SHARED LEARNING RESOURCE</p>}<audio className="w-full" src={objectUrl} title={title} controls /><Button type="button" size="sm" variant="outline" onClick={() => void shareBrandedLink()}><Share2 className="mr-2 h-4 w-4"/>Share protected link</Button></div>;
