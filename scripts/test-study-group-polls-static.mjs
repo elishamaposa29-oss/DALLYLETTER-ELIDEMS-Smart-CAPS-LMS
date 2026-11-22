@@ -19,6 +19,8 @@ assert.ok(api.includes("innerJoin(usersTable,eq(chatPollVotesTable.userId,usersT
 assert.ok(api.includes("innerJoin(chatPollOptionsTable,eq(chatPollVotesTable.optionId,chatPollOptionsTable.id))"), "leaderboard must return the selected answer label");
 assert.ok(api.includes('name:poll.anonymous?"Anonymous learner":vote.name'), "anonymous polls must not expose voter identities");
 assert.ok(api.includes("canAccessChatGroup(poll.groupId,actor.id,actor)"), "leaderboard must enforce group membership");
+assert.ok(api.includes("router.delete(" + String.fromCharCode(34) + "/chat/polls/:pollId"), "poll deletion endpoint must exist");
+assert.ok(api.includes("managerHasPermission(actor,\"groups.manage\")"), "poll deletion must use the existing groups.manage permission");
 assert.ok(panel.includes("Leaderboard"), "poll cards must expose a leaderboard action");
 assert.ok(panel.includes("UserProfileLink userId={entry.userId} name={entry.name} avatarUrl={entry.avatarUrl}"), "leaderboard avatars must open the corresponding Profile Hub");
 assert.ok(panel.includes("navigator.vibrate(result.isCorrect ? [45, 35, 70] : [110, 45, 110])"), "auto-mark feedback must provide optional haptics");
@@ -29,6 +31,8 @@ assert.ok(mobilePanel.includes("UserProfileLink userId={entry.userId} name={entr
 assert.ok(mobilePanel.includes("Vibration.vibrate(data.isCorrect?[45,35,70]:[110,45,110])"), "mobile auto-mark feedback must vibrate on correct and incorrect answers");
 assert.ok(mobilePanel.includes("Enable automatic marking"), "mobile poll creators must be able to enable auto-marking");
 assert.ok(mobilePanel.includes("Leaderboard"), "mobile poll cards must expose a leaderboard");
+assert.ok(mobilePanel.includes("item.poll.canDelete&&"), "mobile poll deletion control must follow the server-authorized canDelete flag");
+assert.ok(mobilePanel.includes("/api/chat/polls/"), "mobile poll deletion must call the existing API endpoint");
 assert.ok(groups.includes("!result || !result.deleted"), "study-group deletion must handle null API responses");
 assert.ok(studentChat.includes("!result || !result.deleted"), "learner chat deletion must handle null API responses");
 assert.ok(teacherChat.includes("!data || !data.deleted"), "teacher chat deletion must handle null API responses");
