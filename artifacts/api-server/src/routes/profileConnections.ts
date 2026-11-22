@@ -59,10 +59,10 @@ export async function hasAcceptedProfileConnection(userA: number, userB: number)
   return Number(result.rowCount ?? 0) > 0;
 }
 
-export async function hasRejectedProfileConnection(userA: number, userB: number): Promise<boolean> {
+export async function hasNonAcceptedProfileConnection(userA: number, userB: number): Promise<boolean> {
   await ensureSchema();
   const result = await pool.query(
-    "SELECT 1 FROM profile_connections WHERE status='rejected' AND ((requester_id=$1 AND recipient_id=$2) OR (requester_id=$2 AND recipient_id=$1)) LIMIT 1",
+    "SELECT 1 FROM profile_connections WHERE status IN ('pending','rejected') AND ((requester_id=$1 AND recipient_id=$2) OR (requester_id=$2 AND recipient_id=$1)) LIMIT 1",
     [userA,userB],
   );
   return Number(result.rowCount ?? 0) > 0;
@@ -128,7 +128,8 @@ router.get("/profile/:id/social", requireAuth, async (req,res): Promise<void> =>
   const chatPrivacy=privacy.rows[0]?.chat_privacy??"everyone";
   // A declined or disconnected relationship is a hard stop until a fresh
   // connection request is approved, even when either profile is otherwise open.
-  const canChat=actor.id!==targetId&&!target.isBlocked&&!target.isSuspended&&!rejected&&(accepted||chatPrivacy!=="approval_required");
+  const hasUnapprovedRequest=connection?.status==="pending";
+  const canChat=actor.id!==targetId&&!target.isBlocked&&!target.isSuspended&&!rejected&&!hasUnapprovedRequest&&(accepted||chatPrivacy!=="approval_required");
   res.setHeader("Cache-Control","private, no-store");
   res.json({
     isSelf:actor.id===targetId,
