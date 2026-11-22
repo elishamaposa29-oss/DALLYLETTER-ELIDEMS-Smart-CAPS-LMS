@@ -46,7 +46,7 @@ export default function AuthenticatedMediaPreview({ url, height = 220, accessibi
     const source = offlineUri
       ? { uri: offlineUri }
       : { uri: resolved, headers: needsAuth ? getApiMediaAuthHeaders(url, token, getApiUrl("/")) : undefined };
-    void videoPlayer.replaceAsync(source).then(() => { videoPlayer.play(); }).catch(() => setVideoError(true));
+    void videoPlayer.replaceAsync(source).then(() => { videoPlayer.play(); }).catch(() => { setVideoError(true); setVideoRequested(false); });
   }, [looksVideo, videoRequested, offlineUri, resolved, needsAuth, url, token, videoPlayer]);
   return <View style={{ width: "100%" }}>
     <Pressable accessibilityRole="button" accessibilityLabel={"Open " + label + " fullscreen"} onPress={() => setFullScreen(true)} style={{ width: "100%", minHeight: isImage ? height : 76, borderRadius: 12, overflow: "hidden", backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
