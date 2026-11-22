@@ -128,12 +128,12 @@ router.get("/chat/groups/:groupId/polls", requireAuth, async(req,res)=>{
     const options=await db.select().from(chatPollOptionsTable).where(eq(chatPollOptionsTable.pollId,poll.id));
     const votes=await db.select().from(chatPollVotesTable).where(eq(chatPollVotesTable.pollId,poll.id));
     const actor = req.currentUser!;
-    const hasVoted = votes.some(vote => vote.userId === actor.id);
+    const hasVoted = votes.some(vote => Number(vote.userId) === Number(actor.id));
     let isGroupOwner = false;
     let groupCreator: { role: string; isManager: boolean | null; managerLevel: string | null } | undefined;
     if (poll.groupId !== null) {
       const [group] = await db.select({ creatorId: studyGroupsTable.creatorId }).from(studyGroupsTable).where(eq(studyGroupsTable.id, poll.groupId));
-      isGroupOwner = group?.creatorId === actor.id;
+      isGroupOwner = Number(group?.creatorId) === Number(actor.id);
       if (group?.creatorId) {
         [groupCreator] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, group.creatorId));
       }
@@ -141,13 +141,13 @@ router.get("/chat/groups/:groupId/polls", requireAuth, async(req,res)=>{
     const managerAuthorized = poll.groupId !== null && canAccessManager(actor) &&
       await managerHasPermission(actor, "groups.manage") &&
       Boolean(groupCreator && canModerateUser(actor, groupCreator));
-    const canDelete = poll.creatorId === actor.id || isGroupOwner || isOwnerRole(actor.role) || managerAuthorized;
+    const canDelete = Number(poll.creatorId) === Number(actor.id) || isGroupOwner || isOwnerRole(actor.role) || managerAuthorized;
     const safePoll = { ...poll, canDelete, correctOptionId: poll.autoMark && (poll.creatorId === actor.id || hasVoted) ? poll.correctOptionId : null };
     const myMark = poll.autoMark && hasVoted && poll.correctOptionId != null ? {
-      isCorrect: votes.some(vote => vote.userId === actor.id && vote.optionId === poll.correctOptionId),
+      isCorrect: votes.some(vote => Number(vote.userId) === Number(actor.id) && Number(vote.optionId) === Number(poll.correctOptionId)), 
       correctLabel: options.find(option => option.id === poll.correctOptionId)?.label ?? null,
     } : null;
-    return { poll: safePoll, options: options.map(option => ({ ...option, voteCount: votes.filter(vote => vote.optionId === option.id).length, selected: votes.some(vote => vote.optionId === option.id && vote.userId === actor.id) })), totalVotes: new Set(votes.map(vote => vote.userId)).size, myMark };
+    return { poll: safePoll, options: options.map(option => ({ ...option, voteCount: votes.filter(vote => vote.optionId === option.id).length, selected: votes.some(vote => Number(vote.optionId) === Number(option.id) && Number(vote.userId) === Number(actor.id)) })), totalVotes: new Set(votes.map(vote => vote.userId)).size, myMark };
   }));
  res.json(out);
 });
@@ -199,13 +199,13 @@ router.delete("/chat/polls/:pollId", requireAuth, async(req,res):Promise<void>=>
  if(!Number.isSafeInteger(pollId)||pollId<=0){res.status(400).json({error:"Invalid poll id"});return;}
  const [poll]=await db.select().from(chatPollsTable).where(eq(chatPollsTable.id,pollId));
  if(!poll){res.status(404).json({error:"Poll not found"});return;}
- const isCreator=poll.creatorId===actor.id;
+ const isCreator=Number(poll.creatorId)===Number(actor.id);
  const isOwner=isOwnerRole(actor.role);
  let isGroupOwner=false;
  let groupCreator:{role:string;isManager:boolean|null;managerLevel:string|null}|undefined;
  if(poll.groupId!==null){
   const [group]=await db.select({creatorId:studyGroupsTable.creatorId}).from(studyGroupsTable).where(eq(studyGroupsTable.id,poll.groupId));
-  isGroupOwner=group?.creatorId===actor.id;
+  isGroupOwner=Number(group?.creatorId)===Number(actor.id);
   if(group?.creatorId){
    [groupCreator]=await db.select({role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(eq(usersTable.id,group.creatorId));
   }
