@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL(path, import.meta.url), "utf8");
-const [api, panel, mobilePanel, groups, studyGroupsApi, studentChat, teacherChat, adminChat, aiRoute, aiSettings, academicRecords, studentPolls, profileLink, messagesApi, retentionEngine, retentionUi, ownerCommandCenter] = await Promise.all([
+const [api, panel, mobilePanel, groups, studyGroupsApi, studentChat, teacherChat, adminChat, aiRoute, aiSettings, academicRecords, studentPolls, profileLink, messagesApi, retentionEngine, retentionUi, ownerCommandCenter, appRoutes, dashboardLayout] = await Promise.all([
   read("../artifacts/api-server/src/routes/socialFeatures.ts"),
   read("../artifacts/dallyletter/src/components/StudyGroupPollPanel.tsx"),
   read("../artifacts/dallyletter-mobile/components/StudyGroupPollPanel.tsx"),
@@ -20,6 +20,8 @@ const [api, panel, mobilePanel, groups, studyGroupsApi, studentChat, teacherChat
   read("../artifacts/api-server/src/lib/retention-cleanup.ts"),
   read("../artifacts/dallyletter/src/components/OwnerRetentionControls.tsx"),
   read("../artifacts/api-server/src/routes/ownerCommandCenter.ts"),
+  read("../artifacts/dallyletter/src/App.tsx"),
+  read("../artifacts/dallyletter/src/components/DashboardLayout.tsx"),
 ]);
 
 assert.ok(api.includes('router.get("/chat/polls/:pollId/leaderboard"'), "group polls must expose a leaderboard endpoint");
@@ -92,6 +94,14 @@ assert.ok(retentionEngine.includes("NOT EXISTS (SELECT 1 FROM exercise_submissio
 assert.ok(retentionEngine.includes("retention.cleanup.completed") && retentionEngine.includes("owner_retention_runs"), "retention runs must be durably audited, including failures");
 assert.ok(retentionEngine.includes("startRetentionCleanupScheduler") && retentionEngine.includes("setInterval"), "retention cleanup must execute automatically on the configured server schedule");
 assert.ok(retentionUi.includes("DELETE EXPIRED CONTENT") && retentionUi.includes("Preview eligible content") && retentionUi.includes("Enable scheduled cleanup"), "Owner retention controls must require a preview and explicit confirmation for manual cleanup");
+
+assert.ok(ownerCommandCenter.includes("owner_retention_previews") && ownerCommandCenter.includes("previewId") && ownerCommandCenter.includes("used_at IS NULL"), "scheduled cleanup activation must require a recent, matching Owner preview");
+assert.ok(retentionUi.includes("preview.retentionDays!==policy.retentionDays") && retentionUi.includes("previewId:preview?.previewId"), "Owner UI must invalidate stale previews and submit the matching preview token");
+assert.ok(appRoutes.includes('path="/admin/chat"><ProtectedRoute allowedRoles={["owner","admin"]}') && appRoutes.includes('"owner","admin","manager","senior_manager","junior_manager"'), "Admin, Owner and Manager must have routes to the shared study-group and chat workspaces");
+assert.ok(dashboardLayout.includes('{ label: "Study Groups", href: "/student/study-groups", icon: Users }') && dashboardLayout.includes('{ label: "Group Chat", href: "/admin/chat", icon: MessageSquare }'), "operational Admin dashboard must expose study groups and chat without exposing Owner-only controls");
+assert.ok(adminChat.includes("VoiceRecorder onSend={handleSendVoice}") && adminChat.includes("handleSendMedia"), "Owner/Admin chat must support voice announcements and learning-media attachments");
+assert.ok(academicRecords.includes("r.requested_by,u.role"), "transfer-letter deletion must load the real requester ID before checking creator authority");
+
 assert.ok(ownerCommandCenter.includes("/owner/command-center/retention/preview") && ownerCommandCenter.includes("/owner/command-center/retention/run"), "Owner Command Centre must expose protected preview and execution endpoints");
 assert.ok(academicRecords.includes('managerHasPermission(actor,"reports.view")') && academicRecords.includes('managerHasPermission(actor,"transfers.view")'), "report and transfer deletion must enforce existing manager permissions");
 assert.ok(academicRecords.includes('"academic_report.deleted"') && academicRecords.includes('"transfer_letter.deleted"'), "report and transfer deletion must write audit events");
