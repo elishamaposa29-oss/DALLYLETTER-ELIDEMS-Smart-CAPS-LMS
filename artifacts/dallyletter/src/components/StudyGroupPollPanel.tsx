@@ -36,16 +36,21 @@ export function StudyGroupPollCard({ item, onVoted, canDelete = false }: { item:
   const vote = async (optionId: number) => {
     const selectedIds = item.poll.allowMultiple ? [...item.options.filter(option => option.selected && option.id !== optionId).map(option => option.id), ...(item.options.some(option => option.id === optionId && option.selected) ? [] : [optionId])] : [optionId];
     if (!selectedIds.length) return;
+    setSelectedAnswerId(optionId);
+    setMark(null);
     setVoting(true);
     try {
       const result = await apiJson<PollMarkResult>("/api/chat/polls/" + item.poll.id + "/vote", { method: "POST", body: JSON.stringify({ optionIds: selectedIds }) });
       setMark(result);
-      setSelectedAnswerId(optionId);
       if (result.isCorrect !== undefined && typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
         try { navigator.vibrate(result.isCorrect ? [45, 35, 70] : [110, 45, 110]); } catch { /* Haptics are optional on unsupported browsers. */ }
       }
       onVoted?.();
-    } catch (error) { toast({ variant: "destructive", title: "Vote was not marked", description: error instanceof Error ? error.message : "Your answer could not be submitted." }); }
+    } catch (error) {
+      setSelectedAnswerId(null);
+      setMark(null);
+      toast({ variant: "destructive", title: "Vote was not marked", description: error instanceof Error ? error.message : "Your answer could not be submitted." });
+    }
     finally { setVoting(false); }
   };
   const toggleLeaderboard = async () => {
@@ -61,7 +66,7 @@ export function StudyGroupPollCard({ item, onVoted, canDelete = false }: { item:
     } finally { setLeaderboardLoading(false); }
   };
   const feedback = mark ?? item.myMark ?? null;
-  const selected = item.options.find(option => option.selected);
+  const selected = item.options.find(option => option.id === selectedAnswerId) ?? item.options.find(option => option.selected);
   const showMark = feedback?.isCorrect !== undefined || (item.poll.autoMark && item.poll.correctOptionId != null && Boolean(selected));
   const isCorrect = feedback?.isCorrect ?? selected?.id === item.poll.correctOptionId;
   return <Card className="w-full space-y-3 p-4">
@@ -80,6 +85,7 @@ export function StudyGroupPollCard({ item, onVoted, canDelete = false }: { item:
       return <button key={option.id} type="button" disabled={item.poll.closed || voting} onClick={() => void vote(option.id)} className={"flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-70 " + answerStyle}><span>{isSelected ? "✓ " : ""}{option.label}</span><span className="text-xs tabular-nums text-muted-foreground">{option.voteCount}</span></button>;
     })}</div>
     <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-[11px] text-muted-foreground">{item.totalVotes} vote{item.totalVotes===1?"":"s"} · {item.poll.allowMultiple?"Multiple choices":"Choose one"}</p><Button type="button" size="sm" variant="outline" onClick={() => void toggleLeaderboard()}><Trophy className="mr-1.5 h-3.5 w-3.5"/> {leaderboardOpen ? "Hide leaderboard" : "Leaderboard"}</Button></div>
+    {voting && item.poll.autoMark && <p role="status" aria-live="polite" className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs font-semibold text-blue-900">Answer received — checking your result…</p>}
     {showMark && <p role="status" aria-live="polite" className={"rounded-md border p-3 text-xs font-semibold " + (isCorrect ? "border-emerald-300 bg-emerald-50 text-emerald-900" : "border-rose-300 bg-rose-50 text-rose-900")}>{isCorrect ? "✓ Correct answer!" : "✕ Incorrect. Correct answer: " + (feedback?.correctLabel ?? item.options.find(option => option.id === item.poll.correctOptionId)?.label ?? "See teacher feedback")}</p>}
     {leaderboardOpen && <section className="space-y-2 rounded-lg border bg-muted/20 p-3" aria-label="Poll leaderboard"><h4 className="flex items-center gap-2 text-xs font-bold"><Trophy className="h-4 w-4"/> Poll leaderboard · {leaderboard.length} participant{leaderboard.length===1?"":"s"}</h4>
       {leaderboardLoading ? <p className="text-xs text-muted-foreground">Loading leaderboard…</p> : leaderboardError ? <p role="alert" className="text-xs text-destructive">{leaderboardError}</p> : leaderboard.length===0 ? <p className="text-xs text-muted-foreground">No answers have been submitted yet.</p> : leaderboard.map(entry => <div key={entry.rank + "-" + (entry.userId ?? entry.rank)} className="flex items-center gap-3 rounded-md bg-background p-2"><span className="w-6 shrink-0 text-center text-xs font-bold text-muted-foreground">#{entry.rank}</span>{entry.userId ? <UserProfileLink userId={entry.userId} name={entry.name} avatarUrl={entry.avatarUrl} className="min-w-0 flex-1 text-xs"/> : <span className="inline-flex min-w-0 flex-1 items-center gap-2 text-xs"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/10 font-bold text-primary">A</span><span className="truncate">{entry.name}</span></span>}<span className="max-w-[48%] text-right text-xs font-medium text-foreground">{entry.answers.join(", ")}</span></div>)}
