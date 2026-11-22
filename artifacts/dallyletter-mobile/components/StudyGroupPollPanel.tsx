@@ -23,6 +23,7 @@ export function StudyGroupPollPanel({ groupId, token, colors, allowPolls }: { gr
   const [correctOptionIndex,setCorrectOptionIndex]=useState(0);
   const [marks,setMarks]=useState<Record<number,Mark>>({});
   const [selectedAnswers,setSelectedAnswers]=useState<Record<number,number>>({});
+  const [votingIds,setVotingIds]=useState<Record<number,boolean>>({});
   const [leaderboardOpenId,setLeaderboardOpenId]=useState<number|null>(null);
   const [leaderboards,setLeaderboards]=useState<Record<number,LeaderboardEntry[]>>({});
   const [leaderboardLoadingId,setLeaderboardLoadingId]=useState<number|null>(null);
@@ -61,11 +62,14 @@ export function StudyGroupPollPanel({ groupId, token, colors, allowPolls }: { gr
   };
 
   const vote=async(poll:Poll,optionId:number)=>{
-    if(!token)return;
+    if(!token||votingIds[poll.poll.id])return;
     const selectedIds=poll.poll.allowMultiple
       ? [...poll.options.filter(option=>option.selected&&option.id!==optionId).map(option=>option.id),...(poll.options.some(option=>option.id===optionId&&option.selected)?[]:[optionId])]
       : [optionId];
     if(selectedIds.length===0)return;
+    setSelectedAnswers(current=>({...current,[poll.poll.id]:optionId}));
+    setMarks(current=>{const next={...current};delete next[poll.poll.id];return next;});
+    setVotingIds(current=>({...current,[poll.poll.id]:true}));
     try{
       const r=await fetch(getApiUrl("/api/chat/polls/"+poll.poll.id+"/vote"),{
         method:"POST",
@@ -76,11 +80,14 @@ export function StudyGroupPollPanel({ groupId, token, colors, allowPolls }: { gr
       if(!r.ok)throw new Error(data?.error||"Vote not saved");
       if(data?.isCorrect!==undefined){
         setMarks(current=>({...current,[poll.poll.id]:data}));
-        setSelectedAnswers(current=>({...current,[poll.poll.id]:optionId}));
         try{Vibration.vibrate(data.isCorrect?[45,35,70]:[110,45,110]);}catch{/* Haptics are optional on unsupported devices. */}
       }
       await load();
-    }catch(e){setError(e instanceof Error?e.message:"Vote could not be saved.");}
+    }catch(e){
+      setSelectedAnswers(current=>{const next={...current};delete next[poll.poll.id];return next;});
+      setMarks(current=>{const next={...current};delete next[poll.poll.id];return next;});
+      setError(e instanceof Error?e.message:"Vote could not be saved.");
+    }finally{setVotingIds(current=>{const next={...current};delete next[poll.poll.id];return next;});}
   };
 
   const removePoll=(poll:Poll)=>{
@@ -148,9 +155,10 @@ export function StudyGroupPollPanel({ groupId, token, colors, allowPolls }: { gr
           const borderColor=isCorrectAnswer||isCorrectSelected?"#16A34A":isWrongSelected?"#DC2626":isSelected?colors.primary:colors.border;
           const backgroundColor=isCorrectAnswer||isCorrectSelected?"#DCFCE7":isWrongSelected?"#FEE2E2":colors.background;
           const answerColor=isCorrectAnswer||isCorrectSelected?"#166534":isWrongSelected?"#991B1B":colors.foreground;
-          return <TouchableOpacity key={option.id} disabled={item.poll.closed} onPress={()=>void vote(item,option.id)} style={{flexDirection:"row",justifyContent:"space-between",alignItems:"center",borderWidth:1,borderColor,backgroundColor,borderRadius:8,padding:9}}><Text style={{fontSize:12,color:answerColor,flex:1}}>{isSelected?"✓ ":""}{option.label}</Text><Text style={{fontSize:11,color:colors.mutedForeground}}>{option.voteCount}</Text></TouchableOpacity>;
+          return <TouchableOpacity key={option.id} disabled={item.poll.closed||Boolean(votingIds[item.poll.id])} onPress={()=>void vote(item,option.id)} style={{flexDirection:"row",justifyContent:"space-between",alignItems:"center",borderWidth:1,borderColor,backgroundColor,borderRadius:8,padding:9}}><Text style={{fontSize:12,color:answerColor,flex:1}}>{isSelected?"✓ ":""}{option.label}</Text><Text style={{fontSize:11,color:colors.mutedForeground}}>{option.voteCount}</Text></TouchableOpacity>;
         })}
         <View style={{flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:8}}><Text style={{fontSize:10,color:colors.mutedForeground}}>{item.totalVotes} vote{item.totalVotes===1?"":"s"} · {item.poll.allowMultiple?"Multiple choices":"Choose one"}</Text><TouchableOpacity onPress={()=>void toggleLeaderboard(item.poll.id)}><Text style={{fontSize:11,fontWeight:"800",color:colors.primary}}>{leaderboardOpenId===item.poll.id?"Hide leaderboard":"Leaderboard"}</Text></TouchableOpacity></View>
+        {votingIds[item.poll.id]&&item.poll.autoMark&&<View accessibilityLiveRegion="polite" style={{borderWidth:1,borderColor:"#93C5FD",backgroundColor:"#EFF6FF",borderRadius:8,padding:9}}><Text style={{fontSize:11,fontWeight:"800",color:"#1E40AF"}}>Answer received — checking your result…</Text></View>}
         {showMark&&<View style={{borderWidth:1,borderColor:isCorrect?"#86EFAC":"#FDA4AF",backgroundColor:isCorrect?"#DCFCE7":"#FEE2E2",borderRadius:8,padding:9}}><Text style={{fontSize:11,fontWeight:"800",color:isCorrect?"#166534":"#991B1B"}}>{isCorrect?"✓ Correct answer!":"✕ Incorrect. Correct answer: "+(feedback?.correctLabel??item.options.find(option=>option.id===correctOptionId)?.label??"See teacher feedback")}</Text></View>}
         {leaderboardOpenId===item.poll.id&&<View style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:8,gap:7}}><Text style={{fontSize:11,fontWeight:"900",color:colors.foreground}}>🏆 Poll leaderboard</Text>
           {leaderboardLoadingId===item.poll.id?<ActivityIndicator color={colors.primary}/>:entries.length===0?<Text style={{fontSize:10,color:colors.mutedForeground}}>No answers have been submitted yet.</Text>:<ScrollView style={{maxHeight:170}} nestedScrollEnabled contentContainerStyle={{gap:6}}>{entries.map(entry=><View key={entry.rank+"-"+(entry.userId??entry.rank)} style={{flexDirection:"row",alignItems:"center",gap:7,borderRadius:7,backgroundColor:colors.background,padding:6}}><Text style={{fontSize:10,fontWeight:"900",color:colors.mutedForeground}}>#{entry.rank}</Text>{entry.userId?<UserProfileLink userId={entry.userId} name={entry.name} avatarUrl={entry.avatarUrl}/>:<Text style={{fontSize:11,color:colors.foreground,flex:1}}>◉ Anonymous learner</Text>}<Text style={{fontSize:10,color:colors.foreground,flexShrink:1,textAlign:"right"}}>{entry.answers.join(", ")}</Text></View>)}</ScrollView>}
