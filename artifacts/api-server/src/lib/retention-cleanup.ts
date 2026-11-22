@@ -99,7 +99,7 @@ async function categoryCount(client: any, category: RetentionCategory, cutoff: D
     lessons: "SELECT count(*)::int AS count FROM lessons l WHERE l.created_at<$1 AND lower(l.type)='notes' AND l.media_url IS NULL AND NOT EXISTS (SELECT 1 FROM exercises e WHERE e.lesson_id=l.id)",
     exercises: "SELECT count(*)::int AS count FROM exercises e WHERE e.created_at<$1 AND lower(e.status)='draft' AND NOT EXISTS (SELECT 1 FROM exercise_submissions s WHERE s.exercise_id=e.id) AND NOT EXISTS (SELECT 1 FROM exercise_media m WHERE m.exercise_id=e.id)",
     study_groups: "SELECT count(*)::int AS count FROM study_groups g WHERE g.created_at<$1 AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.group_id=g.id) AND NOT EXISTS (SELECT 1 FROM chat_polls p WHERE p.group_id=g.id) AND NOT EXISTS (SELECT 1 FROM chat_community_groups cg WHERE cg.group_id=g.id) AND (SELECT count(*) FROM study_group_members gm WHERE gm.group_id=g.id)<=1",
-    messages: "SELECT count(*)::int AS count FROM messages WHERE group_id IS NOT NULL AND media_url IS NULL AND created_at<$1",
+    messages: "SELECT count(*)::int AS count FROM messages m WHERE m.group_id IS NOT NULL AND m.media_url IS NULL AND m.created_at<$1 AND NOT EXISTS (SELECT 1 FROM messages reply WHERE reply.parent_message_id=m.id)",
     polls: "SELECT count(*)::int AS count FROM chat_polls WHERE closed=TRUE AND auto_mark=FALSE AND created_at<$1",
     media: "SELECT count(*)::int AS count FROM exercise_media WHERE exercise_id IS NULL AND question_id IS NULL AND answer_id IS NULL AND created_at<$1",
     assignments: "SELECT count(*)::int AS count FROM assignments a WHERE a.created_at<$1 AND lower(a.status) IN ('draft','cancelled') AND NOT EXISTS (SELECT 1 FROM assignment_submissions s WHERE s.assignment_id=a.id)",
@@ -131,7 +131,7 @@ async function deleteCategory(client: any, category: RetentionCategory, cutoff: 
     return r.rowCount ?? 0;
   }
   if (category === "messages") {
-    const r = await client.query("DELETE FROM messages WHERE id IN (SELECT id FROM messages WHERE group_id IS NOT NULL AND media_url IS NULL AND created_at<$1 ORDER BY created_at LIMIT 5000) RETURNING id", [cutoff]);
+    const r = await client.query("DELETE FROM messages WHERE id IN (SELECT m.id FROM messages m WHERE m.group_id IS NOT NULL AND m.media_url IS NULL AND m.created_at<$1 AND NOT EXISTS (SELECT 1 FROM messages reply WHERE reply.parent_message_id=m.id) ORDER BY m.created_at LIMIT 5000) RETURNING id", [cutoff]);
     return r.rowCount ?? 0;
   }
   if (category === "polls") {
@@ -188,32 +188,47 @@ export async function runRetentionCleanup(input: { triggerType: "manual" | "sche
   const categories = input.categories ?? policy.categories;
   const days = input.retentionDays ?? policy.retentionDays;
   const cutoff = cutoffFor(days);
-  const client = await pool.connect();
   const counts: Record<string, number> = {};
-  let runId: number | null = null;
+  const errors: Record<string, string> = {};
+  const run = await pool.query("INSERT INTO owner_retention_runs (triggered_by,trigger_type,status) VALUES ($1,$2,'running') RETURNING id", [input.triggeredBy, input.triggerType]);
+  const runId = Number(run.rows[0].id);
+  const auditActor = input.triggeredBy ?? policy.updatedBy;
+  const client = await pool.connect();
   try {
-    const run = await client.query("INSERT INTO owner_retention_runs (triggered_by,trigger_type,status) VALUES ($1,$2,'running') RETURNING id", [input.triggeredBy, input.triggerType]);
-    runId = Number(run.rows[0].id);
-    await client.query("BEGIN");
-    for (const category of categories) counts[category] = await deleteCategory(client, category, cutoff);
-    await client.query("UPDATE owner_retention_runs SET finished_at=now(),category_counts=$1::jsonb,status='completed' WHERE id=$2", [JSON.stringify(counts), runId]);
-    const auditActor = input.triggeredBy ?? policy.updatedBy;
-    if (!auditActor) throw new Error("Retention cleanup has no accountable Owner actor; configure the policy before enabling it.");
-    await client.query("INSERT INTO audit_logs(action,category,performed_by,target_type,target_id,details) VALUES($1,$2,$3,$4,$5,$6)", [
-      "retention.cleanup.completed", "system", auditActor,
-      "retention_run", runId, JSON.stringify({ triggerType: input.triggerType, retentionDays: days, cutoff: cutoff.toISOString(), deleted: counts }),
-    ]);
-    await client.query("COMMIT");
-    return { runId, deleted: counts, cutoff: cutoff.toISOString() };
-  } catch (error) {
-    await client.query("ROLLBACK").catch(() => undefined);
-    if (runId != null) {
-      await pool.query("UPDATE owner_retention_runs SET finished_at=now(),status='failed',error=$1 WHERE id=$2", [error instanceof Error ? error.message.slice(0, 1000) : "Retention cleanup failed", runId]).catch(() => undefined);
+    for (const category of categories) {
+      try {
+        await client.query("BEGIN");
+        counts[category] = await deleteCategory(client, category, cutoff);
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        errors[category] = error instanceof Error ? error.message.slice(0, 500) : "Category cleanup failed";
+        counts[category] = 0;
+      }
     }
-    throw error;
   } finally {
     client.release();
   }
+  const hasErrors = Object.keys(errors).length > 0;
+  const anySuccess = categories.some(category => !Object.prototype.hasOwnProperty.call(errors, category));
+  const status = hasErrors ? (anySuccess ? "partial" : "failed") : "completed";
+  try {
+    await pool.query("UPDATE owner_retention_runs SET finished_at=now(),category_counts=$1::jsonb,status=$2,error=$3 WHERE id=$4", [
+      JSON.stringify({ deleted: counts, errors }), status,
+      hasErrors ? JSON.stringify(errors).slice(0, 2000) : null, runId,
+    ]);
+    if (!auditActor) throw new Error("Retention cleanup has no accountable Owner actor; configure the policy before enabling it.");
+    await pool.query("INSERT INTO audit_logs(action,category,performed_by,target_type,target_id,details) VALUES($1,$2,$3,$4,$5,$6)", [
+      "retention.cleanup." + status, "system", auditActor,
+      "retention_run", runId, JSON.stringify({ triggerType: input.triggerType, retentionDays: days, cutoff: cutoff.toISOString(), deleted: counts, errors }),
+    ]);
+  } catch (error) {
+    await pool.query("UPDATE owner_retention_runs SET status='failed',error=$1,finished_at=now() WHERE id=$2", [
+      error instanceof Error ? error.message.slice(0, 1000) : "Retention audit write failed", runId,
+    ]).catch(() => undefined);
+    throw error;
+  }
+  return { runId, status, deleted: counts, errors, cutoff: cutoff.toISOString() };
 }
 
 let schedulerStarted = false;
