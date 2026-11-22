@@ -181,8 +181,9 @@ router.post("/chat/groups/:groupId/polls", requireAuth, async(req,res):Promise<v
  const groupId=Number(req.params.groupId), user=req.currentUser!, question=typeof req.body?.question==="string"?req.body.question.trim():"", options=Array.isArray(req.body?.options)?req.body.options.filter((x:any)=>typeof x==="string"&&x.trim()).slice(0,20):[];
   if(!(await canAccessChatGroup(groupId, user.id, user))||!question||options.length<2){res.status(400).json({error:"Group member access and at least two options are required"});return;}
   const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, groupId));
+  const [control] = await db.select({ canManageSettings: groupMemberControlsTable.canManageSettings, blocked: groupMemberControlsTable.blocked, suspended: groupMemberControlsTable.suspended, muted: groupMemberControlsTable.muted }).from(groupMemberControlsTable).where(and(eq(groupMemberControlsTable.groupId,groupId),eq(groupMemberControlsTable.userId,user.id)));
+  if (control?.blocked || control?.suspended || control?.muted) { res.status(403).json({error:"Your group access is restricted by a moderator."}); return; }
   if (settings?.allowPolls === false) {
-   const [control] = await db.select({ canManageSettings: groupMemberControlsTable.canManageSettings }).from(groupMemberControlsTable).where(and(eq(groupMemberControlsTable.groupId,groupId),eq(groupMemberControlsTable.userId,user.id)));
    const [group] = await db.select({ creatorId: studyGroupsTable.creatorId }).from(studyGroupsTable).where(eq(studyGroupsTable.id,groupId));
    const delegated = control?.canManageSettings === true;
    const privileged = isOwnerRole(user.role) || normalizeRole(user.role) === "admin" || (manager(user) && await managerHasPermission(user,"groups.manage"));
