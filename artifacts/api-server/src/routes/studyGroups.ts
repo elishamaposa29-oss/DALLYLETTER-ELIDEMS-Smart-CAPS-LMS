@@ -107,11 +107,17 @@ router.get("/study-groups", requireAuth, async (req, res): Promise<void> => {
     const members = await getGroupMembers(g.id);
     const isMember = members.some(member => member.id === currentUser.id);
     const canManage = await canManageGroup(currentUser, g);
+    let canChat = isOwnerRole(currentUser.role) || String(currentUser.role).toLowerCase() === "admin" || String(currentUser.role).toLowerCase() === "teacher" || isMember || Number(g.creatorId) === Number(currentUser.id);
+    if (!canChat && canAccessManager(currentUser)) {
+      const [creator] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, g.creatorId));
+      canChat = Boolean(creator && canModerateUser(currentUser, creator) && ((await managerHasPermission(currentUser,"groups.manage")) || (await managerHasPermission(currentUser,"messages.send"))));
+    }
     const visibleMembers=hideOwnerMembers(currentUser,members);
     const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, g.id));
     return {
       ...g,
       canManage,
+      canChat,
       memberCount: visibleMembers.length,
       isMember,
       // Non-members get only a safe public profile preview: never expose email, phone,

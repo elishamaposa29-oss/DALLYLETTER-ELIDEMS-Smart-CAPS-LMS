@@ -59,6 +59,7 @@ export default function AdminTabLayout() {
       <Tabs.Screen name="qualifications" options={{ href: null }} />
       <Tabs.Screen name="academic" options={{ href: null }} />
       <Tabs.Screen name="break" options={{ href: null }} />
+      <Tabs.Screen name="group-chat" options={{ href: null }} />
     </Tabs>
   );
 }
