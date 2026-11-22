@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL(path, import.meta.url), "utf8");
-const [api, panel, groups, studentChat, teacherChat, adminChat, aiRoute, aiSettings] = await Promise.all([
+const [api, panel, mobilePanel, groups, studentChat, teacherChat, adminChat, aiRoute, aiSettings] = await Promise.all([
   read("../artifacts/api-server/src/routes/socialFeatures.ts"),
   read("../artifacts/dallyletter/src/components/StudyGroupPollPanel.tsx"),
+  read("../artifacts/dallyletter-mobile/components/StudyGroupPollPanel.tsx"),
   read("../artifacts/dallyletter/src/pages/student/StudentStudyGroups.tsx"),
   read("../artifacts/dallyletter/src/pages/student/StudentChat.tsx"),
   read("../artifacts/dallyletter/src/pages/teacher/TeacherChat.tsx"),
@@ -23,7 +24,11 @@ assert.ok(panel.includes("UserProfileLink userId={entry.userId} name={entry.name
 assert.ok(panel.includes("navigator.vibrate(result.isCorrect ? [45, 35, 70] : [110, 45, 110])"), "auto-mark feedback must provide optional haptics");
 assert.ok(panel.includes("border-rose-300 bg-rose-50 text-rose-900"), "incorrect answers must be visibly red");
 assert.ok(panel.includes("border-emerald-300 bg-emerald-50 text-emerald-900"), "correct answers must be visibly green");
-assert.ok(panel.includes("StudyGroupPollCard key={item.poll.id}"), "all poll views must use the same full-featured poll card");
+assert.ok(panel.includes("StudyGroupPollCard key={item.poll.id}"), "all web poll views must use the same full-featured poll card");
+assert.ok(mobilePanel.includes("UserProfileLink userId={entry.userId} name={entry.name} avatarUrl={entry.avatarUrl}"), "mobile leaderboard avatars must open Profile Hub");
+assert.ok(mobilePanel.includes("Vibration.vibrate(data.isCorrect?[45,35,70]:[110,45,110])"), "mobile auto-mark feedback must vibrate on correct and incorrect answers");
+assert.ok(mobilePanel.includes("Enable automatic marking"), "mobile poll creators must be able to enable auto-marking");
+assert.ok(mobilePanel.includes("Leaderboard"), "mobile poll cards must expose a leaderboard");
 assert.ok(groups.includes("!result || !result.deleted"), "study-group deletion must handle null API responses");
 assert.ok(studentChat.includes("!result || !result.deleted"), "learner chat deletion must handle null API responses");
 assert.ok(teacherChat.includes("!data || !data.deleted"), "teacher chat deletion must handle null API responses");
