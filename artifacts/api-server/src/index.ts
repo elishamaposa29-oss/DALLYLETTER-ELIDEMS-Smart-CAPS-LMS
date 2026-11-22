@@ -8,6 +8,7 @@ import { ensureProfileHubSchema } from "./lib/ensureProfileHubSchema";
 import { ensureManagerPermissionSchema } from "./lib/ensureManagerPermissionSchema";
 import { startEmailNotificationDispatcher } from "./lib/email-notification-queue";
 import { startDailyAttendanceLifecycle } from "./lib/daily-attendance-lifecycle";
+import { startRetentionCleanupScheduler } from "./lib/retention-cleanup";
 
 const rawPort = process.env["PORT"] ?? process.env["API_PORT"] ?? "4000";
 
@@ -32,6 +33,7 @@ async function startServer(): Promise<void> {
     startPushDispatcher();
     startTeacherCvExpiryScheduler();
     startDailyAttendanceLifecycle();
+    await startRetentionCleanupScheduler();
   } catch (error) {
     logger.error({ err: error }, "Database schema verification failed; refusing to serve traffic");
     process.exit(1);
