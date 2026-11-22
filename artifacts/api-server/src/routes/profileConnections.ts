@@ -124,12 +124,10 @@ router.get("/profile/:id/social", requireAuth, async (req,res): Promise<void> =>
   );
   const connection=link.rows[0]??null;
   const accepted=connection?.status==="accepted";
-  const rejected=connection?.status==="rejected";
   const chatPrivacy=privacy.rows[0]?.chat_privacy??"everyone";
-  // A declined or disconnected relationship is a hard stop until a fresh
-  // connection request is approved, even when either profile is otherwise open.
-  const hasUnapprovedRequest=connection?.status==="pending";
-  const canChat=actor.id!==targetId&&!target.isBlocked&&!target.isSuspended&&!rejected&&!hasUnapprovedRequest&&(accepted||chatPrivacy!=="approval_required");
+  // The profile owner's current privacy choice is authoritative. Historical
+  // pending/rejected/disconnected requests never override Everyone allowed.
+  const canChat=actor.id!==targetId&&!target.isBlocked&&!target.isSuspended&&(accepted||chatPrivacy!=="approval_required");
   res.setHeader("Cache-Control","private, no-store");
   res.json({
     isSelf:actor.id===targetId,
