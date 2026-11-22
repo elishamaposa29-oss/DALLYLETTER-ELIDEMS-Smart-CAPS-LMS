@@ -9,7 +9,8 @@ import { createRequire } from "node:module";
 // Load pg directly for the test harness. Importing @workspace/db from a plain
 // Node ESM script loads its TypeScript entrypoint, whose extensionless
 // directory import (./schema) is not supported by Node without a TS loader.
-const requireDb = createRequire(new URL("../../../lib/db/package.json", import.meta.url));
+const dbPackageUrl = new URL("../../../lib/db/package.json", import.meta.url).href;
+const requireDb = createRequire(dbPackageUrl);
 const { Pool } = requireDb("pg");
 
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required for retention integration tests.");
@@ -32,7 +33,7 @@ try {
   // run, alias that package to a tiny adapter backed by the same test database,
   // avoiding execution of the package TS entrypoint under native Node ESM.
   const dbAdapterPath = join(tempDir, "db-adapter.mjs");
-  await writeFile(dbAdapterPath, `import { createRequire } from "node:module";\nconst require = createRequire(${JSON.stringify(import.meta.url)});\nconst { Pool } = require("pg");\nexport const pool = new Pool({ connectionString: process.env.DATABASE_URL, allowExitOnIdle: true });\n`);
+  await writeFile(dbAdapterPath, `import { createRequire } from "node:module";\nconst require = createRequire(${JSON.stringify(dbPackageUrl)});\nconst { Pool } = require("pg");\nexport const pool = new Pool({ connectionString: process.env.DATABASE_URL, allowExitOnIdle: true });\n`);
   await build({
     entryPoints: ["src/lib/retention-cleanup.ts"],
     outfile: join(tempDir,"retention-cleanup.mjs"),
