@@ -40,10 +40,11 @@ async function canViewGroup(user:any,group:any):Promise<boolean>{
 
 async function canManageGroupSettings(user: any, groupId: number, group?: any) {
   if (group && !(await canViewGroup(user,group))) return false;
-  if (group && await canManageGroup(user,group)) return true;
-  const [control] = await db.select({ canManageSettings: groupMemberControlsTable.canManageSettings })
+  const [control] = await db.select({ canManageSettings: groupMemberControlsTable.canManageSettings, blocked: groupMemberControlsTable.blocked, suspended: groupMemberControlsTable.suspended, muted: groupMemberControlsTable.muted })
     .from(groupMemberControlsTable)
     .where(and(eq(groupMemberControlsTable.groupId, groupId), eq(groupMemberControlsTable.userId, user.id)));
+  if (control?.blocked || control?.suspended || control?.muted) return false;
+  if (group && await canManageGroup(user,group)) return true;
   return control?.canManageSettings === true;
 }
 
