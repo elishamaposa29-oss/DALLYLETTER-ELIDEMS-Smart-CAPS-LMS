@@ -20,11 +20,11 @@ async function canManageGroup(user: any, group: any): Promise<boolean> {
   if (isOwnerRole(user.role)) return true;
   if (canAccessManager(user)) {
     if (!(await managerHasPermission(user,"groups.manage"))) return false;
-    if (group.creatorId === user.id) return true;
+    if (Number(group.creatorId) === Number(user.id)) return true;
     const [creator]=await db.select({role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(eq(usersTable.id,group.creatorId));
     return Boolean(creator && canModerateUser(user,creator));
   }
-  return group.creatorId === user.id;
+  return Number(group.creatorId) === Number(user.id);
 }
 
 async function canViewGroup(user:any,group:any):Promise<boolean>{
@@ -111,6 +111,7 @@ router.get("/study-groups", requireAuth, async (req, res): Promise<void> => {
     const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, g.id));
     return {
       ...g,
+      canManage,
       memberCount: visibleMembers.length,
       isMember,
       // Non-members get only a safe public profile preview: never expose email, phone,
@@ -196,8 +197,7 @@ router.get("/study-groups/:id", requireAuth, async (req, res): Promise<void> => 
 
   const members = hideOwnerMembers(req.currentUser!,await getGroupMembers(group.id));
   res.json({
-    ...group,
-    memberCount: members.length,
+    ...group,    memberCount: members.length,
     members,
     createdAt: group.createdAt.toISOString(),
   });
@@ -377,11 +377,14 @@ router.delete("/study-groups/:id/members/:userId", requireAuth, async (req, res)
   res.sendStatus(204);
 });
 
-// DELETE /study-groups/:id — permanent platform-owner deletion with related group data cleanup
+// DELETE /study-groups/:id — creator/owner or scoped manager with the existing groups.manage permission
 router.delete("/study-groups/:id", requireAuth, async (req, res): Promise<void> => {
   const groupId = Number(req.params.id);
   if (!Number.isInteger(groupId) || groupId <= 0) { res.status(400).json({ error: "Invalid group id" }); return; }
-  if (!isOwnerRole(req.currentUser!.role)) { res.status(403).json({ error: "Only the platform owner can permanently delete a study group." }); return; }
+  const actor=req.currentUser!;
+  const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
+  if (!group) { res.status(404).json({ error: "Study group not found" }); return; }
+  if (!(await canManageGroup(actor, group))) { res.status(403).json({ error: "Only the group creator/owner or a manager with the existing groups.manage permission and authority over the creator can permanently delete this group." }); return; }
 
   const client = await pool.connect();
   let mediaKeys: string[] = [];
@@ -393,21 +396,25 @@ router.delete("/study-groups/:id", requireAuth, async (req, res): Promise<void> 
     mediaKeys = media.rows.map((row:any) => String(row.media_url || "").match(/\/api\/messages\/media\/([a-f0-9-]{36})/i)?.[1]).filter((key:unknown): key is string => typeof key === "string");
     const coverKey = String(found.rows[0].cover_image_url || "").match(/\/api\/lessons\/media\/([a-f0-9-]{36})/i)?.[1];
     if (coverKey) mediaKeys.push(coverKey);
-    await client.query("DELETE FROM chat_poll_votes USING chat_polls WHERE chat_poll_votes.poll_id=chat_polls.id AND chat_polls.group_id=$1", [groupId]);
-    await client.query("DELETE FROM chat_poll_options USING chat_polls WHERE chat_poll_options.poll_id=chat_polls.id AND chat_polls.group_id=$1", [groupId]);
+    await client.query("DELETE FROM chat_poll_votes USING chat_polls WHERE chat_poll_votes.poll_id=chat_polls.id AND chat_polls.group_id=$1", [groupId]);    await client.query("DELETE FROM chat_poll_options USING chat_polls WHERE chat_poll_options.poll_id=chat_polls.id AND chat_polls.group_id=$1", [groupId]);
     await client.query("DELETE FROM chat_polls WHERE group_id=$1", [groupId]);
     await client.query("DELETE FROM chat_community_groups WHERE group_id=$1", [groupId]);
     await client.query("DELETE FROM group_member_controls WHERE group_id=$1", [groupId]);
     await client.query("DELETE FROM group_settings WHERE group_id=$1", [groupId]);
     await client.query("DELETE FROM messages WHERE group_id=$1", [groupId]);
     await client.query("DELETE FROM study_group_members WHERE group_id=$1", [groupId]);
-    await client.query("DELETE FROM study_groups WHERE id=$1", [groupId]);
+    const removedGroup = await client.query("DELETE FROM study_groups WHERE id=$1 RETURNING id", [groupId]);
+    if (!removedGroup.rowCount) throw new Error("Study group row was not deleted.");
     await client.query("COMMIT");
-    for (const key of mediaKeys) { try { await removeStoredMedia(key); } catch { /* Group data is deleted; orphaned storage cleanup can be retried independently. */ } }
-    res.status(200).json({ ok: true, deletedGroupId: groupId, deletedGroupName: found.rows[0].name });
+    const cleanupFailures: string[] = [];
+    for (const key of [...new Set(mediaKeys)]) {
+      try { await removeStoredMedia(key); }
+      catch (error) { cleanupFailures.push(error instanceof Error ? error.message : "Unknown media cleanup error"); }
+    }
+    res.status(200).json({ ok: true, deleted: true, deletedGroupId: groupId, deletedGroupName: found.rows[0].name, mediaCleanupPending: cleanupFailures.length > 0, mediaCleanupFailedCount: cleanupFailures.length, mediaCleanupErrors: cleanupFailures });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
-    res.status(500).json({ error: "Study group deletion failed; no group deletion was committed." });
+    res.status(500).json({ error: error instanceof Error ? error.message : "Study group deletion failed; no group deletion was committed." });
   } finally {
     client.release();
   }
@@ -417,7 +424,16 @@ router.delete("/study-groups/:id", requireAuth, async (req, res): Promise<void> 
 router.delete("/study-groups/:id/messages", requireAuth, async (req, res): Promise<void> => {
   const groupId = Number(req.params.id), user = req.currentUser!;
   const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
-  if (!group || !(await canManageGroupSettings(user, groupId, group))) { res.status(403).json({ error: "Group management access required" }); return; }
-  await db.delete(messagesTable).where(eq(messagesTable.groupId, groupId));
-  res.sendStatus(204);
+  if (!group || !(await canManageGroup(user, group))) { res.status(403).json({ error: "Only the group creator/owner, platform owner, or a scoped manager with groups.manage can clear group messages." }); return; }
+  const groupMessages = await db.select({ id: messagesTable.id, mediaUrl: messagesTable.mediaUrl }).from(messagesTable).where(eq(messagesTable.groupId, groupId));
+  await db.transaction(async (tx) => {
+    const removed = await tx.delete(messagesTable).where(eq(messagesTable.groupId, groupId)).returning({ id: messagesTable.id });
+    if (removed.length !== groupMessages.length) throw new Error("Not all group messages were deleted; the clear-chat operation was rolled back.");
+  });
+  const cleanupFailures: string[] = [];
+  for (const message of groupMessages) {
+    const key = typeof message.mediaUrl === "string" ? message.mediaUrl.match(/\/api\/messages\/media\/([a-f0-9-]{36})/i)?.[1] : null;
+    if (key) { try { await removeStoredMedia(key); } catch (error) { cleanupFailures.push(error instanceof Error ? error.message : "Unknown media cleanup error"); } }
+  }
+  res.status(200).json({ ok: true, deleted: true, deletedMessageCount: groupMessages.length, mediaCleanupPending: cleanupFailures.length > 0, mediaCleanupFailedCount: cleanupFailures.length, mediaCleanupErrors: cleanupFailures });
 });

@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { getApiUrl } from "@workspace/api-client-react";
-import { MessageCircle, Users, ShieldCheck, Save, Check, UserPlus } from "lucide-react";
+import { MessageCircle, Users, ShieldCheck, Save, Check, UserPlus, UserMinus } from "lucide-react";
 
 type PrivacyMode = "me_only_authorized" | "selected_friends" | "everyone";
 type SectionSetting = { mode: PrivacyMode; selectedUserIds: number[] };
-type Friend = { id: number; name: string; role: string };
+type Friend = { id: number; name: string; role: string; connectionId:number; recentlySelected?:boolean; selectionCount?:number };
 type RequestRow = { id: number; requester_id: number; requester_name: string; requester_role: string; created_at: string };
 
 const sections = [
@@ -76,17 +76,32 @@ export function ProfileSocialControls({profileId,isSelf,role}:{profileId:number|
       const current=await api<any>("/api/profile/"+profileId+"/social");
       setSocial(current);
       if(current.chatPrivacy==="approval_required"&&current.connection?.status!=="accepted"){
-        if(current.connection?.status==="pending"&&current.connection?.requestedByMe){setNotice("Your connection request is awaiting a response.");return;}
-        if(current.connection?.status==="pending"&&!current.connection?.requestedByMe){setNotice("This user has already requested to connect. Open your own Profile Hub to accept or reject the request.");setLocation("/profile-hub");return;}
+        if(current.connection?.status==="pending"&&current.connection?.requestedByMe){setNotice("Your connection request is awaiting approval. Private chat remains locked until it is approved.");return;}
+        if(current.connection?.status==="pending"&&!current.connection?.requestedByMe){setNotice("This user has already requested to connect. Approve or reject the request from your Profile Hub.");setLocation("/profile-hub");return;}
         await api("/api/profile/"+profileId+"/connect",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({})});
         setNotice("Connection request sent. Both users have been notified; chat unlocks after acceptance.");
         await load();
       }else if(current.canChat){
         setLocation(chatPath+"?recipientId="+encodeURIComponent(String(profileId)));
       }else{
-        setError("The existing school chat permissions do not allow this conversation.");
+        setError("This user requires an accepted Profile Hub connection before private chat is available.");
       }
     }catch(e){setError(e instanceof Error?e.message:"Could not connect or open chat.");}
+    finally{setBusy(false);}
+  };
+
+  const rememberFriend=async(friendId:number)=>{
+    try{
+      await api("/api/profile/connections/remember",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({friendId})});
+      setFriends(current=>[...current].map(friend=>friend.id===friendId?{...friend,recentlySelected:true}:friend).sort((a,b)=>Number(Boolean(b.recentlySelected))-Number(Boolean(a.recentlySelected))));
+    }catch(e){setError(e instanceof Error?e.message:"Could not remember this friend.");}
+  };
+
+  const disconnect=async(friend:Friend)=>{
+    if(!window.confirm("Disconnect from "+friend.name+"? Private chat between you will be disabled."))return;
+    setBusy(true);setError("");setNotice("");
+    try{await api("/api/profile/connections/"+friend.connectionId,{method:"DELETE"});await load();setNotice("Connection ended. Private chat between you is now disabled.");}
+    catch(e){setError(e instanceof Error?e.message:"Could not disconnect this friend.");}
     finally{setBusy(false);}
   };
 
@@ -112,6 +127,16 @@ export function ProfileSocialControls({profileId,isSelf,role}:{profileId:number|
       {social?.chatPrivacy==="approval_required"&&social?.connection?.status!=="accepted"?<UserPlus className="h-6 w-6"/>:<MessageCircle className="h-6 w-6"/>}
     </button>}
     {!isSelf&&(error||notice)&&<div role={error?"alert":"status"} className="fixed bottom-24 right-5 z-[80] max-w-[min(90vw,360px)] rounded-lg border bg-background p-3 text-sm shadow-lg">{error||notice}</div>}
+    {isSelf&&requests.length>0&&<section aria-label="Pending connection requests" className="fixed bottom-4 left-4 z-[83] max-h-[min(52dvh,420px)] w-[min(94vw,390px)] overflow-y-auto rounded-xl border-2 border-[#A87919] bg-background p-3 shadow-2xl">
+      <h3 className="mb-2 flex items-center gap-2 font-bold text-[#0f2a5a]"><Users className="h-4 w-4"/>Connection requests <span className="rounded-full bg-[#0f2a5a] px-2 py-0.5 text-xs text-white">{requests.length}</span></h3>
+      {requests.map(request=><div key={request.id} className="flex flex-wrap items-center justify-between gap-2 border-t py-3 first:border-0">
+        <div className="min-w-0"><p className="text-sm font-semibold">{request.requester_name}</p><p className="text-xs text-muted-foreground">{request.requester_role} · {new Date(request.created_at).toLocaleString()}</p></div>
+        <div className="flex gap-2">
+          <button type="button" disabled={busy} onClick={()=>void decide(request.id,"accepted")} aria-label={"Approve connection from "+request.requester_name} className="rounded-md bg-[#0f2a5a] px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Check className="mr-1 inline h-3 w-3"/>Approve</button>
+          <button type="button" disabled={busy} onClick={()=>void decide(request.id,"rejected")} aria-label={"Reject connection from "+request.requester_name} className="rounded-md border border-red-500 px-3 py-2 text-xs font-semibold text-red-700 disabled:opacity-50">Reject</button>
+        </div>
+      </div>)}
+    </section>}
     {isSelf&&<>
       <button type="button" aria-label="Open profile privacy settings" title="Profile privacy" onClick={()=>setOpen(v=>!v)} className="fixed bottom-5 right-20 z-[80] grid h-11 w-11 place-items-center rounded-full border border-amber-300/80 bg-gradient-to-br from-[#0f2a5a] to-[#A87919] text-white shadow-[0_8px_28px_rgba(15,42,90,.3)] transition hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2"><ShieldCheck className="h-5 w-5"/></button>
       {open&&<div className="fixed bottom-20 right-4 z-[82] max-h-[min(72dvh,620px)] w-[min(92vw,420px)] overflow-y-auto rounded-2xl border border-amber-300/60 bg-background p-4 shadow-2xl ring-1 ring-[#0f2a5a]/10">
@@ -123,7 +148,7 @@ export function ProfileSocialControls({profileId,isSelf,role}:{profileId:number|
         <section className="rounded-lg border p-3">
           <h4 className="mb-2 flex items-center gap-2 font-semibold"><ShieldCheck className="h-4 w-4"/>Private chat access</h4>
           <select value={chatPrivacy} onChange={e=>setChatPrivacy(e.target.value as any)} className="w-full rounded-md border bg-background p-2 text-sm">
-            <option value="everyone">Everyone allowed by existing school chat rules</option>
+            <option value="everyone">Everyone allowed (default)</option>
             <option value="approval_required">Approved connections only (request required)</option>
           </select>
         </section>
@@ -138,19 +163,20 @@ export function ProfileSocialControls({profileId,isSelf,role}:{profileId:number|
             </select>
             {settings[key]?.mode==="selected_friends"&&<div className="mt-2 space-y-2 rounded-md bg-muted/30 p-2">
               {friends.length?friends.map(friend=><label key={friend.id} className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={settings[key]?.selectedUserIds.includes(friend.id)||false} onChange={e=>setSettings(v=>({...v,[key]:{...v[key],selectedUserIds:e.target.checked?[...(v[key]?.selectedUserIds||[]),friend.id]:(v[key]?.selectedUserIds||[]).filter(id=>id!==friend.id)}}))}/>
-                {friend.name} <span className="text-xs text-muted-foreground">({friend.role})</span>
+                <input type="checkbox" checked={settings[key]?.selectedUserIds.includes(friend.id)||false} onChange={e=>{setSettings(v=>({...v,[key]:{...v[key],selectedUserIds:e.target.checked?[...(v[key]?.selectedUserIds||[]),friend.id]:(v[key]?.selectedUserIds||[]).filter(id=>id!==friend.id)}}));if(e.target.checked)void rememberFriend(friend.id);}}/>
+                <span className="min-w-0 flex-1">{friend.name} <span className="text-xs text-muted-foreground">({friend.role})</span></span>
+                {friend.recentlySelected&&<span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900">Recent</span>}
               </label>):<p className="text-xs text-muted-foreground">No approved connections yet.</p>}
             </div>}
           </div>)}
         </section>
         <button type="button" disabled={busy} onClick={()=>void save()} className="inline-flex items-center gap-2 rounded-lg bg-[#0f2a5a] px-4 py-2 text-sm font-bold text-white disabled:opacity-50"><Save className="h-4 w-4"/>Save all privacy settings</button>
         <section className="rounded-lg border p-3">
-          <h4 className="mb-2 flex items-center gap-2 font-semibold"><Users className="h-4 w-4"/>Pending connection requests</h4>
-          {requests.length?requests.map(request=><div key={request.id} className="flex flex-wrap items-center justify-between gap-2 border-t py-3 first:border-0">
-            <div><p className="text-sm font-semibold">{request.requester_name}</p><p className="text-xs text-muted-foreground">{request.requester_role} · {new Date(request.created_at).toLocaleString()}</p></div>
-            <div className="flex gap-2"><button type="button" disabled={busy} onClick={()=>void decide(request.id,"accepted")} className="rounded-md bg-[#0f2a5a] px-3 py-1.5 text-xs font-bold text-white"><Check className="mr-1 inline h-3 w-3"/>Accept</button><button type="button" disabled={busy} onClick={()=>void decide(request.id,"rejected")} className="rounded-md border px-3 py-1.5 text-xs font-semibold">Reject</button></div>
-          </div>):<p className="text-sm text-muted-foreground">No pending requests.</p>}
+          <h4 className="mb-2 flex items-center gap-2 font-semibold"><Users className="h-4 w-4"/>Connected friends</h4>
+          {friends.length?friends.map(friend=><div key={friend.id} className="flex items-center justify-between gap-2 border-t py-2 first:border-0">
+            <div className="min-w-0"><p className="truncate text-sm font-semibold">{friend.name}</p><p className="text-xs text-muted-foreground">{friend.role}{friend.recentlySelected?" · Recently selected":""}</p></div>
+            <button type="button" disabled={busy} onClick={()=>void disconnect(friend)} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-red-500 px-2.5 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-50"><UserMinus className="h-3 w-3"/>Disconnect</button>
+          </div>):<p className="text-sm text-muted-foreground">No approved connections yet.</p>}
         </section>
       </div>
       {error&&<p role="alert" className="mt-3 text-sm text-red-600">{error}</p>}

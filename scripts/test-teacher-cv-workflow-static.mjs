@@ -129,14 +129,14 @@ assert.ok(profileHub.includes("deleteOwnProfileDocument"), "Profile Hub must exp
 assert.ok(profileHub.includes("deleteOwnQualification"), "Profile Hub must expose self-service delete actions beside teacher-owned qualifications");
 assert.ok(profileHub.includes("Permanently delete uploaded document"), "Uploaded document deletion must be clearly identified as permanent");
 
-assert.match(attendanceCalendar, /const isExpectedSchoolDay = isFuture && !isWeekend && !holidayName/, "future ordinary weekdays must be predicted as expected school days");
-assert.match(attendanceCalendar, /holidayName\s*\n\s*\? "bg-violet-300/, "known public holidays must be violet before they arrive");
-assert.ok(attendanceCalendar.includes(': isExpectedSchoolDay\n                    ? "bg-[#0f2a5a]/[0.08]'), "predicted ordinary school days must use the light transparent Dallyletter navy treatment");
-assert.ok(attendanceCalendar.includes(': isWeekend\n                      ? "bg-violet-200'), "unrecorded weekends must retain the purple weekend treatment");
-assert.ok(attendanceCalendar.includes(': isPastUnrecorded\n                        ? "bg-orange-200'), "past dates without saved records must use the light orange treatment");
-assert.ok(attendanceCalendar.includes('${isWeekend ? "border-dashed border-violet-300 dark:border-violet-700" : ""}'), "weekend dates must use purple dashed outlines");
-assert.match(attendanceCalendar, /border-2 border-\[#0f2a5a\]/, "today must retain a navy border");
-assert.doesNotMatch(attendanceCalendar, /bg-orange-100|bg-slate-50|Past day not marked \(orange\)|Upcoming \/ today not yet marked \(grey\)/, "calendar must not use orange or grey blank-day fills or legends");
+assert.ok(attendanceCalendar.includes("dailyRecords.map(record => [String(record.attendance_date).slice(0, 10), record]"), "The register calendar must use daily app-access records as its source of truth");
+assert.ok(attendanceCalendar.includes('status?.status === "present"') && attendanceCalendar.includes('status?.status === "absent"'), "Only confirmed present and absent daily records may receive status colors");
+assert.match(attendanceCalendar, /bg-emerald-300 text-emerald-950 border-emerald-500 dark:bg-emerald-800 dark:text-white dark:border-emerald-500/, "Confirmed app-open days must be green");
+assert.match(attendanceCalendar, /bg-red-300 text-red-950 border-red-500 dark:bg-red-800 dark:text-white dark:border-red-500/, "Confirmed no-open days must be red");
+assert.ok(attendanceCalendar.includes('"bg-card text-foreground border-border"'), "Dates without a saved daily record must remain neutral, not be invented as absences");
+assert.match(attendanceCalendar, /isToday \? "border-2 border-\[#0f2a5a\]/, "Today must retain an independent navy border");
+assert.ok(attendanceCalendar.includes("window.addEventListener(\"dallyletter:daily-attendance-updated\", loadDailyAttendance)"), "The register must refresh after the app-open tracker saves a daily record");
+assert.doesNotMatch(attendanceCalendar, /isExpectedSchoolDay|Mixed sessions \(amber\)|Expected school day \(future\)|bg-orange-200/, "The daily app-access calendar must not mix class-session or forecast states into confirmed app-access records");
 
 assert.ok(workspaceApi.includes('router.delete("/:teacherId/documents/:docId"'), "Teacher self-service and authorized CV reviewers must be able to delete one separate uploaded file");
 assert.ok(workspaceApi.includes("document_deleted"), "Individual file deletion must leave a reviewer audit record");

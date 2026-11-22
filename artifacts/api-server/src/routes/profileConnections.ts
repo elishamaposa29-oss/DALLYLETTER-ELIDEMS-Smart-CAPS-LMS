@@ -31,6 +31,15 @@ async function ensureSchema(): Promise<void> {
       UNIQUE (requester_id, recipient_id)
     )`);
     await pool.query("CREATE INDEX IF NOT EXISTS profile_connections_recipient_status_idx ON profile_connections(recipient_id,status)");
+    await pool.query(`CREATE TABLE IF NOT EXISTS profile_friend_memory (
+      user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      friend_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      last_selected_at timestamptz NOT NULL DEFAULT now(),
+      selection_count integer NOT NULL DEFAULT 1 CHECK (selection_count > 0),
+      PRIMARY KEY (user_id,friend_id),
+      CHECK (user_id <> friend_id)
+    )`);
+    await pool.query("CREATE INDEX IF NOT EXISTS profile_friend_memory_recent_idx ON profile_friend_memory(user_id,last_selected_at DESC)");
   })().catch(error => { schemaReady = null; throw error; });
   await schemaReady;
 }
@@ -45,6 +54,15 @@ export async function hasAcceptedProfileConnection(userA: number, userB: number)
   await ensureSchema();
   const result = await pool.query(
     "SELECT 1 FROM profile_connections WHERE status='accepted' AND ((requester_id=$1 AND recipient_id=$2) OR (requester_id=$2 AND recipient_id=$1)) LIMIT 1",
+    [userA,userB],
+  );
+  return Number(result.rowCount ?? 0) > 0;
+}
+
+export async function hasNonAcceptedProfileConnection(userA: number, userB: number): Promise<boolean> {
+  await ensureSchema();
+  const result = await pool.query(
+    "SELECT 1 FROM profile_connections WHERE status IN ('pending','rejected') AND ((requester_id=$1 AND recipient_id=$2) OR (requester_id=$2 AND recipient_id=$1)) LIMIT 1",
     [userA,userB],
   );
   return Number(result.rowCount ?? 0) > 0;
@@ -106,17 +124,18 @@ router.get("/profile/:id/social", requireAuth, async (req,res): Promise<void> =>
   );
   const connection=link.rows[0]??null;
   const accepted=connection?.status==="accepted";
-  const viewerRole=normalizeRole(actor.role),targetRole=normalizeRole(target.role);
-  const existingRoleRuleAllows=viewerRole!=="student"||targetRole==="teacher"||isOwnerRole(target.role)||target.isPrefect===true;
   const chatPrivacy=privacy.rows[0]?.chat_privacy??"everyone";
-  const canChat=actor.id!==targetId&&!target.isBlocked&&!target.isSuspended&&(accepted||((chatPrivacy!=="approval_required")&&existingRoleRuleAllows));
+  // The profile owner's current privacy choice is authoritative. Historical
+  // pending/rejected/disconnected requests never override Everyone allowed.
+  const canChat=actor.id!==targetId&&!target.isBlocked&&!target.isSuspended&&(accepted||chatPrivacy!=="approval_required");
   res.setHeader("Cache-Control","private, no-store");
   res.json({
     isSelf:actor.id===targetId,
     privacy:actor.id===targetId?(privacy.rows[0]?.section_settings??{}):undefined,
     chatPrivacy,
-    connection:connection?{id:Number(connection.id),status:connection.status,requestedByMe:connection.requester_id===actor.id}:null,
+    connection:connection?{id:Number(connection.id),status:connection.status,requestedByMe:Number(connection.requester_id)===Number(actor.id)}:null,
     canChat,
+    canRequestConnection:actor.id!==targetId&&!accepted&&(!connection||connection.status==="rejected"),
   });
 });
 
@@ -234,11 +253,34 @@ router.post("/profile/:id/connect", requireAuth, async (req,res): Promise<void> 
 router.get("/profile/connections/friends", requireAuth, async(req,res):Promise<void> => {
   await ensureSchema();
   const rows=await pool.query(
-    "SELECT u.id,u.name,u.role FROM profile_connections c JOIN users u ON u.id=CASE WHEN c.requester_id=$1 THEN c.recipient_id ELSE c.requester_id END WHERE c.status='accepted' AND (c.requester_id=$1 OR c.recipient_id=$1) ORDER BY u.name",
+    `SELECT u.id,u.name,u.role,c.id AS connection_id,m.last_selected_at,m.selection_count
+     FROM profile_connections c
+     JOIN users u ON u.id=CASE WHEN c.requester_id=$1 THEN c.recipient_id ELSE c.requester_id END
+     LEFT JOIN profile_friend_memory m ON m.user_id=$1 AND m.friend_id=u.id
+     WHERE c.status='accepted' AND (c.requester_id=$1 OR c.recipient_id=$1)
+     ORDER BY m.last_selected_at DESC NULLS LAST,c.updated_at DESC,u.name ASC`,
     [req.currentUser!.id],
   );
   const visibleRows=isOwnerRole(req.currentUser!.role)?rows.rows:rows.rows.filter((row:any)=>!isOwnerRole(row.role));
-  res.json(visibleRows);
+  res.json(visibleRows.map((row:any)=>({...row,id:Number(row.id),connectionId:Number(row.connection_id),selectionCount:Number(row.selection_count||0),recentlySelected:Boolean(row.last_selected_at)})));
+});
+
+router.post("/profile/connections/remember", requireAuth, async(req,res):Promise<void> => {
+  await ensureSchema();
+  const userId=Number(req.currentUser!.id),friendId=Number(req.body?.friendId);
+  if(!Number.isSafeInteger(friendId)||friendId<=0||friendId===userId){res.status(400).json({error:"Choose a valid friend"});return;}
+  const accepted=await pool.query(
+    "SELECT 1 FROM profile_connections WHERE status='accepted' AND ((requester_id=$1 AND recipient_id=$2) OR (requester_id=$2 AND recipient_id=$1)) LIMIT 1",
+    [userId,friendId],
+  );
+  if(!accepted.rows.length){res.status(403).json({error:"Only approved connections can be remembered as friends."});return;}
+  await pool.query(
+    `INSERT INTO profile_friend_memory(user_id,friend_id,last_selected_at,selection_count)
+     VALUES($1,$2,now(),1)
+     ON CONFLICT(user_id,friend_id) DO UPDATE SET last_selected_at=now(),selection_count=profile_friend_memory.selection_count+1`,
+    [userId,friendId],
+  );
+  res.status(200).json({ok:true,remembered:true,friendId});
 });
 
 router.get("/profile/connections/requests", requireAuth, async(req,res):Promise<void> => {
@@ -249,6 +291,24 @@ router.get("/profile/connections/requests", requireAuth, async(req,res):Promise<
   );
   const visibleRows=isOwnerRole(req.currentUser!.role)?rows.rows:rows.rows.filter((row:any)=>!isOwnerRole(row.requester_role));
   res.json(visibleRows);
+});
+
+router.delete("/profile/connections/:id", requireAuth, async(req,res):Promise<void> => {
+  await ensureSchema();
+  const id=Number(req.params.id),actor=req.currentUser!;
+  if(!Number.isSafeInteger(id)||id<=0){res.status(400).json({error:"Invalid connection id"});return;}
+  const updated=await pool.query(
+    "UPDATE profile_connections SET status='rejected',updated_at=now() WHERE id=$1 AND (requester_id=$2 OR recipient_id=$2) AND status='accepted' RETURNING requester_id,recipient_id",
+    [id,actor.id],
+  );
+  if(!updated.rows.length){res.status(404).json({error:"Accepted connection not found"});return;}
+  const row=updated.rows[0];
+  const otherId=Number(row.requester_id)===Number(actor.id)?Number(row.recipient_id):Number(row.requester_id);
+  await db.insert(notificationsTable).values([
+    {recipientId:otherId,title:"Connection ended",message:actor.name+" disconnected from your Profile Hub connection. Private chat is now disabled unless your privacy settings allow everyone.",link:"/profile/"+actor.id,type:"connection_request"},
+    {recipientId:actor.id,title:"Connection ended",message:"You disconnected this Profile Hub connection.",link:"/profile/connections",type:"connection_request"},
+  ]);
+  res.json({status:"rejected",disconnected:true,connectionId:id});
 });
 
 router.patch("/profile/connections/:id", requireAuth, async(req,res):Promise<void> => {

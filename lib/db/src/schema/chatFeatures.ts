@@ -50,6 +50,8 @@ export const chatPollsTable = pgTable("chat_polls", {
   allowMultiple: boolean("allow_multiple").notNull().default(false),
   anonymous: boolean("anonymous").notNull().default(false),
   closed: boolean("closed").notNull().default(false),
+  autoMark: boolean("auto_mark").notNull().default(false),
+  correctOptionId: integer("correct_option_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

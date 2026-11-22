@@ -50,8 +50,11 @@ export default function AdminChat() {
     try {
       const token = localStorage.getItem("dallyletter_token");
       const response = await fetch(getApiUrl(`/api/messages/${messageId}`), { method: "DELETE", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
-      if (!response.ok) { const data = await response.json().catch(() => null) as {error?:string}|null; throw new Error(data?.error ?? "Message deletion failed."); }
+      const data = await response.json().catch(() => ({})) as {error?:string;deleted?:boolean;mediaCleanupPending?:boolean;warning?:string};
+      if (!response.ok) throw new Error(data.error ?? "Message deletion failed.");
+      if (!data || !data.deleted) throw new Error("The server did not confirm that the message was deleted.");
       await queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId, recipientId: selectedUserId }) });
+      if (data.mediaCleanupPending) window.alert(data.warning || "The message is deleted, but its stored attachment still needs cleanup.");
     } catch (error) { window.alert(error instanceof Error ? error.message : "Message deletion failed."); }
     finally { setDeletingMessageId(null); }
   };
@@ -204,7 +207,7 @@ export default function AdminChat() {
                               {msg.type === "voice" && msg.mediaUrl ? <AuthenticatedAudio className="h-10 max-w-[250px]" src={msg.mediaUrl} /> : msg.type === "media" && msg.mediaUrl ? <div className="space-y-2">{msg.content && <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>}<AuthenticatedMedia url={msg.mediaUrl} type={new URL(msg.mediaUrl, window.location.origin).searchParams.get("type")?.startsWith("image/") ? "image" : new URL(msg.mediaUrl, window.location.origin).searchParams.get("type")?.startsWith("video/") ? "video" : "document"} title={msg.content || "Shared learning media"} /></div> : <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>}
                             </div>
                             <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground"><span>{new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>{isMe&&((msg as any).readByUserIds?.length??0)>0&&<span className="font-semibold text-[#9A7020]" aria-label={selectedGroupId?"Seen by "+(msg as any).readByUserIds.length+" group members":"Seen"}>{selectedGroupId?"Seen by "+(msg as any).readByUserIds.length:"Seen"} ✓✓</span>}</div>
-                            {isMe && <button type="button" className="mt-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-destructive disabled:opacity-50" onClick={() => void handleDeleteMessage(msg.id)} disabled={deletingMessageId === msg.id}>{deletingMessageId === msg.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}Delete</button>}
+                            {(isMe || (selectedGroupId != null && (groups?.find(g => g.id === selectedGroupId) as any)?.canManage === true)) && <button type="button" aria-label="Delete message" title="Delete message" className="mt-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-destructive disabled:opacity-50" onClick={() => void handleDeleteMessage(msg.id)} disabled={deletingMessageId === msg.id}>{deletingMessageId === msg.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}Delete</button>}
                           </div>
                         </div>
                       </div>

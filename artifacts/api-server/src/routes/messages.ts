@@ -15,7 +15,7 @@ import { getAIProvider } from "../lib/ai-provider";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, removeStoredMedia, persistUploadedMedia, streamStoredMedia, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
 
 const MAX_CHAT_MEDIA_SIZE_BYTES = MAX_MEDIA_SIZE_BYTES;
-import { isOwnerRole, normalizeRole } from "../lib/auth-middleware";
+import { isOwnerRole, normalizeRole, canAccessManager } from "../lib/auth-middleware";
 import { hasAcceptedProfileConnection, isProfileChatApprovalRequired } from "./profileConnections";
 import { managerHasPermission, requireManagerPermission } from "../lib/manager-permission-policy";
 import { canModerateUser } from "../lib/role-access";
@@ -66,8 +66,9 @@ async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]
     .from(usersTable)
     .where(eq(usersTable.id, recipientId));
   if (!recipient || recipient.isBlocked || recipient.isSuspended) return false;
-  // An accepted connection must unlock the existing private-message route,
-  // even when the recipient requires approval for first-contact messages.
+  // The recipient's current privacy setting controls inbound private chat.
+  // Accepted connections satisfy approval_required; stale pending/rejected
+  // history must never override an Everyone allowed setting.
   if (await hasAcceptedProfileConnection(sender.id, recipientId)) return true;
   if (await isProfileChatApprovalRequired(recipientId)) return false;
   const senderRole = normalizeRole(sender.role);
@@ -76,9 +77,8 @@ async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]
   if (isOwnerRole(recipientRole) && senderRole === "admin") return false;
   if (senderIsManager && isOwnerRole(recipientRole) && !(await managerHasPermission(sender, "owner.chat"))) return false;
   if (senderIsManager && !isOwnerRole(recipientRole) && (!canModerateUser(sender, recipient) || !(await managerHasPermission(sender, "messages.send")))) return false;
-  if (senderRole === "student") {
-    return recipientRole === "teacher" || isOwnerRole(recipientRole) || recipient.isPrefect === true;
-  }
+  // Do not apply classroom role hierarchy to Profile Hub private conversations.
+  // Manager scope and Owner-contact authorization above remain enforced.
   return true;
 }
 
@@ -96,21 +96,15 @@ async function canViewPrivateConversation(user: NonNullable<Express.Request["cur
       if (viewerIsManager && !(await managerHasPermission(user, "owner.chat"))) return false;
     } else if (!canModerateUser(user, recipient) || !(await managerHasPermission(user, "messages.send"))) return false;
   }
-  const [viewerRequiresApproval,targetRequiresApproval,accepted] = await Promise.all([
-    isProfileChatApprovalRequired(user.id),
+  const [targetRequiresApproval,accepted] = await Promise.all([
     isProfileChatApprovalRequired(recipientId),
     hasAcceptedProfileConnection(user.id, recipientId),
   ]);
-  if ((viewerRequiresApproval || targetRequiresApproval) && !accepted) return false;
+  if (targetRequiresApproval && !accepted) return false;
   if (accepted) return true;
-  const [conversation] = await db.select({ id: messagesTable.id })
-    .from(messagesTable)
-    .where(or(
-      and(eq(messagesTable.senderId, user.id), eq(messagesTable.recipientId, recipientId)),
-      and(eq(messagesTable.senderId, recipientId), eq(messagesTable.recipientId, user.id)),
-    ))
-    .limit(1);
-  return Boolean(conversation);
+  // With both profiles open to everyone, a participant may open a new thread
+  // before the first message exists; membership is still limited to these two users.
+  return true;
 }
 
 function messageMediaPath(storageKey: string): string {
@@ -221,9 +215,34 @@ router.get("/messages/unread-summary", requireAuth, async (req, res): Promise<vo
     WHERE m.group_id IS NULL AND m.recipient_id=$1 AND m.created_at>COALESCE(r.last_read_at,'epoch'::timestamptz)
     GROUP BY m.sender_id
   `, [user.id]);
+  // Conversation priority is based only on chats the authenticated user actually belongs to.
+  // Group history is limited by membership; private history is limited to either side of this user's DMs.
+  const recentGroups = await pool.query(`
+    SELECT m.group_id AS conversation_id, COUNT(*)::int AS message_count, MAX(m.created_at) AS last_message_at
+    FROM messages m
+    INNER JOIN study_group_members gm ON gm.group_id=m.group_id AND gm.user_id=$1
+    WHERE m.group_id IS NOT NULL
+    GROUP BY m.group_id
+    ORDER BY COUNT(*) DESC, MAX(m.created_at) DESC
+  `, [user.id]);
+  const recentPeople = await pool.query(`
+    SELECT CASE WHEN m.sender_id=$1 THEN m.recipient_id ELSE m.sender_id END AS conversation_id,
+           COUNT(*)::int AS message_count, MAX(m.created_at) AS last_message_at
+    FROM messages m
+    WHERE m.group_id IS NULL AND m.recipient_id IS NOT NULL
+      AND (m.sender_id=$1 OR m.recipient_id=$1)
+    GROUP BY CASE WHEN m.sender_id=$1 THEN m.recipient_id ELSE m.sender_id END
+    ORDER BY COUNT(*) DESC, MAX(m.created_at) DESC
+  `, [user.id]);
   const groupUnread=groups.rows.reduce((sum,row)=>sum+Number(row.unread_count||0),0);
   const privateUnread=privateChats.rows.reduce((sum,row)=>sum+Number(row.unread_count||0),0);
-  res.json({groupUnread,privateUnread,messageUnread:groupUnread+privateUnread,groups:groups.rows.map(row=>({id:Number(row.conversation_id),unread:Number(row.unread_count)})),privateChats:privateChats.rows.map(row=>({id:Number(row.conversation_id),unread:Number(row.unread_count)}))});
+  res.json({
+    groupUnread, privateUnread, messageUnread:groupUnread+privateUnread,
+    groups:groups.rows.map(row=>({id:Number(row.conversation_id),unread:Number(row.unread_count)})),
+    privateChats:privateChats.rows.map(row=>({id:Number(row.conversation_id),unread:Number(row.unread_count)})),
+    recentGroups:recentGroups.rows.map(row=>({id:Number(row.conversation_id),messageCount:Number(row.message_count),lastMessageAt:row.last_message_at})),
+    recentPeople:recentPeople.rows.map(row=>({id:Number(row.conversation_id),messageCount:Number(row.message_count),lastMessageAt:row.last_message_at})),
+  });
 });
 
 router.get("/messages", requireAuth, async (req, res): Promise<void> => {
@@ -336,13 +355,28 @@ router.delete("/messages/:id", requireAuth, async (req, res): Promise<void> => {
   let allowed = message.senderId === user.id || isOwnerRole(user.role);
   if (message.groupId) {
     const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, message.groupId));
-    allowed = Boolean(group) && (message.senderId === user.id || isOwnerRole(user.role) || group!.creatorId === user.id);
+    let managerAuthorized = false;
+    if (group && canAccessManager(user) && await managerHasPermission(user, "groups.manage")) {
+      if (group.creatorId === user.id) managerAuthorized = true;
+      else {
+        const [creator] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, group.creatorId));
+        managerAuthorized = Boolean(creator && canModerateUser(user, creator));
+      }
+    }
+    allowed = Boolean(group) && (message.senderId === user.id || isOwnerRole(user.role) || group!.creatorId === user.id || managerAuthorized);
   }
-  if (!allowed) { res.status(403).json({ error: "You can delete your own messages. Only the platform owner or group creator can delete another member's group message." }); return; }
-  await db.delete(messagesTable).where(eq(messagesTable.id, id));
+  if (!allowed) { res.status(403).json({ error: "You can delete your own messages. Another member's group message requires group ownership or an authorized manager with groups.manage in scope." }); return; }
+  const deleted = await db.delete(messagesTable).where(eq(messagesTable.id, id)).returning({ id: messagesTable.id });
+  if (!deleted.length) { res.status(409).json({ error: "Message was not deleted. Refresh and try again." }); return; }
   const storageKey = message.mediaUrl?.match(/\/api\/messages\/media\/([a-f0-9-]{36})/i)?.[1];
-  if (storageKey) { try { await removeStoredMedia(storageKey); } catch { /* Message is deleted; media cleanup can be retried without restoring the message. */ } }
-  res.sendStatus(204);
+  if (storageKey) {
+    try { await removeStoredMedia(storageKey); }
+    catch (error) {
+      res.status(200).json({ ok: true, deleted: true, mediaCleanupPending: true, warning: error instanceof Error ? error.message : "Attachment cleanup failed." });
+      return;
+    }
+  }
+  res.status(200).json({ ok: true, deleted: true });
 });
 
 router.post("/messages", requireAuth, async (req, res): Promise<void> => {

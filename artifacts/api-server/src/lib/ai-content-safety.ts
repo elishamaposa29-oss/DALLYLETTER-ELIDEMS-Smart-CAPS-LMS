@@ -1,5 +1,5 @@
 import { db, contentFlagsTable } from "@workspace/db";
-import { getAIProvider } from "./ai-provider";
+import { AIProviderError, getAIProvider } from "./ai-provider";
 
 type SafetyContentType = "lesson" | "assignment" | "exercise" | "poll" | "message" | "comment";
 
@@ -28,9 +28,13 @@ export function queueAIContentSafety(contentType: SafetyContentType, contentId: 
         detectedBy: "ai:auto",
         status: "pending",
       });
-    } catch {
-      // Content creation must continue during provider or database outages.
-      // Existing user reports and manual moderation remain available.
+    } catch (error) {
+      // Keep content creation available, but make AI-review outages observable.
+      // Never log submitted content, credentials, provider response bodies or keys.
+      const failure = error instanceof AIProviderError
+        ? { provider: error.provider, category: error.code, providerStatus: error.statusCode ?? null }
+        : { provider: "unknown", category: "unexpected_failure", providerStatus: null };
+      console.error(JSON.stringify({ event: "ai_content_safety_review_failed", contentType, contentId, ...failure }));
     }
   })();
 }
