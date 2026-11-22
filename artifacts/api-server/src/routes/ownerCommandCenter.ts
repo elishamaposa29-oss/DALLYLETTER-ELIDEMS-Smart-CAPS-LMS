@@ -63,7 +63,7 @@ router.get("/owner/command-center/retention", requireOwner, async (_req,res):Pro
 router.put("/owner/command-center/retention", requireOwner, async (req,res):Promise<void> => {
   const enabled = req.body?.enabled === true;
   const categories = Array.isArray(req.body?.categories)
-    ? [...new Set(req.body.categories.filter((value: unknown): value is RetentionCategory => typeof value === "string" && (RETENTION_CATEGORIES as readonly string[]).includes(value))]
+    ? [...new Set((req.body.categories as unknown[]).filter((value): value is RetentionCategory => typeof value === "string" && (RETENTION_CATEGORIES as readonly string[]).includes(value)))]
     : [];
   const retentionDays = Number(req.body?.retentionDays);
   const intervalHours = Number(req.body?.intervalHours);
@@ -106,7 +106,7 @@ router.put("/owner/command-center/retention", requireOwner, async (req,res):Prom
 
 router.post("/owner/command-center/retention/preview", requireOwner, async (req,res):Promise<void> => {
   const categories = Array.isArray(req.body?.categories)
-    ? [...new Set(req.body.categories.filter((value: unknown): value is RetentionCategory => typeof value === "string" && (RETENTION_CATEGORIES as readonly string[]).includes(value))]
+    ? [...new Set((req.body.categories as unknown[]).filter((value): value is RetentionCategory => typeof value === "string" && (RETENTION_CATEGORIES as readonly string[]).includes(value)))]
     : [];
   const days = Number(req.body?.retentionDays);
   if (!categories.length || !Number.isInteger(days) || days < 30 || days > 3650) {
