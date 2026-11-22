@@ -202,6 +202,14 @@ export async function runRetentionCleanup(input: { triggerType: "manual" | "sche
   const run = await pool.query("INSERT INTO owner_retention_runs (triggered_by,trigger_type,status) VALUES ($1,$2,'running') RETURNING id", [input.triggeredBy, input.triggerType]);
   const runId = Number(run.rows[0].id);
   const auditActor = input.triggeredBy ?? policy.updatedBy;
+  if (!auditActor) {
+    await pool.query("UPDATE owner_retention_runs SET finished_at=now(),status='failed',error=$1 WHERE id=$2", ["No accountable Owner actor is configured",runId]);
+    throw new Error("Retention cleanup has no accountable Owner actor; configure the policy before enabling it.");
+  }
+  await pool.query("INSERT INTO audit_logs(action,category,performed_by,target_type,target_id,details) VALUES($1,$2,$3,$4,$5,$6)", [
+    "retention.cleanup.started","system",auditActor,"retention_run",runId,
+    JSON.stringify({triggerType:input.triggerType,retentionDays:days,categories,cutoff:cutoff.toISOString()}),
+  ]);
   const client = await pool.connect();
   try {
     for (const category of categories) {
@@ -226,7 +234,6 @@ export async function runRetentionCleanup(input: { triggerType: "manual" | "sche
       JSON.stringify({ deleted: counts, errors }), status,
       hasErrors ? JSON.stringify(errors).slice(0, 2000) : null, runId,
     ]);
-    if (!auditActor) throw new Error("Retention cleanup has no accountable Owner actor; configure the policy before enabling it.");
     await pool.query("INSERT INTO audit_logs(action,category,performed_by,target_type,target_id,details) VALUES($1,$2,$3,$4,$5,$6)", [
       "retention.cleanup." + status, "system", auditActor,
       "retention_run", runId, JSON.stringify({ triggerType: input.triggerType, retentionDays: days, cutoff: cutoff.toISOString(), deleted: counts, errors }),
