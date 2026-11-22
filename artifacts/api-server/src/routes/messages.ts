@@ -54,6 +54,10 @@ async function canAccessGroup(groupId: number, user: NonNullable<Express.Request
   const [group] = await db.select({ id: studyGroupsTable.id, creatorId: studyGroupsTable.creatorId }).from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
   if (!group) return false;
   if (normalizeRole(user.role) === "teacher" || isOwnerRole(user.role)) return true;
+  if (normalizeRole(user.role) === "admin") {
+    const [creator] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, group.creatorId));
+    return Boolean(creator && !isOwnerRole(creator.role));
+  }
   const [membership] = await db.select({ id: studyGroupMembersTable.id })
     .from(studyGroupMembersTable)
     .where(and(eq(studyGroupMembersTable.groupId, groupId), eq(studyGroupMembersTable.userId, user.id)));
@@ -65,7 +69,7 @@ async function canAccessGroup(groupId: number, user: NonNullable<Express.Request
 }
 
 async function canOverrideGroupSettings(groupId: number, user: NonNullable<Express.Request["currentUser"]>): Promise<boolean> {
-  if (isOwnerRole(user.role)) return true;
+  if (isOwnerRole(user.role) || normalizeRole(user.role) === "admin") return true;
   const [group] = await db.select({ creatorId: studyGroupsTable.creatorId }).from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
   if (!group) return false;
   if (Number(group.creatorId) === Number(user.id)) return true;

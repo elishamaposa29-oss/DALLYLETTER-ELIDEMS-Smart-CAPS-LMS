@@ -111,7 +111,7 @@ async function canAccessChatGroup(groupId: number, userId: number, user: NonNull
     if(!creator || isOwnerRole(creator.role)) return false;
     if(canAccessManager(user) && !canModerateUser(user,creator)) return false;
   }
-  if (isOwnerRole(user.role) || (canAccessManager(user) && await managerHasPermission(user, "groups.manage")) || user.isPrefect || group.creatorId === userId) return true;
+  if (isOwnerRole(user.role) || normalizeRole(user.role) === "admin" || (canAccessManager(user) && await managerHasPermission(user, "groups.manage")) || user.isPrefect || group.creatorId === userId) return true;
   const [member] = await db.select({ id: studyGroupMembersTable.id }).from(studyGroupMembersTable)
     .where(and(eq(studyGroupMembersTable.groupId, groupId), eq(studyGroupMembersTable.userId, userId)));
   return Boolean(member);
@@ -183,7 +183,7 @@ router.post("/chat/groups/:groupId/polls", requireAuth, async(req,res):Promise<v
    const [control] = await db.select({ canManageSettings: groupMemberControlsTable.canManageSettings }).from(groupMemberControlsTable).where(and(eq(groupMemberControlsTable.groupId,groupId),eq(groupMemberControlsTable.userId,user.id)));
    const [group] = await db.select({ creatorId: studyGroupsTable.creatorId }).from(studyGroupsTable).where(eq(studyGroupsTable.id,groupId));
    const delegated = control?.canManageSettings === true;
-   const privileged = isOwnerRole(user.role) || (manager(user) && await managerHasPermission(user,"groups.manage"));
+   const privileged = isOwnerRole(user.role) || normalizeRole(user.role) === "admin" || (manager(user) && await managerHasPermission(user,"groups.manage"));
    if (!delegated && !privileged && Number(group?.creatorId) !== Number(user.id)) { res.status(403).json({ error: "Polls are disabled for members. The group creator, an explicitly authorized group manager, or a privileged account may still create them." }); return; }
  }
   const uniqueOptions = [...new Set(options.map((option: string) => option.trim()))];

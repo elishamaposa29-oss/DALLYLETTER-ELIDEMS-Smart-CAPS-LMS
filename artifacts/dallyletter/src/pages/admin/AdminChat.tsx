@@ -16,16 +16,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function AdminChat() {
   const { user } = useAuth();
+  const isOperationalAdmin = String(user?.role || "").trim().toLowerCase() === "admin";
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("groupId"); return value && /^\d+$/.test(value) ? Number(value) : null; });
   const [selectedUserId, setSelectedUserId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("recipientId"); return value && /^\d+$/.test(value) ? Number(value) : null; });
   const [message, setMessage] = useState("");
-  const [activeTab, setActiveTab] = useState("users");
+  const [activeTab, setActiveTab] = useState(() => isOperationalAdmin ? "groups" : "users");
   const [groupHubOpen,setGroupHubOpen]=useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
   const { data: groups, isLoading: groupsLoading } = useListStudyGroups();
-  const { data: users, isLoading: usersLoading } = useListUsers();
+  const { data: users, isLoading: usersLoading } = useListUsers({ query: { enabled: !isOperationalAdmin } } as any);
   
   const { data: messages, isLoading: messagesLoading } = useListMessages(
     { groupId: selectedGroupId, recipientId: selectedUserId },
@@ -94,8 +95,8 @@ export default function AdminChat() {
         <Card className="w-full md:w-1/3 flex flex-col bg-card/50 h-1/3 md:h-full shrink-0">
           <div className="p-4 border-b">
              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="w-full grid grid-cols-2">
-                <TabsTrigger value="users">Users</TabsTrigger>
+              <TabsList className={`w-full grid ${isOperationalAdmin ? "grid-cols-1" : "grid-cols-2"}`}>
+                {!isOperationalAdmin && <TabsTrigger value="users">Users</TabsTrigger>}
                 <TabsTrigger value="groups">Groups</TabsTrigger>
               </TabsList>
             </Tabs>
