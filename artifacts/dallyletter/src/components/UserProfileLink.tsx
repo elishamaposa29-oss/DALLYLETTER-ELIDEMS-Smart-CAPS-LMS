@@ -14,11 +14,28 @@ export default function UserProfileLink({ userId, name, avatarUrl, className = "
   const [image, setImage] = useState<string | null>(null);
   useEffect(() => {
     if (!avatarUrl) { setImage(null); return; }
-    if (/^https:\/\//i.test(avatarUrl)) { setImage(avatarUrl); return; }
+    let requestPath = avatarUrl;
+    if (/^https?:\/\//i.test(avatarUrl)) {
+      try {
+        const parsed = new URL(avatarUrl);
+        // Dallyletter media URLs are protected even when the API returned them
+        // as absolute LMS4 URLs. Rebase those paths to the configured API host
+        // and fetch them with the signed-in user's bearer token.
+        if (parsed.pathname.startsWith("/api/")) {
+          requestPath = parsed.pathname + parsed.search;
+        } else {
+          setImage(avatarUrl);
+          return;
+        }
+      } catch {
+        setImage(null);
+        return;
+      }
+    }
     let active = true;
     let objectUrl: string | undefined;
     const token = typeof localStorage !== "undefined" ? localStorage.getItem("dallyletter_token") ?? "" : "";
-    void fetch(getApiUrl(avatarUrl), { headers: token ? { Authorization: "Bearer " + token } : {} })
+    void fetch(getApiUrl(requestPath), { headers: token ? { Authorization: "Bearer " + token } : {} })
       .then(response => { if (!response.ok) throw new Error("Avatar unavailable"); return response.blob(); })
       .then(blob => { objectUrl = URL.createObjectURL(blob); if (active) setImage(objectUrl); })
       .catch(() => { if (active) setImage(null); });
