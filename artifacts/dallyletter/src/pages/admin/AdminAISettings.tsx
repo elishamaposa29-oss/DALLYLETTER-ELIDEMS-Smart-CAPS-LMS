@@ -95,10 +95,12 @@ export default function AdminAISettings() {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
       });
-      const data = await r.json() as { success: boolean; provider: string; model?: string | null; response?: string; error?: string };
+      const data = await r.json() as { success: boolean; provider?: string; model?: string | null; response?: string; error?: string; code?: string; providerStatus?: number | null };
       setTestResult({
         success: data.success,
-        message: data.success ? `✅ Connected to ${data.provider}${data.model ? ` (${data.model})` : ""}! Response: "${data.response?.slice(0, 80)}…"` : `❌ ${data.error ?? "Connection failed"}`,
+        message: data.success
+          ? `✅ Connected to ${data.provider ?? "AI provider"}${data.model ? ` (${data.model})` : ""}! Response: "${data.response?.slice(0, 80)}…"`
+          : `❌ ${data.error ?? "Connection failed"}${data.code ? ` [${data.code}${data.providerStatus ? ` · provider HTTP ${data.providerStatus}` : ""}]` : ""}`,
       });
       if (data.success) {
         const s = await fetch(getApiUrl("/api/ai/status"), { headers: { Authorization: `Bearer ${token()}` } }).then(r => r.json());
