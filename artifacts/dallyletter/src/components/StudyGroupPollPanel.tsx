@@ -14,10 +14,11 @@ export type ChatPoll = {
   totalVotes: number;
   myMark?: PollMarkResult | null;
 };
-type PollMarkResult = { isCorrect?: boolean; correctLabel?: string | null };
+type PollMarkResult = { isCorrect?: boolean; correctLabel?: string | null; correctOptionId?: number | null };
 type PollLeaderboardEntry = { rank:number; userId:number|null; name:string; avatarUrl:string|null; answers:string[] };
 export function StudyGroupPollCard({ item, onVoted, canDelete = false }: { item: ChatPoll; onVoted?: () => void; canDelete?: boolean }) {
   const [mark, setMark] = useState<PollMarkResult | null>(null);
+  const [selectedAnswerId, setSelectedAnswerId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [voting, setVoting] = useState(false);
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
@@ -39,6 +40,7 @@ export function StudyGroupPollCard({ item, onVoted, canDelete = false }: { item:
     try {
       const result = await apiJson<PollMarkResult>("/api/chat/polls/" + item.poll.id + "/vote", { method: "POST", body: JSON.stringify({ optionIds: selectedIds }) });
       setMark(result);
+      setSelectedAnswerId(optionId);
       if (result.isCorrect !== undefined && typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
         try { navigator.vibrate(result.isCorrect ? [45, 35, 70] : [110, 45, 110]); } catch { /* Haptics are optional on unsupported browsers. */ }
       }
@@ -64,7 +66,19 @@ export function StudyGroupPollCard({ item, onVoted, canDelete = false }: { item:
   const isCorrect = feedback?.isCorrect ?? selected?.id === item.poll.correctOptionId;
   return <Card className="w-full space-y-3 p-4">
     <div className="flex items-start justify-between gap-2"><p className="font-semibold text-sm">{item.poll.question}</p><div className="flex items-center gap-2"><span className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground">{item.poll.closed ? "Closed" : "Active"}</span>{canDelete && <Button type="button" size="icon" variant="ghost" className="h-7 w-7 text-destructive" aria-label="Delete poll" title="Delete poll" disabled={deleting} onClick={() => void remove()}><Trash2 className="h-3.5 w-3.5"/></Button>}</div></div>
-    <div className="space-y-2">{item.options.map(option => <button key={option.id} type="button" disabled={item.poll.closed || voting} onClick={() => void vote(option.id)} className={"flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-70 " + (option.selected ? "border-primary bg-primary/10" : "hover:bg-muted")}><span>{option.selected ? "✓ " : ""}{option.label}</span><span className="text-xs tabular-nums text-muted-foreground">{option.voteCount}</span></button>)}</div>
+    <div className="space-y-2">{item.options.map(option => {
+      const isSelected = option.selected || selectedAnswerId === option.id;
+      const correctOptionId = feedback?.correctOptionId ?? item.poll.correctOptionId;
+      const isCorrectAnswer = item.poll.autoMark && correctOptionId === option.id && showMark;
+      const isWrongSelected = item.poll.autoMark && isSelected && feedback?.isCorrect === false;
+      const isCorrectSelected = item.poll.autoMark && isSelected && feedback?.isCorrect === true;
+      const answerStyle = isCorrectAnswer || isCorrectSelected
+        ? "border-emerald-500 bg-emerald-100 text-emerald-950"
+        : isWrongSelected
+          ? "border-rose-500 bg-rose-100 text-rose-950"
+          : isSelected ? "border-primary bg-primary/10" : "hover:bg-muted";
+      return <button key={option.id} type="button" disabled={item.poll.closed || voting} onClick={() => void vote(option.id)} className={"flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-70 " + answerStyle}><span>{isSelected ? "✓ " : ""}{option.label}</span><span className="text-xs tabular-nums text-muted-foreground">{option.voteCount}</span></button>;
+    })}</div>
     <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-[11px] text-muted-foreground">{item.totalVotes} vote{item.totalVotes===1?"":"s"} · {item.poll.allowMultiple?"Multiple choices":"Choose one"}</p><Button type="button" size="sm" variant="outline" onClick={() => void toggleLeaderboard()}><Trophy className="mr-1.5 h-3.5 w-3.5"/> {leaderboardOpen ? "Hide leaderboard" : "Leaderboard"}</Button></div>
     {showMark && <p role="status" aria-live="polite" className={"rounded-md border p-3 text-xs font-semibold " + (isCorrect ? "border-emerald-300 bg-emerald-50 text-emerald-900" : "border-rose-300 bg-rose-50 text-rose-900")}>{isCorrect ? "✓ Correct answer!" : "✕ Incorrect. Correct answer: " + (feedback?.correctLabel ?? item.options.find(option => option.id === item.poll.correctOptionId)?.label ?? "See teacher feedback")}</p>}
     {leaderboardOpen && <section className="space-y-2 rounded-lg border bg-muted/20 p-3" aria-label="Poll leaderboard"><h4 className="flex items-center gap-2 text-xs font-bold"><Trophy className="h-4 w-4"/> Poll leaderboard · {leaderboard.length} participant{leaderboard.length===1?"":"s"}</h4>
