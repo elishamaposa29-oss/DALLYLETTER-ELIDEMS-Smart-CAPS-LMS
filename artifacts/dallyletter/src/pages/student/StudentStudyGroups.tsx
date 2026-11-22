@@ -413,7 +413,7 @@ export default function StudentStudyGroups() {
               const isMember = group.isMember ?? group.members?.some(member => member.id === user?.id) ?? false;
               const isOwner = Number(group.creatorId) === Number(user?.id);
               const selectedControl = group.members?.find(member => member.id === user?.id)?.control;
-              const canManage = isOwner || group.canManageSettings === true || group.canManage === true || selectedControl?.canManageSettings === true;
+              const canManage = isOwner || (group.canManageSettings ?? group.canManage ?? false) || (selectedControl?.canManageSettings === true && !(selectedControl as any)?.blocked && !(selectedControl as any)?.suspended && !(selectedControl as any)?.muted);
                const canChat = group.canChat === true || isMember || group.canManage === true;
               const groupSettings = group.settings ?? defaultSettings(group.id);
               return (
