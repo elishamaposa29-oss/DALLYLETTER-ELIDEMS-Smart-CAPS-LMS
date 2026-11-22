@@ -75,13 +75,9 @@ export function ProfileSocialControls({profileId,isSelf,role}:{profileId:number|
     try{
       const current=await api<any>("/api/profile/"+profileId+"/social");
       setSocial(current);
-      if(current.connection?.status==="pending"){
-        if(current.connection?.requestedByMe){setNotice("Your connection request is awaiting approval. Private chat remains locked until it is approved.");return;}
-        setNotice("This user has already requested to connect. Approve or reject the request from your Profile Hub.");setLocation("/profile-hub");return;
-      }
-      if((current.chatPrivacy==="approval_required"||current.connection?.status==="rejected")&&current.connection?.status!=="accepted"){
-        if(current.connection?.status==="pending"&&current.connection?.requestedByMe){setNotice("Your connection request is awaiting a response.");return;}
-        if(current.connection?.status==="pending"&&!current.connection?.requestedByMe){setNotice("This user has already requested to connect. Open your own Profile Hub to accept or reject the request.");setLocation("/profile-hub");return;}
+      if(current.chatPrivacy==="approval_required"&&current.connection?.status!=="accepted"){
+        if(current.connection?.status==="pending"&&current.connection?.requestedByMe){setNotice("Your connection request is awaiting approval. Private chat remains locked until it is approved.");return;}
+        if(current.connection?.status==="pending"&&!current.connection?.requestedByMe){setNotice("This user has already requested to connect. Approve or reject the request from your Profile Hub.");setLocation("/profile-hub");return;}
         await api("/api/profile/"+profileId+"/connect",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({})});
         setNotice("Connection request sent. Both users have been notified; chat unlocks after acceptance.");
         await load();
