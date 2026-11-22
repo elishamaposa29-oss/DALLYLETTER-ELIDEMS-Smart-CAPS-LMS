@@ -50,14 +50,33 @@ const voiceUpload = multer({
   fileFilter: (_req, file, callback) => callback(null, isAllowedMediaType(file.mimetype)),
 });
 
-async function canAccessGroup(groupId: number, userId: number, role: string): Promise<boolean> {
-  const [group] = await db.select({ id: studyGroupsTable.id }).from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
+async function canAccessGroup(groupId: number, user: NonNullable<Express.Request["currentUser"]>): Promise<boolean> {
+  const [group] = await db.select({ id: studyGroupsTable.id, creatorId: studyGroupsTable.creatorId }).from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
   if (!group) return false;
-  if (normalizeRole(role) === "teacher" || isOwnerRole(role)) return true;
+  if (normalizeRole(user.role) === "teacher" || isOwnerRole(user.role)) return true;
   const [membership] = await db.select({ id: studyGroupMembersTable.id })
     .from(studyGroupMembersTable)
-    .where(and(eq(studyGroupMembersTable.groupId, groupId), eq(studyGroupMembersTable.userId, userId)));
-  return Boolean(membership);
+    .where(and(eq(studyGroupMembersTable.groupId, groupId), eq(studyGroupMembersTable.userId, user.id)));
+  if (membership || Number(group.creatorId) === Number(user.id)) return true;
+  if (!canAccessManager(user) || !(await managerHasPermission(user, "groups.manage"))) return false;
+  const [creator] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel })
+    .from(usersTable).where(eq(usersTable.id, group.creatorId));
+  return Boolean(creator && canModerateUser(user, creator));
+}
+
+async function canOverrideGroupSettings(groupId: number, user: NonNullable<Express.Request["currentUser"]>): Promise<boolean> {
+  if (isOwnerRole(user.role)) return true;
+  const [group] = await db.select({ creatorId: studyGroupsTable.creatorId }).from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
+  if (!group) return false;
+  if (Number(group.creatorId) === Number(user.id)) return true;
+  const [control] = await db.select({ canManageSettings: groupMemberControlsTable.canManageSettings })
+    .from(groupMemberControlsTable)
+    .where(and(eq(groupMemberControlsTable.groupId, groupId), eq(groupMemberControlsTable.userId, user.id)));
+  if (control?.canManageSettings === true) return true;
+  if (!canAccessManager(user) || !(await managerHasPermission(user, "groups.manage"))) return false;
+  const [creator] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel })
+    .from(usersTable).where(eq(usersTable.id, group.creatorId));
+  return Boolean(creator && canModerateUser(user, creator));
 }
 
 async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]>, recipientId: number): Promise<boolean> {
@@ -130,7 +149,7 @@ router.post("/messages/media", requireAuth, (req, res): void => {
       const validTarget = (groupId != null && recipientId == null) || (groupId == null && recipientId != null);
       const allowed = validTarget
         && (groupId != null
-          ? await canAccessGroup(groupId, currentUser.id, currentUser.role)
+          ? await canAccessGroup(groupId, currentUser)
           : await canMessageUser(currentUser, recipientId!));
       if (!allowed) {
         await removeStoredMedia(req.file.filename);
@@ -140,7 +159,8 @@ router.post("/messages/media", requireAuth, (req, res): void => {
       if (groupId != null) {
         const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, groupId));
         const [control] = await db.select().from(groupMemberControlsTable).where(and(eq(groupMemberControlsTable.groupId, groupId), eq(groupMemberControlsTable.userId, currentUser.id)));
-        if (settings?.allowMedia === false || control?.mediaBlocked || control?.blocked || control?.suspended || control?.muted) {
+        const settingsOverride = await canOverrideGroupSettings(groupId, currentUser);
+        if (control?.mediaBlocked || control?.blocked || control?.suspended || control?.muted || (settings?.allowMedia === false && !settingsOverride)) {
           await removeStoredMedia(req.file.filename);
           res.status(403).json({ error: "Media uploads are disabled for you in this group" });
           return;
@@ -172,7 +192,7 @@ router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise
   const user = req.currentUser!;
   if (isProfileOnlyTeacher(user) && message.groupId != null) { res.status(403).json({ error: "Group media is unavailable until teacher authorization." }); return; }
   const allowed = message.groupId != null
-    ? await canAccessGroup(message.groupId, user.id, user.role)
+    ? await canAccessGroup(message.groupId, user)
     : message.recipientId != null && (isOwnerRole(user.role) || ((message.recipientId === user.id || message.senderId === user.id) && await canViewPrivateConversation(user, message.senderId === user.id ? message.recipientId : message.senderId)));
   if (!allowed) { res.status(403).json({ error: "You cannot access this media" }); return; }
   try {
@@ -392,7 +412,7 @@ router.post("/messages", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  if (parsed.data.groupId != null && !(await canAccessGroup(parsed.data.groupId, currentUser.id, currentUser.role))) {
+  if (parsed.data.groupId != null && !(await canAccessGroup(parsed.data.groupId, currentUser))) {
     res.status(403).json({ error: "You must be a group member to post messages" });
     return;
   }
@@ -433,8 +453,9 @@ router.post("/messages", requireAuth, async (req, res): Promise<void> => {
     const [control] = await db.select().from(groupMemberControlsTable).where(and(eq(groupMemberControlsTable.groupId, parsed.data.groupId), eq(groupMemberControlsTable.userId, currentUser.id)));
     const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, parsed.data.groupId));
     if (control?.blocked || control?.suspended || control?.muted) { res.status(403).json({ error: "You are restricted from messaging in this group" }); return; }
-    if ((parsed.data.type === "voice" || parsed.data.type === "media") && (control?.mediaBlocked || (settings?.allowMedia === false && control?.canManageSettings !== true && !isOwnerRole(currentUser.role) && !currentUser.isManager && !currentUser.isPrefect))) { res.status(403).json({ error: "Media uploads are disabled for you in this group" }); return; }
-    if (settings?.announcementsOnly && !(isOwnerRole(currentUser.role) || currentUser.isManager || currentUser.isPrefect || control?.canManageSettings === true)) {
+    const settingsOverride = await canOverrideGroupSettings(parsed.data.groupId, currentUser);
+    if ((parsed.data.type === "voice" || parsed.data.type === "media") && (control?.mediaBlocked || control?.blocked || control?.suspended || control?.muted || (settings?.allowMedia === false && !settingsOverride))) { res.status(403).json({ error: "Media uploads are disabled for you in this group" }); return; }
+    if (settings?.announcementsOnly && !(settingsOverride || currentUser.isPrefect === true)) {
       res.status(403).json({ error: "Only group moderators can post announcements in this group" });
       return;
     }
