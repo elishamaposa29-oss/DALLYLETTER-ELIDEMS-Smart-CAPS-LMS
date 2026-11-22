@@ -62,7 +62,8 @@ async function canAccessGroup(groupId: number, user: NonNullable<Express.Request
     .from(studyGroupMembersTable)
     .where(and(eq(studyGroupMembersTable.groupId, groupId), eq(studyGroupMembersTable.userId, user.id)));
   if (membership || Number(group.creatorId) === Number(user.id)) return true;
-  if (!canAccessManager(user) || !(await managerHasPermission(user, "groups.manage"))) return false;
+  const managerCanAccess = canAccessManager(user) && ((await managerHasPermission(user, "groups.manage")) || (await managerHasPermission(user, "messages.send")));
+  if (!managerCanAccess) return false;
   const [creator] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel })
     .from(usersTable).where(eq(usersTable.id, group.creatorId));
   return Boolean(creator && canModerateUser(user, creator));

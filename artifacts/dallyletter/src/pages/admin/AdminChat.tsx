@@ -20,7 +20,8 @@ export default function AdminChat() {
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("groupId"); return value && /^\d+$/.test(value) ? Number(value) : null; });
   const [selectedUserId, setSelectedUserId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("recipientId"); return value && /^\d+$/.test(value) ? Number(value) : null; });
   const [message, setMessage] = useState("");
-  const [activeTab, setActiveTab] = useState(() => isOperationalAdmin ? "groups" : "users");
+  const [activeTab, setActiveTab] = useState("users");
+  useEffect(() => { if (isOperationalAdmin) setActiveTab("groups"); }, [isOperationalAdmin]);
   const [groupHubOpen,setGroupHubOpen]=useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
