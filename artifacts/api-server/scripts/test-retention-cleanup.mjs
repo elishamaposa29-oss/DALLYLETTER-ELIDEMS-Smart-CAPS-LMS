@@ -1,15 +1,13 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { build } from "esbuild";
-import { Pool as PgPool } from "pg";
 import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { pool as workspacePool } from "@workspace/db";
 
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required for retention integration tests.");
-const testPool = new PgPool({ connectionString: process.env.DATABASE_URL });
+const testPool = workspacePool;
 const suffix = randomUUID();
 const email = `retention-integration-${suffix}@example.test`;
 const titlePrefix = `retention-integration-${suffix}`;
@@ -90,6 +88,5 @@ try {
     await testPool.query("DELETE FROM users WHERE id=$1",[ownerId]).catch(()=>undefined);
   }
   await testPool.end();
-  await workspacePool.end().catch(()=>undefined);
   await rm(tempDir,{recursive:true,force:true});
 }
