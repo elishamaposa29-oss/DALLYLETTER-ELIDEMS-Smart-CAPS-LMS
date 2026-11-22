@@ -310,7 +310,7 @@ router.delete("/academic-records/transfer-requests/:id", requireAuth, async (req
   if(!removed.rowCount)throw new Error("Transfer letter deletion did not remove the record.");
   await client.query("COMMIT");
  }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}finally{client.release();}
- res.sendStatus(204);
+ res.status(200).json({ ok: true, deleted: true, transferRequestId: id });
 });
 router.post("/academic-records/transfer-requests/:id/review", requireAuth, requireManagerPermissionForRequest((req) => req.body?.status === "approved" ? "transfers.approve" : "transfers.reject"), async (req, res): Promise<void> => {
   const reviewer = req.currentUser!;
@@ -637,7 +637,7 @@ router.delete("/academic-records/reports/drafts/:id", requireAuth, async (req,re
   if(!removed.rowCount)throw new Error("Report draft deletion did not remove the record.");
   await client.query("COMMIT");
  }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}finally{client.release();}
- res.sendStatus(204);
+ res.status(200).json({ ok: true, deleted: true, reportDraftId: id });
 });
 router.post("/academic-records/reports/drafts/:id/review", requireAuth, requireManagerPermission("reports.review"), async (req, res): Promise<void> => {
   const reviewer = req.currentUser!;
