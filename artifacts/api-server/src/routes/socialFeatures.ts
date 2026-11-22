@@ -271,7 +271,7 @@ router.post("/chat/polls/:pollId/vote", requireAuth, async(req,res):Promise<void
  const client=await pool.connect();
  try{
   await client.query("BEGIN");
-  const locked=await client.query("SELECT auto_mark,closed FROM chat_polls WHERE id=$1 FOR UPDATE",[pollId]);
+  const locked=await client.query("SELECT auto_mark,closed,allow_multiple,correct_option_id FROM chat_polls WHERE id=$1 FOR UPDATE",[pollId]);
   const current=locked.rows[0];
   if(!current||current.closed){await client.query("ROLLBACK");res.status(404).json({error:"Poll unavailable"});return;}
   const existing=await client.query("SELECT id FROM chat_poll_votes WHERE poll_id=$1 AND user_id=$2 LIMIT 1",[pollId,user.id]);
@@ -284,7 +284,8 @@ router.post("/chat/polls/:pollId/vote", requireAuth, async(req,res):Promise<void
   for(const optionId of optionIds) await client.query("INSERT INTO chat_poll_votes (poll_id,option_id,user_id) VALUES ($1,$2,$3)",[pollId,optionId,user.id]);
   await client.query("COMMIT");
  }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}finally{client.release();}
- const marked = poll.autoMark && !poll.allowMultiple && poll.correctOptionId != null ? { isCorrect: optionIds[0] === poll.correctOptionId, correctOptionId: poll.correctOptionId, correctLabel: valid.find(option => option.id === poll.correctOptionId)?.label ?? null } : {};
+ const correctOptionId = current.correct_option_id == null ? null : Number(current.correct_option_id);
+ const marked = Boolean(current.auto_mark) && !Boolean(current.allow_multiple) && correctOptionId != null ? { isCorrect: optionIds[0] === correctOptionId, correctOptionId, correctLabel: valid.find(option => option.id === correctOptionId)?.label ?? null } : {};
  res.json({ok:true,...marked});
 });
 
