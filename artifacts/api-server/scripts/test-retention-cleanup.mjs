@@ -33,7 +33,7 @@ try {
   // run, alias that package to a tiny adapter backed by the same test database,
   // avoiding execution of the package TS entrypoint under native Node ESM.
   const dbAdapterPath = join(tempDir, "db-adapter.mjs");
-  await writeFile(dbAdapterPath, `import pg from "pg";\nexport const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });\n`);
+  await writeFile(dbAdapterPath, `import pg from ${JSON.stringify(pgModulePath)};\nexport const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });\n`);
   await build({
     entryPoints: ["src/lib/retention-cleanup.ts"],
     outfile: join(tempDir,"retention-cleanup.mjs"),
