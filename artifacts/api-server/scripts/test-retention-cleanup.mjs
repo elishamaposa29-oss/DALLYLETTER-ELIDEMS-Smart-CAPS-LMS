@@ -55,7 +55,7 @@ try {
 
   await testPool.query("INSERT INTO notifications(title,message,type,is_read,created_at) VALUES ($1,$2,'general',TRUE,now()-interval '40 days')",[titlePrefix+"-scheduled","scheduled cleanup notification"]);
   await testPool.query(
-    "UPDATE owner_retention_policies SET enabled=TRUE,categories='[\"notifications\"]'::jsonb,retention_days=30,interval_hours=24,next_run_at=now(),updated_by=$1 WHERE id=1",
+    "UPDATE owner_retention_policies SET enabled=TRUE,categories='[\"notifications\"]'::jsonb,retention_days=30,interval_hours=24,next_run_at=now()-interval '1 minute',updated_by=$1 WHERE id=1",
     [ownerId],
   );
   const scheduledSince = new Date();
