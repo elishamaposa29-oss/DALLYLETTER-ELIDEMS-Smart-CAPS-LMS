@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL(path, import.meta.url), "utf8");
-const [api, panel, mobilePanel, groups, studyGroupsApi, studentChat, teacherChat, adminChat, aiRoute, aiSettings, academicRecords] = await Promise.all([
+const [api, panel, mobilePanel, groups, studyGroupsApi, studentChat, teacherChat, adminChat, aiRoute, aiSettings, academicRecords, studentPolls, profileLink] = await Promise.all([
   read("../artifacts/api-server/src/routes/socialFeatures.ts"),
   read("../artifacts/dallyletter/src/components/StudyGroupPollPanel.tsx"),
   read("../artifacts/dallyletter-mobile/components/StudyGroupPollPanel.tsx"),
@@ -14,6 +14,8 @@ const [api, panel, mobilePanel, groups, studyGroupsApi, studentChat, teacherChat
   read("../artifacts/api-server/src/routes/ai.ts"),
   read("../artifacts/dallyletter/src/pages/admin/AdminAISettings.tsx"),
   read("../artifacts/api-server/src/routes/academicRecords.ts"),
+  read("../artifacts/dallyletter/src/pages/student/StudentPolls.tsx"),
+  read("../artifacts/dallyletter/src/components/UserProfileLink.tsx"),
 ]);
 
 assert.ok(api.includes('router.get("/chat/polls/:pollId/leaderboard"'), "group polls must expose a leaderboard endpoint");
@@ -63,4 +65,10 @@ assert.ok(aiRoute.includes("providerStatus: failure.statusCode ?? null"), "AI di
 assert.ok(aiSettings.includes("provider HTTP ${data.providerStatus}"), "AI settings must display the safe upstream status to the owner");
 assert.ok(academicRecords.includes("res.status(200).json({ ok: true, deleted: true, transferRequestId: id })"), "transfer-letter deletion must return an explicit JSON confirmation");
 assert.ok(academicRecords.includes("res.status(200).json({ ok: true, deleted: true, reportDraftId: id })"), "RecordBook draft deletion must return an explicit JSON confirmation");
+assert.ok(studentPolls.includes('aria-label="Results privacy settings"') && studentPolls.includes("aria-expanded={privacyPanelOpen}"), "quiz results privacy must be hidden behind an expandable icon control");
+assert.ok(studentPolls.includes('aria-label="Instant marking settings"') && studentPolls.includes("aria-expanded={instantMarkingPanelOpen}"), "practice instant-marking settings must be hidden behind an expandable icon control");
+assert.ok(studentPolls.includes("{privacyPanelOpen &&") && studentPolls.includes("{instantMarkingPanelOpen &&"), "privacy and instant-marking settings must expand only when requested");
+assert.ok(studentPolls.includes("setResultPrivacy") && studentPolls.includes("setInstantMarking"), "collapsing the settings must preserve the existing setting controls");
+assert.ok(profileLink.includes("getApiUrl(avatarUrl)") && profileLink.includes("Authorization"), "leaderboard profile avatars must load protected profile images using the existing authenticated media route");
+assert.ok(profileLink.includes('href={"/profile/" + Number(userId)}') && profileLink.includes("<img src={image}"), "leaderboard avatars must display actual profile images and remain clickable profile links");
 console.log("STUDY_GROUP_POLLS_STATIC: PASS (polls, bulk poll clearing, individual deletion, owner actions, normalized authorization, profile links, privacy, haptics, AI diagnostics)");
