@@ -263,10 +263,26 @@ router.post("/chat/polls/:pollId/vote", requireAuth, async(req,res):Promise<void
   if (new Set(optionIds).size !== optionIds.length) { res.status(400).json({ error: "Choose each option only once" }); return; }
  if(optionIds.length===0||(!poll.allowMultiple&&optionIds.length>1)){res.status(400).json({error:"Choose a valid option"});return;}
  const valid=await db.select().from(chatPollOptionsTable).where(eq(chatPollOptionsTable.pollId,pollId)); const validIds=new Set(valid.map((o: { id: number })=>o.id)); if(optionIds.some((id: number)=>!validIds.has(id))){res.status(400).json({error:"Invalid poll option"});return;}
- await db.transaction(async tx=>{
-  await tx.delete(chatPollVotesTable).where(and(eq(chatPollVotesTable.pollId,pollId),eq(chatPollVotesTable.userId,user.id)));
-  await tx.insert(chatPollVotesTable).values(optionIds.map((optionId: number)=>({pollId,optionId,userId:user.id})));
- });
+ const client = await pool.connect();
+ try {
+  await client.query("BEGIN");
+  // Serialize submissions per poll so simultaneous requests cannot bypass the one-answer rule.
+  await client.query("SELECT id FROM chat_polls WHERE id=$1 FOR UPDATE", [pollId]);
+  const existing = await client.query("SELECT id FROM chat_poll_votes WHERE poll_id=$1 AND user_id=$2 LIMIT 1", [pollId,user.id]);
+  if (poll.autoMark && existing.rowCount) {
+   await client.query("ROLLBACK");
+   res.status(409).json({error:"This auto-marked poll accepts only one answer from each learner."});
+   return;
+  }
+  if (!poll.autoMark) await client.query("DELETE FROM chat_poll_votes WHERE poll_id=$1 AND user_id=$2", [pollId,user.id]);
+  for (const optionId of optionIds) {
+   await client.query("INSERT INTO chat_poll_votes (poll_id,option_id,user_id) VALUES ($1,$2,$3)", [pollId,optionId,user.id]);
+  }
+  await client.query("COMMIT");
+ } catch (error) {
+  await client.query("ROLLBACK").catch(()=>undefined);
+  throw error;
+ } finally { client.release(); }
  const marked = poll.autoMark && !poll.allowMultiple && poll.correctOptionId != null ? { isCorrect: optionIds[0] === poll.correctOptionId, correctOptionId: poll.correctOptionId, correctLabel: valid.find(option => option.id === poll.correctOptionId)?.label ?? null } : {};
  res.json({ok:true,...marked});
 });
