@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { getApiUrl } from "@workspace/api-client-react";
-import { MessageCircle, Users, ShieldCheck, Save, Check, UserPlus, UserMinus, Clock } from "lucide-react";
+import { MessageCircle, Users, ShieldCheck, Save, Check, UserPlus, UserMinus } from "lucide-react";
 
 type PrivacyMode = "me_only_authorized" | "selected_friends" | "everyone";
 type SectionSetting = { mode: PrivacyMode; selectedUserIds: number[] };
@@ -75,6 +75,10 @@ export function ProfileSocialControls({profileId,isSelf,role}:{profileId:number|
     try{
       const current=await api<any>("/api/profile/"+profileId+"/social");
       setSocial(current);
+      if(current.connection?.status==="pending"){
+        if(current.connection?.requestedByMe){setNotice("Your connection request is awaiting approval. Private chat remains locked until it is approved.");return;}
+        setNotice("This user has already requested to connect. Approve or reject the request from your Profile Hub.");setLocation("/profile-hub");return;
+      }
       if((current.chatPrivacy==="approval_required"||current.connection?.status==="rejected")&&current.connection?.status!=="accepted"){
         if(current.connection?.status==="pending"&&current.connection?.requestedByMe){setNotice("Your connection request is awaiting a response.");return;}
         if(current.connection?.status==="pending"&&!current.connection?.requestedByMe){setNotice("This user has already requested to connect. Open your own Profile Hub to accept or reject the request.");setLocation("/profile-hub");return;}
