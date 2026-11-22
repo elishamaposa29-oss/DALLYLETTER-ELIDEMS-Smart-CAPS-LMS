@@ -66,14 +66,10 @@ async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]
     .from(usersTable)
     .where(eq(usersTable.id, recipientId));
   if (!recipient || recipient.isBlocked || recipient.isSuspended) return false;
-  // Pending, rejected, and disconnected relationships disable private chat
-  // in both directions until the recipient approves a fresh connection request.
-  if (await hasNonAcceptedProfileConnection(sender.id, recipientId)) return false;
-  // An accepted connection must unlock the existing private-message route,
-  // even when the recipient requires approval for first-contact messages.
+  // The recipient's current privacy setting controls inbound private chat.
+  // Accepted connections satisfy approval_required; stale pending/rejected
+  // history must never override an Everyone allowed setting.
   if (await hasAcceptedProfileConnection(sender.id, recipientId)) return true;
-  // Profile Hub direct messages are open by default. Either participant may
-  // require an accepted connection before a new private conversation.
   if (await isProfileChatApprovalRequired(recipientId)) return false;
   const senderRole = normalizeRole(sender.role);
   const recipientRole = normalizeRole(recipient.role);
@@ -89,7 +85,6 @@ async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]
 async function canViewPrivateConversation(user: NonNullable<Express.Request["currentUser"]>, recipientId: number): Promise<boolean> {
   if (!Number.isInteger(recipientId) || recipientId <= 0 || recipientId === user.id) return false;
   if (isOwnerRole(user.role)) return true;
-  if (await hasNonAcceptedProfileConnection(user.id, recipientId)) return false;
   const viewerRole = normalizeRole(user.role);
   const viewerIsManager = ["junior_manager","senior_manager","manager"].includes(viewerRole) || (viewerRole === "teacher" && user.isManager === true);
   if (viewerIsManager) {
