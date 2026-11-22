@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL(path, import.meta.url), "utf8");
-const [api, panel, groups, studentChat, teacherChat, adminChat, aiRoute] = await Promise.all([
+const [api, panel, groups, studentChat, teacherChat, adminChat, aiRoute, aiSettings] = await Promise.all([
   read("../artifacts/api-server/src/routes/socialFeatures.ts"),
   read("../artifacts/dallyletter/src/components/StudyGroupPollPanel.tsx"),
   read("../artifacts/dallyletter/src/pages/student/StudentStudyGroups.tsx"),
@@ -10,6 +10,7 @@ const [api, panel, groups, studentChat, teacherChat, adminChat, aiRoute] = await
   read("../artifacts/dallyletter/src/pages/teacher/TeacherChat.tsx"),
   read("../artifacts/dallyletter/src/pages/admin/AdminChat.tsx"),
   read("../artifacts/api-server/src/routes/ai.ts"),
+  read("../artifacts/dallyletter/src/pages/admin/AdminAISettings.tsx"),
 ]);
 
 assert.ok(api.includes('router.get("/chat/polls/:pollId/leaderboard"'), "group polls must expose a leaderboard endpoint");
@@ -29,4 +30,5 @@ assert.ok(teacherChat.includes("!data || !data.deleted"), "teacher chat deletion
 assert.ok(adminChat.includes("!data || !data.deleted"), "admin chat deletion must handle null API responses");
 assert.ok(aiRoute.includes("ai_connection_test_failed"), "AI connection failures must emit structured diagnostics");
 assert.ok(aiRoute.includes("providerStatus: failure.statusCode ?? null"), "AI diagnostics must include upstream status without exposing provider response bodies");
+assert.ok(aiSettings.includes("provider HTTP ${data.providerStatus}"), "AI settings must display the safe upstream status to the owner");
 console.log("STUDY_GROUP_POLLS_STATIC: PASS (leaderboard, profile links, anonymous privacy, marking haptics/feedback, shared poll cards, null-delete guards, AI diagnostics)");
