@@ -106,13 +106,13 @@ function cutoffFor(days: number): Date {
 async function categoryCount(client: any, category: RetentionCategory, cutoff: Date): Promise<number> {
   const queries: Record<RetentionCategory, string> = {
     notifications: "SELECT count(*)::int AS count FROM notifications WHERE is_read=TRUE AND created_at<$1 AND lower(type) IN ('general','info','announcement','reminder','promotion')",
-    lessons: "SELECT count(*)::int AS count FROM lessons l WHERE l.created_at<$1 AND lower(l.type)='notes' AND l.media_url IS NULL AND NOT EXISTS (SELECT 1 FROM exercises e WHERE e.lesson_id=l.id)",
-    exercises: "SELECT count(*)::int AS count FROM exercises e WHERE e.created_at<$1 AND lower(e.status)='draft' AND NOT EXISTS (SELECT 1 FROM exercise_submissions s WHERE s.exercise_id=e.id) AND NOT EXISTS (SELECT 1 FROM exercise_media m WHERE m.exercise_id=e.id)",
-    study_groups: "SELECT count(*)::int AS count FROM study_groups g WHERE g.created_at<$1 AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.group_id=g.id) AND NOT EXISTS (SELECT 1 FROM chat_polls p WHERE p.group_id=g.id) AND NOT EXISTS (SELECT 1 FROM chat_community_groups cg WHERE cg.group_id=g.id) AND (SELECT count(*) FROM study_group_members gm WHERE gm.group_id=g.id)<=1",
+    lessons: "SELECT count(*)::int AS count FROM lessons l WHERE GREATEST(l.created_at,l.updated_at)<$1 AND lower(l.type)='notes' AND l.media_url IS NULL AND NOT EXISTS (SELECT 1 FROM exercises e WHERE e.lesson_id=l.id)",
+    exercises: "SELECT count(*)::int AS count FROM exercises e WHERE GREATEST(e.created_at,e.updated_at)<$1 AND lower(e.status)='draft' AND NOT EXISTS (SELECT 1 FROM exercise_submissions s WHERE s.exercise_id=e.id) AND NOT EXISTS (SELECT 1 FROM exercise_media m WHERE m.exercise_id=e.id)",
+    study_groups: "SELECT count(*)::int AS count FROM study_groups g WHERE GREATEST(g.created_at,g.updated_at)<$1 AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.group_id=g.id) AND NOT EXISTS (SELECT 1 FROM chat_polls p WHERE p.group_id=g.id) AND NOT EXISTS (SELECT 1 FROM chat_community_groups cg WHERE cg.group_id=g.id) AND NOT EXISTS (SELECT 1 FROM group_member_controls gc WHERE gc.group_id=g.id) AND NOT EXISTS (SELECT 1 FROM group_settings gs WHERE gs.group_id=g.id) AND (SELECT count(*) FROM study_group_members gm WHERE gm.group_id=g.id)<=1",
     messages: "SELECT count(*)::int AS count FROM messages m WHERE m.group_id IS NOT NULL AND m.media_url IS NULL AND m.created_at<$1 AND EXISTS (SELECT 1 FROM study_groups sg WHERE sg.id=m.group_id) AND NOT EXISTS (SELECT 1 FROM (SELECT user_id FROM study_group_members WHERE group_id=m.group_id UNION SELECT creator_id AS user_id FROM study_groups WHERE id=m.group_id UNION SELECT user_id FROM group_member_controls WHERE group_id=m.group_id AND can_manage_settings=TRUE) access_users LEFT JOIN message_conversation_reads r ON r.user_id=access_users.user_id AND r.conversation_type='group' AND r.conversation_id=m.group_id WHERE r.last_read_at IS NULL OR r.last_read_at<m.created_at) AND NOT EXISTS (SELECT 1 FROM messages reply WHERE reply.parent_message_id=m.id)",
     polls: "SELECT count(*)::int AS count FROM chat_polls WHERE closed=TRUE AND auto_mark=FALSE AND created_at<$1",
     media: "SELECT count(*)::int AS count FROM exercise_media WHERE exercise_id IS NULL AND question_id IS NULL AND answer_id IS NULL AND created_at<$1",
-    assignments: "SELECT count(*)::int AS count FROM assignments a WHERE a.created_at<$1 AND lower(a.status) IN ('draft','cancelled') AND NOT EXISTS (SELECT 1 FROM assignment_submissions s WHERE s.assignment_id=a.id)",
+    assignments: "SELECT count(*)::int AS count FROM assignments a WHERE GREATEST(a.created_at,a.updated_at)<$1 AND lower(a.status) IN ('draft','cancelled') AND NOT EXISTS (SELECT 1 FROM assignment_submissions s WHERE s.assignment_id=a.id)",
   };
   const result = await client.query(queries[category], [cutoff]);
   return Number(result.rows[0]?.count ?? 0);
@@ -154,19 +154,19 @@ async function deleteCategory(client: any, category: RetentionCategory, cutoff: 
     return deleted.rowCount ?? 0;
   }
   if (category === "exercises") {
-    const r = await client.query("DELETE FROM exercises e WHERE e.id IN (SELECT e2.id FROM exercises e2 WHERE e2.created_at<$1 AND lower(e2.status)='draft' AND NOT EXISTS (SELECT 1 FROM exercise_submissions s WHERE s.exercise_id=e2.id) AND NOT EXISTS (SELECT 1 FROM exercise_media m WHERE m.exercise_id=e2.id) ORDER BY e2.created_at LIMIT 1000) RETURNING e.id", [cutoff]);
+    const r = await client.query("DELETE FROM exercises e WHERE e.id IN (SELECT e2.id FROM exercises e2 WHERE GREATEST(e2.created_at,e2.updated_at)<$1 AND lower(e2.status)='draft' AND NOT EXISTS (SELECT 1 FROM exercise_submissions s WHERE s.exercise_id=e2.id) AND NOT EXISTS (SELECT 1 FROM exercise_media m WHERE m.exercise_id=e2.id) ORDER BY e2.created_at LIMIT 1000) RETURNING e.id", [cutoff]);
     return r.rowCount ?? 0;
   }
   if (category === "assignments") {
-    const r = await client.query("DELETE FROM assignments a WHERE a.id IN (SELECT a2.id FROM assignments a2 WHERE a2.created_at<$1 AND lower(a2.status) IN ('draft','cancelled') AND NOT EXISTS (SELECT 1 FROM assignment_submissions s WHERE s.assignment_id=a2.id) ORDER BY a2.created_at LIMIT 1000) RETURNING a.id", [cutoff]);
+    const r = await client.query("DELETE FROM assignments a WHERE a.id IN (SELECT a2.id FROM assignments a2 WHERE GREATEST(a2.created_at,a2.updated_at)<$1 AND lower(a2.status) IN ('draft','cancelled') AND NOT EXISTS (SELECT 1 FROM assignment_submissions s WHERE s.assignment_id=a2.id) ORDER BY a2.created_at LIMIT 1000) RETURNING a.id", [cutoff]);
     return r.rowCount ?? 0;
   }
   if (category === "lessons") {
-    const r = await client.query("DELETE FROM lessons l WHERE l.id IN (SELECT l2.id FROM lessons l2 WHERE l2.created_at<$1 AND lower(l2.type)='notes' AND l2.media_url IS NULL AND NOT EXISTS (SELECT 1 FROM exercises e WHERE e.lesson_id=l2.id) ORDER BY l2.created_at LIMIT 1000) RETURNING l.id", [cutoff]);
+    const r = await client.query("DELETE FROM lessons l WHERE l.id IN (SELECT l2.id FROM lessons l2 WHERE GREATEST(l2.created_at,l2.updated_at)<$1 AND lower(l2.type)='notes' AND l2.media_url IS NULL AND NOT EXISTS (SELECT 1 FROM exercises e WHERE e.lesson_id=l2.id) ORDER BY l2.created_at LIMIT 1000) RETURNING l.id", [cutoff]);
     return r.rowCount ?? 0;
   }
   if (category === "study_groups") {
-    const selected = await client.query("SELECT g.id FROM study_groups g WHERE g.created_at<$1 AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.group_id=g.id) AND NOT EXISTS (SELECT 1 FROM chat_polls p WHERE p.group_id=g.id) AND NOT EXISTS (SELECT 1 FROM chat_community_groups cg WHERE cg.group_id=g.id) AND (SELECT count(*) FROM study_group_members gm WHERE gm.group_id=g.id)<=1 ORDER BY g.created_at LIMIT 250 FOR UPDATE", [cutoff]);
+    const selected = await client.query("SELECT g.id FROM study_groups g WHERE GREATEST(g.created_at,g.updated_at)<$1 AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.group_id=g.id) AND NOT EXISTS (SELECT 1 FROM chat_polls p WHERE p.group_id=g.id) AND NOT EXISTS (SELECT 1 FROM chat_community_groups cg WHERE cg.group_id=g.id) AND NOT EXISTS (SELECT 1 FROM group_member_controls gc WHERE gc.group_id=g.id) AND NOT EXISTS (SELECT 1 FROM group_settings gs WHERE gs.group_id=g.id) AND (SELECT count(*) FROM study_group_members gm WHERE gm.group_id=g.id)<=1 ORDER BY g.created_at LIMIT 250 FOR UPDATE", [cutoff]);
     const ids = selected.rows.map((row: any) => Number(row.id));
     if (!ids.length) return 0;
     await client.query("DELETE FROM group_member_controls WHERE group_id=ANY($1::int[])", [ids]);
