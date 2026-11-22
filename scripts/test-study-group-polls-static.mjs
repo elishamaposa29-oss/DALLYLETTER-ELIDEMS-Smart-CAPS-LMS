@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL(path, import.meta.url), "utf8");
-const [api, panel, mobilePanel, groups, studentChat, teacherChat, adminChat, aiRoute, aiSettings, academicRecords] = await Promise.all([
+const [api, panel, mobilePanel, groups, studyGroupsApi, studentChat, teacherChat, adminChat, aiRoute, aiSettings, academicRecords] = await Promise.all([
   read("../artifacts/api-server/src/routes/socialFeatures.ts"),
   read("../artifacts/dallyletter/src/components/StudyGroupPollPanel.tsx"),
   read("../artifacts/dallyletter-mobile/components/StudyGroupPollPanel.tsx"),
   read("../artifacts/dallyletter/src/pages/student/StudentStudyGroups.tsx"),
+  read("../artifacts/api-server/src/routes/studyGroups.ts"),
   read("../artifacts/dallyletter/src/pages/student/StudentChat.tsx"),
   read("../artifacts/dallyletter/src/pages/teacher/TeacherChat.tsx"),
   read("../artifacts/dallyletter/src/pages/admin/AdminChat.tsx"),
@@ -37,6 +38,10 @@ assert.ok(mobilePanel.includes("Leaderboard"), "mobile poll cards must expose a 
 assert.ok(mobilePanel.includes("item.poll.canDelete&&"), "mobile poll deletion control must follow the server-authorized canDelete flag");
 assert.ok(mobilePanel.includes("/api/chat/polls/"), "mobile poll deletion must call the existing API endpoint");
 assert.ok(groups.includes("!result || !result.deleted"), "study-group deletion must handle null API responses");
+assert.ok(groups.includes("const canManage = isOwner || group.canManage === true"), "group creators must see member moderation actions even when API identity IDs differ in type");
+assert.ok(groups.includes("(isOwner || group.canManage === true) && <Button type=\"button\" variant=\"ghost\" size=\"icon\" aria-label={`Delete study group"), "group creators must see the compact delete-group action");
+assert.ok(groups.includes("(isOwner || group.canManage === true) && <Button variant=\"ghost\" size=\"sm\""), "group creators must see the clear-chat action");
+assert.ok(studyGroupsApi.includes("Number(group.creatorId) === Number(user.id)"), "study-group owner authorization must compare normalized IDs");
 assert.ok(studentChat.includes("!result || !result.deleted"), "learner chat deletion must handle null API responses");
 assert.ok(teacherChat.includes("!data || !data.deleted"), "teacher chat deletion must handle null API responses");
 assert.ok(adminChat.includes("!data || !data.deleted"), "admin chat deletion must handle null API responses");
@@ -45,4 +50,4 @@ assert.ok(aiRoute.includes("providerStatus: failure.statusCode ?? null"), "AI di
 assert.ok(aiSettings.includes("provider HTTP ${data.providerStatus}"), "AI settings must display the safe upstream status to the owner");
 assert.ok(academicRecords.includes("res.status(200).json({ ok: true, deleted: true, transferRequestId: id })"), "transfer-letter deletion must return an explicit JSON confirmation");
 assert.ok(academicRecords.includes("res.status(200).json({ ok: true, deleted: true, reportDraftId: id })"), "RecordBook draft deletion must return an explicit JSON confirmation");
-console.log("STUDY_GROUP_POLLS_STATIC: PASS (leaderboard, profile links, anonymous privacy, marking haptics/feedback, shared poll cards, null-delete guards, AI diagnostics)");
+console.log("STUDY_GROUP_POLLS_STATIC: PASS (polls, owner actions, normalized authorization, profile links, privacy, haptics, null-delete guards, AI diagnostics)");
