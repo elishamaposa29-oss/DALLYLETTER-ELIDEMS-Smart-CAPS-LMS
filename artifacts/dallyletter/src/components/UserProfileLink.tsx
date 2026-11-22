@@ -28,7 +28,7 @@ export default function UserProfileLink({ userId, name, avatarUrl, className = "
     return <span className={className}>{name}</span>;
   }
   return <Link href={"/profile/" + Number(userId)} aria-label={"View " + name + "'s profile"} title={"View " + name + "'s profile"} className={"inline-flex min-w-0 items-center gap-2 rounded-md hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary " + className}>
-    {showAvatar && <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10 text-xs font-bold text-primary">{image ? <img src={image} alt="" className="h-full w-full object-cover" /> : name.slice(0, 1).toUpperCase()}</span>}
+    {showAvatar && <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10 text-xs font-bold text-primary ring-1 ring-border">{image ? <img src={image} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" /> : name.slice(0, 1).toUpperCase()}</span>}
     <span className="min-w-0 truncate">{name}</span>
   </Link>;
 }
