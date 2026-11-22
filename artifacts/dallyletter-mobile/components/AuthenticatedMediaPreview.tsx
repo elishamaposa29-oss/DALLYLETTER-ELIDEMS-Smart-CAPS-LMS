@@ -16,7 +16,8 @@ export default function AuthenticatedMediaPreview({ url, height = 220, accessibi
   const [offlineUri, setOfflineUri] = useState<string | null>(null);
   const [fullScreen, setFullScreen] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
-  const [videoRequested, setVideoRequested] = useState(false);
+  const [requestedVideoUrl, setRequestedVideoUrl] = useState<string | null>(null);
+  const videoRequested = requestedVideoUrl === url;
   const [videoError, setVideoError] = useState(false);
   const isRemote = /^https?:\/\//i.test(url);
   const needsAuth = requiresApiMediaAuth(url, getApiUrl("/"));
@@ -31,7 +32,6 @@ export default function AuthenticatedMediaPreview({ url, height = 220, accessibi
   useEffect(() => {
     let active = true;
     setOfflineUri(null);
-    setVideoRequested(false);
     setVideoError(false);
     void getOfflineMediaUri(user?.id, url).then(uri => { if (active) setOfflineUri(uri); });
     return () => { active = false; };
@@ -46,7 +46,7 @@ export default function AuthenticatedMediaPreview({ url, height = 220, accessibi
     const source = offlineUri
       ? { uri: offlineUri }
       : { uri: resolved, headers: needsAuth ? getApiMediaAuthHeaders(url, token, getApiUrl("/")) : undefined };
-    void videoPlayer.replaceAsync(source).then(() => { videoPlayer.play(); }).catch(() => { setVideoError(true); setVideoRequested(false); });
+    void videoPlayer.replaceAsync(source).then(() => { videoPlayer.play(); }).catch(() => { setVideoError(true); setRequestedVideoUrl(null); });
   }, [looksVideo, videoRequested, offlineUri, resolved, needsAuth, url, token, videoPlayer]);
   return <View style={{ width: "100%" }}>
     <Pressable accessibilityRole="button" accessibilityLabel={"Open " + label + " fullscreen"} onPress={() => setFullScreen(true)} style={{ width: "100%", minHeight: isImage ? height : 76, borderRadius: 12, overflow: "hidden", backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
@@ -57,7 +57,7 @@ export default function AuthenticatedMediaPreview({ url, height = 220, accessibi
     <Modal visible={fullScreen} animationType="fade" presentationStyle="fullScreen" onRequestClose={() => setFullScreen(false)}>
       <View style={{ flex: 1, backgroundColor: "#07111f", paddingTop: 18 }}>
         <View style={{ minHeight: 52, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}><Text numberOfLines={1} style={{ color: "#fff", flex: 1, fontSize: 15, fontWeight: "600" }}>{label}</Text><Pressable accessibilityRole="button" accessibilityLabel="Close fullscreen media" onPress={() => { setFullScreen(false); setShowOptions(false); }} hitSlop={12} style={{ padding: 10 }}><Feather name="x" size={24} color="#fff" /></Pressable></View>
-        <View style={{ flex: 1, justifyContent: "center" }}>{isImage ? <Image source={imageSource} contentFit="contain" accessibilityLabel={label} style={{ width: "100%", height: "100%" }} cachePolicy="memory-disk" /> : looksVideo ? videoRequested ? <VideoView player={videoPlayer} style={{ width: "100%", height: "100%" }} nativeControls allowsFullscreen contentFit="contain" accessibilityLabel={label} /> : <View style={{ alignItems: "center", padding: 24, gap: 12 }}><Feather name="play-circle" size={48} color="#fff" /><Text style={{ color: "#fff", textAlign: "center", fontWeight: "600" }}>Video has not been downloaded.</Text><Text style={{ color: "#cbd5e1", textAlign: "center", fontSize: 12 }}>Tap below to load and play using mobile data.</Text>{videoError ? <Text style={{ color: "#fecaca", textAlign: "center" }}>Video could not be loaded. Check your connection and try again.</Text> : null}<Pressable accessibilityRole="button" onPress={() => { setVideoError(false); setVideoRequested(true); }} style={{ backgroundColor: "#d6a600", paddingHorizontal: 18, paddingVertical: 12, borderRadius: 10 }}><Text style={{ color: "#111827", fontWeight: "700" }}>Load video and play</Text></Pressable></View> : <View style={{ alignItems: "center", padding: 24 }}><Feather name={looksAudio ? "headphones" : "file-text"} size={42} color="#fff" /><Text style={{ color: "#fff", marginTop: 14, textAlign: "center" }}>{looksAudio ? "Audio playback is not yet wired into this media viewer." : "Open this document using the available media options."}</Text></View>}</View>
+        <View style={{ flex: 1, justifyContent: "center" }}>{isImage ? <Image source={imageSource} contentFit="contain" accessibilityLabel={label} style={{ width: "100%", height: "100%" }} cachePolicy="memory-disk" /> : looksVideo ? videoRequested ? <VideoView player={videoPlayer} style={{ width: "100%", height: "100%" }} nativeControls allowsFullscreen contentFit="contain" accessibilityLabel={label} /> : <View style={{ alignItems: "center", padding: 24, gap: 12 }}><Feather name="play-circle" size={48} color="#fff" /><Text style={{ color: "#fff", textAlign: "center", fontWeight: "600" }}>Video has not been downloaded.</Text><Text style={{ color: "#cbd5e1", textAlign: "center", fontSize: 12 }}>Tap below to load and play using mobile data.</Text>{videoError ? <Text style={{ color: "#fecaca", textAlign: "center" }}>Video could not be loaded. Check your connection and try again.</Text> : null}<Pressable accessibilityRole="button" onPress={() => { setVideoError(false); setRequestedVideoUrl(url); }} style={{ backgroundColor: "#d6a600", paddingHorizontal: 18, paddingVertical: 12, borderRadius: 10 }}><Text style={{ color: "#111827", fontWeight: "700" }}>Load video and play</Text></Pressable></View> : <View style={{ alignItems: "center", padding: 24 }}><Feather name={looksAudio ? "headphones" : "file-text"} size={42} color="#fff" /><Text style={{ color: "#fff", marginTop: 14, textAlign: "center" }}>{looksAudio ? "Audio playback is not yet wired into this media viewer." : "Open this document using the available media options."}</Text></View>}</View>
         <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: "#334155" }}><Pressable accessibilityRole="button" onPress={() => setShowOptions(v => !v)} style={{ alignSelf: "flex-end", padding: 10, flexDirection: "row", alignItems: "center", gap: 8 }}><Feather name="more-horizontal" size={18} color="#fff" /><Text style={{ color: "#fff" }}>Media options</Text></Pressable>{showOptions ? <View style={{ padding: 10, borderRadius: 10, backgroundColor: "#fff" }}><OfflineMediaDownload url={url} fileName={accessibilityLabel} /></View> : null}</View>
       </View>
     </Modal>
