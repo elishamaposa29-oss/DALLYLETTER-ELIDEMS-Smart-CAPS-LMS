@@ -1,13 +1,19 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { build } from "esbuild";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { pool as workspacePool } from "@workspace/db";
+import { createRequire } from "node:module";
+
+// Load pg directly for the test harness. Importing @workspace/db from a plain
+// Node ESM script loads its TypeScript entrypoint, whose extensionless
+// directory import (./schema) is not supported by Node without a TS loader.
+const requireDb = createRequire(new URL("../../../lib/db/package.json", import.meta.url));
+const { Pool } = requireDb("pg");
 
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required for retention integration tests.");
-const testPool = workspacePool;
+const testPool = new Pool({ connectionString: process.env.DATABASE_URL });
 const suffix = randomUUID();
 const email = `retention-integration-${suffix}@example.test`;
 const titlePrefix = `retention-integration-${suffix}`;
@@ -22,6 +28,11 @@ try {
   );
   ownerId = Number(owner.rows[0].id);
 
+  // The production module imports @workspace/db. For this isolated integration
+  // run, alias that package to a tiny adapter backed by the same test database,
+  // avoiding execution of the package TS entrypoint under native Node ESM.
+  const dbAdapterPath = join(tempDir, "db-adapter.mjs");
+  await writeFile(dbAdapterPath, `import pg from "pg";\nexport const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });\n`);
   await build({
     entryPoints: ["src/lib/retention-cleanup.ts"],
     outfile: join(tempDir,"retention-cleanup.mjs"),
@@ -29,6 +40,7 @@ try {
     platform: "node",
     format: "esm",
     packages: "external",
+    alias: { "@workspace/db": dbAdapterPath },
     sourcemap: "inline",
   });
   const retention = await import(pathToFileURL(join(tempDir,"retention-cleanup.mjs")).href);
