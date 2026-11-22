@@ -21,6 +21,7 @@ export type RetentionPolicy = {
   nextRunAt: string | null;
   lastRunAt: string | null;
   updatedAt: string | null;
+  updatedBy: number | null;
 };
 
 const CATEGORY_LABELS: Record<RetentionCategory, string> = {
@@ -82,6 +83,7 @@ export async function getRetentionPolicy(): Promise<RetentionPolicy> {
     nextRunAt: row?.next_run_at ? new Date(row.next_run_at).toISOString() : null,
     lastRunAt: row?.last_run_at ? new Date(row.last_run_at).toISOString() : null,
     updatedAt: row?.updated_at ? new Date(row.updated_at).toISOString() : null,
+    updatedBy: row?.updated_by == null ? null : Number(row.updated_by),
   };
 }
 
@@ -195,8 +197,10 @@ export async function runRetentionCleanup(input: { triggerType: "manual" | "sche
     runId = Number(run.rows[0].id);
     for (const category of categories) counts[category] = await deleteCategory(client, category, cutoff);
     await client.query("UPDATE owner_retention_runs SET finished_at=now(),category_counts=$1::jsonb,status='completed' WHERE id=$2", [JSON.stringify(counts), runId]);
+    const auditActor = input.triggeredBy ?? policy.updatedBy;
+    if (!auditActor) throw new Error("Retention cleanup has no accountable Owner actor; configure the policy before enabling it.");
     await client.query("INSERT INTO audit_logs(action,category,performed_by,target_type,target_id,details) VALUES($1,$2,$3,$4,$5,$6)", [
-      "retention.cleanup.completed", "system", input.triggeredBy ?? policy.updatedBy ?? 1,
+      "retention.cleanup.completed", "system", auditActor,
       "retention_run", runId, JSON.stringify({ triggerType: input.triggerType, retentionDays: days, cutoff: cutoff.toISOString(), deleted: counts }),
     ]);
     await client.query("COMMIT");
@@ -233,7 +237,6 @@ export async function startRetentionCleanupScheduler(): Promise<void> {
         return;
       }
       await client.query("UPDATE owner_retention_policies SET next_run_at=now()+make_interval(hours => interval_hours),last_run_at=now() WHERE id=1");
-      await client.release();
       await runRetentionCleanup({ triggerType: "scheduled", triggeredBy: Number(row.updated_by) || null, categories, retentionDays: Number(row.retention_days) });
       return;
     } catch {
