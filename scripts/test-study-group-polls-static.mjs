@@ -91,7 +91,7 @@ assert.ok(messagesApi.includes("canAccessGroup(groupId, currentUser)") && messag
 assert.ok(messagesApi.includes("const accessibleGroupIds: number[] = []") && messagesApi.includes("recentGroups"), "Owner and manager unread dashboards must include scoped group conversations");
 assert.ok(retentionEngine.includes("RETENTION_CATEGORIES") && retentionEngine.includes("pg_try_advisory_lock"), "retention cleanup must use a fixed category allowlist and a cross-instance scheduler lock");
 assert.ok(retentionEngine.includes("NOT EXISTS (SELECT 1 FROM exercise_submissions") && retentionEngine.includes("auto_mark=FALSE"), "retention cleanup must protect learner submissions and auto-marked poll evidence");
-assert.ok(retentionEngine.includes("retention.cleanup.completed") && retentionEngine.includes("owner_retention_runs"), "retention runs must be durably audited, including failures");
+assert.ok(retentionEngine.includes('"retention.cleanup." + status') && retentionEngine.includes("owner_retention_runs"), "retention runs must be durably audited, including failures");
 assert.ok(retentionEngine.includes("startRetentionCleanupScheduler") && retentionEngine.includes("setInterval"), "retention cleanup must execute automatically on the configured server schedule");
 assert.ok(retentionUi.includes("DELETE EXPIRED CONTENT") && retentionUi.includes("Preview eligible content") && retentionUi.includes("Enable scheduled cleanup"), "Owner retention controls must require a preview and explicit confirmation for manual cleanup");
 
