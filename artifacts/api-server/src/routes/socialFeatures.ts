@@ -151,6 +151,30 @@ router.get("/chat/groups/:groupId/polls", requireAuth, async(req,res)=>{
   }));
  res.json(out);
 });
+router.delete("/chat/groups/:groupId/polls", requireAuth, async(req,res):Promise<void>=>{
+ const groupId=Number(req.params.groupId), actor=req.currentUser!;
+ if(!Number.isSafeInteger(groupId)||groupId<=0){res.status(400).json({error:"Invalid group id"});return;}
+ const [group]=await db.select({id:studyGroupsTable.id,creatorId:studyGroupsTable.creatorId}).from(studyGroupsTable).where(eq(studyGroupsTable.id,groupId));
+ if(!group){res.status(404).json({error:"Study group not found"});return;}
+ const isGroupOwner=Number(group.creatorId)===Number(actor.id);
+ const isOwner=isOwnerRole(actor.role);
+ let managerAuthorized=false;
+ if(!isOwner&&!isGroupOwner&&canAccessManager(actor)&&await managerHasPermission(actor,"groups.manage")){
+  const [creator]=await db.select({role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(eq(usersTable.id,group.creatorId));
+  managerAuthorized=Boolean(creator&&canModerateUser(actor,creator));
+ }
+ if(!isOwner&&!isGroupOwner&&!managerAuthorized){res.status(403).json({error:"Only the group creator, platform owner, or an in-scope manager with the existing groups.manage permission can clear group polls."});return;}
+ const polls=await db.select({id:chatPollsTable.id}).from(chatPollsTable).where(eq(chatPollsTable.groupId,groupId));
+ const pollIds=polls.map(poll=>poll.id);
+ if(pollIds.length){
+  await db.transaction(async tx=>{
+   await tx.delete(chatPollVotesTable).where(inArray(chatPollVotesTable.pollId,pollIds));
+   await tx.delete(chatPollOptionsTable).where(inArray(chatPollOptionsTable.pollId,pollIds));
+   await tx.delete(chatPollsTable).where(and(eq(chatPollsTable.groupId,groupId),inArray(chatPollsTable.id,pollIds)));
+  });
+ }
+ res.status(200).json({ok:true,deleted:true,deletedPollCount:pollIds.length});
+});
 router.post("/chat/groups/:groupId/polls", requireAuth, async(req,res):Promise<void>=>{
  const groupId=Number(req.params.groupId), user=req.currentUser!, question=typeof req.body?.question==="string"?req.body.question.trim():"", options=Array.isArray(req.body?.options)?req.body.options.filter((x:any)=>typeof x==="string"&&x.trim()).slice(0,20):[];
   if(!(await canAccessChatGroup(groupId, user.id, user))||!question||options.length<2){res.status(400).json({error:"Group member access and at least two options are required"});return;}
