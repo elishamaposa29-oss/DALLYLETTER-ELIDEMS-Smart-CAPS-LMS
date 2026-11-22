@@ -20,11 +20,11 @@ async function canManageGroup(user: any, group: any): Promise<boolean> {
   if (isOwnerRole(user.role)) return true;
   if (canAccessManager(user)) {
     if (!(await managerHasPermission(user,"groups.manage"))) return false;
-    if (group.creatorId === user.id) return true;
+    if (Number(group.creatorId) === Number(user.id)) return true;
     const [creator]=await db.select({role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(eq(usersTable.id,group.creatorId));
     return Boolean(creator && canModerateUser(user,creator));
   }
-  return group.creatorId === user.id;
+  return Number(group.creatorId) === Number(user.id);
 }
 
 async function canViewGroup(user:any,group:any):Promise<boolean>{
@@ -197,8 +197,7 @@ router.get("/study-groups/:id", requireAuth, async (req, res): Promise<void> => 
 
   const members = hideOwnerMembers(req.currentUser!,await getGroupMembers(group.id));
   res.json({
-    ...group,
-    memberCount: members.length,
+    ...group,    memberCount: members.length,
     members,
     createdAt: group.createdAt.toISOString(),
   });
@@ -397,8 +396,7 @@ router.delete("/study-groups/:id", requireAuth, async (req, res): Promise<void> 
     mediaKeys = media.rows.map((row:any) => String(row.media_url || "").match(/\/api\/messages\/media\/([a-f0-9-]{36})/i)?.[1]).filter((key:unknown): key is string => typeof key === "string");
     const coverKey = String(found.rows[0].cover_image_url || "").match(/\/api\/lessons\/media\/([a-f0-9-]{36})/i)?.[1];
     if (coverKey) mediaKeys.push(coverKey);
-    await client.query("DELETE FROM chat_poll_votes USING chat_polls WHERE chat_poll_votes.poll_id=chat_polls.id AND chat_polls.group_id=$1", [groupId]);
-    await client.query("DELETE FROM chat_poll_options USING chat_polls WHERE chat_poll_options.poll_id=chat_polls.id AND chat_polls.group_id=$1", [groupId]);
+    await client.query("DELETE FROM chat_poll_votes USING chat_polls WHERE chat_poll_votes.poll_id=chat_polls.id AND chat_polls.group_id=$1", [groupId]);    await client.query("DELETE FROM chat_poll_options USING chat_polls WHERE chat_poll_options.poll_id=chat_polls.id AND chat_polls.group_id=$1", [groupId]);
     await client.query("DELETE FROM chat_polls WHERE group_id=$1", [groupId]);
     await client.query("DELETE FROM chat_community_groups WHERE group_id=$1", [groupId]);
     await client.query("DELETE FROM group_member_controls WHERE group_id=$1", [groupId]);
