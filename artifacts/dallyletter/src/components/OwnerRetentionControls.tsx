@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 
 type Category = "notifications" | "lessons" | "exercises" | "study_groups" | "messages" | "polls" | "media" | "assignments";
 type Policy = { enabled: boolean; categories: Category[]; retentionDays: number; intervalHours: number; nextRunAt: string | null; lastRunAt: string | null };
-type Preview = { cutoff: string; totalEligible: number; counts: Record<string,{eligible:number;description:string}> };
+type Preview = { previewId: string; retentionDays: number; cutoff: string; totalEligible: number; counts: Record<string,{eligible:number;description:string}> };
 const options: Array<{id:Category;label:string;detail:string}> = [
   {id:"notifications",label:"Notifications",detail:"Read, non-financial notifications only"},
   {id:"lessons",label:"Lessons",detail:"Old text-only notes without exercises or media"},
@@ -48,8 +48,9 @@ export function OwnerRetentionControls() {
     return data;
   };
   const save=async()=>{
+    if(policy.enabled && (!preview?.previewId || preview.retentionDays!==policy.retentionDays || Object.keys(preview.counts).length!==policy.categories.length || policy.categories.some(category=>!preview.counts[category]))) { setError("Preview the current category selection and retention age before enabling scheduled cleanup."); return; }
     setBusy(true);setError("");setNotice("");setPreview(null);
-    try{const data=await request("/api/owner/command-center/retention","PUT",policy);setPolicy(data.policy);setNotice("Retention policy saved. Scheduled cleanup is now configured.");await load();}
+    try{const data=await request("/api/owner/command-center/retention","PUT",{...policy,previewId:preview?.previewId});setPolicy(data.policy);setNotice("Retention policy saved. Scheduled cleanup is now configured.");await load();}
     catch(e){setError(e instanceof Error?e.message:"Could not save policy.");}finally{setBusy(false);}
   };
   const runPreview=async()=>{
@@ -60,10 +61,10 @@ export function OwnerRetentionControls() {
   const runNow=async()=>{
     if(confirmation!=="DELETE EXPIRED CONTENT")return;
     setBusy(true);setError("");setNotice("");
-    try{const result=await request("/api/owner/command-center/retention/run","POST",{confirmation});setNotice("Cleanup completed: "+JSON.stringify(result.deleted));setConfirmation("");setPreview(null);await load();}
+    try{const result=await request("/api/owner/command-center/retention/run","POST",{confirmation});setNotice("Cleanup "+String(result.status||"finished")+": "+JSON.stringify(result.deleted)+(Object.keys(result.errors||{}).length?" · Errors: "+JSON.stringify(result.errors):""));setConfirmation("");setPreview(null);await load();}
     catch(e){setError(e instanceof Error?e.message:"Cleanup failed.");}finally{setBusy(false);}
   };
-  const toggle=(id:Category,checked:boolean)=>setPolicy(current=>({...current,categories:checked?[...new Set([...current.categories,id])]:current.categories.filter(x=>x!==id)}));
+  const toggle=(id:Category,checked:boolean)=>{setPreview(null);setPolicy(current=>({...current,categories:checked?[...new Set([...current.categories,id])]:current.categories.filter(x=>x!==id)}));};
 
   return <Card>
     <CardHeader><CardTitle>Automatic content cleanup</CardTitle><p className="text-sm text-muted-foreground">Owner-controlled, category-by-category retention with preview, audit history and scheduled execution. No cleanup is enabled by default.</p></CardHeader>
@@ -71,7 +72,7 @@ export function OwnerRetentionControls() {
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="flex items-center gap-2 rounded-lg border p-3 text-sm font-semibold"><input type="checkbox" checked={policy.enabled} onChange={e=>setPolicy(p=>({...p,enabled:e.target.checked}))}/>Enable scheduled cleanup</label>
         <label className="flex flex-col gap-1 text-sm">Delete eligible content older than
-          <select className="rounded-md border bg-background p-2" value={policy.retentionDays} onChange={e=>setPolicy(p=>({...p,retentionDays:Number(e.target.value)}))}>{[30,60,90,180,270,365,540,730,1095,1825,3650].map(d=><option key={d} value={d}>{d} days{d===180?" (about 6 months)":""}</option>)}</select>
+          <select className="rounded-md border bg-background p-2" value={policy.retentionDays} onChange={e=>{setPreview(null);setPolicy(p=>({...p,retentionDays:Number(e.target.value)}));}}>{[30,60,90,180,270,365,540,730,1095,1825,3650].map(d=><option key={d} value={d}>{d} days{d===180?" (about 6 months)":""}</option>)}</select>
         </label>
         <label className="flex flex-col gap-1 text-sm">Run schedule
           <select className="rounded-md border bg-background p-2" value={policy.intervalHours} onChange={e=>setPolicy(p=>({...p,intervalHours:Number(e.target.value)}))}>{[6,12,24,48,72,168].map(h=><option key={h} value={h}>{h===24?"Every day":h===168?"Every week":`Every ${h} hours`}</option>)}</select>
