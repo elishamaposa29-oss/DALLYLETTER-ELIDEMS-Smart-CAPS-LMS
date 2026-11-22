@@ -490,10 +490,24 @@ export default function StudentStudyGroups() {
                     }}><Trash2 className="h-4 w-4" /></Button>}
                     {canManage && <Button variant="outline" className="gap-2" onClick={() => void openSettings(group.id)} disabled={busyGroup === group.id}><Settings2 className="h-4 w-4" />Settings</Button>}
                     {(isOwner || group.canManage === true) && <Button variant="ghost" size="sm" onClick={() => {
-                      if (!window.confirm("Clear all messages in this study group?")) return;
+                      if (!window.confirm("Clear all messages AND all study-group polls (including their votes and options)? This cannot be undone.")) return;
                       setBusyGroup(group.id);
-                      void apiJson<{deleted?:boolean;deletedMessageCount?:number;mediaCleanupPending?:boolean;mediaCleanupFailedCount?:number;mediaCleanupErrors?:string[]}>(`/api/study-groups/${group.id}/messages`, { method: "DELETE" }).then(result => {if(!result || !result.deleted)throw new Error("The server did not confirm message deletion.");toast({ title: "Group messages cleared", description: `${result.deletedMessageCount||0} message(s) deleted${result.mediaCleanupPending?`; ${result.mediaCleanupFailedCount||0} attachment(s) still need storage cleanup${result.mediaCleanupErrors?.[0]?": "+result.mediaCleanupErrors[0]:""}`:""}` });}).catch(error => toast({ variant: "destructive", title: "Could not clear messages", description: error instanceof Error ? error.message : "Try again." })).finally(() => setBusyGroup(null));
-                    }} disabled={busyGroup === group.id}>Clear chat</Button>}
+                      void (async () => {
+                        let messageCount = 0;
+                        let mediaNote = "";
+                        try {
+                          const messages = await apiJson<{deleted?:boolean;deletedMessageCount?:number;mediaCleanupPending?:boolean;mediaCleanupFailedCount?:number;mediaCleanupErrors?:string[]}>(`/api/study-groups/${group.id}/messages`, { method: "DELETE" });
+                          if (!messages?.deleted) throw new Error("The server did not confirm message deletion.");
+                          messageCount = messages.deletedMessageCount || 0;
+                          mediaNote = messages.mediaCleanupPending ? `; ${messages.mediaCleanupFailedCount||0} attachment(s) still need storage cleanup${messages.mediaCleanupErrors?.[0]?": "+messages.mediaCleanupErrors[0]:""}` : "";
+                          const polls = await apiJson<{deleted?:boolean;deletedPollCount?:number}>(`/api/chat/groups/${group.id}/polls`, { method: "DELETE" });
+                          if (!polls?.deleted) throw new Error("Messages were cleared, but the server did not confirm poll deletion.");
+                          toast({ title: "Group chat and polls cleared", description: `${messageCount} message(s) and ${polls.deletedPollCount||0} poll(s), including all votes, deleted${mediaNote}` });
+                        } catch (error) {
+                          toast({ variant: "destructive", title: "Group cleanup incomplete", description: error instanceof Error ? error.message : "Some messages or polls may remain. Refresh and retry." });
+                        } finally { setBusyGroup(null); }
+                      })();
+                    }} disabled={busyGroup === group.id}>Clear chat & polls</Button>}
                     {isMember && <Button type="button" variant="secondary" className="min-w-[130px] flex-1 gap-2" onClick={() => { const role=String(user?.role||"").toLowerCase(); const base=role==="teacher"?"/teacher/chat":role==="owner"||role==="admin"||role==="platform_owner"?"/admin/chat":["manager","senior_manager","junior_manager"].includes(role)?"/manager/chat":"/student/chat"; window.location.href = `${base}?groupId=${group.id}`; }}><MessageSquare className="h-4 w-4" />Open group chat</Button>}
                     {isMember ? (
                       <Button variant="secondary" className="min-w-[130px] flex-1 gap-2" onClick={() => handleLeaveGroup(group.id)} disabled={isOwner || leaveGroupMutation.isPending}>
