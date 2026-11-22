@@ -203,7 +203,7 @@ router.get("/chat/polls/:pollId/leaderboard", requireAuth, async(req,res):Promis
   .innerJoin(chatPollOptionsTable,eq(chatPollVotesTable.optionId,chatPollOptionsTable.id))
   .where(eq(chatPollVotesTable.pollId,pollId))
   .orderBy(desc(chatPollVotesTable.createdAt));
- const byUser=new Map();
+ const byUser=new Map<number,{userId:number|null;name:string;avatarUrl:string|null;answers:string[];lastVoteAt:Date|null}>();
  for(const vote of votes){
   const key=Number(vote.userId), existing=byUser.get(key);
   if(existing){if(!existing.answers.includes(vote.optionLabel))existing.answers.push(vote.optionLabel);continue;}
