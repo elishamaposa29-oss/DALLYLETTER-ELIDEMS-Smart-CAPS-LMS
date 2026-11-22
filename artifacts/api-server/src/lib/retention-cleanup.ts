@@ -1,6 +1,7 @@
 import { pool } from "@workspace/db";
 import { removeStoredMedia } from "./media-storage";
 
+export const RETENTION_CLEANUP_LOCK_ID = 759218304;
 export const RETENTION_CATEGORIES = [
   "notifications",
   "lessons",
