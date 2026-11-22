@@ -114,10 +114,13 @@ router.get("/study-groups", requireAuth, async (req, res): Promise<void> => {
     }
     const visibleMembers=hideOwnerMembers(currentUser,members);
     const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, g.id));
+    const [myControl] = await db.select({ canManageSettings: groupMemberControlsTable.canManageSettings }).from(groupMemberControlsTable).where(and(eq(groupMemberControlsTable.groupId,g.id),eq(groupMemberControlsTable.userId,currentUser.id)));
+    const canCreatePolls = settings?.allowPolls !== false || isOwnerRole(currentUser.role) || String(currentUser.role).toLowerCase() === "admin" || Number(g.creatorId) === Number(currentUser.id) || canManage || myControl?.canManageSettings === true;
     return {
       ...g,
       canManage,
       canChat,
+      canCreatePolls,
       memberCount: visibleMembers.length,
       isMember,
       // Non-members get only a safe public profile preview: never expose email, phone,
