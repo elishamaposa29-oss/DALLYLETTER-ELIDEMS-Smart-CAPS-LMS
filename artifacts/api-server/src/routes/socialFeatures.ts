@@ -179,7 +179,13 @@ router.post("/chat/groups/:groupId/polls", requireAuth, async(req,res):Promise<v
  const groupId=Number(req.params.groupId), user=req.currentUser!, question=typeof req.body?.question==="string"?req.body.question.trim():"", options=Array.isArray(req.body?.options)?req.body.options.filter((x:any)=>typeof x==="string"&&x.trim()).slice(0,20):[];
   if(!(await canAccessChatGroup(groupId, user.id, user))||!question||options.length<2){res.status(400).json({error:"Group member access and at least two options are required"});return;}
   const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, groupId));
-  if (settings?.allowPolls === false) {\n   const [control] = await db.select({ canManageSettings: groupMemberControlsTable.canManageSettings }).from(groupMemberControlsTable).where(and(eq(groupMemberControlsTable.groupId,groupId),eq(groupMemberControlsTable.userId,user.id)));\n   const [group] = await db.select({ creatorId: studyGroupsTable.creatorId }).from(studyGroupsTable).where(eq(studyGroupsTable.id,groupId));\n   const delegated = control?.canManageSettings === true;\n   const privileged = isOwnerRole(user.role) || (manager(user) && await managerHasPermission(user,"groups.manage"));\n   if (!delegated && !privileged && Number(group?.creatorId) !== Number(user.id)) { res.status(403).json({ error: "Polls are disabled for members. The group creator, an explicitly authorized group manager, or a privileged account may still create them." }); return; }\n }
+  if (settings?.allowPolls === false) {
+   const [control] = await db.select({ canManageSettings: groupMemberControlsTable.canManageSettings }).from(groupMemberControlsTable).where(and(eq(groupMemberControlsTable.groupId,groupId),eq(groupMemberControlsTable.userId,user.id)));
+   const [group] = await db.select({ creatorId: studyGroupsTable.creatorId }).from(studyGroupsTable).where(eq(studyGroupsTable.id,groupId));
+   const delegated = control?.canManageSettings === true;
+   const privileged = isOwnerRole(user.role) || (manager(user) && await managerHasPermission(user,"groups.manage"));
+   if (!delegated && !privileged && Number(group?.creatorId) !== Number(user.id)) { res.status(403).json({ error: "Polls are disabled for members. The group creator, an explicitly authorized group manager, or a privileged account may still create them." }); return; }
+ }
   const uniqueOptions = [...new Set(options.map((option: string) => option.trim()))];
   if (uniqueOptions.length < 2) { res.status(400).json({ error: "Poll options must be unique" }); return; }
  const autoMark = req.body?.autoMark === true;
