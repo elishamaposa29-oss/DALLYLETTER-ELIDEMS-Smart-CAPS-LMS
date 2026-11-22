@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL(path, import.meta.url), "utf8");
-const [api, panel, mobilePanel, groups, studyGroupsApi, studentChat, teacherChat, adminChat, aiRoute, aiSettings, academicRecords, studentPolls, profileLink] = await Promise.all([
+const [api, panel, mobilePanel, groups, studyGroupsApi, studentChat, teacherChat, adminChat, aiRoute, aiSettings, academicRecords, studentPolls, profileLink, messagesApi, retentionEngine, retentionUi, ownerCommandCenter] = await Promise.all([
   read("../artifacts/api-server/src/routes/socialFeatures.ts"),
   read("../artifacts/dallyletter/src/components/StudyGroupPollPanel.tsx"),
   read("../artifacts/dallyletter-mobile/components/StudyGroupPollPanel.tsx"),
@@ -16,6 +16,10 @@ const [api, panel, mobilePanel, groups, studyGroupsApi, studentChat, teacherChat
   read("../artifacts/api-server/src/routes/academicRecords.ts"),
   read("../artifacts/dallyletter/src/pages/student/StudentPolls.tsx"),
   read("../artifacts/dallyletter/src/components/UserProfileLink.tsx"),
+  read("../artifacts/api-server/src/routes/messages.ts"),
+  read("../artifacts/api-server/src/lib/retention-cleanup.ts"),
+  read("../artifacts/dallyletter/src/components/OwnerRetentionControls.tsx"),
+  read("../artifacts/api-server/src/routes/ownerCommandCenter.ts"),
 ]);
 
 assert.ok(api.includes('router.get("/chat/polls/:pollId/leaderboard"'), "group polls must expose a leaderboard endpoint");
@@ -75,8 +79,21 @@ assert.ok(api.includes("Number(vote.userId) === Number(actor.id)") && api.includ
 assert.ok(api.includes("const marked = poll.autoMark") && api.includes("isCorrect: optionIds[0] === poll.correctOptionId"), "auto-marked study-group votes must return the server-verified correctness result immediately");
 assert.ok(api.includes("SELECT auto_mark,closed FROM chat_polls WHERE id=$1 FOR UPDATE"), "auto-marked submissions must serialize per poll to prevent concurrent repeat attempts");
 assert.ok(api.includes("This auto-marked poll accepts only one answer from each learner."), "auto-marked polls must reject repeat submissions server-side");
-assert.ok(api.includes("if (!poll.autoMark) await client.query"), "ordinary polls must preserve their existing editable vote behavior");
+assert.ok(api.includes("if(!current.auto_mark) await client.query"), "ordinary polls must preserve their existing editable vote behavior");
 assert.ok(panel.includes("oneShotAutoMarkLocked") && panel.includes("Created by you"), "web poll cards must lock answered auto-marked polls and distinguish the current user's polls");
 
 assert.ok(profileLink.includes('href={"/profile/" + Number(userId)}') && profileLink.includes("<img src={image}"), "leaderboard avatars must display actual profile images and remain clickable profile links");
+
+assert.ok(messagesApi.includes("async function canOverrideGroupSettings") && messagesApi.includes("control?.mediaBlocked"), "group settings overrides must not bypass explicit media blocks");
+assert.ok(messagesApi.includes("canAccessGroup(groupId, currentUser)") && messagesApi.includes('managerHasPermission(user, "groups.manage")') && messagesApi.includes("canModerateUser(user, creator)"), "Owner and managers must access group chat only within existing role and permission scope");
+assert.ok(messagesApi.includes("const accessibleGroupIds: number[] = []") && messagesApi.includes("recentGroups"), "Owner and manager unread dashboards must include scoped group conversations");
+assert.ok(retentionEngine.includes("RETENTION_CATEGORIES") && retentionEngine.includes("pg_try_advisory_lock"), "retention cleanup must use a fixed category allowlist and a cross-instance scheduler lock");
+assert.ok(retentionEngine.includes("NOT EXISTS (SELECT 1 FROM exercise_submissions") && retentionEngine.includes("auto_mark=FALSE"), "retention cleanup must protect learner submissions and auto-marked poll evidence");
+assert.ok(retentionEngine.includes("retention.cleanup.completed") && retentionEngine.includes("owner_retention_runs"), "retention runs must be durably audited, including failures");
+assert.ok(retentionEngine.includes("startRetentionCleanupScheduler") && retentionEngine.includes("setInterval"), "retention cleanup must execute automatically on the configured server schedule");
+assert.ok(retentionUi.includes("DELETE EXPIRED CONTENT") && retentionUi.includes("Preview eligible content") && retentionUi.includes("Enable scheduled cleanup"), "Owner retention controls must require a preview and explicit confirmation for manual cleanup");
+assert.ok(ownerCommandCenter.includes("/owner/command-center/retention/preview") && ownerCommandCenter.includes("/owner/command-center/retention/run"), "Owner Command Centre must expose protected preview and execution endpoints");
+assert.ok(academicRecords.includes('managerHasPermission(actor,"reports.view")') && academicRecords.includes('managerHasPermission(actor,"transfers.view")'), "report and transfer deletion must enforce existing manager permissions");
+assert.ok(academicRecords.includes('"academic_report.deleted"') && academicRecords.includes('"transfer_letter.deleted"'), "report and transfer deletion must write audit events");
+
 console.log("STUDY_GROUP_POLLS_STATIC: PASS (polls, one-shot auto-marking, bulk poll clearing, compact individual deletion, owner actions, normalized authorization, profile links, privacy, haptics, AI diagnostics)");
