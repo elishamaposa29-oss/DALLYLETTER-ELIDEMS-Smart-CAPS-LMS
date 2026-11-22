@@ -192,9 +192,9 @@ export async function runRetentionCleanup(input: { triggerType: "manual" | "sche
   const counts: Record<string, number> = {};
   let runId: number | null = null;
   try {
-    await client.query("BEGIN");
     const run = await client.query("INSERT INTO owner_retention_runs (triggered_by,trigger_type,status) VALUES ($1,$2,'running') RETURNING id", [input.triggeredBy, input.triggerType]);
     runId = Number(run.rows[0].id);
+    await client.query("BEGIN");
     for (const category of categories) counts[category] = await deleteCategory(client, category, cutoff);
     await client.query("UPDATE owner_retention_runs SET finished_at=now(),category_counts=$1::jsonb,status='completed' WHERE id=$2", [JSON.stringify(counts), runId]);
     const auditActor = input.triggeredBy ?? policy.updatedBy;
