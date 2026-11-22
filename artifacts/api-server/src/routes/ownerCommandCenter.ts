@@ -14,6 +14,7 @@ import {
 } from "@workspace/db";
 import { requireOwner } from "../lib/auth-middleware";
 import { getAIProvider } from "../lib/ai-provider";
+import { getRetentionPolicy, previewRetention, runRetentionCleanup, RETENTION_CATEGORIES, type RetentionCategory } from "../lib/retention-cleanup";
 
 const router = Router();
 const now = () => new Date().toISOString();
@@ -51,6 +52,70 @@ async function checkService(name: string, check: () => Promise<void>): Promise<S
     };
   }
 }
+
+
+router.get("/owner/command-center/retention", requireOwner, async (_req,res):Promise<void> => {
+  res.setHeader("Cache-Control","private,no-store");
+  res.json({ policy: await getRetentionPolicy(), categories: RETENTION_CATEGORIES });
+});
+
+router.put("/owner/command-center/retention", requireOwner, async (req,res):Promise<void> => {
+  const enabled = req.body?.enabled === true;
+  const categories = Array.isArray(req.body?.categories)
+    ? [...new Set(req.body.categories.filter((value: unknown): value is RetentionCategory => typeof value === "string" && (RETENTION_CATEGORIES as readonly string[]).includes(value))]
+    : [];
+  const retentionDays = Number(req.body?.retentionDays);
+  const intervalHours = Number(req.body?.intervalHours);
+  if (!Number.isInteger(retentionDays) || retentionDays < 30 || retentionDays > 3650 || !Number.isInteger(intervalHours) || intervalHours < 6 || intervalHours > 168 || (enabled && categories.length === 0)) {
+    res.status(400).json({ error: "Choose at least one eligible category when enabled, a retention age from 30 to 3650 days, and a schedule from 6 to 168 hours." });
+    return;
+  }
+  const actor = req.currentUser!;
+  const result = await pool.query(
+    "UPDATE owner_retention_policies SET enabled=$1,categories=$2::jsonb,retention_days=$3,interval_hours=$4,next_run_at=CASE WHEN $1 THEN now()+make_interval(hours => $4) ELSE NULL END,updated_by=$5,updated_at=now() WHERE id=1 RETURNING enabled,categories,retention_days,interval_hours,next_run_at,last_run_at,updated_at,updated_by",
+    [enabled,JSON.stringify(categories),retentionDays,intervalHours,actor.id],
+  );
+  await pool.query(
+    "INSERT INTO audit_logs(action,category,performed_by,target_type,target_id,details) VALUES($1,$2,$3,$4,$5,$6)",
+    ["retention.policy.updated","system",actor.id,"retention_policy",1,JSON.stringify({enabled,categories,retentionDays,intervalHours})],
+  );
+  const row=result.rows[0];
+  res.json({ policy: { enabled:row.enabled,categories:row.categories,retentionDays:Number(row.retention_days),intervalHours:Number(row.interval_hours),nextRunAt:row.next_run_at?new Date(row.next_run_at).toISOString():null,lastRunAt:row.last_run_at?new Date(row.last_run_at).toISOString():null,updatedAt:new Date(row.updated_at).toISOString(),updatedBy:Number(row.updated_by) } });
+});
+
+router.post("/owner/command-center/retention/preview", requireOwner, async (req,res):Promise<void> => {
+  const categories = Array.isArray(req.body?.categories)
+    ? [...new Set(req.body.categories.filter((value: unknown): value is RetentionCategory => typeof value === "string" && (RETENTION_CATEGORIES as readonly string[]).includes(value))]
+    : [];
+  const days = Number(req.body?.retentionDays);
+  if (!categories.length || !Number.isInteger(days) || days < 30 || days > 3650) {
+    res.status(400).json({error:"Select eligible categories and a retention age between 30 and 3650 days."});
+    return;
+  }
+  res.setHeader("Cache-Control","private,no-store");
+  res.json(await previewRetention(days,categories));
+});
+
+router.post("/owner/command-center/retention/run", requireOwner, async (req,res):Promise<void> => {
+  if (req.body?.confirmation !== "DELETE EXPIRED CONTENT") {
+    res.status(400).json({error:"Explicit confirmation is required: DELETE EXPIRED CONTENT."});
+    return;
+  }
+  const policy = await getRetentionPolicy();
+  if (!policy.enabled || !policy.categories.length) {
+    res.status(409).json({error:"Save and enable a retention policy with at least one category before running cleanup."});
+    return;
+  }
+  const preview = await previewRetention(policy.retentionDays,policy.categories);
+  const result = await runRetentionCleanup({triggerType:"manual",triggeredBy:req.currentUser!.id,categories:policy.categories,retentionDays:policy.retentionDays});
+  res.json({...result,previewedEligible:preview.totalEligible});
+});
+
+router.get("/owner/command-center/retention/runs", requireOwner, async (_req,res):Promise<void> => {
+  const result=await pool.query("SELECT id,started_at,finished_at,triggered_by,trigger_type,category_counts,status,error FROM owner_retention_runs ORDER BY started_at DESC LIMIT 20");
+  res.setHeader("Cache-Control","private,no-store");
+  res.json({runs:result.rows});
+});
 
 router.get("/owner/command-center/health", requireOwner, async (_req, res): Promise<void> => {
   const [database, ai] = await Promise.all([
