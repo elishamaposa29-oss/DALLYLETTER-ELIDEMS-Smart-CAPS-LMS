@@ -248,6 +248,7 @@ export async function runRetentionCleanup(input: { triggerType: "manual" | "sche
 }
 
 let schedulerStarted = false;
+let schedulerTimer: ReturnType<typeof setInterval> | null = null;
 export async function startRetentionCleanupScheduler(): Promise<void> {
   if (schedulerStarted) return;
   schedulerStarted = true;
@@ -278,5 +279,11 @@ export async function startRetentionCleanupScheduler(): Promise<void> {
     }
   };
   void tick();
-  setInterval(() => { void tick(); }, 5 * 60 * 1000);
+  schedulerTimer = setInterval(() => { void tick(); }, 5 * 60 * 1000);
+}
+
+export function stopRetentionCleanupScheduler(): void {
+  if (schedulerTimer) clearInterval(schedulerTimer);
+  schedulerTimer = null;
+  schedulerStarted = false;
 }
