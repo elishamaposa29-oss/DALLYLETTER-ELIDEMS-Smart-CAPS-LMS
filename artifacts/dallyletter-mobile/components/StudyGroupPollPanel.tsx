@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, Vibration, View } from "react-native";
+import { ActivityIndicator, Alert, ScrollView, Text, TextInput, TouchableOpacity, Vibration, View } from "react-native";
 import { getApiUrl } from "@workspace/api-client-react";
 import { UserProfileLink } from "@/components/UserProfileLink";
 
 type Mark = { isCorrect?:boolean; correctLabel?:string|null; correctOptionId?:number|null };
 type Poll = {
-  poll:{id:number;question:string;allowMultiple:boolean;closed:boolean;autoMark?:boolean;correctOptionId?:number|null};
+  poll:{id:number;question:string;allowMultiple:boolean;closed:boolean;autoMark?:boolean;correctOptionId?:number|null;canDelete?:boolean};
   options:Array<{id:number;label:string;voteCount:number;selected:boolean}>;
   totalVotes:number;
   myMark?:Mark|null;
@@ -83,6 +83,21 @@ export function StudyGroupPollPanel({ groupId, token, colors, allowPolls }: { gr
     }catch(e){setError(e instanceof Error?e.message:"Vote could not be saved.");}
   };
 
+  const removePoll=(poll:Poll)=>{
+    if(!token||!poll.poll.canDelete)return;
+    Alert.alert("Delete group poll","Permanently delete this poll and all submitted votes?",[
+      {text:"Cancel",style:"cancel"},
+      {text:"Delete",style:"destructive",onPress:()=>{void (async()=>{
+        try{
+          const r=await fetch(getApiUrl("/api/chat/polls/"+poll.poll.id),{method:"DELETE",headers:{Authorization:"Bearer "+token}});
+          if(!r.ok){const data=await r.json().catch(()=>null);throw new Error(data?.error||"Poll deletion failed.");}
+          setLeaderboardOpenId(current=>current===poll.poll.id?null:current);
+          await load();
+        }catch(e){setError(e instanceof Error?e.message:"Poll deletion failed.");}
+      })();}}
+    ]);
+  };
+
   const toggleLeaderboard=async(pollId:number)=>{
     if(leaderboardOpenId===pollId){setLeaderboardOpenId(null);return;}
     setLeaderboardOpenId(pollId);
@@ -124,7 +139,7 @@ export function StudyGroupPollPanel({ groupId, token, colors, allowPolls }: { gr
       const isCorrect=feedback?.isCorrect??selectedId===correctOptionId;
       const entries=leaderboards[item.poll.id]||[];
       return <View key={item.poll.id} style={{backgroundColor:colors.card,borderColor:colors.border,borderWidth:1,borderRadius:12,padding:10,gap:7}}>
-        <View style={{flexDirection:"row",justifyContent:"space-between",gap:8}}><Text style={{fontWeight:"800",fontSize:13,color:colors.foreground,flex:1}}>{item.poll.question}</Text><Text style={{fontSize:10,color:colors.mutedForeground}}>{item.poll.closed?"Closed":"Active"}</Text></View>
+        <View style={{flexDirection:"row",justifyContent:"space-between",alignItems:"center",gap:8}}><Text style={{fontWeight:"800",fontSize:13,color:colors.foreground,flex:1}}>{item.poll.question}</Text><View style={{flexDirection:"row",alignItems:"center",gap:8}}><Text style={{fontSize:10,color:colors.mutedForeground}}>{item.poll.closed?"Closed":"Active"}</Text>{item.poll.canDelete&&<TouchableOpacity onPress={()=>removePoll(item)} accessibilityRole="button" accessibilityLabel="Delete poll"><Text style={{fontSize:10,fontWeight:"800",color:"#B91C1C"}}>Delete</Text></TouchableOpacity>}</View></View>
         {item.options.map(option=>{
           const isSelected=option.selected||selectedId===option.id;
           const isCorrectAnswer=Boolean(item.poll.autoMark)&&showMark&&correctOptionId===option.id;
