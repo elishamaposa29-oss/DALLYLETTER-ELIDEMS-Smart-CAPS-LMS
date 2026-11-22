@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { db, pool, followsTable, notificationPreferencesTable, notificationsTable, usersTable, lessonsTable, contentCommentsTable, moderationActionsTable, auditLogsTable, contentFlagsTable, chatPollsTable, chatPollOptionsTable, chatPollVotesTable, broadcastsTable, broadcastRecipientsTable, communitiesTable, communityGroupsTable, messagesTable, studyGroupMembersTable, studyGroupsTable, groupSettingsTable } from "@workspace/db";
+import { db, pool, followsTable, notificationPreferencesTable, notificationsTable, usersTable, lessonsTable, contentCommentsTable, moderationActionsTable, auditLogsTable, contentFlagsTable, chatPollsTable, chatPollOptionsTable, chatPollVotesTable, broadcastsTable, broadcastRecipientsTable, communitiesTable, communityGroupsTable, messagesTable, studyGroupMembersTable, studyGroupsTable, groupSettingsTable, groupMemberControlsTable } from "@workspace/db";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { canModerateUser, isJuniorManager, normalizeRole } from "../lib/role-access";
 import { managerHasPermission, requireManagerPermission, requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
@@ -179,7 +179,7 @@ router.post("/chat/groups/:groupId/polls", requireAuth, async(req,res):Promise<v
  const groupId=Number(req.params.groupId), user=req.currentUser!, question=typeof req.body?.question==="string"?req.body.question.trim():"", options=Array.isArray(req.body?.options)?req.body.options.filter((x:any)=>typeof x==="string"&&x.trim()).slice(0,20):[];
   if(!(await canAccessChatGroup(groupId, user.id, user))||!question||options.length<2){res.status(400).json({error:"Group member access and at least two options are required"});return;}
   const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, groupId));
-  if (settings?.allowPolls === false) { res.status(403).json({ error: "Polls are disabled in this group" }); return; }
+  if (settings?.allowPolls === false) {\n   const [control] = await db.select({ canManageSettings: groupMemberControlsTable.canManageSettings }).from(groupMemberControlsTable).where(and(eq(groupMemberControlsTable.groupId,groupId),eq(groupMemberControlsTable.userId,user.id)));\n   const [group] = await db.select({ creatorId: studyGroupsTable.creatorId }).from(studyGroupsTable).where(eq(studyGroupsTable.id,groupId));\n   const delegated = control?.canManageSettings === true;\n   const privileged = isOwnerRole(user.role) || (manager(user) && await managerHasPermission(user,"groups.manage"));\n   if (!delegated && !privileged && Number(group?.creatorId) !== Number(user.id)) { res.status(403).json({ error: "Polls are disabled for members. The group creator, an explicitly authorized group manager, or a privileged account may still create them." }); return; }\n }
   const uniqueOptions = [...new Set(options.map((option: string) => option.trim()))];
   if (uniqueOptions.length < 2) { res.status(400).json({ error: "Poll options must be unique" }); return; }
  const autoMark = req.body?.autoMark === true;
@@ -263,26 +263,10 @@ router.post("/chat/polls/:pollId/vote", requireAuth, async(req,res):Promise<void
   if (new Set(optionIds).size !== optionIds.length) { res.status(400).json({ error: "Choose each option only once" }); return; }
  if(optionIds.length===0||(!poll.allowMultiple&&optionIds.length>1)){res.status(400).json({error:"Choose a valid option"});return;}
  const valid=await db.select().from(chatPollOptionsTable).where(eq(chatPollOptionsTable.pollId,pollId)); const validIds=new Set(valid.map((o: { id: number })=>o.id)); if(optionIds.some((id: number)=>!validIds.has(id))){res.status(400).json({error:"Invalid poll option"});return;}
- const client = await pool.connect();
- try {
-  await client.query("BEGIN");
-  // Serialize submissions per poll so simultaneous requests cannot bypass the one-answer rule.
-  await client.query("SELECT id FROM chat_polls WHERE id=$1 FOR UPDATE", [pollId]);
-  const existing = await client.query("SELECT id FROM chat_poll_votes WHERE poll_id=$1 AND user_id=$2 LIMIT 1", [pollId,user.id]);
-  if (poll.autoMark && existing.rowCount) {
-   await client.query("ROLLBACK");
-   res.status(409).json({error:"This auto-marked poll accepts only one answer from each learner."});
-   return;
-  }
-  if (!poll.autoMark) await client.query("DELETE FROM chat_poll_votes WHERE poll_id=$1 AND user_id=$2", [pollId,user.id]);
-  for (const optionId of optionIds) {
-   await client.query("INSERT INTO chat_poll_votes (poll_id,option_id,user_id) VALUES ($1,$2,$3)", [pollId,optionId,user.id]);
-  }
-  await client.query("COMMIT");
- } catch (error) {
-  await client.query("ROLLBACK").catch(()=>undefined);
-  throw error;
- } finally { client.release(); }
+ await db.transaction(async tx=>{
+  await tx.delete(chatPollVotesTable).where(and(eq(chatPollVotesTable.pollId,pollId),eq(chatPollVotesTable.userId,user.id)));
+  await tx.insert(chatPollVotesTable).values(optionIds.map((optionId: number)=>({pollId,optionId,userId:user.id})));
+ });
  const marked = poll.autoMark && !poll.allowMultiple && poll.correctOptionId != null ? { isCorrect: optionIds[0] === poll.correctOptionId, correctOptionId: poll.correctOptionId, correctLabel: valid.find(option => option.id === poll.correctOptionId)?.label ?? null } : {};
  res.json({ok:true,...marked});
 });

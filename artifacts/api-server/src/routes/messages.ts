@@ -433,8 +433,8 @@ router.post("/messages", requireAuth, async (req, res): Promise<void> => {
     const [control] = await db.select().from(groupMemberControlsTable).where(and(eq(groupMemberControlsTable.groupId, parsed.data.groupId), eq(groupMemberControlsTable.userId, currentUser.id)));
     const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, parsed.data.groupId));
     if (control?.blocked || control?.suspended || control?.muted) { res.status(403).json({ error: "You are restricted from messaging in this group" }); return; }
-    if ((parsed.data.type === "voice" || parsed.data.type === "media") && (control?.mediaBlocked || settings?.allowMedia === false)) { res.status(403).json({ error: "Media uploads are disabled for you in this group" }); return; }
-    if (settings?.announcementsOnly && !(isOwnerRole(currentUser.role) || currentUser.isManager || currentUser.isPrefect)) {
+    if ((parsed.data.type === "voice" || parsed.data.type === "media") && (control?.mediaBlocked || (settings?.allowMedia === false && control?.canManageSettings !== true && !isOwnerRole(currentUser.role) && !currentUser.isManager && !currentUser.isPrefect))) { res.status(403).json({ error: "Media uploads are disabled for you in this group" }); return; }
+    if (settings?.announcementsOnly && !(isOwnerRole(currentUser.role) || currentUser.isManager || currentUser.isPrefect || control?.canManageSettings === true)) {
       res.status(403).json({ error: "Only group moderators can post announcements in this group" });
       return;
     }
