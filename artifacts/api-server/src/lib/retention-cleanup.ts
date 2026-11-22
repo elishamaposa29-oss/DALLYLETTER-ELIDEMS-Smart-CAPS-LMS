@@ -30,7 +30,7 @@ const CATEGORY_LABELS: Record<RetentionCategory, string> = {
   lessons: "Old text-only lessons without exercises or media",
   exercises: "Unpublished draft exercises without submissions or media",
   study_groups: "Empty study groups with no messages, polls or community links",
-  messages: "Old group text messages without media attachments",
+  messages: "Old group text messages without media, replies or unread members",
   polls: "Closed, non-auto-marked study-group polls",
   media: "Orphaned exercise-media objects with no activity references",
   assignments: "Draft/cancelled assignments without learner submissions",
@@ -109,7 +109,7 @@ async function categoryCount(client: any, category: RetentionCategory, cutoff: D
     lessons: "SELECT count(*)::int AS count FROM lessons l WHERE l.created_at<$1 AND lower(l.type)='notes' AND l.media_url IS NULL AND NOT EXISTS (SELECT 1 FROM exercises e WHERE e.lesson_id=l.id)",
     exercises: "SELECT count(*)::int AS count FROM exercises e WHERE e.created_at<$1 AND lower(e.status)='draft' AND NOT EXISTS (SELECT 1 FROM exercise_submissions s WHERE s.exercise_id=e.id) AND NOT EXISTS (SELECT 1 FROM exercise_media m WHERE m.exercise_id=e.id)",
     study_groups: "SELECT count(*)::int AS count FROM study_groups g WHERE g.created_at<$1 AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.group_id=g.id) AND NOT EXISTS (SELECT 1 FROM chat_polls p WHERE p.group_id=g.id) AND NOT EXISTS (SELECT 1 FROM chat_community_groups cg WHERE cg.group_id=g.id) AND (SELECT count(*) FROM study_group_members gm WHERE gm.group_id=g.id)<=1",
-    messages: "SELECT count(*)::int AS count FROM messages m WHERE m.group_id IS NOT NULL AND m.media_url IS NULL AND m.created_at<$1 AND NOT EXISTS (SELECT 1 FROM messages reply WHERE reply.parent_message_id=m.id)",
+    messages: "SELECT count(*)::int AS count FROM messages m WHERE m.group_id IS NOT NULL AND m.media_url IS NULL AND m.created_at<$1 AND EXISTS (SELECT 1 FROM study_group_members gm WHERE gm.group_id=m.group_id) AND NOT EXISTS (SELECT 1 FROM study_group_members gm LEFT JOIN message_conversation_reads r ON r.user_id=gm.user_id AND r.conversation_type='group' AND r.conversation_id=gm.group_id WHERE gm.group_id=m.group_id AND (r.last_read_at IS NULL OR r.last_read_at<m.created_at)) AND NOT EXISTS (SELECT 1 FROM messages reply WHERE reply.parent_message_id=m.id)",
     polls: "SELECT count(*)::int AS count FROM chat_polls WHERE closed=TRUE AND auto_mark=FALSE AND created_at<$1",
     media: "SELECT count(*)::int AS count FROM exercise_media WHERE exercise_id IS NULL AND question_id IS NULL AND answer_id IS NULL AND created_at<$1",
     assignments: "SELECT count(*)::int AS count FROM assignments a WHERE a.created_at<$1 AND lower(a.status) IN ('draft','cancelled') AND NOT EXISTS (SELECT 1 FROM assignment_submissions s WHERE s.assignment_id=a.id)",
@@ -141,7 +141,7 @@ async function deleteCategory(client: any, category: RetentionCategory, cutoff: 
     return r.rowCount ?? 0;
   }
   if (category === "messages") {
-    const r = await client.query("DELETE FROM messages WHERE id IN (SELECT m.id FROM messages m WHERE m.group_id IS NOT NULL AND m.media_url IS NULL AND m.created_at<$1 AND NOT EXISTS (SELECT 1 FROM messages reply WHERE reply.parent_message_id=m.id) ORDER BY m.created_at LIMIT 5000) RETURNING id", [cutoff]);
+    const r = await client.query("DELETE FROM messages WHERE id IN (SELECT m.id FROM messages m WHERE m.group_id IS NOT NULL AND m.media_url IS NULL AND m.created_at<$1 AND EXISTS (SELECT 1 FROM study_group_members gm WHERE gm.group_id=m.group_id) AND NOT EXISTS (SELECT 1 FROM study_group_members gm LEFT JOIN message_conversation_reads r ON r.user_id=gm.user_id AND r.conversation_type='group' AND r.conversation_id=gm.group_id WHERE gm.group_id=m.group_id AND (r.last_read_at IS NULL OR r.last_read_at<m.created_at)) AND NOT EXISTS (SELECT 1 FROM messages reply WHERE reply.parent_message_id=m.id) ORDER BY m.created_at LIMIT 5000) RETURNING id", [cutoff]);
     return r.rowCount ?? 0;
   }
   if (category === "polls") {

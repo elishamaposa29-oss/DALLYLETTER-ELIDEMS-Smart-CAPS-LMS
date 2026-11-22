@@ -20,6 +20,8 @@ const email = `retention-integration-${suffix}@example.test`;
 const titlePrefix = `retention-integration-${suffix}`;
 const tempDir = await mkdtemp(join(process.cwd(), ".retention-cleanup-tests-"));
 let ownerId = null;
+let memberId = null;
+let groupId = null;
 let runIds = [];
 let stopScheduler = () => {};
 try {
@@ -28,6 +30,14 @@ try {
     [email,"test-only-not-a-login-hash","Retention Integration Owner"],
   );
   ownerId = Number(owner.rows[0].id);
+  const member = await testPool.query("INSERT INTO users(email,password_hash,name,role) VALUES($1,$2,$3,'student') RETURNING id", ["retention-member-" + suffix + "@example.test","test-only-not-a-login-hash","Retention Integration Member"]);
+  memberId = Number(member.rows[0].id);
+  await testPool.query("CREATE TABLE IF NOT EXISTS message_conversation_reads (user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,conversation_type text NOT NULL,conversation_id integer NOT NULL,last_read_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(user_id,conversation_type,conversation_id))");
+  const group = await testPool.query("INSERT INTO study_groups(name,subject,creator_id,creator_name) VALUES($1,'General',$2,'Retention Integration Owner') RETURNING id", ["Retention group " + suffix,ownerId]);
+  groupId = Number(group.rows[0].id);
+  await testPool.query("INSERT INTO study_group_members(group_id,user_id) VALUES($1,$2),($1,$3)",[groupId,ownerId,memberId]);
+  await testPool.query("INSERT INTO messages(sender_id,sender_name,sender_role,content,type,group_id,created_at) VALUES($1,'Retention Integration Owner','owner','old read message','text',$2,now()-interval '40 days'),($1,'Retention Integration Owner','owner','old unread message','text',$2,now()-interval '35 days')",[ownerId,groupId]);
+  await testPool.query("INSERT INTO message_conversation_reads(user_id,conversation_type,conversation_id,last_read_at) VALUES($1,'group',$2,now()),($3,'group',$2,now()-interval '38 days) ON CONFLICT(user_id,conversation_type,conversation_id) DO UPDATE SET last_read_at=EXCLUDED.last_read_at",[ownerId,groupId,memberId]);
 
   // The production module imports @workspace/db. For this isolated integration
   // run, alias that package to a tiny adapter backed by the same test database,
@@ -62,6 +72,15 @@ try {
   assert.equal(manual.deleted.notifications,1,"manual cleanup should delete the one eligible notification");
   const protectedRows = await testPool.query("SELECT title FROM notifications WHERE title LIKE $1 ORDER BY title",[titlePrefix+"-%"]);
   assert.deepEqual(protectedRows.rows.map(row=>row.title).sort(),[titlePrefix+"-payment",titlePrefix+"-unread",titlePrefix+"-teacher",titlePrefix+"-academic"].sort(),"unread, payment, teacher-approval and academic-report notifications must remain protected");
+  const messagePreview = await previewRetention(30,["messages"]);
+  assert.equal(messagePreview.counts.messages.eligible,1,"preview must exclude group messages unread by any current member");
+  const messageCleanup = await runRetentionCleanup({triggerType:"manual",triggeredBy:ownerId,categories:["messages"],retentionDays:30});
+  runIds.push(messageCleanup.runId);
+  assert.equal(messageCleanup.status,"completed","message retention cleanup should complete");
+  assert.equal(messageCleanup.deleted.messages,1,"only the old group message read by every current member should be deleted");
+  const remainingMessages = await testPool.query("SELECT content FROM messages WHERE group_id=$1 ORDER BY created_at",[groupId]);
+  assert.deepEqual(remainingMessages.rows.map(row=>row.content),["old unread message"],"unread group messages must remain protected");
+
   const manualAudit = await testPool.query("SELECT action FROM audit_logs WHERE target_type='retention_run' AND target_id=$1",[manual.runId]);
   assert.ok(manualAudit.rows.some(row=>row.action==="retention.cleanup.started"),"manual cleanup must write a start audit event");
   assert.ok(manualAudit.rows.some(row=>row.action==="retention.cleanup.completed"),"manual cleanup must write a completion audit event");
@@ -97,6 +116,14 @@ try {
       await testPool.query("DELETE FROM owner_retention_runs WHERE id=ANY($1::bigint[])",[runIds]).catch(()=>undefined);
     }
     await testPool.query("DELETE FROM notifications WHERE title LIKE $1",[titlePrefix+"-%"]).catch(()=>undefined);
+    if (groupId != null) {
+      await testPool.query("DELETE FROM messages WHERE group_id=$1",[groupId]).catch(()=>undefined);
+      await testPool.query("DELETE FROM message_conversation_reads WHERE conversation_type='group' AND conversation_id=$1",[groupId]).catch(()=>undefined);
+      await testPool.query("DELETE FROM study_group_members WHERE group_id=$1",[groupId]).catch(()=>undefined);
+      await testPool.query("DELETE FROM study_groups WHERE id=$1",[groupId]).catch(()=>undefined);
+    }
+    if (memberId != null) await testPool.query("DELETE FROM users WHERE id=$1",[memberId]).catch(()=>undefined);
+
     await testPool.query("DELETE FROM owner_retention_previews WHERE created_by=$1",[ownerId]).catch(()=>undefined);
     await testPool.query("DELETE FROM users WHERE id=$1",[ownerId]).catch(()=>undefined);
   }
