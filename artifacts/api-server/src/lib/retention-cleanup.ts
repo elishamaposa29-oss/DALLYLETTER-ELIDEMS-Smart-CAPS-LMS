@@ -48,6 +48,15 @@ export async function ensureRetentionSchema(): Promise<void> {
       updated_by INTEGER REFERENCES users(id),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    CREATE TABLE IF NOT EXISTS owner_retention_previews (
+      id TEXT PRIMARY KEY,
+      created_by INTEGER NOT NULL REFERENCES users(id),
+      categories JSONB NOT NULL,
+      retention_days INTEGER NOT NULL,
+      eligible_counts JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      used_at TIMESTAMPTZ
+    );
     CREATE TABLE IF NOT EXISTS owner_retention_runs (
       id BIGSERIAL PRIMARY KEY,
       started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
