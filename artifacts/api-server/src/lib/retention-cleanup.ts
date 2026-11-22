@@ -258,7 +258,7 @@ export async function startRetentionCleanupScheduler(): Promise<void> {
     const client = await pool.connect();
     let locked = false;
     try {
-      const lock = await client.query("SELECT pg_try_advisory_lock(746201101) AS locked");
+      const lock = await client.query("SELECT pg_try_advisory_lock(${RETENTION_CLEANUP_LOCK_ID}) AS locked");
       locked = Boolean(lock.rows[0]?.locked);
       if (!locked) return;
       const result = await client.query("SELECT enabled,categories,retention_days,interval_hours,next_run_at,updated_by FROM owner_retention_policies WHERE id=1");
@@ -275,7 +275,7 @@ export async function startRetentionCleanupScheduler(): Promise<void> {
     } catch {
       // A failed run is recorded by runRetentionCleanup; the next scheduler tick retries.
     } finally {
-      if (locked) await client.query("SELECT pg_advisory_unlock(746201101)").catch(() => undefined);
+      if (locked) await client.query("SELECT pg_advisory_unlock(${RETENTION_CLEANUP_LOCK_ID})").catch(() => undefined);
       client.release();
     }
   };
