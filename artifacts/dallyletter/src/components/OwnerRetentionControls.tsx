@@ -78,6 +78,10 @@ export function OwnerRetentionControls() {
           <select className="rounded-md border bg-background p-2" value={policy.intervalHours} onChange={e=>setPolicy(p=>({...p,intervalHours:Number(e.target.value)}))}>{[6,12,24,48,72,168].map(h=><option key={h} value={h}>{h===24?"Every day":h===168?"Every week":`Every ${h} hours`}</option>)}</select>
         </label>
       </div>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="outline" size="sm" onClick={()=>{setPreview(null);setPolicy(current=>({...current,categories:options.map(option=>option.id)}));}}>Select all eligible categories</Button>
+        <Button type="button" variant="ghost" size="sm" onClick={()=>{setPreview(null);setPolicy(current=>({...current,categories:[]}));}}>Clear selection</Button>
+      </div>
       <div className="grid gap-2 sm:grid-cols-2">
         {options.map(option=><label key={option.id} className="flex items-start gap-3 rounded-lg border p-3"><input type="checkbox" className="mt-1" checked={policy.categories.includes(option.id)} onChange={e=>toggle(option.id,e.target.checked)}/><span><span className="block text-sm font-semibold">{option.label}</span><span className="block text-xs text-muted-foreground">{option.detail}</span></span></label>)}
       </div>
