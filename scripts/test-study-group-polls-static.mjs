@@ -79,7 +79,7 @@ assert.ok(profileLink.includes("getApiUrl(requestPath)") && profileLink.includes
 assert.ok(profileLink.includes("new URL(avatarUrl)") && profileLink.includes("parsed.pathname + parsed.search") && profileLink.includes("getApiUrl(requestPath)"), "absolute protected LMS4 avatar URLs must be rebased and fetched with authentication instead of loaded anonymously");
 assert.ok(api.includes("Number(vote.userId) === Number(actor.id)") && api.includes("Number(poll.creatorId) === Number(actor.id)"), "poll vote state and delete visibility must use normalized numeric user identifiers");
 assert.ok(api.includes("const marked = poll.autoMark") && api.includes("isCorrect: optionIds[0] === poll.correctOptionId"), "auto-marked study-group votes must return the server-verified correctness result immediately");
-assert.ok(api.includes("SELECT auto_mark,closed FROM chat_polls WHERE id=$1 FOR UPDATE"), "auto-marked submissions must serialize per poll to prevent concurrent repeat attempts");
+assert.ok(api.includes("SELECT auto_mark,closed,allow_multiple,correct_option_id FROM chat_polls WHERE id=$1 FOR UPDATE"), "auto-marked submissions must serialize per poll to prevent concurrent repeat attempts");
 assert.ok(api.includes("This auto-marked poll accepts only one answer from each learner."), "auto-marked polls must reject repeat submissions server-side");
 assert.ok(api.includes("if(!current.auto_mark) await client.query"), "ordinary polls must preserve their existing editable vote behavior");
 assert.ok(panel.includes("oneShotAutoMarkLocked") && panel.includes("Created by you"), "web poll cards must lock answered auto-marked polls and distinguish the current user's polls");
