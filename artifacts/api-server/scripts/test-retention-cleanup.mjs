@@ -37,7 +37,7 @@ try {
   groupId = Number(group.rows[0].id);
   await testPool.query("INSERT INTO study_group_members(group_id,user_id) VALUES($1,$2),($1,$3)",[groupId,ownerId,memberId]);
   await testPool.query("INSERT INTO messages(sender_id,sender_name,sender_role,content,type,group_id,created_at) VALUES($1,'Retention Integration Owner','owner','old read message','text',$2,now()-interval '40 days'),($1,'Retention Integration Owner','owner','old unread message','text',$2,now()-interval '35 days')",[ownerId,groupId]);
-  await testPool.query("INSERT INTO message_conversation_reads(user_id,conversation_type,conversation_id,last_read_at) VALUES($1,'group',$2,now()),($3,'group',$2,now()-interval '38 days) ON CONFLICT(user_id,conversation_type,conversation_id) DO UPDATE SET last_read_at=EXCLUDED.last_read_at",[ownerId,groupId,memberId]);
+  await testPool.query("INSERT INTO message_conversation_reads(user_id,conversation_type,conversation_id,last_read_at) VALUES($1,'group',$2,now()),($3,'group',$2,now()-interval '38 days') ON CONFLICT(user_id,conversation_type,conversation_id) DO UPDATE SET last_read_at=EXCLUDED.last_read_at",[ownerId,groupId,memberId]);
 
   // The production module imports @workspace/db. For this isolated integration
   // run, alias that package to a tiny adapter backed by the same test database,
