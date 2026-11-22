@@ -50,8 +50,8 @@ try {
   await ensureRetentionSchema();
 
   await testPool.query(
-    "INSERT INTO notifications(title,message,type,is_read,created_at) VALUES ($1,$2,'general',TRUE,now()-interval '40 days'),($3,$4,'general',FALSE,now()-interval '40 days'),($5,$6,'payment_overdue',TRUE,now()-interval '40 days')",
-    [titlePrefix+"-read","old read notification",titlePrefix+"-unread","old unread notification",titlePrefix+"-payment","financial notification"],
+    "INSERT INTO notifications(title,message,type,is_read,created_at) VALUES ($1,$2,'general',TRUE,now()-interval '40 days'),($3,$4,'general',FALSE,now()-interval '40 days'),($5,$6,'payment_overdue',TRUE,now()-interval '40 days'),($7,$8,'teacher_approval',TRUE,now()-interval '40 days'),($9,$10,'academic_report',TRUE,now()-interval '40 days')",
+    [titlePrefix+"-read","old read notification",titlePrefix+"-unread","old unread notification",titlePrefix+"-payment","financial notification",titlePrefix+"-teacher","teacher approval evidence",titlePrefix+"-academic","academic report evidence"],
   );
   const preview = await previewRetention(30,["notifications"]);
   assert.equal(preview.counts.notifications.eligible,1,"preview must include only old read non-financial notifications");
@@ -61,7 +61,7 @@ try {
   assert.equal(manual.status,"completed","manual cleanup should complete without category errors");
   assert.equal(manual.deleted.notifications,1,"manual cleanup should delete the one eligible notification");
   const protectedRows = await testPool.query("SELECT title FROM notifications WHERE title LIKE $1 ORDER BY title",[titlePrefix+"-%"]);
-  assert.deepEqual(protectedRows.rows.map(row=>row.title).sort(),[titlePrefix+"-payment",titlePrefix+"-unread"].sort(),"unread and payment notifications must remain protected");
+  assert.deepEqual(protectedRows.rows.map(row=>row.title).sort(),[titlePrefix+"-payment",titlePrefix+"-unread",titlePrefix+"-teacher",titlePrefix+"-academic"].sort(),"unread, payment, teacher-approval and academic-report notifications must remain protected");
   const manualAudit = await testPool.query("SELECT action FROM audit_logs WHERE target_type='retention_run' AND target_id=$1",[manual.runId]);
   assert.ok(manualAudit.rows.some(row=>row.action==="retention.cleanup.started"),"manual cleanup must write a start audit event");
   assert.ok(manualAudit.rows.some(row=>row.action==="retention.cleanup.completed"),"manual cleanup must write a completion audit event");

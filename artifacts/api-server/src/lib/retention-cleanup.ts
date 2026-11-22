@@ -26,7 +26,7 @@ export type RetentionPolicy = {
 };
 
 const CATEGORY_LABELS: Record<RetentionCategory, string> = {
-  notifications: "Read, non-financial notifications",
+  notifications: "Read routine general, information, announcement, reminder and promotion notifications only",
   lessons: "Old text-only lessons without exercises or media",
   exercises: "Unpublished draft exercises without submissions or media",
   study_groups: "Empty study groups with no messages, polls or community links",
@@ -105,7 +105,7 @@ function cutoffFor(days: number): Date {
 
 async function categoryCount(client: any, category: RetentionCategory, cutoff: Date): Promise<number> {
   const queries: Record<RetentionCategory, string> = {
-    notifications: "SELECT count(*)::int AS count FROM notifications WHERE is_read=TRUE AND created_at<$1 AND type NOT ILIKE 'payment%' AND type NOT ILIKE '%academic%' AND type NOT ILIKE '%teacher%' AND type NOT ILIKE '%transfer%'",
+    notifications: "SELECT count(*)::int AS count FROM notifications WHERE is_read=TRUE AND created_at<$1 AND lower(type) IN ('general','info','announcement','reminder','promotion')",
     lessons: "SELECT count(*)::int AS count FROM lessons l WHERE l.created_at<$1 AND lower(l.type)='notes' AND l.media_url IS NULL AND NOT EXISTS (SELECT 1 FROM exercises e WHERE e.lesson_id=l.id)",
     exercises: "SELECT count(*)::int AS count FROM exercises e WHERE e.created_at<$1 AND lower(e.status)='draft' AND NOT EXISTS (SELECT 1 FROM exercise_submissions s WHERE s.exercise_id=e.id) AND NOT EXISTS (SELECT 1 FROM exercise_media m WHERE m.exercise_id=e.id)",
     study_groups: "SELECT count(*)::int AS count FROM study_groups g WHERE g.created_at<$1 AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.group_id=g.id) AND NOT EXISTS (SELECT 1 FROM chat_polls p WHERE p.group_id=g.id) AND NOT EXISTS (SELECT 1 FROM chat_community_groups cg WHERE cg.group_id=g.id) AND (SELECT count(*) FROM study_group_members gm WHERE gm.group_id=g.id)<=1",
@@ -137,7 +137,7 @@ export async function previewRetention(days: number, categories: RetentionCatego
 
 async function deleteCategory(client: any, category: RetentionCategory, cutoff: Date): Promise<number> {
   if (category === "notifications") {
-    const r = await client.query("DELETE FROM notifications WHERE id IN (SELECT id FROM notifications WHERE is_read=TRUE AND created_at<$1 AND type NOT ILIKE 'payment%' AND type NOT ILIKE '%academic%' AND type NOT ILIKE '%teacher%' AND type NOT ILIKE '%transfer%' ORDER BY created_at LIMIT 5000) RETURNING id", [cutoff]);
+    const r = await client.query("DELETE FROM notifications WHERE id IN (SELECT id FROM notifications WHERE is_read=TRUE AND created_at<$1 AND lower(type) IN ('general','info','announcement','reminder','promotion') ORDER BY created_at LIMIT 5000) RETURNING id", [cutoff]);
     return r.rowCount ?? 0;
   }
   if (category === "messages") {
