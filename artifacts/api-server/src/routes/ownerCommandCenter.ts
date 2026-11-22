@@ -15,7 +15,7 @@ import {
 } from "@workspace/db";
 import { requireOwner } from "../lib/auth-middleware";
 import { getAIProvider } from "../lib/ai-provider";
-import { getRetentionPolicy, previewRetention, runRetentionCleanup, RETENTION_CATEGORIES, type RetentionCategory } from "../lib/retention-cleanup";
+import { getRetentionPolicy, previewRetention, runRetentionCleanup, RETENTION_CATEGORIES, RETENTION_CLEANUP_LOCK_ID, type RetentionCategory } from "../lib/retention-cleanup";
 
 const router = Router();
 const now = () => new Date().toISOString();
