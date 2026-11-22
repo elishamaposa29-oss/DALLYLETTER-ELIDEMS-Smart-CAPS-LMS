@@ -36,6 +36,11 @@ assert.ok(panel.includes("aria-label={\u0060Delete poll: \u0024{item.poll.questi
 assert.ok(panel.includes("Leaderboard"), "poll cards must expose a leaderboard action");
 assert.ok(panel.includes("UserProfileLink userId={entry.userId} name={entry.name} avatarUrl={entry.avatarUrl}"), "leaderboard avatars must open the corresponding Profile Hub");
 assert.ok(panel.includes("navigator.vibrate(result.isCorrect ? [45, 35, 70] : [110, 45, 110])"), "auto-mark feedback must provide optional haptics");
+assert.ok(panel.indexOf("setSelectedAnswerId(optionId);") < panel.indexOf('apiJson<PollMarkResult>("/api/chat/polls/" + item.poll.id + "/vote"'), "web answer selection must update optimistically before waiting for the network");
+assert.ok(panel.includes("Answer received — checking your result…"), "web auto-marking must show immediate pending feedback while the server verifies correctness");
+assert.ok(mobilePanel.indexOf("setSelectedAnswers(current=>({...current,[poll.poll.id]:optionId}));") < mobilePanel.indexOf('fetch(getApiUrl("/api/chat/polls/"+poll.poll.id+"/vote")'), "mobile answer selection must update optimistically before waiting for the network");
+assert.ok(mobilePanel.includes("Answer received — checking your result…"), "mobile auto-marking must show immediate pending feedback while the server verifies correctness");
+assert.ok(mobilePanel.includes("finally{setVotingIds"), "mobile vote lock must always be released after server response");
 assert.ok(panel.includes("border-rose-300 bg-rose-50 text-rose-900"), "incorrect answers must be visibly red");
 assert.ok(panel.includes("border-emerald-300 bg-emerald-50 text-emerald-900"), "correct answers must be visibly green");
 assert.ok(panel.includes("StudyGroupPollCard key={item.poll.id}"), "all web poll views must use the same full-featured poll card");
