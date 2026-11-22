@@ -328,7 +328,7 @@ router.post("/academic-records/transfer-requests/:id/review", requireAuth, requi
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const pending=await client.query("SELECT r.id,r.learner_id,u.role,u.is_manager,u.manager_level FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id WHERE r.id=$1 AND r.status='pending' FOR UPDATE OF r",[id]);
+    const pending=await client.query("SELECT r.id,r.learner_id,r.requested_by,u.role,u.is_manager,u.manager_level FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id WHERE r.id=$1 AND r.status='pending' FOR UPDATE OF r",[id]);
     if(!pending.rowCount){
       await client.query("ROLLBACK");
       res.status(404).json({ error: "Pending transfer request not found or already reviewed." });
