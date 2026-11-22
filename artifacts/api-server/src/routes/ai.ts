@@ -229,8 +229,26 @@ router.post("/ai/test-connection", requireAuth, async (req, res): Promise<void> 
     res.json({ success, provider: ai.name, model: ai.model ?? null, isLive: ai.name !== "mock", response: response.slice(0, 200) });
   } catch (err) {
     const failure = err instanceof AIProviderError ? err : new AIProviderError("configuration", "provider_unavailable");
-    res.status(failure.code === "timeout" ? 504 : failure.code === "cancelled" ? 499 : failure.code === "rate_limited" ? 429 : 502)
-      .json({ success: false, code: failure.code, error: "AI provider connection failed safely. Review the provider configuration and retry." });
+    // Record actionable, secret-free diagnostics: never log API keys, prompts or provider bodies.
+    console.error(JSON.stringify({
+      event: "ai_connection_test_failed",
+      provider: failure.provider,
+      code: failure.code,
+      providerStatus: failure.statusCode ?? null,
+    }));
+    const status = failure.code === "timeout" ? 504
+      : failure.code === "cancelled" ? 499
+      : failure.code === "rate_limited" ? 429
+      : failure.code === "invalid_credentials" || failure.code === "provider_rejected" ? 422
+      : failure.code === "configuration_unavailable" || failure.code === "network_error" ? 503
+      : 502;
+    res.status(status).json({
+      success: false,
+      provider: failure.provider,
+      code: failure.code,
+      providerStatus: failure.statusCode ?? null,
+      error: "AI provider connection failed. Check the provider key, selected model and provider status, then retry.",
+    });
   }
 });
 

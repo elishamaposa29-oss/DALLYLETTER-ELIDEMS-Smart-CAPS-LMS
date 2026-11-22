@@ -4,7 +4,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { BarChart3, Loader2, RefreshCw, Trash2 } from "lucide-react";
+import { BarChart3, Loader2, RefreshCw, Trash2, Trophy } from "lucide-react";
+import UserProfileLink from "@/components/UserProfileLink";
 import { useToast } from "@/hooks/use-toast";
 
 export type ChatPoll = {
@@ -14,15 +15,20 @@ export type ChatPoll = {
   myMark?: PollMarkResult | null;
 };
 type PollMarkResult = { isCorrect?: boolean; correctLabel?: string | null };
+type PollLeaderboardEntry = { rank:number; userId:number|null; name:string; avatarUrl:string|null; answers:string[] };
 export function StudyGroupPollCard({ item, onVoted, canDelete = false }: { item: ChatPoll; onVoted?: () => void; canDelete?: boolean }) {
   const [mark, setMark] = useState<PollMarkResult | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [voting, setVoting] = useState(false);
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+  const [leaderboard, setLeaderboard] = useState<PollLeaderboardEntry[]>([]);
+  const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
   const { toast } = useToast();
   const remove = async () => {
     if (!canDelete || !window.confirm("Permanently delete this poll and its votes?")) return;
     setDeleting(true);
-    try { await apiJson(`/api/chat/polls/${item.poll.id}`, { method: "DELETE" }); onVoted?.(); toast({ title: "Poll permanently deleted" }); }
+    try { await apiJson("/api/chat/polls/" + item.poll.id, { method: "DELETE" }); onVoted?.(); toast({ title: "Poll permanently deleted" }); }
     catch (error) { toast({ variant: "destructive", title: "Poll could not be deleted", description: error instanceof Error ? error.message : "The server rejected the deletion. Check your group permissions." }); }
     finally { setDeleting(false); }
   };
@@ -31,12 +37,40 @@ export function StudyGroupPollCard({ item, onVoted, canDelete = false }: { item:
     if (!selectedIds.length) return;
     setVoting(true);
     try {
-      const result = await apiJson<PollMarkResult>(`/api/chat/polls/${item.poll.id}/vote`, { method: "POST", body: JSON.stringify({ optionIds: selectedIds }) });
-      setMark(result); onVoted?.();
+      const result = await apiJson<PollMarkResult>("/api/chat/polls/" + item.poll.id + "/vote", { method: "POST", body: JSON.stringify({ optionIds: selectedIds }) });
+      setMark(result);
+      if (result.isCorrect !== undefined && typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+        try { navigator.vibrate(result.isCorrect ? [45, 35, 70] : [110, 45, 110]); } catch { /* Haptics are optional on unsupported browsers. */ }
+      }
+      onVoted?.();
     } catch (error) { toast({ variant: "destructive", title: "Vote was not marked", description: error instanceof Error ? error.message : "Your answer could not be submitted." }); }
     finally { setVoting(false); }
   };
-  return <Card className="w-full space-y-3 p-4"><div className="flex items-start justify-between gap-2"><p className="font-semibold text-sm">{item.poll.question}</p><div className="flex items-center gap-2"><span className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground">{item.poll.closed ? "Closed" : "Active"}</span>{canDelete && <Button type="button" size="icon" variant="ghost" className="h-7 w-7 text-destructive" aria-label="Delete poll" title="Delete poll" disabled={deleting} onClick={() => void remove()}><Trash2 className="h-3.5 w-3.5"/></Button>}</div></div><div className="space-y-2">{item.options.map(option => <button key={option.id} type="button" disabled={item.poll.closed || voting} onClick={() => void vote(option.id)} className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-70 ${option.selected ? "border-primary bg-primary/10" : "hover:bg-muted"}`}><span>{option.selected ? "✓ " : ""}{option.label}</span><span className="text-xs tabular-nums text-muted-foreground">{option.voteCount}</span></button>)}</div><p className="text-[11px] text-muted-foreground">{item.totalVotes} vote{item.totalVotes===1?"":"s"} · {item.poll.allowMultiple?"Multiple choices":"Choose one"}</p>{(mark?.isCorrect !== undefined || item.myMark?.isCorrect !== undefined || (item.poll.autoMark && item.poll.correctOptionId != null && item.options.some(option => option.selected))) && (() => { const feedback = mark ?? item.myMark ?? null; const correct = item.options.find(option => option.id === item.poll.correctOptionId); const selected = item.options.find(option => option.selected); const isCorrect = feedback?.isCorrect ?? selected?.id === item.poll.correctOptionId; return <p role="status" aria-live="polite" className={`rounded-md border p-3 text-xs font-semibold ${isCorrect ? "border-emerald-300 bg-emerald-50 text-emerald-900" : "border-rose-300 bg-rose-50 text-rose-900"}`}>{isCorrect ? "✓ Correct answer!" : `✕ Incorrect. Correct answer: ${feedback?.correctLabel ?? correct?.label ?? "See teacher feedback"}`}</p>; })()}</Card>;
+  const toggleLeaderboard = async () => {
+    if (leaderboardOpen) { setLeaderboardOpen(false); return; }
+    setLeaderboardOpen(true);
+    setLeaderboardLoading(true);
+    setLeaderboardError(null);
+    try {
+      const result = await apiJson<{entries:PollLeaderboardEntry[]}>("/api/chat/polls/" + item.poll.id + "/leaderboard");
+      setLeaderboard(Array.isArray(result?.entries) ? result.entries : []);
+    } catch (error) {
+      setLeaderboardError(error instanceof Error ? error.message : "Leaderboard could not be loaded.");
+    } finally { setLeaderboardLoading(false); }
+  };
+  const feedback = mark ?? item.myMark ?? null;
+  const selected = item.options.find(option => option.selected);
+  const showMark = feedback?.isCorrect !== undefined || (item.poll.autoMark && item.poll.correctOptionId != null && Boolean(selected));
+  const isCorrect = feedback?.isCorrect ?? selected?.id === item.poll.correctOptionId;
+  return <Card className="w-full space-y-3 p-4">
+    <div className="flex items-start justify-between gap-2"><p className="font-semibold text-sm">{item.poll.question}</p><div className="flex items-center gap-2"><span className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground">{item.poll.closed ? "Closed" : "Active"}</span>{canDelete && <Button type="button" size="icon" variant="ghost" className="h-7 w-7 text-destructive" aria-label="Delete poll" title="Delete poll" disabled={deleting} onClick={() => void remove()}><Trash2 className="h-3.5 w-3.5"/></Button>}</div></div>
+    <div className="space-y-2">{item.options.map(option => <button key={option.id} type="button" disabled={item.poll.closed || voting} onClick={() => void vote(option.id)} className={"flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-70 " + (option.selected ? "border-primary bg-primary/10" : "hover:bg-muted")}><span>{option.selected ? "✓ " : ""}{option.label}</span><span className="text-xs tabular-nums text-muted-foreground">{option.voteCount}</span></button>)}</div>
+    <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-[11px] text-muted-foreground">{item.totalVotes} vote{item.totalVotes===1?"":"s"} · {item.poll.allowMultiple?"Multiple choices":"Choose one"}</p><Button type="button" size="sm" variant="outline" onClick={() => void toggleLeaderboard()}><Trophy className="mr-1.5 h-3.5 w-3.5"/> {leaderboardOpen ? "Hide leaderboard" : "Leaderboard"}</Button></div>
+    {showMark && <p role="status" aria-live="polite" className={"rounded-md border p-3 text-xs font-semibold " + (isCorrect ? "border-emerald-300 bg-emerald-50 text-emerald-900" : "border-rose-300 bg-rose-50 text-rose-900")}>{isCorrect ? "✓ Correct answer!" : "✕ Incorrect. Correct answer: " + (feedback?.correctLabel ?? item.options.find(option => option.id === item.poll.correctOptionId)?.label ?? "See teacher feedback")}</p>}
+    {leaderboardOpen && <section className="space-y-2 rounded-lg border bg-muted/20 p-3" aria-label="Poll leaderboard"><h4 className="flex items-center gap-2 text-xs font-bold"><Trophy className="h-4 w-4"/> Poll leaderboard · {leaderboard.length} participant{leaderboard.length===1?"":"s"}</h4>
+      {leaderboardLoading ? <p className="text-xs text-muted-foreground">Loading leaderboard…</p> : leaderboardError ? <p role="alert" className="text-xs text-destructive">{leaderboardError}</p> : leaderboard.length===0 ? <p className="text-xs text-muted-foreground">No answers have been submitted yet.</p> : leaderboard.map(entry => <div key={entry.rank + "-" + (entry.userId ?? entry.rank)} className="flex items-center gap-3 rounded-md bg-background p-2"><span className="w-6 shrink-0 text-center text-xs font-bold text-muted-foreground">#{entry.rank}</span>{entry.userId ? <UserProfileLink userId={entry.userId} name={entry.name} avatarUrl={entry.avatarUrl} className="min-w-0 flex-1 text-xs"/> : <span className="inline-flex min-w-0 flex-1 items-center gap-2 text-xs"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/10 font-bold text-primary">A</span><span className="truncate">{entry.name}</span></span>}<span className="max-w-[48%] text-right text-xs font-medium text-foreground">{entry.answers.join(", ")}</span></div>)}
+    </section>}
+  </Card>;
 }
 
 export function StudyGroupPollPanel({ groupId, allowPolls = true, inline = false, onPollsChange }: { groupId: number | null; allowPolls?: boolean; inline?: boolean; onPollsChange?: (polls: ChatPoll[]) => void }) {
@@ -49,8 +83,6 @@ export function StudyGroupPollPanel({ groupId, allowPolls = true, inline = false
   const [error, setError] = useState<string | null>(null);
   const [autoMark, setAutoMark] = useState(false);
   const [correctOptionIndex, setCorrectOptionIndex] = useState(0);
-  const [marks, setMarks] = useState<Record<number, PollMarkResult>>({});
-  const [deletingPollId, setDeletingPollId] = useState<number | null>(null);
   const pollsEnabled=allowPolls;
   const { toast } = useToast();
 
@@ -87,25 +119,6 @@ export function StudyGroupPollPanel({ groupId, allowPolls = true, inline = false
     finally { setCreating(false); }
   };
 
-  const removePoll = async (item: ChatPoll) => {
-    if (!item.poll.canDelete || !window.confirm("Permanently delete this poll and all its votes?")) return;
-    setDeletingPollId(item.poll.id);
-    try { await apiJson(`/api/chat/polls/${item.poll.id}`, { method: "DELETE" }); await load(); toast({ title: "Poll permanently deleted" }); }
-    catch (e) { setError(e instanceof Error ? e.message : "Poll deletion failed."); }
-    finally { setDeletingPollId(null); }
-  };
-
-  const vote = async (poll: ChatPoll, optionId: number) => {
-    const selectedIds = poll.poll.allowMultiple
-      ? [...poll.options.filter(option => option.selected && option.id !== optionId).map(option => option.id), ...(poll.options.some(option => option.id === optionId && option.selected) ? [] : [optionId])]
-      : [optionId];
-    if (selectedIds.length === 0) return;
-    try {
-      const result = await apiJson<PollMarkResult>(`/api/chat/polls/${poll.poll.id}/vote`, { method: "POST", body: JSON.stringify({ optionIds: selectedIds }) });
-      if (result.isCorrect !== undefined) setMarks(current => ({ ...current, [poll.poll.id]: result }));
-      await load();
-    } catch (e) { setError(e instanceof Error ? e.message : "Your vote could not be saved."); }
-  };
 
   if (!groupId || !pollsEnabled) return null;
   return <section aria-label="Study group polls" className="space-y-3 border-t border-border/70 pt-3">
@@ -125,11 +138,6 @@ export function StudyGroupPollPanel({ groupId, allowPolls = true, inline = false
       <Button type="submit" size="sm" disabled={creating || !question.trim()}>{creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}Publish poll</Button>
     </form>}
     {error && <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
-    {!inline && (loading && polls.length===0 ? <p className="text-xs text-muted-foreground">Loading group polls…</p> : polls.length===0 ? <p className="rounded-lg border border-dashed p-3 text-center text-xs text-muted-foreground">No group polls yet. Create one to get everyone participating.</p> : polls.map(item => <Card key={item.poll.id} className="space-y-3 p-4">
-      <div className="flex items-start justify-between gap-2"><p className="font-semibold text-sm">{item.poll.question}</p><div className="flex items-center gap-2"><span className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground">{item.poll.closed ? "Closed" : "Active"}</span>{item.poll.canDelete && <Button type="button" size="icon" variant="ghost" className="h-7 w-7 text-destructive" aria-label="Delete poll" title="Delete poll" disabled={deletingPollId===item.poll.id} onClick={()=>void removePoll(item)}><Trash2 className="h-3.5 w-3.5"/></Button>}</div></div>
-      <div className="space-y-2">{item.options.map(option => <button key={option.id} type="button" disabled={item.poll.closed} onClick={() => void vote(item, option.id)} className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-70 ${option.selected ? "border-primary bg-primary/10" : "hover:bg-muted"}`}><span>{option.selected ? "✓ " : ""}{option.label}</span><span className="text-xs tabular-nums text-muted-foreground">{option.voteCount}</span></button>)}</div>
-      <p className="text-[11px] text-muted-foreground">{item.totalVotes} vote{item.totalVotes===1?"":"s"} · {item.poll.allowMultiple?"Multiple choices":"Choose one"}</p>
-      {marks[item.poll.id]?.isCorrect !== undefined && <p role="status" className={`rounded-md p-2 text-xs font-medium ${marks[item.poll.id].isCorrect ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>{marks[item.poll.id].isCorrect ? "Correct answer!" : `Not correct. Correct answer: ${marks[item.poll.id].correctLabel ?? "See teacher feedback"}`}</p>}
-    </Card>))}
+    {!inline && (loading && polls.length===0 ? <p className="text-xs text-muted-foreground">Loading group polls…</p> : polls.length===0 ? <p className="rounded-lg border border-dashed p-3 text-center text-xs text-muted-foreground">No group polls yet. Create one to get everyone participating.</p> : polls.map(item => <StudyGroupPollCard key={item.poll.id} item={item} canDelete={Boolean(item.poll.canDelete)} onVoted={() => void load()} />))}
   </section>;
 }

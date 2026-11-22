@@ -71,7 +71,7 @@ export default function TeacherChat() {
       const response = await fetch(getApiUrl(`/api/messages/${messageId}`), { method: "DELETE", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
       const data = await response.json().catch(() => ({})) as {error?:string;deleted?:boolean;mediaCleanupPending?:boolean;warning?:string};
       if (!response.ok) throw new Error(data.error ?? "Message deletion failed.");
-      if (!data.deleted) throw new Error("The server did not confirm that the message was deleted.");
+      if (!data || !data.deleted) throw new Error("The server did not confirm that the message was deleted.");
       await queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId, recipientId: selectedUserId }) });
       if (data.mediaCleanupPending) window.alert(data.warning || "The message is deleted, but its stored attachment still needs cleanup.");
     } catch (error) { window.alert(error instanceof Error ? error.message : "Message deletion failed."); }

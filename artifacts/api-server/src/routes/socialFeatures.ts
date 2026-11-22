@@ -186,6 +186,40 @@ router.delete("/chat/polls/:pollId", requireAuth, async(req,res):Promise<void>=>
  });
  res.sendStatus(204);
 });
+router.get("/chat/polls/:pollId/leaderboard", requireAuth, async(req,res):Promise<void>=>{
+ const pollId=Number(req.params.pollId), actor=req.currentUser!;
+ if(!Number.isSafeInteger(pollId)||pollId<=0){res.status(400).json({error:"Invalid poll id"});return;}
+ const [poll]=await db.select().from(chatPollsTable).where(eq(chatPollsTable.id,pollId));
+ if(!poll){res.status(404).json({error:"Poll not found"});return;}
+ if(!poll.groupId||!(await canAccessChatGroup(poll.groupId,actor.id,actor))){res.status(403).json({error:"You must be a group member to view this leaderboard"});return;}
+ const votes=await db.select({
+  userId:chatPollVotesTable.userId,
+  name:usersTable.name,
+  avatarUrl:usersTable.avatarUrl,
+  optionLabel:chatPollOptionsTable.label,
+  createdAt:chatPollVotesTable.createdAt,
+ }).from(chatPollVotesTable)
+  .innerJoin(usersTable,eq(chatPollVotesTable.userId,usersTable.id))
+  .innerJoin(chatPollOptionsTable,eq(chatPollVotesTable.optionId,chatPollOptionsTable.id))
+  .where(eq(chatPollVotesTable.pollId,pollId))
+  .orderBy(desc(chatPollVotesTable.createdAt));
+ const byUser=new Map();
+ for(const vote of votes){
+  const key=Number(vote.userId), existing=byUser.get(key);
+  if(existing){if(!existing.answers.includes(vote.optionLabel))existing.answers.push(vote.optionLabel);continue;}
+  byUser.set(key,{
+   userId:poll.anonymous?null:key,
+   name:poll.anonymous?"Anonymous learner":vote.name,
+   avatarUrl:poll.anonymous?null:vote.avatarUrl,
+   answers:[vote.optionLabel],
+   lastVoteAt:vote.createdAt??null,
+  });
+ }
+ const entries=[...byUser.values()].sort((a,b)=>(b.lastVoteAt?.getTime()??0)-(a.lastVoteAt?.getTime()??0))
+  .map(({lastVoteAt,...entry},index)=>({...entry,rank:index+1}));
+ res.json({pollId,anonymous:Boolean(poll.anonymous),entries});
+});
+
 router.post("/chat/polls/:pollId/vote", requireAuth, async(req,res):Promise<void>=>{
  const pollId=Number(req.params.pollId), user=req.currentUser!, optionIds=Array.isArray(req.body?.optionIds)?req.body.optionIds.map(Number).filter(Number.isInteger):[];
  const [poll]=await db.select().from(chatPollsTable).where(eq(chatPollsTable.id,pollId)); if(!poll||poll.closed){res.status(404).json({error:"Poll unavailable"});return;}
