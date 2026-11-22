@@ -53,6 +53,9 @@ const voiceUpload = multer({
 async function canAccessGroup(groupId: number, user: NonNullable<Express.Request["currentUser"]>): Promise<boolean> {
   const [group] = await db.select({ id: studyGroupsTable.id, creatorId: studyGroupsTable.creatorId }).from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
   if (!group) return false;
+  const [explicitControl] = await db.select({ canManageSettings: groupMemberControlsTable.canManageSettings }).from(groupMemberControlsTable)
+    .where(and(eq(groupMemberControlsTable.groupId,groupId),eq(groupMemberControlsTable.userId,user.id)));
+  if (explicitControl?.canManageSettings === true) return true;
   if (normalizeRole(user.role) === "teacher" || isOwnerRole(user.role)) return true;
   if (normalizeRole(user.role) === "admin") {
     const [creator] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, group.creatorId));

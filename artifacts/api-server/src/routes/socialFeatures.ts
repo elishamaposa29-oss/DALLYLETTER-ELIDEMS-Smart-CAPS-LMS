@@ -107,10 +107,13 @@ async function canAccessChatGroup(groupId: number, userId: number, user: NonNull
   const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
   if (!group) return false;
   const [creator] = await db.select({role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(eq(usersTable.id,group.creatorId));
-  if (!isOwnerRole(user.role) && (!creator || isOwnerRole(creator.role))) return false;
+  const [explicitControl] = await db.select({canManageSettings:groupMemberControlsTable.canManageSettings}).from(groupMemberControlsTable)
+    .where(and(eq(groupMemberControlsTable.groupId,groupId),eq(groupMemberControlsTable.userId,userId)));
+  const explicitlyGranted = explicitControl?.canManageSettings === true;
+  if (!explicitlyGranted && !isOwnerRole(user.role) && (!creator || isOwnerRole(creator.role))) return false;
   const managerCanAccess = canAccessManager(user) && ((await managerHasPermission(user, "groups.manage")) || (await managerHasPermission(user, "messages.send")));
-  if (managerCanAccess && creator && !canModerateUser(user,creator)) return false;
-  if (isOwnerRole(user.role) || normalizeRole(user.role) === "admin" || managerCanAccess || user.isPrefect || group.creatorId === userId) return true;
+  if (managerCanAccess && creator && !canModerateUser(user,creator) && !explicitlyGranted) return false;
+  if (explicitlyGranted || isOwnerRole(user.role) || normalizeRole(user.role) === "admin" || managerCanAccess || user.isPrefect || group.creatorId === userId) return true;
   const [member] = await db.select({ id: studyGroupMembersTable.id }).from(studyGroupMembersTable)
     .where(and(eq(studyGroupMembersTable.groupId, groupId), eq(studyGroupMembersTable.userId, userId)));
   return Boolean(member);
