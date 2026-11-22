@@ -293,6 +293,24 @@ router.get("/profile/connections/requests", requireAuth, async(req,res):Promise<
   res.json(visibleRows);
 });
 
+router.delete("/profile/connections/:id", requireAuth, async(req,res):Promise<void> => {
+  await ensureSchema();
+  const id=Number(req.params.id),actor=req.currentUser!;
+  if(!Number.isSafeInteger(id)||id<=0){res.status(400).json({error:"Invalid connection id"});return;}
+  const updated=await pool.query(
+    "UPDATE profile_connections SET status='rejected',updated_at=now() WHERE id=$1 AND (requester_id=$2 OR recipient_id=$2) AND status='accepted' RETURNING requester_id,recipient_id",
+    [id,actor.id],
+  );
+  if(!updated.rows.length){res.status(404).json({error:"Accepted connection not found"});return;}
+  const row=updated.rows[0];
+  const otherId=Number(row.requester_id)===Number(actor.id)?Number(row.recipient_id):Number(row.requester_id);
+  await db.insert(notificationsTable).values([
+    {recipientId:otherId,title:"Connection ended",message:actor.name+" disconnected from your Profile Hub connection. Private chat is now disabled unless your privacy settings allow everyone.",link:"/profile/"+actor.id,type:"connection_request"},
+    {recipientId:actor.id,title:"Connection ended",message:"You disconnected this Profile Hub connection.",link:"/profile/connections",type:"connection_request"},
+  ]);
+  res.json({status:"rejected",disconnected:true,connectionId:id});
+});
+
 router.patch("/profile/connections/:id", requireAuth, async(req,res):Promise<void> => {
   await ensureSchema();
   const id=Number(req.params.id),status=req.body?.status,actor=req.currentUser!;
