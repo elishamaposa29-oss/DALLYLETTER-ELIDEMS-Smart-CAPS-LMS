@@ -286,7 +286,7 @@ router.post("/profile/connections/remember", requireAuth, async(req,res):Promise
 router.get("/profile/connections/requests", requireAuth, async(req,res):Promise<void> => {
   await ensureSchema();
   const rows=await pool.query(
-    "SELECT c.id,c.requester_id,c.recipient_id,c.status,c.created_at,u.name AS requester_name,u.role AS requester_role FROM profile_connections c JOIN users u ON u.id=c.requester_id WHERE c.recipient_id=$1 AND c.status='pending' ORDER BY c.created_at DESC",
+    "SELECT c.id,c.requester_id,c.recipient_id,c.status,c.created_at,u.name AS requester_name,u.role AS requester_role,u.avatar_url AS requester_avatar_url FROM profile_connections c JOIN users u ON u.id=c.requester_id WHERE c.recipient_id=$1 AND c.status='pending' ORDER BY c.created_at DESC",
     [req.currentUser!.id],
   );
   const visibleRows=isOwnerRole(req.currentUser!.role)?rows.rows:rows.rows.filter((row:any)=>!isOwnerRole(row.requester_role));
