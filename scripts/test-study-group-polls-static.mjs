@@ -21,6 +21,8 @@ assert.ok(api.includes('name:poll.anonymous?"Anonymous learner":vote.name'), "an
 assert.ok(api.includes("canAccessChatGroup(poll.groupId,actor.id,actor)"), "leaderboard must enforce group membership");
 assert.ok(api.includes("router.delete(" + String.fromCharCode(34) + "/chat/polls/:pollId"), "poll deletion endpoint must exist");
 assert.ok(api.includes("managerHasPermission(actor,\"groups.manage\")"), "poll deletion must use the existing groups.manage permission");
+assert.ok(api.includes("canModerateUser(actor,groupCreator)"), "manager poll deletion must remain inside the manager’s existing moderation scope");
+assert.ok(api.includes("res.status(200).json({ ok: true, deleted: true, pollId })"), "poll deletion must return an explicit JSON deletion confirmation");
 assert.ok(panel.includes("Leaderboard"), "poll cards must expose a leaderboard action");
 assert.ok(panel.includes("UserProfileLink userId={entry.userId} name={entry.name} avatarUrl={entry.avatarUrl}"), "leaderboard avatars must open the corresponding Profile Hub");
 assert.ok(panel.includes("navigator.vibrate(result.isCorrect ? [45, 35, 70] : [110, 45, 110])"), "auto-mark feedback must provide optional haptics");
@@ -40,4 +42,6 @@ assert.ok(adminChat.includes("!data || !data.deleted"), "admin chat deletion mus
 assert.ok(aiRoute.includes("ai_connection_test_failed"), "AI connection failures must emit structured diagnostics");
 assert.ok(aiRoute.includes("providerStatus: failure.statusCode ?? null"), "AI diagnostics must include upstream status without exposing provider response bodies");
 assert.ok(aiSettings.includes("provider HTTP ${data.providerStatus}"), "AI settings must display the safe upstream status to the owner");
+assert.ok(academicRecords.includes("res.status(200).json({ ok: true, deleted: true, transferRequestId: id })"), "transfer-letter deletion must return an explicit JSON confirmation");
+assert.ok(academicRecords.includes("res.status(200).json({ ok: true, deleted: true, reportDraftId: id })"), "RecordBook draft deletion must return an explicit JSON confirmation");
 console.log("STUDY_GROUP_POLLS_STATIC: PASS (leaderboard, profile links, anonymous privacy, marking haptics/feedback, shared poll cards, null-delete guards, AI diagnostics)");
