@@ -16,7 +16,7 @@ import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMedi
 
 const MAX_CHAT_MEDIA_SIZE_BYTES = MAX_MEDIA_SIZE_BYTES;
 import { isOwnerRole, normalizeRole, canAccessManager } from "../lib/auth-middleware";
-import { hasAcceptedProfileConnection, isProfileChatApprovalRequired } from "./profileConnections";
+import { hasAcceptedProfileConnection, hasRejectedProfileConnection, isProfileChatApprovalRequired } from "./profileConnections";
 import { managerHasPermission, requireManagerPermission } from "../lib/manager-permission-policy";
 import { canModerateUser } from "../lib/role-access";
 
@@ -66,6 +66,9 @@ async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]
     .from(usersTable)
     .where(eq(usersTable.id, recipientId));
   if (!recipient || recipient.isBlocked || recipient.isSuspended) return false;
+  // A rejected or disconnected relationship disables private chat in both
+  // directions until the recipient approves a fresh connection request.
+  if (await hasRejectedProfileConnection(sender.id, recipientId)) return false;
   // An accepted connection must unlock the existing private-message route,
   // even when the recipient requires approval for first-contact messages.
   if (await hasAcceptedProfileConnection(sender.id, recipientId)) return true;
@@ -86,6 +89,7 @@ async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]
 async function canViewPrivateConversation(user: NonNullable<Express.Request["currentUser"]>, recipientId: number): Promise<boolean> {
   if (!Number.isInteger(recipientId) || recipientId <= 0 || recipientId === user.id) return false;
   if (isOwnerRole(user.role)) return true;
+  if (await hasRejectedProfileConnection(user.id, recipientId)) return false;
   const viewerRole = normalizeRole(user.role);
   const viewerIsManager = ["junior_manager","senior_manager","manager"].includes(viewerRole) || (viewerRole === "teacher" && user.isManager === true);
   if (viewerIsManager) {
