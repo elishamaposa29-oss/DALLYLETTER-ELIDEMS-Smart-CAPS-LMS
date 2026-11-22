@@ -95,8 +95,10 @@ export function ProfileSocialControls({profileId,isSelf,role}:{profileId:number|
   };
 
   const rememberFriend=async(friendId:number)=>{
-    try{await api("/api/profile/connections/remember",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({friendId})});await load();}
-    catch(e){setError(e instanceof Error?e.message:"Could not remember this friend.");}
+    try{
+      await api("/api/profile/connections/remember",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({friendId})});
+      setFriends(current=>[...current].map(friend=>friend.id===friendId?{...friend,recentlySelected:true}:friend).sort((a,b)=>Number(Boolean(b.recentlySelected))-Number(Boolean(a.recentlySelected))));
+    }catch(e){setError(e instanceof Error?e.message:"Could not remember this friend.");}
   };
 
   const disconnect=async(friend:Friend)=>{
