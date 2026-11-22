@@ -11,6 +11,7 @@ import { createRequire } from "node:module";
 // directory import (./schema) is not supported by Node without a TS loader.
 const requireDb = createRequire(new URL("../../../lib/db/package.json", import.meta.url));
 const { Pool } = requireDb("pg");
+const pgModulePath = requireDb.resolve("pg");
 
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required for retention integration tests.");
 const testPool = new Pool({ connectionString: process.env.DATABASE_URL });
