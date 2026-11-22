@@ -132,17 +132,18 @@ router.post("/owner/command-center/retention/run", requireOwner, async (req,res)
   }
   const preview = await previewRetention(policy.retentionDays,policy.categories);
   const lockClient = await pool.connect();
-  const lock = await lockClient.query("SELECT pg_try_advisory_lock($1) AS locked",[RETENTION_CLEANUP_LOCK_ID]);
-  if (!lock.rows[0]?.locked) {
-    lockClient.release();
-    res.status(409).json({error:"A scheduled or manual cleanup is already running. Retry after it finishes."});
-    return;
-  }
+  let lockAcquired = false;
   try {
+    const lock = await lockClient.query("SELECT pg_try_advisory_lock($1) AS locked",[RETENTION_CLEANUP_LOCK_ID]);
+    lockAcquired = Boolean(lock.rows[0]?.locked);
+    if (!lockAcquired) {
+      res.status(409).json({error:"A scheduled or manual cleanup is already running. Retry after it finishes."});
+      return;
+    }
     const result = await runRetentionCleanup({triggerType:"manual",triggeredBy:req.currentUser!.id,categories:policy.categories,retentionDays:policy.retentionDays});
     res.json({...result,previewedEligible:preview.totalEligible});
   } finally {
-    await lockClient.query("SELECT pg_advisory_unlock($1)",[RETENTION_CLEANUP_LOCK_ID]).catch(()=>undefined);
+    if (lockAcquired) await lockClient.query("SELECT pg_advisory_unlock($1)",[RETENTION_CLEANUP_LOCK_ID]).catch(()=>undefined);
     lockClient.release();
   }
 });
