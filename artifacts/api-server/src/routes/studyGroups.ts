@@ -122,6 +122,7 @@ router.get("/study-groups", requireAuth, async (req, res): Promise<void> => {
     return {
       ...g,
       canManage,
+      canManageSettings: canManage || myControl?.canManageSettings === true,
       canChat,
       canCreatePolls,
       memberCount: visibleMembers.length,
