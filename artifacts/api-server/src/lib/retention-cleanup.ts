@@ -72,7 +72,7 @@ function validCategories(value: unknown): RetentionCategory[] {
 
 export async function getRetentionPolicy(): Promise<RetentionPolicy> {
   await ensureRetentionSchema();
-  const { rows } = await pool.query("SELECT enabled,categories,retention_days,interval_hours,next_run_at,last_run_at,updated_at FROM owner_retention_policies WHERE id=1");
+  const { rows } = await pool.query("SELECT enabled,categories,retention_days,interval_hours,next_run_at,last_run_at,updated_at,updated_by FROM owner_retention_policies WHERE id=1");
   const row = rows[0];
   return {
     enabled: Boolean(row?.enabled),
