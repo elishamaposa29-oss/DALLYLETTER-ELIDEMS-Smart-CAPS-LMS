@@ -263,8 +263,10 @@ router.post("/chat/polls/:pollId/vote", requireAuth, async(req,res):Promise<void
   if (new Set(optionIds).size !== optionIds.length) { res.status(400).json({ error: "Choose each option only once" }); return; }
  if(optionIds.length===0||(!poll.allowMultiple&&optionIds.length>1)){res.status(400).json({error:"Choose a valid option"});return;}
  const valid=await db.select().from(chatPollOptionsTable).where(eq(chatPollOptionsTable.pollId,pollId)); const validIds=new Set(valid.map((o: { id: number })=>o.id)); if(optionIds.some((id: number)=>!validIds.has(id))){res.status(400).json({error:"Invalid poll option"});return;}
- await db.delete(chatPollVotesTable).where(and(eq(chatPollVotesTable.pollId,pollId),eq(chatPollVotesTable.userId,user.id)));
- await db.insert(chatPollVotesTable).values(optionIds.map((optionId: number)=>({pollId,optionId,userId:user.id})));
+ await db.transaction(async tx=>{
+  await tx.delete(chatPollVotesTable).where(and(eq(chatPollVotesTable.pollId,pollId),eq(chatPollVotesTable.userId,user.id)));
+  await tx.insert(chatPollVotesTable).values(optionIds.map((optionId: number)=>({pollId,optionId,userId:user.id})));
+ });
  const marked = poll.autoMark && !poll.allowMultiple && poll.correctOptionId != null ? { isCorrect: optionIds[0] === poll.correctOptionId, correctOptionId: poll.correctOptionId, correctLabel: valid.find(option => option.id === poll.correctOptionId)?.label ?? null } : {};
  res.json({ok:true,...marked});
 });
