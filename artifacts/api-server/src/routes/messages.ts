@@ -220,49 +220,16 @@ router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise
 router.get("/messages/unread-summary", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
-  const groups = await pool.query(`
-    SELECT m.group_id AS conversation_id, count(*)::int AS unread_count
-    FROM messages m
-    INNER JOIN study_group_members gm ON gm.group_id=m.group_id AND gm.user_id=$1
-    LEFT JOIN message_conversation_reads r ON r.user_id=$1 AND r.conversation_type='group' AND r.conversation_id=m.group_id
-    WHERE m.group_id IS NOT NULL AND m.sender_id<>$1 AND m.created_at>COALESCE(r.last_read_at,'epoch'::timestamptz)
-    GROUP BY m.group_id
-  `, [user.id]);
-  const privateChats = await pool.query(`
-    SELECT m.sender_id AS conversation_id, count(*)::int AS unread_count
-    FROM messages m
-    LEFT JOIN message_conversation_reads r ON r.user_id=$1 AND r.conversation_type='private' AND r.conversation_id=m.sender_id
-    WHERE m.group_id IS NULL AND m.recipient_id=$1 AND m.created_at>COALESCE(r.last_read_at,'epoch'::timestamptz)
-    GROUP BY m.sender_id
-  `, [user.id]);
-  // Conversation priority is based only on chats the authenticated user actually belongs to.
-  // Group history is limited by membership; private history is limited to either side of this user's DMs.
-  const recentGroups = await pool.query(`
-    SELECT m.group_id AS conversation_id, COUNT(*)::int AS message_count, MAX(m.created_at) AS last_message_at
-    FROM messages m
-    INNER JOIN study_group_members gm ON gm.group_id=m.group_id AND gm.user_id=$1
-    WHERE m.group_id IS NOT NULL
-    GROUP BY m.group_id
-    ORDER BY COUNT(*) DESC, MAX(m.created_at) DESC
-  `, [user.id]);
-  const recentPeople = await pool.query(`
-    SELECT CASE WHEN m.sender_id=$1 THEN m.recipient_id ELSE m.sender_id END AS conversation_id,
-           COUNT(*)::int AS message_count, MAX(m.created_at) AS last_message_at
-    FROM messages m
-    WHERE m.group_id IS NULL AND m.recipient_id IS NOT NULL
-      AND (m.sender_id=$1 OR m.recipient_id=$1)
-    GROUP BY CASE WHEN m.sender_id=$1 THEN m.recipient_id ELSE m.sender_id END
-    ORDER BY COUNT(*) DESC, MAX(m.created_at) DESC
-  `, [user.id]);
+  const allGroups = await db.select({ id: studyGroupsTable.id }).from(studyGroupsTable);
+  const accessibleGroupIds: number[] = [];
+  for (const group of allGroups) if (await canAccessGroup(group.id, user)) accessibleGroupIds.push(group.id);
+  const groups = accessibleGroupIds.length ? await pool.query("SELECT m.group_id AS conversation_id,count(*)::int AS unread_count FROM messages m LEFT JOIN message_conversation_reads r ON r.user_id=$1 AND r.conversation_type='group' AND r.conversation_id=m.group_id WHERE m.group_id=ANY($2::int[]) AND m.sender_id<>$1 AND m.created_at>COALESCE(r.last_read_at,'epoch'::timestamptz) GROUP BY m.group_id",[user.id,accessibleGroupIds]) : {rows:[] as any[]};
+  const privateChats = await pool.query("SELECT m.sender_id AS conversation_id,count(*)::int AS unread_count FROM messages m LEFT JOIN message_conversation_reads r ON r.user_id=$1 AND r.conversation_type='private' AND r.conversation_id=m.sender_id WHERE m.group_id IS NULL AND m.recipient_id=$1 AND m.created_at>COALESCE(r.last_read_at,'epoch'::timestamptz) GROUP BY m.sender_id",[user.id]);
+  const recentGroups = accessibleGroupIds.length ? await pool.query("SELECT m.group_id AS conversation_id,COUNT(*)::int AS message_count,MAX(m.created_at) AS last_message_at FROM messages m WHERE m.group_id=ANY($1::int[]) GROUP BY m.group_id ORDER BY COUNT(*) DESC,MAX(m.created_at) DESC",[accessibleGroupIds]) : {rows:[] as any[]};
+  const recentPeople = await pool.query("SELECT CASE WHEN m.sender_id=$1 THEN m.recipient_id ELSE m.sender_id END AS conversation_id,COUNT(*)::int AS message_count,MAX(m.created_at) AS last_message_at FROM messages m WHERE m.group_id IS NULL AND m.recipient_id IS NOT NULL AND (m.sender_id=$1 OR m.recipient_id=$1) GROUP BY CASE WHEN m.sender_id=$1 THEN m.recipient_id ELSE m.sender_id END ORDER BY COUNT(*) DESC,MAX(m.created_at) DESC",[user.id]);
   const groupUnread=groups.rows.reduce((sum,row)=>sum+Number(row.unread_count||0),0);
   const privateUnread=privateChats.rows.reduce((sum,row)=>sum+Number(row.unread_count||0),0);
-  res.json({
-    groupUnread, privateUnread, messageUnread:groupUnread+privateUnread,
-    groups:groups.rows.map(row=>({id:Number(row.conversation_id),unread:Number(row.unread_count)})),
-    privateChats:privateChats.rows.map(row=>({id:Number(row.conversation_id),unread:Number(row.unread_count)})),
-    recentGroups:recentGroups.rows.map(row=>({id:Number(row.conversation_id),messageCount:Number(row.message_count),lastMessageAt:row.last_message_at})),
-    recentPeople:recentPeople.rows.map(row=>({id:Number(row.conversation_id),messageCount:Number(row.message_count),lastMessageAt:row.last_message_at})),
-  });
+  res.json({groupUnread,privateUnread,messageUnread:groupUnread+privateUnread,groups:groups.rows.map(row=>({id:Number(row.conversation_id),unread:Number(row.unread_count)})),privateChats:privateChats.rows.map(row=>({id:Number(row.conversation_id),unread:Number(row.unread_count)})),recentGroups:recentGroups.rows.map(row=>({id:Number(row.conversation_id),messageCount:Number(row.message_count),lastMessageAt:row.last_message_at})),recentPeople:recentPeople.rows.map(row=>({id:Number(row.conversation_id),messageCount:Number(row.message_count),lastMessageAt:row.last_message_at}))});
 });
 
 router.get("/messages", requireAuth, async (req, res): Promise<void> => {
@@ -287,7 +254,7 @@ router.get("/messages", requireAuth, async (req, res): Promise<void> => {
 
   let messages;
   if (groupId != null) {
-    if (!(await canAccessGroup(groupId, currentUser.id, currentUser.role))) {
+    if (!(await canAccessGroup(groupId, currentUser))) {
       res.status(403).json({ error: "You must be a group member to view its messages" });
       return;
     }
@@ -341,7 +308,7 @@ router.get("/messages", requireAuth, async (req, res): Promise<void> => {
   // alongside each message so the sender sees a receipt on the exact message.
   const readCursors = groupId != null
     ? await pool.query(
-        "SELECT r.user_id,r.last_read_at FROM message_conversation_reads r INNER JOIN study_group_members gm ON gm.user_id=r.user_id AND gm.group_id=$1 WHERE r.conversation_type='group' AND r.conversation_id=$1",
+        "SELECT user_id,last_read_at FROM message_conversation_reads WHERE conversation_type='group' AND conversation_id=$1",
         [groupId],
       )
     : await pool.query(
@@ -517,7 +484,7 @@ router.post("/messages/:id/report", requireAuth, async (req, res): Promise<void>
 
   const [message] = await db.select().from(messagesTable).where(eq(messagesTable.id, messageId));
   const reporter = req.currentUser!;
-  const isGroupMessageVisible = Boolean(message && message.groupId != null && await canAccessGroup(message.groupId, reporter.id, reporter.role));
+  const isGroupMessageVisible = Boolean(message && message.groupId != null && await canAccessGroup(message.groupId, reporter));
   const otherParticipantId = message
     ? Number(message.senderId) === reporter.id ? message.recipientId : message.senderId
     : null;
