@@ -16,7 +16,7 @@ import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMedi
 
 const MAX_CHAT_MEDIA_SIZE_BYTES = MAX_MEDIA_SIZE_BYTES;
 import { isOwnerRole, normalizeRole, canAccessManager } from "../lib/auth-middleware";
-import { hasAcceptedProfileConnection, hasNonAcceptedProfileConnection, isProfileChatApprovalRequired } from "./profileConnections";
+import { hasAcceptedProfileConnection, isProfileChatApprovalRequired } from "./profileConnections";
 import { managerHasPermission, requireManagerPermission } from "../lib/manager-permission-policy";
 import { canModerateUser } from "../lib/role-access";
 
