@@ -25,6 +25,14 @@ assert.ok(api.includes("router.delete(" + String.fromCharCode(34) + "/chat/polls
 assert.ok(api.includes("managerHasPermission(actor,\"groups.manage\")"), "poll deletion must use the existing groups.manage permission");
 assert.ok(api.includes("canModerateUser(actor,groupCreator)"), "manager poll deletion must remain inside the manager’s existing moderation scope");
 assert.ok(api.includes("res.status(200).json({ ok: true, deleted: true, pollId })"), "poll deletion must return an explicit JSON deletion confirmation");
+assert.ok(api.includes('router.delete("/chat/groups/:groupId/polls"'), "group-wide poll clearing endpoint must exist");
+assert.ok(api.includes("deletedPollCount:pollIds.length"), "group-wide poll clearing must report how many polls were deleted");
+assert.ok(api.includes("tx.delete(chatPollVotesTable).where(inArray(chatPollVotesTable.pollId,pollIds))"), "group-wide poll clearing must delete poll votes transactionally");
+assert.ok(api.includes("Only the group creator, platform owner, or an in-scope manager"), "group-wide poll clearing must enforce existing owner and manager scope");
+assert.ok(groups.includes("/api/chat/groups/\u0024{group.id}/polls"), "Clear chat must also clear all group polls");
+assert.ok(groups.includes("Clear chat & polls"), "the group cleanup action must clearly disclose that it clears polls too");
+assert.ok(panel.includes("border-2 border-red-400 bg-red-50"), "individual poll delete icon must be visually prominent");
+assert.ok(panel.includes("aria-label={\u0060Delete poll: \u0024{item.poll.question}\u0060}"), "individual poll delete icon must have an accessible poll-specific label");
 assert.ok(panel.includes("Leaderboard"), "poll cards must expose a leaderboard action");
 assert.ok(panel.includes("UserProfileLink userId={entry.userId} name={entry.name} avatarUrl={entry.avatarUrl}"), "leaderboard avatars must open the corresponding Profile Hub");
 assert.ok(panel.includes("navigator.vibrate(result.isCorrect ? [45, 35, 70] : [110, 45, 110])"), "auto-mark feedback must provide optional haptics");
@@ -50,4 +58,4 @@ assert.ok(aiRoute.includes("providerStatus: failure.statusCode ?? null"), "AI di
 assert.ok(aiSettings.includes("provider HTTP ${data.providerStatus}"), "AI settings must display the safe upstream status to the owner");
 assert.ok(academicRecords.includes("res.status(200).json({ ok: true, deleted: true, transferRequestId: id })"), "transfer-letter deletion must return an explicit JSON confirmation");
 assert.ok(academicRecords.includes("res.status(200).json({ ok: true, deleted: true, reportDraftId: id })"), "RecordBook draft deletion must return an explicit JSON confirmation");
-console.log("STUDY_GROUP_POLLS_STATIC: PASS (polls, owner actions, normalized authorization, profile links, privacy, haptics, null-delete guards, AI diagnostics)");
+console.log("STUDY_GROUP_POLLS_STATIC: PASS (polls, bulk poll clearing, individual deletion, owner actions, normalized authorization, profile links, privacy, haptics, AI diagnostics)");
