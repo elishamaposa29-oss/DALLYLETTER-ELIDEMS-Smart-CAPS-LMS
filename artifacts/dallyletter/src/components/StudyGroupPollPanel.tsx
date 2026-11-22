@@ -84,7 +84,6 @@ export function StudyGroupPollPanel({ groupId, allowPolls = true, inline = false
   const [autoMark, setAutoMark] = useState(false);
   const [correctOptionIndex, setCorrectOptionIndex] = useState(0);
   const pollsEnabled=allowPolls;
-  const { toast } = useToast();
 
   const load = useCallback(async () => {
     if (!groupId || !pollsEnabled) { setPolls([]); onPollsChange?.([]); return; }
