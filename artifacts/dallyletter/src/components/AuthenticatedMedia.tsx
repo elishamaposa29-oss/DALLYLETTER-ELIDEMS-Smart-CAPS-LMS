@@ -103,12 +103,12 @@ export function AuthenticatedMedia({ url, type, title, brandedShare = false, sha
           return;
         }
         if (!token) throw new Error("Sign in required");
-        const key = url.match(/^\\/api\\/lessons\\/media\\/([a-f0-9-]{36})/i)?.[1];
+        const key = url.match(/^\/api\/lessons\/media\/([a-f0-9-]{36})/i)?.[1];
         if (!key) throw new Error("Unsupported streaming media URL");
         const grant = await fetch(getApiUrl(`/api/lessons/media/${key}/playback`), {
           method: "POST",
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ type: type === "video" ? "video/mp4" : "audio/mpeg" }),
+          body: JSON.stringify({ type: (() => { try { return new URL(url, window.location.origin).searchParams.get("type") || (type === "video" ? "video/mp4" : "audio/mpeg"); } catch { return type === "video" ? "video/mp4" : "audio/mpeg"; } })() }),
         });
         if (!grant.ok) throw new Error("Media unavailable");
         const data = await grant.json();
