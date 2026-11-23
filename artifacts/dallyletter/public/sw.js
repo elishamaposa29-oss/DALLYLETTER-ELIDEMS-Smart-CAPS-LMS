@@ -55,7 +55,8 @@ function isOfflineCacheableApiRequest(request, url) {
   if (!/^Bearer\\s+\\S+/i.test(request.headers.get("authorization") || "")) return false;
   // Never persist authentication, payments, financial/admin controls, uploads,
   // private media bytes, or one-time/sensitive workflow endpoints.
-  if (/^\\/api\\/(?:auth|payments?|financial|admin|owner|audit-logs|teacher-cv|qualifications|media)(?:\\/|$)/i.test(url.pathname)) return false;
+  const learnerReadRoutes = /^\\/api\\/(?:lessons|exercises|assignments|polls|study-groups|messages|notifications|profile-connections|academic-records|attendance|daily-attendance|achievements|dashboard|users\\/me|classes)(?:\\/|$)/i;
+  if (!learnerReadRoutes.test(url.pathname)) return false;
   if (/\\/(?:media|upload|download)(?:\\/|$)/i.test(url.pathname)) return false;
   return true;
 }
@@ -96,6 +97,9 @@ async function storeApiResponse(cache, key, response) {
   const body = await response.clone().arrayBuffer();
   if (!body.byteLength || body.byteLength > API_CACHE_MAX_ENTRY_BYTES) return;
   const headers = new Headers(response.headers);
+  // The cached body is decoded/reconstructed; transport framing headers are stale.
+  headers.delete("content-encoding");
+  headers.delete("content-length");
   headers.set("X-Dallyletter-Offline-Cached-At", String(Date.now()));
   headers.set("X-Dallyletter-Offline-Bytes", String(body.byteLength));
   await cache.put(key, new Response(body, { status: response.status, statusText: response.statusText, headers }));
