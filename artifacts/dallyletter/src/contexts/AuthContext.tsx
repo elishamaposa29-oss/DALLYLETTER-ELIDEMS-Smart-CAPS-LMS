@@ -16,7 +16,12 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem("dallyletter_token"));
-  const [sessionUser, setSessionUser] = useState<User | null>(null);
+  const [sessionUser, setSessionUser] = useState<User | null>(() => {
+    try {
+      const cached = localStorage.getItem("dallyletter_user");
+      return cached ? JSON.parse(cached) as User : null;
+    } catch { return null; }
+  });
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
 
@@ -68,10 +73,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (status === 401 || status === 403 || /401|403|unauthorized|forbidden|authentication required/i.test(message)) {
       queryClient.clear();
       setSessionUser(null);
+      localStorage.removeItem("dallyletter_user");
+      navigator.serviceWorker?.controller?.postMessage({ type: "DALLYLETTER_CLEAR_PRIVATE_OFFLINE_CACHE" });
       setToken(null);
       setLocation("/login");
     }
   }, [token, error, sessionUser, setLocation, queryClient]);
+
+  useEffect(() => {
+    const currentUser = sessionUser ?? fetchedUser;
+    if (currentUser) localStorage.setItem("dallyletter_user", JSON.stringify(currentUser));
+  }, [sessionUser, fetchedUser]);
 
   useEffect(() => {
     if (token) {
@@ -107,6 +119,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (token) void fetch(getApiUrl("/api/auth/logout"), { method: "POST", headers: { Authorization: "Bearer " + token } }).catch(() => undefined);
     queryClient.clear();
     setSessionUser(null);
+    localStorage.removeItem("dallyletter_user");
+    navigator.serviceWorker?.controller?.postMessage({ type: "DALLYLETTER_CLEAR_PRIVATE_OFFLINE_CACHE" });
     setToken(null);
     setLocation("/login");
   };
@@ -116,6 +130,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (event.key !== "dallyletter_token") return;
       queryClient.clear();
       setSessionUser(null);
+      localStorage.removeItem("dallyletter_user");
+      navigator.serviceWorker?.controller?.postMessage({ type: "DALLYLETTER_CLEAR_PRIVATE_OFFLINE_CACHE" });
       setToken(event.newValue);
       if (!event.newValue) setLocation("/login");
     };
