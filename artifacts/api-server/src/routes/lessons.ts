@@ -43,7 +43,7 @@ function signMediaShare(storageKey: string, expiresAt: number): string {
   return `${expiresAt}.${createHmac("sha256", secret).update(payload).digest("hex")}`;
 }
 function validMediaShare(storageKey: string, token: unknown): boolean {
-  if (typeof token !== "string" || !/^[0-9]{10,12}\.[a-f0-9]{64}$/i.test(token)) return false;
+  if (typeof token !== "string" || !/^[0-9]{10,12}\\.[a-f0-9]{64}$/i.test(token)) return false;
   const [expiryText, signature] = token.split(".");
   const expiresAt = Number(expiryText);
   if (!Number.isSafeInteger(expiresAt) || expiresAt < Math.floor(Date.now() / 1000)) return false;
@@ -53,8 +53,26 @@ function validMediaShare(storageKey: string, token: unknown): boolean {
   const supplied = Buffer.from(signature, "hex");
   return supplied.length === expected.length && timingSafeEqual(supplied, expected);
 }
+function signMediaPlayback(storageKey: string, userId: number, expiresAt: number): string {
+  const secret = mediaShareSecret();
+  if (!secret) throw new Error("Media playback signing secret is not configured");
+  return `${expiresAt}.${userId}.${createHmac("sha256", secret).update(`${storageKey}.${userId}.${expiresAt}`).digest("hex")}`;
+}
+function validMediaPlayback(storageKey: string, token: unknown): boolean {
+  if (typeof token !== "string") return false;
+  const parts = token.split(".");
+  if (parts.length !== 3 || !/^[0-9]{10,12}$/.test(parts[0]) || !/^[1-9][0-9]*$/.test(parts[1]) || !/^[a-f0-9]{64}$/i.test(parts[2])) return false;
+  const expiresAt = Number(parts[0]), userId = Number(parts[1]), signature = parts[2];
+  if (!Number.isSafeInteger(expiresAt) || expiresAt < Math.floor(Date.now() / 1000) || !Number.isSafeInteger(userId)) return false;
+  const secret = mediaShareSecret();
+  if (!secret) return false;
+  const expected = createHmac("sha256", secret).update(`${storageKey}.${userId}.${expiresAt}`).digest();
+  const supplied = Buffer.from(signature, "hex");
+  return supplied.length === expected.length && timingSafeEqual(supplied, expected);
+}
 const mediaAccess = (req: Request, res: Response, next: NextFunction) => {
-  if (validMediaShare(String(req.params.storageKey || ""), req.query.shareToken)) { next(); return; }
+  const storageKey = String(req.params.storageKey || "");
+  if (validMediaShare(storageKey, req.query.shareToken) || validMediaPlayback(storageKey, req.query.playbackToken)) { next(); return; }
   requireAuth(req, res, next);
 };
 
@@ -175,6 +193,21 @@ router.post("/lessons/media", requireAuth, requireManagerPermissionIfManager("le
       });
     });
   });
+});
+
+router.post("/lessons/media/:storageKey/playback", requireAuth, async (req, res): Promise<void> => {
+  const storageKey = typeof req.params.storageKey === "string" ? req.params.storageKey : "";
+  if (!/^[a-f0-9-]{36}$/i.test(storageKey)) { res.status(400).json({ error: "Invalid media key" }); return; }
+  try {
+    await getMediaStats(storageKey);
+    const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60 * 12;
+    const playbackToken = signMediaPlayback(storageKey, Number(req.currentUser!.id), expiresAt);
+    const type = typeof req.body?.type === "string" && isAllowedMediaType(req.body.type) ? req.body.type : "application/octet-stream";
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json({ playbackUrl: `/api/lessons/media/${storageKey}?type=${encodeURIComponent(type)}&playbackToken=${encodeURIComponent(playbackToken)}`, expiresAt });
+  } catch {
+    res.status(404).json({ error: "Media not found" });
+  }
 });
 
 router.post("/lessons/media/:storageKey/share", requireAuth, async (req, res): Promise<void> => {
