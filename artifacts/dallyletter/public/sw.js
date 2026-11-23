@@ -52,12 +52,12 @@ function isDallyletterApiUrl(url) {
 
 function isOfflineCacheableApiRequest(request, url) {
   if (request.method !== "GET" || !isDallyletterApiUrl(url)) return false;
-  if (!/^Bearer\\s+\\S+/i.test(request.headers.get("authorization") || "")) return false;
+  if (!/^Bearer\s+\S+/i.test(request.headers.get("authorization") || "")) return false;
   // Never persist authentication, payments, financial/admin controls, uploads,
   // private media bytes, or one-time/sensitive workflow endpoints.
-  const learnerReadRoutes = /^\\/api\\/(?:lessons|exercises|assignments|polls|study-groups|messages|notifications|profile-connections|academic-records|attendance|daily-attendance|achievements|dashboard|users\\/me|classes)(?:\\/|$)/i;
+  const learnerReadRoutes = /^\/api\/(?:lessons|exercises|assignments|polls|study-groups|messages|notifications|profile-connections|academic-records|attendance|daily-attendance|achievements|dashboard|users\/me|classes)(?:\/|$)/i;
   if (!learnerReadRoutes.test(url.pathname)) return false;
-  if (/\\/(?:media|upload|download)(?:\\/|$)/i.test(url.pathname)) return false;
+  if (/\/(?:media|upload|download)(?:\/|$)/i.test(url.pathname)) return false;
   return true;
 }
 
@@ -91,8 +91,8 @@ async function trimApiCache(cache) {
 async function storeApiResponse(cache, key, response) {
   if (!response.ok || response.type === "opaque") return;
   const contentType = response.headers.get("content-type") || "";
-  if (!/\\bapplication\\/(?:[a-z0-9.+-]*\\+)?json\\b/i.test(contentType)) return;
-  if (/\\bno-store\\b/i.test(response.headers.get("cache-control") || "")) return;
+  if (!/\bapplication\/(?:[a-z0-9.+-]*\+)?json\b/i.test(contentType)) return;
+  if (/\bno-store\b/i.test(response.headers.get("cache-control") || "")) return;
   if ((response.headers.get("vary") || "").trim() === "*") return;
   const body = await response.clone().arrayBuffer();
   if (!body.byteLength || body.byteLength > API_CACHE_MAX_ENTRY_BYTES) return;
