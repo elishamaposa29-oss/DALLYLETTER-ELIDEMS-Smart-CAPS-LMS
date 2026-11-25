@@ -220,6 +220,7 @@ html{scroll-padding-top:88px}
 
 /* Explicit regional, learner-pathway and end-to-end learning sections */
 .dl-audience-grid,.dl-regional-grid,.dl-pathway-grid,.dl-process-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}
+.dl-regional-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
 .dl-audience-card,.dl-regional-card,.dl-pathway-card,.dl-process-step{min-width:0;position:relative;overflow:hidden;padding:1.45rem;border:1px solid rgba(242,213,107,.24);border-radius:19px;background:radial-gradient(ellipse at 100% 0%,rgba(179,139,0,.15),transparent 48%),linear-gradient(145deg,#102d5d,#091c3a);color:#edf3fc;box-shadow:0 16px 38px rgba(4,15,34,.16);transition:transform .24s,border-color .24s,box-shadow .24s}
 .dl-audience-card:hover,.dl-regional-card:hover,.dl-pathway-card:hover,.dl-process-step:hover{transform:translateY(-4px);border-color:rgba(242,213,107,.65);box-shadow:0 22px 44px rgba(4,15,34,.22)}
 .dl-audience-card h3,.dl-regional-card h3,.dl-pathway-card h3{margin:.2rem 0 .55rem;color:#f2d56b;font-size:1.08rem;line-height:1.3}
@@ -312,6 +313,7 @@ const homepageSections = `
   <article class="dl-regional-card"><span class="dl-region-label">Starting point</span><h3>Built with Zimbabwean learning communities in mind</h3><p>Build around local learner needs, educator practice and school realities—without assuming every school uses the same resources.</p><a href="/zimbabwe/">Explore Zimbabwe focus →</a></article>
   <article class="dl-regional-card"><span class="dl-region-label">Regional focus</span><h3>Supporting South African learning communities</h3><p>Welcome South African learners, educators and schools. Check specific CAPS subject, grade and resource alignment with your provider.</p><a href="/south-africa/">Explore South Africa →</a></article>
   <article class="dl-regional-card"><span class="dl-region-label">Continental outlook</span><h3>Learning communities across Africa</h3><p>Respect different curricula, examination systems, languages and school calendars across African countries.</p><a href="/africa/">Explore African learning →</a></article>
+  <article class="dl-regional-card"><span class="dl-region-label">Beyond borders</span><h3>A global learning community, rooted in Africa</h3><p>Welcome international learners and educators while keeping local syllabus context visible and respected.</p><a href="/global-learning/">Explore global learning →</a></article>
  </div>
 </section>
 <section class="dl-section dl-pathway-section" aria-labelledby="dl-pathway-title">
