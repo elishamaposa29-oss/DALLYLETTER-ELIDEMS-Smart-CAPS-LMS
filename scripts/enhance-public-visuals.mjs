@@ -241,6 +241,13 @@ html{scroll-padding-top:88px}
 @media(max-width:480px){.dl-audience-grid,.dl-regional-grid,.dl-pathway-grid,.dl-process-grid{grid-template-columns:1fr}.dl-audience-card,.dl-regional-card,.dl-pathway-card{padding:1.2rem}.dl-process-step{padding:1rem}}
 @media(prefers-reduced-motion:reduce){.dl-audience-card,.dl-regional-card,.dl-pathway-card,.dl-process-step,.dl-founder-panel a{transition:none!important;transform:none!important}}
 
+
+@media(max-width:560px){
+ .hero .actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.6rem}
+ .hero .actions .btn{min-width:0;white-space:nowrap;padding:.8rem .55rem;font-size:.86rem;text-align:center}
+ .hero .actions .btn:last-child{grid-column:1/-1}
+}
+
 `;
 
 const heroVisual = `
