@@ -71,7 +71,7 @@ if (imageSitemapResult) {
   if (!imageSitemapResult.body.startsWith('<?xml') || !imageSitemapResult.body.includes('<urlset ') || !imageSitemapResult.body.includes("http://www.google.com/schemas/sitemap-image/1.1")) {
     fail("image-sitemap.xml is not a valid image sitemap");
   }
-  for (const imagePath of ["/social/dallyletter-og.png", "/images/learner-dashboard-preview.svg", "/images/prefect-dashboard-preview.svg"]) {
+  for (const imagePath of ["/social/dallyletter-og.png", "/images/learner-dashboard-preview.svg", "/images/prefect-dashboard-preview.svg", "/images/teacher-workspace-preview.svg", "/favicon.svg"]) {
     if (!imageSitemapResult.body.includes(base.origin + imagePath)) fail("image-sitemap.xml is missing " + imagePath);
   }
 }
