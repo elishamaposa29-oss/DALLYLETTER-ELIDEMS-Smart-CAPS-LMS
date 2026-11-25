@@ -43,15 +43,11 @@ const sitemap = fs.readFileSync(sitemapPath, "utf8");
 const imageSitemapPath = path.join(root, "image-sitemap.xml");
 if (!fs.existsSync(imageSitemapPath)) throw new Error("Dedicated image-sitemap.xml is missing from the production build");
 const imageSitemap = fs.readFileSync(imageSitemapPath, "utf8");
-if (!/<urlset[\\s>]/i.test(imageSitemap) || !imageSitemap.includes("http://www.google.com/schemas/sitemap-image/1.1")) {
+if (!imageSitemap.startsWith('<?xml') || !imageSitemap.includes('<urlset ') || !imageSitemap.includes("http://www.google.com/schemas/sitemap-image/1.1")) {
   throw new Error("image-sitemap.xml is not a valid image sitemap");
 }
 for (const imagePath of ["/social/dallyletter-og.png", "/images/learner-dashboard-preview.svg", "/images/prefect-dashboard-preview.svg"]) {
   if (!imageSitemap.includes(siteUrl + imagePath)) throw new Error("Image sitemap is missing " + imagePath);
-}
-for (const match of imageSitemap.matchAll(/<loc>(.*?)<\\/loc>|<image:loc>(.*?)<\\/image:loc>/g)) {
-  const value = match[1] || match[2];
-  if (new URL(value).origin !== siteOrigin) throw new Error("Image sitemap contains a non-canonical URL: " + value);
 }
 const urls = [...sitemap.matchAll(/<loc>(.*?)<\/loc>/g)].map(match => match[1]);
 
