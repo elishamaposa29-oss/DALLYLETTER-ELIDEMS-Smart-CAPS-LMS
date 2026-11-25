@@ -68,7 +68,7 @@ if (sitemapResult) {
 const imageSitemapResult = await request("/image-sitemap.xml", "application/xml,text/xml");
 if (imageSitemapResult) {
   if (!imageSitemapResult.response.ok) fail("image-sitemap.xml returned HTTP " + imageSitemapResult.response.status);
-  if (!/<urlset[\\s>]/i.test(imageSitemapResult.body) || !imageSitemapResult.body.includes("http://www.google.com/schemas/sitemap-image/1.1")) {
+  if (!imageSitemapResult.body.startsWith('<?xml') || !imageSitemapResult.body.includes('<urlset ') || !imageSitemapResult.body.includes("http://www.google.com/schemas/sitemap-image/1.1")) {
     fail("image-sitemap.xml is not a valid image sitemap");
   }
   for (const imagePath of ["/social/dallyletter-og.png", "/images/learner-dashboard-preview.svg", "/images/prefect-dashboard-preview.svg"]) {
