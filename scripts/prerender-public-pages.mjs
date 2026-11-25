@@ -124,7 +124,9 @@ const imageEntries = pages.map((p) => {
   [siteUrl + "/social/dallyletter-og.png", "Dallyletter Elidems — " + esc(p.h1)],
   ...(p.slug === "" ? [
    [siteUrl + "/images/learner-dashboard-preview.svg", "Illustrative Dallyletter learner dashboard preview"],
-   [siteUrl + "/images/prefect-dashboard-preview.svg", "Illustrative Dallyletter prefect dashboard preview"]
+   [siteUrl + "/images/prefect-dashboard-preview.svg", "Illustrative Dallyletter prefect dashboard preview"],
+   [siteUrl + "/images/teacher-workspace-preview.svg", "Illustrative Dallyletter teacher workspace preview"],
+   [siteUrl + "/favicon.svg", "Official Dallyletter Elidems logo"]
   ] : [])
  ];
  return "<url><loc>" + pageUrl + "</loc>" + images.map(([loc, title]) => "<image:image><image:loc>" + loc + "</image:loc><image:title>" + title + "</image:title></image:image>").join("") + "</url>";
