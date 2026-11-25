@@ -638,7 +638,7 @@ function buildGallery(manifest) {
   lines.push("",
     "## Private role dashboard and feature screenshots",
     "",
-    "This repository is public, so role screenshots are redacted before being included in the workflow artifact under `role-feature-screenshots/`. They are never copied to the public showcase-media branch. Use dedicated demo accounts populated only with synthetic data; never point this capture at real learner records.",
+    "Role screenshots are redacted and retained in the private workflow artifact under `role-feature-screenshots/`. They are eligible for public release only through the separate `Publish reviewed Dallyletter role screenshots` workflow, after a human has inspected the exact artifact and confirmed its privacy review. Use three distinct dedicated accounts populated only with synthetic data; never point this capture at real learner records.",
     "");
   for (const item of manifest.results.filter((result) => result.type === "dashboard")) {
     lines.push("### " + item.role + " — " + (item.pagesCaptured ?? 0) + " pages", "");
@@ -646,7 +646,7 @@ function buildGallery(manifest) {
     for (const shot of item.screenshots || []) lines.push("- **" + shot.path + "** — [Open screenshot](./role-feature-screenshots/" + shot.screenshot + ")");
     lines.push("");
   }
-  lines.push("Only dedicated showcase accounts with synthetic test data should be used. Role screenshots are not copied to the public showcase-media branch.", "");
+  lines.push("Only dedicated showcase accounts with synthetic test data should be used. Public role-image publication is a separate manually approved workflow that validates the exact private artifact.", "");
   return lines.join("\n");
 }
 
@@ -747,5 +747,5 @@ try {
   if (results.some((result) => result.error || ["login-failed", "capture-failed", "partial", "wrong-page"].includes(result.status) || result.pageLimitReached)) process.exitCode = 1;
 } finally {
   await browser.close();
-  // Keep role screenshots inside the private GitHub Actions artifact; never publish them to showcase-media.
+  // Keep role screenshots private here. A separate workflow publishes only the three reviewed default dashboard images.
 }
