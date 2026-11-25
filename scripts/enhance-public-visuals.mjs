@@ -178,6 +178,45 @@ html{scroll-padding-top:88px}
 @media(max-width:560px){.hero:not(:has(.hero-art)){padding:3.4rem 1rem}.content section{padding:1.15rem;border-radius:16px}.links a{width:100%;justify-content:center}.actions .btn{flex:1 1 145px;text-align:center}}
 @media(prefers-reduced-motion:reduce){.content section,.links a,.btn,.navlinks a{animation:none!important;transition:none!important;transform:none!important;scroll-behavior:auto!important}}
 
+
+/* Final cinematic contrast pass: bring every content section into the navy/gold visual language */
+.content{position:relative}
+.content section{isolation:isolate;background:radial-gradient(ellipse at 100% 0%,rgba(179,139,0,.16),transparent 42%),linear-gradient(145deg,#102d5d 0%,#0b2044 62%,#07172f 100%);border:1px solid rgba(242,213,107,.22);box-shadow:0 18px 46px rgba(4,15,34,.18),inset 0 1px rgba(255,255,255,.055);color:#f5f7fc}
+.content section:after{content:"";position:absolute;z-index:-1;inset:0;background:linear-gradient(112deg,transparent 18%,rgba(255,255,255,.045) 48%,transparent 76%);transform:translateX(-100%);transition:transform .8s ease}
+.content section:hover:after{transform:translateX(100%)}
+.content section:before{width:4px;background:linear-gradient(180deg,#fff0a8,#b38b00,#f2d56b);box-shadow:0 0 18px rgba(242,213,107,.35)}
+.content section h2{color:#f2d56b;text-shadow:0 4px 22px rgba(179,139,0,.18)}
+.content section p,.content section li{color:#dbe5f5}
+.content section a{color:#f5dc78;text-underline-offset:4px}
+.content section a:hover{color:#fff1b4}
+.more{border-color:rgba(242,213,107,.42);box-shadow:0 24px 62px rgba(4,15,34,.3),inset 0 1px rgba(255,255,255,.07)}
+.more h2{color:#f5dc78;text-shadow:0 5px 26px rgba(179,139,0,.22)}
+.dl-proof{background:linear-gradient(180deg,#081a37,#0f2a5a);border-color:rgba(242,213,107,.18)}
+.dl-proof-item{background:linear-gradient(145deg,rgba(255,255,255,.1),rgba(255,255,255,.045));border-color:rgba(242,213,107,.25);color:#e5edf9;box-shadow:inset 0 1px rgba(255,255,255,.06),0 8px 24px rgba(0,0,0,.14)}
+.dl-proof-item b{color:#f2d56b}
+.dl-section-head p{color:#65748e}
+.dl-feature{background:radial-gradient(ellipse at 100% 0%,rgba(179,139,0,.13),transparent 45%),linear-gradient(145deg,#102d5d,#091c3a);border-color:rgba(242,213,107,.22);box-shadow:0 18px 42px rgba(4,15,34,.17),inset 0 1px rgba(255,255,255,.055);color:#fff}
+.dl-feature:before{width:4px;opacity:1;box-shadow:0 0 18px rgba(242,213,107,.3)}
+.dl-feature h3{color:#f2d56b}
+.dl-feature p{color:#d6e1f1}
+.dl-feature-icon{background:linear-gradient(145deg,#f5dc78,#b38b00);color:#10264c;border:1px solid rgba(255,238,171,.65);box-shadow:0 8px 24px rgba(179,139,0,.18)}
+.dl-role-section{background:radial-gradient(ellipse at 50% 0%,rgba(179,139,0,.12),transparent 52%),linear-gradient(180deg,#091b39,#0f2a5a);border-color:rgba(242,213,107,.2)}
+.dl-role{background:linear-gradient(145deg,#102d5d,#081a36);border-color:rgba(242,213,107,.24);box-shadow:0 18px 42px rgba(0,0,0,.2),inset 0 1px rgba(255,255,255,.055);color:#fff}
+.dl-role h3{color:#f2d56b}
+.dl-role p{color:#d6e1f1}
+.dl-role-screen{background:linear-gradient(145deg,#f8faff,#dfe7f2);border-color:rgba(242,213,107,.38)}
+.dl-role a{color:#f5dc78}
+.dl-role a:hover{color:#fff1b4}
+.dl-role-tag{background:linear-gradient(135deg,#f5dc78,#b38b00);border-color:rgba(255,238,171,.55);color:#14284a}
+.dl-disclaimer{color:#bdcbe0}
+.dl-cta-card{box-shadow:0 26px 70px rgba(4,15,34,.28),0 0 0 1px rgba(255,255,255,.12)}
+.btn,.links a{position:relative;overflow:hidden}
+.btn:after,.links a:after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 20%,rgba(255,255,255,.28) 48%,transparent 72%);transform:translateX(-130%);transition:transform .55s ease;pointer-events:none}
+.btn:hover:after,.links a:hover:after{transform:translateX(130%)}
+.btn:active,.links a:active{transform:translateY(0) scale(.985)}
+@media(max-width:760px){.content section{margin:.85rem 0}.dl-proof{background:#0b2044}}
+@media(prefers-reduced-motion:reduce){.content section:after,.btn:after,.links a:after{display:none}.content section:hover{transform:none}}
+
 `;
 
 const heroVisual = `
