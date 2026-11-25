@@ -6,11 +6,12 @@ Signed-in learner, prefect and teacher routes remain private and retain their ex
 
 Reuse the showcase credentials already configured in GitHub Actions:
 
-- `SHOWCASE_LEARNER_EMAIL` and `SHOWCASE_LEARNER_PASSWORD` — existing learner account.
-- `SHOWCASE_TEACHER_EMAIL` and `SHOWCASE_TEACHER_PASSWORD` — existing teacher account.
+- `SHOWCASE_ACCOUNTS_ARE_SYNTHETIC=true` — required repository secret attesting that all showcase accounts contain synthetic data only.
+- `SHOWCASE_LEARNER_EMAIL` and `SHOWCASE_LEARNER_PASSWORD` — dedicated synthetic learner account; this same account is used for the prefect capability view.
+- `SHOWCASE_TEACHER_EMAIL` and `SHOWCASE_TEACHER_PASSWORD` — separate dedicated synthetic teacher account.
 - `VERCEL_AUTOMATION_BYPASS_SECRET` only when the Vercel deployment is protected.
 
-There is no separate prefect signup and no separate prefect credential. Dallyletter represents prefect as an existing student/learner account with the Profile Hub `isPrefect` capability. The capture workflow signs in once using the existing learner account, then verifies the normal role and `isPrefect` flag from `/api/auth/me` before recording the learner and prefect views. This mirrors the role badge and role-aware UI already used by Profile Hub.
+There is no separate prefect signup and no separate prefect credential. Dallyletter represents prefect as an existing student/learner account with the Profile Hub `isPrefect` capability. The capture workflow signs in once using the dedicated synthetic learner account, then verifies the normal role and `isPrefect` flag from `/api/auth/me` before recording the learner and prefect views. This mirrors the role badge and role-aware UI already used by Profile Hub. Authenticated capture is blocked unless the `SHOWCASE_ACCOUNTS_ARE_SYNTHETIC=true` repository secret is present.
 
 No new synthetic-account secret or prefect credential is required. Do not create another account just for prefect capture.
 
@@ -20,7 +21,7 @@ No new synthetic-account secret or prefect credential is required. Do not create
 2. Wait for the run to complete successfully.
 3. Download and inspect its private artifact named `dallyletter-full-role-feature-captures-<run number>`.
 4. Inspect the default learner, prefect and teacher dashboard screenshots listed in `capture-manifest.json`. Confirm no real names, email addresses, phone numbers, school identifiers, private messages, grades, attendance, balances or other personal information is readable.
-5. Only after that inspection, run **Publish reviewed Dallyletter role screenshots**, enter the successful capture run ID, and confirm the privacy-review attestation.
+5. Only after that inspection, run **Publish reviewed Dallyletter role screenshots**, enter the successful capture run ID, and confirm both the privacy-review and synthetic-data attestations. The publisher also checks the capture manifest for the synthetic-account safeguard.
 
 The publication workflow downloads that exact artifact, verifies successful authenticated captures for all three role views (including Profile Hub's prefect capability), validates the PNG files, and publishes only the three default dashboard screenshots to the `showcase-media` branch. It does not publish the full feature capture set, manager/admin/Owner views, videos, login data or browser storage.
 
