@@ -47,7 +47,7 @@ jobs:
       VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET || '' }}
       SHOWCASE_MAX_PAGES_PER_ROLE: "100"
       SHOWCASE_CAPTURE_AUTHENTICATED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-      SOURCE_COMMIT: ${{ github.event_name == 'push' && '5b003510b88de5539ead58b0196e779970c226d5' || github.sha }}
+      SOURCE_COMMIT: ${{ github.sha }}
       SHOWCASE_SITE_URL: ${{ github.event_name == 'push' && 'https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app' || '' }}
       EXPECTED_DEPLOYMENT_SHA: ${{ github.event_name == 'push' && '5b003510b88de5539ead58b0196e779970c226d5' || (github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha) }}
       SHOWCASE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
