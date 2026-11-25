@@ -126,6 +126,9 @@ const imageEntries = pages.map((p) => {
    [siteUrl + "/images/learner-dashboard-preview.svg", "Illustrative Dallyletter learner dashboard preview"],
    [siteUrl + "/images/prefect-dashboard-preview.svg", "Illustrative Dallyletter prefect dashboard preview"],
    [siteUrl + "/images/teacher-workspace-preview.svg", "Illustrative Dallyletter teacher workspace preview"],
+   ["https://raw.githubusercontent.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/showcase-media/latest/learner-dashboard.png", "Dallyletter learner dashboard — real interface screenshot"],
+   ["https://raw.githubusercontent.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/showcase-media/latest/prefect-dashboard.png", "Dallyletter prefect dashboard — real interface screenshot"],
+   ["https://raw.githubusercontent.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/showcase-media/latest/teacher-dashboard.png", "Dallyletter teacher workspace — real interface screenshot"],
    [siteUrl + "/favicon.svg", "Official Dallyletter Elidems logo"]
   ] : [])
  ];
