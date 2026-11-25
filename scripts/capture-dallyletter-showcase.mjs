@@ -658,7 +658,7 @@ try {
   // credentials must belong to an existing learner/teacher promoted by the Owner.
   const roleAccounts = [
     ["learner", "/student", process.env.SHOWCASE_LEARNER_EMAIL, process.env.SHOWCASE_LEARNER_PASSWORD],
-    ["prefect", "/student", process.env.SHOWCASE_PREFECT_EMAIL || process.env.SHOWCASE_LEARNER_EMAIL, process.env.SHOWCASE_PREFECT_PASSWORD || process.env.SHOWCASE_LEARNER_PASSWORD],
+    ["prefect", "/student", process.env.SHOWCASE_PREFECT_EMAIL, process.env.SHOWCASE_PREFECT_PASSWORD],
     ["teacher", "/teacher", process.env.SHOWCASE_TEACHER_EMAIL, process.env.SHOWCASE_TEACHER_PASSWORD],
     ["junior_manager", "/manager", process.env.SHOWCASE_JUNIOR_MANAGER_EMAIL, process.env.SHOWCASE_JUNIOR_MANAGER_PASSWORD],
     ["senior_manager", "/manager", process.env.SHOWCASE_SENIOR_MANAGER_EMAIL, process.env.SHOWCASE_SENIOR_MANAGER_PASSWORD],
@@ -667,14 +667,18 @@ try {
     // DEMx 430 remains the configured Owner login; no new account or signup path is introduced.
     ["owner", "/admin", process.env.SHOWCASE_OWNER_EMAIL, process.env.SHOWCASE_OWNER_PASSWORD]
   ];
-  const authenticatedCaptureEnabled = process.env.SHOWCASE_CAPTURE_AUTHENTICATED !== "false";
+  const coreEmails = ["SHOWCASE_LEARNER_EMAIL", "SHOWCASE_PREFECT_EMAIL", "SHOWCASE_TEACHER_EMAIL"].map((key) => String(process.env[key] || "").trim().toLowerCase()).filter(Boolean);
+  if (new Set(coreEmails).size !== coreEmails.length) {
+    throw new Error("Learner, prefect and teacher showcase credentials must be three distinct dedicated accounts; prefect may not reuse the learner account.");
+  }
+  const authenticatedCaptureEnabled = process.env.SHOWCASE_CAPTURE_AUTHENTICATED !== "false" && process.env.SHOWCASE_ACCOUNTS_ARE_SYNTHETIC === "true";
   if (!authenticatedCaptureEnabled) {
-    results.push({ type: "dashboard", role: "all", status: "skipped", reason: "Authenticated showcase capture is disabled for this run; no role is counted as verified." });
+    results.push({ type: "dashboard", role: "all", status: "skipped", reason: "Authenticated showcase capture requires explicit SHOWCASE_ACCOUNTS_ARE_SYNTHETIC=true attestation; no role is counted as verified." });
   } else {
     for (const account of roleAccounts) await captureRole(...account);
   }
   const roleResults = results.filter((result) => result.type === "dashboard");
-  const requiredCvRoles = new Set(["owner", "senior_manager", "junior_manager", "manager", "admin", "teacher", "learner", "prefect"]);
+  const requiredCvRoles = new Set(["learner", "prefect", "teacher"]);
   const previewRun = process.env.GITHUB_EVENT_NAME === "pull_request";
   const missingRequiredRoleAccounts = authenticatedCaptureEnabled
     ? [...requiredCvRoles].filter((role) => !roleResults.some((result) => result.role === role && result.status === "captured"))
