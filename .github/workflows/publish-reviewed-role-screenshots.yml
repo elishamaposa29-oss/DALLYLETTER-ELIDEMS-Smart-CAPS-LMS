@@ -12,12 +12,6 @@ on:
         required: true
         type: boolean
         default: false
-      synthetic_accounts_confirmed:
-        description: Confirm the capture used dedicated synthetic learner, prefect and teacher accounts
-        required: true
-        type: boolean
-        default: false
-
 permissions:
   actions: read
   contents: write
@@ -28,7 +22,7 @@ concurrency:
 
 jobs:
   publish-reviewed-role-screenshots:
-    if: inputs.privacy_review_passed == true && inputs.synthetic_accounts_confirmed == true
+    if: inputs.privacy_review_passed == true
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout publication workflow
@@ -67,6 +61,7 @@ jobs:
           for (const [role, route, output] of required) {
             const result = (manifest.results || []).find((item) => item.type === "dashboard" && item.role === role);
             if (!result || result.status !== "captured" || !result.authenticatedRole) throw new Error(role + " dashboard was not successfully authenticated and captured.");
+            if (role === "prefect" && result.authenticatedRole !== "prefect") throw new Error("Prefect screenshot must be verified from the existing learner account using Profile Hub's isPrefect capability.");
             const shot = (result.screenshots || []).find((item) => item.path === route && item.view === "default");
             if (!shot) throw new Error("Missing real default dashboard screenshot for " + role + ".");
             const source = path.join(root, "role-feature-screenshots", shot.screenshot);
@@ -104,7 +99,7 @@ jobs:
           cat > latest/README.md <<'EOF'
           # Dallyletter Elidems — reviewed role dashboard screenshots
 
-          These are real interface screenshots captured from authenticated, dedicated synthetic learner, prefect and teacher showcase accounts. Publication requires a separate manual privacy review of the private capture artifact. No production learner records or Owner dashboard screenshots are intentionally published.
+          These are real interface screenshots captured from authenticated Dallyletter role sessions. The prefect view is the existing learner account with Profile Hub's isPrefect capability, not a separate signup. Publication requires manual inspection of the private capture artifact for personal or sensitive data. No Owner dashboard screenshots are published.
 
           - `learner-dashboard.png` — learner workspace
           - `prefect-dashboard.png` — prefect workspace
