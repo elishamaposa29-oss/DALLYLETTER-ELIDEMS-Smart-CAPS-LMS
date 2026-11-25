@@ -122,6 +122,17 @@ const robotsPath = path.join(outputRoot, "robots.txt");
 const robotsText = fs.existsSync(robotsPath) ? fs.readFileSync(robotsPath, "utf8") : "User-agent: *\nAllow: /\n";
 const canonicalRobots = robotsText.replace(/^Sitemap:\s*.*$/m, "Sitemap: " + siteUrl + "/sitemap.xml");
 fs.writeFileSync(robotsPath, canonicalRobots.includes("Sitemap:") ? canonicalRobots : canonicalRobots.trimEnd() + "\n\nSitemap: " + siteUrl + "/sitemap.xml\n", "utf8");
+
+for (const fileName of ["llms.txt", "llms-full.txt"]) {
+ const filePath = path.join(outputRoot, fileName);
+ if (!fs.existsSync(filePath)) throw new Error(fileName + " is missing before canonical URL normalization");
+ const content = fs.readFileSync(filePath, "utf8");
+ // These public AI-discovery documents are copied from source assets. Normalize every
+ // Dallyletter-owned Vercel URL to the same canonical origin used by HTML and sitemap.
+ const normalized = content.replace(/https:\/\/[^\\s/]+dallyletter[^\\s/]*\\.vercel\\.app/gi, siteUrl);
+ fs.writeFileSync(filePath, normalized, "utf8");
+}
+
 console.log("Prerendered "+pages.length+" public pages and image sitemap using " + siteUrl + ".");
 
 
