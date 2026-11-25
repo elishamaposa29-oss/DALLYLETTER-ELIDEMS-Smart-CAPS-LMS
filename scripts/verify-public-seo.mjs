@@ -46,7 +46,7 @@ const imageSitemap = fs.readFileSync(imageSitemapPath, "utf8");
 if (!imageSitemap.startsWith('<?xml') || !imageSitemap.includes('<urlset ') || !imageSitemap.includes("http://www.google.com/schemas/sitemap-image/1.1")) {
   throw new Error("image-sitemap.xml is not a valid image sitemap");
 }
-for (const imagePath of ["/social/dallyletter-og.png", "/images/learner-dashboard-preview.svg", "/images/prefect-dashboard-preview.svg"]) {
+for (const imagePath of ["/social/dallyletter-og.png", "/images/learner-dashboard-preview.svg", "/images/prefect-dashboard-preview.svg", "/images/teacher-workspace-preview.svg", "/favicon.svg"]) {
   if (!imageSitemap.includes(siteUrl + imagePath)) throw new Error("Image sitemap is missing " + imagePath);
 }
 const urls = [...sitemap.matchAll(/<loc>(.*?)<\/loc>/g)].map(match => match[1]);
