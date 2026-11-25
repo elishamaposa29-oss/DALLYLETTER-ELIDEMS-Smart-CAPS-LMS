@@ -132,8 +132,8 @@ const imageEntries = pages.map((p) => {
 fs.writeFileSync(path.join(outputRoot,"image-sitemap.xml"),'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">'+imageEntries+"</urlset>\n","utf8");
 const robotsPath = path.join(outputRoot, "robots.txt");
 const robotsText = fs.existsSync(robotsPath) ? fs.readFileSync(robotsPath, "utf8") : "User-agent: *\nAllow: /\n";
-const canonicalRobots = robotsText.replace(/^Sitemap:\s*.*$/m, "Sitemap: " + siteUrl + "/sitemap.xml");
-fs.writeFileSync(robotsPath, canonicalRobots.includes("Sitemap:") ? canonicalRobots : canonicalRobots.trimEnd() + "\n\nSitemap: " + siteUrl + "/sitemap.xml\n", "utf8");
+const canonicalRobots = robotsText.replace(/^Sitemap:\s*.*$/gm, "").trimEnd() + "\n\nSitemap: " + siteUrl + "/sitemap.xml\nSitemap: " + siteUrl + "/image-sitemap.xml\n";
+fs.writeFileSync(robotsPath, canonicalRobots, "utf8");
 
 for (const fileName of ["llms.txt", "llms-full.txt"]) {
  const filePath = path.join(outputRoot, fileName);
