@@ -46,8 +46,11 @@ const imageSitemap = fs.readFileSync(imageSitemapPath, "utf8");
 if (!imageSitemap.startsWith('<?xml') || !imageSitemap.includes('<urlset ') || !imageSitemap.includes("http://www.google.com/schemas/sitemap-image/1.1")) {
   throw new Error("image-sitemap.xml is not a valid image sitemap");
 }
-for (const imagePath of ["/social/dallyletter-og.png", "/images/learner-dashboard-preview.svg", "/images/prefect-dashboard-preview.svg", "/images/teacher-workspace-preview.svg", "/favicon.svg"]) {
+for (const imagePath of ["/social/dallyletter-og.png", "/favicon.svg"]) {
   if (!imageSitemap.includes(siteUrl + imagePath)) throw new Error("Image sitemap is missing " + imagePath);
+}
+if (imageSitemap.includes("learner-dashboard-preview.svg") || imageSitemap.includes("prefect-dashboard-preview.svg") || imageSitemap.includes("teacher-workspace-preview.svg")) {
+  throw new Error("Illustrative dashboard mockups must not be represented as real dashboard screenshots in the image sitemap");
 }
 const urls = [...sitemap.matchAll(/<loc>(.*?)<\/loc>/g)].map(match => match[1]);
 
@@ -195,7 +198,10 @@ for (const match of sitemap.matchAll(/<loc>(.*?)<\/loc>/g)) {
 }
 for (const match of sitemap.matchAll(/<image:loc>(.*?)<\/image:loc>/g)) {
   const imageUrl = new URL(match[1]);
-  if (imageUrl.origin !== siteOrigin) throw new Error("Sitemap social image points to a stale or non-canonical hostname: " + match[1]);
+  const isTrustedShowcaseImage = imageUrl.hostname === "raw.githubusercontent.com" &&
+    imageUrl.pathname === "/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/showcase-media/latest/" + imageUrl.pathname.split("/").at(-1) &&
+    /^(learner|prefect|teacher)-dashboard\.png$/.test(imageUrl.pathname.split("/").at(-1));
+  if (imageUrl.origin !== siteOrigin && !isTrustedShowcaseImage) throw new Error("Sitemap image points to an untrusted or non-canonical hostname: " + match[1]);
 }
 for (const fileName of ["llms.txt", "llms-full.txt"]) {
   const filePath = path.join(root, fileName);
