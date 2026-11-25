@@ -122,15 +122,7 @@ const imageEntries = pages.map((p) => {
  const pageUrl = siteUrl + (p.slug ? "/" + p.slug + "/" : "/");
  const images = [
   [siteUrl + "/social/dallyletter-og.png", "Dallyletter Elidems — " + esc(p.h1)],
-  ...(p.slug === "" ? [
-   [siteUrl + "/images/learner-dashboard-preview.svg", "Illustrative Dallyletter learner dashboard preview"],
-   [siteUrl + "/images/prefect-dashboard-preview.svg", "Illustrative Dallyletter prefect dashboard preview"],
-   [siteUrl + "/images/teacher-workspace-preview.svg", "Illustrative Dallyletter teacher workspace preview"],
-   ["https://raw.githubusercontent.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/showcase-media/latest/learner-dashboard.png", "Dallyletter learner dashboard — real interface screenshot"],
-   ["https://raw.githubusercontent.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/showcase-media/latest/prefect-dashboard.png", "Dallyletter prefect dashboard — real interface screenshot"],
-   ["https://raw.githubusercontent.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/showcase-media/latest/teacher-dashboard.png", "Dallyletter teacher workspace — real interface screenshot"],
-   [siteUrl + "/favicon.svg", "Official Dallyletter Elidems logo"]
-  ] : [])
+  ...(p.slug === "" ? [[siteUrl + "/favicon.svg", "Official Dallyletter Elidems logo"]] : [])
  ];
  return "<url><loc>" + pageUrl + "</loc>" + images.map(([loc, title]) => "<image:image><image:loc>" + loc + "</image:loc><image:title>" + title + "</image:title></image:image>").join("") + "</url>";
 }).join("");
