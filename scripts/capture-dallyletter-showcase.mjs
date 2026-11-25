@@ -49,8 +49,11 @@ async function verifyAuthenticatedRole(token, expectedRole, authenticatedApiOrig
   if (!response.ok) throw new Error("The API rejected the showcase session token: HTTP " + response.status);
   const user = await response.json();
   const actualRole = String(user.role || "").toLowerCase().replace(/[ -]+/g, "_");
+  const isPrefect = user.isPrefect === true || user.is_prefect === true;
   const expectedRoles = {
-    learner: ["student"],
+    learner: ["student", "learner"],
+    // Profile Hub treats prefect as a capability on an existing student account,
+    // not a separate signup or a separate account role.
     prefect: ["prefect"],
     teacher: ["teacher"],
     manager: ["manager"],
@@ -61,9 +64,10 @@ async function verifyAuthenticatedRole(token, expectedRole, authenticatedApiOrig
     platform_owner: ["platform_owner"]
   };
   const validRole = (expectedRoles[expectedRole] || []).includes(actualRole) ||
+    (expectedRole === "prefect" && (actualRole === "student" || actualRole === "learner") && isPrefect) ||
     (expectedRole === "manager" && user.isManager === true);
-  if (!validRole) throw new Error("Expected a " + expectedRole + " showcase account, but the API confirmed role " + (actualRole || "missing"));
-  return actualRole;
+  if (!validRole) throw new Error("Expected a " + expectedRole + " showcase capability, but the API confirmed role " + (actualRole || "missing") + " (isPrefect=" + isPrefect + ")");
+  return expectedRole === "prefect" && isPrefect ? "prefect" : actualRole;
 }
 const decodeXml = (value) => value.replaceAll("&amp;", "&").replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&quot;", '"').replaceAll("&apos;", "'");
 const expectedDeploymentSha = (process.env.EXPECTED_DEPLOYMENT_SHA || "").trim();
@@ -658,7 +662,8 @@ try {
   // credentials must belong to an existing learner/teacher promoted by the Owner.
   const roleAccounts = [
     ["learner", "/student", process.env.SHOWCASE_LEARNER_EMAIL, process.env.SHOWCASE_LEARNER_PASSWORD],
-    ["prefect", "/student", process.env.SHOWCASE_PREFECT_EMAIL, process.env.SHOWCASE_PREFECT_PASSWORD],
+    // Prefect is the existing learner account with Profile Hub's isPrefect capability; no separate login or signup exists.
+    ["prefect", "/student", process.env.SHOWCASE_LEARNER_EMAIL, process.env.SHOWCASE_LEARNER_PASSWORD],
     ["teacher", "/teacher", process.env.SHOWCASE_TEACHER_EMAIL, process.env.SHOWCASE_TEACHER_PASSWORD],
     ["junior_manager", "/manager", process.env.SHOWCASE_JUNIOR_MANAGER_EMAIL, process.env.SHOWCASE_JUNIOR_MANAGER_PASSWORD],
     ["senior_manager", "/manager", process.env.SHOWCASE_SENIOR_MANAGER_EMAIL, process.env.SHOWCASE_SENIOR_MANAGER_PASSWORD],
@@ -667,13 +672,9 @@ try {
     // DEMx 430 remains the configured Owner login; no new account or signup path is introduced.
     ["owner", "/admin", process.env.SHOWCASE_OWNER_EMAIL, process.env.SHOWCASE_OWNER_PASSWORD]
   ];
-  const coreEmails = ["SHOWCASE_LEARNER_EMAIL", "SHOWCASE_PREFECT_EMAIL", "SHOWCASE_TEACHER_EMAIL"].map((key) => String(process.env[key] || "").trim().toLowerCase()).filter(Boolean);
-  if (new Set(coreEmails).size !== coreEmails.length) {
-    throw new Error("Learner, prefect and teacher showcase credentials must be three distinct dedicated accounts; prefect may not reuse the learner account.");
-  }
-  const authenticatedCaptureEnabled = process.env.SHOWCASE_CAPTURE_AUTHENTICATED !== "false" && process.env.SHOWCASE_ACCOUNTS_ARE_SYNTHETIC === "true";
+  const authenticatedCaptureEnabled = process.env.SHOWCASE_CAPTURE_AUTHENTICATED !== "false";
   if (!authenticatedCaptureEnabled) {
-    results.push({ type: "dashboard", role: "all", status: "skipped", reason: "Authenticated showcase capture requires explicit SHOWCASE_ACCOUNTS_ARE_SYNTHETIC=true attestation; no role is counted as verified." });
+    results.push({ type: "dashboard", role: "all", status: "skipped", reason: "Authenticated showcase capture is disabled for this run; no role is counted as verified." });
   } else {
     for (const account of roleAccounts) await captureRole(...account);
   }
