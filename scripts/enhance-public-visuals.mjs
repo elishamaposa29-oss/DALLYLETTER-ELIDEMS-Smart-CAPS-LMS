@@ -286,7 +286,7 @@ html{scroll-padding-top:88px}
 `;
 
 const heroVisual = `
-<div class="hero-art" aria-label="Illustrative Dallyletter learning workspace preview">
+<div class="hero-art" aria-hidden="true">
  <div class="dl-browser">
   <div class="dl-browser-bar"><i class="dl-dot"></i><i class="dl-dot"></i><i class="dl-dot"></i><span class="dl-address">workspace.dallyletter</span></div>
   <div class="dl-screen">
@@ -395,8 +395,8 @@ walk(root);
 for (const file of htmlFiles) {
  let html = fs.readFileSync(file, "utf8");
  if (html.includes('<div class="navlinks">') && !html.includes('class="dl-menu-toggle"')) {
-  html = html.replace('<div class="navlinks">', '<button class="dl-menu-toggle" type="button" aria-expanded="false" aria-controls="dl-navlinks" aria-label="Open navigation"><span class="dl-menu-bars" aria-hidden="true"></span><span>Menu</span></button><div class="navlinks" id="dl-navlinks">');
-  html = html.replace("</body>", '<script id="dl-mobile-nav-script">(()=>{const button=document.querySelector(".dl-menu-toggle");const menu=document.getElementById("dl-navlinks");if(!button||!menu)return;const close=()=>{button.setAttribute("aria-expanded","false");button.setAttribute("aria-label","Open navigation");menu.classList.remove("is-open")};button.addEventListener("click",()=>{const open=button.getAttribute("aria-expanded")!=="true";button.setAttribute("aria-expanded",String(open));button.setAttribute("aria-label",open?"Close navigation":"Open navigation");menu.classList.toggle("is-open",open)});menu.querySelectorAll("a").forEach(link=>link.addEventListener("click",close));document.addEventListener("keydown",event=>{if(event.key==="Escape")close()});window.addEventListener("resize",()=>{if(window.innerWidth>760)close()})})();</script></body>');
+  html = html.replace('<div class="navlinks">', '<button class="dl-menu-toggle" type="button" aria-expanded="false" aria-controls="dl-navlinks"><span class="dl-menu-bars" aria-hidden="true"></span><span>Menu</span></button><div class="navlinks" id="dl-navlinks">');
+  html = html.replace("</body>", '<script id="dl-mobile-nav-script">(()=>{const button=document.querySelector(".dl-menu-toggle");const menu=document.getElementById("dl-navlinks");if(!button||!menu)return;const close=()=>{button.setAttribute("aria-expanded","false");menu.classList.remove("is-open")};button.addEventListener("click",()=>{const open=button.getAttribute("aria-expanded")!=="true";button.setAttribute("aria-expanded",String(open));menu.classList.toggle("is-open",open)});menu.querySelectorAll("a").forEach(link=>link.addEventListener("click",close));document.addEventListener("keydown",event=>{if(event.key==="Escape")close()});window.addEventListener("resize",()=>{if(window.innerWidth>760)close()})})();</script></body>');
  }
  if (!html.includes("Dallyletter public visual system")) html = html.replace("</style>", css + "</style>");
  if (file === homepage && !html.includes('class="dl-role-section"')) {
