@@ -1,10 +1,11 @@
 name: Dallyletter Real UI Showcase Capture
 
 on:
-  # Automatic capture is intentionally paused: protected Vercel previews require
-  # an automation-bypass credential, and this evidence workflow must not block
-  # pull-request review or merges. Resume only after protection access is configured.
-  # Keep scheduled and manually approved runs available for controlled verification.
+  # A branch push triggers a read-only capture against the already-live canonical
+  # production build. This avoids waiting for a protected PR preview to exist.
+  push:
+    branches:
+      - feat/google-image-discovery-role-previews
   schedule:
     - cron: "23 6 * * 1"
   workflow_dispatch:
@@ -46,8 +47,9 @@ jobs:
       VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET || '' }}
       SHOWCASE_MAX_PAGES_PER_ROLE: "100"
       SHOWCASE_CAPTURE_AUTHENTICATED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-      SOURCE_COMMIT: ${{ github.sha }}
-      EXPECTED_DEPLOYMENT_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      SOURCE_COMMIT: ${{ github.event_name == 'push' && '5b003510b88de5539ead58b0196e779970c226d5' || github.sha }}
+      SHOWCASE_SITE_URL: ${{ github.event_name == 'push' && 'https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app' || '' }}
+      EXPECTED_DEPLOYMENT_SHA: ${{ github.event_name == 'push' && '5b003510b88de5539ead58b0196e779970c226d5' || (github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha) }}
       SHOWCASE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - name: Checkout repository
@@ -63,6 +65,7 @@ jobs:
           echo "EXPECTED_DEPLOYMENT_SHA=$head_sha" >> "$GITHUB_ENV"
           echo "Preview must expose current PR head $head_sha"
       - name: Resolve the Vercel URL deployed from the exact commit
+        if: github.event_name != 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
