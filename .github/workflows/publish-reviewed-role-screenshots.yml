@@ -12,6 +12,11 @@ on:
         required: true
         type: boolean
         default: false
+      synthetic_data_confirmed:
+        description: Confirm the capture used dedicated showcase accounts containing synthetic data only
+        required: true
+        type: boolean
+        default: false
 permissions:
   actions: read
   contents: write
@@ -22,7 +27,7 @@ concurrency:
 
 jobs:
   publish-reviewed-role-screenshots:
-    if: inputs.privacy_review_passed == true
+    if: inputs.privacy_review_passed == true && inputs.synthetic_data_confirmed == true
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout publication workflow
@@ -53,6 +58,7 @@ jobs:
           import path from "node:path";
           const root = path.join(process.env.RUNNER_TEMP, "dallyletter-reviewed-capture");
           const manifest = JSON.parse(fs.readFileSync(path.join(root, "capture-manifest.json"), "utf8"));
+          if (manifest.syntheticAccountsAttested !== true) throw new Error("Capture manifest does not confirm the synthetic-account safeguard.");
           const required = [
             ["learner", "/student", "learner-dashboard.png"],
             ["prefect", "/student", "prefect-dashboard.png"],
