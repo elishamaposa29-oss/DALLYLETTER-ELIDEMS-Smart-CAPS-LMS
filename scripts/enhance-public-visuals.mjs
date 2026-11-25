@@ -357,15 +357,21 @@ for (const file of htmlFiles) {
   html = html.replace("</body>", '<script id="dl-mobile-nav-script">(()=>{const button=document.querySelector(".dl-menu-toggle");const menu=document.getElementById("dl-navlinks");if(!button||!menu)return;const close=()=>{button.setAttribute("aria-expanded","false");button.setAttribute("aria-label","Open navigation");menu.classList.remove("is-open")};button.addEventListener("click",()=>{const open=button.getAttribute("aria-expanded")!=="true";button.setAttribute("aria-expanded",String(open));button.setAttribute("aria-label",open?"Close navigation":"Open navigation");menu.classList.toggle("is-open",open)});menu.querySelectorAll("a").forEach(link=>link.addEventListener("click",close));document.addEventListener("keydown",event=>{if(event.key==="Escape")close()});window.addEventListener("resize",()=>{if(window.innerWidth>760)close()})})();</script></body>');
  }
  if (!html.includes("Dallyletter public visual system")) html = html.replace("</style>", css + "</style>");
- if (file === homepage && !html.includes("dl-role-section")) {
+ if (file === homepage && !html.includes('class="dl-role-section"')) {
+  const heroEndMarker = '</div></div></div><div class="content">';
+  if (!html.includes('<div class="wrap"><div class="eyebrow">') || !html.includes('<div class="actions">') || !html.includes(heroEndMarker)) {
+   throw new Error("Homepage hero structure changed; refusing to silently skip section injection");
+  }
   html = html.replace('<div class="wrap"><div class="eyebrow">', '<div class="wrap"><div class="hero-copy"><div class="eyebrow">');
   html = html.replace('<div class="actions">', '<div class="actions dl-actions">');
-  html = html.replace('</div></div></div><div class="content">', '</div></div>' + heroVisual + '</div></div>' + homepageSections + '<div class="content">');
+  html = html.replace(heroEndMarker, '</div></div>' + heroVisual + '</div></div>' + homepageSections + '<div class="content">');
  }
  fs.writeFileSync(file, html, "utf8");
 }
-if (!fs.readFileSync(homepage, "utf8").includes("dl-role-section")) throw new Error("Homepage visual sections were not injected");
 const homepageHtml = fs.readFileSync(homepage, "utf8");
+for (const requiredMarkup of ['class="hero-art"', 'class="dl-proof"', 'class="dl-feature-grid"', 'class="dl-role-section"', 'class="dl-audience-section"', 'class="dl-regional-section"', 'class="dl-pathway-section"', 'class="dl-process-section"', 'class="dl-founder-panel"']) {
+ if (!homepageHtml.includes(requiredMarkup)) throw new Error("Homepage section markup was not injected: " + requiredMarkup);
+}
 for (const required of ["#0f2a5a", "#b38b00", "dl-menu-toggle", "dl-mobile-nav-script", "dl-role-section", "dl-feature-grid", "Elisha Maposa"]) {
  if (!homepageHtml.includes(required)) throw new Error("Premium landing-page requirement missing: " + required);
 }
