@@ -13,6 +13,7 @@ const previewRequest = (init = {}) => ({
   headers: { ...(init.headers || {}), ...previewHeaders },
 });
 if (baseUrl.protocol !== "https:" || baseUrl.username || baseUrl.password) throw new Error("SHOWCASE_SITE_URL must be a public HTTPS URL without embedded credentials.");
+const syntheticAccountsAttested = process.env.SHOWCASE_ACCOUNTS_ARE_SYNTHETIC === "true";
 const out = path.resolve("showcase-captures");
 const roleScreensOut = path.join(out, "role-feature-screenshots");
 await fs.rm(out, { recursive: true, force: true });
@@ -642,7 +643,7 @@ function buildGallery(manifest) {
   lines.push("",
     "## Private role dashboard and feature screenshots",
     "",
-    "Role screenshots are redacted and retained in the private workflow artifact under `role-feature-screenshots/`. They are eligible for public release only through the separate `Publish reviewed Dallyletter role screenshots` workflow, after a human has inspected the exact artifact and confirmed its privacy review. Use three distinct dedicated accounts populated only with synthetic data; never point this capture at real learner records.",
+    "Role screenshots are redacted and retained in the private workflow artifact under `role-feature-screenshots/`. They are eligible for public release only through the separate `Publish reviewed Dallyletter role screenshots` workflow, after a human has inspected the exact artifact and confirmed its privacy review. The learner and prefect views use the same dedicated synthetic learner account; the API must confirm the `isPrefect` capability for the prefect view. The teacher view uses a separate dedicated synthetic teacher account. Never point this capture at real learner records.",
     "");
   for (const item of manifest.results.filter((result) => result.type === "dashboard")) {
     lines.push("### " + item.role + " — " + (item.pagesCaptured ?? 0) + " pages", "");
@@ -673,6 +674,7 @@ try {
     ["owner", "/admin", process.env.SHOWCASE_OWNER_EMAIL, process.env.SHOWCASE_OWNER_PASSWORD]
   ];
   const authenticatedCaptureEnabled = process.env.SHOWCASE_CAPTURE_AUTHENTICATED !== "false";
+  if (authenticatedCaptureEnabled && !syntheticAccountsAttested) throw new Error("Authenticated screenshots are blocked until SHOWCASE_ACCOUNTS_ARE_SYNTHETIC=true is configured as a repository secret.");
   if (!authenticatedCaptureEnabled) {
     results.push({ type: "dashboard", role: "all", status: "skipped", reason: "Authenticated showcase capture is disabled for this run; no role is counted as verified." });
   } else {
@@ -711,6 +713,7 @@ try {
   const manifest = {
     site: baseUrl.href,
     capturedAt: new Date().toISOString(),
+    syntheticAccountsAttested,
     sourceCommit: deployedBuildSha,
     workflowCommit: process.env.SOURCE_COMMIT || null,
     workflowRunUrl: process.env.SHOWCASE_RUN_URL || null,
