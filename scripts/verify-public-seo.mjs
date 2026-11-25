@@ -182,8 +182,9 @@ for (const privatePath of ["/student", "/teacher", "/manager", "/admin", "/profi
 }
 if (!robots.includes(siteUrl + "/sitemap.xml")) throw new Error("robots.txt sitemap reference missing");
 const sitemapDirectives = robots.split(/\r?\n/).filter(line => /^\s*Sitemap:/i.test(line));
-if (sitemapDirectives.length !== 1 || sitemapDirectives[0].trim() !== "Sitemap: " + siteUrl + "/sitemap.xml") {
-  throw new Error("robots.txt must contain exactly one sitemap directive on the canonical production hostname");
+const expectedSitemaps = ["Sitemap: " + siteUrl + "/sitemap.xml", "Sitemap: " + siteUrl + "/image-sitemap.xml"];
+if (sitemapDirectives.length !== expectedSitemaps.length || expectedSitemaps.some((expected) => !sitemapDirectives.some((line) => line.trim() === expected))) {
+  throw new Error("robots.txt must advertise both canonical XML sitemaps and no non-canonical sitemap URLs");
 }
 for (const crawler of ["OAI-SearchBot", "ChatGPT-User", "GPTBot", "ClaudeBot", "Claude-SearchBot", "PerplexityBot", "Googlebot", "Bingbot"]) {
   if (!robots.includes("User-agent: " + crawler)) throw new Error("robots.txt is missing the public discovery rule for " + crawler);
