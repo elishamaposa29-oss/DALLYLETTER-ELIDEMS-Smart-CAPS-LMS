@@ -30,6 +30,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
+      SHOWCASE_ACCOUNTS_ARE_SYNTHETIC: ${{ secrets.SHOWCASE_ACCOUNTS_ARE_SYNTHETIC || '' }}
       SHOWCASE_LEARNER_EMAIL: ${{ secrets.SHOWCASE_LEARNER_EMAIL || '' }}
       SHOWCASE_LEARNER_PASSWORD: ${{ secrets.SHOWCASE_LEARNER_PASSWORD || '' }}
       SHOWCASE_TEACHER_EMAIL: ${{ secrets.SHOWCASE_TEACHER_EMAIL || '' }}
