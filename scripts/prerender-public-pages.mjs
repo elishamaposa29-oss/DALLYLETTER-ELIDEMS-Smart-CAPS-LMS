@@ -118,6 +118,16 @@ for (const page of pages) {
 }
 const entries=pages.map(p=>{const pageUrl=siteUrl+(p.slug?"/"+p.slug+"/":"/");return "<url><loc>"+pageUrl+"</loc><image:image><image:loc>"+siteUrl+"/social/dallyletter-og.png</image:loc><image:title>Dallyletter Elidems — "+esc(p.h1)+"</image:title><image:caption>Learning opportunities from Dallyletter Elidems, created by Elisha Maposa.</image:caption></image:image></url>";}).join("");
 fs.writeFileSync(path.join(outputRoot,"sitemap.xml"),'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">'+entries+"</urlset>\n","utf8");
+const imageEntries = pages.map((p) => {
+ const pageUrl = siteUrl + (p.slug ? "/" + p.slug + "/" : "/");
+ const images = [
+  [siteUrl + "/social/dallyletter-og.png", "Dallyletter Elidems — " + esc(p.h1)],
+  [siteUrl + "/images/learner-dashboard-preview.svg", "Illustrative Dallyletter learner dashboard preview"],
+  [siteUrl + "/images/prefect-dashboard-preview.svg", "Illustrative Dallyletter prefect dashboard preview"]
+ ];
+ return "<url><loc>" + pageUrl + "</loc>" + images.map(([loc, title]) => "<image:image><image:loc>" + loc + "</image:loc><image:title>" + title + "</image:title></image:image>").join("") + "</url>";
+}).join("");
+fs.writeFileSync(path.join(outputRoot,"image-sitemap.xml"),'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">'+imageEntries+"</urlset>\n","utf8");
 const robotsPath = path.join(outputRoot, "robots.txt");
 const robotsText = fs.existsSync(robotsPath) ? fs.readFileSync(robotsPath, "utf8") : "User-agent: *\nAllow: /\n";
 const canonicalRobots = robotsText.replace(/^Sitemap:\s*.*$/m, "Sitemap: " + siteUrl + "/sitemap.xml");
