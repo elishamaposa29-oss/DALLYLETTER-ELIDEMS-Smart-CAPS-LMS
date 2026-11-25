@@ -40,6 +40,15 @@ if (!educationSeoTags.templates.past_papers_and_exams.includes("[Subject] past p
 }
 const sitemapPath = path.join(root, "sitemap.xml");
 const sitemap = fs.readFileSync(sitemapPath, "utf8");
+const imageSitemapPath = path.join(root, "image-sitemap.xml");
+if (!fs.existsSync(imageSitemapPath)) throw new Error("Dedicated image-sitemap.xml is missing from the production build");
+const imageSitemap = fs.readFileSync(imageSitemapPath, "utf8");
+if (!imageSitemap.startsWith('<?xml') || !imageSitemap.includes('<urlset ') || !imageSitemap.includes("http://www.google.com/schemas/sitemap-image/1.1")) {
+  throw new Error("image-sitemap.xml is not a valid image sitemap");
+}
+for (const imagePath of ["/social/dallyletter-og.png", "/images/learner-dashboard-preview.svg", "/images/prefect-dashboard-preview.svg"]) {
+  if (!imageSitemap.includes(siteUrl + imagePath)) throw new Error("Image sitemap is missing " + imagePath);
+}
 const urls = [...sitemap.matchAll(/<loc>(.*?)<\/loc>/g)].map(match => match[1]);
 
 if (urls.length < 65) throw new Error("Expected at least 65 public sitemap URLs, including individual education search pages; got " + urls.length);
@@ -173,8 +182,9 @@ for (const privatePath of ["/student", "/teacher", "/manager", "/admin", "/profi
 }
 if (!robots.includes(siteUrl + "/sitemap.xml")) throw new Error("robots.txt sitemap reference missing");
 const sitemapDirectives = robots.split(/\r?\n/).filter(line => /^\s*Sitemap:/i.test(line));
-if (sitemapDirectives.length !== 1 || sitemapDirectives[0].trim() !== "Sitemap: " + siteUrl + "/sitemap.xml") {
-  throw new Error("robots.txt must contain exactly one sitemap directive on the canonical production hostname");
+const expectedSitemaps = ["Sitemap: " + siteUrl + "/sitemap.xml", "Sitemap: " + siteUrl + "/image-sitemap.xml"];
+if (sitemapDirectives.length !== expectedSitemaps.length || expectedSitemaps.some((expected) => !sitemapDirectives.some((line) => line.trim() === expected))) {
+  throw new Error("robots.txt must advertise both canonical XML sitemaps and no non-canonical sitemap URLs");
 }
 for (const crawler of ["OAI-SearchBot", "ChatGPT-User", "GPTBot", "ClaudeBot", "Claude-SearchBot", "PerplexityBot", "Googlebot", "Bingbot"]) {
   if (!robots.includes("User-agent: " + crawler)) throw new Error("robots.txt is missing the public discovery rule for " + crawler);
