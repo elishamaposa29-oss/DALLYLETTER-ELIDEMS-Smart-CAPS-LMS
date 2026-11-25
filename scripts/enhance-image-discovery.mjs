@@ -10,10 +10,14 @@ const images = [
   { src: "/favicon.svg", title: "Dallyletter Elidems official logo", alt: "Dallyletter Elidems navy and gold education technology logo", caption: "Official Dallyletter Elidems brand mark." },
   { src: "/images/learner-dashboard-preview.svg", title: "Dallyletter learner dashboard preview", alt: "Illustrative Dallyletter learner dashboard showing lessons, assignments, progress and study groups", caption: "Public illustrative product preview using fictional sample data; not a live learner account." },
   { src: "/images/prefect-dashboard-preview.svg", title: "Dallyletter prefect dashboard preview", alt: "Illustrative Dallyletter prefect dashboard showing school responsibilities, duties and notices", caption: "Public illustrative product preview using fictional sample data; not a live prefect account." },
-  { src: "/images/teacher-workspace-preview.svg", title: "Dallyletter teacher workspace preview", alt: "Illustrative Dallyletter teacher workspace showing lesson planning, assignments, learner feedback and class progress", caption: "Public illustrative teacher workspace preview using fictional sample data; not a live teacher account." }
+  { src: "/images/teacher-workspace-preview.svg", title: "Dallyletter teacher workspace preview", alt: "Illustrative Dallyletter teacher workspace showing lesson planning, assignments, learner feedback and class progress", caption: "Public illustrative teacher workspace preview using fictional sample data; not a live teacher account." },
+  { src: "https://raw.githubusercontent.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/showcase-media/latest/learner-dashboard.png", title: "Dallyletter learner dashboard — real interface", alt: "Real Dallyletter learner dashboard interface screenshot captured from a dedicated synthetic showcase account", caption: "Real interface capture; synthetic showcase account; manually privacy-reviewed before publication." },
+  { src: "https://raw.githubusercontent.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/showcase-media/latest/prefect-dashboard.png", title: "Dallyletter prefect dashboard — real interface", alt: "Real Dallyletter prefect dashboard interface screenshot captured from a dedicated synthetic showcase account", caption: "Real interface capture; synthetic showcase account; manually privacy-reviewed before publication." },
+  { src: "https://raw.githubusercontent.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/showcase-media/latest/teacher-dashboard.png", title: "Dallyletter teacher workspace — real interface", alt: "Real Dallyletter teacher workspace interface screenshot captured from a dedicated synthetic showcase account", caption: "Real interface capture; synthetic showcase account; manually privacy-reviewed before publication." }
 ];
 
 for (const item of images) {
+  if (/^https:\/\//i.test(item.src)) continue;
   const file = path.join(root, item.src.slice(1));
   if (!fs.existsSync(file)) throw new Error("Missing public image-search asset: " + item.src);
 }
@@ -39,7 +43,7 @@ if (!sitemap.slice(homeStart, homeEnd).includes("/images/learner-dashboard-previ
   fs.writeFileSync(sitemapPath, sitemap, "utf8");
 }
 const updated = fs.readFileSync(homepage, "utf8");
-for (const required of ["dl-image-discovery", "learner-dashboard-preview.svg", "prefect-dashboard-preview.svg", "teacher-workspace-preview.svg", "favicon.svg", "fictional sample data"]) {
+for (const required of ["dl-image-discovery", "learner-dashboard-preview.svg", "prefect-dashboard-preview.svg", "teacher-workspace-preview.svg", "learner-dashboard.png", "prefect-dashboard.png", "teacher-dashboard.png", "favicon.svg", "fictional sample data"]) {
   if (!updated.includes(required)) throw new Error("Image discovery page requirement missing: " + required);
 }
-console.log("Published " + images.length + " crawlable brand/product images and added public role-preview cards; no authenticated dashboard captures were exposed.");
+console.log("Published " + images.length + " crawlable brand/product image references and added role-preview cards; real role screenshots resolve only after the reviewed showcase-media publication workflow succeeds.");
