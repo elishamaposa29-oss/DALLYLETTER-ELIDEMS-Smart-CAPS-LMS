@@ -369,7 +369,7 @@ for (const file of htmlFiles) {
  fs.writeFileSync(file, html, "utf8");
 }
 const homepageHtml = fs.readFileSync(homepage, "utf8");
-for (const requiredMarkup of ['class="hero-art"', 'class="dl-proof"', 'class="dl-feature-grid"', 'class="dl-role-section"', 'class="dl-audience-section"', 'class="dl-regional-section"', 'class="dl-pathway-section"', 'class="dl-process-section"', 'class="dl-founder-panel"']) {
+for (const requiredMarkup of ['class="hero-art"', 'class="dl-proof"', 'class="dl-feature-grid"', 'class="dl-role-section"', 'class="dl-section dl-audience-section"', 'class="dl-section dl-regional-section"', 'class="dl-section dl-pathway-section"', 'class="dl-section dl-process-section"', 'class="dl-founder-panel"']) {
  if (!homepageHtml.includes(requiredMarkup)) throw new Error("Homepage section markup was not injected: " + requiredMarkup);
 }
 for (const required of ["#0f2a5a", "#b38b00", "dl-menu-toggle", "dl-mobile-nav-script", "dl-role-section", "dl-feature-grid", "Elisha Maposa"]) {
