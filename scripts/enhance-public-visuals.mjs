@@ -146,7 +146,7 @@ html{scroll-padding-top:88px}
 .hero .wrap:has(.hero-art){display:grid;grid-template-columns:minmax(0,1.05fr) minmax(340px,.95fr);gap:3rem;align-items:center;max-width:1240px}
 .hero:not(:has(.hero-art)){min-height:clamp(300px,38vw,440px);display:flex;align-items:center;background:radial-gradient(ellipse at 88% 12%,rgba(179,139,0,.3),transparent 32%),radial-gradient(ellipse at 10% 100%,rgba(73,130,198,.2),transparent 38%),linear-gradient(130deg,#07172f,#0f2a5a 58%,#1b477f)}
 .hero:not(:has(.hero-art)) .wrap{width:100%}
-.hero:not(:has(.hero-art)) .hero h1{max-width:900px}
+.hero:not(:has(.hero-art)) h1{max-width:900px}
 .hero:not(:has(.hero-art)) .eyebrow{display:inline-flex;padding:.55rem .9rem;border:1px solid rgba(242,213,107,.42);border-radius:999px;background:rgba(242,213,107,.1)}
 .content{max-width:1240px;padding:0 clamp(1rem,3vw,2rem);margin:clamp(2rem,4vw,3.5rem) auto}
 .content section{position:relative;overflow:hidden;margin:1.1rem 0;padding:clamp(1.35rem,3vw,2rem);border:1px solid #dce5f1;border-radius:20px;background:radial-gradient(ellipse at 100% 0%,rgba(179,139,0,.075),transparent 36%),linear-gradient(145deg,#fff,#f9fbff);box-shadow:0 12px 34px rgba(15,42,90,.065);transition:transform .28s,border-color .28s,box-shadow .28s;animation:dl-rise .65s ease-out both}
