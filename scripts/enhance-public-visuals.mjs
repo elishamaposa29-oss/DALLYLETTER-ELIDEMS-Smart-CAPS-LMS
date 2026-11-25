@@ -100,6 +100,46 @@ html{scroll-padding-top:88px}
  html{scroll-behavior:auto}
  .brand img,.hero .btn,.dl-feature,.dl-role,.dl-feature-icon,.dl-browser{transition:none!important;animation:none!important;transform:none!important}
 }
+
+/* Screenshot-aligned phone + laptop composition and gold closing band */
+.hero-art{padding:12px 12px 26px 44px}
+.dl-browser{width:100%;margin-left:0}
+.dl-phone{position:absolute;z-index:3;left:0;bottom:32px;width:158px;padding:8px;border:2px solid #8794a8;border-radius:27px;background:linear-gradient(145deg,#17243a,#050b16);box-shadow:0 22px 48px rgba(0,0,0,.48),inset 0 0 0 1px rgba(255,255,255,.18);transform:rotate(-5deg)}
+.dl-phone-notch{height:10px;width:48px;border-radius:0 0 9px 9px;background:#050b16;margin:-1px auto 7px}
+.dl-phone-screen{border-radius:17px;overflow:hidden;background:linear-gradient(180deg,#102d5d,#07172f);padding:12px 8px 14px;color:#fff;min-height:248px}
+.dl-phone-brand{font-size:.57rem;font-weight:900;letter-spacing:.06em;color:#f2d56b;margin-bottom:12px}
+.dl-phone-welcome{font-size:.67rem;font-weight:800;margin-bottom:9px}
+.dl-phone-item{display:flex;align-items:center;gap:6px;padding:7px 5px;margin:5px 0;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(255,255,255,.055);font-size:.56rem}
+.dl-phone-item i{width:18px;height:18px;display:grid;place-items:center;border-radius:5px;background:rgba(242,213,107,.14);color:#f2d56b;font-style:normal;font-weight:900}
+.dl-region-seal{position:absolute;z-index:4;right:-2px;top:-13px;width:112px;height:112px;display:grid;align-content:center;justify-items:center;text-align:center;border:3px double #7b5b00;border-radius:50%;background:radial-gradient(circle at 35% 25%,#ffeaa0,#d6a91d 68%,#b38b00);color:#18243a;box-shadow:0 10px 24px rgba(0,0,0,.22);font-size:.57rem;font-weight:900;line-height:1.35;letter-spacing:.035em}
+.dl-region-seal strong{display:block;font-size:.72rem;line-height:1.2}
+.dl-preview-note{margin-left:42px}
+.dl-founder-credit{margin:7px 0 0 42px;text-align:center;color:#f2d56b;font-size:.7rem;font-weight:750;letter-spacing:.03em}
+.dl-cta-card{background:linear-gradient(110deg,#f5d56a 0%,#dba91d 55%,#b38b00 100%);border:1px solid #f7e39b;color:#101f3a;box-shadow:0 24px 60px rgba(7,23,47,.18)}
+.dl-cta-card h2{color:#101f3a}
+.dl-cta-card p{color:#263a5d}
+.dl-cta-card .btn{background:#0f2a5a;color:#fff;border:1px solid rgba(255,255,255,.2);box-shadow:0 8px 22px rgba(15,42,90,.22)}
+.dl-cta-card:after{border-color:rgba(15,42,90,.16);box-shadow:0 0 0 26px rgba(15,42,90,.035),0 0 0 52px rgba(15,42,90,.025)}
+@keyframes dl-float{0%,100%{transform:translateY(0) rotate(-5deg)}50%{transform:translateY(-7px) rotate(-5deg)}}
+@keyframes dl-rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+.dl-phone{animation:dl-float 5s ease-in-out infinite}
+.hero-copy{animation:dl-rise .65s ease-out both}
+.hero-art{animation:dl-rise .8s .08s ease-out both}
+.dl-feature{animation:dl-rise .65s ease-out both}
+.dl-feature:nth-child(2){animation-delay:.06s}.dl-feature:nth-child(3){animation-delay:.12s}.dl-feature:nth-child(4){animation-delay:.18s}.dl-feature:nth-child(5){animation-delay:.24s}.dl-feature:nth-child(6){animation-delay:.3s}
+@media(max-width:560px){
+ .hero-art{padding:8px 0 24px 18px}
+ .dl-phone{width:112px;left:-3px;bottom:29px;padding:5px;border-radius:21px}
+ .dl-phone-notch{height:7px;width:36px;margin-bottom:5px}
+ .dl-phone-screen{min-height:190px;padding:9px 6px 10px;border-radius:14px}
+ .dl-phone-brand{font-size:.43rem;margin-bottom:8px}.dl-phone-welcome{font-size:.5rem;margin-bottom:6px}
+ .dl-phone-item{font-size:.43rem;padding:5px 3px;gap:4px;margin:4px 0}
+ .dl-phone-item i{width:14px;height:14px;font-size:.45rem}
+ .dl-region-seal{width:78px;height:78px;right:-3px;top:-8px;font-size:.4rem;border-width:2px}
+ .dl-region-seal strong{font-size:.5rem}.dl-preview-note,.dl-founder-credit{margin-left:15px}
+}
+@media(prefers-reduced-motion:reduce){.dl-phone,.hero-copy,.hero-art,.dl-feature{animation:none!important}}
+
 `;
 
 const heroVisual = `
@@ -117,7 +157,20 @@ const heroVisual = `
    </div>
   </div>
  </div>
- <p class="dl-preview-note">Illustrative interface concept · not a live account screenshot</p>
+
+ <div class="dl-phone" aria-label="Illustrative mobile learning app preview">
+  <div class="dl-phone-notch"></div><div class="dl-phone-screen">
+   <div class="dl-phone-brand">DALLYLETTER<br>ELIDEMS</div><div class="dl-phone-welcome">Welcome back!</div>
+   <div class="dl-phone-item"><i>▦</i><span>Dashboard</span></div>
+   <div class="dl-phone-item"><i>◇</i><span>My Classes</span></div>
+   <div class="dl-phone-item"><i>✎</i><span>Assignments</span></div>
+   <div class="dl-phone-item"><i>✓</i><span>Exams & quizzes</span></div>
+   <div class="dl-phone-item"><i>✉</i><span>Messages</span></div>
+   <div class="dl-phone-item"><i>AI</i><span>AI Tutor</span></div>
+  </div>
+ </div>
+ <div class="dl-region-seal" aria-label="Zimbabwe first, Africa and beyond">BUILT IN<strong>ZIMBABWE</strong>OPEN TO AFRICA<br>& THE WORLD</div>
+ <p class="dl-preview-note">Illustrative interface concept · not a live account screenshot</p><p class="dl-founder-credit">Created by Elisha Maposa · Zimbabwe first, not Zimbabwe only</p>
 </div>`;
 
 const homepageSections = `
