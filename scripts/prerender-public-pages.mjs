@@ -129,7 +129,7 @@ for (const fileName of ["llms.txt", "llms-full.txt"]) {
  const content = fs.readFileSync(filePath, "utf8");
  // These public AI-discovery documents are copied from source assets. Normalize every
  // Dallyletter-owned Vercel URL to the same canonical origin used by HTML and sitemap.
- const normalized = content.replace(/https:\/\/[^\\s/]+dallyletter[^\\s/]*\\.vercel\\.app/gi, siteUrl);
+ const normalized = content.replace(/https:\/\/[^\s/]*dallyletter[^\s/]*\.vercel\.app/gi, siteUrl);
  fs.writeFileSync(filePath, normalized, "utf8");
 }
 
