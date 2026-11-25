@@ -1,0 +1,118 @@
+name: Publish reviewed Dallyletter role screenshots
+
+on:
+  workflow_dispatch:
+    inputs:
+      capture_run_id:
+        description: Successful capture workflow run ID whose private artifact you personally inspected
+        required: true
+        type: string
+      privacy_review_passed:
+        description: Confirm you inspected all three role screenshots and verified they contain no personal or real learner data
+        required: true
+        type: boolean
+        default: false
+      synthetic_accounts_confirmed:
+        description: Confirm the capture used dedicated synthetic learner, prefect and teacher accounts
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: dallyletter-reviewed-role-screenshot-publication
+  cancel-in-progress: false
+
+jobs:
+  publish-reviewed-role-screenshots:
+    if: inputs.privacy_review_passed == true && inputs.synthetic_accounts_confirmed == true
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout publication workflow
+        uses: actions/checkout@v4
+      - name: Download the exact private capture artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CAPTURE_RUN_ID: ${{ inputs.capture_run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$CAPTURE_RUN_ID" =~ ^[0-9]+$ ]] || { echo "Capture run ID must be numeric." >&2; exit 1; }
+          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CAPTURE_RUN_ID")"
+          run_repo="$(jq -r '.repository.full_name' <<<"$run_json")"
+          run_status="$(jq -r '.status' <<<"$run_json")"
+          run_conclusion="$(jq -r '.conclusion' <<<"$run_json")"
+          run_name="$(jq -r '.name' <<<"$run_json")"
+          run_number="$(jq -r '.run_number' <<<"$run_json")"
+          [[ "$run_repo" == "$GITHUB_REPOSITORY" && "$run_status" == "completed" && "$run_conclusion" == "success" ]] || { echo "Capture run must be a successful completed run from this repository." >&2; exit 1; }
+          [[ "$run_name" == "Dallyletter Real UI Showcase Capture" ]] || { echo "The selected run is not the Dallyletter screenshot capture workflow." >&2; exit 1; }
+          mkdir -p "$RUNNER_TEMP/dallyletter-reviewed-capture"
+          gh run download "$CAPTURE_RUN_ID" --name "dallyletter-full-role-feature-captures-$run_number" --dir "$RUNNER_TEMP/dallyletter-reviewed-capture"
+          test -s "$RUNNER_TEMP/dallyletter-reviewed-capture/capture-manifest.json"
+      - name: Validate the three reviewed real dashboard screenshots
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          import path from "node:path";
+          const root = path.join(process.env.RUNNER_TEMP, "dallyletter-reviewed-capture");
+          const manifest = JSON.parse(fs.readFileSync(path.join(root, "capture-manifest.json"), "utf8"));
+          const required = [
+            ["learner", "/student", "learner-dashboard.png"],
+            ["prefect", "/student", "prefect-dashboard.png"],
+            ["teacher", "/teacher", "teacher-dashboard.png"]
+          ];
+          for (const [role, route, output] of required) {
+            const result = (manifest.results || []).find((item) => item.type === "dashboard" && item.role === role);
+            if (!result || result.status !== "captured" || !result.authenticatedRole) throw new Error(role + " dashboard was not successfully authenticated and captured.");
+            const shot = (result.screenshots || []).find((item) => item.path === route && item.view === "default");
+            if (!shot) throw new Error("Missing real default dashboard screenshot for " + role + ".");
+            const source = path.join(root, "role-feature-screenshots", shot.screenshot);
+            if (!fs.existsSync(source)) throw new Error("Screenshot artifact is missing for " + role + ": " + shot.screenshot);
+            const png = fs.readFileSync(source);
+            if (png.length < 50000 || png.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a") throw new Error("Invalid or unexpectedly small PNG for " + role + ".");
+            const width = png.readUInt32BE(16), height = png.readUInt32BE(20);
+            if (width < 1000 || height < 600 || width > 5000 || height > 12000) throw new Error("Unexpected screenshot dimensions for " + role + ": " + width + "x" + height);
+            fs.copyFileSync(source, path.join(root, output));
+          }
+          const published = {
+            site: manifest.site,
+            capturedAt: manifest.capturedAt,
+            deployedBuildCommit: manifest.sourceCommit,
+            workflowCommit: manifest.workflowCommit,
+            screenshots: required.map(([role, route, file]) => ({ role, route, file, alt: ({
+              learner: "Dallyletter Elidems learner dashboard real interface screenshot",
+              prefect: "Dallyletter Elidems prefect dashboard real interface screenshot",
+              teacher: "Dallyletter Elidems teacher workspace real interface screenshot"
+            })[role] }))
+          };
+          fs.writeFileSync(path.join(root, "public-role-screenshots.json"), JSON.stringify(published, null, 2) + "\n");
+          NODE
+      - name: Publish only the three reviewed role screenshots to showcase-media
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/dallyletter-role-media"
+          cp "$RUNNER_TEMP/dallyletter-reviewed-capture/"{learner-dashboard.png,prefect-dashboard.png,teacher-dashboard.png,public-role-screenshots.json} "$RUNNER_TEMP/dallyletter-role-media/"
+          git checkout --orphan dallyletter-role-media-publication
+          git rm -rf . >/dev/null 2>&1 || true
+          mkdir -p latest
+          cp "$RUNNER_TEMP/dallyletter-role-media/"* latest/
+          cat > latest/README.md <<'EOF'
+          # Dallyletter Elidems — reviewed role dashboard screenshots
+
+          These are real interface screenshots captured from authenticated, dedicated synthetic learner, prefect and teacher showcase accounts. Publication requires a separate manual privacy review of the private capture artifact. No production learner records or Owner dashboard screenshots are intentionally published.
+
+          - `learner-dashboard.png` — learner workspace
+          - `prefect-dashboard.png` — prefect workspace
+          - `teacher-dashboard.png` — teacher workspace
+          - `public-role-screenshots.json` — capture provenance and accessible descriptions
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add latest
+          git commit -m "Publish privacy-reviewed synthetic Dallyletter role screenshots"
+          git push origin HEAD:refs/heads/showcase-media --force
