@@ -203,6 +203,15 @@ for (const match of sitemap.matchAll(/<image:loc>(.*?)<\/image:loc>/g)) {
     /^(learner|prefect|teacher)-dashboard\.png$/.test(imageUrl.pathname.split("/").at(-1));
   if (imageUrl.origin !== siteOrigin && !isTrustedShowcaseImage) throw new Error("Sitemap image points to an untrusted or non-canonical hostname: " + match[1]);
 }
+for (const match of imageSitemap.matchAll(/<image:loc>(.*?)<\/image:loc>/g)) {
+  const imageUrl = new URL(match[1]);
+  const file = imageUrl.origin === siteOrigin ? path.join(root, imageUrl.pathname.replace(/^\//, "")) : null;
+  const isTrustedShowcaseImage = imageUrl.hostname === "raw.githubusercontent.com" &&
+    imageUrl.pathname.startsWith("/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/showcase-media/latest/") &&
+    /^(learner|prefect|teacher)-dashboard\.png$/.test(imageUrl.pathname.split("/").at(-1));
+  if (imageUrl.origin !== siteOrigin && !isTrustedShowcaseImage) throw new Error("Image sitemap contains an untrusted image host: " + match[1]);
+  if (file && !fs.existsSync(file)) throw new Error("Image sitemap references a missing local image asset: " + match[1]);
+}
 for (const fileName of ["llms.txt", "llms-full.txt"]) {
   const filePath = path.join(root, fileName);
   if (!fs.existsSync(filePath)) throw new Error(fileName + " is missing from the public build");
