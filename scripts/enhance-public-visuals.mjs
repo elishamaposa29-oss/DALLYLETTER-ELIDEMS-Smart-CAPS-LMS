@@ -217,6 +217,29 @@ html{scroll-padding-top:88px}
 @media(max-width:760px){.content section{margin:.85rem 0}.dl-proof{background:#0b2044}}
 @media(prefers-reduced-motion:reduce){.content section:after,.btn:after,.links a:after{display:none}.content section:hover{transform:none}}
 
+
+/* Explicit regional, learner-pathway and end-to-end learning sections */
+.dl-audience-grid,.dl-regional-grid,.dl-pathway-grid,.dl-process-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}
+.dl-audience-card,.dl-regional-card,.dl-pathway-card,.dl-process-step{min-width:0;position:relative;overflow:hidden;padding:1.45rem;border:1px solid rgba(242,213,107,.24);border-radius:19px;background:radial-gradient(ellipse at 100% 0%,rgba(179,139,0,.15),transparent 48%),linear-gradient(145deg,#102d5d,#091c3a);color:#edf3fc;box-shadow:0 16px 38px rgba(4,15,34,.16);transition:transform .24s,border-color .24s,box-shadow .24s}
+.dl-audience-card:hover,.dl-regional-card:hover,.dl-pathway-card:hover,.dl-process-step:hover{transform:translateY(-4px);border-color:rgba(242,213,107,.65);box-shadow:0 22px 44px rgba(4,15,34,.22)}
+.dl-audience-card h3,.dl-regional-card h3,.dl-pathway-card h3{margin:.2rem 0 .55rem;color:#f2d56b;font-size:1.08rem;line-height:1.3}
+.dl-audience-card p,.dl-regional-card p,.dl-pathway-card p,.dl-process-step p{color:#dbe5f5;font-size:.9rem;line-height:1.7}
+.dl-audience-card a,.dl-regional-card a,.dl-pathway-card a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;margin-top:.65rem;padding:.68rem .95rem;border:1px solid rgba(242,213,107,.38);border-radius:11px;background:linear-gradient(135deg,#f5dc78,#b38b00);color:#101f3a;font-size:.86rem;font-weight:850;text-decoration:none}
+.dl-audience-card a:hover,.dl-regional-card a:hover,.dl-pathway-card a:hover{filter:brightness(1.08);transform:translateY(-1px)}
+.dl-regional-card .dl-region-label{display:inline-flex;margin-bottom:.8rem;padding:.3rem .6rem;border:1px solid rgba(242,213,107,.35);border-radius:999px;color:#f5dc78;font-size:.68rem;font-weight:850;letter-spacing:.09em;text-transform:uppercase}
+.dl-process-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
+.dl-process-step{padding:1.15rem}
+.dl-process-step b{display:grid;place-items:center;width:34px;height:34px;margin-bottom:.8rem;border-radius:10px;background:linear-gradient(135deg,#f5dc78,#b38b00);color:#101f3a}
+.dl-process-step h3{margin:0;color:#f2d56b;font-size:.94rem}
+.dl-founder-panel{display:flex;align-items:center;justify-content:space-between;gap:1.5rem;padding:clamp(1.5rem,4vw,2.5rem);border:1px solid rgba(242,213,107,.38);border-radius:22px;background:radial-gradient(ellipse at 90% 0%,rgba(179,139,0,.2),transparent 40%),linear-gradient(125deg,#07172f,#0f2a5a 68%,#173e78);color:#fff;box-shadow:0 22px 55px rgba(7,23,47,.2)}
+.dl-founder-panel h2{margin:0 0 .55rem;color:#f5dc78}
+.dl-founder-panel p{max-width:70ch;color:#dbe5f5}
+.dl-founder-panel a{display:inline-flex;align-items:center;justify-content:center;min-height:46px;flex-shrink:0;padding:.8rem 1.1rem;border-radius:11px;background:linear-gradient(135deg,#f5dc78,#b38b00);color:#101f3a;font-weight:850;text-decoration:none}
+@media(max-width:900px){.dl-process-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:700px){.dl-audience-grid,.dl-regional-grid,.dl-pathway-grid{grid-template-columns:1fr 1fr}.dl-process-grid{grid-template-columns:1fr 1fr}.dl-founder-panel{align-items:flex-start;flex-direction:column}}
+@media(max-width:480px){.dl-audience-grid,.dl-regional-grid,.dl-pathway-grid,.dl-process-grid{grid-template-columns:1fr}.dl-audience-card,.dl-regional-card,.dl-pathway-card{padding:1.2rem}.dl-process-step{padding:1rem}}
+@media(prefers-reduced-motion:reduce){.dl-audience-card,.dl-regional-card,.dl-pathway-card,.dl-process-step,.dl-founder-panel a{transition:none!important;transform:none!important}}
+
 `;
 
 const heroVisual = `
@@ -274,6 +297,45 @@ const homepageSections = `
   <article class="dl-role"><div class="dl-role-top"><h3>Manager workspace</h3><span class="dl-role-tag">Coordinate</span></div><div class="dl-role-screen" aria-hidden="true"><div class="dl-role-row"><i class="dl-role-block gold"></i><i class="dl-role-block"></i></div><div class="dl-role-bars"><i></i><i></i><i></i><i></i></div><div class="dl-role-row"><i class="dl-role-block"></i></div><div class="dl-role-row"><i class="dl-role-block gold"></i><i class="dl-role-block"></i></div></div><p>Coordinate authorised school workflows, review activity and support reporting.</p><a href="/manager">Open manager workspace →</a></article>
  </div><p class="dl-disclaimer">These are illustrative layout concepts, not screenshots or representations of live account data. Workspace access requires sign-in and depends on verified account roles and permissions.</p>
 </div></section>
+
+<section class="dl-section dl-audience-section" aria-labelledby="dl-audience-title">
+ <div class="dl-section-head"><span class="dl-kicker">People first · technology second</span><h2 id="dl-audience-title">Learning works better when the whole community connects</h2><p>Purpose-built pathways for learners, educators and schools—connected by one learning journey.</p></div>
+ <div class="dl-audience-grid">
+  <article class="dl-audience-card"><h3>A more connected learning experience for learners</h3><p>Study lessons, practise with exercises, submit assignments, join supported learning communities and use feedback to improve.</p><a href="/learners/">Explore learner support →</a></article>
+  <article class="dl-audience-card"><h3>Tools that support the work of educators</h3><p>Prepare learning materials, organise class activity, create assessments, review learner work and guide the next teaching step.</p><a href="/educators/">Explore educator tools →</a></article>
+  <article class="dl-audience-card"><h3>A connected digital environment for schools</h3><p>Bring role-based learning, attendance, school coordination and learning records into a more connected digital environment.</p><a href="/schools/">Explore school solutions →</a></article>
+ </div>
+</section>
+<section class="dl-section dl-regional-section" aria-labelledby="dl-regional-title">
+ <div class="dl-section-head"><span class="dl-kicker">Rooted in Africa · open to the world</span><h2 id="dl-regional-title">Built with local learning communities in mind</h2><p>Zimbabwe is the starting point. South Africa is a major regional focus. Other African and global communities are welcome.</p></div>
+ <div class="dl-regional-grid">
+  <article class="dl-regional-card"><span class="dl-region-label">Starting point</span><h3>Built with Zimbabwean learning communities in mind</h3><p>Build around local learner needs, educator practice and school realities—without assuming every school uses the same resources.</p><a href="/zimbabwe/">Explore Zimbabwe focus →</a></article>
+  <article class="dl-regional-card"><span class="dl-region-label">Regional focus</span><h3>Supporting South African learning communities</h3><p>Welcome South African learners, educators and schools. Check specific CAPS subject, grade and resource alignment with your provider.</p><a href="/south-africa/">Explore South Africa →</a></article>
+  <article class="dl-regional-card"><span class="dl-region-label">Continental outlook</span><h3>Learning communities across Africa</h3><p>Respect different curricula, examination systems, languages and school calendars across African countries.</p><a href="/africa/">Explore African learning →</a></article>
+ </div>
+</section>
+<section class="dl-section dl-pathway-section" aria-labelledby="dl-pathway-title">
+ <div class="dl-section-head"><span class="dl-kicker">Curriculum-aware · context-respecting</span><h2 id="dl-pathway-title">Learning support for different stages and syllabuses</h2><p>Useful learning tools should fit the learner's stage and local curriculum—not force every community into one template.</p></div>
+ <div class="dl-pathway-grid">
+  <article class="dl-pathway-card"><h3>Supporting primary learning</h3><p>Organise age- and stage-appropriate learning activities, practice and educator guidance using resources provided by the learning community.</p><a href="/primary-learning/">Explore primary learning →</a></article>
+  <article class="dl-pathway-card"><h3>Supporting secondary learning</h3><p>Support subject study, exercises, assignments and exam preparation with materials matched to the learner's level and syllabus.</p><a href="/secondary-learning/">Explore secondary learning →</a></article>
+  <article class="dl-pathway-card"><h3>Syllabus support that respects local context</h3><p>Curriculum coverage depends on each school's or educator's published resources. Confirm country, grade, subject, examination board and syllabus year.</p><a href="/syllabus-support/">Explore syllabus support →</a></article>
+ </div>
+</section>
+<section class="dl-section dl-process-section" aria-labelledby="dl-process-title">
+ <div class="dl-section-head"><span class="dl-kicker">A continuous learning cycle</span><h2 id="dl-process-title">How Dallyletter works</h2><p>Learning becomes more useful when preparation, practice, evidence and feedback connect.</p></div>
+ <div class="dl-process-grid">
+  <article class="dl-process-step"><b>01</b><h3>Educators prepare</h3><p>Organise lessons, resources and activities.</p></article>
+  <article class="dl-process-step"><b>02</b><h3>Learners study</h3><p>Access materials and practise actively.</p></article>
+  <article class="dl-process-step"><b>03</b><h3>Understanding is checked</h3><p>Use exercises, polls and assignments.</p></article>
+  <article class="dl-process-step"><b>04</b><h3>Feedback guides improvement</h3><p>Review work and identify next steps.</p></article>
+  <article class="dl-process-step"><b>05</b><h3>The next lesson adapts</h3><p>Use learning evidence to guide teaching.</p></article>
+ </div>
+</section>
+<section class="dl-section" aria-label="Creator and product story">
+ <div class="dl-founder-panel"><div><span class="dl-kicker">Independent creator · African technology</span><h2>About Dallyletter Elidems</h2><p>Created by Elisha Maposa, Dallyletter Elidems is being built as a Zimbabwe-first education technology platform for learners, educators and schools across Africa and beyond.</p></div><a href="/about/">Discover the story →</a></div>
+</section>
+
 <section class="dl-cta"><div class="dl-cta-card"><div><h2>Make learning easier to organise and continue.</h2><p>Explore Dallyletter Elidems or create an account to get started.</p></div><a class="btn" href="/register">Create your account →</a></div></section>
 `;
 
