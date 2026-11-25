@@ -3,8 +3,10 @@ import path from "node:path";
 import { normalizeGoogleSiteVerificationToken } from "./google-site-verification.mjs";
 import { getPageSeoTags } from "./education-seo-tags.mjs";
 
-const deploymentOrigin = process.env.VERCEL_PROJECT_PRODUCTION_URL ? "https://" + process.env.VERCEL_PROJECT_PRODUCTION_URL : process.env.VERCEL_URL ? "https://" + process.env.VERCEL_URL : "http://localhost:4173";
-const siteUrl = (process.env.PUBLIC_SITE_URL || deploymentOrigin).replace(/\/+$/, "");
+const canonicalProductionOrigin = "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app";
+// Preview deployment hostnames and localhost are never canonical. Keep generated
+// metadata and sitemap URLs on the same stable production hostname in CI and previews.
+const siteUrl = (process.env.PUBLIC_SITE_URL || canonicalProductionOrigin).replace(/\/+$/, "");
 const verificationToken = normalizeGoogleSiteVerificationToken(process.env.GOOGLE_SITE_VERIFICATION);
 const buildSha = (process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || "").trim() || "unknown";
 const outputRoot = path.resolve("dist/public");
