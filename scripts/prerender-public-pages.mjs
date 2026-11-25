@@ -3,7 +3,10 @@ import path from "node:path";
 import { normalizeGoogleSiteVerificationToken } from "./google-site-verification.mjs";
 import { getPageSeoTags } from "./education-seo-tags.mjs";
 
-const siteUrl = (process.env.PUBLIC_SITE_URL || "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app").replace(/\/+$/, "");
+const canonicalProductionOrigin = "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app";
+// Preview deployment hostnames and localhost are never canonical. Keep generated
+// metadata and sitemap URLs on the same stable production hostname in CI and previews.
+const siteUrl = (process.env.PUBLIC_SITE_URL || canonicalProductionOrigin).replace(/\/+$/, "");
 const verificationToken = normalizeGoogleSiteVerificationToken(process.env.GOOGLE_SITE_VERIFICATION);
 const buildSha = (process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || "").trim() || "unknown";
 const outputRoot = path.resolve("dist/public");
@@ -114,7 +117,11 @@ for (const page of pages) {
 }
 const entries=pages.map(p=>{const pageUrl=siteUrl+(p.slug?"/"+p.slug+"/":"/");return "<url><loc>"+pageUrl+"</loc><image:image><image:loc>"+siteUrl+"/social/dallyletter-og.png</image:loc><image:title>Dallyletter Elidems — "+esc(p.h1)+"</image:title><image:caption>Learning opportunities from Dallyletter Elidems, created by Elisha Maposa.</image:caption></image:image></url>";}).join("");
 fs.writeFileSync(path.join(outputRoot,"sitemap.xml"),'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">'+entries+"</urlset>\n","utf8");
-console.log("Prerendered "+pages.length+" public pages and image sitemap.");
+const robotsPath = path.join(outputRoot, "robots.txt");
+const robotsText = fs.existsSync(robotsPath) ? fs.readFileSync(robotsPath, "utf8") : "User-agent: *\nAllow: /\n";
+const canonicalRobots = robotsText.replace(/^Sitemap:\s*.*$/m, "Sitemap: " + siteUrl + "/sitemap.xml");
+fs.writeFileSync(robotsPath, canonicalRobots.includes("Sitemap:") ? canonicalRobots : canonicalRobots.trimEnd() + "\n\nSitemap: " + siteUrl + "/sitemap.xml\n", "utf8");
+console.log("Prerendered "+pages.length+" public pages and image sitemap using " + siteUrl + ".");
 
 
 import { deflateSync } from "node:zlib";
