@@ -646,11 +646,11 @@ function buildGallery(manifest) {
     "");
   for (const item of manifest.results.filter((result) => result.type === "dashboard")) {
     lines.push("### " + item.role + " — " + (item.pagesCaptured ?? 0) + " pages", "");
-    if (item.status === "missing-demo-account") lines.push("Not captured: configure the dedicated role account secrets.", "");
+    if (item.status === "missing-demo-account") lines.push("Not captured: the existing configured account credentials for this role are unavailable.", "");
     for (const shot of item.screenshots || []) lines.push("- **" + shot.path + "** — [Open screenshot](./role-feature-screenshots/" + shot.screenshot + ")");
     lines.push("");
   }
-  lines.push("Only dedicated showcase accounts with synthetic test data should be used. Public role-image publication is a separate manually approved workflow that validates the exact private artifact.", "");
+  lines.push("Use the existing configured learner and teacher showcase accounts. Prefect is captured from the learner account only when the API confirms Profile Hub's isPrefect flag. Public role-image publication requires a separate manual privacy review of the exact private artifact.", "");
   return lines.join("\n");
 }
 
@@ -691,7 +691,7 @@ try {
       status: authenticatedCaptureEnabled ? "blocked" : "skipped",
       missingRoles: missingRequiredRoleAccounts,
       ...(authenticatedCaptureEnabled
-        ? { error: "Authenticated CV role verification is incomplete. Configure dedicated synthetic showcase accounts for: " + missingRequiredRoleAccounts.join(", ") + ". No role is counted as verified without a successful login and API-confirmed role." }
+        ? { error: "Authenticated CV role verification is incomplete. Configure the existing showcase credentials for: " + missingRequiredRoleAccounts.join(", ") + ". No role is counted as verified without a successful login and API-confirmed role." }
         : { reason: "Authenticated role capture is intentionally disabled for pull-request security. These roles are not counted as verified until a trusted post-merge showcase run completes." })
     });
   }
