@@ -6,6 +6,7 @@ import { getPageSeoTags } from "./education-seo-tags.mjs";
 const canonicalProductionOrigin = "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app";
 // Preview deployment hostnames and localhost are never canonical. Keep generated
 // metadata and sitemap URLs on the same stable production hostname in CI and previews.
+// Keep this fallback identical to verify-public-seo.mjs; VERCEL_URL is a preview host.
 const siteUrl = (process.env.PUBLIC_SITE_URL || canonicalProductionOrigin).replace(/\/+$/, "");
 const verificationToken = normalizeGoogleSiteVerificationToken(process.env.GOOGLE_SITE_VERIFICATION);
 const buildSha = (process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || "").trim() || "unknown";
