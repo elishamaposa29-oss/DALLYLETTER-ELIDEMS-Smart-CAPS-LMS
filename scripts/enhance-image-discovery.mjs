@@ -4,7 +4,8 @@ import path from "node:path";
 const root = path.resolve("dist/public");
 const homepage = path.join(root, "public-site", "index.html");
 const sitemapPath = path.join(root, "sitemap.xml");
-const siteUrl = (process.env.PUBLIC_SITE_URL || "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app").replace(/\\/+$/, "");
+let siteUrl = process.env.PUBLIC_SITE_URL || "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app";
+while (siteUrl.endsWith("/")) siteUrl = siteUrl.slice(0, -1);
 const images = [
   { src: "/favicon.svg", title: "Dallyletter Elidems official logo", alt: "Dallyletter Elidems navy and gold education technology logo", caption: "Official Dallyletter Elidems brand mark." },
   { src: "/images/learner-dashboard-preview.svg", title: "Dallyletter learner dashboard preview", alt: "Illustrative Dallyletter learner dashboard showing lessons, assignments, progress and study groups", caption: "Public illustrative product preview using fictional sample data; not a live learner account." },
@@ -12,7 +13,7 @@ const images = [
 ];
 
 for (const item of images) {
-  const file = path.join(root, item.src.replace(/^\\//, ""));
+  const file = path.join(root, item.src.slice(1));
   if (!fs.existsSync(file)) throw new Error("Missing public image-search asset: " + item.src);
 }
 let html = fs.readFileSync(homepage, "utf8");
