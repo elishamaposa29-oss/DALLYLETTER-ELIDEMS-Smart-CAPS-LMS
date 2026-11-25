@@ -283,6 +283,9 @@ html{scroll-padding-top:88px}
  .dl-feature,.dl-role,.dl-audience-card,.dl-regional-card,.dl-pathway-card{will-change:auto}
 }
 
+/* High-contrast copy on the light section surfaces */
+.dl-section-head p{color:#334155}
+
 `;
 
 const heroVisual = `
