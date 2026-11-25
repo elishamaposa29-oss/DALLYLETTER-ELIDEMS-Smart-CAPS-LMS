@@ -4,7 +4,7 @@ import path from "node:path";
 const root = path.resolve("dist/public");
 if (!fs.existsSync(root)) throw new Error("Public build output is missing");
 
-const css = \`
+const css = `
 /* Dallyletter premium public navigation and landing polish */
 :root{--dl-navy:#0f2a5a;--dl-gold:#b38b00;--dl-gold-soft:#f7edc9;--dl-ink:#17243a;--dl-muted:#61708a}
 .top{position:sticky;top:0;z-index:60;background:rgba(15,42,90,.97);backdrop-filter:blur(16px);box-shadow:0 8px 24px rgba(5,20,48,.12)}
@@ -57,7 +57,7 @@ const css = \`
  .dl-founder-credit{font-size:.78rem;flex-wrap:wrap}.dl-proof-inner{gap:.75rem}.dl-proof-item{font-size:.77rem}
 }
 @media(prefers-reduced-motion:reduce){.top{backdrop-filter:none}.nav-toggle-lines i{transition:none}}
-\`;
+`;
 
 const motionScript = '<script id="dl-premium-navigation">(()=>{const button=document.querySelector(".nav-toggle");const menu=document.querySelector("#primary-navigation");if(!button||!menu)return;const close=()=>{button.setAttribute("aria-expanded","false");button.setAttribute("aria-label","Open navigation");menu.dataset.open="false";};button.addEventListener("click",()=>{const open=button.getAttribute("aria-expanded")!=="true";button.setAttribute("aria-expanded",String(open));button.setAttribute("aria-label",open?"Close navigation":"Open navigation");menu.dataset.open=String(open);});menu.querySelectorAll("a").forEach(link=>link.addEventListener("click",close));document.addEventListener("keydown",event=>{if(event.key==="Escape"){close();const details=menu.querySelector(".nav-more");if(details)details.open=false;}});document.addEventListener("click",event=>{if(!menu.contains(event.target)&&!button.contains(event.target))close();});})();</script>';
 
