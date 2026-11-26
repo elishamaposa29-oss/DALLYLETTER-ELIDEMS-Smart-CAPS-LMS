@@ -6,6 +6,7 @@ const expectedBuildSha = (process.env.EXPECTED_BUILD_SHA || "").trim();
 const errors = [];
 const warnings = [];
 const results = [];
+const imageChecks = [];
 const fail = (message) => errors.push(message);
 const warn = (message) => warnings.push(message);
 
@@ -73,6 +74,7 @@ if (robotsResult) {
     if (!body.includes(`User-agent: ${bot}`)) fail(`robots.txt is missing ${bot}`);
   }
   if (!body.includes(`Sitemap: ${new URL("/sitemap.xml", base).href}`)) fail("robots.txt does not advertise the canonical sitemap URL");
+  if (!body.includes(`Sitemap: ${new URL("/image-sitemap.xml", base).href}`)) fail("robots.txt does not advertise the canonical image sitemap URL");
   for (const route of ["/student", "/teacher", "/manager", "/admin", "/profile", "/profile-hub", "/record-book", "/reset-password"]) {
     if (!body.includes(`Disallow: ${route}`)) fail(`robots.txt does not protect private route ${route}`);
   }
@@ -139,6 +141,7 @@ if (imageSitemapResult) {
     if (!imageResult.response.ok) fail("Googlebot image request returned HTTP " + imageResult.response.status + " for " + imageUrl);
     if (!contentType.toLowerCase().startsWith("image/")) fail("Googlebot image request returned non-image content type " + contentType + " for " + imageUrl);
     if (!imageResult.body.length) fail("Googlebot image request returned an empty body for " + imageUrl);
+    imageChecks.push({ url: imageUrl, status: imageResult.response.status, contentType, bodyCharacters: imageResult.body.length });
   }
 }
 
@@ -207,6 +210,7 @@ const report = {
   origin: base.origin,
   sitemapPages: uniquePaths.length,
   successfulPages: results.length,
+  googlebotImageRequests: imageChecks,
   warnings,
   errors,
   pages: results,
