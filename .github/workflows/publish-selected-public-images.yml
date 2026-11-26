@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: dallyletter-selected-public-image-publication
+  group: dallyletter-showcase-media-publication
   cancel-in-progress: false
 
 jobs:
