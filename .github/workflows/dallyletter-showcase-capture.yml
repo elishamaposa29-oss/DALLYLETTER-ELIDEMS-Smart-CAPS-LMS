@@ -1,11 +1,11 @@
 name: Dallyletter Real UI Showcase Capture
 
 on:
-  # A branch push triggers a read-only capture against the already-live canonical
-  # production build. This avoids waiting for a protected PR preview to exist.
-  push:
+  # Capture the exact PR deployment, never an unrelated/stale production build.
+  pull_request:
     branches:
-      - feat/google-image-discovery-role-previews
+      - main
+    types: [opened, synchronize, reopened]
   schedule:
     - cron: "23 6 * * 1"
   workflow_dispatch:
