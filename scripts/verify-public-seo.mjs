@@ -46,8 +46,48 @@ const imageSitemap = fs.readFileSync(imageSitemapPath, "utf8");
 if (!imageSitemap.startsWith('<?xml') || !imageSitemap.includes('<urlset ') || !imageSitemap.includes("http://www.google.com/schemas/sitemap-image/1.1")) {
   throw new Error("image-sitemap.xml is not a valid image sitemap");
 }
-for (const imagePath of ["/social/dallyletter-og.png", "/images/learner-dashboard-preview.svg", "/images/prefect-dashboard-preview.svg"]) {
-  if (!imageSitemap.includes(siteUrl + imagePath)) throw new Error("Image sitemap is missing " + imagePath);
+const imageSitemapEntries = [...imageSitemap.matchAll(/<url>([\\s\\S]*?)<\\/url>/g)].map((match) => match[1]);
+const requiredImageEntries = [
+  { page: "/", image: "/social/dallyletter-og.png" },
+  { page: "/", image: "/images/learner-dashboard-preview.svg" },
+  { page: "/", image: "/images/prefect-dashboard-preview.svg" },
+  { page: "/", image: "/founder/elisha-maposa-origin.jpg" },
+  { page: "/founder-story/", image: "/founder/elisha-maposa-origin.jpg" },
+];
+for (const entry of requiredImageEntries) {
+  const pageUrl = siteUrl + entry.page;
+  const imageUrl = siteUrl + entry.image;
+  const pageEntry = imageSitemapEntries.find((xml) => xml.includes("<loc>" + pageUrl + "</loc>"));
+  if (!pageEntry || !pageEntry.includes("<image:loc>" + imageUrl + "</image:loc>")) {
+    throw new Error("Image sitemap is missing " + entry.image + " under " + entry.page);
+  }
+  const imageFile = path.join(root, entry.image.slice(1));
+  if (!fs.existsSync(imageFile) || fs.statSync(imageFile).size === 0) {
+    throw new Error("Image sitemap points to a missing or empty build asset: " + entry.image);
+  }
+}
+const founderOriginal = path.join(root, "founder", "IMG_20260706_100838.jpg");
+const founderCanonical = path.join(root, "founder", "elisha-maposa-origin.jpg");
+if (!fs.existsSync(founderOriginal) || !fs.existsSync(founderCanonical)) {
+  throw new Error("Original and canonical founder portrait files must both be present");
+}
+if (!fs.readFileSync(founderOriginal).equals(fs.readFileSync(founderCanonical))) {
+  throw new Error("Canonical founder portrait must remain byte-identical to the supplied original");
+}
+for (const width of [480, 640, 768, 1200]) {
+  for (const extension of ["avif", "webp", "jpg"]) {
+    const derivative = path.join(root, "founder", "elisha-maposa-origin-" + width + "." + extension);
+    if (!fs.existsSync(derivative) || fs.statSync(derivative).size === 0) {
+      throw new Error("Responsive founder image derivative is missing or empty: " + width + "." + extension);
+    }
+  }
+}
+for (const route of ["/", "/founder-story/"]) {
+  const htmlPath = route === "/" ? path.join(root, "public-site", "index.html") : path.join(root, "founder-story", "index.html");
+  const html = fs.readFileSync(htmlPath, "utf8");
+  if (!html.includes('<figure class="founder-portrait">') || !html.includes("elisha-maposa-origin-480.avif") || !html.includes("elisha-maposa-origin-1200.avif") || !html.includes('loading="lazy"') || !html.includes('fetchpriority="low"') || !html.includes("alt=\\"Elisha Maposa")) {
+    throw new Error("Founder portrait is missing accessible, lazy-loaded responsive markup on " + route);
+  }
 }
 const urls = [...sitemap.matchAll(/<loc>(.*?)<\/loc>/g)].map(match => match[1]);
 
