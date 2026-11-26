@@ -1,0 +1,445 @@
+import { ACADEMIC_GRADE_OPTIONS } from "@workspace/api-client-react/academic-grades";
+import { DashboardLayout } from "@/components/DashboardLayout";
+import { Link } from "wouter";
+import UserProfileLink from "@/components/UserProfileLink";
+import { useListClasses, useCreateClass, useUpdateClass, useDeleteClass, useListHandRaises, getApiUrl } from "@workspace/api-client-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { useState } from "react";
+import { Loader2, Plus, Trash2, Video, Calendar, Clock, Hand, Settings2, CheckCircle, Paperclip, Send } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
+import { getListClassesQueryKey, getListHandRaisesQueryKey } from "@workspace/api-client-react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { CreateClassBodyStatus, UpdateClassBodyStatus } from "@workspace/api-client-react";
+import { Textarea } from "@/components/ui/textarea";
+import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
+
+const createClassSchema = z.object({
+  title: z.string().min(2, "Title is required"),
+  description: z.string().optional(),
+  subject: z.string().min(2, "Subject is required"),
+  grade: z.string().optional(),
+  meetLink: z.string().min(1, "Please paste your Google Meet or video link"),
+  scheduledAt: z.string().optional(),
+  status: z.enum([CreateClassBodyStatus.upcoming, CreateClassBodyStatus.live, CreateClassBodyStatus.completed, CreateClassBodyStatus.cancelled]),
+});
+
+export default function TeacherClasses() {
+  const { data: classes, isLoading } = useListClasses();
+  const createClassMutation = useCreateClass();
+  const updateClassMutation = useUpdateClass();
+  const deleteClassMutation = useDeleteClass();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  const form = useForm<z.infer<typeof createClassSchema>>({
+    resolver: zodResolver(createClassSchema),
+    defaultValues: {
+      title: "",
+      description: "",
+      subject: "",
+      grade: "",
+      meetLink: "",
+      scheduledAt: new Date().toISOString().slice(0, 16),
+      status: CreateClassBodyStatus.upcoming,
+    },
+  });
+
+  const onSubmit = (values: z.infer<typeof createClassSchema>) => {
+    createClassMutation.mutate({ data: { ...values, scheduledAt: new Date(values.scheduledAt || "").toISOString() } }, {
+      onSuccess: () => {
+        toast({ title: "Class scheduled" });
+        queryClient.invalidateQueries({ queryKey: getListClassesQueryKey() });
+        setIsDialogOpen(false);
+        form.reset();
+      },
+      onError: (error) => {
+        toast({ variant: "destructive", title: "Error", description: error.message });
+      }
+    });
+  };
+
+  const handleUpdateStatus = (id: number, status: UpdateClassBodyStatus) => {
+    updateClassMutation.mutate({ id, data: { status } }, {
+      onSuccess: () => {
+        toast({ title: "Status updated" });
+        queryClient.invalidateQueries({ queryKey: getListClassesQueryKey() });
+      }
+    });
+  };
+
+  const handleDelete = (id: number) => {
+    if (confirm("Are you sure you want to delete this class?")) {
+      deleteClassMutation.mutate({ id }, {
+        onSuccess: () => {
+          toast({ title: "Class deleted" });
+          queryClient.invalidateQueries({ queryKey: getListClassesQueryKey() });
+        }
+      });
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "live": return "bg-destructive text-destructive-foreground animate-pulse";
+      case "upcoming": return "bg-secondary text-secondary-foreground";
+      case "completed": return "bg-muted text-muted-foreground";
+      case "cancelled": return "bg-destructive/20 text-destructive";
+      default: return "bg-primary text-primary-foreground";
+    }
+  };
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Live Classes</h1>
+            <p className="text-muted-foreground">Manage your scheduled sessions.</p><Link href="/operations"><Button variant="outline" className="mt-3">Attendance register & statistics</Button></Link>
+          </div>
+          
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="gap-2">
+                <Plus className="h-4 w-4" />
+                Schedule Class
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Schedule Live Class</DialogTitle>
+              </DialogHeader>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
+                  <FormField
+                    control={form.control}
+                    name="title"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Topic / Title</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g. Algebra Revision" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="subject"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Subject</FormLabel>
+                          <FormControl>
+                            <Input placeholder="e.g. Mathematics" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="grade"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Grade</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select Grade" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {ACADEMIC_GRADE_OPTIONS.map(g => (
+                                <SelectItem key={g} value={g}>{g}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <FormField
+                    control={form.control}
+                    name="scheduledAt"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Date & Time</FormLabel>
+                        <FormControl>
+                          <Input type="datetime-local" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="meetLink"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Google Meet Link</FormLabel>
+                        <FormControl>
+                          <Input placeholder="https://meet.google.com/..." {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="description"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Description</FormLabel>
+                        <FormControl>
+                          <Textarea placeholder="What will be covered in this class..." {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <DialogFooter>
+                    <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
+                    <Button type="submit" disabled={createClassMutation.isPending}>
+                      {createClassMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Schedule Class
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        {isLoading ? (
+          <div className="flex justify-center p-8">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {classes?.length === 0 ? (
+              <div className="col-span-full text-center p-8 border rounded-lg bg-card">
+                <p className="text-muted-foreground">You haven't scheduled any classes yet.</p>
+              </div>
+            ) : (
+              classes?.map((c) => (
+                <Card key={c.id} className="flex flex-col h-full border-l-4" style={{ borderLeftColor: c.status === 'live' ? 'hsl(var(--destructive))' : 'hsl(var(--primary))' }}>
+                  <CardHeader>
+                    <div className="flex justify-between items-start gap-4">
+                      <div>
+                        <Badge variant="outline" className="mb-2 bg-primary/5 text-primary border-primary/20">
+                          {c.subject}
+                        </Badge>
+                        <CardTitle className="text-xl">{c.title}</CardTitle>
+                      </div>
+                      <Badge className={getStatusColor(c.status)}>
+                        {c.status.toUpperCase()}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="flex-1">
+                    {c.scheduledAt && (
+                      <div className="flex items-center gap-4 text-sm text-foreground mb-4 bg-muted/50 p-2 rounded-md">
+                        <div className="flex items-center gap-1.5">
+                          <Calendar className="h-4 w-4 text-primary" />
+                          <span>{new Date(c.scheduledAt).toLocaleDateString()}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Clock className="h-4 w-4 text-primary" />
+                          <span>{new Date(c.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex gap-2 flex-wrap mb-4">
+                       <Button variant="outline" size="sm" onClick={() => window.open(c.meetLink, "_blank")} className="gap-1">
+                          <Video className="h-3 w-3" /> Open Link
+                        </Button>
+                        <Select value={c.status} onValueChange={(val) => handleUpdateStatus(c.id, val as UpdateClassBodyStatus)}>
+                          <SelectTrigger className="h-9 text-xs w-[140px]">
+                            <SelectValue placeholder="Status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={UpdateClassBodyStatus.upcoming}>Upcoming</SelectItem>
+                            <SelectItem value={UpdateClassBodyStatus.live}>Live Now</SelectItem>
+                            <SelectItem value={UpdateClassBodyStatus.completed}>Completed</SelectItem>
+                            <SelectItem value={UpdateClassBodyStatus.cancelled}>Cancelled</SelectItem>
+                          </SelectContent>
+                        </Select>
+                    </div>
+
+                    <ClassHandRaises classId={c.id} isLive={c.status === "live"} />
+                  </CardContent>
+                  <CardFooter className="pt-4 border-t flex justify-end">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="text-destructive hover:bg-destructive/10 hover:text-destructive gap-2"
+                      onClick={() => handleDelete(c.id)}
+                      disabled={deleteClassMutation.isPending}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Delete
+                    </Button>
+                  </CardFooter>
+                </Card>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    </DashboardLayout>
+  );
+}
+
+function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean }) {
+  const { data: hands, refetch } = useListHandRaises({ classId }, { query: { enabled: isLive, refetchInterval: 8000 } as any });
+  const { toast } = useToast();
+  const [handReplies, setHandReplies] = useState<Record<number, string>>({});
+  const [handReplyFiles, setHandReplyFiles] = useState<Record<number, File | null>>({});
+  const [sendingHandReply, setSendingHandReply] = useState<number | null>(null);
+  const [loweringId, setLoweringId] = useState<number | null>(null);
+  const [deletingHandId, setDeletingHandId] = useState<number | null>(null);
+
+  if (!isLive || !hands) return null;
+  const unresolved = hands.filter(h => !h.isResolved);
+  if (unresolved.length === 0) return null;
+
+  const handleReply = async (handId: number, studentId: number, studentName: string) => {
+    const reply = (handReplies[handId] ?? "").trim();
+    const file = handReplyFiles[handId] ?? null;
+    if (!reply && !file) {
+      toast({ variant: "destructive", title: "Write a reply or attach a file first" });
+      return;
+    }
+    setSendingHandReply(handId);
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      let mediaUrl: string | undefined;
+      if (file) {
+        const body = new FormData();
+        body.append("recipientId", String(studentId));
+        body.append("file", file, file.name);
+        const upload = await fetch(getApiUrl("/api/messages/media"), {
+          method: "POST",
+          headers: token ? { Authorization: "Bearer " + token } : {},
+          body,
+        });
+        const result = await upload.json().catch(() => null) as { mediaUrl?: string; error?: string } | null;
+        if (!upload.ok || !result?.mediaUrl) throw new Error(result?.error || "Attachment upload failed");
+        mediaUrl = result.mediaUrl;
+      }
+      const response = await fetch(getApiUrl("/api/messages"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
+        body: JSON.stringify({
+          content: `[[hand-raise:${handId}]] ${reply || (file ? `Teacher attached: ${file.name}` : "")}`,
+          type: mediaUrl ? "media" : "text",
+          recipientId: studentId,
+          ...(mediaUrl ? { mediaUrl } : {}),
+        }),
+      });
+      const result = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) throw new Error(result?.error || "Reply could not be delivered");
+      setHandReplies(current => ({ ...current, [handId]: "" }));
+      setHandReplyFiles(current => ({ ...current, [handId]: null }));
+      toast({ title: "Reply delivered", description: `${studentName} can see it in Chat.` });
+    } finally {
+      setSendingHandReply(null);
+    }
+  };
+
+  const handleDeleteHand = async (handId: number) => {
+    if (!window.confirm("Delete this hand raise and its attached media? This cannot be undone.")) return;
+    setDeletingHandId(handId);
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const response = await fetch(getApiUrl(`/api/raise-hand/${handId}`), { method: "DELETE", headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || `Delete failed (${response.status})`);
+      toast({ title: "Hand raise deleted" });
+      refetch();
+    } catch (error) {
+      toast({ variant: "destructive", title: "Delete failed", description: error instanceof Error ? error.message : "Could not delete hand raise." });
+    } finally { setDeletingHandId(null); }
+  };
+
+  const handleLowerHand = async (handId: number, studentName: string) => {
+    setLoweringId(handId);
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const res = await fetch(getApiUrl(`/api/raise-hand/${handId}/resolve`), {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        toast({ title: `Hand lowered for ${studentName}` });
+        refetch();
+      } else throw new Error("Failed");
+    } catch {
+      toast({ variant: "destructive", title: "Error", description: "Could not lower the hand." });
+    } finally {
+      setLoweringId(null);
+    }
+  };
+
+  return (
+    <div className="mt-4 border-t pt-4">
+      <h4 className="text-sm font-semibold flex items-center gap-1.5 mb-3 text-destructive">
+        <Hand className="h-4 w-4 animate-bounce" />
+        Raised Hands ({unresolved.length})
+      </h4>
+      <div className="space-y-2">
+        {unresolved.map(hand => (
+          <div key={hand.id} className="grid min-w-0 grid-cols-1 items-start gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-3 text-sm sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+            <div className="min-w-0">
+              <UserProfileLink userId={hand.studentId} name={hand.studentName} className="font-medium" />
+              {hand.question && <p className="text-muted-foreground mt-0.5">{hand.question}</p>}
+              {hand.mediaUrl && <div className="mt-2"><AuthenticatedMedia
+                url={hand.mediaUrl}
+                type={new URL(hand.mediaUrl, window.location.origin).searchParams.get("type")?.startsWith("image/") ? "image" : new URL(hand.mediaUrl, window.location.origin).searchParams.get("type")?.startsWith("video/") ? "video" : new URL(hand.mediaUrl, window.location.origin).searchParams.get("type")?.startsWith("audio/") ? "audio" : "document"}
+                title={"Attachment from " + hand.studentName}
+              /></div>}
+            </div>
+            <div className="flex min-w-0 flex-col gap-2">
+              <Input aria-label={`Reply to ${hand.studentName}`} className="w-full min-w-0" placeholder="Write a reply to this learner…" value={handReplies[hand.id] ?? ""} onChange={event => setHandReplies(current => ({ ...current, [hand.id]: event.target.value }))} />
+              <label className="inline-flex h-9 max-w-full min-w-0 cursor-pointer items-center gap-2 self-start rounded-md border px-3 text-xs hover:bg-muted" title="Attach to this reply">
+                <Paperclip className="h-3 w-3 shrink-0" /><span className="max-w-[220px] truncate">{handReplyFiles[hand.id]?.name ?? "Attach a file"}</span>
+                <input type="file" className="sr-only" accept="image/*,video/*,audio/*,application/pdf,.doc,.docx" onChange={event => { const file = event.target.files?.[0] ?? null; event.target.value = ""; setHandReplyFiles(current => ({ ...current, [hand.id]: file })); }} />
+              </label>
+              <Button variant="default" size="sm" className="h-9 w-full sm:w-auto sm:self-start" disabled={sendingHandReply === hand.id} onClick={() => void handleReply(hand.id, hand.studentId, hand.studentName).catch(error => toast({ variant: "destructive", title: "Reply failed", description: error instanceof Error ? error.message : "Could not send reply." }))}>
+                {sendingHandReply === hand.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}<span className="ml-1">Send</span>
+              </Button>
+            </div>
+            <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 sm:col-span-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-3 text-xs text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700"
+              onClick={() => handleLowerHand(hand.id, hand.studentName)}
+              disabled={loweringId === hand.id}
+              title="Lower this hand (mark as resolved)"
+            >
+              {loweringId === hand.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
+              <span className="ml-1">Lower</span>
+            </Button>
+            <Button variant="destructive" size="sm" className="h-8 px-3 text-xs" disabled={deletingHandId === hand.id} onClick={() => void handleDeleteHand(hand.id)} title="Delete hand raise and attached media">
+              {deletingHandId === hand.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}<span className="ml-1">Delete</span>
+            </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

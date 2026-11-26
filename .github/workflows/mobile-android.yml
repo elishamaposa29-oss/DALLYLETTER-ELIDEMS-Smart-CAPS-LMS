@@ -1,0 +1,498 @@
+name: Mobile Android Build and Smoke Test
+
+# Keep one expensive APK/emulator run per PR/branch; newer revisions supersede older ones.
+concurrency:
+  group: mobile-android-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_emulator_smoke:
+        description: "Run device smoke tests against the configured API (explicit opt-in; may generate API traffic)"
+        required: false
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - "artifacts/dallyletter-mobile/**"
+      - "artifacts/api-server/**"
+      - "package.json"
+      - "render.yaml"
+      - "lib/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/mobile-android.yml"
+      - ".github/workflows/ci.yml"
+      - ".github/scripts/android-emulator-smoke.sh"
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    paths:
+      - "artifacts/dallyletter-mobile/**"
+      - "artifacts/api-server/**"
+      - "package.json"
+      - "render.yaml"
+      - "lib/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/mobile-android.yml"
+      - ".github/scripts/android-emulator-smoke.sh"
+
+permissions:
+  contents: write
+
+jobs:
+  # Build the standalone release APK for every PR so Android parity is not silently skipped.
+  # The live-API emulator smoke remains separately opt-in below.
+  build-apk:
+    runs-on: ubuntu-latest
+    # Release and upgrade APK builds take ~43 minutes on hosted runners; leave time for artifact checks.
+    timeout-minutes: 75
+    env:
+      EXPO_PUBLIC_API_BASE_URL: https://dallyletter-elidems-smart-caps-lms-4.onrender.com
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools"
+      - name: Install Android platform, build tools, and pinned NDK with retry
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
+
+          # Gradle previously received a corrupt NDK archive (ZipFile unknown archive)
+          # and failed before JavaScript bundling. Install the exact NDK version
+          # required by Expo/React Native explicitly, retrying cleanly on bad downloads.
+          ndk_package="ndk;27.1.12297006"
+          installed=0
+          for attempt in 1 2 3; do
+            if sdkmanager --install "$ndk_package" &&
+               [ -f "$ANDROID_HOME/ndk/27.1.12297006/source.properties" ]; then
+              installed=1
+              break
+            fi
+            echo "::warning::NDK installation failed or was incomplete (attempt $attempt/3); clearing partial SDK download before retry."
+            rm -rf "$ANDROID_HOME/ndk/27.1.12297006" "$ANDROID_HOME/.temp" "$HOME/.android/cache" || true
+            sleep "$((attempt * 10))"
+          done
+          if [ "$installed" -ne 1 ]; then
+            echo "::error::Pinned NDK 27.1.12297006 could not be installed cleanly after three attempts."
+            find "$ANDROID_HOME/ndk" -maxdepth 3 -name source.properties -print 2>/dev/null || true
+            exit 1
+          fi
+          echo "Verified NDK installation:"
+          cat "$ANDROID_HOME/ndk/27.1.12297006/source.properties"
+      - name: Install locked workspace dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build workspace TypeScript references
+        run: pnpm run typecheck:libs
+      - name: Typecheck mobile app
+        run: pnpm --filter @workspace/dallyletter-mobile typecheck
+      - name: Set baseline version 1.0.0 for upgrade smoke test
+        working-directory: artifacts/dallyletter-mobile
+        run: |
+          node - <<'NODE'
+          const fs = require("node:fs");
+          const path = "app.json";
+          const app = JSON.parse(fs.readFileSync(path, "utf8"));
+          app.expo.version = "1.0.0";
+          app.expo.android.versionCode = 1;
+          fs.writeFileSync(path, JSON.stringify(app, null, 2) + String.fromCharCode(10));
+          NODE
+      - name: Generate native Android project
+        working-directory: artifacts/dallyletter-mobile
+        run: pnpm exec expo prebuild --platform android --no-install
+      - name: Enable embedded JavaScript bundle in CI debug variant
+        working-directory: artifacts/dallyletter-mobile/android
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("app/build.gradle")
+          s = p.read_text()
+          needle = "react {"
+          if needle not in s:
+              raise SystemExit("Could not locate React Native Gradle react { block; refusing to build a Metro-dependent CI APK")
+          replacement = """react {
+              // CI-only debug APK must carry JS so it can run without Metro.
+              // Keep the debug variant debuggable while disabling Metro-dependent bundle skipping.
+              debuggableVariants = []"""
+          p.write_text(s.replace(needle, replacement, 1))
+          PY
+          grep -A5 -m1 '^react {' app/build.gradle
+      - name: Build standalone release APK
+        working-directory: artifacts/dallyletter-mobile/android
+        run: |
+          ./gradlew --no-daemon --stacktrace assembleRelease assembleDebug
+      - name: Verify and preserve first standalone APK and CI data-test APK
+        working-directory: artifacts/dallyletter-mobile/android
+        run: |
+          set -Eeuo pipefail
+          apk=app/build/outputs/apk/release/app-release.apk
+          unzip -l "$apk" | grep -q 'assets/index.android.bundle' || { echo '::error::Release APK is missing the embedded React Native JavaScript bundle'; exit 1; }
+          aapt_bin="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          apksigner_bin="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$aapt_bin" && test -x "$apksigner_bin"
+          badging="$("$aapt_bin" dump badging "$apk")"
+          grep -Fq "package: name='com.dallyletter.elidems' versionCode='1' versionName='1.0.0'" <<<"$badging"
+          if grep -q "application-debuggable" <<<"$badging"; then echo "::error::Release APK must not be debuggable"; exit 1; fi
+          "$apksigner_bin" verify --verbose "$apk"
+          mkdir -p ../apk-artifacts
+          cp "$apk" ../apk-artifacts/dallyletter-v1.apk
+          # Debug-only twin exists solely to test app-private-data persistence.
+          # The user-facing release APK remains non-debuggable.
+          debug_apk=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$debug_apk"
+          cp "$debug_apk" ../apk-artifacts/dallyletter-data-v1-debug.apk
+      - name: Generate version 1.0.2 for upgrade test
+        working-directory: artifacts/dallyletter-mobile
+        run: |
+          node -e 'const fs=require("fs"); const p="app.json"; const j=JSON.parse(fs.readFileSync(p,"utf8")); j.expo.version="1.0.2"; j.expo.android.versionCode=3; fs.writeFileSync(p, JSON.stringify(j,null,2)+"\n");'
+          pnpm exec expo prebuild --platform android --no-install
+      - name: Enable embedded JavaScript bundle in CI debug variant after v1.0.2 prebuild
+        working-directory: artifacts/dallyletter-mobile/android
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("app/build.gradle")
+          s = p.read_text()
+          needle = "react {"
+          if needle not in s:
+              raise SystemExit("Could not locate React Native Gradle react { block; refusing to build a Metro-dependent CI APK")
+          replacement = """react {
+              // CI-only debug APK must carry JS so it can run without Metro.
+              // Keep the debug variant debuggable while disabling Metro-dependent bundle skipping.
+              debuggableVariants = []"""
+          p.write_text(s.replace(needle, replacement, 1))
+          PY
+          grep -A5 -m1 '^react {' app/build.gradle
+      - name: Build update APK
+        working-directory: artifacts/dallyletter-mobile/android
+        run: |
+          ./gradlew --no-daemon --stacktrace assembleRelease assembleDebug
+      - name: Verify and preserve updated release APK and CI data-test APK
+        working-directory: artifacts/dallyletter-mobile/android
+        run: |
+          set -Eeuo pipefail
+          apk=app/build/outputs/apk/release/app-release.apk
+          unzip -l "$apk" | grep -q 'assets/index.android.bundle' || { echo '::error::Updated release APK is missing the embedded React Native JavaScript bundle'; exit 1; }
+          aapt_bin="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          apksigner_bin="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$aapt_bin" && test -x "$apksigner_bin"
+          badging="$("$aapt_bin" dump badging "$apk")"
+          grep -Fq "package: name='com.dallyletter.elidems' versionCode='3' versionName='1.0.2'" <<<"$badging"
+          if grep -q "application-debuggable" <<<"$badging"; then echo "::error::Updated release APK must not be debuggable"; exit 1; fi
+          "$apksigner_bin" verify --verbose "$apk"
+          cp "$apk" ../apk-artifacts/dallyletter-v1.0.2.apk
+          # Build the matching version 1.0.2 debug APK using the same CI debug
+          # signing key; the upgrade test installs it over the v1.0.0 debug twin.
+          debug_apk=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$debug_apk"
+          cp "$debug_apk" ../apk-artifacts/dallyletter-data-v1.0.2-debug.apk
+      - name: Generate APK checksums and build metadata
+        if: success()
+        env:
+          SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p artifacts/dallyletter-mobile/apk-artifacts
+          shopt -s nullglob
+          apks=(artifacts/dallyletter-mobile/apk-artifacts/*.apk)
+          if [ "${#apks[@]}" -gt 0 ]; then
+            (
+              cd artifacts/dallyletter-mobile/apk-artifacts
+              # The public candidate artifact intentionally contains only the
+              # standalone release APKs. Keep its checksum manifest scoped to
+              # those exact files; CI-only debuggable APKs are uploaded separately
+              # and must not make release publication fail with missing-file errors.
+              sha256sum dallyletter-v1.apk dallyletter-v1.0.2.apk > checksums.sha256
+            )
+          fi
+          {
+            echo "source_commit=$SOURCE_COMMIT"
+            echo "workflow_merge_commit=$GITHUB_SHA"
+            echo "application_id=com.dallyletter.elidems"
+            echo "apk_v1_version=1.0.0"
+            echo "apk_v1_versionCode=1"
+            echo "apk_v1.0.2_version=1.0.2"
+            echo "apk_v1.0.2_versionCode=3"
+          } > artifacts/dallyletter-mobile/apk-artifacts/build-metadata.txt
+      - name: Upload candidate APKs for emulator smoke test
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dallyletter-android-candidate-apk
+          path: |
+            artifacts/dallyletter-mobile/apk-artifacts/dallyletter-v1.apk
+            artifacts/dallyletter-mobile/apk-artifacts/dallyletter-v1.0.2.apk
+            artifacts/dallyletter-mobile/apk-artifacts/checksums.sha256
+            artifacts/dallyletter-mobile/apk-artifacts/build-metadata.txt
+          if-no-files-found: error
+          retention-days: 1
+      - name: Upload CI-only debug APKs for data-preservation test
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dallyletter-ci-upgrade-test-apks
+          path: |
+            artifacts/dallyletter-mobile/apk-artifacts/dallyletter-data-v1-debug.apk
+            artifacts/dallyletter-mobile/apk-artifacts/dallyletter-data-v1.0.2-debug.apk
+          if-no-files-found: error
+          retention-days: 1
+  emulator-smoke:
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'android-device-smoke')) || (github.event_name == 'workflow_dispatch' && inputs.run_emulator_smoke == true)
+    needs: build-apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      EXPO_PUBLIC_API_BASE_URL: https://dallyletter-elidems-smart-caps-lms-4.onrender.com
+    steps:
+      - uses: actions/checkout@v4
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools"
+      - name: Install emulator and Android 34 system image with clean-download retry
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+
+          # SDK Manager occasionally receives a truncated/corrupt system-image ZIP
+          # ("ZipFile unknown archive"). Retry the package install after clearing
+          # only SDK download/temp caches and the incomplete system-image directory.
+          sdk_packages=("platform-tools" "emulator" "platforms;android-34" "system-images;android-34;google_apis;x86_64")
+          system_image="$ANDROID_HOME/system-images/android-34/google_apis/x86_64"
+          installed=0
+          for attempt in 1 2 3; do
+            if sdkmanager --install "${sdk_packages[@]}" &&
+               test -s "$system_image/source.properties" &&
+               test -x "$ANDROID_HOME/emulator/emulator"; then
+              installed=1
+              break
+            fi
+            echo "::warning::Android emulator/system-image install failed or was incomplete (attempt $attempt/3); clearing partial downloads before retry."
+            rm -rf "$HOME/.android/cache" "$ANDROID_HOME/.temp" "$system_image"
+            sleep "$((attempt * 10))"
+          done
+          if [ "$installed" -ne 1 ]; then
+            echo "::error::Android 34 emulator/system image did not install cleanly after three attempts."
+            find "$ANDROID_HOME/system-images/android-34" -maxdepth 4 -name source.properties -print 2>/dev/null || true
+            exit 1
+          fi
+          echo "Verified Android 34 system image:"
+          grep -E '^(Pkg.Desc|Pkg.Revision)=' "$system_image/source.properties" || true
+
+          # Install only the host OS dependency; SDK-bundled libraries must be resolved from the SDK.
+          sudo apt-get update
+          sudo apt-get install --yes libpulse0
+          test -x "$ANDROID_HOME/emulator/emulator"
+          qemu_bin="$ANDROID_HOME/emulator/qemu/linux-x86_64/qemu-system-x86_64"
+          test -x "$qemu_bin"
+          emulator_root="$ANDROID_HOME/emulator"
+          library_dirs=(
+            "$emulator_root/lib64"
+            "$emulator_root/lib64/qt/lib"
+            "$emulator_root/lib64/gles_swiftshader"
+            "$emulator_root/qemu/linux-x86_64"
+            "$emulator_root/qemu/linux-x86_64/lib64"
+          )
+          sdk_library_path="$(IFS=:; echo "${library_dirs[*]}")"
+          echo "$emulator_root" >> "$GITHUB_PATH"
+          echo "LD_LIBRARY_PATH=$sdk_library_path:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+          export LD_LIBRARY_PATH="$sdk_library_path:${LD_LIBRARY_PATH:-}"
+          echo "Android Emulator version:"
+          "$emulator_root/emulator" -version
+          echo "QEMU bundled library resolution with SDK library paths:"
+          ldd "$qemu_bin" | tee /tmp/dallyletter-qemu-ldd.log
+          missing="$(awk '/not found/ { print $1 }' /tmp/dallyletter-qemu-ldd.log)"
+          if [ -n "$missing" ]; then
+            echo "::error::QEMU still has unresolved libraries after adding Android SDK library directories: $missing"
+            echo "SDK emulator directory tree:"
+            find "$emulator_root" -maxdepth 4 -type f \( -name 'libandroid-emu-tracing.so' -o -name 'libQt6CoreAndroidEmu.so*' -o -name 'libc++.so' -o -name 'libprotobuf.so*' -o -name 'libtcmalloc_minimal.so*' \) -print
+            exit 1
+          fi
+          # Exercise the supported launcher too; raw QEMU ldd alone does not validate emulator startup.
+      - name: Create isolated Android virtual device
+        run: |
+          set -Eeuo pipefail
+          export ANDROID_SDK_HOME="$HOME"
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo "ANDROID_SDK_HOME=$ANDROID_SDK_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
+          echo "no" | avdmanager create avd --force --name DallyletterSmoke --package "system-images;android-34;google_apis;x86_64" --device "pixel_2"
+          if [ ! -f "$ANDROID_AVD_HOME/DallyletterSmoke.ini" ]; then
+            echo "::error::AVD creation did not produce $ANDROID_AVD_HOME/DallyletterSmoke.ini"
+            find "$HOME/.android" "$ANDROID_HOME" -maxdepth 5 -iname '*DallyletterSmoke*' -print 2>/dev/null || true
+            avdmanager list avd || true
+            exit 1
+          fi
+          echo "Created AVD at $ANDROID_AVD_HOME/DallyletterSmoke.ini"
+          "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fx "DallyletterSmoke"
+      - name: Download built standalone APKs
+        uses: actions/download-artifact@v4
+        with:
+          name: dallyletter-android-candidate-apk
+          path: /tmp/dallyletter-apks
+      - name: Download CI-only debug APKs for data-preservation test
+        uses: actions/download-artifact@v4
+        with:
+          name: dallyletter-ci-upgrade-test-apks
+          path: /tmp/dallyletter-data-apks
+      - name: Place standalone APKs for smoke test
+        run: |
+          set -Eeuo pipefail
+          mkdir -p artifacts/dallyletter-mobile/android/app/build/outputs/apk/release
+          cp /tmp/dallyletter-apks/dallyletter-v1.apk /tmp/dallyletter-v1.apk
+          cp /tmp/dallyletter-data-apks/dallyletter-data-v1-debug.apk /tmp/dallyletter-data-v1-debug.apk
+          cp /tmp/dallyletter-data-apks/dallyletter-data-v1.0.2-debug.apk /tmp/dallyletter-data-v1.0.2-debug.apk
+          cp /tmp/dallyletter-apks/dallyletter-v1.0.2.apk artifacts/dallyletter-mobile/android/app/build/outputs/apk/release/app-release.apk
+      - name: Warm deployed API before authenticated emulator smoke tests
+        env:
+          API_BASE_URL: ${{ env.EXPO_PUBLIC_API_BASE_URL }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          api_url="${API_BASE_URL%/}"
+          test -n "$api_url" || { echo "::error::EXPO_PUBLIC_API_BASE_URL is empty"; exit 1; }
+          # Render Free instances may sleep. The API startup also runs verified,
+          # idempotent schema/owner checks before binding its port, so allow a full
+          # cold-start window instead of failing after the old ~2-minute budget.
+          deadline=$((SECONDS + 900))
+          attempt=0
+          status="000"
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            attempt=$((attempt + 1))
+            status="$(curl --silent --show-error --connect-timeout 10 --max-time 25 --output /tmp/dallyletter-api-warmup.json --write-out '%{http_code}' "$api_url/api/healthz" 2>/dev/null || true)"
+            if [ "$status" = "200" ] && grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' /tmp/dallyletter-api-warmup.json 2>/dev/null; then
+              echo "Deployed API is warm and healthy before login smoke test (attempt $attempt; elapsed $((900 - (deadline - SECONDS)))s)."
+              exit 0
+            fi
+            echo "API warmup attempt $attempt returned HTTP $status; waiting for Render cold start (up to 15 minutes)."
+            sleep 10
+          done
+          echo "::error::API did not become healthy within the 15-minute Render cold-start window (last HTTP $status)."
+          echo "Last health response:"
+          cat /tmp/dallyletter-api-warmup.json 2>/dev/null || true
+          exit 1
+      - name: Launch emulator and run install/launch/upgrade smoke tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          emulator_bin="$ANDROID_HOME/emulator/emulator"
+          if [ ! -x "$emulator_bin" ]; then
+            echo "::error::Android emulator binary missing at $emulator_bin"
+            find "$ANDROID_HOME" -maxdepth 3 -type f -name emulator -print || true
+            exit 127
+          fi
+          test -f "$ANDROID_AVD_HOME/DallyletterSmoke.ini" || { echo "::error::Expected AVD file is missing"; find "$HOME/.android" -maxdepth 4 -iname '*DallyletterSmoke*' -print || true; exit 1; }
+          "$emulator_bin" -list-avds | grep -Fx "DallyletterSmoke"
+          # Start ADB before the emulator so QEMU cannot race the daemon on
+          # localhost:5037. Prefer KVM when genuinely usable; otherwise keep
+          # the real install/launch/upgrade checks running under TCG software emulation.
+          adb start-server
+          accel_mode=off
+          if [ -e /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm || true
+            if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+              "$emulator_bin" -accel-check > /tmp/dallyletter-accel-check.log 2>&1 || true
+              if grep -qi "usable" /tmp/dallyletter-accel-check.log; then
+                accel_mode=on
+              fi
+            fi
+          fi
+          echo "Android emulator acceleration mode: $accel_mode"
+          cat /tmp/dallyletter-accel-check.log 2>/dev/null || true
+          "$emulator_bin" -avd DallyletterSmoke -no-window -gpu swiftshader_indirect -no-snapshot -no-snapshot-save -noaudio -no-boot-anim -no-metrics -camera-back none -camera-front none -cores 2 -memory 3072 -accel "$accel_mode" > /tmp/dallyletter-emulator.log 2>&1 &
+          emulator_pid=$!
+          diagnostics() {
+            status=$?
+            if [ "$status" -ne 0 ]; then
+              echo "::group::Emulator process diagnostics"
+              adb devices -l || true
+              adb get-state || true
+              adb shell getprop sys.boot_completed || true
+              adb shell getprop init.svc.bootanim || true
+              tail -n 250 /tmp/dallyletter-emulator.log || true
+              echo "::endgroup::"
+            fi
+            kill "$emulator_pid" 2>/dev/null || true
+            wait "$emulator_pid" 2>/dev/null || true
+            exit "$status"
+          }
+          trap diagnostics EXIT
+          for attempt in 1 2 3 4 5; do
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then
+              echo "::error::Emulator process exited before ADB startup"
+              tail -n 200 /tmp/dallyletter-emulator.log || true
+              exit 1
+            fi
+            sleep 1
+          done
+          bash .github/scripts/android-emulator-smoke.sh
+      - name: Verify deployed API health
+        if: always()
+        env:
+          API_BASE_URL: ${{ env.EXPO_PUBLIC_API_BASE_URL }}
+        run: |
+          set -Eeuo pipefail
+          api_url="${API_BASE_URL%/}"
+          test -n "$api_url" || { echo "::error::EXPO_PUBLIC_API_BASE_URL is empty"; exit 1; }
+          # Keep the post-smoke health assertion on the same bounded cold-start
+          # policy; this check runs even when emulator tests fail.
+          deadline=$((SECONDS + 900))
+          attempt=0
+          status="000"
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            attempt=$((attempt + 1))
+            status="$(curl --silent --show-error --connect-timeout 10 --max-time 25 --output /tmp/dallyletter-api-health.json --write-out '%{http_code}' "$api_url/api/healthz" 2>/dev/null || true)"
+            if [ "$status" = "200" ] && grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' /tmp/dallyletter-api-health.json 2>/dev/null; then
+              echo "Deployed API /api/healthz returned HTTP 200 with status=ok (attempt $attempt)."
+              exit 0
+            fi
+            echo "API health attempt $attempt returned HTTP $status; waiting for Render cold start (up to 15 minutes)."
+            sleep 10
+          done
+          echo "::error::Deployed API health check failed within the 15-minute cold-start window (last HTTP $status). Expected /api/healthz to return status=ok."
+          cat /tmp/dallyletter-api-health.json 2>/dev/null || true
+          exit 1
+      - name: Preserve emulator screenshots and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dallyletter-android-emulator-diagnostics
+          path: |
+            /tmp/dallyletter-emulator.log
+            /tmp/dallyletter-ui-v1.xml
+            /tmp/dallyletter-login-filled.xml
+            /tmp/dallyletter-login-ready.xml
+            /tmp/dallyletter-login-error.xml
+            /tmp/dallyletter-ui-signup.xml
+            /tmp/dallyletter-ui-v1.0.2.xml
+            /tmp/dallyletter-v1.png
+            /tmp/dallyletter-login-error.png
+            /tmp/dallyletter-signup.png
+            /tmp/dallyletter-v1.0.2.png
+            /tmp/dallyletter-release-upgrade.xml
+            /tmp/dallyletter-release-upgrade.png
+          if-no-files-found: warn
+          retention-days: 14

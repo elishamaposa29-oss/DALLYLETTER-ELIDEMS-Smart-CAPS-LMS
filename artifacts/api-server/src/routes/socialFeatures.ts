@@ -1,0 +1,342 @@
+import { Router } from "express";
+import { and, desc, eq, inArray } from "drizzle-orm";
+import { db, pool, followsTable, notificationPreferencesTable, notificationsTable, usersTable, lessonsTable, contentCommentsTable, moderationActionsTable, auditLogsTable, contentFlagsTable, chatPollsTable, chatPollOptionsTable, chatPollVotesTable, broadcastsTable, broadcastRecipientsTable, communitiesTable, communityGroupsTable, messagesTable, studyGroupMembersTable, studyGroupsTable, groupSettingsTable } from "@workspace/db";
+import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
+import { canModerateUser, isJuniorManager, normalizeRole } from "../lib/role-access";
+import { managerHasPermission, requireManagerPermission, requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
+import { getAIProvider } from "../lib/ai-provider";
+
+const router = Router();
+const manager = (u:any) => canAccessManager(u);
+const targetTypes = new Set(["teacher","prefect","manager","event","subject"]);
+async function isOwnerOwnedContent(contentType: string, contentId: number): Promise<boolean> {
+  const source: Record<string, { table: string; ownerColumn: string }> = {
+    lesson: { table: "lessons", ownerColumn: "teacher_id" },
+    assignment: { table: "assignments", ownerColumn: "teacher_id" },
+    exercise: { table: "exercises", ownerColumn: "created_by" },
+    activity: { table: "audit_logs", ownerColumn: "performed_by" },
+  };
+  const selected = source[contentType];
+  if (!selected) return false;
+  const result = await pool.query(`SELECT u.role FROM ${selected.table} c JOIN users u ON u.id=c.${selected.ownerColumn} WHERE c.id=$1`, [contentId]);
+  return isOwnerRole(result.rows[0]?.role);
+}
+
+router.get("/follows", requireAuth, async (req,res) => {
+  const rows=await db.select().from(followsTable).where(eq(followsTable.followerId,req.currentUser!.id)).orderBy(desc(followsTable.createdAt));
+  if (isOwnerRole(req.currentUser!.role)) { res.json(rows); return; }
+  const owners = await pool.query("SELECT id FROM users WHERE lower(role) IN ('owner','platform_owner')");
+  const ownerIds = new Set(owners.rows.map((row: any) => Number(row.id)));
+  res.json(rows.filter((row: any) => !ownerIds.has(Number(row.targetUserId))));
+});
+router.post("/follows", requireAuth, async (req,res):Promise<void> => {
+  const {targetType,targetUserId,targetKey,targetName}=req.body??{};
+  if(!targetTypes.has(targetType)||typeof targetName!=="string"||!targetName.trim()){res.status(400).json({error:"targetType and targetName are required"});return;}
+  if(["teacher","prefect","manager"].includes(targetType)&&(!Number.isInteger(Number(targetUserId))||Number(targetUserId)<=0)){res.status(400).json({error:"targetUserId is required"});return;}
+  if (targetUserId && !isOwnerRole(req.currentUser!.role)) {
+    const [target] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, Number(targetUserId)));
+    if (!target || isOwnerRole(target.role)) { res.status(404).json({ error: "Follow target not found." }); return; }
+  }
+  const existing=await db.select().from(followsTable).where(and(eq(followsTable.followerId,req.currentUser!.id),eq(followsTable.targetType,targetType), targetUserId?eq(followsTable.targetUserId,Number(targetUserId)):eq(followsTable.targetKey,String(targetKey??"")))).limit(1);
+  if(existing[0]){res.json(existing[0]);return;}
+  const [row]=await db.insert(followsTable).values({followerId:req.currentUser!.id,targetType,targetUserId:targetUserId?Number(targetUserId):null,targetKey:targetKey?String(targetKey):null,targetName:targetName.trim()}).returning();
+  res.status(201).json(row);
+});
+router.delete("/follows/:id", requireAuth, async(req,res)=>{await db.delete(followsTable).where(and(eq(followsTable.id,Number(req.params.id)),eq(followsTable.followerId,req.currentUser!.id)));res.sendStatus(204);});
+router.patch("/follows/:id", requireAuth, async(req,res):Promise<void>=>{const [row]=await db.update(followsTable).set({notificationsEnabled:Boolean(req.body?.notificationsEnabled)}).where(and(eq(followsTable.id,Number(req.params.id)),eq(followsTable.followerId,req.currentUser!.id))).returning();if(!row){res.status(404).json({error:"Follow not found"});return;}res.json(row);});
+
+router.get("/notification-preferences", requireAuth, async(req,res)=>{
+ const [row]=await db.select().from(notificationPreferencesTable).where(eq(notificationPreferencesTable.userId,req.currentUser!.id));
+ res.json(row??{pushEnabled:true,soundEnabled:true,followNotificationsEnabled:true});
+});
+router.patch("/notification-preferences", requireAuth, async(req,res)=>{
+ const values={pushEnabled:req.body?.pushEnabled!==false,soundEnabled:req.body?.soundEnabled!==false,followNotificationsEnabled:req.body?.followNotificationsEnabled!==false};
+ const [row]=await db.insert(notificationPreferencesTable).values({userId:req.currentUser!.id,...values}).onConflictDoUpdate({target:notificationPreferencesTable.userId,set:values}).returning();res.json(row);
+});
+
+router.get("/content-comments/:contentType/:contentId", requireAuth, requireManagerPermissionIfManager("content.view_comments"), async(req,res)=>{const contentType=String(req.params.contentType),contentId=Number(req.params.contentId);if(!isOwnerRole(req.currentUser!.role)&&await isOwnerOwnedContent(contentType,contentId)){res.status(404).json({error:"Content not found"});return;}const rows=await db.select().from(contentCommentsTable).where(and(eq(contentCommentsTable.contentType,contentType),eq(contentCommentsTable.contentId,contentId))).orderBy(desc(contentCommentsTable.createdAt));res.json(rows);});
+router.post("/content-comments", requireAuth, requireManagerPermission("content.comment"), async(req,res):Promise<void>=>{
+ const {contentType,contentId,body}=req.body??{}; if(!["lesson","exercise","assignment","activity"].includes(contentType)||!Number.isInteger(Number(contentId))||typeof body!=="string"||!body.trim()){res.status(400).json({error:"contentType, contentId and body are required"});return;}
+ if(!manager(req.currentUser)){res.status(403).json({error:"Staff access required"});return;}
+ if (!isOwnerRole(req.currentUser!.role) && await isOwnerOwnedContent(contentType, Number(contentId))) { res.status(404).json({ error: "Content not found" }); return; }
+ const [row]=await db.insert(contentCommentsTable).values({authorId:req.currentUser!.id,contentType,contentId:Number(contentId),body:body.trim().slice(0,4000)}).returning();
+ void (async()=>{try{
+  const ai=await getAIProvider();
+  const result=await ai.moderateContent(body.trim().slice(0,4000));
+  if(result?.flagged===true){
+   const severity=new Set(["low","medium","high","critical"]).has(result.severity)?result.severity:"medium";
+   await db.insert(contentFlagsTable).values({contentType:"comment",contentId:Number(row.id),contentText:body.trim().slice(0,500),reason:String(result.reason||"ELIDEMS AI detected content for human review").slice(0,500),severity,detectedBy:"ai:auto",status:"pending"});
+  }
+ }catch{/* Comment creation must continue if the moderation provider is unavailable. */}})();
+ if(contentType==="lesson"){const [lesson]=await db.select({teacherId:lessonsTable.teacherId}).from(lessonsTable).where(eq(lessonsTable.id,Number(contentId)));if(lesson) await db.insert(notificationsTable).values({recipientId:lesson.teacherId,title:"New content comment",message:`${req.currentUser!.name} commented on a lesson.`,type:"content_comment"});}
+ res.status(201).json(row);
+});
+
+router.post("/manager/users/:id/action", requireAuth, async(req,res):Promise<void>=>{
+ if(!canAccessManager(req.currentUser!)){res.status(403).json({error:"Manager access required"});return;}
+ const targetId=Number(req.params.id), action=String(req.body?.action??""); if(!Number.isInteger(targetId)||!["block","suspend","promote_prefect","remove_prefect","warn","comment"].includes(action)){res.status(400).json({error:"Invalid moderation action"});return;}
+ if(targetId===req.currentUser!.id){res.status(400).json({error:"You cannot moderate yourself"});return;}
+ const [target]=await db.select().from(usersTable).where(eq(usersTable.id,targetId));if(!target){res.status(404).json({error:"User not found"});return;}
+ if(!canModerateUser(req.currentUser!,target)){res.status(403).json({error:"This account is above your management authority or outside your permitted scope."});return;}
+ const targetRole=normalizeRole(target.role);
+ const requiredPermission = action==="block" ? "users.block" : action==="suspend" ? "users.suspend" : action==="promote_prefect"||action==="remove_prefect" ? "users.override.prefect" : targetRole==="teacher" ? "users.override.teacher" : targetRole==="prefect" ? "users.override.prefect" : ["student","learner"].includes(targetRole) ? "users.override.learner" : isJuniorManager(target) ? "users.override.junior_manager" : "";
+ if (!requiredPermission || !(await managerHasPermission(req.currentUser!, requiredPermission))) { res.status(403).json({error:"Owner has not granted the permission required for this action.",permission:requiredPermission||null});return; }
+ const note=typeof req.body?.note==="string"?req.body.note.trim().slice(0,1000):null;
+ if(["block","suspend"].includes(action)&&(!note||note.length<3)){res.status(400).json({error:"A moderation reason of at least 3 characters is required to block or suspend an account."});return;}
+ if(action==="block") await db.update(usersTable).set({isBlocked:true}).where(eq(usersTable.id,targetId));
+ if(action==="suspend") await db.update(usersTable).set({isSuspended:true}).where(eq(usersTable.id,targetId));
+ if(action==="promote_prefect") await db.update(usersTable).set({isPrefect:true}).where(eq(usersTable.id,targetId));
+ if(action==="remove_prefect") await db.update(usersTable).set({isPrefect:false}).where(eq(usersTable.id,targetId));
+ await db.insert(moderationActionsTable).values({actorId:req.currentUser!.id,targetUserId:targetId,action,note});
+ await db.insert(auditLogsTable).values({
+   action: `Manager action: ${action}`,
+   category: "moderation",
+   performedBy: req.currentUser!.id,
+   targetType: "user",
+   targetId,
+   details: JSON.stringify({ actorId: req.currentUser!.id, actorName: req.currentUser!.name, actorRole: req.currentUser!.role, targetUserId: targetId, action, note: note ?? null }),
+ });
+ if(["warn","comment","block","suspend","promote_prefect","remove_prefect"].includes(action)) await db.insert(notificationsTable).values({recipientId:targetId,title:action==="warn"?"Account warning":"Account update",message:note??`A manager performed: ${action.replace("_"," ")}.`,type:"moderation"});
+ res.json({ok:true});
+});
+router.post("/manager/users/:id/unblock", requireAuth, requireManagerPermissionIfManager("users.restore"), async(req,res):Promise<void>=>{const actor=req.currentUser!;if(!canAccessManager(actor)){res.status(403).json({error:"Manager access required"});return;}if(!(await managerHasPermission(actor,"users.restore"))){res.status(403).json({error:"Owner has not granted permission to restore user access.",permission:"users.restore"});return;}const targetId=Number(req.params.id);if(!Number.isInteger(targetId)){res.status(400).json({error:"Invalid user id"});return;}const [target]=await db.select({id:usersTable.id,name:usersTable.name,role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(eq(usersTable.id,targetId));if(!target){res.status(404).json({error:"User not found"});return;}if(!canModerateUser(actor,target)){res.status(403).json({error:"This account is above your management authority or outside your permitted scope."});return;}await db.update(usersTable).set({isBlocked:false,isSuspended:false}).where(eq(usersTable.id,targetId));await db.insert(auditLogsTable).values({action:"Manager action: restore_access",category:"moderation",performedBy:actor.id,targetType:"user",targetId,details:JSON.stringify({actorId:actor.id,actorName:actor.name,actorRole:actor.role,targetUserId:targetId,targetName:target.name,action:"restore_access"})});await db.insert(notificationsTable).values({recipientId:targetId,title:"Account access restored",message:"Your DALLYLETTER ELIDEMS access has been restored by authorized management staff.",type:"moderation"});res.json({ok:true});});
+
+export default router;
+
+async function canAccessChatGroup(groupId: number, userId: number, user: NonNullable<Express.Request["currentUser"]>): Promise<boolean> {
+  const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
+  if (!group) return false;
+  if (!isOwnerRole(user.role)) {
+    const [creator]=await db.select({role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(eq(usersTable.id,group.creatorId));
+    if(!creator || isOwnerRole(creator.role)) return false;
+    if(canAccessManager(user) && !canModerateUser(user,creator)) return false;
+  }
+  if (isOwnerRole(user.role) || (canAccessManager(user) && await managerHasPermission(user, "groups.manage")) || user.isPrefect || group.creatorId === userId) return true;
+  const [member] = await db.select({ id: studyGroupMembersTable.id }).from(studyGroupMembersTable)
+    .where(and(eq(studyGroupMembersTable.groupId, groupId), eq(studyGroupMembersTable.userId, userId)));
+  return Boolean(member);
+}
+
+router.get("/chat/groups/:groupId/polls", requireAuth, async(req,res)=>{
+  const groupId = Number(req.params.groupId);
+  if (!Number.isInteger(groupId) || groupId <= 0 || !(await canAccessChatGroup(groupId, req.currentUser!.id, req.currentUser!))) {
+    res.status(403).json({ error: "You must be a group member to view polls" });
+    return;
+  }
+  const rows=await db.select().from(chatPollsTable).where(eq(chatPollsTable.groupId,groupId)).orderBy(desc(chatPollsTable.createdAt));
+  const out=await Promise.all(rows.map(async poll=>{
+    const options=await db.select().from(chatPollOptionsTable).where(eq(chatPollOptionsTable.pollId,poll.id));
+    const votes=await db.select().from(chatPollVotesTable).where(eq(chatPollVotesTable.pollId,poll.id));
+    const actor = req.currentUser!;
+    const hasVoted = votes.some(vote => Number(vote.userId) === Number(actor.id));
+    let isGroupOwner = false;
+    let groupCreator: { role: string; isManager: boolean | null; managerLevel: string | null } | undefined;
+    if (poll.groupId !== null) {
+      const [group] = await db.select({ creatorId: studyGroupsTable.creatorId }).from(studyGroupsTable).where(eq(studyGroupsTable.id, poll.groupId));
+      isGroupOwner = Number(group?.creatorId) === Number(actor.id);
+      if (group?.creatorId) {
+        [groupCreator] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, group.creatorId));
+      }
+    }
+    const managerAuthorized = poll.groupId !== null && canAccessManager(actor) &&
+      await managerHasPermission(actor, "groups.manage") &&
+      Boolean(groupCreator && canModerateUser(actor, groupCreator));
+    const canDelete = Number(poll.creatorId) === Number(actor.id) || isGroupOwner || isOwnerRole(actor.role) || managerAuthorized;
+    const safePoll = { ...poll, canDelete, correctOptionId: poll.autoMark && (poll.creatorId === actor.id || hasVoted) ? poll.correctOptionId : null };
+    const myMark = poll.autoMark && hasVoted && poll.correctOptionId != null ? {
+      isCorrect: votes.some(vote => Number(vote.userId) === Number(actor.id) && Number(vote.optionId) === Number(poll.correctOptionId)), 
+      correctLabel: options.find(option => option.id === poll.correctOptionId)?.label ?? null,
+    } : null;
+    return { poll: safePoll, options: options.map(option => ({ ...option, voteCount: votes.filter(vote => vote.optionId === option.id).length, selected: votes.some(vote => Number(vote.optionId) === Number(option.id) && Number(vote.userId) === Number(actor.id)) })), totalVotes: new Set(votes.map(vote => vote.userId)).size, myMark };
+  }));
+ res.json(out);
+});
+router.delete("/chat/groups/:groupId/polls", requireAuth, async(req,res):Promise<void>=>{
+ const groupId=Number(req.params.groupId), actor=req.currentUser!;
+ if(!Number.isSafeInteger(groupId)||groupId<=0){res.status(400).json({error:"Invalid group id"});return;}
+ const [group]=await db.select({id:studyGroupsTable.id,creatorId:studyGroupsTable.creatorId}).from(studyGroupsTable).where(eq(studyGroupsTable.id,groupId));
+ if(!group){res.status(404).json({error:"Study group not found"});return;}
+ const isGroupOwner=Number(group.creatorId)===Number(actor.id);
+ const isOwner=isOwnerRole(actor.role);
+ let managerAuthorized=false;
+ if(!isOwner&&!isGroupOwner&&canAccessManager(actor)&&await managerHasPermission(actor,"groups.manage")){
+  const [creator]=await db.select({role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(eq(usersTable.id,group.creatorId));
+  managerAuthorized=Boolean(creator&&canModerateUser(actor,creator));
+ }
+ if(!isOwner&&!isGroupOwner&&!managerAuthorized){res.status(403).json({error:"Only the group creator, platform owner, or an in-scope manager with the existing groups.manage permission can clear group polls."});return;}
+ const polls=await db.select({id:chatPollsTable.id}).from(chatPollsTable).where(eq(chatPollsTable.groupId,groupId));
+ const pollIds=polls.map(poll=>poll.id);
+ if(pollIds.length){
+  await db.transaction(async tx=>{
+   await tx.delete(chatPollVotesTable).where(inArray(chatPollVotesTable.pollId,pollIds));
+   await tx.delete(chatPollOptionsTable).where(inArray(chatPollOptionsTable.pollId,pollIds));
+   await tx.delete(chatPollsTable).where(and(eq(chatPollsTable.groupId,groupId),inArray(chatPollsTable.id,pollIds)));
+  });
+ }
+ res.status(200).json({ok:true,deleted:true,deletedPollCount:pollIds.length});
+});
+router.post("/chat/groups/:groupId/polls", requireAuth, async(req,res):Promise<void>=>{
+ const groupId=Number(req.params.groupId), user=req.currentUser!, question=typeof req.body?.question==="string"?req.body.question.trim():"", options=Array.isArray(req.body?.options)?req.body.options.filter((x:any)=>typeof x==="string"&&x.trim()).slice(0,20):[];
+  if(!(await canAccessChatGroup(groupId, user.id, user))||!question||options.length<2){res.status(400).json({error:"Group member access and at least two options are required"});return;}
+  const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, groupId));
+  if (settings?.allowPolls === false) { res.status(403).json({ error: "Polls are disabled in this group" }); return; }
+  const uniqueOptions = [...new Set(options.map((option: string) => option.trim()))];
+  if (uniqueOptions.length < 2) { res.status(400).json({ error: "Poll options must be unique" }); return; }
+ const autoMark = req.body?.autoMark === true;
+  const allowMultiple = Boolean(req.body?.allowMultiple);
+  if (autoMark && allowMultiple) { res.status(400).json({ error: "Auto-marking requires a single-answer poll." }); return; }
+  const correctOption = typeof req.body?.correctOption === "string" ? req.body.correctOption.trim() : "";
+  const correctOptionIndex = uniqueOptions.indexOf(correctOption);
+  if (autoMark && correctOptionIndex < 0) { res.status(400).json({ error: "Select the correct answer before publishing an auto-marked poll." }); return; }
+  const [poll]=await db.insert(chatPollsTable).values({groupId,creatorId:user.id,question,allowMultiple,anonymous:Boolean(req.body?.anonymous),autoMark,correctOptionId:null}).returning();
+  const createdOptions = await db.insert(chatPollOptionsTable).values(uniqueOptions.map((label:string)=>({pollId:poll.id,label}))).returning();
+  const correctOptionId = autoMark ? createdOptions[correctOptionIndex]?.id : null;
+  const [savedPoll] = autoMark ? await db.update(chatPollsTable).set({correctOptionId}).where(eq(chatPollsTable.id,poll.id)).returning() : [poll];
+  res.status(201).json({poll:savedPoll,options:createdOptions});
+});
+router.delete("/chat/polls/:pollId", requireAuth, async(req,res):Promise<void>=>{
+ const pollId=Number(req.params.pollId), actor=req.currentUser!;
+ if(!Number.isSafeInteger(pollId)||pollId<=0){res.status(400).json({error:"Invalid poll id"});return;}
+ const [poll]=await db.select().from(chatPollsTable).where(eq(chatPollsTable.id,pollId));
+ if(!poll){res.status(404).json({error:"Poll not found"});return;}
+ const isCreator=Number(poll.creatorId)===Number(actor.id);
+ const isOwner=isOwnerRole(actor.role);
+ let isGroupOwner=false;
+ let groupCreator:{role:string;isManager:boolean|null;managerLevel:string|null}|undefined;
+ if(poll.groupId!==null){
+  const [group]=await db.select({creatorId:studyGroupsTable.creatorId}).from(studyGroupsTable).where(eq(studyGroupsTable.id,poll.groupId));
+  isGroupOwner=Number(group?.creatorId)===Number(actor.id);
+  if(group?.creatorId){
+   [groupCreator]=await db.select({role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(eq(usersTable.id,group.creatorId));
+  }
+ }
+ const managerAuthorized=poll.groupId!==null&&canAccessManager(actor)&&
+  await managerHasPermission(actor,"groups.manage")&&
+  Boolean(groupCreator&&canModerateUser(actor,groupCreator));
+ if(!isCreator&&!isGroupOwner&&!isOwner&&!managerAuthorized){res.status(403).json({error:"Only the poll creator, group creator/owner, platform owner, or a manager with the existing groups.manage permission in scope can delete this poll."});return;}
+ await db.transaction(async (tx) => {
+  await tx.delete(chatPollVotesTable).where(eq(chatPollVotesTable.pollId,pollId));
+  await tx.delete(chatPollOptionsTable).where(eq(chatPollOptionsTable.pollId,pollId));
+  const deleted = await tx.delete(chatPollsTable).where(eq(chatPollsTable.id,pollId)).returning({ id: chatPollsTable.id });
+  if (!deleted.length) throw new Error("Poll deletion did not remove the poll row.");
+ });
+ res.status(200).json({ ok: true, deleted: true, pollId });
+});
+router.get("/chat/polls/:pollId/leaderboard", requireAuth, async(req,res):Promise<void>=>{
+ const pollId=Number(req.params.pollId), actor=req.currentUser!;
+ if(!Number.isSafeInteger(pollId)||pollId<=0){res.status(400).json({error:"Invalid poll id"});return;}
+ const [poll]=await db.select().from(chatPollsTable).where(eq(chatPollsTable.id,pollId));
+ if(!poll){res.status(404).json({error:"Poll not found"});return;}
+ if(!poll.groupId||!(await canAccessChatGroup(poll.groupId,actor.id,actor))){res.status(403).json({error:"You must be a group member to view this leaderboard"});return;}
+ const votes=await db.select({
+  userId:chatPollVotesTable.userId,
+  name:usersTable.name,
+  avatarUrl:usersTable.avatarUrl,
+  optionLabel:chatPollOptionsTable.label,
+  createdAt:chatPollVotesTable.createdAt,
+ }).from(chatPollVotesTable)
+  .innerJoin(usersTable,eq(chatPollVotesTable.userId,usersTable.id))
+  .innerJoin(chatPollOptionsTable,eq(chatPollVotesTable.optionId,chatPollOptionsTable.id))
+  .where(eq(chatPollVotesTable.pollId,pollId))
+  .orderBy(desc(chatPollVotesTable.createdAt));
+ const byUser=new Map<number,{userId:number|null;name:string;avatarUrl:string|null;answers:string[];lastVoteAt:Date|null}>();
+ for(const vote of votes){
+  const key=Number(vote.userId), existing=byUser.get(key);
+  if(existing){if(!existing.answers.includes(vote.optionLabel))existing.answers.push(vote.optionLabel);continue;}
+  byUser.set(key,{
+   userId:poll.anonymous?null:key,
+   name:poll.anonymous?"Anonymous learner":vote.name,
+   avatarUrl:poll.anonymous?null:vote.avatarUrl,
+   answers:[vote.optionLabel],
+   lastVoteAt:vote.createdAt??null,
+  });
+ }
+ const entries=[...byUser.values()].sort((a,b)=>(b.lastVoteAt?.getTime()??0)-(a.lastVoteAt?.getTime()??0))
+  .map(({lastVoteAt,...entry},index)=>({...entry,rank:index+1}));
+ res.json({pollId,anonymous:Boolean(poll.anonymous),entries});
+});
+
+router.post("/chat/polls/:pollId/vote", requireAuth, async(req,res):Promise<void>=>{
+ const pollId=Number(req.params.pollId), user=req.currentUser!, optionIds=Array.isArray(req.body?.optionIds)?req.body.optionIds.map(Number).filter(Number.isInteger):[];
+ const [poll]=await db.select().from(chatPollsTable).where(eq(chatPollsTable.id,pollId)); if(!poll||poll.closed){res.status(404).json({error:"Poll unavailable"});return;}
+  if (!poll.groupId || !(await canAccessChatGroup(poll.groupId, user.id, user))) { res.status(403).json({ error: "You must be a group member to vote" }); return; }
+  if (new Set(optionIds).size !== optionIds.length) { res.status(400).json({ error: "Choose each option only once" }); return; }
+ if(optionIds.length===0||(!poll.allowMultiple&&optionIds.length>1)){res.status(400).json({error:"Choose a valid option"});return;}
+ const valid=await db.select().from(chatPollOptionsTable).where(eq(chatPollOptionsTable.pollId,pollId)); const validIds=new Set(valid.map((o: { id: number })=>o.id)); if(optionIds.some((id: number)=>!validIds.has(id))){res.status(400).json({error:"Invalid poll option"});return;}
+ await db.transaction(async tx=>{
+  await tx.delete(chatPollVotesTable).where(and(eq(chatPollVotesTable.pollId,pollId),eq(chatPollVotesTable.userId,user.id)));
+  await tx.insert(chatPollVotesTable).values(optionIds.map((optionId: number)=>({pollId,optionId,userId:user.id})));
+ });
+ const marked = poll.autoMark && !poll.allowMultiple && poll.correctOptionId != null ? { isCorrect: optionIds[0] === poll.correctOptionId, correctOptionId: poll.correctOptionId, correctLabel: valid.find(option => option.id === poll.correctOptionId)?.label ?? null } : {};
+ res.json({ok:true,...marked});
+});
+
+router.get("/communities", requireAuth, async(req,res)=>{
+ const actor=req.currentUser!;
+ const canManageCommunities=isOwnerRole(actor.role)||(canAccessManager(actor)&&await managerHasPermission(actor,"groups.manage"));
+ const rows=await db.select().from(communitiesTable).orderBy(desc(communitiesTable.createdAt));
+ const ids=rows.map(row=>row.id);
+ const links=ids.length?await db.select({communityId:communityGroupsTable.communityId,groupId:studyGroupsTable.id,groupName:studyGroupsTable.name,subject:studyGroupsTable.subject,grade:studyGroupsTable.grade}).from(communityGroupsTable).innerJoin(studyGroupsTable,eq(communityGroupsTable.groupId,studyGroupsTable.id)).where(inArray(communityGroupsTable.communityId,ids)):[];
+ const ownerIds=[...new Set(rows.map(row=>Number(row.ownerId)).filter(id=>id>0))];
+ const linkedGroupIds=[...new Set(links.map(link=>Number(link.groupId)).filter(id=>id>0))];
+ const groupRows=linkedGroupIds.length?await db.select({id:studyGroupsTable.id,creatorId:studyGroupsTable.creatorId}).from(studyGroupsTable).where(inArray(studyGroupsTable.id,linkedGroupIds)):[];
+ const creatorIds=[...new Set(groupRows.map(group=>Number(group.creatorId)).filter(id=>id>0))];
+ const profileIds=[...new Set([...ownerIds,...creatorIds])];
+ const profiles=profileIds.length?await db.select({id:usersTable.id,role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(inArray(usersTable.id,profileIds)):[];
+ const profileById=new Map(profiles.map(profile=>[Number(profile.id),profile]));
+ const groupById=new Map(groupRows.map(group=>[Number(group.id),group]));
+ res.json(rows.map(row=>{
+  const owner=profileById.get(Number(row.ownerId));
+  const canManage=canManageCommunities&&(isOwnerRole(actor.role)||Number(row.ownerId)===actor.id||(Boolean(owner)&&canAccessManager(actor)&&canModerateUser(actor,owner!)));
+  const visibleGroups=links.filter(link=>{
+   if(link.communityId!==row.id)return false;
+   const group=groupById.get(Number(link.groupId));
+   const creator=group?profileById.get(Number(group.creatorId)):undefined;
+   if(isOwnerRole(actor.role))return true;
+   if(Number(group?.creatorId)===actor.id)return true;
+   if(!creator||isOwnerRole(creator.role))return false;
+   return canAccessManager(actor)?canModerateUser(actor,creator):true;
+  });
+  return {...row,canManage,groups:visibleGroups};
+ }));
+});
+router.post("/communities", requireAuth, async(req,res):Promise<void>=>{
+ const user=req.currentUser!; if(!canAccessManager(user)||!(await managerHasPermission(user,"groups.manage"))){res.status(403).json({error:"Study group management permission required."});return;}
+ const name=typeof req.body?.name==="string"?req.body.name.trim():""; if(!name){res.status(400).json({error:"Community name required"});return;}
+ const [row]=await db.insert(communitiesTable).values({name,description:typeof req.body?.description==="string"?req.body.description:null,ownerId:user.id}).returning();res.status(201).json(row);
+});
+router.post("/communities/:id/groups", requireAuth, async(req,res):Promise<void>=>{
+ const user=req.currentUser!; if(!canAccessManager(user)||!(await managerHasPermission(user,"groups.manage"))){res.status(403).json({error:"Study group management permission required."});return;}
+ const communityId=Number(req.params.id),groupId=Number(req.body?.groupId); if(!Number.isSafeInteger(communityId)||communityId<=0||!Number.isSafeInteger(groupId)||groupId<=0){res.status(400).json({error:"Valid community and group IDs are required"});return;}
+ const [community]=await db.select({id:communitiesTable.id,ownerId:communitiesTable.ownerId}).from(communitiesTable).where(eq(communitiesTable.id,communityId));
+ const [group]=await db.select({id:studyGroupsTable.id,creatorId:studyGroupsTable.creatorId}).from(studyGroupsTable).where(eq(studyGroupsTable.id,groupId));
+ if(!community||!group){res.status(404).json({error:"Community or study group not found"});return;}
+ if(!isOwnerRole(user.role)){
+  const scopeIds=[Number(community.ownerId),Number(group.creatorId)].filter(id=>id>0&&id!==user.id);
+  const scopeProfiles=scopeIds.length?await db.select({id:usersTable.id,role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(inArray(usersTable.id,scopeIds)):[];
+  const scopeById=new Map(scopeProfiles.map(profile=>[Number(profile.id),profile]));
+  const outOfScope=scopeIds.some(id=>{const target=scopeById.get(id);return !target||!canModerateUser(user,target);});
+  if(outOfScope){res.status(403).json({error:"You can only link communities and study groups owned by you or accounts within your Owner-granted management hierarchy."});return;}
+ }
+ const [existing]=await db.select().from(communityGroupsTable).where(and(eq(communityGroupsTable.communityId,communityId),eq(communityGroupsTable.groupId,groupId)));
+ if(existing){res.json({...existing,alreadyLinked:true});return;}
+ const [row]=await db.insert(communityGroupsTable).values({communityId,groupId}).returning();res.status(201).json(row);
+});
+
+router.post("/broadcasts", requireAuth, async(req,res):Promise<void>=>{
+  const user=req.currentUser!;
+  const recipientIds: number[] = Array.isArray(req.body?.recipientIds)
+    ? req.body.recipientIds.map(Number).filter((id: number) => Number.isInteger(id))
+    : [];
+  const content=typeof req.body?.content==="string"?req.body.content.trim():"";
+  if (!manager(user) && !isOwnerRole(user.role)) { res.status(403).json({ error: "Staff access required" }); return; }
+  if (manager(user) && !(await managerHasPermission(user,"notifications.broadcast"))) { res.status(403).json({ error: "Owner has not granted broadcast permission.", permission: "notifications.broadcast" }); return; }
+ if(!content||recipientIds.length===0){res.status(400).json({error:"content and recipients are required"});return;}
+  const uniqueRecipientIds = [...new Set(recipientIds)].filter(id => id !== user.id).slice(0, 1024);
+  const recipients = await db.select({ id: usersTable.id }).from(usersTable).where(inArray(usersTable.id, uniqueRecipientIds));
+  if (recipients.length !== uniqueRecipientIds.length) { res.status(400).json({ error: "One or more recipients do not exist" }); return; }
+ const [broadcast]=await db.insert(broadcastsTable).values({senderId:user.id,name:typeof req.body?.name==="string"&&req.body.name.trim()?req.body.name.trim():"Broadcast"}).returning();
+  await db.insert(broadcastRecipientsTable).values(uniqueRecipientIds.map((recipientId: number)=>({broadcastId:broadcast.id,userId:recipientId})));
+  await db.insert(messagesTable).values(uniqueRecipientIds.map((recipientId: number)=>({senderId:user.id,senderName:user.name,senderRole:user.role,content,type:"text",groupId:null,recipientId})));
+  res.status(201).json({broadcast,recipientCount:uniqueRecipientIds.length});
+});

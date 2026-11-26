@@ -1,0 +1,27 @@
+import assert from "node:assert/strict";
+import crypto from "node:crypto";
+import { readFileSync } from "node:fs";
+const base=(process.env.API_BASE_URL||"http://127.0.0.1:4000").replace(/\/$/,"");
+const capture=process.env.MOCK_PROVIDER_CAPTURE||"/tmp/dallyletter-provider-capture.jsonl";
+const email="reset-e2e-"+crypto.randomUUID()+"@example.test";
+const first="Old-"+crypto.randomBytes(12).toString("hex")+"!";
+const next="New-"+crypto.randomBytes(12).toString("hex")+"!";
+async function post(path,body,token){const r=await fetch(base+path,{method:"POST",headers:{"content-type":"application/json",...(token?{authorization:"Bearer "+token}:{})},body:JSON.stringify(body)});const t=await r.text();let d;try{d=t?JSON.parse(t):null}catch{d=t}return {status:r.status,data:d}}
+const signup=await post("/api/auth/register",{email,password:first,name:"Isolated reset test",role:"student"});
+assert.equal(signup.status,201,"isolated test account registers");
+const oldSession=signup.data.token;
+assert.ok(oldSession,"initial session exists");
+assert.equal((await post("/api/auth/password-reset/request",{email})).status,202,"reset request accepted");
+const records=readFileSync(capture,"utf8").trim().split("\n").filter(Boolean).map(x=>JSON.parse(x)).reverse();
+const mail=records.find(x=>x.provider==="resend"&&JSON.stringify(x.body).includes(email));
+assert.ok(mail,"mock provider captured reset email");
+const match=String(mail.body.text||"").match(/[?&]token=([a-f0-9]{64})/i);
+assert.ok(match,"reset email contains token");
+const token=decodeURIComponent(match[1]);
+assert.equal((await post("/api/auth/password-reset/confirm",{token,newPassword:next})).status,200,"reset succeeds");
+assert.equal((await post("/api/auth/login",{email,password:first})).status,401,"old password rejected");
+assert.equal((await post("/api/auth/login",{email,password:next})).status,200,"new password works");
+assert.equal((await post("/api/auth/password-reset/confirm",{token,newPassword:first})).status,400,"token replay rejected");
+const session=await fetch(base+"/api/auth/me",{headers:{authorization:"Bearer "+oldSession}});
+assert.equal(session.status,401,"pre-reset session revoked");
+console.log("PASSWORD_RESET_E2E PASS: new login, old-password rejection, replay rejection, session revocation; ephemeral PostgreSQL + mocked email only");

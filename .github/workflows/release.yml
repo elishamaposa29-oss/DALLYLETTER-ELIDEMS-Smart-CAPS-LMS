@@ -1,0 +1,100 @@
+name: Release Safety
+
+on:
+  pull_request:
+    branches: [main, staging, production]
+  push:
+    branches: [main, staging, production]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-safety:
+    runs-on: ubuntu-latest
+    environment: >-
+      ${{ github.ref_name == 'production' && 'production' || github.ref_name == 'staging' && 'staging' || 'development' }}
+    env:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/dallyletter_ci
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: dallyletter_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d dallyletter_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck and build
+        run: pnpm run ci:verify
+
+      - name: Provision CI database schema
+        run: pnpm --filter @workspace/db push
+
+      - name: Verify health endpoint is available
+        run: |
+          node - <<'NODE'
+          const http = require('http');
+          const { spawn } = require('child_process');
+
+          const server = spawn('pnpm', ['start:api'], { stdio: 'inherit' });
+
+          const deadline = Date.now() + 30000;
+          const check = () => {
+            const req = http.get('http://127.0.0.1:4000/api/healthz', (res) => {
+              let data = '';
+              res.on('data', (chunk) => data += chunk);
+              res.on('end', () => {
+                if (res.statusCode === 200) {
+                  console.log(data);
+                  server.kill('SIGTERM');
+                  process.exit(0);
+                }
+                retry();
+              });
+            });
+
+            req.on('error', retry);
+            req.setTimeout(3000, () => {
+              req.destroy();
+              retry();
+            });
+          };
+
+          const retry = () => {
+            if (Date.now() >= deadline) {
+              console.error('API health endpoint did not become ready within 30 seconds.');
+              server.kill('SIGTERM');
+              process.exit(1);
+            }
+            setTimeout(check, 1000);
+          };
+
+          check();
+          NODE

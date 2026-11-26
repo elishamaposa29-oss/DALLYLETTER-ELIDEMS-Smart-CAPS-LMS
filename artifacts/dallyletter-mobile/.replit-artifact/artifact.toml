@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/mobile/"
+title = "DallyLetter Mobile"
+version = "1.0.0"
+id = "artifacts/dallyletter-mobile"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/mobile/" ]
+localPort = 26191
+
+[services.development]
+run = "pnpm --filter @workspace/dallyletter-mobile run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/dallyletter-mobile", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/dallyletter-mobile", "run", "serve" ]
+
+[services.env]
+PORT = "26191"
+BASE_PATH = "/mobile/"

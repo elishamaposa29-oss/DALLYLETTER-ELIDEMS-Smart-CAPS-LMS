@@ -1,0 +1,835 @@
+import { ACADEMIC_GRADE_OPTIONS } from "@workspace/api-client-react/academic-grades";
+import { useEffect, useMemo, useRef, useState, type MouseEventHandler, type PointerEvent as ReactPointerEvent } from "react";
+import { useRoute } from "wouter";
+import { DashboardLayout } from "@/components/DashboardLayout";
+import { useAuth } from "@/contexts/AuthContext";
+import { getApiUrl } from "@workspace/api-client-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { DailyAppAttendanceCard } from "@/components/DailyAppAttendanceCard";
+import RecordBookWorkspace from "@/components/RecordBookWorkspace";
+import { ProfileSocialControls } from "@/components/ProfileSocialControls";
+import { ProfileSectionViewer } from "@/components/ProfileSectionViewer";
+import { ElidemsAIChat } from "@/components/ElidemsAIChat";
+import { Trash2 } from "lucide-react";
+
+type Tab = "Overview" | "Qualifications" | "Subjects" | "Enrollments" | "Achievements" | "Reports" | "Attendance" | "Payments" | "Transfer Letters" | "Groups" | "Activity" | "Teacher Documents";
+
+function calculateAgeOnDate(dateOfBirth: string, asOf: Date = new Date()): number | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateOfBirth);
+  if (!match) return null;
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+  const birth = new Date(year, month - 1, day);
+  if (birth.getFullYear() !== year || birth.getMonth() + 1 !== month || birth.getDate() !== day) return null;
+  let age = asOf.getFullYear() - year;
+  if (asOf.getMonth() + 1 < month || (asOf.getMonth() + 1 === month && asOf.getDate() < day)) age -= 1;
+  return age >= 0 ? age : null;
+}
+type PublicProfile = { id: number; display_name: string; avatar: string | null; cover_url?: string | null; cover_type?: string | null; bio: string | null; role: string; verified_qualifications: Array<{title:string;verified:boolean}>; subjects_to_teach: string[]; subjects?: string[]; primary_subject?: string | null; grade?: string | null; is_prefect?: boolean; is_manager?: boolean; manager_level?: string | null; performance_score?: number; leaderboard_position?: number | null; badge_count?: number; streak_days?: number; groups_joined?: Array<{id:number;name:string;subject:string}>; groups_owned?: Array<{id:number;name:string;subject:string}>; groups_with_settings_permission?: Array<{id:number;name:string;subject:string}>; fees_status?: string; achievement_count?: number; lesson_requests_count?: number; section_visibility?: Record<string,boolean> };
+function normalizeProfileRole(role: unknown): string {
+  return String(role ?? "").trim().toLowerCase().replace(/[ -]+/g, "_");
+}
+function profilePrimaryRoleLabel(role: unknown): string {
+  const normalized = normalizeProfileRole(role);
+  const labels: Record<string,string> = {
+    student: "Learner", learner: "Learner", prefect: "Prefect",
+    teacher: "Teacher", manager: "Manager", junior_manager: "Junior Manager",
+    senior_manager: "Senior Manager", admin: "Admin", owner: "Owner",
+    platform_owner: "Owner",
+  };
+  return labels[normalized] || (normalized ? normalized.replace(/_/g," ").replace(/\b\w/g, c => c.toUpperCase()) : "Member");
+}
+function profileIdentityBadges(profile: PublicProfile | null): string[] {
+  if (!profile) return [];
+  const role = normalizeProfileRole(profile.role);
+  const level = String(profile.manager_level || "").toLowerCase();
+  const primary = role === "manager" && level === "senior" ? "Senior Manager" : role === "manager" && level === "junior" ? "Junior Manager" : profilePrimaryRoleLabel(role);
+  const badges = [primary];
+  const managerRole = ["manager","junior_manager","senior_manager"].includes(role);
+  const manager = Boolean(profile.is_manager) || managerRole;
+  if (manager && !managerRole) badges.push(String(profile.manager_level || "").toLowerCase() === "senior" ? "Senior Manager" : "Manager");
+  const prefect = Boolean(profile.is_prefect) || role === "prefect";
+  if (prefect && role !== "prefect") badges.push("Prefect");
+  return [...new Set(badges)];
+}
+
+const tabs: Tab[] = ["Overview","Qualifications","Subjects","Enrollments","Achievements","Reports","Attendance","Payments","Transfer Letters","Groups","Activity","Teacher Documents"];
+const tabPrivacyKey: Partial<Record<Tab,string>> = { Qualifications:"qualifications", Subjects:"subjects", Enrollments:"enrollments", Achievements:"achievements", Reports:"reports", Attendance:"attendance", Payments:"payments", "Transfer Letters":"transfers", Groups:"groups", Activity:"activity", "Teacher Documents":"teacher_documents" };
+
+const TRANSFER_IMAGE_INPUT_LIMIT = 15 * 1024 * 1024;
+const TRANSFER_IMAGE_OUTPUT_LIMIT = 900 * 1024;
+
+async function transferImageToDataUrl(file: File): Promise<string> {
+  if (!["image/png", "image/jpeg"].includes(file.type)) throw new Error("Choose a PNG or JPG image.");
+  if (!file.size || file.size > TRANSFER_IMAGE_INPUT_LIMIT) throw new Error("Choose an image smaller than 15 MB.");
+  const bitmap = await createImageBitmap(file);
+  try {
+    let width = bitmap.width, height = bitmap.height;
+    const longest = Math.max(width, height);
+    if (longest > 1800) { const scale = 1800 / longest; width = Math.round(width * scale); height = Math.round(height * scale); }
+    const canvas = document.createElement("canvas"), context = canvas.getContext("2d");
+    if (!context) throw new Error("Image compression is unavailable in this browser.");
+    for (let attempt = 0; attempt < 9; attempt += 1) {
+      canvas.width = width; canvas.height = height;
+      context.fillStyle = "#ffffff"; context.fillRect(0, 0, width, height);
+      context.drawImage(bitmap, 0, 0, width, height);
+      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/jpeg", Math.max(0.55, 0.9 - attempt * 0.045)));
+      if (blob && blob.size <= TRANSFER_IMAGE_OUTPUT_LIMIT) {
+        return await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onerror = () => reject(new Error("The compressed image could not be read."));
+          reader.onload = () => resolve(String(reader.result || ""));
+          reader.readAsDataURL(blob);
+        });
+      }
+      width = Math.max(240, Math.round(width * 0.82)); height = Math.max(180, Math.round(height * 0.82));
+    }
+    throw new Error("This image could not be compressed below 900 KB. Please choose a smaller image.");
+  } finally { bitmap.close(); }
+}
+
+async function loadDallyletterLogoDataUrl(): Promise<string> {
+  const response = await fetch("/icons/icon-192.png", { cache: "force-cache" });
+  if (!response.ok) throw new Error("Dallyletter logo could not be loaded.");
+  const blob = await response.blob();
+  const bitmap = await createImageBitmap(blob);
+  try {
+    const canvas = document.createElement("canvas"); canvas.width = bitmap.width; canvas.height = bitmap.height;
+    const context = canvas.getContext("2d"); if (!context) throw new Error("Logo conversion unavailable.");
+    context.fillStyle = "#ffffff"; context.fillRect(0,0,canvas.width,canvas.height); context.drawImage(bitmap,0,0);
+    const jpeg = await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,"image/jpeg",0.9));
+    if(!jpeg) throw new Error("Dallyletter logo conversion failed.");
+    return await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onerror=()=>reject(new Error("Logo could not be read."));reader.onload=()=>resolve(String(reader.result||""));reader.readAsDataURL(jpeg);});
+  } finally { bitmap.close(); }
+}
+
+type AuthenticatedProfileMediaProps = { url: string; type?: string; alt?: string; className?: string; decorative?: boolean; controls?: boolean; autoPlay?: boolean; muted?: boolean; loop?: boolean; onClick?: MouseEventHandler<any>; onError?: () => void };
+function AuthenticatedProfileMedia({url,type="image",alt="",className="",decorative=false,controls=false,autoPlay=false,muted=false,loop=false,onClick,onError}:AuthenticatedProfileMediaProps) {
+  const [source,setSource]=useState<string|null>(null);
+  const [failed,setFailed]=useState(false);
+  useEffect(()=>{
+    let active=true;let objectUrl:string|undefined;
+    const load=async()=>{
+      if(!url.startsWith("/api/")){setSource(url);return;}
+      const token=typeof localStorage!=="undefined"?localStorage.getItem("dallyletter_token"):null;
+      const response=await fetch(getApiUrl(url),{headers:token?{Authorization:"Bearer "+token}:{}});
+      if(!response.ok)throw new Error("Profile media could not be loaded");
+      const blob=await response.blob();objectUrl=URL.createObjectURL(blob);
+      if(active)setSource(objectUrl);else URL.revokeObjectURL(objectUrl);
+    };
+    setSource(null);setFailed(false);void load().catch(()=>{if(active){setSource(null);setFailed(true);onError?.();}});
+    return()=>{active=false;if(objectUrl)URL.revokeObjectURL(objectUrl);};
+  },[url]);
+  if(!source)return <div aria-hidden={!failed||decorative||undefined} role={failed&&!decorative?"status":undefined} className={className}>{failed&&!decorative?<span className="sr-only">Profile media could not be loaded. Check your connection and try again.</span>:null}</div>;
+  if(type.startsWith("video/"))return <video src={source} aria-hidden={decorative||undefined} controls={controls} autoPlay={autoPlay} muted={muted} loop={loop} playsInline className={className} onClick={onClick} onError={()=>{setFailed(true);onError?.();}}/>;
+  return <img src={source} alt={decorative?"":alt} aria-hidden={decorative||undefined} className={className} onClick={onClick} onError={()=>{setFailed(true);onError?.();}}/>;
+}
+
+export default function ProfileHub() {
+  const { user } = useAuth();
+  const [, params] = useRoute("/profile/:id");
+  const profileId = params?.id ? Number(params.id) : user?.id;
+  const isOwner = Boolean(user && profileId === user.id);
+  const pendingTeacher = Boolean(isOwner && String(user?.role||"").toLowerCase()==="teacher" && ["draft","pending_review","rejected_pending_conversion"].includes(String((user as any)?.teacherApplicationStatus||"")));
+  const normalizedAccountRole = String(user?.role||"").trim().toLowerCase().replace(/[ -]+/g,"_");
+  const canManageOwnPayoutPreferences = Boolean(isOwner && !pendingTeacher && (
+    ["owner","platform_owner","student","learner","prefect"].includes(normalizedAccountRole) ||
+    (normalizedAccountRole === "teacher" && ["approved","not_applicable"].includes(String((user as any)?.teacherApplicationStatus ?? "not_applicable").trim().toLowerCase()))
+  ));
+  const platformOwner = ["owner","platform_owner"].includes(normalizedAccountRole);
+  const managerLike = ["manager","senior_manager","junior_manager"].includes(normalizedAccountRole) || (normalizedAccountRole === "teacher" && Boolean((user as any)?.isManager) && ["approved","not_applicable"].includes(String((user as any)?.teacherApplicationStatus||"not_applicable").toLowerCase()));
+  const [managerPermissions,setManagerPermissions] = useState<Record<string,boolean>>({});
+  const canReviewTransferLetters = platformOwner || (managerLike && managerPermissions["transfers.view"] === true);
+  const canApproveTransferLetters = platformOwner || (managerLike && managerPermissions["transfers.approve"] === true);
+  const canRejectTransferLetters = platformOwner || (managerLike && managerPermissions["transfers.reject"] === true);
+  async function pasteVerificationCode(target: "phone" | "notification" | "recovery") {
+    try {
+      const clipboard = await navigator.clipboard.readText();
+      const code = clipboard.replace(/\D/g, "").slice(0, 6);
+      if (code.length === 6) {
+        if (target === "phone") setPhoneOtp(code);
+        else if (target === "notification") setNotificationOtp(code);
+        else setRecoveryCode(code);
+        stopOtpCountdown();setMessage("Verification code pasted into the six-digit field. Tap Verify to confirm it.");return;
+      }
+    } catch {/* Clipboard permissions vary by browser; continue with supported SMS autofill. */}
+    if(target==="phone"){startSmsOtpAutofill();setMessage("Waiting for Android/Chrome SMS code autofill. Approve the browser prompt when it appears; otherwise paste or type the six digits manually.");return;}
+    setMessage("No six-digit code was found in the clipboard. Email apps do not expose their inbox OTPs to websites; copy the email code, then tap Paste code again or type it manually.");
+  }
+  const [tab,setTab] = useState<Tab>("Overview");
+  const [profile,setProfile] = useState<PublicProfile | null>(null);
+  const [qualifications,setQualifications] = useState<any[]>([]);
+  const [qualificationHistory,setQualificationHistory] = useState<Record<number,any[]>>({});
+  const [documents,setDocuments] = useState<any[]>([]);
+  const [documentType,setDocumentType] = useState("certificate");
+  const [subjects,setSubjects] = useState<{teaching_subjects:string[];subjects_to_teach:string[]}>({teaching_subjects:[],subjects_to_teach:[]});
+  const [summary,setSummary] = useState<any>(null);
+  const [achievements,setAchievements] = useState<any[]>([]);
+  const [approvedReports,setApprovedReports] = useState<any[]>([]);
+  const [transferRequests,setTransferRequests] = useState<any[]>([]);
+  const [paymentRecords,setPaymentRecords] = useState<any[]>([]);
+  const [paymentLearners,setPaymentLearners] = useState<any[]>([]);
+  const [invoiceStudentId,setInvoiceStudentId] = useState("");
+  const [invoiceAmount,setInvoiceAmount] = useState("");
+  const [invoiceMonth,setInvoiceMonth] = useState(new Date().toLocaleString("en",{month:"long"}));
+  const [invoiceYear,setInvoiceYear] = useState(String(new Date().getFullYear()));
+  const [invoiceBusy,setInvoiceBusy] = useState(false);
+  const [manualPaymentAmounts,setManualPaymentAmounts] = useState<Record<number,string>>({});
+  const [manualPaymentMethods,setManualPaymentMethods] = useState<Record<number,string>>({});
+  const [manualPaymentReferences,setManualPaymentReferences] = useState<Record<number,string>>({});
+  const [manualPaymentBusy,setManualPaymentBusy] = useState<number|null>(null);
+  const [termStart,setTermStart] = useState(new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().slice(0,10));
+  const [termEnd,setTermEnd] = useState(new Date().toISOString().slice(0,10));
+  const [transferReason,setTransferReason] = useState("");
+  const [transferForm,setTransferForm] = useState<any>({currentSchool:"Dallyletter Elidems",receivingSchool:"",grade:"Grade 8 / Form 1",academicYear:String(new Date().getFullYear()),learnerName:"",dob:"",gender:"Male",admissionNo:"",emisNo:"",average:"",conduct:"Excellent",reasonType:"Family Relocation",reasonDetail:"",guardianName:"",relationship:"Father",guardianId:"",guardianPhone:"",guardianEmail:"",address:"",effectiveDate:new Date().toISOString().slice(0,10)});
+  const [signatureTarget,setSignatureTarget] = useState<"guardian"|"headmaster"|null>(null);
+  const signatureCanvasRef = useRef<HTMLCanvasElement|null>(null);
+  const signaturePathsRef = useRef<Array<Array<{x:number;y:number}>>>([]);
+  const activeSignaturePathRef = useRef<Array<{x:number;y:number}>>([]);
+  const schoolLogoInputRef = useRef<HTMLInputElement|null>(null);
+  const guardianSignatureInputRef = useRef<HTMLInputElement|null>(null);
+  const headmasterSignatureInputRef = useRef<HTMLInputElement|null>(null);
+  const transferAttachmentsRef = useRef<HTMLDetailsElement|null>(null);
+  const [transferImageBusy,setTransferImageBusy] = useState(false);
+  useEffect(()=>{let active=true;if(!transferForm.schoolLogoDataUrl){void loadDallyletterLogoDataUrl().then(logo=>{if(active)setTransferForm((current:any)=>current.schoolLogoDataUrl?current:{...current,schoolLogoDataUrl:logo});}).catch(()=>undefined);}return()=>{active=false;};},[]);
+
+  const saveTransferImage = async (field:"schoolLogoDataUrl"|"guardianSignatureDataUrl"|"headmasterSignatureDataUrl", file?:File) => {
+    if (!file) return;
+    setTransferImageBusy(true); setMessage("");
+    try {
+      const dataUrl = await transferImageToDataUrl(file);
+      setTransferForm((current:any)=>({...current,[field]:dataUrl}));
+      setMessage("Image added to your transfer letter preview.");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "The image could not be added."); }
+    finally { setTransferImageBusy(false); }
+  };
+  const redrawTransferSignature = () => {
+    const canvas = signatureCanvasRef.current, context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+    context.clearRect(0,0,canvas.width,canvas.height);
+    context.strokeStyle="#0f2a5a"; context.lineWidth=4; context.lineCap="round"; context.lineJoin="round";
+    for (const path of signaturePathsRef.current) {
+      if (!path.length) continue;
+      context.beginPath(); context.moveTo(path[0].x,path[0].y);
+      for (let index=1; index<path.length; index+=1) context.lineTo(path[index].x,path[index].y);
+      if (path.length===1) context.lineTo(path[0].x+0.1,path[0].y+0.1);
+      context.stroke();
+    }
+  };
+  const signaturePoint = (event:ReactPointerEvent<HTMLCanvasElement>) => {
+    const rect=event.currentTarget.getBoundingClientRect();
+    return {x:(event.clientX-rect.left)*(event.currentTarget.width/rect.width),y:(event.clientY-rect.top)*(event.currentTarget.height/rect.height)};
+  };
+  const beginSignatureStroke = (event:ReactPointerEvent<HTMLCanvasElement>) => {
+    event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId);
+    activeSignaturePathRef.current=[signaturePoint(event)];
+  };
+  const continueSignatureStroke = (event:ReactPointerEvent<HTMLCanvasElement>) => {
+    if (!activeSignaturePathRef.current.length) return;
+    event.preventDefault();
+    const point=signaturePoint(event), previous=activeSignaturePathRef.current[activeSignaturePathRef.current.length-1];
+    activeSignaturePathRef.current.push(point);
+    const context=event.currentTarget.getContext("2d");
+    if (!context || !previous) return;
+    context.strokeStyle="#0f2a5a"; context.lineWidth=4; context.lineCap="round"; context.lineJoin="round";
+    context.beginPath(); context.moveTo(previous.x,previous.y); context.lineTo(point.x,point.y); context.stroke();
+  };
+  const finishSignatureStroke = () => {
+    if (!activeSignaturePathRef.current.length) return;
+    signaturePathsRef.current.push(activeSignaturePathRef.current); activeSignaturePathRef.current=[];
+  };
+  const clearTransferSignature = () => {
+    signaturePathsRef.current=[]; activeSignaturePathRef.current=[];
+    const canvas=signatureCanvasRef.current, context=canvas?.getContext("2d");
+    if (canvas && context) context.clearRect(0,0,canvas.width,canvas.height);
+  };
+  const undoTransferSignature = () => { signaturePathsRef.current.pop(); redrawTransferSignature(); };
+  const saveTransferSignature = () => {
+    const canvas=signatureCanvasRef.current;
+    if (!canvas || signaturePathsRef.current.length===0) { setMessage("Draw a signature before saving it."); return; }
+    const output=document.createElement("canvas"); output.width=canvas.width; output.height=canvas.height;
+    const context=output.getContext("2d");
+    if (!context) { setMessage("The signature could not be saved."); return; }
+    context.fillStyle="#ffffff"; context.fillRect(0,0,output.width,output.height); context.drawImage(canvas,0,0);
+    const field=signatureTarget==="guardian"?"guardianSignatureDataUrl":"headmasterSignatureDataUrl";
+    setTransferForm((current:any)=>({...current,[field]:output.toDataURL("image/jpeg",0.9)}));
+    setSignatureTarget(null); setMessage("Signature saved to the transfer letter preview.");
+  };
+  useEffect(() => {
+    if (!signatureTarget) return;
+    signaturePathsRef.current=[]; activeSignaturePathRef.current=[];
+    const canvas=signatureCanvasRef.current, context=canvas?.getContext("2d");
+    if (canvas && context) context.clearRect(0,0,canvas.width,canvas.height);
+  }, [signatureTarget]);
+
+
+  useEffect(() => {
+    let active = true;
+    const token = localStorage.getItem("dallyletter_token");
+    if (!token) return;
+    void fetch(getApiUrl("/api/academic-records/current-year"), { headers: { Authorization: "Bearer " + token } })
+      .then(async response => response.ok ? response.json() : null)
+      .then(data => {
+        if (active && /^\d{4}$/.test(String(data?.academicYear ?? ""))) {
+          setTransferForm((current: any) => ({ ...current, academicYear: String(data.academicYear) }));
+        }
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+  const [moderationQueue,setModerationQueue] = useState<any[]>([]);
+  const [enrollments,setEnrollments] = useState<any[]>([]);
+  const [notificationEmail,setNotificationEmail] = useState("");
+  const [primaryEmailInput,setPrimaryEmailInput] = useState("");
+  const [editingPrimaryEmail,setEditingPrimaryEmail] = useState(false);
+  const [editingLegalName,setEditingLegalName] = useState(false);
+  const [editingPhone,setEditingPhone] = useState(false);
+  const [editingNotificationEmail,setEditingNotificationEmail] = useState(false);
+  const [editingRecoveryEmail,setEditingRecoveryEmail] = useState(false);
+  const [emailChangePassword,setEmailChangePassword] = useState("");
+  const [notificationOtp,setNotificationOtp] = useState("");
+  const [otpCountdownUntil,setOtpCountdownUntil] = useState<number|null>(null);
+  const [otpSecondsLeft,setOtpSecondsLeft] = useState(0);
+  const webOtpAbortRef = useRef<AbortController|null>(null);
+  const [notificationEmailVerified,setNotificationEmailVerified] = useState(false);
+  const [recoveryEmail,setRecoveryEmail] = useState("");
+  const [recoveryCode,setRecoveryCode] = useState("");
+  const [recoveryEmailVerified,setRecoveryEmailVerified] = useState(false);
+  const [payoutMethod,setPayoutMethod] = useState("ecocash");
+  const [editingPayoutPreferences,setEditingPayoutPreferences] = useState(false);
+  const [payoutDestination,setPayoutDestination] = useState("");
+  const [bankName,setBankName] = useState("");
+  const [accountHolder,setAccountHolder] = useState("");
+  const [payoutDestinationMasked,setPayoutDestinationMasked] = useState("");
+  const [title,setTitle] = useState("");
+  const [qualificationInput,setQualificationInput] = useState("");
+  const [institution,setInstitution] = useState("");
+  const [year,setYear] = useState("");
+  const [subjectInput,setSubjectInput] = useState("");
+  const [primarySubject,setPrimarySubject] = useState("");
+  const [subjectCatalog,setSubjectCatalog] = useState<string[]>([]);
+  const [nameInput,setNameInput] = useState("");
+  const [phoneInput,setPhoneInput] = useState("");
+  const [phoneOtp,setPhoneOtp] = useState("");
+  const [phoneVerified,setPhoneVerified] = useState(false);
+  const [avatarBusy,setAvatarBusy] = useState(false);
+  const [coverBusy,setCoverBusy] = useState(false);
+  const avatarFileRef = useRef<HTMLInputElement|null>(null);
+  const avatarCameraRef = useRef<HTMLInputElement|null>(null);
+  const coverFileRef = useRef<HTMLInputElement|null>(null);
+  const coverCameraRef = useRef<HTMLInputElement|null>(null);
+  const [fullscreenMedia,setFullscreenMedia] = useState<{url:string;type:string}|null>(null);
+  const fullscreenContainerRef = useRef<HTMLDivElement|null>(null);
+  const openFullscreenMedia = (media:{url:string;type:string}) => {
+    setFullscreenMediaError(false);
+    const container = fullscreenContainerRef.current;
+    if (container) {
+      container.style.display = "flex";
+      if (container.requestFullscreen) void container.requestFullscreen().catch(() => {});
+    }
+    if (typeof document !== "undefined") document.body.style.overflow = "hidden";
+    setFullscreenMedia(media);
+  };
+  const closeFullscreenMedia = () => {
+    const container = fullscreenContainerRef.current;
+    if (typeof document !== "undefined") {
+      document.body.style.overflow = "";
+      if (document.fullscreenElement && (!container || document.fullscreenElement === container)) void document.exitFullscreen().catch(() => {});
+    }
+    if (container) container.style.display = "none";
+    setFullscreenMedia(null);
+  };
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (fullscreenMedia && document.fullscreenElement !== fullscreenContainerRef.current) {
+        if (fullscreenContainerRef.current) fullscreenContainerRef.current.style.display = "none";
+        document.body.style.overflow = "";
+        setFullscreenMedia(null);
+      }
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, [fullscreenMedia]);
+  const [fullscreenMediaError,setFullscreenMediaError] = useState(false);
+  const [mediaRefreshKey,setMediaRefreshKey] = useState(0);
+  const [message,setMessage] = useState("");
+  const messageIsError = /could not|not sent|failed|invalid|expired|blocked|denied|error|unable|must be|enter |choose |no active|no six-digit|not configured|not available|does not|cannot|too many|not found|access denied|was not/i.test(message);
+  const [busy,setBusy] = useState(false);
+  useEffect(()=>{if(!otpCountdownUntil){setOtpSecondsLeft(0);return;}const tick=()=>{const left=Math.max(0,Math.ceil((otpCountdownUntil-Date.now())/1000));setOtpSecondsLeft(left);if(left===0){setOtpCountdownUntil(null);setMessage("Verification code expired. Request a new code.");}};tick();const timer=window.setInterval(tick,1000);return()=>window.clearInterval(timer);},[otpCountdownUntil]);
+  const startOtpCountdown=(seconds=600)=>setOtpCountdownUntil(Date.now()+Math.max(1,seconds)*1000);
+  const stopOtpCountdown=()=>setOtpCountdownUntil(null);
+  const startSmsOtpAutofill=()=>{try{webOtpAbortRef.current?.abort();const controller=new AbortController();webOtpAbortRef.current=controller;const credentials=navigator.credentials as any;if(typeof credentials?.get!=="function")return;void credentials.get({otp:{transport:["sms"]},signal:controller.signal}).then((credential:any)=>{const code=String(credential?.code||"").replace(/\D/g,"").slice(0,6);if(code.length===6){setPhoneOtp(code);stopOtpCountdown();setMessage("SMS code received and filled automatically. Tap Verify to confirm it.");}}).catch(()=>undefined);}catch{/* WebOTP is optional; manual entry remains available. */}};
+  const token = typeof localStorage !== "undefined" ? localStorage.getItem("dallyletter_token") : null;
+  const headers = useMemo(()=>({ ...(token ? {Authorization:"Bearer "+token} : {}) }),[token]);
+  const request = async (path:string, init:RequestInit={}) => {
+    const response = await fetch(getApiUrl(path),{...init,headers:{...headers,...(init.headers as Record<string,string>||{})}});
+    const data = await response.json().catch(()=>({}));
+    if(!response.ok) throw new Error(data.error || "Could not load profile information.");
+    return data;
+  };
+  useEffect(() => {
+    if (!managerLike || platformOwner || !token) { setManagerPermissions({}); return; }
+    let active = true;
+    void fetch(getApiUrl("/api/manager-permissions/me"), { headers: { Authorization: "Bearer " + token, "Cache-Control": "no-store" } })
+      .then(async response => { const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || "Manager permissions unavailable"); return data; })
+      .then(data => { if (active) setManagerPermissions(data.permissions || {}); })
+      .catch(() => { if (active) setManagerPermissions({}); });
+    return () => { active = false; };
+  }, [user?.id, managerLike, platformOwner, token]);
+
+  const load = async () => {
+    if(!profileId || !Number.isSafeInteger(profileId)) return;
+    try {
+      if(isOwner) {
+        const [me, q, s, academic, academicMarks, earned, enrolled, notification, payout, recovery, catalog, docs, publicSummary, reports, transfers, payments] = await Promise.all([
+          request("/api/users/"+profileId),
+          request("/api/users/me/qualifications").catch(()=>[]),
+          request("/api/users/me/subjects").catch((error)=>{setMessage("Could not load saved subjects from the server. Your saved choices have not been changed. "+(error instanceof Error?error.message:"Please retry."));return {subjects:[],teaching_subjects:[],subjects_to_teach:[],primary_subject:null};}),
+          
+          request("/api/users/me/enrollments-summary").catch(()=>null),
+          request("/api/academic-records/me").catch(()=>null),
+          request("/api/achievements/my").catch(()=>[]),
+          request("/api/users/me/enrollments").catch(()=>[]),
+          request("/api/users/me/notification-email").catch(()=>({notification_email:null,notification_email_verified_at:null})),
+          (canManageOwnPayoutPreferences?request("/api/users/me/payout-preferences").catch(()=>({})):Promise.resolve({})),
+          request("/api/users/me/recovery-profile").catch(()=>({recovery_email:null,recovery_email_verified_at:null})),
+          request("/api/subjects/catalog").catch(()=>({subjects:[]})),
+          request("/api/users/"+profileId+"/teacher-documents").catch(()=>[]),
+          request("/api/users/"+profileId+"/public-profile").catch(()=>({})),
+          request("/api/academic-records/reports/me").catch(()=>[]),
+          request("/api/academic-records/transfer-requests").catch(()=>[]),
+          (["student","prefect","learner","owner","platform_owner"].includes(String(user?.role||"").toLowerCase())?request("/api/payments").catch(()=>[]):Promise.resolve([]))
+        ]);
+        const professional = ["teacher","manager","senior_manager"].includes(String(me.role).toLowerCase());
+        const savedSubjects = professional ? (s.subjects_to_teach||[]) : (s.subjects||[]);
+        setProfile({...publicSummary,id:me.id,display_name:me.name,avatar:me.avatarUrl,bio:me.bio,role:me.role,verified_qualifications:professional?(q||[]).filter((v:any)=>v.verification_status==="verified").map((v:any)=>({title:v.title,verified:true})):[],subjects_to_teach:savedSubjects,subjects:savedSubjects,primary_subject:s.primary_subject||null,grade:me.grade,is_prefect:Boolean(me.isPrefect) || normalizeProfileRole(me.role)==="prefect",is_manager:["manager","senior_manager","junior_manager"].includes(normalizeProfileRole(me.role)) || (normalizeProfileRole(me.role)==="teacher" && Boolean(me.isManager) && ["approved","not_applicable"].includes(String(me.teacherApplicationStatus??"not_applicable").toLowerCase())),manager_level:me.managerLevel??null});
+        setNameInput(me.name||""); setTransferForm((v:any)=>({...v,learnerName:me.name||v.learnerName,grade:me.grade||v.grade,average:academicMarks?.markSummary?.overall?.percentage==null?"":String(academicMarks.markSummary.overall.percentage)})); setPhoneInput(me.phone||""); setPhoneVerified(Boolean(recovery.recovery_phone_verified_at&&recovery.recovery_phone===me.phone)); setSubjectCatalog(Array.isArray(catalog.subjects)?catalog.subjects:[]);
+        setQualifications(professional?(q||[]):[]); setDocuments(professional&&Array.isArray(docs)?docs:[]); setSubjects(s||{teaching_subjects:[],subjects_to_teach:[]}); setSubjectInput(savedSubjects.join(", ")); setPrimarySubject(s.primary_subject||savedSubjects[0]||""); setSummary(academic); setAchievements(Array.isArray(earned)?earned:[]); setEnrollments(Array.isArray(enrolled)?enrolled:[]); setApprovedReports(Array.isArray(reports)?reports:[]); setTransferRequests(Array.isArray(transfers)?transfers:[]); setPaymentRecords(Array.isArray(payments)?payments:[]); if(["owner","platform_owner"].includes(String(me.role).toLowerCase())) request("/api/users").then((rows:any)=>setPaymentLearners(Array.isArray(rows)?rows:Array.isArray(rows?.users)?rows.users:[])).catch(()=>setPaymentLearners([])); setNotificationEmail(notification.notification_email||""); setNotificationEmailVerified(Boolean(notification.notification_email_verified_at)); setPayoutMethod(payout.method||"ecocash"); setPayoutDestinationMasked(payout.destination_masked||""); setBankName(payout.bank_name||""); setAccountHolder(payout.account_name_holder||""); setRecoveryEmail(recovery.recovery_email||""); setRecoveryEmailVerified(Boolean(recovery.recovery_email_verified_at)); if(["owner","platform_owner"].includes(String(me.role).toLowerCase())) { request("/api/qualifications/pending").then((rows:any)=>setModerationQueue(Array.isArray(rows)?rows:[])).catch(()=>setModerationQueue([])); request("/api/settings").then((settings:any)=>{if(Number(settings.school_fee_amount)>0)setInvoiceAmount(String(settings.school_fee_amount));}).catch(()=>undefined); }
+      } else {
+        const [p, earned, docs, transfers, academicMarks] = await Promise.all([
+          request("/api/users/"+profileId+"/public-profile"),
+          request("/api/achievements/user/"+profileId).catch(()=>[]),
+          request("/api/users/"+profileId+"/teacher-documents").catch(()=>[]),
+          request("/api/academic-records/transfer-requests").catch(()=>[]),
+          Number(profileId)===Number(user?.id) ? request("/api/academic-records/me").catch(()=>null) : Promise.resolve(null)
+        ]);
+        setProfile({...p,subjects_to_teach:Array.isArray(p.subjects)?p.subjects:(p.subjects_to_teach||[])});
+        if(academicMarks?.markSummary?.overall?.percentage!==undefined&&academicMarks?.markSummary?.overall?.percentage!==null)setTransferForm((v:any)=>({...v,average:String(academicMarks.markSummary.overall.percentage)}));
+        setDocuments(["teacher","manager","senior_manager"].includes(String(p.role).toLowerCase())&&Array.isArray(docs)?docs:[]);
+        setAchievements(Array.isArray(earned)?earned:[]);
+        setTransferRequests(Array.isArray(transfers)?transfers:[]);
+      }
+    } catch(e) { setMessage(e instanceof Error ? e.message : "Profile could not be loaded."); }
+  };
+  useEffect(()=>{ void load(); },[profileId,isOwner,canReviewTransferLetters]);
+  const createSchoolFeeInvoice = async () => {
+    if (!isOwner || invoiceBusy) return;
+    const studentId = Number(invoiceStudentId), amount = Number(invoiceAmount), year = Number(invoiceYear);
+    if (!Number.isSafeInteger(studentId) || studentId <= 0 || !Number.isFinite(amount) || amount <= 0 || amount > 100000 || !Number.isInteger(year) || year < 2000 || year > 2200 || !invoiceMonth.trim()) {
+      setMessage("Choose a learner and enter a valid fee amount, month and year.");
+      return;
+    }
+    setInvoiceBusy(true); setMessage("");
+    try {
+      await request("/api/payments", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({studentId,amount,month:invoiceMonth.trim(),year,status:"pending",notes:"Owner-issued school fee invoice"}) });
+      const refreshed = await request("/api/payments");
+      setPaymentRecords(Array.isArray(refreshed)?refreshed:[]);
+      setInvoiceAmount("");
+      setMessage("School fee invoice created. The learner can now see the amount and outstanding balance in School Fees.");
+    } catch(error) { setMessage(error instanceof Error?error.message:"Could not create the school fee invoice."); }
+    finally { setInvoiceBusy(false); }
+  };
+  const recordManualPayment = async (paymentId:number) => {
+    if(!isOwner||manualPaymentBusy!==null)return;
+    const amount=Number(manualPaymentAmounts[paymentId]||"");
+    const method=manualPaymentMethods[paymentId]||"ecocash";
+    const providerReference=(manualPaymentReferences[paymentId]||"").trim();
+    if(!Number.isFinite(amount)||amount<=0||amount>100000){setMessage("Enter a valid verified payment amount.");return;}
+    if(method!=="cash"&&providerReference.length<3){setMessage("Enter the receipt or transaction reference before confirming this payment.");return;}
+    setManualPaymentBusy(paymentId);setMessage("");
+    try{
+      await request("/api/payments/"+paymentId+"/manual-settlement",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({amount,method,providerReference})});
+      const refreshed=await request("/api/payments");
+      setPaymentRecords(Array.isArray(refreshed)?refreshed:[]);
+      setManualPaymentAmounts(v=>({...v,[paymentId]:""}));
+      setManualPaymentReferences(v=>({...v,[paymentId]:""}));
+      setMessage("Manual payment verified and added to the learner's fee balance. The remaining balance and any credit are now updated.");
+    }catch(error){setMessage(error instanceof Error?error.message:"Manual payment could not be verified.");}
+    finally{setManualPaymentBusy(null);}
+  };
+  const addQualification = async () => {
+    setBusy(true); setMessage("");
+    try {
+      await request("/api/users/me/qualifications",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title,institution,year:year||null})});
+      setTitle("");setInstitution("");setYear("");setMessage("Qualification saved for verification.");await load();
+    } catch(e) {setMessage(e instanceof Error?e.message:"Could not save qualification.");}
+    finally {setBusy(false);}
+  };
+  const uploadDocument = async (qualificationId:number,file?:File) => {
+    if(!file)return;
+    const data=new FormData();data.append("file",file);
+    setBusy(true);setMessage("");
+    try{await request("/api/qualifications/"+qualificationId+"/document",{method:"POST",body:data});setMessage("Document uploaded. Qualification remains pending verification.");await load();}
+    catch(e){setMessage(e instanceof Error?e.message:"Could not upload document.");}
+    finally{setBusy(false);}
+  };
+  const reviewDocument = async (documentId:number) => {
+    setBusy(true);setMessage("");
+    try{
+      const response=await fetch(getApiUrl("/api/qualifications/"+documentId+"/document"),{headers});
+      if(!response.ok){const result=await response.json().catch(()=>({}));throw new Error(result.error||"Document could not be opened.");}
+      const blob=await response.blob();
+      const url=URL.createObjectURL(blob);
+      window.open(url,"_blank","noopener,noreferrer");
+      window.setTimeout(()=>URL.revokeObjectURL(url),60_000);
+    }catch(e){setMessage(e instanceof Error?e.message:"Could not open qualification document.");}
+    finally{setBusy(false);}
+  };
+  const loadQualificationHistory = async (id:number) => {
+    setBusy(true);setMessage("");
+    try {
+      const result=await request("/api/qualifications/"+id+"/review-history");
+      setQualificationHistory(current=>({...current,[id]:Array.isArray(result.history)?result.history:[]}));
+    } catch(error) { setMessage(error instanceof Error?error.message:"Could not load qualification review history."); }
+    finally { setBusy(false); }
+  };
+  const verifyQualification = async (id:number,status:"verified"|"rejected") => {
+    setBusy(true);setMessage("");
+    try{await request("/api/qualifications/"+id+"/verify",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status})});setMessage("Qualification "+status+".");await load();}
+    catch(e){setMessage(e instanceof Error?e.message:"Could not update verification status.");}
+    finally{setBusy(false);}
+  };
+  const savePayoutPreferences = async () => {
+    setBusy(true);setMessage("");
+    try{
+      const body:any={method:payoutMethod};
+      if(payoutMethod==="ecocash")body.ecocash_phone=payoutDestination.trim();
+      if(payoutMethod==="paypal")body.paypal_email=payoutDestination.trim();
+      if(payoutMethod==="bank"){body.bank_name=bankName.trim();body.account_name_holder=accountHolder.trim();}
+      await request("/api/users/me/payout-preferences",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      setPayoutDestination("");setMessage("Payout preferences saved. Existing destination remains masked.");
+      const fresh=await request("/api/users/me/payout-preferences");setPayoutDestinationMasked(fresh.destination_masked||"");setEditingPayoutPreferences(false);
+    }catch(e){setMessage(e instanceof Error?e.message:"Could not save payout preferences.");}
+    finally{setBusy(false);}
+  };
+  const requestNotificationOtp = async () => {
+    setBusy(true);setMessage("");
+    try{const result=await request("/api/users/me/notification-email/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:notificationEmail})});startOtpCountdown(result.expiresInSeconds||600);setMessage(result.message||"Email provider accepted the verification code for sending. Check your inbox and spam folder.");}
+    catch(e){setMessage(e instanceof Error?e.message:"Could not send verification code.");}
+    finally{setBusy(false);}
+  };
+  const verifyNotificationOtp = async () => {
+    setBusy(true);setMessage("");
+    try{const result=await request("/api/users/me/notification-email/verify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:notificationEmail,otp:notificationOtp})});if(result.verified!==true)throw new Error(result.message||"Email verification failed. The code was not accepted.");setNotificationEmailVerified(true);setNotificationOtp("");stopOtpCountdown();setMessage(result.message||"Notification email verified successfully.");}
+    catch(e){setMessage(e instanceof Error?e.message:"Could not verify notification email.");}
+    finally{setBusy(false);}
+  };
+  const saveRecoveryEmail = async () => {
+    setBusy(true);setMessage("");
+    try {
+      await request("/api/users/me/recovery-profile",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({recoveryEmail})});
+      setRecoveryEmailVerified(false);setRecoveryCode("");setMessage("Recovery email saved. Verify it before it can receive password reset links.");
+    } catch(e) {setMessage(e instanceof Error?e.message:"Could not save recovery email.");}
+    finally {setBusy(false);}
+  };
+  const requestRecoveryCode = async () => {
+    setBusy(true);setMessage("");
+    try { await request("/api/users/me/recovery-profile",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({recoveryEmail})});const result=await request("/api/users/me/recovery-email/request-verification",{method:"POST"});startOtpCountdown(result.expiresInSeconds||600);setMessage(result.message||"Email provider accepted the recovery code for sending. Check your inbox and spam folder."); }
+    catch(e) {setMessage(e instanceof Error?e.message:"Could not send recovery verification code.");}
+    finally {setBusy(false);}
+  };
+  const verifyRecoveryCode = async () => {
+    setBusy(true);setMessage("");
+    try { const result=await request("/api/users/me/recovery-email/confirm",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:recoveryCode})});if(result.recoveryEmailVerified!==true)throw new Error(result.message||"Recovery email verification failed. The code was not accepted.");setRecoveryEmailVerified(true);setRecoveryCode("");stopOtpCountdown();setMessage(result.message||"Recovery email verified successfully."); }
+    catch(e) {setMessage(e instanceof Error?e.message:"Could not verify recovery email.");}
+    finally {setBusy(false);}
+  };
+  const saveQualificationsBulk = async () => {
+    const titles=[...new Set(qualificationInput.split("\n").map(value=>value.trim()).filter(Boolean))];
+    if(!titles.length||titles.length>50){setMessage("Enter between 1 and 50 qualifications, one per line.");return;}
+    setBusy(true);setMessage("");
+    try{const result=await request("/api/users/me/qualifications/bulk",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({qualifications:titles})});setQualificationInput("");setMessage(`Saved ${result.saved} qualifications for verification.`);await load();}
+    catch(e){setMessage(e instanceof Error?e.message:"Could not save qualifications.");}
+    finally{setBusy(false);}
+  };
+  const saveName = async () => {
+    const name=nameInput.trim();
+    if(name.length<2||name.length>200){setMessage("Enter a legal name between 2 and 200 characters.");return;}
+    setBusy(true);setMessage("");
+    try{const updated=await request("/api/users/"+user!.id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({name})});setProfile(p=>p?{...p,display_name:updated.name||name}:p);setNameInput(updated.name||name);setEditingLegalName(false);setMessage("Your name was saved.");}
+    catch(e){setMessage(e instanceof Error?e.message:"Could not save your name.");}
+    finally{setBusy(false);}
+  };
+  const requestPhoneCode = async () => {
+    const phone=phoneInput.trim();
+    if(!/^\+[1-9]\d{7,14}$/.test(phone)){setMessage("Use international phone format, including country code (for example +263…).");return;}
+    setBusy(true);setMessage("");
+    try{await request("/api/users/"+user!.id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone})});const result=await request("/api/users/me/phone/request-verification",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone})});setPhoneVerified(false);startOtpCountdown(result.expiresInSeconds||600);startSmsOtpAutofill();setMessage("SMS provider accepted the verification request for "+phone+". Waiting for the code; Android/Chrome may offer automatic OTP autofill.");}
+    catch(e){setMessage(e instanceof Error?e.message:"Could not send phone verification code.");}
+    finally{setBusy(false);}
+  };
+  const verifyPhone = async () => {
+    if(!/^\d{6}$/.test(phoneOtp)){setMessage("Enter the six-digit SMS code.");return;}
+    setBusy(true);setMessage("");
+    try{const result=await request("/api/users/me/phone/confirm",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:phoneOtp})});if(result.verified===false)throw new Error(result.error||"Phone verification failed. The code was not accepted.");setPhoneVerified(true);setPhoneOtp("");stopOtpCountdown();setMessage(result.message||"Phone number verified successfully.");}
+    catch(e){setMessage(e instanceof Error?e.message:"Could not verify phone number.");}
+    finally{setBusy(false);}
+  };
+  const savePhone = async () => {
+    const phone=phoneInput.trim();
+    if(phone.length>40){setMessage("Phone number must be 40 characters or fewer.");return;}
+    setBusy(true);setMessage("");
+    try{await request("/api/users/"+user!.id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:phone||null})});setPhoneVerified(false);setPhoneOtp("");setMessage("Phone number saved. Verify it before SMS alerts can be sent.");}
+    catch(e){setMessage(e instanceof Error?e.message:"Could not save your phone number.");}
+    finally{setBusy(false);}
+  };
+  const uploadProfileDocument = async (file?:File) => {
+    if(!file)return;
+    const allowed=["application/pdf","image/jpeg","image/png","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+    if(!allowed.includes(file.type)){setMessage("Upload a PDF, JPG, PNG, DOC or DOCX file.");return;}
+    if(file.size>10*1024*1024){setMessage("Documents must be 10 MB or smaller.");return;}
+    const form=new FormData();form.append("file",file);form.append("documentType",documentType);
+    setBusy(true);setMessage("");
+    try{await request("/api/users/me/teacher-documents",{method:"POST",body:form});setMessage(documentType.toUpperCase()+" uploaded and saved.");const rows=await request("/api/users/"+user!.id+"/teacher-documents");setDocuments(Array.isArray(rows)?rows:[]);}
+    catch(e){setMessage(e instanceof Error?e.message:"Could not upload document.");}
+    finally{setBusy(false);}
+  };
+  const downloadTeacherCvPdf = async () => {
+    setBusy(true);setMessage("");
+    try {
+      const response = await fetch(getApiUrl("/api/users/me/teacher-cv/pdf"), { headers });
+      if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || "Could not generate your CV PDF."); }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "dallyletter-teacher-cv.pdf";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setMessage("CV PDF downloaded. Verified qualifications are identified; other details are labelled teacher-provided.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not download CV PDF.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteOwnProfileDocument=async(doc:any)=>{
+    if(!isOwner||normalizedAccountRole!=="teacher")return;
+    if(!window.confirm("Permanently delete "+doc.file_name+" and its stored file contents? This cannot be undone."))return;
+    setBusy(true);setMessage("");
+    try{const result=await request("/api/users/me/teacher-documents/"+Number(doc.id),{method:"DELETE"});await load();setMessage(result.mediaCleanupPending?"Document deleted. External media cleanup is queued.":"Uploaded document and stored contents permanently deleted.");}
+    catch(error){setMessage(error instanceof Error?error.message:"Could not delete uploaded document.");}finally{setBusy(false);}
+  };
+  const deleteOwnQualification=async(q:any)=>{
+    if(!isOwner||normalizedAccountRole!=="teacher"||q?.source!=="user")return;
+    if(!window.confirm("Permanently delete your qualification "+q.title+" and its exclusively attached certificate? This cannot be undone."))return;
+    setBusy(true);setMessage("");
+    try{const result=await request("/api/users/me/qualifications/"+Number(q.id),{method:"DELETE"});await load();setMessage(result.mediaCleanupPending?"Qualification deleted. External certificate cleanup is queued.":"Qualification and its exclusively attached certificate deleted.");}
+    catch(error){setMessage(error instanceof Error?error.message:"Could not delete qualification.");}finally{setBusy(false);}
+  };
+  const openProfileDocument = async (doc:any) => {
+    setBusy(true);setMessage("");
+    try{const response=await fetch(getApiUrl("/api/users/"+profileId+"/teacher-documents/"+doc.id),{headers});if(!response.ok){const d=await response.json().catch(()=>({}));throw new Error(d.error||"Document could not be opened.");}const blob=await response.blob();const url=URL.createObjectURL(blob);window.open(url,"_blank","noopener,noreferrer");window.setTimeout(()=>URL.revokeObjectURL(url),60_000);}
+    catch(e){setMessage(e instanceof Error?e.message:"Could not open document.");}
+    finally{setBusy(false);}
+  };
+  const uploadAvatar = async (file?:File) => {
+    if(!file)return;
+    if(!["image/jpeg","image/png","image/webp"].includes(file.type)){setMessage("Choose a JPG, PNG or WebP image.");return;}
+    if(file.size>8*1024*1024){setMessage("Profile photos must be 8 MB or smaller.");return;}
+    const form=new FormData();form.append("file",file);setAvatarBusy(true);setMessage("");
+    try{await request("/api/users/me/avatar",{method:"POST",body:form});const fresh=await request("/api/users/"+profileId+"/public-profile").catch(()=>null);const me= fresh ? null : await request("/api/users/"+profileId);setProfile(p=>({...p,...(fresh||{}),...(me||{}),id:profileId,display_name:(fresh?.display_name||fresh?.name||me?.name||p?.display_name),avatar:(fresh?.avatar||fresh?.avatarUrl||fresh?.avatar_url||me?.avatarUrl||p?.avatar||null),cover_url:fresh?.cover_url||fresh?.coverUrl||p?.cover_url||null,cover_type:fresh?.cover_type||fresh?.coverType||p?.cover_type||null}));setMediaRefreshKey(v=>v+1);setMessage("Profile photo saved. The refreshed account image is now shown in Profile Hub.");}
+    catch(e){setMessage(e instanceof Error?e.message:"Could not upload profile image.");}
+    finally{setAvatarBusy(false);}
+  };
+  const uploadCover = async (file?:File) => {
+    if(!file)return;
+    const allowed=["image/jpeg","image/png","image/webp","video/mp4","video/webm","video/quicktime"];
+    if(!allowed.includes(file.type)){setMessage("Choose JPG, PNG, WebP, MP4, WebM or MOV media.");return;}
+    if(file.size>20*1024*1024){setMessage("Cover media must be 20 MB or smaller on the current storage configuration.");return;}
+    const form=new FormData();form.append("file",file);setCoverBusy(true);setMessage("");
+    try{const uploaded=await request("/api/users/me/cover",{method:"POST",body:form});const fresh=await request("/api/users/"+profileId+"/public-profile").catch(()=>null);const me=fresh?null:await request("/api/users/"+profileId);setProfile(p=>({...p,...(fresh||{}),...(me||{}),id:profileId,display_name:(fresh?.display_name||fresh?.name||me?.name||p?.display_name),avatar:(fresh?.avatar||fresh?.avatarUrl||fresh?.avatar_url||me?.avatarUrl||p?.avatar||null),cover_url:(uploaded?.coverUrl||uploaded?.cover_url||fresh?.cover_url||fresh?.coverUrl||p?.cover_url||null),cover_type:(uploaded?.coverType||uploaded?.cover_type||fresh?.cover_type||fresh?.coverType||p?.cover_type||null)}));setMediaRefreshKey(v=>v+1);setMessage("Profile cover saved and displayed. Refresh the page to verify persistence.");}
+    catch(e){setMessage(e instanceof Error?e.message:"Could not upload profile cover.");}
+    finally{setCoverBusy(false);}
+  };
+  const saveSubjects = async () => {
+    setBusy(true);setMessage("");
+    try {
+      const arr=[...new Set(subjectInput.split(",").map(s=>s.trim()).filter(Boolean))];
+      const professional=["teacher","manager","senior_manager"].includes(String(profile?.role||(user?.role||"")).toLowerCase());
+      const payload=professional?{teaching_subjects:arr,subjects_to_teach:arr,primary_subject:arr.includes(primarySubject)?primarySubject:(arr[0]||"")}:{subjects:arr};
+      await request("/api/users/me/subjects",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+      setMessage(professional?"Teaching subjects saved.":"Learning subjects saved; recommendations will use these preferences.");await load();
+    } catch(e) {setMessage(e instanceof Error?e.message:"Could not save subjects.");}
+    finally {setBusy(false);}
+  };
+  const requestPrimaryEmailChange = async () => {
+    if (!primaryEmailInput.trim() || !emailChangePassword) { setMessage("Enter the new email address and your current password."); return; }
+    setBusy(true); setMessage("");
+    try {
+      const result = await request("/api/auth/email-change/request", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: primaryEmailInput.trim(), currentPassword: emailChangePassword }) });
+      setEmailChangePassword("");
+      setMessage(result.message || "Check the new email address for a confirmation link. Your current email stays active until confirmation.");
+    } catch (e) { setMessage(e instanceof Error ? e.message : "Could not request an email change."); }
+    finally { setBusy(false); }
+  };
+  if(!user) return <DashboardLayout><div className="p-6">Sign in to view profiles.</div></DashboardLayout>;
+  return <DashboardLayout><main className="mx-auto max-w-5xl space-y-5 p-4 md:p-6">
+    <Card className="overflow-hidden rounded-3xl border border-white/30 bg-transparent shadow-[0_24px_80px_rgba(15,23,42,0.16)] backdrop-blur-none">
+      <section aria-label="Profile identity card" className="relative isolate min-h-[340px] overflow-hidden bg-gradient-to-br from-slate-800 via-indigo-900 to-slate-950 text-white sm:min-h-[380px]">
+        <div className="absolute inset-0 z-0">
+          {profile?.cover_url ? (
+            String(profile.cover_type||"").startsWith("video/") ? (
+              <AuthenticatedProfileMedia key={"cover-video-"+mediaRefreshKey+profile.cover_url} url={profile.cover_url} type={String(profile.cover_type||"")} decorative className="h-full w-full object-cover" autoPlay muted loop/>
+            ) : (
+              <AuthenticatedProfileMedia key={"cover-image-"+mediaRefreshKey+profile.cover_url} url={profile.cover_url} decorative className="h-full w-full object-cover"/>
+            )
+          ) : profile?.avatar ? (
+            <AuthenticatedProfileMedia key={"cover-fallback-"+mediaRefreshKey+profile.avatar} url={profile.avatar} decorative className="h-full w-full scale-105 object-cover opacity-50 blur-sm"/>
+          ) : null}
+        </div>
+        <div aria-hidden="true" className="absolute inset-0 z-[1] bg-gradient-to-t from-slate-950/20 via-slate-950/5 to-transparent"/>
+        {profile?.cover_url&&<button type="button" onClick={()=>openFullscreenMedia({url:profile.cover_url!,type:String(profile.cover_type||"image")})} aria-label="Open profile cover fullscreen" className="absolute inset-0 z-[2] cursor-zoom-in"/>}
+        <div className="relative z-10 flex min-h-[340px] flex-col justify-end p-4 sm:min-h-[380px] sm:p-7 md:p-9">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <span className="inline-flex items-center rounded-full border border-white/30 bg-white/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-white/95 shadow-lg backdrop-blur-xl">Dallyletter · Profile Hub</span>
+            {profile?.cover_url&&<span className="rounded-full border border-white/25 bg-black/20 px-3 py-1 text-xs text-white/90 backdrop-blur-md">Tap cover to view</span>}
+          </div>
+          <div className="relative z-10 flex flex-col gap-4 rounded-[1.75rem] border border-white/25 bg-slate-950/[0.04] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.08)] backdrop-blur-none sm:flex-row sm:items-center sm:gap-5 sm:p-5">
+            <div className="flex shrink-0 items-center gap-4">
+              {profile?.avatar ? (
+                <button type="button" aria-label="Open profile avatar fullscreen" onClick={()=>openFullscreenMedia({url:profile.avatar!,type:"image"})} className="rounded-full focus:outline-none focus:ring-4 focus:ring-white/70">
+                  <AuthenticatedProfileMedia key={"avatar-"+mediaRefreshKey+profile.avatar} url={profile.avatar} alt={"Profile avatar for "+(profile.display_name||"user")} className="h-24 w-24 rounded-full border-[5px] border-white/80 bg-white/20 object-cover shadow-[0_8px_32px_rgba(0,0,0,0.4)] ring-2 ring-white/30 sm:h-28 sm:w-28 md:h-32 md:w-32"/>
+                </button>
+              ) : (
+                <div aria-label="Default profile avatar" className="flex h-24 w-24 items-center justify-center rounded-full border-[5px] border-white/70 bg-white/20 text-4xl font-bold shadow-xl backdrop-blur-md sm:h-28 sm:w-28 md:h-32 md:w-32">{(profile?.display_name||"?").slice(0,1).toUpperCase()}</div>
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="mt-1 flex flex-wrap gap-2">{profileIdentityBadges(profile).map((label,index)=><span key={label} className={"inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide "+(index===0?"border-amber-200/50 bg-amber-300/20 text-amber-100":"border-white/35 bg-white/15 text-white")}>{label}</span>)}</div>
+              <h1 className="mt-1 break-words text-2xl font-bold leading-tight tracking-tight text-white drop-shadow sm:text-3xl">{profile?.display_name||"Profile Hub"}</h1>
+              <p className="mt-2 text-sm text-white/85">{isOwner?"Manage your profile and professional records":"Public profile"}</p>
+              {profile?.bio&&<p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/90">{profile.bio}</p>}
+              {isOwner&&<div className="mt-4 grid grid-cols-2 gap-2 border-t border-white/20 pt-4 sm:flex sm:flex-wrap">
+                <button type="button" disabled={avatarBusy} onClick={()=>avatarFileRef.current?.click()} className="inline-flex min-h-10 w-full items-center justify-center whitespace-normal rounded-xl border border-white/45 bg-slate-900/35 px-3 py-2 text-center text-sm font-semibold leading-tight text-white shadow-sm transition hover:bg-slate-900/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 sm:w-auto">{avatarBusy?"Uploading photo…":"Change avatar"}</button>
+                <input ref={avatarFileRef} className="hidden" type="file" accept="image/jpeg,image/png,image/webp" disabled={avatarBusy} onChange={e=>void uploadAvatar(e.target.files?.[0])}/>
+                <button type="button" disabled={avatarBusy} onClick={()=>avatarCameraRef.current?.click()} className="inline-flex min-h-10 w-full items-center justify-center whitespace-normal rounded-xl border border-white/45 bg-slate-900/35 px-3 py-2 text-center text-sm font-semibold leading-tight text-white shadow-sm transition hover:bg-slate-900/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 sm:w-auto">{avatarBusy?"Camera busy":"Take photo"}</button>
+                <input ref={avatarCameraRef} className="hidden" type="file" accept="image/*" capture="user" disabled={avatarBusy} onChange={e=>void uploadAvatar(e.target.files?.[0])}/>
+                <button type="button" disabled={coverBusy} onClick={()=>coverFileRef.current?.click()} className="inline-flex min-h-10 w-full items-center justify-center whitespace-normal rounded-xl border border-white/45 bg-slate-900/35 px-3 py-2 text-center text-sm font-semibold leading-tight text-white shadow-sm transition hover:bg-slate-900/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 sm:w-auto">{coverBusy?"Uploading cover…":"Change cover image/video"}</button>
+                <input ref={coverFileRef} className="hidden" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" disabled={coverBusy} onChange={e=>void uploadCover(e.target.files?.[0])}/>
+                <button type="button" disabled={coverBusy} onClick={()=>coverCameraRef.current?.click()} className="inline-flex min-h-10 items-center justify-center rounded-xl border border-white/35 bg-white/10 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80">{coverBusy?"Camera busy":"Capture cover media"}</button>
+                <input ref={coverCameraRef} className="hidden" type="file" accept="image/*,video/*" capture="environment" disabled={coverBusy} onChange={e=>void uploadCover(e.target.files?.[0])}/>
+              </div>}
+            </div>
+          </div>
+        </div>
+      </section>
+      <CardContent className="bg-white/70 p-3 backdrop-blur-xl dark:bg-slate-950/70 sm:p-4">
+        <div className="flex max-w-full snap-x snap-mandatory gap-2 overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:thin]" role="tablist" aria-label="Profile sections">
+          {tabs.filter(t=>t!=="Qualifications"||profile?.section_visibility?.qualifications===true).filter(t=>isOwner||t==="Overview"||profile?.section_visibility?.[tabPrivacyKey[t]||""]===true||(t==="Attendance"&&profile?.section_visibility?.register===true)).map(t=><Button key={t} role="tab" aria-selected={tab===t} variant={tab===t?"default":"outline"} size="sm" onClick={()=>setTab(t)} className="shrink-0 snap-start whitespace-nowrap">{t}</Button>)}
+        </div>
+      </CardContent>
+    </Card>
+    {message&&<p role="status" aria-live="polite" className={"rounded-lg border p-3 text-sm "+(messageIsError?"border-red-300 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200":"border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200")}>{message}</p>}
+    {otpSecondsLeft>0&&<p role="timer" aria-live="off" className="text-xs font-medium text-muted-foreground">Verification code window: {Math.floor(otpSecondsLeft/60)}:{String(otpSecondsLeft%60).padStart(2,"0")} remaining. Enter or paste the six-digit code before it expires.</p>}
+    {otpCountdownUntil&&otpSecondsLeft===0&&<p className="text-xs font-medium text-red-700 dark:text-red-300">Verification code window expired. Request a new code.</p>}
+    {pendingTeacher&&<div className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"><p>{String((user as any)?.teacherApplicationStatus||"").trim().toLowerCase()==="rejected_pending_conversion"?"Your teacher application was not approved. Teaching permissions are disabled, but your account and login remain active until the scheduled learner conversion.":String((user as any)?.teacherApplicationStatus||"").trim().toLowerCase()==="draft"?"Your teacher CV application has not been formally submitted. A saved or approved readiness survey does not count as a CV submission. Open the CV and readiness survey workspace to save your CV and independently submit the optional readiness survey. A profile photo, PDF resume and qualification certificates are optional supporting evidence; missing items do not block submission.":"Your teacher CV application has been submitted and is awaiting review. Readiness survey approval is separate and does not authorize teaching."} All Profile Hub sections, CVs, certificates, messages and account settings remain available. Teaching dashboards and teaching tools unlock only after an authorized CV approval.</p><Button type="button" variant="outline" onClick={()=>window.location.assign("/teacher/qualifications")}>Open CV & readiness survey</Button></div>}
+    {isOwner&&tab==="Overview"&&<Card className="overflow-hidden border-primary/20 shadow-sm"><CardHeader className="bg-gradient-to-r from-primary/[0.09] to-transparent"><div className="flex items-center justify-between gap-3"><div><CardTitle>Account email</CardTitle><p className="mt-1 text-sm text-muted-foreground">Your sign-in and account contact address.</p></div><span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">Current</span></div></CardHeader><CardContent className="space-y-4 p-4 sm:p-5"><div className="flex items-center justify-between gap-3 rounded-xl border bg-muted/25 p-3"><div className="min-w-0"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Saved email</p><p className="break-all font-semibold">{user.email||"Not available"}</p><p className="mt-1 text-xs text-muted-foreground">Your current email stays active until a new address is confirmed.</p></div><Button type="button" size="icon" variant="ghost" aria-label="Edit account email" title="Edit account email" onClick={()=>setEditingPrimaryEmail(v=>!v)} className="h-8 w-8 shrink-0"><span aria-hidden="true" className="text-base">✎</span></Button></div>{editingPrimaryEmail&&<div className="space-y-3 rounded-xl border border-primary/20 p-3 sm:p-4"><p className="text-sm text-muted-foreground">Editing unlocked. You must confirm the change from the new inbox.</p><label className="block text-sm font-medium">New email address<input type="email" autoComplete="email" className="mt-1 w-full rounded-lg border bg-background p-3 text-foreground" maxLength={254} value={primaryEmailInput} onChange={e=>setPrimaryEmailInput(e.target.value)} placeholder="you@example.com"/></label><label className="block text-sm font-medium">Current password<input type="password" autoComplete="current-password" className="mt-1 w-full rounded-lg border bg-background p-3 text-foreground" value={emailChangePassword} onChange={e=>setEmailChangePassword(e.target.value)} placeholder="Confirm it is you"/></label><Button disabled={busy||!primaryEmailInput.trim()||!emailChangePassword} onClick={()=>void requestPrimaryEmailChange()}>{busy?"Sending…":"Send confirmation email"}</Button></div>}</CardContent></Card>}
+    {tab==="Overview"&&<div className="grid gap-4 md:grid-cols-2"><Card><CardHeader><CardTitle>Profile overview</CardTitle></CardHeader><CardContent className="space-y-2 text-sm">{isOwner?<div className="space-y-2"><div className="flex items-center justify-between gap-3"><div className="min-w-0"><label htmlFor="profile-legal-name" className="block font-semibold">Legal name</label><p className="mt-1 break-words font-medium text-foreground">{nameInput||"Not provided"}</p></div><Button type="button" size="icon" variant="ghost" aria-label="Edit legal name" title="Edit legal name" onClick={()=>setEditingLegalName(v=>!v)} className="h-8 w-8 shrink-0"><span aria-hidden="true" className="text-base">✎</span></Button></div>{editingLegalName&&<div className="space-y-2 rounded-xl border border-primary/20 p-3"><input id="profile-legal-name" autoComplete="name" className="w-full rounded-md border bg-background p-2 text-foreground" maxLength={200} value={nameInput} onChange={e=>setNameInput(e.target.value)} placeholder="Enter your legal name"/><div className="flex flex-wrap gap-2"><Button disabled={busy||nameInput.trim().length<2} onClick={()=>void saveName()}>Save name</Button><Button type="button" variant="outline" disabled={busy} onClick={()=>setEditingLegalName(false)}>Cancel</Button></div></div>}</div>:<p><strong>Name:</strong> {profile?.display_name||"Loading…"}</p>}<p><strong>Role:</strong> {String(profile?.role||"—").toLowerCase()==="student"?"Learner":profile?.role||"—"}</p>{profile?.is_manager&&<p><strong>Manager status:</strong> {String(profile.manager_level||"").toLowerCase()==="senior"?"Senior Manager":String(profile.manager_level||"").toLowerCase()==="junior"?"Junior Manager":"Manager"}</p>}{profile?.is_prefect&&<p><strong>Prefect status:</strong> Active</p>}{["teacher","manager","senior_manager"].includes(String(profile?.role||(user?.role||"")).toLowerCase())&&<p><strong>Verified qualifications:</strong> {profile?.verified_qualifications?.length||0}</p>}<p><strong>{["teacher","manager","senior_manager"].includes(String(profile?.role||(user?.role||"")).toLowerCase())?"Specialized subjects":"Learning subjects"}:</strong> {profile?.subjects_to_teach?.join(", ")||"Not listed"}</p>{!["teacher","manager","senior_manager"].includes(String(profile?.role||(user?.role||"")).toLowerCase())&&<><p><strong>Grade:</strong> {profile?.grade||"Not recorded"}</p>{isOwner&&<p><strong>School fees:</strong> {profile?.fees_status==="paid"?"Paid":profile?.fees_status==="overdue"?"Overdue":profile?.fees_status==="pending"?"Pending":"Not recorded"}</p>}<p><strong>Leaderboard position:</strong> {profile?.leaderboard_position?("#"+profile.leaderboard_position):"Not ranked"}</p><p><strong>Achievements awarded:</strong> {profile?.achievement_count??achievements.length}</p>{isOwner&&<p><strong>Groups joined:</strong> {(profile?.groups_joined||[]).length?profile!.groups_joined!.map(g=>g.name).join(", "):"None recorded"}</p>}{isOwner&&profile?.is_prefect&&<div className="space-y-1 rounded-md border p-3"><p className="font-semibold">Prefect activity</p><p>Groups owned: {(profile.groups_owned||[]).map(g=>g.name).join(", ")||"None recorded"}</p><p>Groups with settings permission: {(profile.groups_with_settings_permission||[]).map(g=>g.name).join(", ")||"None recorded"}</p><p>Lesson requests: {profile.lesson_requests_count??0}</p></div>}</>}{isOwner&&<div className="space-y-3 border-t pt-4"><div className="flex items-center justify-between gap-3"><div><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Mobile phone number</p><p className="mt-1 break-all font-semibold text-foreground">{phoneInput||"No phone number saved"}</p><p className={phoneVerified?"mt-1 text-xs font-medium text-emerald-700 dark:text-emerald-300":"mt-1 text-xs text-muted-foreground"}>{phoneVerified?"✓ Verified — eligible for urgent SMS alerts":"Not verified"}</p></div><Button type="button" size="icon" variant="ghost" aria-label="Edit mobile phone number" title="Edit mobile phone number" onClick={()=>setEditingPhone(v=>!v)} className="h-8 w-8 shrink-0"><span aria-hidden="true" className="text-base">✎</span></Button></div>{editingPhone&&<div className="space-y-3 rounded-xl border border-primary/20 p-3"><label htmlFor="profile-phone" className="block text-sm font-medium">Phone number<input id="profile-phone" type="tel" autoComplete="tel" maxLength={40} className="mt-1 w-full rounded-lg border bg-background p-3 text-foreground" value={phoneInput} onChange={e=>{setPhoneInput(e.target.value);setPhoneVerified(false);}} placeholder="+263…"/></label><div className="flex flex-wrap gap-2"><Button disabled={busy||phoneInput.length>40} onClick={()=>void savePhone()}>Save phone number</Button><Button variant="outline" disabled={busy||!/^\+[1-9]\d{7,14}$/.test(phoneInput.trim())} onClick={()=>void requestPhoneCode()}>Send SMS code</Button></div><div className="flex flex-wrap gap-2"><input aria-label="Six-digit phone verification code" autoComplete="one-time-code" inputMode="numeric" maxLength={6} className="min-w-0 flex-1 rounded-lg border bg-background p-3 text-foreground" value={phoneOtp} onChange={e=>{const code=e.target.value.replace(/\D/g,"").slice(0,6);setPhoneOtp(code);if(code.length===6)stopOtpCountdown();}} placeholder="6-digit code"/><Button variant="outline" disabled={busy} onClick={()=>void pasteVerificationCode("phone")}>Paste code</Button><Button disabled={busy||phoneOtp.length!==6} onClick={()=>void verifyPhone()}>Verify phone</Button></div></div>}</div>}</CardContent></Card>{isOwner&&<Card><CardHeader><CardTitle>Profile completion</CardTitle></CardHeader><CardContent className="space-y-3 text-sm text-muted-foreground"><p>Keep your qualifications and teaching subjects current. You can edit your own profile details. Verified academic records and platform roles remain controlled by the system; other users can only view information permitted for their role.</p><div className="space-y-3 border-t pt-4"><div className="flex items-center justify-between gap-3"><div className="min-w-0"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Notification email</p><p className="mt-1 break-all font-semibold text-foreground">{notificationEmail||"No notification email saved"}</p><p className={notificationEmailVerified?"mt-1 text-xs font-medium text-emerald-700 dark:text-emerald-300":"mt-1 text-xs text-muted-foreground"}>{notificationEmailVerified?"✓ Verified":"Not verified"}</p></div><Button type="button" size="icon" variant="ghost" aria-label="Edit notification email" title="Edit notification email" onClick={()=>setEditingNotificationEmail(v=>!v)} className="h-8 w-8 shrink-0"><span aria-hidden="true" className="text-base">✎</span></Button></div>{editingNotificationEmail&&<div className="space-y-3 rounded-xl border border-primary/20 p-3"><label htmlFor="notification-email" className="block text-sm font-medium">Notification email<input id="notification-email" type="email" autoComplete="email" className="mt-1 w-full rounded-lg border bg-background p-3 text-foreground" value={notificationEmail} onChange={e=>{setNotificationEmail(e.target.value);setNotificationEmailVerified(false);}} placeholder="you@example.com"/></label><Button disabled={busy||!notificationEmail.trim()} onClick={()=>void requestNotificationOtp()}>Send verification code</Button><div className="flex flex-wrap gap-2"><input aria-label="Six digit email verification code" autoComplete="one-time-code" inputMode="numeric" maxLength={6} className="min-w-0 flex-1 rounded-lg border bg-background p-3 text-foreground" value={notificationOtp} onChange={e=>{const code=e.target.value.replace(/\D/g,"").slice(0,6);setNotificationOtp(code);if(code.length===6)stopOtpCountdown();}} placeholder="6-digit code"/><Button variant="outline" disabled={busy} onClick={()=>void pasteVerificationCode("notification")}>Paste code</Button><Button disabled={busy||notificationOtp.length!==6} onClick={()=>void verifyNotificationOtp()}>Verify</Button></div></div>}</div>{isOwner&&!["owner","admin","platform_owner"].includes(String((user?.role||"")).toLowerCase())&&<div className="mt-4 border-t pt-4"><h3 className="font-semibold text-foreground">Account recovery</h3><p className="mt-1 text-xs text-muted-foreground">Add a backup email and verify control of it. Phone recovery is not enabled until an SMS provider is configured; security questions are not used alone to reset passwords.</p><div className="mt-3 flex items-start justify-between gap-3 rounded-xl border bg-muted/25 p-3"><div className="min-w-0"><p className="break-all font-semibold text-foreground">{recoveryEmail||"No backup email saved"}</p><p className={recoveryEmailVerified?"mt-1 text-xs font-medium text-emerald-700 dark:text-emerald-300":"mt-1 text-xs text-muted-foreground"}>{recoveryEmailVerified?"✓ Backup email verified":"Backup email not verified"}</p></div><Button type="button" size="icon" variant="ghost" aria-label="Edit backup email" title="Edit backup email" onClick={()=>setEditingRecoveryEmail(v=>!v)} className="h-8 w-8 shrink-0"><span aria-hidden="true" className="text-base">✎</span></Button></div>{editingRecoveryEmail&&<div className="mt-3 space-y-3 rounded-xl border border-primary/20 p-3"><label className="block text-sm font-medium" htmlFor="recovery-email-edit">Backup email address<input id="recovery-email-edit" aria-label="Alternate recovery email" type="email" autoCapitalize="none" autoComplete="email" className="mt-1 w-full rounded-lg border bg-background p-3 text-foreground" value={recoveryEmail} onChange={e=>{setRecoveryEmail(e.target.value);setRecoveryEmailVerified(false);}} placeholder="Backup email address"/></label><div className="flex flex-wrap gap-2"><Button disabled={busy||!recoveryEmail.trim()} onClick={()=>void saveRecoveryEmail()}>Save recovery email</Button><Button variant="outline" disabled={busy||!recoveryEmail.trim()||recoveryEmailVerified} onClick={()=>void requestRecoveryCode()}>Send verification code</Button></div><div className="flex flex-wrap gap-2"><input aria-label="Recovery email verification code" autoComplete="one-time-code" inputMode="numeric" maxLength={6} className="min-w-0 flex-1 rounded-lg border bg-background p-3 text-foreground" value={recoveryCode} onChange={e=>{const code=e.target.value.replace(/\D/g,"").slice(0,6);setRecoveryCode(code);if(code.length===6)stopOtpCountdown();}} placeholder="6-digit code"/><Button variant="outline" disabled={busy} onClick={()=>void pasteVerificationCode("recovery")}>Paste code</Button><Button disabled={busy||recoveryCode.length!==6} onClick={()=>void verifyRecoveryCode()}>Verify</Button></div></div>}</div>}{canManageOwnPayoutPreferences&&<div className="mt-4 border-t pt-4"><div className="flex items-center justify-between gap-3"><div><h3 className="font-semibold text-foreground">Private payout preferences</h3><p className="mt-1 text-xs text-muted-foreground">Only EcoCash phone OR PayPal email OR bank name/account holder. Never enter a PIN, card number, CVV, or password.</p><p className="mt-1 text-xs font-medium text-foreground">{payoutDestinationMasked?"Saved destination: "+payoutDestinationMasked:"No payout destination saved"}</p></div><Button type="button" size="icon" variant="ghost" aria-label="Edit payout preferences" title="Edit payout preferences" onClick={()=>setEditingPayoutPreferences(v=>!v)} className="h-8 w-8 shrink-0"><span aria-hidden="true" className="text-base">✎</span></Button></div>{editingPayoutPreferences&&<div className="mt-3 rounded-xl border border-primary/20 p-3"><select aria-label="Payout method" className="w-full rounded-md border bg-background p-2 text-foreground" value={payoutMethod} onChange={e=>{setPayoutMethod(e.target.value);setPayoutDestination("");}}><option value="ecocash">EcoCash</option><option value="paypal">PayPal</option><option value="bank">Bank transfer details</option></select>{payoutMethod==="ecocash"&&<input aria-label="EcoCash phone number" autoComplete="tel" className="mt-2 w-full rounded-md border bg-background p-2 text-foreground" value={payoutDestination} onChange={e=>setPayoutDestination(e.target.value)} placeholder="EcoCash phone number"/>}{payoutMethod==="paypal"&&<input aria-label="PayPal email" autoCapitalize="none" autoComplete="email" type="email" className="mt-2 w-full rounded-md border bg-background p-2 text-foreground" value={payoutDestination} onChange={e=>setPayoutDestination(e.target.value)} placeholder="PayPal email"/>}{payoutMethod==="bank"&&<div className="mt-2 grid gap-2"><input aria-label="Bank name" className="w-full rounded-md border bg-background p-2 text-foreground" value={bankName} onChange={e=>setBankName(e.target.value)} placeholder="Bank name"/><input aria-label="Account holder" className="w-full rounded-md border bg-background p-2 text-foreground" value={accountHolder} onChange={e=>setAccountHolder(e.target.value)} placeholder="Account holder name"/></div>}<div className="mt-2 flex flex-wrap gap-2"><Button disabled={busy||(payoutMethod==="ecocash"||payoutMethod==="paypal"?!payoutDestination.trim():!bankName.trim()||!accountHolder.trim())} onClick={()=>void savePayoutPreferences()}>Save payout preferences</Button><Button type="button" variant="outline" disabled={busy} onClick={()=>setEditingPayoutPreferences(false)}>Cancel</Button></div></div>}</div>}</CardContent></Card>}</div>}
+    {tab==="Qualifications"&&["teacher","manager","senior_manager"].includes(String(profile?.role||(user?.role||"")).toLowerCase())&&<Card><CardHeader><CardTitle>Qualifications</CardTitle></CardHeader><CardContent className="space-y-4">{isOwner&&String(profile?.role||(user?.role||"")).toLowerCase()==="teacher"&&<Button type="button" variant="default" onClick={()=>window.location.assign("/teacher/qualifications")}>Open full Teacher Qualifications CV form</Button>}{isOwner&&String(profile?.role||(user?.role||"")).toLowerCase()==="teacher"&&<Button type="button" variant="outline" disabled={busy} onClick={()=>void downloadTeacherCvPdf()}>Download verified CV PDF</Button>}{(isOwner?qualifications:profile?.verified_qualifications||[]).map((q:any)=><div key={q.id||q.title} className="rounded-lg border p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-semibold">{q.title}</p><p className="text-sm text-muted-foreground">{q.institution||""}{q.year?" · "+q.year:""}</p></div><div className="flex items-center gap-2"><span className="rounded-full bg-muted px-3 py-1 text-xs">{q.verification_status||"verified"}</span>{isOwner&&normalizedAccountRole==="teacher"&&q.source==="user"&&<Button type="button" size="sm" variant="ghost" className="h-9 w-9 p-0 text-destructive" aria-label={"Delete qualification "+q.title} title="Permanently delete qualification" disabled={busy} onClick={()=>void deleteOwnQualification(q)}><Trash2 className="h-4 w-4"/></Button>}</div></div>{q.id&&<Button type="button" size="sm" variant="outline" className="mt-2" disabled={busy} onClick={()=>void loadQualificationHistory(Number(q.id))}>View review history</Button>}{q.id&&Object.prototype.hasOwnProperty.call(qualificationHistory,Number(q.id))&&<div className="mt-3 space-y-2 border-t pt-3" aria-live="polite">{qualificationHistory[Number(q.id)].length?qualificationHistory[Number(q.id)].map((entry:any)=><div key={entry.id} className="rounded-md bg-muted/40 p-2 text-sm"><p className="font-medium">{entry.previous_status} → {entry.new_status}</p><p className="text-muted-foreground">{entry.reviewer_name||"Authorized reviewer"} · {entry.created_at?new Date(entry.created_at).toLocaleString():"Date unavailable"}</p>{entry.review_note&&<p className="mt-1">{entry.review_note}</p>}</div>):<p className="text-sm text-muted-foreground">No review decisions recorded yet.</p>}</div>}</div>)}{!qualifications.length&&!profile?.verified_qualifications?.length&&<p className="text-sm text-muted-foreground">No qualifications have been added yet.</p>}{isOwner&&["teacher","manager","senior_manager"].includes(String(profile?.role||(user?.role||"")).toLowerCase())&&<div className="space-y-3 rounded-lg border p-3"><h3 className="font-semibold">CV, resume & certificates</h3><p className="text-sm text-muted-foreground">Upload your own records. They are stored against your account; resumes and CVs remain private to you and authorized managers.</p><div className="flex flex-col gap-2 sm:flex-row"><select aria-label="Document type" className="rounded-md border bg-background p-2 text-sm text-foreground" value={documentType} onChange={e=>setDocumentType(e.target.value)}><option value="cv">CV</option><option value="resume">Resume</option><option value="certificate">Certificate</option><option value="proof">Other qualification proof</option></select><input aria-label="Choose document to upload" type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,application/pdf,image/jpeg,image/png,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" disabled={busy} onChange={e=>void uploadProfileDocument(e.target.files?.[0])}/></div></div>}{isOwner&&["teacher","manager","senior_manager"].includes(String(profile?.role||(user?.role||"")).toLowerCase())&&(qualifications||[]).map((q:any)=><label key={"upload-"+q.id} className="flex flex-wrap items-center gap-2 text-sm"><span>Upload document for {q.title}</span><input type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" disabled={busy} onChange={e=>void uploadDocument(q.id,e.target.files?.[0])}/></label>)}{documents.length>0&&<div className="space-y-2 border-t pt-3"><h3 className="font-semibold">Uploaded documents</h3>{documents.map((doc:any)=><div key={doc.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3"><div><p className="font-medium">{doc.file_name}</p><p className="text-xs text-muted-foreground">{String(doc.document_type).toUpperCase()} · {Math.ceil(Number(doc.size_bytes||0)/1024)} KB</p></div><div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={busy} onClick={()=>void openProfileDocument(doc)}>Open</Button>{isOwner&&normalizedAccountRole==="teacher"&&<Button type="button" variant="ghost" size="sm" className="h-9 w-9 p-0 text-destructive" aria-label={"Permanently delete "+doc.file_name} title="Permanently delete uploaded document" disabled={busy} onClick={()=>void deleteOwnProfileDocument(doc)}><Trash2 className="h-4 w-4"/></Button>}</div></div>)}</div>}{["owner","admin","platform_owner"].includes(String((user?.role||"")).toLowerCase())&&<div className="space-y-3 border-t pt-4"><h3 className="font-semibold">Pending verification</h3>{moderationQueue.length?moderationQueue.map((q:any)=><div key={"moderate-"+q.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"><div><p className="font-semibold">{q.title}</p><p className="text-sm text-muted-foreground">{q.teacher_name} · {q.institution||"Institution not provided"}{q.year?" · "+q.year:""}</p>{q.document_id&&<button type="button" className="text-sm underline" disabled={busy} onClick={()=>void reviewDocument(q.document_id)}>Review document</button>}</div><div className="flex gap-2"><Button disabled={busy} onClick={()=>void verifyQualification(q.id,"verified")}>Verify</Button><Button variant="outline" disabled={busy} onClick={()=>void verifyQualification(q.id,"rejected")}>Reject</Button></div></div>):<p className="text-sm text-muted-foreground">No pending qualifications.</p>}</div>}{isOwner&&["teacher","manager","senior_manager"].includes(String(profile?.role||(user?.role||"")).toLowerCase())&&<div className="space-y-3 border-t pt-4"><h3 className="font-semibold">Add multiple qualifications</h3><p className="text-sm text-muted-foreground">Enter one qualification per line. All entries are saved together and marked pending verification.</p><textarea aria-label="Qualifications, one per line" rows={4} maxLength={25000} className="w-full rounded-md border bg-background p-3 text-sm text-foreground" placeholder={"Diploma in Education\nBachelor of Science\nMaster's Degree"} value={qualificationInput} onChange={e=>setQualificationInput(e.target.value)}/><Button disabled={busy||!qualificationInput.trim()} onClick={()=>void saveQualificationsBulk()}>Save all qualifications</Button></div>}{isOwner&&["teacher","manager","senior_manager"].includes(String(profile?.role||(user?.role||"")).toLowerCase())&&<div className="grid gap-3 border-t pt-4 md:grid-cols-3"><input className="rounded-md border bg-background p-2 text-sm" placeholder="Qualification title *" value={title} onChange={e=>setTitle(e.target.value)}/><input className="rounded-md border bg-background p-2 text-sm" placeholder="Institution" value={institution} onChange={e=>setInstitution(e.target.value)}/><input className="rounded-md border bg-background p-2 text-sm" placeholder="Year" value={year} onChange={e=>setYear(e.target.value)}/><Button disabled={busy||!title.trim()} onClick={()=>void addQualification()}>Add qualification</Button></div>}</CardContent></Card>}
+    {tab==="Subjects"&&<Card><CardHeader><CardTitle>{["teacher","manager","senior_manager"].includes(String(profile?.role||(user?.role||"")).toLowerCase())?"Teaching subjects & specialization":"Learning subjects"}</CardTitle></CardHeader><CardContent className="space-y-3">{(profile?.subjects_to_teach||[]).map(s=><span key={s} className="mr-2 inline-block rounded-full bg-muted px-3 py-1 text-sm">{s}{profile?.primary_subject===s?" · Primary":""}</span>)}{!profile?.subjects_to_teach?.length&&<p className="text-sm text-muted-foreground">No subjects selected yet.</p>}{isOwner&&<div className="space-y-3 border-t pt-3"><p className="text-sm text-muted-foreground">Choose from subjects currently found in lessons and live classes, or add a subject by typing it below.</p><div className="flex flex-wrap gap-2">{subjectCatalog.map(s=><Button key={s} type="button" size="sm" variant={subjectInput.split(",").map(v=>v.trim()).includes(s)?"default":"outline"} onClick={()=>{const current=subjectInput.split(",").map(v=>v.trim()).filter(Boolean);setSubjectInput((current.includes(s)?current.filter(v=>v!==s):[...current,s]).join(", "));}}>{s}</Button>)}</div><label className="block text-sm font-medium">Selected subjects (comma-separated; editable)<input className="mt-1 w-full rounded-md border bg-background p-2 text-foreground" placeholder="Add or edit subjects" value={subjectInput} onChange={e=>setSubjectInput(e.target.value)}/></label>{["teacher","manager","senior_manager"].includes(String(profile?.role||(user?.role||"")).toLowerCase())&&<label className="block text-sm font-medium">Primary specialization<select className="mt-1 w-full rounded-md border bg-background p-2 text-foreground" value={primarySubject} onChange={e=>setPrimarySubject(e.target.value)}><option value="">Choose primary subject</option>{subjectInput.split(",").map(v=>v.trim()).filter(Boolean).map(s=><option key={s} value={s}>{s}</option>)}</select></label>}<Button disabled={busy} onClick={()=>void saveSubjects()}>Save subjects</Button></div>}</CardContent></Card>}
+    {tab==="Enrollments"&&<Card><CardHeader><CardTitle>Enrollments</CardTitle></CardHeader><CardContent className="space-y-3">{isOwner?<>{enrollments.length?enrollments.map((entry:any)=><div key={entry.id} className="rounded-lg border p-3"><p className="font-semibold">{entry.title}</p><p className="text-sm text-muted-foreground">{entry.subject}{entry.grade?" · Grade "+entry.grade:""}{entry.teacher_name?" · "+entry.teacher_name:""}</p><div className="mt-2 h-2 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary" style={{width:Math.max(0,Math.min(100,Number(entry.progress_percent)||0))+"%"}}/></div><p className="mt-1 text-xs text-muted-foreground">{entry.progress_percent}% complete · Enrolled {entry.enrolled_at?new Date(entry.enrolled_at).toLocaleDateString():"date unavailable"}</p></div>):<p className="text-sm text-muted-foreground">No active class enrollments recorded.</p>}</>:<p className="text-sm text-muted-foreground">Enrollment details are private.</p>}</CardContent></Card>}
+    {tab==="Achievements"&&<Card><CardHeader><CardTitle>Achievements</CardTitle></CardHeader><CardContent className="space-y-3">{achievements.length?achievements.map((entry:any)=><div key={entry.id} className="flex items-start gap-3 rounded-lg border p-3"><span className="text-2xl" aria-hidden="true">{entry.achievement?.icon||"🏆"}</span><div className="min-w-0 flex-1"><p className="font-semibold">{entry.achievement?.name||"Achievement"}</p><p className="text-sm text-muted-foreground">{entry.achievement?.description||"Achievement awarded on the platform."}</p>{isOwner&&entry.note&&<p className="mt-1 text-sm">{entry.note}</p>}<p className="mt-1 text-xs text-muted-foreground">{entry.earnedAt?new Date(entry.earnedAt).toLocaleDateString(): "Award date unavailable"} · {entry.achievement?.pointsValue??0} points</p></div></div>):<p className="text-sm text-muted-foreground">No achievements recorded yet.</p>}</CardContent></Card>}
+    {isOwner&&tab==="Reports"&&<Card><CardHeader><CardTitle>Official academic reports</CardTitle><p className="text-sm text-muted-foreground">Approved school reports generated from your saved academic records.</p></CardHeader><CardContent className="space-y-4">{approvedReports.length?approvedReports.map((report:any)=>{const content=report.draft_content||{};const facts=content.factualRecords||{};const summary=facts.markSummary||content.markSummary||{};const overall=summary.overall||{};const assignments=facts.assignmentMarks||[];const exercises=facts.exerciseMarks||[];return <article key={report.id} className="overflow-hidden rounded-xl border bg-white text-slate-900 shadow-sm"><header className="border-b-4 border-[#A87919] bg-[#0f2a5a] p-4 text-white"><p className="text-xs font-bold uppercase tracking-widest text-[#e8c85a]">Dallyletter Elidems · Smart CAPS LMS</p><h3 className="mt-1 text-xl font-extrabold">Official Academic Report</h3><p className="text-sm text-blue-100">{report.term_label} · {report.report_type==="attendance_register"?"Attendance Register":"Term Performance"}</p></header><div className="grid gap-3 p-4 sm:grid-cols-2"><div><p className="text-xs uppercase text-slate-500">Learner</p><p className="font-semibold">{content.learner||"Learner record"}</p></div><div><p className="text-xs uppercase text-slate-500">Academic year / report period</p><p className="font-semibold">{content.academicYear||"Not recorded"} · {report.period_start?new Date(report.period_start).toLocaleDateString():"—"} – {report.period_end?new Date(report.period_end).toLocaleDateString():"—"}</p></div><div><p className="text-xs uppercase text-slate-500">Grade / form</p><p>{content.learnerGrade||"Not recorded"}</p></div><div><p className="text-xs uppercase text-slate-500">Admission number</p><p>{content.admissionNumber||"Not recorded"}</p></div><div><p className="text-xs uppercase text-slate-500">Date of birth / age</p><p>{content.dateOfBirth||"Not recorded"} · {content.ageOnPeriodEnd==null?"Age not calculated":content.ageOnPeriodEnd+" years"}</p></div><div><p className="text-xs uppercase text-slate-500">Approved</p><p>{report.reviewed_at?new Date(report.reviewed_at).toLocaleDateString():"—"}</p></div><div><p className="text-xs uppercase text-slate-500">Document reference</p><p>DL-AR-{report.id}</p></div></div>{report.report_type==="attendance_register"?<section className="px-4 pb-4"><h4 className="mb-2 font-bold text-[#0f2a5a]">Attendance summary</h4>{(content.records||[]).length?<div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="py-2">Class</th><th>Sessions</th><th>Present</th><th>Absent</th><th>Late</th></tr></thead><tbody>{content.records.map((record:any)=><tr key={record.classId} className="border-b"><td className="py-2">{record.classId}</td><td>{record.sessions}</td><td>{record.present}</td><td>{record.absent}</td><td>{record.late}</td></tr>)}</tbody></table></div>:<p className="text-sm text-slate-600">No attendance sessions were recorded in this period.</p>}</section>:<section className="space-y-3 px-4 pb-4"><h4 className="font-bold text-[#0f2a5a]">Academic performance</h4><div className="rounded-lg border p-3"><h5 className="font-semibold">Class progress</h5>{facts.enrollments?.length?facts.enrollments.map((entry:any,index:number)=><p key={entry.id||index} className="mt-1 text-sm">{entry.subject||"Subject not recorded"} · {entry.class_title||"Class not recorded"} — {entry.progress_percent==null?"Progress not recorded":entry.progress_percent+"%"} ({entry.status||"Status not recorded"})</p>):<p className="text-sm text-slate-500">No class progress recorded.</p>}</div><div className="rounded-lg border p-3"><h5 className="font-semibold">Learning polls / quizzes</h5>{facts.pollSubmissions?.length?facts.pollSubmissions.map((poll:any,index:number)=><p key={poll.submission_id||index} className="mt-1 text-sm">{poll.title||"Learning poll"} · {poll.subject||"Subject not recorded"} — {poll.score==null||poll.total_questions==null?"Score unavailable":poll.score+" / "+poll.total_questions}</p>):<p className="text-sm text-slate-500">No completed learning polls were recorded in this period.</p>}</div>{facts.enrollments?.length>0&&<div className="rounded-lg bg-slate-50 p-3"><h5 className="font-semibold">Subjects and classes</h5><div className="mt-1 flex flex-wrap gap-2">{facts.enrollments.map((entry:any,index:number)=><span key={entry.id||index} className="rounded-full border bg-white px-3 py-1 text-xs">{entry.subject||"Subject not recorded"} · {entry.class_title||"Class not recorded"}</span>)}</div></div>}<p className="text-sm text-slate-600">Attendance: {facts.attendanceSummary?.present??"Not available"} present · {facts.attendanceSummary?.absent??"Not available"} absent · {facts.attendanceSummary?.late??"Not available"} late</p><div className="rounded-lg border p-3"><h5 className="font-semibold">Achievements</h5>{facts.awards?.length?facts.awards.map((award:any,index:number)=><p key={award.id||index} className="mt-1 text-sm">{award.name||"Achievement"}{award.earned_at?" · "+new Date(award.earned_at).toLocaleDateString():""}</p>):<p className="text-sm text-slate-500">No achievements recorded in this period.</p>}</div><div className="grid grid-cols-2 gap-2 sm:grid-cols-4"><div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Marked items</p><p className="text-lg font-bold">{overall.markedCount??"—"}</p></div><div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Earned</p><p className="text-lg font-bold">{overall.earnedMarks??"—"}</p></div><div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Possible</p><p className="text-lg font-bold">{overall.possibleMarks??"—"}</p></div><div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Average</p><p className="text-lg font-bold">{overall.percentage==null?"Not available":overall.percentage+"%"}</p></div></div>{(assignments.length+exercises.length)>0?<div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="py-2">Subject / activity</th><th>Type</th><th>Mark</th><th>Status</th></tr></thead><tbody>{assignments.map((mark:any)=><tr key={"a"+mark.submission_id} className="border-b"><td className="py-2">{mark.subject||mark.title||"Assignment"}</td><td>Assignment</td><td>{mark.marks==null?"Not marked":mark.marks+" / "+mark.total_marks}</td><td>{mark.status||"Recorded"}</td></tr>)}{exercises.map((mark:any)=><tr key={"e"+mark.submission_id} className="border-b"><td className="py-2">{mark.title||"Exercise"}</td><td>Exercise</td><td>{mark.total_score==null?"Not marked":mark.total_score+" / "+mark.total_marks}</td><td>{mark.status||"Recorded"}</td></tr>)}</tbody></table></div>:<p className="text-sm text-slate-600">No marked assignments or report-enabled exercises were recorded for this period.</p>}{content.commentary&&<div className="rounded-lg bg-slate-50 p-3"><h5 className="font-semibold">Teacher / academic commentary</h5><p className="mt-1 whitespace-pre-wrap text-sm">{String(content.commentary)}</p></div>}{(content.teacherComment||content.conduct||content.result||report.review_note)&&<div className="grid gap-2 rounded-lg bg-slate-50 p-3 sm:grid-cols-2">{content.teacherComment&&<div className="sm:col-span-2"><h5 className="font-semibold">Teacher comment</h5><p className="whitespace-pre-wrap text-sm">{String(content.teacherComment)}</p></div>}{content.conduct&&<div><h5 className="font-semibold">Conduct / behaviour</h5><p className="text-sm">{String(content.conduct)}</p></div>}{content.result&&<div><h5 className="font-semibold">Term result / promotion</h5><p className="text-sm">{String(content.result)}</p></div>}{report.review_note&&<div className="sm:col-span-2"><h5 className="font-semibold">Reviewer / headmaster comment</h5><p className="whitespace-pre-wrap text-sm">{String(report.review_note)}</p></div>}</div>}</section>}<footer className="flex flex-wrap items-center justify-between gap-3 border-t bg-slate-50 p-4"><p className="text-xs text-slate-500">Approved report · DL-AR-{report.id}</p><Button onClick={()=>void (async()=>{try{const response=await fetch(getApiUrl("/api/academic-records/reports/drafts/"+report.id+"/download/pdf"),{headers});if(!response.ok)throw new Error("Report PDF is unavailable.");const blob=await response.blob();const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="dallyletter-report-"+report.id+".pdf";a.click();URL.revokeObjectURL(url);}catch(e){setMessage(e instanceof Error?e.message:"Could not download report.");}})()}>Download official PDF</Button></footer></article>; }):<p className="text-sm text-muted-foreground">No approved academic reports are available yet. Your report will appear here after school review.</p>}</CardContent></Card>}
+    {isOwner&&tab==="Reports"&&<RecordBookWorkspace />}
+    {!isOwner&&profileId&&tab==="Enrollments"&&<ProfileSectionViewer profileId={profileId} section="enrollments" title="Class enrollments"/>}
+    {!isOwner&&profileId&&tab==="Reports"&&<ProfileSectionViewer profileId={profileId} section="reports" title="Approved academic reports"/>}
+    {!isOwner&&profileId&&tab==="Payments"&&<ProfileSectionViewer profileId={profileId} section="payments" title="Shared payment records"/>}
+    {!isOwner&&profileId&&tab==="Transfer Letters"&&<ProfileSectionViewer profileId={profileId} section="transfers" title="Shared transfer requests"/>}
+    {!isOwner&&profileId&&tab==="Groups"&&<ProfileSectionViewer profileId={profileId} section="groups" title="Shared study groups"/>}
+    {!isOwner&&profileId&&tab==="Activity"&&<ProfileSectionViewer profileId={profileId} section="activity" title="Shared activity summary"/>}
+    {!isOwner&&profileId&&tab==="Teacher Documents"&&<ProfileSectionViewer profileId={profileId} section="teacher_documents" title="Shared teacher certificates"/>}
+    {isOwner&&tab==="Attendance"&&<DailyAppAttendanceCard/>}{!isOwner&&profileId&&tab==="Attendance"&&(profile?.section_visibility?.attendance===true||profile?.section_visibility?.register===true)&&<ProfileSectionViewer profileId={profileId} section="attendance" title="Shared attendance records"/>}
+    {isOwner&&tab==="Payments"&&<Card><CardHeader><CardTitle>School fee invoices & payment ledger</CardTitle></CardHeader><CardContent className="space-y-4">
+      <p className="text-sm text-muted-foreground">Create the actual fee record for a learner here. The learner can then see the amount owed, pay in parts or pay extra through Paynow, and track the verified balance. A reported payment is not proof that funds have cleared.</p>
+      <section className="space-y-3 rounded-xl border p-4">
+        <h3 className="font-semibold">Issue a school fee invoice</h3>
+        <label className="block text-sm font-medium">Learner<select className="mt-1 w-full rounded-md border bg-background p-2 text-foreground" value={invoiceStudentId} onChange={e=>setInvoiceStudentId(e.target.value)}><option value="">Select learner</option>{paymentLearners.filter((entry:any)=>["student","learner","prefect"].includes(String(entry.role||"").toLowerCase())).map((entry:any)=><option key={entry.id} value={entry.id}>{entry.name||entry.display_name||("Learner #"+entry.id)} · #{entry.id}</option>)}</select></label>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <label className="text-sm font-medium">Fee amount (USD)<input type="number" min="0.01" max="100000" step="0.01" className="mt-1 w-full rounded-md border bg-background p-2 text-foreground" value={invoiceAmount} onChange={e=>setInvoiceAmount(e.target.value)} placeholder="e.g. 45.00"/></label>
+          <label className="text-sm font-medium">Month / period<input className="mt-1 w-full rounded-md border bg-background p-2 text-foreground" value={invoiceMonth} onChange={e=>setInvoiceMonth(e.target.value)} maxLength={40}/></label>
+          <label className="text-sm font-medium">Year<input type="number" min="2000" max="2200" className="mt-1 w-full rounded-md border bg-background p-2 text-foreground" value={invoiceYear} onChange={e=>setInvoiceYear(e.target.value)}/></label>
+        </div>
+        <Button disabled={invoiceBusy||!invoiceStudentId||!invoiceAmount.trim()} onClick={()=>void createSchoolFeeInvoice()}>{invoiceBusy?"Creating invoice…":"Create learner fee invoice"}</Button>
+      </section>
+      <div className="space-y-2"><h3 className="font-semibold">Recorded school payments</h3>{paymentRecords.length?paymentRecords.map((payment:any)=><div key={payment.id} className="rounded-lg border p-3"><p className="font-semibold">{payment.studentName||("Learner #"+payment.studentId)} · {payment.month} {payment.year}</p><p className="text-sm">USD {Number(payment.amount||0).toFixed(2)} · Paid {Number(payment.amountPaid||0).toFixed(2)} · Balance {Number(payment.balance??Math.max(0,Number(payment.amount||0)-Number(payment.amountPaid||0))).toFixed(2)} · {payment.status||"Not recorded"}</p><p className="text-xs text-muted-foreground">Recorded {payment.createdAt?new Date(payment.createdAt).toLocaleDateString():"date unavailable"} · {payment.notes||"No reference notes"}</p>
+        <div className="mt-3 grid gap-2 rounded-lg border bg-muted/20 p-3 sm:grid-cols-[1fr_1fr_1.4fr_auto]">
+          <label className="text-xs font-semibold">Verified amount (USD)<input type="number" min="0.01" max="100000" step="0.01" value={manualPaymentAmounts[payment.id]||""} onChange={e=>setManualPaymentAmounts(v=>({...v,[payment.id]:e.target.value}))} placeholder={Number(payment.balance||0).toFixed(2)} className="mt-1 w-full rounded-md border bg-background p-2 text-sm"/></label>
+          <label className="text-xs font-semibold">Method<select value={manualPaymentMethods[payment.id]||"ecocash"} onChange={e=>setManualPaymentMethods(v=>({...v,[payment.id]:e.target.value}))} className="mt-1 w-full rounded-md border bg-background p-2 text-sm"><option value="ecocash">EcoCash / Econet</option><option value="bank_transfer">Bank transfer</option><option value="crypto">Crypto / wallet</option><option value="cash">Cash</option><option value="other">Other manual</option></select></label>
+          <label className="text-xs font-semibold">Receipt / transaction reference<input value={manualPaymentReferences[payment.id]||""} onChange={e=>setManualPaymentReferences(v=>({...v,[payment.id]:e.target.value}))} placeholder="Receipt reference (not needed for cash)" maxLength={120} className="mt-1 w-full rounded-md border bg-background p-2 text-sm"/></label>
+          <Button size="sm" disabled={manualPaymentBusy!==null||!manualPaymentAmounts[payment.id]?.trim()} onClick={()=>void recordManualPayment(Number(payment.id))}>{manualPaymentBusy===Number(payment.id)?"Saving…":"Verify payment"}</Button>
+        </div></div>):<p className="text-sm text-muted-foreground">No payment records are available.</p>}</div>
+    </CardContent></Card>}
+    {tab==="Transfer Letters"&&<Card className="overflow-hidden border-primary/25 shadow-lg"><CardHeader className="bg-gradient-to-r from-[#0f2a5a]/10 to-[#A87919]/10"><CardTitle className="text-xl text-[#0f2a5a]">Dallyletter Elidems · Complete Transfer Letter</CardTitle><p className="text-sm text-muted-foreground">Complete the official transfer application template below. Every signed-in user can prepare and submit a request. Only managers and owners can approve or reject it.</p></CardHeader><CardContent className="space-y-5">
+      {canReviewTransferLetters&&<section className="space-y-3 rounded-xl border border-[#A87919]/40 bg-amber-50/40 p-4"><h3 className="font-bold text-[#0f2a5a]">Manager / Owner approval queue</h3>{transferRequests.length?transferRequests.map((entry:any)=>{const letter=entry.form_data&&typeof entry.form_data==="object"?entry.form_data:{};const fields:Array<[string,any]>=[[ "Learner",letter.learnerName||entry.learner_name||("Learner #"+entry.learner_id) ],["Current school",letter.currentSchool],["Receiving school",letter.receivingSchool],["Grade / Form",letter.grade],["Academic year",letter.academicYear],["Date of birth",letter.dob],["Admission number",letter.admissionNo],["EMIS number",letter.emisNo],["Recorded academic average",letter.average!==undefined&&letter.average!==null&&String(letter.average).trim()!==""?String(letter.average)+"%":""],["Parent / guardian",letter.guardianName],["Relationship",letter.relationship],["Guardian phone",letter.guardianPhone],["Guardian email",letter.guardianEmail],["Guardian ID",letter.guardianId],["Address",letter.address],["Effective date",letter.effectiveDate],["Gender",letter.gender],["Conduct",letter.conduct],["Reason category",letter.reasonType],["Reason details",letter.reasonDetail||entry.reason]];return <article key={entry.id} className="overflow-hidden rounded-xl border bg-background shadow-sm"><header className="flex flex-wrap items-center justify-between gap-2 border-b bg-[#0f2a5a]/[0.04] p-3"><div><p className="font-bold text-[#0f2a5a]">Transfer letter #{entry.id}</p><p className="text-xs text-muted-foreground">{entry.learner_name||("Learner #"+entry.learner_id)} · Submitted {entry.created_at?new Date(entry.created_at).toLocaleString():"date unavailable"}</p></div><span className={"rounded-full border px-3 py-1 text-xs font-semibold "+(entry.status==="approved"?"border-emerald-300 text-emerald-700":entry.status==="rejected"?"border-red-300 text-red-700":"border-amber-400 text-amber-800")}>{entry.status}</span></header><div className="space-y-3 p-4">{canReviewTransferLetters&&<div className="flex justify-end"><Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive" aria-label="Delete transfer letter" title="Delete transfer letter" disabled={busy} onClick={()=>void (async()=>{if(!window.confirm("Permanently delete this transfer letter?"))return;setBusy(true);try{await request("/api/academic-records/transfer-requests/"+entry.id,{method:"DELETE"});setTransferRequests(current=>current.filter(item=>item.id!==entry.id));setMessage("Transfer letter deleted.");}catch(e){setMessage(e instanceof Error?e.message:"Transfer letter deletion failed.");}finally{setBusy(false);}})()}><Trash2 className="h-4 w-4"/></Button></div>}<div className="flex items-center gap-3">{letter.schoolLogoDataUrl&&<img src={String(letter.schoolLogoDataUrl)} alt="School logo submitted with transfer letter" className="h-14 w-14 rounded border bg-white object-contain"/>}<div><p className="text-xs font-semibold uppercase tracking-wider text-[#A87919]">Dallyletter Elidems · Transfer application</p><h4 className="text-lg font-bold text-[#0f2a5a]">{String(letter.learnerName||entry.learner_name||"Learner transfer")}</h4><p className="text-sm text-muted-foreground">{String(letter.currentSchool||"Dallyletter Elidems")} → {String(letter.receivingSchool||"Receiving school not supplied")}</p></div></div><div className="rounded-xl border bg-white p-5 text-slate-800 shadow-inner"><div className="flex items-start justify-between gap-4 border-b-[3px] border-[#0f2a5a] pb-3"><div className="flex items-center gap-3"><img src="/icons/icon-192.png" alt="Dallyletter Elidems logo" className="h-12 w-12 rounded-xl object-contain"/><div><h3 className="text-xl font-extrabold text-[#0f2a5a]">Dallyletter Elidems</h3><p className="text-xs text-slate-500">Official transfer application</p></div></div>{<img src={String(letter.schoolLogoDataUrl||"/icons/icon-192.png")} alt="Dallyletter Elidems current-school logo" className="h-16 w-16 shrink-0 rounded-lg border bg-white object-contain p-1"/>}</div><p className="mt-3 text-right text-xs text-slate-500">{letter.effectiveDate?new Date(String(letter.effectiveDate)+"T00:00:00").toLocaleDateString():"Date not supplied"}</p><p className="mt-4 text-sm">The Headmaster<br/><b>{String(letter.receivingSchool||"[Receiving School]")}</b><br/>Dear Sir/Madam,</p><h3 className="my-4 text-sm font-extrabold text-[#0f2a5a]">RE: TRANSFER APPLICATION FOR {String(letter.learnerName||entry.learner_name||"LEARNER NAME").toUpperCase()} - {String(letter.grade||"Grade not supplied")}</h3>{[[ "1. Learner's Details", [["Full name",letter.learnerName||entry.learner_name],["Grade / Form",letter.grade],["Admission No",letter.admissionNo],["DOB / Gender",(letter.dob||"—")+" / "+(letter.gender||"—")],["EMIS No",letter.emisNo],["Academic Year",letter.academicYear],["Recorded academic average / Conduct",(letter.average!==undefined&&letter.average!==null&&String(letter.average).trim()!==""?String(letter.average)+"%":"—")+" / "+(letter.conduct||"—")]] ],["2. Reason For Transfer",[["Category",letter.reasonType],["Details",letter.reasonDetail||entry.reason]]],["3. Parent's / Guardian's Details",[["Name & relation",(letter.guardianName||"—")+" ("+(letter.relationship||"—")+")"],["ID No",letter.guardianId],["Contact",letter.guardianPhone],["Email",letter.guardianEmail],["Address",letter.address],["Effective Date",letter.effectiveDate]]]].map(([heading,rows]:any)=><section className="mt-4 rounded-lg border border-slate-200 p-3" key={heading}><h4 className="mb-2 border-l-4 border-[#A87919] pl-2 text-xs font-extrabold uppercase text-[#0f2a5a]">{heading}</h4>{rows.filter(([,value]:any)=>value!==undefined&&value!==null&&String(value).trim()!=="").map(([label,value]:any)=><div className="flex gap-3 border-b border-dotted border-slate-200 py-1 text-xs" key={label}><span className="w-36 shrink-0 text-slate-500">{label}</span><b className="break-words text-[#0f2a5a]">{String(value)||"—"}</b></div>)}</section>)}<section className="mt-4 rounded-lg border border-slate-200 p-3"><h4 className="mb-2 border-l-4 border-[#A87919] pl-2 text-xs font-extrabold uppercase text-[#0f2a5a]">4. Declarations &amp; Signatures</h4><div className="grid grid-cols-2 gap-4 text-xs"><div className="border-t pt-3">Parent / Guardian signature{letter.guardianSignatureDataUrl?<img src={String(letter.guardianSignatureDataUrl)} alt="Parent or guardian signature" className="mt-2 h-14 max-w-48 object-contain"/>:<span className="block text-slate-400">Signature image not supplied</span>}</div><div className="border-t pt-3">Headmaster - Current School (Stamp){letter.headmasterSignatureDataUrl?<img src={String(letter.headmasterSignatureDataUrl)} alt="Headmaster signature and school stamp" className="mt-2 h-14 max-w-48 object-contain"/>:<span className="block text-slate-400">Authorized school signature / stamp not supplied</span>}</div></div><p className="mt-3 text-[10px] text-slate-500">Subject to acceptance by receiving school, space availability, and submission of supporting records. Fee clearance and signatures are not assumed.</p></section></div><div className="grid gap-3 sm:grid-cols-2">{letter.guardianSignatureDataUrl&&<div className="rounded-lg border p-2"><p className="mb-1 text-xs font-semibold">Guardian signature supplied</p><img src={String(letter.guardianSignatureDataUrl)} alt="Guardian signature" className="h-16 max-w-full object-contain"/></div>}{letter.headmasterSignatureDataUrl&&<div className="rounded-lg border p-2"><p className="mb-1 text-xs font-semibold">Headmaster signature supplied</p><img src={String(letter.headmasterSignatureDataUrl)} alt="Headmaster signature" className="h-16 max-w-full object-contain"/></div>}</div>{entry.review_note&&<p className="rounded-lg border bg-muted/30 p-3 text-sm"><b>Reviewer note:</b> {entry.review_note}</p>}{entry.status==="pending"&&<div className="flex flex-wrap gap-2 border-t pt-3">{canApproveTransferLetters&&<Button disabled={busy} onClick={()=>void (async()=>{setBusy(true);try{await request("/api/academic-records/transfer-requests/"+entry.id+"/review",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:"approved"})});setTransferRequests(await request("/api/academic-records/transfer-requests"));setMessage("Transfer request approved.");}catch(e){setMessage(e instanceof Error?e.message:"Approval failed.");}finally{setBusy(false);}})()}>Approve transfer letter</Button>}{canRejectTransferLetters&&<Button variant="outline" disabled={busy} onClick={()=>void (async()=>{const note=window.prompt("Enter the reason for rejecting this transfer request:");if(!note||note.trim().length<3){setMessage("A rejection reason is required.");return;}setBusy(true);try{await request("/api/academic-records/transfer-requests/"+entry.id+"/review",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:"rejected",note:note.trim()})});setTransferRequests(await request("/api/academic-records/transfer-requests"));setMessage("Transfer request rejected.");}catch(e){setMessage(e instanceof Error?e.message:"Rejection failed.");}finally{setBusy(false);}})()}>Reject</Button>}</div>}</div></article>;}):<p className="text-sm text-muted-foreground">No transfer requests found.</p>}</section>}
+      {isOwner&&<section className="grid items-start gap-3 xl:grid-cols-[minmax(300px,390px)_minmax(0,1fr)]"><div className="space-y-3 rounded-2xl border border-[#A87919]/35 bg-gradient-to-br from-[#0f2a5a]/[0.06] via-background to-[#A87919]/[0.07] p-3 shadow-lg shadow-[#0f2a5a]/5"><div className="flex items-center justify-between gap-2"><h3 className="font-bold tracking-tight text-[#0f2a5a]">Transfer application details</h3><span className="rounded-full border border-[#A87919]/50 bg-[#A87919]/10 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-[#8a6d1d]">ELIDEMS · 6020</span></div><p className="text-xs text-muted-foreground">The live document updates as you complete the fields. Your account name and grade are prefilled when available.</p><div className="flex items-center gap-3 rounded-xl border border-[#A87919]/35 bg-background/80 p-2.5"><img src="/icons/icon-192.png" alt="Dallyletter Elidems logo" className="h-10 w-10 rounded-lg object-contain"/><div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Current school · locked</p><p className="truncate text-sm font-extrabold text-[#0f2a5a]">Dallyletter Elidems</p></div><span className="ml-auto text-[10px] font-bold text-emerald-700">✓ Verified identity</span></div>
+      {(()=>{const fields:any[]=[["receivingSchool","Receiving school"],["learnerName","Learner full name"],["grade","Grade / Form"],["academicYear","Academic year"],["dob","Date of birth"],["admissionNo","Admission number"],["emisNo","EMIS number"],["guardianName","Parent / guardian name"],["guardianId","Parent / guardian ID"],["guardianPhone","Parent / guardian phone"],["guardianEmail","Parent / guardian email"],["address","Physical address"],["effectiveDate","Effective transfer date"]];return <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">{fields.map(([key,label])=><label key={key} className="block min-w-0 text-[10px] font-extrabold uppercase tracking-wide text-muted-foreground">{label}{key==="grade"?<select aria-label="Grade or form" value={transferForm.grade||""} onChange={e=>setTransferForm((v:any)=>({...v,grade:e.target.value}))} className="mt-1 w-full rounded-lg border border-[#0f2a5a]/15 bg-background px-2.5 py-2 text-sm font-normal normal-case tracking-normal text-foreground shadow-sm focus:border-[#A87919] focus:ring-2 focus:ring-[#A87919]/20"><option value="" disabled>Select grade / form</option>{ACADEMIC_GRADE_OPTIONS.map(grade=><option key={grade} value={grade}>{grade}</option>)}</select>:<input type={["dob","effectiveDate"].includes(key)?"date":"text"} value={transferForm[key]||""} onChange={e=>setTransferForm((v:any)=>({...v,[key]:e.target.value}))} className="mt-1 w-full rounded-lg border border-[#0f2a5a]/15 bg-background px-2.5 py-2 text-sm font-normal normal-case tracking-normal text-foreground shadow-sm focus:border-[#A87919] focus:ring-2 focus:ring-[#A87919]/20" />}{key==="dob"&&<span className="mt-1 block text-[10px] font-normal normal-case tracking-normal text-muted-foreground">{calculateAgeOnDate(String(transferForm.dob||""), transferForm.effectiveDate ? new Date(String(transferForm.effectiveDate) + "T00:00:00") : new Date())===null?"Age appears after a valid date of birth is entered":`Age on effective transfer date: ${calculateAgeOnDate(String(transferForm.dob||""), transferForm.effectiveDate ? new Date(String(transferForm.effectiveDate) + "T00:00:00") : new Date())} years`}</span>}</label>)}</div>;})()}<div className="rounded-lg border border-[#0f2a5a]/15 bg-background/80 p-2.5"><p className="text-[10px] font-extrabold uppercase tracking-wide text-muted-foreground">Recorded academic average</p><p className="mt-0.5 text-lg font-black tabular-nums text-[#0f2a5a]">{transferForm.average!==""&&transferForm.average!=null?`${Number(transferForm.average).toFixed(1)}%`:"Not yet available"}</p><p className="text-[10px] text-muted-foreground">Calculated from saved, marked academic work. No marks are invented or manually entered.</p></div>
+      <label className="block text-xs font-bold uppercase text-muted-foreground">Gender<select value={transferForm.gender} onChange={e=>setTransferForm((v:any)=>({...v,gender:e.target.value}))} className="mt-1 w-full rounded-md border bg-background p-2 text-sm font-normal text-foreground"><option>Male</option><option>Female</option></select></label>
+      <label className="block text-xs font-bold uppercase text-muted-foreground">Behaviour / conduct<select value={transferForm.conduct} onChange={e=>setTransferForm((v:any)=>({...v,conduct:e.target.value}))} className="mt-1 w-full rounded-md border bg-background p-2 text-sm font-normal text-foreground">{["Excellent","Very Good","Good","Satisfactory"].map(v=><option key={v}>{v}</option>)}</select></label>
+      <label className="block text-xs font-bold uppercase text-muted-foreground">Reason category<select value={transferForm.reasonType} onChange={e=>setTransferForm((v:any)=>({...v,reasonType:e.target.value}))} className="mt-1 w-full rounded-md border bg-background p-2 text-sm font-normal text-foreground">{["Family Relocation","Seeking Better Academic Opportunities","Medical Reasons","Change of Guardianship","Financial Reasons","Disciplinary Transfer","Other"].map(v=><option key={v}>{v}</option>)}</select></label>
+      <label className="block text-xs font-bold uppercase text-muted-foreground">Reason details<textarea value={transferForm.reasonDetail} onChange={e=>setTransferForm((v:any)=>({...v,reasonDetail:e.target.value}))} rows={3} maxLength={1800} className="mt-1 w-full rounded-md border bg-background p-2 text-sm font-normal normal-case text-foreground" placeholder="Explain the reason for transfer" /></label>
+      <label className="block text-xs font-bold uppercase text-muted-foreground">Relationship<select value={transferForm.relationship} onChange={e=>setTransferForm((v:any)=>({...v,relationship:e.target.value}))} className="mt-1 w-full rounded-lg border bg-background p-2 text-sm font-normal text-foreground">{["Father","Mother","Legal guardian","Grandfather","Grandmother","Stepfather","Stepmother","Aunt","Uncle","Adult sibling","Foster parent","Court-appointed guardian","Social worker","Other authorised caregiver"].map(v=><option key={v}>{v}</option>)}</select></label>
+      <Button className="w-full" disabled={busy||!transferForm.learnerName.trim()||!transferForm.receivingSchool.trim()||transferForm.reasonDetail.trim().length<3} onClick={()=>void (async()=>{setBusy(true);try{const reason=[transferForm.reasonType,transferForm.reasonDetail].filter(Boolean).join(": ");await request("/api/academic-records/transfer-requests",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reason,formData:transferForm})});setTransferRequests(await request("/api/academic-records/transfer-requests"));setMessage("Your completed transfer letter application has been submitted for manager / owner approval.");}catch(e){setMessage(e instanceof Error?e.message:"Could not submit transfer application.");}finally{setBusy(false);}})()}>Submit transfer application</Button></div>
+      <input ref={schoolLogoInputRef} type="file" accept="image/png,image/jpeg" className="hidden" disabled={busy||transferImageBusy} onChange={e=>{void saveTransferImage("schoolLogoDataUrl",e.currentTarget.files?.[0]);e.currentTarget.value="";}} />
+      <input ref={guardianSignatureInputRef} type="file" accept="image/png,image/jpeg" className="hidden" disabled={busy||transferImageBusy} onChange={e=>{void saveTransferImage("guardianSignatureDataUrl",e.currentTarget.files?.[0]);e.currentTarget.value="";}} />
+      <input ref={headmasterSignatureInputRef} type="file" accept="image/png,image/jpeg" className="hidden" disabled={busy||transferImageBusy} onChange={e=>{void saveTransferImage("headmasterSignatureDataUrl",e.currentTarget.files?.[0]);e.currentTarget.value="";}} />
+      <details ref={transferAttachmentsRef} className="rounded-xl border border-[#A87919]/40 bg-background p-3 shadow-sm"><summary className="cursor-pointer select-none text-sm font-bold text-[#0f2a5a]">＋ Open optional logo, signature & stamp tools</summary><div className="mt-3 grid gap-3">
+        <button type="button" disabled={busy||transferImageBusy} onClick={()=>schoolLogoInputRef.current?.click()} className="flex w-full items-center gap-3 rounded-xl border-2 border-dashed border-[#A87919]/60 bg-[#0f2a5a]/[0.03] p-3 text-left transition hover:border-[#A87919] hover:bg-[#0f2a5a]/[0.06] disabled:opacity-50">
+          {transferForm.schoolLogoDataUrl?<img src={transferForm.schoolLogoDataUrl} alt="Selected school logo" className="h-14 w-14 rounded-lg border bg-white object-contain p-1"/>:<span className="grid h-14 w-14 shrink-0 place-items-center rounded-lg border bg-white text-[10px] font-black text-[#0f2a5a]">LOGO</span>}
+          <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-[#0f2a5a]">School logo</span><span className="block text-xs text-muted-foreground">{transferForm.schoolLogoDataUrl?"Tap to replace logo":"Tap to upload school logo (PNG/JPG)"}</span><span className="block text-[11px] text-muted-foreground">Original image up to 15 MB · compressed for submission</span></span><span className="text-xs font-bold text-[#8a6d1d]">Choose image</span>
+        </button>
+        <div className="rounded-xl border border-[#A87919]/40 bg-background p-3">
+          <button type="button" disabled={busy} onClick={()=>setSignatureTarget("guardian")} className="flex w-full items-center gap-3 text-left">
+            {transferForm.guardianSignatureDataUrl?<img src={transferForm.guardianSignatureDataUrl} alt="Parent or guardian signature preview" className="h-12 w-24 rounded border bg-white object-contain p-1"/>:<span className="grid h-12 w-24 shrink-0 place-items-center rounded border border-dashed bg-muted/30 text-lg">✍️</span>}
+            <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-[#0f2a5a]">Parent / guardian signature</span><span className="block text-xs text-muted-foreground">{transferForm.guardianSignatureDataUrl?"Tap to redraw signature":"Tap to sign with your finger"}</span></span><span className="text-xs font-bold text-[#8a6d1d]">Draw signature</span>
+          </button>
+          <div className="mt-2 flex justify-end"><Button type="button" size="sm" variant="outline" disabled={busy||transferImageBusy} onClick={()=>guardianSignatureInputRef.current?.click()}>Upload existing image</Button></div>
+        </div>
+        <div className="rounded-xl border border-[#A87919]/40 bg-background p-3">
+          <button type="button" disabled={busy} onClick={()=>setSignatureTarget("headmaster")} className="flex w-full items-center gap-3 text-left">
+            {transferForm.headmasterSignatureDataUrl?<img src={transferForm.headmasterSignatureDataUrl} alt="Headmaster signature or school stamp preview" className="h-12 w-24 rounded border bg-white object-contain p-1"/>:<span className="grid h-12 w-24 shrink-0 place-items-center rounded border border-dashed bg-muted/30 text-lg">✍️</span>}
+            <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-[#0f2a5a]">Headmaster signature / school stamp</span><span className="block text-xs text-muted-foreground">{transferForm.headmasterSignatureDataUrl?"Tap to redraw signature / stamp":"Optional · tap to draw signature or stamp"}</span></span><span className="text-xs font-bold text-[#8a6d1d]">Draw signature</span>
+          </button>
+          <div className="mt-2 flex justify-end"><Button type="button" size="sm" variant="outline" disabled={busy||transferImageBusy} onClick={()=>headmasterSignatureInputRef.current?.click()}>Upload existing image</Button></div>
+        </div>
+        {transferImageBusy&&<p role="status" className="text-xs text-[#0f2a5a]">Preparing image for your transfer letter…</p>}
+      </div></details>
+      <div className="rounded-xl border bg-white p-5 text-slate-800 shadow-inner"><div className="flex items-start justify-between gap-4 border-b-[3px] border-[#0f2a5a] pb-3"><div><div className="flex items-center gap-3"><img src="/icons/icon-192.png" alt="Dallyletter Elidems logo" className="h-12 w-12 rounded-xl object-contain"/><h3 className="text-xl font-extrabold text-[#0f2a5a]">Dallyletter Elidems</h3></div><p className="text-xs text-slate-500">Official transfer application</p></div><button type="button" aria-label="Open Dallyletter logo, signature and stamp tools" title="Tap to open logo and signature tools" onClick={()=>{if(transferAttachmentsRef.current){transferAttachmentsRef.current.open=true;transferAttachmentsRef.current.scrollIntoView({behavior:"smooth",block:"center"});}}} className="grid h-16 w-16 shrink-0 place-items-center rounded-xl border border-[#A87919] bg-white p-2 shadow-md shadow-[#A87919]/15 transition hover:-translate-y-0.5 hover:shadow-lg"><img src="/icons/icon-192.png" alt="Dallyletter Elidems logo" className="h-full w-full object-contain"/></button></div><p className="mt-3 text-right text-xs">{new Date().toLocaleDateString()}</p><p className="mt-4 text-sm">The Headmaster<br/><b>{transferForm.receivingSchool||"[Receiving School]"}</b><br/>Dear Sir/Madam,</p><h3 className="my-4 text-sm font-extrabold text-[#0f2a5a]">RE: TRANSFER APPLICATION FOR {(transferForm.learnerName||"LEARNER NAME").toUpperCase()} - {transferForm.grade}</h3>
+      {[["1. Learner's Details",[["Full name",transferForm.learnerName],["Grade / Form",transferForm.grade],["Admission No",transferForm.admissionNo],["DOB / Gender",(transferForm.dob||"—")+" / "+transferForm.gender],["EMIS No",transferForm.emisNo],["Academic Year",transferForm.academicYear],["Recorded academic average / Conduct",(transferForm.average!==""&&transferForm.average!=null?String(transferForm.average):"—")+"% / "+transferForm.conduct]]],["2. Reason For Transfer",[["Category",transferForm.reasonType],["Details",transferForm.reasonDetail]]],["3. Parent's / Guardian's Details",[["Name & relation",(transferForm.guardianName||"—")+" ("+transferForm.relationship+")"],["ID No",transferForm.guardianId],["Contact",transferForm.guardianPhone],["Email",transferForm.guardianEmail],["Address",transferForm.address],["Effective Date",transferForm.effectiveDate]]]].map(([heading,rows]:any)=><section className="mt-4 rounded-lg border border-slate-200 p-3" key={heading}><h4 className="mb-2 border-l-4 border-[#A87919] pl-2 text-xs font-extrabold uppercase text-[#0f2a5a]">{heading}</h4>{rows.map(([k,v]:any)=><div className="flex gap-3 border-b border-dotted border-slate-200 py-1 text-xs" key={k}><span className="w-36 shrink-0 text-slate-500">{k}</span><b className="break-words text-[#0f2a5a]">{v||"—"}</b></div>)}</section>)}
+      <details className="mt-4 rounded-lg border border-slate-200 bg-slate-50/70 p-3"><summary className="cursor-pointer select-none text-xs font-extrabold uppercase tracking-wide text-[#0f2a5a]">＋ Declarations &amp; signatures · tap to expand</summary><div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 text-xs"><button type="button" onClick={()=>setSignatureTarget("guardian")} className="rounded-lg border border-slate-200 bg-white p-3 text-left transition hover:border-[#A87919] hover:bg-amber-50">Parent / Guardian signature<br/>{transferForm.guardianSignatureDataUrl?<img src={transferForm.guardianSignatureDataUrl} alt="Parent or guardian signature" className="mt-2 h-14 max-w-48 object-contain"/>:<span className="mt-1 block text-slate-400">Tap to draw or upload signature</span>}</button><button type="button" onClick={()=>setSignatureTarget("headmaster")} className="rounded-lg border border-slate-200 bg-white p-3 text-left transition hover:border-[#A87919] hover:bg-amber-50">Headmaster signature / school stamp<br/>{transferForm.headmasterSignatureDataUrl?<img src={transferForm.headmasterSignatureDataUrl} alt="Headmaster signature and school stamp" className="mt-2 h-14 max-w-48 object-contain"/>:<span className="mt-1 block text-slate-400">Optional · tap to draw or upload</span>}</button></div><p className="mt-3 text-[10px] text-slate-500">Subject to acceptance by the receiving school, space availability and supporting records. Fee clearance and signatures are never assumed.</p></details></div></section>}
+      {isOwner&&transferRequests.filter((entry:any)=>entry.status!=="pending").map((entry:any)=><div key={entry.id} className="rounded-lg border p-3"><p className="font-semibold">Request #{entry.id} · {entry.status}</p>{entry.review_note&&<p className="mt-1 text-sm text-muted-foreground">Reviewer feedback: {entry.review_note}</p>}{entry.status==="approved"&&<Button className="mt-2" onClick={()=>void (async()=>{try{const response=await fetch(getApiUrl("/api/academic-records/transfer-requests/"+entry.id+"/download"),{headers});if(!response.ok)throw new Error("Approved transfer letter could not be downloaded.");const blob=await response.blob();const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="dallyletter-transfer-letter-"+entry.id+".pdf";a.click();URL.revokeObjectURL(url);}catch(e){setMessage(e instanceof Error?e.message:"Could not download transfer letter.");}})()}>Download approved PDF</Button>}</div>)}
+      {!canReviewTransferLetters&&transferRequests.map((entry:any)=><div key={entry.id} className="mt-3 rounded-xl border border-[#0f2a5a]/15 bg-background p-3"><div className="flex items-center justify-between gap-2"><p className="font-bold text-[#0f2a5a]">Your transfer request #{entry.id}</p><span className={"rounded-full border px-2 py-1 text-xs font-semibold "+(entry.status==="approved"?"border-emerald-300 text-emerald-700":entry.status==="rejected"?"border-red-300 text-red-700":"border-amber-300 text-amber-800")}>{entry.status}</span></div><p className="mt-1 text-xs text-muted-foreground">Submitted {entry.created_at?new Date(entry.created_at).toLocaleString():"date unavailable"}</p><Button type="button" variant="ghost" size="icon" className="mt-2 h-8 w-8 text-destructive" aria-label="Delete my transfer letter" title="Delete my transfer letter" disabled={busy} onClick={()=>void (async()=>{if(!window.confirm("Permanently delete your transfer letter?"))return;setBusy(true);try{await request("/api/academic-records/transfer-requests/"+entry.id,{method:"DELETE"});setTransferRequests(current=>current.filter(item=>item.id!==entry.id));setMessage("Transfer letter deleted.");}catch(e){setMessage(e instanceof Error?e.message:"Transfer letter deletion failed.");}finally{setBusy(false);}})()}><Trash2 className="h-4 w-4"/></Button>{entry.review_note&&<p className="mt-2 text-sm text-muted-foreground">Reviewer feedback: {entry.review_note}</p>}{entry.status==="approved"&&<Button className="mt-2 w-full" onClick={()=>void (async()=>{try{const response=await fetch(getApiUrl("/api/academic-records/transfer-requests/"+entry.id+"/download"),{headers});if(!response.ok)throw new Error("Approved transfer letter could not be downloaded.");const blob=await response.blob();const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="dallyletter-transfer-letter-"+entry.id+".pdf";document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);}catch(e){setMessage(e instanceof Error?e.message:"Could not download transfer letter.");}})()}>Download approved PDF</Button>}</div>)}
+    </CardContent></Card>}
+    {signatureTarget&&<div className="fixed inset-0 z-[100000] flex items-center justify-center bg-[#07162b]/80 p-3 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="transfer-signature-title">
+      <section className="w-full max-w-lg overflow-hidden rounded-2xl border-2 border-[#A87919] bg-background shadow-2xl">
+        <header className="bg-[#0f2a5a] px-4 py-4 text-white"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#e8c85a]">Dallyletter Elidems · Transfer Letter</p><h2 id="transfer-signature-title" className="mt-1 text-lg font-extrabold">{signatureTarget==="guardian"?"Parent / guardian signature":"Headmaster signature / school stamp"}</h2><p className="mt-1 text-xs text-blue-100">Draw naturally with your finger or stylus inside the signing area.</p></header>
+        <div className="space-y-3 p-4">
+          <div className="relative overflow-hidden rounded-xl border-2 border-dashed border-[#A87919]/70 bg-[#fbfcff]">
+            <canvas ref={signatureCanvasRef} width={1000} height={300} className="block h-[170px] w-full touch-none" aria-label="Finger drawing signature area" onPointerDown={beginSignatureStroke} onPointerMove={continueSignatureStroke} onPointerUp={finishSignatureStroke} onPointerCancel={finishSignatureStroke}/>
+            <div className="pointer-events-none absolute bottom-7 left-4 right-4 border-b border-dashed border-slate-300"/>
+            <p className="pointer-events-none absolute left-0 right-0 top-3 text-center text-[10px] font-semibold text-slate-400">SIGN ABOVE THE LINE</p>
+          </div>
+          <p className="text-[11px] text-muted-foreground">Your drawing is kept in this form until you submit the transfer application. It is included in the document preview.</p>
+          <div className="grid grid-cols-3 gap-2"><Button type="button" variant="outline" onClick={clearTransferSignature}>Clear</Button><Button type="button" variant="outline" onClick={undoTransferSignature}>Undo</Button><Button type="button" className="bg-[#0f2a5a] hover:bg-[#173a72]" onClick={saveTransferSignature}>Save signature</Button></div>
+          <Button type="button" variant="ghost" className="w-full" onClick={()=>setSignatureTarget(null)}>Cancel</Button>
+        </div>
+      </section>
+    </div>}
+    <div ref={fullscreenContainerRef} role="dialog" aria-modal={fullscreenMedia?"true":undefined} aria-label="Fullscreen profile media" className="fixed inset-0 z-[99999] items-center justify-center bg-black" style={{display:fullscreenMedia?"flex":"none",position:"fixed",inset:0,width:"100vw",height:"100vh",background:"#000",padding:0,margin:0}} onClick={closeFullscreenMedia}>{fullscreenMedia&&<><button type="button" aria-label="Close fullscreen media" className="absolute right-4 top-4 z-10 rounded-full bg-white/20 px-4 py-2 text-white" onClick={e=>{e.stopPropagation();closeFullscreenMedia();}}>Close ✕</button><AuthenticatedProfileMedia url={fullscreenMedia.url} type={fullscreenMedia.type} alt="Fullscreen profile media" controls autoPlay className="h-full w-full object-contain" onError={()=>setFullscreenMediaError(true)} onClick={e=>e.stopPropagation()}/>{fullscreenMediaError&&<p role="alert" className="absolute bottom-6 left-4 right-4 rounded-lg bg-white/10 p-4 text-center text-sm text-white">This media could not be loaded from the API. The file may be missing or the current server may not support this profile-media route.</p>}</>}</div>
+    <ProfileSocialControls profileId={profileId} isSelf={isOwner} role={user?.role}/>
+    {isOwner && <ElidemsAIChat role={user?.role}/>}
+  </main></DashboardLayout>;
+}

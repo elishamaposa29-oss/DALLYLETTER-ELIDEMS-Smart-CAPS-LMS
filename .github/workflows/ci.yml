@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+    branches: [main, staging, production]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  statuses: write
+  actions: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Cancel only superseded PR runs
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branch = context.payload.pull_request.head.ref;
+            const headSha = context.payload.pull_request.head.sha;
+            const { data } = await github.rest.actions.listWorkflowRunsForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              branch,
+              per_page: 100
+            });
+            const active = new Set(['queued', 'in_progress', 'waiting', 'requested', 'pending']);
+            const obsolete = data.workflow_runs.filter(run =>
+              run.id !== context.runId &&
+              run.event === 'pull_request' &&
+              run.head_branch === branch &&
+              active.has(run.status) &&
+              run.head_sha !== headSha
+            );
+            for (const run of obsolete) {
+              try {
+                await github.rest.actions.cancelWorkflowRun({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  run_id: run.id
+                });
+                core.info(`Cancelled superseded ${run.name} run #${run.run_number} (${run.head_sha.slice(0, 8)}).`);
+              } catch (error) {
+                if (![409, 422, 404].includes(error.status)) throw error;
+                core.info(`Run #${run.run_number} already finished or cannot be cancelled: ${error.message}`);
+              }
+            }
+            core.info(`Preserved all current-head checks, including Android build; cancelled ${obsolete.length} superseded run(s).`);
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify release safety
+        env:
+          # Keep build canonical URLs pinned to the verified production hostname.
+          # Do not let a stale GSC_SITE_URL repository variable override the real site.
+          PUBLIC_SITE_URL: https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/
+          GOOGLE_SITE_VERIFICATION: ${{ vars.GOOGLE_SITE_VERIFICATION }}
+        run: pnpm run ci:verify
+
+      # Publish the exact legacy status context required by branch protection.
+      # The status reflects this job's result and is attached to the PR head SHA.
+      - name: Upload role workflow parity inventory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: role-workflow-parity-inventory
+          path: docs/role-workflow-api-client-static-inventory.md
+          if-no-files-found: warn
+
+      - name: Report required verify status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          VERIFY_STATE: ${{ job.status }}
+          VERIFY_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        with:
+          script: |
+            const state = process.env.VERIFY_STATE === 'success' ? 'success' : 'failure';
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: process.env.VERIFY_SHA,
+              state,
+              context: 'verify',
+              description: state === 'success' ? 'CI verification passed' : 'CI verification failed'
+            });

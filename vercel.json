@@ -1,0 +1,427 @@
+{
+  "$schema": "https://openapi.vercel.com/v1/schema.json",
+  "framework": "vite",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "pnpm --dir artifacts/dallyletter build",
+  "outputDirectory": "artifacts/dallyletter/dist/public",
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=3600, stale-while-revalidate=86400"
+        }
+      ]
+    },
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/social/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400, stale-while-revalidate=604800"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/public-site/index.html"
+    },
+    {
+      "source": "/about/",
+      "destination": "/about/index.html"
+    },
+    {
+      "source": "/how-it-works/",
+      "destination": "/how-it-works/index.html"
+    },
+    {
+      "source": "/learners/",
+      "destination": "/learners/index.html"
+    },
+    {
+      "source": "/educators/",
+      "destination": "/educators/index.html"
+    },
+    {
+      "source": "/schools/",
+      "destination": "/schools/index.html"
+    },
+    {
+      "source": "/organisations/",
+      "destination": "/organisations/index.html"
+    },
+    {
+      "source": "/zimbabwe/",
+      "destination": "/zimbabwe/index.html"
+    },
+    {
+      "source": "/south-africa/",
+      "destination": "/south-africa/index.html"
+    },
+    {
+      "source": "/africa/",
+      "destination": "/africa/index.html"
+    },
+    {
+      "source": "/global-learning/",
+      "destination": "/global-learning/index.html"
+    },
+    {
+      "source": "/primary-learning/",
+      "destination": "/primary-learning/index.html"
+    },
+    {
+      "source": "/secondary-learning/",
+      "destination": "/secondary-learning/index.html"
+    },
+    {
+      "source": "/syllabus-support/",
+      "destination": "/syllabus-support/index.html"
+    },
+    {
+      "source": "/managers/",
+      "destination": "/managers/index.html"
+    },
+    {
+      "source": "/past-papers/",
+      "destination": "/past-papers/index.html"
+    },
+    {
+      "source": "/o-level/",
+      "destination": "/o-level/index.html"
+    },
+    {
+      "source": "/exam-preparation/",
+      "destination": "/exam-preparation/index.html"
+    },
+    {
+      "source": "/mathematics/",
+      "destination": "/mathematics/index.html"
+    },
+    {
+      "source": "/english/",
+      "destination": "/english/index.html"
+    },
+    {
+      "source": "/science/",
+      "destination": "/science/index.html"
+    },
+    {
+      "source": "/biology/",
+      "destination": "/biology/index.html"
+    },
+    {
+      "source": "/chemistry/",
+      "destination": "/chemistry/index.html"
+    },
+    {
+      "source": "/physics/",
+      "destination": "/physics/index.html"
+    },
+    {
+      "source": "/geography/",
+      "destination": "/geography/index.html"
+    },
+    {
+      "source": "/history/",
+      "destination": "/history/index.html"
+    },
+    {
+      "source": "/computer-studies/",
+      "destination": "/computer-studies/index.html"
+    },
+    {
+      "source": "/business-studies/",
+      "destination": "/business-studies/index.html"
+    },
+    {
+      "source": "/accounting/",
+      "destination": "/accounting/index.html"
+    },
+    {
+      "source": "/study-notes/",
+      "destination": "/study-notes/index.html"
+    },
+    {
+      "source": "/video-learning/",
+      "destination": "/video-learning/index.html"
+    },
+    {
+      "source": "/online-learning-zimbabwe/",
+      "destination": "/online-learning-zimbabwe/index.html"
+    },
+    {
+      "source": "/learning-management-system/",
+      "destination": "/learning-management-system/index.html"
+    },
+    {
+      "source": "/digital-classroom/",
+      "destination": "/digital-classroom/index.html"
+    },
+    {
+      "source": "/exam-revision/",
+      "destination": "/exam-revision/index.html"
+    },
+    {
+      "source": "/teacher-tools/",
+      "destination": "/teacher-tools/index.html"
+    },
+    {
+      "source": "/school-learning-platform/",
+      "destination": "/school-learning-platform/index.html"
+    },
+    {
+      "source": "/founder-story/",
+      "destination": "/founder-story/index.html"
+    },
+    {
+      "source": "/exam-papers/",
+      "destination": "/exam-papers/index.html"
+    },
+    {
+      "source": "/specimen-papers/",
+      "destination": "/specimen-papers/index.html"
+    },
+    {
+      "source": "/marking-schemes/",
+      "destination": "/marking-schemes/index.html"
+    },
+    {
+      "source": "/topical-past-papers/",
+      "destination": "/topical-past-papers/index.html"
+    },
+    {
+      "source": "/practice-tests/",
+      "destination": "/practice-tests/index.html"
+    },
+    {
+      "source": "/exam-questions/",
+      "destination": "/exam-questions/index.html"
+    },
+    {
+      "source": "/revision-notes/",
+      "destination": "/revision-notes/index.html"
+    },
+    {
+      "source": "/study-guides/",
+      "destination": "/study-guides/index.html"
+    },
+    {
+      "source": "/worked-examples/",
+      "destination": "/worked-examples/index.html"
+    },
+    {
+      "source": "/flashcards/",
+      "destination": "/flashcards/index.html"
+    },
+    {
+      "source": "/educational-tutorials/",
+      "destination": "/educational-tutorials/index.html"
+    },
+    {
+      "source": "/syllabus/",
+      "destination": "/syllabus/index.html"
+    },
+    {
+      "source": "/mathematics/past-papers/",
+      "destination": "/mathematics/past-papers/index.html"
+    },
+    {
+      "source": "/mathematics/revision-notes/",
+      "destination": "/mathematics/revision-notes/index.html"
+    },
+    {
+      "source": "/english/past-papers/",
+      "destination": "/english/past-papers/index.html"
+    },
+    {
+      "source": "/english/revision-notes/",
+      "destination": "/english/revision-notes/index.html"
+    },
+    {
+      "source": "/science/past-papers/",
+      "destination": "/science/past-papers/index.html"
+    },
+    {
+      "source": "/science/revision-notes/",
+      "destination": "/science/revision-notes/index.html"
+    },
+    {
+      "source": "/biology/past-papers/",
+      "destination": "/biology/past-papers/index.html"
+    },
+    {
+      "source": "/biology/revision-notes/",
+      "destination": "/biology/revision-notes/index.html"
+    },
+    {
+      "source": "/chemistry/past-papers/",
+      "destination": "/chemistry/past-papers/index.html"
+    },
+    {
+      "source": "/chemistry/revision-notes/",
+      "destination": "/chemistry/revision-notes/index.html"
+    },
+    {
+      "source": "/physics/past-papers/",
+      "destination": "/physics/past-papers/index.html"
+    },
+    {
+      "source": "/physics/revision-notes/",
+      "destination": "/physics/revision-notes/index.html"
+    },
+    {
+      "source": "/geography/past-papers/",
+      "destination": "/geography/past-papers/index.html"
+    },
+    {
+      "source": "/geography/revision-notes/",
+      "destination": "/geography/revision-notes/index.html"
+    },
+    {
+      "source": "/history/past-papers/",
+      "destination": "/history/past-papers/index.html"
+    },
+    {
+      "source": "/history/revision-notes/",
+      "destination": "/history/revision-notes/index.html"
+    },
+    {
+      "source": "/computer-studies/past-papers/",
+      "destination": "/computer-studies/past-papers/index.html"
+    },
+    {
+      "source": "/computer-studies/revision-notes/",
+      "destination": "/computer-studies/revision-notes/index.html"
+    },
+    {
+      "source": "/business-studies/past-papers/",
+      "destination": "/business-studies/past-papers/index.html"
+    },
+    {
+      "source": "/business-studies/revision-notes/",
+      "destination": "/business-studies/revision-notes/index.html"
+    },
+    {
+      "source": "/accounting/past-papers/",
+      "destination": "/accounting/past-papers/index.html"
+    },
+    {
+      "source": "/accounting/revision-notes/",
+      "destination": "/accounting/revision-notes/index.html"
+    },
+    {
+      "source": "/login/",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/forgot-password/",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/reset-password/",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/verify/transfer/:token/",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/verify-email/",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/confirm-email-change/",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/features/",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/register/",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/resource-unavailable/",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/docs/",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/preview/lesson/:id/",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/teacher/qualifications/",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/suspended/",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/shared-media/",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/record-book/",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/profile-hub/",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/profile/:id/",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/student/",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/student/(.*)",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/teacher/",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/teacher/(.*)",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/manager/",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/manager/(.*)",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/admin/",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/admin/(.*)",
+      "destination": "/app.html"
+    }
+  ],
+  "trailingSlash": true
+}

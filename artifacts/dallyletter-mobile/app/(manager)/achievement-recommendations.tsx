@@ -1,0 +1,2 @@
+import AchievementRecommendationReviewWorkspaceMobile from "@/components/AchievementRecommendationReviewWorkspaceMobile";
+export default function AchievementRecommendationsRoute(){return <AchievementRecommendationReviewWorkspaceMobile/>;}

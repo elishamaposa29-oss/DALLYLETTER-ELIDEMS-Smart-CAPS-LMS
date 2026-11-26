@@ -1,0 +1,135 @@
+import { Feather } from "@expo/vector-icons";
+import { useGetDashboardStats } from "@workspace/api-client-react";
+import * as Haptics from "expo-haptics";
+import { router } from "expo-router";
+import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAuth } from "@/contexts/AuthContext";
+import { useColors } from "@/hooks/useColors";
+import { ProfileAvatarEditor } from "@/components/ProfileAvatarEditor";
+import { ProfileDetailsEditor } from "@/components/ProfileDetailsEditor";
+import { TeacherCvEditor } from "@/components/TeacherCvEditor";
+
+export default function TeacherProfile() {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const { user, logout } = useAuth();
+  const { data: stats } = useGetDashboardStats();
+
+  const top = insets.top + (Platform.OS === "web" ? 67 : 0);
+
+  const handleLogout = () => {
+    Alert.alert("Sign Out", "Are you sure?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Sign Out",
+        style: "destructive",
+        onPress: async () => {
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          await logout();
+          router.replace("/login");
+        },
+      },
+    ]);
+  };
+
+  const s = StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    header: {
+      backgroundColor: colors.primary,
+      paddingTop: top + 16,
+      paddingBottom: 32,
+      paddingHorizontal: 20,
+      alignItems: "center",
+    },
+    avatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center", marginBottom: 12 },
+    name: { fontSize: 22, fontFamily: "Inter_700Bold", color: "#ffffff" },
+    email: { fontSize: 13, color: "rgba(255,255,255,0.7)", fontFamily: "Inter_400Regular", marginTop: 4 },
+    badge: { backgroundColor: colors.accent, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 5, marginTop: 10 },
+    badgeText: { fontSize: 13, fontFamily: "Inter_700Bold", color: colors.primary },
+    scroll: { flex: 1 },
+    content: { padding: 16, paddingBottom: 100 },
+    sectionTitle: { fontSize: 13, fontFamily: "Inter_700Bold", color: colors.mutedForeground, marginBottom: 10, letterSpacing: 0.5, textTransform: "uppercase" },
+    card: { backgroundColor: colors.card, borderRadius: colors.radius, borderWidth: 1, borderColor: colors.border, overflow: "hidden", marginBottom: 20 },
+    row: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 12 },
+    rowLast: { borderBottomWidth: 0 },
+    rowLabel: { flex: 1, fontSize: 15, fontFamily: "Inter_500Medium", color: colors.foreground },
+    rowValue: { fontSize: 14, fontFamily: "Inter_400Regular", color: colors.mutedForeground },
+    statsRow: { flexDirection: "row", gap: 10, marginBottom: 20 },
+    statCard: { flex: 1, backgroundColor: colors.card, borderRadius: colors.radius, padding: 14, alignItems: "center", borderWidth: 1, borderColor: colors.border },
+    statNum: { fontSize: 24, fontFamily: "Inter_700Bold", color: colors.primary },
+    statLabel: { fontSize: 12, fontFamily: "Inter_400Regular", color: colors.mutedForeground, marginTop: 2 },
+    logoutBtn: { backgroundColor: "#fef2f2", borderRadius: colors.radius, padding: 16, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, borderWidth: 1, borderColor: "#fecaca" },
+    logoutText: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: colors.destructive },
+  });
+
+  return (
+    <View style={s.container}>
+      <ScrollView style={s.scroll} contentContainerStyle={{ paddingBottom: 100 }} keyboardShouldPersistTaps="always" keyboardDismissMode="none" nestedScrollEnabled>
+      <View style={s.header}>
+        <ProfileAvatarEditor />
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Open your Profile Hub" onPress={()=>router.push("/profile-hub" as any)}><Text style={s.name}>{user?.name}</Text></TouchableOpacity>
+        <Text style={s.email}>{user?.email}</Text>
+        <View style={s.badge}>
+          <Text style={s.badgeText}>Teacher</Text>
+        </View>
+      </View>
+
+      <ProfileDetailsEditor />
+      <TeacherCvEditor />
+      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Open Profile Hub" onPress={()=>router.push("/profile-hub" as any)} style={{marginHorizontal:16,marginTop:12,marginBottom:8,padding:13,borderRadius:12,backgroundColor:colors.secondary,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:8}}><Feather name="user" size={17} color={colors.primary}/><Text style={{color:colors.primary,fontWeight:"700"}}>Open Profile Hub</Text></TouchableOpacity>
+
+      <View style={s.content}>
+        <Text style={s.sectionTitle}>My Stats</Text>
+        <View style={s.statsRow}>
+          <View style={s.statCard}>
+            <Text style={s.statNum}>{stats?.totalStudents ?? "—"}</Text>
+            <Text style={s.statLabel}>Students</Text>
+          </View>
+          <View style={s.statCard}>
+            <Text style={s.statNum}>{stats?.totalLessons ?? "—"}</Text>
+            <Text style={s.statLabel}>Lessons</Text>
+          </View>
+          <View style={s.statCard}>
+            <Text style={s.statNum}>{stats?.totalClasses ?? "—"}</Text>
+            <Text style={s.statLabel}>Classes</Text>
+          </View>
+        </View>
+
+        <Text style={s.sectionTitle}>Account</Text>
+        <View style={s.card}>
+          <View style={s.row}>
+            <Feather name="user" size={16} color={colors.mutedForeground} />
+            <Text style={s.rowLabel}>Name</Text>
+            <Text style={s.rowValue}>{user?.name}</Text>
+          </View>
+          <View style={s.row}>
+            <Feather name="mail" size={16} color={colors.mutedForeground} />
+            <Text style={s.rowLabel}>Email</Text>
+            <Text style={s.rowValue} numberOfLines={1}>{user?.email}</Text>
+          </View>
+          {user?.subject && (
+            <View style={s.row}>
+              <Feather name="book" size={16} color={colors.mutedForeground} />
+              <Text style={s.rowLabel}>Subject</Text>
+              <Text style={s.rowValue}>{user.subject}</Text>
+            </View>
+          )}
+          {user?.phone && (
+            <View style={[s.row, s.rowLast]}>
+              <Feather name="phone" size={16} color={colors.mutedForeground} />
+              <Text style={s.rowLabel}>Phone</Text>
+              <Text style={s.rowValue}>{user.phone}</Text>
+            </View>
+          )}
+        </View>
+
+        <TouchableOpacity style={s.logoutBtn} onPress={handleLogout}>
+          <Feather name="log-out" size={18} color={colors.destructive} />
+          <Text style={s.logoutText}>Sign Out</Text>
+        </TouchableOpacity>
+      </View>
+      </ScrollView>
+    </View>
+  );
+}

@@ -1,0 +1,24 @@
+{
+  "name": "@workspace/scripts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "hello": "tsx ./src/hello.ts",
+    "seed:owner": "tsx ./src/seed-owner.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "repair:messages-schema": "tsx ./src/repair-messages-schema.ts",
+    "migrate:exercise-schema": "tsx ./src/migrate-exercise-schema.ts",
+    "repair:connect-schema": "tsx ./src/repair-connect-schema.ts",
+    "migrate:legacy-tables": "tsx ./src/migrate-legacy-tables.ts",
+    "verify:owner-recovery": "tsx ./src/verify-owner-recovery.ts"
+  },
+  "dependencies": {
+    "@workspace/db": "workspace:*",
+    "drizzle-orm": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsx": "catalog:"
+  }
+}

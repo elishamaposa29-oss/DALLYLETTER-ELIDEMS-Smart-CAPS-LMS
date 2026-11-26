@@ -1,0 +1,289 @@
+import { Router } from "express";
+import { requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
+import { db, pollsTable, pollQuestionsTable, pollOptionsTable, pollSubmissionsTable, usersTable, auditLogsTable } from "@workspace/db";
+import { eq, desc, and } from "drizzle-orm";
+import { canManageAcademicContent, requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
+import { canModerateUser } from "../lib/role-access";
+import { getAIProvider } from "../lib/ai-provider";
+import { queueAIContentSafety } from "../lib/ai-content-safety";
+import { logger } from "../lib/logger";
+
+const router = Router();
+
+async function getPollForManager(pollId: number, user: NonNullable<Express.Request["currentUser"]>) {
+  const [poll] = await db.select().from(pollsTable).where(eq(pollsTable.id, pollId));
+  if (!poll) return null;
+  if (!canManageAcademicContent(user)) return null;
+  if (isOwnerRole(user.role) || poll.createdBy === user.id) return poll;
+  if (canAccessManager(user)) {
+    if (poll.createdBy == null) return null;
+    const [creator] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, poll.createdBy));
+    return creator && canModerateUser(user, creator) ? poll : null;
+  }
+  return user.role === "teacher" && !user.isManager ? null : poll;
+}
+
+// GET /polls — list polls
+router.get("/polls", requireAuth, requireManagerPermissionIfManager("polls.manage"), async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  let polls;
+  if (canManageAcademicContent(user)) {
+    const allPolls=await db.select().from(pollsTable).orderBy(desc(pollsTable.createdAt));
+    polls=isOwnerRole(user.role)?allPolls:(await Promise.all(allPolls.map(item=>getPollForManager(item.id,user)))).filter(Boolean);
+  } else {
+    polls = await db.select().from(pollsTable)
+      .where(eq(pollsTable.status, "active"))
+      .orderBy(desc(pollsTable.createdAt));
+  }
+  res.json(polls);
+});
+
+// POST /polls — create poll (teacher/owner)
+router.post("/polls", requireAuth, requireManagerPermissionIfManager("polls.manage"), async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Academic staff access required" }); return; }
+  const { title, topic, type = "manual", grade, subject, mode = "practice", timerSeconds, questions } = req.body as {
+    title: string; topic?: string; type?: string; grade?: string; subject?: string;
+    mode?: string; timerSeconds?: number;
+    questions?: { question: string; difficulty?: string; explanation?: string; imageUrl?: string; options: { text: string; isCorrect: boolean }[] }[];
+  };
+  if (typeof title !== "string" || !title.trim()) { res.status(400).json({ error: "title required" }); return; }
+  if (!Array.isArray(questions) || questions.length === 0) { res.status(400).json({ error: "At least one question is required" }); return; }
+  if (questions.some(q => !q || typeof q.question !== "string" || !q.question.trim() || !Array.isArray(q.options) || q.options.length < 2 || q.options.some(option => !option || typeof option.text !== "string" || !option.text.trim()) || q.options.filter(option => option.isCorrect === true).length !== 1)) {
+    res.status(400).json({ error: "Each question needs text, at least two options, and exactly one correct option" });
+    return;
+  }
+
+  const [poll] = await db.insert(pollsTable).values({ title: title.trim(), topic, type, grade, subject, mode, timerSeconds, createdBy: user.id, status: "draft" }).returning();
+
+  if (questions && questions.length > 0) {
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      const [pq] = await db.insert(pollQuestionsTable).values({ pollId: poll.id, question: q.question.trim(), difficulty: q.difficulty ?? "medium", explanation: q.explanation, imageUrl: typeof q.imageUrl === "string" ? q.imageUrl.trim().slice(0, 2000) || null : null, orderIndex: i }).returning();
+      for (const opt of q.options) {
+        await db.insert(pollOptionsTable).values({ questionId: pq.id, text: opt.text, isCorrect: opt.isCorrect });
+      }
+    }
+  }
+
+  await db.insert(auditLogsTable).values({ action: `Created poll: ${title}`, category: "admin", performedBy: user.id, targetType: "poll", targetId: poll.id, details: JSON.stringify({ type, mode }) });
+  const pollSafetyText = [title, topic, subject, ...questions.flatMap(question => [question.question, question.explanation, ...question.options.map(option => option.text)])].filter((value): value is string => typeof value === "string").join("\n");
+  queueAIContentSafety("poll", Number(poll.id), pollSafetyText);
+  res.status(201).json(poll);
+});
+
+// POST /polls/ai-generate — generate poll questions with AI
+router.post("/polls/ai-generate", requireAuth, requireManagerPermissionIfManager("polls.manage"), async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Academic staff access required" }); return; }
+  const { topic, grade, subject, count = 5 } = req.body as { topic?: unknown; grade?: unknown; subject?: unknown; count?: unknown };
+  if (typeof topic !== "string" || !topic.trim() || topic.length > 300) {
+    res.status(400).json({ error: "topic must be a non-empty string of at most 300 characters" });
+    return;
+  }
+  if ((grade != null && (typeof grade !== "string" || grade.length > 80)) ||
+      (subject != null && (typeof subject !== "string" || subject.length > 100))) {
+    res.status(400).json({ error: "grade or subject is invalid" });
+    return;
+  }
+  const questionCount = count === undefined ? 5 : Number(count);
+  if (!Number.isInteger(questionCount) || questionCount < 1 || questionCount > 20) {
+    res.status(400).json({ error: "count must be an integer between 1 and 20" });
+    return;
+  }
+  try {
+    const ai = await getAIProvider();
+    // Never return placeholder questions as if they were real AI-generated learning content.
+    if (ai.name === "mock") {
+      res.status(503).json({ error: "AI generation is not configured. Ask the platform administrator to configure a provider.", code: "AI_PROVIDER_NOT_CONFIGURED" });
+      return;
+    }
+    const generated = await ai.generatePoll(topic.trim(), typeof grade === "string" ? grade : undefined, typeof subject === "string" ? subject : undefined, questionCount);
+    const valid = generated && typeof generated.title === "string" && Array.isArray(generated.questions) &&
+      generated.questions.length === questionCount &&
+      generated.questions.every(q => q && typeof q.question === "string" && q.question.trim() &&
+        Array.isArray(q.options) && q.options.length >= 2 &&
+        q.options.every(option => option && typeof option.text === "string" && option.text.trim() && typeof option.isCorrect === "boolean") &&
+        q.options.filter(option => option.isCorrect).length === 1);
+    if (!valid) {
+      logger.error({ provider: ai.name, requestedCount: questionCount }, "AI poll provider returned an invalid question payload");
+      res.status(502).json({ error: "The AI provider returned an invalid quiz. Please retry.", code: "AI_PROVIDER_INVALID_RESPONSE" });
+      return;
+    }
+    res.json({ provider: ai.name, ...generated });
+  } catch (err) {
+    logger.error({
+      providerError: err instanceof Error ? { name: err.name, message: err.message.slice(0, 500) } : "Unknown AI generation failure",
+    }, "AI poll generation failed");
+    res.status(502).json({ error: "AI generation failed upstream. Please retry or check provider configuration.", code: "AI_PROVIDER_REQUEST_FAILED" });
+  }
+});
+
+// GET /polls/:id — get poll with questions and options
+router.get("/polls/:id", requireAuth, requireManagerPermissionIfManager("polls.manage"), async (req, res): Promise<void> => {
+  const id = parseInt(String(req.params.id));
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const poll = canManageAcademicContent(req.currentUser!) ? await getPollForManager(id, req.currentUser!) : (await db.select().from(pollsTable).where(eq(pollsTable.id, id)))[0];
+  if (!poll) { res.status(404).json({ error: "Not found" }); return; }
+  const questions = await db.select().from(pollQuestionsTable).where(eq(pollQuestionsTable.pollId, id)).orderBy(pollQuestionsTable.orderIndex);
+  const questionsWithOptions = await Promise.all(questions.map(async q => {
+    const options = await db.select().from(pollOptionsTable).where(eq(pollOptionsTable.questionId, q.id));
+    const user = req.currentUser!;
+    // Hide isCorrect from students unless poll is closed
+    const safeOptions = (user.role === "student" && poll.status !== "closed")
+      ? options.map(o => ({ ...o, isCorrect: undefined }))
+      : options;
+    return { ...q, options: safeOptions };
+  }));
+  res.json({ ...poll, questions: questionsWithOptions });
+});
+
+// PATCH /polls/:id — update poll status / metadata
+router.patch("/polls/:id", requireAuth, requireManagerPermissionIfManager("polls.manage"), async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  if (!canManageAcademicContent(user)) { res.status(403).json({ error: "Academic staff access required" }); return; }
+  const id = parseInt(String(req.params.id));
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const poll = await getPollForManager(id, user);
+  if (!poll) { res.status(user.role === "teacher" ? 403 : 404).json({ error: "Poll not found" }); return; }
+  const { status, title, timerSeconds } = req.body as { status?: string; title?: string; timerSeconds?: number };
+  const update: Record<string, unknown> = {};
+  if (status !== undefined) {
+    if (!["draft", "active", "closed"].includes(status)) { res.status(400).json({ error: "Invalid poll status" }); return; }
+    update.status = status;
+  }
+  if (title !== undefined) {
+    if (typeof title !== "string" || !title.trim()) { res.status(400).json({ error: "title cannot be empty" }); return; }
+    update.title = title.trim();
+  }
+  if (timerSeconds !== undefined) update.timerSeconds = timerSeconds;
+  if (Object.keys(update).length === 0) { res.status(400).json({ error: "No poll changes supplied" }); return; }
+  const [updated] = await db.update(pollsTable).set(update).where(eq(pollsTable.id, id)).returning();
+  if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+  queueAIContentSafety("poll", Number(updated.id), String(updated.title || ""));
+  res.json(updated);
+});
+
+// DELETE /polls/:id
+router.delete("/polls/:id", requireAuth, requireManagerPermissionIfManager("polls.manage"), async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  if (user.role === "student") { res.status(403).json({ error: "Forbidden" }); return; }
+  const id = parseInt(String(req.params.id));
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const poll = await getPollForManager(id, user);
+  if (!poll) { res.status(user.role === "teacher" ? 403 : 404).json({ error: "Poll not found" }); return; }
+  await db.delete(pollsTable).where(eq(pollsTable.id, id));
+  res.sendStatus(204);
+});
+
+// POST /polls/:id/check-answer — server-verified instant feedback for practice mode only.
+router.post("/polls/:id/check-answer", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  if (user.role !== "student") { res.status(403).json({ error: "Student access required" }); return; }
+  const id = Number(req.params.id);
+  const questionId = Number(req.body?.questionId);
+  const optionId = Number(req.body?.optionId);
+  if (!Number.isInteger(id) || id <= 0 || !Number.isInteger(questionId) || questionId <= 0 || !Number.isInteger(optionId) || optionId <= 0) {
+    res.status(400).json({ error: "Valid poll, question and option IDs are required" }); return;
+  }
+  const [poll] = await db.select().from(pollsTable).where(eq(pollsTable.id, id));
+  if (!poll || poll.status !== "active") { res.status(404).json({ error: "Active poll not found" }); return; }
+  if (poll.mode !== "practice") { res.status(403).json({ error: "Instant answer feedback is available in practice mode only" }); return; }
+  const [question] = await db.select().from(pollQuestionsTable).where(and(eq(pollQuestionsTable.id, questionId), eq(pollQuestionsTable.pollId, id)));
+  if (!question) { res.status(400).json({ error: "Question does not belong to this poll" }); return; }
+  const [selected] = await db.select().from(pollOptionsTable).where(and(eq(pollOptionsTable.id, optionId), eq(pollOptionsTable.questionId, questionId)));
+  if (!selected) { res.status(400).json({ error: "Option does not belong to this question" }); return; }
+  const options = await db.select().from(pollOptionsTable).where(eq(pollOptionsTable.questionId, questionId));
+  const correct = options.find(option => option.isCorrect);
+  res.json({ isCorrect: selected.isCorrect, explanation: question.explanation, correctText: selected.isCorrect ? undefined : correct?.text });
+});
+
+// POST /polls/:id/submit — student submits answers
+router.post("/polls/:id/submit", requireAuth, async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  if (user.role !== "student") { res.status(403).json({ error: "Student access required" }); return; }
+  const id = parseInt(String(req.params.id));
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const [poll] = await db.select().from(pollsTable).where(eq(pollsTable.id, id));
+  if (!poll || poll.status !== "active") { res.status(400).json({ error: "Poll not available" }); return; }
+
+  // Each submission is a new attempt. Historical submissions remain available for analytics.
+
+  const { answers, resultPrivacy = "private", selectedFriendIds = [] } = req.body as { answers: { questionId: number; optionId: number }[]; resultPrivacy?: string; selectedFriendIds?: number[] };
+  if (!["public", "private", "selected_friends"].includes(resultPrivacy)) { res.status(400).json({ error: "Invalid results privacy" }); return; }
+  const friendIds = Array.isArray(selectedFriendIds) ? selectedFriendIds.map(Number).filter(Number.isInteger) : [];
+  if (resultPrivacy === "selected_friends" && friendIds.length === 0) { res.status(400).json({ error: "Select at least one friend" }); return; }
+  if (!Array.isArray(answers) || answers.length === 0) { res.status(400).json({ error: "At least one answer is required" }); return; }
+
+  // Score calculation
+  const questions = await db.select().from(pollQuestionsTable).where(eq(pollQuestionsTable.pollId, id));
+  if (questions.length === 0 || answers.length !== questions.length) { res.status(400).json({ error: "One answer is required for every poll question" }); return; }
+  const questionIds = new Set(questions.map(question => question.id));
+  const answerQuestionIds = new Set<number>();
+  for (const answer of answers) {
+    if (!answer || !Number.isInteger(answer.questionId) || !Number.isInteger(answer.optionId) || !questionIds.has(answer.questionId) || answerQuestionIds.has(answer.questionId)) {
+      res.status(400).json({ error: "Answers must match each poll question exactly once" });
+      return;
+    }
+    answerQuestionIds.add(answer.questionId);
+  }
+  let score = 0;
+  const detailedAnswers: { questionId: number; optionId: number; isCorrect: boolean }[] = [];
+
+  for (const ans of answers) {
+    const [correctOpt] = await db.select().from(pollOptionsTable)
+      .where(and(eq(pollOptionsTable.questionId, ans.questionId), eq(pollOptionsTable.isCorrect, true)));
+    const [selectedOpt] = await db.select({ id: pollOptionsTable.id }).from(pollOptionsTable)
+      .where(and(eq(pollOptionsTable.id, ans.optionId), eq(pollOptionsTable.questionId, ans.questionId)));
+    if (!selectedOpt) { res.status(400).json({ error: "Each answer option must belong to its question" }); return; }
+    const isCorrect = correctOpt?.id === ans.optionId;
+    if (isCorrect) score++;
+    detailedAnswers.push({ ...ans, isCorrect });
+  }
+
+  const [submission] = await db.insert(pollSubmissionsTable).values({
+    pollId: id, studentId: user.id,
+    answers: JSON.stringify({ answers: detailedAnswers, resultPrivacy, selectedFriendIds: [...new Set(friendIds)].slice(0, 100) }),
+    score, totalQuestions: questions.length,
+  }).returning();
+
+  // Build feedback with correct answers
+  const feedback = await Promise.all(questions.map(async q => {
+    const options = await db.select().from(pollOptionsTable).where(eq(pollOptionsTable.questionId, q.id));
+    const correct = options.find(o => o.isCorrect);
+    const submitted = detailedAnswers.find(a => a.questionId === q.id);
+    return { questionId: q.id, question: q.question, explanation: q.explanation, correctOptionId: correct?.id, correctText: correct?.text, submittedOptionId: submitted?.optionId, isCorrect: submitted?.isCorrect ?? false };
+  }));
+
+  res.json({ submission, score, totalQuestions: questions.length, percentage: questions.length > 0 ? Math.round((score / questions.length) * 100) : 0, feedback });
+});
+
+// GET /polls/:id/my-results — every learner can see their own performance
+router.get("/polls/:id/my-results", requireAuth, async (req, res): Promise<void> => {
+  if (req.currentUser!.role !== "student") { res.status(403).json({ error: "Student access required" }); return; }
+  const id = parseInt(String(req.params.id));
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [poll] = await db.select({ id: pollsTable.id, title: pollsTable.title }).from(pollsTable).where(eq(pollsTable.id, id));
+  if (!poll) { res.status(404).json({ error: "Poll not found" }); return; }
+  const [submission] = await db.select({ score: pollSubmissionsTable.score, totalQuestions: pollSubmissionsTable.totalQuestions, completedAt: pollSubmissionsTable.completedAt }).from(pollSubmissionsTable).where(and(eq(pollSubmissionsTable.pollId, id), eq(pollSubmissionsTable.studentId, req.currentUser!.id)));
+  if (!submission) { res.json({ poll, submitted: false, score: 0, totalQuestions: 0, percentage: 0 }); return; }
+  res.json({ poll, submitted: true, ...submission, percentage: submission.totalQuestions ? Math.round((submission.score / submission.totalQuestions) * 100) : 0 });
+});
+
+// GET /polls/:id/results — leaderboard + analytics
+router.get("/polls/:id/results", requireAuth, requireManagerPermissionIfManager("polls.manage"), async (req, res): Promise<void> => {
+  const id = parseInt(String(req.params.id));
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const user = req.currentUser!;
+  const poll = canManageAcademicContent(user) ? await getPollForManager(id,user) : (await db.select().from(pollsTable).where(eq(pollsTable.id, id)))[0];
+  if (!poll) { res.status(404).json({ error: "Poll not found" }); return; }
+  const allSubmissions = await db.select({ id: pollSubmissionsTable.id, score: pollSubmissionsTable.score, totalQuestions: pollSubmissionsTable.totalQuestions, completedAt: pollSubmissionsTable.completedAt, answers: pollSubmissionsTable.answers, studentName: usersTable.name, studentId: usersTable.id, avatarUrl: usersTable.avatarUrl }).from(pollSubmissionsTable).leftJoin(usersTable, eq(pollSubmissionsTable.studentId, usersTable.id)).where(eq(pollSubmissionsTable.pollId, id)).orderBy(desc(pollSubmissionsTable.score));
+  const submissions = user.role === "student" ? allSubmissions.filter(row => { if (row.studentId === user.id) return true; try { const meta = JSON.parse(row.answers) as { resultPrivacy?: string; selectedFriendIds?: number[] }; return meta.resultPrivacy === "public" || (meta.resultPrivacy === "selected_friends" && meta.selectedFriendIds?.includes(user.id)); } catch { return false; } }) : allSubmissions;
+  const visible = submissions.map(({ answers: _answers, ...row }) => row);
+  const total = visible.length;
+  const avgScore = total > 0 ? visible.reduce((s, r) => s + (r.totalQuestions > 0 ? r.score / r.totalQuestions : 0), 0) / total * 100 : 0;
+  res.json({ submissions: visible, total, avgScore: Math.round(avgScore) });
+});
+
+export default router;

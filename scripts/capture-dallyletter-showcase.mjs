@@ -1,0 +1,755 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import { chromium } from "playwright";
+
+const baseUrl = new URL(process.env.SHOWCASE_SITE_URL || "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/");
+const authAllowedOrigin = new URL(process.env.SHOWCASE_AUTH_ALLOWED_ORIGIN || "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/").origin;
+const vercelBypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET || "";
+const previewHeaders = vercelBypassSecret ? { "x-vercel-protection-bypass": vercelBypassSecret } : {};
+const previewRequest = (init = {}) => ({
+  ...init,
+  // Do not follow redirects with the bypass header attached.
+  redirect: "manual",
+  headers: { ...(init.headers || {}), ...previewHeaders },
+});
+if (baseUrl.protocol !== "https:" || baseUrl.username || baseUrl.password) throw new Error("SHOWCASE_SITE_URL must be a public HTTPS URL without embedded credentials.");
+const syntheticAccountsAttested = process.env.SHOWCASE_ACCOUNTS_ARE_SYNTHETIC === "true";
+const out = path.resolve("showcase-captures");
+const roleScreensOut = path.join(out, "role-feature-screenshots");
+await fs.rm(out, { recursive: true, force: true });
+await fs.mkdir(out, { recursive: true });
+await fs.rm(roleScreensOut, { recursive: true, force: true });
+await fs.mkdir(roleScreensOut, { recursive: true });
+
+const results = [];
+const googleIdentityErrors = [];
+const isGoogleIdentityConsoleError = (value) => /\[GSI_LOGGER\].*given origin is not allowed for the given client ID/i.test(String(value));
+const isGenericGoogle403ConsoleError = (value) => /Failed to load resource:.*status of 403/i.test(String(value));
+function classifyRuntimeErrors(runtimeErrors, google403Responses, pageLabel) {
+  const googleConsoleErrors = runtimeErrors.filter(isGoogleIdentityConsoleError);
+  let generic403Budget = google403Responses.length;
+  const remaining = runtimeErrors.filter((error) => {
+    if (isGoogleIdentityConsoleError(error)) return false;
+    if (generic403Budget > 0 && isGenericGoogle403ConsoleError(error)) {
+      generic403Budget -= 1;
+      return false;
+    }
+    return true;
+  });
+  if (googleConsoleErrors.length || google403Responses.length) {
+    googleIdentityErrors.push({ page: pageLabel, occurrences: googleConsoleErrors.length + google403Responses.length });
+  }
+  return remaining;
+}
+const safeName = (value) => value.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "") || "page";
+async function verifyAuthenticatedRole(token, expectedRole, authenticatedApiOrigin) {
+  // Verify against the exact API origin that accepted this browser login.
+  const response = await fetch(new URL("/api/auth/me", authenticatedApiOrigin), {
+    headers: { Authorization: "Bearer " + token }
+  });
+  if (!response.ok) throw new Error("The API rejected the showcase session token: HTTP " + response.status);
+  const user = await response.json();
+  const actualRole = String(user.role || "").toLowerCase().replace(/[ -]+/g, "_");
+  const isPrefect = user.isPrefect === true || user.is_prefect === true;
+  const expectedRoles = {
+    learner: ["student", "learner"],
+    // Profile Hub treats prefect as a capability on an existing student account,
+    // not a separate signup or a separate account role.
+    prefect: ["prefect"],
+    teacher: ["teacher"],
+    manager: ["manager"],
+    junior_manager: ["junior_manager"],
+    senior_manager: ["senior_manager"],
+    admin: ["admin"],
+    owner: ["owner"],
+    platform_owner: ["platform_owner"]
+  };
+  const validRole = (expectedRoles[expectedRole] || []).includes(actualRole) ||
+    (expectedRole === "prefect" && (actualRole === "student" || actualRole === "learner") && isPrefect) ||
+    (expectedRole === "manager" && user.isManager === true);
+  if (!validRole) throw new Error("Expected a " + expectedRole + " showcase capability, but the API confirmed role " + (actualRole || "missing") + " (isPrefect=" + isPrefect + ")");
+  return expectedRole === "prefect" && isPrefect ? "prefect" : actualRole;
+}
+const decodeXml = (value) => value.replaceAll("&amp;", "&").replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&quot;", '"').replaceAll("&apos;", "'");
+const expectedDeploymentSha = (process.env.EXPECTED_DEPLOYMENT_SHA || "").trim();
+if (expectedDeploymentSha) {
+  console.log("Waiting for the exact deployment commit " + expectedDeploymentSha + " before testing routes.");
+}
+
+
+async function assertPublishablePage(page, label, options = {}) {
+  const audit = await page.evaluate(() => {
+    const visible = (element) => {
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+    };
+    const bodyText = (document.body?.innerText || "").slice(0, 120000);
+    const enteredValues = [...document.querySelectorAll("input, textarea, select")]
+      .filter(visible)
+      .map((element) => ({ type: element.getAttribute("type") || element.tagName.toLowerCase(), value: String(element.value || "") }))
+      .filter((item) => item.value.trim().length > 0);
+    const visibleAlerts = [...document.querySelectorAll('[role="alert"], [data-sonner-toast], [data-sonner-toast] [data-description]')]
+      .filter(visible).map((element) => (element.innerText || "").trim()).filter(Boolean);
+    const brokenImages = [...document.images].filter((image) => visible(image) && (!image.complete || image.naturalWidth === 0))
+      .map((image) => image.getAttribute("src") || image.alt || "unnamed image");
+    const forbiddenText = /(internal server error|stack trace|uncaught (?:exception|error)|failed to fetch|something went wrong|database connection failed|api key|secret key|private key|bearer\s+[a-z0-9._-]{12,}|sk-[a-z0-9]{16,}|gh[pousr]_[a-z0-9]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/i.test(bodyText);
+    return { enteredValues, visibleAlerts, brokenImages, forbiddenText, bodyLength: bodyText.length };
+  });
+  if (audit.enteredValues.length && !options.allowRedactedFormValues) throw new Error("Capture blocked for " + label + ": visible form fields contain entered values.");
+  if (audit.visibleAlerts.length) throw new Error("Capture blocked for " + label + ": visible alert/error content: " + audit.visibleAlerts.join(" | ").slice(0, 300));
+  if (audit.forbiddenText) throw new Error("Capture blocked for " + label + ": sensitive text or an obvious application error was detected.");
+  if (audit.brokenImages.length) throw new Error("Capture blocked for " + label + ": broken images: " + audit.brokenImages.join(", ").slice(0, 300));
+  if (audit.bodyLength < 120) throw new Error("Capture blocked for " + label + ": page content is too sparse to be useful.");
+}
+
+async function waitForExpectedDeployment() {
+  const homepage = new URL("/", baseUrl);
+  // Vercel edge caches can serve an older HTML document even with no-store headers.
+  // A SHA-specific query forces a fresh document before the build marker is trusted.
+  if (expectedDeploymentSha) homepage.searchParams.set("__dallyletter_build_check", expectedDeploymentSha);
+  // Vercel preview builds can take longer than the initial 15-minute window under queue pressure.
+  // Keep the wait below the workflow's 40-minute job timeout so evidence capture can still finish.
+  const deadline = Date.now() + 35 * 60 * 1000;
+  let lastObservation = "homepage has not been checked";
+
+  while (true) {
+    try {
+      const response = await fetch(homepage, previewRequest({ cache: "no-store", headers: { "cache-control": "no-cache" } }));
+      if (new URL(response.url).origin !== baseUrl.origin || response.status === 401 || response.status === 403) {
+        throw new Error("Vercel preview protection blocked the showcase request. Configure the VERCEL_AUTOMATION_BYPASS_SECRET repository secret or authorize public preview access; no screenshots were captured.");
+      }
+      if (!response.ok) {
+        lastObservation = "homepage returned HTTP " + response.status;
+      } else {
+        const html = await response.text();
+        const actual = html.match(/<meta\s+name=["']dallyletter-build-sha["']\s+content=["']([^"']+)["']/i)?.[1] || null;
+        if (!expectedDeploymentSha) return actual;
+        if (actual === expectedDeploymentSha) {
+          console.log("Confirmed deployed Dallyletter build " + actual);
+          return actual;
+        }
+        lastObservation = "expected " + expectedDeploymentSha + "; live build marker is " + (actual || "missing");
+      }
+    } catch (error) {
+      lastObservation = String(error);
+      // A protection denial is a configuration failure, not a deployment-readiness
+      // condition. Stop immediately instead of burning the full deployment wait window.
+      if (/Vercel preview protection blocked the showcase request/i.test(lastObservation)) {
+        throw new Error(lastObservation + " Configure the GitHub Actions secret VERCEL_AUTOMATION_BYPASS_SECRET, then rerun this workflow.");
+      }
+    }
+
+    if (Date.now() >= deadline) {
+      throw new Error("Timed out waiting for the exact deployed commit. " + lastObservation + ". No screenshots were captured, preventing stale evidence.");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 15000));
+  }
+}
+
+const deployedBuildSha = await waitForExpectedDeployment();
+const browser = await chromium.launch({ headless: true });
+
+async function newScopedContext(options = {}) {
+  const context = await browser.newContext(options);
+  if (vercelBypassSecret) {
+    await context.route("**/*", async (route) => {
+      const request = route.request();
+      let requestOrigin = "";
+      try { requestOrigin = new URL(request.url()).origin; } catch { /* Ignore non-URL requests. */ }
+      const headers = { ...request.headers() };
+      if (requestOrigin === baseUrl.origin) {
+        Object.assign(headers, previewHeaders);
+      } else {
+        delete headers["x-vercel-protection-bypass"];
+      }
+      await route.continue({ headers });
+    });
+  }
+  return context;
+}
+
+async function discoverPublicPages() {
+  const sitemapUrl = new URL("/sitemap.xml", baseUrl);
+  const response = await fetch(sitemapUrl, previewRequest({ cache: "no-store", headers: { accept: "application/xml,text/xml", "cache-control": "no-cache" } }));
+  if (!response.ok) throw new Error("Sitemap request failed: HTTP " + response.status + " at " + sitemapUrl);
+  const xml = await response.text();
+  const locations = [...xml.matchAll(/<loc>\s*([\s\S]*?)\s*<\/loc>/gi)].map((match) => decodeXml(match[1].trim()));
+  if (!locations.length) throw new Error("No <loc> URLs found in " + sitemapUrl);
+
+  // Prerendered sitemap URLs retain the canonical production host. On a preview,
+  // map only that known canonical host onto the preview origin so every public route
+  // is tested against the exact PR build rather than silently filtering them out.
+  const homepageResponse = await fetch(new URL("/", baseUrl), previewRequest({ cache: "no-store" }));
+  if (!homepageResponse.ok) throw new Error("Homepage request failed while resolving its canonical host: HTTP " + homepageResponse.status);
+  const homepageHtml = await homepageResponse.text();
+  const canonicalHref = homepageHtml.match(/<link\s+rel=["']canonical["']\s+href=["']([^"']+)["']/i)?.[1];
+  const canonicalOrigin = canonicalHref ? new URL(canonicalHref, baseUrl).origin : baseUrl.origin;
+
+  const discovered = new Map();
+  for (const value of locations) {
+    const url = new URL(value);
+    if (url.origin === canonicalOrigin && canonicalOrigin !== baseUrl.origin) {
+      url.protocol = baseUrl.protocol;
+      url.host = baseUrl.host;
+    } else if (url.origin !== baseUrl.origin) {
+      continue;
+    }
+    url.hash = "";
+    url.search = "";
+    discovered.set(url.href, url);
+  }
+
+  const loginUrl = new URL("/login", baseUrl);
+  discovered.set(loginUrl.href, loginUrl);
+  return [...discovered.values()].sort((a, b) => a.pathname.localeCompare(b.pathname));
+}
+
+async function verifyBrandLogo(page, contextLabel) {
+  const brandLogo = page.locator('img[alt="Dallyletter Elidems logo"]').first();
+  await brandLogo.waitFor({ state: "visible", timeout: 10000 });
+  const logoLoaded = await brandLogo.evaluate((img) => img.complete && img.naturalWidth > 0);
+  if (!logoLoaded) throw new Error("Dallyletter brand logo did not load in " + contextLabel);
+}
+
+async function capturePublicPages() {
+  const pages = await discoverPublicPages();
+  for (const url of pages) {
+    const slug = url.pathname.split("/").filter(Boolean).join("-");
+    const name = url.pathname === "/" ? "homepage" : safeName(slug);
+    const context = await newScopedContext({
+
+      viewport: { width: 1440, height: 1000 },
+      deviceScaleFactor: 1,
+      recordVideo: { dir: roleScreensOut, size: { width: 1440, height: 1000 } }
+    });
+    const page = await context.newPage();
+    const runtimeErrors = [];
+    const google403Responses = [];
+    page.on("pageerror", (error) => runtimeErrors.push(String(error)));
+    page.on("console", (message) => { if (message.type() === "error") runtimeErrors.push(message.text()); });
+    page.on("response", (response) => {
+      if (response.status() === 403 && /accounts\.google\.com|gsi/i.test(response.url())) google403Responses.push(response.url());
+    });
+    const video = page.video();
+    try {
+      const response = await page.goto(url.href, { waitUntil: "domcontentloaded", timeout: 45000 });
+      if (response && response.status() >= 400) throw new Error("HTTP " + response.status() + " for " + url.pathname);
+      await page.locator("body").waitFor({ state: "visible", timeout: 15000 });
+      await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+      await verifyBrandLogo(page, url.pathname);
+      const unexpectedErrors = classifyRuntimeErrors(runtimeErrors, google403Responses, url.pathname);
+      if (unexpectedErrors.length) throw new Error("Runtime/browser console errors on " + url.pathname + ": " + unexpectedErrors.slice(0, 3).join(" | ").slice(0, 400));
+      await assertPublishablePage(page, url.pathname);
+      const screenshot = "public-" + name + ".png";
+      await page.screenshot({ path: path.join(out, screenshot), fullPage: true, animations: "disabled" });
+      // A short, silent UI walkthrough clip: no form entry, no authentication and no user data.
+      await page.waitForTimeout(1800);
+      await page.evaluate(() => window.scrollTo({ top: Math.min(700, document.body.scrollHeight), behavior: "instant" }));
+      await page.waitForTimeout(1800);
+      results.push({ type: "public", page: name, url: url.href, status: response?.status() ?? "unknown", screenshot });
+    } catch (error) {
+      results.push({ type: "public", page: name, url: url.href, error: String(error) });
+    } finally {
+      await context.close();
+      if (video) {
+        try {
+          const videoPath = "public-" + name + ".webm";
+          await video.saveAs(path.join(out, videoPath));
+          const item = results.find((result) => result.type === "public" && result.page === name);
+          if (item && item.screenshot) item.video = videoPath;
+        } catch (error) {
+          results.push({ type: "public-video", page: name, url: url.href, error: "Video finalization failed: " + String(error) });
+        }
+      }
+    }
+  }
+}
+async function verifyProtectedRouteShells() {
+  const source = await fs.readFile(path.resolve("artifacts/dallyletter/src/App.tsx"), "utf8");
+  const routePaths = [...source.matchAll(/<Route\s+path=["']([^"']+)["']/g)]
+    .map((match) => match[1])
+    .filter((routePath) => /^\/(student|teacher|manager|admin)(\/|$)/.test(routePath) && !routePath.includes("*"));
+  const routes = [...new Set(routePaths)];
+  const context = await newScopedContext({ viewport: { width: 1280, height: 900 },  });
+  const page = await context.newPage();
+  try {
+    for (const routePath of routes) {
+      const testPath = routePath.replace(/:([A-Za-z0-9_]+)/g, "showcase-test").replace(/\/+$/, "") + "/";
+      const url = new URL(testPath, baseUrl);
+      const response = await page.goto(url.href, { waitUntil: "domcontentloaded", timeout: 25000 });
+      if (!response || response.status() !== 200) {
+        results.push({ type: "route-shell", path: routePath, url: url.href, status: response?.status() ?? "no-response", error: "Registered protected route did not return the application shell." });
+        continue;
+      }
+      const title = await page.title();
+      const shell = await page.locator("#root, #app, [data-reactroot]").count().catch(() => 0);
+      const html = await page.locator("body").innerText().catch(() => "");
+      if (!/Dallyletter Elidems/i.test(title) || (!shell && html.trim().length < 20) || /page you're looking for doesn't exist|this screen doesn't exist|404 not found/i.test(html)) {
+        results.push({ type: "route-shell", path: routePath, url: url.href, status: "wrong-page", error: "Route returned HTTP 200 but did not render the expected application shell." });
+        continue;
+      }
+      results.push({ type: "route-shell", path: routePath, url: url.href, status: "captured" });
+    }
+  } finally {
+    await context.close();
+  }
+}
+
+async function discoverRoleRoutes(role) {
+  const source = await fs.readFile(path.resolve("artifacts/dallyletter/src/App.tsx"), "utf8");
+  const routePattern = /<Route path="([^"]+)"([\s\S]*?)(?=<Route path="|<Route component=|<\/Switch>)/g;
+  const normalizedRole = role === "learner" ? "student" : role;
+  const routes = new Map();
+  for (const match of source.matchAll(routePattern)) {
+    const routePath = match[1];
+    const allowed = match[2].match(/allowedRoles=\{\[([^\]]+)\]\}/);
+    if (!allowed) continue;
+    const roles = [...allowed[1].matchAll(/"([^"]+)"/g)].map((item) => item[1]);
+    if (!roles.includes(normalizedRole)) continue;
+    if (routePath.includes(":")) continue;
+    if (!routePath.startsWith("/")) continue;
+    routes.set(routePath, { path: routePath, label: routePath.split("/").filter(Boolean).at(-1) || "dashboard", source: "route-registry" });
+  }
+  return [...routes.values()];
+}
+
+async function redactScreenshotContent(page) {
+  await page.addStyleTag({ content: `
+    input:not([type="checkbox"]):not([type="radio"]), textarea, [contenteditable="true"],
+    [data-sensitive], [data-private], [data-testid*="email"], [data-testid*="phone"],
+    [data-testid*="balance"], [data-testid*="amount"], [class*="email"], [class*="phone"],
+    [class*="balance"], [class*="amount"], [class*="stat"], [class*="metric"], [class*="user-name"], [class*="profile-name"], table tbody, [role="grid"] [role="row"], [class*="card"] p, [class*="card"] strong {
+      filter: blur(8px) !important;
+      user-select: none !important;
+    }
+  ` });
+  await page.evaluate(() => {
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    for (const node of nodes) {
+      const value = node.nodeValue || "";
+      node.nodeValue = value
+        .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email redacted]")
+        .replace(/(?:\+?\d[\d .()/-]{7,}\d)/g, "[phone redacted]");
+    }
+  });
+}
+
+async function captureRole(role, route, email, password) {
+  const homeUrl = new URL(route, baseUrl);
+  if (baseUrl.origin !== authAllowedOrigin) {
+    results.push({ type: "dashboard", role, url: homeUrl.href, status: "skipped", reason: "Authenticated capture is restricted to the configured production origin." });
+    return;
+  }
+  if (!email || !password) {
+    results.push({ type: "dashboard", role, url: homeUrl.href, status: "missing-demo-account", reason: "Configure SHOWCASE_" + role.toUpperCase() + "_EMAIL and SHOWCASE_" + role.toUpperCase() + "_PASSWORD to capture this role." });
+    return;
+  }
+
+  // Login is deliberately performed in a non-recording context. Only dedicated showcase accounts are accepted.
+  const loginContext = await newScopedContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1,  });
+  let storageState;
+  let authenticatedRole;
+  let authenticatedApiOrigin;
+  try {
+    const loginPage = await loginContext.newPage();
+    const loginApiResponses = [];
+    const loginRequestFailures = [];
+    loginPage.on("response", (response) => {
+      const pathname = new URL(response.url()).pathname;
+      if (pathname.endsWith("/api/auth/login") || pathname.endsWith("/auth/login")) loginApiResponses.push({ status: response.status(), path: pathname, origin: new URL(response.url()).origin });
+    });
+    loginPage.on("requestfailed", (request) => {
+      const pathname = new URL(request.url()).pathname;
+      if (pathname.endsWith("/api/auth/login") || pathname.endsWith("/auth/login")) loginRequestFailures.push({ path: pathname, reason: request.failure()?.errorText || "request failed" });
+    });
+    await loginPage.goto(new URL("/login", baseUrl).href, { waitUntil: "domcontentloaded", timeout: 45000 });
+    await loginPage.getByLabel("Email address").fill(email);
+    await loginPage.getByLabel("Password", { exact: true }).fill(password);
+    await loginPage.getByRole("button", { name: "Sign In", exact: true }).click();
+    await loginPage.waitForFunction(() => {
+      const normalizedPath = window.location.pathname.replace(/\/+$/, "") || "/";
+      return normalizedPath !== "/login" && Boolean(localStorage.getItem("dallyletter_token"));
+    }, { timeout: 30000 }).catch(async () => {
+      const feedback = await loginPage.locator('[role="alert"], [data-sonner-toast], [role="status"]').allTextContents().catch(() => []);
+      throw new Error("Login did not establish a session. Safe diagnostics: " + JSON.stringify({
+        loginApiResponses, loginRequestFailures, visibleFeedback: feedback.join(" | ").slice(0, 300)
+      }));
+    });
+    const loginState = await loginPage.evaluate(() => localStorage.getItem("dallyletter_token"));
+    if (!loginState) throw new Error("Login page navigated without persisting an authentication token");
+    const successfulLoginOrigins = [...new Set(loginApiResponses.filter((item) => item.status >= 200 && item.status < 300).map((item) => item.origin))];
+    if (successfulLoginOrigins.length !== 1) throw new Error("Expected exactly one successful login API origin; observed " + JSON.stringify(loginApiResponses));
+    authenticatedApiOrigin = successfulLoginOrigins[0];
+    authenticatedRole = await verifyAuthenticatedRole(loginState, role, authenticatedApiOrigin);
+    storageState = await loginContext.storageState();
+  } catch (error) {
+    results.push({ type: "dashboard", role, url: homeUrl.href, status: "login-failed", error: String(error) });
+    return;
+  } finally {
+    await loginContext.close();
+  }
+
+  const context = await newScopedContext({
+
+    viewport: { width: 1440, height: 1000 },
+    deviceScaleFactor: 1,
+    storageState
+  });
+  const page = await context.newPage();
+  const runtimeErrors = [];
+  const google403Responses = [];
+  page.on("pageerror", (error) => runtimeErrors.push(String(error)));
+  page.on("console", (message) => { if (message.type() === "error") runtimeErrors.push(message.text()); });
+  page.on("response", (response) => {
+    if (response.status() === 403 && /accounts\.google\.com|gsi/i.test(response.url())) google403Responses.push(response.url());
+    if (response.status() >= 500) runtimeErrors.push("HTTP " + response.status() + " " + response.url());
+  });
+
+  const screenshots = [];
+  const routeResults = [];
+  const testedNavigationLinks = new Set();
+  const testedNavigationButtons = new Set();
+  try {
+    const routeInventory = await discoverRoleRoutes(role);
+    const queue = [{ path: route, label: "dashboard", source: "role-home" }, ...routeInventory];
+    const seen = new Set();
+    const maxPages = Number(process.env.SHOWCASE_MAX_PAGES_PER_ROLE || 100);
+    while (queue.length && screenshots.length < maxPages) {
+      const item = queue.shift();
+      const target = new URL(item.path, baseUrl);
+      if (target.origin !== baseUrl.origin || target.search || target.hash) continue;
+      const pathname = target.pathname.replace(/\/+$/, "") || "/";
+      if (seen.has(pathname)) continue;
+      seen.add(pathname);
+
+      let response;
+      try {
+        response = await page.goto(target.href, { waitUntil: "domcontentloaded", timeout: 35000 });
+        if (response && response.status() >= 500) throw new Error("HTTP " + response.status());
+        await page.locator("body").waitFor({ state: "visible", timeout: 15000 });
+        await page.waitForLoadState("networkidle", { timeout: 7000 }).catch(() => {});
+        const actualPath = new URL(page.url()).pathname.replace(/\/+$/, "") || "/";
+        if (actualPath !== pathname) {
+          routeResults.push({ path: pathname, status: "restricted-or-redirected", actualPath });
+          continue;
+        }
+        const token = await page.evaluate(() => localStorage.getItem("dallyletter_token"));
+        if (!token) throw new Error("Authenticated session missing after navigation");
+        const currentRole = await verifyAuthenticatedRole(token, role, authenticatedApiOrigin);
+        if (currentRole !== authenticatedRole) throw new Error("API-confirmed role changed during route capture");
+        const mainText = await page.locator("main").innerText().catch(() => "");
+        if (!mainText.trim()) throw new Error("No visible main dashboard content");
+        await verifyBrandLogo(page, role + " " + pathname);
+        await assertPublishablePage(page, role + " " + pathname, { allowRedactedFormValues: true });
+        const screenshot = safeName("dashboard-" + role + "-" + pathname.replace(/^\//, "").replaceAll("/", "-")) + ".png";
+        await redactScreenshotContent(page);
+        await page.screenshot({ path: path.join(roleScreensOut, screenshot), fullPage: true, animations: "disabled" });
+        screenshots.push({ path: pathname, label: item.label, screenshot, view: "default" });
+        routeResults.push({ path: pathname, status: "captured", screenshot });
+
+        // Capture each visible semantic tab as a separate view. Tab clicks only switch local UI panels;
+        // forms, submit buttons, approval actions and destructive controls are never activated.
+        const tabs = page.locator('[role="tab"]');
+        const tabCount = Math.min(await tabs.count(), 20);
+        for (let tabIndex = 0; tabIndex < tabCount && screenshots.length < 200; tabIndex += 1) {
+          const tab = tabs.nth(tabIndex);
+          if (!(await tab.isVisible().catch(() => false)) || !(await tab.isEnabled().catch(() => false))) continue;
+          const tabLabel = (await tab.innerText().catch(() => "")).trim() || (await tab.getAttribute("aria-label")) || ("tab-" + (tabIndex + 1));
+          if (/delete|remove|approve|reject|submit|upload|logout|sign out/i.test(tabLabel)) continue;
+          await tab.click();
+          await page.waitForTimeout(250);
+          await assertPublishablePage(page, role + " " + pathname + " tab " + tabLabel, { allowRedactedFormValues: true });
+          await redactScreenshotContent(page);
+          const tabScreenshot = safeName("dashboard-" + role + "-" + pathname.replace(/^\//, "").replaceAll("/", "-") + "-tab-" + tabIndex + "-" + tabLabel) + ".png";
+          await page.screenshot({ path: path.join(roleScreensOut, tabScreenshot), fullPage: true, animations: "disabled" });
+          screenshots.push({ path: pathname, label: tabLabel, screenshot: tabScreenshot, view: "tab" });
+        }
+
+        // Discover every visible, same-origin, read-only navigation destination from this feature page.
+        const links = await page.locator("a[href]").evaluateAll((anchors) => anchors.map((anchor, index) => ({
+          index,
+          href: anchor.href,
+          label: (anchor.innerText || anchor.getAttribute("aria-label") || "").trim().toLowerCase(),
+          visible: !!(anchor.offsetWidth || anchor.offsetHeight || anchor.getClientRects().length),
+          download: anchor.hasAttribute("download")
+        })));
+        const deny = /logout|sign out|delete|remove|approve|reject|submit|upload|invite|reset password|verify email|archive|publish|grant|revoke|send|pay now|purchase|subscribe|accept|decline/i;
+        for (const link of links) {
+          if (!link.visible || link.download || deny.test(link.label)) continue;
+          const linked = new URL(link.href, baseUrl);
+          if (linked.origin !== baseUrl.origin || linked.hash || linked.pathname.startsWith("/api/") || /\\.(?:pdf|csv|xlsx?|docx?|zip|png|jpe?g|webp|svg|mp4|webm|mp3|wav)$/i.test(linked.pathname)) continue;
+          const linkedPath = linked.pathname.replace(/\/+$/, "") || "/";
+          if (/^\/(login|register|forgot-password|reset-password|verify-email|suspended)(\/|$)/.test(linkedPath)) continue;
+          if (!linked.search && !seen.has(linkedPath) && !queue.some((candidate) => candidate.path === linkedPath)) {
+            queue.push({ path: linkedPath, label: link.label || linkedPath, source: "visible-navigation" });
+          }
+          if (testedNavigationLinks.has(link.href) || linkedPath === pathname) continue;
+          testedNavigationLinks.add(link.href);
+          const originalUrl = page.url();
+          try {
+            const popupPromise = page.waitForEvent("popup", { timeout: 900 }).catch(() => null);
+            await page.locator("a[href]").nth(link.index).click({ timeout: 5000 });
+            const popup = await popupPromise;
+            if (popup) {
+              await popup.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
+              const opened = new URL(popup.url());
+              const popupMain = await popup.locator("main").innerText().catch(() => "");
+              if (opened.origin !== baseUrl.origin || opened.pathname.replace(/\/+$/, "") !== linkedPath || opened.search !== linked.search || !popupMain.trim()) {
+                throw new Error("Link opened an unexpected or empty page: " + popup.url());
+              }
+              await popup.close();
+            } else {
+              await page.waitForURL(url => url.origin === baseUrl.origin && (url.pathname.replace(/\/+$/, "") || "/") === linkedPath && url.search === linked.search, { timeout: 7000 });
+              const opened = new URL(page.url());
+              const openedMain = await page.locator("main").innerText().catch(() => "");
+              if (opened.pathname.replace(/\/+$/, "") !== linkedPath || opened.search !== linked.search || !openedMain.trim() || /page you're looking for doesn't exist|this screen doesn't exist|404 not found/i.test(openedMain)) {
+                throw new Error("Link did not open its intended feature: " + page.url());
+              }
+              await page.goto(originalUrl, { waitUntil: "domcontentloaded", timeout: 25000 });
+              await page.waitForLoadState("networkidle", { timeout: 4000 }).catch(() => {});
+            }
+            routeResults.push({ path: linkedPath, search: linked.search, status: "captured", interaction: "anchor-click", from: pathname, label: link.label || linkedPath });
+          } catch (error) {
+            routeResults.push({ path: linkedPath, search: linked.search, status: "navigation-click-failed", interaction: "anchor-click", from: pathname, label: link.label || linkedPath, error: String(error) });
+            if (page.url() !== originalUrl) {
+              await page.goto(originalUrl, { waitUntil: "domcontentloaded", timeout: 25000 }).catch(() => {});
+            }
+          }
+        }
+        const buttons = await page.locator("button").evaluateAll((items) => items.map((button, index) => ({
+          index,
+          label: (button.innerText || button.getAttribute("aria-label") || button.getAttribute("title") || "").trim().replace(/\s+/g, " "),
+          visible: !!(button.offsetWidth || button.offsetHeight || button.getClientRects().length),
+          disabled: button.disabled
+        })));
+        const safeNavigationButton = /^(?:open|view|explore|go to|browse|visit|more)(?:\s|$)/i;
+        for (const button of buttons) {
+          if (!button.visible || button.disabled || !safeNavigationButton.test(button.label)) continue;
+          const buttonKey = pathname + "|" + button.index + "|" + button.label.toLowerCase();
+          if (testedNavigationButtons.has(buttonKey)) continue;
+          testedNavigationButtons.add(buttonKey);
+          const originalUrl = page.url();
+          const beforeMain = await page.locator("main").innerText().catch(() => "");
+          try {
+            const popupPromise = page.waitForEvent("popup", { timeout: 900 }).catch(() => null);
+            await page.locator("button").nth(button.index).click({ timeout: 5000 });
+            const popup = await popupPromise;
+            if (popup) {
+              await popup.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
+              const popupUrl = new URL(popup.url());
+              const popupMain = await popup.locator("main").innerText().catch(() => "");
+              if (popupUrl.origin !== baseUrl.origin || !popupMain.trim() || /page you're looking for doesn't exist|this screen doesn't exist|404 not found/i.test(popupMain)) {
+                throw new Error("Button opened an unexpected or empty page: " + popup.url());
+              }
+              routeResults.push({ path: popupUrl.pathname, search: popupUrl.search, status: "captured", interaction: "button-popup", from: pathname, label: button.label });
+              await popup.close();
+              continue;
+            }
+            await page.waitForTimeout(350);
+            const currentUrl = new URL(page.url());
+            const original = new URL(originalUrl);
+            const routeChanged = currentUrl.pathname !== original.pathname || currentUrl.search !== original.search;
+            const mainText = await page.locator("main").innerText().catch(() => "");
+            const safeOverlay = await page.locator('[role="dialog"]:visible, [role="menu"]:visible, [data-state="open"]:visible').count().catch(() => 0);
+            const expanded = await page.locator('button[aria-expanded="true"]').count().catch(() => 0);
+            if (routeChanged) {
+              if (currentUrl.origin !== baseUrl.origin || !mainText.trim() || /page you're looking for doesn't exist|this screen doesn't exist|404 not found/i.test(mainText)) {
+                throw new Error("Button opened an unexpected or empty feature: " + currentUrl.href);
+              }
+              routeResults.push({ path: currentUrl.pathname, search: currentUrl.search, status: "captured", interaction: "button-click", from: pathname, label: button.label });
+              await page.goto(originalUrl, { waitUntil: "domcontentloaded", timeout: 25000 });
+              await page.waitForLoadState("networkidle", { timeout: 4000 }).catch(() => {});
+            } else if (safeOverlay > 0 || expanded > 0 || mainText.trim() !== beforeMain.trim()) {
+              routeResults.push({ path: pathname, status: "captured", interaction: safeOverlay > 0 || expanded > 0 ? "button-opened-panel" : "button-changed-content", from: pathname, label: button.label });
+              await page.keyboard.press("Escape").catch(() => {});
+            } else {
+              throw new Error("Button click produced no route change, dialog, menu or expanded control.");
+            }
+          } catch (error) {
+            routeResults.push({ path: pathname, status: "navigation-button-failed", interaction: "button-click", from: pathname, label: button.label, error: String(error) });
+            if (page.url() !== originalUrl) {
+              await page.goto(originalUrl, { waitUntil: "domcontentloaded", timeout: 25000 }).catch(() => {});
+            }
+          }
+        }
+      } catch (error) {
+        routeResults.push({ path: pathname, status: "capture-error", error: String(error) });
+      }
+    }
+
+    const unexpectedErrors = classifyRuntimeErrors(runtimeErrors, google403Responses, role + " dashboard suite");
+    if (unexpectedErrors.length) throw new Error("Runtime/browser/API failures: " + unexpectedErrors.slice(0, 5).join(" | ").slice(0, 900));
+    results.push({
+      type: "dashboard", role, url: homeUrl.href, status: screenshots.length === 0 || routeResults.some((item) => item.status !== "captured") ? "partial" : "captured",
+      authenticatedRole, pagesCaptured: screenshots.length, routeInventoryCount: routeInventory.length,
+      screenshots, routes: routeResults, pageLimitReached: queue.length > 0
+    });
+  } catch (error) {
+    results.push({
+      type: "dashboard", role, url: homeUrl.href, status: "capture-failed",
+      authenticatedRole, pagesCaptured: screenshots.length, screenshots, routes: routeResults, error: String(error)
+    });
+  } finally {
+    await context.close();
+  }
+}
+
+async function pageFor404Probe() {
+  const context = await newScopedContext({  });
+  const page = await context.newPage();
+  const url = new URL("/__dallyletter-showcase-404-probe__/", baseUrl);
+  try {
+    const response = await page.goto(url.href, { waitUntil: "domcontentloaded", timeout: 45000 });
+    if (response?.status() !== 404) {
+      return { type: "probe", page: "unknown-route-404", url: url.href, error: "Expected HTTP 404; received " + (response?.status() ?? "no response") };
+    }
+    return { type: "probe", page: "unknown-route-404", url: url.href, status: 404 };
+  } finally {
+    await context.close();
+  }
+}
+
+function buildGallery(manifest) {
+  const lines = [
+    "# Dallyletter Elidems — latest live UI captures",
+    "",
+    "- Site: [" + manifest.site + "](" + manifest.site + ")",
+    "- Captured: " + manifest.capturedAt,
+    "- Deployed build commit: " + (manifest.sourceCommit || "not exposed by deployed site"),
+    "- Workflow commit: " + (manifest.workflowCommit || "not supplied"),
+    "- Workflow run: [" + (manifest.workflowRunUrl || "not supplied") + "](" + (manifest.workflowRunUrl || "") + ")",
+    "- Public pages successfully captured: " + manifest.publicPageCount + " / " + manifest.publicUrlCount + " discovered",
+    "",
+    "On push-triggered runs, the capture waits for the deployed build marker to match the pushed commit. Screenshots are not taken from an older deployment.",
+    "For each configured role, the capture reads the protected route registry in App.tsx, visits every route allowed for that role, recursively discovers visible same-origin navigation links, and captures each visible semantic tab. Parameterized routes are captured only when the live UI exposes a real record link; no fake IDs or mutating actions are used.",
+    "",
+    "## Public pages",
+    ""
+  ];
+  for (const item of manifest.results.filter((result) => result.type === "public")) {
+    lines.push("### [" + item.page + "](" + item.url + ")", "");
+    if (item.screenshot) lines.push("![" + item.page + "](./" + item.screenshot + ")", "");
+    if (item.video) lines.push("[Watch short walkthrough](./" + item.video + ")", "");
+    else lines.push("Capture failed: " + item.error, "");
+  }
+  lines.push("## Role dashboards and feature coverage", "");
+  for (const item of manifest.results.filter((result) => result.type === "dashboard")) {
+    lines.push("- **" + item.role + ":** [" + item.url + "](" + item.url + ") — " + (item.status || "failed") + (item.authenticatedRole ? " — API-confirmed role: " + item.authenticatedRole : "") + (item.error ? " — " + item.error : ""));
+    if (item.walkthroughPages?.length) lines.push("  - Read-only routes shown: " + item.walkthroughPages.join(", "));
+  }
+  lines.push("",
+    "## Private role dashboard and feature screenshots",
+    "",
+    "Role screenshots are redacted and retained in the private workflow artifact under `role-feature-screenshots/`. They are eligible for public release only through the separate `Publish reviewed Dallyletter role screenshots` workflow, after a human has inspected the exact artifact and confirmed its privacy review. The learner and prefect views use the same dedicated synthetic learner account; the API must confirm the `isPrefect` capability for the prefect view. The teacher view uses a separate dedicated synthetic teacher account. Never point this capture at real learner records.",
+    "");
+  for (const item of manifest.results.filter((result) => result.type === "dashboard")) {
+    lines.push("### " + item.role + " — " + (item.pagesCaptured ?? 0) + " pages", "");
+    if (item.status === "missing-demo-account") lines.push("Not captured: the existing configured account credentials for this role are unavailable.", "");
+    for (const shot of item.screenshots || []) lines.push("- **" + shot.path + "** — [Open screenshot](./role-feature-screenshots/" + shot.screenshot + ")");
+    lines.push("");
+  }
+  lines.push("Use the existing configured learner and teacher showcase accounts. Prefect is captured from the learner account only when the API confirms Profile Hub's isPrefect flag. Public role-image publication requires a separate manual privacy review of the exact private artifact.", "");
+  return lines.join("\n");
+}
+
+try {
+  await capturePublicPages();
+  await verifyProtectedRouteShells();
+  // These are existing promoted accounts, not separate signup types. Prefect reuses the
+  // learner login unless an explicit promoted-learner override is supplied. Manager-tier
+  // credentials must belong to an existing learner/teacher promoted by the Owner.
+  const roleAccounts = [
+    ["learner", "/student", process.env.SHOWCASE_LEARNER_EMAIL, process.env.SHOWCASE_LEARNER_PASSWORD],
+    // Prefect is the existing learner account with Profile Hub's isPrefect capability; no separate login or signup exists.
+    ["prefect", "/student", process.env.SHOWCASE_LEARNER_EMAIL, process.env.SHOWCASE_LEARNER_PASSWORD],
+    ["teacher", "/teacher", process.env.SHOWCASE_TEACHER_EMAIL, process.env.SHOWCASE_TEACHER_PASSWORD],
+    ["junior_manager", "/manager", process.env.SHOWCASE_JUNIOR_MANAGER_EMAIL, process.env.SHOWCASE_JUNIOR_MANAGER_PASSWORD],
+    ["senior_manager", "/manager", process.env.SHOWCASE_SENIOR_MANAGER_EMAIL, process.env.SHOWCASE_SENIOR_MANAGER_PASSWORD],
+    ["manager", "/manager", process.env.SHOWCASE_MANAGER_EMAIL, process.env.SHOWCASE_MANAGER_PASSWORD],
+    ["admin", "/admin/teacher-cv-workspace", process.env.SHOWCASE_ADMIN_EMAIL, process.env.SHOWCASE_ADMIN_PASSWORD],
+    // DEMx 430 remains the configured Owner login; no new account or signup path is introduced.
+    ["owner", "/admin", process.env.SHOWCASE_OWNER_EMAIL, process.env.SHOWCASE_OWNER_PASSWORD]
+  ];
+  const authenticatedCaptureEnabled = process.env.SHOWCASE_CAPTURE_AUTHENTICATED !== "false";
+  if (authenticatedCaptureEnabled && !syntheticAccountsAttested) throw new Error("Authenticated screenshots are blocked until SHOWCASE_ACCOUNTS_ARE_SYNTHETIC=true is configured as a repository secret.");
+  if (!authenticatedCaptureEnabled) {
+    results.push({ type: "dashboard", role: "all", status: "skipped", reason: "Authenticated showcase capture is disabled for this run; no role is counted as verified." });
+  } else {
+    for (const account of roleAccounts) await captureRole(...account);
+  }
+  const roleResults = results.filter((result) => result.type === "dashboard");
+  const requiredCvRoles = new Set(["learner", "prefect", "teacher"]);
+  const previewRun = process.env.GITHUB_EVENT_NAME === "pull_request";
+  const missingRequiredRoleAccounts = authenticatedCaptureEnabled
+    ? [...requiredCvRoles].filter((role) => !roleResults.some((result) => result.role === role && result.status === "captured"))
+    : [...requiredCvRoles];
+  if (missingRequiredRoleAccounts.length) {
+    results.push({
+      type: "integration",
+      page: "authenticated-cv-role-coverage",
+      status: authenticatedCaptureEnabled ? "blocked" : "skipped",
+      missingRoles: missingRequiredRoleAccounts,
+      ...(authenticatedCaptureEnabled
+        ? { error: "Authenticated CV role verification is incomplete. Configure the existing showcase credentials for: " + missingRequiredRoleAccounts.join(", ") + ". No role is counted as verified without a successful login and API-confirmed role." }
+        : { reason: "Authenticated role capture is intentionally disabled for pull-request security. These roles are not counted as verified until a trusted post-merge showcase run completes." })
+    });
+  }
+  if (googleIdentityErrors.length) {
+    results.push({
+      type: "integration",
+      page: "google-sign-in",
+      status: previewRun ? "skipped" : "blocked",
+      occurrences: googleIdentityErrors.length,
+      ...(previewRun
+        ? { reason: "Vercel preview origins are not configured as Google OAuth JavaScript origins. Google sign-in is intentionally not evaluated on pull-request previews; the trusted production capture remains responsible for verifying the configured production origin." }
+        : { error: "Google Identity Services rejected the configured production origin. Google sign-in remains unverified." })
+    });
+  }
+  results.push(await pageFor404Probe());
+
+  const manifest = {
+    site: baseUrl.href,
+    capturedAt: new Date().toISOString(),
+    syntheticAccountsAttested,
+    sourceCommit: deployedBuildSha,
+    workflowCommit: process.env.SOURCE_COMMIT || null,
+    workflowRunUrl: process.env.SHOWCASE_RUN_URL || null,
+    publicUrlCount: results.filter((result) => result.type === "public").length,
+    publicPageCount: results.filter((result) => result.type === "public" && result.screenshot).length,
+    expectedRoleCount: roleAccounts.length,
+    requiredCvRoleCount: requiredCvRoles.size,
+    missingRequiredRoleAccounts,
+    roleModelNotes: { admin: "Admin uses the explicitly permitted read-only /admin/teacher-cv-workspace route; Owner-only administration routes remain restricted.", platform_owner: "No separate Platform Owner dashboard or multi-school administration route is registered in App.tsx; not treated as an implemented dashboard role." },
+    capturedRoleCount: roleResults.filter((result) => result.status === "captured").length,
+    roleScreenshotCount: roleResults.reduce((count, result) => count + (result.screenshots?.length || 0), 0),
+    roleCoverage: roleResults.map(({ role, status, authenticatedRole, pagesCaptured, routeInventoryCount }) => ({ role, status, authenticatedRole, pagesCaptured: pagesCaptured || 0, routeInventoryCount: routeInventoryCount || 0 })),
+    results
+  };
+  await fs.writeFile(path.join(out, "capture-manifest.json"), JSON.stringify(manifest, null, 2));
+  await fs.writeFile(path.join(out, "README.md"), buildGallery(manifest));
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    const summary = [
+      "# Dallyletter showcase capture",
+      "",
+      "- Site: " + manifest.site,
+      "- Public pages captured: " + manifest.publicPageCount + " / " + manifest.publicUrlCount,
+      "- Role dashboards captured: " + manifest.capturedRoleCount + " / " + manifest.expectedRoleCount,
+      "- Authenticated feature screenshots: " + manifest.roleScreenshotCount,
+      ...manifest.roleCoverage.map((role) => "- " + role.role + ": " + role.status + " (" + role.pagesCaptured + " pages)"),
+      "- Deployed build commit: " + (manifest.sourceCommit || "not exposed"),
+      "- Workflow commit: " + (manifest.workflowCommit || "unknown"),
+      "- [Workflow run](" + (manifest.workflowRunUrl || "") + ")",
+      "",
+      ...results.map((result) => "- " + (result.type || "page") + " / " + (result.page || result.role || result.path) + ": " + (result.error ? "FAILED — " + result.error : result.status || "captured") + " — " + (result.url || ""))
+    ];
+    await fs.appendFile(process.env.GITHUB_STEP_SUMMARY, summary.join("\n") + "\n");
+  }
+  console.log(JSON.stringify(manifest, null, 2));
+  if (results.some((result) => result.error || ["login-failed", "capture-failed", "partial", "wrong-page"].includes(result.status) || result.pageLimitReached)) process.exitCode = 1;
+} finally {
+  await browser.close();
+  // Keep role screenshots private here. A separate workflow publishes only the three reviewed default dashboard images.
+}

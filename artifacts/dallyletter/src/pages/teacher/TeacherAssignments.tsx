@@ -1,0 +1,307 @@
+import { ACADEMIC_GRADE_OPTIONS } from "@workspace/api-client-react/academic-grades";
+import { DashboardLayout } from "@/components/DashboardLayout";
+import UserProfileLink from "@/components/UserProfileLink";
+import { getApiUrl } from "@workspace/api-client-react";
+import { useState, useEffect } from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
+import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
+import { ClipboardList, Plus, Calendar, BookOpen, Eye, Star, Trash2 } from "lucide-react";
+
+const token = () => localStorage.getItem("dallyletter_token") ?? "";
+
+export default function TeacherAssignments() {
+  const { toast } = useToast();
+  const [assignments, setAssignments] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [materialUploading, setMaterialUploading] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [viewSubs, setViewSubs] = useState<{ assignment: any; submissions: any[] } | null>(null);
+  const [grading, setGrading] = useState<{ subId: number; marks: string; feedback: string } | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [learnerPreview, setLearnerPreview] = useState<any | null>(null);
+  const [hiddenReferenceIds, setHiddenReferenceIds] = useState<Set<number>>(new Set());
+  const emptyForm = { title: "", description: "", subject: "", grade: "", dueDate: "", totalMarks: "100", attachmentUrl: "" };
+  const [form, setForm] = useState(emptyForm);
+
+  const load = () => {
+    void fetch(getApiUrl("/api/assignments"), { headers: { Authorization: `Bearer ${token()}` } })
+      .then(r => r.json()).then(d => { const rows = Array.isArray(d) ? d : []; setAssignments(rows); setHiddenReferenceIds(new Set(rows.filter((row: any) => row.referenceMaterialHidden).map((row: any) => row.id))); setLoading(false); })
+      .catch(() => setLoading(false));
+  };
+  useEffect(() => { load(); }, []);
+
+  const toggleReferenceVisibility = async (assignment: any) => {
+    const hidden = !hiddenReferenceIds.has(assignment.id);
+    const sessionToken = token();
+    if (!sessionToken) { toast({ variant: "destructive", title: "Sign-in required", description: "Sign in again to change reference visibility." }); window.location.href = "/login"; return; }
+    try {
+      const response = await fetch(getApiUrl(`/api/assignments/${assignment.id}/reference-visibility`), {
+        method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionToken}` }, body: JSON.stringify({ hidden }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (response.status === 401) { toast({ variant: "destructive", title: "Session expired", description: "Sign in again to change reference visibility." }); window.location.href = "/login"; return; }
+        throw new Error(result.error || `Could not update visibility (HTTP ${response.status})`);
+      }
+      setHiddenReferenceIds(previous => { const next = new Set(previous); hidden ? next.add(assignment.id) : next.delete(assignment.id); return next; });
+      setAssignments(previous => previous.map(row => row.id === assignment.id ? { ...row, referenceMaterialHidden: hidden } : row));
+      toast({ title: hidden ? "Reference material hidden from learners" : "Reference material visible to learners" });
+    } catch (error) { toast({ variant: "destructive", title: "Visibility update failed", description: error instanceof Error ? error.message : "Try again." }); }
+  };
+
+  const resetForm = () => {
+    setOpen(false);
+    setEditingId(null);
+    setForm(emptyForm);
+  };
+
+  const uploadMaterial = (file: File | undefined) => {
+    if (!file) return;
+    setMaterialUploading(true);
+    const body = new FormData();
+    body.append("file", file);
+    void fetch(getApiUrl("/api/assignments/material"), { method: "POST", headers: { Authorization: `Bearer ${token()}` }, body })
+      .then(async response => {
+        if (!response.ok) { const error = await response.json().catch(() => null) as { error?: string } | null; throw new Error(error?.error ?? "Material upload failed"); }
+        return response.json() as Promise<{ attachmentUrl: string }>;
+      })
+      .then(result => setForm(formState => ({ ...formState, attachmentUrl: result.attachmentUrl })))
+      .catch(error => toast({ variant: "destructive", title: error instanceof Error ? error.message : "Material upload failed" }))
+      .finally(() => setMaterialUploading(false));
+  };
+
+  const saveAssignment = () => {
+    if (!form.title || !form.subject || !form.dueDate) { toast({ variant: "destructive", title: "Fill required fields" }); return; }
+    const totalMarks = Number(form.totalMarks);
+    if (!Number.isInteger(totalMarks) || totalMarks <= 0 || totalMarks > 10000) { toast({ variant: "destructive", title: "Total marks must be between 1 and 10000" }); return; }
+    const payload = { ...form, totalMarks, status: "active" };
+    const request = editingId == null
+      ? fetch(getApiUrl("/api/assignments"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+          body: JSON.stringify(payload),
+        })
+      : fetch(getApiUrl(`/api/assignments/${editingId}`), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+          body: JSON.stringify({ ...payload, status: "active" }),
+        });
+
+    void request.then(async r => {
+      if (!r.ok) { const error = await r.json().catch(() => null) as { error?: string } | null; toast({ variant: "destructive", title: error?.error ?? (editingId == null ? "Failed to create" : "Failed to update") }); return; }
+      toast({ title: editingId == null ? "✅ Assignment created" : "✅ Assignment updated" });
+      resetForm();
+      load();
+    }).catch(() => toast({ variant: "destructive", title: editingId == null ? "Failed to create" : "Failed to update" }));
+  };
+
+  const deleteAssignment = async (assignment: any) => {
+    const id = Number(assignment?.id);
+    if (!Number.isInteger(id) || id <= 0 || deletingId !== null) return;
+    if (!window.confirm(`Delete assignment “${String(assignment.title ?? "Untitled")}”? This may also remove its submissions. This cannot be undone.`)) return;
+    setDeletingId(id);
+    try {
+      const response = await fetch(getApiUrl(`/api/assignments/${id}`), { method: "DELETE", headers: { Authorization: `Bearer ${token()}` } });
+      const payload = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(payload.error || `Delete failed (${response.status})`);
+      setAssignments(current => current.filter(item => Number(item.id) !== id));
+      toast({ title: "Assignment deleted" });
+    } catch (error) {
+      toast({ variant: "destructive", title: "Could not delete assignment", description: error instanceof Error ? error.message : "Please try again." });
+    } finally { setDeletingId(null); }
+  };
+
+  const loadSubs = (assignment: any) => {
+    void fetch(getApiUrl(`/api/assignments/${assignment.id}/submissions`), { headers: { Authorization: `Bearer ${token()}` } })
+      .then(r => r.json())
+      .then(subs => setViewSubs({ assignment, submissions: Array.isArray(subs) ? subs : [] }));
+  };
+
+  const aiGrade = async (subId: number) => {
+    try {
+      const r = await fetch(getApiUrl(`/api/assignments/submissions/${subId}/ai-grade`), {
+        method: "POST", headers: { Authorization: `Bearer ${token()}` },
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || "AI marking unavailable");
+      toast({ title: `🤖 AI marked using ${d.provider}` });
+      if (viewSubs) loadSubs(viewSubs.assignment);
+    } catch (e) {
+      toast({ variant: "destructive", title: "AI marking unavailable", description: e instanceof Error ? e.message : "Try again." });
+    }
+  };
+
+  const grade = async () => {
+    if (!grading) return;
+    const sessionToken = token();
+    if (!sessionToken) {
+      toast({ variant: "destructive", title: "Sign-in required", description: "Your session is missing. Sign in again before saving this grade." });
+      window.location.href = "/login";
+      return;
+    }
+    const marks = Number(grading.marks);
+    const totalMarks = Number(viewSubs?.assignment?.totalMarks);
+    if (!Number.isFinite(marks) || marks < 0 || !Number.isFinite(totalMarks) || marks > totalMarks) {
+      toast({ variant: "destructive", title: "Invalid marks", description: `Enter a score between 0 and ${Number.isFinite(totalMarks) ? totalMarks : "the assignment maximum"}.` });
+      return;
+    }
+    try {
+      const response = await fetch(getApiUrl(`/api/assignments/submissions/${grading.subId}/grade`), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionToken}` },
+        body: JSON.stringify({ marks, feedback: grading.feedback }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (response.status === 401) {
+          toast({ variant: "destructive", title: "Session expired", description: "Your grade was not saved. Sign in again, then retry." });
+          window.location.href = "/login";
+          return;
+        }
+        throw new Error(result.error || result.message || `Grading failed (HTTP ${response.status})`);
+      }
+      toast({ title: "Graded successfully" });
+      setGrading(null);
+      if (viewSubs) await loadSubs(viewSubs.assignment);
+    } catch (error) {
+      toast({ variant: "destructive", title: "Grading failed", description: error instanceof Error ? error.message : "Could not save this grade." });
+    }
+  };
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><ClipboardList className="h-6 w-6 text-emerald-600" /> My Assignments</h1>
+            <p className="text-slate-500 mt-1">Create, manage, and grade student submissions</p>
+          </div>
+          <Dialog open={open} onOpenChange={(value) => { if (!value) resetForm(); else setOpen(true); }}>
+            <DialogTrigger asChild>
+              <Button className="gap-2 bg-emerald-600 text-white" onClick={() => { setEditingId(null); setForm(emptyForm); setOpen(true); }}><Plus className="h-4 w-4" /> New Assignment</Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader><DialogTitle>{editingId == null ? "Create Assignment" : "Edit Assignment"}</DialogTitle></DialogHeader>
+              <div className="space-y-3 mt-2">
+                <Input placeholder="Title *" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
+                <textarea className="w-full border rounded-lg px-3 py-2 text-sm min-h-[100px] resize-none" placeholder="Project brief, requirements, procedure, rubric, or instructions" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+                <Input type="url" placeholder="Reference material URL (PDF, video, document)" value={form.attachmentUrl} onChange={e => setForm(f => ({ ...f, attachmentUrl: e.target.value }))} />
+                <Input type="file" accept="video/mp4,video/webm,video/quicktime,video/ogg,audio/mpeg,audio/mp4,audio/ogg,audio/wav,image/jpeg,image/png,image/webp,application/pdf,.doc,.docx" onChange={e => uploadMaterial(e.target.files?.[0])} disabled={materialUploading} />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input placeholder="Subject *" value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} />
+                  <Select value={form.grade || "all"} onValueChange={value => setForm(f => ({ ...f, grade: value === "all" ? "" : value }))}><SelectTrigger><SelectValue placeholder="All grades / forms" /></SelectTrigger><SelectContent><SelectItem value="all">All grades / forms</SelectItem>{ACADEMIC_GRADE_OPTIONS.map(grade => <SelectItem key={grade} value={grade}>{grade}</SelectItem>)}</SelectContent></Select>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div><label className="text-xs text-slate-500 mb-1 block">Due Date *</label><Input type="date" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} /></div>
+                  <div><label className="text-xs text-slate-500 mb-1 block">Total Marks</label><Input type="number" value={form.totalMarks} onChange={e => setForm(f => ({ ...f, totalMarks: e.target.value }))} /></div>
+                </div>
+                <Button className="w-full bg-emerald-600 text-white" onClick={saveAssignment} disabled={materialUploading}>{materialUploading ? "Uploading material…" : (editingId == null ? "Create" : "Save changes")}</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        {loading ? <p className="text-center text-slate-400 py-10">Loading…</p> : (
+          <div className="space-y-3">
+            {assignments.length === 0 ? (
+              <div className="text-center py-16 text-slate-400">
+                <ClipboardList className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                <p>No assignments yet. Create your first one!</p>
+              </div>
+            ) : assignments.map(a => (
+              <Card key={a.id} className="border-0 shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <h3 className="font-semibold text-slate-800">{a.title}</h3>
+                        <Badge variant="outline" className="text-xs">{a.subject}</Badge>
+                        {a.grade && <Badge variant="secondary" className="text-xs">{a.grade}</Badge>}
+                        <Badge className={`text-xs ${a.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{a.status}</Badge>
+                      </div>
+                      {a.description && <p className="text-sm text-slate-500 mb-2 whitespace-pre-wrap">{a.description}</p>}
+                      {a.attachmentUrl && <div className="mt-3 rounded-xl border bg-muted/20 p-3">
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Reference material · visible to learners by default</p><Button type="button" size="sm" variant="ghost" onClick={() => void toggleReferenceVisibility(a)}>{hiddenReferenceIds.has(a.id) ? "Show material" : "Hide material"}</Button></div>
+                        {hiddenReferenceIds.has(a.id) ? <p className="text-sm text-muted-foreground">Hidden from learners until you choose Show material.</p> : <AuthenticatedMedia url={a.attachmentUrl} type="document" title={`${a.title} reference material`} />}
+                      </div>}
+                      <div className="flex items-center gap-4 text-xs text-slate-400 mt-1 flex-wrap">
+                        <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> Due: {a.dueDate}</span>
+                        <span className="flex items-center gap-1"><BookOpen className="h-3 w-3" /> {a.totalMarks} marks</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { window.location.href = `/student/assignments?assignment=${encodeURIComponent(String(a.id))}`; }}><Eye className="h-3.5 w-3.5" />Preview as learner</Button>
+                      <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { setEditingId(a.id); setForm({ title: a.title, description: a.description ?? "", subject: a.subject, grade: a.grade ?? "", dueDate: a.dueDate, totalMarks: String(a.totalMarks), attachmentUrl: a.attachmentUrl ?? "" }); setOpen(true); }}>
+                        Edit
+                      </Button>
+                      <Button size="sm" variant="destructive" className="gap-1.5" disabled={deletingId !== null} onClick={() => void deleteAssignment(a)}><Trash2 className="h-3.5 w-3.5" />{deletingId === Number(a.id) ? "Deleting…" : "Delete"}</Button>
+                      <Button size="sm" variant="outline" className="gap-1.5" onClick={() => loadSubs(a)}>
+                        <Eye className="h-3.5 w-3.5" /> Submissions
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {learnerPreview && <Dialog open={!!learnerPreview} onOpenChange={() => setLearnerPreview(null)}><DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl"><DialogHeader><DialogTitle>Learner preview · {learnerPreview.title}</DialogTitle></DialogHeader><div className="space-y-3 rounded-xl border p-4"><div className="flex flex-wrap gap-2"><Badge>{learnerPreview.subject}</Badge>{learnerPreview.grade && <Badge variant="secondary">{learnerPreview.grade}</Badge>}<Badge>Due {learnerPreview.dueDate}</Badge></div><p className="whitespace-pre-wrap text-sm">{learnerPreview.description || "No instructions provided."}</p>{learnerPreview.attachmentUrl && <iframe title="Learner reference material" src={learnerPreview.attachmentUrl} className="h-64 w-full rounded-lg border" />}<p className="text-sm text-muted-foreground">Total marks: {learnerPreview.totalMarks}</p><p className="text-xs text-muted-foreground">Preview only — no submission has been created.</p></div></DialogContent></Dialog>}
+      {viewSubs && (
+        <Dialog open={!!viewSubs} onOpenChange={() => setViewSubs(null)}>
+          <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
+            <DialogHeader><DialogTitle>Submissions: {viewSubs.assignment.title}</DialogTitle></DialogHeader>
+            {viewSubs.submissions.length === 0 ? (
+              <p className="text-slate-400 text-sm text-center py-6">No submissions yet</p>
+            ) : (
+              <div className="space-y-3">
+                {viewSubs.submissions.map(sub => (
+                  <div key={sub.id} className="border rounded-xl p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <UserProfileLink userId={sub.studentId ?? sub.student_id} name={sub.studentName || "Learner"} className="font-medium text-slate-800 text-sm" />
+                      <Badge className={`text-xs ${sub.status === "graded" ? "bg-purple-100 text-purple-700" : "bg-emerald-100 text-emerald-700"}`}>
+                        {sub.status === "graded" ? `${sub.marks}/${viewSubs.assignment.totalMarks}` : "Submitted"}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-slate-600 bg-slate-50 rounded-lg p-2 mb-2 whitespace-pre-wrap">{sub.content || "No written answer — attachment submission."}</p>
+                    {sub.fileUrl && <div className="mb-2 rounded-lg border p-3 space-y-2"><p className="text-xs font-semibold text-slate-600">Student attachment{sub.fileName ? `: ${sub.fileName}` : ""}</p><AuthenticatedMedia url={sub.fileUrl} type="document" title={sub.fileName || "Student submission attachment"} /></div>}
+                    {sub.feedback && <p className="text-xs text-purple-600 italic">Feedback: {sub.feedback}</p>}
+                    {sub.status !== "graded" && (
+                      <>
+                        <Button size="sm" variant="outline" className="gap-1.5 mt-2" onClick={() => void aiGrade(sub.id)}><Star className="h-3.5 w-3.5" />AI mark</Button>
+                        <Button size="sm" className="bg-purple-600 text-white gap-1.5 mt-2" onClick={() => setGrading({ subId: sub.id, marks: "", feedback: "" })}>
+                          <Star className="h-3.5 w-3.5" /> Grade
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {grading && (
+        <Dialog open={!!grading} onOpenChange={() => setGrading(null)}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader><DialogTitle>Grade Submission</DialogTitle></DialogHeader>
+            <div className="space-y-3">
+              <Input type="number" placeholder="Marks" value={grading.marks} onChange={e => setGrading(g => g ? { ...g, marks: e.target.value } : null)} />
+              <textarea className="w-full border rounded-lg px-3 py-2 text-sm min-h-[80px] resize-none" placeholder="Feedback for student…" value={grading.feedback} onChange={e => setGrading(g => g ? { ...g, feedback: e.target.value } : null)} />
+              <Button className="w-full bg-purple-600 text-white" onClick={grade}>Save Grade</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+    </DashboardLayout>
+  );
+}

@@ -1,0 +1,283 @@
+import { ACADEMIC_GRADE_OPTIONS } from "@workspace/api-client-react/academic-grades";
+import { getApiUrl } from "@workspace/api-client-react";
+import { useState, useEffect } from "react";
+import { DashboardLayout } from "@/components/DashboardLayout";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import { Loader2, Plus, Play, Square, Trash2, BarChart3, Sparkles, ClipboardList, CheckCircle, Eye } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
+
+interface Poll { id: number; title: string; type: string; grade: string | null; subject: string | null; mode: string; status: string; createdAt: string; }
+interface PollResults { submissions: { studentName: string; score: number; totalQuestions: number }[]; total: number; avgScore: number; }
+
+export default function TeacherPolls() {
+  const { toast } = useToast();
+  const [polls, setPolls] = useState<Poll[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [aiGenOpen, setAiGenOpen] = useState(false);
+  const [resultsId, setResultsId] = useState<number | null>(null);
+  const [results, setResults] = useState<PollResults | null>(null);
+  const [learnerPreview, setLearnerPreview] = useState<any | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [aiGenerating, setAiGenerating] = useState(false);
+
+  const [newPoll, setNewPoll] = useState({ title: "", grade: "", subject: "", mode: "practice" });
+  const [newQuestions, setNewQuestions] = useState([{ question: "", imageUrl: "", options: ["","","",""], correct: 0, difficulty: "medium" }]);
+  const [aiTopic, setAiTopic] = useState({ topic: "", grade: "", subject: "", count: "5" });
+  const [aiGenerated, setAiGenerated] = useState<{ title: string; questions: { question: string; difficulty: string; options: { text: string; isCorrect: boolean }[]; explanation: string }[] } | null>(null);
+
+  const token = () => localStorage.getItem("dallyletter_token");
+
+  async function load() {
+    setLoading(true);
+    const r = await fetch(getApiUrl("/api/polls"), { headers: { Authorization: `Bearer ${token()}` } });
+    if (r.ok) setPolls(await r.json());
+    setLoading(false);
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function uploadQuestionImage(index:number,file:File) {
+    const body=new FormData();body.append("file",file,file.name);
+    const r=await fetch(getApiUrl("/api/lessons/media"),{method:"POST",headers:{Authorization:`Bearer ${token()}`},body});
+    const d=await r.json().catch(()=>null);if(!r.ok||!d?.mediaUrl)throw new Error(d?.error||"Image upload failed");
+    setNewQuestions(qs=>qs.map((q,i)=>i===index?{...q,imageUrl:d.mediaUrl}:q));
+  }
+
+  async function handleCreate() {
+    if (!newPoll.title.trim()) { toast({ variant:"destructive",title:"Title required" }); return; }
+    setCreating(true);
+    try {
+      const questions=newQuestions.filter(q=>q.question.trim()).map(q=>({question:q.question.trim(),imageUrl:q.imageUrl||undefined,difficulty:q.difficulty,options:q.options.filter(Boolean).map((o,i)=>({text:o,isCorrect:i===q.correct}))}));
+      const r=await fetch(getApiUrl("/api/polls"),{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token()}`},body:JSON.stringify({...newPoll,title:newPoll.title.trim(),type:"manual",questions})});
+      const created=await r.json().catch(()=>null);if(!r.ok||!created?.id)throw new Error(created?.error||"Poll creation failed");
+      const activate=await fetch(getApiUrl(`/api/polls/${created.id}`),{method:"PATCH",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token()}`},body:JSON.stringify({status:"active"})});
+      if(!activate.ok)throw new Error("Poll created but could not be published");
+      toast({title:"Poll created and published!"});setCreateOpen(false);setNewQuestions([{question:"",imageUrl:"",options:["","","",""],correct:0,difficulty:"medium"}]);await load();
+    } catch(e){toast({variant:"destructive",title:"Poll creation failed",description:e instanceof Error?e.message:"Try again."});} finally{setCreating(false);}
+  }
+
+  async function handleAIGenerate() {
+    if (!aiTopic.topic) { toast({ variant: "destructive", title: "Topic required" }); return; }
+    setAiGenerating(true);
+    setAiGenerated(null);
+    const r = await fetch(getApiUrl("/api/polls/ai-generate"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+      body: JSON.stringify({ topic: aiTopic.topic, grade: aiTopic.grade || undefined, subject: aiTopic.subject || undefined, count: parseInt(aiTopic.count) }),
+    });
+    setAiGenerating(false);
+    if (r.ok) setAiGenerated(await r.json());
+    else toast({ variant: "destructive", title: "AI generation failed" });
+  }
+
+  async function handleSaveAIPoll() {
+    if (!aiGenerated) return;
+    setCreating(true);
+    const r = await fetch(getApiUrl("/api/polls"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+      body: JSON.stringify({ title: aiGenerated.title, topic: aiTopic.topic, type: "ai", grade: aiTopic.grade || undefined, subject: aiTopic.subject || undefined, mode: "practice", questions: aiGenerated.questions }),
+    });
+    setCreating(false);
+    if (r.ok) { const created=await r.json(); const activate=await fetch(getApiUrl(`/api/polls/${created.id}`),{method:"PATCH",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token()}`},body:JSON.stringify({status:"active"})}); if(!activate.ok){toast({variant:"destructive",title:"AI poll created but not published"});return;} toast({ title: "AI Poll created and published!" }); setAiGenOpen(false); setAiGenerated(null); load(); }
+  }
+
+  async function setStatus(id: number, status: string) {
+    await fetch(getApiUrl(`/api/polls/${id}`), { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` }, body: JSON.stringify({ status }) });
+    toast({ title: status === "active" ? "Poll is now live for students!" : "Poll closed" });
+    load();
+  }
+
+  async function deletePoll(id: number) {
+    await fetch(getApiUrl(`/api/polls/${id}`), { method: "DELETE", headers: { Authorization: `Bearer ${token()}` } });
+    toast({ title: "Poll deleted" }); load();
+  }
+
+  async function previewPoll(id: number) {
+    try { const r = await fetch(getApiUrl(`/api/polls/${id}`), { headers: { Authorization: `Bearer ${token()}` } }); const data = await r.json().catch(() => null); if (!r.ok) throw new Error(data?.error || "Poll preview unavailable"); setLearnerPreview(data); } catch (error) { toast({ variant: "destructive", title: "Could not preview poll", description: error instanceof Error ? error.message : "Try again." }); }
+  }
+
+  async function loadResults(id: number) {
+    const r = await fetch(getApiUrl(`/api/polls/${id}/results`), { headers: { Authorization: `Bearer ${token()}` } });
+    if (r.ok) { setResults(await r.json()); setResultsId(id); }
+  }
+
+  const statusColor = (s: string) => s === "active" ? "bg-emerald-100 text-emerald-800 border-emerald-300" : s === "closed" ? "bg-muted text-muted-foreground" : "bg-amber-100 text-amber-800 border-amber-200";
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="flex justify-between items-center flex-wrap gap-3">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2"><ClipboardList className="h-7 w-7 text-primary" />My Polls</h1>
+            <p className="text-muted-foreground">Create and manage educational quizzes for your students.</p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setAiGenOpen(true)} className="gap-2 border-purple-300 text-purple-700 hover:bg-purple-50"><Sparkles className="h-4 w-4" />AI Generate</Button>
+            <Button onClick={() => setCreateOpen(true)} className="gap-2"><Plus className="h-4 w-4" />Create Poll</Button>
+          </div>
+        </div>
+
+        {loading ? <div className="flex justify-center p-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div> : polls.length === 0 ? (
+          <Card><CardContent className="p-12 text-center">
+            <ClipboardList className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+            <p className="font-semibold">No polls yet</p>
+            <p className="text-sm text-muted-foreground">Create a manual poll or use AI to generate questions instantly.</p>
+          </CardContent></Card>
+        ) : (
+          <div className="space-y-3">
+            {polls.map(poll => (
+              <Card key={poll.id}>
+                <div className="p-4 flex items-center justify-between gap-4 flex-wrap">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <Badge variant="outline" className={statusColor(poll.status)}>{poll.status.toUpperCase()}</Badge>
+                      {poll.type === "ai" && <Badge className="bg-purple-100 text-purple-800 border-purple-300 gap-1"><Sparkles className="h-2.5 w-2.5" />AI</Badge>}
+                      {poll.grade && <Badge variant="outline">{poll.grade}</Badge>}
+                      {poll.subject && <Badge variant="outline">{poll.subject}</Badge>}
+                    </div>
+                    <p className="font-semibold truncate">{poll.title}</p>
+                    <p className="text-xs text-muted-foreground">{new Date(poll.createdAt).toLocaleDateString()}</p>
+                  </div>
+                  <div className="flex gap-1.5 flex-wrap">
+                    <Button variant="outline" size="sm" onClick={() => void previewPoll(poll.id)} className="text-xs gap-1"><Eye className="h-3.5 w-3.5" />Preview as learner</Button>
+                    <Button variant="ghost" size="sm" onClick={() => loadResults(poll.id)} className="text-xs gap-1"><BarChart3 className="h-3.5 w-3.5" />Results</Button>
+                    {poll.status === "draft" && <Button size="sm" onClick={() => setStatus(poll.id, "active")} className="text-xs bg-emerald-600 hover:bg-emerald-700 gap-1"><Play className="h-3 w-3" />Activate</Button>}
+                    {poll.status === "active" && <Button size="sm" variant="outline" onClick={() => setStatus(poll.id, "closed")} className="text-xs gap-1"><Square className="h-3 w-3" />Close</Button>}
+                    {poll.status === "closed" && <Button size="sm" variant="outline" onClick={() => setStatus(poll.id, "active")} className="text-xs gap-1"><Play className="h-3 w-3" />Reopen</Button>}
+                    <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" onClick={() => deletePoll(poll.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* Create Poll Dialog */}
+        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader><DialogTitle>Create Poll</DialogTitle></DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2 space-y-1.5"><Label>Poll Title *</Label><Input placeholder="e.g. Chapter 5 Review" value={newPoll.title} onChange={e => setNewPoll(p => ({ ...p, title: e.target.value }))} /></div>
+                <div className="space-y-1.5">
+                  <Label>Grade</Label>
+                  <Select value={newPoll.grade} onValueChange={v => setNewPoll(p => ({ ...p, grade: v }))}>
+                    <SelectTrigger><SelectValue placeholder="Select grade" /></SelectTrigger>
+                    <SelectContent>{ACADEMIC_GRADE_OPTIONS.map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5"><Label>Subject</Label><Input placeholder="e.g. Mathematics" value={newPoll.subject} onChange={e => setNewPoll(p => ({ ...p, subject: e.target.value }))} /></div>
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>Questions</Label>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setNewQuestions(q => [...q, { question: "", imageUrl: "", options: ["","","",""], correct: 0, difficulty: "medium" }])}><Plus className="h-3.5 w-3.5 mr-1" />Add Question</Button>
+                </div>
+                {newQuestions.map((q, qi) => (
+                  <Card key={qi} className="p-3 space-y-2 bg-muted/30">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs">Question {qi + 1}</Label>
+                      {newQuestions.length > 1 && <Button type="button" variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive" onClick={() => setNewQuestions(qs => qs.filter((_, i) => i !== qi))}><Trash2 className="h-3 w-3" /></Button>}
+                    </div>
+                    <Input placeholder="Enter question" value={q.question} onChange={e => setNewQuestions(qs => qs.map((x, i) => i === qi ? { ...x, question: e.target.value } : x))} /><div className="flex items-center gap-2"><label className="cursor-pointer rounded-md border px-3 py-2 text-xs"><input type="file" accept="image/*" className="sr-only" onChange={e=>{const f=e.target.files?.[0];if(f)void uploadQuestionImage(qi,f).catch(err=>toast({variant:"destructive",title:"Image upload failed",description:err instanceof Error?err.message:"Try again."}));e.currentTarget.value=""}} />{q.imageUrl?"Replace image":"Add question image"}</label>{q.imageUrl && (q.imageUrl.startsWith("/api/")?<AuthenticatedMedia url={q.imageUrl} type="image" title={q.question}/>:<img src={q.imageUrl} alt={q.question} className="max-h-40 rounded object-contain"/>)}</div>
+                    <div className="space-y-1">
+                      {q.options.map((opt, oi) => (
+                        <div key={oi} className="flex gap-2 items-center">
+                          <input type="radio" name={`c-${qi}`} checked={q.correct === oi} onChange={() => setNewQuestions(qs => qs.map((x, i) => i === qi ? { ...x, correct: oi } : x))} className="accent-emerald-600" />
+                          <Input placeholder={`Option ${String.fromCharCode(65 + oi)}`} value={opt} className="text-sm h-8" onChange={e => setNewQuestions(qs => qs.map((x, i) => i === qi ? { ...x, options: x.options.map((o, j) => j === oi ? e.target.value : o) } : x))} />
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+              <Button onClick={handleCreate} disabled={creating}>{creating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Create Poll</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* AI Generate Dialog */}
+        <Dialog open={aiGenOpen} onOpenChange={() => { setAiGenOpen(false); setAiGenerated(null); }}>
+          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader><DialogTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-purple-500" />AI Generate Poll</DialogTitle><DialogDescription>Enter a topic and ELIDEMS AI will create curriculum-aligned questions.</DialogDescription></DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2 space-y-1.5"><Label>Topic *</Label><Input placeholder="e.g. Pythagoras Theorem, Photosynthesis" value={aiTopic.topic} onChange={e => setAiTopic(t => ({ ...t, topic: e.target.value }))} /></div>
+                <div className="space-y-1.5">
+                  <Label>Grade</Label>
+                  <Select value={aiTopic.grade} onValueChange={v => setAiTopic(t => ({ ...t, grade: v }))}>
+                    <SelectTrigger><SelectValue placeholder="Any grade" /></SelectTrigger>
+                    <SelectContent>{ACADEMIC_GRADE_OPTIONS.map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5"><Label>Subject</Label><Input placeholder="e.g. Science" value={aiTopic.subject} onChange={e => setAiTopic(t => ({ ...t, subject: e.target.value }))} /></div>
+                <div className="space-y-1.5">
+                  <Label>Questions</Label>
+                  <Select value={aiTopic.count} onValueChange={v => setAiTopic(t => ({ ...t, count: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{["3","5","8","10"].map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <Button onClick={handleAIGenerate} disabled={aiGenerating} className="w-full bg-purple-600 hover:bg-purple-700 gap-2">
+                {aiGenerating ? <><Loader2 className="h-4 w-4 animate-spin" />Generating…</> : <><Sparkles className="h-4 w-4" />Generate</>}
+              </Button>
+              {aiGenerated && (
+                <div className="space-y-2 border rounded-lg p-3 bg-muted/30">
+                  <p className="font-semibold text-sm">{aiGenerated.title}</p>
+                  {aiGenerated.questions.slice(0, 3).map((q, i) => (
+                    <div key={i} className="bg-card border rounded p-2 text-xs space-y-1">
+                      <p className="font-medium">Q{i+1}: {q.question}</p>
+                      {q.options.map((o, j) => <p key={j} className={o.isCorrect ? "text-emerald-700 font-semibold" : "text-muted-foreground"}>• {o.text}</p>)}
+                    </div>
+                  ))}
+                  {aiGenerated.questions.length > 3 && <p className="text-xs text-muted-foreground text-center">…and {aiGenerated.questions.length - 3} more questions</p>}
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setAiGenOpen(false); setAiGenerated(null); }}>Cancel</Button>
+              {aiGenerated && <Button onClick={handleSaveAIPoll} disabled={creating} className="bg-purple-600 hover:bg-purple-700">{creating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save Poll</Button>}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Learner preview: intentionally omits answer keys and results. */}
+        <Dialog open={learnerPreview !== null} onOpenChange={() => setLearnerPreview(null)}><DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl"><DialogHeader><DialogTitle>Learner preview · {learnerPreview?.title ?? "Poll"}</DialogTitle><DialogDescription>This is a learner-facing preview. Correct answers and teacher results are hidden.</DialogDescription></DialogHeader><div className="space-y-4">{Array.isArray(learnerPreview?.questions) ? learnerPreview.questions.map((q:any,i:number) => <div key={q.id ?? i} className="space-y-2 rounded-xl border p-3"><p className="font-medium">{i+1}. {q.question ?? q.prompt}</p>{q.imageUrl && <AuthenticatedMedia url={q.imageUrl} type="image" title={`Question ${i+1}`} />}<div className="space-y-2">{(Array.isArray(q.options) ? q.options : []).map((option:any,j:number) => <div key={j} className="rounded-lg border p-2 text-sm">{typeof option === "string" ? option : option.text ?? option.label}</div>)}</div></div>) : <p className="text-sm text-muted-foreground">This poll has no previewable questions.</p>}</div></DialogContent></Dialog>
+
+        {/* Results Dialog */}
+        <Dialog open={resultsId !== null} onOpenChange={() => { setResultsId(null); setResults(null); }}>
+          <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto">
+            <DialogHeader><DialogTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5" />Results</DialogTitle></DialogHeader>
+            {results && (
+              <div className="space-y-3 py-2">
+                <div className="grid grid-cols-2 gap-3">
+                  <Card className="p-3 text-center"><p className="text-2xl font-bold">{results.total}</p><p className="text-xs text-muted-foreground">Submissions</p></Card>
+                  <Card className="p-3 text-center"><p className="text-2xl font-bold text-emerald-600">{results.avgScore}%</p><p className="text-xs text-muted-foreground">Avg Score</p></Card>
+                </div>
+                {results.submissions.map((s, i) => (
+                  <div key={i} className="flex items-center justify-between text-sm border rounded p-2.5">
+                    <span className="flex items-center gap-2"><span className="text-muted-foreground text-xs">#{i+1}</span><span className="font-medium">{s.studentName}</span></span>
+                    <Badge variant="outline">{s.score}/{s.totalQuestions}</Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      </div>
+    </DashboardLayout>
+  );
+}

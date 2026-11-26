@@ -1,0 +1,241 @@
+import { DashboardLayout } from "@/components/DashboardLayout";
+import { StudyGroupPollPanel } from "@/components/StudyGroupPollPanel";
+import { useListMessages, useSendMessage, useListStudyGroups, useListUsers, getApiUrl } from "@workspace/api-client-react";
+import { AuthenticatedAudio } from "@/components/AuthenticatedAudio";
+import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
+import { Card, CardContent } from "@/components/ui/card";
+import { Loader2, Send, Users, MessageSquare, User, ShieldAlert, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useState, useRef, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { getListMessagesQueryKey } from "@workspace/api-client-react";
+import { SendMessageBodyType } from "@workspace/api-client-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+export default function AdminChat() {
+  const { user } = useAuth();
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("groupId"); return value && /^\d+$/.test(value) ? Number(value) : null; });
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("recipientId"); return value && /^\d+$/.test(value) ? Number(value) : null; });
+  const [message, setMessage] = useState("");
+  const [activeTab, setActiveTab] = useState("users");
+  const [groupHubOpen,setGroupHubOpen]=useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
+
+  const { data: groups, isLoading: groupsLoading } = useListStudyGroups();
+  const { data: users, isLoading: usersLoading } = useListUsers();
+  
+  const { data: messages, isLoading: messagesLoading } = useListMessages(
+    { groupId: selectedGroupId, recipientId: selectedUserId },
+    { query: { enabled: !!selectedGroupId || !!selectedUserId, refetchInterval: 5000 } as any }
+  );
+
+  const sendMessageMutation = useSendMessage();
+  const [unreadSummary,setUnreadSummary]=useState<{groups:Array<{id:number;unread:number}>;privateChats:Array<{id:number;unread:number}>}>({groups:[],privateChats:[]});
+  useEffect(()=>{const accessToken=localStorage.getItem("dallyletter_token");if(!accessToken||!user?.id)return;let active=true;const refresh=async()=>{try{const response=await fetch(getApiUrl("/api/messages/unread-summary"),{headers:{Authorization:"Bearer "+accessToken},cache:"no-store"});if(!response.ok)return;const data=await response.json();if(active)setUnreadSummary({groups:Array.isArray(data.groups)?data.groups:[],privateChats:Array.isArray(data.privateChats)?data.privateChats:[]});}catch{/* Retain last known unread counts while offline. */}};void refresh();const timer=window.setInterval(()=>void refresh(),5000);return()=>{active=false;window.clearInterval(timer);};},[user?.id,selectedGroupId,selectedUserId]);
+  const DUnread=(count:number)=>count>0?<span className="dl-unread-gold-badge ml-auto inline-flex items-center gap-1 rounded-md border-2 border-[#FFD700] bg-[#0B1E3A] px-1 py-0.5 text-[10px] font-bold leading-none text-[#FFD700]" aria-label={count+" unread"}><img src="/favicon.svg" alt="" className="h-3.5 w-3.5 rounded border border-[#FFD700]"/>{count>99?"99+":count}</span>:null;
+  const unreadForGroup=(id:number)=>unreadSummary.groups.find(item=>item.id===id)?.unread||0;
+  const unreadForPrivate=(id:number)=>unreadSummary.privateChats.find(item=>item.id===id)?.unread||0;
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const [deletingMessageId, setDeletingMessageId] = useState<number | null>(null);
+  const handleDeleteMessage = async (messageId: number) => {
+    if (!window.confirm("Delete this message and its attachment, if any? This cannot be undone.")) return;
+    setDeletingMessageId(messageId);
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const response = await fetch(getApiUrl(`/api/messages/${messageId}`), { method: "DELETE", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+      const data = await response.json().catch(() => ({})) as {error?:string;deleted?:boolean;mediaCleanupPending?:boolean;warning?:string};
+      if (!response.ok) throw new Error(data.error ?? "Message deletion failed.");
+      if (!data || !data.deleted) throw new Error("The server did not confirm that the message was deleted.");
+      await queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId, recipientId: selectedUserId }) });
+      if (data.mediaCleanupPending) window.alert(data.warning || "The message is deleted, but its stored attachment still needs cleanup.");
+    } catch (error) { window.alert(error instanceof Error ? error.message : "Message deletion failed."); }
+    finally { setDeletingMessageId(null); }
+  };
+
+  const handleSendMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!message.trim() || (!selectedGroupId && !selectedUserId)) return;
+
+    sendMessageMutation.mutate({
+      data: {
+        content: message,
+        type: SendMessageBodyType.text,
+        groupId: selectedGroupId,
+        recipientId: selectedUserId
+      }
+    }, {
+      onSuccess: () => {
+        setMessage("");
+        queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId, recipientId: selectedUserId }) });
+      }
+    });
+  };
+
+  const selectGroup = (id: number) => {
+    setSelectedGroupId(id);
+    setSelectedUserId(null);
+  };
+
+  const selectUser = (id: number) => {
+    setSelectedUserId(id);
+    setSelectedGroupId(null);
+  };
+
+  return (
+    <DashboardLayout>
+      <div className="h-[calc(100vh-8rem)] min-h-[500px] flex flex-col md:flex-row gap-6">
+        <Card className="w-full md:w-1/3 flex flex-col bg-card/50 h-1/3 md:h-full shrink-0">
+          <div className="p-4 border-b">
+             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="w-full grid grid-cols-2">
+                <TabsTrigger value="users">Users</TabsTrigger>
+                <TabsTrigger value="groups">Groups</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            {activeTab === "groups" ? (
+              groupsLoading ? (
+                <div className="flex justify-center p-4"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+              ) : groups?.length === 0 ? (
+                <div className="text-center p-4 text-sm text-muted-foreground">No study groups.</div>
+              ) : (
+                groups?.map(group => (
+                  <button
+                    key={group.id}
+                    onClick={() => selectGroup(group.id)}
+                    className={`w-full text-left px-3 py-3 rounded-lg transition-colors flex items-center justify-between ${
+                      selectedGroupId === group.id 
+                        ? "bg-primary text-primary-foreground" 
+                        : "hover:bg-muted"
+                    }`}
+                  >
+                    <div className="font-medium truncate flex items-center gap-2">
+                      <Users className="h-4 w-4 opacity-70" />
+                      <span className="min-w-0 flex-1 truncate">{group.name}</span>{DUnread(unreadForGroup(group.id))}
+                    </div>
+                  </button>
+                ))
+              )
+            ) : (
+              usersLoading ? (
+                 <div className="flex justify-center p-4"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+              ) : (
+                users?.filter(u => u.id !== user?.id).map(u => (
+                  <button
+                    key={u.id}
+                    onClick={() => selectUser(u.id)}
+                    className={`w-full text-left px-3 py-3 rounded-lg transition-colors flex items-center gap-3 ${
+                      selectedUserId === u.id 
+                        ? "bg-primary text-primary-foreground" 
+                        : "hover:bg-muted"
+                    }`}
+                  >
+                    <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold shrink-0">
+                      {u.name.charAt(0)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate">{u.name}</div>
+                      <div className={`text-xs truncate ${selectedUserId === u.id ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
+                        {u.role}
+                      </div>
+                    </div>{DUnread(unreadForPrivate(u.id))}
+                  </button>
+                ))
+              )
+            )}
+          </div>
+        </Card>
+
+        {/* Chat Area */}
+        <Card className="flex-1 flex flex-col overflow-hidden bg-card border-shadow-sm h-2/3 md:h-full">
+          {!selectedGroupId && !selectedUserId ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-4 text-center">
+              <ShieldAlert className="h-12 w-12 mb-4 text-muted-foreground/30" />
+              <p className="font-medium text-foreground">Admin Messaging</p>
+              <p className="text-sm mt-1">Select a user or group to view messages or send an announcement.</p>
+            </div>
+          ) : (
+            <>
+              {/* Chat Header */}
+              <div className="p-4 border-b bg-muted/30 font-semibold flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {selectedGroupId 
+                    ? <button type="button" onClick={()=>setGroupHubOpen(true)} className="inline-flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" aria-label="Open group hub"><Users className="h-5 w-5 text-primary"/> {groups?.find(g => g.id === selectedGroupId)?.name} <span className="text-xs text-primary">Group hub ↗</span></button>
+                    : <><User className="h-5 w-5 text-primary"/> {users?.find(u => u.id === selectedUserId)?.name}</>
+                  }
+                </div>
+              </div>
+
+              {groupHubOpen && selectedGroupId && (()=>{const group:any=groups?.find(g=>g.id===selectedGroupId);return <div role="dialog" aria-modal="true" aria-label="Study group hub" className="border-b bg-card p-4"><div className="flex items-start justify-between gap-3"><div className="flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary"><Users className="h-6 w-6"/></div><div><h2 className="font-semibold">{group?.name||"Study group"}</h2><p className="text-xs text-muted-foreground">{group?.subject||"Study community"}{group?.memberCount!=null?" · "+group.memberCount+" members":""}</p></div></div><Button type="button" variant="outline" size="sm" onClick={()=>setGroupHubOpen(false)}>Back to chat</Button></div>{group?.description&&<p className="mt-3 text-sm text-muted-foreground">{group.description}</p>}{group?.creatorName&&<p className="mt-2 text-xs text-muted-foreground">Created by {group.creatorName}</p>}</div>;})()}
+
+              {/* Messages Area */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50 dark:bg-slate-900/50">
+                {messagesLoading ? (
+                  <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+                ) : messages?.length === 0 ? (
+                  <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                    No message history.
+                  </div>
+                ) : (
+                  messages?.map(msg => {
+                    const isMe = msg.senderId === user?.id;
+                    return (
+                      <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
+                        <div className="flex items-end gap-2 max-w-[80%]">
+                          {!isMe && (
+                            <div className="w-8 h-8 rounded-full bg-primary/20 flex-shrink-0 flex items-center justify-center text-xs font-bold text-primary mb-1">
+                              {msg.senderName.charAt(0)}
+                            </div>
+                          )}
+                          <div className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
+                            {!isMe && <span className="text-xs text-muted-foreground mb-1 ml-1">{msg.senderName} • {msg.senderRole}</span>}
+                            
+                            <div className={`px-4 py-2.5 rounded-2xl ${
+                              isMe 
+                                ? "bg-primary text-primary-foreground rounded-tr-sm" 
+                                : "bg-card border shadow-sm rounded-tl-sm"
+                            }`}>
+                              {msg.type === "voice" && msg.mediaUrl ? <AuthenticatedAudio className="h-10 max-w-[250px]" src={msg.mediaUrl} /> : msg.type === "media" && msg.mediaUrl ? <div className="space-y-2">{msg.content && <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>}<AuthenticatedMedia url={msg.mediaUrl} type={new URL(msg.mediaUrl, window.location.origin).searchParams.get("type")?.startsWith("image/") ? "image" : new URL(msg.mediaUrl, window.location.origin).searchParams.get("type")?.startsWith("video/") ? "video" : "document"} title={msg.content || "Shared learning media"} /></div> : <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>}
+                            </div>
+                            <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground"><span>{new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>{isMe&&((msg as any).readByUserIds?.length??0)>0&&<span className="font-semibold text-[#9A7020]" aria-label={selectedGroupId?"Seen by "+(msg as any).readByUserIds.length+" group members":"Seen"}>{selectedGroupId?"Seen by "+(msg as any).readByUserIds.length:"Seen"} ✓✓</span>}</div>
+                            {(isMe || (selectedGroupId != null && (groups?.find(g => g.id === selectedGroupId) as any)?.canManage === true)) && <button type="button" aria-label="Delete message" title="Delete message" className="mt-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-destructive disabled:opacity-50" onClick={() => void handleDeleteMessage(msg.id)} disabled={deletingMessageId === msg.id}>{deletingMessageId === msg.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}Delete</button>}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                {selectedGroupId != null && <StudyGroupPollPanel groupId={selectedGroupId} allowPolls={(groups?.find(g => g.id === selectedGroupId) as any)?.settings?.allowPolls !== false} />}
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Input Area */}
+              <div className="p-4 border-t bg-card">
+                <form onSubmit={handleSendMessage} className="flex gap-2 items-center">
+                  <Input 
+                    placeholder="Type an admin message..." 
+                    className="flex-1 bg-muted/50 border-transparent focus-visible:bg-background"
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                  />
+                  <Button type="submit" disabled={!message.trim() || sendMessageMutation.isPending} className="shrink-0 rounded-full h-10 w-10 p-0">
+                    {sendMessageMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5 ml-0.5" />}
+                  </Button>
+                </form>
+              </div>
+            </>
+          )}
+        </Card>
+      </div>
+    </DashboardLayout>
+  );
+}

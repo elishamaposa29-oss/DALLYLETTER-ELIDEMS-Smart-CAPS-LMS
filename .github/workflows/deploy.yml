@@ -1,0 +1,43 @@
+name: Deploy
+
+on:
+  push:
+    branches: [staging, production]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'production' && 'production' || 'staging' }}
+    concurrency:
+      group: deploy-${{ github.ref_name }}
+      cancel-in-progress: false
+    env:
+      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Trigger deployment hook
+        if: ${{ env.RENDER_DEPLOY_HOOK_URL != '' }}
+        run: curl -fsS -X POST "$RENDER_DEPLOY_HOOK_URL"
+
+      - name: Skip external deploy when hook is unavailable
+        if: ${{ env.RENDER_DEPLOY_HOOK_URL == '' }}
+        run: echo "Render deploy hook not configured. Set RENDER_DEPLOY_HOOK_URL to enable automatic deployment."

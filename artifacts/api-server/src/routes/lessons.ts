@@ -1,0 +1,431 @@
+// Lessons routes — CRUD for educational content
+import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { eq, and, inArray } from "drizzle-orm";
+import { createReadStream } from "node:fs";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import multer from "multer";
+import { db, pool, lessonsTable, activityLogTable, followsTable, notificationPreferencesTable, notificationsTable, studyGroupsTable, usersTable } from "@workspace/db";
+import {
+  CreateLessonBody,
+  GetLessonParams,
+  UpdateLessonParams,
+  UpdateLessonBody,
+  DeleteLessonParams,
+} from "@workspace/api-zod";
+import { requireAuth, requireTeacherOrOwner, canManageAcademicContent, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
+import { requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
+import { canModerateUser } from "../lib/role-access";
+import {
+  createMediaStorageKey,
+  ensureMediaDirectory,
+  getMediaDirectory,
+  getMediaPath,
+  getMediaStats,
+  isAllowedMediaType,
+  MAX_MEDIA_SIZE_BYTES,
+  persistUploadedMedia,
+  streamStoredMedia,
+  removeStoredMedia,
+} from "../lib/media-storage";
+import { hasContentPermission } from "../lib/content-permissions";
+import { isObjectStorageConfigured } from "../lib/object-storage";
+import { logger } from "../lib/logger";
+import { queueAIContentSafety } from "../lib/ai-content-safety";
+
+const router: IRouter = Router();
+const mediaShareSecret = () => process.env.JWT_SECRET || process.env.AUTH_SECRET || process.env.SESSION_SECRET || "";
+function signMediaShare(storageKey: string, expiresAt: number): string {
+  const secret = mediaShareSecret();
+  if (!secret) throw new Error("Media sharing signing secret is not configured");
+  const payload = `${storageKey}.${expiresAt}`;
+  return `${expiresAt}.${createHmac("sha256", secret).update(payload).digest("hex")}`;
+}
+function validMediaShare(storageKey: string, token: unknown): boolean {
+  if (typeof token !== "string" || !/^[0-9]{10,12}\.[a-f0-9]{64}$/i.test(token)) return false;
+  const [expiryText, signature] = token.split(".");
+  const expiresAt = Number(expiryText);
+  if (!Number.isSafeInteger(expiresAt) || expiresAt < Math.floor(Date.now() / 1000)) return false;
+  const secret = mediaShareSecret();
+  if (!secret) return false;
+  const expected = createHmac("sha256", secret).update(`${storageKey}.${expiresAt}`).digest();
+  const supplied = Buffer.from(signature, "hex");
+  return supplied.length === expected.length && timingSafeEqual(supplied, expected);
+}
+const mediaAccess = (req: Request, res: Response, next: NextFunction) => {
+  if (validMediaShare(String(req.params.storageKey || ""), req.query.shareToken)) { next(); return; }
+  requireAuth(req, res, next);
+};
+
+
+async function notifyTeacherFollowers(teacherId: number, lessonId: number, title: string) {
+  try {
+  const followers = await db.select({ followerId: followsTable.followerId, notificationsEnabled: followsTable.notificationsEnabled })
+    .from(followsTable)
+    .where(and(eq(followsTable.targetType, "teacher"), eq(followsTable.targetUserId, teacherId)));
+  const opted = followers.filter(f => f.notificationsEnabled !== false).map(f => f.followerId);
+  if (!opted.length) return 0;
+  let recipientIds = opted;
+  try {
+    const preferences = await db.select({ userId: notificationPreferencesTable.userId, enabled: notificationPreferencesTable.followNotificationsEnabled })
+      .from(notificationPreferencesTable)
+      .where(inArray(notificationPreferencesTable.userId, opted));
+    const prefMap = new Map(preferences.map(p => [p.userId, p.enabled]));
+    recipientIds = opted.filter(id => prefMap.get(id) !== false);
+  } catch {
+    // Older production databases may not have optional preference data yet.
+  }
+  if (!recipientIds.length) return 0;
+  let sent = 0;
+  for (const recipientId of recipientIds) {
+    try {
+      await db.insert(notificationsTable).values({
+        recipientId,
+        title: "New activity from a teacher you follow",
+        message: title,
+        type: "follow_activity",
+        isRead: false,
+        link: `/student/lessons?lesson=${lessonId}`,
+      });
+      sent += 1;
+    } catch {
+      // One bad recipient must not block all other followers.
+    }
+  }
+  return sent;
+  } catch { return 0; }
+}
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: async (_req, _file, callback) => {
+      try {
+        await ensureMediaDirectory();
+        callback(null, getMediaDirectory());
+      } catch (error) {
+        callback(error as Error, "");
+      }
+    },
+    filename: (_req, _file, callback) => callback(null, createMediaStorageKey()),
+  }),
+  limits: { fileSize: MAX_MEDIA_SIZE_BYTES },
+  fileFilter: (_req, file, callback) => callback(null, isAllowedMediaType(file.mimetype)),
+});
+
+function normalizeYouTubeUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    let videoId: string | null = null;
+    if (url.hostname === "youtu.be") videoId = url.pathname.slice(1).split("/")[0] || null;
+    if (url.hostname.endsWith("youtube.com")) {
+      videoId = url.searchParams.get("v") ?? url.pathname.match(/^\/(?:embed\/|shorts\/|live\/)([\w-]+)/)?.[1] ?? null;
+    }
+    return videoId && /^[\w-]{11}$/.test(videoId) ? `https://www.youtube.com/embed/${videoId}` : value;
+  } catch {
+    return value;
+  }
+}
+
+const authorizeLessonMediaUpload = (req: Request, res: Response, next: NextFunction): void => {
+  const user = req.currentUser!;
+  if (canManageAcademicContent(user)) { next(); return; }
+  const groupId = Number(req.query.groupId);
+  if (!Number.isInteger(groupId) || groupId <= 0) { res.status(403).json({ error: "Teacher access or group-creator permission is required to upload media" }); return; }
+  void db.select({ creatorId: studyGroupsTable.creatorId }).from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId)).then(([group]) => {
+    if (!group) { res.status(404).json({ error: "Study group not found" }); return; }
+    if (Number(group.creatorId) === Number(user.id) || user.isManager === true) { next(); return; }
+    res.status(403).json({ error: "Only the group creator, manager, or platform owner can upload this group cover" });
+  }).catch(next);
+};
+router.post("/lessons/media", requireAuth, requireManagerPermissionIfManager("lessons.create"), authorizeLessonMediaUpload, (req, res, next): void => {
+  upload.single("file")(req, res, (error) => {
+    if (error instanceof multer.MulterError) {
+      res.status(400).json({ error: "A supported media file up to 250 MB is required" });
+      return;
+    }
+    if (error) {
+      next(error);
+      return;
+    }
+
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ error: "A supported media file is required" });
+      return;
+    }
+
+    persistUploadedMedia(file.filename, file.mimetype, file.path).then(() => {
+      res.status(201).json({
+        mediaUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`,
+        storageKey: file.filename,
+        mimeType: file.mimetype,
+        size: file.size,
+      });
+    }).catch((error) => {
+      logger.error({
+        error: error instanceof Error ? { name: error.name, message: error.message.slice(0, 500) } : "Unknown media upload failure",
+        persistentStorageConfigured: isObjectStorageConfigured(),
+      }, "Lesson media upload failed");
+      res.status(503).json({
+        error: isObjectStorageConfigured()
+          ? "Persistent media storage is temporarily unavailable. Please retry the upload."
+          : "Persistent media storage is not configured. Contact the platform administrator.",
+        code: isObjectStorageConfigured() ? "MEDIA_STORAGE_UNAVAILABLE" : "MEDIA_STORAGE_NOT_CONFIGURED",
+      });
+    });
+  });
+});
+
+router.post("/lessons/media/:storageKey/share", requireAuth, async (req, res): Promise<void> => {
+  const storageKey = typeof req.params.storageKey === "string" ? req.params.storageKey : "";
+  if (!/^[a-f0-9-]{36}$/i.test(storageKey)) { res.status(400).json({ error: "Invalid media key" }); return; }
+  try {
+    const stored = await streamStoredMedia(storageKey);
+    if (!stored) {
+      try { await getMediaStats(storageKey); } catch { res.status(404).json({ error: "Media not found" }); return; }
+    }
+    const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30;
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ shareToken: signMediaShare(storageKey, expiresAt), expiresAt });
+  } catch (error) {
+    res.status(503).json({ error: error instanceof Error ? error.message : "Could not create a public share link" });
+  }
+});
+
+router.get("/lessons/media/:storageKey", mediaAccess, async (req, res): Promise<void> => {
+  const storageKey = typeof req.params.storageKey === "string" ? req.params.storageKey : null;
+  if (!storageKey) {
+    res.status(400).json({ error: "Invalid media key" });
+    return;
+  }
+
+  try {
+    const remote = await streamStoredMedia(storageKey, req.headers.range);
+    if (remote) {
+      res.status(remote.status);
+      remote.headers.forEach((value, key) => res.setHeader(key, value));
+      if (remote.body) {
+        // Preserve backpressure for large R2 videos/PDFs and stop cleanly if the client disconnects.
+        await pipeline(Readable.fromWeb(remote.body as import("node:stream/web").ReadableStream<Uint8Array>), res);
+      } else {
+        res.end();
+      }
+      return;
+    }
+    const mediaStats = await getMediaStats(storageKey);
+    const mediaType = typeof req.query.type === "string" && isAllowedMediaType(req.query.type)
+      ? req.query.type
+      : "application/octet-stream";
+    res.setHeader("Content-Type", mediaType);
+    const range = req.headers.range;
+    if (!range) {
+      res.setHeader("Content-Length", mediaStats.size);
+      createReadStream(getMediaPath(storageKey)).pipe(res);
+      return;
+    }
+
+    const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+    if (!match) {
+      res.status(416).end();
+      return;
+    }
+    const start = match[1] ? Number(match[1]) : Math.max(mediaStats.size - Number(match[2]), 0);
+    const end = match[2] ? Number(match[2]) : mediaStats.size - 1;
+    if (start > end || start >= mediaStats.size) {
+      res.status(416).end();
+      return;
+    }
+    res.status(206);
+    res.setHeader("Content-Range", `bytes ${start}-${end}/${mediaStats.size}`);
+    res.setHeader("Content-Length", end - start + 1);
+    res.setHeader("Accept-Ranges", "bytes");
+    createReadStream(getMediaPath(storageKey), { start, end }).pipe(res);
+  } catch {
+    res.status(404).json({ error: "Media not found" });
+  }
+});
+
+// GET /lessons — List all lessons
+router.get("/lessons", requireAuth, requireManagerPermissionIfManager("recordbook.view"), async (req, res): Promise<void> => {
+  let lessons = await db.select().from(lessonsTable).orderBy(lessonsTable.createdAt);
+  const actor = req.currentUser!;
+  if (canAccessManager(actor) && !isOwnerRole(actor.role)) {
+    const teacherIds = [...new Set(lessons.map(item => item.teacherId))];
+    const targets = teacherIds.length ? await db.select({ id: usersTable.id, role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(inArray(usersTable.id, teacherIds)) : [];
+    const targetById = new Map(targets.map(target => [target.id, target]));
+    lessons = lessons.filter(item => item.teacherId === actor.id || Boolean(targetById.get(item.teacherId) && canModerateUser(actor, targetById.get(item.teacherId)!)));
+  }
+  const role = String(req.currentUser!.role).toLowerCase();
+  let preferred = new Set<string>();
+  if (["student", "learner", "prefect"].includes(role)) {
+    const result = await pool.query("SELECT subjects FROM learner_subjects WHERE user_id = $1", [req.currentUser!.id]).catch(() => ({ rows: [] as Array<{ subjects: string[] }> }));
+    const selected = result.rows[0]?.subjects;
+    if (Array.isArray(selected)) preferred = new Set(selected.map((v: unknown) => String(v).trim().toLowerCase()));
+  }
+  const ordered = [...lessons].sort((a, b) => {
+    const aPreferred = preferred.has(String(a.subject || "").trim().toLowerCase());
+    const bPreferred = preferred.has(String(b.subject || "").trim().toLowerCase());
+    return Number(bPreferred) - Number(aPreferred) || b.createdAt.getTime() - a.createdAt.getTime();
+  });
+  res.json(ordered.map(l => ({ ...l, createdAt: l.createdAt.toISOString() })));
+});
+
+// POST /lessons — Create lesson (teacher, prefect student, or owner)
+router.post("/lessons", requireAuth, requireManagerPermissionIfManager("lessons.create"), async (req, res): Promise<void> => {
+  const currentUser = req.currentUser!;
+  // Allow teachers, owners, and prefect students to upload lessons
+  if (currentUser.role === "student" && !currentUser.isPrefect) {
+    res.status(403).json({ error: "Only teachers, owners, or prefect students can upload lessons" });
+    return;
+  }
+
+  const parsed = CreateLessonBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const [lesson] = await db.insert(lessonsTable).values({
+    ...parsed.data,
+    mediaUrl: parsed.data.mediaUrl ? normalizeYouTubeUrl(parsed.data.mediaUrl) : parsed.data.mediaUrl,
+    teacherId: currentUser.id,
+    teacherName: currentUser.name,
+  }).returning();
+
+  const lessonSafetyText = Object.entries(parsed.data)
+    .filter(([key, value]) => typeof value === "string" && !/(url|media|file|image|video)/i.test(key))
+    .map(([, value]) => String(value)).join("\n");
+  queueAIContentSafety("lesson", Number(lesson.id), lessonSafetyText);
+
+  // Log activity
+  await db.insert(activityLogTable).values({
+    type: "lesson_added",
+    description: `New lesson "${lesson.title}" added for ${lesson.subject}`,
+    actorName: currentUser.name,
+  });
+
+  await notifyTeacherFollowers(currentUser.id, lesson.id, `${currentUser.name} published "${lesson.title}".`);
+
+  res.status(201).json({ ...lesson, createdAt: lesson.createdAt.toISOString() });
+});
+
+router.post("/lessons/:id/notify-followers", requireAuth, requireManagerPermissionIfManager("lessons.notify"), async (req, res): Promise<void> => {
+  const user = req.currentUser!;
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+  const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, id));
+  if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
+  if (canAccessManager(user) && !isOwnerRole(user.role) && lesson.teacherId !== user.id) {
+    const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, lesson.teacherId));
+    if (!target || !canModerateUser(user, target)) { res.status(404).json({ error: "Lesson not found." }); return; }
+  }
+  if (lesson.teacherId !== user.id && !isOwnerRole(user.role) && !canAccessManager(user) && !(await hasContentPermission(user.id,"lesson",id,"notify"))) { res.status(403).json({ error: "Notify permission has not been granted by the lesson creator" }); return; }
+  const count = await notifyTeacherFollowers(lesson.teacherId, lesson.id, `${lesson.teacherName} posted "${lesson.title}".`);
+  res.json({ ok: true, recipientCount: count, message: count ? "Followers notified successfully." : "No followers are currently opted in to notifications." });
+});
+
+// GET /lessons/:id — Get lesson by ID
+router.get("/lessons/:id", requireAuth, requireManagerPermissionIfManager("recordbook.view"), async (req, res): Promise<void> => {
+  const params = GetLessonParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, params.data.id));
+  if (!lesson) {
+    res.status(404).json({ error: "Lesson not found" });
+    return;
+  }
+  const actor = req.currentUser!;
+  if (canAccessManager(actor) && !isOwnerRole(actor.role) && actor.id !== lesson.teacherId) {
+    const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, lesson.teacherId));
+    if (!target || !canModerateUser(actor, target)) { res.status(404).json({ error: "Lesson not found" }); return; }
+  }
+
+  res.json({ ...lesson, createdAt: lesson.createdAt.toISOString() });
+});
+
+// PATCH /lessons/:id — Update lesson
+router.patch("/lessons/:id", requireAuth, requireManagerPermissionIfManager("lessons.edit"), requireTeacherOrOwner, async (req, res): Promise<void> => {
+  const params = UpdateLessonParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const body = UpdateLessonBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+
+  const [existingLesson] = await db.select({ teacherId: lessonsTable.teacherId, mediaUrl: lessonsTable.mediaUrl }).from(lessonsTable).where(eq(lessonsTable.id, params.data.id));
+  if (!existingLesson) {
+    res.status(404).json({ error: "Lesson not found" });
+    return;
+  }
+  const actor = req.currentUser!;
+  if (canAccessManager(actor) && !isOwnerRole(actor.role) && actor.id !== existingLesson.teacherId) {
+    const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, existingLesson.teacherId));
+    if (!target || !canModerateUser(actor, target)) { res.status(404).json({ error: "Lesson not found." }); return; }
+  }
+  if (actor.role === "teacher" && (actor.isManager !== true || actor.managerLevel !== "senior") && existingLesson.teacherId !== actor.id) {
+    const allowed = await hasContentPermission(actor.id,"lesson",params.data.id,"edit");
+    if(!allowed){ res.status(403).json({ error: "Preview only. Request edit permission from the lesson creator." }); return; }
+  }
+
+  const updates: Record<string, unknown> = {};
+  if (body.data.title != null) updates.title = body.data.title;
+  if (body.data.description != null) updates.description = body.data.description;
+  if (body.data.subject != null) updates.subject = body.data.subject;
+  if (body.data.grade != null) updates.grade = body.data.grade;
+  if (body.data.type != null) updates.type = body.data.type;
+  if (body.data.mediaUrl != null) updates.mediaUrl = body.data.mediaUrl;
+  if (body.data.content != null) updates.content = body.data.content;
+
+  const [lesson] = await db.update(lessonsTable)
+    .set(updates)
+    .where(eq(lessonsTable.id, params.data.id))
+    .returning();
+
+  if (!lesson) {
+    res.status(404).json({ error: "Lesson not found" });
+    return;
+  }
+
+  queueAIContentSafety("lesson", Number(lesson.id), [lesson.title, lesson.description, lesson.subject, lesson.content].filter((value): value is string => typeof value === "string").join("\n"));
+  res.json({ ...lesson, createdAt: lesson.createdAt.toISOString() });
+});
+
+// DELETE /lessons/:id — Delete lesson
+router.delete("/lessons/:id", requireAuth, requireManagerPermissionIfManager("lessons.delete"), requireTeacherOrOwner, async (req, res): Promise<void> => {
+  const params = DeleteLessonParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const [existingLesson] = await db.select({ teacherId: lessonsTable.teacherId, mediaUrl: lessonsTable.mediaUrl }).from(lessonsTable).where(eq(lessonsTable.id, params.data.id));
+  if (!existingLesson) {
+    res.status(404).json({ error: "Lesson not found" });
+    return;
+  }
+  const actor = req.currentUser!;
+  if (canAccessManager(actor) && !isOwnerRole(actor.role) && actor.id !== existingLesson.teacherId) {
+    const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, existingLesson.teacherId));
+    if (!target || !canModerateUser(actor, target)) { res.status(404).json({ error: "Lesson not found." }); return; }
+  }
+  if (actor.role === "teacher" && (actor.isManager !== true || actor.managerLevel !== "senior") && existingLesson.teacherId !== actor.id) {
+    const allowed = await hasContentPermission(actor.id,"lesson",params.data.id,"delete");
+    if(!allowed){ res.status(403).json({ error: "Delete permission has not been granted by the lesson creator." }); return; }
+  }
+  await db.delete(lessonsTable).where(eq(lessonsTable.id, params.data.id));
+  const mediaUrl = existingLesson.mediaUrl;
+  const storageKey = typeof mediaUrl === "string" ? mediaUrl.match(/\/api\/lessons\/media\/([a-f0-9-]{36})/i)?.[1] : null;
+  if (storageKey) await removeStoredMedia(storageKey);
+  res.sendStatus(204);
+});
+
+export default router;

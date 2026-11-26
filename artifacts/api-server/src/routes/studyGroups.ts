@@ -1,0 +1,439 @@
+// Study groups routes — create, join, and manage study groups
+import { Router, type IRouter } from "express";
+import { eq, and, count } from "drizzle-orm";
+import { db, studyGroupsTable, studyGroupMembersTable, usersTable, activityLogTable, groupSettingsTable, groupMemberControlsTable, messagesTable } from "@workspace/db";
+import { pool } from "@workspace/db";
+import { removeStoredMedia } from "../lib/media-storage";
+import {
+  CreateStudyGroupBody,
+  GetStudyGroupParams,
+  JoinStudyGroupParams,
+} from "@workspace/api-zod";
+import { requireAuth, isOwnerRole, canAccessManager } from "../lib/auth-middleware";
+import { canModerateUser } from "../lib/role-access";
+import { managerHasPermission } from "../lib/manager-permission-policy";
+
+const router: IRouter = Router();
+
+// Helper to get members of a study group
+async function canManageGroup(user: any, group: any): Promise<boolean> {
+  if (isOwnerRole(user.role)) return true;
+  if (canAccessManager(user)) {
+    if (!(await managerHasPermission(user,"groups.manage"))) return false;
+    if (Number(group.creatorId) === Number(user.id)) return true;
+    const [creator]=await db.select({role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(eq(usersTable.id,group.creatorId));
+    return Boolean(creator && canModerateUser(user,creator));
+  }
+  return Number(group.creatorId) === Number(user.id);
+}
+
+async function canViewGroup(user:any,group:any):Promise<boolean>{
+  if(isOwnerRole(user.role)||group.creatorId===user.id)return true;
+  const [creator]=await db.select({role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(eq(usersTable.id,group.creatorId));
+  if(!creator||isOwnerRole(creator.role))return false;
+  if(canAccessManager(user))return canModerateUser(user,creator);
+  return true;
+}
+
+async function canManageGroupSettings(user: any, groupId: number, group?: any) {
+  if (group && !(await canViewGroup(user,group))) return false;
+  if (group && await canManageGroup(user,group)) return true;
+  const [control] = await db.select({ canManageSettings: groupMemberControlsTable.canManageSettings })
+    .from(groupMemberControlsTable)
+    .where(and(eq(groupMemberControlsTable.groupId, groupId), eq(groupMemberControlsTable.userId, user.id)));
+  return control?.canManageSettings === true;
+}
+
+async function isGroupMember(groupId: number, userId: number): Promise<boolean> {
+  const [membership] = await db
+    .select({ id: studyGroupMembersTable.id })
+    .from(studyGroupMembersTable)
+    .where(and(eq(studyGroupMembersTable.groupId, groupId), eq(studyGroupMembersTable.userId, userId)));
+  return Boolean(membership);
+}
+
+function hideOwnerMembers(user:any,members:any[]){return isOwnerRole(user.role)?members:members.filter(member=>!isOwnerRole(member.role));}
+
+async function getGroupMembers(groupId: number) {
+  const memberRows = await db.select({
+    id: usersTable.id,
+    email: usersTable.email,
+    name: usersTable.name,
+    role: usersTable.role,
+    isPrefect: usersTable.isPrefect,
+    isBlocked: usersTable.isBlocked,
+    phone: usersTable.phone,
+    grade: usersTable.grade,
+    subject: usersTable.subject,
+    avatarUrl: usersTable.avatarUrl,
+    lastPaymentDate: usersTable.lastPaymentDate,
+    createdAt: usersTable.createdAt,
+    control: {
+      blocked: groupMemberControlsTable.blocked,
+      mediaBlocked: groupMemberControlsTable.mediaBlocked,
+      suspended: groupMemberControlsTable.suspended,
+      muted: groupMemberControlsTable.muted,
+      canManageSettings: groupMemberControlsTable.canManageSettings,
+    },
+  })
+  .from(studyGroupMembersTable)
+  .innerJoin(usersTable, eq(studyGroupMembersTable.userId, usersTable.id))
+  .leftJoin(groupMemberControlsTable, and(
+    eq(groupMemberControlsTable.groupId, groupId),
+    eq(groupMemberControlsTable.userId, usersTable.id),
+  ))
+  .where(eq(studyGroupMembersTable.groupId, groupId));
+
+  return memberRows.map(m => ({
+    ...m,
+    control: m.control && Object.values(m.control).some(value => value !== null) ? {
+      blocked: Boolean(m.control.blocked),
+      mediaBlocked: Boolean(m.control.mediaBlocked),
+      suspended: Boolean(m.control.suspended),
+      muted: Boolean(m.control.muted),
+      canManageSettings: Boolean(m.control.canManageSettings),
+    } : null,
+    createdAt: m.createdAt.toISOString(),
+  }));
+}
+
+// GET /study-groups — List all study groups
+router.get("/study-groups", requireAuth, async (req, res): Promise<void> => {
+  const currentUser = req.currentUser!;
+  const allGroups = await db.select().from(studyGroupsTable).orderBy(studyGroupsTable.createdAt);
+  const groups = await Promise.all(allGroups.map(async g => await canViewGroup(currentUser,g) ? g : null)).then(rows=>rows.filter(Boolean) as typeof allGroups);
+
+  const result = await Promise.all(groups.map(async (g) => {
+    const members = await getGroupMembers(g.id);
+    const isMember = members.some(member => member.id === currentUser.id);
+    const canManage = await canManageGroup(currentUser, g);
+    const visibleMembers=hideOwnerMembers(currentUser,members);
+    const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, g.id));
+    return {
+      ...g,
+      canManage,
+      memberCount: visibleMembers.length,
+      isMember,
+      // Non-members get only a safe public profile preview: never expose email, phone,
+      // moderation controls, payment details, or private account metadata.
+      members: isMember || canManage ? visibleMembers : visibleMembers.map(member => ({
+        id: member.id,
+        name: member.name,
+        role: member.role,
+        isPrefect: member.isPrefect,
+        avatarUrl: member.avatarUrl,
+        isManager: false,
+        control: null,
+      })),
+      settings: settings ?? { groupId: g.id, rules: null, announcementsOnly: false, allowPolls: true, allowMedia: true, maxMembers: 1024 },
+      createdAt: g.createdAt.toISOString(),
+    };
+  }));
+
+  res.json(result);
+});
+
+// POST /study-groups — Create a study group
+router.post("/study-groups", requireAuth, async (req, res): Promise<void> => {
+  const currentUser = req.currentUser!;
+  const canCreate = isOwnerRole(currentUser.role) || (canAccessManager(currentUser) && await managerHasPermission(currentUser,"groups.manage")) || currentUser.isPrefect === true || currentUser.role === "teacher";
+  if (!canCreate) {
+    res.status(403).json({ error: "Only teachers, prefects, managers, and owners can create study groups" });
+    return;
+  }
+
+  const parsed = CreateStudyGroupBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const [group] = await db.insert(studyGroupsTable).values({
+    ...parsed.data,
+    creatorId: currentUser.id,
+    creatorName: currentUser.name,
+  }).returning();
+
+  // Auto-join creator
+  await db.insert(studyGroupMembersTable).values({
+    groupId: group.id,
+    userId: currentUser.id,
+  });
+
+  // Keep every created group immediately readable by Connect/settings.
+  await db.insert(groupSettingsTable).values({
+    groupId: group.id,
+    updatedBy: currentUser.id,
+  }).onConflictDoNothing({ target: groupSettingsTable.groupId });
+
+  await db.insert(activityLogTable).values({
+    type: "user_joined",
+    description: `${currentUser.name} created study group "${group.name}"`,
+    actorName: currentUser.name,
+  });
+
+  const members = await getGroupMembers(group.id);
+  res.status(201).json({
+    ...group,
+    memberCount: members.length,
+    members,
+    createdAt: group.createdAt.toISOString(),
+  });
+});
+
+// GET /study-groups/:id — Get study group by ID
+router.get("/study-groups/:id", requireAuth, async (req, res): Promise<void> => {
+  const params = GetStudyGroupParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, params.data.id));
+  if (!group || !(await canViewGroup(req.currentUser!,group))) {
+    res.status(404).json({ error: "Study group not found" });
+    return;
+  }
+
+  const members = hideOwnerMembers(req.currentUser!,await getGroupMembers(group.id));
+  res.json({
+    ...group,    memberCount: members.length,
+    members,
+    createdAt: group.createdAt.toISOString(),
+  });
+});
+
+// POST /study-groups/:id/join — Join a study group
+router.post("/study-groups/:id/join", requireAuth, async (req, res): Promise<void> => {
+  const params = JoinStudyGroupParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const currentUser = req.currentUser!;
+  const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, params.data.id));
+  if (!group || !(await canViewGroup(currentUser,group))) {
+    res.status(404).json({ error: "Study group not found" });
+    return;
+  }
+
+  const alreadyMember = await isGroupMember(params.data.id, currentUser.id);
+
+  if (!alreadyMember) {
+    const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, group.id));
+    const [{ memberCount }] = await db
+      .select({ memberCount: count() })
+      .from(studyGroupMembersTable)
+      .where(eq(studyGroupMembersTable.groupId, group.id));
+    if (memberCount >= (settings?.maxMembers ?? 1024)) {
+      res.status(409).json({ error: "This study group is full" });
+      return;
+    }
+    await db.insert(studyGroupMembersTable).values({
+      groupId: params.data.id,
+      userId: currentUser.id,
+    });
+  }
+
+  const members = hideOwnerMembers(currentUser,await getGroupMembers(group.id));
+  res.json({
+    ...group,
+    memberCount: members.length,
+    members,
+    createdAt: group.createdAt.toISOString(),
+  });
+});
+
+// POST /study-groups/:id/leave — Leave a study group
+router.post("/study-groups/:id/leave", requireAuth, async (req, res): Promise<void> => {
+  const params = JoinStudyGroupParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const currentUser = req.currentUser!;
+  const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, params.data.id));
+  if (!group || !(await canViewGroup(currentUser,group))) {
+    res.status(404).json({ error: "Study group not found" });
+    return;
+  }
+  if (group.creatorId === currentUser.id) {
+    res.status(400).json({ error: "The group owner cannot leave their own group" });
+    return;
+  }
+
+  await db.delete(studyGroupMembersTable).where(
+    and(eq(studyGroupMembersTable.groupId, group.id), eq(studyGroupMembersTable.userId, currentUser.id)),
+  );
+  const members = hideOwnerMembers(currentUser,await getGroupMembers(group.id));
+  res.json({ ...group, memberCount: members.length, members, createdAt: group.createdAt.toISOString() });
+});
+
+export default router;
+
+
+// PATCH /study-groups/:id/profile — update grouping metadata and optional cover URL.
+router.patch("/study-groups/:id/profile", requireAuth, async (req, res): Promise<void> => {
+  const groupId = Number(req.params.id), user = req.currentUser!;
+  if (!Number.isInteger(groupId) || groupId <= 0) { res.status(400).json({ error: "Invalid group id" }); return; }
+  const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
+  if (!group) { res.status(404).json({ error: "Study group not found" }); return; }
+  const isPlatformOwner = isOwnerRole(user.role);
+  if (!isPlatformOwner && !(await canManageGroup(user, group))) { res.status(403).json({ error: "Only the group creator, a manager, or platform owner can edit group profile details." }); return; }
+  const grade = typeof req.body?.grade === "string" ? req.body.grade.trim().slice(0, 80) || null : group.grade;
+  const topic = typeof req.body?.topic === "string" ? req.body.topic.trim().slice(0, 120) || null : group.topic;
+  let coverImageUrl = group.coverImageUrl;
+  if (req.body?.coverImageUrl !== undefined) {
+    if (!isPlatformOwner && !(await canManageGroup(user, group)) && !(await canManageGroupSettings(user, groupId, group))) { res.status(403).json({ error: "Group creator or authorized group manager access required to change a cover image." }); return; }
+    const next = typeof req.body.coverImageUrl === "string" ? req.body.coverImageUrl.trim() : "";
+    if (next && !/^\/api\/lessons\/media\/[a-f0-9-]{36}(?:\?type=image(?:\/|%2f)[a-z0-9.+-]+)?$/i.test(next)) {
+      res.status(400).json({ error: "Cover image must be uploaded through the authenticated media endpoint." }); return;
+    }
+    coverImageUrl = next || null;
+  }
+  const [updated] = await db.update(studyGroupsTable).set({ grade, topic, coverImageUrl }).where(eq(studyGroupsTable.id, groupId)).returning();
+  if (coverImageUrl !== group.coverImageUrl && group.coverImageUrl) {
+    const oldKey = group.coverImageUrl.match(/\/api\/lessons\/media\/([a-f0-9-]{36})/i)?.[1];
+    if (oldKey) { try { await removeStoredMedia(oldKey); } catch { /* Old cover cleanup can be retried independently. */ } }
+  }
+  res.json(updated);
+});
+
+// GET /study-groups/:id/settings
+router.get("/study-groups/:id/settings", requireAuth, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid group id" }); return; }
+  const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, id));
+  if (!group) { res.status(404).json({ error: "Study group not found" }); return; }
+  if (!(await canManageGroupSettings(req.currentUser!, id, group))) { res.status(403).json({ error: "Group settings access required" }); return; }
+  const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, id));
+  res.json(settings ?? { groupId: id, rules: null, announcementsOnly: false, allowPolls: true, allowMedia: true, maxMembers: 1024 });
+});
+
+// PATCH /study-groups/:id/settings
+router.patch("/study-groups/:id/settings", requireAuth, async (req, res): Promise<void> => {
+  const id = Number(req.params.id), user = req.currentUser!;
+  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid group id" }); return; }
+  const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, id));
+  if (!group) { res.status(404).json({ error: "Study group not found" }); return; }
+  if (!(await canManageGroupSettings(user, id, group))) { res.status(403).json({ error: "Group settings access required" }); return; }
+  const values = {
+    rules: typeof req.body?.rules === "string" ? req.body.rules.trim().slice(0, 4000) : req.body?.rules === null ? null : undefined,
+    announcementsOnly: typeof req.body?.announcementsOnly === "boolean" ? req.body.announcementsOnly : undefined,
+    allowPolls: typeof req.body?.allowPolls === "boolean" ? req.body.allowPolls : undefined,
+    allowMedia: typeof req.body?.allowMedia === "boolean" ? req.body.allowMedia : undefined,
+    maxMembers: Number.isInteger(req.body?.maxMembers) ? Math.max(2, Math.min(1024, req.body.maxMembers)) : undefined,
+    updatedBy: user.id,
+  };
+  const [existing] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, id));
+  const [settings] = existing
+    ? await db.update(groupSettingsTable).set(values).where(eq(groupSettingsTable.groupId, id)).returning()
+    : await db.insert(groupSettingsTable).values({ groupId: id, ...values } as any).returning();
+  res.json(settings);
+});
+
+// POST /study-groups/:id/members/:userId/control
+router.post("/study-groups/:id/members/:userId/control", requireAuth, async (req, res): Promise<void> => {
+  const groupId = Number(req.params.id), userId = Number(req.params.userId), user = req.currentUser!;
+  const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
+  if (!group || !(await canManageGroupSettings(user, groupId, group))) { res.status(403).json({ error: "Group management access required" }); return; }
+  const [member] = await db.select().from(studyGroupMembersTable).where(and(eq(studyGroupMembersTable.groupId, groupId), eq(studyGroupMembersTable.userId, userId)));
+  if (!member) { res.status(404).json({ error: "User is not a group member" }); return; }
+  const allowed = ["blocked","mediaBlocked","suspended","muted","canManageSettings"];
+  const patch: any = { updatedBy: user.id };
+  for (const key of allowed) if (typeof req.body?.[key] === "boolean") patch[key] = req.body[key];
+  const [existing] = await db.select().from(groupMemberControlsTable).where(and(eq(groupMemberControlsTable.groupId, groupId), eq(groupMemberControlsTable.userId, userId)));
+  const [control] = existing
+    ? await db.update(groupMemberControlsTable).set(patch).where(eq(groupMemberControlsTable.id, existing.id)).returning()
+    : await db.insert(groupMemberControlsTable).values({ groupId, userId, ...patch }).returning();
+  res.json(control);
+});
+
+// GET /study-groups/:id/members — members plus effective moderation controls
+router.get("/study-groups/:id/members", requireAuth, async (req, res): Promise<void> => {
+  const groupId = Number(req.params.id);
+  if (!Number.isInteger(groupId) || groupId <= 0) { res.status(400).json({ error: "Invalid group id" }); return; }
+  const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
+  if (!group) { res.status(404).json({ error: "Study group not found" }); return; }
+  if (!(await canViewGroup(req.currentUser!,group)) || !(await isGroupMember(groupId, req.currentUser!.id) || await canManageGroup(req.currentUser!, group))) {
+    res.status(403).json({ error: "You must be a group member to view members" });
+    return;
+  }
+  const members = hideOwnerMembers(req.currentUser!,await getGroupMembers(groupId));
+  const controls = await db.select().from(groupMemberControlsTable).where(eq(groupMemberControlsTable.groupId, groupId));
+  const controlsByUser = new Map(controls.map(control => [control.userId, control]));
+  res.json(members.map(member => ({ ...member, control: controlsByUser.get(member.id) ?? null })));
+});
+
+// DELETE /study-groups/:id/members/:userId
+router.delete("/study-groups/:id/members/:userId", requireAuth, async (req, res): Promise<void> => {
+  const groupId = Number(req.params.id), userId = Number(req.params.userId), user = req.currentUser!;
+  const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
+  if (!group || !(await canManageGroupSettings(user, groupId, group))) { res.status(403).json({ error: "Group management access required" }); return; }
+  if (userId === group.creatorId) { res.status(400).json({ error: "The group owner cannot be removed" }); return; }
+  await db.delete(studyGroupMembersTable).where(and(eq(studyGroupMembersTable.groupId, groupId), eq(studyGroupMembersTable.userId, userId)));
+  res.sendStatus(204);
+});
+
+// DELETE /study-groups/:id — creator/owner or scoped manager with the existing groups.manage permission
+router.delete("/study-groups/:id", requireAuth, async (req, res): Promise<void> => {
+  const groupId = Number(req.params.id);
+  if (!Number.isInteger(groupId) || groupId <= 0) { res.status(400).json({ error: "Invalid group id" }); return; }
+  const actor=req.currentUser!;
+  const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
+  if (!group) { res.status(404).json({ error: "Study group not found" }); return; }
+  if (!(await canManageGroup(actor, group))) { res.status(403).json({ error: "Only the group creator/owner or a manager with the existing groups.manage permission and authority over the creator can permanently delete this group." }); return; }
+
+  const client = await pool.connect();
+  let mediaKeys: string[] = [];
+  try {
+    await client.query("BEGIN");
+    const found = await client.query("SELECT id, name, cover_image_url FROM study_groups WHERE id=$1 FOR UPDATE", [groupId]);
+    if (!found.rows[0]) { await client.query("ROLLBACK"); res.status(404).json({ error: "Study group not found" }); return; }
+    const media = await client.query("SELECT media_url FROM messages WHERE group_id=$1 AND media_url IS NOT NULL", [groupId]);
+    mediaKeys = media.rows.map((row:any) => String(row.media_url || "").match(/\/api\/messages\/media\/([a-f0-9-]{36})/i)?.[1]).filter((key:unknown): key is string => typeof key === "string");
+    const coverKey = String(found.rows[0].cover_image_url || "").match(/\/api\/lessons\/media\/([a-f0-9-]{36})/i)?.[1];
+    if (coverKey) mediaKeys.push(coverKey);
+    await client.query("DELETE FROM chat_poll_votes USING chat_polls WHERE chat_poll_votes.poll_id=chat_polls.id AND chat_polls.group_id=$1", [groupId]);    await client.query("DELETE FROM chat_poll_options USING chat_polls WHERE chat_poll_options.poll_id=chat_polls.id AND chat_polls.group_id=$1", [groupId]);
+    await client.query("DELETE FROM chat_polls WHERE group_id=$1", [groupId]);
+    await client.query("DELETE FROM chat_community_groups WHERE group_id=$1", [groupId]);
+    await client.query("DELETE FROM group_member_controls WHERE group_id=$1", [groupId]);
+    await client.query("DELETE FROM group_settings WHERE group_id=$1", [groupId]);
+    await client.query("DELETE FROM messages WHERE group_id=$1", [groupId]);
+    await client.query("DELETE FROM study_group_members WHERE group_id=$1", [groupId]);
+    const removedGroup = await client.query("DELETE FROM study_groups WHERE id=$1 RETURNING id", [groupId]);
+    if (!removedGroup.rowCount) throw new Error("Study group row was not deleted.");
+    await client.query("COMMIT");
+    const cleanupFailures: string[] = [];
+    for (const key of [...new Set(mediaKeys)]) {
+      try { await removeStoredMedia(key); }
+      catch (error) { cleanupFailures.push(error instanceof Error ? error.message : "Unknown media cleanup error"); }
+    }
+    res.status(200).json({ ok: true, deleted: true, deletedGroupId: groupId, deletedGroupName: found.rows[0].name, mediaCleanupPending: cleanupFailures.length > 0, mediaCleanupFailedCount: cleanupFailures.length, mediaCleanupErrors: cleanupFailures });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    res.status(500).json({ error: error instanceof Error ? error.message : "Study group deletion failed; no group deletion was committed." });
+  } finally {
+    client.release();
+  }
+});
+
+// DELETE /study-groups/:id/messages
+router.delete("/study-groups/:id/messages", requireAuth, async (req, res): Promise<void> => {
+  const groupId = Number(req.params.id), user = req.currentUser!;
+  const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
+  if (!group || !(await canManageGroup(user, group))) { res.status(403).json({ error: "Only the group creator/owner, platform owner, or a scoped manager with groups.manage can clear group messages." }); return; }
+  const groupMessages = await db.select({ id: messagesTable.id, mediaUrl: messagesTable.mediaUrl }).from(messagesTable).where(eq(messagesTable.groupId, groupId));
+  await db.transaction(async (tx) => {
+    const removed = await tx.delete(messagesTable).where(eq(messagesTable.groupId, groupId)).returning({ id: messagesTable.id });
+    if (removed.length !== groupMessages.length) throw new Error("Not all group messages were deleted; the clear-chat operation was rolled back.");
+  });
+  const cleanupFailures: string[] = [];
+  for (const message of groupMessages) {
+    const key = typeof message.mediaUrl === "string" ? message.mediaUrl.match(/\/api\/messages\/media\/([a-f0-9-]{36})/i)?.[1] : null;
+    if (key) { try { await removeStoredMedia(key); } catch (error) { cleanupFailures.push(error instanceof Error ? error.message : "Unknown media cleanup error"); } }
+  }
+  res.status(200).json({ ok: true, deleted: true, deletedMessageCount: groupMessages.length, mediaCleanupPending: cleanupFailures.length > 0, mediaCleanupFailedCount: cleanupFailures.length, mediaCleanupErrors: cleanupFailures });
+});

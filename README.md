@@ -1,0 +1,61 @@
+# DALLYLETTER ELIDEMS
+
+## Project overview
+
+This repository contains a multi-part education platform with:
+
+- a React/Vite web app in artifacts/dallyletter
+- an Express API in artifacts/api-server
+- a React Native/Expo app in artifacts/dallyletter-mobile
+- shared libraries in lib/
+
+## Current stack
+
+- Frontend: React + Vite + TypeScript
+- Backend: Express + TypeScript
+- Database: PostgreSQL via Drizzle ORM
+- Auth: token-based session handling with role-based access
+
+## Local setup
+
+1. Install dependencies:
+   ```bash
+   pnpm install
+   cp .env.example .env
+   ```
+2. Start PostgreSQL and set DATABASE_URL in .env.
+3. Start the app:
+   ```bash
+   pnpm dev
+   ```
+4. Open the web app at http://localhost:3000 and the API at http://localhost:4000.
+
+## Production build
+
+```bash
+pnpm build
+```
+
+## Deployment architecture
+
+- Frontend: deploy only artifacts/dallyletter to Vercel
+- Backend: deploy only artifacts/api-server to Render
+- Database: use managed PostgreSQL and connect via DATABASE_URL
+- Mobile: build artifacts/dallyletter-mobile separately with Expo/EAS
+
+## Service documentation
+
+- Frontend: README-frontend.md
+- Backend: README-backend.md
+- Database: README-database.md
+- Mobile: README-mobile.md
+
+## Notes
+
+- The project has been updated to remove most Replit-specific startup requirements.
+- The API and web app are now runnable outside Replit with local environment variables.
+- The mobile Expo package can also build locally and does not require Replit-only deployment variables.
+
+## GitHub Actions setup
+
+See [Dallyletter GitHub Actions Setup](docs/GITHUB-ACTIONS-SETUP.md) for the secure Google Search Console configuration, showcase-account secret copy sheets, direct workflow links, and troubleshooting instructions. See [PR #101's release checklist](docs/PR-101-RELEASE-CHECKLIST.md) for acceptance criteria, outstanding account setup, and deployment blockers. Use [PR #101's manual test plan](docs/PR-101-MANUAL-TEST-PLAN.md) for the post-deployment checks.

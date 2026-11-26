@@ -1,0 +1,1 @@
+- [Phase 3 upgrade patterns](phase3-upgrade.md) — backend routes need `Promise<void>` + `String(req.params.id)` pattern; frontend useEffect avoid async directly, use `void promise.then()` pattern instead.

@@ -1,0 +1,213 @@
+name: Isolated Android Emulator Boot Debug
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_level:
+        description: Android API level to boot
+        required: true
+        default: "34"
+        type: choice
+        options:
+          - "34"
+          - "35"
+  pull_request:
+    paths:
+      - ".github/workflows/android-emulator-debug.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-emulator-debug-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  emulator-boot:
+    name: Boot Android only (no app build)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      API_LEVEL: ${{ inputs.api_level || '34' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools"
+
+      - name: Install Android SDK emulator and image
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          touch /tmp/dallyletter-emulator.log /tmp/qemu-ldd.log /tmp/accel-check.log
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            "platform-tools" \
+            "emulator" \
+            "platforms;android-${API_LEVEL}" \
+            "system-images;android-${API_LEVEL};google_apis;x86_64"
+
+          emulator_root="$ANDROID_HOME/emulator"
+          test -x "$emulator_root/emulator" || { echo "::error::SDK emulator executable is missing"; exit 1; }
+          echo "$emulator_root" >> "$GITHUB_PATH"
+          library_dirs=(
+            "$emulator_root/lib64"
+            "$emulator_root/lib64/qt/lib"
+            "$emulator_root/lib64/gles_swiftshader"
+            "$emulator_root/qemu/linux-x86_64"
+            "$emulator_root/qemu/linux-x86_64/lib64"
+          )
+          sdk_library_path="$(IFS=:; echo "${library_dirs[*]}")"
+          echo "LD_LIBRARY_PATH=$sdk_library_path:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+          export LD_LIBRARY_PATH="$sdk_library_path:${LD_LIBRARY_PATH:-}"
+
+          sudo apt-get update
+          sudo apt-get install --yes libpulse0
+          "$emulator_root/emulator" -version
+          ldd "$emulator_root/qemu/linux-x86_64/qemu-system-x86_64" | tee /tmp/qemu-ldd.log
+          if grep -q "not found" /tmp/qemu-ldd.log; then
+            echo "::error::Android emulator QEMU has unresolved shared libraries."
+            exit 1
+          fi
+
+          echo "::group::Emulator acceleration diagnostics"
+          ls -l /dev/kvm || true
+          "$emulator_root/emulator" -accel-check 2>&1 | tee /tmp/accel-check.log || true
+          echo "::endgroup::"
+          # GitHub-hosted runners do not consistently expose KVM. Missing KVM is
+          # not a reason to skip the boot test: use QEMU TCG software emulation.
+          if [ -e /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ] && grep -qi "usable" /tmp/accel-check.log; then
+            accel_mode=on
+            echo "Hardware virtualization available; using KVM."
+          else
+            accel_mode=off
+            echo "::warning::KVM is unavailable; falling back to slower QEMU software emulation."
+          fi
+          echo "EMULATOR_ACCEL_MODE=$accel_mode" >> "$GITHUB_ENV"
+
+      - name: Create a clean isolated AVD
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export ANDROID_SDK_HOME="$HOME"
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo "ANDROID_SDK_HOME=$ANDROID_SDK_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
+          echo "no" | avdmanager create avd --force \
+            --name DallyletterBootDebug \
+            --package "system-images;android-${API_LEVEL};google_apis;x86_64" \
+            --device "pixel_2"
+          test -f "$ANDROID_AVD_HOME/DallyletterBootDebug.ini"
+          "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fx DallyletterBootDebug
+
+      - name: Boot emulator and prove Android readiness
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          emulator_bin="$ANDROID_HOME/emulator/emulator"
+          "$emulator_bin" -avd DallyletterBootDebug \
+            -no-window -gpu swiftshader_indirect -no-snapshot -noaudio \
+            -no-boot-anim -camera-back none -camera-front none \
+            -cores 2 -memory 3072 "-accel" "$EMULATOR_ACCEL_MODE" \
+            > /tmp/dallyletter-emulator.log 2>&1 &
+          emulator_pid=$!
+
+          diagnostics() {
+            status=$?
+            if [ "$status" -ne 0 ]; then
+              echo "::group::Failure diagnostics"
+              echo "acceleration mode: $EMULATOR_ACCEL_MODE"
+              ps -p "$emulator_pid" -o pid,stat,etime,args || true
+              timeout 15 adb devices -l || true
+              timeout 15 adb shell getprop sys.boot_completed || true
+              timeout 15 adb shell getprop init.svc.bootanim || true
+              timeout 15 adb shell getprop ro.build.version.sdk || true
+              tail -n 300 /tmp/dallyletter-emulator.log || true
+              cat /tmp/accel-check.log || true
+              ls -l /dev/kvm || true
+              echo "::endgroup::"
+            fi
+            kill "$emulator_pid" 2>/dev/null || true
+            wait "$emulator_pid" 2>/dev/null || true
+            exit "$status"
+          }
+          trap diagnostics EXIT
+
+          adb start-server
+          transport_deadline=$((SECONDS + 600))
+          transport_ready=0
+          while [ "$SECONDS" -lt "$transport_deadline" ]; do
+            state="$(timeout 8 adb get-state 2>/dev/null || true)"
+            if [ "$state" = "device" ]; then
+              transport_ready=1
+              break
+            fi
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then
+              echo "::error::Emulator process exited before ADB transport became ready"
+              exit 1
+            fi
+            echo "Waiting for ADB transport (state=${state:-unavailable}; acceleration=$EMULATOR_ACCEL_MODE)"
+            sleep 5
+          done
+          if [ "$transport_ready" -ne 1 ]; then
+            echo "::error::ADB transport timed out after 600 seconds"
+            exit 1
+          fi
+
+          boot_deadline=$((SECONDS + 1500))
+          boot_ready=0
+          while [ "$SECONDS" -lt "$boot_deadline" ]; do
+            boot="$(timeout 10 adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+            if [ "$boot" = "1" ]; then
+              boot_ready=1
+              break
+            fi
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then
+              echo "::error::Emulator process exited before Android completed boot"
+              exit 1
+            fi
+            echo "Waiting for Android boot: sys.boot_completed=${boot:-blank}"
+            sleep 5
+          done
+          if [ "$boot_ready" -ne 1 ]; then
+            echo "::error::Android did not report sys.boot_completed=1 within 1500 seconds"
+            exit 1
+          fi
+
+          package_deadline=$((SECONDS + 240))
+          package_ready=0
+          while [ "$SECONDS" -lt "$package_deadline" ]; do
+            if timeout 12 adb shell cmd package list packages >/dev/null 2>&1; then
+              package_ready=1
+              break
+            fi
+            echo "Package manager not ready yet"
+            sleep 5
+          done
+          if [ "$package_ready" -ne 1 ]; then
+            echo "::error::Android booted but package manager never became responsive"
+            exit 1
+          fi
+
+          echo "Android release: $(adb shell getprop ro.build.version.release | tr -d '\r')"
+          echo "Android API: $(adb shell getprop ro.build.version.sdk | tr -d '\r')"
+          echo "Boot completed: $(adb shell getprop sys.boot_completed | tr -d '\r')"
+          echo "Acceleration mode: $EMULATOR_ACCEL_MODE"
+          echo "PASS: isolated emulator boot and package-manager readiness verified. No application build or app-code changes were performed."
+          trap - EXIT
+          kill "$emulator_pid" 2>/dev/null || true
+          wait "$emulator_pid" 2>/dev/null || true
+
+      - name: Preserve emulator diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-emulator-boot-debug-logs
+          path: |
+            /tmp/dallyletter-emulator.log
+            /tmp/qemu-ldd.log
+            /tmp/accel-check.log
+          if-no-files-found: ignore
+          retention-days: 14

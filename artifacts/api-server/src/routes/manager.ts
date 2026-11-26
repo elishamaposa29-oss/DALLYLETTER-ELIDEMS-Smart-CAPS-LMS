@@ -1,0 +1,379 @@
+import { Router } from "express";
+import { db, pool } from "@workspace/db";
+import { usersTable, classesTable, lessonsTable, paymentsTable, ownerAlertsTable, assignmentsTable, assignmentSubmissionsTable, pollsTable, exercisesTable, auditLogsTable, attendanceTable, userAchievementsTable, achievementsTable, exerciseSubmissionsTable, pollSubmissionsTable, contentFlagsTable } from "@workspace/db/schema";
+import { eq, desc, and, inArray } from "drizzle-orm";
+import { requireAuth, isOwnerRole } from "../lib/auth-middleware";
+import { canModerateUser } from "../lib/role-access";
+import { requireManagerPermission, managerHasPermission } from "../lib/manager-permission-policy";
+
+const router = Router();
+const managerVisibleAlertCategories = ["academic", "attendance", "content", "student", "teacher", "moderation", "general"];
+function permissionForManagerAlert(_alert: any): string { return "notifications.view"; }
+async function visibleManagerAlerts(user: NonNullable<Express.Request["currentUser"]>, rows: any[]) {
+  if (isOwnerRole(user.role)) return rows;
+  const relatedIds=[...new Set(rows.flatMap((row:any)=>[Number(row.reportedBy||0),row.targetType==="user"?Number(row.targetId||0):0]).filter((id:number)=>Number.isSafeInteger(id)&&id>0))];
+  const related=relatedIds.length?await db.select({id:usersTable.id,role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(inArray(usersTable.id,relatedIds)):[];
+  const byId=new Map(related.map((row:any)=>[row.id,row]));
+  const candidates = rows.filter((row: any) => {
+    if(row.reporterRole==="owner"||row.reporterRole==="platform_owner"||row.targetType==="owner")return false;
+    const reporter=byId.get(Number(row.reportedBy));
+    if(reporter && reporter.id!==user.id && !canModerateUser(user,reporter))return false;
+    if(row.targetType==="user"){
+      const target=byId.get(Number(row.targetId));
+      if(!target || !canModerateUser(user,target))return false;
+    }
+    return true;
+  });
+  const allowed = await Promise.all(candidates.map(async (row: any) =>
+    (await managerHasPermission(user, permissionForManagerAlert(row))) ? row : null,
+  ));
+  return allowed.filter(Boolean);
+}
+
+
+router.get("/dashboard", requireAuth, requireManagerPermission("manager.dashboard.view"), async (req, res) => {
+  const [teachers, students, classes, lessons, alerts, assignments, exercises, exerciseSubmissions, assignmentSubmissions, allClasses, learnerAwards] = await Promise.all([
+    db.select({ id: usersTable.id, name: usersTable.name, subject: usersTable.subject, performanceScore: usersTable.performanceScore, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel, isBlocked: usersTable.isBlocked, isSuspended: usersTable.isSuspended })
+      .from(usersTable).where(eq(usersTable.role, "teacher")),
+    db.select({ id: usersTable.id, name: usersTable.name, grade: usersTable.grade, performanceScore: usersTable.performanceScore, badgeCount: usersTable.badgeCount })
+      .from(usersTable).where(eq(usersTable.role, "student")),
+    db.select().from(classesTable).orderBy(desc(classesTable.createdAt)),
+    db.select().from(lessonsTable),
+    isOwnerRole(req.currentUser!.role) ? db.select().from(ownerAlertsTable).where(eq(ownerAlertsTable.status, "open")).orderBy(desc(ownerAlertsTable.createdAt)).limit(100) : db.select().from(ownerAlertsTable).where(and(eq(ownerAlertsTable.status, "open"), inArray(ownerAlertsTable.category, managerVisibleAlertCategories))).orderBy(desc(ownerAlertsTable.createdAt)).limit(100),
+    db.select().from(assignmentsTable),
+    db.select().from(exercisesTable),
+    db.select().from(exerciseSubmissionsTable),
+    db.select().from(assignmentSubmissionsTable),
+    db.select().from(classesTable),
+    db.select({ userId: userAchievementsTable.userId }).from(userAchievementsTable),
+  ]);
+
+  const actor=req.currentUser!;
+  const ownerViewer=isOwnerRole(actor.role);
+  const scopeUsers=await db.select({id:usersTable.id,role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable);
+  const userById=new Map(scopeUsers.map((u:any)=>[u.id,u]));
+  const canSeeUser=(id:number)=>ownerViewer || actor.id===id || Boolean(userById.get(id) && canModerateUser(actor,userById.get(id)));
+  const ownerIds = ownerViewer ? new Set<number>() : new Set<number>((await pool.query("SELECT id FROM users WHERE lower(role) IN ('owner','platform_owner')")).rows.map((row: any) => Number(row.id)));
+  const visibleClasses = classes.filter((row: any) => !ownerIds.has(Number(row.teacherId)) && canSeeUser(Number(row.teacherId)));
+  const visibleAllClasses = allClasses.filter((row: any) => !ownerIds.has(Number(row.teacherId)) && canSeeUser(Number(row.teacherId)));
+  const visibleLessons = lessons.filter((row: any) => !ownerIds.has(Number(row.teacherId)) && canSeeUser(Number(row.teacherId)));
+  const visibleAssignments = assignments.filter((row: any) => !ownerIds.has(Number(row.teacherId)) && canSeeUser(Number(row.teacherId)));
+  const visibleExercises = exercises.filter((row: any) => !ownerIds.has(Number(row.createdBy)) && canSeeUser(Number(row.createdBy)));
+  const visibleTeachers=teachers.filter((row:any)=>canSeeUser(Number(row.id)));
+  const visibleStudents=students.filter((row:any)=>canSeeUser(Number(row.id)));
+  const visibleAlerts = await visibleManagerAlerts(req.currentUser!, alerts);
+  const [canViewQualifications, canViewTeacherCv] = await Promise.all([
+    managerHasPermission(actor, "qualifications.view"),
+    managerHasPermission(actor, "teacher_cv.view"),
+  ]);
+
+  // Rank from observed work, marking, and learner engagement rather than the manually editable score.
+  const [transferRows, reportRows, awardRows, qualificationRows, enrollmentRows, contentFlags, teacherApplications] = await Promise.all([
+    pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,r.reason,r.status,r.created_at FROM academic_transfer_requests r JOIN users u ON u.id=r.learner_id WHERE r.status='pending' AND ($1::boolean OR lower(u.role) NOT IN ('owner','platform_owner')) ORDER BY r.created_at ASC LIMIT 100", [isOwnerRole(req.currentUser!.role)]),
+    pool.query("SELECT d.id,d.learner_id,u.name AS learner_name,d.report_type,d.term_label,d.status,d.created_at FROM academic_report_drafts d JOIN users u ON u.id=d.learner_id WHERE d.status='pending_review' AND ($1::boolean OR lower(u.role) NOT IN ('owner','platform_owner')) ORDER BY d.created_at ASC LIMIT 100", [isOwnerRole(req.currentUser!.role)]),
+    pool.query("SELECT r.id,r.learner_id,u.name AS learner_name,a.name AS achievement_name,a.icon AS achievement_icon,r.recommendation_note,r.created_at FROM achievement_award_recommendations r JOIN users u ON u.id=r.learner_id JOIN achievements a ON a.id=r.achievement_id WHERE r.status='pending_senior_review' AND ($1::boolean OR lower(u.role) NOT IN ('owner','platform_owner')) ORDER BY r.created_at ASC LIMIT 100", [isOwnerRole(req.currentUser!.role)]),
+    canViewQualifications
+      ? pool.query("SELECT q.id,q.user_id,u.name AS teacher_name,q.title,q.institution,q.created_at FROM teacher_qualifications q JOIN users u ON u.id=q.user_id WHERE q.verification_status='pending' AND ($1::boolean OR lower(u.role) NOT IN ('owner','platform_owner')) ORDER BY q.created_at ASC LIMIT 100", [isOwnerRole(req.currentUser!.role)])
+      : Promise.resolve({ rows: [] as any[] }),
+    pool.query("SELECT c.teacher_id, COUNT(DISTINCT e.learner_id)::int AS learners_joined FROM classes c LEFT JOIN enrollments e ON e.class_id=c.id GROUP BY c.teacher_id"),
+    db.select().from(contentFlagsTable).where(eq(contentFlagsTable.status, "pending")).orderBy(desc(contentFlagsTable.createdAt)).limit(100),
+    canViewTeacherCv ? pool.query("SELECT u.id,u.name,u.email,u.created_at,u.teacher_review_deadline,(SELECT count(*)::int FROM teacher_documents d WHERE d.user_id=u.id) AS document_count,(u.teacher_application_status='pending_review') AS has_cv_submission,tp.cv->>'surveySubmittedAt' AS survey_submitted_at,COALESCE(tp.cv->>'surveyReviewStatus','not_submitted') AS survey_review_status FROM users u LEFT JOIN teacher_profiles tp ON tp.user_id=u.id WHERE lower(u.role)='teacher' AND (u.teacher_application_status='pending_review' OR (tp.cv->>'surveySubmittedAt' IS NOT NULL AND COALESCE(tp.cv->>'surveyReviewStatus','pending')='pending')) ORDER BY u.created_at ASC LIMIT 100") : Promise.resolve({ rows: [] as any[] }),
+  ]);
+  const visibleTransferRows=transferRows.rows.filter((row:any)=>canSeeUser(Number(row.learner_id)));
+  const visibleReportRows=reportRows.rows.filter((row:any)=>canSeeUser(Number(row.learner_id)));
+  const visibleAwardRows=awardRows.rows.filter((row:any)=>canSeeUser(Number(row.learner_id)));
+  const visibleQualificationRows=qualificationRows.rows.filter((row:any)=>canSeeUser(Number(row.user_id)));
+  const visibleTeacherApplications=teacherApplications.rows.filter((row:any)=>canSeeUser(Number(row.id)));
+  const ownerContentIds: Record<string, Set<number>> = {
+    user: ownerIds,
+    profile: ownerIds,
+    account: ownerIds,
+    lesson: new Set(lessons.filter((row: any) => ownerIds.has(Number(row.teacherId))).map((row: any) => Number(row.id))),
+    class: new Set(classes.filter((row: any) => ownerIds.has(Number(row.teacherId))).map((row: any) => Number(row.id))),
+    assignment: new Set(assignments.filter((row: any) => ownerIds.has(Number(row.teacherId))).map((row: any) => Number(row.id))),
+    exercise: new Set(exercises.filter((row: any) => ownerIds.has(Number(row.createdBy))).map((row: any) => Number(row.id))),
+  };
+  const flaggedMessageIds=contentFlags.filter((row:any)=>String(row.contentType).toLowerCase()==="message").map((row:any)=>Number(row.contentId)).filter((id:number)=>Number.isSafeInteger(id)&&id>0);
+  const flaggedCommentIds=contentFlags.filter((row:any)=>String(row.contentType).toLowerCase()==="comment").map((row:any)=>Number(row.contentId)).filter((id:number)=>Number.isSafeInteger(id)&&id>0);
+  const flaggedPollIds=contentFlags.filter((row:any)=>String(row.contentType).toLowerCase()==="poll").map((row:any)=>Number(row.contentId)).filter((id:number)=>Number.isSafeInteger(id)&&id>0);
+  const [flaggedMessages,flaggedComments,flaggedPolls]=await Promise.all([
+    flaggedMessageIds.length?pool.query("SELECT id,sender_id,recipient_id FROM messages WHERE id=ANY($1::int[])",[flaggedMessageIds]):Promise.resolve({rows:[] as any[]}),
+    flaggedCommentIds.length?pool.query("SELECT id,author_id FROM content_comments WHERE id=ANY($1::int[])",[flaggedCommentIds]):Promise.resolve({rows:[] as any[]}),
+    flaggedPollIds.length?pool.query("SELECT id,created_by FROM polls WHERE id=ANY($1::int[])",[flaggedPollIds]):Promise.resolve({rows:[] as any[]}),
+  ]);
+  const visibleMessageIds=new Set(flaggedMessages.rows.filter((row:any)=>canSeeUser(Number(row.sender_id))&&(row.recipient_id==null||canSeeUser(Number(row.recipient_id)))).map((row:any)=>Number(row.id)));
+  const visibleCommentIds=new Set(flaggedComments.rows.filter((row:any)=>canSeeUser(Number(row.author_id))).map((row:any)=>Number(row.id)));
+  const visiblePollIds=new Set(flaggedPolls.rows.filter((row:any)=>canSeeUser(Number(row.created_by))).map((row:any)=>Number(row.id)));
+  const visibleContentIds:Record<string,Set<number>>={
+    lesson:new Set(visibleLessons.map((row:any)=>Number(row.id))),
+    class:new Set(visibleClasses.map((row:any)=>Number(row.id))),
+    assignment:new Set(visibleAssignments.map((row:any)=>Number(row.id))),
+    exercise:new Set(visibleExercises.map((row:any)=>Number(row.id))),
+    message:visibleMessageIds,
+    comment:visibleCommentIds,
+    poll:visiblePollIds,
+  };
+  const visibleContentFlags = contentFlags.filter((row: any) => {
+    const type=String(row.contentType).toLowerCase(),id=Number(row.contentId);
+    if(ownerContentIds[type]?.has(id))return false;
+    if(ownerViewer)return true;
+    return Boolean(visibleContentIds[type]?.has(id));
+  });
+
+  const activeTeachers = visibleTeachers.filter((t: any) => !t.isManager && !t.isBlocked && !t.isSuspended);
+  const teacherRanks = activeTeachers.map((teacher: any) => {
+    const teacherLessons = visibleLessons.filter((x: any) => x.teacherId === teacher.id);
+    const teacherAssignments = visibleAssignments.filter((x: any) => x.teacherId === teacher.id);
+    const teacherExercises = visibleExercises.filter((x: any) => x.createdBy === teacher.id);
+    const assignmentIds = new Set(teacherAssignments.map((x: any) => x.id));
+    const exerciseIds = new Set(teacherExercises.map((x: any) => x.id));
+    const markedAssignments = assignmentSubmissions.filter((s: any) => assignmentIds.has(s.assignmentId) && (s.gradedAt || s.gradedBy || s.marks !== null)).length;
+    const markedExercises = exerciseSubmissions.filter((s: any) => exerciseIds.has(s.exerciseId) && (s.markedAt || s.returnedAt || ["marked","returned","graded"].includes(String(s.status).toLowerCase()))).length;
+    const learnersJoined = Number(enrollmentRows.rows.find((r: any) => Number(r.teacher_id) === teacher.id)?.learners_joined || 0);
+    const learnerSubmissions = assignmentSubmissions.filter((s: any) => assignmentIds.has(s.assignmentId)).length
+      + exerciseSubmissions.filter((s: any) => exerciseIds.has(s.exerciseId)).length;
+    const score = teacherLessons.length + teacherExercises.length * 2 + teacherAssignments.length * 2
+      + (markedAssignments + markedExercises) * 3 + learnersJoined * 2 + learnerSubmissions;
+    return { ...teacher, lessonsCount: teacherLessons.length, exercisesCount: teacherExercises.length,
+      assignmentsCount: teacherAssignments.length, markedCount: markedAssignments + markedExercises,
+      learnersJoined, learnerSubmissions, activityScore: score };
+  }).sort((a: any, b: any) => b.activityScore - a.activityScore || b.learnersJoined - a.learnersJoined || a.name.localeCompare(b.name)).slice(0, 5);
+
+  const reviewQueue = [
+    ...visibleTransferRows.map((r: any) => ({ id: "transfer-" + r.id, type: "transfer_request", title: "Transfer letter approval", description: r.reason, targetId: Number(r.id), learnerId: Number(r.learner_id), learnerName: r.learner_name, status: "pending", createdAt: r.created_at, href: "/manager/transfer-requests" })),
+    ...visibleReportRows.map((r: any) => ({ id: "report-" + r.id, type: "academic_report", title: "Performance report review", description: r.report_type + " · " + r.term_label, targetId: Number(r.id), learnerId: Number(r.learner_id), learnerName: r.learner_name, status: "pending_review", createdAt: r.created_at, href: "/manager/reports/review" })),
+    ...visibleAwardRows.map((r: any) => ({ id: "award-" + r.id, type: "achievement_award", title: "Achievement award recommendation", description: (r.achievement_icon || "🏆") + " " + r.achievement_name + (r.recommendation_note ? " · " + r.recommendation_note : ""), targetId: Number(r.id), learnerId: Number(r.learner_id), learnerName: r.learner_name, status: "pending_senior_review", createdAt: r.created_at, href: "/admin/achievements" })),
+    ...visibleQualificationRows.map((r: any) => ({ id: "qualification-" + r.id, type: "qualification_verification", title: "Teacher qualification verification", description: r.title + (r.institution ? " · " + r.institution : ""), targetId: Number(r.id), learnerName: r.teacher_name, status: "pending", createdAt: r.created_at, href: "/manager/qualifications" })),
+    ...visibleContentFlags.map((r: any) => ({ id: "content-flag-" + r.id, type: "content_moderation", title: "Content moderation review", description: r.reason, targetId: r.id, learnerName: r.contentType + " #" + r.contentId, status: r.status, severity: r.severity, createdAt: r.createdAt, href: "/manager/safety" })),
+    ...visibleTeacherApplications.map((r: any) => ({ id: "teacher-application-" + r.id, type: "teacher_application", title: r.has_cv_submission ? "Teacher CV application review" : "Teacher readiness survey review", description: (r.email || "Teacher applicant") + " · " + Number(r.document_count || 0) + " supporting files" + (r.survey_submitted_at ? " · readiness survey submitted" : ""), targetId: Number(r.id), learnerName: r.name, status: r.status || "pending_review", documentCount: Number(r.document_count || 0), hasCvSubmission: Boolean(r.has_cv_submission), surveySubmittedAt: r.survey_submitted_at, surveyReviewStatus: r.survey_review_status, createdAt: r.created_at, href: "/manager/teacher-cv-workspace?teacherId=" + Number(r.id) })),
+    ...visibleAlerts.map((a: any) => ({ id: "alert-" + a.id, type: "alert", title: a.title, description: a.description, targetId: a.id, learnerName: a.reporterName, status: a.status, severity: a.severity, createdAt: a.createdAt, href: "/manager/notifications" })),
+  ].sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+  const visibleAssignmentIds = new Set(visibleAssignments.map((row: any) => row.id));
+  const visibleExerciseIds = new Set(visibleExercises.map((row: any) => row.id));
+  const totalMarkedAssignments = assignmentSubmissions.filter((s: any) => visibleAssignmentIds.has(s.assignmentId) && (s.gradedAt || s.gradedBy || s.marks !== null)).length;
+  const totalMarkedExercises = exerciseSubmissions.filter((s: any) => visibleExerciseIds.has(s.exerciseId) && (s.markedAt || s.returnedAt || ["marked","returned","graded"].includes(String(s.status).toLowerCase()))).length;
+  const [canViewUsers, canViewRecordBook, canViewTransfers, canViewReports, canViewAchievements, canViewModeration, canViewNotifications] = await Promise.all([
+    managerHasPermission(req.currentUser!, "users.view"),
+    managerHasPermission(req.currentUser!, "recordbook.view"),
+    managerHasPermission(req.currentUser!, "transfers.view"),
+    managerHasPermission(req.currentUser!, "reports.view"),
+    managerHasPermission(req.currentUser!, "achievements.view"),
+    managerHasPermission(req.currentUser!, "moderation.view"),
+    managerHasPermission(req.currentUser!, "notifications.view"),
+  ]);
+  const permittedQueue = reviewQueue.filter((item: any) => {
+    const access: Record<string, boolean> = {
+      transfer_request: canViewTransfers, academic_report: canViewReports, achievement_award: canViewAchievements,
+      qualification_verification: canViewQualifications, content_moderation: canViewModeration,
+      teacher_application: canViewTeacherCv, alert: canViewNotifications,
+    };
+    return access[item.type] === true;
+  });
+  res.json({
+    stats: { teachers: canViewUsers ? activeTeachers.length : null, students: canViewUsers ? visibleStudents.length : null, classes: canViewRecordBook ? visibleAllClasses.length : null, lessons: canViewRecordBook ? visibleLessons.length : null },
+    recentClasses: canViewRecordBook ? visibleClasses.slice(0, 10) : [],
+    recentLessons: canViewRecordBook ? visibleLessons.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10) : [],
+    openAlerts: permittedQueue.slice(0, 12),
+    reviewQueue: permittedQueue,
+    reviewCounts: { transferRequests: canViewTransfers ? visibleTransferRows.length : 0, performanceReports: canViewReports ? visibleReportRows.length : 0, awardRecommendations: canViewAchievements ? visibleAwardRows.length : 0, qualificationVerifications: canViewQualifications ? visibleQualificationRows.length : 0, contentFlags: canViewModeration ? visibleContentFlags.length : 0, teacherApplications: canViewTeacherCv ? visibleTeacherApplications.length : 0, alerts: canViewNotifications ? visibleAlerts.length : 0 },
+    recentAssignments: canViewRecordBook ? visibleAssignments.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10) : [],
+    topTeachers: canViewUsers ? teacherRanks : [],
+    markingStats: canViewRecordBook ? { markedAssignments: totalMarkedAssignments, markedExercises: totalMarkedExercises } : null,
+    topLearners: canViewUsers ? visibleStudents.map((student: any) => {
+      const submissions = exerciseSubmissions.filter((s: any) => s.learnerId === student.id);
+      const learnerAssignmentSubmissions = assignmentSubmissions.filter((s: any) => s.studentId === student.id);
+      const awards = learnerAwards.filter((a: any) => a.userId === student.id).length;
+      const percentages = [
+        ...submissions.map((s: any) => s.percentage == null ? null : Number(s.percentage)),
+        ...learnerAssignmentSubmissions.map((s: any) => {
+          if (s.marks == null) return null;
+          const assignment = assignments.find((a: any) => a.id === s.assignmentId);
+          return assignment?.totalMarks ? Number(s.marks) / Number(assignment.totalMarks) * 100 : null;
+        }),
+      ].filter((value: number | null): value is number => value !== null && Number.isFinite(value));
+      const averageMarkPercentage = percentages.length ? Math.round(percentages.reduce((sum, value) => sum + value, 0) / percentages.length) : null;
+      const assignmentCount = learnerAssignmentSubmissions.length;
+      const activityScore = submissions.length + assignmentCount + awards * 2 + Number(student.performanceScore ?? 0) + (averageMarkPercentage ?? 0);
+      return { id: student.id, name: student.name, grade: student.grade, performanceScore: student.performanceScore ?? 0, badgeCount: awards, exerciseSubmissions: submissions.length, assignmentSubmissions: assignmentCount, averageMarkPercentage, activityScore };
+    }).sort((a: any,b: any) => b.activityScore-a.activityScore).slice(0,5) : [],
+  });
+});
+
+router.get("/teachers", requireAuth, requireManagerPermission("users.view"), async (req, res) => {
+  const [teachers, lessonCounts, classCounts, assignments, exercises, assignmentSubmissions, exerciseSubmissions, enrollments, alerts] = await Promise.all([
+    db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email, subject: usersTable.subject, performanceScore: usersTable.performanceScore, badgeCount: usersTable.badgeCount, createdAt: usersTable.createdAt, isManager: usersTable.isManager, isBlocked: usersTable.isBlocked, isSuspended: usersTable.isSuspended }).from(usersTable).where(eq(usersTable.role, "teacher")),
+    db.select().from(lessonsTable),
+    db.select().from(classesTable),
+    db.select().from(assignmentsTable),
+    db.select().from(exercisesTable),
+    db.select().from(assignmentSubmissionsTable),
+    db.select().from(exerciseSubmissionsTable),
+    pool.query("SELECT c.teacher_id, COUNT(DISTINCT e.learner_id)::int AS learners_joined FROM classes c LEFT JOIN enrollments e ON e.class_id=c.id GROUP BY c.teacher_id"),
+    isOwnerRole(req.currentUser!.role) ? db.select().from(ownerAlertsTable).where(eq(ownerAlertsTable.status, "open")) : db.select().from(ownerAlertsTable).where(and(eq(ownerAlertsTable.status, "open"), inArray(ownerAlertsTable.category, managerVisibleAlertCategories))),
+  ]);
+  const visibleTeacherAlerts = await visibleManagerAlerts(req.currentUser!, alerts);
+  const ranked = teachers.filter((t: any) => !t.isManager && !t.isBlocked && !t.isSuspended).map((teacher: any) => {
+    const teacherLessons = lessonCounts.filter((l: any) => l.teacherId === teacher.id);
+    const teacherAssignments = assignments.filter((a: any) => a.teacherId === teacher.id);
+    const teacherExercises = exercises.filter((e: any) => e.createdBy === teacher.id);
+    const assignmentIds = new Set(teacherAssignments.map((a: any) => a.id));
+    const exerciseIds = new Set(teacherExercises.map((e: any) => e.id));
+    const teacherAssignmentSubmissions = assignmentSubmissions.filter((s: any) => assignmentIds.has(s.assignmentId));
+    const teacherExerciseSubmissions = exerciseSubmissions.filter((s: any) => exerciseIds.has(s.exerciseId));
+    const markedAssignments = teacherAssignmentSubmissions.filter((s: any) => s.gradedAt || s.gradedBy || s.marks !== null).length;
+    const markedExercises = teacherExerciseSubmissions.filter((s: any) => s.markedAt || s.returnedAt || ["marked","returned","graded"].includes(String(s.status).toLowerCase())).length;
+    const learnersJoined = Number(enrollments.rows.find((r: any) => Number(r.teacher_id) === teacher.id)?.learners_joined || 0);
+    const activityScore = teacherLessons.length + teacherExercises.length * 2 + teacherAssignments.length * 2
+      + (markedAssignments + markedExercises) * 3 + learnersJoined * 2 + teacherAssignmentSubmissions.length + teacherExerciseSubmissions.length;
+    return { ...teacher, lessonsCount: teacherLessons.length, classesCount: classCounts.filter((cl: any) => cl.teacherId === teacher.id).length,
+      exercisesCount: teacherExercises.length, assignmentsCount: teacherAssignments.length, markedCount: markedAssignments + markedExercises,
+      learnersJoined, learnerSubmissions: teacherAssignmentSubmissions.length + teacherExerciseSubmissions.length, activityScore,
+      alerts: visibleTeacherAlerts.filter((alert: any) => alert.reportedBy === teacher.id || (Number(alert.targetId) === teacher.id && ["teacher","user"].includes(String(alert.targetType || "").toLowerCase()))),
+      alertsCount: visibleTeacherAlerts.filter((alert: any) => alert.reportedBy === teacher.id || (Number(alert.targetId) === teacher.id && ["teacher","user"].includes(String(alert.targetType || "").toLowerCase()))).length };
+  }).sort((a: any,b: any)=>b.activityScore-a.activityScore||b.learnersJoined-a.learnersJoined||a.name.localeCompare(b.name));
+  res.json(ranked);
+});
+
+router.get("/students", requireAuth, requireManagerPermission("users.view"), async (req, res) => {
+  const students = await db.select({
+    id: usersTable.id, name: usersTable.name, email: usersTable.email,
+    grade: usersTable.grade, isPrefect: usersTable.isPrefect,
+    performanceScore: usersTable.performanceScore, badgeCount: usersTable.badgeCount,
+    streakDays: usersTable.streakDays, isSuspended: usersTable.isSuspended,
+    isBlocked: usersTable.isBlocked, lastActiveDate: usersTable.lastActiveDate,
+  }).from(usersTable).where(eq(usersTable.role, "student"));
+  const [awards, alerts, exercises, assignments, transfers, reports] = await Promise.all([
+    db.select({ userId: userAchievementsTable.userId }).from(userAchievementsTable),
+    isOwnerRole(req.currentUser!.role) ? db.select().from(ownerAlertsTable).where(eq(ownerAlertsTable.status, "open")) : db.select().from(ownerAlertsTable).where(and(eq(ownerAlertsTable.status, "open"), inArray(ownerAlertsTable.category, managerVisibleAlertCategories))),
+    db.select().from(exerciseSubmissionsTable),
+    db.select().from(assignmentSubmissionsTable),
+    pool.query("SELECT learner_id, COUNT(*)::int AS count FROM academic_transfer_requests WHERE status='pending' GROUP BY learner_id"),
+    pool.query("SELECT learner_id, COUNT(*)::int AS count FROM academic_report_drafts WHERE status='pending_review' GROUP BY learner_id"),
+  ]);
+  const visibleStudentAlerts = await visibleManagerAlerts(req.currentUser!, alerts);
+  res.json(students.map((student: any) => {
+    const learnerAlerts = visibleStudentAlerts.filter((alert: any) => alert.reportedBy === student.id || (Number(alert.targetId) === student.id && ["student","learner","user"].includes(String(alert.targetType || "").toLowerCase())));
+    return { ...student, awardsCount: awards.filter((award: any) => award.userId === student.id).length,
+      alerts: learnerAlerts, alertsCount: learnerAlerts.length,
+      exerciseSubmissions: exercises.filter((submission: any) => submission.learnerId === student.id).length,
+      assignmentSubmissions: assignments.filter((submission: any) => submission.studentId === student.id).length,
+      pendingTransferRequests: Number(transfers.rows.find((row: any) => Number(row.learner_id) === student.id)?.count || 0),
+      pendingReportReviews: Number(reports.rows.find((row: any) => Number(row.learner_id) === student.id)?.count || 0) };
+  }));
+});
+
+router.get("/prefects", requireAuth, requireManagerPermission("users.view"), async (req, res) => {
+  const prefects = await db.select().from(usersTable)
+    .where(and(eq(usersTable.role, "student"), eq(usersTable.isPrefect, true)));
+  res.json(prefects);
+});
+
+router.put("/teacher/:id/score", requireAuth, requireManagerPermission("users.override.teacher"), async (req, res): Promise<void> => {
+  const targetId = Number(req.params.id);
+  const performanceScore = Number(req.body?.performanceScore);
+  if (!Number.isSafeInteger(targetId) || targetId < 1) { res.status(400).json({ error: "Invalid teacher ID." }); return; }
+  if (!Number.isFinite(performanceScore) || performanceScore < 0 || performanceScore > 100) {
+    res.status(400).json({ error: "Performance score must be a number between 0 and 100." }); return;
+  }
+  const [target] = await db.select({ id: usersTable.id, name: usersTable.name, role: usersTable.role, isManager: usersTable.isManager, performanceScore: usersTable.performanceScore })
+    .from(usersTable).where(eq(usersTable.id, targetId));
+  if (!target || target.role !== "teacher" || target.isManager === true) { res.status(404).json({ error: "Managed teacher not found." }); return; }
+  const [row] = await db.update(usersTable).set({ performanceScore })
+    .where(eq(usersTable.id, targetId)).returning();
+  await db.insert(auditLogsTable).values({
+    performedBy: req.currentUser!.id, action: "manager.teacher_performance_score_updated", category: "staff",
+    targetType: "teacher", targetId, details: JSON.stringify({ previousScore: target.performanceScore, newScore: performanceScore }),
+  });
+  res.json(row);
+});
+
+router.get("/users/:id/activity", requireAuth, requireManagerPermission("audit.view_subordinate"), async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid user id" }); return; }
+  const [target] = await db.select({
+    id: usersTable.id, name: usersTable.name, email: usersTable.email, role: usersTable.role,
+    isPrefect: usersTable.isPrefect, isManager: usersTable.isManager, grade: usersTable.grade, subject: usersTable.subject,
+    performanceScore: usersTable.performanceScore, badgeCount: usersTable.badgeCount, streakDays: usersTable.streakDays,
+  }).from(usersTable).where(eq(usersTable.id, id));
+  if (!target || !["student", "teacher"].includes(target.role) || (target.role === "teacher" && target.isManager === true)) { res.status(404).json({ error: "User activity is not available" }); return; }
+
+  const audit = await db.select({
+    id: auditLogsTable.id, action: auditLogsTable.action, category: auditLogsTable.category,
+    targetType: auditLogsTable.targetType, targetId: auditLogsTable.targetId, createdAt: auditLogsTable.createdAt,
+  }).from(auditLogsTable).where(eq(auditLogsTable.performedBy, id)).orderBy(desc(auditLogsTable.createdAt)).limit(200);
+
+  if (target.role === "teacher") {
+    const [lessons, classes, assignments, polls, exercises] = await Promise.all([
+      db.select().from(lessonsTable).where(eq(lessonsTable.teacherId, id)).orderBy(desc(lessonsTable.createdAt)),
+      db.select().from(classesTable).where(eq(classesTable.teacherId, id)).orderBy(desc(classesTable.createdAt)),
+      db.select().from(assignmentsTable).where(eq(assignmentsTable.teacherId, id)).orderBy(desc(assignmentsTable.createdAt)),
+      db.select().from(pollsTable).where(eq(pollsTable.createdBy, id)).orderBy(desc(pollsTable.createdAt)),
+      db.select().from(exercisesTable).where(eq(exercisesTable.createdBy, id)).orderBy(desc(exercisesTable.createdAt)),
+    ]);
+    res.json({ user: target, activities: audit, created: { lessons, classes, assignments, polls, exercises }, counts: { lessons: lessons.length, classes: classes.length, assignments: assignments.length, polls: polls.length, exercises: exercises.length } });
+    return;
+  }
+
+  const [attendance, achievements, exerciseResults, pollResults, leaderboardUsers] = await Promise.all([
+    db.select().from(attendanceTable).where(eq(attendanceTable.studentId, id)).orderBy(desc(attendanceTable.joinedAt)).limit(200),
+    db.select({ id: userAchievementsTable.id, name: achievementsTable.name, icon: achievementsTable.icon, pointsValue: achievementsTable.pointsValue, note: userAchievementsTable.note, earnedAt: userAchievementsTable.earnedAt }).from(userAchievementsTable).innerJoin(achievementsTable, eq(userAchievementsTable.achievementId, achievementsTable.id)).where(eq(userAchievementsTable.userId, id)).orderBy(desc(userAchievementsTable.earnedAt)),
+    db.select().from(exerciseSubmissionsTable).where(eq(exerciseSubmissionsTable.learnerId, id)).orderBy(desc(exerciseSubmissionsTable.submittedAt)).limit(200),
+    db.select().from(pollSubmissionsTable).where(eq(pollSubmissionsTable.studentId, id)).orderBy(desc(pollSubmissionsTable.completedAt)).limit(200),
+    db.select({ id: usersTable.id, performanceScore: usersTable.performanceScore }).from(usersTable).where(eq(usersTable.role, "student")).orderBy(desc(usersTable.performanceScore)),
+  ]);
+  const leaderboardPosition = leaderboardUsers.findIndex(row => row.id === id) + 1;
+  res.json({ user: target, activities: audit, learning: { attendance, achievements, exerciseResults, pollResults, leaderboardPosition }, counts: { attendance: attendance.length, achievements: achievements.length, exerciseResults: exerciseResults.length, pollResults: pollResults.length } });
+});
+
+router.get("/reports/overview", requireAuth, requireManagerPermission("reports.view"), async (req, res) => {
+  const [users, payments, lessons, classes, assignments, exercises, assignmentSubmissions, exerciseSubmissions, awards, attendance, alerts, pendingFlags] = await Promise.all([
+    db.select({ id: usersTable.id, role: usersTable.role, isManager: usersTable.isManager, isPrefect: usersTable.isPrefect }).from(usersTable),
+    db.select().from(paymentsTable),
+    db.select({ id: lessonsTable.id }).from(lessonsTable),
+    db.select({ id: classesTable.id }).from(classesTable),
+    db.select({ id: assignmentsTable.id }).from(assignmentsTable),
+    db.select({ id: exercisesTable.id }).from(exercisesTable),
+    db.select().from(assignmentSubmissionsTable),
+    db.select().from(exerciseSubmissionsTable),
+    db.select({ id: userAchievementsTable.id }).from(userAchievementsTable),
+    db.select({ id: attendanceTable.id, status: attendanceTable.status }).from(attendanceTable),
+    isOwnerRole(req.currentUser!.role) ? db.select({ id: ownerAlertsTable.id }).from(ownerAlertsTable).where(eq(ownerAlertsTable.status, "open")) : db.select({ id: ownerAlertsTable.id }).from(ownerAlertsTable).where(and(eq(ownerAlertsTable.status, "open"), inArray(ownerAlertsTable.category, managerVisibleAlertCategories))),
+    db.select({ id: contentFlagsTable.id }).from(contentFlagsTable).where(eq(contentFlagsTable.status, "pending")),
+  ]);
+  const countRole = (roles: string[]) => users.filter((u: any) => roles.includes(String(u.role).toLowerCase())).length;
+  const totalRevenue = payments.reduce((sum: number, payment: any) => sum + (payment.status === "paid" ? parseFloat(payment.amount ?? "0") : 0), 0);
+  const [transferQueue, reportQueue] = await Promise.all([
+    pool.query("SELECT COUNT(*)::int AS count FROM academic_transfer_requests WHERE status='pending'"),
+    pool.query("SELECT COUNT(*)::int AS count FROM academic_report_drafts WHERE status='pending_review'"),
+  ]);
+  res.json({
+    teacherCount: countRole(["teacher"]),
+    studentCount: countRole(["student","learner","prefect"]),
+    learnerCount: countRole(["student","learner","prefect"]),
+    prefectCount: users.filter((u: any) => u.isPrefect === true).length,
+    managerCount: users.filter((u: any) => u.isManager === true || ["manager","senior_manager"].includes(String(u.role).toLowerCase())).length,
+    ownerCount: isOwnerRole(req.currentUser!.role) ? countRole(["owner","platform_owner"]) : null,
+    totalUsers: users.length,
+    totalRevenue: isOwnerRole(req.currentUser!.role) ? totalRevenue : null,
+    lessonCount: lessons.length,
+    classCount: classes.length,
+    assignmentCount: assignments.length,
+    exerciseCount: exercises.length,
+    assignmentSubmissionCount: assignmentSubmissions.length,
+    exerciseSubmissionCount: exerciseSubmissions.length,
+    markedAssignmentCount: assignmentSubmissions.filter((s: any) => s.gradedAt || s.gradedBy || s.marks !== null).length,
+    markedExerciseCount: exerciseSubmissions.filter((s: any) => s.markedAt || s.returnedAt || ["marked","returned","graded"].includes(String(s.status).toLowerCase())).length,
+    awardCount: awards.length,
+    attendanceRecordCount: attendance.length,
+    presentAttendanceCount: attendance.filter((a: any) => String(a.status).toLowerCase() === "present").length,
+    openAlertCount: alerts.length,
+    pendingContentModerationCount: pendingFlags.length,
+    pendingTransferCount: Number(transferQueue.rows[0]?.count ?? 0),
+    pendingReportReviewCount: Number(reportQueue.rows[0]?.count ?? 0),
+    paidPayments: isOwnerRole(req.currentUser!.role) ? payments.filter((p: any) => p.status === "paid").length : null,
+    pendingPayments: isOwnerRole(req.currentUser!.role) ? payments.filter((p: any) => p.status === "pending").length : null,
+  });
+});
+
+export default router;

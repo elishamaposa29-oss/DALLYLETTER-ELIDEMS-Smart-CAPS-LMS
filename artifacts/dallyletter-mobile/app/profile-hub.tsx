@@ -1,0 +1,503 @@
+import { ACADEMIC_GRADE_OPTIONS } from "@workspace/api-client-react/academic-grades";
+import { Feather } from "@expo/vector-icons";
+import { getApiUrl } from "@workspace/api-client-react";
+import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
+import { VideoView, useVideoPlayer } from "expo-video";
+import * as FileSystem from "expo-file-system/legacy";
+import { useLocalSearchParams, router } from "expo-router";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import Svg, { Path } from "react-native-svg";
+import { ActivityIndicator, Alert, Image, Linking, Modal, Platform, ScrollView, StatusBar, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAuth } from "@/contexts/AuthContext";
+import { useColors } from "@/hooks/useColors";
+import { TeacherCvEditor } from "@/components/TeacherCvEditor";
+
+const TABS = ["Overview","Qualifications","Subjects","Enrollments","Achievements","Reports","Attendance","Payments","Transfer Letters"] as const;
+type Tab = typeof TABS[number];
+type Row = Record<string, any>;
+
+function calculateAgeOnDate(dateOfBirth: string, asOf: Date = new Date()): number | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateOfBirth);
+  if (!match) return null;
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+  const birth = new Date(year, month - 1, day);
+  if (birth.getFullYear() !== year || birth.getMonth() + 1 !== month || birth.getDate() !== day) return null;
+  let age = asOf.getFullYear() - year;
+  if (asOf.getMonth() + 1 < month || (asOf.getMonth() + 1 === month && asOf.getDate() < day)) age -= 1;
+  return age >= 0 ? age : null;
+}
+
+function normalizeProfileRole(role: unknown): string {
+  return String(role ?? "").trim().toLowerCase().replace(/[ -]+/g, "_");
+}
+function profileIdentityBadges(profile: Row | null): string[] {
+  if (!profile) return [];
+  const role = normalizeProfileRole(profile.role);
+  const labels: Record<string,string> = {student:"Learner",learner:"Learner",prefect:"Prefect",teacher:"Teacher",manager:"Manager",junior_manager:"Junior Manager",senior_manager:"Senior Manager",admin:"Admin",owner:"Owner",platform_owner:"Owner"};
+  const level = String(profile.manager_level||"").toLowerCase();
+  const primary = role === "manager" && level === "senior" ? "Senior Manager" : role === "manager" && level === "junior" ? "Junior Manager" : labels[role] || (role ? role.replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase()) : "Member");
+  const badges = [primary];
+  const managerRole = ["manager","junior_manager","senior_manager"].includes(role);
+  if ((Boolean(profile.is_manager) || managerRole) && !managerRole) badges.push(String(profile.manager_level||"").toLowerCase()==="senior"?"Senior Manager":"Manager");
+  if ((Boolean(profile.is_prefect) || role==="prefect") && role!=="prefect") badges.push("Prefect");
+  return [...new Set(badges)];
+}
+
+export default function MobileProfileHub() {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const { user, token, login } = useAuth();
+  const params = useLocalSearchParams<{userId?: string}>();
+  const targetId = params.userId ? Number(params.userId) : user?.id;
+  const isOwn = Boolean(user && targetId === user.id);
+  const isOwner = ["owner","platform_owner"].includes(String(user?.role||"").toLowerCase());
+  const normalizedUserRole = String(user?.role||"").trim().toLowerCase().replace(/[ -]+/g,"_");
+  const payoutApplicationStatus = String((user as any)?.teacherApplicationStatus ?? "not_applicable").trim().toLowerCase();
+  const canManageOwnPayoutPreferences = isOwn && (
+    isOwner || ["student","learner","prefect"].includes(normalizedUserRole) ||
+    (normalizedUserRole === "teacher" && ["approved","not_applicable"].includes(payoutApplicationStatus))
+  );
+  const managerLike = ["manager","senior_manager","junior_manager"].includes(normalizedUserRole) || (normalizedUserRole === "teacher" && Boolean((user as any)?.isManager) && ["approved","not_applicable"].includes(String((user as any)?.teacherApplicationStatus||"not_applicable").toLowerCase()));
+  const [managerPermissions,setManagerPermissions] = useState<Row>({});
+  const canReviewTransferLetters = isOwner || (managerLike && managerPermissions["transfers.view"] === true);
+  const canApproveTransferLetters = isOwner || managerPermissions["transfers.approve"] === true;
+  const canRejectTransferLetters = isOwner || managerPermissions["transfers.reject"] === true;
+  const [tab,setTab] = useState<Tab>("Overview");
+  const [profile,setProfile] = useState<Row|null>(null);
+  const [qualifications,setQualifications] = useState<Row[]>([]);
+  const [queue,setQueue] = useState<Row[]>([]);
+  const [subjects,setSubjects] = useState<string[]>([]);
+  const [subjectInput,setSubjectInput] = useState("");
+  const [subjectCatalog,setSubjectCatalog] = useState<string[]>([]);
+  const [primarySubject,setPrimarySubject] = useState("");
+  const [nameInput,setNameInput] = useState(user?.name||"");
+  const [phoneInput,setPhoneInput] = useState(user?.phone||"");
+  const [phoneOtp,setPhoneOtp] = useState("");
+  const [phoneVerified,setPhoneVerified] = useState(false);
+  const [documents,setDocuments] = useState<Row[]>([]);
+  const [documentType,setDocumentType] = useState("certificate");
+  const [enrollments,setEnrollments] = useState<Row[]>([]);
+  const [achievements,setAchievements] = useState<Row[]>([]);
+  const [academicAttendance,setAcademicAttendance] = useState<Row[]>([]);
+  const [dailyAppAttendance,setDailyAppAttendance] = useState<Row[]>([]);
+  const [approvedReports,setApprovedReports] = useState<Row[]>([]);
+  const [transferRequests,setTransferRequests] = useState<Row[]>([]);
+  const [paymentRecords,setPaymentRecords] = useState<Row[]>([]);
+  const [termStart,setTermStart] = useState(new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().slice(0,10));
+  const [termEnd,setTermEnd] = useState(new Date().toISOString().slice(0,10));
+  const [attendancePeriod,setAttendancePeriod] = useState<"Daily"|"Weekly"|"Monthly"|"Termly">("Weekly");
+  const [transferReason,setTransferReason] = useState("");
+  const [transferForm,setTransferForm] = useState<Row>({currentSchool:"Dallyletter Elidems",receivingSchool:"",grade:"Grade 8 / Form 1",academicYear:String(new Date().getFullYear()),learnerName:"",dob:"",gender:"Male",admissionNo:"",emisNo:"",average:"",conduct:"Excellent",reasonType:"Family Relocation",reasonDetail:"",guardianName:"",relationship:"Father",guardianId:"",guardianPhone:"",guardianEmail:"",address:"",effectiveDate:new Date().toISOString().slice(0,10)});
+  const [transferAttachmentsExpanded,setTransferAttachmentsExpanded] = useState(false);
+  const [showTransferGradeOptions,setShowTransferGradeOptions] = useState(false);
+  const [signatureTarget,setSignatureTarget] = useState<"guardian"|"headmaster"|null>(null);
+  const [signaturePath,setSignaturePath] = useState("");
+  const signatureSvgRef = useRef<any>(null);
+  useEffect(()=>{let active=true;if(!transferForm.schoolLogoDataUrl){const uri=Image.resolveAssetSource(require("../assets/images/icon.png"))?.uri;if(uri){void FileSystem.readAsStringAsync(uri,{encoding:FileSystem.EncodingType.Base64}).then(base64=>{if(active&&base64)setTransferForm(old=>old.schoolLogoDataUrl?old:{...old,schoolLogoDataUrl:"data:image/png;base64,"+base64});}).catch(()=>undefined);}}return()=>{active=false;};},[]);
+
+  useEffect(() => {
+    if (!isOwn || !token) return;
+    let active = true;
+    void fetch(getApiUrl("/api/academic-records/current-year"), { headers: { Authorization: "Bearer " + token } })
+      .then(async response => response.ok ? response.json() : null)
+      .then(data => {
+        if (active && /^\d{4}$/.test(String(data?.academicYear ?? ""))) {
+          setTransferForm(current => ({ ...current, academicYear: String(data.academicYear) }));
+        }
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [isOwn, token]);
+  const [email,setEmail] = useState("");
+  const [otp,setOtp] = useState("");
+  const [emailVerified,setEmailVerified] = useState(false);
+  const [emailSending,setEmailSending] = useState(false);
+  const [newQualificationTitle,setNewQualificationTitle] = useState("");
+  const [qualificationInput,setQualificationInput] = useState("");
+  const [payoutMethod,setPayoutMethod] = useState("ecocash");
+  const [payoutDestination,setPayoutDestination] = useState("");
+  const [payoutDestinationMasked,setPayoutDestinationMasked] = useState("");
+  const [bankName,setBankName] = useState("");
+  const [accountHolder,setAccountHolder] = useState("");
+  const [message,setMessage] = useState("");
+  const [loading,setLoading] = useState(false);
+  const [aiMessages,setAiMessages] = useState<{role:"user"|"assistant";content:string}[]>([]);
+  const [aiDraft,setAiDraft] = useState("");
+  const [aiBusy,setAiBusy] = useState(false);
+  const [aiMode,setAiMode] = useState<"chat"|"agent">("chat");
+  const [coverBusy,setCoverBusy] = useState(false);
+  const [mediaRevision,setMediaRevision] = useState(0);
+  const [fullscreenMedia,setFullscreenMedia] = useState<Row|null>(null);
+  const fullscreenPlayer = useVideoPlayer(null, player => { player.loop = false; });
+  useEffect(()=>{ if(fullscreenMedia?.type?.startsWith("video/")){ void fullscreenPlayer.replaceAsync({uri:fullscreenMedia.url,headers:token?{Authorization:"Bearer "+token}:{}}).then(()=>fullscreenPlayer.play()).catch(()=>setMessage("This video could not be played on this device.")); } else { fullscreenPlayer.pause(); } },[fullscreenMedia?.url,fullscreenMedia?.type,fullscreenPlayer]);
+  const api = useCallback(async(path:string,init:RequestInit={})=>{
+    const response=await fetch(getApiUrl(path),{...init,headers:{...(token?{Authorization:"Bearer "+token}:{}),...(init.headers as Record<string,string>||{})}});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||"Request failed");
+    return data;
+  },[token]);
+
+  const learnerAIMode = ["student","learner","prefect"].includes(normalizedUserRole) || Boolean((user as any)?.isPrefect);
+  const canRequestAIAgent = !learnerAIMode && ["teacher","manager","senior_manager","junior_manager","owner","platform_owner"].includes(normalizedUserRole);
+  const sendAIMessage = async () => {
+    const content = aiDraft.trim();
+    if (!content || aiBusy) return;
+    const next = [...aiMessages, { role: "user" as const, content }].slice(-20);
+    setAiMessages(next); setAiDraft(""); setAiBusy(true);
+    try {
+      const result = await api("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: next, mode: learnerAIMode ? "chat" : aiMode }) });
+      setAiMessages(current => [...current, { role: "assistant" as const, content: String(result.response || "I could not prepare a response. Please try again.") }].slice(-20));
+    } catch (error) {
+      setAiMessages(current => current.slice(0, -1));
+      setAiDraft(content);
+      setMessage(error instanceof Error ? error.message : "ELIDEMS AI is temporarily unavailable.");
+    } finally { setAiBusy(false); }
+  };
+
+  useEffect(()=>{
+    if(!managerLike||isOwner){setManagerPermissions({});return;}
+    let active=true;
+    void api("/api/manager-permissions/me").then((result:Row)=>{if(active)setManagerPermissions(result.permissions||{});}).catch(()=>{if(active)setManagerPermissions({});});
+    return()=>{active=false;};
+  },[api,managerLike,isOwner]);
+
+  const load=useCallback(async()=>{
+    if(!targetId||!Number.isSafeInteger(targetId)||!user)return;
+    setLoading(true);
+    try{
+      if(isOwn){
+        const [me,q,s,e,a,en,n,p,publicSummary,docs,catalog,recovery,academic,reports,transfers,payments,dailyApp]=await Promise.all([
+          api("/api/users/"+targetId),api("/api/users/me/qualifications").catch(()=>[]),api("/api/users/me/subjects").catch(()=>({subjects:[],teaching_subjects:[],subjects_to_teach:[],primary_subject:null})),
+          api("/api/users/me/enrollments-summary").catch(()=>({})),api("/api/achievements/my").catch(()=>[]),
+          api("/api/users/me/enrollments").catch(()=>[]),api("/api/users/me/notification-email").catch(()=>({})),
+          (canManageOwnPayoutPreferences?api("/api/users/me/payout-preferences").catch(()=>({})):Promise.resolve({})),api("/api/users/"+targetId+"/public-profile").catch(()=>({})),
+          api("/api/users/"+targetId+"/teacher-documents").catch(()=>[]),api("/api/subjects/catalog").catch(()=>({subjects:[]})),(isOwner?Promise.resolve({recovery_phone:null,recovery_phone_verified_at:null}):api("/api/users/me/recovery-profile").catch(()=>({recovery_phone:null,recovery_phone_verified_at:null}))),
+          api("/api/academic-records/me").catch(()=>({attendance:[]})),api("/api/academic-records/reports/me").catch(()=>[]),api("/api/academic-records/transfer-requests").catch(()=>[]),
+          (["student","prefect","learner"].includes(String(user?.role||"").toLowerCase())?api("/api/payments").catch(()=>[]):Promise.resolve([])),api("/api/daily-attendance/me").catch(()=>({records:[]}))
+        ]);
+        const professional=["teacher","manager","senior_manager"].includes(String(me.role).toLowerCase().replace(/[ -]+/g,"_")) || Boolean(me.isManager);
+        const savedSubjects=professional?(s?.subjects_to_teach||[]):(s?.subjects||[]);
+        setProfile({...publicSummary,id:me.id,display_name:me.name,avatar:me.avatarUrl,bio:me.bio,role:me.role,verified_qualifications:professional?(q||[]).filter((x:Row)=>x.verification_status==="verified"):[],subjects_to_teach:savedSubjects,subjects:savedSubjects,primary_subject:s?.primary_subject||null,grade:me.grade,is_prefect:Boolean(me.isPrefect) || normalizeProfileRole(me.role)==="prefect",is_manager:["manager","senior_manager","junior_manager"].includes(normalizeProfileRole(me.role)) || (normalizeProfileRole(me.role)==="teacher" && Boolean(me.isManager) && ["approved","not_applicable"].includes(String(me.teacherApplicationStatus??"not_applicable").toLowerCase())),manager_level:me.managerLevel??null});
+        setNameInput(me.name||"");setTransferForm(v=>({...v,learnerName:me.name||v.learnerName,grade:me.grade||v.grade,average:academic?.markSummary?.overall?.percentage==null?"":String(academic.markSummary.overall.percentage)}));setPhoneInput(me.phone||"");setPhoneVerified(Boolean(recovery.recovery_phone_verified_at&&recovery.recovery_phone===me.phone));
+        setQualifications(professional&&Array.isArray(q)?q:[]);setDocuments(professional&&Array.isArray(docs)?docs:[]);
+        setSubjects(Array.isArray(savedSubjects)?savedSubjects:[]);setSubjectInput(Array.isArray(savedSubjects)?savedSubjects.join(", "):"");setPrimarySubject(s?.primary_subject||savedSubjects[0]||"");
+        setSubjectCatalog(Array.isArray(catalog?.subjects)?catalog.subjects:[]);
+        setEnrollments(Array.isArray(en)?en:[]);setAchievements(Array.isArray(a)?a:[]);setAcademicAttendance(Array.isArray(academic?.attendance)?academic.attendance:[]);setDailyAppAttendance(Array.isArray(dailyApp?.records)?dailyApp.records:[]);setApprovedReports(Array.isArray(reports)?reports:[]);setTransferRequests(Array.isArray(transfers)?transfers:[]);setPaymentRecords(Array.isArray(payments)?payments:[]);
+        setEmail(n.notification_email||"");setEmailVerified(Boolean(n.notification_email_verified_at));setPayoutMethod(p.method||"ecocash");setPayoutDestinationMasked(p.destination_masked||"");setBankName(p.bank_name||"");setAccountHolder(p.account_name_holder||"");
+        if(isOwner){const pending=await api("/api/qualifications/pending").catch(()=>[]);setQueue(Array.isArray(pending)?pending:[]);}
+      }else{
+        const [p,a,d,transfers]=await Promise.all([api("/api/users/"+targetId+"/public-profile"),api("/api/achievements/user/"+targetId).catch(()=>[]),api("/api/users/"+targetId+"/teacher-documents").catch(()=>[]),canReviewTransferLetters?api("/api/academic-records/transfer-requests").catch(()=>[]):Promise.resolve([])]);
+        setProfile(p);setAchievements(Array.isArray(a)?a:[]);
+        const professional=["teacher","manager","senior_manager"].includes(String(p.role).toLowerCase());
+        setQualifications(professional&&Array.isArray(p.verified_qualifications)?p.verified_qualifications:[]);
+        setDocuments(professional&&Array.isArray(d)?d:[]);
+        const selected=Array.isArray(p.subjects)?p.subjects:(Array.isArray(p.subjects_to_teach)?p.subjects_to_teach:[]);
+        setSubjects(selected);setSubjectInput(selected.join(", "));setPrimarySubject(p.primary_subject||"");
+        if(canReviewTransferLetters)setTransferRequests(Array.isArray(transfers)?transfers:[]);
+      }
+    }catch(e){setMessage(e instanceof Error?e.message:"Could not load profile.");}
+    finally{setLoading(false);}
+  },[api,targetId,user,isOwn,isOwner,canReviewTransferLetters]);
+  useEffect(()=>{void load();},[load]);
+
+  const pickAvatar=async(source:"library"|"camera"="library")=>{
+    if(!isOwn||coverBusy)return;
+    try{
+      if(source==="camera"){const permission=await ImagePicker.requestCameraPermissionsAsync();if(!permission.granted){Alert.alert("Camera permission needed","Allow camera access to take a profile photo.");return;}}
+      const options={mediaTypes:["images"] as ImagePicker.ImagePickerOptions["mediaTypes"],allowsEditing:true,aspect:[1,1] as [number,number],quality:0.85};
+      const picked=source==="camera"?await ImagePicker.launchCameraAsync(options):await ImagePicker.launchImageLibraryAsync(options);
+      if(picked.canceled||!picked.assets?.[0]?.uri)return;
+      const asset=picked.assets[0];const mime=asset.mimeType||"image/jpeg";
+      if(!["image/jpeg","image/png","image/webp"].includes(mime)){Alert.alert("Unsupported image","Choose a JPG, PNG or WebP image.");return;}
+      if(asset.fileSize&&asset.fileSize>8*1024*1024){Alert.alert("File too large","Profile photos must be 8 MB or smaller.");return;}
+      setCoverBusy(true);const form=new FormData();form.append("file",{uri:asset.uri,name:asset.fileName||"profile-avatar.jpg",type:mime} as any);
+      const result=await api("/api/users/me/avatar",{method:"POST",body:form});
+      await refreshMediaProfile();
+      setMessage("Profile photo saved and reloaded from your account.");
+    }catch(e){Alert.alert("Profile photo upload failed",e instanceof Error?e.message:"Please try again.");}
+    finally{setCoverBusy(false);}
+  };
+  const pickCover=async(source:"library"|"camera"="library")=>{
+    if(!isOwn||coverBusy)return;
+    try{
+      if(source==="camera"){const permission=await ImagePicker.requestCameraPermissionsAsync();if(!permission.granted){Alert.alert("Camera permission needed","Allow camera access to capture profile media.");return;}}
+      const options:ImagePicker.ImagePickerOptions={mediaTypes:["images","videos"],allowsEditing:false,quality:0.85,videoMaxDuration:120};
+      const picked=source==="camera"?await ImagePicker.launchCameraAsync(options):await ImagePicker.launchImageLibraryAsync(options);
+      if(picked.canceled||!picked.assets?.[0]?.uri)return;
+      const asset=picked.assets[0];
+      const mime=asset.mimeType||(asset.type==="video"?"video/mp4":"image/jpeg");
+      if(!["image/jpeg","image/png","image/webp","video/mp4","video/webm","video/quicktime"].includes(mime)){Alert.alert("Unsupported media","Choose a JPG, PNG, WebP, MP4, WebM or MOV file.");return;}
+      if(asset.fileSize&&asset.fileSize>20*1024*1024){Alert.alert("File too large","Cover media must be 20 MB or smaller on the current storage configuration.");return;}
+      setCoverBusy(true);
+      const form=new FormData();
+      form.append("file",{uri:asset.uri,name:asset.fileName||(mime.startsWith("video/")?"profile-cover.mp4":"profile-cover.jpg"),type:mime} as any);
+      const result=await api("/api/users/me/cover",{method:"POST",body:form});
+      await refreshMediaProfile();
+      setMessage("Profile cover saved and reloaded from your account.");
+    }catch(e){Alert.alert("Cover upload failed",e instanceof Error?e.message:"Please try again.");}
+    finally{setCoverBusy(false);}
+  };
+  const profileMediaUrl=(value:string)=>{const url=/^https:\/\//i.test(value)?value:getApiUrl(value);return /\/api\//i.test(url)?url+(url.includes("?")?"&":"?")+"profile_media_v="+mediaRevision:url;};
+  const refreshMediaProfile=async()=>{const fresh=await api("/api/users/"+targetId+"/public-profile");setProfile(prev=>({...prev,...fresh,avatar:fresh.avatar??prev?.avatar}));setMediaRevision(v=>v+1);};
+  const act=async(fn:()=>Promise<void>)=>{setLoading(true);setMessage("");try{await fn();}catch(e){setMessage(e instanceof Error?e.message:"Action failed.");}finally{setLoading(false);}};
+  const upload=async(id:number)=>{
+    const picked=await DocumentPicker.getDocumentAsync({type:["application/pdf","image/jpeg","image/png"],copyToCacheDirectory:true});
+    if(picked.canceled||!picked.assets?.[0])return;
+    const asset=picked.assets[0];
+    if(asset.size&&asset.size>10*1024*1024){Alert.alert("File too large","Choose a PDF/JPG/PNG up to 10 MB.");return;}
+    await act(async()=>{
+      const form=new FormData();
+      form.append("file",{uri:asset.uri,name:asset.name||"qualification-document.pdf",type:asset.mimeType||"application/pdf"} as any);
+      const result=await api("/api/qualifications/"+id+"/document",{method:"POST",body:form});
+      setMessage(result.message||"Document uploaded for verification.");await load();
+    });
+  };
+  const saveQualificationsBulk=async()=>act(async()=>{
+    const titles=[...new Set(qualificationInput.split("\n").map(v=>v.trim()).filter(Boolean))];
+    if(!titles.length||titles.length>50)throw new Error("Enter between 1 and 50 qualifications, one per line.");
+    const result=await api("/api/users/me/qualifications/bulk",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({qualifications:titles})});
+    setQualificationInput("");setMessage("Saved "+result.saved+" qualifications for verification.");await load();
+  });
+  const addQualification=async()=>{
+    if(!newQualificationTitle.trim())return;
+    await act(async()=>{await api("/api/users/me/qualifications",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:newQualificationTitle.trim()})});setNewQualificationTitle("");await load();setMessage("Qualification saved as pending verification.");});
+  };
+  const verify=async(id:number,status:"verified"|"rejected")=>act(async()=>{await api("/api/qualifications/"+id+"/verify",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status})});await load();setMessage("Qualification "+status+".");});
+  const openDocument=async(id:number,fileName?:string,mimeType?:string)=>act(async()=>{
+    const ext=(fileName?.split(".").pop()|| (mimeType==="image/jpeg"?"jpg":mimeType==="image/png"?"png":"pdf")).replace(/[^a-z0-9]/gi,"").slice(0,8)||"pdf";
+    const target=(FileSystem.documentDirectory||FileSystem.cacheDirectory||"")+"qualification-document-"+id+"."+ext;
+    const result=await FileSystem.downloadAsync(getApiUrl("/api/qualifications/"+id+"/document"),target,{headers:token?{Authorization:"Bearer "+token}:{}});
+    const openUri=Platform.OS==="android"?await FileSystem.getContentUriAsync(result.uri):result.uri;
+    await Linking.openURL(openUri);
+  });
+  const openProfileDocument=async(doc:Row)=>act(async()=>{
+    const ext=(String(doc.file_name||"pdf").split(".").pop()||"pdf").replace(/[^a-z0-9]/gi,"").slice(0,8)||"pdf";
+    const target=(FileSystem.documentDirectory||FileSystem.cacheDirectory||"")+"profile-document-"+doc.id+"."+ext;
+    const result=await FileSystem.downloadAsync(getApiUrl("/api/users/"+targetId+"/teacher-documents/"+doc.id),target,{headers:token?{Authorization:"Bearer "+token}:{}});
+    const openUri=Platform.OS==="android"?await FileSystem.getContentUriAsync(result.uri):result.uri;
+    await Linking.openURL(openUri);
+  });
+  const saveProfile=async()=>act(async()=>{
+    if(!nameInput.trim()||nameInput.trim().length>200)throw new Error("Enter a legal name up to 200 characters.");
+    const phoneChanged=phoneInput.trim()!==String(user?.phone||"");
+    const updated=await api("/api/users/"+user!.id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:nameInput.trim(),...(phoneChanged?{phone:phoneInput.trim()||null}:{})})});
+    await login({...user,...updated},token!);
+    setProfile((old:Row|null)=>old?{...old,display_name:updated.name||nameInput.trim()}:old);
+    if(phoneChanged){setPhoneVerified(false);setPhoneOtp("");}
+    setMessage("Profile details saved.");
+  });
+  const requestPhoneCode=async()=>act(async()=>{
+    const phone=phoneInput.trim();
+    if(!/^\+[1-9]\d{7,14}$/.test(phone))throw new Error("Use international phone format with country code, for example +263…");
+    const updated=await api("/api/users/"+user!.id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone})});
+    await login({...user,...updated},token!);
+    await api("/api/users/me/phone/request-verification",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone})});
+    setPhoneVerified(false);setMessage("SMS provider accepted the verification message. Check your messages; carrier delivery can take a little time.");
+  });
+  const requestWhatsAppPhoneCode=async()=>act(async()=>{
+    const phone=phoneInput.trim();
+    if(!/^\+[1-9]\d{7,14}$/.test(phone))throw new Error("Use international phone format with country code, for example +263…");
+    const updated=await api("/api/users/"+user!.id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone})});
+    await login({...user,...updated},token!);
+    const result=await api("/api/users/me/phone/request-whatsapp-verification",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone})});
+    setPhoneVerified(false);setMessage(result.message||"WhatsApp verification code accepted by provider. Check WhatsApp for the code.");
+  });
+  const verifyPhone=async()=>act(async()=>{
+    if(!/^\d{6}$/.test(phoneOtp))throw new Error("Enter the six-digit SMS code.");
+    await api("/api/users/me/phone/confirm",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:phoneOtp})});
+    if(!user||!token)throw new Error("Please sign in again before verifying your phone number.");
+    await login({...user,phone:phoneInput.trim()},token);
+    setPhoneVerified(true);setPhoneOtp("");setMessage("Phone number verified.");
+  });
+  const saveSubjects=async()=>act(async()=>{
+    const list=[...new Set(subjectInput.split(",").map(v=>v.trim()).filter(Boolean))];
+    const professional=["teacher","manager","senior_manager"].includes(String(profile?.role||user?.role).toLowerCase());
+    const primary=list.includes(primarySubject)?primarySubject:(list[0]||"");
+    await api("/api/users/me/subjects",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(professional?{teaching_subjects:list,subjects_to_teach:list,primary_subject:primary}:{subjects:list})});
+    setSubjects(list);setPrimarySubject(professional?primary:"");setMessage(professional?"Teaching subjects saved.":"Learning subjects saved; recommendations use these preferences.");
+  });
+  const uploadProfileDocument=async()=>act(async()=>{
+    const picked=await DocumentPicker.getDocumentAsync({type:["application/pdf","image/jpeg","image/png","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document"],copyToCacheDirectory:true});
+    if(picked.canceled||!picked.assets?.[0])return;
+    const asset=picked.assets[0];
+    if(asset.size&&asset.size>10*1024*1024)throw new Error("Documents must be 10 MB or smaller.");
+    const form=new FormData();form.append("file",{uri:asset.uri,name:asset.name||"profile-document.pdf",type:asset.mimeType||"application/pdf"} as any);form.append("documentType",documentType);
+    const uploaded=await api("/api/users/me/teacher-documents",{method:"POST",body:form});
+    let photoLinked=false;
+    if(documentType==="cv"&&String(asset.mimeType||"").startsWith("image/")&&uploaded?.id){
+      try{
+        const existing=await api("/api/users/me/teacher-cv");
+        await api("/api/users/me/teacher-cv",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({cv:{...(existing.cv||{}),photoDocumentId:String(uploaded.id)}})});
+        photoLinked=true;
+      }catch{setMessage("Photo uploaded, but it could not be linked to your CV. Retry the upload before submitting.");}
+    }
+    const fresh=await api("/api/users/"+user!.id+"/teacher-documents");setDocuments(Array.isArray(fresh)?fresh:[]);
+    if(photoLinked)setMessage("Profile photo uploaded and linked to your teacher CV.");
+    else if(documentType!=="cv"||!String(asset.mimeType||"").startsWith("image/"))setMessage(documentType.toUpperCase()+" uploaded and saved.");
+  });
+  const savePayout=async()=>act(async()=>{
+    const body:Row={method:payoutMethod};
+    if(payoutMethod==="ecocash")body.ecocash_phone=payoutDestination.trim();
+    if(payoutMethod==="paypal")body.paypal_email=payoutDestination.trim();
+    if(payoutMethod==="bank"){body.bank_name=bankName.trim();body.account_name_holder=accountHolder.trim();}
+    await api("/api/users/me/payout-preferences",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    setPayoutDestination("");const fresh=await api("/api/users/me/payout-preferences");setPayoutDestinationMasked(fresh.destination_masked||"");setMessage("Payout preferences saved. Destination stays masked.");
+  });
+  const requestOtp=async()=>{
+    if(!email.trim()) {setMessage("Enter the notification email you want to verify.");return;}
+    setEmailSending(true);
+    try{await act(async()=>{const r=await api("/api/users/me/notification-email/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:email.trim().toLowerCase()})});setMessage((r.message||"Verification code sent.")+" Check your inbox and spam/junk folder.");});}
+    finally{setEmailSending(false);}
+  };
+  const verifyOtp=async()=>act(async()=>{const r=await api("/api/users/me/notification-email/verify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,otp})});setEmailVerified(Boolean(r.verified));setOtp("");setMessage(r.message||"Email verified.");});
+
+  const card={backgroundColor:colors.card,borderColor:colors.border,borderWidth:1,borderRadius:14,padding:14,marginBottom:12} as const;
+  const button=(label:string,onPress:()=>void,disabled=false)=> <TouchableOpacity accessibilityRole="button" disabled={disabled||loading} onPress={onPress} style={{paddingVertical:10,paddingHorizontal:12,borderRadius:9,backgroundColor:disabled||loading?colors.border:colors.primary,alignItems:"center",marginTop:8}}><Text style={{color:disabled||loading?colors.mutedForeground:"#fff",fontWeight:"700"}}>{label}</Text></TouchableOpacity>;
+  const line=(label:string,value:any)=> <View style={{flexDirection:"row",justifyContent:"space-between",gap:12,marginBottom:9}}><Text style={{color:colors.mutedForeground,flex:1}}>{label}</Text><Text style={{color:colors.foreground,fontWeight:"600",flex:1,textAlign:"right"}}>{value||"—"}</Text></View>;
+
+  if(!user)return <View style={{flex:1,justifyContent:"center",alignItems:"center",backgroundColor:colors.background}}><Text style={{color:colors.foreground}}>Sign in to view profiles.</Text></View>;
+  return <View style={{flex:1,backgroundColor:colors.background,paddingTop:insets.top}}>
+    <View style={{paddingHorizontal:12,paddingTop:8,paddingBottom:10,backgroundColor:colors.background}}>
+      <View style={{minHeight:290,borderRadius:24,overflow:"hidden",backgroundColor:colors.primary,justifyContent:"flex-end",borderWidth:1,borderColor:colors.border}}>
+        {profile?.cover_url&&(String(profile.cover_type||"").startsWith("video/")?<View style={{position:"absolute",top:0,left:0,right:0,bottom:0,justifyContent:"center",alignItems:"center",backgroundColor:"#111"}}><Feather name="play-circle" size={52} color="#fff"/><Text style={{color:"#fff",marginTop:6,fontWeight:"600"}}>Cover video · tap View cover</Text></View>:<Image key={"cover-"+mediaRevision+profile.cover_url} source={{uri:profileMediaUrl(profile.cover_url),headers:token?{Authorization:"Bearer "+token}:{}}} style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",height:"100%"}} resizeMode="cover"/> )}
+        {!profile?.cover_url&&profile?.avatar&&<Image key={"fallback-"+mediaRevision+profile.avatar} source={{uri:profileMediaUrl(profile.avatar),headers:token?{Authorization:"Bearer "+token}:{}}} style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",height:"100%",opacity:0.45}} resizeMode="cover" blurRadius={2}/>}
+        <TouchableOpacity activeOpacity={0.9} onPress={()=>profile?.cover_url&&setFullscreenMedia({url:profileMediaUrl(profile.cover_url),type:profile.cover_type||"image/*"})} style={{position:"absolute",top:0,left:0,right:0,bottom:0,backgroundColor:"#06122555"}} accessibilityLabel="Open profile cover fullscreen"/>
+        <View style={{position:"absolute",top:12,left:12,right:12,flexDirection:"row",alignItems:"center",justifyContent:"space-between",zIndex:2}}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={()=>router.back()} style={{width:40,height:40,borderRadius:20,alignItems:"center",justifyContent:"center",backgroundColor:"#ffffff24",borderWidth:1,borderColor:"#ffffff55"}}><Feather name="arrow-left" size={21} color="#fff"/></TouchableOpacity>
+          {profile?.cover_url&&<TouchableOpacity accessibilityRole="button" onPress={()=>setFullscreenMedia({url:profileMediaUrl(profile.cover_url!),type:profile.cover_type||"image/*"})} style={{borderRadius:18,borderWidth:1,borderColor:"#ffffff66",backgroundColor:"#07111dbb",paddingHorizontal:12,paddingVertical:8}}><Text style={{fontSize:12,color:"#fff",fontWeight:"700"}}>View cover ⤢</Text></TouchableOpacity>}
+        </View>
+        <View pointerEvents="box-none" style={{padding:12,zIndex:2}}>
+          <View style={{flexDirection:"row",alignItems:"center",gap:12,borderRadius:22,borderWidth:1,borderColor:"#ffffff66",backgroundColor:"#ffffff24",padding:12}}>
+            <TouchableOpacity onPress={()=>profile?.avatar&&setFullscreenMedia({url:profileMediaUrl(profile.avatar),type:"image"})} accessibilityLabel="Open profile avatar fullscreen" style={{borderRadius:48,borderWidth:3,borderColor:"#ffffffcc",backgroundColor:"#ffffff22"}}>
+              {profile?.avatar?<Image key={"avatar-"+mediaRevision+profile.avatar} source={{uri:profileMediaUrl(profile.avatar),headers:token?{Authorization:"Bearer "+token}:{}}} style={{width:84,height:84,borderRadius:42}} resizeMode="cover"/>:<View style={{width:84,height:84,borderRadius:42,alignItems:"center",justifyContent:"center"}}><Feather name="user" size={38} color="#fff"/></View>}
+            </TouchableOpacity>
+            <View style={{flex:1,minWidth:0}}>
+              <Text style={{fontSize:10,fontWeight:"800",letterSpacing:1.5,color:"#ffe6a1",textTransform:"uppercase"}}>Dallyletter · Profile Hub</Text>
+              <Text numberOfLines={2} style={{fontSize:21,fontWeight:"800",color:"#fff",marginTop:3}}>{profile?.display_name||user.name}</Text>
+              <View style={{flexDirection:"row",flexWrap:"wrap",gap:6,marginTop:6}}>{profileIdentityBadges(profile).map((label,index)=><View key={label} style={{borderRadius:20,borderWidth:1,borderColor:index===0?"#f8d889":"#ffffff66",backgroundColor:index===0?"#f8d88933":"#ffffff22",paddingHorizontal:9,paddingVertical:5}}><Text style={{fontSize:10,fontWeight:"800",color:"#fff"}}>{label}</Text></View>)}</View>
+              {profile?.bio&&<Text numberOfLines={3} style={{fontSize:12,color:"#ffffffed",marginTop:5}}>{profile.bio}</Text>}
+            </View>
+            {loading&&<ActivityIndicator color="#fff"/>}
+          </View>
+          {isOwn&&<View style={{flexDirection:"row",flexWrap:"wrap",gap:7,marginTop:10,padding:10,borderRadius:18,borderWidth:1,borderColor:"#ffffff44",backgroundColor:"#07111d99"}}>
+            <TouchableOpacity onPress={()=>void pickAvatar("library")} disabled={coverBusy} style={{backgroundColor:"#ffffff22",paddingHorizontal:11,paddingVertical:8,borderRadius:10,borderWidth:1,borderColor:"#ffffff44"}}><Text style={{color:"#fff",fontWeight:"700",fontSize:12}}>Profile photo</Text></TouchableOpacity>
+            <TouchableOpacity onPress={()=>void pickAvatar("camera")} disabled={coverBusy} style={{backgroundColor:"#ffffff22",paddingHorizontal:11,paddingVertical:8,borderRadius:10,borderWidth:1,borderColor:"#ffffff44"}}><Text style={{color:"#fff",fontWeight:"700",fontSize:12}}>Take photo</Text></TouchableOpacity>
+            <TouchableOpacity onPress={()=>void pickCover("library")} disabled={coverBusy} style={{backgroundColor:"#ffffff22",paddingHorizontal:11,paddingVertical:8,borderRadius:10,borderWidth:1,borderColor:"#ffffff44"}}><Text style={{color:"#fff",fontWeight:"700",fontSize:12}}>{coverBusy?"Uploading…":"Cover image/video"}</Text></TouchableOpacity>
+            <TouchableOpacity onPress={()=>void pickCover("camera")} disabled={coverBusy} style={{backgroundColor:"#ffffff22",paddingHorizontal:11,paddingVertical:8,borderRadius:10,borderWidth:1,borderColor:"#ffffff44"}}><Text style={{color:"#fff",fontWeight:"700",fontSize:12}}>Capture cover</Text></TouchableOpacity>
+          </View>}
+        </View>
+      </View>
+    </View>
+    <Modal visible={Boolean(fullscreenMedia)} transparent={false} presentationStyle="fullScreen" statusBarTranslucent animationType="fade" onRequestClose={()=>setFullscreenMedia(null)}><View style={{flex:1,width:"100%",height:"100%",backgroundColor:"#000",justifyContent:"center",alignItems:"center",padding:0,margin:0}}><StatusBar hidden backgroundColor="#000"/><TouchableOpacity accessibilityRole="button" accessibilityLabel="Close fullscreen media" onPress={()=>setFullscreenMedia(null)} style={{position:"absolute",top:Platform.OS==="ios"?48:18,right:18,zIndex:10,paddingHorizontal:16,paddingVertical:10,backgroundColor:"#333333bb",borderRadius:24}}><Text style={{color:"#fff",fontWeight:"700"}}>Close ✕</Text></TouchableOpacity>{fullscreenMedia?.type?.startsWith("video/")?<VideoView player={fullscreenPlayer} style={{width:"100%",height:"100%"}} nativeControls contentFit="contain"/>:fullscreenMedia?.url?<TouchableOpacity activeOpacity={1} onPress={()=>setFullscreenMedia(null)} style={{width:"100%",height:"100%",justifyContent:"center",alignItems:"center"}}><Image source={{uri:fullscreenMedia.url,headers:token?{Authorization:"Bearer "+token}:{}}} style={{width:"100%",height:"100%"}} resizeMode="contain"/></TouchableOpacity>:null}</View></Modal>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{padding:10,gap:6,backgroundColor:colors.card}}>
+      {TABS.filter(t=>t!=="Qualifications"||["teacher","manager","senior_manager","owner","admin","platform_owner"].includes(String(profile?.role||user.role).toLowerCase().replace(/[ -]+/g,"_"))).filter(t=>t!=="Enrollments"||isOwn).filter(t=>isOwn||!["Reports","Attendance","Payments"].includes(t)).map(t=><TouchableOpacity key={t} accessibilityRole="tab" accessibilityState={{selected:tab===t}} onPress={()=>setTab(t)} style={{paddingHorizontal:12,paddingVertical:9,borderRadius:10,backgroundColor:tab===t?colors.primary:colors.background,borderColor:colors.border,borderWidth:1}}><Text style={{fontWeight:"700",color:tab===t?"#fff":colors.foreground}}>{t}</Text></TouchableOpacity>)}
+    </ScrollView>
+    <ScrollView contentContainerStyle={{padding:14,paddingBottom:50}} keyboardShouldPersistTaps="always" keyboardDismissMode="none" nestedScrollEnabled>
+      {!!message&&<Text accessibilityRole="alert" style={{...card,color:colors.foreground}}>{message}</Text>}
+      {tab==="Overview"&&<View style={card}>
+        {isOwn?<><Text style={{fontWeight:"700",color:colors.foreground,marginBottom:5}}>Legal name</Text><TextInput accessibilityLabel="Legal name" value={nameInput} onChangeText={setNameInput} maxLength={200} placeholder="Enter your legal name" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground,marginBottom:8}}/>{isOwner?<Text style={{fontSize:12,color:colors.mutedForeground,marginBottom:8}}>Owner recovery and phone-verification settings are managed through protected bootstrap.</Text>:<><Text style={{fontWeight:"700",color:colors.foreground,marginBottom:5}}>Mobile phone number</Text><TextInput accessibilityLabel="Mobile phone number" value={phoneInput} onChangeText={v=>{setPhoneInput(v);setPhoneVerified(false);}} maxLength={40} keyboardType="phone-pad" placeholder="+263…" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground,marginBottom:8}}/><Text style={{fontSize:12,color:phoneVerified?colors.primary:colors.mutedForeground,marginBottom:8}}>{phoneVerified?"Verified — eligible for urgent SMS alerts":"Not verified"}</Text>{button("Send SMS verification code",()=>void requestPhoneCode(),!/^\+[1-9]\d{7,14}$/.test(phoneInput.trim()))}{button("Send WhatsApp verification code",()=>void requestWhatsAppPhoneCode(),!/^\+[1-9]\d{7,14}$/.test(phoneInput.trim()))}<TextInput accessibilityLabel="Six-digit phone verification code" autoComplete="sms-otp" value={phoneOtp} onChangeText={v=>setPhoneOtp(v.replace(/\D/g,"").slice(0,6))} maxLength={6} keyboardType="number-pad" placeholder="6-digit SMS code" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground,marginTop:8}}/>{button("Verify phone",()=>void verifyPhone(),phoneOtp.length!==6)}</>}{button("Save profile details",()=>void saveProfile(),!nameInput.trim())}</>:line("Name",profile?.display_name)}{line("Role",profileIdentityBadges(profile)[0])}{profile?.is_manager&&line("Manager status",String(profile.manager_level||"").toLowerCase()==="senior"?"Senior Manager":String(profile.manager_level||"").toLowerCase()==="junior"?"Junior Manager":"Manager")}{profile?.is_prefect&&line("Prefect status","Active")}{line("Grade",profile?.grade)}{["teacher","manager","senior_manager"].includes(String(profile?.role||user.role).toLowerCase())&&line("Verified qualifications",profile?.verified_qualifications?.length||0)}{line("Subjects",subjects.join(", "))}{!["teacher","manager","senior_manager"].includes(String(profile?.role||user.role).toLowerCase())&&<>{isOwn&&line("School fees",profile?.fees_status==="paid"?"Paid":profile?.fees_status==="overdue"?"Overdue":profile?.fees_status==="pending"?"Pending":"Not recorded")}{line("Leaderboard position",profile?.leaderboard_position?"#"+profile.leaderboard_position:"Not ranked")}{line("Achievements awarded",profile?.achievement_count??achievements.length)}{isOwn&&line("Groups joined",(profile?.groups_joined||[]).map((g:Row)=>g.name).join(", ")||"None recorded")}{isOwn&&profile?.is_prefect&&<>{line("Groups owned",(profile.groups_owned||[]).map((g:Row)=>g.name).join(", ")||"None recorded")}{line("Groups with settings permission",(profile.groups_with_settings_permission||[]).map((g:Row)=>g.name).join(", ")||"None recorded")}{line("Lesson requests",profile.lesson_requests_count??0)}</>}</>}
+        {canManageOwnPayoutPreferences&&<View style={{borderTopWidth:1,borderTopColor:colors.border,marginTop:10,paddingTop:10}}><Text style={{fontWeight:"800",color:colors.foreground,marginBottom:6}}>Private payout preferences</Text><Text style={{fontSize:12,color:colors.mutedForeground,marginBottom:8}}>Never enter a card number, CVV, PIN, or password.</Text><View style={{flexDirection:"row",gap:6}}>{(["ecocash","paypal","bank"] as const).map(m=><TouchableOpacity key={m} onPress={()=>{setPayoutMethod(m);setPayoutDestination("");}} style={{padding:8,borderRadius:8,backgroundColor:payoutMethod===m?colors.primary:colors.background,borderWidth:1,borderColor:colors.border}}><Text style={{color:payoutMethod===m?"#fff":colors.foreground,fontWeight:"700"}}>{m==="ecocash"?"EcoCash":m==="paypal"?"PayPal":"Bank"}</Text></TouchableOpacity>)}</View>{!!payoutDestinationMasked&&<Text style={{color:colors.mutedForeground,marginTop:8}}>Saved destination: {payoutDestinationMasked}</Text>}{payoutMethod!=="bank"?<TextInput accessibilityLabel={payoutMethod==="paypal"?"PayPal email":"EcoCash phone"} value={payoutDestination} onChangeText={setPayoutDestination} placeholder={payoutMethod==="paypal"?"PayPal email":"EcoCash phone"} placeholderTextColor={colors.mutedForeground} autoCapitalize="none" style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground,marginTop:8}}/>:<><TextInput accessibilityLabel="Bank name" value={bankName} onChangeText={setBankName} placeholder="Bank name" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground,marginTop:8}}/><TextInput accessibilityLabel="Account holder" value={accountHolder} onChangeText={setAccountHolder} placeholder="Account holder name" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground,marginTop:8}}/></>}{button("Save payout preferences",()=>void savePayout(),payoutMethod==="bank"?(!bankName.trim()||!accountHolder.trim()):!payoutDestination.trim())}</View>}
+        {isOwn&&<><Text style={{fontWeight:"800",color:colors.foreground,marginTop:8,marginBottom:6}}>Notification email</Text><TextInput accessibilityLabel="Notification email" autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={v=>{setEmail(v);setEmailVerified(false);}} placeholder="you@example.com" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground}}/><Text style={{color:emailVerified?"#16a34a":colors.mutedForeground,marginTop:6}}>{emailVerified?"Verified":"Not verified"}</Text>{!emailVerified&&button(emailSending?"Sending verification email…":"Send verification code",()=>void requestOtp(),emailSending)}<TextInput accessibilityLabel="Six digit OTP" keyboardType="number-pad" autoComplete="one-time-code" maxLength={6} value={otp} onChangeText={v=>setOtp(v.replace(/\D/g,"").slice(0,6))} placeholder="6-digit code" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground,marginTop:8}}/>{button("Verify email",()=>void verifyOtp(),otp.length!==6)}</>}
+      </View>}
+      {tab==="Qualifications"&&<View>
+         {isOwn&&normalizedUserRole==="teacher"&&<TeacherCvEditor/>}
+        {(qualifications||[]).map((q:Row)=><View key={q.id||q.title} style={card}>{line("Qualification",q.title)}{line("Institution",q.institution)}{line("Year",q.year)}{line("Status",q.verification_status||"verified")}{isOwn&&q.id&&button("Upload PDF/JPG/PNG",()=>void upload(q.id))}</View>)}
+        {!qualifications.length&&<View style={card}><Text style={{color:colors.mutedForeground}}>No qualifications listed yet.</Text></View>}
+        {isOwn&&["teacher","manager","senior_manager"].includes(String(user.role).toLowerCase())&&<View style={card}><Text style={{fontWeight:"800",color:colors.foreground,marginBottom:8}}>Add multiple qualifications</Text><Text style={{fontSize:12,color:colors.mutedForeground,marginBottom:8}}>Enter one qualification per line. Save all together for verification.</Text><TextInput accessibilityLabel="Qualifications, one per line" value={qualificationInput} onChangeText={setQualificationInput} multiline numberOfLines={4} maxLength={25000} placeholder={"Diploma in Education\nBachelor of Science\nMaster's Degree"} placeholderTextColor={colors.mutedForeground} style={{minHeight:100,textAlignVertical:"top",borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground,marginBottom:8}}/>{button("Save all qualifications",()=>void saveQualificationsBulk(),!qualificationInput.trim())}</View>}{isOwn&&["teacher","manager","senior_manager"].includes(String(user.role).toLowerCase())&&<View style={card}><Text style={{fontWeight:"800",color:colors.foreground,marginBottom:8}}>Add qualification</Text><TextInput accessibilityLabel="Qualification title" value={newQualificationTitle} onChangeText={setNewQualificationTitle} placeholder="Qualification title" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground}}/>{button("Save qualification",()=>void addQualification(),!newQualificationTitle.trim())}</View>}
+        {isOwn&&["teacher","manager","senior_manager"].includes(String(user.role).toLowerCase())&&<View style={card}><Text style={{fontSize:16,fontWeight:"800",color:colors.foreground,marginBottom:8}}>CV, resume & certificates</Text><View style={{flexDirection:"row",flexWrap:"wrap",gap:6,marginBottom:10}}>{(["cv","resume","certificate","proof"] as const).map(kind=><TouchableOpacity key={kind} onPress={()=>setDocumentType(kind)} style={{borderWidth:1,borderColor:documentType===kind?colors.primary:colors.border,borderRadius:18,paddingHorizontal:10,paddingVertical:7}}><Text style={{color:colors.foreground,fontSize:12}}>{documentType===kind?"✓ ":""}{kind.toUpperCase()}</Text></TouchableOpacity>)}</View>{button("Upload "+documentType,()=>void uploadProfileDocument())}<Text style={{fontSize:12,color:colors.mutedForeground,marginTop:8}}>Uploaded records are saved to your account. Public viewers can see certificates; CVs and resumes remain private.</Text></View>}
+        {documents.map((d:Row)=><View key={d.id} style={card}><Text style={{fontWeight:"700",color:colors.foreground}}>{d.file_name}</Text>{line("Type",String(d.document_type||"document").toUpperCase())}{line("Size",Math.ceil(Number(d.size_bytes||0)/1024)+" KB")}{button("Open document",()=>void openProfileDocument(d))}</View>)}
+        {isOwner&&<View style={card}><Text style={{fontSize:16,fontWeight:"800",color:colors.foreground,marginBottom:8}}>Pending verification</Text>{queue.map((q:Row)=><View key={q.id} style={{borderTopWidth:1,borderTopColor:colors.border,paddingVertical:10}}>{line("Teacher",q.teacher_name)}{line("Qualification",q.title)}{line("Institution",q.institution)}{q.document_id&&button("Review document",()=>void openDocument(q.document_id,q.document_file_name,q.document_mime_type))}{button("Verify",()=>void verify(q.id,"verified"))}{button("Reject",()=>void verify(q.id,"rejected"))}</View>)}{!queue.length&&<Text style={{color:colors.mutedForeground}}>No pending qualifications.</Text>}</View>}
+      </View>}
+      {tab==="Subjects"&&<View style={card}><Text style={{fontWeight:"800",color:colors.foreground,marginBottom:8}}>{["teacher","manager","senior_manager"].includes(String(profile?.role||user.role).toLowerCase())?"Teaching subjects & primary specialization":"Learning subjects"}</Text>{subjects.map(s=><Text key={s} style={{color:colors.foreground,paddingVertical:7}}>• {s}{profile?.primary_subject===s?" · Primary":""}</Text>)}{!subjects.length&&<Text style={{color:colors.mutedForeground}}>No subjects listed.</Text>}{isOwn&&<><Text style={{fontSize:12,color:colors.mutedForeground,marginTop:10}}>Select from subjects used in lessons and live classes, or type additional subjects below.</Text><View style={{flexDirection:"row",flexWrap:"wrap",gap:6,marginTop:8}}>{subjectCatalog.map(s=><TouchableOpacity key={s} onPress={()=>{const current=subjectInput.split(",").map(v=>v.trim()).filter(Boolean);setSubjectInput((current.includes(s)?current.filter(v=>v!==s):[...current,s]).join(", "));}} style={{borderWidth:1,borderColor:subjectInput.split(",").map(v=>v.trim()).includes(s)?colors.primary:colors.border,borderRadius:18,paddingHorizontal:9,paddingVertical:6,backgroundColor:subjectInput.split(",").map(v=>v.trim()).includes(s)?colors.primary+"18":colors.background}}><Text style={{color:colors.foreground,fontSize:12}}>{s}</Text></TouchableOpacity>)}</View><TextInput accessibilityLabel="Selected subjects" value={subjectInput} onChangeText={setSubjectInput} placeholder="Mathematics, English" placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:11,color:colors.foreground,marginTop:10}}/>{["teacher","manager","senior_manager"].includes(String(profile?.role||user.role).toLowerCase())&&<><Text style={{fontWeight:"700",color:colors.foreground,marginTop:8}}>Primary specialization</Text><View style={{flexDirection:"row",flexWrap:"wrap",gap:6,marginTop:6}}>{subjectInput.split(",").map(v=>v.trim()).filter(Boolean).map(s=><TouchableOpacity key={s} onPress={()=>setPrimarySubject(s)} style={{borderWidth:1,borderColor:primarySubject===s?colors.primary:colors.border,borderRadius:18,paddingHorizontal:9,paddingVertical:6}}><Text style={{color:colors.foreground,fontSize:12}}>{primarySubject===s?"★ ":""}{s}</Text></TouchableOpacity>)}</View></>}{button("Save subjects",()=>void saveSubjects())}</>}</View>}
+      {tab==="Enrollments"&&<View>{isOwn?enrollments.map((e:Row)=><View key={e.id} style={card}>{line("Class",e.title)}{line("Subject",e.subject)}{line("Teacher",e.teacher_name)}{line("Enrolled",e.enrolled_at?new Date(e.enrolled_at).toLocaleDateString():"—")}{line("Progress",String(e.progress_percent??0)+"%")}</View>):<View style={card}><Text style={{color:colors.mutedForeground}}>Enrollment details are private.</Text></View>}{isOwn&&!enrollments.length&&<View style={card}><Text style={{color:colors.mutedForeground}}>No active class enrollments recorded.</Text></View>}</View>}
+      {tab==="Achievements"&&<View>{achievements.map((a:Row)=><View key={a.id} style={card}><Text style={{fontSize:16,fontWeight:"800",color:colors.foreground}}>{a.achievement?.icon||"🏆"} {a.achievement?.name||"Achievement"}</Text><Text style={{color:colors.mutedForeground,marginTop:5}}>{a.achievement?.description||"Achievement earned on the platform."}</Text>{line("Points",a.achievement?.pointsValue??0)}{line("Earned",a.earnedAt?new Date(a.earnedAt).toLocaleDateString():"—")}</View>)}{!achievements.length&&<View style={card}><Text style={{color:colors.mutedForeground}}>No achievements recorded.</Text></View>}</View>}
+      {tab==="Reports"&&<View>{approvedReports.map((report:Row)=>{const content=report.draft_content||{};const facts=content.factualRecords||{};const overall=facts.markSummary?.overall||content.markSummary?.overall||{};const marks=[...(facts.assignmentMarks||[]).map((m:Row)=>({...m,kind:"Assignment",label:m.subject||m.title||"Assignment",score:m.marks,total:m.total_marks})),...(facts.exerciseMarks||[]).map((m:Row)=>({...m,kind:"Exercise",label:m.title||"Exercise",score:m.total_score,total:m.total_marks}))];return <View key={report.id} style={[card,{padding:0,overflow:"hidden"}]}><View style={{backgroundColor:"#0f2a5a",padding:15,borderBottomWidth:3,borderBottomColor:"#A87919"}}><Text style={{color:"#e8c85a",fontSize:10,fontWeight:"800",letterSpacing:1}}>DALLYLETTER ELIDEMS · SMART CAPS LMS</Text><Text style={{color:"#fff",fontSize:19,fontWeight:"900",marginTop:5}}>Official Academic Report</Text><Text style={{color:"#dbeafe",marginTop:3}}>{report.term_label} · {report.report_type==="attendance_register"?"Attendance Register":"Term Performance"}</Text></View><View style={{padding:14,gap:9}}>{line("Learner",content.learner||user?.name||"Learner record")}{line("Grade / form",content.learnerGrade||"Not recorded")}{line("Admission number",content.admissionNumber||"Not recorded")}{line("Date of birth",content.dateOfBirth||"Not recorded")}{line("Age at period end",content.ageOnPeriodEnd==null?"Not calculated":String(content.ageOnPeriodEnd)+" years")}{line("Academic year",content.academicYear||"Not recorded")}{line("Period",(report.period_start?new Date(report.period_start).toLocaleDateString():"—")+" – "+(report.period_end?new Date(report.period_end).toLocaleDateString():"—"))}{line("Approved",report.reviewed_at?new Date(report.reviewed_at).toLocaleDateString():"—")}{line("Reference","DL-AR-"+report.id)}{report.report_type==="attendance_register"?<View style={{marginTop:8}}><Text style={{fontWeight:"800",color:colors.foreground,marginBottom:8}}>Attendance by class</Text>{(content.records||[]).map((r:Row)=><View key={r.classId} style={{paddingVertical:8,borderTopWidth:1,borderTopColor:colors.border}}><Text style={{color:colors.foreground,fontWeight:"700"}}>Class {r.classId}</Text><Text style={{color:colors.mutedForeground,fontSize:12}}>{r.sessions} recorded · {r.present} present · {r.absent} absent · {r.late} late</Text></View>)}{!(content.records||[]).length&&<Text style={{color:colors.mutedForeground}}>No attendance sessions recorded in this period.</Text>}</View>:<View style={{marginTop:8}}><Text style={{fontWeight:"800",color:colors.foreground,marginBottom:8}}>Academic performance</Text><View style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:10,marginBottom:8}}><Text style={{fontWeight:"700",color:colors.foreground}}>Class progress</Text>{facts.enrollments?.length?facts.enrollments.map((entry:Row,index:number)=><Text key={String(entry.id||index)} style={{color:colors.mutedForeground,fontSize:12,marginTop:4}}>{entry.subject||"Subject not recorded"} · {entry.class_title||"Class not recorded"} — {entry.progress_percent==null?"Progress not recorded":String(entry.progress_percent)+"%"} ({entry.status||"Status not recorded"})</Text>):<Text style={{color:colors.mutedForeground,fontSize:12}}>No class progress recorded.</Text>}</View><View style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:10,marginBottom:8}}><Text style={{fontWeight:"700",color:colors.foreground}}>Learning polls / quizzes</Text>{facts.pollSubmissions?.length?facts.pollSubmissions.map((poll:Row,index:number)=><Text key={String(poll.submission_id||index)} style={{color:colors.mutedForeground,fontSize:12,marginTop:4}}>{poll.title||"Learning poll"} · {poll.subject||"Subject not recorded"} — {poll.score==null||poll.total_questions==null?"Score unavailable":String(poll.score)+" / "+String(poll.total_questions)}</Text>):<Text style={{color:colors.mutedForeground,fontSize:12}}>No completed learning polls were recorded in this period.</Text>}</View>{facts.enrollments?.length>0&&<View style={{marginBottom:8}}><Text style={{fontWeight:"700",color:colors.foreground}}>Subjects and classes</Text>{facts.enrollments.map((entry:Row,index:number)=><Text key={String(entry.id||index)} style={{color:colors.mutedForeground,fontSize:12,marginTop:4}}>{entry.subject||"Subject not recorded"} · {entry.class_title||"Class not recorded"}</Text>)}</View>}<Text style={{fontSize:12,color:colors.mutedForeground,marginBottom:8}}>Attendance: {facts.attendanceSummary?.present??"Not available"} present · {facts.attendanceSummary?.absent??"Not available"} absent · {facts.attendanceSummary?.late??"Not available"} late</Text><View style={{borderWidth:1,borderColor:colors.border,borderRadius:9,padding:10,marginBottom:8}}><Text style={{fontWeight:"700",color:colors.foreground}}>Achievements</Text>{facts.awards?.length?facts.awards.map((award:Row,index:number)=><Text key={String(award.id||index)} style={{color:colors.mutedForeground,fontSize:12,marginTop:4}}>{award.name||"Achievement"}{award.earned_at?" · "+new Date(award.earned_at).toLocaleDateString():""}</Text>):<Text style={{color:colors.mutedForeground,fontSize:12}}>No achievements recorded in this period.</Text>}</View><View style={{flexDirection:"row",flexWrap:"wrap",gap:8}}>{[["Marked",overall.markedCount??"—"],["Earned",overall.earnedMarks??"—"],["Possible",overall.possibleMarks??"—"],["Average",overall.percentage==null?"Unavailable":overall.percentage+"%"]].map(([label,value])=><View key={String(label)} style={{minWidth:"44%",flexGrow:1,backgroundColor:colors.background,borderRadius:8,padding:10}}><Text style={{fontSize:11,color:colors.mutedForeground}}>{label}</Text><Text style={{fontSize:17,fontWeight:"800",color:colors.foreground}}>{String(value)}</Text></View>)}</View>{marks.map((m:Row,index:number)=><View key={String(m.submission_id||index)} style={{paddingVertical:8,borderTopWidth:1,borderTopColor:colors.border}}><Text style={{fontWeight:"700",color:colors.foreground}}>{m.label}</Text><Text style={{fontSize:12,color:colors.mutedForeground}}>{m.kind} · {m.score==null?"Not marked":String(m.score)+" / "+String(m.total??"—")} · {m.status||"Recorded"}</Text></View>)}{!marks.length&&<Text style={{color:colors.mutedForeground}}>No marked assignments or report-enabled exercises recorded in this period.</Text>}{content.commentary&&<View style={{backgroundColor:colors.background,borderRadius:8,padding:10,marginTop:8}}><Text style={{fontWeight:"800",color:colors.foreground}}>Academic commentary</Text><Text style={{color:colors.foreground,marginTop:5}}>{String(content.commentary)}</Text></View>}{(content.teacherComment||content.conduct||content.result||report.review_note)&&<View style={{backgroundColor:colors.background,borderRadius:8,padding:10,marginTop:8,gap:7}}>{content.teacherComment&&<View><Text style={{fontWeight:"800",color:colors.foreground}}>Teacher comment</Text><Text style={{color:colors.foreground}}>{String(content.teacherComment)}</Text></View>}{content.conduct&&line("Conduct / behaviour",content.conduct)}{content.result&&line("Term result / promotion",content.result)}{report.review_note&&<View><Text style={{fontWeight:"800",color:colors.foreground}}>Reviewer / headmaster comment</Text><Text style={{color:colors.foreground}}>{String(report.review_note)}</Text></View>}</View>}</View>}{button("Download official PDF",()=>void act(async()=>{const response=await FileSystem.downloadAsync(getApiUrl("/api/academic-records/reports/drafts/"+report.id+"/download/pdf"),(FileSystem.documentDirectory||FileSystem.cacheDirectory||"")+"dallyletter-report-"+report.id+".pdf",{headers:token?{Authorization:"Bearer "+token}:{}});const uri=Platform.OS==="android"?await FileSystem.getContentUriAsync(response.uri):response.uri;await Linking.openURL(uri);} ))}</View></View>})}{!approvedReports.length&&<View style={card}><Text style={{color:colors.mutedForeground}}>No approved academic reports are available yet. Your report will appear here after school review.</Text></View>}</View>}
+      {tab==="Attendance"&&<View style={card}><Text style={{fontSize:17,fontWeight:"800",color:colors.foreground,marginBottom:8}}>Attendance history</Text><View style={{flexDirection:"row",flexWrap:"wrap",gap:7,marginBottom:12}}>{(["Daily","Weekly","Monthly","Termly"] as const).map(period=><TouchableOpacity key={period} onPress={()=>setAttendancePeriod(period)} style={{paddingHorizontal:10,paddingVertical:7,borderRadius:16,borderWidth:1,borderColor:attendancePeriod===period?colors.primary:colors.border,backgroundColor:attendancePeriod===period?colors.primary:colors.background}}><Text style={{color:attendancePeriod===period?"#fff":colors.foreground,fontWeight:"700"}}>{period}</Text></TouchableOpacity>)}</View>{(()=>{const now=new Date();const start=new Date(now);if(attendancePeriod==="Daily")start.setHours(0,0,0,0);else if(attendancePeriod==="Weekly")start.setDate(now.getDate()-6);else if(attendancePeriod==="Monthly")start.setDate(now.getDate()-29);else {const configuredStart=new Date(termStart+"T00:00:00");const configuredEnd=new Date(termEnd+"T23:59:59");start.setTime(configuredStart.getTime());now.setTime(configuredEnd.getTime());}const rows=academicAttendance.filter((row:Row)=>{const d=new Date(row.joined_at);return !Number.isNaN(d.getTime())&&d>=start&&d<=now;});return <>{attendancePeriod==="Termly"&&<View style={{flexDirection:"row",gap:8,marginBottom:10}}><View style={{flex:1}}><Text style={{color:colors.mutedForeground,fontSize:12}}>Term start (set by school)</Text><TextInput accessibilityLabel="Term start date" value={termStart} onChangeText={setTermStart} placeholder="YYYY-MM-DD" style={{borderWidth:1,borderColor:colors.border,borderRadius:8,padding:8,color:colors.foreground}}/></View><View style={{flex:1}}><Text style={{color:colors.mutedForeground,fontSize:12}}>Term end</Text><TextInput accessibilityLabel="Term end date" value={termEnd} onChangeText={setTermEnd} placeholder="YYYY-MM-DD" style={{borderWidth:1,borderColor:colors.border,borderRadius:8,padding:8,color:colors.foreground}}/></View></View>}{line("View",attendancePeriod==="Termly"?"Termly (configured date range)":attendancePeriod)}{line("Records",rows.length)}{rows.map((row:Row,index:number)=><View key={String(row.class_id)+"-"+String(row.joined_at)+"-"+index} style={{borderTopWidth:1,borderTopColor:colors.border,paddingVertical:9}}>{line("Date",row.joined_at?new Date(row.joined_at).toLocaleString():"—")}{line("Class ID",row.class_id)}{line("Status",row.status||"Not recorded")}{line("Late",row.is_late?"Yes":"No")}{line("Duration",row.duration_minutes==null?"—":String(row.duration_minutes)+" min")}</View>)}{!rows.length&&<Text style={{color:colors.mutedForeground,marginTop:8}}>No attendance entries found for this period. This view uses saved attendance records; it does not create or infer attendance.</Text>}</>})()}{isOwn&&<View style={{marginTop:16,paddingTop:14,borderTopWidth:1,borderTopColor:colors.border}}><Text style={{fontSize:16,fontWeight:"800",color:colors.foreground,marginBottom:6}}>Daily Dallyletter access</Text><Text style={{fontSize:12,color:colors.mutedForeground,marginBottom:10}}>App opens count once per day for attendance. Repeat opens increase the activity count only; absence is confirmed after the saved local day ends.</Text>{dailyAppAttendance.slice(0,10).map((record:Row)=><View key={String(record.attendance_date).slice(0,10)} style={{flexDirection:"row",justifyContent:"space-between",alignItems:"center",gap:8,borderTopWidth:1,borderTopColor:colors.border,paddingVertical:9}}><View style={{flex:1}}><Text style={{color:colors.foreground,fontWeight:"700"}}>{String(record.attendance_date).slice(0,10)}</Text><Text style={{color:colors.mutedForeground,fontSize:11}}>{record.time_zone||"Timezone unavailable"} · {record.last_source||"—"}</Text></View><View style={{alignItems:"flex-end"}}><Text style={{color:record.status==="present"?"#15803d":"#b91c1c",fontWeight:"800",fontSize:12}}>{record.status==="present"?"Present":"Absent"}</Text><Text style={{color:colors.mutedForeground,fontSize:11}}>{Number(record.open_count||0)} opens · {record.activity_label||"—"}</Text></View></View>)}{!dailyAppAttendance.length&&<Text style={{color:colors.mutedForeground,fontSize:12}}>No saved daily app-access records yet. Open Dallyletter while signed in to record presence.</Text>}</View>}</View>}
+      {tab==="Payments"&&<View style={card}><Text style={{fontSize:17,fontWeight:"800",color:colors.foreground,marginBottom:8}}>Recorded school payments</Text><Text style={{color:colors.mutedForeground,marginBottom:8}}>These are payment ledger records, not payout preferences. A reported or pending payment is not proof that fees have been cleared.</Text>{paymentRecords.map((payment:Row)=><View key={payment.id} style={{borderTopWidth:1,borderTopColor:colors.border,paddingVertical:10}}>{line("Payment period",String(payment.month||"")+" "+String(payment.year||""))}{line("Amount",String(payment.currency||"USD")+" "+Number(payment.amount||0).toFixed(2))}{line("Status",payment.status||"Not recorded")}{line("Recorded",payment.createdAt?new Date(payment.createdAt).toLocaleDateString():"—")}{line("Reference / notes",payment.notes||"—")}</View>)}{!paymentRecords.length&&<Text style={{color:colors.mutedForeground}}>No payment records are available for this account.</Text>}</View>}
+      {tab==="Transfer Letters"&&<View style={card}><Text style={{fontSize:18,fontWeight:"900",color:colors.foreground,marginBottom:6}}>Dallyletter Elidems · Complete Transfer Letter</Text><Text style={{color:colors.mutedForeground,marginBottom:12}}>Every signed-in user can complete this official transfer template and submit a request. Only managers and owners can approve or reject.</Text>
+      {canReviewTransferLetters&&<View style={{borderWidth:1,borderColor:colors.border,borderRadius:12,padding:12,marginBottom:12}}>
+        <Text style={{fontWeight:"900",color:colors.foreground,marginBottom:8}}>Manager / Owner approval queue</Text>
+        {transferRequests.length?transferRequests.map((r:Row)=>{
+          const letter=r.form_data&&typeof r.form_data==="object"?r.form_data:{};
+          const imageFields:[string,string][]=[["schoolLogoDataUrl","School logo"],["guardianSignatureDataUrl","Guardian signature"],["headmasterSignatureDataUrl","Headmaster signature"]];
+          const letterSections:[string,[string,any][]][]=[
+            ["1. Learner's Details",[["Full name",letter.learnerName||r.learner_name],["Grade / Form",letter.grade],["Admission No",letter.admissionNo],["DOB / Gender",(letter.dob||"—")+" / "+(letter.gender||"—")],["EMIS No",letter.emisNo],["Academic Year",letter.academicYear],["Recorded academic average / Conduct",(letter.average!==undefined&&letter.average!==null&&String(letter.average).trim()!==""?String(letter.average)+"%":"—")+" / "+(letter.conduct||"—")]]],
+            ["2. Reason For Transfer",[["Category",letter.reasonType],["Details",letter.reasonDetail||r.reason]]],
+            ["3. Parent's / Guardian's Details",[["Name & relation",(letter.guardianName||"—")+" ("+(letter.relationship||"—")+")"],["ID No",letter.guardianId],["Contact",letter.guardianPhone],["Email",letter.guardianEmail],["Address",letter.address],["Effective Date",letter.effectiveDate]]],
+          ];
+          return <View key={r.id} style={{borderTopWidth:1,borderColor:colors.border,paddingVertical:12,gap:8}}>
+            <View style={{flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:8}}>
+              <Text style={{fontWeight:"900",color:colors.foreground}}>Transfer letter #{r.id}</Text>
+              <Text style={{fontSize:11,fontWeight:"800",color:r.status==="approved"?"#15803d":r.status==="rejected"?"#b91c1c":"#a16207"}}>{String(r.status||"pending").toUpperCase()}</Text>
+            </View>
+            {line("Learner",r.learner_name||("Learner #"+r.learner_id))}
+            {line("Submitted",r.created_at?new Date(r.created_at).toLocaleString():"—")}
+            <View style={{backgroundColor:"#ffffff",borderWidth:1,borderColor:"#d1d5db",borderRadius:10,padding:14,gap:10}}>
+              <View style={{flexDirection:"row",justifyContent:"space-between",alignItems:"flex-start",borderBottomWidth:3,borderBottomColor:"#0f2a5a",paddingBottom:10,gap:8}}>
+                <View style={{flex:1}}><Text style={{fontSize:17,fontWeight:"900",color:"#0f2a5a"}}>{String(letter.currentSchool||"Dallyletter Elidems")}</Text><Text style={{fontSize:11,color:"#64748b"}}>Official transfer application</Text></View>
+                {typeof letter.schoolLogoDataUrl==="string"&&letter.schoolLogoDataUrl.startsWith("data:image/")?<Image source={{uri:letter.schoolLogoDataUrl}} resizeMode="contain" style={{width:68,height:68,borderWidth:1,borderColor:"#d1d5db"}}/>:<View style={{width:68,height:68,borderWidth:1,borderStyle:"dashed",borderColor:"#d1d5db",alignItems:"center",justifyContent:"center"}}><Text style={{fontSize:9,color:"#94a3b8"}}>NO LOGO</Text></View>}
+              </View>
+              <Text style={{textAlign:"right",fontSize:11,color:"#64748b"}}>{letter.effectiveDate?new Date(String(letter.effectiveDate)+"T00:00:00").toLocaleDateString():"Date not supplied"}</Text>
+              <Text style={{fontSize:12,color:"#334155"}}>The Headmaster{"\n"}{String(letter.receivingSchool||"[Receiving School]")}{"\n"}Dear Sir/Madam,</Text>
+              <Text style={{fontSize:12,fontWeight:"900",color:"#0f2a5a"}}>RE: TRANSFER APPLICATION FOR {String(letter.learnerName||r.learner_name||"LEARNER NAME").toUpperCase()} - {String(letter.grade||"Grade not supplied")}</Text>
+              {letterSections.map(([heading,rows])=><View key={heading} style={{borderWidth:1,borderColor:"#e2e8f0",borderRadius:7,padding:9,gap:5}}><Text style={{fontSize:11,fontWeight:"900",color:"#0f2a5a",borderLeftWidth:3,borderLeftColor:"#A87919",paddingLeft:7}}>{heading.toUpperCase()}</Text>{rows.filter(([,value])=>value!==undefined&&value!==null&&String(value).trim()!=="").map(([label,value])=><View key={label} style={{flexDirection:"row",gap:8,borderBottomWidth:0.5,borderBottomColor:"#e2e8f0",paddingVertical:4}}><Text style={{width:112,fontSize:10,color:"#64748b"}}>{label}</Text><Text style={{flex:1,fontSize:11,fontWeight:"700",color:"#0f2a5a"}}>{String(value)||"—"}</Text></View>)}</View>)}
+              <View style={{borderWidth:1,borderColor:"#e2e8f0",borderRadius:7,padding:9,gap:8}}><Text style={{fontSize:11,fontWeight:"900",color:"#0f2a5a"}}>4. DECLARATIONS &amp; SIGNATURES</Text><View style={{flexDirection:"row",gap:12}}><View style={{flex:1,borderTopWidth:1,borderTopColor:"#cbd5e1",paddingTop:7}}><Text style={{fontSize:10,color:"#334155"}}>Parent / Guardian signature</Text>{typeof letter.guardianSignatureDataUrl==="string"&&letter.guardianSignatureDataUrl.startsWith("data:image/")?<Image source={{uri:letter.guardianSignatureDataUrl}} resizeMode="contain" style={{width:"100%",height:52}}/>:<Text style={{fontSize:10,color:"#94a3b8"}}>Not supplied</Text>}</View><View style={{flex:1,borderTopWidth:1,borderTopColor:"#cbd5e1",paddingTop:7}}><Text style={{fontSize:10,color:"#334155"}}>Headmaster signature / stamp</Text>{typeof letter.headmasterSignatureDataUrl==="string"&&letter.headmasterSignatureDataUrl.startsWith("data:image/")?<Image source={{uri:letter.headmasterSignatureDataUrl}} resizeMode="contain" style={{width:"100%",height:52}}/>:<Text style={{fontSize:10,color:"#94a3b8"}}>Not supplied</Text>}</View></View></View>
+              <Text style={{fontSize:9,color:"#64748b"}}>Subject to acceptance by receiving school, space availability, and submission of supporting records. Fee clearance and signatures are not assumed.</Text>
+            </View>
+            {r.review_note?line("Reviewer note",r.review_note):null}
+            {r.status==="pending"&&<View style={{flexDirection:"row",gap:8,flexWrap:"wrap"}}>
+              {canApproveTransferLetters&&button("Approve",()=>void act(async()=>{await api("/api/academic-records/transfer-requests/"+r.id+"/review",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:"approved"})});setTransferRequests(await api("/api/academic-records/transfer-requests"));setMessage("Transfer application approved.");}))}
+              {canRejectTransferLetters&&button("Reject",()=>void act(async()=>{await api("/api/academic-records/transfer-requests/"+r.id+"/review",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:"rejected",note:"Please contact the school office for the rejection reason and next steps."})});setTransferRequests(await api("/api/academic-records/transfer-requests"));setMessage("Transfer application rejected.");}))}
+            </View>}
+          </View>;
+        }):<Text style={{color:colors.mutedForeground}}>No transfer applications are awaiting review.</Text>}
+      </View>}
+      {isOwn&&<><Text style={{fontWeight:"800",color:colors.foreground,marginBottom:8}}>Complete the application</Text><View style={{flexDirection:"row",flexWrap:"wrap",justifyContent:"space-between",gap:8}}>{([["receivingSchool","Receiving school"],["learnerName","Learner full name"],["grade","Grade / Form"],["academicYear","Academic year"],["dob","Date of birth"],["admissionNo","Admission number"],["emisNo","EMIS number"],["guardianName","Parent / guardian name"],["guardianId","Parent / guardian ID"],["guardianPhone","Parent / guardian phone"],["guardianEmail","Parent / guardian email"],["address","Physical address"],["effectiveDate","Effective transfer date"]] as string[][]).map(([key,label])=><View key={key} style={{width:key==="address"?"100%":"48%",marginBottom:3}}><Text style={{fontSize:10,fontWeight:"900",color:colors.mutedForeground,marginBottom:3,letterSpacing:0.4}}>{label.toUpperCase()}</Text>{key==="grade"?<View><TouchableOpacity accessibilityRole="button" accessibilityLabel="Select grade or form" onPress={()=>setShowTransferGradeOptions(value=>!value)} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,paddingHorizontal:9,paddingVertical:11,backgroundColor:colors.background}}><Text style={{color:transferForm.grade?colors.foreground:colors.mutedForeground,fontSize:13}}>{String(transferForm.grade||"Select grade / form")}</Text></TouchableOpacity>{showTransferGradeOptions?<View style={{borderWidth:1,borderColor:colors.border,borderRadius:9,marginTop:5,overflow:"hidden"}}>{ACADEMIC_GRADE_OPTIONS.map(grade=><TouchableOpacity key={grade} accessibilityRole="button" onPress={()=>{setTransferForm(old=>({...old,grade}));setShowTransferGradeOptions(false);}} style={{paddingHorizontal:10,paddingVertical:10,backgroundColor:transferForm.grade===grade?colors.primary+"18":colors.card,borderBottomWidth:1,borderBottomColor:colors.border}}><Text style={{color:colors.foreground,fontWeight:transferForm.grade===grade?"800":"500"}}>{grade}</Text></TouchableOpacity>)}</View>:null}</View>:<TextInput value={String(transferForm[key]||"")} onChangeText={v=>setTransferForm(old=>({...old,[key]:v}))} placeholder={key==="dob"?"YYYY-MM-DD":label} placeholderTextColor={colors.mutedForeground} style={{borderWidth:1,borderColor:colors.border,borderRadius:9,paddingHorizontal:9,paddingVertical:8,color:colors.foreground,backgroundColor:colors.background,fontSize:13}} />}{key==="dob"&&<Text style={{fontSize:10,color:colors.mutedForeground,marginTop:3}}>{calculateAgeOnDate(String(transferForm.dob||""), transferForm.effectiveDate ? new Date(String(transferForm.effectiveDate) + "T00:00:00") : new Date())===null?"Age after valid DOB":"Age: "+calculateAgeOnDate(String(transferForm.dob||""), transferForm.effectiveDate ? new Date(String(transferForm.effectiveDate) + "T00:00:00") : new Date())+" years"}</Text>}</View>)}</View>
+      <TouchableOpacity onPress={()=>setTransferAttachmentsExpanded(v=>!v)} style={{marginTop:10,padding:11,borderRadius:10,borderWidth:1,borderColor:"#A87919",backgroundColor:colors.background,flexDirection:"row",justifyContent:"space-between",alignItems:"center"}}><Text style={{fontWeight:"900",color:colors.foreground}}>＋ Logo, signatures & image uploads</Text><Text style={{fontWeight:"900",color:colors.primary}}>{transferAttachmentsExpanded?"Hide":"Show"}</Text></TouchableOpacity>
+      {transferAttachmentsExpanded?<View style={{marginTop:8,padding:10,borderWidth:1,borderColor:colors.border,borderRadius:12}}>        <View style={{flexDirection:"row",gap:8,marginTop:10}}>
+          <TouchableOpacity onPress={async()=>{const result=await ImagePicker.launchImageLibraryAsync({mediaTypes:["images"],allowsEditing:true,quality:0.65,base64:true});if(!result.canceled&&result.assets?.[0]?.base64){const asset=result.assets[0],mime=asset.mimeType==="image/png"?"image/png":"image/jpeg";const value="data:"+mime+";base64,"+asset.base64;if(value.length>1_250_000){Alert.alert("Image too large","Choose a smaller image (maximum 900 KB after compression).");return;}setTransferForm(old=>({...old,schoolLogoDataUrl:value}));}}} style={{flex:1,borderWidth:1,borderColor:"#A87919",borderRadius:10,padding:10,backgroundColor:colors.background}}><Text style={{fontWeight:"800",color:colors.foreground,textAlign:"center"}}>＋ School logo</Text></TouchableOpacity>
+          <TouchableOpacity onPress={()=>{setSignatureTarget("guardian");setSignaturePath("");}} style={{flex:1,borderWidth:1,borderColor:"#A87919",borderRadius:10,padding:10,backgroundColor:colors.background}}><Text style={{fontWeight:"800",color:colors.foreground,textAlign:"center"}}>✍ Guardian sign</Text></TouchableOpacity>
+        </View>
+        <View style={{flexDirection:"row",gap:8,marginTop:8}}>
+          <TouchableOpacity onPress={()=>{setSignatureTarget("headmaster");setSignaturePath("");}} style={{flex:1,borderWidth:1,borderColor:colors.border,borderRadius:10,padding:10}}><Text style={{fontWeight:"700",color:colors.foreground,textAlign:"center"}}>✍ Headmaster / stamp</Text></TouchableOpacity>
+          <TouchableOpacity onPress={async()=>{const result=await ImagePicker.launchImageLibraryAsync({mediaTypes:["images"],allowsEditing:true,quality:0.65,base64:true});if(!result.canceled&&result.assets?.[0]?.base64){const asset=result.assets[0],mime=asset.mimeType==="image/png"?"image/png":"image/jpeg";const value="data:"+mime+";base64,"+asset.base64;if(value.length>1_250_000){Alert.alert("Image too large","Choose a smaller image (maximum 900 KB after compression).");return;}setTransferForm(old=>({...old,guardianSignatureDataUrl:value}));}}} style={{flex:1,borderWidth:1,borderColor:colors.border,borderRadius:10,padding:10}}><Text style={{fontWeight:"700",color:colors.foreground,textAlign:"center"}}>Upload guardian signature</Text></TouchableOpacity>
+        </View>
+        <View style={{flexDirection:"row",gap:8,marginTop:8}}><TouchableOpacity onPress={async()=>{const result=await ImagePicker.launchImageLibraryAsync({mediaTypes:["images"],allowsEditing:true,quality:0.65,base64:true});if(!result.canceled&&result.assets?.[0]?.base64){const asset=result.assets[0],mime=asset.mimeType==="image/png"?"image/png":"image/jpeg";const value="data:"+mime+";base64,"+asset.base64;if(value.length>1_250_000){Alert.alert("Image too large","Choose a smaller image (maximum 900 KB after compression).");return;}setTransferForm(old=>({...old,headmasterSignatureDataUrl:value}));}}} style={{flex:1,borderWidth:1,borderColor:colors.border,borderRadius:10,padding:9}}><Text style={{fontWeight:"700",color:colors.foreground,textAlign:"center",fontSize:11}}>Upload headmaster signature / stamp</Text></TouchableOpacity></View>
+        <View style={{flexDirection:"row",gap:8,marginTop:8}}>
+          {transferForm.schoolLogoDataUrl?<Image source={{uri:String(transferForm.schoolLogoDataUrl)}} style={{width:42,height:42}} resizeMode="contain"/>:null}
+          {transferForm.guardianSignatureDataUrl?<Image source={{uri:String(transferForm.guardianSignatureDataUrl)}} style={{width:90,height:42}} resizeMode="contain"/>:null}
+          {transferForm.headmasterSignatureDataUrl?<Image source={{uri:String(transferForm.headmasterSignatureDataUrl)}} style={{width:90,height:42}} resizeMode="contain"/>:null}
+        </View>
+      </View>:null}
+      <Text style={{fontWeight:"700",color:colors.foreground}}>Gender / conduct / relationship</Text><View style={{flexDirection:"row",flexWrap:"wrap",gap:7,marginVertical:8}}>{[["gender","Male"],["gender","Female"],["conduct","Excellent"],["conduct","Very Good"],["conduct","Good"],["conduct","Satisfactory"],["relationship","Father"],["relationship","Mother"],["relationship","Legal guardian"],["relationship","Grandfather"],["relationship","Grandmother"],["relationship","Stepfather"],["relationship","Stepmother"],["relationship","Aunt"],["relationship","Uncle"],["relationship","Adult sibling"],["relationship","Foster parent"],["relationship","Court-appointed guardian"],["relationship","Social worker"],["relationship","Other authorised caregiver"]].map(([k,v])=><TouchableOpacity key={k+v} onPress={()=>setTransferForm(old=>({...old,[k]:v}))} style={{borderWidth:1,borderColor:transferForm[k]===v?colors.primary:colors.border,borderRadius:16,paddingHorizontal:10,paddingVertical:7}}><Text style={{color:colors.foreground,fontSize:12}}>{v}</Text></TouchableOpacity>)}</View>
+      <Text style={{fontSize:11,fontWeight:"800",color:colors.mutedForeground}}>REASON CATEGORY</Text><View style={{flexDirection:"row",flexWrap:"wrap",gap:6,marginVertical:8}}>{["Family Relocation","Seeking Better Academic Opportunities","Medical Reasons","Change of Guardianship","Financial Reasons","Disciplinary Transfer","Other"].map(v=><TouchableOpacity key={v} onPress={()=>setTransferForm(old=>({...old,reasonType:v}))} style={{borderWidth:1,borderColor:transferForm.reasonType===v?colors.primary:colors.border,borderRadius:16,padding:7}}><Text style={{fontSize:11,color:colors.foreground}}>{v}</Text></TouchableOpacity>)}</View>
+      <TextInput multiline maxLength={1800} value={String(transferForm.reasonDetail||"")} onChangeText={v=>setTransferForm(old=>({...old,reasonDetail:v}))} placeholder="Explain details of the transfer" placeholderTextColor={colors.mutedForeground} style={{minHeight:80,borderWidth:1,borderColor:colors.border,borderRadius:8,padding:10,color:colors.foreground,marginBottom:10}} />
+      <View style={{backgroundColor:"#fff",borderWidth:1,borderColor:"#A87919",borderRadius:12,padding:12,marginBottom:10}}><View style={{flexDirection:"row",alignItems:"center",gap:10,borderBottomWidth:3,borderBottomColor:"#0f2a5a",paddingBottom:9}}><Image source={require("../assets/images/icon.png")} style={{width:42,height:42,borderRadius:9}} resizeMode="contain"/><View style={{flex:1}}><Text style={{fontSize:17,fontWeight:"900",color:"#0f2a5a"}}>{transferForm.currentSchool||"Dallyletter Elidems"}</Text><Text style={{fontSize:10,color:"#64748b",letterSpacing:1}}>OFFICIAL TRANSFER APPLICATION</Text></View>{transferForm.schoolLogoDataUrl?<Image source={{uri:String(transferForm.schoolLogoDataUrl)}} style={{width:42,height:42}} resizeMode="contain"/>:null}</View><Text style={{fontSize:10,color:"#64748b",textAlign:"right",marginTop:8}}>{transferForm.effectiveDate||"Date not supplied"}</Text><Text style={{fontSize:12,color:"#334155",marginTop:10}}>The Headmaster{"\n"}<Text style={{fontWeight:"800"}}>{transferForm.receivingSchool||"[Receiving School]"}</Text>{"\n"}Dear Sir/Madam,</Text><Text style={{fontWeight:"800",color:"#0f2a5a",marginTop:12}}>RE: TRANSFER APPLICATION FOR {transferForm.learnerName||"LEARNER NAME"} — {transferForm.grade}</Text>{[["Learner's details",[["Current school","Dallyletter Elidems"],["Full name",transferForm.learnerName],["Grade / Form",transferForm.grade],["Admission No",transferForm.admissionNo],["DOB / Gender",transferForm.dob+" / "+transferForm.gender],["EMIS No",transferForm.emisNo],["Academic Year",transferForm.academicYear],["Recorded academic average / Conduct",(transferForm.average!==""&&transferForm.average!=null?String(transferForm.average):"—")+"% / "+transferForm.conduct]]],["Reason for transfer",[["Receiving school",transferForm.receivingSchool],["Category",transferForm.reasonType],["Details",transferForm.reasonDetail]]],["Parent / Guardian details",[["Name / relation",transferForm.guardianName+" / "+transferForm.relationship],["ID",transferForm.guardianId],["Phone",transferForm.guardianPhone],["Email",transferForm.guardianEmail],["Address",transferForm.address],["Effective date",transferForm.effectiveDate]]]].map(([title,rows]:any)=><View key={title} style={{marginTop:12,borderWidth:1,borderColor:colors.border,borderRadius:8,padding:9}}><Text style={{fontWeight:"900",color:colors.primary,marginBottom:6}}>{title}</Text>{rows.map(([k,v]:any)=><Text key={k} style={{fontSize:12,color:colors.foreground,paddingVertical:3}}>{k}: {v||"—"}</Text>)}</View>)}<Text style={{fontWeight:"800",marginTop:12,color:colors.foreground}}>4. Declarations & signatures</Text><View style={{flexDirection:"row",gap:8,marginTop:8}}>{([["guardianSignatureDataUrl","Parent / guardian signature"],["headmasterSignatureDataUrl","Headmaster signature / school stamp"]] as string[][]).map(([key,label])=><View key={key} style={{flex:1,borderTopWidth:1,borderColor:colors.border,paddingTop:8}}><Text style={{fontSize:10,fontWeight:"800",color:colors.foreground}}>{label}</Text>{transferForm[key]?<Image source={{uri:String(transferForm[key])}} resizeMode="contain" style={{height:52,width:"100%"}}/>:<Text style={{fontSize:10,color:colors.mutedForeground,marginTop:5}}>Not supplied · not assumed</Text>}</View>)}</View><Text style={{fontSize:10,color:colors.mutedForeground,marginTop:8}}>Subject to acceptance by the receiving school, space availability and supporting records. Fee clearance and signatures are never assumed.</Text></View>
+      <Modal visible={Boolean(signatureTarget)} transparent animationType="fade" onRequestClose={()=>setSignatureTarget(null)}><View style={{flex:1,backgroundColor:"#0009",justifyContent:"center",padding:18}}><View style={{backgroundColor:colors.card,borderRadius:18,padding:14,borderWidth:1,borderColor:colors.border}}><Text style={{fontSize:16,fontWeight:"900",color:colors.foreground}}>{signatureTarget==="guardian"?"Parent / guardian signature":"Headmaster signature / school stamp"}</Text><Text style={{fontSize:11,color:colors.mutedForeground,marginVertical:8}}>Sign with your finger inside the panel. Clear and redraw if needed.</Text><View style={{height:190,borderWidth:1,borderColor:"#A87919",borderRadius:10,backgroundColor:"#fff",overflow:"hidden"}} onTouchStart={e=>setSignaturePath("M "+e.nativeEvent.locationX+" "+e.nativeEvent.locationY)} onTouchMove={e=>setSignaturePath(v=>v+" L "+e.nativeEvent.locationX+" "+e.nativeEvent.locationY)}><Svg ref={signatureSvgRef} width="100%" height="100%" viewBox="0 0 320 190"><Path d={signaturePath} stroke="#10264d" strokeWidth={2.8} fill="none" strokeLinecap="round" strokeLinejoin="round"/></Svg></View><View style={{flexDirection:"row",gap:8,marginTop:12}}><TouchableOpacity onPress={()=>setSignaturePath("")} style={{flex:1,padding:11,borderWidth:1,borderColor:colors.border,borderRadius:9}}><Text style={{textAlign:"center",color:colors.foreground,fontWeight:"800"}}>Clear</Text></TouchableOpacity><TouchableOpacity onPress={()=>setSignatureTarget(null)} style={{flex:1,padding:11,borderWidth:1,borderColor:colors.border,borderRadius:9}}><Text style={{textAlign:"center",color:colors.foreground,fontWeight:"800"}}>Cancel</Text></TouchableOpacity><TouchableOpacity onPress={()=>{if(!signaturePath.trim()){Alert.alert("Signature required","Draw a signature first.");return;}signatureSvgRef.current?.toDataURL((base64:string)=>{setTransferForm(old=>({...old,[signatureTarget==="guardian"?"guardianSignatureDataUrl":"headmasterSignatureDataUrl"]:"data:image/png;base64,"+base64}));setSignatureTarget(null);});}} style={{flex:1,padding:11,backgroundColor:colors.primary,borderRadius:9}}><Text style={{textAlign:"center",color:"#fff",fontWeight:"900"}}>Save</Text></TouchableOpacity></View></View></View></Modal>{button("Submit transfer application",()=>void act(async()=>{if(!String(transferForm.learnerName||"").trim()||!String(transferForm.receivingSchool||"").trim()||String(transferForm.reasonDetail||"").trim().length<3)throw new Error("Complete learner name, receiving school and transfer reason.");const reason=String(transferForm.reasonType)+": "+String(transferForm.reasonDetail);await api("/api/academic-records/transfer-requests",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reason,formData:transferForm})});setTransferRequests(await api("/api/academic-records/transfer-requests"));setMessage("Transfer application submitted for manager / owner approval.");}))}</>}
+      {transferRequests.filter((r:Row)=>r.status!=="pending"&&!canReviewTransferLetters).map((r:Row)=><View key={r.id} style={{borderTopWidth:1,borderColor:colors.border,paddingTop:10,marginTop:10}}>{line("Request","#"+r.id)}{line("Status",r.status)}{r.status==="approved"&&button("Download approved PDF",()=>void act(async()=>{const response=await FileSystem.downloadAsync(getApiUrl("/api/academic-records/transfer-requests/"+r.id+"/download"),(FileSystem.documentDirectory||FileSystem.cacheDirectory||"")+"dallyletter-transfer-letter-"+r.id+".pdf",{headers:token?{Authorization:"Bearer "+token}:{}});const uri=Platform.OS==="android"?await FileSystem.getContentUriAsync(response.uri):response.uri;await Linking.openURL(uri);}))}</View>)}
+      </View>}
+      {isOwn&&<View style={{marginHorizontal:12,marginBottom:20,borderWidth:1,borderColor:colors.border,borderRadius:18,overflow:"hidden",backgroundColor:colors.card}}>
+        <View style={{padding:14,backgroundColor:colors.primary,flexDirection:"row",justifyContent:"space-between",alignItems:"center"}}>
+          <View><Text style={{color:"#fff",fontWeight:"900",fontSize:16}}>✦ ELIDEMS AI</Text><Text style={{color:"#fff",opacity:0.8,fontSize:11}}>{learnerAIMode?"Learning companion":aiMode==="agent"?"Staff agent · planning mode":"Staff assistant"}</Text></View>
+          {canRequestAIAgent&&<View style={{flexDirection:"row",gap:6}}>
+            <TouchableOpacity onPress={()=>setAiMode("chat")} style={{paddingHorizontal:10,paddingVertical:6,borderRadius:8,backgroundColor:aiMode==="chat"?"#fff":"rgba(255,255,255,0.15)"}}><Text style={{fontSize:11,fontWeight:"700",color:aiMode==="chat"?colors.primary:"#fff"}}>Chat</Text></TouchableOpacity>
+            <TouchableOpacity onPress={()=>setAiMode("agent")} style={{paddingHorizontal:10,paddingVertical:6,borderRadius:8,backgroundColor:aiMode==="agent"?"#fff":"rgba(255,255,255,0.15)"}}><Text style={{fontSize:11,fontWeight:"700",color:aiMode==="agent"?colors.primary:"#fff"}}>Agent</Text></TouchableOpacity>
+          </View>}
+        </View>
+        <Text style={{paddingHorizontal:12,paddingVertical:8,color:colors.mutedForeground,fontSize:10}}>For everyone’s safety, submitted platform text may be screened by ELIDEMS AI. Flags go to authorized human reviewers; AI does not automatically punish users.</Text>
+        <ScrollView style={{maxHeight:240,padding:12}} nestedScrollEnabled>
+          {!aiMessages.length&&<Text style={{color:colors.mutedForeground,fontSize:13}}>{learnerAIMode?"Hi! Ask me about a subject, revision, homework or study planning.":"Ask ELIDEMS AI to help prepare or analyze work available to your role."}</Text>}
+          {aiMessages.map((item,index)=><View key={index} style={{alignSelf:item.role==="user"?"flex-end":"flex-start",maxWidth:"90%",padding:10,marginVertical:4,borderRadius:12,backgroundColor:item.role==="user"?colors.primary:colors.background,borderWidth:item.role==="user"?0:1,borderColor:colors.border}}><Text style={{color:item.role==="user"?"#fff":colors.foreground,fontSize:13}}>{item.content}</Text></View>)}
+          {aiBusy&&<Text style={{color:colors.mutedForeground,fontSize:11}}>ELIDEMS AI is thinking…</Text>}
+        </ScrollView>
+        {aiMode==="agent"&&<Text style={{paddingHorizontal:12,paddingBottom:8,color:colors.mutedForeground,fontSize:10}}>Agent planning is permission-gated. This chat does not execute changes; use the existing authorized workflow and confirmation.</Text>}
+        <View style={{flexDirection:"row",gap:8,padding:10,borderTopWidth:1,borderColor:colors.border}}>
+          <TextInput value={aiDraft} onChangeText={setAiDraft} placeholder={learnerAIMode?"Ask a learning question…":"Message ELIDEMS AI…"} placeholderTextColor={colors.mutedForeground} multiline style={{flex:1,minHeight:42,maxHeight:100,borderWidth:1,borderColor:colors.border,borderRadius:10,padding:10,color:colors.foreground,fontSize:13}}/>
+          <TouchableOpacity disabled={aiBusy||!aiDraft.trim()} onPress={()=>void sendAIMessage()} style={{alignSelf:"flex-end",paddingHorizontal:14,paddingVertical:12,borderRadius:10,backgroundColor:colors.primary,opacity:aiBusy||!aiDraft.trim()?0.5:1}}><Text style={{color:"#fff",fontWeight:"800",fontSize:12}}>{aiBusy?"…":"Send"}</Text></TouchableOpacity>
+        </View>
+      </View>}
+    </ScrollView>
+  </View>;
+}

@@ -1,0 +1,58 @@
+{
+  "site": "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app",
+  "captureRunId": 45705602458,
+  "captureArtifact": "dallyletter-full-role-feature-captures-1130",
+  "publicationScope": "selected public landing-page images only",
+  "authenticatedDashboardsPublished": false,
+  "pages": [
+    {
+      "page": "digital-classroom",
+      "route": "/digital-classroom",
+      "file": "digital-classroom.png",
+      "alt": "Dallyletter digital classroom",
+      "mediaUrl": "https://raw.githubusercontent.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/showcase-media/latest/selected/digital-classroom.png"
+    },
+    {
+      "page": "learners",
+      "route": "/learners",
+      "file": "learners.png",
+      "alt": "Dallyletter learning experience for learners",
+      "mediaUrl": "https://raw.githubusercontent.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/showcase-media/latest/selected/learners.png"
+    },
+    {
+      "page": "teacher-tools",
+      "route": "/teacher-tools",
+      "file": "teacher-tools.png",
+      "alt": "Dallyletter digital tools for educators and teachers",
+      "mediaUrl": "https://raw.githubusercontent.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/showcase-media/latest/selected/teacher-tools.png"
+    },
+    {
+      "page": "educators",
+      "route": "/educators",
+      "file": "educators.png",
+      "alt": "Dallyletter tools that support educators",
+      "mediaUrl": "https://raw.githubusercontent.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/showcase-media/latest/selected/educators.png"
+    },
+    {
+      "page": "africa",
+      "route": "/africa",
+      "file": "africa.png",
+      "alt": "Dallyletter learning communities across Africa",
+      "mediaUrl": "https://raw.githubusercontent.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/showcase-media/latest/selected/africa.png"
+    },
+    {
+      "page": "online-learning-zimbabwe",
+      "route": "/online-learning-zimbabwe",
+      "file": "online-learning-zimbabwe.png",
+      "alt": "Dallyletter online learning in Zimbabwe",
+      "mediaUrl": "https://raw.githubusercontent.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/showcase-media/latest/selected/online-learning-zimbabwe.png"
+    },
+    {
+      "page": "founder-story",
+      "route": "/about",
+      "file": "founder-story.png",
+      "alt": "The Dallyletter Elidems founder story",
+      "mediaUrl": "https://raw.githubusercontent.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/showcase-media/latest/selected/founder-story.png"
+    }
+  ]
+}

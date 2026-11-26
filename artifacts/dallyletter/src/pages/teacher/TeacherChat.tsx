@@ -1,0 +1,351 @@
+import { DashboardLayout } from "@/components/DashboardLayout";
+import { StudyGroupPollPanel } from "@/components/StudyGroupPollPanel";
+import { useListMessages, useSendMessage, useListStudyGroups, useListUsers, getApiUrl } from "@workspace/api-client-react";
+import { Card } from "@/components/ui/card";
+import { Loader2, Send, Users, MessageSquare, User, Paperclip, Trash2, Maximize2, Minimize2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useState, useRef, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { getListMessagesQueryKey } from "@workspace/api-client-react";
+import { SendMessageBodyType } from "@workspace/api-client-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { VoiceRecorder } from "@/components/VoiceRecorder";
+import { AuthenticatedAudio } from "@/components/AuthenticatedAudio";
+import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
+
+export default function TeacherChat() {
+  const { user } = useAuth();
+  const restrictedApplicant = String(user?.role||"").toLowerCase()==="teacher" && ["pending_review","rejected_pending_conversion"].includes(String((user as any)?.teacherApplicationStatus||"").toLowerCase());
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("groupId"); return value && /^\d+$/.test(value) ? Number(value) : null; });
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("recipientId"); return value && /^\d+$/.test(value) ? Number(value) : null; });
+  const [ownerContact,setOwnerContact]=useState<{id:number;name:string}|null>(null);
+  const ownerChatRequested=new URLSearchParams(window.location.search).get("ownerChat")==="1";
+  const [message, setMessage] = useState("");
+  const [activeTab, setActiveTab] = useState(() => (new URLSearchParams(window.location.search).has("recipientId")||new URLSearchParams(window.location.search).has("ownerChat")) ? "students" : "groups");
+  const [chatFullscreen, setChatFullscreen] = useState(false);
+  const [lessonRequests, setLessonRequests] = useState<Array<{id:number; topic:string; notes:string|null; preferredDate:string|null; status:string; teacherReply:string|null; prefectId:number}>>([]);
+  const [requestLoading, setRequestLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
+
+  const { data: groups, isLoading: groupsLoading } = useListStudyGroups({ query: { enabled: !restrictedApplicant } } as any);
+  const { data: users, isLoading: usersLoading } = useListUsers({ query: { enabled: !restrictedApplicant } } as any);
+
+  const { data: messages, isLoading: messagesLoading } = useListMessages(
+    { groupId: selectedGroupId, recipientId: selectedUserId },
+    { query: { enabled: !!selectedGroupId || !!selectedUserId, refetchInterval: 5000 } as any }
+  );
+
+  const sendMessageMutation = useSendMessage();
+  const [unreadSummary,setUnreadSummary]=useState<{groups:Array<{id:number;unread:number}>;privateChats:Array<{id:number;unread:number}>}>({groups:[],privateChats:[]});
+  useEffect(()=>{const accessToken=localStorage.getItem("dallyletter_token");if(!accessToken||!user?.id)return;let active=true;const refresh=async()=>{try{const response=await fetch(getApiUrl("/api/messages/unread-summary"),{headers:{Authorization:"Bearer "+accessToken},cache:"no-store"});if(!response.ok)return;const data=await response.json();if(active)setUnreadSummary({groups:Array.isArray(data.groups)?data.groups:[],privateChats:Array.isArray(data.privateChats)?data.privateChats:[]});}catch{/* Retain last known unread counts while offline. */}};void refresh();const timer=window.setInterval(()=>void refresh(),5000);return()=>{active=false;window.clearInterval(timer);};},[user?.id,selectedGroupId,selectedUserId]);
+  const DUnread=(count:number)=>count>0?<span className="dl-unread-gold-badge ml-auto inline-flex items-center gap-1 rounded-md border-2 border-[#FFD700] bg-[#0B1E3A] px-1 py-0.5 text-[10px] font-bold leading-none text-[#FFD700]" aria-label={count+" unread"}><img src="/favicon.svg" alt="" className="h-3.5 w-3.5 rounded border border-[#FFD700]"/>{count>99?"99+":count}</span>:null;
+  const unreadForGroup=(id:number)=>unreadSummary.groups.find(item=>item.id===id)?.unread||0;
+  const unreadForPrivate=(id:number)=>unreadSummary.privateChats.find(item=>item.id===id)?.unread||0;
+
+  useEffect(()=>{if(!ownerChatRequested)return;const token=localStorage.getItem("dallyletter_token");void fetch(getApiUrl("/api/manager/owner-contact"),{headers:token?{Authorization:`Bearer ${token}`}:{}}).then(async response=>{const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"Owner chat permission is unavailable.");setOwnerContact({id:Number(data.id),name:String(data.name||"Owner")});setSelectedGroupId(null);setSelectedUserId(Number(data.id));setActiveTab("people");}).catch(error=>window.alert(error instanceof Error?error.message:"Owner chat is unavailable."));},[ownerChatRequested]);
+
+  const loadLessonRequests = async () => {
+    setRequestLoading(true);
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const response = await fetch(getApiUrl("/api/achievements/lesson-requests"), { headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+      if (response.ok) setLessonRequests(await response.json());
+    } finally { setRequestLoading(false); }
+  };
+
+  useEffect(() => { if (!restrictedApplicant) void loadLessonRequests(); }, [restrictedApplicant]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const [deletingMessageId, setDeletingMessageId] = useState<number | null>(null);
+  const handleDeleteMessage = async (messageId: number) => {
+    if (!window.confirm("Delete this message and its attachment, if any? This cannot be undone.")) return;
+    setDeletingMessageId(messageId);
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const response = await fetch(getApiUrl(`/api/messages/${messageId}`), { method: "DELETE", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+      const data = await response.json().catch(() => ({})) as {error?:string;deleted?:boolean;mediaCleanupPending?:boolean;warning?:string};
+      if (!response.ok) throw new Error(data.error ?? "Message deletion failed.");
+      if (!data || !data.deleted) throw new Error("The server did not confirm that the message was deleted.");
+      await queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId, recipientId: selectedUserId }) });
+      if (data.mediaCleanupPending) window.alert(data.warning || "The message is deleted, but its stored attachment still needs cleanup.");
+    } catch (error) { window.alert(error instanceof Error ? error.message : "Message deletion failed."); }
+    finally { setDeletingMessageId(null); }
+  };
+
+  const handleSendMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!message.trim() || (!selectedGroupId && !selectedUserId)) return;
+    sendMessageMutation.mutate({
+      data: { content: message, type: SendMessageBodyType.text, groupId: selectedGroupId, recipientId: selectedUserId }
+    }, {
+      onSuccess: () => {
+        setMessage("");
+        queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId, recipientId: selectedUserId }) });
+      }
+    });
+  };
+
+  const handleSendMedia = async (file: File) => {
+    if (!selectedGroupId && !selectedUserId) throw new Error("Select a conversation before attaching learning media.");
+    const body = new FormData();
+    if (selectedGroupId) body.append("groupId", String(selectedGroupId));
+    if (selectedUserId) body.append("recipientId", String(selectedUserId));
+    body.append("file", file, file.name);
+    const upload = await fetch(getApiUrl("/api/messages/media"), { method: "POST", headers: localStorage.getItem("dallyletter_token") ? { Authorization: `Bearer ${localStorage.getItem("dallyletter_token")}` } : undefined, body });
+    const result = await upload.json().catch(() => null) as { mediaUrl?: string; error?: string } | null;
+    if (!upload.ok || !result?.mediaUrl) throw new Error(result?.error ?? "Attachment upload failed.");
+    await sendMessageMutation.mutateAsync({ data: { content: file.name, type: "media" as SendMessageBodyType, groupId: selectedGroupId, recipientId: selectedUserId, mediaUrl: result.mediaUrl } });
+    await queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId, recipientId: selectedUserId }) });
+  };
+
+  const handleSendVoice = async (audio: Blob) => {
+    if (!selectedGroupId && !selectedUserId) throw new Error("Select a conversation before sending a voice message.");
+    const body = new FormData();
+    if (selectedGroupId) body.append("groupId", String(selectedGroupId));
+    if (selectedUserId) body.append("recipientId", String(selectedUserId));
+    body.append("file", audio, "voice-message.webm");
+    const token = localStorage.getItem("dallyletter_token");
+    const upload = await fetch(getApiUrl("/api/messages/media"), { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body });
+    if (!upload.ok) {
+      const result = await upload.json().catch(() => null) as { error?: string } | null;
+      throw new Error(result?.error ?? "Voice upload failed.");
+    }
+    const { mediaUrl } = await upload.json() as { mediaUrl: string };
+    await sendMessageMutation.mutateAsync({
+      data: { content: "Voice message", type: SendMessageBodyType.voice, groupId: selectedGroupId, recipientId: selectedUserId, mediaUrl },
+    });
+    await queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId, recipientId: selectedUserId }) });
+  };
+
+  const selectGroup = (id: number) => { setSelectedGroupId(id); setSelectedUserId(null); };
+  const selectUser = (id: number) => { setSelectedUserId(id); setSelectedGroupId(null); };
+
+  const chatTitle = selectedGroupId
+    ? groups?.find(g => g.id === selectedGroupId)?.name
+     : (ownerContact?.id===selectedUserId?ownerContact.name:users?.find(u => u.id === selectedUserId)?.name);
+
+  return (
+    <DashboardLayout>
+      <div className="h-[calc(100dvh-8rem)] min-h-[500px] flex flex-col md:flex-row gap-3 md:gap-6 min-w-0">
+        <Card className="w-full md:w-1/3 flex flex-col bg-card/50 max-h-40 md:max-h-none shrink-0">
+          <div className="p-4 border-b">
+            {restrictedApplicant ? (
+              <div className="text-sm font-semibold">Private Profile Hub chat</div>
+            ) : (
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                <TabsList className="w-full grid grid-cols-3">
+                  <TabsTrigger value="groups">Groups</TabsTrigger>
+                  <TabsTrigger value="students">Students</TabsTrigger>
+                  <TabsTrigger value="requests">Lesson Requests</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            )}
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            {restrictedApplicant ? (
+              <div className="p-4 text-center text-sm text-muted-foreground">
+                Open a Profile Hub and choose Chat to start or continue a private conversation. Group chat and lesson-request tools unlock after teacher authorization.
+              </div>
+            ) : activeTab === "requests" ? (
+              requestLoading ? (
+                <div className="flex justify-center p-6"><Loader2 className="h-5 w-5 animate-spin" /></div>
+              ) : lessonRequests.length === 0 ? (
+                <div className="p-6 text-center text-sm text-muted-foreground">No lesson requests yet.</div>
+              ) : lessonRequests.map(request => (
+                <div key={request.id} className="rounded-lg border p-3 space-y-2">
+                  <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="font-medium text-sm">{request.topic}</p><span className="text-[10px] uppercase text-muted-foreground">{request.status}</span></div><Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive" title="Delete lesson request" aria-label={`Delete lesson request ${request.topic}`} onClick={async () => { if (!window.confirm("Delete this lesson request permanently?")) return; try { const token=localStorage.getItem("dallyletter_token"); const response=await fetch(getApiUrl(`/api/achievements/lesson-requests/${request.id}`),{method:"DELETE",headers:token?{Authorization:`Bearer ${token}`}:{}}); const data=await response.json().catch(()=>null) as {error?:string}|null; if(!response.ok) throw new Error(data?.error ?? "Request deletion failed."); await loadLessonRequests(); } catch(error) { window.alert(error instanceof Error ? error.message : "Request deletion failed."); } }}><Trash2 className="h-4 w-4"/></Button></div>
+                  {request.preferredDate && <p className="text-xs text-muted-foreground">Preferred: {request.preferredDate}</p>}
+                  {request.notes && <p className="text-xs text-muted-foreground">{request.notes}</p>}
+                  {request.status === "pending" && (
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={async () => {
+                        const reply = window.prompt("Optional reply to the learner:", "I can help with this topic.") ?? "";
+                        try {
+                          const token = localStorage.getItem("dallyletter_token");
+                          const response = await fetch(getApiUrl(`/api/achievements/lesson-requests/${request.id}`), { method:"PATCH", headers:{ "Content-Type":"application/json", ...(token ? {Authorization:`Bearer ${token}`} : {}) }, body:JSON.stringify({status:"accepted",teacherReply:reply.trim() || null}) });
+                          if (!response.ok) throw new Error("Request update failed");
+                          await loadLessonRequests();
+                        } catch (error) { window.alert(error instanceof Error ? error.message : "Request update failed"); }
+                      }}>Accept</Button>
+                      <Button size="sm" variant="outline" onClick={async () => {
+                        try {
+                          const token = localStorage.getItem("dallyletter_token");
+                          const response = await fetch(getApiUrl(`/api/achievements/lesson-requests/${request.id}`), { method:"PATCH", headers:{ "Content-Type":"application/json", ...(token ? {Authorization:`Bearer ${token}`} : {}) }, body:JSON.stringify({status:"declined",teacherReply:"I cannot take this request right now."}) });
+                          if (!response.ok) throw new Error("Request update failed");
+                          await loadLessonRequests();
+                        } catch (error) { window.alert(error instanceof Error ? error.message : "Request update failed"); }
+                      }}>Decline</Button>
+                      <Button size="sm" variant="ghost" onClick={async () => {
+                        try {
+                          const token = localStorage.getItem("dallyletter_token");
+                          const response = await fetch(getApiUrl(`/api/achievements/lesson-requests/${request.id}`), { method:"PATCH", headers:{ "Content-Type":"application/json", ...(token ? {Authorization:`Bearer ${token}`} : {}) }, body:JSON.stringify({status:"dismissed",teacherReply:"Request dismissed by teacher."}) });
+                          const data = await response.json().catch(() => ({}));
+                          if (!response.ok) throw new Error(data.error || "Could not dismiss lesson request");
+                          await loadLessonRequests();
+                          if (window.confirm("Lesson request dismissed. Do you also want to delete it?")) {
+                            const del = await fetch(getApiUrl(`/api/achievements/lesson-requests/${request.id}`), { method:"DELETE", headers: token ? {Authorization:`Bearer ${token}`} : {} });
+                            if (!del.ok) { const d = await del.json().catch(() => ({})); throw new Error(d.error || "Could not delete dismissed request"); }
+                            await loadLessonRequests();
+                          }
+                        } catch (error) { window.alert(error instanceof Error ? error.message : "Could not dismiss lesson request"); }
+                      }}>Dismiss</Button>
+                    </div>
+                  )}
+                </div>
+              ))
+            ) : activeTab === "groups" ? (
+              groupsLoading ? (
+                <div className="flex justify-center p-4"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+              ) : groups?.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full gap-2 text-center p-6">
+                  <Users className="h-10 w-10 text-muted-foreground/20" />
+                  <p className="text-sm text-muted-foreground">No study groups yet.</p>
+                </div>
+              ) : (
+                groups?.map(group => (
+                  <button
+                    key={group.id}
+                    onClick={() => selectGroup(group.id)}
+                    className={`w-full text-left px-3 py-3 rounded-lg transition-colors flex items-center gap-2 ${
+                      selectedGroupId === group.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"
+                    }`}
+                  >
+                    <Users className="h-4 w-4 opacity-70 shrink-0" />
+                    <span className="font-medium truncate flex-1">{group.name}</span>{DUnread(unreadForGroup(group.id))}
+                  </button>
+                ))
+              )
+            ) : (
+              usersLoading ? (
+                <div className="flex justify-center p-4"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+              ) : (users?.filter(u => u.role === "student").length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full gap-2 text-center p-6">
+                  <User className="h-10 w-10 text-muted-foreground/20" />
+                  <p className="text-sm text-muted-foreground">No students yet.</p>
+                </div>
+              ) : (
+                users?.filter(u => u.role === "student").map(student => (
+                  <button
+                    key={student.id}
+                    onClick={() => selectUser(student.id)}
+                    className={`w-full text-left px-3 py-3 rounded-lg transition-colors flex items-center gap-3 ${
+                      selectedUserId === student.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"
+                    }`}
+                  >
+                    <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold shrink-0">
+                      {student.name.charAt(0)}
+                    </div>
+                    <span className="font-medium truncate flex-1">{student.name}</span>{DUnread(unreadForPrivate(student.id))}
+                  </button>
+                ))
+              ))
+            )}
+          </div>
+        </Card>
+
+        {/* Chat Area */}
+        <Card className={`flex-1 flex flex-col overflow-hidden ${chatFullscreen ? "fixed inset-0 z-[100] min-h-0 rounded-none" : ""}`}>
+          {!selectedGroupId && !selectedUserId ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-3">
+              <MessageSquare className="h-14 w-14 text-muted-foreground/20" />
+              <div className="text-center">
+                <p className="font-medium">Select a conversation</p>
+                <p className="text-sm">Choose a group or student from the sidebar</p>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="p-4 border-b bg-muted/30 font-semibold flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {selectedGroupId
+                    ? <><div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center"><Users className="h-4 w-4 text-primary" /></div>{chatTitle}</>
+                    : <><div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">{chatTitle?.charAt(0)}</div>{chatTitle}</>
+                  }
+                </div>
+                <div className="flex items-center gap-2"><Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={() => setChatFullscreen(value => !value)} aria-label={chatFullscreen ? "Exit full-screen chat" : "Open full-screen chat"} title={chatFullscreen ? "Exit full-screen chat" : "Open full-screen chat"}>{chatFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}</Button><div className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-1 rounded-full">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Live
+                </div></div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50 dark:bg-slate-900/50">
+                {messagesLoading ? (
+                  <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+                ) : messages?.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-3">
+                    <MessageSquare className="h-12 w-12 opacity-20" />
+                    <p className="text-sm">No messages yet. Start the conversation!</p>
+                  </div>
+                ) : (
+                  messages?.map(msg => {
+                    const isMe = msg.senderId === user?.id;
+                    return (
+                      <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
+                        <div className="flex items-end gap-2 max-w-[80%]">
+                          {!isMe && (
+                            <div className="w-8 h-8 rounded-full bg-primary/20 flex-shrink-0 flex items-center justify-center text-xs font-bold text-primary mb-1">
+                              {msg.senderName.charAt(0)}
+                            </div>
+                          )}
+                          <div className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
+                            {!isMe && <span className="text-xs text-muted-foreground mb-1 ml-1">{msg.senderName} · {msg.senderRole}</span>}
+                            <div className={`px-4 py-2.5 rounded-2xl max-w-full ${
+                              isMe
+                                ? "bg-primary text-primary-foreground rounded-tr-sm"
+                                : "bg-card border shadow-sm rounded-tl-sm"
+                            }`}>
+                              {msg.type === "voice" && msg.mediaUrl ? (
+                                <AuthenticatedAudio className="h-10 max-w-[200px] sm:max-w-[250px]" src={msg.mediaUrl} />
+                              ) : msg.type === "media" && msg.mediaUrl ? (
+                                <AuthenticatedMedia url={msg.mediaUrl} type={new URL(msg.mediaUrl, window.location.origin).searchParams.get("type")?.startsWith("image/") ? "image" : new URL(msg.mediaUrl, window.location.origin).searchParams.get("type")?.startsWith("video/") ? "video" : "document"} title={msg.content} />
+                              ) : (
+                                <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+                              )}
+                            </div>
+                            <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground"><span>{new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>{isMe&&((msg as any).readByUserIds?.length??0)>0&&<span className="font-semibold text-[#9A7020]" aria-label={selectedGroupId?"Seen by "+(msg as any).readByUserIds.length+" group members":"Seen"}>{selectedGroupId?"Seen by "+(msg as any).readByUserIds.length:"Seen"} ✓✓</span>}</div>
+                            {(isMe || (selectedGroupId != null && (groups?.find(g => g.id === selectedGroupId) as any)?.canManage === true)) && <button type="button" aria-label="Delete message" title="Delete message" className="mt-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-destructive disabled:opacity-50" onClick={() => void handleDeleteMessage(msg.id)} disabled={deletingMessageId === msg.id}>{deletingMessageId === msg.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}Delete</button>}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                {selectedGroupId != null && <StudyGroupPollPanel groupId={selectedGroupId} allowPolls={(groups?.find(g => g.id === selectedGroupId) as any)?.settings?.allowPolls !== false} />}
+                <div ref={messagesEndRef} />
+              </div>
+
+              <div className="p-4 border-t bg-card">
+                <form onSubmit={handleSendMessage} className="flex gap-2 items-center">
+                  <label className="inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full border bg-background hover:bg-muted" title="Attach learning media">
+                    <Paperclip className="h-4 w-4" />
+                    <input type="file" className="sr-only" accept="image/*,video/*,application/pdf,.doc,.docx" onChange={event => {
+                      const file = event.target.files?.[0]; event.target.value = "";
+                      if (file) void handleSendMedia(file).catch(error => alert(error instanceof Error ? error.message : "Attachment failed."));
+                    }} />
+                  </label>
+                  <VoiceRecorder onSend={handleSendVoice} isSending={sendMessageMutation.isPending} />
+                  <Input
+                    placeholder="Type a message..."
+                    className="flex-1 bg-muted/50 border-transparent focus-visible:bg-background"
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                  />
+                  <Button type="submit" disabled={!message.trim() || sendMessageMutation.isPending} className="shrink-0 rounded-full h-10 w-10 p-0">
+                    {sendMessageMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5 ml-0.5" />}
+                  </Button>
+                </form>
+              </div>
+            </>
+          )}
+        </Card>
+      </div>
+    </DashboardLayout>
+  );
+}

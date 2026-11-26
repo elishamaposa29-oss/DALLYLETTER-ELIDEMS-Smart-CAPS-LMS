@@ -1,0 +1,59 @@
+Agent, please upgrade DallyLetter Elidems with the following improvements. 
+⚠️ IMPORTANT: Do not remove or change existing features. Keep everything working as it already does. Only add the requested upgrades. If any change risks errors or malfunction, undo and reset to the previous state.
+
+1. Hand‑Raise System
+   - Learner and teacher should both be able to lower a raised hand.
+   - Keep the existing feature where the learner writes why the hand was raised.
+
+2. Audio Recording
+   - Support recording audios for better understanding between learners and teachers.
+   - Ensure audio recording does not cause errors.
+
+3. Payment System
+   - Learner’s payment should be accepted even if my receiving account is not yet ready.
+   - Store payments securely inside DallyLetter Elidems, linked to:
+     - My mother’s phone number: 0785069260
+     - My Trust Wallet address: bc1q4snx5s8dkxff2yl898vfu4vfrem7rwgqs3xjt6
+     - Or my PayPal account.
+   - Add a second easy global payment method for learners who cannot use PayPal.
+   - I (the Admin) should be able to change the receiving account (bank, wallet, etc.) easily without errors.
+
+4. Admin Password
+   - Allow the Admin password to be changed easily.
+   - If changing causes errors, leave it as it is and notify me.
+
+5. Prefect Role
+   - When promoted to Prefect, learner’s dashboard gains a “Schedule a Lesson” button.
+   - When removed, the button disappears and they return to normal learner status.
+
+6. Admin Notifications
+   - All Admin texts/notifications should look different (color, font, style).
+   - Admin should be able to delete them.
+
+7. Account Restrictions
+   - Teachers cannot have learner accounts at the same time.
+   - Learners cannot have teacher accounts at the same time.
+   - Only Admin can have multiple accounts across all dashboards.
+
+8. Suspend Feature
+   - Add a “Suspend” button next to “Block” on the Admin dashboard.
+   - Suspend = user can still use app but with limited options.
+   - Block = user is completely banned.
+
+9. Manager Dashboard
+   - Create a Manager dashboard (new feature).
+   - Manager is powerful but NOT Admin. Manager cannot access Admin essentials (passwords, emails, payments).
+   - No separate sign‑in. Admin promotes/removes users to/from Manager role.
+   - Manager can:
+     - Control school operations.
+     - Send messages, audios, notifications to Admin.
+     - Block or suspend learners/teachers (NOT Admin).
+     - Must provide a reason before action; reason is reported to Admin.
+     - Join lessons/classes to monitor teachers.
+   - Manager’s texts/notifications should be highlighted differently.
+   - Manager cannot receive payments; Admin pays Manager directly.
+   - Manager can be promoted, removed, blocked, suspended, or banned by Admin.
+
+10. Safety Rule
+   - Do not implement anything that causes errors, misinformation, or malfunction.
+   - If an upgrade fails, undo and reset to the previous working state.

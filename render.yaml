@@ -1,0 +1,61 @@
+databases:
+  - name: DALLYLETTER-ELIDEMS-Production-Recovery-2
+    databaseName: dallyletter_elidems_production_recovery_2
+    user: dallyletter_elidems_production_recovery_2_user
+    plan: free
+    region: oregon
+    postgresMajorVersion: "18"
+
+services:
+  - type: web
+    name: DALLYLETTER-ELIDEMS-Smart-CAPS-LMS-4
+    env: node
+    plan: free
+    region: oregon
+    branch: main
+    autoDeploy: true
+    rootDir: artifacts/api-server
+    # Build only application artifacts; no database writes during build.
+    buildCommand: cd ../.. && pnpm install --frozen-lockfile && pnpm --dir artifacts/api-server build
+    # Free Render services do not support preDeployCommand. Run idempotent DB setup before API startup.
+    startCommand: cd ../.. && pnpm run db:push && pnpm --dir scripts run migrate:legacy-tables && pnpm --dir lib/db run migrate:manager-permissions && pnpm --dir lib/db run migrate:payment-transactions && pnpm --dir scripts run migrate:exercise-schema && pnpm --dir scripts run repair:messages-schema && pnpm --dir scripts run repair:connect-schema && pnpm --dir scripts run seed:owner && pnpm --dir scripts run verify:owner-recovery && pnpm --dir artifacts/api-server start
+    healthCheckPath: /api/healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: DALLYLETTER-ELIDEMS-Production-Recovery-2
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: OWNER_BOOTSTRAP_EMAIL
+        value: elishamaposa430@gmail.com
+      - key: OWNER_BOOTSTRAP_PASSWORD
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://dallyletterelidemslearningplatforme-six.vercel.app,https://dallyletter-web.onrender.com
+      - key: PUBLIC_APP_URL
+        value: https://dallyletterelidemslearningplatforme-six.vercel.app
+      - key: PUBLIC_API_URL
+        value: https://dallyletter-elidems-smart-caps-lms-4.onrender.com
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: PAYNOW_INTEGRATION_ID
+        sync: false
+      - key: PAYNOW_INTEGRATION_KEY
+        sync: false
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      - key: PAYPAL_ENVIRONMENT
+        value: production

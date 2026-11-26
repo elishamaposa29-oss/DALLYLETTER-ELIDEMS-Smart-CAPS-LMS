@@ -1,0 +1,104 @@
+name: Production manager-permissions migration
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_production_migration:
+        description: "Confirm that this run may apply the additive manager-permissions migration to the configured production PostgreSQL database."
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-manager-permissions-migration
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    if: ${{ inputs.confirm_production_migration == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Require production database secret
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ -z "${DATABASE_URL:-}" ]]; then
+            echo "::error::GitHub Actions secret DATABASE_URL is not configured."
+            exit 1
+          fi
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Apply additive manager-permissions migration
+        run: pnpm --dir lib/db run migrate:manager-permissions
+      - name: Verify required tables, primary keys, and indexes
+        working-directory: lib/db
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node --input-type=module <<'NODE'
+          import pg from "pg";
+          const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 10000, max: 1 });
+          try {
+            const requiredTables = [
+              "manager_permission_grants",
+              "manager_permission_history",
+              "manager_role_assignments",
+            ];
+            const tables = await pool.query(
+              "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename = ANY($1::text[])",
+              [requiredTables],
+            );
+            const found = new Set(tables.rows.map((row) => row.tablename));
+            const missing = requiredTables.filter((name) => !found.has(name));
+            if (missing.length) throw new Error("Missing tables: " + missing.join(", "));
+
+            const requiredIndexes = [
+              "manager_permission_grants_pkey",
+              "manager_permission_grants_changed_by_idx",
+              "manager_permission_history_pkey",
+              "manager_permission_history_manager_idx",
+              "manager_role_assignments_pkey",
+            ];
+            const indexes = await pool.query(
+              "SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND indexname = ANY($1::text[])",
+              [requiredIndexes],
+            );
+            const foundIndexes = new Set(indexes.rows.map((row) => row.indexname));
+            const missingIndexes = requiredIndexes.filter((name) => !foundIndexes.has(name));
+            if (missingIndexes.length) throw new Error("Missing indexes: " + missingIndexes.join(", "));
+
+            const fk = await pool.query(`
+              SELECT COUNT(*)::int AS count
+              FROM pg_constraint c
+              JOIN pg_class t ON t.oid = c.conrelid
+              JOIN pg_namespace n ON n.oid = t.relnamespace
+              WHERE n.nspname = 'public'
+                AND t.relname = ANY($1::text[])
+                AND c.contype = 'f'
+            `, [requiredTables]);
+            if (fk.rows[0].count < 5) throw new Error("Expected foreign-key constraints were not all found");
+            console.log("VERIFIED: all 3 tables, 5 indexes, and foreign-key constraints exist.");
+          } finally {
+            await pool.end();
+          }
+          NODE

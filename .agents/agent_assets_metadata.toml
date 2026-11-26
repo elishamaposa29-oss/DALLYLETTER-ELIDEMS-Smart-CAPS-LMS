@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "bR-R5Z4b5PTNXLdFJWynd"
+uri = "file://artifacts/dallyletter-mobile/assets/images/icon.png"
+type = "image"
+title = "dallyletter mobile icon"

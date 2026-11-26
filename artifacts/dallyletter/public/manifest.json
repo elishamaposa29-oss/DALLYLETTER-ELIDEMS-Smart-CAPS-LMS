@@ -1,0 +1,26 @@
+{
+  "name": "DallyLetter Elidems",
+  "short_name": "DallyLetter",
+  "description": "Dallyletter Elidems — Zimbabwe-first digital learning for learners, educators and schools across Africa and beyond. Created by Elisha Maposa.",
+  "start_url": "/login/",
+  "scope": "/",
+  "id": "/login/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#0f2a5a",
+  "background_color": "#0f2a5a",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+name: Production DB Schema Verification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: production-db-schema-verification
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify deployed production database schema
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Verify live API database connection and schema
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          health_url="https://dallyletter-elidems-smart-caps-lms-4.onrender.com/api/healthz/schema"
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+          # Render auto-deploy follows the main push; allow the new service version to start.
+          for attempt in $(seq 1 18); do
+            status="$(curl --silent --show-error --max-time 12 -o "$response_file" -w '%{http_code}' "$health_url" || true)"
+            if [ "$status" = "200" ] && node -e '
+              const fs = require("node:fs");
+              try {
+                const body = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+                process.exit(body.status === "ok" && body.schema === "ok" ? 0 : 1);
+              } catch { process.exit(1); }
+            ' "$response_file"; then
+              echo "Live production API database connection and required schema verified."
+              exit 0
+            fi
+            echo "Production schema endpoint not ready or schema check failed (attempt $attempt/18, HTTP ${status:-no-response})."
+            sleep 10
+          done
+          echo "::error::Live production database connection/schema verification did not pass."
+          cat "$response_file"
+          exit 1
