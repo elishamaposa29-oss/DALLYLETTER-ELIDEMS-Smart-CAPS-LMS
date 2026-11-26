@@ -8,7 +8,7 @@ const outputDir = path.join(projectRoot, "dist", "public", "founder");
 if (!fs.existsSync(source)) throw new Error("Original founder photograph is missing: " + source);
 fs.mkdirSync(outputDir, { recursive: true });
 
-const widths = [480, 768, 1200];
+const widths = [480, 640, 768, 1200];
 const formats = [
   { name: "avif", quality: 52 },
   { name: "webp", quality: 80 },
