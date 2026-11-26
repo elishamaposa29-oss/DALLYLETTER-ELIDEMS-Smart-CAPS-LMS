@@ -98,8 +98,12 @@ function render(page) {
  const canonical = siteUrl + route;
  const image = siteUrl + "/social/dallyletter-og.png";
  const founderImagePath = "/founder/elisha-maposa-origin.jpg";
+ const founderImagePath = "/founder/elisha-maposa-origin.jpg";
+ const suppliedFounderImagePath = path.join(outputRoot, "founder/IMG_20260706_100838.jpg");
+ const publishedFounderImagePath = path.join(outputRoot, "founder/elisha-maposa-origin.jpg");
+ if (!fs.existsSync(publishedFounderImagePath) && fs.existsSync(suppliedFounderImagePath)) fs.copyFileSync(suppliedFounderImagePath, publishedFounderImagePath);
  const founderImage = siteUrl + founderImagePath;
- const hasFounderImage = fs.existsSync(path.join(publicRoot, founderImagePath.replace(/^\\//, "")));
+ const hasFounderImage = fs.existsSync(publishedFounderImagePath);
  const logo = siteUrl + "/favicon.svg";
  const sections = page.slug === "" ? "" : page.sections.map(s => "<section><h2>"+esc(s[0])+"</h2><p>"+esc(s[1])+"</p></section>").join("");
  const keywordTags = getPageSeoTags(page.slug);
@@ -127,7 +131,7 @@ const imageEntries = pages.map((p) => {
  const pageUrl = siteUrl + (p.slug ? "/" + p.slug + "/" : "/");
  const images = [
   [siteUrl + "/social/dallyletter-og.png", "Dallyletter Elidems — " + esc(p.h1)],
-  ...(p.slug === "founder-story" && fs.existsSync(path.join(publicRoot, "founder/elisha-maposa-origin.jpg")) ? [[siteUrl + "/founder/elisha-maposa-origin.jpg", "Elisha Maposa, founder and creator of Dallyletter Elidems"]] : []),
+  ...(p.slug === "founder-story" && fs.existsSync(path.join(outputRoot, "founder/elisha-maposa-origin.jpg")) ? [[siteUrl + "/founder/elisha-maposa-origin.jpg", "Elisha Maposa, founder and creator of Dallyletter Elidems"]] : []),
   ...(p.slug === "" ? [
    [siteUrl + "/images/learner-dashboard-preview.svg", "Illustrative Dallyletter learner dashboard preview"],
    [siteUrl + "/images/prefect-dashboard-preview.svg", "Illustrative Dallyletter prefect dashboard preview"]
