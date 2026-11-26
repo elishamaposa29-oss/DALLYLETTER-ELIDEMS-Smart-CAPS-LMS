@@ -47,7 +47,7 @@ for (const assetPath of [
   "/images/learner-dashboard-preview.svg",
   "/images/prefect-dashboard-preview.svg"
 ]) {
-  const builtAssetPath = path.join(root, assetPath.replace(/^\\//, ""));
+  const builtAssetPath = path.join(root, assetPath.startsWith("/") ? assetPath.slice(1) : assetPath);
   if (!fs.existsSync(builtAssetPath)) {
     throw new Error("Required public image asset is missing from the production output: " + assetPath);
   }
