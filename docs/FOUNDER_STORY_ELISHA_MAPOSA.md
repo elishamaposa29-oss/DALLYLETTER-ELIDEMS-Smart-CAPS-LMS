@@ -1,6 +1,6 @@
 # The story behind Dallyletter Elidems
 
-**Creator: Elisha Maposa**  
+**Founder and sole creator: Elisha Maposa**  
 **Origin: Zimbabwe**  
 **Began building Dallyletter Elidems: Early 2026, aged 17**
 
@@ -63,6 +63,9 @@ Its purpose is not to suggest that hardship automatically produces success. The 
 
 ## A message to the next generation
 
+> Started with nothing at all. Proof of possibility if you commit yourself to discipline.
+
+
 If you are growing up with limited money, frequent changes, interrupted education or few people around you who have built technology, do not assume that the future is already decided for you.
 
 Start small. Learn the fundamentals. Build something useful. Ask questions. Keep evidence of your progress. Improve what you make. Let your work become proof of what is possible.
@@ -78,7 +81,7 @@ Start small. Learn the fundamentals. Build something useful. Ask questions. Keep
 - Elisha confirms he was 17 when he began Dallyletter Elidems in early 2026.
 - Do not invent names of schools, dates of transfers, academic awards, financial amounts or exact province/school counts.
 - The 2026 relocation to Zimbabwe, return to Form 3, reported slight decline in academic performance while focusing on Dallyletter, location-independent learning vision, and infrastructure/identity/payment barriers are founder-provided recollections; do not embellish or present them as independently verified.
-- Keep future photographs as pending archival assets until Elisha supplies and approves them.
+- The founder portrait supplied by Elisha on 26 November 2026 is approved by him for public use on Dallyletter's founder story and creator-attribution surfaces. Preserve his biological appearance; do not retouch or reshape facial features. Use the original portrait as supplied, with only non-distorting format/size optimisation if required.
 - Use captions, alt text and dates only when confirmed.
 - Elisha confirms that Dallyletter was not his first project: he had dozens of previous and parallel projects, with some failing, becoming too expensive to sustain or requiring skills he had not yet acquired.
 - The old Android phone's freezing, unexpected shutdowns/restarts and failure to wake, along with the founder's living conditions and responsibilities, are founder-provided recollections. Do not embellish them.
