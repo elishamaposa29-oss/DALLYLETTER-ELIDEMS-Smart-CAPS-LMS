@@ -44,7 +44,7 @@ if (expectedBuildSha) {
         headers: { "user-agent": "Googlebot/2.1 (+http://www.google.com/bot.html)", accept: "text/html" },
       });
       const body = await response.text();
-      deployedSha = extract(body, /<meta\\s+name=["']dallyletter-build-sha["']\\s+content=["']([^"']+)["']/i);
+      deployedSha = extract(body, /<meta\s+name=["']dallyletter-build-sha["']\s+content=["']([^"']+)["']/i);
       if (response.ok && new URL(response.url).origin === base.origin && deployedSha === expectedBuildSha) {
         matched = true;
         break;
@@ -104,7 +104,7 @@ if (imageSitemapResult) {
   if (!imageSitemapResult.body.startsWith('<?xml') || !imageSitemapResult.body.includes('<urlset ') || !imageSitemapResult.body.includes("http://www.google.com/schemas/sitemap-image/1.1")) {
     fail("image-sitemap.xml is not a valid image sitemap");
   }
-  const imageEntries = [...imageSitemapResult.body.matchAll(/<url>([\\s\\S]*?)<\\/url>/g)].map((match) => match[1]);
+  const imageEntries = [...imageSitemapResult.body.matchAll(/<url>([\s\\S]*?)<\/url>/g)].map((match) => match[1]);
   const requiredImageEntries = [
     { page: "/", image: "/social/dallyletter-og.png" },
     { page: "/", image: "/images/learner-dashboard-preview.svg" },
@@ -122,7 +122,7 @@ if (imageSitemapResult) {
   }
   const imageUrls = new Set();
   for (const xml of imageEntries) {
-    for (const match of xml.matchAll(/<image:loc>\\s*([^<]+)\\s*<\\/image:loc>/gi)) {
+    for (const match of xml.matchAll(/<image:loc>\s*([^<]+)\s*<\/image:loc>/gi)) {
       try {
         const imageUrl = new URL(match[1].trim());
         if (imageUrl.origin !== base.origin) fail("Image sitemap contains a non-canonical image URL: " + imageUrl.href);
