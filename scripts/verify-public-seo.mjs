@@ -46,7 +46,7 @@ const imageSitemap = fs.readFileSync(imageSitemapPath, "utf8");
 if (!imageSitemap.startsWith('<?xml') || !imageSitemap.includes('<urlset ') || !imageSitemap.includes("http://www.google.com/schemas/sitemap-image/1.1")) {
   throw new Error("image-sitemap.xml is not a valid image sitemap");
 }
-const imageSitemapEntries = [...imageSitemap.matchAll(/<url>([\\s\\S]*?)<\\/url>/g)].map((match) => match[1]);
+const imageSitemapEntries = [...imageSitemap.matchAll(/<url>([\s\S]*?)<\/url>/g)].map((match) => match[1]);
 const requiredImageEntries = [
   { page: "/", image: "/social/dallyletter-og.png" },
   { page: "/", image: "/images/learner-dashboard-preview.svg" },
@@ -85,7 +85,7 @@ for (const width of [480, 640, 768, 1200]) {
 for (const route of ["/", "/founder-story/"]) {
   const htmlPath = route === "/" ? path.join(root, "public-site", "index.html") : path.join(root, "founder-story", "index.html");
   const html = fs.readFileSync(htmlPath, "utf8");
-  if (!html.includes('<figure class="founder-portrait">') || !html.includes("elisha-maposa-origin-480.avif") || !html.includes("elisha-maposa-origin-1200.avif") || !html.includes('loading="lazy"') || !html.includes('fetchpriority="low"') || !html.includes("alt=\\"Elisha Maposa")) {
+  if (!html.includes('<figure class="founder-portrait">') || !html.includes("elisha-maposa-origin-480.avif") || !html.includes("elisha-maposa-origin-1200.avif") || !html.includes('loading="lazy"') || !html.includes('fetchpriority="low"') || !html.includes('alt=\"Elisha Maposa')) {
     throw new Error("Founder portrait is missing accessible, lazy-loaded responsive markup on " + route);
   }
 }
