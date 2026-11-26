@@ -1,16 +1,22 @@
 name: Dallyletter Real UI Showcase Capture
 
 on:
-  # Automatic capture is intentionally paused: protected Vercel previews require
-  # an automation-bypass credential, and this evidence workflow must not block
-  # pull-request review or merges. Resume only after protection access is configured.
-  # Keep scheduled and manually approved runs available for controlled verification.
+  # Capture the exact branch/PR deployment, never a stale production build.
+  push:
+    branches:
+      - feat/google-image-discovery-role-previews
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
   schedule:
     - cron: "23 6 * * 1"
   workflow_dispatch:
     inputs:
       approve_publication:
-        description: Publish public screenshots and clips to showcase-media only after reviewing a previous capture artifact
+        description: >-
+          Publish public screenshots and clips to showcase-media only after
+          reviewing a previous capture artifact
         required: false
         type: boolean
         default: false
@@ -29,6 +35,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
+      SHOWCASE_ACCOUNTS_ARE_SYNTHETIC: ${{ secrets.SHOWCASE_ACCOUNTS_ARE_SYNTHETIC || '' }}
       SHOWCASE_LEARNER_EMAIL: ${{ secrets.SHOWCASE_LEARNER_EMAIL || '' }}
       SHOWCASE_LEARNER_PASSWORD: ${{ secrets.SHOWCASE_LEARNER_PASSWORD || '' }}
       SHOWCASE_TEACHER_EMAIL: ${{ secrets.SHOWCASE_TEACHER_EMAIL || '' }}
@@ -37,8 +44,6 @@ jobs:
       SHOWCASE_MANAGER_PASSWORD: ${{ secrets.SHOWCASE_MANAGER_PASSWORD || '' }}
       SHOWCASE_ADMIN_EMAIL: ${{ secrets.SHOWCASE_ADMIN_EMAIL || '' }}
       SHOWCASE_ADMIN_PASSWORD: ${{ secrets.SHOWCASE_ADMIN_PASSWORD || '' }}
-      SHOWCASE_PREFECT_EMAIL: ${{ secrets.SHOWCASE_PREFECT_EMAIL || '' }}
-      SHOWCASE_PREFECT_PASSWORD: ${{ secrets.SHOWCASE_PREFECT_PASSWORD || '' }}
       SHOWCASE_JUNIOR_MANAGER_EMAIL: ${{ secrets.SHOWCASE_JUNIOR_MANAGER_EMAIL || '' }}
       SHOWCASE_JUNIOR_MANAGER_PASSWORD: ${{ secrets.SHOWCASE_JUNIOR_MANAGER_PASSWORD || '' }}
       SHOWCASE_SENIOR_MANAGER_EMAIL: ${{ secrets.SHOWCASE_SENIOR_MANAGER_EMAIL || '' }}
@@ -47,10 +52,17 @@ jobs:
       SHOWCASE_OWNER_PASSWORD: ${{ secrets.SHOWCASE_OWNER_PASSWORD || '' }}
       VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET || '' }}
       SHOWCASE_MAX_PAGES_PER_ROLE: "100"
-      SHOWCASE_CAPTURE_AUTHENTICATED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+      SHOWCASE_CAPTURE_AUTHENTICATED: >-
+        ${{ secrets.SHOWCASE_ACCOUNTS_ARE_SYNTHETIC == 'true' &&
+        (github.event_name != 'pull_request' ||
+        github.event.pull_request.head.repo.full_name == github.repository) }}
       SOURCE_COMMIT: ${{ github.sha }}
-      EXPECTED_DEPLOYMENT_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-      SHOWCASE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      SHOWCASE_SITE_URL: ''
+      EXPECTED_DEPLOYMENT_SHA: >-
+        ${{ github.event_name == 'pull_request' &&
+        github.event.pull_request.head.sha || github.sha }}
+      SHOWCASE_RUN_URL: >-
+        ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -117,8 +129,13 @@ jobs:
         run: |
           set -euo pipefail
           cp -R showcase-captures "$RUNNER_TEMP/dallyletter-showcase-captures"
-          git checkout --orphan showcase-media-refresh
-          git rm -rf . >/dev/null 2>&1 || true
+          git remote set-url origin "https://x-access-token:${{ github.token }}@github.com/$GITHUB_REPOSITORY.git"
+          if git ls-remote --exit-code origin refs/heads/showcase-media >/dev/null 2>&1; then
+            git fetch origin showcase-media
+            git checkout -B showcase-media-refresh FETCH_HEAD
+          else
+            git checkout --orphan showcase-media-refresh
+          fi
           mkdir -p latest
           cp "$RUNNER_TEMP"/dallyletter-showcase-captures/public-*.png latest/
           cp "$RUNNER_TEMP"/dallyletter-showcase-captures/public-*.webm latest/
@@ -162,4 +179,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add latest
           git commit -m "Refresh public Dallyletter screenshots for ${{ github.sha }}"
-          git push origin HEAD:refs/heads/showcase-media --force
+          git push origin HEAD:refs/heads/showcase-media

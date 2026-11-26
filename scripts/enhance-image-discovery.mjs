@@ -3,42 +3,49 @@ import path from "node:path";
 
 const root = path.resolve("dist/public");
 const homepage = path.join(root, "public-site", "index.html");
-const sitemapPath = path.join(root, "sitemap.xml");
-let siteUrl = process.env.PUBLIC_SITE_URL || "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app";
-while (siteUrl.endsWith("/")) siteUrl = siteUrl.slice(0, -1);
-const images = [
-  { src: "/favicon.svg", title: "Dallyletter Elidems official logo", alt: "Dallyletter Elidems navy and gold education technology logo", caption: "Official Dallyletter Elidems brand mark." },
-  { src: "/images/learner-dashboard-preview.svg", title: "Dallyletter learner dashboard preview", alt: "Illustrative Dallyletter learner dashboard showing lessons, assignments, progress and study groups", caption: "Public illustrative product preview using fictional sample data; not a live learner account." },
-  { src: "/images/prefect-dashboard-preview.svg", title: "Dallyletter prefect dashboard preview", alt: "Illustrative Dallyletter prefect dashboard showing school responsibilities, duties and notices", caption: "Public illustrative product preview using fictional sample data; not a live prefect account." }
+const sitemapPath = path.join(root, "image-sitemap.xml");
+const siteUrl = (process.env.PUBLIC_SITE_URL || "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app").replace(/\/+$/, "");
+const candidates = [
+  { role: "learner", src: "https://raw.githubusercontent.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/showcase-media/latest/learner-dashboard.png", title: "Dallyletter learner dashboard", alt: "Real Dallyletter learner dashboard screenshot captured from an authenticated learner session" },
+  { role: "prefect", src: "https://raw.githubusercontent.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/showcase-media/latest/prefect-dashboard.png", title: "Dallyletter prefect dashboard", alt: "Real Dallyletter prefect dashboard screenshot captured from the learner account with Profile Hub prefect permissions" },
+  { role: "teacher", src: "https://raw.githubusercontent.com/elishamaposa29-oss/DALLYLETTER-ELIDEMS-Smart-CAPS-LMS/showcase-media/latest/teacher-dashboard.png", title: "Dallyletter teacher workspace", alt: "Real Dallyletter teacher workspace screenshot captured from an authenticated teacher session" }
 ];
 
-for (const item of images) {
-  const file = path.join(root, item.src.slice(1));
-  if (!fs.existsSync(file)) throw new Error("Missing public image-search asset: " + item.src);
+async function isPublicPng(url) {
+  try {
+    const response = await fetch(url, { method: "HEAD", redirect: "follow", signal: AbortSignal.timeout(10000) });
+    return response.ok && /^image\/png(?:;|$)/i.test(response.headers.get("content-type") || "");
+  } catch {
+    return false;
+  }
 }
+
+const availability = await Promise.all(candidates.map(async (item) => ({ ...item, public: await isPublicPng(item.src) })));
+const roleImages = availability.every((item) => item.public) ? availability : [];
+if (!fs.existsSync(homepage)) throw new Error("Prerendered homepage is missing");
+if (!fs.existsSync(sitemapPath)) throw new Error("Image sitemap is missing");
+
 let html = fs.readFileSync(homepage, "utf8");
-const marker = '<section class="dl-image-discovery"';
-if (!html.includes(marker)) {
-  const cards = images.slice(1).map(item => '<article class="dl-image-card"><img src="' + item.src + '" alt="' + item.alt + '" width="1200" height="800" loading="lazy" decoding="async"><div><h3>' + item.title + '</h3><p>' + item.caption + '</p></div></article>').join("");
-  const section = '<section class="dl-image-discovery" aria-labelledby="dl-image-discovery-title"><div class="dl-image-discovery-inner"><p class="dl-image-kicker">Explore the platform</p><h2 id="dl-image-discovery-title">Inside the Dallyletter learning experience</h2><p class="dl-image-intro">Discover the tools and role-based workspaces that support connected learning and school communities.</p><div class="dl-image-grid">' + cards + '</div><p class="dl-image-note">These are illustrative public previews, not screenshots of real accounts. Actual workspace features depend on role, permissions and release.</p></div></section>';
-  const style = '<style id="dl-image-discovery-style">.dl-image-discovery{padding:4.5rem 1.25rem;background:linear-gradient(180deg,#f5f7fb,#fff);border-block:1px solid #e1e8f2}.dl-image-discovery-inner{max-width:1160px;margin:auto}.dl-image-kicker{text-transform:uppercase;letter-spacing:.15em;color:#8b6b00;font-size:.75rem;font-weight:800}.dl-image-discovery h2{color:#0f2a5a;font-size:clamp(1.8rem,4vw,2.8rem);line-height:1.15;margin:.4rem 0}.dl-image-intro{color:#61708a;max-width:720px}.dl-image-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.25rem;margin-top:2rem}.dl-image-card{overflow:hidden;border:1px solid #dce5f1;border-radius:20px;background:#fff;box-shadow:0 14px 36px rgba(15,42,90,.09)}.dl-image-card img{display:block;width:100%;height:auto;aspect-ratio:3/2;object-fit:cover;background:#eaf0f8}.dl-image-card div{padding:1.1rem 1.25rem}.dl-image-card h3{margin:0;color:#0f2a5a;font-size:1.1rem}.dl-image-card p{margin:.45rem 0 0;color:#61708a;font-size:.88rem}.dl-image-note{margin-top:1.2rem;color:#74839a;font-size:.78rem}@media(max-width:700px){.dl-image-grid{grid-template-columns:1fr}.dl-image-discovery{padding:3rem 1rem}}</style>';
-  html = html.replace("</head>", style + "</head>");
-  html = html.replace("</main>", section + "</main>");
-  fs.writeFileSync(homepage, html, "utf8");
-}
 let sitemap = fs.readFileSync(sitemapPath, "utf8");
-const homeOpen = '<url><loc>' + siteUrl + '/</loc>';
-if (!sitemap.includes(homeOpen)) throw new Error("Canonical homepage URL missing from sitemap");
-const imageXml = images.map(item => '<image:image><image:loc>' + siteUrl + item.src + '</image:loc><image:title>' + item.title + '</image:title><image:caption>' + item.caption + '</image:caption></image:image>').join("");
-const homeStart = sitemap.indexOf(homeOpen);
-const homeEnd = sitemap.indexOf("</url>", homeStart);
-if (homeEnd < 0) throw new Error("Homepage sitemap entry is malformed");
-if (!sitemap.slice(homeStart, homeEnd).includes("/images/learner-dashboard-preview.svg")) {
-  sitemap = sitemap.slice(0, homeEnd) + imageXml + sitemap.slice(homeEnd);
-  fs.writeFileSync(sitemapPath, sitemap, "utf8");
+if (roleImages.length === 3) {
+  const section = '<section class="dl-role-showcase" aria-labelledby="dl-role-showcase-title"><div class="dl-role-showcase-inner"><h2 id="dl-role-showcase-title">Real Dallyletter workspaces</h2><div class="dl-role-showcase-grid">' +
+    roleImages.map((item) => '<figure><img src="' + item.src + '" alt="' + item.alt + '" width="1200" height="800" loading="lazy" decoding="async"><figcaption>' + item.title + '</figcaption></figure>').join("") +
+    '</div></div></section>';
+  const style = '<style id="dl-role-showcase-style">.dl-role-showcase{padding:2rem 1.25rem;background:#f6f8fc;border-block:1px solid #e2e8f0}.dl-role-showcase-inner{max-width:1120px;margin:auto}.dl-role-showcase h2{margin:0 0 1rem;color:#0f2a5a;font-size:1.25rem}.dl-role-showcase-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}.dl-role-showcase figure{margin:0;overflow:hidden;border:1px solid #dce5f1;border-radius:12px;background:#fff}.dl-role-showcase img{display:block;width:100%;aspect-ratio:3/2;object-fit:cover}.dl-role-showcase figcaption{padding:.7rem .85rem;color:#0f2a5a;font-weight:700;font-size:.9rem}@media(max-width:680px){.dl-role-showcase-grid{grid-template-columns:1fr}.dl-role-showcase{padding:1.5rem 1rem}}</style>';
+  if (!html.includes("dl-role-showcase")) {
+    html = html.replace("</head>", style + "</head>").replace("</main>", section + "</main>");
+    fs.writeFileSync(homepage, html, "utf8");
+  }
+  const homeStart = sitemap.indexOf("<url><loc>" + siteUrl + "/</loc>");
+  const homeEnd = sitemap.indexOf("</url>", homeStart);
+  if (homeStart < 0 || homeEnd < 0) throw new Error("Canonical homepage image-sitemap entry is missing");
+  const imageXml = roleImages.map((item) => '<image:image><image:loc>' + item.src + '</image:loc><image:title>' + item.title + '</image:title></image:image>').join("");
+  const entry = sitemap.slice(homeStart, homeEnd);
+  if (!entry.includes(roleImages[0].src)) {
+    sitemap = sitemap.slice(0, homeEnd) + imageXml + sitemap.slice(homeEnd);
+    fs.writeFileSync(sitemapPath, sitemap, "utf8");
+  }
+  console.log("Added three verified, publicly fetchable real dashboard screenshots to the homepage and image sitemap.");
+} else {
+  console.log("No role screenshot gallery published: the three real PNG files are not all publicly reachable yet. No mockup or broken image URL was added.");
 }
-const updated = fs.readFileSync(homepage, "utf8");
-for (const required of ["dl-image-discovery", "learner-dashboard-preview.svg", "prefect-dashboard-preview.svg", "fictional sample data"]) {
-  if (!updated.includes(required)) throw new Error("Image discovery page requirement missing: " + required);
-}
-console.log("Published " + images.length + " crawlable brand/product images and added public role-preview cards; no authenticated dashboard captures were exposed.");

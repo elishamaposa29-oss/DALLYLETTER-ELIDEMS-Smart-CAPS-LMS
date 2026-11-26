@@ -13,6 +13,7 @@ const previewRequest = (init = {}) => ({
   headers: { ...(init.headers || {}), ...previewHeaders },
 });
 if (baseUrl.protocol !== "https:" || baseUrl.username || baseUrl.password) throw new Error("SHOWCASE_SITE_URL must be a public HTTPS URL without embedded credentials.");
+const syntheticAccountsAttested = process.env.SHOWCASE_ACCOUNTS_ARE_SYNTHETIC === "true";
 const out = path.resolve("showcase-captures");
 const roleScreensOut = path.join(out, "role-feature-screenshots");
 await fs.rm(out, { recursive: true, force: true });
@@ -49,8 +50,11 @@ async function verifyAuthenticatedRole(token, expectedRole, authenticatedApiOrig
   if (!response.ok) throw new Error("The API rejected the showcase session token: HTTP " + response.status);
   const user = await response.json();
   const actualRole = String(user.role || "").toLowerCase().replace(/[ -]+/g, "_");
+  const isPrefect = user.isPrefect === true || user.is_prefect === true;
   const expectedRoles = {
-    learner: ["student"],
+    learner: ["student", "learner"],
+    // Profile Hub treats prefect as a capability on an existing student account,
+    // not a separate signup or a separate account role.
     prefect: ["prefect"],
     teacher: ["teacher"],
     manager: ["manager"],
@@ -61,9 +65,10 @@ async function verifyAuthenticatedRole(token, expectedRole, authenticatedApiOrig
     platform_owner: ["platform_owner"]
   };
   const validRole = (expectedRoles[expectedRole] || []).includes(actualRole) ||
+    (expectedRole === "prefect" && (actualRole === "student" || actualRole === "learner") && isPrefect) ||
     (expectedRole === "manager" && user.isManager === true);
-  if (!validRole) throw new Error("Expected a " + expectedRole + " showcase account, but the API confirmed role " + (actualRole || "missing"));
-  return actualRole;
+  if (!validRole) throw new Error("Expected a " + expectedRole + " showcase capability, but the API confirmed role " + (actualRole || "missing") + " (isPrefect=" + isPrefect + ")");
+  return expectedRole === "prefect" && isPrefect ? "prefect" : actualRole;
 }
 const decodeXml = (value) => value.replaceAll("&amp;", "&").replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&quot;", '"').replaceAll("&apos;", "'");
 const expectedDeploymentSha = (process.env.EXPECTED_DEPLOYMENT_SHA || "").trim();
@@ -352,13 +357,36 @@ async function captureRole(role, route, email, password) {
     const loginPage = await loginContext.newPage();
     const loginApiResponses = [];
     const loginRequestFailures = [];
+    const loginPreflightResponses = [];
     loginPage.on("response", (response) => {
-      const pathname = new URL(response.url()).pathname;
-      if (pathname.endsWith("/api/auth/login") || pathname.endsWith("/auth/login")) loginApiResponses.push({ status: response.status(), path: pathname, origin: new URL(response.url()).origin });
+      const responseUrl = new URL(response.url());
+      const pathname = responseUrl.pathname;
+      if (pathname.endsWith("/api/auth/login") || pathname.endsWith("/auth/login")) {
+        loginApiResponses.push({ status: response.status(), path: pathname, origin: responseUrl.origin });
+      }
+      if (response.request().method() === "OPTIONS" && pathname.endsWith("/api/auth/login")) {
+        const headers = response.headers();
+        loginPreflightResponses.push({
+          status: response.status(),
+          origin: responseUrl.origin,
+          allowOrigin: headers["access-control-allow-origin"] || null,
+          allowCredentials: headers["access-control-allow-credentials"] || null,
+          allowMethods: headers["access-control-allow-methods"] || null
+        });
+      }
     });
     loginPage.on("requestfailed", (request) => {
-      const pathname = new URL(request.url()).pathname;
-      if (pathname.endsWith("/api/auth/login") || pathname.endsWith("/auth/login")) loginRequestFailures.push({ path: pathname, reason: request.failure()?.errorText || "request failed" });
+      const requestUrl = new URL(request.url());
+      const pathname = requestUrl.pathname;
+      if (pathname.endsWith("/api/auth/login") || pathname.endsWith("/auth/login")) {
+        loginRequestFailures.push({
+          method: request.method(),
+          path: pathname,
+          origin: requestUrl.origin,
+          resourceType: request.resourceType(),
+          reason: request.failure()?.errorText || "request failed"
+        });
+      }
     });
     await loginPage.goto(new URL("/login", baseUrl).href, { waitUntil: "domcontentloaded", timeout: 45000 });
     await loginPage.getByLabel("Email address").fill(email);
@@ -370,7 +398,7 @@ async function captureRole(role, route, email, password) {
     }, { timeout: 30000 }).catch(async () => {
       const feedback = await loginPage.locator('[role="alert"], [data-sonner-toast], [role="status"]').allTextContents().catch(() => []);
       throw new Error("Login did not establish a session. Safe diagnostics: " + JSON.stringify({
-        loginApiResponses, loginRequestFailures, visibleFeedback: feedback.join(" | ").slice(0, 300)
+        loginApiResponses, loginPreflightResponses, loginRequestFailures, visibleFeedback: feedback.join(" | ").slice(0, 300)
       }));
     });
     const loginState = await loginPage.evaluate(() => localStorage.getItem("dallyletter_token"));
@@ -638,15 +666,15 @@ function buildGallery(manifest) {
   lines.push("",
     "## Private role dashboard and feature screenshots",
     "",
-    "This repository is public, so role screenshots are redacted before being included in the workflow artifact under `role-feature-screenshots/`. They are never copied to the public showcase-media branch. Use dedicated demo accounts populated only with synthetic data; never point this capture at real learner records.",
+    "Role screenshots are redacted and retained in the private workflow artifact under `role-feature-screenshots/`. They are eligible for public release only through the separate `Publish reviewed Dallyletter role screenshots` workflow, after a human has inspected the exact artifact and confirmed its privacy review. The learner and prefect views use the same dedicated synthetic learner account; the API must confirm the `isPrefect` capability for the prefect view. The teacher view uses a separate dedicated synthetic teacher account. Never point this capture at real learner records.",
     "");
   for (const item of manifest.results.filter((result) => result.type === "dashboard")) {
     lines.push("### " + item.role + " — " + (item.pagesCaptured ?? 0) + " pages", "");
-    if (item.status === "missing-demo-account") lines.push("Not captured: configure the dedicated role account secrets.", "");
+    if (item.status === "missing-demo-account") lines.push("Not captured: the existing configured account credentials for this role are unavailable.", "");
     for (const shot of item.screenshots || []) lines.push("- **" + shot.path + "** — [Open screenshot](./role-feature-screenshots/" + shot.screenshot + ")");
     lines.push("");
   }
-  lines.push("Only dedicated showcase accounts with synthetic test data should be used. Role screenshots are not copied to the public showcase-media branch.", "");
+  lines.push("Use the existing configured learner and teacher showcase accounts. Prefect is captured from the learner account only when the API confirms Profile Hub's isPrefect flag. Public role-image publication requires a separate manual privacy review of the exact private artifact.", "");
   return lines.join("\n");
 }
 
@@ -658,7 +686,8 @@ try {
   // credentials must belong to an existing learner/teacher promoted by the Owner.
   const roleAccounts = [
     ["learner", "/student", process.env.SHOWCASE_LEARNER_EMAIL, process.env.SHOWCASE_LEARNER_PASSWORD],
-    ["prefect", "/student", process.env.SHOWCASE_PREFECT_EMAIL || process.env.SHOWCASE_LEARNER_EMAIL, process.env.SHOWCASE_PREFECT_PASSWORD || process.env.SHOWCASE_LEARNER_PASSWORD],
+    // Prefect is the existing learner account with Profile Hub's isPrefect capability; no separate login or signup exists.
+    ["prefect", "/student", process.env.SHOWCASE_LEARNER_EMAIL, process.env.SHOWCASE_LEARNER_PASSWORD],
     ["teacher", "/teacher", process.env.SHOWCASE_TEACHER_EMAIL, process.env.SHOWCASE_TEACHER_PASSWORD],
     ["junior_manager", "/manager", process.env.SHOWCASE_JUNIOR_MANAGER_EMAIL, process.env.SHOWCASE_JUNIOR_MANAGER_PASSWORD],
     ["senior_manager", "/manager", process.env.SHOWCASE_SENIOR_MANAGER_EMAIL, process.env.SHOWCASE_SENIOR_MANAGER_PASSWORD],
@@ -668,13 +697,14 @@ try {
     ["owner", "/admin", process.env.SHOWCASE_OWNER_EMAIL, process.env.SHOWCASE_OWNER_PASSWORD]
   ];
   const authenticatedCaptureEnabled = process.env.SHOWCASE_CAPTURE_AUTHENTICATED !== "false";
+  if (authenticatedCaptureEnabled && !syntheticAccountsAttested) throw new Error("Authenticated screenshots are blocked until SHOWCASE_ACCOUNTS_ARE_SYNTHETIC=true is configured as a repository secret.");
   if (!authenticatedCaptureEnabled) {
     results.push({ type: "dashboard", role: "all", status: "skipped", reason: "Authenticated showcase capture is disabled for this run; no role is counted as verified." });
   } else {
     for (const account of roleAccounts) await captureRole(...account);
   }
   const roleResults = results.filter((result) => result.type === "dashboard");
-  const requiredCvRoles = new Set(["owner", "senior_manager", "junior_manager", "manager", "admin", "teacher", "learner", "prefect"]);
+  const requiredCvRoles = new Set(["learner", "prefect", "teacher"]);
   const previewRun = process.env.GITHUB_EVENT_NAME === "pull_request";
   const missingRequiredRoleAccounts = authenticatedCaptureEnabled
     ? [...requiredCvRoles].filter((role) => !roleResults.some((result) => result.role === role && result.status === "captured"))
@@ -686,7 +716,7 @@ try {
       status: authenticatedCaptureEnabled ? "blocked" : "skipped",
       missingRoles: missingRequiredRoleAccounts,
       ...(authenticatedCaptureEnabled
-        ? { error: "Authenticated CV role verification is incomplete. Configure dedicated synthetic showcase accounts for: " + missingRequiredRoleAccounts.join(", ") + ". No role is counted as verified without a successful login and API-confirmed role." }
+        ? { error: "Authenticated CV role verification is incomplete. Configure the existing showcase credentials for: " + missingRequiredRoleAccounts.join(", ") + ". No role is counted as verified without a successful login and API-confirmed role." }
         : { reason: "Authenticated role capture is intentionally disabled for pull-request security. These roles are not counted as verified until a trusted post-merge showcase run completes." })
     });
   }
@@ -706,6 +736,7 @@ try {
   const manifest = {
     site: baseUrl.href,
     capturedAt: new Date().toISOString(),
+    syntheticAccountsAttested,
     sourceCommit: deployedBuildSha,
     workflowCommit: process.env.SOURCE_COMMIT || null,
     workflowRunUrl: process.env.SHOWCASE_RUN_URL || null,
@@ -743,5 +774,5 @@ try {
   if (results.some((result) => result.error || ["login-failed", "capture-failed", "partial", "wrong-page"].includes(result.status) || result.pageLimitReached)) process.exitCode = 1;
 } finally {
   await browser.close();
-  // Keep role screenshots inside the private GitHub Actions artifact; never publish them to showcase-media.
+  // Keep role screenshots private here. A separate workflow publishes only the three reviewed default dashboard images.
 }
