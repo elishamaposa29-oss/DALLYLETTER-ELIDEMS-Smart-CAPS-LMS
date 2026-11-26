@@ -104,7 +104,7 @@ if (imageSitemapResult) {
   if (!imageSitemapResult.body.startsWith('<?xml') || !imageSitemapResult.body.includes('<urlset ') || !imageSitemapResult.body.includes("http://www.google.com/schemas/sitemap-image/1.1")) {
     fail("image-sitemap.xml is not a valid image sitemap");
   }
-  const imageEntries = [...imageSitemapResult.body.matchAll(/<url>([\s\\S]*?)<\/url>/g)].map((match) => match[1]);
+  const imageEntries = [...imageSitemapResult.body.matchAll(/<url>([\s\S]*?)<\/url>/g)].map((match) => match[1]);
   const requiredImageEntries = [
     { page: "/", image: "/social/dallyletter-og.png" },
     { page: "/", image: "/images/learner-dashboard-preview.svg" },
