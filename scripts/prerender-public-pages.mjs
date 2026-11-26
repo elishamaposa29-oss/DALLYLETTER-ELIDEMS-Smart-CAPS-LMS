@@ -98,7 +98,6 @@ function render(page) {
  const canonical = siteUrl + route;
  const image = siteUrl + "/social/dallyletter-og.png";
  const founderImagePath = "/founder/elisha-maposa-origin.jpg";
- const founderImagePath = "/founder/elisha-maposa-origin.jpg";
  const suppliedFounderImagePath = path.join(outputRoot, "founder/IMG_20260706_100838.jpg");
  const publishedFounderImagePath = path.join(outputRoot, "founder/elisha-maposa-origin.jpg");
  if (!fs.existsSync(publishedFounderImagePath) && fs.existsSync(suppliedFounderImagePath)) fs.copyFileSync(suppliedFounderImagePath, publishedFounderImagePath);
