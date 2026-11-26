@@ -1,0 +1,119 @@
+name: Publish selected Dallyletter public-page images
+
+on:
+  push:
+    branches:
+      - feat/google-image-discovery-role-previews
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: dallyletter-selected-public-image-publication
+  cancel-in-progress: false
+
+jobs:
+  publish-selected-public-images:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Download the reviewed public-page capture artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          CAPTURE_RUN_ID=45705602458
+          EXPECTED_WORKFLOW="Dallyletter Real UI Showcase Capture"
+          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CAPTURE_RUN_ID")"
+          test "$(jq -r '.repository.full_name' <<<"$run_json")" = "$GITHUB_REPOSITORY"
+          test "$(jq -r '.name' <<<"$run_json")" = "$EXPECTED_WORKFLOW"
+          test "$(jq -r '.status' <<<"$run_json")" = "completed"
+          # This is a public-page-only release. The run's later authenticated-account
+          # gate failed, so no role dashboard is treated as captured or publishable here.
+          artifact_name="dallyletter-full-role-feature-captures-1130"
+          mkdir -p "$RUNNER_TEMP/dallyletter-public-capture"
+          gh run download "$CAPTURE_RUN_ID" --name "$artifact_name" --dir "$RUNNER_TEMP/dallyletter-public-capture"
+      - name: Validate and select only reviewed public marketing screenshots
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          import path from "node:path";
+          const root = path.join(process.env.RUNNER_TEMP, "dallyletter-public-capture");
+          const selected = [
+            ["public-digital-classroom.png", "digital-classroom", "/digital-classroom", "Dallyletter digital classroom"],
+            ["public-learners.png", "learners", "/learners", "Dallyletter learning experience for learners"],
+            ["public-teacher-tools.png", "teacher-tools", "/teacher-tools", "Dallyletter digital tools for educators and teachers"],
+            ["public-educators.png", "educators", "/educators", "Dallyletter tools that support educators"],
+            ["public-africa.png", "africa", "/africa", "Dallyletter learning communities across Africa"],
+            ["public-online-learning-zimbabwe.png", "online-learning-zimbabwe", "/online-learning-zimbabwe", "Dallyletter online learning in Zimbabwe"],
+            ["public-founder-story.png", "founder-story", "/about", "The Dallyletter Elidems founder story"]
+          ];
+          const output = path.join(root, "selected");
+          fs.mkdirSync(output, { recursive: true });
+          for (const [sourceName, key, route, alt] of selected) {
+            const source = path.join(root, sourceName);
+            if (!fs.existsSync(source)) throw new Error("Required reviewed public screenshot missing: " + sourceName);
+            const png = fs.readFileSync(source);
+            if (png.length < 50000 || png.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a") {
+              throw new Error("Invalid PNG: " + sourceName);
+            }
+            const width = png.readUInt32BE(16), height = png.readUInt32BE(20);
+            if (width < 1000 || height < 600 || width > 5000 || height > 12000) {
+              throw new Error("Unexpected screenshot dimensions for " + sourceName + ": " + width + "x" + height);
+            }
+            const file = key + ".png";
+            fs.copyFileSync(source, path.join(output, file));
+          }
+          const pages = selected.map(([sourceName, key, route, alt]) => ({
+            page: key,
+            route,
+            file: key + ".png",
+            alt,
+            mediaUrl: "https://raw.githubusercontent.com/" + process.env.GITHUB_REPOSITORY + "/showcase-media/latest/selected/" + key + ".png"
+          }));
+          fs.writeFileSync(path.join(output, "manifest.json"), JSON.stringify({
+            site: "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app",
+            captureRunId: 45705602458,
+            captureArtifact: "dallyletter-full-role-feature-captures-1130",
+            publicationScope: "selected public landing-page images only",
+            authenticatedDashboardsPublished: false,
+            pages
+          }, null, 2) + "\n");
+          const lines = [
+            "# Dallyletter Elidems — selected public-page images",
+            "",
+            "Curated public landing-page screenshots from the reviewed capture artifact. This publication intentionally includes public marketing pages only.",
+            "",
+            "**No authenticated dashboards, learner records, teacher records, Owner views, or role-feature captures are included.** The source capture run failed later at its separate synthetic-account gate; this publication does not treat that run as successful authenticated evidence.",
+            "",
+            ...pages.flatMap(item => [
+              "## " + item.page,
+              "",
+              "![ " + item.alt + " ](" + item.mediaUrl + ")",
+              "",
+              "[Open live page](" + "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app" + item.route + ")",
+              ""
+            ])
+          ];
+          fs.writeFileSync(path.join(output, "README.md"), lines.join("\n") + "\n");
+          NODE
+      - name: Publish only the selected images to showcase-media
+        run: |
+          set -euo pipefail
+          git remote set-url origin "https://x-access-token:${{ github.token }}@github.com/$GITHUB_REPOSITORY.git"
+          if git ls-remote --exit-code origin refs/heads/showcase-media >/dev/null 2>&1; then
+            git fetch origin showcase-media
+            git checkout -B dallyletter-media-publication FETCH_HEAD
+          else
+            git checkout --orphan dallyletter-media-publication
+          fi
+          mkdir -p latest/selected
+          cp "$RUNNER_TEMP/dallyletter-public-capture/selected/"* latest/selected/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add latest/selected
+          git commit -m "Publish selected Dallyletter public-page screenshots"
+          git push origin HEAD:refs/heads/showcase-media
