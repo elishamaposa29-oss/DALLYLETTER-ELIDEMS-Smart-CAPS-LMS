@@ -14,7 +14,9 @@ on:
   workflow_dispatch:
     inputs:
       approve_publication:
-        description: Publish public screenshots and clips to showcase-media only after reviewing a previous capture artifact
+        description: >-
+          Publish public screenshots and clips to showcase-media only after
+          reviewing a previous capture artifact
         required: false
         type: boolean
         default: false
