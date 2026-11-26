@@ -136,7 +136,7 @@ const imageEntries = pages.map((p) => {
  const pageUrl = siteUrl + (p.slug ? "/" + p.slug + "/" : "/");
  const images = [
   [siteUrl + "/social/dallyletter-og.png", "Dallyletter Elidems — " + esc(p.h1)],
-  ...(p.slug === "founder-story" && fs.existsSync(path.join(outputRoot, "founder/elisha-maposa-origin.jpg")) ? [[siteUrl + "/founder/elisha-maposa-origin.jpg", "Elisha Maposa, founder and creator of Dallyletter Elidems"]] : []),
+  ...((p.slug === "founder-story" || p.slug === "") && fs.existsSync(path.join(outputRoot, "founder/elisha-maposa-origin.jpg")) ? [[siteUrl + "/founder/elisha-maposa-origin.jpg", "Elisha Maposa, founder and creator of Dallyletter Elidems"]] : []),
   ...(p.slug === "" ? [
    [siteUrl + "/images/learner-dashboard-preview.svg", "Illustrative Dallyletter learner dashboard preview"],
    [siteUrl + "/images/prefect-dashboard-preview.svg", "Illustrative Dallyletter prefect dashboard preview"]
