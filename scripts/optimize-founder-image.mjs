@@ -12,11 +12,12 @@ const widths = [480, 768, 1200];
 const formats = [
   { name: "avif", quality: 52 },
   { name: "webp", quality: 80 },
-  { name: "jpg", quality: 82 }
+  { name: "jpeg", extension: "jpg", quality: 82 }
 ];
 for (const format of formats) {
   for (const width of widths) {
-    const output = path.join(outputDir, "elisha-maposa-origin-" + width + "." + format.name);
+    const extension = format.extension || format.name;
+    const output = path.join(outputDir, "elisha-maposa-origin-" + width + "." + extension);
     execFileSync("pnpm", [
       "dlx", "sharp-cli@6.1.0",
       "--input", source,
