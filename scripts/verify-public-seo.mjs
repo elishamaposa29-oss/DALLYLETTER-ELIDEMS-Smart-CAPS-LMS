@@ -40,6 +40,18 @@ if (!educationSeoTags.templates.past_papers_and_exams.includes("[Subject] past p
 }
 const sitemapPath = path.join(root, "sitemap.xml");
 const sitemap = fs.readFileSync(sitemapPath, "utf8");
+// Fail the build if Vite did not copy any homepage image asset from public/.
+for (const assetPath of [
+  "/favicon.svg",
+  "/social/dallyletter-og.png",
+  "/images/learner-dashboard-preview.svg",
+  "/images/prefect-dashboard-preview.svg"
+]) {
+  const builtAssetPath = path.join(root, assetPath.replace(/^\\//, ""));
+  if (!fs.existsSync(builtAssetPath)) {
+    throw new Error("Required public image asset is missing from the production output: " + assetPath);
+  }
+}
 const imageSitemapPath = path.join(root, "image-sitemap.xml");
 if (!fs.existsSync(imageSitemapPath)) throw new Error("Dedicated image-sitemap.xml is missing from the production build");
 const imageSitemap = fs.readFileSync(imageSitemapPath, "utf8");
