@@ -357,13 +357,36 @@ async function captureRole(role, route, email, password) {
     const loginPage = await loginContext.newPage();
     const loginApiResponses = [];
     const loginRequestFailures = [];
+    const loginPreflightResponses = [];
     loginPage.on("response", (response) => {
-      const pathname = new URL(response.url()).pathname;
-      if (pathname.endsWith("/api/auth/login") || pathname.endsWith("/auth/login")) loginApiResponses.push({ status: response.status(), path: pathname, origin: new URL(response.url()).origin });
+      const responseUrl = new URL(response.url());
+      const pathname = responseUrl.pathname;
+      if (pathname.endsWith("/api/auth/login") || pathname.endsWith("/auth/login")) {
+        loginApiResponses.push({ status: response.status(), path: pathname, origin: responseUrl.origin });
+      }
+      if (response.request().method() === "OPTIONS" && pathname.endsWith("/api/auth/login")) {
+        const headers = response.headers();
+        loginPreflightResponses.push({
+          status: response.status(),
+          origin: responseUrl.origin,
+          allowOrigin: headers["access-control-allow-origin"] || null,
+          allowCredentials: headers["access-control-allow-credentials"] || null,
+          allowMethods: headers["access-control-allow-methods"] || null
+        });
+      }
     });
     loginPage.on("requestfailed", (request) => {
-      const pathname = new URL(request.url()).pathname;
-      if (pathname.endsWith("/api/auth/login") || pathname.endsWith("/auth/login")) loginRequestFailures.push({ path: pathname, reason: request.failure()?.errorText || "request failed" });
+      const requestUrl = new URL(request.url());
+      const pathname = requestUrl.pathname;
+      if (pathname.endsWith("/api/auth/login") || pathname.endsWith("/auth/login")) {
+        loginRequestFailures.push({
+          method: request.method(),
+          path: pathname,
+          origin: requestUrl.origin,
+          resourceType: request.resourceType(),
+          reason: request.failure()?.errorText || "request failed"
+        });
+      }
     });
     await loginPage.goto(new URL("/login", baseUrl).href, { waitUntil: "domcontentloaded", timeout: 45000 });
     await loginPage.getByLabel("Email address").fill(email);
@@ -375,7 +398,7 @@ async function captureRole(role, route, email, password) {
     }, { timeout: 30000 }).catch(async () => {
       const feedback = await loginPage.locator('[role="alert"], [data-sonner-toast], [role="status"]').allTextContents().catch(() => []);
       throw new Error("Login did not establish a session. Safe diagnostics: " + JSON.stringify({
-        loginApiResponses, loginRequestFailures, visibleFeedback: feedback.join(" | ").slice(0, 300)
+        loginApiResponses, loginPreflightResponses, loginRequestFailures, visibleFeedback: feedback.join(" | ").slice(0, 300)
       }));
     });
     const loginState = await loginPage.evaluate(() => localStorage.getItem("dallyletter_token"));
