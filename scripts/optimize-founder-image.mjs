@@ -33,7 +33,8 @@ for (const format of formats) {
 }
 const originalBytes = fs.statSync(source).size;
 const variants = formats.flatMap(format => widths.map(width => {
-  const file = path.join(outputDir, "elisha-maposa-origin-" + width + "." + format.name);
+  const extension = format.extension || format.name;
+  const file = path.join(outputDir, "elisha-maposa-origin-" + width + "." + extension);
   return { file: path.basename(file), bytes: fs.statSync(file).size };
 }));
 console.log(JSON.stringify({ originalBytes, variants }, null, 2));
