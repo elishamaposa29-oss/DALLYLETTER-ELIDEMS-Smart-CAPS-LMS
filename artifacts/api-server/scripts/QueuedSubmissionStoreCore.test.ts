@@ -89,9 +89,9 @@ test("retention pruning removes expired cached lessons deterministically", async
 test("storage pressure evicts least-recently-used lesson cache before learner drafts", async () => {
   const storage = new MemoryStorage();
   const now = 1_800_000_000_000;
-  await putOfflineLearningRecord(storage, 11, "lesson", "lesson-old", "x".repeat(100), { now, maxBytes: 1000 });
-  await putOfflineLearningRecord(storage, 11, "draft", "draft-keep", { text: "must survive" }, { now: now + 1, maxBytes: 1000 });
-  await putOfflineLearningRecord(storage, 11, "learning", "event-1", "y".repeat(800), { now: now + 2, maxBytes: 1000 });
+  await putOfflineLearningRecord(storage, 11, "lesson", "lesson-old", "x".repeat(100), { now, maxBytes: 850 });
+  await putOfflineLearningRecord(storage, 11, "draft", "draft-keep", { text: "must survive" }, { now: now + 1, maxBytes: 850 });
+  await putOfflineLearningRecord(storage, 11, "learning", "event-1", "y".repeat(800), { now: now + 2, maxBytes: 850 });
   const rows = await listOfflineLearningRecords(storage, 11, { now: now + 2 });
   assert.equal(rows.some(row => row.id === "draft-keep"), true);
   assert.equal(rows.some(row => row.id === "lesson-old"), false);
