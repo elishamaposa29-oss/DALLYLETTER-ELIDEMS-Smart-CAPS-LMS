@@ -24,6 +24,7 @@ import { AuthenticatedAudio } from "@/components/AuthenticatedAudio";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import { deleteOfflineDraft, listOfflineDrafts, saveOfflineDraft } from "@/lib/offline-drafts";
 
 type GroupView = {
   id: number;
@@ -107,6 +108,7 @@ export default function StudentChat() {
   const [activeTab, setActiveTab] = useState<"groups" | "people">(() => new URLSearchParams(window.location.search).has("recipientId") ? "people" : "groups");
   const [chatFullscreen, setChatFullscreen] = useState(false);
   const [message, setMessage] = useState("");
+  const [draftLoadedKey, setDraftLoadedKey] = useState<string | null>(null);
   const [conversationSearch, setConversationSearch] = useState("");
   const [groupHubOpen, setGroupHubOpen] = useState(false);
   const [unreadSummary, setUnreadSummary] = useState<{
@@ -197,6 +199,23 @@ export default function StudentChat() {
   }, [joinedGroups, selectedGroupId, selectedUserId]);
 
   const invalidateMessages = () => void queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId, recipientId: selectedUserId }) });
+  const chatDraftKey = selectedGroupId ? "chat:group:" + selectedGroupId : selectedUserId ? "chat:private:" + selectedUserId : null;
+  useEffect(() => {
+    if (!chatDraftKey || !user?.id) { setDraftLoadedKey(null); return; }
+    setDraftLoadedKey(null); setMessage("");
+    let active = true;
+    void listOfflineDrafts<any>(localStorage.getItem("dallyletter_token") || "", user.id).then(rows => {
+      const draft = rows.find(item => item.key === chatDraftKey)?.value;
+      if (active && typeof draft?.message === "string") setMessage(draft.message);
+      if (active) setDraftLoadedKey(chatDraftKey);
+    }).catch(() => { if (active) setDraftLoadedKey(chatDraftKey); });
+    return () => { active = false; };
+  }, [chatDraftKey, user?.id]);
+  useEffect(() => {
+    if (!chatDraftKey || !user?.id || draftLoadedKey !== chatDraftKey || !message.trim()) return;
+    const timer = window.setTimeout(() => { void saveOfflineDraft(chatDraftKey, { message }, localStorage.getItem("dallyletter_token") || "", user.id).catch(() => undefined); }, 350);
+    return () => window.clearTimeout(timer);
+  }, [chatDraftKey, user?.id, draftLoadedKey, message]);
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
     const onMessage = (event: MessageEvent) => {
@@ -225,6 +244,7 @@ export default function StudentChat() {
       } as any,
     }, {
       onSuccess: () => {
+        if (chatDraftKey && user?.id) deleteOfflineDraft(chatDraftKey, localStorage.getItem("dallyletter_token") || "", user.id);
         setMessage("");
         setReplyTo(null);
         invalidateMessages();
