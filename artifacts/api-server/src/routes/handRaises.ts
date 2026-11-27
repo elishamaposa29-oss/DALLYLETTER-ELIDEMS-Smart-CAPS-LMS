@@ -4,7 +4,7 @@ import { and, eq, inArray, like } from "drizzle-orm";
 import { db, handRaisesTable, activityLogTable, classesTable, messagesTable } from "@workspace/db";
 import { RaiseHandBody, ListHandRaisesQueryParams } from "@workspace/api-zod";
 import { requireAuth, isOwnerRole } from "../lib/auth-middleware";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, removeStoredMedia } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, isCloudQuotaExceeded, removeStoredMedia } from "../lib/media-storage";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -58,7 +58,7 @@ router.post("/raise-hand/with-media", requireAuth, (req, res): void => {
       const question = typeof req.body?.question === "string" ? req.body.question.slice(0, 5000) : "";
       const key = req.file!.filename;
       try {
-        await persistUploadedMedia(key, req.file!.mimetype, req.file!.path);
+        await persistUploadedMedia(key, req.file!.mimetype, req.file!.path, { userId: Number(user.id), category: "message", fileName: req.file!.originalname });
         const mediaUrl = "/api/lessons/media/" + key + "?type=" + encodeURIComponent(req.file!.mimetype);
         const [handRaise] = await db.insert(handRaisesTable).values({
           studentId: user.id, studentName: user.name, classId, question: question || null, mediaUrl, mediaOwned: true, isResolved: false,
@@ -68,6 +68,7 @@ router.post("/raise-hand/with-media", requireAuth, (req, res): void => {
       } catch (error) {
         await removeStoredMedia(key).catch(() => undefined);
         logger.warn({ error: error instanceof Error ? error.message.slice(0, 300) : "unknown" }, "Hand-raise media creation failed");
+        if (isCloudQuotaExceeded(error)) { res.status(413).json({ code: "CLOUD_QUOTA_EXCEEDED", error: "Your 10 GiB cloud storage allowance is full." }); return; }
         res.status(503).json({ error: "Could not save the hand raise and its attachment. Please retry." });
       }
     })();
