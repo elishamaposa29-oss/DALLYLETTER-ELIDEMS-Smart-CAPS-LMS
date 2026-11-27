@@ -85,6 +85,17 @@ test("offline learning records are isolated by account and retained for at least
   assert.equal((await listOfflineLearningRecords(storage, 11, { now: now + 90 * 24 * 60 * 60 * 1000 + 1 })).length, 0);
 });
 
+test("unsynced drafts and learner work survive beyond the 90-day lesson-cache window", async () => {
+  const storage = new MemoryStorage();
+  const now = 1_800_000_000_000;
+  await putOfflineLearningRecord(storage, 11, "draft", "draft-long-lived", { text: "unfinished answer" }, { now });
+  await putOfflineLearningRecord(storage, 11, "learning", "event-long-lived", { text: "learner work" }, { now });
+  const later = now + 120 * 24 * 60 * 60 * 1000;
+  const rows = await listOfflineLearningRecords(storage, 11, { now: later });
+  assert.equal(rows.some(row => row.id === "draft-long-lived"), true);
+  assert.equal(rows.some(row => row.id === "event-long-lived"), true);
+});
+
 test("retention pruning removes expired cached lessons deterministically", async () => {
   const storage = new MemoryStorage();
   const now = 1_800_000_000_000;
