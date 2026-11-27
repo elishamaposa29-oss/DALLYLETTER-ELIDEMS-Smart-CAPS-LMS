@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
-const [media, cloud, lessons, assignments, exercises, messages, schema, cloudManager] = await Promise.all([
+const [media, cloud, lessons, assignments, exercises, messages, handRaises, schema, cloudManager] = await Promise.all([
   read("../artifacts/api-server/src/lib/media-storage.ts"),
   read("../artifacts/api-server/src/routes/cloudStorage.ts"),
   read("../artifacts/api-server/src/routes/lessons.ts"),
   read("../artifacts/api-server/src/routes/assignments.ts"),
   read("../artifacts/api-server/src/routes/exercises.ts"),
   read("../artifacts/api-server/src/routes/messages.ts"),
+  read("../artifacts/api-server/src/routes/handRaises.ts"),
   read("../artifacts/api-server/src/lib/ensureCloudStorageSchema.ts"),
   read("../artifacts/dallyletter-mobile/components/CloudStorageManager.tsx"),
 ]);
@@ -22,6 +23,8 @@ assert.match(lessons, /category: Number\(req\.query\.groupId\) > 0 \? "study_gro
 assert.match(assignments, /category: "assignment"/);
 assert.match(exercises, /category: "exercise"/);
 assert.match(messages, /category: groupId != null \? "study_group" : "message"/);
+assert.match(handRaises, /category: "message"/);
+assert.match(handRaises, /isCloudQuotaExceeded\(error\)/);
 assert.match(cloud, /router\.post\("\/reconcile",requireAuth/);
 assert.match(cloud, /configured:isObjectStorageConfigured\(\)/);
 assert.match(cloud, /WHERE id=\$1 AND user_id=\$2/);
@@ -32,6 +35,8 @@ assert.equal((assignments.match(/category: "assignment"/g) || []).length, 2);
 assert.match(cloudManager, /listOfflineLearningRecords/);
 assert.match(cloudManager, /removeOfflineLearningRecord/);
 assert.match(cloudManager, /Remove offline copy/);
+assert.match(cloudManager, /readDirectoryAsync/);
+assert.match(cloudManager, /removeLocalDownload/);
 
 // Account-scoped quota contract: one account reaching its cap must not consume
 // or expose another account's independent allowance.
