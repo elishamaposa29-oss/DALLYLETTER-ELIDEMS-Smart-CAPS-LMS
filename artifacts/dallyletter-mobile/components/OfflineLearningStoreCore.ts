@@ -34,9 +34,9 @@ export async function listOfflineLearningRecords<T = unknown>(storage: QueueStor
     const rows = raw ? JSON.parse(raw) : [];
     if (!Array.isArray(rows)) return [];
     return rows.filter((row: any) => row && row.userId === userId && typeof row.id === "string" &&
-      ["lesson", "draft", "message", "learning"].includes(row.kind) &&
-      Number.isFinite(row.updatedAt) && now - row.updatedAt >= 0 && now - row.updatedAt <= retention &&
-      Number.isFinite(row.expiresAt) && row.updatedAt + retention > now) as OfflineLearningRecord<T>[];
+      ["lesson", "draft", "message", "learning"].includes(row.kind) && Number.isFinite(row.updatedAt) && now - row.updatedAt >= 0 &&
+      // Expire only replaceable lesson cache. Drafts, messages and learner work are retained until explicitly removed or synced.
+      (row.kind !== "lesson" || (now - row.updatedAt <= retention && Number.isFinite(row.expiresAt) && row.expiresAt > now))) as OfflineLearningRecord<T>[];
   } catch { return []; }
 }
 
