@@ -49,7 +49,7 @@ router.post("/answer-media", requireAuth, (req,res):void => {
     if (error) { res.status(400).json({error:"A supported answer file is required"}); return; }
     if (!req.file) { res.status(400).json({error:"A supported answer file is required"}); return; }
     const file = req.file;
-    void persistUploadedMedia(file.filename, file.mimetype, file.path).then(() => {
+    void persistUploadedMedia(file.filename, file.mimetype, file.path, { userId: Number(req.currentUser!.id), category: "exercise", fileName: file.originalname }).then(() => {
       if (res.headersSent) return;
       res.status(201).json({
         mediaUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`,
@@ -111,7 +111,7 @@ router.post("/question-media", requireAuth, requireManagerPermissionIfManager("u
       const attachmentUrl = `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`;
       let mediaPersisted = false;
       try {
-        await persistUploadedMedia(file.filename, file.mimetype, file.path);
+        await persistUploadedMedia(file.filename, file.mimetype, file.path, { userId: Number(user.id), category: "exercise", fileName: file.originalname });
         mediaPersisted = true;
         const [updatedQuestion] = await db.update(exerciseQuestionsTable)
           .set({ config: { ...config, attachment: { url: attachmentUrl, fileName: file.originalname, mimeType: file.mimetype, size: file.size } } })

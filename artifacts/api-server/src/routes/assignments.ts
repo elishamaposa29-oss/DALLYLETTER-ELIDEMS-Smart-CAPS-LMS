@@ -63,7 +63,7 @@ router.post("/material", requireAuth, (req, res): void => {
     if (error) { res.status(400).json({ error: "A supported material file up to 250 MB is required" }); return; }
     const file = req.file;
     if (!file) { res.status(400).json({ error: "A supported material file is required" }); return; }
-    persistUploadedMedia(file.filename, file.mimetype, file.path).then(() => res.status(201).json({ attachmentUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`, fileName: file.originalname, mimeType: file.mimetype, size: file.size })).catch((error) => {
+    persistUploadedMedia(file.filename, file.mimetype, file.path, { userId: Number(req.currentUser!.id), category: "assignment", fileName: file.originalname }).then(() => res.status(201).json({ attachmentUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`, fileName: file.originalname, mimeType: file.mimetype, size: file.size })).catch((error) => {
       logger.error({
         error: error instanceof Error ? { name: error.name, message: error.message.slice(0, 500) } : "Unknown media upload failure",
         persistentStorageConfigured: isObjectStorageConfigured(),

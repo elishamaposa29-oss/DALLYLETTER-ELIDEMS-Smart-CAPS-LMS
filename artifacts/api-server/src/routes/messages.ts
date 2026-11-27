@@ -148,7 +148,7 @@ router.post("/messages/media", requireAuth, (req, res): void => {
         }
       }
 
-      await persistUploadedMedia(req.file.filename, req.file.mimetype, req.file.path);
+      await persistUploadedMedia(req.file.filename, req.file.mimetype, req.file.path, { userId: Number(currentUser.id), category: groupId != null ? "study_group" : "message", fileName: req.file.originalname });
       res.status(201).json({
         mediaUrl: messageMediaPath(req.file.filename) + "?type=" + encodeURIComponent(req.file.mimetype),
         storageKey: req.file.filename,
